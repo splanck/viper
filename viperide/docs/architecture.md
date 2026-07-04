@@ -21,9 +21,8 @@ registered through `src/il/runtime/runtime.def`. Important runtime families are:
 
 - `Viper.GUI.*` for windows, menus, widgets, `CodeEditor`, `OutputPane`,
   command palette, and test/virtual-list helpers.
-- `Viper.System.Process` for build, run, and debug-adapter child processes.
+- `Viper.System.Process` for build, run, debug-adapter, and Git child processes.
 - `Viper.System.Pty` for the integrated terminal.
-- `Viper.System.Exec` for simple blocking Git commands.
 - `Viper.Workspace.FileIndex` for project tree/search enumeration.
 - `Viper.Workspace.Edit` for transactional text replacement.
 - `Viper.Zia.*` and `Viper.Basic.*` for language services.
@@ -59,8 +58,8 @@ The larger feature areas are intentionally split into small teaching modules:
   membership and enumeration policy.
 - `commands/command_context.zia` names the long-lived dependencies used by the
   command dispatcher.
-- `commands/search_prompt.zia` owns the modal prompt flow for text search so
-  search execution only consumes normalized requests.
+- `commands/search_commands.zia` owns the docked search panel flow and consumes
+  normalized requests for direct, cached, and legacy search paths.
 - `commands/quick_open_commands.zia` owns Quick Open palette rows, id encoding,
   and deterministic file scoring.
 - `commands/source_transform_commands.zia` owns UI command orchestration for
@@ -229,14 +228,16 @@ scope for the current OutputPane terminal mode.
 
 ### Source Control
 
-`scm/scm_git.zia` is a thin synchronous wrapper around `git -C <repo> ...`.
-Read commands use captured stdout. Write commands use exit codes. `scm_view.zia`
-maintains the Source Control UI state and operations.
+`scm/scm_git.zia` is an async `Viper.System.Process` wrapper around Git argv
+sequences. It resolves `git`, captures stdout/stderr/exit code, parses
+porcelain v2 status, and keeps blocking compatibility wrappers for probes and
+older call sites. `scm_view.zia` pumps one active Git job at a time and
+maintains the Source Control UI state.
 
 The Source Control view is intentionally lightweight. Push and pull are
-blocking. Status parsing uses porcelain v1 and has known path edge cases around
-quoted/renamed paths. Treat it as useful local Git integration, not a complete
-Git client.
+long-running operations with basic progress/error text rather than rich
+credential, conflict, and recovery workflows. Treat it as useful local Git
+integration, not a complete Git client.
 
 ## UI Ownership
 

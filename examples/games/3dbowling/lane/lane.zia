@@ -151,6 +151,7 @@ class LaneBuilder {
         laneMat = Material3D.PBR(config.LANE_COLOR_R, config.LANE_COLOR_G, config.LANE_COLOR_B);
         laneMat.Metallic = 0.0;
         laneMat.Roughness = 0.32;
+        laneMat.SsrEnabled = true;
         Material3D.SetShininess(laneMat, config.LANE_SHININESS);
         boardMesh = Mesh3D.Box(config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0) * 0.92, 0.006, totalLen);
         boardLightMat = Material3D.PBR(
@@ -170,6 +171,7 @@ class LaneBuilder {
         oilMat = Material3D.FromColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
         Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
         oilMat.Alpha = 0.34;
+        oilMat.SsrEnabled = true;
 
         pinDeckMesh = Mesh3D.Box(config.LANE_WIDTH - 0.02, 0.008, 1.9);
         pinDeckMat = Material3D.FromColor(config.PIN_DECK_COLOR_R, config.PIN_DECK_COLOR_G, config.PIN_DECK_COLOR_B);
@@ -505,6 +507,60 @@ class LaneBuilder {
     /// @brief Z coordinate where the oil ends (start of dry backend).
     expose func getOilEndZ() -> Float {
         return oilEndZ;
+    }
+
+    /// @brief Visual oil density 0..1 at (x, z), for HUD/preview rendering only.
+    /// @details Deliberately DECOUPLED from getFrictionAt (which must stay
+    ///          byte-identical for the deterministic trajectory). This is an
+    ///          approximation of the oil footprint: full through the oiled
+    ///          corridor, tapering past oilEndZ, with a per-pattern lateral
+    ///          falloff so the three patterns read differently in the preview.
+    expose func getOilConcentration(x: Float, z: Float) -> Float {
+        if (z < config.OIL_START_Z) { return 0.0; }
+        if (z > oilEndZ + 2.0) { return 0.0; }
+
+        var laneHalf = config.LANE_WIDTH / 2.0;
+        var boardPct = Abs(x) / laneHalf;
+        if (boardPct > 1.0) { boardPct = 1.0; }
+
+        var lengthwise = 1.0;
+        if (z > oilEndZ) {
+            lengthwise = 1.0 - (z - oilEndZ) / 2.0;
+            if (lengthwise < 0.0) { lengthwise = 0.0; }
+        }
+
+        var center = 1.0 - boardPct * boardPct;
+        if (oilPattern == config.OIL_SPORT) {
+            center = 1.0 - boardPct;
+        } else if (oilPattern == config.OIL_DRY) {
+            center = (1.0 - boardPct) * 0.6;
+        }
+        if (center < 0.0) { center = 0.0; }
+        return center * lengthwise;
+    }
+
+    /// @brief Draw a top-down oil map in a HUD rect (px,py,w,h). Rows run down
+    ///        the lane (foul line at top), columns span its width; cell tint
+    ///        tracks getOilConcentration so the active pattern is legible.
+    expose func drawOilPreview(canvas: Canvas3D, px: Integer, py: Integer, w: Integer, h: Integer) {
+        Canvas3D.DrawRect2D(canvas, px - 2, py - 2, w + 4, h + 4, config.HUD_COLOR_FRAME_BG);
+        var cols = 9;
+        var rows = 6;
+        var laneHalf = config.LANE_WIDTH / 2.0;
+        var cellW = w / cols;
+        var cellH = h / rows;
+        for (var r: Integer = 0; r < rows; r = r + 1) {
+            var z = config.OIL_START_Z + (oilEndZ + 1.6 - config.OIL_START_Z) * ((r + 0.5) / (rows + 0.0));
+            for (var c: Integer = 0; c < cols; c = c + 1) {
+                var x = -laneHalf + config.LANE_WIDTH * ((c + 0.5) / (cols + 0.0));
+                var dens = getOilConcentration(x, z);
+                var blue = 40 + Convert.NumToInt(dens * 200.0);
+                var green = 30 + Convert.NumToInt(dens * 150.0);
+                var cell = (18 << 16) + (green << 8) + blue;
+                Canvas3D.DrawRect2D(canvas, px + c * cellW, py + r * cellH, cellW - 1, cellH - 1, cell);
+            }
+        }
+        Canvas3D.DrawText2D(canvas, px, py + h + 3, getOilPatternName() + " oil", config.HUD_COLOR_CYAN);
     }
 
     /// @brief Display name for the oil pattern.

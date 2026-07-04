@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vertex.inc  (#included from vgfx3d_backend_sw.c; not a standalone translation unit)
-// Purpose: Software backend pipeline vertex, frustum clipping, and Gouraud lighting
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vertex.inc  (#included from
+// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend pipeline
+// vertex, frustum clipping, and Gouraud lighting
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Pipeline vertex
@@ -201,7 +202,10 @@ static void compute_lighting(pipe_vert_t *v,
         v->color[0] = cmd->diffuse_color[0] * v->color[0];
         v->color[1] = cmd->diffuse_color[1] * v->color[1];
         v->color[2] = cmd->diffuse_color[2] * v->color[2];
-        v->color[3] = cmd->diffuse_color[3] * v->color[3];
+        /* Material alpha applies to unlit draws too — the GPU shaders compute
+         * diffuse.a * materialAlpha * vertex.a, so skipping cmd->alpha here made
+         * Material3D.SetAlpha a no-op for unlit software draws (parity bug). */
+        v->color[3] = cmd->diffuse_color[3] * v->color[3] * cmd->alpha;
         return;
     }
 

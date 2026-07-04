@@ -411,20 +411,19 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
                     const auto &sym = memberObj.symbols[i];
                     if (sym.name.empty())
                         continue;
-                    if (!componentForRuntimeSymbol(sym.name).has_value())
-                        continue;
 
+                    const bool isRuntimeSymbol = componentForRuntimeSymbol(sym.name).has_value();
                     if (sym.binding == ObjSymbol::Undefined) {
                         if (resolved.count(sym.name) == 0 && unresolved.insert(sym.name).second)
                             changed = true;
-                        if (symbols.insert(sym.name).second)
+                        if (isRuntimeSymbol && symbols.insert(sym.name).second)
                             changed = true;
                         continue;
                     }
 
                     resolved.insert(sym.name);
                     unresolved.erase(sym.name);
-                    if (symbols.insert(sym.name).second)
+                    if (isRuntimeSymbol && symbols.insert(sym.name).second)
                         changed = true;
                 }
             }

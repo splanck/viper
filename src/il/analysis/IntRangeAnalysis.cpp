@@ -396,6 +396,79 @@ std::optional<IntRange> applyRangeTransfer(const Instr &instr, RangeMap &ranges)
     return result;
 }
 
+std::optional<IntRange> matchPow2ModuloRange(const BasicBlock &block, const Instr &subInstr,
+                                             const RangeMap &ranges) {
+    if (subInstr.op != Opcode::Sub && subInstr.op != Opcode::ISubOvf)
+        return std::nullopt;
+    if (subInstr.operands.size() != 2)
+        return std::nullopt;
+
+    // Straight-line definition of a temp earlier in this block.
+    auto defBefore = [&](unsigned id) -> const Instr * {
+        for (const Instr &instr : block.instructions) {
+            if (&instr == &subInstr)
+                break;
+            if (instr.result && *instr.result == id)
+                return &instr;
+        }
+        return nullptr;
+    };
+    auto sameTemp = [](const Value &a, const Value &b) {
+        return a.kind == Value::Kind::Temp && b.kind == Value::Kind::Temp && a.id == b.id;
+    };
+
+    const Value &z = subInstr.operands[0];
+    const Value &aligned = subInstr.operands[1];
+    if (aligned.kind != Value::Kind::Temp)
+        return std::nullopt;
+
+    // %aligned = and %biased, -M   (mask is the negation of a power of two)
+    const Instr *andInstr = defBefore(aligned.id);
+    if (!andInstr || andInstr->op != Opcode::And || andInstr->operands.size() != 2)
+        return std::nullopt;
+    const Value *biased = nullptr;
+    int64_t mask = 0;
+    if (andInstr->operands[0].kind == Value::Kind::ConstInt &&
+        andInstr->operands[1].kind == Value::Kind::Temp) {
+        mask = andInstr->operands[0].i64;
+        biased = &andInstr->operands[1];
+    } else if (andInstr->operands[1].kind == Value::Kind::ConstInt &&
+               andInstr->operands[0].kind == Value::Kind::Temp) {
+        mask = andInstr->operands[1].i64;
+        biased = &andInstr->operands[0];
+    }
+    if (!biased || mask >= 0 || mask == std::numeric_limits<int64_t>::min())
+        return std::nullopt;
+    const int64_t mag = -mask;  // 2^k
+    if ((mag & (mag - 1)) != 0)  // require an exact power of two
+        return std::nullopt;
+
+    // %biased = add %z, %bias   (commutative; one addend must be the minuend Z)
+    const Instr *addInstr = defBefore(biased->id);
+    if (!addInstr || (addInstr->op != Opcode::Add && addInstr->op != Opcode::IAddOvf) ||
+        addInstr->operands.size() != 2)
+        return std::nullopt;
+    const Value *bias = nullptr;
+    if (sameTemp(addInstr->operands[0], z))
+        bias = &addInstr->operands[1];
+    else if (sameTemp(addInstr->operands[1], z))
+        bias = &addInstr->operands[0];
+    if (!bias)
+        return std::nullopt;
+
+    // The bias must be confined to [0, mag - 1]: the sign correction that turns
+    // an arithmetic-shift quotient into a truncated remainder never exceeds the
+    // low-bit mask. With that, `%z - ((%z + bias) & -mag)` lies in [-B, mag-1-B]
+    // for every %z, hence in [-(mag-1), mag-1].
+    auto biasRange = rangeForValue(*bias, ranges);
+    if (!biasRange || !biasRange->lower || !biasRange->upper)
+        return std::nullopt;
+    if (*biasRange->lower < 0 || *biasRange->upper > mag - 1)
+        return std::nullopt;
+
+    return IntRange{-(mag - 1), mag - 1};
+}
+
 namespace {
 
 /// @brief Compute the fact map carried by one CFG edge.
@@ -589,8 +662,15 @@ IntRangeInfo computeIntRanges(const Function &fn) {
                 continue;
 
             RangeMap out = entry[blockIdx];
-            for (const auto &instr : block.instructions)
+            for (const auto &instr : block.instructions) {
                 applyRangeTransfer(instr, out);
+                // Recover the modulo-by-power-of-two bound the peephole pass
+                // hides when it lowers `srem` to bit-twiddling (see
+                // matchPow2ModuloRange). Only fills a gap the transfer left.
+                if (instr.result && out.find(*instr.result) == out.end())
+                    if (auto idiom = matchPow2ModuloRange(block, instr, out))
+                        out[*instr.result] = *idiom;
+            }
 
             const Instr &term = block.instructions.back();
             for (size_t branchIndex = 0; branchIndex < term.labels.size(); ++branchIndex) {

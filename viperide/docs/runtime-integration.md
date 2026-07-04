@@ -61,10 +61,16 @@ Relevant methods include append, append line, append styled text, clear,
 selection, select all, max-line limit, line count, font, auto-scroll,
 terminal-mode toggle, and input draining.
 
+OutputPane stores logical lines in a bounded ring buffer. Appending beyond the
+max-line limit evicts the oldest logical line without shifting the whole line
+array, so long build logs and terminal sessions do not pay an O(n) cost per
+eviction.
+
 OutputPane terminal mode is intentionally not a complete terminal emulator. It
-supports line-oriented shell interaction and captured key input, but not the full
-alternate-screen/cursor-addressing behavior required by applications like
-full-screen editors.
+supports line-oriented shell interaction, captured key input, cursor-column
+overwrite for common shell redraws, `CSI K` line erase, and `CSI J` display
+erase. It does not implement the full alternate-screen/cursor-addressing
+behavior required by applications like full-screen editors.
 
 ### VirtualList And VirtualTree
 
@@ -81,6 +87,7 @@ until the UI uses virtual row realization end to end.
 - Build jobs.
 - Run jobs.
 - Debug adapter process launch.
+- Git Source Control jobs.
 
 ViperIDE uses:
 
@@ -97,7 +104,7 @@ Important constraints:
 
 - Jobs are started with explicit argv sequences, not shell strings.
 - The process runtime does not search `PATH` for bare executables in the way a
-  shell would, so ViperIDE resolves the `viper` path before launch.
+  shell would, so ViperIDE resolves the `viper` and `git` paths before launch.
 - IDE-side retained output is bounded to avoid runaway memory usage.
 - Runtime process buffers are finite. Excessive child output must be handled
   carefully by draining promptly and truncating at the IDE layer.
@@ -135,20 +142,17 @@ IDE constraints:
 
 ## Exec Runtime
 
-`Viper.System.Exec` is used by the Git wrapper because the current Source
-Control view is small and synchronous.
+`Viper.System.Exec` is still available to probes and small helper code, but the
+main ViperIDE build/run/debug/SCM paths use `Viper.System.Process` when stdout,
+stderr, exit code, cancellation, and non-blocking UI behavior matter.
 
 Current constraints:
 
 - `Exec.CaptureArgs` captures stdout but does not provide a reliable exit code.
 - `Exec.RunArgs` provides an exit code but lets child output go to inherited
   stdout.
-- Source Control read commands infer success from captured output.
-- Source Control write commands infer success from the exit code.
-
-If Source Control becomes a polished product surface, prefer an async
-`Viper.System.Process` model that captures stdout, stderr, and exit code
-together without blocking the UI.
+- Do not use `Exec` for new long-running IDE workflows.
+- Do not use shell strings when an argv-sequence API can express the command.
 
 ## Workspace Runtime
 
@@ -163,6 +167,14 @@ together without blocking the UI.
 
 It applies hard excludes, `.gitignore` support implemented by the runtime, and
 project manifest ignore/exclude patterns.
+
+`FileIndex.Page(root, extensionsCsv, excludesCsv, includeDirs, offset, limit)`
+returns bounded pages with the same entry shape as `Enumerate`. The API is
+stateless from the caller's perspective. The runtime may keep a private
+process-local cursor for sequential calls with the same key and offset so large
+workspace consumers can avoid repeatedly walking from the root. Callers must
+still treat `nextOffset`, `done`, and `truncated` as the protocol; there is no
+public cursor handle to close.
 
 ### Workspace.Edit
 
@@ -191,10 +203,12 @@ sequence, or stable handle can be returned.
 
 ### BASIC
 
-BASIC currently provides in-process completion, diagnostics, hover, and document
-symbols. There is no BASIC project index equivalent wired to ViperIDE, so
-definition, references, rename, workspace symbols, and signature help remain
-disabled for BASIC documents.
+BASIC uses `Viper.Basic.LanguageService` for in-process completion,
+diagnostics, hover, and document symbols. Project navigation, references,
+rename, workspace symbols, call hierarchy, and signature help are implemented by
+the IDE-side BASIC semantic scanner in `viperide/src/basic/semantic_scan.zia`.
+That keeps the public runtime ABI unchanged while giving BASIC documents the
+same editor command surface as Zia.
 
 ## Game Scene Runtime
 

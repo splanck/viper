@@ -1,200 +1,520 @@
 module scm_git;
 
-bind Exec = Viper.System.Exec;
+bind Process = Viper.System.Process;
+bind Env = Viper.System.Environment;
+bind Machine = Viper.System.Machine;
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 bind Obj = Viper.Core.Object;
+bind Time = Viper.Time;
 
 // ============================================================================
-// MODULE: scm_git  (Phase 5C — source control)
-// PURPOSE: Thin git command layer over Viper.System.Exec for the IDE Source
-//          Control view. Every command runs `git -C <repo> ...`.
+// MODULE: scm_git
+// PURPOSE: Async git command layer for the IDE Source Control view.
 //
-// EXEC SEMANTICS (important):
-//   * Exec.CaptureArgs(prog, args) -> stdout string, but does NOT report an
-//     exit code (Exec.LastExitCode() is unreliable, returns -1). Used for READ
-//     commands (status/diff/branch/rev-parse); success is inferred from output.
-//   * Exec.RunArgs(prog, args) -> the exit code (reliable), but lets the child
-//     write to the inherited stdout (output not captured). Used for WRITE
-//     commands (add/restore/commit/push/pull/switch); success is rc == 0.
+// WHERE-THIS-FITS: scm_view owns widgets and starts GitJob instances from this
+//          module. Each frame it pumps the active job, then parses status/diff
+//          output or refreshes after mutating commands.
 //
-// DESIGN:
-//   * SYNC + BLOCKING. status/diff/add/commit are fast; push/pull block the
-//     caller briefly (accepted v1 limitation; an async path can come later).
-//   * `git -C <repo>` instead of a per-call cwd — the layer is stateless apart
-//     from the bound repo root.
-//   * PORCELAIN v1 PARSING: lines are "XY path"; split on newline, slice
-//     columns. Paths with spaces/quotes are an accepted v1 edge case.
+// KEY-DESIGN-CHOICES:
+//   * PROCESS, NOT EXEC. Viper.System.Process gives stdout, stderr, exit code,
+//     and cancellation in one handle, so network operations never block the UI.
+//   * PATH RESOLUTION AT THE EDGE. Process does not search PATH, so this module
+//     resolves git once and reports a useful error if it cannot be found.
+//   * PORCELAIN V2 PARSING. Status parsing is field-based, so paths containing
+//     spaces are handled without display-string splitting.
 // ============================================================================
 
-/// @brief One changed file in `git status`, with its staged/worktree state.
+/// @brief One changed file in `git status`, with staged/worktree state.
 class GitEntry {
-    expose String path;        // repo-relative path
-    expose String index;       // porcelain column 1 (staged), " " when none
-    expose String worktree;    // porcelain column 2 (worktree), " " when none
-    expose Boolean staged;     // the index column has a change
-    expose Boolean untracked;  // "??"
+    expose String path;
+    expose String oldPath;
+    expose String index;
+    expose String worktree;
+    expose Boolean staged;
+    expose Boolean untracked;
+    expose Boolean renamed;
+
     expose func init() {
         path = "";
-        index = " ";
-        worktree = " ";
+        oldPath = "";
+        index = ".";
+        worktree = ".";
         staged = false;
         untracked = false;
+        renamed = false;
     }
 }
 
-/// @brief Parsed `git status` snapshot for one repo.
+/// @brief Parsed `git status --porcelain=v2 --branch` snapshot for one repo.
 class GitStatus {
     expose Boolean isRepo;
     expose String branch;
     expose List[GitEntry] entries;
+    expose String errorText;
+
     expose func init() {
         isRepo = false;
         branch = "";
         entries = [];
+        errorText = "";
+    }
+}
+
+/// @brief One asynchronous git process and its captured streams.
+class GitJob {
+    expose Process.ProcessHandle handle;
+    expose String kind;
+    expose String path;
+    expose Boolean stagedDiff;
+    expose String stdoutText;
+    expose String stderrText;
+    expose Integer exitCode;
+    expose Boolean running;
+    expose Boolean started;
+
+    expose func init() {
+        handle = null;
+        kind = "";
+        path = "";
+        stagedDiff = false;
+        stdoutText = "";
+        stderrText = "";
+        exitCode = -1;
+        running = false;
+        started = false;
+    }
+
+    expose func Start(program: String,
+                      args: Any,
+                      cwd: String,
+                      jobKind: String,
+                      jobPath: String,
+                      isStagedDiff: Boolean) -> Boolean {
+        kind = jobKind;
+        path = jobPath;
+        stagedDiff = isStagedDiff;
+        stdoutText = "";
+        stderrText = "";
+        exitCode = -1;
+        handle = Process.StartWithEnv(program, args, cwd, null);
+        if handle == null or handle.IsValid() == false {
+            handle = null;
+            running = false;
+            started = false;
+            stderrText = "Could not start git process";
+            return false;
+        }
+        running = true;
+        started = true;
+        return true;
+    }
+
+    expose func Pump() -> Boolean {
+        if handle == null { running = false; return false; }
+        Drain();
+        if handle.IsRunning() {
+            running = true;
+            return true;
+        }
+        Drain();
+        exitCode = handle.ExitCode();
+        handle.Destroy();
+        handle = null;
+        running = false;
+        return false;
+    }
+
+    expose func Wait() {
+        if handle == null { running = false; return; }
+        while handle != null and handle.IsRunning() {
+            Pump();
+            Time.Clock.Sleep(5);
+        }
+        if handle != null {
+            Pump();
+        }
+    }
+
+    expose func Kill() -> Boolean {
+        if handle == null { return false; }
+        var ok = handle.Kill();
+        Drain();
+        exitCode = -1;
+        handle.Destroy();
+        handle = null;
+        running = false;
+        return ok;
+    }
+
+    expose func Success() -> Boolean {
+        return started and running == false and exitCode == 0;
+    }
+
+    expose func CombinedOutput() -> String {
+        if stdoutText == "" { return stderrText; }
+        if stderrText == "" { return stdoutText; }
+        return stdoutText + "\n" + stderrText;
+    }
+
+    hide func Drain() {
+        if handle == null { return; }
+        var out = handle.ReadStdout();
+        if out != "" { stdoutText = stdoutText + out; }
+        var err = handle.ReadStderr();
+        if err != "" { stderrText = stderrText + err; }
     }
 }
 
 /// @brief git command layer bound to one repository root.
 class Git {
     expose String repo;
-    expose Integer lastExit;   // exit code of the most recent WRITE command
+    expose String gitPath;
+    expose Integer lastExit;
+    expose String lastError;
 
     expose func init() {
         repo = "";
+        gitPath = "";
         lastExit = 0;
+        lastError = "";
     }
 
     expose func SetRepo(path: String) {
         repo = path;
     }
 
-    /// @brief Build the full argv: `-C <repo>` followed by @p extra.
-    hide func BuildArgs(extra: Any) -> Any {
+    expose func ResolveGit() -> String {
+        if gitPath != "" and IO.File.Exists(gitPath) { return gitPath; }
+        var overridePath = EnvValue("VIPER_GIT_BINARY");
+        if overridePath != "" and IO.File.Exists(overridePath) {
+            gitPath = Path.Abs(overridePath);
+            return gitPath;
+        }
+        var name = "git";
+        if Machine.Os == "windows" { name = "git.exe"; }
+        gitPath = ResolveBinary(name);
+        return gitPath;
+    }
+
+    expose func StartStatus() -> GitJob {
         var args = Seq.New();
-        Seq.Push(args, "-C");
-        Seq.Push(args, repo);
-        var i = 0;
-        var n = Seq.get_Count(extra);
-        while i < n {
-            Seq.Push(args, Obj.ToString(Seq.Get(extra, i)));
-            i = i + 1;
+        Seq.Push(args, "status");
+        Seq.Push(args, "--porcelain=v2");
+        Seq.Push(args, "--branch");
+        Seq.Push(args, "--renames");
+        return StartCommand("status", args, "", false);
+    }
+
+    expose func StartDiff(path: String,
+                          staged: Boolean) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "diff");
+        if staged { Seq.Push(args, "--cached"); }
+        Seq.Push(args, "--");
+        Seq.Push(args, path);
+        return StartCommand("diff", args, path, staged);
+    }
+
+    expose func StartStage(path: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "add");
+        Seq.Push(args, "--");
+        Seq.Push(args, path);
+        return StartCommand("stage", args, path, false);
+    }
+
+    expose func StartStageAll() -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "add");
+        Seq.Push(args, "-A");
+        return StartCommand("stageAll", args, "", false);
+    }
+
+    expose func StartUnstage(path: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "restore");
+        Seq.Push(args, "--staged");
+        Seq.Push(args, "--");
+        Seq.Push(args, path);
+        return StartCommand("unstage", args, path, false);
+    }
+
+    expose func StartCommit(message: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "commit");
+        Seq.Push(args, "-m");
+        Seq.Push(args, message);
+        return StartCommand("commit", args, "", false);
+    }
+
+    expose func StartPush() -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "push");
+        return StartCommand("push", args, "", false);
+    }
+
+    expose func StartPull() -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "pull");
+        return StartCommand("pull", args, "", false);
+    }
+
+    expose func StartCheckout(branchName: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "switch");
+        Seq.Push(args, branchName);
+        return StartCommand("checkout", args, branchName, false);
+    }
+
+    expose func StartBranches() -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "branch");
+        Seq.Push(args, "--format=%(refname:short)");
+        return StartCommand("branches", args, "", false);
+    }
+
+    hide func StartCommand(kind: String,
+                           args: Any,
+                           path: String,
+                           staged: Boolean) -> GitJob {
+        var job = new GitJob();
+        lastError = "";
+        if repo == "" {
+            lastError = "No repository is open";
+            job.stderrText = lastError;
+            return job;
         }
-        return args;
-    }
-
-    /// @brief READ command: returns captured stdout (no exit code).
-    hide func RunCapture(extra: Any) -> String {
-        if repo == "" { return ""; }
-        return Exec.CaptureArgs("git", BuildArgs(extra));
-    }
-
-    /// @brief WRITE command: returns the exit code (output goes to stdout).
-    hide func RunExit(extra: Any) -> Integer {
-        if repo == "" { lastExit = -1; return -1; }
-        lastExit = Exec.RunArgs("git", BuildArgs(extra));
-        return lastExit;
-    }
-
-    hide func Argv(a: String, b: String, c: String, d: String) -> Any {
-        var s = Seq.New();
-        if a != "" { Seq.Push(s, a); }
-        if b != "" { Seq.Push(s, b); }
-        if c != "" { Seq.Push(s, c); }
-        if d != "" { Seq.Push(s, d); }
-        return s;
-    }
-
-    /// @brief True when `repo` is inside a git work tree.
-    expose func IsRepo() -> Boolean {
-        var out = RunCapture(Argv("rev-parse", "--is-inside-work-tree", "", ""));
-        return Str.StartsWith(Str.Trim(out), "true");
-    }
-
-    /// @brief Current branch name ("" when detached, unborn, or not a repo).
-    /// @note `branch --show-current` is empty (no error) on an unborn/detached
-    ///       HEAD, avoiding the stderr noise `rev-parse HEAD` produces there.
-    expose func CurrentBranch() -> String {
-        return Str.Trim(RunCapture(Argv("branch", "--show-current", "", "")));
-    }
-
-    /// @brief Parse `git status --porcelain` into a GitStatus snapshot.
-    expose func Status() -> GitStatus {
-        var st = new GitStatus();
-        if IsRepo() == false {
-            st.isRepo = false;
-            return st;
+        var program = ResolveGit();
+        if program == "" {
+            lastError = "Could not find git. Add git to PATH or set VIPER_GIT_BINARY.";
+            job.stderrText = lastError;
+            return job;
         }
-        st.isRepo = true;
-        st.branch = CurrentBranch();
+        if job.Start(program, args, repo, kind, path, staged) == false {
+            lastError = job.stderrText;
+        }
+        return job;
+    }
 
-        var out = RunCapture(Argv("status", "--porcelain", "", ""));
-        var lines = Str.Split(out, "\n");
-        var n = Seq.get_Count(lines);
-        var i = 0;
-        while i < n {
-            var line = Obj.ToString(Seq.Get(lines, i));
-            i = i + 1;
-            if Str.get_Length(line) < 4 { continue; }
-            var x = Str.Left(line, 1);
-            var y = Str.Left(Str.Mid(line, 2), 1);
-            var path = Str.Mid(line, 4);
-            var e = new GitEntry();
-            e.index = x;
-            e.worktree = y;
-            e.path = path;
-            e.untracked = (x == "?" and y == "?");
-            e.staged = (x != " " and x != "?");
-            st.entries.Push(e);
+    expose func StatusFromOutput(stdoutText: String,
+                                 stderrText: String,
+                                 exitCode: Integer) -> GitStatus {
+        var st = ParseStatus(stdoutText);
+        st.isRepo = exitCode == 0;
+        st.errorText = stderrText;
+        if exitCode != 0 and st.errorText == "" {
+            st.errorText = "git status failed with exit code " + exitCode;
         }
         return st;
     }
 
-    /// @brief Stage one path (`git add`).
+    expose func Status() -> GitStatus {
+        var job = StartStatus();
+        job.Wait();
+        lastExit = job.exitCode;
+        return StatusFromOutput(job.stdoutText, job.stderrText, job.exitCode);
+    }
+
+    expose func Diff(path: String,
+                     staged: Boolean) -> String {
+        var job = StartDiff(path, staged);
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.stdoutText;
+    }
+
     expose func Stage(path: String) -> Boolean {
-        return RunExit(Argv("add", "--", path, "")) == 0;
+        var job = StartStage(path);
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Stage everything (`git add -A`).
     expose func StageAll() -> Boolean {
-        return RunExit(Argv("add", "-A", "", "")) == 0;
+        var job = StartStageAll();
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Unstage one path (`git restore --staged`).
     expose func Unstage(path: String) -> Boolean {
-        return RunExit(Argv("restore", "--staged", "--", path)) == 0;
+        var job = StartUnstage(path);
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Commit staged changes with @p message.
     expose func Commit(message: String) -> Boolean {
-        return RunExit(Argv("commit", "-m", message, "")) == 0;
+        var job = StartCommit(message);
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Unified diff for @p path (staged or worktree).
-    expose func Diff(path: String, staged: Boolean) -> String {
-        if staged {
-            return RunCapture(Argv("diff", "--cached", "--", path));
-        }
-        return RunCapture(Argv("diff", "--", path, ""));
-    }
-
-    /// @brief Push the current branch (blocks; network).
     expose func Push() -> Boolean {
-        return RunExit(Argv("push", "", "", "")) == 0;
+        var job = StartPush();
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Pull the current branch (blocks; network).
     expose func Pull() -> Boolean {
-        return RunExit(Argv("pull", "", "", "")) == 0;
+        var job = StartPull();
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Switch to an existing branch.
     expose func Checkout(branchName: String) -> Boolean {
-        return RunExit(Argv("switch", branchName, "", "")) == 0;
+        var job = StartCheckout(branchName);
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.Success();
     }
 
-    /// @brief Newline-separated short branch names.
     expose func Branches() -> String {
-        return RunCapture(Argv("branch", "--format=%(refname:short)", "", ""));
+        var job = StartBranches();
+        job.Wait();
+        lastExit = job.exitCode;
+        return job.stdoutText;
+    }
+
+    expose func IsRepo() -> Boolean {
+        return Status().isRepo;
+    }
+
+    expose func CurrentBranch() -> String {
+        return Status().branch;
+    }
+
+    hide func ParseStatus(out: String) -> GitStatus {
+        var st = new GitStatus();
+        var lines = Str.Split(out, "\n");
+        var i = 0;
+        while i < Seq.get_Count(lines) {
+            var line = Obj.ToString(Seq.Get(lines, i));
+            i = i + 1;
+            if line == "" { continue; }
+            if Str.StartsWith(line, "# branch.head ") {
+                st.branch = Str.Trim(Str.Mid(line, Str.get_Length("# branch.head ") + 1));
+                if st.branch == "(detached)" { st.branch = ""; }
+                continue;
+            }
+            var e = ParseStatusLine(line);
+            if e != null {
+                st.entries.Push(e);
+            }
+        }
+        return st;
+    }
+
+    hide func ParseStatusLine(line: String) -> GitEntry {
+        if Str.StartsWith(line, "? ") {
+            var e = new GitEntry();
+            e.index = "?";
+            e.worktree = "?";
+            e.path = UnquotePath(Str.Mid(line, 3));
+            e.untracked = true;
+            e.staged = false;
+            return e;
+        }
+        if Str.StartsWith(line, "1 ") {
+            return ParseTrackedLine(line, 8, false);
+        }
+        if Str.StartsWith(line, "2 ") {
+            return ParseTrackedLine(line, 9, true);
+        }
+        return null;
+    }
+
+    hide func ParseTrackedLine(line: String,
+                               pathField: Integer,
+                               renamed: Boolean) -> GitEntry {
+        var e = new GitEntry();
+        e.index = Str.MidLen(line, 3, 1);
+        e.worktree = Str.MidLen(line, 4, 1);
+        e.staged = e.index != ".";
+        e.renamed = renamed;
+        var pathText = RestAfterFields(line, pathField);
+        if renamed {
+            var parts = Str.Split(pathText, "\t");
+            if Seq.get_Count(parts) > 0 {
+                e.path = UnquotePath(Obj.ToString(Seq.Get(parts, 0)));
+            }
+            if Seq.get_Count(parts) > 1 {
+                e.oldPath = UnquotePath(Obj.ToString(Seq.Get(parts, 1)));
+            }
+        } else {
+            e.path = UnquotePath(pathText);
+        }
+        return e;
+    }
+
+    hide func RestAfterFields(line: String,
+                              fieldCount: Integer) -> String {
+        var pos = 1;
+        var fields = 0;
+        var n = Str.get_Length(line);
+        while pos <= n and fields < fieldCount {
+            while pos <= n and Str.MidLen(line, pos, 1) == " " {
+                pos = pos + 1;
+            }
+            while pos <= n and Str.MidLen(line, pos, 1) != " " {
+                pos = pos + 1;
+            }
+            fields = fields + 1;
+        }
+        while pos <= n and Str.MidLen(line, pos, 1) == " " {
+            pos = pos + 1;
+        }
+        if pos > n { return ""; }
+        return Str.Mid(line, pos);
+    }
+
+    hide func UnquotePath(pathText: String) -> String {
+        var p = Str.Trim(pathText);
+        if Str.get_Length(p) >= 2 and Str.Left(p, 1) == "\""
+           and Str.MidLen(p, Str.get_Length(p), 1) == "\"" {
+            p = Str.MidLen(p, 2, Str.get_Length(p) - 2);
+            p = Str.Replace(p, "\\\"", "\"");
+            p = Str.Replace(p, "\\\\", "\\");
+            p = Str.Replace(p, "\\t", "\t");
+            p = Str.Replace(p, "\\n", "\n");
+        }
+        return p;
+    }
+
+    hide func ResolveBinary(name: String) -> String {
+        if name == "" { return ""; }
+        if Path.IsAbs(name) {
+            if IO.File.Exists(name) { return name; }
+            return "";
+        }
+        var pathVar = EnvValue("PATH");
+        if pathVar == "" { return ""; }
+        var entries = Str.Split(pathVar, ListSep());
+        var i = 0;
+        while i < Seq.get_Count(entries) {
+            var entry = Obj.ToString(Seq.Get(entries, i));
+            if entry != "" {
+                var cand = Path.Join(entry, name);
+                if IO.File.Exists(cand) { return Path.Abs(cand); }
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    hide func EnvValue(key: String) -> String {
+        if Env.HasVariable(key) == false { return ""; }
+        return Env.GetVariable(key);
+    }
+
+    hide func ListSep() -> String {
+        if Machine.Os == "windows" { return ";"; }
+        return ":";
     }
 }

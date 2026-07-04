@@ -27,7 +27,8 @@ Viper BASIC. It includes:
 - Multi-tab text editing backed by `Viper.GUI.CodeEditor`.
 - Zia completion, diagnostics, hover, signature help, document symbols,
   definition, references, rename, and selected refactors.
-- BASIC completion, diagnostics, hover, and document symbols.
+- BASIC completion, diagnostics, hover, signature help, document symbols,
+  definition, references, rename, call hierarchy, and workspace symbols.
 - Project explorer, multi-root workspace support, Quick Open, project search,
   workspace symbols, and recent files.
 - Build and run jobs through `Viper.System.Process`.

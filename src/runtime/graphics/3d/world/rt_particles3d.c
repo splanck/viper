@@ -93,6 +93,7 @@ typedef struct {
 
     int8_t emitting;
     int8_t additive_blend;
+    double softness; /* Plan 10: soft-particle fade distance in world units (0 = off) */
     void *texture;
     int32_t emitter_shape; /* 0=point, 1=sphere, 2=box */
     double emitter_size[3];
@@ -495,6 +496,7 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->accumulator = 0.0;
     ps->emitting = 0;
     ps->additive_blend = 0;
+    ps->softness = 0.0;
     ps->texture = NULL;
     ps->emitter_shape = 0;
     ps->emitter_size[0] = ps->emitter_size[1] = ps->emitter_size[2] = 1.0;
@@ -651,6 +653,21 @@ void rt_particles3d_set_rate(void *o, double r) {
 
 /// @brief Toggle additive blend mode (1 = additive for fire/glow, 0 = alpha blend for smoke).
 /// Additive skips the back-to-front sort since order doesn't affect the result.
+/// @brief Set the soft-particle fade distance in world units (0 disables).
+/// @details Particles fade out as their quads approach opaque geometry, hiding
+///          the hard intersection line. Requires a backend with an opaque depth
+///          snapshot (BackendSupports("soft-particles")); ignored elsewhere.
+void rt_particles3d_set_softness(void *o, double distance) {
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
+        return;
+    if (!isfinite(distance) || distance < 0.0)
+        distance = 0.0;
+    if (distance > PARTICLES3D_PARAM_MAX)
+        distance = PARTICLES3D_PARAM_MAX;
+    p->softness = distance;
+}
+
 void rt_particles3d_set_additive(void *o, int8_t a) {
     rt_particles3d *p = particles3d_checked(o);
     if (!p)
@@ -1462,6 +1479,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_material3d_set_alpha(mat, 1.0);
     rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
+    ((rt_material3d *)mat)->soft_fade = ps->softness;
     rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, model, mat);
     if (canvas_owned_storage && mat && rt_obj_release_check0(mat))
         rt_obj_free(mat);

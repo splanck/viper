@@ -3,6 +3,7 @@ module signature;
 bind "../editor/editor_engine";
 bind "../editor/zia_query";
 bind "../editor/scheduler";
+bind "../basic/semantic_scan";
 
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;
@@ -45,6 +46,7 @@ class SignatureController {
     expose Integer pendingCol;
     expose Any currentSignatureInfo;
     expose Integer activeOverloadIndex;
+    expose Boolean isBasic;
 
     expose func init() {
         visible = false;
@@ -60,6 +62,7 @@ class SignatureController {
         pendingCol = -1;
         currentSignatureInfo = null;
         activeOverloadIndex = 0;
+        isBasic = false;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -106,6 +109,12 @@ class SignatureController {
             return;
         }
         var source = engine.GetTextSnapshot();
+        if isBasic {
+            CancelPendingJob();
+            var basicSig = semantic_scan.SignatureInfoForFile(sourcePath, source, line, col0);
+            ApplySignatureInfo(basicSig, engine, revision, line, col0);
+            return;
+        }
         if IsInsideCall(source, line, col0) == false {
             Hide();
             return;

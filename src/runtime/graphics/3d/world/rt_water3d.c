@@ -83,6 +83,7 @@ extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_normal_map(void *m, void *tex);
 extern void rt_material3d_set_env_map(void *m, void *cubemap);
 extern void rt_material3d_set_reflectivity(void *m, double r);
+extern void rt_material3d_set_ssr_enabled(void *m, int8_t enabled);
 extern void rt_material3d_set_color(void *m, double r, double g, double b);
 
 #define WATER_GRID 64
@@ -702,6 +703,9 @@ static int water3d_update_material(rt_water3d *w) {
     rt_material3d_set_normal_map(w->material, w->normal_map);
     rt_material3d_set_env_map(w->material, w->env_map);
     rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+    /* Plan 10: water opts into screen-space reflections; backends without SSR
+     * (or chains without an SSR pass) simply keep the env-map term above. */
+    rt_material3d_set_ssr_enabled(w->material, 1);
     return 1;
 }
 

@@ -1015,6 +1015,8 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
                                     -CANVAS3D_MATERIAL_SLOPE_DEPTH_BIAS_ABS_MAX,
                                     CANVAS3D_MATERIAL_SLOPE_DEPTH_BIAS_ABS_MAX,
                                     0.0f);
+    cmd->soft_particle_fade = canvas3d_clamp_material_f64(mat->soft_fade, 0.0, 1.0e6, 0.0f);
+    cmd->ssr_enabled = mat->ssr_enabled ? 1 : 0;
 }
 
 /// @brief Bind the canvas IBL environment to a PBR draw that has no explicit
@@ -1567,6 +1569,8 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->forward[2] = -1.0f;
     params->is_ortho = 1;
     params->fog_enabled = 0;
+    params->znear = 0.1f;
+    params->zfar = 1000.0f;
     /* Overlay passes may replay 3D draws; keep shadow filtering consistent. */
     params->shadow_strength = c ? c->shadow_strength : 0.85f;
     params->shadow_slope_bias = c ? c->shadow_slope_bias : 1.0f;
@@ -1758,10 +1762,10 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->cmd.lights_revision =
         include_lights ? canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count) : 0;
     /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
-    dd->cmd.cluster_table =
-        include_lights ? canvas3d_cluster_table_for_revision(
-                             c, dd->lights, dd->light_count, dd->cmd.lights_revision)
-                       : NULL;
+    dd->cmd.cluster_table = include_lights
+                                ? canvas3d_cluster_table_for_revision(
+                                      c, dd->lights, dd->light_count, dd->cmd.lights_revision)
+                                : NULL;
     dd->sort_key = canvas3d_sanitize_sort_key(sort_key, dd->requires_blend);
     dd->stable_sort_id = (uintptr_t)cmd->geometry_key ^ (uintptr_t)cmd->texture ^
                          ((uintptr_t)cmd->texture_asset << 1) ^ ((uintptr_t)instance_matrices << 2);

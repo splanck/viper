@@ -43,6 +43,7 @@ static void sw_destroy_ctx(void *ctx_ptr) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     sw_release_worker_pool(ctx);
     free(ctx->zbuf);
+    free(ctx->opaque_zbuf);
     free(ctx->vertex_scratch);
     free(ctx);
 }
@@ -145,6 +146,9 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->shadow_strength = cam->shadow_strength;
     ctx->shadow_slope_bias = cam->shadow_slope_bias;
     ctx->shadow_quality = cam->shadow_quality;
+    ctx->cam_znear = cam->znear;
+    ctx->cam_zfar = cam->zfar;
+    ctx->opaque_zbuf_valid = 0; /* Plan 10: snapshot is per-frame */
     ctx->debug_draw_count = 0;
     ctx->debug_tri_count = 0;
     if (!cam->load_existing_depth) {
@@ -165,6 +169,45 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
     memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
+}
+
+/// @brief Backend `resolve_opaque_targets` op — snapshot the active target's
+///   depth buffer at the opaque->transparent seam so blend draws (soft
+///   particles) can fade against the opaque scene. A plain memcpy: the SW
+///   depth buffer is CPU memory already.
+static void sw_resolve_opaque_targets(void *ctx_ptr) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    const float *src = NULL;
+    int32_t w = 0;
+    int32_t h = 0;
+    size_t total = 0;
+
+    if (!ctx)
+        return;
+    ctx->opaque_zbuf_valid = 0;
+    if (ctx->render_target) {
+        vgfx3d_rendertarget_t *rt = ctx->render_target;
+        src = rt->depth_buf;
+        w = rt->width;
+        h = rt->height;
+    } else {
+        src = ctx->zbuf;
+        w = ctx->width;
+        h = ctx->height;
+    }
+    if (!src || !sw_pixel_count_checked(w, h, &total) || total == 0)
+        return;
+    if (ctx->opaque_zbuf_capacity < total) {
+        float *grown = (float *)realloc(ctx->opaque_zbuf, total * sizeof(float));
+        if (!grown)
+            return; /* no snapshot: blend draws keep hard edges this frame */
+        ctx->opaque_zbuf = grown;
+        ctx->opaque_zbuf_capacity = total;
+    }
+    memcpy(ctx->opaque_zbuf, src, total * sizeof(float));
+    ctx->opaque_zbuf_w = w;
+    ctx->opaque_zbuf_h = h;
+    ctx->opaque_zbuf_valid = 1;
 }
 
 /// @brief A draw call's resolved material texture views plus the (possibly NULL)

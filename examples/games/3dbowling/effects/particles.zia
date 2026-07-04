@@ -95,6 +95,19 @@ class ParticleManager {
         decals = [];
     }
 
+    /// @brief Enable depth-aware soft-particle fade on every emitter so sparks
+    ///        and dust don't hard-clip against the lane/pins. GPU-only (the
+    ///        caller gates on Canvas3D.BackendSupports("soft-particles")).
+    expose func applySoftParticles(enabled: Boolean) {
+        if (enabled == false) { return; }
+        Particles3D.SetSoftness(crashSparks, config.PARTICLE_SOFTNESS);
+        Particles3D.SetSoftness(laneDust, config.PARTICLE_SOFTNESS);
+        Particles3D.SetSoftness(fireworks1, config.PARTICLE_SOFTNESS);
+        Particles3D.SetSoftness(fireworks2, config.PARTICLE_SOFTNESS);
+        Particles3D.SetSoftness(fireworks3, config.PARTICLE_SOFTNESS);
+        Particles3D.SetSoftness(gutterSplash, config.PARTICLE_SOFTNESS);
+    }
+
     hide func createFirework(startColor: Integer, endColor: Integer) -> Particles3D {
         var fw = Particles3D.New(120);
         Particles3D.SetDirection(fw, 0.0, 1.0, 0.0, 1.0);

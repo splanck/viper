@@ -236,6 +236,16 @@ typedef struct {
     float _pad0[2];
 } d3d_taa_cb_t;
 
+/* Plan 10: SSR constants (must match HLSL SSRCB). */
+typedef struct {
+    float inv_vp[16];
+    float vp[16];
+    float cam_pos[4];
+    float params0[4]; /* x = intensity, y = max roughness (reserved), z = steps */
+    float inv_resolution[2];
+    float _pad0[2];
+} d3d_ssr_cb_t;
+
 typedef vgfx3d_d3d11_instance_data_t d3d_instance_data_t;
 
 #define D3D11_MESH_CACHE_CAPACITY 128
@@ -320,6 +330,7 @@ typedef struct {
     ID3D11PixelShader *ps_bloom_down;
     ID3D11PixelShader *ps_bloom_up;
     ID3D11PixelShader *ps_taa;
+    ID3D11PixelShader *ps_ssr;
 
     ID3D11InputLayout *input_layout;
     ID3D11InputLayout *input_layout_instanced;
@@ -332,12 +343,20 @@ typedef struct {
     /* Plan 07: froxel table (u16 data packed as uint4 lanes, two u16 per uint). */
     ID3D11Buffer *cb_cluster_offsets;
     ID3D11Buffer *cb_cluster_indices;
+    /* Plan 10: opaque-pass depth snapshot (CopyResource at the seam) for soft
+     * particles; valid resets every begin_frame. */
+    ID3D11Texture2D *opaque_depth_tex;
+    ID3D11ShaderResourceView *opaque_depth_srv;
+    int32_t opaque_depth_w, opaque_depth_h;
+    int8_t opaque_depth_valid;
+    float cam_znear, cam_zfar;
     ID3D11Buffer *cb_bones;
     ID3D11Buffer *cb_prev_bones;
     ID3D11Buffer *cb_skybox;
     ID3D11Buffer *cb_postfx;
     ID3D11Buffer *cb_bloom;
     ID3D11Buffer *cb_taa;
+    ID3D11Buffer *cb_ssr;
 
     ID3D11Buffer *dynamic_vb;
     ID3D11Buffer *dynamic_ib;
@@ -391,6 +410,11 @@ typedef struct {
     /* Plan 05: TAA ping-pong history (RGBA16F, persisted across frames) + jitter state. */
     ID3D11Texture2D *taa_history_tex[2];
     ID3D11RenderTargetView *taa_history_rtv[2];
+    /* Plan 10: SSR output target (scene-sized, scene color format). */
+    ID3D11Texture2D *ssr_tex;
+    ID3D11RenderTargetView *ssr_rtv;
+    ID3D11ShaderResourceView *ssr_srv;
+    int32_t ssr_width, ssr_height;
     ID3D11ShaderResourceView *taa_history_srv[2];
     int32_t taa_history_width;
     int32_t taa_history_height;
@@ -565,8 +589,10 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
 static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height);
 static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx);
 static void d3d11_destroy_taa_targets(d3d11_context_t *ctx);
+static void d3d11_destroy_ssr_target(d3d11_context_t *ctx);
 static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
+static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int32_t height);
 static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
                                                           int32_t width,
                                                           int32_t height,
@@ -1710,6 +1736,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .present = d3d11_present,
     .readback_rgba = d3d11_readback_rgba,
     .present_postfx = d3d11_present_postfx,
+    .resolve_opaque_targets = d3d11_resolve_opaque_targets,
     .apply_postfx = d3d11_apply_postfx,
     .set_gpu_postfx_enabled = d3d11_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = d3d11_set_gpu_postfx_snapshot,

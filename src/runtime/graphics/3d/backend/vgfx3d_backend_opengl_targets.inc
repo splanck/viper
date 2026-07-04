@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_targets.inc  (#included from vgfx3d_backend_opengl.c; not a standalone translation unit)
-// Purpose: OpenGL render-target lifecycle, draw-output config, and post-FX application
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_targets.inc  (#included from
+// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL render-target
+// lifecycle, draw-output config, and post-FX application
 //===----------------------------------------------------------------------===//
 
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt);
@@ -392,8 +393,10 @@ static void gl_bloom_pass_draw(gl_context_t *ctx,
 ///          deeper mip and accumulates it into the one above via GL_ONE/GL_ONE blending,
 ///          leaving mip 0 with the summed octaves.
 /// @return Mip 0's texture name, or 0 when resources are unavailable.
-static GLuint
-gl_encode_bloom_chain(gl_context_t *ctx, int32_t width, int32_t height, float threshold) {
+static GLuint gl_encode_bloom_chain(gl_context_t *ctx,
+                                    int32_t width,
+                                    int32_t height,
+                                    float threshold) {
     gl_framebuffer_state_t saved;
 
     if (!ctx || !ctx->scene_color_tex || ensure_bloom_targets(ctx, width, height) != 0)
@@ -519,6 +522,104 @@ static GLuint gl_encode_taa_pass(gl_context_t *ctx,
     ctx->taa_history_parity = 1 - ctx->taa_history_parity;
     ctx->taa_history_valid = 1;
     return ctx->taa_history_tex[write_slot];
+}
+
+/// @brief Release the Plan 10 SSR output target.
+static void destroy_ssr_target(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->ssr_tex)
+        gl.DeleteTextures(1, &ctx->ssr_tex);
+    if (ctx->ssr_fbo)
+        gl.DeleteFramebuffers(1, &ctx->ssr_fbo);
+    ctx->ssr_tex = 0;
+    ctx->ssr_fbo = 0;
+    ctx->ssr_width = 0;
+    ctx->ssr_height = 0;
+}
+
+/// @brief Build the Plan 10 SSR output target (RGBA8, scene-sized).
+/// @return Zero on success, -1 when allocation or completeness fails.
+static int ensure_ssr_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    if (!ctx || w <= 0 || h <= 0 || !ctx->ssr_program)
+        return -1;
+    if (ctx->ssr_fbo && ctx->ssr_width == w && ctx->ssr_height == h)
+        return 0;
+    destroy_ssr_target(ctx);
+    gl.GenFramebuffers(1, &ctx->ssr_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->ssr_fbo);
+    gl.GenTextures(1, &ctx->ssr_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->ssr_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->ssr_tex, 0);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
+        destroy_ssr_target(ctx);
+        return -1;
+    }
+    ctx->ssr_width = w;
+    ctx->ssr_height = h;
+    return 0;
+}
+
+/// @brief Encode the Plan 10 SSR pass: ray-march the scene depth in screen space for
+///        pixels whose motion-target alpha carries an SSR mask, compositing reflected
+///        scene color over @p source_tex into the SSR target. Returns the composited
+///        texture, or 0 when prerequisites are missing (caller keeps the source).
+static GLuint gl_encode_ssr_pass(gl_context_t *ctx,
+                                 GLuint source_tex,
+                                 int32_t width,
+                                 int32_t height,
+                                 const vgfx3d_postfx_snapshot_t *snapshot) {
+    gl_framebuffer_state_t saved;
+
+    if (!ctx || !source_tex || !ctx->scene_depth_tex || !ctx->scene_motion_tex ||
+        ensure_ssr_target(ctx, width, height) != 0)
+        return 0;
+
+    gl_capture_framebuffer_state(&saved);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->ssr_fbo);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.Viewport(0, 0, width, height);
+    gl.Disable(GL_SCISSOR_TEST);
+    gl.Disable(GL_DEPTH_TEST);
+    gl.Disable(GL_CULL_FACE);
+    gl.Disable(GL_BLEND);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    gl.DepthMask(GL_FALSE);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl.UseProgram(ctx->ssr_program);
+    gl.BindVertexArray(ctx->fullscreen_vao);
+    bind_texture_unit(ctx->ssr_uSceneTex, 0, GL_TEXTURE_2D, source_tex);
+    bind_texture_unit(ctx->ssr_uDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
+    bind_texture_unit(ctx->ssr_uMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
+    gl.Uniform2f(ctx->ssr_uInvResolution,
+                 width > 0 ? 1.0f / (float)width : 0.0f,
+                 height > 0 ? 1.0f / (float)height : 0.0f);
+    gl.Uniform4f(ctx->ssr_uParams0,
+                 (snapshot && isfinite(snapshot->ssr_intensity)) ? snapshot->ssr_intensity : 0.5f,
+                 (snapshot && isfinite(snapshot->ssr_max_roughness)) ? snapshot->ssr_max_roughness
+                                                                     : 0.4f,
+                 (float)((snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps : 24),
+                 0.0f);
+    gl.Uniform3f(
+        ctx->ssr_uCamPos, ctx->scene_cam_pos[0], ctx->scene_cam_pos[1], ctx->scene_cam_pos[2]);
+    gl.UniformMatrix4fv(ctx->ssr_uInvViewProjection, 1, GL_TRUE, ctx->scene_inv_vp);
+    gl.UniformMatrix4fv(ctx->ssr_uViewProjection, 1, GL_TRUE, ctx->scene_vp);
+    gl.DrawArrays(GL_TRIANGLES, 0, 3);
+
+    if (!gl_drain_errors("ssr pass")) {
+        gl_restore_framebuffer_state(&saved);
+        gl_restore_main_draw_state(ctx);
+        return 0;
+    }
+    gl_restore_framebuffer_state(&saved);
+    gl_restore_main_draw_state(ctx);
+    return ctx->ssr_tex;
 }
 
 /// @brief Release RTT FBO + color texture + depth renderbuffer.
@@ -1037,9 +1138,8 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
                                           const vgfx3d_postfx_chain_t *chain) {
     GLuint source_tex;
 
-    if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_motion_tex ||
-        width <= 0 || height <= 0 || !chain || !chain->enabled || chain->effect_count <= 0 ||
-        !chain->effects) {
+    if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_motion_tex || width <= 0 ||
+        height <= 0 || !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects) {
         return 0;
     }
 
@@ -1049,8 +1149,13 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
         const GLenum dst_attachment =
             source_is_scene_color ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0;
         const GLuint dst_tex = source_is_scene_color ? ctx->scene_motion_tex : ctx->scene_color_tex;
-        if (!gl_draw_texture_to_target(
-                ctx, source_tex, ctx->scene_fbo, dst_attachment, width, height, &chain->effects[i].snapshot)) {
+        if (!gl_draw_texture_to_target(ctx,
+                                       source_tex,
+                                       ctx->scene_fbo,
+                                       dst_attachment,
+                                       width,
+                                       height,
+                                       &chain->effects[i].snapshot)) {
             return 0;
         }
         source_tex = dst_tex;
@@ -1146,6 +1251,15 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
             if (resolved)
                 source_tex = resolved;
         }
+        /* Plan 10: an SSR entry composites reflections into its own target, which
+         * then feeds the remaining chain exactly like the TAA pre-resolve above. */
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR &&
+            chain->effects[i].snapshot.ssr_enabled) {
+            GLuint reflected =
+                gl_encode_ssr_pass(ctx, source_tex, width, height, &chain->effects[i].snapshot);
+            if (reflected)
+                source_tex = reflected;
+        }
 
         if (is_last && !force_offscreen_final) {
             dst_framebuffer = final_framebuffer;
@@ -1169,7 +1283,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
             /* A TAA entry's temporal work already ran; its ping-pong pass is a plain
              * copy (NULL snapshot) so the shared shader's effects stay disabled. */
             const vgfx3d_postfx_snapshot_t *pass_snapshot =
-                (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA)
+                (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA ||
+                 chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR)
                     ? NULL
                     : &chain->effects[i].snapshot;
             if (!gl_draw_texture_to_target(ctx,
@@ -1294,12 +1409,8 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
             memcpy(dst_row, src_row, (size_t)rt->width * 4u * sizeof(float));
         }
         /* Convert from the already top-left-oriented HDR mirror so both CPU mirrors match. */
-        vgfx3d_copy_linear_rgba32f_to_rgba8(rt->color_buf,
-                                            rt->stride,
-                                            rt->width,
-                                            rt->height,
-                                            rt->hdr_color_buf,
-                                            rt->width * 16);
+        vgfx3d_copy_linear_rgba32f_to_rgba8(
+            rt->color_buf, rt->stride, rt->width, rt->height, rt->hdr_color_buf, rt->width * 16);
         rt->hdr_color_valid = 1;
         free(tmpf);
     } else {

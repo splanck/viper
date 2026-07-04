@@ -171,6 +171,20 @@ func main() {
         fail("evaluate unknown name should be not-ok");
         return;
     }
+    if session.AddWatch("a + b") == false or session.AddWatch("a + b") {
+        fail("watch add/duplicate handling failed");
+        return;
+    }
+    var ww = 0;
+    while ww < 8000 and Str.IndexOf(session.WatchLabel(0), "30") == 0 {
+        session.Poll();
+        Time.Clock.Sleep(5);
+        ww = ww + 5;
+    }
+    if session.WatchCount() != 1 or Str.IndexOf(session.WatchLabel(0), "a + b = 30") == 0 {
+        fail("watch did not evaluate expression: " + session.WatchLabel(0));
+        return;
+    }
 
     // 2) Step over → advance to the next source line (6).
     if session.StepOver() == false {

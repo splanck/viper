@@ -51,6 +51,7 @@ void rt_particles3d_set_alpha(void *obj, double start_alpha, double end_alpha);
 void rt_particles3d_set_rate(void *obj, double particles_per_second);
 /// @brief Toggle additive blending (1 = additive, 0 = alpha blend with back-to-front sort).
 void rt_particles3d_set_additive(void *obj, int8_t additive);
+void rt_particles3d_set_softness(void *obj, double distance);
 /// @brief Bind a Pixels texture for billboard rendering (NULL = solid color quads).
 void rt_particles3d_set_texture(void *obj, void *pixels);
 /// @brief Set the emitter volume shape (point, box, sphere, cone — see RT_EMITTER3D_SHAPE_*).

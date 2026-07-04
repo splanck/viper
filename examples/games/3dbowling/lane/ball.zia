@@ -109,6 +109,8 @@ class Ball {
     hide Float spinAmount;
     hide Float visualSpinAngle;
     hide Float launchAngle;
+    hide List[Float] trailX;
+    hide List[Float] trailZ;
     hide Boolean isInGutter;
     hide Boolean hasBeenThrown;
 
@@ -119,6 +121,8 @@ class Ball {
         spinAmount = 0.0;
         visualSpinAngle = 0.0;
         launchAngle = 0.0;
+        trailX = [];
+        trailZ = [];
         isInGutter = false;
         hasBeenThrown = false;
 
@@ -519,6 +523,41 @@ class Ball {
         spinAmount = 0.0;
         visualSpinAngle = 0.0;
         launchAngle = 0.0;
+        trailX.clear();
+        trailZ.clear();
+    }
+
+    /// @brief Sample + draw a fading ground streak behind the rolling ball.
+    /// @details Read-only w.r.t. physics — samples the body's position each
+    ///          render frame into a capped ring buffer and paints age-faded
+    ///          line segments. Only records while genuinely rolling so a
+    ///          settled ball's trail decays away as the buffer is consumed.
+    expose func drawTrail(canvas: Canvas3D) {
+        if (hasBeenThrown == false || isInGutter) { return; }
+        var pos = Physics3DBody.get_Position(body);
+        var vel = Physics3DBody.get_Velocity(body);
+        var vx = Vec3.get_X(vel);
+        var vz = Vec3.get_Z(vel);
+        var speed = Sqrt(vx * vx + vz * vz);
+        if (speed > config.TRAIL_MIN_SPEED) {
+            trailX.add(Vec3.get_X(pos));
+            trailZ.add(Vec3.get_Z(pos));
+            while (trailX.count() > config.TRAIL_MAX) {
+                trailX.removeAt(0);
+                trailZ.removeAt(0);
+            }
+        }
+
+        var n = trailX.count();
+        for (var i: Integer = 1; i < n; i = i + 1) {
+            var age = (i + 0.0) / (n + 0.0); // 0..1, newest brightest
+            var shade = Convert.NumToInt(50.0 + age * 170.0);
+            var glow = Convert.NumToInt(30.0 + age * 150.0);
+            var col = (shade << 16) + (glow << 8) + Convert.NumToInt(60.0 + age * 120.0);
+            Canvas3D.DrawLine3D(canvas,
+                new Vec3(trailX.get(i - 1), 0.03, trailZ.get(i - 1)),
+                new Vec3(trailX.get(i), 0.03, trailZ.get(i)), col);
+        }
     }
 
     /// @brief Move the ball along the foul line for aim preview (pre-throw).
@@ -535,7 +574,13 @@ class Ball {
     }
 
     /// @brief Draw a board-level throw preview during aim.
-    expose func drawAimPreview(canvas: Canvas3D, aimX: Float, spinPreview: Float) {
+    /// @brief Draw the aim reticle plus a predicted-curve guide.
+    /// @param oilEndZ The active pattern's oil length; the guide stays straight
+    ///        through the oiled front and bends on the dry backend, mirroring
+    ///        updateMotion's hook shaping. Pure read-only projection — it reads
+    ///        the ball's hookMultiplier and config forces but never touches the
+    ///        rigid body, so it cannot perturb the deterministic trajectory.
+    expose func drawAimPreview(canvas: Canvas3D, aimX: Float, spinPreview: Float, oilEndZ: Float) {
         var clampedAimX = aimX;
         if (clampedAimX < -config.AIM_MAX) { clampedAimX = -config.AIM_MAX; }
         if (clampedAimX > config.AIM_MAX) { clampedAimX = config.AIM_MAX; }
@@ -560,23 +605,47 @@ class Ball {
             new Vec3(config.LANE_SAFE_HALF_WIDTH, 0.035, guideStartZ),
             new Vec3(config.LANE_SAFE_HALF_WIDTH, 0.035, config.BALL_TARGET_Z + 0.45),
             0x286878);
+        // Straight yellow line = pure aim (no-hook reference).
         Canvas3D.DrawLine3D(canvas,
             new Vec3(releaseX, 0.052, guideStartZ),
             new Vec3(targetX, 0.052, config.BALL_TARGET_Z),
             0xFFD166);
-        for (var i: Integer = 0; i <= 12; i = i + 1) {
-            var t = (i + 0.0) / 12.0;
+
+        // Dotted curve = predicted actual path with the current spin + weight.
+        // The lateral hook accumulates a small early-skid term (t^2, distance
+        // weighting) plus a backend surge (backend^2, matching the force ramp
+        // past oilEndZ). Heavier balls (bigger hookMultiplier) bend more.
+        var predEndX = releaseX;
+        for (var i: Integer = 0; i <= config.HOOK_GUIDE_SEGMENTS; i = i + 1) {
+            var t = (i + 0.0) / (config.HOOK_GUIDE_SEGMENTS + 0.0);
             var z = guideStartZ + (config.BALL_TARGET_Z - guideStartZ) * t;
-            var hook = spinPreview * 0.30 * t * t;
+            var backend = 0.0;
+            if (z > oilEndZ) {
+                backend = (z - oilEndZ) / 3.0;
+                if (backend > 1.0) { backend = 1.0; }
+            }
+            var hookShape = config.EARLY_HOOK_FORCE * t * t +
+                config.BACKEND_HOOK_FORCE * backend * backend;
+            var hook = spinPreview * hookMultiplier * hookShape * config.HOOK_GUIDE_SCALE;
             var x = releaseX + (targetX - releaseX) * t + hook;
+            predEndX = x;
+            // Warm dots in the oil, cyan once the ball wakes up on the backend.
+            var dotColor = 0xFFD166;
+            if (backend > 0.02) { dotColor = 0x3DE0C0; }
             Canvas3D.DrawMesh(canvas, guideMesh, Mat4.Translate(x, 0.035, z), guideMat);
+            if (backend > 0.5) {
+                Canvas3D.DrawLine3D(canvas, new Vec3(x, 0.05, z), new Vec3(x, 0.11, z), dotColor);
+            }
         }
-        Canvas3D.DrawMesh(canvas, targetMesh, Mat4.Translate(targetX, 0.05, config.BALL_TARGET_Z), targetMat);
-        Canvas3D.DrawSphereWire(canvas, new Vec3(targetX, 0.06, config.BALL_TARGET_Z), 0.18, 0xFFD166);
-        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX - 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
-        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX + 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
-        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z - 0.18), targetMat);
-        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(targetX, 0.04, config.BALL_TARGET_Z + 0.18), targetMat);
+
+        // Reticle marks the predicted pocket entry (curve end), so the offset
+        // from the straight aim line reads as "this much hook".
+        Canvas3D.DrawMesh(canvas, targetMesh, Mat4.Translate(predEndX, 0.05, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawSphereWire(canvas, new Vec3(predEndX, 0.06, config.BALL_TARGET_Z), 0.18, 0xFFD166);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(predEndX - 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(predEndX + 0.12, 0.04, config.BALL_TARGET_Z), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(predEndX, 0.04, config.BALL_TARGET_Z - 0.18), targetMat);
+        Canvas3D.DrawMesh(canvas, targetHaloMesh, Mat4.Translate(predEndX, 0.04, config.BALL_TARGET_Z + 0.18), targetMat);
     }
 
     /// @brief Render the ball with translation + yaw + spin rotation.

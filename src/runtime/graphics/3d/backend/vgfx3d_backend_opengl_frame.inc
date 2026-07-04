@@ -85,6 +85,10 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     /* Plan 07: cluster tables are camera-dependent; a light revision surviving
      * into a new frame does not imply the same froxel contents. */
     ctx->uploaded_cluster_revision = 0;
+    /* Plan 10: the opaque depth snapshot is per-pass state. */
+    ctx->opaque_depth_valid = 0;
+    ctx->cam_znear = cam->znear;
+    ctx->cam_zfar = cam->zfar;
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
     memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
@@ -208,7 +212,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             gl.ClearColor(ctx->clearR, ctx->clearG, ctx->clearB, 1.0f);
             gl.Clear(GL_COLOR_BUFFER_BIT);
             gl.DrawBuffer(GL_COLOR_ATTACHMENT1);
-            gl.ClearColor(0.5f, 0.5f, 0.0f, 1.0f);
+            gl.ClearColor(0.5f, 0.5f, 0.0f, 0.0f); /* alpha = SSR mask; empty = 0 */
             gl.Clear(GL_COLOR_BUFFER_BIT);
         }
         if (!cam->load_existing_depth) {
@@ -396,6 +400,7 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
         destroy_postfx_scratch_target(ctx);
         destroy_bloom_targets(ctx);
         destroy_taa_targets(ctx);
+        destroy_ssr_target(ctx);
     }
 }
 
@@ -746,6 +751,55 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
         ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+}
+
+/// @brief Backend `resolve_opaque_targets` op — snapshot the scene depth at the
+///   opaque->transparent seam. The live depth attachment cannot be sampled by
+///   the very pass writing it, so the depth planes are blitted into a dedicated
+///   snapshot texture that blend draws (soft particles) read via
+///   `uOpaqueDepthTex`. The currently bound framebuffer is restored afterwards.
+static void gl_resolve_opaque_targets(void *ctx_ptr) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    GLint prev_fbo = 0;
+    int32_t w;
+    int32_t h;
+
+    if (!ctx || !gl.BlitFramebuffer)
+        return;
+    ctx->opaque_depth_valid = 0;
+    w = ctx->rtt_active ? ctx->rtt_width : ctx->width;
+    h = ctx->rtt_active ? ctx->rtt_height : ctx->height;
+    if (w <= 0 || h <= 0)
+        return;
+    gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prev_fbo);
+    if (!ctx->opaque_depth_tex)
+        gl.GenTextures(1, &ctx->opaque_depth_tex);
+    if (!ctx->opaque_depth_fbo)
+        gl.GenFramebuffers(1, &ctx->opaque_depth_fbo);
+    if (!ctx->opaque_depth_tex || !ctx->opaque_depth_fbo)
+        return;
+    if (ctx->opaque_depth_w != w || ctx->opaque_depth_h != h) {
+        gl.BindTexture(GL_TEXTURE_2D, ctx->opaque_depth_tex);
+        gl.TexImage2D(
+            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl.BindTexture(GL_TEXTURE_2D, 0);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->opaque_depth_fbo);
+        gl.FramebufferTexture2D(
+            GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->opaque_depth_tex, 0);
+        gl.DrawBuffer(GL_NONE);
+        gl.ReadBuffer(GL_NONE);
+        ctx->opaque_depth_w = w;
+        ctx->opaque_depth_h = h;
+    }
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)prev_fbo);
+    gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, ctx->opaque_depth_fbo);
+    gl.BlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, (GLuint)prev_fbo);
+    ctx->opaque_depth_valid = gl_upload_ok() ? 1 : 0;
 }
 
 /// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.

@@ -13,7 +13,7 @@ bind "./mathutil";
 class RidgeboundWaterSky {
     hide Water3D water;
     hide CubeMap3D skybox;
-    hide CubeMap3D nightSkybox;
+    hide List[CubeMap3D] phaseSkies;
     hide Mesh3D lakeMesh;
     hide Material3D lakeMat;
     hide Mesh3D saplingMesh;
@@ -24,8 +24,16 @@ class RidgeboundWaterSky {
     hide List[Float] reedY;
 
     expose func setup(land: Terrain3D) {
-        skybox = createOutdoorSkybox();
-        nightSkybox = createNightSkybox();
+        // Four keyframed skies (DAY / DUSK / NIGHT / DAWN). DAY stays pixel-exact
+        // to the original outdoor sky; the game crossfades between them by swapping
+        // at sun-elevation crossings (see game.updateSkybox). Dusk/dawn keyframes
+        // halve the colour delta of the old binary day<->night pop.
+        phaseSkies = [];
+        phaseSkies.add(createPhaseSkybox(config.SKY_PHASE_DAY));
+        phaseSkies.add(createPhaseSkybox(config.SKY_PHASE_DUSK));
+        phaseSkies.add(createPhaseSkybox(config.SKY_PHASE_NIGHT));
+        phaseSkies.add(createPhaseSkybox(config.SKY_PHASE_DAWN));
+        skybox = phaseSkies.get(config.SKY_PHASE_DAY);
 
         var waterTex = createWaterSurfaceTexture(config.WATER_TEXTURE_SIZE);
         var waterNormal = createWaterNormalTexture(config.WATER_TEXTURE_SIZE);
@@ -60,6 +68,9 @@ class RidgeboundWaterSky {
         lakeMat.AlphaMode = 2;
         Material3D.SetEmissiveColor(lakeMat, 0.015, 0.20, 0.32);
         lakeMat.DoubleSided = true;
+        // Opt the lake surface into screen-space reflections (a PostFX3D.AddSSR pass
+        // composites them where available; harmless otherwise).
+        lakeMat.SsrEnabled = true;
 
         setupReeds(land);
     }
@@ -68,15 +79,15 @@ class RidgeboundWaterSky {
         return skybox;
     }
 
-    expose func getNightSkybox() -> CubeMap3D {
-        return nightSkybox;
+    expose func getPhaseSkybox(phase: Integer) -> CubeMap3D {
+        if (phase < 0 || phase >= phaseSkies.count()) { return skybox; }
+        return phaseSkies.get(phase);
     }
 
-    // Point the water's environment reflection at the live sky so the lake
-    // mirrors the starfield at night and the blue sky by day (was always day).
-    expose func setNightReflections(night: Boolean) {
-        var env = skybox;
-        if (night) { env = nightSkybox; }
+    // Point the water's environment reflection at the live sky so the lake mirrors
+    // whichever keyframe is currently up (blue by day, warm at twilight, stars at night).
+    expose func setPhaseReflections(phase: Integer) {
+        var env = getPhaseSkybox(phase);
         Water3D.SetEnvMap(water, env);
         if (lakeMat != null) { Material3D.SetEnvMap(lakeMat, env); }
     }
@@ -121,26 +132,22 @@ class RidgeboundWaterSky {
         }
     }
 
-    hide func createOutdoorSkybox() -> CubeMap3D {
-        var right = createSkyFace(0);
-        var left = createSkyFace(1);
-        var top = createSkyFace(2);
-        var bottom = createSkyFace(3);
-        var front = createSkyFace(4);
-        var back = createSkyFace(5);
-        return CubeMap3D.New(right, left, top, bottom, front, back);
+    // Build one keyframed skybox. NIGHT keeps the px/py starfield generator; DAY
+    // (and the DUSK/DAWN twilight keyframes) go through the direction sampler.
+    hide func createPhaseSkybox(phase: Integer) -> CubeMap3D {
+        if (phase == config.SKY_PHASE_NIGHT) {
+            return CubeMap3D.New(
+                createNightSkyFace(0), createNightSkyFace(1), createNightSkyFace(2),
+                createNightSkyFace(3), createNightSkyFace(4), createNightSkyFace(5));
+        }
+        return CubeMap3D.New(
+            createPhaseSkyFace(0, phase), createPhaseSkyFace(1, phase), createPhaseSkyFace(2, phase),
+            createPhaseSkyFace(3, phase), createPhaseSkyFace(4, phase), createPhaseSkyFace(5, phase));
     }
 
-    // Dark blue starfield for the night half of the day cycle. Swapped in by the
-    // orchestrator when the sun drops below the horizon (see game.updateSkybox).
-    hide func createNightSkybox() -> CubeMap3D {
-        var right = createNightSkyFace(0);
-        var left = createNightSkyFace(1);
-        var top = createNightSkyFace(2);
-        var bottom = createNightSkyFace(3);
-        var front = createNightSkyFace(4);
-        var back = createNightSkyFace(5);
-        return CubeMap3D.New(right, left, top, bottom, front, back);
+    hide func phaseFaceSize(phase: Integer) -> Integer {
+        if (phase == config.SKY_PHASE_DAY) { return config.SKYBOX_FACE_SIZE; }
+        return config.SKY_TWILIGHT_FACE_SIZE;
     }
 
     hide func createNightSkyFace(faceId: Integer) -> Pixels {
@@ -182,22 +189,22 @@ class RidgeboundWaterSky {
         return face;
     }
 
-    hide func createSkyFace(faceId: Integer) -> Pixels {
-        var size = config.SKYBOX_FACE_SIZE;
+    hide func createPhaseSkyFace(faceId: Integer, phase: Integer) -> Pixels {
+        var size = phaseFaceSize(phase);
         var face = Pixels.New(size, size);
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var u = (((px + 0.5) / (size + 0.0)) * 2.0) - 1.0;
                 var v = (((py + 0.5) / (size + 0.0)) * 2.0) - 1.0;
-                face.Set(px, py, sampleSkyPixelForFace(faceId, u, v));
+                face.Set(px, py, sampleSkyPixelForFace(faceId, u, v, phase));
             }
         }
 
         return face;
     }
 
-    hide func sampleSkyPixelForFace(faceId: Integer, u: Float, v: Float) -> Integer {
+    hide func sampleSkyPixelForFace(faceId: Integer, u: Float, v: Float, phase: Integer) -> Integer {
         var dx = 0.0;
         var dy = 0.0;
         var dz = 0.0;
@@ -241,19 +248,37 @@ class RidgeboundWaterSky {
             return mathutil.packPixel(132, 174, 220, 255);
         }
 
-        return sampleSkyPixel(dx / len, dy / len, dz / len);
+        return sampleSkyForPhase(dx / len, dy / len, dz / len, phase);
     }
 
-    hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
+    hide func sampleSkyForPhase(dx: Float, dy: Float, dz: Float, phase: Integer) -> Integer {
         var up = mathutil.clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
         // Tighter, brighter horizon haze band + a warm sun-side glow, over a deeper
         // saturated zenith blue for a more dramatic sky gradient.
         var haze = mathutil.clampFloat(1.0 - mathutil.absFloat(dy) * 2.4, 0.0, 1.0);
         haze = haze * haze;
         var sun = mathutil.clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
+        // DAY base — kept byte-identical to the original outdoor sky.
         var r = mathutil.lerpFloat(150.0, 58.0, up) + haze * (30.0 + sun * 22.0);
         var g = mathutil.lerpFloat(196.0, 116.0, up) + haze * (24.0 + sun * 14.0);
         var b = mathutil.lerpFloat(242.0, 208.0, up) + haze * 10.0;
+
+        if (phase != config.SKY_PHASE_DAY) {
+            // Twilight: dim the whole sky toward a dusky base and paint a warm
+            // sun-side horizon glow. Dusk runs orange; dawn is cooler and rosier.
+            var warmR = 236.0;
+            var warmG = 128.0;
+            var warmB = 92.0;
+            if (phase == config.SKY_PHASE_DAWN) {
+                warmR = 206.0;
+                warmG = 142.0;
+                warmB = 162.0;
+            }
+            var glow = mathutil.clampFloat(haze * (0.60 + sun * 0.50), 0.0, 1.0);
+            r = mathutil.lerpFloat(r * 0.42, warmR, glow);
+            g = mathutil.lerpFloat(g * 0.42, warmG, glow);
+            b = mathutil.lerpFloat(b * 0.58, warmB, glow);
+        }
 
         if (dy < -0.18) {
             var ground = mathutil.clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);

@@ -33,6 +33,7 @@
 #include <unordered_map>
 
 namespace il::core {
+struct BasicBlock;
 struct Function;
 struct Instr;
 struct Value;
@@ -90,6 +91,22 @@ bool deriveCompareBranchRange(const ::il::core::Instr &cmp,
 /// @param ranges In/out range state; updated in place.
 /// @return The result range recorded for @p instr's temp, if any.
 std::optional<::il::utils::IntRange> applyRangeTransfer(const ::il::core::Instr &instr, RangeMap &ranges);
+
+/// @brief Bound the signed modulo-by-power-of-two bit-twiddle idiom.
+/// @details The peephole pass strength-reduces `srem %z, 2^k` into
+///          `%z - ((%z + (ashr(%z,63) & (2^k-1))) & -2^k)`, erasing the clean
+///          `srem` that @ref applyRangeTransfer knows how to bound. This matcher
+///          re-derives the identical bound directly from the lowered shape, so a
+///          checked op CheckOpt demoted on the pre-lowered `srem` stays provable
+///          after lowering. Requires @p block to contain @p subInstr and its
+///          operand-defining instructions (straight-line, same block).
+/// @param block Block containing @p subInstr (searched for operand defs).
+/// @param subInstr Candidate `sub`/`isub.ovf` forming the idiom's outer subtract.
+/// @param ranges Ranges known before @p subInstr (supplies the bias bound).
+/// @return `[-(2^k - 1), 2^k - 1]` on an exact structural match, else nullopt.
+std::optional<::il::utils::IntRange> matchPow2ModuloRange(const ::il::core::BasicBlock &block,
+                                                          const ::il::core::Instr &subInstr,
+                                                          const RangeMap &ranges);
 
 /// @brief Compute block-entry integer ranges for every block in @p fn.
 /// @details Forward worklist dataflow over the CFG. Edge facts start from the

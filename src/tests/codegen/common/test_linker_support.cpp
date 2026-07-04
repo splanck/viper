@@ -198,6 +198,18 @@ TEST(LinkerSupport, ArchiveClosureAddsTextAndIoFsForGraphicsRuntimeDeps) {
     EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::IoFs));
 }
 
+TEST(LinkerSupport, ArchiveClosureFollowsInternalCanvas3DGameUiAdapter) {
+    LinkContext ctx;
+    std::ostringstream out;
+    std::ostringstream err;
+    ASSERT_EQ(0, prepareLinkContextFromSymbols({"rt_canvas3d_new"}, ctx, out, err));
+    ASSERT_TRUE(err.str().empty());
+
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Base));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Graphics));
+    EXPECT_TRUE(containsComponent(ctx, viper::codegen::RtComponent::Game));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

@@ -652,11 +652,11 @@ class IdeOverlays {
 
         var aboutLine1 = GUI.Label.New(
             root,
-            "A native IDE for Zia with live diagnostics, hover info, project search, and an integrated editor.");
+            "A native IDE for Zia and Viper BASIC with live diagnostics, hover info, semantic navigation, project search, and an integrated editor.");
         aboutLine1.SetWordWrap(true);
         var aboutLine2 = GUI.Label.New(
             root,
-            "Viper BASIC files can be edited, built, and run; advanced language assistance is currently Zia-focused.");
+            "Both languages support build, run, debug, completion, references, rename, workspace symbols, and signature help.");
         aboutLine2.SetWordWrap(true);
         var aboutLine3 = GUI.Label.New(
             root,

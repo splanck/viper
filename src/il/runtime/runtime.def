@@ -13042,6 +13042,8 @@ RT_FUNC(Canvas3DSetSkybox,         rt_canvas3d_set_skybox,        "Viper.Graphic
 RT_FUNC(Canvas3DClearSkybox,       rt_canvas3d_clear_skybox,      "Viper.Graphics3D.Canvas3D.ClearSkybox",       "void(obj)")
 RT_FUNC(Material3DSetEnvMap,       rt_material3d_set_env_map,     "Viper.Graphics3D.Material3D.SetEnvMap",       "void(obj,obj)")
 RT_FUNC(Material3DSetReflectivity, rt_material3d_set_reflectivity,"Viper.Graphics3D.Material3D.set_Reflectivity","void(obj,f64)")
+RT_FUNC(Material3DSetSsrEnabled, rt_material3d_set_ssr_enabled, "Viper.Graphics3D.Material3D.set_SsrEnabled", "void(obj,i1)")
+RT_FUNC(Material3DGetSsrEnabled, rt_material3d_get_ssr_enabled, "Viper.Graphics3D.Material3D.get_SsrEnabled", "i1(obj)")
 RT_FUNC(Material3DGetReflectivity, rt_material3d_get_reflectivity,"Viper.Graphics3D.Material3D.get_Reflectivity","f64(obj)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.CubeMap3D", CubeMap3D, "obj", CubeMap3DNew)
@@ -13551,6 +13553,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Material3D", Material3D, "obj", Material3DNew)
     RT_METHOD("SetEnvMap", "void(obj)", Material3DSetEnvMap)
     RT_METHOD("SetDepthBias", "void(f64,f64)", Material3DSetDepthBias)
     RT_PROP("Reflectivity", "f64", Material3DGetReflectivity, Material3DSetReflectivity)
+    RT_PROP("SsrEnabled", "i1", Material3DGetSsrEnabled, Material3DSetSsrEnabled)
 RT_CLASS_END()
 
 //=============================================================================
@@ -14022,6 +14025,7 @@ RT_FUNC(Particles3DSetColor,     rt_particles3d_set_color,      "Viper.Graphics3
 RT_FUNC(Particles3DSetAlpha,     rt_particles3d_set_alpha,      "Viper.Graphics3D.Particles3D.SetAlpha",     "void(obj,f64,f64)")
 RT_FUNC(Particles3DSetRate,      rt_particles3d_set_rate,       "Viper.Graphics3D.Particles3D.SetRate",      "void(obj,f64)")
 RT_FUNC(Particles3DSetAdditive,  rt_particles3d_set_additive,   "Viper.Graphics3D.Particles3D.set_Additive", "void(obj,i1)")
+RT_FUNC(Particles3DSetSoftness,  rt_particles3d_set_softness,   "Viper.Graphics3D.Particles3D.SetSoftness",  "void(obj,f64)")
 RT_FUNC(Particles3DSetTexture,   rt_particles3d_set_texture,    "Viper.Graphics3D.Particles3D.SetTexture",   "void(obj,obj)")
 RT_FUNC(Particles3DSetEmitterShape,rt_particles3d_set_emitter_shape,"Viper.Graphics3D.Particles3D.SetEmitterShape","void(obj,i64)")
 RT_FUNC(Particles3DSetEmitterSize, rt_particles3d_set_emitter_size, "Viper.Graphics3D.Particles3D.SetEmitterSize", "void(obj,f64,f64,f64)")
@@ -14039,6 +14043,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNe
     RT_PROP("Count", "i64", Particles3DGetCount, none)
     RT_PROP("Emitting", "i1", Particles3DGetEmitting, none)
     RT_PROP("Additive", "i1", none, Particles3DSetAdditive)
+    RT_METHOD("SetSoftness", "void(f64)", Particles3DSetSoftness)
     RT_METHOD("SetPosition", "void(f64,f64,f64)", Particles3DSetPosition)
     RT_METHOD("SetDirection", "void(f64,f64,f64,f64)", Particles3DSetDirection)
     RT_METHOD("SetSpeed", "void(f64,f64)", Particles3DSetSpeed)
@@ -14089,6 +14094,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.PostFX3D", PostFX3D, "obj", PostFX3DNew)
     RT_METHOD("AddDOF", "void(f64,f64,f64)", PostFX3DAddDOF)
     RT_METHOD("AddMotionBlur", "void(f64,i64)", PostFX3DAddMotionBlur)
     RT_METHOD("AddTAA", "void(f64)", PostFX3DAddTAA)
+    RT_METHOD("AddSSR", "void(f64,f64)", PostFX3DAddSSR)
 RT_CLASS_END()
 
 // Ray3D — raycasting
@@ -16279,6 +16285,7 @@ RT_FUNC(PostFX3DAddSSAO,        rt_postfx3d_add_ssao,        "Viper.Graphics3D.P
 RT_FUNC(PostFX3DAddDOF,         rt_postfx3d_add_dof,         "Viper.Graphics3D.PostFX3D.AddDOF",         "void(obj,f64,f64,f64)")
 RT_FUNC(PostFX3DAddMotionBlur,  rt_postfx3d_add_motion_blur, "Viper.Graphics3D.PostFX3D.AddMotionBlur",  "void(obj,f64,i64)")
 RT_FUNC(PostFX3DAddTAA,         rt_postfx3d_add_taa,         "Viper.Graphics3D.PostFX3D.AddTAA",         "void(obj,f64)")
+RT_FUNC(PostFX3DAddSSR,         rt_postfx3d_add_ssr,         "Viper.Graphics3D.PostFX3D.AddSSR",         "void(obj,f64,f64)")
 RT_FUNC(PostFX3DGetLastError,   rt_postfx3d_get_last_error,  "Viper.Graphics3D.PostFX3D.get_LastError",  "str(obj)")
 
 //=============================================================================

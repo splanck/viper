@@ -2552,6 +2552,53 @@ TEST(outputpane_append_line_and_clear_keep_line_state_consistent) {
     vg_outputpane_destroy(pane);
 }
 
+static vg_output_line_t *test_outputpane_line_at(vg_outputpane_t *pane, size_t logical_index) {
+    if (!pane || logical_index >= pane->line_count || pane->line_capacity == 0)
+        return NULL;
+    return &pane->lines[(pane->line_start + logical_index) % pane->line_capacity];
+}
+
+TEST(outputpane_ring_buffer_preserves_logical_order_after_eviction) {
+    vg_outputpane_t *pane = vg_outputpane_create();
+    ASSERT_NOT_NULL(pane);
+
+    vg_outputpane_set_max_lines(pane, 3);
+    vg_outputpane_append_line(pane, "one");
+    vg_outputpane_append_line(pane, "two");
+    vg_outputpane_append_line(pane, "three");
+    vg_outputpane_append_line(pane, "four");
+
+    ASSERT_EQ(pane->line_count, 3u);
+    vg_output_line_t *first = test_outputpane_line_at(pane, 0);
+    vg_output_line_t *second = test_outputpane_line_at(pane, 1);
+    vg_output_line_t *third = test_outputpane_line_at(pane, 2);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+    ASSERT_NOT_NULL(third);
+    ASSERT_EQ(strcmp(first->segments[0].text, "three"), 0);
+    ASSERT_EQ(strcmp(second->segments[0].text, "four"), 0);
+    ASSERT_EQ(third->segment_count, 0u);
+
+    vg_outputpane_destroy(pane);
+}
+
+TEST(outputpane_terminal_csi_clear_display_preserves_ansi_style) {
+    vg_outputpane_t *pane = vg_outputpane_create();
+    ASSERT_NOT_NULL(pane);
+
+    vg_outputpane_set_terminal_mode(pane, true);
+    vg_outputpane_append(pane, "old\n\033[31mred\033[2Jafter");
+
+    ASSERT_EQ(pane->line_count, 1u);
+    vg_output_line_t *line = test_outputpane_line_at(pane, 0);
+    ASSERT_NOT_NULL(line);
+    ASSERT_EQ(line->segment_count, 1u);
+    ASSERT_EQ(strcmp(line->segments[0].text, "after"), 0);
+    ASSERT_EQ(line->segments[0].fg_color, (uint32_t)0xFFCC0000u);
+
+    vg_outputpane_destroy(pane);
+}
+
 static void *g_context_select_ud = NULL;
 static void *g_context_dismiss_ud = NULL;
 
@@ -4451,6 +4498,8 @@ int main(void) {
     RUN(commandpalette_filter_handles_truncated_utf8_labels);
     RUN(textinput_replacement_validates_before_mutating_selection);
     RUN(outputpane_append_line_and_clear_keep_line_state_consistent);
+    RUN(outputpane_ring_buffer_preserves_logical_order_after_eviction);
+    RUN(outputpane_terminal_csi_clear_display_preserves_ansi_style);
     RUN(contextmenu_callbacks_capture_and_registry_are_lifetime_safe);
     RUN(direct_event_send_restores_mouse_coordinates_after_bubbling);
     RUN(custom_widget_paint_can_query_layout_geometry);

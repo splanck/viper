@@ -313,6 +313,10 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 }
                 canvas3d_submit_deferred(c, &opaque[i]);
             }
+            /* Plan 10: snapshot opaque depth for soft particles/SSR before any
+             * blend draw samples it. Skipped when nothing transparent follows. */
+            if (trans_count > 0 && c->backend->resolve_opaque_targets)
+                c->backend->resolve_opaque_targets(c->backend_ctx);
             if (trans_count > 1 && !canvas3d_sort_transparent_draws(c, trans, trans_count)) {
                 rt_trap("Canvas3D.End: deferred transparent sort scratch allocation failed");
                 return;

@@ -249,6 +249,8 @@ extern "C" void rt_material3d_set_double_sided(void *m, int8_t enabled) {
 
 extern "C" void rt_material3d_set_shininess(void *, double) {}
 
+extern "C" void rt_material3d_set_ssr_enabled(void *, int8_t) {}
+
 extern "C" void rt_material3d_set_texture(void *m, void *tex) {
     static_cast<StubMaterial *>(m)->texture = tex;
 }

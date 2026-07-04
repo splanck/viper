@@ -630,6 +630,7 @@ aliases for these factories.
 | `AlphaMode` | Integer | read/write | `0=Opaque`, `1=Mask`, `2=Blend` |
 | `DoubleSided` | Bool | read/write | Disable backface culling when true |
 | `Reflectivity` | Float | read/write | Environment reflection strength [0.0-1.0] |
+| `SsrEnabled` | Bool | read/write | Opt into screen-space reflections (composited by a `PostFX3D.AddSSR` pass on GPU backends; misses keep the env-map term) |
 | `Color` | Vec3 | read | Current diffuse/base color |
 | `Unlit` | Bool | read | Whether lighting is ignored |
 | `ShadingModel` | Integer | read | Current shading model index |
@@ -1634,6 +1635,7 @@ array.
 | `SetTexture(pixels)` | `void(obj)` | Set particle sprite (null for solid quads) |
 | `SetEmitterShape(shape)` | `void(i64)` | 0=point, 1=sphere, 2=box |
 | `SetEmitterSize(sx, sy, sz)` | `void(f64, f64, f64)` | Set emitter volume (for sphere/box shapes) |
+| `SetSoftness(distance)` | `void(f64)` | Soft-particle fade distance in world units (0 = hard edges). Particles fade out where their quads approach opaque geometry, hiding intersection lines. Needs `BackendSupports("soft-particles")`; the `Effects3D` presets enable it automatically |
 | `Start()` | `void()` | Start continuous emission |
 | `Stop()` | `void()` | Stop emission |
 | `Burst(count)` | `void(i64)` | Instantly spawn N particles |
@@ -1715,13 +1717,15 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 | `AddSSAO(radius, intensity, samples)` | `void(f64, f64, i64)` | Screen-space ambient occlusion |
 | `AddDOF(focusDist, aperture, maxBlur)` | `void(f64, f64, f64)` | Depth of field |
 | `AddMotionBlur(strength, samples)` | `void(f64, i64)` | Velocity-buffer motion blur |
+| `AddTAA(blend)` | `void(f64)` | Temporal anti-aliasing resolve; `blend` is the history weight (0.5-0.98) |
+| `AddSSR(intensity, maxRoughness)` | `void(f64, f64)` | Screen-space reflections for `SsrEnabled` materials (Water3D opts in automatically); ray misses fall back to the material's environment map |
 | `Clear()` | `void()` | Remove all effects from chain |
 
 Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
 
 PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, color-grade brightness offsets clamp to `-1.0..1.0`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
 
-Bloom, Tonemap, FXAA, ColorGrade, and Vignette run on both GPU outputs and CPU render-target/software fallback outputs. SSAO, DOF, and MotionBlur require `Canvas3D.BackendSupports(canvas, "gpu_postfx")` and a window-backed `Flip()` so the backend can provide depth, scene history, and motion vectors; attaching those effects to a render target or software CPU path raises an explicit runtime trap.
+Bloom, Tonemap, FXAA, ColorGrade, and Vignette run on both GPU outputs and CPU render-target/software fallback outputs. SSAO, DOF, MotionBlur, TAA, and SSR require `Canvas3D.BackendSupports(canvas, "gpu_postfx")` and a window-backed `Flip()` so the backend can provide depth, scene history, and motion vectors; attaching those effects to a render target or software CPU path raises an explicit runtime trap.
 
 ### Zia Example
 
@@ -3454,7 +3458,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
 
 | Bit | Capability |
 |-----|------------|

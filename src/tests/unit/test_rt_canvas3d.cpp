@@ -2722,6 +2722,134 @@ static void test_cluster_table_ring_and_gating() {
     PASS();
 }
 
+/// Plan 10: soft particles fade blend-mode fragments against the opaque depth
+/// snapshot taken at the opaque->transparent seam (software backend, real
+/// end-to-end render into a RenderTarget3D).
+static void test_soft_particle_fade_software() {
+    TEST("Soft particles fade against the opaque depth snapshot (Plan 10)");
+    rt_canvas3d canvas = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(8, 8);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *wall_mesh = rt_mesh3d_new_box(6.0, 6.0, 0.2);
+    void *quad_mesh = rt_mesh3d_new_box(4.0, 4.0, 0.02);
+    void *wall_mat = rt_material3d_new();
+    void *quad_mat = rt_material3d_new();
+    void *wall_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -5.0, 0.0, 0.0, 0.0, 1.0);
+    void *quad_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -4.8, 0.0, 0.0, 0.0, 1.0);
+    const size_t center = (size_t)4 * 8 * 4 + (size_t)4 * 4;
+    uint8_t hard_r, hard_g, soft_r, soft_g;
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx((vgfx_window_t)0, 8, 8);
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "software backend context exists");
+    canvas.gfx_win =
+        (vgfx_window_t)1; /* draws require a window handle; the RT path never uses it */
+    canvas.width = 8;
+    canvas.height = 8;
+    if (!rt || !rt->target || !canvas.backend_ctx)
+        return;
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("soft-particles")) == 1,
+                "software backend advertises soft particles");
+    {
+        vgfx3d_backend_t bare = {};
+        rt_canvas3d fake = {};
+        bare.name = "fake";
+        fake.backend = &bare;
+        EXPECT_TRUE(rt_canvas3d_backend_supports(&fake, rt_const_cstr("soft-particles")) == 0,
+                    "backends without the snapshot hook do not advertise soft particles");
+    }
+    rt_canvas3d_set_render_target(&canvas, rt);
+
+    rt_material3d_set_unlit(wall_mat, 1);
+    rt_material3d_set_color(wall_mat, 1.0, 0.0, 0.0);
+    rt_material3d_set_unlit(quad_mat, 1);
+    rt_material3d_set_color(quad_mat, 0.0, 1.0, 0.0);
+    rt_material3d_set_alpha(quad_mat, 0.5);
+    rt_material3d_set_alpha_mode(quad_mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+
+    /* Hard pass: fade 0 keeps today's blend result (regression pin). */
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, wall_mesh, wall_xf, wall_mat);
+    rt_canvas3d_draw_mesh(&canvas, quad_mesh, quad_xf, quad_mat);
+    rt_canvas3d_end(&canvas);
+    hard_r = rt->target->color_buf[center + 0];
+    hard_g = rt->target->color_buf[center + 1];
+    EXPECT_TRUE(hard_g > 90, "Hard blend shows the green particle over the wall");
+    EXPECT_TRUE(hard_r > 40, "Hard blend keeps the red wall contribution");
+
+    /* Soft pass: the quad sits 0.1 in front of the wall; fade distance 2.0
+     * scales its alpha by ~0.05, so the wall dominates the pixel. */
+    ((rt_material3d *)quad_mat)->soft_fade = 2.0;
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, wall_mesh, wall_xf, wall_mat);
+    rt_canvas3d_draw_mesh(&canvas, quad_mesh, quad_xf, quad_mat);
+    rt_canvas3d_end(&canvas);
+    soft_r = rt->target->color_buf[center + 0];
+    soft_g = rt->target->color_buf[center + 1];
+    EXPECT_TRUE((int)hard_g - (int)soft_g > 60,
+                "Soft fade suppresses the particle near opaque geometry");
+    EXPECT_TRUE(soft_r > hard_r, "The wall shows through the faded particle");
+
+    /* Empty background: no opaque depth behind the quad -> fade saturates to 1
+     * and the particle stays fully visible. */
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, quad_mesh, quad_xf, quad_mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(rt->target->color_buf[center + 1] > 90,
+                "Particles over empty background keep full alpha");
+
+    vgfx3d_software_backend.destroy_ctx(canvas.backend_ctx);
+    PASS();
+}
+
+/// Plan 10: AddSSR exports a chain entry with its snapshot params, counts as a
+/// GPU-scene effect (rejected on software canvases with a recoverable error),
+/// and the ssr draw-cmd mask helper follows the material flag + reflectivity.
+static void test_ssr_chain_and_mask_plumbing() {
+    TEST("SSR chain export, software rejection, and draw-cmd mask (Plan 10)");
+    void *fx = rt_postfx3d_new();
+    rt_postfx3d_add_ssr(fx, 0.7, 0.3);
+    EXPECT_TRUE(vgfx3d_postfx_requires_gpu_scene_buffers(fx) == 1,
+                "SSR requires GPU scene buffers");
+    {
+        vgfx3d_postfx_chain_t chain;
+        memset(&chain, 0, sizeof(chain));
+        EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1, "Chain export succeeds");
+        EXPECT_EQ(chain.effect_count, 1);
+        EXPECT_EQ(chain.effects[0].type, (int32_t)VGFX3D_POSTFX_EFFECT_SSR);
+        EXPECT_TRUE(chain.effects[0].snapshot.ssr_enabled == 1, "Snapshot flags SSR");
+        EXPECT_NEAR(chain.effects[0].snapshot.ssr_intensity, 0.7, 0.001);
+        EXPECT_NEAR(chain.effects[0].snapshot.ssr_max_roughness, 0.3, 0.001);
+        EXPECT_EQ(chain.effects[0].snapshot.ssr_steps, 24);
+        vgfx3d_postfx_chain_free(&chain);
+    }
+    {
+        /* Software canvases refuse GPU-scene chains at bind time (Plan 09 path). */
+        rt_canvas3d canvas = {};
+        canvas.backend = &vgfx3d_software_backend;
+        rt_canvas3d_set_post_fx(&canvas, fx);
+        EXPECT_TRUE(canvas.postfx == NULL, "SSR chain is not attached on software");
+        rt_string err = rt_postfx3d_get_last_error(fx);
+        EXPECT_TRUE(std::strstr(rt_string_cstr(err), "SSR") != nullptr,
+                    "Rejection message names SSR");
+        EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("ssr")) == 0,
+                    "software backend does not advertise ssr");
+    }
+    {
+        vgfx3d_draw_cmd_t cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        EXPECT_TRUE(vgfx3d_draw_cmd_ssr_mask(&cmd) == 0.0f, "mask off by default");
+        cmd.ssr_enabled = 1;
+        EXPECT_NEAR(vgfx3d_draw_cmd_ssr_mask(&cmd), 0.5, 0.001);
+        cmd.reflectivity = 0.8f;
+        EXPECT_NEAR(vgfx3d_draw_cmd_ssr_mask(&cmd), 0.8, 0.001);
+    }
+    PASS();
+}
+
 static void test_build_light_params_sorts_globals_first() {
     TEST("build_light_params orders directional/ambient before point/spot (Plan 07)");
     rt_canvas3d canvas;
@@ -8225,6 +8353,8 @@ int main() {
     test_cluster_table_overflow_truncates_deterministically();
     test_cluster_table_ring_and_gating();
     test_build_light_params_sorts_globals_first();
+    test_soft_particle_fade_software();
+    test_ssr_chain_and_mask_plumbing();
     test_light_directional();
     test_light_point();
     test_light_ambient();

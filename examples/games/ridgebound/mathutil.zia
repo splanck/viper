@@ -6,6 +6,8 @@
 // module bind just this file.
 module mathutil;
 
+bind Viper.Math;
+
 func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
     return (((r * 256) + g) * 256 + b) * 256 + a;
 }
@@ -49,6 +51,14 @@ func smoothStep(edge0: Float, edge1: Float, value: Float) -> Float {
 
     var t = clampFloat((value - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
+}
+
+// Quadratic smooth maximum: equals max(a, b) away from the crossover and rounds
+// the seam within a k-wide zone (bump of ~0.5*k where a == b). Used to blend the
+// mountain band into the rolling terrain without the knife-edge a hard max leaves.
+func smoothMax(a: Float, b: Float, k: Float) -> Float {
+    var d = a - b;
+    return 0.5 * (a + b + Sqrt(d * d + k * k));
 }
 
 func hash01(a: Integer, b: Integer) -> Float {

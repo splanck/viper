@@ -83,6 +83,11 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
 /// @brief Append a TAA (temporal antialiasing) resolve pass. `blend` is the history weight
 /// (0.5..0.98; higher = more temporal smoothing). GPU window backends only.
 void rt_postfx3d_add_taa(void *obj, double blend);
+/// @brief Append a screen-space reflections pass (Plan 10). `intensity` scales the
+/// reflection contribution (0..1); `max_roughness` is the roughness cutoff above which
+/// surfaces fall back to the environment map alone. GPU window backends only; applies to
+/// materials flagged `SsrEnabled` (Water3D sets it automatically).
+void rt_postfx3d_add_ssr(void *obj, double intensity, double max_roughness);
 /// @brief Last recoverable PostFX configuration error ("" when none) — set when
 /// `Canvas3D.SetPostFX` refuses a chain whose effects the canvas cannot run.
 rt_string rt_postfx3d_get_last_error(void *obj);
@@ -119,6 +124,11 @@ typedef struct {
      * backends apply the mode-0 gamma-out transform on linear-HDR scene targets without
      * gamma-lifting passes whose snapshot merely defaults to tonemap_mode == 0. */
     int8_t tonemap_explicit;
+    /* Plan 10: screen-space reflections (appended; ABI-stable extension). */
+    int8_t ssr_enabled;
+    float ssr_intensity;
+    float ssr_max_roughness;
+    int32_t ssr_steps;
 } vgfx3d_postfx_snapshot_t;
 
 /// @brief Discriminator identifying which post-processing effect a chain entry describes.
@@ -132,6 +142,7 @@ typedef enum {
     VGFX3D_POSTFX_EFFECT_DOF,
     VGFX3D_POSTFX_EFFECT_MOTION_BLUR,
     VGFX3D_POSTFX_EFFECT_TAA, /* appended: backend switches key on the raw type value */
+    VGFX3D_POSTFX_EFFECT_SSR, /* Plan 10 */
 } vgfx3d_postfx_effect_kind_t;
 
 /// @brief One ordered chain entry: an effect kind plus its parameter snapshot.

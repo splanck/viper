@@ -136,20 +136,25 @@ Zia semantic results are revision-gated. Stale completion, diagnostics, hover,
 signature, and symbol work is rejected when the buffer changes before a result
 lands.
 
-Workspace navigation and rename depend on `Viper.Zia.ProjectIndex`. The index
-is built lazily and skips oversized source files. If a query happens while the
-workspace index is warming up, results may be unavailable or incomplete.
+Zia workspace navigation and rename depend on `Viper.Zia.ProjectIndex`. The
+index is built lazily and skips oversized source files. If a query happens while
+the workspace index is warming up, results may be unavailable or incomplete.
+
+BASIC workspace navigation uses ViperIDE's in-process semantic scanner. It scans
+project BASIC files and open BASIC buffers using the same workspace file-index
+policy as search.
 
 ## BASIC Coding Workflow
 
 BASIC files support completion, diagnostics, hover, document symbols, and
 build/run. Semantic navigation commands such as definition, references, rename,
-workspace symbols, and signature help are disabled for BASIC with explicit
-unavailable reasons.
+workspace symbols, call hierarchy, and signature help are available for BASIC.
 
 ## Search
 
-Use project search for workspace-wide text queries. Supported options include:
+Use project search for workspace-wide text queries. The command opens a docked
+Search panel so the query and filters can stay visible while results update.
+Supported options include:
 
 - Literal or regex matching.
 - Case-sensitive matching.
@@ -245,19 +250,21 @@ Supported commands:
 - Conditional Breakpoint.
 - Add Logpoint.
 - Evaluate expression while stopped.
+- Add the evaluated expression to the watch section.
 
 Debug output is split between:
 
 - Program output.
 - Debug console/control messages.
 - Variables panel.
+- Watch rows above locals in the Variables panel.
 - Call Stack panel.
 - Current-line gutter marker.
 
 Limitations:
 
 - Variables are flat rows.
-- There is no dedicated watch list panel.
+- Watch expressions do not yet have dedicated add/remove management UI.
 - Debug session state is functional but still visually light.
 
 ## Terminal
@@ -279,6 +286,7 @@ Supported terminal operations:
 - Stop.
 - Restart.
 - Resize with the panel.
+- Clear-screen shell redraws that use common `CSI J` sequences.
 
 Limitations:
 
@@ -306,9 +314,11 @@ Supported operations:
 
 Limitations:
 
-- Commands are synchronous.
-- Push and pull can block.
-- Path quoting/rename parsing is minimal.
+- Commands run asynchronously, but the view processes one active Git job at a
+  time.
+- Push and pull can be long-running and have no rich progress or credential UI.
+- Common paths with spaces and staged renames are covered; exotic path bytes and
+  complex conflict states need more coverage.
 - Error reporting is basic.
 
 ## Settings
@@ -390,10 +400,11 @@ startup fails.
 
 ### Source Control actions appear to hang
 
-Current Source Control commands are synchronous. Local status, stage, unstage,
-commit, and diff are expected to be quick. Push and pull can block on network,
-authentication, or remote state. Treat this as a current limitation of the Git
-view rather than a background-job workflow.
+Source Control commands run as background `Viper.System.Process` jobs, but the
+view only pumps one active Git job at a time. Local status, stage, unstage,
+commit, and diff are expected to be quick. Push and pull can still wait on
+network, authentication, or remote state and currently expose only basic
+status/error text.
 
 ### A command is visible but unavailable
 

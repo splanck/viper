@@ -17,6 +17,11 @@ bind WorkspaceWatcher = Viper.Workspace.WorkspaceWatcher;
 bind FileIndex = Viper.Workspace.FileIndex;
 bind Threads = Viper.Threads;
 
+final WORKSPACE_WATCHER_MAX_DIRS = 2048;
+final WORKSPACE_WATCHER_DIR_PAGE_SIZE = 512;
+final WORKSPACE_WATCHERS_PER_FRAME = 128;
+final WORKSPACE_WATCHER_EVENTS_PER_FRAME = 32;
+
 // ============================================================================
 // MODULE: workspace_watcher
 // PURPOSE: Project-root file watching, fallback rescans, workspace index refresh,
@@ -39,8 +44,12 @@ bind Threads = Viper.Threads;
 ///          `PumpWorkspaceWatcher`.
 class WorkspaceWatcherState {
     expose IO.Watcher watcher;
+    expose List[IO.Watcher] watchers;
+    expose List[String] watcherPaths;
     expose Boolean watching;
+    expose Boolean degraded;
     expose String rootPath;
+    expose Integer watcherPollPos;
     expose Threads.Throttler rescanThrottle;
     expose Integer lastEntryCount;
     expose Integer lastFingerprint;
@@ -48,19 +57,23 @@ class WorkspaceWatcherState {
     /// @brief Initialize as detached from any workspace root.
     expose func init() {
         watcher = null;
+        watchers = new List();
+        watcherPaths = new List();
         watching = false;
+        degraded = false;
         rootPath = "";
+        watcherPollPos = 0;
         rescanThrottle = Threads.Throttler.New(3000);
         lastEntryCount = -1;
         lastFingerprint = 0;
     }
 }
 
-/// @brief Keep a batch workspace watcher aligned to the currently open project.
-/// @details The runtime watcher is non-recursive, so this is used as a cheap
-///          structural signal for the project root while open-document polling
-///          continues to catch individual tab changes. Batch polling prevents a
-///          burst of file events from spending an unbounded amount of one frame.
+/// @brief Keep recursive workspace directory watchers aligned to the open project.
+/// @details `Viper.IO.Watcher` watches one path, so ViperIDE owns a capped set of
+///          directory watchers discovered through FileIndex. Native events handle
+///          normal nested edits; fallback scans run only when the watcher set is
+///          degraded, capped, or sees an overflow.
 expose func PumpWorkspaceWatcher(shell: app_shell.AppShell,
                           projMgr: project_manager.ProjectManager,
                           docMgr: document_manager.DocumentManager,
@@ -79,42 +92,174 @@ expose func PumpWorkspaceWatcher(shell: app_shell.AppShell,
 
     if state.rootPath != root or state.watching == false {
         StopWorkspaceWatcher(state);
-        state.watcher = IO.Watcher.New(root);
-        state.watcher.Start();
-        state.rootPath = root;
-        state.watching = true;
+        StartWorkspaceWatchers(state, root);
         PrimeWorkspaceWatcherRescanState(state, root);
         return;
     }
 
-    var events = WorkspaceWatcher.PollBatch(state.watcher, 32);
-    if events != null and Seq.get_Count(events) > 0 {
-        HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+    var changed = PollWorkspaceWatchers(shell, projMgr, docMgr, indexer, locStore, engine, state);
+    if changed > 0 {
+        StartWorkspaceWatchers(state, root);
         PrimeWorkspaceWatcherRescanState(state, root);
         return;
     }
-    PumpWorkspaceWatcherFallbackScan(shell, projMgr, docMgr, indexer, locStore, engine, state);
+    if state.degraded {
+        PumpWorkspaceWatcherFallbackScan(shell, projMgr, docMgr, indexer, locStore, engine, state);
+    }
 }
 
 /// @brief Stop and clear project-root watcher state.
 /// @param state Mutable watcher state owned by the main loop.
 expose func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
     if state == null { return; }
+    var i = 0;
+    while i < state.watchers.count() {
+        var w = state.watchers.get(i);
+        if w != null {
+            w.Stop();
+        }
+        i = i + 1;
+    }
     if state.watching and state.watcher != null {
         state.watcher.Stop();
     }
     state.watcher = null;
+    state.watchers = new List();
+    state.watcherPaths = new List();
     state.watching = false;
+    state.degraded = false;
     state.rootPath = "";
+    state.watcherPollPos = 0;
     state.rescanThrottle.Reset();
     state.lastEntryCount = -1;
     state.lastFingerprint = 0;
 }
 
+/// @brief Build the capped recursive watcher set for @p root.
+/// @details Directories are discovered through FileIndex.Page so watcher startup
+///          shares the IDE ignore rules and does not allocate a whole workspace
+///          listing. If the cap is reached, the watcher remains useful but marks
+///          itself degraded so periodic fingerprint rescans still cover the tail.
+func StartWorkspaceWatchers(state: WorkspaceWatcherState,
+                            root: String) {
+    if state == null or root == "" { return; }
+    StopWorkspaceWatcher(state);
+    state.rootPath = root;
+    state.watchers = new List();
+    state.watcherPaths = new List();
+    AddDirectoryWatcher(state, root);
+
+    var offset = 0;
+    var done = false;
+    while done == false and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+        var page = FileIndex.Page(root, "", "", true, offset, WORKSPACE_WATCHER_DIR_PAGE_SIZE);
+        if Map.GetBool(page, "valid") == false {
+            state.degraded = true;
+            break;
+        }
+        var entries = Map.Get(page, "entries");
+        var entryCount = 0;
+        if entries != null { entryCount = Seq.get_Count(entries); }
+        var i = 0;
+        while entries != null and i < entryCount
+              and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+            var entry = Seq.Get(entries, i);
+            i = i + 1;
+            if Map.GetBool(entry, "isDirectory") {
+                AddDirectoryWatcher(state, Map.GetStr(entry, "path"));
+            }
+        }
+        offset = Map.GetInt(page, "nextOffset");
+        done = Map.GetBool(page, "done");
+        if Map.GetBool(page, "truncated") {
+            state.degraded = true;
+            done = true;
+        }
+        if entryCount == 0 and done == false {
+            state.degraded = true;
+            done = true;
+        }
+    }
+    if done == false {
+        state.degraded = true;
+    }
+    state.watching = state.watchers.count() > 0;
+    state.watcherPollPos = 0;
+}
+
+func AddDirectoryWatcher(state: WorkspaceWatcherState,
+                         dirPath: String) {
+    if state == null or dirPath == "" { return; }
+    if Dir.Exists(dirPath) == false { return; }
+    if ListContainsString(state.watcherPaths, dirPath) { return; }
+    var watcher = IO.Watcher.New(dirPath);
+    watcher.Start();
+    state.watchers.add(watcher);
+    state.watcherPaths.add(dirPath);
+    if state.watcher == null {
+        state.watcher = watcher;
+    }
+}
+
+func ListContainsString(items: List[String],
+                        value: String) -> Boolean {
+    var i = 0;
+    while i < items.count() {
+        if items.get(i) == value {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+func PollWorkspaceWatchers(shell: app_shell.AppShell,
+                           projMgr: project_manager.ProjectManager,
+                           docMgr: document_manager.DocumentManager,
+                           indexer: project_index.ProjectIndexer,
+                           locStore: locations.LocationStore,
+                           engine: editor_engine.EditorEngine,
+                           state: WorkspaceWatcherState) -> Integer {
+    if state == null or state.watchers.count() == 0 { return 0; }
+    var changed = 0;
+    var polled = 0;
+    var total = state.watchers.count();
+    while polled < WORKSPACE_WATCHERS_PER_FRAME and polled < total
+          and changed < WORKSPACE_WATCHER_EVENTS_PER_FRAME {
+        if state.watcherPollPos >= total { state.watcherPollPos = 0; }
+        var watcher = state.watchers.get(state.watcherPollPos);
+        state.watcherPollPos = state.watcherPollPos + 1;
+        polled = polled + 1;
+        if watcher == null { continue; }
+        var remaining = WORKSPACE_WATCHER_EVENTS_PER_FRAME - changed;
+        var events = WorkspaceWatcher.PollBatch(watcher, remaining);
+        if events != null and Seq.get_Count(events) > 0 {
+            changed = changed + Seq.get_Count(events);
+            if EventsRequireFallback(events) {
+                state.degraded = true;
+            }
+            HandleWorkspaceWatcherEvents(shell, projMgr, docMgr, indexer, locStore, engine, events);
+        }
+    }
+    return changed;
+}
+
+func EventsRequireFallback(events: Any) -> Boolean {
+    if events == null { return false; }
+    var i = 0;
+    while i < Seq.get_Count(events) {
+        var ev = Seq.Get(events, i);
+        i = i + 1;
+        if Map.GetBool(ev, "requiresRescan") {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// @brief Initialize fallback rescan counters for a workspace root.
-/// @details The platform watcher currently reports direct root changes only.
-///          This cheap snapshot gives the periodic fallback scan a baseline for
-///          detecting nested create/delete events that root polling misses.
+/// @details This cheap snapshot gives degraded watcher mode a baseline for
+///          detecting events missed because of watcher caps or native overflow.
 /// @param state Mutable watcher state owned by the frame loop.
 /// @param root Workspace root path.
 func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
@@ -192,6 +337,11 @@ func HandleWorkspaceWatcherEvents(shell: app_shell.AppShell,
         var eventPath = Map.GetStr(ev, "path");
         var typeName = Map.GetStr(ev, "typeName");
         if Map.GetBool(ev, "requiresRescan") {
+            refreshTree = true;
+            fullReindex = true;
+            continue;
+        }
+        if eventPath != "" and Dir.Exists(eventPath) {
             refreshTree = true;
             fullReindex = true;
             continue;

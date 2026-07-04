@@ -445,6 +445,8 @@ typedef struct {
     double custom_params[8]; /* user-defined parameters per shading model */
     double depth_bias;       /* constant depth offset; negative pulls coplanar geometry forward */
     double slope_scaled_depth_bias; /* additional slope-scaled depth offset for decals/overlays */
+    double soft_fade;               /* soft-particle fade distance in world units (0 = off) */
+    int8_t ssr_enabled;             /* screen-space reflections opt-in (Plan 10) */
 } rt_material3d;
 
 /// @brief Resolve a Material3D texture slot source to the currently resident Pixels fallback.

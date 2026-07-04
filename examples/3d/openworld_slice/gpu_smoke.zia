@@ -191,6 +191,81 @@ func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
     return true;
 }
 
+func runSsrSoftParticleProbe(canvas: Canvas3D) -> Boolean {
+    if (Canvas3D.BackendSupports(canvas, "ssr") == false) {
+        fail("GPU backend did not advertise screen-space reflections");
+        return false;
+    }
+    if (Canvas3D.BackendSupports(canvas, "soft-particles") == false) {
+        fail("GPU backend did not advertise soft particles");
+        return false;
+    }
+
+    var fx = PostFX3D.New();
+    PostFX3D.AddSSR(fx, 0.6, 0.4);
+    Canvas3D.SetPostFX(canvas, fx);
+    if (fx.LastError != "") {
+        fail("SSR chain was rejected: " + fx.LastError);
+        return false;
+    }
+
+    Canvas3D.ClearLights(canvas);
+    Canvas3D.SetAmbient(canvas, 0.10, 0.10, 0.12);
+    var sun = Light3D.Directional(Vec3.New(-0.4, -1.0, -0.3), 1.0, 0.98, 0.92);
+    Canvas3D.SetLight(canvas, 0, sun);
+
+    var camera = Camera3D.New(55.0, 160.0 / 120.0, 0.1, 60.0);
+    Camera3D.LookAt(camera,
+        Vec3.New(0.0, 2.4, 9.0),
+        Vec3.New(0.0, 0.6, 0.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    var floor = Mesh3D.Box(10.0, 0.15, 10.0);
+    var block = Mesh3D.Box(1.4, 2.2, 1.4);
+    var floorMat = Material3D.PBR(0.30, 0.32, 0.36);
+    floorMat.SsrEnabled = true;
+    var blockMat = Material3D.PBR(0.72, 0.34, 0.28);
+
+    var puffs = Particles3D.New(96);
+    Particles3D.SetPosition(puffs, 0.0, 1.2, 1.5);
+    Particles3D.SetSize(puffs, 0.55, 0.30);
+    Particles3D.SetSoftness(puffs, 0.55);
+    Particles3D.SetLifetime(puffs, 0.8, 1.6);
+    Particles3D.Burst(puffs, 48);
+
+    var start = Clock.TicksUs();
+    var frame = 0;
+    while (frame < 3) {
+        Particles3D.Update(puffs, 1.0 / 60.0);
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.03);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawMesh(canvas, floor, Mat4.Translate(0.0, -0.1, 0.0), floorMat);
+        Canvas3D.DrawMesh(canvas, block, Mat4.Translate(-1.6, 1.0, -1.0), blockMat);
+        Particles3D.Draw(puffs, canvas, camera);
+        Canvas3D.End(canvas);
+        frame = frame + 1;
+    }
+    var ssrUs = Clock.TicksUs() - start;
+
+    if (canvas.DrawCount < 2) {
+        fail("SSR/soft-particle probe submitted an unexpected draw count");
+        return false;
+    }
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
+        var snap = Canvas3D.ScreenshotFinal(canvas);
+        if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
+            fail("SSR/soft-particle final-frame readback failed");
+            return false;
+        }
+    }
+    Canvas3D.SetPostFX(canvas, null);
+
+    Terminal.Say("SSR_SOFT_PARTICLES: backend=" + canvas.Backend +
+                 " draws=" + Fmt.Int(canvas.DrawCount) +
+                 " three_frames_us=" + Fmt.Int(ssrUs));
+    return true;
+}
+
 func start() {
     var game = new OpenWorldSlice();
     game.setup("Open World Slice GPU Smoke", 160, 120);
@@ -241,6 +316,10 @@ func start() {
         return;
     }
     if (runCsmShadowProbe(canvas) == false) {
+        game.destroy();
+        return;
+    }
+    if (runSsrSoftParticleProbe(canvas) == false) {
         game.destroy();
         return;
     }

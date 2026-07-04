@@ -9,8 +9,8 @@
 // Purpose: Output pane widget — an append-only, ANSI-aware terminal-style log
 //          view with styled segments, selection, and auto-scroll behaviour.
 // Key invariants:
-//   - lines[] is a flat ring buffer capped at max_lines; when full, the oldest
-//     entry is evicted via memmove and selection coordinates are adjusted.
+//   - lines[] is a circular buffer capped at max_lines; when full, the oldest
+//     entry is evicted by advancing line_start and selection coordinates are adjusted.
 //   - Each vg_output_line_t holds a dynamic array of vg_styled_segment_t, each
 //     owning its text via strdup/malloc; freed in free_output_line.
 //   - ANSI escape state (in_escape, escape_buf, current_fg/bg, ansi_bold) is
@@ -269,6 +269,57 @@ static void outputpane_note_evicted_first_line(vg_outputpane_t *pane) {
     pane->sel_end_line--;
 }
 
+/// @brief Physical array index for a logical output line.
+static size_t outputpane_physical_line_index(const vg_outputpane_t *pane, size_t logical_index) {
+    if (!pane || pane->line_capacity == 0)
+        return 0;
+    return (pane->line_start + logical_index) % pane->line_capacity;
+}
+
+/// @brief Return a logical line pointer from the circular line buffer.
+static vg_output_line_t *outputpane_line_at(vg_outputpane_t *pane, size_t logical_index) {
+    if (!pane || logical_index >= pane->line_count || pane->line_capacity == 0)
+        return NULL;
+    return &pane->lines[outputpane_physical_line_index(pane, logical_index)];
+}
+
+/// @brief Return the newest logical line, or NULL when the pane is empty.
+static vg_output_line_t *outputpane_last_line(vg_outputpane_t *pane) {
+    if (!pane || pane->line_count == 0)
+        return NULL;
+    return outputpane_line_at(pane, pane->line_count - 1);
+}
+
+/// @brief Grow the line ring while preserving logical order.
+static bool outputpane_grow_lines(vg_outputpane_t *pane, size_t new_cap) {
+    if (!pane || new_cap == 0 || new_cap > SIZE_MAX / sizeof(vg_output_line_t))
+        return false;
+    vg_output_line_t *new_lines = calloc(new_cap, sizeof(vg_output_line_t));
+    if (!new_lines)
+        return false;
+    for (size_t i = 0; i < pane->line_count; i++) {
+        size_t old_idx = outputpane_physical_line_index(pane, i);
+        new_lines[i] = pane->lines[old_idx];
+    }
+    free(pane->lines);
+    pane->lines = new_lines;
+    pane->line_capacity = new_cap;
+    pane->line_start = 0;
+    return true;
+}
+
+/// @brief Evict the oldest logical line in O(1).
+static void outputpane_evict_first_line(vg_outputpane_t *pane) {
+    if (!pane || pane->line_count == 0 || pane->line_capacity == 0)
+        return;
+    vg_output_line_t *line = outputpane_line_at(pane, 0);
+    free_output_line(line);
+    memset(line, 0, sizeof(vg_output_line_t));
+    pane->line_start = (pane->line_start + 1) % pane->line_capacity;
+    pane->line_count--;
+    outputpane_note_evicted_first_line(pane);
+}
+
 /// @brief Append and return a zeroed segment slot to line, growing the array if needed.
 static vg_styled_segment_t *add_segment(vg_output_line_t *line) {
     if (line->segment_count >= line->segment_capacity) {
@@ -334,18 +385,9 @@ static vg_output_line_t *add_line(vg_outputpane_t *pane) {
     if (!pane || pane->max_lines == 0)
         return NULL;
 
-    // Check if we need to wrap around (ring buffer)
-    if (pane->line_count >= pane->max_lines) {
-        // Free oldest line
-        free_output_line(&pane->lines[0]);
-        outputpane_note_evicted_first_line(pane);
-        // Shift all lines down
-        memmove(
-            &pane->lines[0], &pane->lines[1], (pane->line_count - 1) * sizeof(vg_output_line_t));
-        pane->line_count--;
-    }
+    if (pane->line_count >= pane->max_lines)
+        outputpane_evict_first_line(pane);
 
-    // Expand capacity if needed
     if (pane->line_count >= pane->line_capacity) {
         if (pane->line_capacity > SIZE_MAX / 2u)
             return NULL;
@@ -354,16 +396,15 @@ static vg_output_line_t *add_line(vg_outputpane_t *pane) {
             new_cap = 64;
         if (new_cap > pane->max_lines)
             new_cap = pane->max_lines;
-        if (new_cap == 0 || new_cap > SIZE_MAX / sizeof(vg_output_line_t))
+        if (new_cap == 0)
             return NULL;
-        vg_output_line_t *new_lines = realloc(pane->lines, new_cap * sizeof(vg_output_line_t));
-        if (!new_lines)
+        if (!outputpane_grow_lines(pane, new_cap))
             return NULL;
-        pane->lines = new_lines;
-        pane->line_capacity = new_cap;
     }
 
-    vg_output_line_t *line = &pane->lines[pane->line_count++];
+    size_t idx = outputpane_physical_line_index(pane, pane->line_count);
+    vg_output_line_t *line = &pane->lines[idx];
+    pane->line_count++;
     memset(line, 0, sizeof(vg_output_line_t));
     return line;
 }
@@ -469,7 +510,7 @@ static void outputpane_destroy(vg_widget_t *widget) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
 
     for (size_t i = 0; i < pane->line_count; i++) {
-        free_output_line(&pane->lines[i]);
+        free_output_line(outputpane_line_at(pane, i));
     }
     free(pane->lines);
     free(pane->cells);
@@ -561,7 +602,9 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
         if (line_idx < 0)
             continue;
 
-        vg_output_line_t *line = &pane->lines[line_idx];
+        vg_output_line_t *line = outputpane_line_at(pane, (size_t)line_idx);
+        if (!line)
+            continue;
         float x = widget->x + 4; // Left padding
         float line_top = y;
 
@@ -843,7 +886,9 @@ static void term_flush_cells(vg_outputpane_t *pane) {
         if (!add_line(pane))
             return;
     }
-    vg_output_line_t *line = &pane->lines[pane->line_count - 1];
+    vg_output_line_t *line = outputpane_last_line(pane);
+    if (!line)
+        return;
     for (size_t s = 0; s < line->segment_count; s++)
         free(line->segments[s].text);
     free(line->segments);
@@ -890,6 +935,24 @@ static void term_newline(vg_outputpane_t *pane) {
         return;
     pane->cell_count = 0;
     pane->cursor_col = 0;
+}
+
+/// @brief Clear the terminal display while preserving current ANSI styling.
+static void term_clear_display(vg_outputpane_t *pane) {
+    if (!pane)
+        return;
+    for (size_t i = 0; i < pane->line_count; i++) {
+        free_output_line(outputpane_line_at(pane, i));
+    }
+    pane->line_count = 0;
+    pane->line_start = 0;
+    pane->cell_count = 0;
+    pane->cursor_col = 0;
+    pane->scroll_y = 0;
+    pane->scroll_locked = false;
+    outputpane_clear_selection(pane);
+    (void)add_line(pane);
+    pane->base.needs_paint = true;
 }
 
 /// @brief Dispatch a completed CSI sequence (escape_buf holds the params, no '[').
@@ -953,6 +1016,17 @@ static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
                 pane->cell_count = 0;
             }
             break;
+        case 'J': // erase in display (single-line terminal model)
+            if (p0 == 0) {
+                if (pane->cursor_col < pane->cell_count)
+                    pane->cell_count = pane->cursor_col;
+            } else if (p0 == 1) {
+                for (size_t i = 0; i <= pane->cursor_col && i < pane->cell_count; i++)
+                    term_blank_cell(pane, &pane->cells[i]);
+            } else if (p0 == 2 || p0 == 3) {
+                term_clear_display(pane);
+            }
+            break;
         case 'C': { // cursor forward
             int n = p0 > 0 ? p0 : 1;
             pane->cursor_col += (uint32_t)n;
@@ -976,7 +1050,7 @@ static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
             break;
         }
         default:
-            break; // J (erase display), others — ignored for the line model
+            break; // Other cursor/screen controls are ignored for the line model.
     }
 }
 
@@ -1145,7 +1219,7 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
     // Get or create current line
     vg_output_line_t *line = NULL;
     if (pane->line_count > 0) {
-        line = &pane->lines[pane->line_count - 1];
+        line = outputpane_last_line(pane);
     } else {
         line = add_line(pane);
         if (!line)
@@ -1264,7 +1338,7 @@ void vg_outputpane_append_line(vg_outputpane_t *pane, const char *text) {
     if (pane->line_count == 0) {
         if (!add_line(pane))
             return;
-    } else if (outputpane_line_length(&pane->lines[pane->line_count - 1]) > 0) {
+    } else if (outputpane_line_length(outputpane_last_line(pane)) > 0) {
         if (!add_line(pane))
             return;
     }
@@ -1299,7 +1373,7 @@ void vg_outputpane_append_styled(
     // Get or create current line
     vg_output_line_t *line = NULL;
     if (pane->line_count > 0) {
-        line = &pane->lines[pane->line_count - 1];
+        line = outputpane_last_line(pane);
     } else {
         line = add_line(pane);
         if (!line)
@@ -1324,9 +1398,10 @@ void vg_outputpane_clear(vg_outputpane_t *pane) {
         return;
 
     for (size_t i = 0; i < pane->line_count; i++) {
-        free_output_line(&pane->lines[i]);
+        free_output_line(outputpane_line_at(pane, i));
     }
     pane->line_count = 0;
+    pane->line_start = 0;
 
     // Reset ANSI state
     pane->current_fg = pane->default_fg;
@@ -1425,7 +1500,9 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
     // First pass: calculate required buffer size
     size_t total = 0;
     for (uint32_t li = start_line; li <= end_line; li++) {
-        vg_output_line_t *line = &pane->lines[li];
+        vg_output_line_t *line = outputpane_line_at(pane, li);
+        if (!line)
+            continue;
         size_t col = 0;
         for (size_t si = 0; si < line->segment_count; si++) {
             const char *seg = line->segments[si].text;
@@ -1464,7 +1541,9 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
     // Second pass: copy selected text
     size_t out = 0;
     for (uint32_t li = start_line; li <= end_line; li++) {
-        vg_output_line_t *line = &pane->lines[li];
+        vg_output_line_t *line = outputpane_line_at(pane, li);
+        if (!line)
+            continue;
         size_t col = 0;
         for (size_t si = 0; si < line->segment_count; si++) {
             const char *seg = line->segments[si].text;
@@ -1522,14 +1601,8 @@ void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max) {
         max = 1;
     pane->max_lines = max;
     while (pane->line_count > pane->max_lines) {
-        free_output_line(&pane->lines[0]);
-        outputpane_note_evicted_first_line(pane);
-        memmove(
-            &pane->lines[0], &pane->lines[1], (pane->line_count - 1) * sizeof(vg_output_line_t));
-        pane->line_count--;
+        outputpane_evict_first_line(pane);
     }
-    if (pane->line_capacity > pane->max_lines)
-        pane->line_capacity = pane->max_lines;
     pane->base.needs_paint = true;
 }
 

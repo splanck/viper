@@ -276,6 +276,9 @@ class CommandRegistry {
                             service: language_service.LanguageService) -> Boolean {
         if cmd.capability == "" { return true; }
         if service == null { return false; }
+        if service.name == language_service.LANGUAGE_BASIC and IsZiaOnlyCommand(cmd.id) {
+            return false;
+        }
         if cmd.capability == "completion" { return service.canComplete; }
         if cmd.capability == "diagnostics" { return service.canDiagnose; }
         if cmd.capability == "definition" { return service.canGoToDefinition; }
@@ -308,6 +311,11 @@ class CommandRegistry {
             language = Str.ToUpper(service.name);
         }
         if service != null
+           and service.name == language_service.LANGUAGE_BASIC
+           and IsZiaOnlyCommand(cmd.id) {
+            return cmd.label + " is unavailable: this command rewrites Zia source syntax.";
+        }
+        if service != null
            and service.externalServerName != ""
            and ServerSupportsCapability(cmd.capability, service) {
             return cmd.label + " is unavailable: " + service.externalServerName
@@ -317,6 +325,15 @@ class CommandRegistry {
         }
         return cmd.label + " is unavailable: " + language
                + " does not support " + CapabilityLabel(cmd.capability) + ".";
+    }
+
+    expose func IsZiaOnlyCommand(id: String) -> Boolean {
+        return id == "organizebinds"
+               or id == "extractlocal"
+               or id == "extractfunction"
+               or id == "inlinelocal"
+               or id == "suppressdiagnostic"
+               or id == "createmissingbind";
     }
 
     expose func CapabilityLabel(capability: String) -> String {

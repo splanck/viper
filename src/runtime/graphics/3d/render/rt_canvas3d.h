@@ -208,6 +208,8 @@ int8_t rt_canvas3d_get_backend_fallback(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_BC5 0x20000000LL
 #define RT_CANVAS3D_BACKEND_CAP_HDR_SCENE 0x40000000LL
 #define RT_CANVAS3D_BACKEND_CAP_TAA 0x80000000LL
+#define RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES 0x100000000LL
+#define RT_CANVAS3D_BACKEND_CAP_SSR 0x200000000LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
@@ -456,6 +458,8 @@ void rt_material3d_set_albedo_map(void *obj, void *pixels);
 void rt_material3d_set_shininess(void *obj, double s);
 /// @brief Mark the material as unlit (skip lighting calculations entirely).
 void rt_material3d_set_unlit(void *obj, int8_t unlit);
+void rt_material3d_set_ssr_enabled(void *obj, int8_t enabled);
+int8_t rt_material3d_get_ssr_enabled(void *obj);
 /// @brief True if unlit mode is enabled.
 int8_t rt_material3d_get_unlit(void *obj);
 /// @brief Switch shading model (0=Phong, 1=Toon, 2=PBR workflow, 3=Unlit, 4=Fresnel, 5=Emissive).

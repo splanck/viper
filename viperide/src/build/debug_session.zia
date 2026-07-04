@@ -8,6 +8,7 @@ bind Json = Viper.Text.Json;
 bind Map = Viper.Collections.Map;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
+bind Obj = Viper.Core.Object;
 bind Path = Viper.IO.Path;
 bind Time = Viper.Time;
 
@@ -54,6 +55,17 @@ class DebugSession {
     expose String lastEvalType;
     expose Boolean lastEvalOk;
     expose Boolean evalJustArrived; // set when a fresh result lands; IDE clears it.
+    expose String pendingManualEvalExpr;
+
+    // Persistent watch expressions for the current debug session. Values refresh
+    // asynchronously whenever execution stops.
+    expose List watchExprs;
+    expose List watchValues;
+    expose List watchTypes;
+    expose List watchOk;
+    expose Integer watchRefreshIndex;
+    expose Boolean watchRequestActive;
+    expose String watchRequestExpr;
 
     // Accumulator for partial control-channel lines.
     hide String ctrlBuf;
@@ -81,6 +93,14 @@ class DebugSession {
         lastEvalType = "";
         lastEvalOk = false;
         evalJustArrived = false;
+        pendingManualEvalExpr = "";
+        watchExprs = new List();
+        watchValues = new List();
+        watchTypes = new List();
+        watchOk = new List();
+        watchRefreshIndex = -1;
+        watchRequestActive = false;
+        watchRequestExpr = "";
         ctrlBuf = "";
         dirty = false;
         terminateRequested = false;
@@ -113,6 +133,7 @@ class DebugSession {
         consoleText = "";
         programOutput = "";
         exitCode = -1;
+        ClearWatchValues();
         ctrlBuf = "";
         dirty = true;
         terminateRequested = false;
@@ -239,8 +260,97 @@ class DebugSession {
     expose func Evaluate(expr: String) -> Boolean {
         if hasSession == false or terminated or processHandle == null { return false; }
         if stopped == false or expr == "" { return false; }
+        pendingManualEvalExpr = expr;
         processHandle.WriteStdin("{\"type\":\"evaluate\",\"expr\":\"" + jsonEscape(expr) + "\"}\n");
         return true;
+    }
+
+    expose func AddWatch(expr: String) -> Boolean {
+        var clean = Str.Trim(expr);
+        if clean == "" { return false; }
+        if FindWatch(clean) >= 0 { return false; }
+        watchExprs.add(clean);
+        watchValues.add("(pending)");
+        watchTypes.add("");
+        watchOk.add(false);
+        if stopped {
+            RefreshWatches();
+        }
+        return true;
+    }
+
+    expose func RemoveWatch(index: Integer) -> Boolean {
+        if index < 0 or index >= watchExprs.count() { return false; }
+        watchExprs.removeAt(index);
+        watchValues.removeAt(index);
+        watchTypes.removeAt(index);
+        watchOk.removeAt(index);
+        if watchRefreshIndex >= index { watchRefreshIndex = watchRefreshIndex - 1; }
+        return true;
+    }
+
+    expose func WatchCount() -> Integer {
+        return watchExprs.count();
+    }
+
+    expose func WatchLabel(i: Integer) -> String {
+        if i < 0 or i >= watchExprs.count() { return ""; }
+        var expr = Obj.ToString(watchExprs.get(i));
+        var value = Obj.ToString(watchValues.get(i));
+        var typeName = Obj.ToString(watchTypes.get(i));
+        var okText = Str.ToLower(Obj.ToString(watchOk.get(i)));
+        var ok = okText == "true" or okText == "1";
+        if ok == false and value == "" { value = "(unavailable)"; }
+        if ok and typeName != "" {
+            return expr + " = " + value + " : " + typeName;
+        }
+        return expr + " = " + value;
+    }
+
+    expose func RefreshWatches() {
+        ClearWatchValues();
+        if watchExprs.count() == 0 or stopped == false {
+            watchRefreshIndex = -1;
+            return;
+        }
+        watchRefreshIndex = 0;
+        watchRequestActive = false;
+        PumpWatchRequest();
+    }
+
+    hide func ClearWatchValues() {
+        var i = 0;
+        while i < watchValues.count() {
+            watchValues.removeAt(i);
+            watchValues.insert(i, "(pending)");
+            watchTypes.removeAt(i);
+            watchTypes.insert(i, "");
+            watchOk.removeAt(i);
+            watchOk.insert(i, false);
+            i = i + 1;
+        }
+        watchRefreshIndex = -1;
+        watchRequestActive = false;
+        watchRequestExpr = "";
+    }
+
+    hide func PumpWatchRequest() {
+        if stopped == false or processHandle == null { return; }
+        if watchRequestActive { return; }
+        if watchRefreshIndex < 0 or watchRefreshIndex >= watchExprs.count() { return; }
+        var expr = Obj.ToString(watchExprs.get(watchRefreshIndex));
+        watchRequestExpr = expr;
+        watchRequestActive = true;
+        processHandle.WriteStdin("{\"type\":\"evaluate\",\"expr\":\"" + jsonEscape(expr) + "\"}\n");
+    }
+
+    hide func FindWatch(expr: String) -> Integer {
+        var i = 0;
+        while i < watchExprs.count() {
+            if Obj.ToString(watchExprs.get(i)) == expr { return i; }
+            i = i + 1;
+        }
+        return -1;
     }
 
     expose func Terminate() -> Boolean {
@@ -349,6 +459,7 @@ class DebugSession {
             stopFrames = Map.Get(ev, "frames");
             stopLocals = Map.Get(ev, "locals");
             consoleText = formatStopped(ev);
+            RefreshWatches();
             dirty = true;
         } else if evType == "terminated" {
             terminated = true;
@@ -359,13 +470,41 @@ class DebugSession {
             lastType = "terminated";
             lastReason = Viper.Collections.Map.GetStr(ev, "reason");
             exitCode = Viper.Collections.Map.GetInt(ev, "exitCode");
+            ClearWatchValues();
             dirty = true;
         } else if evType == "evaluated" {
-            lastEvalExpr = Viper.Collections.Map.GetStr(ev, "expr");
-            lastEvalValue = Viper.Collections.Map.GetStr(ev, "value");
-            lastEvalType = Viper.Collections.Map.GetStr(ev, "valueType");
-            lastEvalOk = Viper.Collections.Map.GetBool(ev, "ok");
-            evalJustArrived = true;
+            var expr = Viper.Collections.Map.GetStr(ev, "expr");
+            var value = Viper.Collections.Map.GetStr(ev, "value");
+            var valueType = Viper.Collections.Map.GetStr(ev, "valueType");
+            var ok = Viper.Collections.Map.GetBool(ev, "ok");
+            var watchIdx = FindWatch(expr);
+            if watchIdx >= 0 and watchRequestActive and expr == watchRequestExpr {
+                watchValues.removeAt(watchIdx);
+                if ok {
+                    watchValues.insert(watchIdx, value);
+                } else {
+                    watchValues.insert(watchIdx, "(unavailable)");
+                }
+                watchTypes.removeAt(watchIdx);
+                watchTypes.insert(watchIdx, valueType);
+                watchOk.removeAt(watchIdx);
+                watchOk.insert(watchIdx, ok);
+                watchRequestActive = false;
+                watchRequestExpr = "";
+                watchRefreshIndex = watchIdx + 1;
+                if watchRefreshIndex >= watchExprs.count() {
+                    watchRefreshIndex = -1;
+                }
+                PumpWatchRequest();
+            }
+            if pendingManualEvalExpr == "" or expr == pendingManualEvalExpr {
+                lastEvalExpr = expr;
+                lastEvalValue = value;
+                lastEvalType = valueType;
+                lastEvalOk = ok;
+                evalJustArrived = true;
+                pendingManualEvalExpr = "";
+            }
             dirty = true;
         } else if evType == "log" {
             // Logpoint: surfaced in the debug console; execution never paused.

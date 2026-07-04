@@ -294,11 +294,28 @@ class RidgeboundTerrain {
         var homeHeight = 0.185 + rolling * 0.040 + broad * 0.015;
         h = mathutil.lerpFloat(h, mathutil.maxf(h, homeHeight), homeIsland);
 
+        // Raw border distance (0 at any edge, 0.5 at center) — used ONLY by the
+        // containment rim, which must stay a hard square guarantee.
         var edge = mathutil.minf(mathutil.minf(nx, 1.0 - nx), mathutil.minf(nz, 1.0 - nz));
-        // Wider band => a real slope rises from the interior toward the peaks
-        // instead of a sudden wall.
-        var mountainBand = 1.0 - mathutil.smoothStep(0.045, config.MOUNTAIN_RING_FADE, edge);
-        var crestBand = 1.0 - mathutil.smoothStep(0.0, config.MOUNTAIN_CREST_FADE, edge);
+
+        // --- Organic range shaping ---------------------------------------------
+        // 1. Domain-warp the coords that define the band SHAPE (not the rim), so
+        //    the mountain foot meanders instead of tracing a straight square.
+        var warpX = (noise01(noise, nx * 2.6 + 51.0, nz * 2.6 - 37.0, 3, 0.5) - 0.5) * config.MOUNTAIN_WARP_AMP;
+        var warpZ = (noise01(noise, nx * 2.6 - 23.0, nz * 2.6 + 44.0, 3, 0.5) - 0.5) * config.MOUNTAIN_WARP_AMP;
+        var wx = nx + warpX;
+        var wz = nz + warpZ;
+        // 2. Superellipse border metric on the warped coords: p=inf is today's
+        //    square, p=4 rounds the corners so the range curves around the valley.
+        var cx = mathutil.absFloat(2.0 * wx - 1.0);
+        var cz = mathutil.absFloat(2.0 * wz - 1.0);
+        var sMetric = Pow(
+            Pow(cx, config.MOUNTAIN_EDGE_POW) + Pow(cz, config.MOUNTAIN_EDGE_POW),
+            1.0 / config.MOUNTAIN_EDGE_POW);
+        var edgeW = (1.0 - mathutil.clampFloat(sMetric, 0.0, 1.0)) * 0.5;
+
+        var mountainBand = 1.0 - mathutil.smoothStep(0.045, config.MOUNTAIN_RING_FADE, edgeW);
+        var crestBand = 1.0 - mathutil.smoothStep(0.0, config.MOUNTAIN_CREST_FADE, edgeW);
         var ridgeNoise = noise01(noise, nx * 7.7 + 5.0, nz * 7.7 - 3.0, 5, 0.54);
         var cragNoise = noise01(noise, nx * 27.0 - 11.0, nz * 27.0 + 4.0, 4, 0.50);
         // Ridged noise: fold the smooth field into sharp crests (peaks where it
@@ -307,20 +324,38 @@ class RidgeboundTerrain {
         var ridge = 1.0 - mathutil.absFloat(ridgeNoise * 2.0 - 1.0);
         ridge = ridge * ridge;
         var crag = 1.0 - mathutil.absFloat(cragNoise * 2.0 - 1.0);
-        var mountain = 0.16
-            + mountainBand * (0.24 + ridge * 0.50 + crag * 0.16)
-            + crestBand * (ridge * 0.22 + crag * 0.12);
-        if (mountain > h) { h = mountain; }
+        // 3. Massif modulation: a low-frequency field scales peak amplitude so the
+        //    skyline is tall massifs separated by low saddle passes, not one crest.
+        var massif = config.MOUNTAIN_MASSIF_BASE
+            + config.MOUNTAIN_MASSIF_RANGE * noise01(noise, wx * 2.1 + 7.0, wz * 2.1 - 9.0, 2, 0.55);
+        var mountainRaise = mountainBand * massif * (0.24 + ridge * 0.50 + crag * 0.16)
+            + crestBand * massif * (ridge * 0.22 + crag * 0.12);
+        // Never let a warped foothill intrude into the lake bowl.
+        mountainRaise = mountainRaise * (1.0 - basin);
+        var mountain = 0.16 + mountainRaise;
+
+        // 4. A wide, low foothill skirt reaching further into the interior, then a
+        //    smooth-max blend so the range grows out of the rolling terrain with a
+        //    natural shoulder instead of the knife-edge a hard max leaves.
+        var foothill = (1.0 - mathutil.smoothStep(
+            config.MOUNTAIN_RING_FADE,
+            config.MOUNTAIN_RING_FADE + config.MOUNTAIN_FOOTHILL_FADE,
+            edgeW)) * (0.05 + broad * config.MOUNTAIN_FOOTHILL_HEIGHT) * (1.0 - basin);
+        h = h + foothill;
+        h = mathutil.smoothMax(h, mountain, config.MOUNTAIN_BLEND_K);
 
         // Containment rim just beyond the player's bounds: guaranteed tall enough
-        // to enclose the world, but rugged (ridged peaks + saddles) so it reads as
-        // a mountain range rather than a flat green wall.
+        // to enclose the world. Kept on the RAW (unwarped) edge with a hard floor
+        // and hard max so containment is a guarantee, not an aesthetic; the rim top
+        // carries ridge/crag/massif variance so it reads as a range, not a wall,
+        // and (WARP_AMP < guardEdge) keeps it hidden behind the warped peaks.
         var guardEdge = mathutil.minf(
             config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxX(),
             config.PLAYER_BOUNDS_MARGIN / terrainWorldMaxZ());
         var blocker = 1.0 - mathutil.smoothStep(0.0, guardEdge, edge);
         if (blocker > 0.0) {
-            var rim = 0.58 + blocker * 0.10 + ridge * 0.36 + crag * 0.12;
+            var rim = config.MOUNTAIN_RIM_FLOOR + blocker * 0.10 + ridge * 0.36 + crag * 0.12
+                + massif * config.MOUNTAIN_RIM_MASSIF;
             if (rim > h) { h = rim; }
         }
 

@@ -374,8 +374,9 @@ func handleEvaluateAtCursor(shell: app_shell.AppShell,
         shell.SetStatusLeft("Evaluate: select an expression or place the cursor on a variable");
         return;
     }
+    session.AddWatch(expr);
     if session.Evaluate(expr) {
-        shell.SetStatusLeft("Evaluating " + expr + "...");
+        shell.SetStatusLeft("Evaluating and watching " + expr + "...");
     }
 }
 
@@ -451,13 +452,32 @@ func PopulateDebugPanels(shell: app_shell.AppShell,
     shell.callStackListBox.Clear();
     if session == null or session.stopped == false { return; }
 
+    var wc = session.WatchCount();
+    if wc > 0 {
+        shell.variablesListBox.AddItem("Watches");
+        var wi = 0;
+        while wi < wc {
+            shell.variablesListBox.AddItem("  " + session.WatchLabel(wi));
+            wi = wi + 1;
+        }
+    }
+
     var lc = session.LocalCount();
     if lc == 0 {
-        shell.variablesListBox.AddItem("(no locals in scope)");
+        if wc == 0 {
+            shell.variablesListBox.AddItem("(no locals in scope)");
+        } else {
+            shell.variablesListBox.AddItem("Locals: (none)");
+        }
     } else {
+        if wc > 0 { shell.variablesListBox.AddItem("Locals"); }
         var i = 0;
         while i < lc {
-            shell.variablesListBox.AddItem(session.LocalLabel(i));
+            if wc > 0 {
+                shell.variablesListBox.AddItem("  " + session.LocalLabel(i));
+            } else {
+                shell.variablesListBox.AddItem(session.LocalLabel(i));
+            }
             i = i + 1;
         }
     }

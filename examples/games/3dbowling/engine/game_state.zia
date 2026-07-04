@@ -39,8 +39,8 @@ class BowlingGameState {
 
     hide Physics3DWorld physWorld;
 
-    hide ScoreKeeper scoreKeeperOne;
-    hide ScoreKeeper scoreKeeperTwo;
+    hide List[ScoreKeeper] scoreKeepers;
+    hide List[String] playerNames;
 
     hide Integer screenState;
     hide Integer gameState;
@@ -77,8 +77,8 @@ class BowlingGameState {
     hide Boolean soundReady;
     hide Boolean quitRequested;
 
-    hide Integer resultsPlayerOne;
-    hide Integer resultsPlayerTwo;
+    hide List[Integer] resultsScores;
+    hide List[Integer] resultsRanking;
     hide Integer resultsWinner;
     hide Boolean resultsNewHigh;
 
@@ -107,13 +107,15 @@ class BowlingGameState {
         currentMode = config.MODE_SINGLE;
         playerCount = 1;
         activePlayer = 0;
+        scoreKeepers = [];
+        playerNames = [];
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;
         pendingResults = false;
         soundReady = false;
         quitRequested = false;
-        resultsPlayerOne = 0;
-        resultsPlayerTwo = 0;
+        resultsScores = [];
+        resultsRanking = [];
         resultsWinner = -1;
         resultsNewHigh = false;
     }

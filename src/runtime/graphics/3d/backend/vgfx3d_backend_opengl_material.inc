@@ -250,11 +250,6 @@ static void gl_upload_cluster_table(gl_context_t *ctx, const vgfx3d_cluster_tabl
         return;
     }
     gl.Uniform1i(ctx->uClusterGlobalCount, table->global_light_count);
-    gl.Uniform4f(ctx->uClusterParams,
-                 (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width),
-                 (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height),
-                 table->znear,
-                 table->zfar);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_offsets_ubo);
     gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(table->offsets), table->offsets);
     gl.BindBuffer(GL_UNIFORM_BUFFER, ctx->cluster_indices_ubo);
@@ -303,7 +298,18 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  cmd->emissive_color[2]);
     gl.Uniform4f(
         ctx->uPbrScalars0, cmd->metallic, cmd->roughness, cmd->ao, cmd->emissive_intensity);
-    gl.Uniform4f(ctx->uPbrScalars1, cmd->normal_scale, cmd->alpha_cutoff, 0.0f, 0.0f);
+    gl.Uniform4f(ctx->uPbrScalars1,
+                 cmd->normal_scale,
+                 cmd->alpha_cutoff,
+                 (ctx->opaque_depth_valid && !cmd->has_splat) ? cmd->soft_particle_fade : 0.0f,
+                 vgfx3d_draw_cmd_ssr_mask(cmd));
+    /* Plan 10: viewport + clip planes uploaded per draw (cluster lookup and
+     * depth linearization both read them, clustered or not). */
+    gl.Uniform4f(ctx->uClusterParams,
+                 (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width),
+                 (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height),
+                 ctx->cam_znear,
+                 ctx->cam_zfar);
     {
         const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
         int8_t ibl_draw = (cmd->ibl_env && ctx->ibl_enabled && env_cm && env_cm->ibl_ready) ? 1 : 0;
@@ -507,7 +513,16 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
                           gl_sanitize_shadow_slot(ctx, slot) >= 0 ? ctx->shadow_depth_tex[slot]
                                                                   : 0);
     }
-    bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, splat_tex);
+    /* Plan 10: soft-particle draws never carry splat maps, so the snapshot
+     * borrows the splat-control unit (GL 3.3's 16-unit budget is fully
+     * assigned). The shader-side fade is force-disabled whenever a draw has
+     * splat data, so the aliasing can never misread. */
+    if (cmd->soft_particle_fade > 0.0f && !has_splat && ctx->opaque_depth_valid &&
+        ctx->opaque_depth_tex)
+        bind_texture_unit(
+            ctx->uOpaqueDepthTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, ctx->opaque_depth_tex);
+    else
+        bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, splat_tex);
     bind_texture_unit(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0, GL_TEXTURE_2D, splat_layer0);
     bind_texture_unit(ctx->uSplatLayer1, GL_TU_SPLAT_LAYER0 + 1, GL_TEXTURE_2D, splat_layer1);
     bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
@@ -715,6 +730,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uShadowSampleCount);
     U(uClusterGlobalCount);
     U(uClusterParams);
+    U(uOpaqueDepthTex);
     U(uUseInstancing);
     U(uHasPrevModelMatrix);
     U(uHasPrevInstanceMatrices);
@@ -880,4 +896,12 @@ static void query_bloom_taa_uniforms(gl_context_t *ctx) {
     ctx->taa_uHistoryValid = gl.GetUniformLocation(ctx->taa_program, "uHistoryValid");
     ctx->taa_uInvViewProjection = gl.GetUniformLocation(ctx->taa_program, "uInvViewProjection");
     ctx->taa_uPrevViewProjection = gl.GetUniformLocation(ctx->taa_program, "uPrevViewProjection");
+    ctx->ssr_uSceneTex = gl.GetUniformLocation(ctx->ssr_program, "uSceneTex");
+    ctx->ssr_uDepthTex = gl.GetUniformLocation(ctx->ssr_program, "uDepthTex");
+    ctx->ssr_uMotionTex = gl.GetUniformLocation(ctx->ssr_program, "uMotionTex");
+    ctx->ssr_uInvResolution = gl.GetUniformLocation(ctx->ssr_program, "uInvResolution");
+    ctx->ssr_uParams0 = gl.GetUniformLocation(ctx->ssr_program, "uParams0");
+    ctx->ssr_uCamPos = gl.GetUniformLocation(ctx->ssr_program, "uCamPos");
+    ctx->ssr_uInvViewProjection = gl.GetUniformLocation(ctx->ssr_program, "uInvViewProjection");
+    ctx->ssr_uViewProjection = gl.GetUniformLocation(ctx->ssr_program, "uViewProjection");
 }

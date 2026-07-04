@@ -180,6 +180,7 @@ class BowlingGameSetup extends BowlingGameState {
 
         particleMgr = new ParticleManager();
         particleMgr.initParticles();
+        particleMgr.applySoftParticles(render.getCanvas().BackendSupports("soft-particles"));
 
         celebMgr = new CelebrationManager();
         celebMgr.initCelebrations();
@@ -190,12 +191,20 @@ class BowlingGameSetup extends BowlingGameState {
         ballObj.applyEnvironment(env);
     }
 
-    /// @brief Allocate fresh ScoreKeepers for both players.
+    /// @brief Allocate one fresh ScoreKeeper (and default name) per player.
     hide func initScoreKeepers() {
-        scoreKeeperOne = new ScoreKeeper();
-        scoreKeeperOne.init();
-        scoreKeeperTwo = new ScoreKeeper();
-        scoreKeeperTwo.init();
+        scoreKeepers = [];
+        playerNames = [];
+        for (var i: Integer = 0; i < playerCount; i = i + 1) {
+            var keeper = new ScoreKeeper();
+            keeper.init();
+            scoreKeepers.add(keeper);
+            if (playerCount <= 1) {
+                playerNames.add("Player");
+            } else {
+                playerNames.add("Player " + toString(i + 1));
+            }
+        }
     }
 
     /// @brief Pull oilPattern / qualityMode from the menu and apply.
@@ -222,16 +231,19 @@ class BowlingGameSetup extends BowlingGameState {
         hudObj.showMessage("Select a mode and bowl.", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
     }
 
-    /// @brief Begin a new match (single or versus). Resets scoring + state.
-    hide func startNewMatch(mode: Integer) {
+    /// @brief Begin a new match for @p count players (1 = single, 2-4 = versus).
+    ///        Resets scoring + per-throw state; keeper count follows playerCount.
+    hide func startNewMatch(count: Integer) {
         applyMenuSettings();
         createGameplayWorld();
-        initScoreKeepers();
 
-        currentMode = mode;
-        playerCount = 1;
-        if (mode == config.MODE_VERSUS) { playerCount = 2; }
+        playerCount = count;
+        if (playerCount < 1) { playerCount = 1; }
+        if (playerCount > config.MAX_PLAYERS) { playerCount = config.MAX_PLAYERS; }
+        currentMode = config.MODE_SINGLE;
+        if (playerCount > 1) { currentMode = config.MODE_VERSUS; }
         activePlayer = 0;
+        initScoreKeepers();
 
         aimX = 0.0;
         power = 0.0;
@@ -254,15 +266,15 @@ class BowlingGameSetup extends BowlingGameState {
         gameState = config.STATE_AIMING;
         camCtrl.setAimMode(0.0);
 
-        if (playerCount == 2) {
-            hudObj.showMessage("Versus match start. Player 1 up.", config.HUD_COLOR_GOLD, config.MSG_DURATION_LONG);
+        if (playerCount > 1) {
+            hudObj.showMessage("Versus match start. " + playerNames.get(0) + " up.", config.HUD_COLOR_GOLD, config.MSG_DURATION_LONG);
         } else {
             hudObj.showMessage("Aim and throw!", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
         }
     }
 
-    /// @brief Re-call startNewMatch with the current mode.
+    /// @brief Re-call startNewMatch with the current player count.
     hide func restartCurrentMatch() {
-        startNewMatch(currentMode);
+        startNewMatch(playerCount);
     }
 }

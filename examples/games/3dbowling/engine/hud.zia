@@ -68,13 +68,13 @@ class HUD {
                      spin: Float, aimX: Float,
                      ballType: Integer, gameState: Integer,
                      fps: Integer, playerCount: Integer, activePlayer: Integer,
-                     playerOneScore: Integer, playerTwoScore: Integer,
+                     scoreKeepers: List[ScoreKeeper],
                      oilName: String) {
         var cw: Integer = canvas.Width;
         var ch: Integer = canvas.Height;
 
         drawScoreboard(canvas, scoreKeeper, cw);
-        drawStatusPanel(canvas, cw, playerCount, activePlayer, playerOneScore, playerTwoScore, oilName, ballType);
+        drawStatusPanel(canvas, cw, playerCount, activePlayer, scoreKeepers, oilName, ballType);
 
         if (gameState == config.STATE_AIMING) {
             drawControlPanel(canvas, power, charging, spin, aimX, ch);
@@ -155,17 +155,34 @@ class HUD {
         var spinY = panelY + 66;
         Canvas3D.DrawText2D(canvas, spinX, spinY - 14, "CURVE", config.HUD_COLOR_GRAY);
         var spinBarW = config.SPIN_INDICATOR_W + 34;
-        Canvas3D.DrawRect2D(canvas, spinX + 66, spinY - 3,
+        var spinBarX = spinX + 66;
+        Canvas3D.DrawRect2D(canvas, spinBarX, spinY - 3,
             spinBarW, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
-        var centerX = spinX + 66 + spinBarW / 2;
-        Canvas3D.DrawRect2D(canvas, centerX, spinY - 3, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
+        var centerX = spinBarX + spinBarW / 2;
 
-        var spinOffset = Convert.NumToInt((spin / config.SPIN_MAX) * ((spinBarW / 2) + 0.0));
-        var markerX = centerX + spinOffset;
+        var spinPct = spin / config.SPIN_MAX;
+        if (spinPct < -1.0) { spinPct = -1.0; }
+        if (spinPct > 1.0) { spinPct = 1.0; }
+        var spinOffset = Convert.NumToInt(spinPct * ((spinBarW / 2) + 0.0));
         var markerColor = config.HUD_COLOR_CYAN;
         if (spin < 0.0) { markerColor = 0xFF8844; }
+
+        // Directional fill from the centre toward the marker = hook magnitude.
+        if (spinOffset >= 0) {
+            Canvas3D.DrawRect2D(canvas, centerX, spinY - 1, spinOffset, config.SPIN_INDICATOR_H - 4, markerColor);
+        } else {
+            Canvas3D.DrawRect2D(canvas, centerX + spinOffset, spinY - 1, -spinOffset, config.SPIN_INDICATOR_H - 4, markerColor);
+        }
+        Canvas3D.DrawRect2D(canvas, centerX, spinY - 3, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
+        var markerX = centerX + spinOffset;
         Canvas3D.DrawRect2D(canvas, markerX - 2, spinY - 4, 4,
             config.SPIN_INDICATOR_H + 2, markerColor);
+
+        // Direction + magnitude readout beneath the bar.
+        var hookLabel = "STRAIGHT";
+        if (spin > 0.02) { hookLabel = "HOOK R " + toString(Convert.NumToInt(spinPct * 100.0)) + "%"; }
+        else if (spin < -0.02) { hookLabel = "HOOK L " + toString(Convert.NumToInt(-spinPct * 100.0)) + "%"; }
+        Canvas3D.DrawText2D(canvas, spinBarX, spinY + 11, hookLabel, markerColor);
 
         var aimPct = aimX / config.AIM_MAX;
         var aimXPos = panelX + 232 + Convert.NumToInt(aimPct * 46.0);
@@ -224,23 +241,31 @@ class HUD {
 
     hide func drawStatusPanel(canvas: Canvas3D, cw: Integer,
                               playerCount: Integer, activePlayer: Integer,
-                              playerOneScore: Integer, playerTwoScore: Integer,
+                              scoreKeepers: List[ScoreKeeper],
                               oilName: String, ballType: Integer) {
         var panelX = cw - 244;
-        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 104, config.HUD_COLOR_FRAME_BG);
+        // Grow the panel for a second score row when 3-4 players are in.
+        var panelH = 104;
+        if (playerCount > 2) { panelH = 126; }
+        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, panelH, config.HUD_COLOR_FRAME_BG);
         Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 2, config.HUD_COLOR_MENU_ACCENT);
         Canvas3D.DrawText2D(canvas, panelX + 12, 56, oilName + " oil", config.HUD_COLOR_WHITE);
         Canvas3D.DrawText2D(canvas, panelX + 12, 78, getBallName(ballType), getBallColor(ballType));
 
         if (playerCount <= 1) {
-            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "Score " + toString(playerOneScore), config.HUD_COLOR_CYAN);
+            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "Score " + toString(scoreKeepers.get(0).getTotalScore()), config.HUD_COLOR_CYAN);
         } else {
-            var p1Color = config.HUD_COLOR_WHITE;
-            var p2Color = config.HUD_COLOR_WHITE;
-            if (activePlayer == 0) { p1Color = config.HUD_COLOR_GOLD; }
-            if (activePlayer == 1) { p2Color = config.HUD_COLOR_GOLD; }
-            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "P1 " + toString(playerOneScore), p1Color);
-            Canvas3D.DrawText2D(canvas, panelX + 108, 104, "P2 " + toString(playerTwoScore), p2Color);
+            // Up to four seats laid out in a 2x2 grid; the active seat glows gold.
+            for (var i: Integer = 0; i < playerCount; i = i + 1) {
+                var col = i % 2;
+                var row = i / 2;
+                var tx = panelX + 12 + col * 96;
+                var ty = 104 + row * 20;
+                var seatColor = config.HUD_COLOR_WHITE;
+                if (i == activePlayer) { seatColor = config.HUD_COLOR_GOLD; }
+                Canvas3D.DrawText2D(canvas, tx, ty,
+                    "P" + toString(i + 1) + " " + toString(scoreKeepers.get(i).getTotalScore()), seatColor);
+            }
         }
     }
 

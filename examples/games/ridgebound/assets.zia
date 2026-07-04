@@ -77,6 +77,19 @@ class RidgeboundAssets {
     expose func getPlayerBodyMesh() -> Mesh3D { return playerBodyMesh; }
     expose func getPlayerCoreMesh() -> Mesh3D { return playerCoreMesh; }
     expose func getTerrainMat() -> Material3D { return terrainMat; }
+
+    // Wet-ground look: as the terrain soaks (0..1) it darkens toward wet earth and
+    // turns glossier (lower roughness), then dries back. Owns the base terrain
+    // colour so the wetness math stays consistent with setup above.
+    expose func applyTerrainWetness(wet: Float) {
+        if (terrainMat == null) { return; }
+        var w = wet;
+        if (w < 0.0) { w = 0.0; }
+        if (w > 1.0) { w = 1.0; }
+        var darken = 1.0 + (config.TERRAIN_WET_DARKEN - 1.0) * w;
+        Material3D.SetColor(terrainMat, 0.58 * darken, 0.74 * darken, 0.36 * darken);
+        terrainMat.Roughness = config.TERRAIN_DRY_ROUGH + (config.TERRAIN_WET_ROUGH - config.TERRAIN_DRY_ROUGH) * w;
+    }
     expose func getStoneMat() -> Material3D { return stoneMat; }
     expose func getPedestalMat() -> Material3D { return pedestalMat; }
     expose func getPlayerMat() -> Material3D { return playerMat; }

@@ -24,6 +24,8 @@ class RidgeboundCritters {
     hide NavMesh3D navMesh;
     hide List[NavAgent3D] agents;
     hide Terrain3D critterLand;
+    hide List[Boolean] critterSpotted;
+    hide Integer spottedCount;
 
     expose func setup(nav: NavMesh3D, land: Terrain3D) {
         navMesh = nav;
@@ -77,6 +79,8 @@ class RidgeboundCritters {
         critterTX = [];
         critterTZ = [];
         agents = [];
+        critterSpotted = [];
+        spottedCount = 0;
         critterWanderSeed = 11;
         for i in 0..critterXs.count() {
             critterTX.add(critterXs.get(i));
@@ -86,11 +90,12 @@ class RidgeboundCritters {
             var gz = critterZs.get(i);
             NavAgent3D.Warp(a, new Vec3(gx, terrain.sampleGround(critterLand, gx, gz), gz));
             agents.add(a);
+            critterSpotted.add(false);
             pickCritterTarget(i);
         }
     }
 
-    expose func update(dt: Float, playerX: Float, playerZ: Float) {
+    expose func update(dt: Float, playerX: Float, playerZ: Float, playerCalm: Boolean) {
         if (critterCtrl == null) { return; }
         var maxX = terrain.terrainWorldMaxX();
         var maxZ = terrain.terrainWorldMaxZ();
@@ -100,6 +105,12 @@ class RidgeboundCritters {
             var pdx = critterXs.get(i) - playerX;
             var pdz = critterZs.get(i) - playerZ;
             var pdist = Sqrt(pdx * pdx + pdz * pdz);
+            // Spotting log: the first time the player observes a critter up close,
+            // record it (drives the HUD "spotted" tally).
+            if (pdist < config.CRITTER_SPOT_RADIUS && critterSpotted.get(i) == false) {
+                critterSpotted.set(i, true);
+                spottedCount = spottedCount + 1;
+            }
             if (pdist < config.CRITTER_FLEE_RADIUS && pdist > 0.0001) {
                 // Skittish: re-target a point away from the player; the nav agent
                 // paths there around obstacles rather than bolting in a line.
@@ -112,10 +123,24 @@ class RidgeboundCritters {
                 critterTZ.set(i, fz);
                 NavAgent3D.SetTarget(a, new Vec3(fx, terrain.sampleGround(critterLand, fx, fz), fz));
             } else {
-                if (pdist < 12.0) { near = true; }
-                var dx = critterTX.get(i) - critterXs.get(i);
-                var dz = critterTZ.get(i) - critterZs.get(i);
-                if (dx * dx + dz * dz < 1.6) { pickCritterTarget(i); }
+                if (playerCalm && pdist < config.CRITTER_CURIOUS_RADIUS && pdist > config.CRITTER_CURIOUS_KEEP) {
+                    // Curious: when you hold still (not sprinting), a critter edges
+                    // toward you and settles at a comfortable keep distance.
+                    near = true;
+                    var t = (pdist - config.CRITTER_CURIOUS_KEEP);
+                    var cxp = mathutil.clampFloat(critterXs.get(i) - pdx / pdist * t,
+                        config.TERRAIN_MARGIN, maxX - config.TERRAIN_MARGIN);
+                    var czp = mathutil.clampFloat(critterZs.get(i) - pdz / pdist * t,
+                        config.TERRAIN_MARGIN, maxZ - config.TERRAIN_MARGIN);
+                    critterTX.set(i, cxp);
+                    critterTZ.set(i, czp);
+                    NavAgent3D.SetTarget(a, new Vec3(cxp, terrain.sampleGround(critterLand, cxp, czp), czp));
+                } else {
+                    if (pdist < 12.0) { near = true; }
+                    var dx = critterTX.get(i) - critterXs.get(i);
+                    var dz = critterTZ.get(i) - critterZs.get(i);
+                    if (dx * dx + dz * dz < 1.6) { pickCritterTarget(i); }
+                }
             }
             // Advance the agent along its path and mirror its position back so the
             // skinned mesh draws where the nav agent actually walked.
@@ -135,6 +160,9 @@ class RidgeboundCritters {
         }
         AnimController3D.Update(critterCtrl, dt);
     }
+
+    expose func getSpottedCount() -> Integer { return spottedCount; }
+    expose func getCritterCount() -> Integer { return critterXs.count(); }
 
     expose func draw(canvas: Canvas3D, land: Terrain3D) {
         if (critterCtrl == null) { return; }

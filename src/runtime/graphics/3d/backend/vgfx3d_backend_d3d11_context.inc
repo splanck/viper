@@ -18,6 +18,7 @@ typedef struct d3d11_shader_blobs_t {
     ID3DBlob *ps_bloom_down;
     ID3DBlob *ps_bloom_up;
     ID3DBlob *ps_taa;
+    ID3DBlob *ps_ssr;
 } d3d11_shader_blobs_t;
 
 /// @brief Release all temporary shader blobs used while creating a context.
@@ -35,6 +36,7 @@ static void d3d11_release_shader_blobs(d3d11_shader_blobs_t *blobs) {
     SAFE_RELEASE(blobs->ps_bloom_down);
     SAFE_RELEASE(blobs->ps_bloom_up);
     SAFE_RELEASE(blobs->ps_taa);
+    SAFE_RELEASE(blobs->ps_ssr);
 }
 
 /// @brief Initialize matrix defaults and target/upload state on a new D3D11 context.
@@ -290,7 +292,10 @@ static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
         d3d11_compile_shader(d3d11_bloom_shader_source, "PSBloomUp", "ps_5_0", &blobs->ps_bloom_up);
     if (FAILED(hr))
         return hr;
-    return d3d11_compile_shader(d3d11_taa_shader_source, "PSTAAResolve", "ps_5_0", &blobs->ps_taa);
+    hr = d3d11_compile_shader(d3d11_taa_shader_source, "PSTAAResolve", "ps_5_0", &blobs->ps_taa);
+    if (FAILED(hr))
+        return hr;
+    return d3d11_compile_shader(d3d11_ssr_shader_source, "PSSSR", "ps_5_0", &blobs->ps_ssr);
 }
 
 /// @brief Create all shader objects from compiled HLSL blobs.
@@ -409,8 +414,17 @@ static HRESULT d3d11_create_context_shader_objects(d3d11_context_t *ctx,
                                         ID3D10Blob_GetBufferSize(blobs->ps_taa),
                                         NULL,
                                         &ctx->ps_taa);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         d3d11_log_hresult("CreatePixelShader(taaResolve)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps_ssr),
+                                        ID3D10Blob_GetBufferSize(blobs->ps_ssr),
+                                        NULL,
+                                        &ctx->ps_ssr);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreatePixelShader(ssr)", hr);
     return hr;
 }
 
@@ -603,6 +617,11 @@ static HRESULT d3d11_create_context_buffers(d3d11_context_t *ctx) {
     hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_bloom_cb_t), &ctx->cb_bloom);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(cbBloom)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_ssr_cb_t), &ctx->cb_ssr);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbSSR)", hr);
         return hr;
     }
     hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_taa_cb_t), &ctx->cb_taa);
@@ -818,6 +837,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->cb_per_lights);
     SAFE_RELEASE(ctx->cb_cluster_offsets);
     SAFE_RELEASE(ctx->cb_cluster_indices);
+    SAFE_RELEASE(ctx->opaque_depth_srv);
+    SAFE_RELEASE(ctx->opaque_depth_tex);
     SAFE_RELEASE(ctx->cb_per_material);
     SAFE_RELEASE(ctx->cb_per_scene);
     SAFE_RELEASE(ctx->cb_per_object);
@@ -829,8 +850,10 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->ps_bloom_down);
     SAFE_RELEASE(ctx->ps_bloom_up);
     SAFE_RELEASE(ctx->ps_taa);
+    SAFE_RELEASE(ctx->ps_ssr);
     SAFE_RELEASE(ctx->cb_bloom);
     SAFE_RELEASE(ctx->cb_taa);
+    SAFE_RELEASE(ctx->cb_ssr);
     SAFE_RELEASE(ctx->vs_postfx);
     SAFE_RELEASE(ctx->ps_skybox);
     SAFE_RELEASE(ctx->vs_skybox);

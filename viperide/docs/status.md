@@ -1,6 +1,6 @@
 # ViperIDE Current Status
 
-Last reviewed against source: 2026-06-27.
+Last reviewed against source: 2026-07-04.
 
 This file is the current-state reference for ViperIDE. It intentionally avoids
 future-phase language and records limitations in the same place as shipped
@@ -17,11 +17,13 @@ It is not yet a polished product-complete IDE. The largest current gaps are:
 - Scene documents are recognized but do not have a visual scene editor.
 - Bottom tool surfaces are still largely listbox/output-pane based rather than
   fully virtualized, dockable workbench views.
-- Source Control is synchronous and minimal.
+- Source Control is async and useful for common local Git actions, but still not
+  a full Git client.
 - BASIC lacks project-index-backed semantic navigation and rename.
-- Debugging lacks watch expressions as a first-class panel and rich variable
-  trees.
-- Some workflow prompts and overlays are still modal or command-palette based.
+- Debugging has persistent watch expressions, but still lacks rich expandable
+  variable trees and watch-management polish.
+- Some workflow prompts and overlays are still modal or command-palette based,
+  although project search now uses a docked non-modal panel.
 - The application source still has several oversized coordinator modules.
 
 ## Current Product Narrative
@@ -36,11 +38,12 @@ search, build, run, diagnose, and debug one active program.
 The roughness shows up when the workflow starts to look like a mature IDE. Some
 panels are still row dumps instead of rich work surfaces. Some operations rely
 on prompt-style input instead of integrated overlays. The debug substrate is
-real, but the inspection UI is shallow. BASIC support is intentionally honest
-but incomplete. Source Control is useful for basic Git actions but does not have
-the responsiveness or error handling of a full client. Scene support exists in
-the runtime, and the IDE recognizes scene file extensions, but no visual editor
-is mounted.
+real and includes persistent watches, but variable inspection is still shallow.
+BASIC support is intentionally honest but incomplete. Source Control is useful
+for common Git actions and runs operations through async processes, but it does
+not have the workflow depth, progress UI, conflict handling, or authentication
+surface of a full client. Scene support exists in the runtime, and the IDE
+recognizes scene file extensions, but no visual editor is mounted.
 
 This distinction matters for documentation and release notes. ViperIDE should
 not be described as a complete scene editor, full terminal emulator, full SCM
@@ -61,17 +64,14 @@ APIs, but ViperIDE does not provide the user-facing workflow yet.
 
 ## User Impact Summary
 
-For a Zia developer, the biggest strengths are:
+For Zia and BASIC developers, the biggest strengths are:
 
-- The editor understands Zia well enough for completion, diagnostics, hover,
-  signature help, and navigation.
+- The editor understands source well enough for completion, diagnostics, hover,
+  signature help, symbols, semantic navigation, references, and rename.
 - Project search, Quick Open, workspace symbols, and recent files make normal
   navigation practical.
 - Build/run/debug are wired to the Viper toolchain without leaving the IDE.
 - Session restore and recovery reduce the risk of losing active work.
-
-For a BASIC developer, the IDE is useful for editing and compiler feedback, but
-not for project-wide semantic work.
 
 For a game developer expecting scene tooling, the runtime data foundation exists
 below the IDE, but the IDE user experience is not there yet.
@@ -90,14 +90,14 @@ debug inspection.
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
 | Scene files | Partial | `.scene` and `.level` are detected, saved, restored, and filtered, but display as text. |
 | Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
-| Search | Implemented | Project/folder search, literal/regex, case/word filters, include/exclude filters, grouped results. |
+| Search | Implemented | Docked project/folder search panel, literal/regex, case/word filters, include/exclude filters, grouped results. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
-| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, run to cursor, locals, call stack, evaluate, conditions, logpoints. |
-| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Not a full terminal emulator. |
-| Source Control | Partial | Git status, stage/unstage, commit, diff, branch basics, push/pull. Blocking and minimal. |
+| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
+| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Handles common line/display clears, but not a full terminal emulator. |
+| Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces/renames covered. |
 | Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options. |
 | Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
-| File watching | Implemented with limits | Active file watcher plus inactive document polling and workspace watcher. |
+| File watching | Implemented with limits | Active file watcher, inactive document polling, and capped recursive workspace watcher set with fallback scans. |
 | Visual polish | Partial | Functional shell, activity bar, status, panels; still reads as utilitarian/prototype in places. |
 | Cross-platform | Intended | Runtime adapters exist for process, PTY, GUI; display/runtime behavior still needs regular platform smoke. |
 
@@ -213,9 +213,10 @@ Current bottom panel tabs:
 - Debug.
 - Terminal.
 
-Output and tool rows are bounded and mostly list-backed. This prevents runaway
-UI memory in normal cases but is not the same as a fully virtualized workbench
-surface for very large logs/search results.
+Output rows are bounded by an OutputPane ring buffer, and tool rows are mostly
+list-backed. This prevents runaway UI memory in normal cases but is not the
+same as a fully virtualized workbench surface for very large logs/search
+results.
 
 ### Debugger
 
@@ -236,11 +237,12 @@ Supported behavior:
 - Current-line gutter marker.
 - Locals and call stack at stop points.
 - Expression evaluation while stopped.
+- Persistent watch expressions, shown in the Variables panel above locals.
 - Debug console output.
 
 Known debugger UX gaps:
 
-- No dedicated watch-expression list.
+- Watch expressions do not yet have a dedicated management panel.
 - Variables are rendered as flat rows, not expandable trees.
 - Breakpoint metadata editing exists, but the UX is still lightweight.
 - Session state could be clearer when launching, running, stopping, and
@@ -258,6 +260,8 @@ Current limitations:
 - The OutputPane terminal mode is not a full terminal emulator.
 - Full-screen TUI programs that require cursor addressing or alternate-screen
   support are out of scope.
+- Common line and display erase sequences are handled, including `CSI K` and
+  `CSI J`, but full screen-state emulation is still absent.
 - Terminal dimensions are estimated from widget size because OutputPane does not
   expose font metrics.
 - The controller pumps when the panel is visible; hidden-session behavior should
@@ -281,12 +285,13 @@ It supports:
 
 Known limits:
 
-- Git commands are synchronous.
-- Push and pull can block the UI.
-- Status parsing uses porcelain v1 and accepts path quoting/rename edge cases.
-- Read commands infer success from output because the current Exec capture API
-  does not return exit code and captured output together.
-- Error feedback is minimal.
+- Git operations run through `Viper.System.Process` and do not block the frame
+  loop, but the UI still shows only one active Source Control job at a time.
+- Push and pull can be long-running and have no rich progress or credential UI.
+- Status parsing uses porcelain v2 and handles common spaces/renames, but exotic
+  path bytes and complex conflict states still need more coverage.
+- Error feedback is captured from stderr and surfaced in the view, but recovery
+  workflows are still basic.
 
 ## Data Safety
 
@@ -305,8 +310,8 @@ Known data-safety gaps:
 
 - Scene files do not have a scene-specific document model yet.
 - Recovery is intentionally capped and only applies to editable text buffers.
-- Source Control write operations depend on Git command success and minimal
-  error capture.
+- Source Control write operations depend on Git command success and basic
+  stderr reporting.
 
 ## Product Polish Gaps
 
@@ -315,8 +320,8 @@ These gaps are current documentation, not a plan commitment:
 - Replace ambiguous toolbar glyphs with a coherent icon system.
 - Move remaining prompt-style workflows into non-modal workbench overlays.
 - Make tool panels resizable, virtualized, and more consistent.
-- Add richer debugger watch/variable UX.
-- Harden Source Control error reporting and async behavior.
+- Add richer debugger variable-tree and watch-management UX.
+- Harden Source Control progress, conflict, credential, and recovery workflows.
 - Add real scene editing before advertising scene editor functionality.
 - Split oversized coordinator modules.
 - Expand platform and display test coverage.
@@ -325,14 +330,16 @@ These gaps are current documentation, not a plan commitment:
 
 Use these phrasing rules when updating user-facing docs:
 
-- Say "Zia semantic navigation" only for Zia, not BASIC.
-- Say "BASIC completion, diagnostics, hover, and symbols" instead of generic
-  "full BASIC IntelliSense".
+- Say "Zia and BASIC semantic navigation" only for definition, references,
+  rename, call hierarchy, workspace symbols, and signature help.
+- Say "BASIC compiler-backed completion, diagnostics, hover, and symbols" when
+  discussing the `Viper.Basic.LanguageService` runtime bridge specifically.
 - Say "integrated PTY shell" instead of "full terminal".
 - Say "Git Source Control view" instead of "SCM platform".
 - Say "scene files are recognized and open as text" instead of "scene editor".
-- Say "debug adapter supports stepping, breakpoints, locals, call stack, and
-  evaluate" while still mentioning missing watch and variable-tree UX.
+- Say "debug adapter supports stepping, breakpoints, locals, call stack,
+  evaluate, and watches" while still mentioning missing variable-tree and
+  watch-management UX.
 
 The goal is to make the app feel more trustworthy by making the docs less
 optimistic than the code.

@@ -29,6 +29,8 @@ bind "../services/workspace_edits";
 bind "../core/project_manager";
 bind "../core/session";
 bind "../core/settings";
+bind "../ui/status_bar_model";
+bind "../basic/semantic_scan";
 
 bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
@@ -100,36 +102,51 @@ func main() {
     var basicDoc = new document.Document();
     basicDoc.language = "basic";
     var basicService = langMgr.ForDocument(basicDoc);
-    // BASIC has in-process completion + diagnostics (Viper.Basic.* bridge, ADR 0014);
-    // go-to-definition / refs / rename remain off (no project-index for BASIC).
-    if assertTrue(basicService.canComplete and basicService.canDiagnose,
-                  "basic completion+diagnostics enabled") == false { return; }
-    if assertTrue(basicService.canGoToDefinition == false,
-                  "basic navigation commands still disabled") == false { return; }
+    // BASIC combines the Viper.Basic.* runtime bridge with the IDE-side BASIC
+    // scanner for navigation, references, rename, and signature help.
+    if assertTrue(basicService.canComplete and basicService.canDiagnose
+                  and basicService.canGoToDefinition
+                  and basicService.canFindReferences
+                  and basicService.canRename
+                  and basicService.canSignatureHelp,
+                  "basic language assistance enabled") == false { return; }
+    if assertTrue(status_bar_model.LanguageStatusText("basic") == "Lang: BASIC",
+                  "basic status text is first-class") == false { return; }
     var ziaDoc = new document.Document();
     ziaDoc.language = "zia";
     ziaDoc.kind = file_utils.DOC_KIND_CODE;
     var ziaService = langMgr.ForDocument(ziaDoc);
     if assertTrue(ziaService.canRename,
                   "zia rename capability enabled") == false { return; }
-    if assertTrue(registry.IsExecutable("rename", basicService) == false
+    if assertTrue(registry.IsExecutable("rename", basicService)
                   and registry.IsExecutable("rename", ziaService),
                   "command registry gates language capabilities") == false { return; }
-    if assertTrue(registry.IsExecutable("signaturenextoverload", basicService) == false
+    if assertTrue(registry.IsExecutable("signaturenextoverload", basicService)
                   and registry.IsExecutable("signatureprevoverload", ziaService)
                   and registry.IsExecutable("signature_trigger", ziaService),
                   "signature overload commands gate language capabilities") == false { return; }
-    var disabledReason = registry.DisabledReason("rename", basicService);
-    if assertTrue(Str.IndexOf(disabledReason, "Rename Symbol is unavailable") != 0
-                  and Str.IndexOf(disabledReason, "BASIC") != 0
-                  and Str.IndexOf(disabledReason, "rename") != 0,
-                  "disabled command reason names language capability") == false { return; }
-    // symboloutline is now supported for BASIC; find-references is still gated off,
-    // so it carries the language-limitation reason.
-    var serverReason = registry.DisabledReason("findrefs", basicService);
-    if assertTrue(Str.IndexOf(serverReason, "BASIC") != 0
-                  and Str.IndexOf(serverReason, "does not support") != 0,
-                  "disabled command reason labels unsupported BASIC capability") == false { return; }
+    var disabledReason = registry.DisabledReason("extractlocal", basicService);
+    if assertTrue(Str.IndexOf(disabledReason, "Zia source syntax") != 0,
+                  "disabled command reason labels Zia-only transform") == false { return; }
+
+    var basicSource = "SUB Greet(name$)\n  PRINT name$\nEND SUB\nGreet(\"Ada\")\n";
+    var basicDecls = semantic_scan.DeclarationsForFile("probe.bas", basicSource);
+    var greetDef = semantic_scan.BestDefinition(basicDecls, "probe.bas", 4, "Greet");
+    if assertTrue(greetDef != null and Map.GetBool(greetDef, "found")
+                  and Map.GetInt(greetDef, "line") == 1,
+                  "basic scanner finds procedure definitions") == false { return; }
+    var basicRefs = Seq.New();
+    semantic_scan.AddReferencesForFile(basicRefs, "probe.bas", basicSource, greetDef);
+    if assertTrue(Seq.get_Count(basicRefs) >= 2,
+                  "basic scanner finds procedure references") == false { return; }
+    var basicRenameEdits = semantic_scan.RenameEditsFromReferences(basicRefs, "Welcome");
+    if assertTrue(Seq.get_Count(basicRenameEdits) >= 2
+                  and Map.GetStr(Seq.Get(basicRenameEdits, 0), "newText") == "Welcome",
+                  "basic scanner emits rename edits") == false { return; }
+    var basicSig = semantic_scan.SignatureInfoForFile("probe.bas", basicSource, 4, 8);
+    if assertTrue(Map.GetBool(basicSig, "available")
+                  and Map.GetStr(basicSig, "name") == "Greet",
+                  "basic scanner returns signature help") == false { return; }
 
     var previewPath = Path.Join(TempFile.Dir(), "viperide_preview.png");
     File.WriteAllText(previewPath, "not actually image data");

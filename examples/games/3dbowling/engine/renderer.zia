@@ -105,8 +105,8 @@ class Renderer {
         Canvas3D.SetLight(canvas, 4, deckFill);
 
         Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
-        Canvas3D.EnableShadows(canvas, 1);
         Canvas3D.SetShadowBias(canvas, 0.002);
+        Canvas3D.SetShadowCascades(canvas, config.SHADOW_CASCADES);
         Canvas3D.SetFog(canvas, 25.0, 80.0, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
 
         postfx = PostFX3D.New();
@@ -120,12 +120,30 @@ class Renderer {
         PostFX3D.Clear(postfx);
 
         if (mode == config.QUALITY_CINEMATIC) {
+            Canvas3D.EnableShadows(canvas, config.SHADOW_MAP_CINEMATIC);
+            Canvas3D.SetShadowQuality(canvas, config.SHADOW_QUALITY_CINEMATIC);
+            Canvas3D.SetShadowStrength(canvas, config.SHADOW_STRENGTH_CINEMATIC);
+
             PostFX3D.AddTonemap(postfx, 1, 1.20);
             PostFX3D.AddBloom(postfx, 0.88, 0.08, 3);
-            PostFX3D.AddFXAA(postfx);
+            // Screen-space reflections on the glossy lane, GPU-gated.
+            if (Canvas3D.BackendSupports(canvas, "ssr")) {
+                PostFX3D.AddSSR(postfx, config.SSR_INTENSITY, config.SSR_ROUGHNESS_CUTOFF);
+            }
+            // TAA on the slow bowling camera (no ghosting) — replaces FXAA when
+            // available; otherwise fall back to FXAA so the SW probe still AAs.
+            if (Canvas3D.BackendSupports(canvas, "taa")) {
+                PostFX3D.AddTAA(postfx, config.TAA_BLEND);
+            } else {
+                PostFX3D.AddFXAA(postfx);
+            }
             PostFX3D.AddColorGrade(postfx, 0.005, 1.06, 1.04);
             PostFX3D.AddVignette(postfx, 0.96, 0.28);
         } else {
+            Canvas3D.EnableShadows(canvas, config.SHADOW_MAP_PERFORMANCE);
+            Canvas3D.SetShadowQuality(canvas, config.SHADOW_QUALITY_PERFORMANCE);
+            Canvas3D.SetShadowStrength(canvas, config.SHADOW_STRENGTH_PERFORMANCE);
+
             PostFX3D.AddTonemap(postfx, 1, 1.18);
             PostFX3D.AddBloom(postfx, 0.90, 0.06, 1);
             PostFX3D.AddFXAA(postfx);

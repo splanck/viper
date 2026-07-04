@@ -99,6 +99,14 @@ typedef struct {
     int8_t shadow_pass_slot;
     int8_t shadow_count;
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
+    /* Plan 10: opaque-pass depth snapshot for soft particles. Holds the active
+     * target's zbuf (NDC sz values, FLT_MAX = empty) copied at the
+     * opaque->transparent seam; valid resets every begin_frame. */
+    float *opaque_zbuf;
+    size_t opaque_zbuf_capacity;
+    int32_t opaque_zbuf_w, opaque_zbuf_h;
+    int8_t opaque_zbuf_valid;
+    float cam_znear, cam_zfar;
     /* Persistent worker pool for deterministic tiled rasterization. */
     void *worker_pool;
     int64_t worker_count;
@@ -329,8 +337,7 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
     occluded_vis = 1.0f - (isfinite(ctx->shadow_strength)
                                ? (ctx->shadow_strength < 0.0f
                                       ? 0.0f
-                                      : (ctx->shadow_strength > 1.0f ? 1.0f
-                                                                     : ctx->shadow_strength))
+                                      : (ctx->shadow_strength > 1.0f ? 1.0f : ctx->shadow_strength))
                                : 0.85f);
     taps = ctx->shadow_quality <= 0 ? 4 : 8; /* CPU cost bound: BALANCED cap */
     /* Interleaved-gradient noise over the map texel coordinate (fract emulation). */
@@ -546,6 +553,7 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .present = NULL, /* software renders to CPU framebuffer; vgfx_update handles display */
     .show_gpu_layer = NULL,
     .hide_gpu_layer = NULL,
+    .resolve_opaque_targets = sw_resolve_opaque_targets,
 };
 
 static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {

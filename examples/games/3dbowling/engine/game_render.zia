@@ -16,12 +16,13 @@ class BowlingGameRender extends BowlingGameScoring {
     override expose func drawScene() {
         laneObj.draw(render.getCanvas());
         if (gameState == config.STATE_AIMING && screenState == config.SCREEN_PLAYING) {
-            ballObj.drawAimPreview(render.getCanvas(), aimX, spin);
+            ballObj.drawAimPreview(render.getCanvas(), aimX, spin, laneObj.getOilEndZ());
         }
         if (pinMgr.isSweeping()) {
             laneObj.drawSweepBar(render.getCanvas(), pinMgr.getSweepY());
         }
         pinMgr.draw(render.getCanvas());
+        ballObj.drawTrail(render.getCanvas());
         ballObj.draw(render.getCanvas());
         particleMgr.draw(render.getCanvas(), render.getCamera());
     }
@@ -36,32 +37,33 @@ class BowlingGameRender extends BowlingGameScoring {
             celebMgr.draw(canvas, cw, ch);
             hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
                 ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,
-                scoreKeeperOne.getTotalScore(), scoreKeeperTwo.getTotalScore(), laneObj.getOilPatternName());
+                scoreKeepers, laneObj.getOilPatternName());
+            if (gameState == config.STATE_AIMING) {
+                laneObj.drawOilPreview(canvas, cw - 232, 182, 132, 60);
+            }
             if (hasLastEntry && gameState != config.STATE_AIMING) {
                 hudObj.drawShotFeedback(canvas, lastEntryAngle, cw);
             }
         } else if (screenState == config.SCREEN_PAUSED) {
             hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
                 ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,
-                scoreKeeperOne.getTotalScore(), scoreKeeperTwo.getTotalScore(), laneObj.getOilPatternName());
+                scoreKeepers, laneObj.getOilPatternName());
             menuObj.drawPause(canvas, cw, ch);
         } else if (screenState == config.SCREEN_OPTIONS) {
             menuObj.drawOptions(canvas, cw, ch);
         } else if (screenState == config.SCREEN_RESULTS) {
             var headline = "Game Complete";
-            var subtitle = "Final Score: " + toString(resultsPlayerOne);
+            var subtitle = "Final Score: " + toString(resultsScores.get(0));
             var detail = "Best score: " + toString(menuObj.getBestScore());
 
-            if (currentMode == config.MODE_VERSUS) {
+            if (playerCount > 1) {
                 headline = "Match Complete";
-                if (resultsWinner == 0) {
-                    subtitle = "Player 1 wins";
-                } else if (resultsWinner == 1) {
-                    subtitle = "Player 2 wins";
-                } else {
+                if (resultsWinner < 0) {
                     subtitle = "Tie game";
+                } else {
+                    subtitle = getPlayerLabel(resultsWinner) + " wins";
                 }
-                detail = "P1 " + toString(resultsPlayerOne) + "  |  P2 " + toString(resultsPlayerTwo);
+                detail = buildStandingsLine();
             } else if (resultsNewHigh) {
                 detail = "New high score";
             }
@@ -70,5 +72,16 @@ class BowlingGameRender extends BowlingGameScoring {
         } else {
             menuObj.drawTitle(canvas, cw, ch);
         }
+    }
+
+    /// @brief "P1 120  |  P3 98  |  P2 85" — seats in finishing order.
+    hide func buildStandingsLine() -> String {
+        var line = "";
+        for (var r: Integer = 0; r < resultsRanking.count(); r = r + 1) {
+            var idx = resultsRanking.get(r);
+            if (r > 0) { line = line + "  |  "; }
+            line = line + "P" + toString(idx + 1) + " " + toString(resultsScores.get(idx));
+        }
+        return line;
     }
 }

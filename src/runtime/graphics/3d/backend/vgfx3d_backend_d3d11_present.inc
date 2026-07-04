@@ -119,6 +119,10 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->shadow_slope_bias = cam->shadow_slope_bias;
     ctx->shadow_quality = cam->shadow_quality;
     ctx->uploaded_lights_revision = 0; /* new frame: re-upload scene/light constants */
+    /* Plan 10: the opaque depth snapshot is per-pass state. */
+    ctx->opaque_depth_valid = 0;
+    ctx->cam_znear = cam->znear;
+    ctx->cam_zfar = cam->zfar;
     if (vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(ctx->rtt_active,
                                                                  cam->load_existing_color))
         ctx->scene_composited_to_swapchain = 0;
@@ -533,8 +537,10 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
 ///          deeper mip and accumulates it into the one above via the additive blend
 ///          state, leaving mip 0 with the summed octaves.
 /// @return Mip 0's SRV, or NULL when resources are unavailable.
-static ID3D11ShaderResourceView *
-d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, float threshold) {
+static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
+                                                          int32_t width,
+                                                          int32_t height,
+                                                          float threshold) {
     ID3D11ShaderResourceView *null_srv = NULL;
     float blend_factor[4] = {0, 0, 0, 0};
 
@@ -556,8 +562,7 @@ d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, fl
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
     for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
-        ID3D11ShaderResourceView *src =
-            (i == 0) ? ctx->scene_color_srv : ctx->bloom_mip_srv[i - 1];
+        ID3D11ShaderResourceView *src = (i == 0) ? ctx->scene_color_srv : ctx->bloom_mip_srv[i - 1];
         int32_t src_w = (i == 0) ? width : ctx->bloom_mip_w[i - 1];
         int32_t src_h = (i == 0) ? height : ctx->bloom_mip_h[i - 1];
         d3d_bloom_cb_t bloom_data;
@@ -569,8 +574,8 @@ d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, fl
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
         if (FAILED(hr))
             return NULL;
-        d3d11_bind_postfx_target(ctx, ctx->bloom_mip_rtv[i], ctx->bloom_mip_w[i],
-                                 ctx->bloom_mip_h[i]);
+        d3d11_bind_postfx_target(
+            ctx, ctx->bloom_mip_rtv[i], ctx->bloom_mip_w[i], ctx->bloom_mip_h[i]);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
         ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
@@ -592,8 +597,8 @@ d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, fl
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
         if (FAILED(hr))
             return NULL;
-        d3d11_bind_postfx_target(ctx, ctx->bloom_mip_rtv[i - 1], ctx->bloom_mip_w[i - 1],
-                                 ctx->bloom_mip_h[i - 1]);
+        d3d11_bind_postfx_target(
+            ctx, ctx->bloom_mip_rtv[i - 1], ctx->bloom_mip_w[i - 1], ctx->bloom_mip_h[i - 1]);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
         ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
@@ -667,6 +672,62 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
     ctx->taa_history_parity = ctx->taa_history_parity ? 0 : 1;
     ctx->taa_history_valid = 1;
     return ctx->taa_history_srv[write_slot];
+}
+
+/// @brief Encode the Plan 10 SSR pass: ray-march the scene depth in screen space for
+///        pixels whose motion-target alpha carries an SSR mask, compositing reflected
+///        scene color over @p source_srv into the SSR target.
+/// @return The composited SRV, or NULL when resources are unavailable.
+static ID3D11ShaderResourceView *d3d11_encode_ssr_pass(d3d11_context_t *ctx,
+                                                       ID3D11ShaderResourceView *source_srv,
+                                                       int32_t width,
+                                                       int32_t height,
+                                                       const vgfx3d_postfx_snapshot_t *snapshot) {
+    d3d_ssr_cb_t ssr_data;
+    ID3D11ShaderResourceView *srvs[3];
+    ID3D11ShaderResourceView *null_srvs[3] = {NULL, NULL, NULL};
+    float blend_factor[4] = {0, 0, 0, 0};
+    HRESULT hr;
+
+    if (!ctx || !source_srv || !ctx->ps_ssr || !ctx->scene_depth_srv || !ctx->scene_motion_srv ||
+        FAILED(d3d11_ensure_ssr_target(ctx, width, height)))
+        return NULL;
+
+    memset(&ssr_data, 0, sizeof(ssr_data));
+    memcpy(ssr_data.inv_vp, ctx->scene_inv_vp, sizeof(ssr_data.inv_vp));
+    memcpy(ssr_data.vp, ctx->scene_vp, sizeof(ssr_data.vp));
+    memcpy(ssr_data.cam_pos, ctx->scene_cam_pos, sizeof(float) * 3);
+    ssr_data.params0[0] = (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_intensity : 0.5f;
+    ssr_data.params0[1] = (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_max_roughness : 0.4f;
+    ssr_data.params0[2] = (float)((snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps : 24);
+    ssr_data.inv_resolution[0] = width > 0 ? 1.0f / (float)width : 0.0f;
+    ssr_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_ssr, &ssr_data, sizeof(ssr_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbSSR)", hr);
+        return NULL;
+    }
+
+    d3d11_bind_postfx_target(ctx, ctx->ssr_rtv, width, height);
+    srvs[0] = source_srv;
+    srvs[1] = ctx->scene_depth_srv;
+    srvs[2] = ctx->scene_motion_srv;
+    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_ssr, NULL, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_ssr);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_ssr);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 3, srvs);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 3, null_srvs);
+    return ctx->ssr_srv;
 }
 
 /// @brief Composite the 2D GUI overlay texture on top of the 3D scene using alpha blending.
@@ -827,8 +888,11 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
     ctx->postfx_current_bloom_srv = NULL;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         if (chain->effects[i].snapshot.bloom_enabled) {
-            ctx->postfx_current_bloom_srv = d3d11_encode_bloom_chain(
-                ctx, ctx->scene_width, ctx->scene_height, chain->effects[i].snapshot.bloom_threshold);
+            ctx->postfx_current_bloom_srv =
+                d3d11_encode_bloom_chain(ctx,
+                                         ctx->scene_width,
+                                         ctx->scene_height,
+                                         chain->effects[i].snapshot.bloom_threshold);
             break;
         }
     }
@@ -848,6 +912,16 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
                 ctx, source_srv, ctx->scene_width, ctx->scene_height, pass_snapshot);
             if (resolved)
                 source_srv = resolved;
+            pass_snapshot = NULL;
+        }
+        /* Plan 10: an SSR entry composites reflections into its own target, which
+         * then feeds the remaining chain exactly like the TAA pre-resolve above. */
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR &&
+            chain->effects[i].snapshot.ssr_enabled) {
+            ID3D11ShaderResourceView *reflected = d3d11_encode_ssr_pass(
+                ctx, source_srv, ctx->scene_width, ctx->scene_height, &chain->effects[i].snapshot);
+            if (reflected)
+                source_srv = reflected;
             pass_snapshot = NULL;
         }
 

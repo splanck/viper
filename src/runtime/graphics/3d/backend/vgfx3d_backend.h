@@ -95,15 +95,15 @@ typedef struct {
     const void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
     void *metallic_roughness_map_asset;
     void *ao_map_asset;
-    const void *env_map; /* CubeMap3D (environment reflections) or NULL */
-    float reflectivity;  /* [0.0=no reflection, 1.0=mirror] */
-    int8_t ibl_env;      /* env_map is the canvas IBL environment: PBR draws use
-                            SH irradiance + prefiltered specular instead of the
-                            flat ambient + legacy reflectivity mix */
-    uint32_t lights_revision; /* monotonic stamp of the light+ambient snapshot this
-                                 draw was queued with; consecutive draws sharing a
-                                 stamp let backends skip re-uploading scene/light
-                                 constants (0 = unknown, always upload) */
+    const void *env_map;       /* CubeMap3D (environment reflections) or NULL */
+    float reflectivity;        /* [0.0=no reflection, 1.0=mirror] */
+    int8_t ibl_env;            /* env_map is the canvas IBL environment: PBR draws use
+                                  SH irradiance + prefiltered specular instead of the
+                                  flat ambient + legacy reflectivity mix */
+    uint32_t lights_revision;  /* monotonic stamp of the light+ambient snapshot this
+                                  draw was queued with; consecutive draws sharing a
+                                  stamp let backends skip re-uploading scene/light
+                                  constants (0 = unknown, always upload) */
     const void *cluster_table; /* vgfx3d_cluster_table_t built for this draw's light
                                   snapshot, or NULL for the flat light loop. Backends
                                   re-upload cluster buffers under the same
@@ -130,7 +130,14 @@ typedef struct {
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
     int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
-    float depth_bias;       /* constant depth offset; negative pulls coplanar draws forward */
+    /* Plan 10: soft-particle fade distance in world units (0 = hard edges).
+     * Blend-mode fragments fade out as they approach the opaque depth
+     * snapshot; backends without resolve_opaque_targets ignore it. */
+    float soft_particle_fade;
+    /* Plan 10: material opts into screen-space reflections (mask written to
+     * the motion target's blue channel for the SSR post pass). */
+    int8_t ssr_enabled;
+    float depth_bias; /* constant depth offset; negative pulls coplanar draws forward */
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
     int8_t has_alpha_texture;      /* draw-time texture scan found non-opaque alpha */
 } vgfx3d_draw_cmd_t;
@@ -219,6 +226,16 @@ static inline int vgfx3d_draw_cmd_uses_transparent_blend(const vgfx3d_draw_cmd_t
     return cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd);
 }
 
+/// @brief SSR mask strength for a draw (0 = not reflective in screen space).
+/// @details Written to the motion target's alpha channel; the SSR post pass
+///          scales its contribution by this per-pixel value. Materials with an
+///          explicit reflectivity reuse it; SSR-only surfaces default to 0.5.
+static inline float vgfx3d_draw_cmd_ssr_mask(const vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd || !cmd->ssr_enabled)
+        return 0.0f;
+    return cmd->reflectivity > 0.001f ? cmd->reflectivity : 0.5f;
+}
+
 /*==========================================================================
  * Camera parameters — passed to begin_frame
  *=========================================================================*/
@@ -254,6 +271,10 @@ typedef struct {
     float shadow_strength;
     float shadow_slope_bias;
     int32_t shadow_quality;
+    /* Plan 10: camera clip planes for shader-side depth linearization (soft
+     * particles, SSR). Zero/invalid values disable depth-dependent effects. */
+    float znear;
+    float zfar;
 } vgfx3d_camera_params_t;
 
 /*==========================================================================
@@ -320,15 +341,16 @@ typedef struct {
 ///          intentionally plain integers so Canvas3D can expose selected values through stable
 ///          runtime properties without allocating or depending on backend-private headers.
 typedef struct {
-    uint64_t draw_calls;               ///< Successful backend draw calls emitted.
-    uint64_t dropped_draws;            ///< Draw commands rejected by the backend before issuing API calls.
-    uint64_t mesh_cache_hits;          ///< Static mesh VBO/IBO cache hits.
-    uint64_t mesh_cache_misses;        ///< Static mesh VBO/IBO cache misses or refreshes.
-    uint64_t mesh_stream_uploads;      ///< Transient mesh VBO/IBO uploads.
-    uint64_t texture_fallback_binds;   ///< Times a fallback texture was bound while real payload was absent.
-    uint64_t direct_presents;          ///< Presents through the native GPU swapchain/default framebuffer.
-    uint64_t offscreen_presents;       ///< Presents resolved through an offscreen/readback path.
-    int32_t present_path;              ///< 0 unknown, 1 direct, 2 offscreen.
+    uint64_t draw_calls;        ///< Successful backend draw calls emitted.
+    uint64_t dropped_draws;     ///< Draw commands rejected by the backend before issuing API calls.
+    uint64_t mesh_cache_hits;   ///< Static mesh VBO/IBO cache hits.
+    uint64_t mesh_cache_misses; ///< Static mesh VBO/IBO cache misses or refreshes.
+    uint64_t mesh_stream_uploads;    ///< Transient mesh VBO/IBO uploads.
+    uint64_t texture_fallback_binds; ///< Times a fallback texture was bound while real payload was
+                                     ///< absent.
+    uint64_t direct_presents;    ///< Presents through the native GPU swapchain/default framebuffer.
+    uint64_t offscreen_presents; ///< Presents resolved through an offscreen/readback path.
+    int32_t present_path;        ///< 0 unknown, 1 direct, 2 offscreen.
     int32_t default_framebuffer_writable; ///< Last default framebuffer writability decision.
 } vgfx3d_backend_stats_t;
 
@@ -406,6 +428,11 @@ typedef struct vgfx3d_backend {
      * skips the CPU postfx pass and lets the backend own the final onscreen
      * composite for the supplied ordered effect chain. */
     void (*present_postfx)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
+
+    /* Plan 10: snapshot the opaque-pass depth (and any SSR inputs) into
+     * sampleable textures at the opaque->transparent seam. Optional; NULL means
+     * soft particles/SSR are unsupported and blend draws keep hard edges. */
+    void (*resolve_opaque_targets)(void *ctx);
 
     /* Optional split GPU post-processing hook. When non-NULL, Canvas3D may ask
      * the backend to composite post-FX into the current presentation target,

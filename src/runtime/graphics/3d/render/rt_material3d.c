@@ -801,6 +801,25 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     mat->unlit = unlit ? 1 : 0;
 }
 
+/// @brief Opt this material into screen-space reflections (Plan 10).
+/// @details SSR composites scene reflections over the env-map term for surfaces
+///          flagged here (water, glossy floors) on backends that support it;
+///          the flag is ignored (env-map only) elsewhere.
+void rt_material3d_set_ssr_enabled(void *obj, int8_t enabled) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    mat->ssr_enabled = enabled ? 1 : 0;
+}
+
+/// @brief Return whether screen-space reflections are enabled for this material.
+int8_t rt_material3d_get_ssr_enabled(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return 0;
+    return mat->ssr_enabled ? 1 : 0;
+}
+
 /// @brief Return whether unlit mode is enabled.
 int8_t rt_material3d_get_unlit(void *obj) {
     rt_material3d *mat = material_checked(obj);

@@ -123,7 +123,7 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
                                         int8_t load_existing_depth) {
     float clear_color[4];
     static const float overlay_clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    float motion_clear[4] = {0.5f, 0.5f, 0.0f, 1.0f};
+    float motion_clear[4] = {0.5f, 0.5f, 0.0f, 0.0f}; /* alpha = SSR mask; empty = 0 */
 
     if (!ctx)
         return;
@@ -377,9 +377,71 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
         scene_data->cluster_global_count = cluster ? cluster->global_light_count : -1;
         scene_data->cluster_params[0] = (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width);
         scene_data->cluster_params[1] = (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height);
-        scene_data->cluster_params[2] = cluster ? cluster->znear : 0.0f;
-        scene_data->cluster_params[3] = cluster ? cluster->zfar : 0.0f;
+        scene_data->cluster_params[2] = ctx->cam_znear;
+        scene_data->cluster_params[3] = ctx->cam_zfar;
     }
+}
+
+/// @brief Backend `resolve_opaque_targets` op — snapshot the scene depth at the
+///   opaque->transparent seam via CopyResource (both depth targets live in the
+///   R32 typeless family). t16 is unbound first so the copy destination is not
+///   simultaneously bound for reading. Blend draws then Load() the snapshot for
+///   soft-particle fade.
+static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    ID3D11Texture2D *depth;
+    ID3D11ShaderResourceView *null_srv = NULL;
+    int32_t w;
+    int32_t h;
+
+    if (!ctx || !ctx->ctx || !ctx->device)
+        return;
+    ctx->opaque_depth_valid = 0;
+    depth = ctx->rtt_active ? ctx->rtt_depth_tex : ctx->scene_depth_tex;
+    w = ctx->rtt_active ? ctx->rtt_width : ctx->width;
+    h = ctx->rtt_active ? ctx->rtt_height : ctx->height;
+    if (!depth || w <= 0 || h <= 0)
+        return;
+    if (!ctx->opaque_depth_tex || ctx->opaque_depth_w != w || ctx->opaque_depth_h != h) {
+        D3D11_TEXTURE2D_DESC desc;
+        D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+        HRESULT hr;
+        SAFE_RELEASE(ctx->opaque_depth_srv);
+        SAFE_RELEASE(ctx->opaque_depth_tex);
+        memset(&desc, 0, sizeof(desc));
+        desc.Width = (UINT)w;
+        desc.Height = (UINT)h;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R32_TYPELESS;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->opaque_depth_tex);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("CreateTexture2D(opaqueDepth)", hr);
+            return;
+        }
+        memset(&srv_desc, 0, sizeof(srv_desc));
+        srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
+        srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Texture2D.MipLevels = 1;
+        hr = ID3D11Device_CreateShaderResourceView(ctx->device,
+                                                   (ID3D11Resource *)ctx->opaque_depth_tex,
+                                                   &srv_desc,
+                                                   &ctx->opaque_depth_srv);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("CreateSRV(opaqueDepth)", hr);
+            SAFE_RELEASE(ctx->opaque_depth_tex);
+            return;
+        }
+        ctx->opaque_depth_w = w;
+        ctx->opaque_depth_h = h;
+    }
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 16, 1, &null_srv);
+    ID3D11DeviceContext_CopyResource(
+        ctx->ctx, (ID3D11Resource *)ctx->opaque_depth_tex, (ID3D11Resource *)depth);
+    ctx->opaque_depth_valid = 1;
 }
 
 /// @brief Upload one CPU froxel table into the cluster cbuffers (no-op when the
@@ -819,6 +881,7 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cb_per_lights);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 6, 1, &ctx->cb_cluster_offsets);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 7, 1, &ctx->cb_cluster_indices);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 16, 1, &ctx->opaque_depth_srv);
     d3d11_bind_common_state(ctx, cmd);
 
     vs_srvs[0] = ctx->current_morph_srv;
@@ -1144,6 +1207,13 @@ static void d3d11_submit_draw(void *ctx_ptr,
                                     ibl_env_lod_base,
                                     ibl_env_max_lod,
                                     &material_data);
+        /* Plan 10: soft-particle fade rides pbrScalars1.z, forced to 0 while no
+         * snapshot exists (or the draw uses splat maps on GL-parity paths). */
+        material_data.pbr_scalars1[2] =
+            ctx->opaque_depth_valid
+                ? vgfx3d_d3d11_clamp_float_param(cmd->soft_particle_fade, 0.0f, 1.0e6f, 0.0f)
+                : 0.0f;
+        material_data.pbr_scalars1[3] = vgfx3d_draw_cmd_ssr_mask(cmd);
     }
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
@@ -1277,6 +1347,13 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                     ibl_env_lod_base,
                                     ibl_env_max_lod,
                                     &material_data);
+        /* Plan 10: soft-particle fade rides pbrScalars1.z, forced to 0 while no
+         * snapshot exists (or the draw uses splat maps on GL-parity paths). */
+        material_data.pbr_scalars1[2] =
+            ctx->opaque_depth_valid
+                ? vgfx3d_d3d11_clamp_float_param(cmd->soft_particle_fade, 0.0f, 1.0e6f, 0.0f)
+                : 0.0f;
+        material_data.pbr_scalars1[3] = vgfx3d_draw_cmd_ssr_mask(cmd);
     }
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_per_material, &material_data, sizeof(material_data));

@@ -21,6 +21,20 @@ bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
+bind Time = Viper.Time;
+
+func pumpJob(job: scm_git.GitJob, budgetMs: Integer) -> Boolean {
+    var waited = 0;
+    while job.running and waited < budgetMs {
+        job.Pump();
+        if job.running {
+            Time.Clock.Sleep(5);
+            waited = waited + 5;
+        }
+    }
+    job.Pump();
+    return job.started and job.running == false;
+}
 
 func gitConfig(dir: String, key: String, val: String) {
     var a = Seq.New();
@@ -47,6 +61,18 @@ func entryStaged(st: scm_git.GitStatus, name: String) -> Boolean {
     while i < st.entries.count() {
         var e = st.entries.get(i);
         if Str.EndsWith(e.path, name) and e.staged { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func entryRenamed(st: scm_git.GitStatus, newName: String, oldName: String) -> Boolean {
+    var i = 0;
+    while i < st.entries.count() {
+        var e = st.entries.get(i);
+        if e.renamed and Str.EndsWith(e.path, newName) and Str.EndsWith(e.oldPath, oldName) {
+            return true;
+        }
         i = i + 1;
     }
     return false;
@@ -99,6 +125,35 @@ func main() {
 
     // Branch query returns something (master/main).
     if Str.get_Length(git.CurrentBranch()) == 0 { Terminal.Say("RESULT: fail empty branch name"); return; }
+
+    // Paths with spaces must round-trip through process arguments and porcelain-v2 parsing.
+    File.WriteAllText(Path.Join(dir, "space name.zia"), "module Spaced;\n");
+    var st4 = git.Status();
+    if entryUntracked(st4, "space name.zia") == false { Terminal.Say("RESULT: fail spaced file not untracked"); return; }
+    if git.Stage("space name.zia") == false { Terminal.Say("RESULT: fail git add spaced file"); return; }
+    var st5 = git.Status();
+    if entryStaged(st5, "space name.zia") == false { Terminal.Say("RESULT: fail spaced file not staged"); return; }
+    if git.Commit("add spaced file") == false { Terminal.Say("RESULT: fail commit spaced file"); return; }
+
+    File.Move(Path.Join(dir, "space name.zia"), Path.Join(dir, "renamed space.zia"));
+    if git.StageAll() == false { Terminal.Say("RESULT: fail stage rename"); return; }
+    var st6 = git.Status();
+    if entryRenamed(st6, "renamed space.zia", "space name.zia") == false {
+        Terminal.Say("RESULT: fail staged rename not parsed");
+        return;
+    }
+    if git.Commit("rename spaced file") == false { Terminal.Say("RESULT: fail commit rename"); return; }
+
+    var asyncJob = git.StartStatus();
+    if pumpJob(asyncJob, 8000) == false {
+        Terminal.Say("RESULT: fail async status did not finish");
+        return;
+    }
+    var asyncStatus = git.StatusFromOutput(asyncJob.stdoutText, asyncJob.stderrText, asyncJob.exitCode);
+    if asyncStatus.isRepo == false or asyncStatus.entries.count() != 0 {
+        Terminal.Say("RESULT: fail async clean status");
+        return;
+    }
 
     Terminal.Say("RESULT: ok");
 }

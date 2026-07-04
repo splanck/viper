@@ -64,10 +64,8 @@ class BowlingGameFlow extends BowlingGameSetup {
     /// @brief Title-screen menu dispatch.
     hide func handleTitleInput() {
         var cmd = menuObj.updateTitle();
-        if (cmd == menu.CMD_START_SINGLE) {
-            startNewMatch(config.MODE_SINGLE);
-        } else if (cmd == menu.CMD_START_VERSUS) {
-            startNewMatch(config.MODE_VERSUS);
+        if (cmd == menu.CMD_START_MATCH) {
+            startNewMatch(menuObj.getStartPlayerCount());
         } else if (cmd == menu.CMD_OPEN_OPTIONS) {
             screenState = config.SCREEN_OPTIONS;
         } else if (cmd == menu.CMD_QUIT) {

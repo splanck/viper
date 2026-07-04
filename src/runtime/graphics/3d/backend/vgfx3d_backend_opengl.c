@@ -173,6 +173,8 @@ typedef unsigned int GLbitfield;
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 #define GL_FRAMEBUFFER 0x8D40
 #define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
 #define GL_DRAW_BUFFER 0x0C01
 #define GL_VIEWPORT 0x0BA2
 #define GL_SCISSOR_TEST 0x0C11
@@ -271,6 +273,8 @@ typedef void (*PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum, GLuint);
 typedef GLenum (*PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum);
 typedef void (*PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum, GLenum, GLenum, GLuint, GLint);
+typedef void (*PFNGLBLITFRAMEBUFFERPROC)(
+    GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
 typedef void (*PFNGLGENRENDERBUFFERSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETERENDERBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLBINDRENDERBUFFERPROC)(GLenum, GLuint);
@@ -373,6 +377,7 @@ static struct {
     PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
     PFNGLCHECKFRAMEBUFFERSTATUSPROC CheckFramebufferStatus;
     PFNGLFRAMEBUFFERTEXTURE2DPROC FramebufferTexture2D;
+    PFNGLBLITFRAMEBUFFERPROC BlitFramebuffer;
     PFNGLGENRENDERBUFFERSPROC GenRenderbuffers;
     PFNGLDELETERENDERBUFFERSPROC DeleteRenderbuffers;
     PFNGLBINDRENDERBUFFERPROC BindRenderbuffer;
@@ -640,6 +645,13 @@ typedef struct {
     /* Plan 07: clustered forward+ froxel table (u16 data packed as std140 uvec4). */
     GLuint cluster_offsets_ubo;
     GLuint cluster_indices_ubo;
+    /* Plan 10: opaque-pass depth snapshot (blitted at the opaque->transparent
+     * seam) for soft particles; valid resets every begin_frame. */
+    GLuint opaque_depth_tex;
+    GLuint opaque_depth_fbo;
+    int32_t opaque_depth_w, opaque_depth_h;
+    int8_t opaque_depth_valid;
+    float cam_znear, cam_zfar;
 
     GLuint morph_buffer;
     GLuint morph_tbo;
@@ -798,6 +810,7 @@ typedef struct {
     GLint uShadowCount, uShadowBias;
     GLint uShadowSlopeBias, uShadowStrength, uShadowSampleCount;
     GLint uClusterGlobalCount, uClusterParams;
+    GLint uOpaqueDepthTex;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
@@ -844,6 +857,14 @@ typedef struct {
     GLint taa_uCurrTex, taa_uHistTex, taa_uMotionTex, taa_uDepthTex;
     GLint taa_uInvResolution, taa_uJitterDelta, taa_uBlend, taa_uHistoryValid;
     GLint taa_uInvViewProjection, taa_uPrevViewProjection;
+    /* Plan 10: SSR pass (program + scene-sized RGBA8 output target). */
+    GLuint ssr_program;
+    GLuint ssr_tex;
+    GLuint ssr_fbo;
+    int32_t ssr_width, ssr_height;
+    GLint ssr_uSceneTex, ssr_uDepthTex, ssr_uMotionTex;
+    GLint ssr_uInvResolution, ssr_uParams0, ssr_uCamPos;
+    GLint ssr_uInvViewProjection, ssr_uViewProjection;
 } gl_context_t;
 
 static void query_main_uniforms(gl_context_t *ctx);
@@ -942,8 +963,10 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
 static void query_bloom_taa_uniforms(gl_context_t *ctx);
 static void destroy_bloom_targets(gl_context_t *ctx);
 static void destroy_taa_targets(gl_context_t *ctx);
+static void destroy_ssr_target(gl_context_t *ctx);
 static int ensure_bloom_targets(gl_context_t *ctx, int32_t w, int32_t h);
 static int ensure_taa_targets(gl_context_t *ctx, int32_t w, int32_t h);
+static int ensure_ssr_target(gl_context_t *ctx, int32_t w, int32_t h);
 static GLuint gl_encode_bloom_chain(gl_context_t *ctx,
                                     int32_t width,
                                     int32_t height,
@@ -1257,6 +1280,7 @@ static int load_gl(void) {
     LOADP(BindFramebuffer);
     LOADP(CheckFramebufferStatus);
     LOADP(FramebufferTexture2D);
+    LOADP(BlitFramebuffer);
     LOADP(GenRenderbuffers);
     LOADP(DeleteRenderbuffers);
     LOADP(BindRenderbuffer);
@@ -1646,6 +1670,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .present = gl_present,
     .readback_rgba = gl_readback_rgba,
     .present_postfx = gl_present_postfx,
+    .resolve_opaque_targets = gl_resolve_opaque_targets,
     .apply_postfx = gl_apply_postfx,
     .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,

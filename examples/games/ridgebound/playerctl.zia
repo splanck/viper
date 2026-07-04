@@ -27,6 +27,8 @@ class RidgeboundPlayer {
     hide Float pz;
     hide Float stepPhase;
     hide Float stamina;
+    hide Float regenScale;
+    hide Boolean sprintingNow;
 
     expose func spawn(world: World3D, land: Terrain3D) {
         var sx = terrain.terrainWorldMaxX() * 0.50;
@@ -53,6 +55,8 @@ class RidgeboundPlayer {
         pz = sz;
         stepPhase = 0.0;
         stamina = 1.0;
+        regenScale = 1.0;
+        sprintingNow = false;
     }
 
     expose func respawn(land: Terrain3D) {
@@ -66,6 +70,8 @@ class RidgeboundPlayer {
         pz = sz;
         stepPhase = 0.0;
         stamina = 1.0;
+        regenScale = 1.0;
+        sprintingNow = false;
     }
 
     // Drive the character (camera-relative move + gravity + jump), then mirror
@@ -118,17 +124,27 @@ class RidgeboundPlayer {
             if (sprinting && moved > 0.001) { effectsObj.burstSprintDust(px, py, pz); }
         }
 
-        if (sprinting && moved > 0.001) {
+        sprintingNow = sprinting && moved > 0.001;
+        if (sprintingNow) {
             stamina = stamina - dt / config.STAMINA_DRAIN_SEC;
             if (stamina < 0.0) { stamina = 0.0; }
         } else {
-            stamina = stamina + dt / config.STAMINA_REGEN_SEC;
+            // Regen scaled by warmth (survival): cold slows recovery, a campfire
+            // restores it. regenScale defaults to 1.0 until survival sets it.
+            stamina = stamina + (dt / config.STAMINA_REGEN_SEC) * regenScale;
             if (stamina > 1.0) { stamina = 1.0; }
         }
     }
 
+    // Survival hook: the warmth-driven stamina-regen multiplier (1.0 = normal).
+    expose func setRegenScale(scale: Float) {
+        regenScale = scale;
+        if (regenScale < 0.0) { regenScale = 0.0; }
+    }
+
     expose func isGrounded() -> Boolean { return controller.Grounded(); }
     expose func getStamina() -> Float { return stamina; }
+    expose func isSprinting() -> Boolean { return sprintingNow; }
 
     expose func getX() -> Float { return px; }
     expose func getY() -> Float { return py; }

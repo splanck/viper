@@ -71,6 +71,7 @@ typedef enum {
     POSTFX_DOF,
     POSTFX_MOTION_BLUR,
     POSTFX_TAA, /* appended: value mirrors VGFX3D_POSTFX_EFFECT_TAA */
+    POSTFX_SSR, /* Plan 10: value mirrors VGFX3D_POSTFX_EFFECT_SSR */
 } postfx_type_t;
 
 typedef struct {
@@ -125,6 +126,12 @@ typedef struct {
         struct {
             float blend;
         } taa;
+
+        struct {
+            float intensity;
+            float max_roughness;
+            int32_t steps;
+        } ssr;
     } p;
 } postfx_entry_t;
 
@@ -506,6 +513,12 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
             snapshot.taa_enabled = 1;
             snapshot.taa_blend = e->p.taa.blend;
             break;
+        case POSTFX_SSR:
+            snapshot.ssr_enabled = 1;
+            snapshot.ssr_intensity = e->p.ssr.intensity;
+            snapshot.ssr_max_roughness = e->p.ssr.max_roughness;
+            snapshot.ssr_steps = e->p.ssr.steps;
+            break;
         default:
             return 0;
     }
@@ -534,7 +547,7 @@ int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
         if (!e->enabled)
             continue;
         if (e->type == POSTFX_SSAO || e->type == POSTFX_DOF || e->type == POSTFX_MOTION_BLUR ||
-            e->type == POSTFX_TAA)
+            e->type == POSTFX_TAA || e->type == POSTFX_SSR)
             return 1;
     }
     return 0;
@@ -961,8 +974,7 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx, int hdr_active) {
         return 0;
     for (int32_t i = 0; i < effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
-        if (e->enabled && e->type == POSTFX_TONEMAP &&
-            (e->p.tonemap.mode != 0 || hdr_active))
+        if (e->enabled && e->type == POSTFX_TONEMAP && (e->p.tonemap.mode != 0 || hdr_active))
             return 1;
     }
     return 0;
@@ -1021,6 +1033,7 @@ static void postfx_apply_float_effects(
             case POSTFX_DOF:
             case POSTFX_MOTION_BLUR:
             case POSTFX_TAA:
+            case POSTFX_SSR:
                 break;
         }
     }
@@ -1298,7 +1311,7 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
         !postfx3d_canvas_supports_gpu_scene_effects(c)) {
         postfx3d_set_last_error(
             (rt_postfx3d *)postfx,
-            "SSAO, DOF, motion blur, and TAA require GPU window postfx; this canvas "
+            "SSAO, DOF, motion blur, TAA, and SSR require GPU window postfx; this canvas "
             "supports Bloom, Tonemap, FXAA, ColorGrade, and Vignette — chain not attached");
         return;
     }
@@ -1395,6 +1408,7 @@ static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
             rt_postfx3d_add_vignette(fx, 0.96, 0.28);
             if (gpu_scene_effects) {
                 rt_postfx3d_add_ssao(fx, 0.5, 0.65, 16);
+                rt_postfx3d_add_ssr(fx, 0.5, 0.4);
                 rt_postfx3d_add_dof(fx, 10.0, 0.08, 3.0);
                 rt_postfx3d_add_motion_blur(fx, 0.12, 6);
             } else if (canvas) {
@@ -1574,6 +1588,25 @@ void rt_postfx3d_add_taa(void *obj, double blend) {
     e->type = POSTFX_TAA;
     e->enabled = 1;
     e->p.taa.blend = sanitize_range_f32(blend, 0.9f, 0.5f, 0.98f);
+}
+
+/// @brief Append screen-space reflections (Plan 10). Ray-marches the opaque scene in
+/// screen space for materials flagged `SsrEnabled`, compositing hits over the env-map
+/// term with screen-edge fade; misses keep the env-map reflection. GPU window backends
+/// only — the software path rejects it like SSAO/DOF/motion blur/TAA.
+void rt_postfx3d_add_ssr(void *obj, double intensity, double max_roughness) {
+    postfx_entry_t *e;
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
+        return;
+    e = postfx_append_entry(fx);
+    if (!e)
+        return;
+    e->type = POSTFX_SSR;
+    e->enabled = 1;
+    e->p.ssr.intensity = sanitize_range_f32(intensity, 0.5f, 0.0f, 1.0f);
+    e->p.ssr.max_roughness = sanitize_range_f32(max_roughness, 0.4f, 0.0f, 1.0f);
+    e->p.ssr.steps = 24;
 }
 
 /*==========================================================================
@@ -1770,6 +1803,12 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
             case POSTFX_TAA:
                 out->taa_enabled = 1;
                 out->taa_blend = effect.snapshot.taa_blend;
+                break;
+            case POSTFX_SSR:
+                out->ssr_enabled = 1;
+                out->ssr_intensity = effect.snapshot.ssr_intensity;
+                out->ssr_max_roughness = effect.snapshot.ssr_max_roughness;
+                out->ssr_steps = effect.snapshot.ssr_steps;
                 break;
             default:
                 break;

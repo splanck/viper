@@ -165,7 +165,8 @@ void *rt_game3d_effects_add_particles(void *obj, void *particles, double lifetim
     item->type = RT_GAME3D_EFFECT_PARTICLES;
     item->object = particles;
     item->lifetime = (isfinite(lifetime) && lifetime > 0.0)
-                         ? game3d_positive_clamped_or(lifetime, RT_GAME3D_EFFECT_LIFETIME_MAX,
+                         ? game3d_positive_clamped_or(lifetime,
+                                                      RT_GAME3D_EFFECT_LIFETIME_MAX,
                                                       RT_GAME3D_EFFECT_LIFETIME_MAX)
                          : -1.0;
     item->age = 0.0;
@@ -321,6 +322,7 @@ void *rt_game3d_effects3d_explosion(void *world_obj, void *position) {
     rt_particles3d_set_speed(particles, 3.0, 9.0);
     rt_particles3d_set_lifetime(particles, 0.25, 0.9);
     rt_particles3d_set_size(particles, 0.32, 0.04);
+    rt_particles3d_set_softness(particles, 0.32);
     rt_particles3d_set_gravity(particles, 0.0, -2.0, 0.0);
     rt_particles3d_set_color(particles, 0xFFAA22, 0x442211);
     rt_particles3d_set_alpha(particles, 1.0, 0.0);
@@ -352,6 +354,7 @@ void *rt_game3d_effects3d_sparks(void *world_obj, void *position, void *directio
     rt_particles3d_set_speed(particles, 5.0, 13.0);
     rt_particles3d_set_lifetime(particles, 0.15, 0.55);
     rt_particles3d_set_size(particles, 0.08, 0.01);
+    rt_particles3d_set_softness(particles, 0.08);
     rt_particles3d_set_gravity(particles, 0.0, -7.0, 0.0);
     rt_particles3d_set_color(particles, 0xFFE88A, 0xFF6A00);
     rt_particles3d_set_alpha(particles, 1.0, 0.0);
@@ -379,6 +382,7 @@ void *rt_game3d_effects3d_dust(void *world_obj, void *position) {
     rt_particles3d_set_speed(particles, 0.6, 2.5);
     rt_particles3d_set_lifetime(particles, 0.35, 1.2);
     rt_particles3d_set_size(particles, 0.22, 0.7);
+    rt_particles3d_set_softness(particles, 0.22);
     rt_particles3d_set_gravity(particles, 0.0, 0.35, 0.0);
     rt_particles3d_set_color(particles, 0xB7AA92, 0x6D6556);
     rt_particles3d_set_alpha(particles, 0.55, 0.0);
@@ -405,6 +409,7 @@ void *rt_game3d_effects3d_smoke(void *world_obj, void *position) {
     rt_particles3d_set_speed(particles, 0.4, 1.8);
     rt_particles3d_set_lifetime(particles, 0.8, 2.0);
     rt_particles3d_set_size(particles, 0.35, 1.25);
+    rt_particles3d_set_softness(particles, 0.35);
     rt_particles3d_set_gravity(particles, 0.0, 0.55, 0.0);
     rt_particles3d_set_color(particles, 0x5D6168, 0x24282E);
     rt_particles3d_set_alpha(particles, 0.45, 0.0);

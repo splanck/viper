@@ -134,50 +134,83 @@ class BowlingGameScoring extends BowlingGameFlow {
             + "  Roll " + toString(current.getRollInFrame()), config.HUD_COLOR_WHITE, config.MSG_DURATION_SHORT);
     }
 
-    /// @brief Versus-mode handover: switch active player; check for results.
+    /// @brief Hot-seat handover: advance round-robin to the next seat that is
+    ///        still bowling. Skipping finished players keeps the rotation correct
+    ///        when someone completes their 10th frame before the others (the
+    ///        bonus-ball desync case). If everyone else is done the seat holds
+    ///        and the results screen takes over.
     hide func advanceToNextPlayer() {
         if (playerCount <= 1) {
             activePlayer = 0;
             return;
         }
-
-        if (activePlayer == 0) {
-            if (scoreKeeperTwo.isGameOver() == false) {
-                activePlayer = 1;
-            }
-        } else {
-            if (scoreKeeperOne.isGameOver() == false) {
-                activePlayer = 0;
+        for (var step: Integer = 1; step <= playerCount; step = step + 1) {
+            var candidate = (activePlayer + step) % playerCount;
+            if (scoreKeepers.get(candidate).isGameOver() == false) {
+                activePlayer = candidate;
+                return;
             }
         }
     }
 
     /// @brief True when every active player has completed all 10 frames.
     hide func allPlayersFinished() -> Boolean {
-        if (playerCount <= 1) {
-            return scoreKeeperOne.isGameOver();
+        for (var i: Integer = 0; i < playerCount; i = i + 1) {
+            if (scoreKeepers.get(i).isGameOver() == false) {
+                return false;
+            }
         }
-        return scoreKeeperOne.isGameOver() && scoreKeeperTwo.isGameOver();
+        return true;
     }
 
-    /// @brief Compute final results, persist stats, transition to results screen.
+    /// @brief Compute final standings, persist stats, transition to results.
+    /// @details Snapshots each seat's total, ranks the seats best-first, and
+    ///          decides a winner (or tie for first). Best-score stat still tracks
+    ///          Player 1's single-game total only, matching the pre-hot-seat rule.
     hide func openResultsScreen() {
-        var p1 = scoreKeeperOne.getTotalScore();
-        var p2 = scoreKeeperTwo.getTotalScore();
-        var previousBest = menuObj.getBestScore();
-        var resultsToast = "Final score: " + toString(p1);
+        resultsScores = [];
+        for (var i: Integer = 0; i < playerCount; i = i + 1) {
+            resultsScores.add(scoreKeepers.get(i).getTotalScore());
+        }
 
-        menuObj.recordFinishedMatch(p1, currentMode);
-        resultsPlayerOne = p1;
-        resultsPlayerTwo = p2;
-        resultsWinner = -1;
-        resultsNewHigh = p1 > previousBest;
-        if (currentMode == config.MODE_VERSUS) {
-            if (p1 > p2) { resultsWinner = 0; }
-            if (p2 > p1) { resultsWinner = 1; }
-            if (resultsWinner == 0) { resultsToast = "Player 1 wins"; }
-            else if (resultsWinner == 1) { resultsToast = "Player 2 wins"; }
-            else { resultsToast = "Tie game"; }
+        // Selection-sort seat indices into best-first order via a used mask.
+        resultsRanking = [];
+        var used: List[Boolean] = [];
+        for (var i: Integer = 0; i < playerCount; i = i + 1) { used.add(false); }
+        for (var r: Integer = 0; r < playerCount; r = r + 1) {
+            var bestIdx = -1;
+            var bestScore = -1;
+            for (var i: Integer = 0; i < playerCount; i = i + 1) {
+                if (used.get(i) == false && resultsScores.get(i) > bestScore) {
+                    bestScore = resultsScores.get(i);
+                    bestIdx = i;
+                }
+            }
+            used.set(bestIdx, true);
+            resultsRanking.add(bestIdx);
+        }
+
+        var topPlayer = resultsRanking.get(0);
+        var topScore = resultsScores.get(topPlayer);
+        var previousBest = menuObj.getBestScore();
+        var p1Score = scoreKeepers.get(0).getTotalScore();
+
+        menuObj.recordFinishedMatch(p1Score, currentMode);
+        resultsNewHigh = (currentMode == config.MODE_SINGLE) && (p1Score > previousBest);
+
+        // Winner is the top seat unless it ties the runner-up.
+        resultsWinner = topPlayer;
+        if (playerCount > 1 && resultsScores.get(resultsRanking.get(1)) == topScore) {
+            resultsWinner = -1;
+        }
+
+        var resultsToast = "Final score: " + toString(p1Score);
+        if (playerCount > 1) {
+            if (resultsWinner < 0) {
+                resultsToast = "Tie game";
+            } else {
+                resultsToast = getPlayerLabel(resultsWinner) + " wins";
+            }
         } else if (resultsNewHigh) {
             resultsToast = "New high score";
         }
@@ -213,14 +246,12 @@ class BowlingGameScoring extends BowlingGameFlow {
 
     /// @brief ScoreKeeper for the player currently on the lane.
     hide func getActiveScoreKeeper() -> ScoreKeeper {
-        if (activePlayer == 1) { return scoreKeeperTwo; }
-        return scoreKeeperOne;
+        return scoreKeepers.get(activePlayer);
     }
 
-    /// @brief Display label ("P1" / "P2") for an index.
+    /// @brief Display label ("Player N") for a seat index.
     hide func getPlayerLabel(index: Integer) -> String {
-        if (playerCount <= 1) { return "Player"; }
-        if (index == 1) { return "Player 2"; }
-        return "Player 1";
+        if (index < 0 || index >= playerNames.count()) { return "Player"; }
+        return playerNames.get(index);
     }
 }

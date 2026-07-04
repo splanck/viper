@@ -203,6 +203,16 @@ class AppShell {
     expose GUI.VirtualList outputVirtualList;
     expose List outputRenderedItems;
     expose Integer outputRenderedRowCount;
+    expose GUI.VBox searchPanel;
+    expose GUI.TextInput searchQueryInput;
+    expose GUI.TextInput searchKindsInput;
+    expose GUI.TextInput searchIncludeInput;
+    expose GUI.TextInput searchExcludeInput;
+    expose GUI.Checkbox searchCaseCheck;
+    expose GUI.Checkbox searchWholeWordCheck;
+    expose GUI.Checkbox searchRegexCheck;
+    expose GUI.Button searchRunButton;
+    expose GUI.Button searchCancelButton;
     expose GUI.ListBox searchListBox;
     expose GUI.ListBox referencesListBox;
     expose GUI.ListBox debugListBox;
@@ -647,10 +657,41 @@ class AppShell {
         outputListBox.SetSize(0, 100);
         outputVirtualList = GUI.VirtualList.New(0, 18, 100);
 
-        searchListBox = GUI.ListBox.New(editorArea);
+        searchPanel = GUI.VBox.New();
+        searchPanel.SetVisible(false);
+        searchPanel.SetSize(0, 170);
+        editorArea.AddChild(searchPanel);
+        var searchQueryRow = GUI.HBox.New();
+        searchQueryRow.SetSpacing(4.0);
+        searchPanel.AddChild(searchQueryRow);
+        searchQueryInput = GUI.TextInput.New(searchQueryRow);
+        searchQueryInput.SetFlex(1.0);
+        searchQueryInput.SetPlaceholder("Search");
+        searchRunButton = GUI.Button.New(searchQueryRow, "Run");
+        searchCancelButton = GUI.Button.New(searchQueryRow, "Cancel");
+        var searchOptionsRow = GUI.HBox.New();
+        searchOptionsRow.SetSpacing(4.0);
+        searchPanel.AddChild(searchOptionsRow);
+        searchCaseCheck = GUI.Checkbox.New(searchOptionsRow, "Case");
+        searchWholeWordCheck = GUI.Checkbox.New(searchOptionsRow, "Word");
+        searchRegexCheck = GUI.Checkbox.New(searchOptionsRow, "Regex");
+        searchKindsInput = GUI.TextInput.New(searchOptionsRow);
+        searchKindsInput.SetPlaceholder(".zia,.bas,.txt");
+        searchKindsInput.SetFlex(1.0);
+        var searchPathRow = GUI.HBox.New();
+        searchPathRow.SetSpacing(4.0);
+        searchPanel.AddChild(searchPathRow);
+        searchIncludeInput = GUI.TextInput.New(searchPathRow);
+        searchIncludeInput.SetPlaceholder("Include globs");
+        searchIncludeInput.SetFlex(1.0);
+        searchExcludeInput = GUI.TextInput.New(searchPathRow);
+        searchExcludeInput.SetPlaceholder("Exclude globs");
+        searchExcludeInput.SetFlex(1.0);
+
+        searchListBox = GUI.ListBox.New(searchPanel);
         searchListBox.SetMultiSelect(true);
-        searchListBox.SetVisible(false);
-        searchListBox.SetSize(0, 120);
+        searchListBox.SetVisible(true);
+        searchListBox.SetFlex(1.0);
 
         referencesListBox = GUI.ListBox.New(editorArea);
         referencesListBox.SetMultiSelect(true);
@@ -1746,14 +1787,15 @@ class AppShell {
     /// @brief Hide every bottom tool panel surface. Each Show*Panel calls this
     ///        first, then reveals only its own — so adding a panel can never leave
     ///        two overlapping (the bug class the old per-function hide lists risked).
-    hide func HideAllToolPanels() {
-        diagListBox.SetVisible(false);
-        outputPane.SetVisible(false);
-        outputListBox.SetVisible(false);
-        searchListBox.SetVisible(false);
-        referencesListBox.SetVisible(false);
-        debugListBox.SetVisible(false);
-        variablesListBox.SetVisible(false);
+	    hide func HideAllToolPanels() {
+	        diagListBox.SetVisible(false);
+	        outputPane.SetVisible(false);
+	        outputListBox.SetVisible(false);
+	        searchPanel.SetVisible(false);
+	        searchListBox.SetVisible(false);
+	        referencesListBox.SetVisible(false);
+	        debugListBox.SetVisible(false);
+	        variablesListBox.SetVisible(false);
         callStackListBox.SetVisible(false);
         terminalPanel.SetVisible(false);
     }
@@ -1791,16 +1833,18 @@ class AppShell {
 
     expose func ShowSearchPanel() {
         toolTabBar.SetVisible(true);
-        toolTabBar.SetActive(toolSearchTab);
-        activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
-        HideAllToolPanels();
-        searchListBox.SetVisible(true);
-    }
+	        toolTabBar.SetActive(toolSearchTab);
+	        activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
+	        HideAllToolPanels();
+	        searchPanel.SetVisible(true);
+	        searchListBox.SetVisible(true);
+	    }
 
-    expose func HideSearchPanel() {
-        searchListBox.SetVisible(false);
-        ShowFallbackToolPanel();
-    }
+	    expose func HideSearchPanel() {
+	        searchPanel.SetVisible(false);
+	        searchListBox.SetVisible(false);
+	        ShowFallbackToolPanel();
+	    }
 
     expose func ShowReferencesPanel() {
         toolTabBar.SetVisible(true);

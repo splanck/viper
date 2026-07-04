@@ -81,6 +81,7 @@ struct GitignoreCacheEntry {
 GitignoreCacheEntry *g_gitignoreCacheHead = nullptr;
 std::atomic_flag g_gitignoreCacheLock = ATOMIC_FLAG_INIT;
 std::atomic<uint64_t> g_workspaceEditTempCounter{0};
+std::atomic_flag g_fileIndexPageCursorLock = ATOMIC_FLAG_INIT;
 
 /// @brief Scope guard for the process-wide gitignore cache spin lock.
 /// @details The file-index runtime archive is linked into native programs, so
@@ -114,6 +115,25 @@ struct GitignoreCacheLockGuard {
     /// @details Assignment would have the same ownership ambiguity as copying
     ///          and is not meaningful for a scope-bound cache lock.
     GitignoreCacheLockGuard &operator=(const GitignoreCacheLockGuard &) = delete;
+};
+
+/// @brief Scope guard for the private FileIndex.Page cursor.
+/// @details The public paging API stays stateless, but sequential callers should
+///          not pay for a fresh recursive traversal on every page. A single
+///          process-local cursor covers the IDE's current background indexing
+///          pattern while preserving correct fallback for random offsets.
+struct FileIndexPageCursorLockGuard {
+    FileIndexPageCursorLockGuard() {
+        while (g_fileIndexPageCursorLock.test_and_set(std::memory_order_acquire)) {
+        }
+    }
+
+    ~FileIndexPageCursorLockGuard() {
+        g_fileIndexPageCursorLock.clear(std::memory_order_release);
+    }
+
+    FileIndexPageCursorLockGuard(const FileIndexPageCursorLockGuard &) = delete;
+    FileIndexPageCursorLockGuard &operator=(const FileIndexPageCursorLockGuard &) = delete;
 };
 
 std::string toStd(rt_string s) {
@@ -603,6 +623,162 @@ int64_t stablePathId(const std::string &path) {
     return static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
 }
 
+void pushDiagnostic(void *seq,
+                    const std::string &message,
+                    const std::string &file,
+                    int64_t line,
+                    const std::string &code);
+
+struct WorkspaceFileIndexPageCursor {
+    std::string key;
+    fs::path root;
+    std::set<std::string> extensions;
+    std::vector<std::string> extraPatterns;
+    bool includeDirs{false};
+    fs::recursive_directory_iterator it;
+    fs::recursive_directory_iterator end;
+    std::error_code ec;
+    int64_t matched{0};
+    bool done{false};
+    bool truncated{false};
+};
+
+WorkspaceFileIndexPageCursor *g_fileIndexPageCursor = nullptr;
+
+std::set<std::string> parseExtensionSet(const std::string &extensionsCsv) {
+    std::set<std::string> extensions;
+    for (std::string ext : splitList(extensionsCsv)) {
+        if (!ext.empty() && ext[0] != '.')
+            ext.insert(ext.begin(), '.');
+        extensions.insert(lower(ext));
+    }
+    return extensions;
+}
+
+std::string fileIndexPageKey(const fs::path &root,
+                             const std::string &extensionsCsv,
+                             const std::string &excludesCsv,
+                             bool includeDirs) {
+    return normalizeSlashes(root.generic_string()) + "\n" + extensionsCsv + "\n" + excludesCsv +
+           "\n" + (includeDirs ? "1" : "0");
+}
+
+void resetFileIndexPageCursor() {
+    delete g_fileIndexPageCursor;
+    g_fileIndexPageCursor = nullptr;
+}
+
+bool startFileIndexPageCursor(const std::string &key,
+                              const fs::path &root,
+                              const std::string &extensionsCsv,
+                              const std::string &excludesCsv,
+                              bool includeDirs,
+                              void *diagnostics) {
+    resetFileIndexPageCursor();
+    auto *cursor = new (std::nothrow) WorkspaceFileIndexPageCursor();
+    if (!cursor) {
+        pushDiagnostic(diagnostics, "workspace file-index cursor allocation failed", root.string(), 0, "fileindex.cursor");
+        return false;
+    }
+    cursor->key = key;
+    cursor->root = root;
+    cursor->extensions = parseExtensionSet(extensionsCsv);
+    cursor->extraPatterns = splitList(excludesCsv);
+    cursor->includeDirs = includeDirs;
+    cursor->it = fs::recursive_directory_iterator(
+        root, fs::directory_options::skip_permission_denied, cursor->ec);
+    if (cursor->ec) {
+        pushDiagnostic(diagnostics,
+                       "workspace traversal failed: " + cursor->ec.message(),
+                       root.generic_string(),
+                       0,
+                       "fileindex.traverse");
+        delete cursor;
+        return false;
+    }
+    g_fileIndexPageCursor = cursor;
+    return true;
+}
+
+void emitFileIndexEntry(void *entries,
+                        const fs::path &root,
+                        const fs::directory_entry &dirEntry,
+                        const std::string &relativePath,
+                        bool isDir) {
+    void *entry = rt_map_new();
+    std::error_code pathEc;
+    fs::path absPath = fs::absolute(dirEntry.path(), pathEc).lexically_normal();
+    const std::string path = pathEc ? dirEntry.path().generic_string() : absPath.generic_string();
+    mapSetStr(entry, "path", path);
+    mapSetStr(entry, "relativePath", relativePath);
+    mapSetStr(entry, "name", dirEntry.path().filename().generic_string());
+    mapSetStr(entry, "extension", dirEntry.path().extension().generic_string());
+    mapSetStr(entry, "kind", isDir ? "directory" : "file");
+    rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
+    rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
+    int64_t fileSize = 0;
+    if (!isDir) {
+        std::error_code sizeEc;
+        uintmax_t rawSize = dirEntry.file_size(sizeEc);
+        if (!sizeEc && rawSize <= static_cast<uintmax_t>(INT64_MAX))
+            fileSize = static_cast<int64_t>(rawSize);
+    }
+    rt_map_set_int(entry, rt_const_cstr("size"), fileSize);
+    rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(dirEntry.path()));
+    seqPushOwned(entries, entry);
+    (void)root;
+}
+
+int64_t scanFileIndexPageCursor(void *entries, int64_t offset, int64_t limit) {
+    WorkspaceFileIndexPageCursor *cursor = g_fileIndexPageCursor;
+    if (!cursor || cursor->done)
+        return 0;
+
+    int64_t emitted = 0;
+    for (; !cursor->ec && cursor->it != cursor->end; cursor->it.increment(cursor->ec)) {
+        std::error_code relEc;
+        const fs::directory_entry &dirEntry = *cursor->it;
+        std::string rel =
+            normalizeSlashes(fs::relative(dirEntry.path(), cursor->root, relEc).generic_string());
+        if (relEc || rel.empty() || rel == ".")
+            continue;
+
+        bool isDir = dirEntry.is_directory(cursor->ec);
+        const auto gitignorePatterns = gitignorePatternsForPath(cursor->root, rel);
+        if (shouldIgnorePathWithPatterns(rel, isDir, cursor->extraPatterns, gitignorePatterns)) {
+            if (isDir)
+                cursor->it.disable_recursion_pending();
+            continue;
+        }
+        if (isDir && !cursor->includeDirs)
+            continue;
+        if (!isDir && !cursor->extensions.empty()) {
+            std::string ext = lower(dirEntry.path().extension().generic_string());
+            if (!cursor->extensions.count(ext))
+                continue;
+        }
+        if (cursor->matched >= kWorkspaceFileIndexMaxEntries) {
+            cursor->truncated = true;
+            cursor->done = true;
+            break;
+        }
+
+        if (cursor->matched >= offset && emitted < limit) {
+            emitFileIndexEntry(entries, cursor->root, dirEntry, rel, isDir);
+            emitted++;
+        }
+        cursor->matched++;
+        if (emitted >= limit) {
+            cursor->it.increment(cursor->ec);
+            cursor->done = cursor->ec || cursor->it == cursor->end;
+            return emitted;
+        }
+    }
+
+    cursor->done = true;
+    return emitted;
+}
+
 void *makeDiagnostic(const std::string &message,
                      const std::string &file = {},
                      int64_t line = 0,
@@ -954,9 +1130,10 @@ extern "C" {
 /// @details This is the allocation-bounded companion to
 ///          `rt_workspace_file_index_enumerate`. It walks the same ordered
 ///          recursive traversal, applies the same ignore and extension filters,
-///          skips entries before the logical @p offset, and emits at most
-///          @p limit entry maps. Callers continue from `nextOffset` until
-///          `done` is true.
+///          and emits at most @p limit entry maps. Sequential calls that pass the
+///          returned `nextOffset` continue through a private runtime cursor so
+///          later pages do not rescan the whole prefix. Random offsets restart
+///          traversal and skip to the requested logical match.
 /// @param root_s Runtime string naming the root directory.
 /// @param extensions_csv Comma-separated extension allow-list.
 /// @param excludes_csv Comma-separated additional ignore patterns.
@@ -1018,76 +1195,34 @@ void *rt_workspace_file_index_page(rt_string root_s,
         }
         mapSetStr(result, "root", root.generic_string());
 
-        std::set<std::string> extensions;
-        for (std::string ext : splitList(toStd(extensions_csv))) {
-            if (!ext.empty() && ext[0] != '.')
-                ext.insert(ext.begin(), '.');
-            extensions.insert(lower(ext));
-        }
-        const auto extraPatterns = splitList(toStd(excludes_csv));
-
-        fs::recursive_directory_iterator it(
-            root, fs::directory_options::skip_permission_denied, ec);
-        fs::recursive_directory_iterator end;
-        int64_t matched = 0;
+        const std::string extensionsCsv = toStd(extensions_csv);
+        const std::string excludesCsv = toStd(excludes_csv);
+        const std::string key = fileIndexPageKey(root, extensionsCsv, excludesCsv, include_dirs != 0);
         int64_t emitted = 0;
         bool done = true;
         bool truncated = false;
-        for (; !ec && it != end; it.increment(ec)) {
-            std::error_code relEc;
-            std::string rel =
-                normalizeSlashes(fs::relative(it->path(), root, relEc).generic_string());
-            if (relEc || rel.empty() || rel == ".")
-                continue;
-            bool isDir = it->is_directory(ec);
-            const auto gitignorePatterns = gitignorePatternsForPath(root, rel);
-            if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
-                if (isDir)
-                    it.disable_recursion_pending();
-                continue;
-            }
-            if (isDir && !include_dirs)
-                continue;
-            if (!isDir && !extensions.empty()) {
-                std::string ext = lower(it->path().extension().generic_string());
-                if (!extensions.count(ext))
-                    continue;
-            }
-            if (matched >= kWorkspaceFileIndexMaxEntries) {
-                truncated = true;
-                break;
-            }
-
-            if (matched >= offset && emitted < limit) {
-                void *entry = rt_map_new();
-                std::error_code pathEc;
-                fs::path absPath = fs::absolute(it->path(), pathEc).lexically_normal();
-                const std::string path =
-                    pathEc ? it->path().generic_string() : absPath.generic_string();
-                mapSetStr(entry, "path", path);
-                mapSetStr(entry, "relativePath", rel);
-                mapSetStr(entry, "name", it->path().filename().generic_string());
-                mapSetStr(entry, "extension", it->path().extension().generic_string());
-                mapSetStr(entry, "kind", isDir ? "directory" : "file");
-                rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
-                rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
-                int64_t file_size = 0;
-                if (!isDir) {
-                    std::error_code sizeEc;
-                    uintmax_t raw_size = it->file_size(sizeEc);
-                    if (!sizeEc && raw_size <= static_cast<uintmax_t>(INT64_MAX))
-                        file_size = static_cast<int64_t>(raw_size);
+        int64_t matched = offset;
+        {
+            FileIndexPageCursorLockGuard cursorLock;
+            if (!g_fileIndexPageCursor || g_fileIndexPageCursor->key != key ||
+                g_fileIndexPageCursor->matched != offset || g_fileIndexPageCursor->done) {
+                if (!startFileIndexPageCursor(
+                        key, root, extensionsCsv, excludesCsv, include_dirs != 0, diagnostics)) {
+                    rt_map_set_bool(result, rt_const_cstr("valid"), 0);
+                    releaseObject(entries);
+                    releaseObject(diagnostics);
+                    return result;
                 }
-                rt_map_set_int(entry, rt_const_cstr("size"), file_size);
-                rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(it->path()));
-                seqPushOwned(entries, entry);
-                emitted++;
             }
-            matched++;
-            if (emitted >= limit) {
-                done = false;
-                break;
+            emitted = scanFileIndexPageCursor(entries, offset, limit);
+            if (g_fileIndexPageCursor) {
+                matched = g_fileIndexPageCursor->matched;
+                done = g_fileIndexPageCursor->done;
+                truncated = g_fileIndexPageCursor->truncated;
+                ec = g_fileIndexPageCursor->ec;
             }
+            if (done)
+                resetFileIndexPageCursor();
         }
 
         if (ec) {

@@ -9,11 +9,13 @@ bind "../editor/project_index";
 bind "../services/locations";
 bind "../services/workspace_edits";
 bind "../services/text_utils";
+bind "../services/workspace_file_index";
 bind "../commands/file_commands";
 bind "../commands/comment_commands";
 bind "../commands/diagnostic_edit_commands";
 bind "../commands/editor_document_edit";
 bind "../commands/source_transform_commands";
+bind "../basic/semantic_scan";
 bind "../zia/bind_utils";
 bind "../zia/formatters";
 bind "../zia/identifier_utils";
@@ -160,6 +162,10 @@ func handleGoToDefinition(shell: app_shell.AppShell,
         return;
     }
     var activeDoc = doc!;
+    if activeDoc.language == "basic" {
+        handleBasicGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore, activeDoc);
+        return;
+    }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Go to definition is unavailable for this file");
         return;
@@ -200,6 +206,10 @@ func handleFindReferences(shell: app_shell.AppShell,
         return;
     }
     var activeDoc = doc!;
+    if activeDoc.language == "basic" {
+        handleBasicFindReferences(shell, docMgr, engine, indexer, locStore, activeDoc);
+        return;
+    }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Find references is unavailable for this file");
         return;
@@ -260,6 +270,10 @@ func handleIncomingCalls(shell: app_shell.AppShell,
         return;
     }
     var activeDoc = doc!;
+    if activeDoc.language == "basic" {
+        handleBasicIncomingCalls(shell, docMgr, engine, indexer, locStore, activeDoc);
+        return;
+    }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Incoming calls is unavailable for this file");
         return;
@@ -337,6 +351,10 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
         return;
     }
     var activeDoc = doc!;
+    if activeDoc.language == "basic" {
+        handleBasicOutgoingCalls(shell, docMgr, engine, indexer, locStore, activeDoc);
+        return;
+    }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Outgoing calls is unavailable for this file");
         return;
@@ -467,6 +485,315 @@ expose func OutgoingZiaCallTokens(source: String,
     return source_scan.OutgoingZiaCallTokens(source, startLine, endLine);
 }
 
+func handleBasicGoToDefinition(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine,
+                               tabs: editor_tabs.EditorTabs,
+                               indexer: project_index.ProjectIndexer,
+                               locStore: locations.LocationStore,
+                               activeDoc: document.Document) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var source = engine.GetTextSnapshot();
+    activeDoc.content = source;
+    var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
+                                           engine.editor.CursorCol);
+    if token == "" {
+        GUI.Toast.Info("No BASIC symbol at cursor");
+        return;
+    }
+    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
+    var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
+                                           engine.editor.CursorLine + 1, token);
+    if def != null and Map.GetBool(def, "found") {
+        var file = Map.GetStr(def, "file");
+        var line = Map.GetInt(def, "line");
+        var col = Map.GetInt(def, "column");
+        var endLine = Map.GetIntOr(def, "endLine", line);
+        var endCol = Map.GetIntOr(def, "endColumn", col + Str.get_Length(token));
+        var id = locStore.Add(file, line, col, endLine, endCol,
+                              locations.KIND_DEFINITION, Map.GetStr(def, "name"));
+        locStore.OpenLocation(shell, docMgr, engine, tabs, id);
+        shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        return;
+    }
+    GUI.Toast.Info("Definition not found");
+}
+
+func handleBasicFindReferences(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine,
+                               indexer: project_index.ProjectIndexer,
+                               locStore: locations.LocationStore,
+                               activeDoc: document.Document) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var source = engine.GetTextSnapshot();
+    activeDoc.content = source;
+    var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
+                                           engine.editor.CursorCol);
+    if token == "" {
+        GUI.Toast.Info("No BASIC symbol at cursor");
+        return;
+    }
+    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
+    var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
+                                           engine.editor.CursorLine + 1, token);
+    if def == null or Map.GetBool(def, "found") == false {
+        GUI.Toast.Info("Definition not found");
+        return;
+    }
+    var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
+    RenderBasicReferences(shell, docMgr, locStore, refs, "references");
+}
+
+func handleBasicIncomingCalls(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              indexer: project_index.ProjectIndexer,
+                              locStore: locations.LocationStore,
+                              activeDoc: document.Document) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var source = engine.GetTextSnapshot();
+    activeDoc.content = source;
+    var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
+                                           engine.editor.CursorCol);
+    if token == "" {
+        GUI.Toast.Info("No BASIC symbol at cursor");
+        return;
+    }
+    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
+    var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
+                                           engine.editor.CursorLine + 1, token);
+    if def == null or Map.GetBool(def, "found") == false {
+        GUI.Toast.Info("Definition not found");
+        return;
+    }
+    var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
+    shell.referencesListBox.Clear();
+    var i = 0;
+    var count = 0;
+    var lastGroup = "";
+    while i < Seq.get_Count(refs) {
+        var ref = Seq.Get(refs, i);
+        if Map.GetBool(ref, "isDefinition") {
+            i = i + 1;
+            continue;
+        }
+        var file = Map.GetStr(ref, "file");
+        var line = Map.GetInt(ref, "line");
+        var col = Map.GetInt(ref, "column");
+        var caller = semantic_scan.EnclosingBasicProcedureName(SourceForPath(docMgr, file), line);
+        if caller == "" { caller = "<top-level>"; }
+        var group = file + "|" + caller;
+        if group != lastGroup {
+            shell.AddToolGroupHeader(shell.referencesListBox, caller, Path.Name(file));
+            lastGroup = group;
+        }
+        var preview = ReferencePreviewLine(docMgr, file, line);
+        var id = locStore.Add(file, line, col, Map.GetIntOr(ref, "endLine", line),
+                              Map.GetIntOr(ref, "endColumn", col + 1),
+                              locations.KIND_REFERENCE, Map.GetStr(ref, "name"));
+        var item = shell.AddToolLocationRow(shell.referencesListBox,
+                                            "call", "basic",
+                                            "" + line + ":" + col,
+                                            "", preview, "");
+        GUI.ListBox.ItemSetData(item, id);
+        count = count + 1;
+        i = i + 1;
+    }
+    if count == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No incoming calls found");
+        return;
+    }
+    shell.referencesListBox.SetVisible(true);
+    shell.ShowReferencesPanel();
+    shell.SetStatusLeft("Found " + count + " incoming calls");
+}
+
+func handleBasicOutgoingCalls(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              indexer: project_index.ProjectIndexer,
+                              locStore: locations.LocationStore,
+                              activeDoc: document.Document) {
+    file_commands.SaveEditorState(docMgr, engine);
+    var source = engine.GetTextSnapshot();
+    activeDoc.content = source;
+    var cursorLine = engine.editor.CursorLine + 1;
+    var startLine = semantic_scan.EnclosingBasicProcedureStartLine(source, cursorLine);
+    if startLine <= 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No enclosing BASIC procedure found");
+        return;
+    }
+    var endLine = semantic_scan.BasicProcedureEndLine(source, startLine);
+    var callerName = semantic_scan.EnclosingBasicProcedureName(source, cursorLine);
+    if callerName == "" { callerName = "<procedure>"; }
+    var tokens = semantic_scan.OutgoingBasicCallTokens(source, startLine, endLine);
+    shell.referencesListBox.Clear();
+    if tokens == null or Seq.get_Count(tokens) == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No outgoing calls found");
+        return;
+    }
+
+    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
+    var i = 0;
+    var count = 0;
+    var lastTarget = "";
+    while i < Seq.get_Count(tokens) {
+        var tokenMap = Seq.Get(tokens, i);
+        var tokenLine = Map.GetInt(tokenMap, "line");
+        var tokenCol = Map.GetInt(tokenMap, "column");
+        var tokenName = Map.GetStr(tokenMap, "name");
+        var def = semantic_scan.BestDefinition(decls, activeDoc.filePath, tokenLine, tokenName);
+        if def != null and Map.GetBool(def, "found") {
+            var file = Map.GetStr(def, "file");
+            var line = Map.GetInt(def, "line");
+            var col = Map.GetInt(def, "column");
+            var targetName = Map.GetStr(def, "name");
+            var targetGroup = file + "|" + targetName + "|" + line + "|" + col;
+            if targetGroup != lastTarget {
+                shell.AddToolGroupHeader(shell.referencesListBox,
+                                         callerName + " -> " + targetName,
+                                         Path.Name(file));
+                lastTarget = targetGroup;
+            }
+            var preview = ReferencePreviewLine(docMgr, activeDoc.filePath, tokenLine);
+            var id = locStore.Add(file, line, col,
+                                  Map.GetIntOr(def, "endLine", line),
+                                  Map.GetIntOr(def, "endColumn", col + 1),
+                                  locations.KIND_DEFINITION, targetName);
+            var item = shell.AddToolLocationRow(shell.referencesListBox,
+                                                "call", "basic",
+                                                "" + tokenLine + ":" + tokenCol,
+                                                "definition", preview, "");
+            GUI.ListBox.ItemSetData(item, id);
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    if count == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No outgoing calls found");
+        return;
+    }
+    shell.referencesListBox.SetVisible(true);
+    shell.ShowReferencesPanel();
+    shell.SetStatusLeft("Found " + count + " outgoing calls");
+}
+
+func RenderBasicReferences(shell: app_shell.AppShell,
+                           docMgr: document_manager.DocumentManager,
+                           locStore: locations.LocationStore,
+                           refs: Any,
+                           label: String) {
+    shell.referencesListBox.Clear();
+    if refs == null or Seq.get_Count(refs) == 0 {
+        shell.HideReferencesPanel();
+        GUI.Toast.Info("No " + label + " found");
+        return;
+    }
+    var i = 0;
+    var lastFile = "";
+    while i < Seq.get_Count(refs) {
+        var ref = Seq.Get(refs, i);
+        var file = Map.GetStr(ref, "file");
+        var line = Map.GetInt(ref, "line");
+        var col = Map.GetInt(ref, "column");
+        var endLine = Map.GetIntOr(ref, "endLine", line);
+        var endCol = Map.GetIntOr(ref, "endColumn", col + 1);
+        var marker = "";
+        if Map.GetBool(ref, "isDefinition") { marker = "definition"; }
+        if file != lastFile {
+            shell.AddToolGroupHeader(shell.referencesListBox, Path.Name(file), file);
+            lastFile = file;
+        }
+        var preview = ReferencePreviewLine(docMgr, file, line);
+        var id = locStore.Add(file, line, col, endLine, endCol,
+                              locations.KIND_REFERENCE, Map.GetStr(ref, "name"));
+        var item = shell.AddToolLocationRow(shell.referencesListBox,
+                                            "ref", "basic",
+                                            "" + line + ":" + col,
+                                            marker, preview, "");
+        GUI.ListBox.ItemSetData(item, id);
+        i = i + 1;
+    }
+    shell.referencesListBox.SetVisible(true);
+    shell.ShowReferencesPanel();
+    shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " " + label);
+}
+
+func BasicWorkspaceDeclarations(docMgr: document_manager.DocumentManager,
+                                indexer: project_index.ProjectIndexer,
+                                activeDoc: document.Document) -> Any {
+    var decls = Seq.New();
+    if activeDoc == null { return decls; }
+    var files = BasicWorkspaceFiles(docMgr, indexer, activeDoc);
+    var i = 0;
+    while i < files.count() {
+        var filePath = Obj.ToString(files.get(i));
+        semantic_scan.AddDeclarations(decls, filePath, SourceForPath(docMgr, filePath));
+        i = i + 1;
+    }
+    if activeDoc.filePath == "" {
+        semantic_scan.AddDeclarations(decls, "", activeDoc.content);
+    }
+    return decls;
+}
+
+func BasicWorkspaceReferences(docMgr: document_manager.DocumentManager,
+                              indexer: project_index.ProjectIndexer,
+                              activeDoc: document.Document,
+                              def: Any) -> Any {
+    var refs = Seq.New();
+    if activeDoc == null or def == null { return refs; }
+    var files = BasicWorkspaceFiles(docMgr, indexer, activeDoc);
+    var i = 0;
+    while i < files.count() {
+        var filePath = Obj.ToString(files.get(i));
+        semantic_scan.AddReferencesForFile(refs, filePath,
+                                           SourceForPath(docMgr, filePath), def);
+        i = i + 1;
+    }
+    if activeDoc.filePath == "" {
+        semantic_scan.AddReferencesForFile(refs, "", activeDoc.content, def);
+    }
+    return refs;
+}
+
+func BasicWorkspaceFiles(docMgr: document_manager.DocumentManager,
+                         indexer: project_index.ProjectIndexer,
+                         activeDoc: document.Document) -> List {
+    var files = new List();
+    var root = "";
+    if indexer != null { root = indexer.rootPath; }
+    if root == "" and activeDoc != null and activeDoc.filePath != "" {
+        root = Path.Dir(activeDoc.filePath);
+    }
+    if root != "" {
+        workspace_file_index.AddEnumeratedFiles(files, root, ".bas,.vb", "");
+    }
+    if docMgr != null {
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.documents.get(i);
+            if doc.language == "basic" and doc.filePath != "" {
+                if workspace_file_index.ListContains(files, doc.filePath) == false {
+                    files.Push(doc.filePath);
+                }
+            }
+            i = i + 1;
+        }
+    }
+    if activeDoc != null and activeDoc.filePath != "" {
+        if workspace_file_index.ListContains(files, activeDoc.filePath) == false {
+            files.Push(activeDoc.filePath);
+        }
+    }
+    return files;
+}
+
 func SkipWhitespace(line: String,
                     pos: Integer) -> Integer {
     return source_scan.SkipWhitespace(line, pos);
@@ -484,6 +811,10 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         return;
     }
     var activeDoc = doc!;
+    if activeDoc.language == "basic" {
+        handleBasicRenameSymbol(shell, docMgr, engine, tabs, indexer, activeDoc);
+        return;
+    }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Rename is unavailable for this file");
         return;
@@ -521,6 +852,58 @@ func handleRenameSymbol(shell: app_shell.AppShell,
     }
     ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
     indexer.SyncActiveNow(docMgr, engine);
+    shell.SetStatusLeft("Renamed to " + newName);
+    GUI.Toast.Success("Rename complete");
+}
+
+func handleBasicRenameSymbol(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             indexer: project_index.ProjectIndexer,
+                             activeDoc: document.Document) {
+    if activeDoc.filePath == "" {
+        GUI.Toast.Info("Save the BASIC file before renaming across the workspace");
+        return;
+    }
+    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+    if newName == "" { return; }
+    if semantic_scan.IsValidBasicIdentifier(newName) == false {
+        GUI.Toast.Warning("Invalid BASIC identifier");
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    var source = engine.GetTextSnapshot();
+    activeDoc.content = source;
+    var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
+                                           engine.editor.CursorCol);
+    if token == "" {
+        GUI.Toast.Info("No BASIC symbol at cursor");
+        return;
+    }
+    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
+    var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
+                                           engine.editor.CursorLine + 1, token);
+    if def == null or Map.GetBool(def, "found") == false {
+        GUI.Toast.Warning("Rename failed: symbol not found");
+        return;
+    }
+    var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
+    if refs == null or Seq.get_Count(refs) == 0 {
+        GUI.Toast.Warning("Rename failed: no references found");
+        return;
+    }
+    var edits = semantic_scan.RenameEditsFromReferences(refs, newName);
+    var preview = workspace_edits.PreviewRenameEdits(edits, 20);
+    if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
+        return;
+    }
+    var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    if result.success == false {
+        GUI.Toast.Error(result.message);
+        return;
+    }
+    ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
 }

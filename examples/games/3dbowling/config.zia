@@ -57,6 +57,9 @@ var STATE_CELEBRATING: Integer = 6;
 var MODE_SINGLE: Integer = 0;
 var MODE_VERSUS: Integer = 1;
 
+// Hot-seat player count bounds (1 = single game, 2-4 = versus).
+var MAX_PLAYERS: Integer = 4;
+
 var QUALITY_PERFORMANCE: Integer = 0;
 var QUALITY_CINEMATIC: Integer = 1;
 
@@ -244,6 +247,15 @@ var BALL_SIDE_SPEED_MAX: Float = 0.28;
 // Z just short of the head pin where we sample the ball's entry angle for
 // the shot-feedback HUD readout (teaches pocket-angle cause/effect).
 var ENTRY_CAPTURE_Z: Float = PIN_Z_OFFSET - 0.6;
+// Predicted-curve aim guide: a read-only forward projection of the hook model
+// (ball weight + spin + oil pattern), never touches physics. SCALE maps the
+// accumulated hook-force shape to lateral world-X displacement.
+var HOOK_GUIDE_SEGMENTS: Integer = 22;
+var HOOK_GUIDE_SCALE: Float = 0.0135;
+// Ball trail: fading ground streak behind a rolling ball (visual only).
+var TRAIL_MAX: Integer = 40;
+var TRAIL_MIN_SPEED: Float = 0.6;
+var TRAIL_FADE: Float = 2.4;
 var BALL_ROLL_MIN_SPEED: Float = 3.28;
 var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
 var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;
@@ -389,6 +401,22 @@ var LIGHT_FIXTURE_B: Float = 0.60;
 var CLEAR_R: Float = 0.045;
 var CLEAR_G: Float = 0.065;
 var CLEAR_B: Float = 0.085;
+
+// Shadows + PostFX per quality tier (Plan 06/10 features). Cinematic pushes a
+// 2048 cascaded shadow map with Poisson PCF, screen-space reflections on the
+// glossy lane, and TAA (bowling's camera is slow, so TAA doesn't ghost);
+// Performance drops to a 1024 map, cheaper PCF, and FXAA.
+var SHADOW_MAP_CINEMATIC: Integer = 2048;
+var SHADOW_MAP_PERFORMANCE: Integer = 1024;
+var SHADOW_CASCADES: Integer = 3;
+var SHADOW_QUALITY_CINEMATIC: Integer = 2;
+var SHADOW_QUALITY_PERFORMANCE: Integer = 1;
+var SHADOW_STRENGTH_CINEMATIC: Float = 0.86;
+var SHADOW_STRENGTH_PERFORMANCE: Float = 0.72;
+var SSR_INTENSITY: Float = 0.42;
+var SSR_ROUGHNESS_CUTOFF: Float = 0.35;
+var TAA_BLEND: Float = 0.88;
+var PARTICLE_SOFTNESS: Float = 1.4;
 
 // =========================================================================
 // HUD / Menus

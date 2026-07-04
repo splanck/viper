@@ -621,6 +621,11 @@ viper::analysis::RangeMap globalRangesBeforeInstruction(const VerifyCtx &ctx) {
         if (&instr == &ctx.instr)
             break;
         viper::analysis::applyRangeTransfer(instr, ranges);
+        // Fill the gap the peephole srem-lowering leaves (see
+        // matchPow2ModuloRange), so idiom-derived bounds flow to later uses.
+        if (instr.result && ranges.find(*instr.result) == ranges.end())
+            if (auto idiom = viper::analysis::matchPow2ModuloRange(ctx.block, instr, ranges))
+                ranges[*instr.result] = *idiom;
     }
     return ranges;
 }
@@ -650,7 +655,10 @@ bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
     // Local block facts were not enough; retry with the whole-function
     // value-range fixpoint (the prover CheckOpt's demotions rely on).
     viper::analysis::RangeMap globalRanges = globalRangesBeforeInstruction(ctx);
-    return viper::analysis::applyRangeTransfer(ctx.instr, globalRanges).has_value();
+    if (viper::analysis::applyRangeTransfer(ctx.instr, globalRanges).has_value())
+        return true;
+    // The checked op may itself be the modulo idiom's inner subtract.
+    return viper::analysis::matchPow2ModuloRange(ctx.block, ctx.instr, globalRanges).has_value();
 }
 
 const Instr *findLocalDefBefore(const BasicBlock &block, const Instr &limit, unsigned id) {

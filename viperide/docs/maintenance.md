@@ -225,21 +225,23 @@ been implemented and tested.
 
 ## Changing Source Control
 
-Current Source Control is intentionally small and synchronous. When modifying
-it:
+Current Source Control is intentionally small and async. When modifying it:
 
 1. Keep Git command construction in `scm/scm_git.zia`.
 2. Keep view state in `scm/scm_view.zia`.
-3. Prefer argument vectors and `git -C <repo>` over shell strings.
-4. Be explicit about blocking behavior.
-5. Treat path parsing carefully. Porcelain v1 is not enough for every path.
-6. Capture and display errors when possible.
+3. Prefer argument vectors and repository-root working directories over shell
+   strings.
+4. Start `GitJob` objects from UI code and pump them from the view; do not block
+   the frame loop for network or large-diff operations.
+5. Treat path parsing carefully. Use porcelain v2 status and add probes for
+   spaces, renames, staged/unstaged combinations, and conflicts.
+6. Capture and display stderr when possible.
 7. Add tests in `scm_probe.zia`.
-8. Update docs if behavior becomes async or more complete.
+8. Update docs when behavior becomes more complete.
 
-If adding serious Git workflows, consider moving from `Viper.System.Exec` to
-`Viper.System.Process` so stdout, stderr, exit code, cancellation, and progress
-can be handled without blocking the UI.
+If adding serious Git workflows, add progress, cancellation, conflict handling,
+and credential/error recovery deliberately instead of layering more buttons on
+the current one-job view.
 
 ## Changing Settings
 
@@ -387,8 +389,8 @@ When summarizing ViperIDE changes, be specific:
 - Say "Git Source Control view" rather than "complete SCM support".
 - Say "scene files open as text" unless a visual scene editor is actually
   implemented.
-- Say "debug adapter supports stepping/breakpoints/evaluate" and separately
-  list missing watch/variable-tree UX.
+- Say "debug adapter supports stepping/breakpoints/evaluate/watches" and
+  separately list missing variable-tree and watch-management UX.
 
 This avoids repeating the documentation drift that made the old plan files
 misleading.

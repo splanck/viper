@@ -103,6 +103,7 @@ struct ParticlesView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
+    double softness; /* Plan 10: soft-particle fade distance */
     void *texture;
     int32_t emitter_shape;
     double emitter_size[3];

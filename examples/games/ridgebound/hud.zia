@@ -11,7 +11,9 @@ bind "./worldsim";
 
 class RidgeboundHud {
     expose func draw(canvas: Canvas3D, map: RidgeboundMinimap, sim: RidgeboundWorldSim,
-                     playerX: Float, playerZ: Float, stamina: Float, helpOn: Boolean, debugOn: Boolean) {
+                     playerX: Float, playerZ: Float, stamina: Float,
+                     warmth: Float, foraged: Integer, spotted: Integer, critterTotal: Integer,
+                     helpOn: Boolean, debugOn: Boolean) {
         var w = canvas.Width;
         var h = canvas.Height;
         var total = sim.getBeaconCount();
@@ -71,12 +73,26 @@ class RidgeboundHud {
         if (stamina < 0.3) { scol = config.HUD_WARN; }
         Canvas3D.DrawRect2D(canvas, 100, sbY - 1, Convert.NumToInt(150.0 * stamina), 10, scol);
 
+        // Warmth bar (survival): warm amber when toasty, danger red when freezing.
+        var wY = sbY + 16;
+        Canvas3D.DrawText2D(canvas, 24, wY, "WARMTH", config.HUD_MUTED);
+        Canvas3D.DrawRect2D(canvas, 100, wY - 1, 150, 10, config.HUD_CARD);
+        var wcol = config.HUD_WARN;
+        if (warmth < 0.3) { wcol = config.HUD_DANGER; }
+        if (warmth > 0.7) { wcol = config.HUD_GOOD; }
+        Canvas3D.DrawRect2D(canvas, 100, wY - 1, Convert.NumToInt(150.0 * warmth), 10, wcol);
+
+        // Forage + wildlife-spotting tally.
+        Canvas3D.DrawText2D(canvas, 24, wY + 18,
+            "Foraged " + toString(foraged) + "   Spotted " + toString(spotted) + " / " + toString(critterTotal),
+            config.HUD_ACCENT);
+
         var od = sim.nearestDormantBeaconDist(playerX, playerZ);
         if (od >= 0.0) {
-            Canvas3D.DrawText2D(canvas, 24, sbY + 18,
+            Canvas3D.DrawText2D(canvas, 24, wY + 38,
                 "Nearest beacon: " + toString(Convert.NumToInt(od)) + "m", config.HUD_MUTED);
         } else {
-            Canvas3D.DrawText2D(canvas, 24, sbY + 18, "All linked - return home", config.HUD_GOOD);
+            Canvas3D.DrawText2D(canvas, 24, wY + 38, "All linked - return home", config.HUD_GOOD);
         }
 
         if (helpOn) { drawControlsOverlay(canvas, w, h); }

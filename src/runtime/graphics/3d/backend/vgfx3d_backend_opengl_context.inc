@@ -16,6 +16,7 @@ typedef struct gl_shader_set_t {
     GLuint bloom_down_fs;
     GLuint bloom_up_fs;
     GLuint taa_fs;
+    GLuint ssr_fs;
 } gl_shader_set_t;
 
 /// @brief Pick an FBConfig compatible with the target X window's visual/depth.
@@ -160,9 +161,10 @@ static int gl_compile_context_shaders(gl_shader_set_t *shaders) {
     shaders->bloom_down_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src);
     shaders->bloom_up_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src);
     shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src);
+    shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src);
     return shaders->vs && shaders->fs && shaders->shadow_vs && shaders->shadow_fs &&
            shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs &&
-           shaders->bloom_down_fs && shaders->bloom_up_fs && shaders->taa_fs;
+           shaders->bloom_down_fs && shaders->bloom_up_fs && shaders->taa_fs && shaders->ssr_fs;
 }
 
 /// @brief Delete all shaders in a temporary context shader bundle.
@@ -202,8 +204,9 @@ static int gl_link_context_programs(gl_context_t *ctx, const gl_shader_set_t *sh
     ctx->bloom_down_program = link_program(shaders->postfx_vs, shaders->bloom_down_fs);
     ctx->bloom_up_program = link_program(shaders->postfx_vs, shaders->bloom_up_fs);
     ctx->taa_program = link_program(shaders->postfx_vs, shaders->taa_fs);
+    ctx->ssr_program = link_program(shaders->postfx_vs, shaders->ssr_fs);
     return ctx->program && ctx->shadow_program && ctx->postfx_program && ctx->skybox_program &&
-           ctx->bloom_down_program && ctx->bloom_up_program && ctx->taa_program;
+           ctx->bloom_down_program && ctx->bloom_up_program && ctx->taa_program && ctx->ssr_program;
 }
 
 /// @brief Delete shader programs created during context setup.
@@ -222,6 +225,8 @@ static void gl_delete_context_programs(gl_context_t *ctx) {
         gl.DeleteProgram(ctx->bloom_up_program);
     if (ctx->taa_program)
         gl.DeleteProgram(ctx->taa_program);
+    if (ctx->ssr_program)
+        gl.DeleteProgram(ctx->ssr_program);
     ctx->program = 0;
     ctx->shadow_program = 0;
     ctx->postfx_program = 0;
@@ -229,6 +234,7 @@ static void gl_delete_context_programs(gl_context_t *ctx) {
     ctx->bloom_down_program = 0;
     ctx->bloom_up_program = 0;
     ctx->taa_program = 0;
+    ctx->ssr_program = 0;
 }
 
 /// @brief Bind default sampler-unit uniforms across main, shadow, skybox and post-FX programs.
@@ -506,6 +512,10 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->cluster_offsets_ubo);
     if (ctx->cluster_indices_ubo)
         gl.DeleteBuffers(1, &ctx->cluster_indices_ubo);
+    if (ctx->opaque_depth_tex)
+        gl.DeleteTextures(1, &ctx->opaque_depth_tex);
+    if (ctx->opaque_depth_fbo)
+        gl.DeleteFramebuffers(1, &ctx->opaque_depth_fbo);
     if (ctx->morph_buffer)
         gl.DeleteBuffers(1, &ctx->morph_buffer);
     if (ctx->instance_vbo)
@@ -756,6 +766,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_postfx_scratch_target(ctx);
     destroy_bloom_targets(ctx);
     destroy_taa_targets(ctx);
+    destroy_ssr_target(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
@@ -794,6 +805,10 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->cluster_offsets_ubo);
     if (ctx->cluster_indices_ubo)
         gl.DeleteBuffers(1, &ctx->cluster_indices_ubo);
+    if (ctx->opaque_depth_tex)
+        gl.DeleteTextures(1, &ctx->opaque_depth_tex);
+    if (ctx->opaque_depth_fbo)
+        gl.DeleteFramebuffers(1, &ctx->opaque_depth_fbo);
     if (ctx->morph_buffer)
         gl.DeleteBuffers(1, &ctx->morph_buffer);
     if (ctx->instance_vbo)
@@ -824,6 +839,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteProgram(ctx->bloom_up_program);
     if (ctx->taa_program)
         gl.DeleteProgram(ctx->taa_program);
+    if (ctx->ssr_program)
+        gl.DeleteProgram(ctx->ssr_program);
     free(ctx->readback_scratch_rgba);
     ctx->readback_scratch_rgba = NULL;
     ctx->readback_scratch_bytes = 0;

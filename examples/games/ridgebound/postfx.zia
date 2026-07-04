@@ -20,6 +20,12 @@ func buildPostFX(canvas: Canvas3D) {
     if (Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
         PostFX3D.AddSSAO(fx, 0.70, 0.90, 16);
     }
+    // Screen-space reflections: the lake (material flagged SsrEnabled, see
+    // water_sky) mirrors the shoreline/trees/sky in screen space, falling back to
+    // its environment cubemap where a ray leaves the screen. GPU window backends only.
+    if (Canvas3D.BackendSupports(canvas, "ssr")) {
+        PostFX3D.AddSSR(fx, 0.55, 0.35);
+    }
     // CPU-safe chain — runs on every backend, software included.
     PostFX3D.AddTonemap(fx, 2, 1.0);
     PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 4);
@@ -27,6 +33,10 @@ func buildPostFX(canvas: Canvas3D) {
         fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
         config.POSTFX_COLORGRADE_SAT);
     PostFX3D.AddVignette(fx, config.POSTFX_VIGNETTE_RADIUS, config.POSTFX_VIGNETTE_SOFT);
+    // FXAA (not TAA): Ridgebound is a fast free-look game, and TAA's temporal
+    // reprojection ghosts the dense foliage under quick camera rotation (the same
+    // reason DOF/motion-blur are omitted above). TAA is showcased on the slower
+    // cinematic bowling camera instead, where it converges cleanly.
     PostFX3D.AddFXAA(fx);
     Canvas3D.SetPostFX(canvas, fx);
 }

@@ -502,6 +502,27 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.sidebarTree);
     projMgr.OpenFolder(root);
+    var panelSearcher = new search_commands.SearchController();
+    panelSearcher.OpenPanel(shell, root, "");
+    shell.searchQueryInput.SetText("needle");
+    shell.searchKindsInput.SetText(".zia");
+    shell.searchIncludeInput.SetText("file1*.zia");
+    shell.searchExcludeInput.SetText("file10.zia");
+    if !shell.searchPanel.IsVisible() or !shell.searchListBox.IsVisible() {
+        fail(shell, "search panel opens docked controls");
+        return;
+    }
+    if panelSearcher.RunPanel(shell, null, docMgr, null) == false {
+        fail(shell, "search panel starts direct search");
+        return;
+    }
+    while panelSearcher.active {
+        panelSearcher.Pump(shell, docMgr, locStore);
+    }
+    if panelSearcher.resultCount != 10 {
+        fail(shell, "search panel input filters");
+        return;
+    }
     docMgr.OpenFile(symbolPath);
     docMgr.GetActive()!.content = "module Symbols;\nfunc betaSymbol() -> Integer { return 2; }\n";
     var symbolCount = search_commands.CollectWorkspaceSymbols(shell, projMgr, docMgr, locStore, "beta");

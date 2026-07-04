@@ -68,6 +68,17 @@ var TERRAIN_LOD_FAR: Float = 260.0;
 var TERRAIN_SKIRT_DEPTH: Float = 6.0;
 
 var SKYBOX_FACE_SIZE: Integer = 256;   // 256 (vs 64) removes visible sky banding
+// Day/night v2: four keyframed skies. DAY/NIGHT keep the full face size; the
+// transient DUSK/DAWN keyframes render at half size (the haze hides banding and
+// they're only on screen briefly) to keep the extra load-time generation cheap.
+var SKY_PHASE_DAY: Integer = 0;
+var SKY_PHASE_DUSK: Integer = 1;
+var SKY_PHASE_NIGHT: Integer = 2;
+var SKY_PHASE_DAWN: Integer = 3;
+var SKY_TWILIGHT_FACE_SIZE: Integer = 128;
+// Sun-elevation thresholds that pick the active sky keyframe.
+var SKY_DAY_ELEV: Float = 0.22;        // above this = full day
+var SKY_NIGHT_ELEV: Float = 0.10;      // below -this = full night; between = dusk/dawn
 // Terrain layer albedo resolution. 128 (vs 64) softens the visible tiling of the
 // procedural grass/rock/dirt layers on close-up ground. Generated once at setup.
 var TERRAIN_TEXTURE_SIZE: Integer = 128;
@@ -75,6 +86,26 @@ var SPLAT_SIZE: Integer = 128;
 
 var MOUNTAIN_RING_FADE: Float = 0.31;
 var MOUNTAIN_CREST_FADE: Float = 0.13;
+// Organic mountain shaping (Phase 1). The range used to be a square edge-distance
+// band, which read as a flat green wall. These break that up:
+//  - WARP_AMP domain-warps the band-shape coords so iso-lines meander.
+//  - EDGE_POW is the superellipse exponent for the border metric (higher = more
+//    square; 4 rounds the corners so the range curves around the valley).
+//  - MASSIF_* modulate peak amplitude so the skyline has tall massifs + low passes.
+//  - FOOTHILL_* add a wide low skirt that smooth-maxes into the rolling interior.
+var MOUNTAIN_WARP_AMP: Float = 0.12;
+var MOUNTAIN_EDGE_POW: Float = 3.2;
+var MOUNTAIN_MASSIF_BASE: Float = 0.32;
+var MOUNTAIN_MASSIF_RANGE: Float = 0.68;
+var MOUNTAIN_FOOTHILL_FADE: Float = 0.18;
+var MOUNTAIN_FOOTHILL_HEIGHT: Float = 0.07;
+var MOUNTAIN_BLEND_K: Float = 0.035;
+// Guard-rim floor: lowered from a flat 0.58 and given stronger ridged/massif
+// variance so the containment ring's base undulates instead of reading as a
+// uniform wall foot. Still tall enough to enclose the world (player bounds sit
+// well below even the saddles).
+var MOUNTAIN_RIM_FLOOR: Float = 0.50;
+var MOUNTAIN_RIM_MASSIF: Float = 0.20;
 var LAKE_CENTER_X: Float = 0.50;
 var LAKE_CENTER_Z: Float = 0.43;
 var LAKE_RADIUS_X: Float = 0.26;
@@ -97,7 +128,7 @@ var INTERACT_SCAN_SEC: Float = 0.9;    // hold-E charge time to link a beacon
 var AMBIENT_R: Float = 0.14;
 var AMBIENT_G: Float = 0.16;
 var AMBIENT_B: Float = 0.20;
-// Fog day-target is matched to the sky horizon colour (see water_sky sampleSkyPixel)
+// Fog day-target is matched to the sky horizon colour (see water_sky sampleSkyForPhase)
 // so distant terrain dissolves into the sky instead of fading to a grey haze band.
 var FOG_R: Float = 0.68;
 var FOG_G: Float = 0.82;
@@ -197,6 +228,22 @@ var DAY_AMBIENT_B: Float = 0.19;
 var NIGHT_AMBIENT_R: Float = 0.06;
 var NIGHT_AMBIENT_G: Float = 0.08;
 var NIGHT_AMBIENT_B: Float = 0.17;
+// Day/night v2: the sun rides a real east->west arc (azimuth sweeps with the
+// cycle) instead of a fixed heading, so shadows track across the valley.
+var SUN_ARC_XZ: Float = 0.80;          // horizontal reach of the sun's arc
+var SUN_ARC_Z: Float = 0.30;           // north/south tilt of the arc plane
+var SUN_DIP_BASE: Float = 0.18;        // downward component near the horizon
+var SUN_DIP_DAY: Float = 0.62;         // extra downward pull toward noon
+var SUN_MIN_ELEV: Float = 0.03;        // cut sun light out just before it grazes the horizon
+// Shadows soften as the sun lowers (long low-angle shadows read as grey, not ink).
+var SHADOW_STRENGTH_NIGHT: Float = 0.35;
+var SHADOW_STRENGTH_DAY: Float = 0.90;
+// Image-based lighting intensity floor/ceiling across the cycle (GPU only).
+var IBL_INTENSITY_NIGHT: Float = 0.18;
+var IBL_INTENSITY_DAY: Float = 0.55;
+// IBL supplies sky-driven ambient, so the flat ambient term is scaled back when
+// IBL is active to avoid double-counting (which over-brightened the foreground).
+var IBL_AMBIENT_SCALE: Float = 0.45;
 
 // --- Particles + decals (recommendation #6) ---------------------------------
 var FIREFLY_COUNT: Integer = 150;
@@ -212,6 +259,19 @@ var WEATHER_RAIN_RATE: Float = 700.0;    // drops/sec at full storm (low altitud
 var WEATHER_SNOW_RATE: Float = 260.0;    // flakes/sec at full storm (on the peaks)
 var WEATHER_PERIOD_SEC: Float = 150.0;   // one clear->storm->clear weather cycle
 var WEATHER_SNOW_ALTITUDE: Float = 16.0; // metres above the waterline that turn rain to snow
+// Weather fronts v2: clouds build ahead of the rain and linger after; the ground
+// darkens/wets during precip and dries over ~a minute. Cloud cover feeds the
+// lighting (overcast dims + greys the scene); wetness drives the ground look.
+var WEATHER_CLOUD_LEAD: Float = 0.16;    // clouds precede precip by this fraction of the cycle
+var WEATHER_WET_RISE: Float = 0.45;      // wetness gained per second while raining
+var WEATHER_WET_DECAY: Float = 0.017;    // wetness lost per second when dry (~60s to dry out)
+var WEATHER_SUN_DIM: Float = 0.62;       // sun/fill reduction at full cloud cover
+var WEATHER_FOG_GREY: Float = 0.55;      // how far fog shifts toward grey under full cloud
+var WEATHER_SOFT_FADE: Float = 1.3;      // soft-particle fade distance (GPU only)
+// Wet ground: the terrain darkens and turns glossier (lower roughness) as it soaks.
+var TERRAIN_DRY_ROUGH: Float = 0.92;
+var TERRAIN_WET_ROUGH: Float = 0.42;
+var TERRAIN_WET_DARKEN: Float = 0.68;    // colour multiplier at full wetness (wet earth is darker)
 
 // --- Raycast scanner + camera feel (recommendation #9) ----------------------
 var SCAN_MAX_DIST: Float = 140.0;
@@ -267,3 +327,22 @@ var NAV_AGENT_HEIGHT: Float = 1.8;     // bake agent height
 var NAV_MAX_SLOPE: Float = 52.0;       // max walkable slope (degrees)
 var NAV_CELL_SIZE: Float = 1.4;        // bake voxel cell size (world units)
 var CRITTER_FLEE_DIST: Float = 16.0;   // how far a fleeing critter paths away
+// Curiosity: when the player is in this band and calm (not sprinting), a critter
+// edges closer instead of fleeing, settling at CRITTER_CURIOUS_KEEP distance.
+var CRITTER_CURIOUS_RADIUS: Float = 20.0;
+var CRITTER_CURIOUS_KEEP: Float = 9.0;
+var CRITTER_SPOT_RADIUS: Float = 14.0; // getting this close logs the critter as "spotted"
+
+// --- Survival: warmth, campfires, forage (recommendation, day/night driven) --
+var CAMPFIRE_LIGHT_SLOT: Integer = 10;  // campfires occupy slots 10..12
+var CAMPFIRE_WARM_RADIUS: Float = 12.0; // within this of a fire, warmth recovers
+var CAMPFIRE_LIGHT_RANGE: Float = 16.0;
+var CAMPFIRE_LIGHT_INTENSITY: Float = 1.8;
+var WARMTH_NIGHT_DRAIN: Float = 0.045;  // warmth/sec lost at night away from fire
+var WARMTH_CLOUD_DRAIN: Float = 0.020;  // extra warmth/sec lost under full overcast
+var WARMTH_FIRE_GAIN: Float = 0.30;     // warmth/sec regained right next to a fire
+var WARMTH_MIN_REGEN: Float = 0.35;     // stamina-regen multiplier when frozen (warmth 0)
+var FORAGE_COUNT: Integer = 7;          // collectible restoratives scattered on the map
+var FORAGE_PICKUP_RADIUS: Float = 2.4;
+var FORAGE_WARMTH: Float = 0.28;        // warmth restored per forage picked up
+var EMBER_COUNT: Integer = 60;          // ember particles at the nearest active fire

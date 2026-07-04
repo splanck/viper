@@ -15,6 +15,7 @@ bind "../services/search_request";
 bind "../services/workspace_file_index";
 bind "../commands/search_prompt";
 bind "../editor/zia_query";
+bind "../basic/semantic_scan";
 
 bind Viper.GUI;
 bind ZiaCompletion = Viper.Zia.Completion;
@@ -24,6 +25,7 @@ bind Path = Viper.IO.Path;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
+bind Map = Viper.Collections.Map;
 bind Convert = Viper.Core.Convert;
 
 // ============================================================================
@@ -69,6 +71,8 @@ class SearchController {
     expose Boolean discovering;
     expose List pendingDirs;
     expose Integer directoriesScanned;
+    expose String panelRoot;
+    expose String panelIgnorePatterns;
 
     expose func init() {
         active = false;
@@ -89,6 +93,8 @@ class SearchController {
         discovering = false;
         pendingDirs = new List();
         directoriesScanned = 0;
+        panelRoot = "";
+        panelIgnorePatterns = "";
     }
 
     expose func Start(shell: app_shell.AppShell,
@@ -104,11 +110,12 @@ class SearchController {
             Cancel(shell);
         }
 
-        var request = search_prompt.PromptRequest(searchTitle, rootPath, "");
-        if request == null { return false; }
-
         file_commands.SaveEditorState(docMgr, engine);
-        return StartDirectRequest(shell, request!);
+        OpenPanel(shell, rootPath, "");
+        if searchTitle != "" {
+            shell.SetStatusLeft(searchTitle + ": " + rootPath);
+        }
+        return true;
     }
 
     expose func StartProject(shell: app_shell.AppShell,
@@ -124,7 +131,12 @@ class SearchController {
             GUI.Toast.Info(projMgr.FileCacheStatusText());
             return false;
         }
-        return StartWithCachedFiles(shell, projMgr, projMgr.RootPath(), searchTitle, docMgr, engine);
+        file_commands.SaveEditorState(docMgr, engine);
+        OpenPanel(shell, projMgr.RootPath(), projMgr.IgnorePatterns());
+        if searchTitle != "" {
+            shell.SetStatusLeft(searchTitle + ": " + projMgr.RootPath());
+        }
+        return true;
     }
 
     expose func StartFolder(shell: app_shell.AppShell,
@@ -141,9 +153,85 @@ class SearchController {
         }
         if projMgr != null and projMgr.IsOpen() and
            projMgr.CachedFileCount() > 0 and IsWithinRoot(folderPath, projMgr.RootPath()) {
-            return StartWithCachedFiles(shell, projMgr, folderPath, searchTitle, docMgr, engine);
+            file_commands.SaveEditorState(docMgr, engine);
+            OpenPanel(shell, folderPath, projMgr.IgnorePatterns());
+            if searchTitle != "" {
+                shell.SetStatusLeft(searchTitle + ": " + folderPath);
+            }
+            return true;
         }
-        return Start(shell, folderPath, searchTitle, docMgr, engine);
+        file_commands.SaveEditorState(docMgr, engine);
+        OpenPanel(shell, folderPath, "");
+        if searchTitle != "" {
+            shell.SetStatusLeft(searchTitle + ": " + folderPath);
+        }
+        return true;
+    }
+
+    expose func OpenPanel(shell: app_shell.AppShell,
+                          rootPath: String,
+                          ignorePatternsText: String) {
+        if shell == null or rootPath == "" { return; }
+        panelRoot = rootPath;
+        panelIgnorePatterns = ignorePatternsText;
+        if shell.searchKindsInput.get_Text() == "" {
+            shell.searchKindsInput.SetText("");
+        }
+        shell.ShowSearchPanel();
+        shell.SetStatusLeft("Search scope: " + rootPath);
+    }
+
+    expose func HandlePanel(shell: app_shell.AppShell,
+                            projMgr: project_manager.ProjectManager,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine) {
+        if shell == null { return; }
+        if shell.searchCancelButton != null and shell.searchCancelButton.WasClicked() {
+            Cancel(shell);
+        }
+        if shell.searchRunButton == null or shell.searchRunButton.WasClicked() == false {
+            return;
+        }
+        RunPanel(shell, projMgr, docMgr, engine);
+    }
+
+    expose func RunPanel(shell: app_shell.AppShell,
+                         projMgr: project_manager.ProjectManager,
+                         docMgr: document_manager.DocumentManager,
+                         engine: editor_engine.EditorEngine) -> Boolean {
+        if shell == null { return false; }
+        var rootPath = panelRoot;
+        if rootPath == "" and projMgr != null and projMgr.IsOpen() {
+            rootPath = projMgr.RootPath();
+            panelIgnorePatterns = projMgr.IgnorePatterns();
+        }
+        if rootPath == "" or Dir.Exists(rootPath) == false {
+            GUI.Toast.Warning("Open a project folder first");
+            return false;
+        }
+        var queryText = Str.Trim(shell.searchQueryInput.get_Text());
+        if queryText == "" {
+            shell.SetStatusLeft("Enter search text");
+            return false;
+        }
+        if active {
+            Cancel(shell);
+        }
+        file_commands.SaveEditorState(docMgr, engine);
+        var request = search_request.Create(rootPath,
+                                            queryText,
+                                            shell.searchKindsInput.get_Text(),
+                                            shell.searchCaseCheck.IsChecked(),
+                                            shell.searchWholeWordCheck.IsChecked(),
+                                            shell.searchRegexCheck.IsChecked(),
+                                            shell.searchIncludeInput.get_Text(),
+                                            shell.searchExcludeInput.get_Text(),
+                                            panelIgnorePatterns);
+        if projMgr != null and projMgr.IsOpen()
+           and projMgr.CachedFileCount() > 0 and IsWithinRoot(rootPath, projMgr.RootPath()) {
+            return StartCachedRequest(shell, projMgr, request);
+        }
+        return StartDirectRequest(shell, request);
     }
 
     func StartWithCachedFiles(shell: app_shell.AppShell,
@@ -653,10 +741,20 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
     while i < projMgr.CachedFileCount() {
         var filePath = projMgr.CachedFileAt(i);
         i = i + 1;
-        if SearchKindMatches(filePath, ".zia") == false { continue; }
+        var language = file_utils.DetectLanguage(filePath);
+        if language != "zia" and language != "basic" { continue; }
 
         var content = contentForPath(docMgr, filePath);
         if content == "" { continue; }
+
+        if language == "basic" {
+            resultCount = resultCount + AddBasicWorkspaceSymbols(shell,
+                                                                 locStore,
+                                                                 filePath,
+                                                                 content,
+                                                                 needle);
+            continue;
+        }
 
         var qsource = zia_query.WrapForQuery(content);
         var lineOff = zia_query.LineOffset(content);
@@ -706,6 +804,47 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
     }
     return resultCount;
+}
+
+func AddBasicWorkspaceSymbols(shell: app_shell.AppShell,
+                              locStore: locations.LocationStore,
+                              filePath: String,
+                              content: String,
+                              needle: String) -> Integer {
+    var decls = semantic_scan.DeclarationsForFile(filePath, content);
+    var count = 0;
+    var addedHeader = false;
+    var i = 0;
+    while i < Seq.get_Count(decls) {
+        var decl = Seq.Get(decls, i);
+        i = i + 1;
+        var kind = Map.GetStr(decl, "kind");
+        if Map.GetBool(decl, "local") { continue; }
+        if kind == "parameter" or kind == "label" { continue; }
+        if semantic_scan.WorkspaceSymbolMatchesDecl(decl, needle) == false { continue; }
+
+        if addedHeader == false {
+            shell.AddToolGroupHeader(shell.searchListBox, Path.Name(filePath), filePath);
+            addedHeader = true;
+        }
+        var name = Map.GetStr(decl, "name");
+        var typeText = Map.GetStr(decl, "returnType");
+        if typeText == "" { typeText = Map.GetStr(decl, "signature"); }
+        var line = Map.GetInt(decl, "line");
+        var detail = "";
+        if typeText != "" { detail = " : " + typeText; }
+        var item = shell.AddToolLocationRow(shell.searchListBox, kind, "symbol",
+                                            "line " + line, typeText,
+                                            name + detail, "");
+        var locId = locStore.Add(filePath, line, Map.GetInt(decl, "column"),
+                                 Map.GetIntOr(decl, "endLine", line),
+                                 Map.GetIntOr(decl, "endColumn",
+                                              Map.GetInt(decl, "column") + Str.get_Length(name)),
+                                 locations.KIND_SYMBOL, name);
+        GUI.ListBox.ItemSetData(item, locId);
+        count = count + 1;
+    }
+    return count;
 }
 
 func WorkspaceSymbolMatches(name: String,

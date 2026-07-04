@@ -503,6 +503,7 @@ void rt_canvas3d_draw_round_frame2d(void *obj,
                                     int64_t color,
                                     double alpha) {
     enum { RRF_SEG = 6 };
+
     int8_t started_temp_frame = 0;
     float rad;
     float half_min;
@@ -541,14 +542,10 @@ void rt_canvas3d_draw_round_frame2d(void *obj,
     }
 
     {
-        const float ccx[4] = {(float)x + rad,
-                              (float)(x + w) - rad,
-                              (float)(x + w) - rad,
-                              (float)x + rad};
-        const float ccy[4] = {(float)y + rad,
-                              (float)y + rad,
-                              (float)(y + h) - rad,
-                              (float)(y + h) - rad};
+        const float ccx[4] = {
+            (float)x + rad, (float)(x + w) - rad, (float)(x + w) - rad, (float)x + rad};
+        const float ccy[4] = {
+            (float)y + rad, (float)y + rad, (float)(y + h) - rad, (float)(y + h) - rad};
         const float start_ang[4] = {3.14159265f, 4.71238898f, 0.0f, 1.57079633f};
         for (int corner = 0; corner < 4; corner++) {
             for (int s = 0; s <= RRF_SEG; s++) {
@@ -839,6 +836,12 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
     if (canvas3d_backend_supports_clustered_lighting(backend))
         caps |= RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING;
+    /* Plan 10: soft particles need the opaque->transparent depth snapshot hook. */
+    if (backend->resolve_opaque_targets)
+        caps |= RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES;
+    /* Plan 10: the SSR post pass rides the GPU postfx pipeline. */
+    if (backend->present_postfx)
+        caps |= RT_CANVAS3D_BACKEND_CAP_SSR;
     if (canvas3d_backend_supports_shadow_csm(backend))
         caps |= RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM;
     if (backend->get_native_texture_caps)
@@ -877,11 +880,11 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         return RT_CANVAS3D_BACKEND_CAP_SKYBOX;
     if (strcmp(name, "hardware_instancing") == 0 || strcmp(name, "instancing") == 0)
         return RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
-    if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0 ||
-        strcmp(name, "bloom") == 0 || strcmp(name, "tonemap") == 0 ||
-        strcmp(name, "tone_map") == 0 || strcmp(name, "color-grade") == 0 ||
-        strcmp(name, "color_grade") == 0 || strcmp(name, "colorgrade") == 0 ||
-        strcmp(name, "vignette") == 0 || strcmp(name, "fxaa") == 0)
+    if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0 || strcmp(name, "bloom") == 0 ||
+        strcmp(name, "tonemap") == 0 || strcmp(name, "tone_map") == 0 ||
+        strcmp(name, "color-grade") == 0 || strcmp(name, "color_grade") == 0 ||
+        strcmp(name, "colorgrade") == 0 || strcmp(name, "vignette") == 0 ||
+        strcmp(name, "fxaa") == 0)
         return RT_CANVAS3D_BACKEND_CAP_POSTFX;
     /* SSAO / depth-of-field / motion blur are GPU-only screen-space passes; alias
      * their effect names to the GPU post-FX capability so a query like
@@ -945,6 +948,11 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     if (strcmp(name, "taa") == 0 || strcmp(name, "temporal-aa") == 0 ||
         strcmp(name, "temporal_aa") == 0)
         return RT_CANVAS3D_BACKEND_CAP_TAA;
+    if (strcmp(name, "soft-particles") == 0 || strcmp(name, "soft_particles") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES;
+    if (strcmp(name, "ssr") == 0 || strcmp(name, "screen-space-reflections") == 0 ||
+        strcmp(name, "screen_space_reflections") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SSR;
     return 0;
 }
 

@@ -1,5 +1,52 @@
 # Plan 10 — Screen-Space Reflections + Soft Particles (+ Shared In-Pass Depth Access)
 
+> **Status (2026-07-04): IMPLEMENTED (SSR runs full-res in the postfx chain; §3.1's
+> optional opaque_color_tex was not needed).**
+>
+> - **Shared depth snapshot (§3.1)**: new optional vtable hook
+>   `resolve_opaque_targets(ctx)` called at the opaque→transparent seam in
+>   `canvas3d_render_main_pass` (skipped when no blend draws follow). SW = memcpy
+>   of the active zbuf; Metal = end scene encoder → blit depth → re-begin with
+>   load-existing color+depth; GL = `glBlitFramebuffer` depth into a snapshot
+>   FBO (loader gained `BlitFramebuffer` + read/draw-framebuffer enums); D3D11 =
+>   `CopyResource` into an R32_TYPELESS texture (t16 unbound first). Camera
+>   params carry `znear/zfar` for shader-side linearization (Metal/D3D11 ride
+>   `clusterParams.zw`; GL sets `uClusterParams` per draw now).
+> - **Soft particles (§3.2)**: draw cmd + material gained `soft_particle_fade`;
+>   the fade lane rides `pbrScalars1.z` (forced 0 while no snapshot exists, so a
+>   dummy/unbound snapshot can never zero particle alpha) and applies only to
+>   blend-mode fragments. GL aliases the snapshot onto the splat-control texture
+>   unit (16-unit budget; fade force-disabled for splat draws so the aliasing
+>   can't misread). `Particles3D.SetSoftness(distance)`; the four `Effects3D`
+>   presets default softness ≈ start size. Capability `"soft-particles"` =
+>   backends with the snapshot hook (incl. software).
+> - **SSR (§3.3)**: mask = motion target's **alpha** channel (plan's B-channel
+>   assumption was stale — B already carries the Plan-05 object-history flag;
+>   alpha was the free lane, and motion clears now use alpha 0). Mask value =
+>   `reflectivity` (or 0.5 when the material has none) for `ssr_enabled`
+>   materials via `vgfx3d_draw_cmd_ssr_mask`. The SSR pass slots into the postfx
+>   chain exactly like TAA's pre-resolve (own target, then the shared pass
+>   copies forward): from-scratch linear march (≤48 steps, IGN-jittered start,
+>   geometric growth) + 4-step binary refinement + thickness rejection +
+>   screen-edge fade + cheap grazing-angle fresnel; misses keep the source pixel
+>   (its env-map term is the fallback). Runs **full-res** (deviation: half-res
+>   would add a dedicated downsample/upsample pair; measured cost on the live
+>   probe is ~0.4 ms/frame at 160×120-window scale — revisit if a real scene
+>   needs it) and **in chain order** (grouped with SSAO after tonemap, matching
+>   the engine's existing screen-space effect placement, not §3.3's pre-tonemap
+>   note). `PostFX3D.AddSSR(intensity, maxRoughness)`; `Material3D.SsrEnabled`
+>   prop; `Water3D` opts in automatically; CINEMATIC quality adds SSR when
+>   `BackendSupports("ssr")` (GPU postfx backends).
+> - **Found+fixed on the way**: the SW unlit vertex path dropped `cmd->alpha`
+>   (GPU shaders multiply it in) — `Material3D.SetAlpha` was a no-op for unlit
+>   software draws; particles masked it by baking alpha into vertex colors.
+> - **Tests**: SW end-to-end soft-particle pixel test (hard vs faded vs
+>   empty-background renders through a RenderTarget3D); SSR chain-export/
+>   rejection/mask unit test (255/255 canvas3d suite); live Metal proof in
+>   `g3d_openworld_slice_gpu_smoke` (`SSR_SOFT_PARTICLES: backend=metal draws=3
+>   three_frames_us=1320` — chain binds, LastError empty, particles + SsrEnabled
+>   floor render, final-frame readback OK).
+
 ## 1. Objective & scope
 
 Two of the most visible "engine vs toy" tells: water and glossy floors reflect only a static environment cubemap (no scene reflections), and particles hard-clip where their quads intersect geometry (no depth fade). Both need the same missing capability — **scene depth readable during the transparent/composite stages** — so this plan builds that once and ships both features on it.

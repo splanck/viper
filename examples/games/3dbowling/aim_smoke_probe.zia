@@ -43,6 +43,8 @@ func main() {
 
     var scoreKeeper = new ScoreKeeper();
     scoreKeeper.init();
+    var keepers: List[ScoreKeeper] = [];
+    keepers.add(scoreKeeper);
     var hudObj = new HUD();
     hudObj.initHUD();
 
@@ -54,13 +56,13 @@ func main() {
     render.poll();
     render.beginFrame();
     laneObj.draw(render.getCanvas());
-    ballObj.drawAimPreview(render.getCanvas(), aimX, spin);
+    ballObj.drawAimPreview(render.getCanvas(), aimX, spin, laneObj.getOilEndZ());
     pinMgr.draw(render.getCanvas());
     ballObj.draw(render.getCanvas());
     render.endFrame();
     hudObj.draw(render.getCanvas(), scoreKeeper, 0.62, true, spin, aimX,
         ballObj.getBallType(), config.STATE_AIMING, render.getFps(),
-        1, 0, 0, 0, laneObj.getOilPatternName());
+        1, 0, keepers, laneObj.getOilPatternName());
 
     var snap = render.getCanvas().ScreenshotFinal();
     if Pixels.SavePng(snap, Path.Join(TempFile.Dir(), "3dbowling_aim.png")) != 1 {

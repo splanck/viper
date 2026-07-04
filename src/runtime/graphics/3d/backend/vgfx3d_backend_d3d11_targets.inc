@@ -258,6 +258,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->postfx_color_tex);
     d3d11_destroy_bloom_targets(ctx);
     d3d11_destroy_taa_targets(ctx);
+    d3d11_destroy_ssr_target(ctx);
     SAFE_RELEASE(ctx->presented_color_tex);
     SAFE_RELEASE(ctx->overlay_color_srv);
     SAFE_RELEASE(ctx->overlay_color_rtv);
@@ -563,6 +564,44 @@ static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int
     ctx->taa_history_height = height;
     ctx->taa_history_parity = 0;
     ctx->taa_history_valid = 0;
+    return S_OK;
+}
+
+/// @brief Release the Plan 10 SSR output target.
+static void d3d11_destroy_ssr_target(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    d3d11_unbind_postfx_resources(ctx);
+    SAFE_RELEASE(ctx->ssr_srv);
+    SAFE_RELEASE(ctx->ssr_rtv);
+    SAFE_RELEASE(ctx->ssr_tex);
+    ctx->ssr_width = 0;
+    ctx->ssr_height = 0;
+}
+
+/// @brief Build the Plan 10 SSR output target (scene color format, scene-sized).
+static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    HRESULT hr;
+
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_ssr)
+        return E_INVALIDARG;
+    if (ctx->ssr_tex && ctx->ssr_width == width && ctx->ssr_height == height)
+        return S_OK;
+
+    d3d11_destroy_ssr_target(ctx);
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                   &ctx->ssr_tex,
+                                   &ctx->ssr_rtv,
+                                   &ctx->ssr_srv);
+    if (FAILED(hr)) {
+        d3d11_destroy_ssr_target(ctx);
+        return hr;
+    }
+    ctx->ssr_width = width;
+    ctx->ssr_height = height;
     return S_OK;
 }
 

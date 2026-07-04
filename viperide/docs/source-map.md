@@ -170,7 +170,8 @@ viper run --debug-adapter <file>
 The IDE writes newline JSON commands to stdin and reads sentinel-prefixed JSON
 events from stderr. Program stdout is kept as program output. The session tracks
 stopped/running/terminated state, current stop path and line, locals, call
-stack, evaluation results, program output, and debug console text.
+stack, evaluation results, persistent watches, program output, and debug console
+text.
 
 Touch this file for debug protocol transport and session state. UI presentation
 belongs in `commands/debug_commands.zia`, `ui/app_shell.zia`, or debug-specific
@@ -239,9 +240,10 @@ rows, and location ids.
 Search result display strings should never be the only source of navigation
 truth. Use `services/locations.zia` for stable location ids.
 
-`commands/search_prompt.zia` owns the modal prompt sequence and returns a
-normalized `SearchRequest`. Keep prompt collection there so direct, cached, and
-legacy search paths use one option flow.
+The interactive path is the docked Search panel owned by `ui/app_shell.zia` and
+started from `SearchController`. `commands/search_prompt.zia` remains as a
+legacy request helper; direct, cached, and panel paths should converge on
+`services/search_request.zia`.
 
 `commands/quick_open_commands.zia` owns Quick Open palette rows, command id
 encoding, deterministic file scoring, and opening the selected file. Keep Quick
@@ -547,19 +549,21 @@ inside OutputPane.
 
 ### `scm/scm_git.zia`
 
-Synchronous Git command layer over `Viper.System.Exec`. It runs
-`git -C <repo> ...`, parses porcelain v1 status, stages/unstages files, commits,
-diffs, pushes, pulls, lists branches, and switches branches.
+Async Git command layer over `Viper.System.Process`. It resolves `git`, starts
+argv-sequence jobs in the repository root, captures stdout/stderr/exit code,
+parses porcelain v2 status, stages/unstages files, commits, diffs, pushes,
+pulls, lists branches, and switches branches.
 
 Known constraints are documented in [status.md](status.md) and
-[runtime-integration.md](runtime-integration.md). If this becomes async, the
-implementation should likely move toward `Viper.System.Process`.
+[runtime-integration.md](runtime-integration.md). Blocking wrapper methods are
+kept for probes and older call sites, but UI code should start and pump
+`GitJob` objects.
 
 ### `scm/scm_view.zia`
 
 Source Control view model and UI action state. It owns the current Git snapshot,
-selected path, diff text, commit message, and refresh/operation behavior needed
-by AppShell.
+selected path, diff text, commit message, active job, and refresh/operation
+behavior needed by AppShell.
 
 ## `ui/`
 
@@ -742,7 +746,7 @@ The source map should also make current weak spots explicit:
   cohesive new behavior.
 - Bottom panels are functional but not true virtualized workbench surfaces.
 - Scene document kind exists without a scene editor subsystem.
-- Source Control is synchronous and minimal.
+- Source Control is async but still workflow-light.
 - Terminal behavior depends on OutputPane terminal mode, not a complete terminal
   emulator.
 - BASIC support is intentionally narrower than Zia.

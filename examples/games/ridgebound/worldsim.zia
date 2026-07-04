@@ -59,6 +59,9 @@ class RidgeboundWorldSim {
     hide Integer scanBeaconIndex;
     hide Float scanProgress;
     hide Float directLightingScale;
+    hide Canvas3D simCanvas;
+    hide Boolean iblActive;
+    hide Integer skyPhase;
 
     expose func init() {
         sunDirection = new Vec3(-0.36, -1.0, -0.22);
@@ -115,20 +118,37 @@ class RidgeboundWorldSim {
     }
 
     expose func setupSun(world: World3D, canvas: Canvas3D) {
+        simCanvas = canvas;
         sunLight = Light3D.Directional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
         Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
         world.AddLight(0, sunLight);
         Light3D.set_CastsShadows(sunLight, true);
         Canvas3D.EnableShadows(canvas, 2048);
         Canvas3D.SetShadowCascades(canvas, 3);
+        Canvas3D.SetShadowStrength(canvas, config.SHADOW_STRENGTH_DAY);
+        Canvas3D.SetShadowQuality(canvas, 2);
+
+        // Image-based lighting: the skybox drives SH ambient + prefiltered specular
+        // so the terrain/water pick up sky colour. GPU window backends only; the
+        // software/CPU path keeps the direct-light look. The skybox is already set
+        // on the canvas by this point, so enabling here kicks off its prefilter.
+        iblActive = false;
+        if (Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
+            Canvas3D.set_IblEnabled(canvas, true);
+            Canvas3D.set_IblIntensity(canvas, config.IBL_INTENSITY_DAY);
+            iblActive = true;
+        }
 
         moonLight = Light3D.Directional(new Vec3(0.30, -0.70, 0.38), 0.55, 0.62, 0.95);
         Light3D.SetIntensity(moonLight, 0.0);
         world.AddLight(9, moonLight);
     }
 
-    expose func updateTimeOfDay(world: World3D, worldTime: Float) {
+    expose func updateTimeOfDay(world: World3D, worldTime: Float, cloudCover: Float) {
         if (sunLight == null) { return; }
+        // Overcast dims the direct sun/fill and desaturates the fog toward grey.
+        var cloudDim = 1.0 - config.WEATHER_SUN_DIM * mathutil.clampFloat(cloudCover, 0.0, 1.0);
+        var fogGrey = config.WEATHER_FOG_GREY * mathutil.clampFloat(cloudCover, 0.0, 1.0);
         var cycle = worldTime / config.DAY_LENGTH_SEC + config.DAY_START_PHASE;
         cycle = cycle - (Convert.NumToInt(cycle) + 0.0);
         if (cycle < 0.0) { cycle = cycle + 1.0; }
@@ -141,11 +161,32 @@ class RidgeboundWorldSim {
         var warm = 1.0 - day;
         nightNow = elev < -0.04;
 
-        var sunDirY = 0.0 - (0.30 + 0.55 * day);
-        sunDirection.Set(Cos(sunPhase) * 0.60, sunDirY, -0.42);
+        // Pick the active sky keyframe: full day/night at the extremes, and a
+        // dawn/dusk twilight keyframe in the transition band (rising = dawn).
+        if (elev > config.SKY_DAY_ELEV) {
+            skyPhase = config.SKY_PHASE_DAY;
+        } else {
+            if (elev < 0.0 - config.SKY_NIGHT_ELEV) {
+                skyPhase = config.SKY_PHASE_NIGHT;
+            } else {
+                if (Cos(sunPhase) > 0.0) {
+                    skyPhase = config.SKY_PHASE_DAWN;
+                } else {
+                    skyPhase = config.SKY_PHASE_DUSK;
+                }
+            }
+        }
+
+        // Real east->west arc: azimuth sweeps with the cycle so shadows rake across
+        // the valley through the day; the sun still dips below the horizon at night.
+        var sunDirY = 0.0 - (config.SUN_DIP_BASE + config.SUN_DIP_DAY * day);
+        sunDirection.Set(Cos(sunPhase) * config.SUN_ARC_XZ, sunDirY, Sin(sunPhase) * config.SUN_ARC_Z);
         Light3D.set_Direction(sunLight, sunDirection);
         Light3D.SetColor(sunLight, 1.0, mathutil.lerpFloat(0.60, 0.96, day), mathutil.lerpFloat(0.34, 0.88, day));
-        Light3D.SetIntensity(sunLight, day * config.SUN_INTENSITY_DAY * directLightingScale);
+        // Fade the sun out just before it grazes the horizon so the cascades never
+        // shade against a near-horizontal light (artifact-prone); moon takes over.
+        var sunLit = mathutil.clampFloat((elev - config.SUN_MIN_ELEV) / 0.15, 0.0, 1.0);
+        Light3D.SetIntensity(sunLight, sunLit * config.SUN_INTENSITY_DAY * directLightingScale * cloudDim);
 
         if (moonLight != null) {
             moonDirection.Set(0.0 - Cos(sunPhase) * 0.50, 0.0 - (0.35 + 0.40 * night), 0.38);
@@ -155,12 +196,33 @@ class RidgeboundWorldSim {
 
         // Cool directional fill opposite the warm sun models the terrain (raised
         // well above the old near-zero values); sky-fill stays a gentle flat lift.
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.05 + 0.22 * day) * directLightingScale); }
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.05 + 0.22 * day) * directLightingScale * cloudDim); }
         if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.03 + 0.06 * day) * directLightingScale); }
 
-        world.SetAmbient(mathutil.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * directLightingScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * directLightingScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * directLightingScale);
+        var ambientScale = directLightingScale;
+        if (iblActive) { ambientScale = ambientScale * config.IBL_AMBIENT_SCALE; }
+        world.SetAmbient(mathutil.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * ambientScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * ambientScale, mathutil.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * ambientScale);
 
-        world.SetFog((mathutil.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10) * directLightingScale, (mathutil.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03) * directLightingScale, mathutil.lerpFloat(0.18, config.FOG_B, day) * directLightingScale, config.FOG_NEAR, config.FOG_FAR);
+        var fogR = (mathutil.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10) * directLightingScale;
+        var fogG = (mathutil.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03) * directLightingScale;
+        var fogB = mathutil.lerpFloat(0.18, config.FOG_B, day) * directLightingScale;
+        // Storm fog turns flat grey and closes in; distant peaks vanish in the murk.
+        var fogNear = mathutil.lerpFloat(config.FOG_NEAR, config.FOG_NEAR * 0.55, fogGrey);
+        world.SetFog(
+            mathutil.lerpFloat(fogR, 0.52, fogGrey),
+            mathutil.lerpFloat(fogG, 0.55, fogGrey),
+            mathutil.lerpFloat(fogB, 0.58, fogGrey),
+            fogNear, config.FOG_FAR);
+
+        // Shadows soften as the sun lowers; IBL ambient follows the sky brightness.
+        if (simCanvas != null) {
+            Canvas3D.SetShadowStrength(simCanvas,
+                mathutil.lerpFloat(config.SHADOW_STRENGTH_NIGHT, config.SHADOW_STRENGTH_DAY, day));
+            if (iblActive) {
+                Canvas3D.set_IblIntensity(simCanvas,
+                    mathutil.lerpFloat(config.IBL_INTENSITY_NIGHT, config.IBL_INTENSITY_DAY, day));
+            }
+        }
     }
 
     expose func setupBeaconLights(world: World3D) {
@@ -440,6 +502,7 @@ class RidgeboundWorldSim {
         return best;
     }
     expose func isNight() -> Boolean { return nightNow; }
+    expose func getSkyPhase() -> Integer { return skyPhase; }
 
     hide func spawnMonolithPct(world: World3D, land: Terrain3D,
         name: String, xPct: Float, zPct: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {

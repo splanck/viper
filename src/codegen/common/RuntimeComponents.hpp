@@ -141,13 +141,34 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_statusbar_") || starts("rt_toolbar_") || starts("rt_findbar_") ||
         starts("rt_commandpalette_") || starts("rt_scrollview_") || starts("rt_action_") ||
         starts("rt_input_") || starts("rt_inputmgr_") || starts("rt_mat3_") || starts("rt_mat4_") ||
-        starts("rt_graphics_"))
+        starts("rt_graphics_") || starts("rt_aabb3d_") || starts("rt_anim_blend3d_") ||
+        starts("rt_anim_controller3d_") || starts("rt_anim_player3d_") ||
+        starts("rt_animation3d_") || starts("rt_assets3d_") || starts("rt_blend_tree3d_") ||
+        starts("rt_body3d_") || starts("rt_camera3d_") || starts("rt_canvas3d_") ||
+        starts("rt_capsule3d_") || starts("rt_character3d_") || starts("rt_collider3d_") ||
+        starts("rt_collision_event3d_") || starts("rt_contact_point3d_") ||
+        starts("rt_cubemap3d_") || starts("rt_decal3d_") || starts("rt_distance_joint3d_") ||
+        starts("rt_fbx_") || starts("rt_game3d_") || starts("rt_gltf_") ||
+        starts("rt_hinge_joint3d_") || starts("rt_ik_solver3d_") || starts("rt_instbatch3d_") ||
+        starts("rt_joints3d_") || starts("rt_light3d_") || starts("rt_material3d_") ||
+        starts("rt_mesh3d_") || starts("rt_model3d_") || starts("rt_morphtarget3d_") ||
+        starts("rt_navagent3d_") || starts("rt_navmesh3d_") || starts("rt_node_animation3d_") ||
+        starts("rt_node_animator3d_") || starts("rt_particles3d_") || starts("rt_path3d_") ||
+        starts("rt_physics_hit3d_") || starts("rt_physics_hit_list3d_") || starts("rt_postfx3d_") ||
+        starts("rt_ray3d_") || starts("rt_rendertarget3d_") || starts("rt_rope_joint3d_") ||
+        starts("rt_scene3d_") || starts("rt_scene_node3d_") || starts("rt_segment3d_") ||
+        starts("rt_sixdof_joint3d_") || starts("rt_skeleton3d_") || starts("rt_sphere3d_") ||
+        starts("rt_spring_joint3d_") || starts("rt_sprite3d_") || starts("rt_terrain3d_") ||
+        starts("rt_texatlas3d_") || starts("rt_textureasset3d_") || starts("rt_transform3d_") ||
+        starts("rt_trigger3d_") || starts("rt_vegetation3d_") || starts("rt_water3d_") ||
+        starts("rt_world3d_"))
         return RtComponent::Graphics;
 
     // Audio component
     if (starts("rt_audio_") || starts("rt_playlist_") || starts("rt_sound_") ||
         starts("rt_soundbank_") || starts("rt_synth_") || starts("rt_music_") ||
-        starts("rt_voice_"))
+        starts("rt_voice_") || starts("rt_sound3d_") || starts("rt_soundlistener3d_") ||
+        starts("rt_soundsource3d_"))
         return RtComponent::Audio;
 
     // Network component
@@ -171,11 +192,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") || starts("rt_fmt_") ||
         starts("rt_format_") || starts("rt_int_format_") || starts("rt_printf_") ||
         starts("rt_term_") || starts("rt_time_") || starts("rt_datetime_") ||
-        starts("rt_dateonly_") || starts("rt_daterange_") ||
-        starts("rt_duration_") || starts("rt_reltime_") || starts("rt_stopwatch_") ||
-        starts("rt_countdown_") || starts("rt_easing_") || starts("rt_modvar_") ||
-        starts("rt_args_") || starts("rt_log_") || starts("rt_msgbus_") || starts("rt_heap_") ||
-        starts("rt_output_"))
+        starts("rt_dateonly_") || starts("rt_daterange_") || starts("rt_duration_") ||
+        starts("rt_reltime_") || starts("rt_stopwatch_") || starts("rt_countdown_") ||
+        starts("rt_easing_") || starts("rt_modvar_") || starts("rt_args_") || starts("rt_log_") ||
+        starts("rt_msgbus_") || starts("rt_heap_") || starts("rt_output_"))
         return RtComponent::Base;
 
     // -------------------------------------------------------------------------
@@ -199,7 +219,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.Net.") || starts("Viper.Http.") || starts("Viper.WebSocket."))
         return RtComponent::Network;
     if (starts("Viper.Canvas.") || starts("Viper.Input.") || starts("Viper.GUI.") ||
-        starts("Viper.Graphics.") || starts("Viper.Color."))
+        starts("Viper.Graphics.") || starts("Viper.Graphics3D.") || starts("Viper.Color."))
         return RtComponent::Graphics;
     if (starts("Viper.Sound.") || starts("Viper.Music."))
         return RtComponent::Audio;
@@ -259,7 +279,7 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         add(RtComponent::Text);        // LevelData/scene editor use JSON helpers
     }
     if (has(RtComponent::IoFs)) {
-        add(RtComponent::Text); // SaveData depends on rt_json_stream_*
+        add(RtComponent::Text);    // SaveData depends on rt_json_stream_*
         add(RtComponent::Network); // IO uses the shared OS entropy adapter.
     }
     if (has(RtComponent::Collections))

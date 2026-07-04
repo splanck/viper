@@ -985,6 +985,23 @@ static void sw_shade_apply_fog(const sw_context_t *fog_ctx,
     *fb_c = *fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
 }
 
+/// @brief Convert an interpolated NDC depth (sz, GL-style [-1,1]) to view-space
+///   depth using the frame's clip planes. Out-of-range/empty (FLT_MAX) inputs
+///   clamp to the far plane so "nothing behind" reads as maximally distant.
+static float sw_linearize_ndc_depth(const sw_context_t *ctx, float ndc_z) {
+    float zn = ctx->cam_znear;
+    float zf = ctx->cam_zfar;
+    if (!(zn > 0.0f) || !(zf > zn))
+        return 0.0f;
+    if (!isfinite(ndc_z) || ndc_z > 1.0f)
+        return zf;
+    if (ndc_z < -1.0f)
+        ndc_z = -1.0f;
+    if (ctx->cam_is_ortho)
+        return zn + (ndc_z + 1.0f) * 0.5f * (zf - zn);
+    return (2.0f * zn * zf) / (zf + zn - ndc_z * (zf - zn));
+}
+
 /// @brief Apply alpha mode (mask/opaque/blend), the shading_model==4 fresnel-alpha
 ///   term, then write or blend the fragment into the framebuffer (with optional
 ///   depth write). Returns 1 if a pixel was written, 0 if discarded.
@@ -1029,6 +1046,19 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
         float bias = cmd->custom_params[1];
         float fresnel = sw_material_powf(1.0f - ndv, power) + bias;
         fa *= clamp01f(fresnel);
+    }
+    /* Plan 10 soft particles: fade blend fragments as they approach the opaque
+     * depth snapshot, removing the hard intersection line where a particle quad
+     * crosses geometry. Only meaningful for depth-tested blend-mode draws. */
+    if (cmd && cmd->soft_particle_fade > 0.0f && !depth_disabled && fc->fog_ctx &&
+        fc->fog_ctx->opaque_zbuf_valid && fc->fog_ctx->opaque_zbuf &&
+        (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND || cmd->additive_blend) &&
+        idx < (size_t)fc->fog_ctx->opaque_zbuf_w * (size_t)fc->fog_ctx->opaque_zbuf_h) {
+        const sw_context_t *sc = fc->fog_ctx;
+        float lin_scene = sw_linearize_ndc_depth(sc, sc->opaque_zbuf[idx]);
+        float lin_frag = sw_linearize_ndc_depth(sc, z);
+        if (lin_scene > 0.0f && lin_frag > 0.0f)
+            fa *= clamp01f((lin_scene - lin_frag) / cmd->soft_particle_fade);
     }
 
     uint8_t *dst = &pixels[y * stride + x * 4];

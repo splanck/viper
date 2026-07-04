@@ -190,7 +190,8 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
 
 /// @brief Intersect a screen-space rect with the overlay clip rect (Plan 08).
 /// @return 0 when the rect is fully clipped away, 1 when (possibly trimmed) drawable.
-static int canvas3d_overlay_clip_rect(const rt_canvas3d *c, float *x, float *y, float *w, float *h) {
+static int canvas3d_overlay_clip_rect(
+    const rt_canvas3d *c, float *x, float *y, float *w, float *h) {
     float x0;
     float y0;
     float x1;
@@ -199,12 +200,12 @@ static int canvas3d_overlay_clip_rect(const rt_canvas3d *c, float *x, float *y, 
         return 1;
     x0 = *x > c->overlay_clip_x ? *x : c->overlay_clip_x;
     y0 = *y > c->overlay_clip_y ? *y : c->overlay_clip_y;
-    x1 = (*x + *w) < (c->overlay_clip_x + c->overlay_clip_w) ? (*x + *w)
-                                                             : (c->overlay_clip_x +
-                                                                c->overlay_clip_w);
-    y1 = (*y + *h) < (c->overlay_clip_y + c->overlay_clip_h) ? (*y + *h)
-                                                             : (c->overlay_clip_y +
-                                                                c->overlay_clip_h);
+    x1 = (*x + *w) < (c->overlay_clip_x + c->overlay_clip_w)
+             ? (*x + *w)
+             : (c->overlay_clip_x + c->overlay_clip_w);
+    y1 = (*y + *h) < (c->overlay_clip_y + c->overlay_clip_h)
+             ? (*y + *h)
+             : (c->overlay_clip_y + c->overlay_clip_h);
     if (x1 <= x0 || y1 <= y0)
         return 0;
     *x = x0;
@@ -259,6 +260,7 @@ int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
                                      float b,
                                      float a) {
     enum { RR_SEG = 6 };
+
     vgfx3d_vertex_t verts[1 + 4 * (RR_SEG + 1)];
     uint32_t indices[4 * (RR_SEG + 1) * 3];
     int32_t perim = 0;
@@ -1058,6 +1060,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     params.shadow_strength = c->shadow_strength;
     params.shadow_slope_bias = c->shadow_slope_bias;
     params.shadow_quality = c->shadow_quality;
+    params.znear = (float)rt_camera3d_get_near_plane(cam);
+    params.zfar = (float)rt_camera3d_get_far_plane(cam);
 
     /* Cache camera position for transparency sort key computation */
     c->cached_cam_pos[0] = params.position[0];

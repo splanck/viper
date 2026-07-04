@@ -251,7 +251,7 @@ func main() {
     var welcomeText = "module Welcome;\n";
     welcomeText = welcomeText + "\n";
     welcomeText = welcomeText + "// Welcome to ViperIDE!\n";
-    welcomeText = welcomeText + "// Zia has full IDE assistance; Viper BASIC can be edited, built, and run.\n";
+    welcomeText = welcomeText + "// Zia and Viper BASIC share editor assistance, build, run, and debug workflows.\n";
     welcomeText = welcomeText + "\n";
     welcomeText = welcomeText + "func main() {\n";
     welcomeText = welcomeText + "    Viper.Terminal.Say(\"Hello from ViperIDE!\");\n";
@@ -383,6 +383,7 @@ func main() {
         hoverCtrl.setEnabled(activeService.canHover);
         hoverCtrl.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         sigCtrl.setSourcePath(activeToolPath);
+        sigCtrl.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
         inlayCtrl.SetEnabled(activeService.name == language_service.LANGUAGE_ZIA);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
@@ -476,6 +477,7 @@ func main() {
             searcher.Pump(shell, docMgr, locStore);
             perfMon.AddSearch(perfSpan);
         }
+        searcher.HandlePanel(shell, projMgr, docMgr, engine);
         if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
             perfSpan = perfMon.StartSpan();
             hoverCtrl.update(engine);

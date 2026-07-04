@@ -21,6 +21,7 @@ bind "./worldsim";
 bind "./playerctl";
 bind "./camctl";
 bind "./menu3d";
+bind "./survival";
 
 var STATE_TITLE: Integer = 0;
 var STATE_PLAYING: Integer = 1;
@@ -42,6 +43,7 @@ class RidgeboundGame {
     hide RidgeboundAudio audioSys;
     hide RidgeboundEffects effectsSys;
     hide RidgeboundWeather weatherSys;
+    hide RidgeboundSurvival survivalSys;
     hide RidgeboundMinimap minimapSys;
     hide RidgeboundHud hudSys;
     hide RidgeboundWorldSim sim;
@@ -57,7 +59,7 @@ class RidgeboundGame {
     hide Boolean helpOn;
     hide Boolean fullscreenOn;
     hide Boolean quitRequested;
-    hide Boolean skyIsNight;
+    hide Integer skyPhaseCurrent;
     hide Boolean mouseCaptured;
 
     expose func setup(title: String, width: Integer, height: Integer) {
@@ -113,7 +115,7 @@ class RidgeboundGame {
         waterSky = new RidgeboundWaterSky();
         waterSky.setup(land);
         world.SetSkybox(waterSky.getSkybox());
-        skyIsNight = false;
+        skyPhaseCurrent = -1;
         assets.applyEnvReflections(waterSky.getSkybox());
 
         minimapSys = new RidgeboundMinimap();
@@ -131,7 +133,7 @@ class RidgeboundGame {
         effectsSys = new RidgeboundEffects();
         effectsSys.setup();
         weatherSys = new RidgeboundWeather();
-        weatherSys.setup();
+        weatherSys.setup(Canvas3D.BackendSupports(canvas, "soft-particles"));
         sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
         crittersSys = new RidgeboundCritters();
         // Bake a nav-mesh from the spawned world (terrain + tree/landmark
@@ -140,6 +142,8 @@ class RidgeboundGame {
         var navMesh = world.BakeNavMesh(
             config.NAV_AGENT_RADIUS, config.NAV_AGENT_HEIGHT, config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE);
         crittersSys.setup(navMesh, land);
+        survivalSys = new RidgeboundSurvival();
+        survivalSys.setup(world, land);
         sim.setupObjective(land);
         hudSys = new RidgeboundHud();
         screenState = STATE_TITLE;
@@ -191,13 +195,17 @@ class RidgeboundGame {
         sim.updateBeacons(stepDt, world, camera, input, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
         sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Key.F));
         sim.updateDynamicLights(player.getX(), player.getY(), player.getZ());
-        sim.updateTimeOfDay(world, worldTime);
+        sim.updateTimeOfDay(world, worldTime, weatherSys.getCloudCover());
         updateSkybox();
         waterSky.update(stepDt);
         terrainSys.updateVegetation(stepDt, camera);
         effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
         weatherSys.update(stepDt, camera, player.getY());
-        crittersSys.update(stepDt, player.getX(), player.getZ());
+        assets.applyTerrainWetness(weatherSys.getWetness());
+        crittersSys.update(stepDt, player.getX(), player.getZ(), player.isSprinting() == false);
+        survivalSys.update(stepDt, player.getX(), player.getZ(),
+            sim.isNight(), weatherSys.getCloudCover());
+        player.setRegenScale(survivalSys.getRegenScale());
         audioSys.updateAmbient(stepDt);
         sim.updateObjective(camera, player.getX(), player.getY(), player.getZ(), audioSys);
         world.StepSimulation(stepDt);
@@ -219,6 +227,7 @@ class RidgeboundGame {
             drawPlayer();
         }
         crittersSys.draw(canvas, land);
+        survivalSys.draw(canvas, camera);
         waterSky.drawReeds(canvas, worldTime);
         effectsSys.drawDecals(canvas);
         effectsSys.draw(canvas, camera);
@@ -229,10 +238,12 @@ class RidgeboundGame {
         Canvas3D.BeginOverlay(canvas);
         if (screenState == STATE_PLAYING) {
             hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(),
-                player.getStamina(), helpOn, debugOn);
+                player.getStamina(), survivalSys.getWarmth(), survivalSys.getForagedCount(),
+                crittersSys.getSpottedCount(), crittersSys.getCritterCount(), helpOn, debugOn);
         } else if (screenState == STATE_PAUSED) {
             hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(),
-                player.getStamina(), helpOn, debugOn);
+                player.getStamina(), survivalSys.getWarmth(), survivalSys.getForagedCount(),
+                crittersSys.getSpottedCount(), crittersSys.getCritterCount(), helpOn, debugOn);
             menuSys.drawOverlay(canvas, fullscreenOn);
         } else {
             menuSys.drawOverlay(canvas, fullscreenOn);
@@ -331,13 +342,16 @@ class RidgeboundGame {
 
         if (screenState == STATE_TITLE || screenState == STATE_OPTIONS || screenState == STATE_CONTROLS) {
             camCtl.titleView(worldTime, land);
-            sim.updateTimeOfDay(world, worldTime * 0.45);
+            sim.updateTimeOfDay(world, worldTime * 0.45, weatherSys.getCloudCover());
             updateSkybox();
             waterSky.update(stepDt);
             terrainSys.updateVegetation(stepDt, camera);
             effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
             weatherSys.update(stepDt, camera, player.getY());
-            crittersSys.update(stepDt, player.getX(), player.getZ());
+            assets.applyTerrainWetness(weatherSys.getWetness());
+            crittersSys.update(stepDt, player.getX(), player.getZ(), true);
+            survivalSys.update(stepDt, player.getX(), player.getZ(),
+                sim.isNight(), weatherSys.getCloudCover());
             audioSys.updateAmbient(stepDt);
             world.StepSimulation(stepDt);
         }
@@ -457,15 +471,15 @@ class RidgeboundGame {
     // Swap between the day and starfield night skyboxes when the sun crosses the
     // horizon. Only fires on a state change, so it costs nothing per frame otherwise.
     hide func updateSkybox() {
-        var night = sim.isNight();
-        if (night != skyIsNight) {
-            skyIsNight = night;
-            if (night) {
-                world.SetSkybox(waterSky.getNightSkybox());
-            } else {
-                world.SetSkybox(waterSky.getSkybox());
-            }
-            waterSky.setNightReflections(night);
+        // Swap the keyframed sky (DAY / DUSK / NIGHT / DAWN) whenever the sun's
+        // elevation crosses into a new phase. Adjacent keyframes differ far less
+        // than the old binary day<->night jump, so the crossing reads as a fade
+        // rather than a pop; the continuously-lerped fog/ambient carry the rest.
+        var phase = sim.getSkyPhase();
+        if (phase != skyPhaseCurrent) {
+            skyPhaseCurrent = phase;
+            world.SetSkybox(waterSky.getPhaseSkybox(phase));
+            waterSky.setPhaseReflections(phase);
         }
     }
 

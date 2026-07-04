@@ -337,6 +337,7 @@ typedef struct vg_outputpane {
 
     // Lines
     vg_output_line_t *lines; ///< Array of output lines
+    size_t line_start;       ///< Physical index of logical line 0 in the ring
     size_t line_count;
     size_t line_capacity;
     size_t max_lines; ///< Ring buffer limit (default: 10000)

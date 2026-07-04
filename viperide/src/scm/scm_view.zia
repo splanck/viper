@@ -6,25 +6,28 @@ bind Viper.GUI as GUI;
 bind Str = Viper.String;
 
 // ============================================================================
-// MODULE: scm_view  (Phase 5C — source control)
-// PURPOSE: The Source Control panel shown in the activity bar's left view. Wraps
-//          scm_git.Git: lists changed files, stages/unstages, commits, pushes/
-//          pulls, switches diff on selection, and shows the current branch.
+// MODULE: scm_view
+// PURPOSE: Source Control panel controller for async Git operations.
 //
-// WHERE-THIS-FITS: Built into the shell's `scmViewHost` (created in 5A). main.zia
-//          calls Setup(host) once, SetRepo(rootPath) when the Source Control view
-//          is shown, and HandleEvents() each frame to poll the buttons + list.
+// WHERE-THIS-FITS: Built into AppShell's `scmViewHost`. main.zia calls Setup()
+//          once, SetRepo(rootPath) for the active project, and HandleEvents() each
+//          frame. This module owns widget polling and the active GitJob lifecycle.
 //
-// DESIGN: All git work is synchronous (scm_git). Refresh re-reads `git status`
-//   and repopulates the list, stashing each row's repo-relative path as item
-//   data. Diff is git's unified text in an OutputPane. push/pull block briefly
-//   (v1 limitation inherited from scm_git).
+// KEY-DESIGN-CHOICES:
+//   * ONE ACTIVE JOB. Git operations mutate shared repository state; serializing
+//     them keeps the UI understandable and avoids command races.
+//   * STATUS REFRESH AFTER WRITES. Stage/unstage/commit/push/pull run in the
+//     background, then enqueue a fresh status snapshot when they complete.
+//   * STRUCTURED ROW DATA. The selected row stores the repo-relative path, so diff
+//     and stage commands never parse display labels.
 // ============================================================================
 
 /// @brief Source Control panel controller.
 class ScmView {
     expose scm_git.Git git;
+    expose scm_git.GitJob activeJob;
     expose GUI.Label branchLabel;
+    expose GUI.Label statusLabel;
     expose GUI.ListBox statusList;
     expose GUI.TextInput commitInput;
     expose GUI.Button refreshBtn;
@@ -37,18 +40,22 @@ class ScmView {
     expose GUI.OutputPane diffPane;
     expose Boolean ready;
     expose String repoPath;
+    expose String queuedDiffPath;
 
     expose func init() {
         git = new scm_git.Git();
+        activeJob = null;
         ready = false;
         repoPath = "";
+        queuedDiffPath = "";
     }
 
-    /// @brief Build the Source Control widgets into @p host (the scmViewHost VBox).
+    /// @brief Build the Source Control widgets into @p host.
     expose func Setup(host: GUI.VBox) {
         if host == null { return; }
 
         branchLabel = GUI.Label.New(host, "Source Control");
+        statusLabel = GUI.Label.New(host, "Idle");
 
         var topRow = GUI.HBox.New();
         host.AddChild(topRow);
@@ -80,20 +87,88 @@ class ScmView {
 
     /// @brief Point the view at a repository root and refresh.
     expose func SetRepo(path: String) {
+        if path == repoPath and ready { return; }
         repoPath = path;
         git.SetRepo(path);
         Refresh();
     }
 
-    /// @brief Re-read `git status` and repopulate the list + branch label.
+    /// @brief Queue a background status refresh.
     expose func Refresh() {
         if ready == false { return; }
+        if Busy() {
+            statusLabel.SetText("Waiting for " + activeJob.kind + "...");
+            return;
+        }
         statusList.Clear();
         if diffPane != null { diffPane.Clear(); }
+        StartJob(git.StartStatus(), "Refreshing status...");
+    }
 
-        var st = git.Status();
+    expose func Busy() -> Boolean {
+        return activeJob != null and activeJob.running;
+    }
+
+    hide func StartJob(job: scm_git.GitJob,
+                       label: String) -> Boolean {
+        if job == null { return false; }
+        activeJob = job;
+        if job.started == false {
+            statusLabel.SetText(job.CombinedOutput());
+            if diffPane != null and job.CombinedOutput() != "" {
+                diffPane.Clear();
+                diffPane.Append(job.CombinedOutput() + "\n");
+            }
+            activeJob = null;
+            return false;
+        }
+        statusLabel.SetText(label);
+        return true;
+    }
+
+    hide func CompleteJob(job: scm_git.GitJob) {
+        if job == null { return; }
+        activeJob = null;
+        if job.kind == "status" {
+            ApplyStatus(git.StatusFromOutput(job.stdoutText, job.stderrText, job.exitCode));
+            if queuedDiffPath != "" {
+                var p = queuedDiffPath;
+                queuedDiffPath = "";
+                ShowDiff(p);
+            }
+            return;
+        }
+        if job.kind == "diff" {
+            ApplyDiff(job);
+            return;
+        }
+
+        if job.Success() {
+            statusLabel.SetText(JobPastTense(job.kind));
+            if job.kind == "commit" and commitInput != null {
+                commitInput.SetText("");
+            }
+        } else {
+            statusLabel.SetText(JobLabel(job.kind) + " failed (" + job.exitCode + ")");
+            if diffPane != null {
+                diffPane.Clear();
+                var combined = job.CombinedOutput();
+                if combined == "" { combined = "git " + job.kind + " failed"; }
+                diffPane.Append(combined + "\n");
+            }
+        }
+        StartJob(git.StartStatus(), "Refreshing status...");
+    }
+
+    hide func ApplyStatus(st: scm_git.GitStatus) {
+        statusList.Clear();
         if st.isRepo == false {
             branchLabel.SetText("Not a git repository");
+            statusLabel.SetText(st.errorText);
+            if diffPane != null and st.errorText != "" {
+                diffPane.Clear();
+                diffPane.Append(st.errorText + "\n");
+            }
             return;
         }
         if Str.get_Length(st.branch) > 0 {
@@ -105,21 +180,51 @@ class ScmView {
         var i = 0;
         while i < st.entries.count() {
             var e = st.entries.get(i);
-            var marker = StatusMarker(e);
-            var item = statusList.AddItem(marker + " " + e.path);
+            var label = StatusMarker(e) + " " + e.path;
+            if e.renamed and e.oldPath != "" {
+                label = label + " <- " + e.oldPath;
+            }
+            var item = statusList.AddItem(label);
             GUI.ListBox.ItemSetData(item, e.path);
             i = i + 1;
         }
+        if st.entries.count() == 0 {
+            statusList.AddItem("(working tree clean)");
+        }
+        statusLabel.SetText("" + st.entries.count() + " changed file(s)");
     }
 
-    /// @brief Two-char marker for a status entry (staged/worktree/untracked).
+    hide func ApplyDiff(job: scm_git.GitJob) {
+        if diffPane == null { return; }
+        diffPane.Clear();
+        if job.exitCode != 0 {
+            var combined = job.CombinedOutput();
+            if combined == "" { combined = "git diff failed"; }
+            diffPane.Append(combined + "\n");
+            statusLabel.SetText("Diff failed");
+            return;
+        }
+        if Str.get_Length(Str.Trim(job.stdoutText)) == 0 and job.stagedDiff == false {
+            StartJob(git.StartDiff(job.path, true), "Loading staged diff...");
+            return;
+        }
+        if Str.get_Length(Str.Trim(job.stdoutText)) == 0 {
+            diffPane.Append("(no diff)\n");
+        } else {
+            diffPane.Append(job.stdoutText);
+        }
+        statusLabel.SetText("Diff: " + job.path);
+    }
+
+    /// @brief Two-char marker for a status entry.
     hide func StatusMarker(e: scm_git.GitEntry) -> String {
         if e.untracked { return "[?]"; }
+        if e.renamed { return "[R]"; }
         if e.staged { return "[+]"; }
         return "[~]";
     }
 
-    /// @brief Repo-relative path of the selected row ("" when none).
+    /// @brief Repo-relative path of the selected row.
     hide func SelectedPath() -> String {
         if ready == false { return ""; }
         var item = statusList.get_Selected();
@@ -127,53 +232,76 @@ class ScmView {
         return GUI.ListBox.ItemGetData(item);
     }
 
-    /// @brief Show the diff of @p path (worktree first, else staged).
+    /// @brief Show the diff of @p path.
     hide func ShowDiff(path: String) {
         if diffPane == null { return; }
-        diffPane.Clear();
         if path == "" { return; }
-        var d = git.Diff(path, false);
-        if Str.get_Length(Str.Trim(d)) == 0 {
-            d = git.Diff(path, true);
+        if Busy() {
+            queuedDiffPath = path;
+            return;
         }
-        if Str.get_Length(Str.Trim(d)) == 0 {
-            diffPane.Append("(no diff)\n");
-        } else {
-            diffPane.Append(d);
-        }
+        diffPane.Clear();
+        StartJob(git.StartDiff(path, false), "Loading diff...");
     }
 
-    /// @brief Per-frame: poll the buttons and the selection. Safe when hidden.
+    /// @brief Per-frame: pump the active job and poll widgets. Safe when hidden.
     expose func HandleEvents() {
         if ready == false { return; }
+
+        if activeJob != null {
+            if activeJob.Pump() == false {
+                CompleteJob(activeJob);
+            } else {
+                statusLabel.SetText("Running git " + activeJob.kind + "...");
+            }
+            return;
+        }
 
         if refreshBtn.WasClicked() { Refresh(); }
 
         if stageAllBtn.WasClicked() {
-            git.StageAll();
-            Refresh();
+            StartJob(git.StartStageAll(), "Staging all changes...");
         }
         if stageBtn.WasClicked() {
             var p = SelectedPath();
-            if p != "" { git.Stage(p); Refresh(); }
+            if p != "" { StartJob(git.StartStage(p), "Staging " + p + "..."); }
         }
         if unstageBtn.WasClicked() {
-            var p = SelectedPath();
-            if p != "" { git.Unstage(p); Refresh(); }
+            var p2 = SelectedPath();
+            if p2 != "" { StartJob(git.StartUnstage(p2), "Unstaging " + p2 + "..."); }
         }
         if commitBtn.WasClicked() {
             var msg = commitInput.get_Text();
             if Str.get_Length(Str.Trim(msg)) > 0 {
-                git.Commit(msg);
-                commitInput.SetText("");
-                Refresh();
+                StartJob(git.StartCommit(msg), "Committing...");
             }
         }
-        if pushBtn.WasClicked() { git.Push(); Refresh(); }
-        if pullBtn.WasClicked() { git.Pull(); Refresh(); }
+        if pushBtn.WasClicked() { StartJob(git.StartPush(), "Pushing..."); }
+        if pullBtn.WasClicked() { StartJob(git.StartPull(), "Pulling..."); }
 
         if statusList.WasSelectionChanged() {
             ShowDiff(SelectedPath());
         }
+    }
+
+    hide func JobLabel(kind: String) -> String {
+        if kind == "stage" or kind == "stageAll" { return "Stage"; }
+        if kind == "unstage" { return "Unstage"; }
+        if kind == "commit" { return "Commit"; }
+        if kind == "push" { return "Push"; }
+        if kind == "pull" { return "Pull"; }
+        if kind == "checkout" { return "Checkout"; }
+        return kind;
+    }
+
+    hide func JobPastTense(kind: String) -> String {
+        if kind == "stage" { return "Staged"; }
+        if kind == "stageAll" { return "Staged all changes"; }
+        if kind == "unstage" { return "Unstaged"; }
+        if kind == "commit" { return "Committed"; }
+        if kind == "push" { return "Pushed"; }
+        if kind == "pull" { return "Pulled"; }
+        if kind == "checkout" { return "Switched branch"; }
+        return "Done";
     }
 }

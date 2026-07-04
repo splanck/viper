@@ -219,6 +219,7 @@ struct ParticleView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
+    double softness; /* Plan 10: soft-particle fade distance */
     void *texture;
     int32_t emitter_shape;
     double emitter_size[3];
@@ -588,23 +589,12 @@ static void test_cubemap_sampling_sanitizes_inputs() {
     assert(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]));
     assert(out[0] > 0.9f);
 
-    rt_cubemap_sample(cubemap,
-                      std::numeric_limits<float>::max(),
-                      0.0f,
-                      0.0f,
-                      &out[0],
-                      &out[1],
-                      &out[2]);
+    rt_cubemap_sample(
+        cubemap, std::numeric_limits<float>::max(), 0.0f, 0.0f, &out[0], &out[1], &out[2]);
     assert(out[0] > 0.9f && out[1] < 0.1f && out[2] < 0.1f);
 
-    rt_cubemap_sample_roughness(cubemap,
-                                std::numeric_limits<float>::max(),
-                                0.0f,
-                                0.0f,
-                                0.6f,
-                                &out[0],
-                                &out[1],
-                                &out[2]);
+    rt_cubemap_sample_roughness(
+        cubemap, std::numeric_limits<float>::max(), 0.0f, 0.0f, 0.6f, &out[0], &out[1], &out[2]);
     assert(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]));
     assert(out[0] > 0.1f);
 
