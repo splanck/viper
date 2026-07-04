@@ -1019,6 +1019,36 @@ void rt_game3d_world_set_ambient(void *obj, double r, double g, double b) {
         rt_canvas3d_set_ambient(world->canvas, r, g, b);
 }
 
+/// @brief Enable/disable image-based lighting from the world's skybox environment.
+void rt_game3d_world_set_ibl_enabled(void *obj, int8_t enabled) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.setIblEnabled: invalid world");
+    if (world && world->canvas)
+        rt_canvas3d_set_ibl_enabled(world->canvas, enabled);
+}
+
+/// @brief True when image-based lighting is enabled for the world's canvas.
+int8_t rt_game3d_world_get_ibl_enabled(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.getIblEnabled: invalid world");
+    return (world && world->canvas) ? rt_canvas3d_get_ibl_enabled(world->canvas) : 0;
+}
+
+/// @brief Scale the environment lighting contribution for the world's canvas.
+void rt_game3d_world_set_ibl_intensity(void *obj, double intensity) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.setIblIntensity: invalid world");
+    if (world && world->canvas)
+        rt_canvas3d_set_ibl_intensity(world->canvas, intensity);
+}
+
+/// @brief Current environment lighting intensity for the world's canvas.
+double rt_game3d_world_get_ibl_intensity(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.getIblIntensity: invalid world");
+    return (world && world->canvas) ? rt_canvas3d_get_ibl_intensity(world->canvas) : 0.0;
+}
+
 /// @brief Bind a light into the given canvas light slot. See header.
 void rt_game3d_world_add_light(void *obj, int64_t slot, void *light) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.addLight: invalid world");

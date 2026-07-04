@@ -118,9 +118,17 @@ int8_t rt_anim_controller3d_crossfade_layer_additive(void *controller,
 /// @brief Stop the named layer (its weight will fall to 0 if not currently blending).
 void rt_anim_controller3d_stop_layer(void *controller, int64_t layer);
 
-/// @brief Get the world-space matrix for bone @p bone_index after all layers + transitions are
-/// evaluated.
+/// @brief Get the model-space (skeleton-root-relative) global matrix for bone
+/// @p bone_index after all layers + transitions are evaluated. Compose with the
+/// owning node's world transform to reach world space.
 void *rt_anim_controller3d_get_bone_matrix(void *controller, int64_t bone_index);
+
+/// @brief Extract a bone's model-space position + rotation quaternion from the
+/// final pose. Returns 1 on success, 0 on missing pose/invalid bone.
+int rt_anim_controller3d_get_bone_pose(void *controller,
+                                       int64_t bone_index,
+                                       double *out_pos,
+                                       double *out_quat);
 
 /* Runtime integration helpers used by Scene3D bindings. */
 /// @brief Borrow the Skeleton3D bound to this controller.

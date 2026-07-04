@@ -28,6 +28,29 @@ static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
 /// updates the frame-history (prev VP for motion blur), and calls
 /// `select_current_targets` + `clear_current_targets` to set the
 /// pipeline up for the upcoming draws.
+/// @brief Radical-inverse Halton sequence sample for TAA sub-pixel jitter (Plan 05).
+static float d3d11_halton(uint32_t index, uint32_t base) {
+    float f = 1.0f;
+    float r = 0.0f;
+    while (index > 0) {
+        f /= (float)base;
+        r += f * (float)(index % base);
+        index /= base;
+    }
+    return r;
+}
+
+/// @brief True when the exported postfx chain contains an effect of @p type_value.
+static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
+    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == type_value)
+            return 1;
+    }
+    return 0;
+}
+
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
@@ -42,6 +65,32 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->view, cam->view);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->projection, cam->projection);
     mat4f_mul_d3d(ctx->projection, ctx->view, ctx->vp);
+    /* Plan 05 TAA: apply Halton(2,3) sub-pixel jitter to the scene-pass VP when the
+     * latched chain contains a TAA resolve. Injected before inv/prev VP derivation so
+     * every consumer this frame sees one consistent (jittered) VP; the resolve pass
+     * removes the current-minus-previous jitter delta from velocities. Overlay passes
+     * (load_existing_color) keep the previous state so UI stays fixed and the sequence
+     * advances once per frame. */
+    if (!ctx->rtt_active && !cam->load_existing_color) {
+        ctx->taa_prev_jitter_clip[0] = ctx->taa_jitter_clip[0];
+        ctx->taa_prev_jitter_clip[1] = ctx->taa_jitter_clip[1];
+        ctx->taa_jitter_clip[0] = 0.0f;
+        ctx->taa_jitter_clip[1] = 0.0f;
+        if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid && ctx->ps_taa &&
+            ctx->width > 0 && ctx->height > 0 &&
+            d3d11_chain_has_effect(&ctx->gpu_postfx_chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
+            uint32_t idx = (ctx->taa_frame_index++ & 7u) + 1u;
+            float jx = (d3d11_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx->width;
+            float jy = (d3d11_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx->height;
+            ctx->taa_jitter_clip[0] = jx;
+            ctx->taa_jitter_clip[1] = jy;
+            /* Row-major clip-space translate: x-row += jx * w-row, y-row += jy * w-row. */
+            for (int jc = 0; jc < 4; jc++) {
+                ctx->vp[0 * 4 + jc] += jx * ctx->vp[3 * 4 + jc];
+                ctx->vp[1 * 4 + jc] += jy * ctx->vp[3 * 4 + jc];
+            }
+        }
+    }
     if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
     vgfx3d_d3d11_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
@@ -63,6 +112,13 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
+    ctx->ibl_enabled = cam->ibl_enabled;
+    ctx->ibl_intensity = vgfx3d_d3d11_clamp_float_param(cam->ibl_intensity, 0.0f, 8.0f, 1.0f);
+    memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
+    ctx->shadow_strength = cam->shadow_strength;
+    ctx->shadow_slope_bias = cam->shadow_slope_bias;
+    ctx->shadow_quality = cam->shadow_quality;
+    ctx->uploaded_lights_revision = 0; /* new frame: re-upload scene/light constants */
     if (vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(ctx->rtt_active,
                                                                  cam->load_existing_color))
         ctx->scene_composited_to_swapchain = 0;
@@ -431,8 +487,8 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
                                   int32_t height,
                                   const vgfx3d_postfx_snapshot_t *snapshot) {
     d3d_postfx_cb_t postfx_data;
-    ID3D11ShaderResourceView *srvs[4];
-    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+    ID3D11ShaderResourceView *srvs[5];
+    ID3D11ShaderResourceView *null_srvs[5] = {NULL, NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
     HRESULT hr;
 
@@ -452,12 +508,152 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
     srvs[1] = ctx->scene_depth_srv;
     srvs[2] = ctx->scene_motion_srv;
     srvs[3] = NULL;
+    srvs[4] = ctx->postfx_current_bloom_srv; /* Plan 05 bloom mip-chain result (may be NULL) */
     ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
     ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_postfx, NULL, 0);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
     ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_postfx);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 5, srvs);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 5, null_srvs);
+    return 1;
+}
+
+/// @brief Encode the Plan 05 bloom mip chain from the scene color SRV.
+/// @details Pass 0 thresholds + Karis-downsamples the scene into the half-res mip; each
+///          further mip is a plain 13-tap downsample. The upsample walk tent-filters each
+///          deeper mip and accumulates it into the one above via the additive blend
+///          state, leaving mip 0 with the summed octaves.
+/// @return Mip 0's SRV, or NULL when resources are unavailable.
+static ID3D11ShaderResourceView *
+d3d11_encode_bloom_chain(d3d11_context_t *ctx, int32_t width, int32_t height, float threshold) {
+    ID3D11ShaderResourceView *null_srv = NULL;
+    float blend_factor[4] = {0, 0, 0, 0};
+
+    if (!ctx || !ctx->scene_color_srv || !ctx->ps_bloom_down || !ctx->ps_bloom_up ||
+        FAILED(d3d11_ensure_bloom_targets(ctx, width, height)))
+        return NULL;
+
+    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
+
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_bloom_down, NULL, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_bloom);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_bloom);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
+    for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
+        ID3D11ShaderResourceView *src =
+            (i == 0) ? ctx->scene_color_srv : ctx->bloom_mip_srv[i - 1];
+        int32_t src_w = (i == 0) ? width : ctx->bloom_mip_w[i - 1];
+        int32_t src_h = (i == 0) ? height : ctx->bloom_mip_h[i - 1];
+        d3d_bloom_cb_t bloom_data;
+        HRESULT hr;
+        bloom_data.src_inv_size[0] = src_w > 0 ? 1.0f / (float)src_w : 0.0f;
+        bloom_data.src_inv_size[1] = src_h > 0 ? 1.0f / (float)src_h : 0.0f;
+        bloom_data.threshold = threshold;
+        bloom_data.first_pass = (i == 0) ? 1 : 0;
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
+        if (FAILED(hr))
+            return NULL;
+        d3d11_bind_postfx_target(ctx, ctx->bloom_mip_rtv[i], ctx->bloom_mip_w[i],
+                                 ctx->bloom_mip_h[i]);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
+        ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
+    }
+
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_bloom_up, NULL, 0);
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_additive, blend_factor, 0xFFFFFFFF);
+    for (int32_t i = ctx->bloom_mip_count - 1; i >= 1; i--) {
+        ID3D11ShaderResourceView *src = ctx->bloom_mip_srv[i];
+        d3d_bloom_cb_t bloom_data;
+        HRESULT hr;
+        bloom_data.src_inv_size[0] =
+            ctx->bloom_mip_w[i] > 0 ? 1.0f / (float)ctx->bloom_mip_w[i] : 0.0f;
+        bloom_data.src_inv_size[1] =
+            ctx->bloom_mip_h[i] > 0 ? 1.0f / (float)ctx->bloom_mip_h[i] : 0.0f;
+        bloom_data.threshold = 0.0f;
+        bloom_data.first_pass = 0;
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
+        if (FAILED(hr))
+            return NULL;
+        d3d11_bind_postfx_target(ctx, ctx->bloom_mip_rtv[i - 1], ctx->bloom_mip_w[i - 1],
+                                 ctx->bloom_mip_h[i - 1]);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
+        ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
+        ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
+    }
+    ID3D11DeviceContext_OMSetBlendState(
+        ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
+    return ctx->bloom_mip_srv[0];
+}
+
+/// @brief Encode the Plan 05 TAA resolve into the free history slot and flip parity.
+/// @details Reprojects + neighborhood-clamps the persistent history against
+///          @p source_srv; the written slot becomes both the pass output and the next
+///          frame's history.
+/// @return The resolved SRV, or NULL when resources are unavailable.
+static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
+                                                       ID3D11ShaderResourceView *source_srv,
+                                                       int32_t width,
+                                                       int32_t height,
+                                                       const vgfx3d_postfx_snapshot_t *snapshot) {
+    d3d_taa_cb_t taa_data;
+    ID3D11ShaderResourceView *srvs[4];
+    ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
+    float blend_factor[4] = {0, 0, 0, 0};
+    int32_t write_slot;
+    int32_t read_slot;
+    HRESULT hr;
+
+    if (!ctx || !source_srv || !ctx->ps_taa || !ctx->scene_depth_srv || !ctx->scene_motion_srv ||
+        FAILED(d3d11_ensure_taa_targets(ctx, width, height)))
+        return NULL;
+
+    write_slot = ctx->taa_history_parity ? 1 : 0;
+    read_slot = 1 - write_slot;
+
+    memset(&taa_data, 0, sizeof(taa_data));
+    memcpy(taa_data.inv_vp, ctx->scene_inv_vp, sizeof(taa_data.inv_vp));
+    memcpy(taa_data.prev_vp, ctx->scene_prev_vp, sizeof(taa_data.prev_vp));
+    taa_data.inv_resolution[0] = width > 0 ? 1.0f / (float)width : 0.0f;
+    taa_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
+    taa_data.jitter_delta[0] = (ctx->taa_jitter_clip[0] - ctx->taa_prev_jitter_clip[0]) * 0.5f;
+    taa_data.jitter_delta[1] = -(ctx->taa_jitter_clip[1] - ctx->taa_prev_jitter_clip[1]) * 0.5f;
+    taa_data.blend = (snapshot && snapshot->taa_enabled) ? snapshot->taa_blend : 0.9f;
+    taa_data.history_valid = (ctx->taa_history_valid && ctx->scene_history_valid) ? 1 : 0;
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_taa, &taa_data, sizeof(taa_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbTAA)", hr);
+        return NULL;
+    }
+
+    d3d11_bind_postfx_target(ctx, ctx->taa_history_rtv[write_slot], width, height);
+    srvs[0] = source_srv;
+    srvs[1] = ctx->taa_history_srv[read_slot];
+    srvs[2] = ctx->scene_motion_srv;
+    srvs[3] = ctx->scene_depth_srv;
+    ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_postfx, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_taa, NULL, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_taa);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_taa);
     if (ctx->linear_clamp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
@@ -467,7 +663,10 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
-    return 1;
+
+    ctx->taa_history_parity = ctx->taa_history_parity ? 0 : 1;
+    ctx->taa_history_valid = 1;
+    return ctx->taa_history_srv[write_slot];
 }
 
 /// @brief Composite the 2D GUI overlay texture on top of the 3D scene using alpha blending.
@@ -623,10 +822,35 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
         return 0;
     }
 
+    /* Plan 05: prefilter the bloom mip chain once from the scene color when any chain
+     * entry uses bloom; passes composite mip 0 via slot t4 while the SRV is non-NULL. */
+    ctx->postfx_current_bloom_srv = NULL;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].snapshot.bloom_enabled) {
+            ctx->postfx_current_bloom_srv = d3d11_encode_bloom_chain(
+                ctx, ctx->scene_width, ctx->scene_height, chain->effects[i].snapshot.bloom_threshold);
+            break;
+        }
+    }
+
     source_srv = ctx->scene_color_srv;
     result_tex = ctx->scene_color_tex;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
+        const vgfx3d_postfx_snapshot_t *pass_snapshot = &chain->effects[i].snapshot;
+
+        /* Plan 05: a TAA entry resolves into its own history target, which then feeds
+         * the remaining chain; the regular pass below turns into a plain copy so the
+         * result still lands in the caller's framebuffer. */
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
+            chain->effects[i].snapshot.taa_enabled) {
+            ID3D11ShaderResourceView *resolved = d3d11_encode_taa_pass(
+                ctx, source_srv, ctx->scene_width, ctx->scene_height, pass_snapshot);
+            if (resolved)
+                source_srv = resolved;
+            pass_snapshot = NULL;
+        }
+
         if (is_last && !force_offscreen_final) {
             dest_rtv = final_rtv;
             width = final_width;
@@ -643,16 +867,20 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
             height = ctx->scene_height;
             result_tex = ctx->postfx_color_tex;
         }
-        if (!dest_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+        if (!dest_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height)) {
+            ctx->postfx_current_bloom_srv = NULL;
             return 0;
-        if (!d3d11_draw_postfx_pass(
-                ctx, source_srv, dest_rtv, width, height, &chain->effects[i].snapshot))
+        }
+        if (!d3d11_draw_postfx_pass(ctx, source_srv, dest_rtv, width, height, pass_snapshot)) {
+            ctx->postfx_current_bloom_srv = NULL;
             return 0;
+        }
         if (!is_last || force_offscreen_final) {
             source_srv = result_tex == ctx->postfx_scratch_tex ? ctx->postfx_scratch_srv
                                                                : ctx->postfx_color_srv;
         }
     }
+    ctx->postfx_current_bloom_srv = NULL;
 
     if (force_offscreen_final) {
         dest_rtv =
@@ -867,14 +1095,20 @@ static void d3d11_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_cha
     if (!postfx) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
+        ctx->taa_history_valid = 0;
         return;
     }
     if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
+        ctx->taa_history_valid = 0;
         return;
     }
     ctx->gpu_postfx_chain_valid = 1;
+    /* Plan 05: dropping TAA from the chain invalidates temporal history so a later
+     * re-enable starts from a fresh accumulation instead of stale frames. */
+    if (!d3d11_chain_has_effect(postfx, (int32_t)VGFX3D_POSTFX_EFFECT_TAA))
+        ctx->taa_history_valid = 0;
 }
 
 /// @brief Backend `set_render_target` — bind / unbind RTT mode.
@@ -1027,7 +1261,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
             &shadow_diffuse);
         d3d11_prepare_material_data(
-            cmd, shadow_diffuse_srv != NULL, 0, 0, 0, 0, 0, 0, 0, &material_data);
+            cmd, shadow_diffuse_srv != NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, &material_data);
         hr = d3d11_update_constant_buffer(
             ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
         if (FAILED(hr)) {

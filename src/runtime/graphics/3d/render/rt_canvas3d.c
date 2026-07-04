@@ -89,6 +89,9 @@ static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 int32_t canvas3d_active_light_limit(rt_canvas3d *c);
 int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
+                                       const vgfx3d_light_params_t *lights,
+                                       int32_t light_count);
 
 static void canvas3d_emit_backend_fallback_notice_once(const char *requested, const char *active) {
     int expected = 0;
@@ -1335,6 +1338,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->trans_cmds);
     c->trans_cmds = NULL;
     c->trans_capacity = 0;
+    free(c->last_light_snapshot);
+    c->last_light_snapshot = NULL;
+    c->last_light_snapshot_valid = 0;
     free(c->sort_cmds);
     c->sort_cmds = NULL;
     c->sort_capacity = 0;
@@ -1447,6 +1453,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
     }
+    /* ADR 0065: make the Game.UI widgets canvas-polymorphic by registering the
+     * Canvas3D draw-ops binding (idempotent). */
+    canvas3d_register_gameui_ops();
     int32_t initial_width = (int32_t)w;
     int32_t initial_height = (int32_t)h;
     int32_t initial_framebuffer_width = (int32_t)w;
@@ -1529,6 +1538,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->ambient[0] = 0.1f;
     c->ambient[1] = 0.1f;
     c->ambient[2] = 0.1f;
+    c->ibl_enabled = 0;
+    c->ibl_intensity = 1.0f;
     c->backface_cull = 1;
     c->render_target = NULL;
     c->render_target_owner = NULL;
@@ -1553,6 +1564,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->shadow_resolution = 1024;
     c->shadow_bias = 0.005f;
     c->shadow_slope_bias = 1.0f;
+    c->shadow_strength = 0.85f; /* reproduces the legacy mix(0.15, 1.0, vis) look */
+    c->shadow_quality = 1;      /* 8-tap rotated-Poisson PCF */
     c->shadow_count = 0;
     c->shadow_cascade_count = 1;
     memset(c->shadow_rts, 0, sizeof(c->shadow_rts));
@@ -2270,6 +2283,45 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
     c->ambient[2] = canvas3d_clamp01_f64(b);
 }
 
+/// @brief Enable or disable image-based lighting from the canvas skybox.
+/// @details Enabling lazily computes the skybox's IBL payload (SH-9 irradiance
+///   plus a GGX-prefiltered specular mip chain) on this call — a bounded
+///   load-time cost — so the render loop never pays for preparation. While
+///   enabled, PBR draws that have no explicit material env map replace their
+///   flat ambient term with the environment lighting.
+void rt_canvas3d_set_ibl_enabled(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->ibl_enabled = enabled ? 1 : 0;
+    if (c->ibl_enabled && c->skybox)
+        rt_cubemap3d_ensure_ibl(c->skybox);
+}
+
+/// @brief True when image-based lighting is enabled for this canvas.
+int8_t rt_canvas3d_get_ibl_enabled(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return (c && c->ibl_enabled) ? 1 : 0;
+}
+
+/// @brief Scale the environment lighting contribution (default 1.0, clamped to [0, 8]).
+void rt_canvas3d_set_ibl_intensity(void *obj, double intensity) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!isfinite(intensity) || intensity < 0.0)
+        intensity = 0.0;
+    if (intensity > 8.0)
+        intensity = 8.0;
+    c->ibl_intensity = (float)intensity;
+}
+
+/// @brief Current environment lighting intensity scale.
+double rt_canvas3d_get_ibl_intensity(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? (double)c->ibl_intensity : 0.0;
+}
+
 /*==========================================================================
  * Debug drawing — transform 3D points to screen via backend VP
  *=========================================================================*/
@@ -2361,6 +2413,38 @@ void rt_canvas3d_set_shadow_slope_bias(void *obj, double bias) {
     if (!c)
         return;
     c->shadow_slope_bias = canvas3d_sanitize_nonnegative_f64(bias, 1.0f);
+}
+
+/// @brief Set how dark fully-occluded texels get (0 = shadows disabled, 1 = fully black).
+/// @details Replaces the previously hard-coded 0.15 lit floor; the default 0.85
+///   reproduces the legacy look. Values are clamped to [0, 1].
+void rt_canvas3d_set_shadow_strength(void *obj, double strength) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!isfinite(strength))
+        strength = 0.85;
+    if (strength < 0.0)
+        strength = 0.0;
+    if (strength > 1.0)
+        strength = 1.0;
+    c->shadow_strength = (float)strength;
+}
+
+/// @brief Select the shadow PCF filtering tier (0 = 4 taps, 1 = 8, 2 = 16 Poisson taps).
+/// @details Higher tiers produce smoother penumbrae at higher per-pixel cost. Values
+///   outside [0, 2] clamp. `Canvas3D.SetQuality` also drives this (PERFORMANCE=0,
+///   BALANCED=1, CINEMATIC=2); an explicit call overrides the profile until the next
+///   SetQuality.
+void rt_canvas3d_set_shadow_quality(void *obj, int64_t quality) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (quality < 0)
+        quality = 0;
+    if (quality > 2)
+        quality = 2;
+    c->shadow_quality = (int32_t)quality;
 }
 
 /// @brief Configure cascaded shadow-map count, preserving current single-map fallback.

@@ -3997,6 +3997,110 @@ static void test_gltf_imports_material_extensions_supported_by_material3d() {
                 "GLTF.Load records transmission factor in material custom params");
 }
 
+extern "C" {
+void *rt_model3d_load(rt_string path);
+void *rt_model3d_load_with_options(rt_string path, int8_t force_tangents);
+void *rt_model3d_get_mesh(void *obj, int64_t index);
+}
+
+static void test_gltf_converts_spec_glossiness_materials() {
+    const char *gltf_path = "/tmp/viper_gltf_spec_gloss.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsRequired\":[\"KHR_materials_pbrSpecularGlossiness\"],"
+        "\"extensionsUsed\":[\"KHR_materials_pbrSpecularGlossiness\"],"
+        "\"materials\":["
+        "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
+        "\"diffuseFactor\":[0.8,0.4,0.2,1.0],"
+        "\"specularFactor\":[0.04,0.04,0.04],"
+        "\"glossinessFactor\":0.7}}},"
+        "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
+        "\"diffuseFactor\":[0.1,0.1,0.1,1.0],"
+        "\"specularFactor\":[1.0,1.0,1.0],"
+        "\"glossinessFactor\":1.0}}}"
+        "]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Spec-gloss glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr,
+                "GLTF.Load accepts assets requiring KHR_materials_pbrSpecularGlossiness");
+    if (!asset)
+        return;
+    auto *dielectric = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    auto *metal = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 1));
+    EXPECT_TRUE(dielectric != nullptr && metal != nullptr,
+                "GLTF.Load exposes converted spec-gloss materials");
+    if (!dielectric || !metal)
+        return;
+    EXPECT_NEAR(
+        dielectric->diffuse[0], 0.8, 0.001, "Spec-gloss diffuseFactor becomes the base color");
+    EXPECT_NEAR(dielectric->roughness, 0.3, 0.001, "roughness = 1 - glossinessFactor");
+    EXPECT_NEAR(dielectric->metallic,
+                0.0,
+                0.001,
+                "Dielectric specular (0.04) converts to metallic 0");
+    EXPECT_NEAR(metal->metallic, 1.0, 0.001, "Full specular converts to metallic 1");
+    EXPECT_NEAR(metal->roughness, 0.0, 0.001, "Full glossiness converts to roughness 0");
+}
+
+static void test_gltf_forced_tangents_load_option() {
+    const char *gltf_path = "/tmp/viper_gltf_forced_tangents.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 0.f};
+    const float uvs[6] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]}}],"
+        "\"meshes\":[{\"primitives\":[{"
+        "\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Forced-tangents glTF fixture can be created");
+
+    /* Default load: no normal map bound, so no tangents (current behavior pinned). */
+    void *asset = rt_model3d_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "SceneAsset.Load parses the tangent fixture");
+    if (asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(asset, 0));
+        EXPECT_TRUE(mesh != nullptr && std::fabs(mesh->vertices[0].tangent[0]) < 0.5f,
+                    "Default load leaves UV0 meshes without tangents when no normal map");
+    }
+
+    /* Forced load: tangents generated regardless of the material's maps. */
+    void *forced = rt_model3d_load_with_options(rt_const_cstr(gltf_path), 1);
+    EXPECT_TRUE(forced != nullptr, "SceneAsset.LoadWithOptions parses the tangent fixture");
+    if (forced) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(forced, 0));
+        EXPECT_TRUE(mesh != nullptr && std::fabs(mesh->vertices[0].tangent[0]) > 0.9f &&
+                        std::fabs(mesh->vertices[0].tangent[3]) > 0.9f,
+                    "LoadWithOptions(forceTangents) generates tangents without a normal map");
+    }
+}
+
 static void test_gltf_imports_ktx2_basisu_textures() {
     const char *ktx_path = "/tmp/viper_gltf_basisu_albedo.ktx2";
     const char *gltf_path = "/tmp/viper_gltf_basisu_texture.gltf";
@@ -4431,6 +4535,8 @@ int main() {
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_unsupported_texture_texcoord_falls_back_to_primary();
     test_gltf_imports_material_extensions_supported_by_material3d();
+    test_gltf_converts_spec_glossiness_materials();
+    test_gltf_forced_tangents_load_option();
     test_gltf_imports_ktx2_basisu_textures();
     test_gltf_preserves_negative_matrix_scale_sign();
     test_gltf_matrix_shear_does_not_leak_into_rotation();

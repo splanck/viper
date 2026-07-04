@@ -1,0 +1,100 @@
+module output_cache;
+
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: output_cache
+// PURPOSE: Pure cache and display policy for the build-output panel.
+//
+// WHERE-THIS-FITS: AppShell owns output widgets and row creation. This module
+//          owns the string-size bound, truncation marker, raw-vs-row display
+//          decision, and wrap-column heuristic that do not need GUI handles.
+//
+// TEACHING-NOTE: UI controllers should keep widget manipulation local, but
+//          pure policy belongs in leaf modules. That makes the behavior easier
+//          to test, document, and reuse without pulling a full AppShell into
+//          every caller.
+// ============================================================================
+
+final MAX_BUILD_OUTPUT_CACHE_CHARS = 250000;
+final OUTPUT_CACHE_TRUNCATED_PREFIX = "[output truncated]\n";
+
+/// @brief Return the maximum build-output text retained by the UI cache.
+/// @return Character budget used by Bound().
+/// @details The build process model can have its own retention policy. This
+///          value protects the UI-side copy/filter/repaint cache from growing
+///          without bound during long-running jobs.
+expose func MaxChars() -> Integer {
+    return MAX_BUILD_OUTPUT_CACHE_CHARS;
+}
+
+/// @brief Return the prefix inserted when older cached output is discarded.
+/// @return Human-readable truncation marker.
+expose func TruncatedPrefix() -> String {
+    return OUTPUT_CACHE_TRUNCATED_PREFIX;
+}
+
+/// @brief Append text while preserving only the bounded tail.
+/// @param existing Current cached output text.
+/// @param text Newly captured stdout/stderr text.
+/// @return Combined text, trimmed from the front if it exceeds MaxChars().
+/// @details Trimming keeps the newest output because build failures and process
+///          exits are usually reported near the end of the stream.
+expose func Bound(existing: String,
+                  text: String) -> String {
+    var combined = existing + text;
+    var textLen = Str.get_Length(text);
+    if textLen >= MAX_BUILD_OUTPUT_CACHE_CHARS {
+        return OUTPUT_CACHE_TRUNCATED_PREFIX
+            + Str.Mid(text, textLen - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
+    }
+    var existingLen = Str.get_Length(existing);
+    var keepExisting = MAX_BUILD_OUTPUT_CACHE_CHARS - textLen;
+    if existingLen > keepExisting {
+        return OUTPUT_CACHE_TRUNCATED_PREFIX
+            + Str.Mid(existing, existingLen - keepExisting + 1) + text;
+    }
+    if Str.get_Length(combined) <= MAX_BUILD_OUTPUT_CACHE_CHARS {
+        return combined;
+    }
+    return OUTPUT_CACHE_TRUNCATED_PREFIX
+        + Str.Mid(combined, Str.get_Length(combined) - MAX_BUILD_OUTPUT_CACHE_CHARS + 1);
+}
+
+/// @brief Return true when an append crosses the UI cache limit.
+/// @param previousLength Length of the cache before appending.
+/// @param appendedText Newly captured output text.
+/// @return True when callers should repaint from the bounded cache.
+/// @details Raw output panes can normally append incrementally. When the cache
+///          trims, the visible pane must be repainted so the visible text and
+///          retained cache stay aligned.
+expose func AppendWouldTrim(previousLength: Integer,
+                            appendedText: String) -> Boolean {
+    return previousLength + Str.get_Length(appendedText) > MAX_BUILD_OUTPUT_CACHE_CHARS;
+}
+
+/// @brief Decide whether build output can be displayed as raw appended text.
+/// @param filterText Lowercase output filter text.
+/// @param wrapLines True when row wrapping is enabled.
+/// @return True when no row-level transform is active.
+/// @details Filtering and wrapping require row rendering; otherwise the raw
+///          OutputPane is faster and preserves process text exactly.
+expose func ShouldUseRawPane(filterText: String,
+                             wrapLines: Boolean) -> Boolean {
+    return filterText == "" and wrapLines == false;
+}
+
+/// @brief Compute an approximate wrap width for row-rendered output.
+/// @param windowWidth Current application window width in logical pixels.
+/// @return Character count used for wrapped output chunks.
+/// @details ListBox rows do not expose per-row text measurement here. The
+///          heuristic tracks window width and clamps to readable bounds.
+expose func WrapColumn(windowWidth: Integer) -> Integer {
+    var col = 160;
+    if windowWidth > 0 {
+        col = windowWidth / 8;
+    }
+    if col < 80 { col = 80; }
+    if col > 220 { col = 220; }
+    return col;
+}

@@ -106,7 +106,8 @@ static int gltf_mesh_take_preloaded_primitive(rt_gltf_asset *asset,
     if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_TANGENTS) == 0 &&
         (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV0) != 0) {
         rt_material3d *tangent_material = (rt_material3d *)primitive_material;
-        if (tangent_material && tangent_material->normal_map)
+        if (rt_gltf_active_load_options()->force_tangents ||
+            (tangent_material && tangent_material->normal_map))
             rt_mesh3d_calc_tangents(decoded_mesh);
     }
     asset->meshes[*mesh_idx_io] = decoded_mesh;
@@ -418,7 +419,8 @@ static int gltf_mesh_finalize_imported_primitive(rt_gltf_asset *asset,
     if ((!views->has_tangents || invalid_authored_tangents) && views->has_uv0 &&
         material_idx >= 0 && material_idx < asset->material_count) {
         rt_material3d *tangent_material = (rt_material3d *)primitive_material;
-        if (tangent_material && tangent_material->normal_map)
+        if (rt_gltf_active_load_options()->force_tangents ||
+            (tangent_material && tangent_material->normal_map))
             rt_mesh3d_calc_tangents(mesh);
     }
     gltf_import_primitive_morph_targets(

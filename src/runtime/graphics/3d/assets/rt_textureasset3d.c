@@ -43,7 +43,9 @@
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
+#include "rt_compress.h"
 #include "rt_trap.h"
+#include "rt_zstd.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -61,8 +63,14 @@
 
 #define VK_FORMAT_R8G8B8A8_UNORM 37u
 #define VK_FORMAT_R8G8B8A8_SRGB 43u
+#define VK_FORMAT_BC1_RGB_UNORM_BLOCK 131u
+#define VK_FORMAT_BC1_RGB_SRGB_BLOCK 132u
+#define VK_FORMAT_BC1_RGBA_UNORM_BLOCK 133u
+#define VK_FORMAT_BC1_RGBA_SRGB_BLOCK 134u
 #define VK_FORMAT_BC3_UNORM_BLOCK 137u
 #define VK_FORMAT_BC3_SRGB_BLOCK 138u
+#define VK_FORMAT_BC4_UNORM_BLOCK 139u
+#define VK_FORMAT_BC5_UNORM_BLOCK 141u
 #define VK_FORMAT_BC7_UNORM_BLOCK 145u
 #define VK_FORMAT_BC7_SRGB_BLOCK 146u
 #define VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK 151u

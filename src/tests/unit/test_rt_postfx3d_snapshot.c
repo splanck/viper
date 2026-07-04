@@ -371,6 +371,53 @@ static void test_set_enabled_normalizes_boolean_state(void) {
     EXPECT_TRUE(rt_postfx3d_get_enabled(fx) == 0, "Zero enabled values normalize to false");
 }
 
+/* Plan 05: TAA chain export, blend clamping, and the explicit-tonemap marker. */
+static void test_taa_and_explicit_tonemap_export(void) {
+    void *fx = rt_postfx3d_new();
+    vgfx3d_postfx_chain_t chain = {0};
+    vgfx3d_postfx_snapshot_t snapshot;
+
+    rt_postfx3d_add_bloom(fx, 0.8, 1.0, 4);
+    rt_postfx3d_add_taa(fx, 0.9);
+    rt_postfx3d_add_tonemap(fx, 0, 1.25);
+
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1 && chain.effect_count == 3,
+                "TAA chain export keeps all three effects");
+    EXPECT_TRUE(chain.effects[1].type == VGFX3D_POSTFX_EFFECT_TAA &&
+                    chain.effects[1].snapshot.taa_enabled == 1,
+                "TAA entry exports the appended enum value with taa_enabled set");
+    EXPECT_NEARF(chain.effects[1].snapshot.taa_blend,
+                 0.9f,
+                 0.0001f,
+                 "TAA blend passes through inside the valid range");
+    EXPECT_TRUE(chain.effects[0].snapshot.tonemap_explicit == 0,
+                "Non-tonemap entries do not carry the explicit-tonemap marker");
+    EXPECT_TRUE(chain.effects[2].snapshot.tonemap_explicit == 1 &&
+                    chain.effects[2].snapshot.tonemap_mode == 0,
+                "Explicit mode-0 tonemap entries carry the explicit-tonemap marker");
+    EXPECT_TRUE(vgfx3d_postfx_requires_gpu_scene_buffers(fx) == 1,
+                "TAA requires GPU scene buffers like SSAO/DOF/motion blur");
+    EXPECT_TRUE(vgfx3d_postfx_get_snapshot(fx, &snapshot) == 1 && snapshot.taa_enabled == 1,
+                "Legacy flat snapshot reports the TAA effect");
+    vgfx3d_postfx_chain_free(&chain);
+
+    fx = rt_postfx3d_new();
+    rt_postfx3d_add_taa(fx, 5.0);
+    rt_postfx3d_add_taa(fx, 0.1);
+    rt_postfx3d_add_taa(fx, NAN);
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1 && chain.effect_count == 3,
+                "TAA clamp fixture exports three entries");
+    EXPECT_NEARF(
+        chain.effects[0].snapshot.taa_blend, 0.98f, 0.0001f, "TAA blend clamps above to 0.98");
+    EXPECT_NEARF(
+        chain.effects[1].snapshot.taa_blend, 0.5f, 0.0001f, "TAA blend clamps below to 0.5");
+    EXPECT_NEARF(chain.effects[2].snapshot.taa_blend,
+                 0.9f,
+                 0.0001f,
+                 "Non-finite TAA blend falls back to the 0.9 default");
+    vgfx3d_postfx_chain_free(&chain);
+}
+
 int main(void) {
     test_snapshot_includes_advanced_effects();
     test_snapshot_disabled_returns_zero();
@@ -382,6 +429,7 @@ int main(void) {
     test_chain_copy_rejects_inconsistent_metadata();
     test_private_effect_count_corruption_is_bounded();
     test_set_enabled_normalizes_boolean_state();
+    test_taa_and_explicit_tonemap_export();
 
     printf("rt_postfx3d snapshot tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

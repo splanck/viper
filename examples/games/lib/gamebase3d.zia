@@ -1,0 +1,217 @@
+module gamebase3d;
+
+// ============================================================================
+// GameBase3D — 3D Game Loop Framework
+// ============================================================================
+// The Game3D counterpart of lib/gamebase.zia. Eliminates the per-game loop /
+// scene-state boilerplate every 3D demo re-implements by providing:
+//   - A driven frame loop (Tick → update → StepSimulation → render → Present)
+//     with delta-time clamping in seconds
+//   - Scene lifecycle management (IScene3D interface)
+//   - Deferred scene transitions (applied at frame boundaries)
+//   - Orchestrated fade transitions rendered on the Canvas3D overlay
+//
+// Usage:
+//   class MyGame extends GameBase3D {
+//       override expose func onInit() {
+//           // Build entities, lighting, and scenes; call setScene(...)
+//       }
+//       override expose func onOverlay(dt: Number) {
+//           // Optional: global HUD drawn after the scene's drawOverlay
+//       }
+//   }
+//
+//   func start() {
+//       var game = new MyGame();
+//       game.initGame("My Game", 960, 540);
+//       game.run();
+//   }
+// ============================================================================
+
+bind "./iscene3d";
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+
+// Null Object sentinel — avoids optional interface chaining issues.
+class NullScene3D implements IScene3D {
+    expose func onEnter(world: World3D) { }
+    expose func onExit(world: World3D) { }
+    expose func update(world: World3D, dt: Number) { }
+    expose func drawOverlay(world: World3D) { }
+}
+
+class GameBase3D {
+    hide World3D world;
+    hide Number dt;
+    hide Number dtMax;
+    hide IScene3D currentScene;
+    hide IScene3D pendingScene;
+    hide IScene3D transitionTarget;
+    hide Boolean hasScene;
+    hide Boolean hasPending;
+    hide Boolean running;
+
+    // Fade transition state (rendered as a full-screen overlay rect).
+    hide Boolean transitioning;
+    hide Boolean fadingIn;
+    hide Integer transitionColor;
+    hide Number transitionDuration;
+    hide Number transitionElapsed;
+
+    // Deterministic testing: stop after N frames (0 = run until closed).
+    hide Integer maxFrames;
+    hide Integer frameCount;
+
+    // Initialize the game framework. Call after construction.
+    expose func initGame(title: String, width: Integer, height: Integer) {
+        world = World3D.New(title, width, height);
+        dtMax = 0.05;
+        dt = 0.016;
+        var nullScene = new NullScene3D();
+        currentScene = nullScene;
+        pendingScene = nullScene;
+        transitionTarget = nullScene;
+        hasScene = false;
+        hasPending = false;
+        running = true;
+        transitioning = false;
+        fadingIn = false;
+        transitionColor = 0x000000;
+        transitionDuration = 0.3;
+        transitionElapsed = 0.0;
+        maxFrames = 0;
+        frameCount = 0;
+        self.onInit();
+    }
+
+    // Main game loop — call after initGame to start the game.
+    expose func run() {
+        while running {
+            if world.Tick() == false {
+                running = false;
+            }
+
+            // Delta-time clamping (seconds).
+            dt = world.Dt;
+            if dt <= 0.0 { dt = 0.016; }
+            if dt > dtMax { dt = dtMax; }
+
+            // Orchestrated transition: fade-out complete → switch → fade-in.
+            if transitioning {
+                transitionElapsed = transitionElapsed + dt;
+                if fadingIn == false and transitionElapsed >= transitionDuration {
+                    self.setScene(transitionTarget);
+                    fadingIn = true;
+                    transitionElapsed = 0.0;
+                }
+                if fadingIn and transitionElapsed >= transitionDuration {
+                    transitioning = false;
+                    fadingIn = false;
+                }
+            }
+
+            // Deferred scene transition — applied at frame boundary.
+            if hasPending {
+                if hasScene {
+                    currentScene.onExit(world);
+                }
+                currentScene = pendingScene;
+                hasScene = true;
+                hasPending = false;
+                currentScene.onEnter(world);
+            }
+
+            // Update, simulate, render.
+            if hasScene {
+                currentScene.update(world, dt);
+            }
+            world.StepSimulation(dt);
+            world.BeginFrame();
+            world.DrawScene();
+            world.DrawEffects();
+            world.EndScene();
+
+            var canvas: Canvas3D = world.Canvas;
+            Canvas3D.BeginOverlay(canvas);
+            if hasScene {
+                currentScene.drawOverlay(world);
+            }
+            self.onOverlay(dt);
+            self.drawTransitionFade(canvas);
+            Canvas3D.EndOverlay(canvas);
+
+            world.Present();
+
+            frameCount = frameCount + 1;
+            if maxFrames > 0 and frameCount >= maxFrames {
+                running = false;
+            }
+        }
+    }
+
+    // Limit the loop to N frames (for demos, probes, and tests). 0 = unlimited.
+    expose func setMaxFrames(frames: Integer) {
+        maxFrames = frames;
+    }
+
+    // Queue a scene transition — applied at the start of the next frame.
+    expose func setScene(scene: IScene3D) {
+        pendingScene = scene;
+        hasPending = true;
+    }
+
+    // Transition to a scene with a fade: fade out, switch, fade back in.
+    expose func transitionTo(scene: IScene3D, fadeColor: Integer, durationSeconds: Number) {
+        transitionTarget = scene;
+        transitionColor = fadeColor;
+        var duration = durationSeconds;
+        if duration < 0.01 { duration = 0.01; }
+        transitionDuration = duration;
+        transitionElapsed = 0.0;
+        transitioning = true;
+        fadingIn = false;
+    }
+
+    // Draw the fade overlay for an in-flight transition.
+    hide func drawTransitionFade(canvas: Canvas3D) {
+        if transitioning == false {
+            return;
+        }
+        var alpha = transitionElapsed / transitionDuration;
+        if alpha > 1.0 { alpha = 1.0; }
+        if fadingIn {
+            alpha = 1.0 - alpha;
+        }
+        Canvas3D.DrawRect2DAlpha(
+            canvas, 0, 0, canvas.Width, canvas.Height, transitionColor, alpha);
+    }
+
+    // Access the world for spawning, lighting, physics, and queries.
+    expose func getWorld() -> World3D {
+        return world;
+    }
+
+    // Get the current (clamped) delta time in seconds.
+    expose func getDT() -> Number {
+        return dt;
+    }
+
+    // Set maximum delta time clamp in seconds (default 0.05).
+    expose func setDTMax(max: Number) {
+        dtMax = max;
+    }
+
+    // Signal the game to stop at the end of the current frame.
+    expose func quit() {
+        running = false;
+    }
+
+    // --- Override hooks ---
+
+    // Called once at the end of initGame(). Override to set up your game.
+    expose func onInit() { }
+
+    // Called every frame inside the overlay pass, after the scene's HUD.
+    expose func onOverlay(dt: Number) { }
+}

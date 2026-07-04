@@ -29,6 +29,26 @@
 extern "C" {
 #endif
 
+/// @brief Optional glTF import behavior knobs (Plan 09). Zero-initialized = defaults
+///   (current behavior: tangents generated only when a normal map is bound at load).
+typedef struct rt_gltf_load_options {
+    /// Generate tangents for every UV0-mapped primitive even when its material has
+    /// no normal map yet (for materials that gain normal maps after import).
+    int8_t force_tangents;
+    int8_t reserved[7];
+} rt_gltf_load_options;
+
+/// @brief Default-initialized import options (all zero — current loader behavior).
+rt_gltf_load_options rt_gltf_load_options_default(void);
+/// @brief Borrow the calling thread's active import options (never NULL).
+/// @details Load entry points scope options thread-locally so the option state reaches
+///   the mesh decode gates without threading a parameter through every loader layer;
+///   worker-decoded preload bundles apply the gates on the committing thread.
+const rt_gltf_load_options *rt_gltf_active_load_options(void);
+/// @brief Install @p opts as the calling thread's import options; returns the previous
+///   value so callers can save/restore around a load (NULL restores defaults).
+rt_gltf_load_options rt_gltf_set_thread_load_options(const rt_gltf_load_options *opts);
+
 /// @brief Load a glTF/GLB asset from @p path. @return an asset handle, or NULL.
 void *rt_gltf_load(rt_string path);
 /// @brief Load a glTF/GLB asset through the runtime asset manager.

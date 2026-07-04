@@ -41,6 +41,8 @@ extern "C" {
 #include "vgfx3d_backend.h"
 
 int64_t vgfx3d_software_backend_thread_count_for_test(const void *ctx);
+void *rt_pixels_new(int64_t width, int64_t height);
+void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba);
 }
 
 static int tests_passed = 0;
@@ -779,6 +781,127 @@ static void test_software_tiled_raster_threads_are_deterministic() {
     EXPECT_TRUE(rgba_equal(one, automatic), "Default software raster pixels match serial");
 }
 
+/// Build a solid-color square Pixels face for the IBL environment cubemap.
+static void *ibl_test_face(int size, int64_t rgba) {
+    void *p = rt_pixels_new(size, size);
+    for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+            rt_pixels_set_rgba(p, x, y, rgba);
+    return p;
+}
+
+/// End-to-end software render: a lightless PBR sphere under a top-lit IBL
+/// environment must pick up directional ambient (bright top, dark bottom),
+/// while the same scene without IBL stays black.
+static void test_software_ibl_environment_lights_pbr_sphere() {
+    const int32_t width = 96;
+    const int32_t height = 96;
+    rt_canvas3d canvas;
+    std::memset(&canvas, 0, sizeof(canvas));
+
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx(nullptr, width, height);
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = width;
+    canvas.height = height;
+    canvas.framebuffer_width = width;
+    canvas.framebuffer_height = height;
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "Software backend context for IBL test");
+    if (!canvas.backend_ctx)
+        return;
+
+    void *target_obj = rt_rendertarget3d_new(width, height);
+    void *camera = rt_camera3d_new(55.0, 1.0, 0.1, 20.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 4.0);
+    void *look = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *sphere = rt_mesh3d_new_sphere(1.0, 32);
+    void *mat = rt_material3d_new_pbr(0.85, 0.85, 0.85);
+    /* Top-lit environment: white +Y, black -Y, mid gray sides. */
+    void *faces[6];
+    for (int i = 0; i < 6; i++)
+        faces[i] = ibl_test_face(16, 0x808080FF);
+    faces[2] = ibl_test_face(16, 0xFFFFFFFFll); /* +Y */
+    faces[3] = ibl_test_face(16, 0x000000FFll); /* -Y */
+    void *sky = rt_cubemap3d_new(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
+    double model[16];
+    int32_t top_x = 0;
+    int32_t top_y = 0;
+    int32_t bottom_x = 0;
+    int32_t bottom_y = 0;
+
+    EXPECT_TRUE(target_obj && camera && sphere && mat && sky, "IBL test scene resources");
+    if (!target_obj || !camera || !sphere || !mat || !sky)
+        return;
+
+    rt_camera3d_look_at(camera, eye, look, up);
+    rt_canvas3d_set_render_target(&canvas, target_obj);
+    rt_canvas3d_set_ambient(&canvas, 0.0, 0.0, 0.0);
+    set_identity_matrix(model);
+
+    rt_rendertarget3d *target_owner = (rt_rendertarget3d *)target_obj;
+
+    /* Frame A: no IBL — a lightless, zero-ambient PBR sphere renders black. */
+    rt_canvas3d_clear(&canvas, 0.0, 0.0, 0.0);
+    rt_canvas3d_begin(&canvas, camera);
+    EXPECT_TRUE(
+        project_world_to_pixel(&canvas, 0.0f, 0.72f, 0.65f, width, height, &top_x, &top_y),
+        "Sphere upper-front point projects inside the IBL render target");
+    EXPECT_TRUE(
+        project_world_to_pixel(&canvas, 0.0f, -0.72f, 0.65f, width, height, &bottom_x, &bottom_y),
+        "Sphere lower-front point projects inside the IBL render target");
+    rt_canvas3d_draw_mesh_matrix(&canvas, sphere, model, mat);
+    rt_canvas3d_end(&canvas);
+    float dark_top = sample_luminance_box(target_owner->target, top_x, top_y, 2);
+    float dark_bottom = sample_luminance_box(target_owner->target, bottom_x, bottom_y, 2);
+    EXPECT_TRUE(dark_top < 0.03f && dark_bottom < 0.03f,
+                "Without IBL a lightless zero-ambient PBR sphere stays black");
+
+    /* Frame B: skybox + IBL — SH irradiance lights the top, bottom stays dark. */
+    rt_canvas3d_set_skybox(&canvas, sky);
+    rt_canvas3d_set_ibl_enabled(&canvas, 1);
+    rt_canvas3d_set_ibl_intensity(&canvas, 1.0);
+    EXPECT_TRUE(rt_canvas3d_get_ibl_enabled(&canvas) == 1, "IblEnabled reads back");
+    EXPECT_TRUE(((rt_cubemap3d *)sky)->ibl_ready == 1,
+                "Enabling IBL prepares the skybox payload at load time");
+    rt_canvas3d_clear(&canvas, 0.0, 0.0, 0.0);
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh_matrix(&canvas, sphere, model, mat);
+    rt_canvas3d_end(&canvas);
+    float lit_top = sample_luminance_box(target_owner->target, top_x, top_y, 2);
+    float lit_bottom = sample_luminance_box(target_owner->target, bottom_x, bottom_y, 2);
+    EXPECT_TRUE(lit_top > 0.18f, "IBL lights the sphere's upward-facing surface");
+    EXPECT_TRUE(lit_top > lit_bottom * 2.0f + 0.05f,
+                "IBL irradiance is directional: top clearly brighter than bottom");
+    EXPECT_TRUE(lit_top > dark_top + 0.15f, "IBL adds energy over the no-IBL frame");
+
+    /* Intensity scales the contribution down. */
+    rt_canvas3d_set_ibl_intensity(&canvas, 0.25);
+    rt_canvas3d_clear(&canvas, 0.0, 0.0, 0.0);
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh_matrix(&canvas, sphere, model, mat);
+    rt_canvas3d_end(&canvas);
+    float dim_top = sample_luminance_box(target_owner->target, top_x, top_y, 2);
+    EXPECT_TRUE(dim_top < lit_top - 0.05f, "IblIntensity scales the environment contribution");
+
+    rt_canvas3d_clear_skybox(&canvas);
+    rt_canvas3d_reset_render_target(&canvas);
+    if (canvas.backend && canvas.backend_ctx && canvas.backend->destroy_ctx) {
+        canvas.backend->destroy_ctx(canvas.backend_ctx);
+        canvas.backend_ctx = nullptr;
+    }
+    release_obj(sky);
+    for (int i = 0; i < 6; i++)
+        release_obj(faces[i]);
+    release_obj(mat);
+    release_obj(sphere);
+    release_obj(up);
+    release_obj(look);
+    release_obj(eye);
+    release_obj(camera);
+    release_obj(target_obj);
+}
+
 int main() {
     test_null_canvas_has_no_capabilities();
     test_software_backend_reports_canvas_fallback_features();
@@ -789,6 +912,7 @@ int main() {
     test_canvas_render_state_sanitizes_inputs();
     test_software_tiled_raster_threads_are_deterministic();
     test_software_spot_light_shadow_render_is_stable();
+    test_software_ibl_environment_lights_pbr_sphere();
 
     if (tests_passed != tests_run) {
         std::fprintf(

@@ -97,6 +97,13 @@ typedef struct {
     void *ao_map_asset;
     const void *env_map; /* CubeMap3D (environment reflections) or NULL */
     float reflectivity;  /* [0.0=no reflection, 1.0=mirror] */
+    int8_t ibl_env;      /* env_map is the canvas IBL environment: PBR draws use
+                            SH irradiance + prefiltered specular instead of the
+                            flat ambient + legacy reflectivity mix */
+    uint32_t lights_revision; /* monotonic stamp of the light+ambient snapshot this
+                                 draw was queued with; consecutive draws sharing a
+                                 stamp let backends skip re-uploading scene/light
+                                 constants (0 = unknown, always upload) */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
     const void *splat_map;       /* RGBA weight texture (NULL = not terrain) */
     const void *splat_layers[4]; /* Layer textures */
@@ -229,6 +236,20 @@ typedef struct {
      * depth for overlays or UI. */
     int8_t load_existing_color;
     int8_t load_existing_depth;
+    /* Image-based lighting (canvas environment). When ibl_enabled is nonzero,
+     * ibl_sh carries SH-9 RGB irradiance coefficients (Ramamoorthi-Hanrahan
+     * order, cosine-convolved, 1/pi folded) and PBR draws flagged ibl_env
+     * replace the flat ambient term with SH diffuse + prefiltered specular. */
+    int8_t ibl_enabled;
+    float ibl_intensity;
+    float ibl_sh[27];
+    /* Shadow filtering/bias parameters (Plan 06). shadow_strength is how dark a
+     * fully-occluded texel gets (0 = no darkening, 1 = black); shadow_slope_bias
+     * scales the per-texel slope-proportional compare bias; shadow_quality picks
+     * the PCF tier (0 = 4 taps, 1 = 8, 2 = 16 rotated-Poisson taps). */
+    float shadow_strength;
+    float shadow_slope_bias;
+    int32_t shadow_quality;
 } vgfx3d_camera_params_t;
 
 /*==========================================================================
@@ -322,6 +343,7 @@ typedef struct vgfx3d_backend {
      * rendering to the backend instead of rasterizing it into the software
      * framebuffer. */
     void (*draw_skybox)(void *ctx, const void *cubemap);
+
 
     /* Instanced rendering (MTL-13): draw multiple instances in one GPU call.
      * NULL = fallback to N individual submit_draw() calls (software path). */

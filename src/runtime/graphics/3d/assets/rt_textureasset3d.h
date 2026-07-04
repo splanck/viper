@@ -27,6 +27,9 @@
 #define RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7 2
 #define RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC 3
 #define RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2 4
+#define RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1 5
+#define RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4 6
+#define RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5 7
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +43,18 @@ void rt_textureasset3d_decode_bc3_block(const uint8_t *block16, uint8_t *out_rgb
 ///   Handles modes 0-7, including the partitioned modes. @return 1 if decoded, 0 for reserved
 ///   encodings (leaving @p out_rgba untouched).
 int rt_textureasset3d_decode_bc7_block(const uint8_t *block16, uint8_t *out_rgba);
+
+/// @brief Decode one 8-byte BC1 (DXT1) block into 16 row-major RGBA texels (@p out_rgba is 64
+///   bytes). Handles the opaque 4-colour and 3-colour + punch-through-alpha modes.
+void rt_textureasset3d_decode_bc1_block(const uint8_t *block8, uint8_t *out_rgba);
+
+/// @brief Decode one 8-byte BC4 (single-channel) block into 16 row-major RGBA texels; the
+///   channel replicates into R/G/B with opaque alpha for the software rendering path.
+void rt_textureasset3d_decode_bc4_block(const uint8_t *block8, uint8_t *out_rgba);
+
+/// @brief Decode one 16-byte BC5 (two-channel) block into 16 row-major RGBA texels with the
+///   decoded channels in R and G (B = 255, alpha opaque).
+void rt_textureasset3d_decode_bc5_block(const uint8_t *block16, uint8_t *out_rgba);
 
 /// @brief Decode one ETC2 RGBA8/EAC 16-byte block into 16 row-major RGBA texels.
 ///   @return 1 if decoded, 0 if the ETC2 color mode is not software-supported.

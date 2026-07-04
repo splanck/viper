@@ -787,15 +787,27 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTDialogueContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_dialogue.c)
 
+    viper_add_test(test_rt_zstd ${VIPER_TESTS_DIR}/unit/test_rt_zstd.cpp)
+    target_link_libraries(test_rt_zstd PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_zstd PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    viper_add_ctest(test_rt_zstd test_rt_zstd)
+    viper_add_test_labels(test_rt_zstd runtime unit)
+
     viper_add_test(test_rt_tilemap_io ${VIPER_TESTS_DIR}/unit/test_rt_tilemap_io.cpp)
     target_link_libraries(test_rt_tilemap_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_tilemap_io test_rt_tilemap_io)
 
     viper_add_test(test_rt_canvas3d ${VIPER_TESTS_DIR}/unit/test_rt_canvas3d.cpp)
     target_link_libraries(test_rt_canvas3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_canvas3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_canvas3d test_rt_canvas3d)
     viper_add_test_labels(test_rt_canvas3d graphics3d unit)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    viper_add_test(test_rt_cubemap3d_ibl ${VIPER_TESTS_DIR}/unit/test_rt_cubemap3d_ibl.cpp)
+    target_link_libraries(test_rt_cubemap3d_ibl PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_cubemap3d_ibl test_rt_cubemap3d_ibl)
+    viper_add_test_labels(test_rt_cubemap3d_ibl graphics3d unit)
 
     viper_add_test(test_graphics3d_abi_surface ${VIPER_TESTS_DIR}/unit/test_graphics3d_abi_surface.cpp)
     target_compile_definitions(test_graphics3d_abi_surface PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

@@ -37,6 +37,11 @@ void *rt_model3d_load(rt_string path);
 /// @details This side-channel-free companion to @ref rt_model3d_load preserves the same loader
 /// behavior while returning recoverable failure diagnostics directly in the Result.
 void *rt_model3d_load_result(rt_string path);
+/// @brief Load with explicit import options: `force_tangents` generates tangents for
+///        every UV0-mapped glTF primitive even without a normal map bound at load.
+void *rt_model3d_load_with_options(rt_string path, int8_t force_tangents);
+/// @brief Options-aware Result variant of @ref rt_model3d_load_with_options.
+void *rt_model3d_load_result_with_options(rt_string path, int8_t force_tangents);
 /// @brief Load a 3D model asset through the runtime asset manager.
 /// @details glTF/GLB assets resolve external dependencies relative to the model
 ///          asset and search mounted/embedded packages before dev filesystem files.

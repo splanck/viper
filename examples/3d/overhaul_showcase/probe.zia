@@ -1,0 +1,30 @@
+// Headless verification probe for the overhaul showcase: starts directly in
+// the play scene (IBL + shadows + postfx + widget HUD + behaviors), runs a
+// fixed frame budget on the software backend, and asserts world telemetry.
+bind "showcase_scenes";
+
+bind Viper.Game3D;
+bind Viper.Terminal as Terminal;
+
+func main() {
+    var game = new SceneGame();
+    game.initGame("3D Overhaul Showcase Probe", 320, 200);
+    game.startPlay();
+    game.setMaxFrames(90);
+    game.run();
+
+    var world: World3D = game.getWorld();
+    if world.EntityCount < 8 {
+        Terminal.Say("FAIL: expected the showcase entities to spawn");
+        return;
+    }
+    if world.DrawCount <= 0 {
+        Terminal.Say("FAIL: no draws recorded in the showcase scene");
+        return;
+    }
+    if world.IblEnabled == false {
+        Terminal.Say("FAIL: IBL was not enabled by the play scene");
+        return;
+    }
+    Terminal.Say("PASS");
+}

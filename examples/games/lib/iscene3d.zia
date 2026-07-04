@@ -1,0 +1,25 @@
+module iscene3d;
+
+// ============================================================================
+// IScene3D — 3D Game State Interface
+// ============================================================================
+// Defines the contract for a 3D game scene (menu, gameplay, pause, etc.).
+// Used with GameBase3D for scene lifecycle management over a Game3D World3D.
+//
+// Lifecycle:
+//   onEnter(world)        — called once when this scene becomes active
+//   onExit(world)         — called once when transitioning away
+//   update(world, dt)     — called every frame before the simulation step
+//                           (dt is seconds, already clamped)
+//   drawOverlay(world)    — called inside the HUD overlay pass; draw with
+//                           Canvas3D.DrawText2D / DrawRect2D / widgets
+// ============================================================================
+
+bind Viper.Game3D;
+
+interface IScene3D {
+    func onEnter(world: World3D);
+    func onExit(world: World3D);
+    func update(world: World3D, dt: Number);
+    func drawOverlay(world: World3D);
+}

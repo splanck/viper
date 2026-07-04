@@ -105,3 +105,56 @@ int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */
+
+/// @brief Stamp the current light+ambient snapshot with a monotonic revision.
+/// @details Compares @p lights (freshly built, memset-padded entries) and the
+///          canvas ambient against the previous snapshot; the revision only
+///          advances on a real change. Queued draws record the returned stamp
+///          so backends can skip re-uploading scene/light constants across
+///          runs of draws that share it. Never returns 0 (0 = "unknown,
+///          always upload" in the draw command).
+uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
+                                       const vgfx3d_light_params_t *lights,
+                                       int32_t light_count) {
+    vgfx3d_light_params_t *last;
+    size_t bytes;
+
+    if (!c)
+        return 0;
+    if (light_count < 0)
+        light_count = 0;
+    if (light_count > VGFX3D_MAX_LIGHTS)
+        light_count = VGFX3D_MAX_LIGHTS;
+    bytes = (size_t)light_count * sizeof(vgfx3d_light_params_t);
+    last = (vgfx3d_light_params_t *)c->last_light_snapshot;
+    if (!last) {
+        last = (vgfx3d_light_params_t *)calloc(VGFX3D_MAX_LIGHTS, sizeof(*last));
+        if (!last) {
+            /* Snapshot cache unavailable: force per-draw uploads (correct, slower). */
+            c->lights_revision++;
+            if (c->lights_revision == 0)
+                c->lights_revision = 1;
+            return c->lights_revision;
+        }
+        c->last_light_snapshot = last;
+        c->last_light_snapshot_valid = 0;
+    }
+    if (c->last_light_snapshot_valid && c->last_light_snapshot_count == light_count &&
+        memcmp(c->last_light_snapshot_ambient,
+               c->ambient,
+               sizeof(c->last_light_snapshot_ambient)) == 0 &&
+        (bytes == 0 || memcmp(last, lights, bytes) == 0)) {
+        if (c->lights_revision == 0)
+            c->lights_revision = 1;
+        return c->lights_revision;
+    }
+    if (bytes)
+        memcpy(last, lights, bytes);
+    c->last_light_snapshot_count = light_count;
+    memcpy(c->last_light_snapshot_ambient, c->ambient, sizeof(c->last_light_snapshot_ambient));
+    c->last_light_snapshot_valid = 1;
+    c->lights_revision++;
+    if (c->lights_revision == 0)
+        c->lights_revision = 1;
+    return c->lights_revision;
+}

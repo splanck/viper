@@ -281,10 +281,31 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform4f(
         ctx->uPbrScalars0, cmd->metallic, cmd->roughness, cmd->ao, cmd->emissive_intensity);
     gl.Uniform4f(ctx->uPbrScalars1, cmd->normal_scale, cmd->alpha_cutoff, 0.0f, 0.0f);
-    gl.Uniform1i(ctx->uHasEnvMap, (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0);
-    gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
-    gl.Uniform1f(ctx->uEnvMaxLod,
-                 cmd->env_map ? gl_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f);
+    {
+        const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
+        int8_t ibl_draw = (cmd->ibl_env && ctx->ibl_enabled && env_cm && env_cm->ibl_ready) ? 1 : 0;
+        float env_lod_base = 0.0f;
+
+        if (ibl_draw) {
+            /* The prefiltered chain occupies the pyramid tail starting where the
+             * mip size first equals ibl_base_size. */
+            int64_t size = env_cm->face_size;
+            while (size > env_cm->ibl_base_size && size > 1) {
+                size >>= 1;
+                env_lod_base += 1.0f;
+            }
+        }
+        gl.Uniform1i(ctx->uHasEnvMap,
+                     (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) ? 1 : 0);
+        gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
+        gl.Uniform1f(ctx->uEnvMaxLod,
+                     ibl_draw ? (float)(env_cm->ibl_mip_count - 1)
+                              : (cmd->env_map ? gl_cubemap_max_lod(env_cm) : 0.0f));
+        gl.Uniform1f(ctx->uEnvLodBase, env_lod_base);
+        gl.Uniform1i(ctx->uIblEnabled, ibl_draw);
+        gl.Uniform1f(ctx->uIblIntensity, ctx->ibl_intensity);
+        gl.Uniform3fv(ctx->uShIrradiance, 9, ctx->ibl_sh);
+    }
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
     gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
@@ -328,8 +349,18 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
     gl.Uniform3f(ctx->uFogColor, ctx->fog_color[0], ctx->fog_color[1], ctx->fog_color[2]);
     gl.Uniform1f(ctx->uShadowBias, ctx->shadow_bias);
+    gl.Uniform1f(ctx->uShadowSlopeBias, ctx->shadow_slope_bias);
+    gl.Uniform1f(ctx->uShadowStrength, ctx->shadow_strength);
+    /* Quality tier → rotated-Poisson tap count (0=4, 1=8, 2=16). */
+    gl.Uniform1i(ctx->uShadowSampleCount,
+                 ctx->shadow_quality <= 0 ? 4 : (ctx->shadow_quality == 1 ? 8 : 16));
 
-    upload_light_uniforms(ctx, lights, light_count);
+    /* GL uniform values persist in the program object, so runs of draws that
+     * share a light-snapshot revision skip the 64-light glUniform storm. */
+    if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_lights_revision) {
+        upload_light_uniforms(ctx, lights, light_count);
+        ctx->uploaded_lights_revision = cmd->lights_revision;
+    }
 
     bind_morph_payload(ctx,
                        cmd,
@@ -645,8 +676,15 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uFogNear);
     U(uFogFar);
     U(uFogColor);
+    U(uIblEnabled);
+    U(uIblIntensity);
+    U(uEnvLodBase);
+    ctx->uShIrradiance = gl.GetUniformLocation(ctx->program, "uShIrradiance[0]");
     U(uShadowCount);
     U(uShadowBias);
+    U(uShadowSlopeBias);
+    U(uShadowStrength);
+    U(uShadowSampleCount);
     U(uUseInstancing);
     U(uHasPrevModelMatrix);
     U(uHasPrevInstanceMatrices);
@@ -788,4 +826,28 @@ static void query_postfx_uniforms(gl_context_t *ctx) {
         gl.GetUniformLocation(ctx->postfx_program, "uInvViewProjection");
     ctx->postfx_uPrevViewProjection =
         gl.GetUniformLocation(ctx->postfx_program, "uPrevViewProjection");
+    ctx->postfx_uSceneHdr = gl.GetUniformLocation(ctx->postfx_program, "uSceneHdr");
+    ctx->postfx_uTonemapExplicit = gl.GetUniformLocation(ctx->postfx_program, "uTonemapExplicit");
+    ctx->postfx_uBloomTex = gl.GetUniformLocation(ctx->postfx_program, "uBloomTex");
+    ctx->postfx_uBloomTexEnabled = gl.GetUniformLocation(ctx->postfx_program, "uBloomTexEnabled");
+}
+
+/// @brief Cache uniform locations for the Plan 05 bloom-chain and TAA pass programs.
+static void query_bloom_taa_uniforms(gl_context_t *ctx) {
+    ctx->bloom_down_uSrcTex = gl.GetUniformLocation(ctx->bloom_down_program, "uSrcTex");
+    ctx->bloom_down_uSrcInvSize = gl.GetUniformLocation(ctx->bloom_down_program, "uSrcInvSize");
+    ctx->bloom_down_uThreshold = gl.GetUniformLocation(ctx->bloom_down_program, "uThreshold");
+    ctx->bloom_down_uFirstPass = gl.GetUniformLocation(ctx->bloom_down_program, "uFirstPass");
+    ctx->bloom_up_uSrcTex = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcTex");
+    ctx->bloom_up_uSrcInvSize = gl.GetUniformLocation(ctx->bloom_up_program, "uSrcInvSize");
+    ctx->taa_uCurrTex = gl.GetUniformLocation(ctx->taa_program, "uCurrTex");
+    ctx->taa_uHistTex = gl.GetUniformLocation(ctx->taa_program, "uHistTex");
+    ctx->taa_uMotionTex = gl.GetUniformLocation(ctx->taa_program, "uMotionTex");
+    ctx->taa_uDepthTex = gl.GetUniformLocation(ctx->taa_program, "uDepthTex");
+    ctx->taa_uInvResolution = gl.GetUniformLocation(ctx->taa_program, "uInvResolution");
+    ctx->taa_uJitterDelta = gl.GetUniformLocation(ctx->taa_program, "uJitterDelta");
+    ctx->taa_uBlend = gl.GetUniformLocation(ctx->taa_program, "uBlend");
+    ctx->taa_uHistoryValid = gl.GetUniformLocation(ctx->taa_program, "uHistoryValid");
+    ctx->taa_uInvViewProjection = gl.GetUniformLocation(ctx->taa_program, "uInvViewProjection");
+    ctx->taa_uPrevViewProjection = gl.GetUniformLocation(ctx->taa_program, "uPrevViewProjection");
 }

@@ -3,6 +3,7 @@ module project_manager;
 bind "project";
 bind "project_file_ops";
 bind "project_bind_rewriter";
+bind "../services/workspace_file_index";
 bind Viper.GUI as GUI;
 bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;
@@ -10,8 +11,6 @@ bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
-bind FileIndex = Viper.Workspace.FileIndex;
-bind Map = Viper.Collections.Map;
 bind "../core/document_manager";
 bind "../zia/bind_utils";
 
@@ -285,22 +284,8 @@ class ProjectManager {
     ///          clicked tree folders still add their files opportunistically.
     /// @return List of absolute file paths for Quick Open and command palette use.
     func BuildProjectFileCache() -> List {
-        var cache = new List();
-        if project == null or project.isOpen == false { return cache; }
-        var entries = FileIndex.Enumerate(project.rootPath, "", project.ignorePatterns, false);
-        if entries == null { return cache; }
-        var i = 0;
-        while i < Seq.get_Count(entries) {
-            var entry = Seq.Get(entries, i);
-            if Map.GetBool(entry, "isDirectory") == false {
-                var path = Map.GetStr(entry, "path");
-                if path != "" and ListContains(cache, path) == false {
-                    cache.Push(path);
-                }
-            }
-            i = i + 1;
-        }
-        return cache;
+        if project == null or project.isOpen == false { return new List(); }
+        return workspace_file_index.EnumerateFiles(project.rootPath, "", project.ignorePatterns);
     }
 
     /// @brief Populate the full Quick Open file cache on first use.
@@ -492,24 +477,12 @@ class ProjectManager {
     /// @note Skips hidden directories (starting with ".") and common
     ///       build/cache directories.
     func ShouldExclude(name: String) -> Boolean {
-        if Str.Left(name, 1) == "." {
-            return true;
-        }
-
-        if name == "build" or name == "node_modules" or name == "__pycache__" {
-            return true;
-        }
-
-        return false;
+        return workspace_file_index.IsDefaultExcludedDirectoryName(name);
     }
 
     /// @brief File-name exclusion filter. Skips hidden files (".X").
     func ShouldExcludeFile(name: String) -> Boolean {
-        if Str.Left(name, 1) == "." {
-            return true;
-        }
-
-        return false;
+        return workspace_file_index.IsDefaultExcludedFileName(name);
     }
 
     func ShouldExcludePath(fullPath: String, isDir: Boolean) -> Boolean {
@@ -518,11 +491,10 @@ class ProjectManager {
             if isDir { return ShouldExclude(Path.Name(fullPath)); }
             return ShouldExcludeFile(Path.Name(fullPath));
         }
-        var rel = RelativePathIn(owner, fullPath);
-        if isDir and Str.EndsWith(rel, "/") == false {
-            rel = rel + "/";
-        }
-        return FileIndex.ShouldIgnore(owner.rootPath, rel, owner.ignorePatterns);
+        return workspace_file_index.ShouldIgnorePath(owner.rootPath,
+                                                     fullPath,
+                                                     isDir,
+                                                     owner.ignorePatterns);
     }
 
     expose func SelectedPath() -> String {
@@ -819,17 +791,10 @@ class ProjectManager {
     /// @param files Mutable List receiving absolute `.zia` file paths.
     func AddIndexedZiaFiles(files: List) {
         if project == null or project.rootPath == "" { return; }
-        var entries = FileIndex.Enumerate(project.rootPath, ".zia", project.ignorePatterns, false);
-        if entries == null { return; }
-        var i = 0;
-        while i < Seq.get_Count(entries) {
-            var entry = Seq.Get(entries, i);
-            var filePath = Map.GetStr(entry, "path");
-            if filePath != "" and ListContains(files, filePath) == false {
-                files.Push(filePath);
-            }
-            i = i + 1;
-        }
+        workspace_file_index.AddEnumeratedFiles(files,
+                                                project.rootPath,
+                                                ".zia",
+                                                project.ignorePatterns);
     }
 
     /// @brief Return true when a name is a safe single filesystem component.

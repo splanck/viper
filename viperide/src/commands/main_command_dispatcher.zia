@@ -10,6 +10,7 @@ bind "../build/breakpoints";
 bind "../build/build_system";
 bind "../build/debug_session";
 bind "../commands/build_commands";
+bind "../commands/command_context";
 bind "../commands/command_registry";
 bind "../commands/debug_commands";
 bind "../commands/edit_commands";
@@ -54,9 +55,9 @@ bind Path = Viper.IO.Path;
 
 var currentDiagIdx = -1;
 
-/// @brief Dispatch all command triggers for one frame.
-/// @details Returns true only when the command path completed application
-///          cleanup and the caller should immediately leave main().
+/// @brief Dispatch all command triggers for one frame using legacy parameters.
+/// @details This wrapper preserves existing probe and caller code while the
+///          implementation moves toward the named CommandContext shape.
 /// @param shell Workbench shell containing menu and toolbar widgets.
 /// @param docMgr Open document manager.
 /// @param projMgr Project/tree manager.
@@ -110,91 +111,114 @@ expose func DispatchCommands(shell: app_shell.AppShell,
                              appSettings: settings.SettingsManager,
                              cpSelected: String,
                              suppressTreeOpen: Boolean) -> Boolean {
-    if DispatchFileCommands(shell, docMgr, projMgr, engine, tabs, terminalCtrl,
-                            fileWatchCtrl, workspaceWatcherState, indexer,
-                            buildSys, dbgSession, breakpointStore, sessionMgr,
-                            cpSelected) {
+    var ctx = new command_context.CommandContext();
+    ctx.shell = shell;
+    ctx.docMgr = docMgr;
+    ctx.projMgr = projMgr;
+    ctx.engine = engine;
+    ctx.tabs = tabs;
+    ctx.buildSys = buildSys;
+    ctx.dbgSession = dbgSession;
+    ctx.terminalCtrl = terminalCtrl;
+    ctx.fileWatchCtrl = fileWatchCtrl;
+    ctx.workspaceWatcherState = workspaceWatcherState;
+    ctx.indexer = indexer;
+    ctx.breakpointStore = breakpointStore;
+    ctx.sessionMgr = sessionMgr;
+    ctx.locStore = locStore;
+    ctx.commandRegistry = commandRegistry;
+    ctx.paletteCtrl = paletteCtrl;
+    ctx.explorerOverlay = explorerOverlay;
+    ctx.debugOverlay = debugOverlay;
+    ctx.overlays = overlays;
+    ctx.liveDiag = liveDiag;
+    ctx.symbolOutline = symbolOutline;
+    ctx.sigCtrl = sigCtrl;
+    ctx.searcher = searcher;
+    ctx.appSettings = appSettings;
+    return DispatchCommandContext(ctx, cpSelected, suppressTreeOpen);
+}
+
+/// @brief Dispatch all command triggers for one frame.
+/// @details Returns true only when the command path completed application
+///          cleanup and the caller should immediately leave main().
+/// @param ctx Named dependency bundle assembled by main.zia.
+/// @param cpSelected Normalized command-palette selection id for this frame.
+/// @param suppressTreeOpen True when a tree right-click should not open a file.
+/// @return True when cleanup has already run and the application should exit.
+expose func DispatchCommandContext(ctx: command_context.CommandContext,
+                                   cpSelected: String,
+                                   suppressTreeOpen: Boolean) -> Boolean {
+    if command_context.IsReady(ctx) == false { return false; }
+
+    if DispatchFileCommands(ctx, cpSelected) {
         return true;
     }
 
-    PumpFileTreeOpen(shell, projMgr, docMgr, engine, tabs, sessionMgr,
-                     fileWatchCtrl, suppressTreeOpen);
-    DispatchEditCommands(shell, docMgr, projMgr, engine, tabs, indexer,
-                         locStore, liveDiag, sigCtrl, cpSelected);
-    DispatchViewSearchCommands(shell, projMgr, docMgr, engine,
-                               commandRegistry, paletteCtrl, explorerOverlay,
-                               indexer, locStore, symbolOutline, searcher,
-                               overlays, liveDiag, appSettings, cpSelected);
-    DispatchBuildDebugCommands(shell, docMgr, projMgr, engine, tabs, buildSys,
-                               breakpointStore, dbgSession, debugOverlay,
-                               appSettings, locStore, cpSelected);
+    PumpFileTreeOpen(ctx, suppressTreeOpen);
+    DispatchEditCommands(ctx, cpSelected);
+    DispatchViewSearchCommands(ctx, cpSelected);
+    DispatchBuildDebugCommands(ctx, cpSelected);
     return false;
 }
 
 /// @brief Dispatch file, project, terminal, close, and exit commands.
+/// @param ctx Named dependency bundle assembled by main.zia.
+/// @param cpSelected Normalized command-palette selection id for this frame.
 /// @return True when the command path ran application cleanup and should exit.
-hide func DispatchFileCommands(shell: app_shell.AppShell,
-                               docMgr: document_manager.DocumentManager,
-                               projMgr: project_manager.ProjectManager,
-                               engine: editor_engine.EditorEngine,
-                               tabs: editor_tabs.EditorTabs,
-                               terminalCtrl: terminal_controller.TerminalController,
-                               fileWatchCtrl: file_watch_controller.FileWatchController,
-                               workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
-                               indexer: project_index.ProjectIndexer,
-                               buildSys: build_system.BuildSystem,
-                               dbgSession: debug_session.DebugSession,
-                               breakpointStore: breakpoints.BreakpointStore,
-                               sessionMgr: session.SessionManager,
+hide func DispatchFileCommands(ctx: command_context.CommandContext,
                                cpSelected: String) -> Boolean {
-    if dispatch_helpers.Triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
-    if dispatch_helpers.Triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); explorer_action_runner.RecordActiveFile(sessionMgr, docMgr); fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.Triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
-        if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
-            tabs.RefreshFromDocuments(docMgr);
-            file_commands.handleOpenFolder(shell, projMgr);
-            indexer.Open(projMgr.RootPath(), docMgr);
-            if projMgr.IsOpen() {
-                terminalCtrl.SetCwd(projMgr.RootPath());
+    if dispatch_helpers.Triggered("new", ctx.shell.miNew, ctx.shell.tbNew, cpSelected)      { file_commands.handleNew(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("open", ctx.shell.miOpen, ctx.shell.tbOpen, cpSelected)    { file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("openfolder", ctx.shell.miOpenFolder, null, cpSelected) {
+        if file_commands.ConfirmCloseDocuments(ctx.shell, ctx.docMgr, ctx.engine, "Open Folder", -1) {
+            ctx.tabs.RefreshFromDocuments(ctx.docMgr);
+            file_commands.handleOpenFolder(ctx.shell, ctx.projMgr);
+            ctx.indexer.Open(ctx.projMgr.RootPath(), ctx.docMgr);
+            if ctx.projMgr.IsOpen() {
+                ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
             }
         }
     }
     if dispatch_helpers.TriggeredNoMenu("addfolder", cpSelected) {
-        file_commands.handleAddFolderToWorkspace(shell, projMgr);
-        if projMgr.IsOpen() {
-            terminalCtrl.SetCwd(projMgr.RootPath());
+        file_commands.handleAddFolderToWorkspace(ctx.shell, ctx.projMgr);
+        if ctx.projMgr.IsOpen() {
+            ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
         }
     }
-    if dispatch_helpers.Triggered("terminal", shell.miTerminal, null, cpSelected) {
-        if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
-        shell.ToggleTerminalPanel();
+    if dispatch_helpers.Triggered("terminal", ctx.shell.miTerminal, null, cpSelected) {
+        if ctx.projMgr.IsOpen() { ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath()); }
+        ctx.shell.ToggleTerminalPanel();
     }
-    if dispatch_helpers.Triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.Triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
-    if dispatch_helpers.Triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
-    if dispatch_helpers.Triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.TriggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
-    if dispatch_helpers.TriggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("save", ctx.shell.miSave, ctx.shell.tbSave, cpSelected)   { file_commands.handleSave(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("saveas", ctx.shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("saveall", ctx.shell.miSaveAll, ctx.shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("reload", ctx.shell.miReload, null, cpSelected)       { file_commands.handleReload(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.TriggeredMenu("recentfiles", ctx.shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(ctx.shell, ctx.sessionMgr); }
+    if dispatch_helpers.TriggeredMenu("reopenclosed", ctx.shell.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, ctx.sessionMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
 
     var closeIdx = -1;
-    if dispatch_helpers.Triggered("close", shell.miClose, null, cpSelected) {
-        closeIdx = docMgr.activeIndex;
-    } else if shell.tabBar.WasCloseClicked() {
-        closeIdx = shell.tabBar.GetCloseClickedIndex();
+    if dispatch_helpers.Triggered("close", ctx.shell.miClose, null, cpSelected) {
+        closeIdx = ctx.docMgr.activeIndex;
+    } else if ctx.shell.tabBar.WasCloseClicked() {
+        closeIdx = ctx.shell.tabBar.GetCloseClickedIndex();
     }
     if closeIdx >= 0 {
-        if file_commands.handleClose(shell, docMgr, engine, tabs, closeIdx) {
-            fileWatchCtrl.ResetPendingReload();
+        if file_commands.handleClose(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, closeIdx) {
+            ctx.fileWatchCtrl.ResetPendingReload();
         }
     }
 
-    if shell.miExit.WasClicked() {
-        file_commands.SaveEditorState(docMgr, engine);
-        breakpointStore.Save();
-        sessionMgr.Save(docMgr, projMgr);
-        if file_commands.handleExit(shell, docMgr, engine) {
-            lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession, terminalCtrl, fileWatchCtrl,
-                                            workspaceWatcherState, indexer, breakpointStore, sessionMgr);
+    if ctx.shell.miExit.WasClicked() {
+        file_commands.SaveEditorState(ctx.docMgr, ctx.engine);
+        ctx.breakpointStore.Save();
+        ctx.sessionMgr.Save(ctx.docMgr, ctx.projMgr);
+        if file_commands.handleExit(ctx.shell, ctx.docMgr, ctx.engine) {
+            lifecycle_controller.CleanupIde(ctx.shell, ctx.docMgr, ctx.projMgr,
+                                            ctx.engine, ctx.buildSys, ctx.dbgSession,
+                                            ctx.terminalCtrl, ctx.fileWatchCtrl,
+                                            ctx.workspaceWatcherState, ctx.indexer,
+                                            ctx.breakpointStore, ctx.sessionMgr);
             return true;
         }
     }
@@ -202,262 +226,247 @@ hide func DispatchFileCommands(shell: app_shell.AppShell,
 }
 
 /// @brief Open a selected file tree node unless a context menu consumed it.
-/// @param shell Workbench shell.
-/// @param projMgr Project/tree manager.
-/// @param docMgr Document manager.
-/// @param engine Active editor engine.
-/// @param tabs Tab controller.
-/// @param sessionMgr Session manager for recent files.
-/// @param fileWatchCtrl File-watch controller reset after IDE-owned opens.
+/// @param ctx Named dependency bundle assembled by main.zia.
 /// @param suppressTreeOpen True when a tree context menu owns the selection.
-hide func PumpFileTreeOpen(shell: app_shell.AppShell,
-                           projMgr: project_manager.ProjectManager,
-                           docMgr: document_manager.DocumentManager,
-                           engine: editor_engine.EditorEngine,
-                           tabs: editor_tabs.EditorTabs,
-                           sessionMgr: session.SessionManager,
-                           fileWatchCtrl: file_watch_controller.FileWatchController,
+hide func PumpFileTreeOpen(ctx: command_context.CommandContext,
                            suppressTreeOpen: Boolean) {
-    var treeSelectedPath = projMgr.HandleTreeClicks();
+    var treeSelectedPath = ctx.projMgr.HandleTreeClicks();
     if suppressTreeOpen {
         treeSelectedPath = "";
     }
     if treeSelectedPath != "" {
-        explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, treeSelectedPath);
-        fileWatchCtrl.ResetPendingReload();
+        explorer_action_runner.OpenFileAndRecord(ctx.shell, ctx.docMgr, ctx.engine,
+                                                 ctx.tabs, ctx.sessionMgr,
+                                                 treeSelectedPath);
+        ctx.fileWatchCtrl.ResetPendingReload();
     }
 }
 
 /// @brief Dispatch edit, navigation, diagnostics, signature, and format commands.
-hide func DispatchEditCommands(shell: app_shell.AppShell,
-                               docMgr: document_manager.DocumentManager,
-                               projMgr: project_manager.ProjectManager,
-                               engine: editor_engine.EditorEngine,
-                               tabs: editor_tabs.EditorTabs,
-                               indexer: project_index.ProjectIndexer,
-                               locStore: locations.LocationStore,
-                               liveDiag: diagnostics.LiveDiagnostics,
-                               sigCtrl: signature.SignatureController,
+/// @param ctx Named dependency bundle assembled by main.zia.
+/// @param cpSelected Normalized command-palette selection id for this frame.
+hide func DispatchEditCommands(ctx: command_context.CommandContext,
                                cpSelected: String) {
-    if dispatch_helpers.Triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
-    if dispatch_helpers.Triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
-    if dispatch_helpers.Triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
-    if dispatch_helpers.Triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
-    if dispatch_helpers.Triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
-    if dispatch_helpers.Triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
-    if dispatch_helpers.Triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
-    if dispatch_helpers.TriggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
-    if dispatch_helpers.TriggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
-    if dispatch_helpers.TriggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
-    if dispatch_helpers.TriggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
-    if dispatch_helpers.TriggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
-    if dispatch_helpers.TriggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
-    if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
-    if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
-    if dispatch_helpers.TriggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
-    if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
+    if dispatch_helpers.Triggered("undo", ctx.shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(ctx.engine, ctx.docMgr); }
+    if dispatch_helpers.Triggered("redo", ctx.shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(ctx.engine); }
+    if dispatch_helpers.Triggered("cut", ctx.shell.miCut, null, cpSelected)             { edit_commands.handleCut(ctx.engine); }
+    if dispatch_helpers.Triggered("copy", ctx.shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(ctx.engine); }
+    if dispatch_helpers.Triggered("paste", ctx.shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(ctx.engine); }
+    if dispatch_helpers.Triggered("selectall", ctx.shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(ctx.engine); }
+    if dispatch_helpers.Triggered("find", ctx.shell.miFind, ctx.shell.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("goto", ctx.shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredMenu("gotodef", ctx.shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, ctx.indexer, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("findrefs", ctx.shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(ctx.shell, ctx.docMgr, ctx.engine, ctx.indexer, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("incomingcalls", ctx.shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(ctx.shell, ctx.docMgr, ctx.engine, ctx.indexer, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("outgoingcalls", ctx.shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(ctx.shell, ctx.docMgr, ctx.engine, ctx.indexer, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("rename", ctx.shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, ctx.indexer); }
+    if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(ctx.shell, ctx.docMgr, ctx.engine, ctx.projMgr); }
+    if dispatch_helpers.TriggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(ctx.shell, ctx.docMgr, ctx.engine); }
 
-    if dispatch_helpers.TriggeredMenu("nexterror", shell.miNextError, cpSelected) {
-        NavigateDiagnostic(shell, docMgr, engine, tabs, locStore, 1);
+    if dispatch_helpers.TriggeredMenu("nexterror", ctx.shell.miNextError, cpSelected) {
+        NavigateDiagnostic(ctx, 1);
     }
-    if dispatch_helpers.TriggeredMenu("preverror", shell.miPreviousError, cpSelected) {
-        NavigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
+    if dispatch_helpers.TriggeredMenu("preverror", ctx.shell.miPreviousError, cpSelected) {
+        NavigateDiagnostic(ctx, -1);
     }
     if dispatch_helpers.TriggeredNoMenu("checknow", cpSelected) {
-        file_commands.SaveEditorState(docMgr, engine);
-        var checkErrors = liveDiag.runNow(engine, shell, locStore);
+        file_commands.SaveEditorState(ctx.docMgr, ctx.engine);
+        var checkErrors = ctx.liveDiag.runNow(ctx.engine, ctx.shell, ctx.locStore);
         if checkErrors > 0 {
-            shell.SetStatusLeft("Diagnostics: " + checkErrors + " errors");
+            ctx.shell.SetStatusLeft("Diagnostics: " + checkErrors + " errors");
         } else {
-            shell.SetStatusLeft("Diagnostics complete");
+            ctx.shell.SetStatusLeft("Diagnostics complete");
         }
     }
-    if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked())
+    if (ctx.shell.miSignatureHelp != null and ctx.shell.miSignatureHelp.WasClicked())
        or cpSelected == "signature_trigger" {
-        sigCtrl.trigger(engine);
+        ctx.sigCtrl.trigger(ctx.engine);
     }
     if dispatch_helpers.TriggeredNoMenu("signaturenextoverload", cpSelected) {
-        sigCtrl.NextOverload();
+        ctx.sigCtrl.NextOverload();
     }
     if dispatch_helpers.TriggeredNoMenu("signatureprevoverload", cpSelected) {
-        sigCtrl.PreviousOverload();
+        ctx.sigCtrl.PreviousOverload();
     }
 }
 
 /// @brief Dispatch workbench, output, explorer-palette, quick-open, and search commands.
-hide func DispatchViewSearchCommands(shell: app_shell.AppShell,
-                                     projMgr: project_manager.ProjectManager,
-                                     docMgr: document_manager.DocumentManager,
-                                     engine: editor_engine.EditorEngine,
-                                     commandRegistry: command_registry.CommandRegistry,
-                                     paletteCtrl: command_palette_controller.CommandPaletteController,
-                                     explorerOverlay: explorer_actions.ExplorerActionOverlay,
-                                     indexer: project_index.ProjectIndexer,
-                                     locStore: locations.LocationStore,
-                                     symbolOutline: symbols.SymbolOutline,
-                                     searcher: search_commands.SearchController,
-                                     overlays: ide_overlays.IdeOverlays,
-                                     liveDiag: diagnostics.LiveDiagnostics,
-                                     appSettings: settings.SettingsManager,
+/// @param ctx Named dependency bundle assembled by main.zia.
+/// @param cpSelected Normalized command-palette selection id for this frame.
+hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
                                      cpSelected: String) {
-    if dispatch_helpers.Triggered("togglesidebar", shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(shell); }
-    if dispatch_helpers.TriggeredMenu("statusbar", shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(shell, appSettings); }
-    if dispatch_helpers.Triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
-    if dispatch_helpers.Triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
-    if dispatch_helpers.Triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
-    if dispatch_helpers.Triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
-    if dispatch_helpers.Triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
-    if dispatch_helpers.Triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
-    if dispatch_helpers.Triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(shell, engine, liveDiag, appSettings); }
-    if dispatch_helpers.Triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell, appSettings); }
-    if dispatch_helpers.Triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { view_commands.handleToggleMinimap(shell, appSettings); }
-    if dispatch_helpers.Triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
-    if dispatch_helpers.TriggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
-    if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                          { view_commands.handleCopyToolSelection(shell); }
-    if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                       { view_commands.handleCopyOutputText(shell); }
-    if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                          { view_commands.handleClearOutput(shell); }
-    if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
-    if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
-    if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
+    if dispatch_helpers.Triggered("togglesidebar", ctx.shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("statusbar", ctx.shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomin", ctx.shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomout", ctx.shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomreset", ctx.shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomin", ctx.shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomout", ctx.shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomreset", ctx.shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("toggletheme", ctx.shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(ctx.shell, ctx.engine, ctx.liveDiag, ctx.appSettings); }
+    if dispatch_helpers.Triggered("fullscreen", ctx.shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("minimap", ctx.shell.miToggleMinimap, null, cpSelected)       { view_commands.handleToggleMinimap(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("settings", ctx.shell.miPreferences, null, cpSelected)        { ctx.overlays.OpenSettings(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.TriggeredNoMenu("keybindings", cpSelected)                              { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
+    if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                              { view_commands.handleCopyToolSelection(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                           { view_commands.handleCopyOutputText(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                              { view_commands.handleClearOutput(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected)                             { view_commands.handleFilterOutput(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                         { view_commands.handleToggleOutputWrap(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)                   { view_commands.handleToggleOutputAutoScroll(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("treenewfile", cpSelected) {
-        var overlayNewFileDir = contextDirForSelectedProjectPath(projMgr);
-        if overlayNewFileDir != "" { explorerOverlay.OpenNewFile(shell, overlayNewFileDir); }
+        var overlayNewFileDir = contextDirForSelectedProjectPath(ctx.projMgr);
+        if overlayNewFileDir != "" { ctx.explorerOverlay.OpenNewFile(ctx.shell, overlayNewFileDir); }
     }
     if dispatch_helpers.TriggeredNoMenu("treenewfolder", cpSelected) {
-        var overlayNewFolderDir = contextDirForSelectedProjectPath(projMgr);
-        if overlayNewFolderDir != "" { explorerOverlay.OpenNewFolder(shell, overlayNewFolderDir); }
+        var overlayNewFolderDir = contextDirForSelectedProjectPath(ctx.projMgr);
+        if overlayNewFolderDir != "" { ctx.explorerOverlay.OpenNewFolder(ctx.shell, overlayNewFolderDir); }
     }
     if dispatch_helpers.TriggeredNoMenu("treerename", cpSelected) {
-        var overlayRenamePath = projMgr.SelectedPath();
-        if overlayRenamePath != "" { explorerOverlay.OpenRename(shell, overlayRenamePath); }
+        var overlayRenamePath = ctx.projMgr.SelectedPath();
+        if overlayRenamePath != "" { ctx.explorerOverlay.OpenRename(ctx.shell, overlayRenamePath); }
     }
     if dispatch_helpers.TriggeredNoMenu("treedelete", cpSelected) {
-        var overlayDeletePath = projMgr.SelectedPath();
-        if overlayDeletePath != "" { explorerOverlay.OpenDelete(shell, overlayDeletePath); }
+        var overlayDeletePath = ctx.projMgr.SelectedPath();
+        if overlayDeletePath != "" { ctx.explorerOverlay.OpenDelete(ctx.shell, overlayDeletePath); }
     }
-    if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
-    if shell.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(shell, commandRegistry); }
-    if shell.miAbout.WasClicked()                                      { overlays.OpenAbout(shell); }
-    if dispatch_helpers.TriggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
-        if search_commands.ShowQuickOpenPalette(shell, projMgr) {
-            paletteCtrl.BeginQuickOpen();
+    if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { ctx.projMgr.RefreshTree(); ctx.indexer.EnsureProject(ctx.projMgr, ctx.docMgr); ctx.shell.SetStatusLeft("Project tree refreshed"); }
+    if ctx.shell.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
+    if ctx.shell.miAbout.WasClicked()                                      { ctx.overlays.OpenAbout(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("quickopen", ctx.shell.miQuickOpen, cpSelected) {
+        if search_commands.ShowQuickOpenPalette(ctx.shell, ctx.projMgr) {
+            ctx.paletteCtrl.BeginQuickOpen();
         }
     }
-    if dispatch_helpers.TriggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
-    if dispatch_helpers.TriggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
-    if dispatch_helpers.TriggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
+    if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore, ctx.searcher); }
+    if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
 }
 
 /// @brief Dispatch build, run, debug, and breakpoint metadata commands.
-hide func DispatchBuildDebugCommands(shell: app_shell.AppShell,
-                                     docMgr: document_manager.DocumentManager,
-                                     projMgr: project_manager.ProjectManager,
-                                     engine: editor_engine.EditorEngine,
-                                     tabs: editor_tabs.EditorTabs,
-                                     buildSys: build_system.BuildSystem,
-                                     breakpointStore: breakpoints.BreakpointStore,
-                                     dbgSession: debug_session.DebugSession,
-                                     debugOverlay: debug_breakpoint_overlay.DebugBreakpointOverlay,
-                                     appSettings: settings.SettingsManager,
-                                     locStore: locations.LocationStore,
+/// @param ctx Named dependency bundle assembled by main.zia.
+/// @param cpSelected Normalized command-palette selection id for this frame.
+hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                      cpSelected: String) {
-    if dispatch_helpers.Triggered("build", shell.miBuild, shell.tbBuild, cpSelected) {
-        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build") {
-            build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+    if dispatch_helpers.Triggered("build", ctx.shell.miBuild, ctx.shell.tbBuild, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Build") {
+            build_commands.handleBuild(ctx.shell, ctx.docMgr, ctx.projMgr,
+                                       ctx.engine, ctx.tabs, ctx.buildSys,
+                                       ctx.locStore,
+                                       ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("buildrun", shell.miBuildAndRun, shell.tbRun, cpSelected) {
-        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Build and Run") {
-            build_commands.handleBuildAndRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+    if dispatch_helpers.Triggered("buildrun", ctx.shell.miBuildAndRun, ctx.shell.tbRun, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Build and Run") {
+            build_commands.handleBuildAndRun(ctx.shell, ctx.docMgr, ctx.projMgr,
+                                             ctx.engine, ctx.tabs, ctx.buildSys,
+                                             ctx.locStore,
+                                             ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("run", shell.miRun, null, cpSelected) {
-        if dispatch_helpers.CanStartBuildCommand(shell, dbgSession, "Run") {
-            build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore, appSettings.saveAllBeforeBuild);
+    if dispatch_helpers.Triggered("run", ctx.shell.miRun, null, cpSelected) {
+        if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Run") {
+            build_commands.handleRun(ctx.shell, ctx.docMgr, ctx.projMgr,
+                                     ctx.engine, ctx.tabs, ctx.buildSys,
+                                     ctx.locStore,
+                                     ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
-    if dispatch_helpers.Triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
-        debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession, appSettings.saveAllBeforeBuild);
+    if dispatch_helpers.Triggered("stopjob", ctx.shell.miStop, ctx.shell.tbStop, cpSelected)         { build_commands.handleStop(ctx.shell, ctx.buildSys); }
+    if dispatch_helpers.Triggered("debugstart", ctx.shell.miDebugStart, ctx.shell.tbDebug, cpSelected) {
+        debug_commands.handleDebugStart(ctx.shell, ctx.docMgr, ctx.engine,
+                                        ctx.tabs, ctx.buildSys,
+                                        ctx.breakpointStore, ctx.dbgSession,
+                                        ctx.appSettings.saveAllBeforeBuild);
     }
-    if dispatch_helpers.Triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
-        debug_commands.handleDebugContinue(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugcontinue", ctx.shell.miDebugContinue, ctx.shell.tbDebugContinue, cpSelected) {
+        debug_commands.handleDebugContinue(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepover", shell.miDebugStepOver, shell.tbDebugStep, cpSelected) {
-        debug_commands.handleDebugStepOver(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugstepover", ctx.shell.miDebugStepOver, ctx.shell.tbDebugStep, cpSelected) {
+        debug_commands.handleDebugStepOver(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepin", shell.miDebugStepIn, null, cpSelected) {
-        debug_commands.handleDebugStepIn(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugstepin", ctx.shell.miDebugStepIn, null, cpSelected) {
+        debug_commands.handleDebugStepIn(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepout", shell.miDebugStepOut, null, cpSelected) {
-        debug_commands.handleDebugStepOut(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugstepout", ctx.shell.miDebugStepOut, null, cpSelected) {
+        debug_commands.handleDebugStepOut(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugpause", shell.miDebugPause, null, cpSelected) {
-        debug_commands.handleDebugPause(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugpause", ctx.shell.miDebugPause, null, cpSelected) {
+        debug_commands.handleDebugPause(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
-        debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys,
-                                         breakpointStore, dbgSession,
-                                         appSettings.saveAllBeforeBuild);
+    if dispatch_helpers.Triggered("debugrestart", ctx.shell.miDebugRestart, null, cpSelected) {
+        debug_commands.handleDebugRestart(ctx.shell, ctx.docMgr, ctx.engine,
+                                          ctx.tabs, ctx.buildSys,
+                                          ctx.breakpointStore, ctx.dbgSession,
+                                          ctx.appSettings.saveAllBeforeBuild);
     }
-    if dispatch_helpers.Triggered("debugstop", shell.miDebugStop, null, cpSelected) {
-        debug_commands.handleDebugStop(shell, dbgSession);
+    if dispatch_helpers.Triggered("debugstop", ctx.shell.miDebugStop, null, cpSelected) {
+        debug_commands.handleDebugStop(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("togglebreakpoint", shell.miToggleBreakpoint, null, cpSelected) {
-        debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore);
+    if dispatch_helpers.Triggered("togglebreakpoint", ctx.shell.miToggleBreakpoint, null, cpSelected) {
+        debug_commands.handleToggleBreakpoint(ctx.shell, ctx.docMgr,
+                                              ctx.engine, ctx.breakpointStore);
     }
     if dispatch_helpers.TriggeredNoMenu("debugruntocursor", cpSelected) {
-        debug_commands.handleRunToCursor(shell, docMgr, engine, dbgSession);
+        debug_commands.handleRunToCursor(ctx.shell, ctx.docMgr,
+                                         ctx.engine, ctx.dbgSession);
     }
     if dispatch_helpers.TriggeredNoMenu("debugcondition", cpSelected) {
-        lifecycle_controller.OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+        lifecycle_controller.OpenDebugBreakpointOverlay(ctx.shell,
+                                                        ctx.debugOverlay,
+                                                        ctx.docMgr,
+                                                        ctx.engine,
+                                                        ctx.breakpointStore,
                                                         debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION);
     }
     if dispatch_helpers.TriggeredNoMenu("debuglogpoint", cpSelected) {
-        lifecycle_controller.OpenDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
+        lifecycle_controller.OpenDebugBreakpointOverlay(ctx.shell,
+                                                        ctx.debugOverlay,
+                                                        ctx.docMgr,
+                                                        ctx.engine,
+                                                        ctx.breakpointStore,
                                                         debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT);
     }
-    var completedDebugOverlayAction = debugOverlay.Pump(shell);
+    var completedDebugOverlayAction = ctx.debugOverlay.Pump(ctx.shell);
     if completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_CONDITION
        or completedDebugOverlayAction == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
-        lifecycle_controller.ApplyDebugBreakpointOverlay(shell, debugOverlay, docMgr, engine, breakpointStore,
-                                                         dbgSession, completedDebugOverlayAction);
+        lifecycle_controller.ApplyDebugBreakpointOverlay(ctx.shell,
+                                                         ctx.debugOverlay,
+                                                         ctx.docMgr,
+                                                         ctx.engine,
+                                                         ctx.breakpointStore,
+                                                         ctx.dbgSession,
+                                                         completedDebugOverlayAction);
     }
 }
 
 /// @brief Navigate to the next or previous diagnostic row.
 /// @details Problems row zero is a header, so navigation wraps between row 1 and
 ///          the final row. The LocationStore owns the actual target data.
-/// @param shell Workbench shell containing the Problems list.
-/// @param docMgr Document manager used by LocationStore.
-/// @param engine Active editor engine used by LocationStore.
-/// @param tabs Tab controller used by LocationStore.
-/// @param locStore Structured location store.
+/// @param ctx Named dependency bundle assembled by main.zia.
 /// @param direction 1 for next, -1 for previous.
-hide func NavigateDiagnostic(shell: app_shell.AppShell,
-                             docMgr: document_manager.DocumentManager,
-                             engine: editor_engine.EditorEngine,
-                             tabs: editor_tabs.EditorTabs,
-                             locStore: locations.LocationStore,
+hide func NavigateDiagnostic(ctx: command_context.CommandContext,
                              direction: Integer) {
-    var count = shell.diagListBox.Count;
+    var count = ctx.shell.diagListBox.Count;
     if count <= 1 {
         GUI.Toast.Info("No diagnostics");
         return;
@@ -467,10 +476,11 @@ hide func NavigateDiagnostic(shell: app_shell.AppShell,
     if currentDiagIdx >= count { currentDiagIdx = 1; }
     if currentDiagIdx < 1 { currentDiagIdx = count - 1; }
 
-    shell.diagListBox.SelectIndex(currentDiagIdx);
-    var selItem = shell.diagListBox.Selected;
+    ctx.shell.diagListBox.SelectIndex(currentDiagIdx);
+    var selItem = ctx.shell.diagListBox.Selected;
     if selItem != null {
-        locStore.OpenLocation(shell, docMgr, engine, tabs, GUI.ListBox.ItemGetData(selItem));
+        ctx.locStore.OpenLocation(ctx.shell, ctx.docMgr, ctx.engine,
+                                  ctx.tabs, GUI.ListBox.ItemGetData(selItem));
     }
 }
 

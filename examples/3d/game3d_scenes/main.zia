@@ -1,0 +1,140 @@
+// ============================================================================
+// game3d_scenes — GameBase3D scene-framework reference demo
+// ============================================================================
+// Demonstrates the Game3D application framework:
+//   - GameBase3D driven loop (no hand-written Tick/BeginFrame/Present)
+//   - IScene3D lifecycle with a menu scene and a play scene
+//   - Fade transition between scenes (overlay alpha rect)
+//   - Behavior3D presets: orbiting + spinning + bobbing entities, no per-frame
+//     entity code in the game at all
+//
+// Run: viper run examples/3d/game3d_scenes/main.zia
+// Press ENTER on the menu to start; ESC in play returns to the menu.
+// ============================================================================
+
+bind "../../games/lib/gamebase3d";
+bind "../../games/lib/iscene3d";
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+
+// --- Menu scene: title text over an empty world -----------------------------
+
+class MenuScene implements IScene3D {
+    hide SceneGame game;
+
+    expose func bindGame(owner: SceneGame) {
+        game = owner;
+    }
+
+    expose func onEnter(world: World3D) {
+        world.SetAmbient(0.25, 0.25, 0.3);
+    }
+
+    expose func onExit(world: World3D) { }
+
+    expose func update(world: World3D, dt: Number) {
+        var input: Input3D = world.Input;
+        if input.Pressed(Keys.Enter) {
+            game.startPlay();
+        }
+    }
+
+    expose func drawOverlay(world: World3D) {
+        var canvas: Canvas3D = world.Canvas;
+        Canvas3D.DrawRect2DAlpha(canvas, 40, 60, 280, 60, 0x102030, 0.7);
+        Canvas3D.DrawText2D(canvas, 60, 80, "GAME3D SCENES DEMO", 0xFFFFFF);
+        Canvas3D.DrawText2D(canvas, 60, 96, "press ENTER to play", 0xA8C0FF);
+    }
+}
+
+// --- Play scene: behavior-driven entities, ESC to leave ---------------------
+
+class PlayScene implements IScene3D {
+    hide SceneGame game;
+    hide Entity3D orbiter;
+    hide Entity3D spinner;
+    hide Entity3D bobber;
+    hide Boolean built;
+
+    expose func bindGame(owner: SceneGame) {
+        game = owner;
+        built = false;
+    }
+
+    expose func onEnter(world: World3D) {
+        world.SetAmbient(0.1, 0.1, 0.12);
+        Lighting.Outdoor(world, Vec3.New(-0.4, -1.0, -0.25));
+        if built == false {
+            var ground = Prefab.Ground(14.0, Materials.Rubber(0.25, 0.3, 0.35));
+            world.Spawn(ground);
+
+            orbiter = Prefab.Sphere(0.5, 24, Materials.Metal(0.85, 0.35, 0.2));
+            orbiter.AttachBehavior(
+                Behavior3D.New().AddOrbit(0.0, 1.2, 0.0, 3.0, 60.0));
+            world.Spawn(orbiter);
+
+            spinner = Prefab.Box(1.0, Materials.Plastic(0.2, 0.6, 0.9));
+            spinner.SetPosition(0.0, 1.0, 0.0);
+            spinner.AttachBehavior(
+                Behavior3D.New().AddSpin(0.0, 1.0, 0.0, 45.0));
+            world.Spawn(spinner);
+
+            bobber = Prefab.Sphere(0.35, 20, Materials.Emissive(1.0, 0.8, 0.2, 2.0));
+            bobber.SetPosition(-2.5, 1.5, -1.0);
+            bobber.AttachBehavior(
+                Behavior3D.New().AddSineFloat(0.5, 2.0));
+            world.Spawn(bobber);
+            built = true;
+        }
+        var camera: Camera3D = world.Camera;
+        Camera3D.LookAt(
+            camera, Vec3.New(0.0, 3.5, 8.0), Vec3.New(0.0, 1.0, 0.0), Vec3.New(0.0, 1.0, 0.0));
+    }
+
+    expose func onExit(world: World3D) { }
+
+    expose func update(world: World3D, dt: Number) {
+        var input: Input3D = world.Input;
+        if input.Pressed(Keys.Escape) {
+            game.backToMenu();
+        }
+    }
+
+    expose func drawOverlay(world: World3D) {
+        var canvas: Canvas3D = world.Canvas;
+        Canvas3D.DrawText2D(canvas, 16, 16, "behaviors drive everything", 0xE8F0FF);
+        Canvas3D.DrawText2D(canvas, 16, 30, "ESC returns to menu", 0x8899AA);
+    }
+}
+
+// --- Game shell --------------------------------------------------------------
+
+class SceneGame extends GameBase3D {
+    hide MenuScene menu;
+    hide PlayScene play;
+
+    override expose func onInit() {
+        menu = new MenuScene();
+        menu.bindGame(self);
+        play = new PlayScene();
+        play.bindGame(self);
+        self.setScene(menu);
+    }
+
+    expose func startPlay() {
+        self.transitionTo(play, 0x000000, 0.35);
+    }
+
+    expose func backToMenu() {
+        self.transitionTo(menu, 0x000000, 0.35);
+    }
+}
+
+func main() {
+    var game = new SceneGame();
+    game.initGame("Game3D Scenes", 640, 400);
+    game.setMaxFrames(240); // demo probe: ~4s then exit; remove for free play
+    game.run();
+}

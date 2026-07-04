@@ -1028,3 +1028,144 @@ static void **textureasset3d_decode_compressed_mips(const uint8_t *data,
     }
     return mip_pixels;
 }
+
+/// @brief Decode one 8-byte BC1 (DXT1) block into 16 row-major RGBA texels (@p out_rgba is 64
+///   bytes). Handles both the opaque 4-colour mode (c0 > c1) and the 3-colour +
+///   1-bit-transparent mode (c0 <= c1). Non-static so the unit test can verify the decode
+///   against known blocks.
+void rt_textureasset3d_decode_bc1_block(const uint8_t *b, uint8_t *out_rgba) {
+    uint32_t c0, c1, cbits;
+    uint8_t cr[4], cg[4], cb[4], ca[4];
+    if (!b || !out_rgba)
+        return;
+    c0 = (uint32_t)b[0] | ((uint32_t)b[1] << 8);
+    c1 = (uint32_t)b[2] | ((uint32_t)b[3] << 8);
+    cr[0] = textureasset3d_expand5((c0 >> 11) & 0x1F);
+    cg[0] = textureasset3d_expand6((c0 >> 5) & 0x3F);
+    cb[0] = textureasset3d_expand5(c0 & 0x1F);
+    cr[1] = textureasset3d_expand5((c1 >> 11) & 0x1F);
+    cg[1] = textureasset3d_expand6((c1 >> 5) & 0x3F);
+    cb[1] = textureasset3d_expand5(c1 & 0x1F);
+    ca[0] = ca[1] = ca[2] = 255;
+    if (c0 > c1) {
+        cr[2] = (uint8_t)((2 * (int)cr[0] + (int)cr[1]) / 3);
+        cg[2] = (uint8_t)((2 * (int)cg[0] + (int)cg[1]) / 3);
+        cb[2] = (uint8_t)((2 * (int)cb[0] + (int)cb[1]) / 3);
+        cr[3] = (uint8_t)(((int)cr[0] + 2 * (int)cr[1]) / 3);
+        cg[3] = (uint8_t)(((int)cg[0] + 2 * (int)cg[1]) / 3);
+        cb[3] = (uint8_t)(((int)cb[0] + 2 * (int)cb[1]) / 3);
+        ca[3] = 255;
+    } else {
+        cr[2] = (uint8_t)(((int)cr[0] + (int)cr[1]) / 2);
+        cg[2] = (uint8_t)(((int)cg[0] + (int)cg[1]) / 2);
+        cb[2] = (uint8_t)(((int)cb[0] + (int)cb[1]) / 2);
+        cr[3] = cg[3] = cb[3] = 0;
+        ca[3] = 0; /* punch-through transparent */
+    }
+    cbits = (uint32_t)b[4] | ((uint32_t)b[5] << 8) | ((uint32_t)b[6] << 16) |
+            ((uint32_t)b[7] << 24);
+    for (int t = 0; t < 16; t++) {
+        uint32_t ci = (cbits >> (2 * t)) & 0x3u;
+        out_rgba[t * 4 + 0] = cr[ci];
+        out_rgba[t * 4 + 1] = cg[ci];
+        out_rgba[t * 4 + 2] = cb[ci];
+        out_rgba[t * 4 + 3] = ca[ci];
+    }
+}
+
+/// @brief Decode one 8-byte BC4 single-channel alpha-style block into 16 byte values.
+/// @details Shared kernel for BC4 (R channel) and BC5 (R + G channels): two endpoint
+///   bytes followed by 16 x 3-bit indices, with the 8-point ramp when e0 > e1 and the
+///   6-point ramp plus literal 0/255 otherwise.
+static void textureasset3d_decode_bc4_channel(const uint8_t *b, uint8_t *out_values) {
+    uint8_t v[8];
+    uint8_t v0 = b[0];
+    uint8_t v1 = b[1];
+    uint64_t bits = 0;
+
+    v[0] = v0;
+    v[1] = v1;
+    if (v0 > v1) {
+        for (int i = 1; i <= 6; i++)
+            v[i + 1] = (uint8_t)(((7 - i) * (int)v0 + i * (int)v1) / 7);
+    } else {
+        for (int i = 1; i <= 4; i++)
+            v[i + 1] = (uint8_t)(((5 - i) * (int)v0 + i * (int)v1) / 5);
+        v[6] = 0;
+        v[7] = 255;
+    }
+    for (int i = 0; i < 6; i++)
+        bits |= (uint64_t)b[2 + i] << (8 * i);
+    for (int t = 0; t < 16; t++)
+        out_values[t] = v[(bits >> (3 * t)) & 0x7u];
+}
+
+/// @brief Decode one 8-byte BC4 (single-channel) block into 16 row-major RGBA texels.
+/// @details The decoded channel replicates into R/G/B with opaque alpha, which renders
+///   grayscale on the software path while native uploads keep the true R-only format.
+///   Non-static so the unit test can verify the decode against known blocks.
+void rt_textureasset3d_decode_bc4_block(const uint8_t *b, uint8_t *out_rgba) {
+    uint8_t r[16];
+    if (!b || !out_rgba)
+        return;
+    textureasset3d_decode_bc4_channel(b, r);
+    for (int t = 0; t < 16; t++) {
+        out_rgba[t * 4 + 0] = r[t];
+        out_rgba[t * 4 + 1] = r[t];
+        out_rgba[t * 4 + 2] = r[t];
+        out_rgba[t * 4 + 3] = 255;
+    }
+}
+
+/// @brief Decode one 16-byte BC5 (two-channel) block into 16 row-major RGBA texels.
+/// @details R and G carry the decoded channels (the tangent-space X/Y convention used by
+///   two-channel normal maps); B is fixed at 255 and alpha opaque. Shaders that need a
+///   reconstructed Z derive it from R/G. Non-static so the unit test can verify the
+///   decode against known blocks.
+void rt_textureasset3d_decode_bc5_block(const uint8_t *b, uint8_t *out_rgba) {
+    uint8_t r[16];
+    uint8_t g[16];
+    if (!b || !out_rgba)
+        return;
+    textureasset3d_decode_bc4_channel(b, r);
+    textureasset3d_decode_bc4_channel(b + 8, g);
+    for (int t = 0; t < 16; t++) {
+        out_rgba[t * 4 + 0] = r[t];
+        out_rgba[t * 4 + 1] = g[t];
+        out_rgba[t * 4 + 2] = 255;
+        out_rgba[t * 4 + 3] = 255;
+    }
+}
+
+/// @brief Block-decode adapter for BC1, matching the generic block-decode function pointer.
+static int textureasset3d_decode_bc1_block_adapter(const uint8_t *block,
+                                                   int32_t block_width,
+                                                   int32_t block_height,
+                                                   uint8_t *out_rgba) {
+    (void)block_width;
+    (void)block_height;
+    rt_textureasset3d_decode_bc1_block(block, out_rgba);
+    return 1;
+}
+
+/// @brief Block-decode adapter for BC4, matching the generic block-decode function pointer.
+static int textureasset3d_decode_bc4_block_adapter(const uint8_t *block,
+                                                   int32_t block_width,
+                                                   int32_t block_height,
+                                                   uint8_t *out_rgba) {
+    (void)block_width;
+    (void)block_height;
+    rt_textureasset3d_decode_bc4_block(block, out_rgba);
+    return 1;
+}
+
+/// @brief Block-decode adapter for BC5, matching the generic block-decode function pointer.
+static int textureasset3d_decode_bc5_block_adapter(const uint8_t *block,
+                                                   int32_t block_width,
+                                                   int32_t block_height,
+                                                   uint8_t *out_rgba) {
+    (void)block_width;
+    (void)block_height;
+    rt_textureasset3d_decode_bc5_block(block, out_rgba);
+    return 1;
+}

@@ -674,17 +674,18 @@ void rt_uitable_handle_key(void *ptr, int64_t key_code) {
 }
 
 void rt_uitable_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uitable_impl *table = checked_table(ptr, "UITable.Draw: expected Viper.Game.UI.Table");
-    if (!table || !canvas || !ui_validate_canvas(canvas, "UITable.Draw: expected Canvas"))
+    if (!table || !canvas || !ui_resolve_draw_ops(canvas, "UITable.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!table->visible)
         return;
     int64_t y = table->y;
     if (table->show_header) {
-        rt_canvas_box(canvas, table->x, y, table->w, table->header_height, table->header_bg_color);
+        ops.box(canvas, table->x, y, table->w, table->header_height, table->header_bg_color);
         int64_t x = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
-            ui_draw_text_basic(canvas,
+            ui_draw_text_basic(&ops,
                                x + 4,
                                y + 4,
                                table->columns[c].title,
@@ -705,17 +706,17 @@ void rt_uitable_draw(void *ptr, void *canvas) {
             row == table->selected_row
                 ? table->selected_bg_color
                 : (table->striped && (row & 1) ? table->row_alt_bg_color : table->row_bg_color);
-        rt_canvas_box(canvas, table->x, ry, table->w, table->row_height, bg);
+        ops.box(canvas, table->x, ry, table->w, table->row_height, bg);
         int64_t x = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
             const char *cell = table_cell_ptr(table, &table->rows[row], c);
             ui_draw_text_basic(
-                canvas, x + 4, ry + 4, cell ? cell : "", table->font, 1, table->text_color);
+                &ops, x + 4, ry + 4, cell ? cell : "", table->font, 1, table->text_color);
             x += table->columns[c].width;
         }
     }
     if (table->show_borders)
-        rt_canvas_frame(canvas, table->x, table->y, table->w, table->h, table->border_color);
+        ops.frame(canvas, table->x, table->y, table->w, table->h, table->border_color);
 }
 
 //=============================================================================
@@ -888,21 +889,22 @@ int8_t rt_uislider_handle_mouse_up(void *ptr) {
 }
 
 void rt_uislider_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uislider_impl *s = checked_slider(ptr, "UISlider.Draw: expected Viper.Game.UI.HudSlider");
-    if (!s || !canvas || !ui_validate_canvas(canvas, "UISlider.Draw: expected Canvas"))
+    if (!s || !canvas || !ui_resolve_draw_ops(canvas, "UISlider.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!s->visible)
         return;
     int64_t cy = s->y + s->h / 2;
-    rt_canvas_box(canvas, s->x, cy - 2, s->w, 4, s->track_color);
+    ops.box(canvas, s->x, cy - 2, s->w, 4, s->track_color);
     int64_t fill = 0;
     if (s->max_value > s->min_value)
         fill = (int64_t)(((long double)(s->current_value - s->min_value) * (long double)s->w) /
                          (long double)(s->max_value - s->min_value));
-    rt_canvas_box(canvas, s->x, cy - 2, fill, 4, s->fill_color);
-    rt_canvas_box(canvas, s->x + fill - 4, s->y, 8, s->h, s->thumb_color);
+    ops.box(canvas, s->x, cy - 2, fill, 4, s->fill_color);
+    ops.box(canvas, s->x + fill - 4, s->y, 8, s->h, s->thumb_color);
     if (s->show_label)
-        ui_draw_text_basic(canvas, s->x, s->y - 12, s->label, NULL, 1, s->text_color);
+        ui_draw_text_basic(&ops, s->x, s->y - 12, s->label, NULL, 1, s->text_color);
 }
 
 //=============================================================================
@@ -1117,24 +1119,25 @@ int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
 }
 
 void rt_uidropdown_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uidropdown_impl *dd =
         checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.HudDropdown");
-    if (!dd || !canvas || !ui_validate_canvas(canvas, "UIDropdown.Draw: expected Canvas"))
+    if (!dd || !canvas || !ui_resolve_draw_ops(canvas, "UIDropdown.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!dd->visible)
         return;
-    rt_canvas_box(canvas, dd->x, dd->y, dd->w, dd->h, dd->bg_color);
-    rt_canvas_frame(canvas, dd->x, dd->y, dd->w, dd->h, dd->border_color);
+    ops.box(canvas, dd->x, dd->y, dd->w, dd->h, dd->bg_color);
+    ops.frame(canvas, dd->x, dd->y, dd->w, dd->h, dd->border_color);
     if (dd->selected >= 0 && dd->selected < dd->option_count)
         ui_draw_text_basic(
-            canvas, dd->x + 4, dd->y + 4, dd->options[dd->selected], dd->font, 1, dd->text_color);
-    rt_canvas_line(canvas,
+            &ops, dd->x + 4, dd->y + 4, dd->options[dd->selected], dd->font, 1, dd->text_color);
+    ops.line(canvas,
                    dd->x + dd->w - 14,
                    dd->y + dd->h / 2 - 2,
                    dd->x + dd->w - 8,
                    dd->y + dd->h / 2 + 4,
                    dd->caret_color);
-    rt_canvas_line(canvas,
+    ops.line(canvas,
                    dd->x + dd->w - 8,
                    dd->y + dd->h / 2 + 4,
                    dd->x + dd->w - 2,
@@ -1143,15 +1146,15 @@ void rt_uidropdown_draw(void *ptr, void *canvas) {
     if (dd->open) {
         for (int64_t i = 0; i < dd->option_count; i++) {
             int64_t y = ui_add_sat_i64(dd->y, ui_mul_sat_i64(dd->h, i + 1));
-            rt_canvas_box(canvas,
+            ops.box(canvas,
                           dd->x,
                           y,
                           dd->w,
                           dd->h,
                           i == dd->selected ? dd->selected_bg_color : dd->bg_color);
-            rt_canvas_frame(canvas, dd->x, y, dd->w, dd->h, dd->border_color);
+            ops.frame(canvas, dd->x, y, dd->w, dd->h, dd->border_color);
             ui_draw_text_basic(
-                canvas, dd->x + 4, y + 4, dd->options[i], dd->font, 1, dd->text_color);
+                &ops, dd->x + 4, y + 4, dd->options[i], dd->font, 1, dd->text_color);
         }
     }
 }
@@ -1246,17 +1249,18 @@ void rt_uitooltip_update(
 }
 
 void rt_uitooltip_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uitooltip_impl *t =
         checked_tooltip(ptr, "UITooltip.Draw: expected Viper.Game.UI.HudTooltip");
-    if (!t || !canvas || !ui_validate_canvas(canvas, "UITooltip.Draw: expected Canvas"))
+    if (!t || !canvas || !ui_resolve_draw_ops(canvas, "UITooltip.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!t->visible || t->text[0] == '\0')
         return;
     int64_t w =
         ui_text_prefix_width(t->text, (int64_t)strlen(t->text), t->font, 1) + t->padding * 2;
     int64_t h = 8 + t->padding * 2;
-    int64_t cw = rt_canvas_width(canvas);
-    int64_t ch = rt_canvas_height(canvas);
+    int64_t cw = ops.width(canvas);
+    int64_t ch = ops.height(canvas);
     int64_t x = t->x;
     int64_t y = t->y;
     if (ui_add_sat_i64(x, w) > cw)
@@ -1267,9 +1271,9 @@ void rt_uitooltip_draw(void *ptr, void *canvas) {
         x = 0;
     if (y < 0)
         y = 0;
-    rt_canvas_box(canvas, x, y, w, h, t->bg_color);
-    rt_canvas_frame(canvas, x, y, w, h, t->border_color);
-    ui_draw_text_basic(canvas, x + t->padding, y + t->padding, t->text, t->font, 1, t->text_color);
+    ops.box(canvas, x, y, w, h, t->bg_color);
+    ops.frame(canvas, x, y, w, h, t->border_color);
+    ui_draw_text_basic(&ops, x + t->padding, y + t->padding, t->text, t->font, 1, t->text_color);
 }
 
 //=============================================================================
@@ -1590,24 +1594,25 @@ int64_t rt_uimodal_handle_click(void *ptr, int64_t mx, int64_t my) {
 }
 
 void rt_uimodal_draw(void *ptr, void *canvas) {
+    rt_gameui_draw_ops_t ops;
     rt_uimodal_impl *m = checked_modal(ptr, "UIModal.Draw: expected Viper.Game.UI.Modal");
-    if (!m || !canvas || !ui_validate_canvas(canvas, "UIModal.Draw: expected Canvas"))
+    if (!m || !canvas || !ui_resolve_draw_ops(canvas, "UIModal.Draw: expected Canvas or Canvas3D", &ops))
         return;
     if (!m->open || !m->visible)
         return;
-    rt_canvas_box_alpha(canvas,
+    ops.box_alpha(canvas,
                         0,
                         0,
-                        rt_canvas_width(canvas),
-                        rt_canvas_height(canvas),
+                        ops.width(canvas),
+                        ops.height(canvas),
                         m->overlay_color,
                         m->overlay_alpha);
-    rt_canvas_box(canvas, m->x, m->y, m->w, m->h, m->bg_color);
-    rt_canvas_frame(canvas, m->x, m->y, m->w, m->h, 0x707070);
-    rt_canvas_box(canvas, m->x, m->y, m->w, 28, m->title_bar_color);
-    ui_draw_text_basic(canvas, m->x + 8, m->y + 8, m->title, m->font, 1, m->title_text_color);
+    ops.box(canvas, m->x, m->y, m->w, m->h, m->bg_color);
+    ops.frame(canvas, m->x, m->y, m->w, m->h, 0x707070);
+    ops.box(canvas, m->x, m->y, m->w, 28, m->title_bar_color);
+    ui_draw_text_basic(&ops, m->x + 8, m->y + 8, m->title, m->font, 1, m->title_text_color);
     ui_draw_text_basic(
-        canvas, m->x + 12, m->y + 40, m->content_text, m->font, 1, m->content_text_color);
+        &ops, m->x + 12, m->y + 40, m->content_text, m->font, 1, m->content_text_color);
     for (int64_t i = 0; i < m->child_count; i++) {
         void *child = m->children[i];
         if (!child)
@@ -1634,9 +1639,9 @@ void rt_uimodal_draw(void *ptr, void *canvas) {
     int64_t by = m->y + m->h - button_h - 12;
     for (int64_t i = 0; i < m->button_count; i++) {
         int64_t x = bx + i * (button_w + gap);
-        rt_canvas_box(
+        ops.box(
             canvas, x, by, button_w, button_h, i == m->selected_button ? 0x405A86 : 0x303030);
-        rt_canvas_frame(canvas, x, by, button_w, button_h, 0x808080);
-        ui_draw_text_basic(canvas, x + 8, by + 8, m->buttons[i].text, m->font, 1, 0xFFFFFF);
+        ops.frame(canvas, x, by, button_w, button_h, 0x808080);
+        ui_draw_text_basic(&ops, x + 8, by + 8, m->buttons[i].text, m->font, 1, 0xFFFFFF);
     }
 }

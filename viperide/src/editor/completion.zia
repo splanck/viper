@@ -12,12 +12,12 @@ bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/completion_filter";
 bind "../editor/completion_items";
+bind "../editor/completion_workspace_source";
 bind "../editor/workspace_completion_index";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
 bind "../core/project_manager";
 bind "../core/document_manager";
-bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
 
 final COMPLETION_DEBOUNCE_MS = 180;
@@ -861,14 +861,17 @@ class CompletionController {
     }
 
     expose func PumpWorkspaceSymbolCache(maxFiles: Integer) -> Integer {
-        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+        if completion_workspace_source.IsProjectOpen(workspaceProject) == false {
             ClearWorkspaceSymbolCache();
             return 0;
         }
 
         var root = workspaceProject.project.rootPath;
         var fileCount = workspaceProject.CachedFileCount();
-        if root != workspaceRoot or fileCount != workspaceFileCount {
+        if completion_workspace_source.NeedsReset(root,
+                                                  fileCount,
+                                                  workspaceRoot,
+                                                  workspaceFileCount) {
             workspaceRoot = root;
             workspaceFileCount = fileCount;
             workspaceFileIndex = 0;
@@ -919,7 +922,9 @@ class CompletionController {
             processed = processed + 1;
 
             if Str.ToLower(Path.Ext(filePath)) != ".zia" { continue; }
-            var content = WorkspaceContentFor(filePath);
+            var content = completion_workspace_source.ContentFor(workspaceDocs,
+                                                                 filePath,
+                                                                 MAX_WORKSPACE_SYMBOL_SOURCE_BYTES);
             if content == "" { continue; }
             var qcontent = zia_query.WrapForQuery(content);
             var lineOff = zia_query.LineOffset(content);
@@ -969,22 +974,6 @@ class CompletionController {
         workspacePendingLineOffset = 0;
     }
 
-    hide func WorkspaceContentFor(filePath: String) -> String {
-        if workspaceDocs != null {
-            var idx = workspaceDocs.FindByPath(filePath);
-            if idx >= 0 {
-                return workspaceDocs.documents.get(idx).content;
-            }
-        }
-        if IO.File.Exists(filePath) {
-            if IO.File.Size(filePath) > MAX_WORKSPACE_SYMBOL_SOURCE_BYTES {
-                return "";
-            }
-            return IO.File.ReadAllText(filePath);
-        }
-        return "";
-    }
-
     hide func AddRawWorkspaceSymbolsToCache(filePath: String,
                                             raw: String,
                                             lineOff: Integer) {
@@ -1030,7 +1019,7 @@ class CompletionController {
     hide func AddWorkspaceSymbolCompletions(off: Integer,
                                             curLine: Integer,
                                             curCol: Integer) {
-        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+        if completion_workspace_source.IsProjectOpen(workspaceProject) == false {
             return;
         }
 
@@ -1117,13 +1106,9 @@ class CompletionController {
                                      actualLine: Integer,
                                      startCol: Integer,
                                      curCol: Integer) {
-        var detail = "workspace";
-        if typeText != "" {
-            detail = typeText + "  -  workspace";
-        }
-        if workspaceProject != null and workspaceProject.project != null and workspaceProject.project.isOpen {
-            detail = detail + "  " + workspaceProject.RelativePath(filePath);
-        }
+        var detail = completion_workspace_source.DetailText(workspaceProject,
+                                                            typeText,
+                                                            filePath);
 
         var candidate = completion_items.NewCandidate(label,
                                                        kindLabel(WorkspaceKindCode(kind)) + " " + label + "  -  " + detail,

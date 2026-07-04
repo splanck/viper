@@ -128,6 +128,7 @@ set(RT_GAME_SOURCES
         game/rt_quadtree.c
         game/rt_debugoverlay.c
         game/rt_gameui.c
+        game/rt_gameui_draw.c
         game/rt_gameui_widgets.c
         game/rt_gameui_textinput.c
         game/rt_pathfinder.c
@@ -202,6 +203,7 @@ set(RT_IO_FS_SOURCES
         io/rt_tempfile.c
         io/rt_watcher.c
         io/rt_compress.c
+        io/rt_zstd.c
         io/rt_deflate.c
         io/rt_archive.c
         io/rt_archive_fs.c
@@ -290,6 +292,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/text/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
+        graphics/3d/render/rt_canvas3d_gameui.c
         graphics/3d/render/rt_canvas3d_tempmgr.c
         graphics/3d/render/rt_canvas3d_snapshot.c
         graphics/3d/render/rt_canvas3d_motion.c
@@ -304,6 +307,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/rt_game3d_audio.c
         graphics/3d/rt_game3d_effects.c
         graphics/3d/rt_game3d_animator.c
+        graphics/3d/rt_game3d_behavior.c
         graphics/3d/rt_game3d_entity.c
         graphics/3d/rt_game3d_input.c
         graphics/3d/rt_game3d_presets.c
@@ -430,6 +434,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/3d/rt_game3d_audio.c
         graphics/3d/rt_game3d_effects.c
         graphics/3d/rt_game3d_animator.c
+        graphics/3d/rt_game3d_behavior.c
         graphics/3d/rt_game3d_entity.c
         graphics/3d/rt_game3d_input.c
         graphics/3d/rt_game3d_presets.c

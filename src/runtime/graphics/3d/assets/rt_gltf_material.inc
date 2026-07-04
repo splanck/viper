@@ -449,6 +449,98 @@ static void *gltf_material_create_pbr_from_json(void *pbr) {
     return mat;
 }
 
+/// @brief Plan 09: convert a KHR_materials_pbrSpecularGlossiness payload into a
+///        metallic-roughness Material3D.
+/// @details Standard lossy approximation implemented from the published math:
+///          `diffuseFactor` → base color, `roughness = 1 - glossinessFactor`, and
+///          `metallic ≈ saturate((maxComponent(specularFactor) - 0.04) / (1 - 0.04))`
+///          (dielectric F0 = 0.04). Per-texel gloss→roughness conversion of the
+///          specularGlossinessTexture is out of scope (v1 approximation; the texture
+///          binds to the specular slot).
+static void *gltf_material_create_spec_gloss_from_json(void *spec_gloss) {
+    double rgba[4] = {1.0, 1.0, 1.0, 1.0};
+    double spec[3] = {1.0, 1.0, 1.0};
+    double gloss;
+    double max_spec;
+    double metallic;
+    void *mat;
+    void *df;
+    void *sf;
+    if (!spec_gloss)
+        return NULL;
+    df = jarr(spec_gloss, "diffuseFactor");
+    if (df && jarr_len(df) >= 3) {
+        rgba[0] = gltf_clamp_double(jvalue_num(rt_seq_get(df, 0), rgba[0]), 0.0, 1.0, rgba[0]);
+        rgba[1] = gltf_clamp_double(jvalue_num(rt_seq_get(df, 1), rgba[1]), 0.0, 1.0, rgba[1]);
+        rgba[2] = gltf_clamp_double(jvalue_num(rt_seq_get(df, 2), rgba[2]), 0.0, 1.0, rgba[2]);
+        if (jarr_len(df) >= 4)
+            rgba[3] = gltf_clamp_double(jvalue_num(rt_seq_get(df, 3), rgba[3]), 0.0, 1.0, rgba[3]);
+    }
+    gloss = gltf_clamp_double(jnum(spec_gloss, "glossinessFactor", 1.0), 0.0, 1.0, 1.0);
+    sf = jarr(spec_gloss, "specularFactor");
+    if (sf && jarr_len(sf) >= 3) {
+        spec[0] = gltf_clamp_double(jvalue_num(rt_seq_get(sf, 0), spec[0]), 0.0, 1.0, spec[0]);
+        spec[1] = gltf_clamp_double(jvalue_num(rt_seq_get(sf, 1), spec[1]), 0.0, 1.0, spec[1]);
+        spec[2] = gltf_clamp_double(jvalue_num(rt_seq_get(sf, 2), spec[2]), 0.0, 1.0, spec[2]);
+    }
+    max_spec = spec[0];
+    if (spec[1] > max_spec)
+        max_spec = spec[1];
+    if (spec[2] > max_spec)
+        max_spec = spec[2];
+    metallic = (max_spec - 0.04) / (1.0 - 0.04);
+    if (metallic < 0.0)
+        metallic = 0.0;
+    if (metallic > 1.0)
+        metallic = 1.0;
+    mat = rt_material3d_new_pbr(rgba[0], rgba[1], rgba[2]);
+    if (mat) {
+        rt_material3d_set_metallic(mat, metallic);
+        rt_material3d_set_roughness(mat, 1.0 - gloss);
+        if (rgba[3] < 1.0)
+            rt_material3d_set_alpha(mat, rgba[3]);
+    }
+    return mat;
+}
+
+/// @brief Plan 09: bind the spec-gloss extension's textures (diffuse → base color,
+///        specularGlossiness → specular slot).
+static int gltf_material_apply_spec_gloss_textures(void *spec_gloss,
+                                                   void *material,
+                                                   int32_t material_index,
+                                                   void **texture_images,
+                                                   const uint8_t *texture_supported,
+                                                   const gltf_sampler_info_t *texture_samplers,
+                                                   int32_t texture_count,
+                                                   gltf_material_info_t *material_infos) {
+    int load_failed = 0;
+    void *diffuse_tex = jget(spec_gloss, "diffuseTexture");
+    void *sg_tex = jget(spec_gloss, "specularGlossinessTexture");
+    load_failed |= gltf_material_bind_texture(
+        diffuse_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR),
+        rt_material3d_set_texture);
+    load_failed |= gltf_material_bind_texture(
+        sg_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR),
+        rt_material3d_set_specular_map);
+    return load_failed;
+}
+
 static void *gltf_material_create_default_pbr(void) {
     void *mat = rt_material3d_new_pbr(1.0, 1.0, 1.0);
     if (mat) {
@@ -793,8 +885,24 @@ static void gltf_load_materials(rt_gltf_asset *asset,
             void *mat_json = rt_seq_get(mats_arr, (int64_t)i);
             void *mat = NULL;
             void *pbr = jget(mat_json, "pbrMetallicRoughness");
+            void *mat_extensions = jget(mat_json, "extensions");
+            void *spec_gloss =
+                mat_extensions ? jget(mat_extensions, "KHR_materials_pbrSpecularGlossiness")
+                               : NULL;
 
-            if (pbr) {
+            if (spec_gloss) {
+                /* Plan 09: legacy spec-gloss materials convert to metallic-roughness;
+                 * the extension takes precedence over any fallback pbrMetallicRoughness. */
+                mat = gltf_material_create_spec_gloss_from_json(spec_gloss);
+                load_failed |= gltf_material_apply_spec_gloss_textures(spec_gloss,
+                                                                       mat,
+                                                                       i,
+                                                                       texture_images,
+                                                                       texture_supported,
+                                                                       texture_samplers,
+                                                                       texture_count,
+                                                                       material_infos);
+            } else if (pbr) {
                 mat = gltf_material_create_pbr_from_json(pbr);
                 load_failed |= gltf_material_apply_pbr_textures(pbr,
                                                                 mat,

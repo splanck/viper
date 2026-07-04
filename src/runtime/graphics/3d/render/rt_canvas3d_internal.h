@@ -538,13 +538,27 @@ typedef struct vgfx3d_backend vgfx3d_backend_t;
 // CubeMap3D — 6-face cube map texture for skybox + reflections
 //=============================================================================
 
+/// @brief Number of prefiltered specular mip levels retained for image-based
+///   lighting (base 128 halving to 4: 128/64/32/16/8/4).
+#define RT_CUBEMAP3D_IBL_MAX_MIPS 6
+
 /// @brief CubeMap3D payload: six square Pixels faces (±X, ±Y, ±Z) plus a cache identity
-///   used as a stable GPU-upload key across allocator reuse.
+///   used as a stable GPU-upload key across allocator reuse. When image-based
+///   lighting has been prepared (rt_cubemap3d_ensure_ibl), the payload also
+///   carries SH-9 irradiance coefficients and a GGX-prefiltered specular mip
+///   chain stored as additional Pixels faces.
 typedef struct {
     void *vptr;
     void *faces[6];          /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
     int64_t face_size;       /* width = height per face (must be square) */
     uint64_t cache_identity; /* stable cache key generation across allocator reuse */
+    /* --- IBL payload (valid only when ibl_ready != 0) --- */
+    float ibl_sh[27]; /* SH-9 RGB irradiance, cosine-convolved, 1/pi folded */
+    void *ibl_mips[RT_CUBEMAP3D_IBL_MAX_MIPS][6]; /* prefiltered Pixels faces  */
+    int32_t ibl_mip_count;                        /* 0 until rt_cubemap3d_ensure_ibl */
+    int32_t ibl_base_size;                        /* face size of prefiltered mip 0 */
+    int8_t ibl_ready;
+    uint64_t ibl_identity; /* distinct GPU cache key for the prefiltered chain */
 } rt_cubemap3d;
 
 /// @brief Return 1 when @p cubemap is a live CubeMap3D with all six matching square faces.
@@ -830,6 +844,22 @@ typedef struct {
     int32_t scene_light_count; /* transient, not retained: populated by Scene3D.Draw */
     float ambient[3];
 
+    /* Image-based lighting: when enabled and the skybox has a prepared IBL
+     * payload, PBR draws without an explicit material env map light their
+     * ambient term from SH irradiance + the prefiltered specular chain. */
+    int8_t ibl_enabled;
+    float ibl_intensity;
+
+    /* Light-snapshot revisioning: queued draws are stamped with a monotonic
+     * revision; the stamp only advances when the flattened light set or
+     * ambient color actually changed since the previous queued draw, letting
+     * backends skip re-uploading scene/light constants for runs of draws. */
+    uint32_t lights_revision;
+    void *last_light_snapshot; /* vgfx3d_light_params_t[VGFX3D_MAX_LIGHTS], lazily allocated */
+    float last_light_snapshot_ambient[3];
+    int32_t last_light_snapshot_count;
+    int8_t last_light_snapshot_valid;
+
     /* Skybox */
     rt_cubemap3d *skybox;      /* CubeMap3D for background (or NULL) */
     uint8_t *skybox_cpu_cache; /* tightly packed RGBA8 fallback skybox */
@@ -894,9 +924,21 @@ typedef struct {
     int32_t shadow_count;
     int32_t shadow_cascade_count;
     float shadow_slope_bias;
+    /* Plan 06: occlusion darkening (0..1; 0.85 reproduces the legacy 0.15 lit floor)
+     * and PCF tier (0 = 4 taps, 1 = 8, 2 = 16 rotated-Poisson taps). */
+    float shadow_strength;
+    int32_t shadow_quality;
     vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
     int8_t shadow_rt_owned[VGFX3D_MAX_SHADOW_LIGHTS]; /* slots allocated by Canvas3D itself */
     float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
+
+    /* Plan 08: overlay 2D clip rect (enqueue-time CPU clipping — applies to
+     * screen-space rect/line/image/text queueing while active; backend-neutral). */
+    int8_t overlay_clip_active;
+    float overlay_clip_x;
+    float overlay_clip_y;
+    float overlay_clip_w;
+    float overlay_clip_h;
 
     /* Pending terrain splat data (consumed by next draw_mesh call, then cleared) */
     int8_t pending_has_splat;
@@ -1092,6 +1134,25 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
                                  float *out_r,
                                  float *out_g,
                                  float *out_b);
+/// @brief Internal: lazily compute the cubemap's IBL payload (SH-9 irradiance +
+///   GGX-prefiltered specular mip chain). Idempotent; returns 1 when ready.
+int rt_cubemap3d_ensure_ibl(void *cubemap);
+/// @brief Internal: sample the prefiltered specular chain (trilinear across
+///   roughness levels). Falls back to rt_cubemap_sample_roughness when the IBL
+///   payload has not been prepared.
+void rt_cubemap_sample_ibl(const rt_cubemap3d *cm,
+                           float dx,
+                           float dy,
+                           float dz,
+                           float roughness,
+                           float *out_r,
+                           float *out_g,
+                           float *out_b);
+/// @brief Internal: evaluate SH-9 irradiance coefficients (as stored in
+///   rt_cubemap3d.ibl_sh) along a unit normal. Output is linear RGB with the
+///   Lambertian 1/pi already folded in (a constant environment of color C
+///   evaluates to C for every normal).
+void rt_sh9_eval_irradiance(const float sh[27], float nx, float ny, float nz, float *out_rgb);
 /// @brief Internal: apply a canvas's active post-processing chain.
 void rt_postfx3d_apply_to_canvas(void *canvas);
 /// @brief Internal: inject a mouse delta without changing absolute position.
@@ -1128,6 +1189,31 @@ int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a);
 /// @brief Internal: queue a screen-space textured quad sampling `pixels` over UV (0,0)-(1,1).
 int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float h, void *pixels);
+/// @brief Internal: register the Canvas3D Game.UI widget draw-ops binding (ADR 0065).
+void canvas3d_register_gameui_ops(void);
+/// @brief Internal: queue a screen-space rounded rectangle as a triangle fan (Plan 08).
+int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
+                                     float x,
+                                     float y,
+                                     float w,
+                                     float h,
+                                     float radius,
+                                     float r,
+                                     float g,
+                                     float b,
+                                     float a);
+/// @brief Internal: queue a screen-space textured quad sampling `pixels` over an explicit
+/// normalized UV sub-rect (u0,v0)-(u1,v1). Plan 08 region blits build on this.
+int canvas3d_queue_screen_image_uv(rt_canvas3d *c,
+                                   float x,
+                                   float y,
+                                   float w,
+                                   float h,
+                                   void *pixels,
+                                   float u0,
+                                   float v0,
+                                   float u1,
+                                   float v1);
 /// @brief Internal: retain a GC object referenced by a final-overlay draw until the overlay
 /// replays.
 int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj);

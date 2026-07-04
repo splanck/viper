@@ -58,6 +58,7 @@ Warnings are per outer load, append-only, and capped. Use
 | `SceneAsset.LoadResult(path)` / `LoadAssetResult(path)` | Returns `Err(message)` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
 | `SceneAsset.Load(path)` / `LoadAsset(path)` | Compatibility APIs: return `null` and set `AssetDiagnostics3D.LastLoadError` for routine content failures | Same warnings as the Result variants |
+| `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | Same failure behavior as `Load`/`LoadResult` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
@@ -78,6 +79,7 @@ glTF extension support is explicit:
 | `KHR_materials_emissive_strength` | Supported | Supported | Emissive intensity is imported |
 | `KHR_materials_unlit` | Supported | Supported | Material uses unlit shading |
 | `KHR_materials_specular` | Supported | Supported | Specular factors/textures are imported |
+| `KHR_materials_pbrSpecularGlossiness` | Supported | Supported | Legacy spec-gloss converts to metallic-roughness (`roughness = 1 - glossiness`, metallic from the max specular component vs dielectric 0.04); the specularGlossiness texture binds to the specular slot; per-texel gloss conversion is not attempted |
 | `KHR_lights_punctual` | Supported | Supported | Punctual lights are imported |
 | `KHR_texture_basisu` | Not supported as required | Optional KTX2 source selection supported | Required use returns `requires KHR_texture_basisu (unsupported)` |
 | `KHR_materials_clearcoat` | Not supported as required | Optional approximation supported | Clearcoat values map to reflectivity/custom material params |
@@ -148,6 +150,21 @@ compares against `examples/3d/baselines/walk_min_software.png`.
 - **Overlay image blit** — `Canvas3D.DrawImage2D(canvas, x, y, w, h, pixels)` blits a `Pixels`
   image into the 2D overlay (unlit, screen-space) scaled to `w×h`. Combine with
   `RenderTarget3D.AsPixels(rt)` to show a rendered texture, such as a top-down minimap, on the HUD.
+  `DrawImage2DRegion(canvas, x, y, w, h, pixels, sx, sy, sw, sh)` blits only the source
+  sub-rectangle — the primitive behind sprite-sheet HUD icons and nine-slice panels.
+- **Overlay primitives** — the HUD layer has the full 2D-canvas drawing vocabulary:
+  `DrawLine2D(x0, y0, x1, y1, color, alpha)`, `DrawFrame2D(x, y, w, h, color, alpha)`,
+  `DrawRoundRect2D` / `DrawRoundFrame2D(x, y, w, h, radius, color, alpha)`,
+  `DrawText2DScaled(x, y, text, color, scale)` and `MeasureText2D(text, scale)`.
+  `SetClipRect2D(x, y, w, h)` restricts subsequent overlay drawing to a screen
+  rectangle (clipping happens canvas-side at enqueue time, so every backend behaves
+  identically — the scrolling-list building block); `ClearClipRect2D()` removes it.
+- **HUD widgets** — the entire `Viper.Game.UI.*` widget set (HudLabel, Bar, Panel,
+  MenuList, Modal, sliders, tables, tooltips, text input, …) draws directly on a
+  Canvas3D: pass the Canvas3D handle to any widget `Draw` call. One widget
+  implementation serves both canvases (ADR 0065); custom `Font` objects currently
+  render with the built-in font on Canvas3D. Forward input from `Game3D.Mouse`/`Keys`
+  to the widgets' `HandleMouseClick`/`HandleKey` methods.
 - **Wind foliage** — `Canvas3D.DrawMeshWind(canvas, mesh, transform, material, dirX, dirZ, strength, phase)`
   draws a mesh with a height-weighted per-vertex sway: the base (lowest local-Y) stays planted
   while the canopy bends along `(dirX, dirZ)` by `sin(phase)`. Pass per-instance `phase` offsets so
@@ -264,7 +281,21 @@ lights.
 | `MaxActiveLights` | `Integer` | Current active-light budget for the selected lighting path |
 | `SetClusteredLighting(enabled)` | `Void(Boolean)` | Enable clustered/forward+ lighting only when the backend advertises support |
 | `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
+| `IblEnabled` | `Boolean` (read/write) | Light PBR ambient from the skybox environment via image-based lighting |
+| `IblIntensity` | `Double` (read/write) | Scale the environment-lighting contribution (default `1.0`, clamped to `[0, 8]`) |
 | `SetShadowCascades(count)` | `Void(Integer)` | Request cascaded shadow maps; counts above `1` require backend CSM support |
+| `SetShadowStrength(s)` | `Void(Double)` | How dark fully-occluded texels get (`0` = shadows off, `1` = black; default `0.85`) |
+| `SetShadowQuality(tier)` | `Void(Integer)` | Shadow PCF tier: `0` = 4 taps, `1` = 8 (default), `2` = 16 rotated-Poisson taps |
+
+Image-based lighting (`IblEnabled`) replaces the flat ambient term on PBR
+materials with real environment lighting derived from the canvas skybox:
+diffuse comes from an SH-9 irradiance projection and specular from a
+GGX-prefiltered mip chain sampled by roughness (split-sum approximation).
+Enabling IBL (or setting a skybox while enabled) computes the environment
+payload once at load time — the render loop pays nothing extra per frame.
+Materials with an explicit `SetEnvMap` keep the legacy reflectivity-mix
+behavior; unlit and Blinn-Phong materials are unaffected. All four backends
+(Metal, D3D11, OpenGL, software) implement the same math.
 
 The default path remains fixed forward lighting with `MaxActiveLights == 16`.
 `BackendSupports("clustered-lighting")` gates the many-light path; enabling it
@@ -293,13 +324,29 @@ spot cone, so pixels outside the outer cone do not sample the map border. Point
 lights do not cast shadows yet: setting `CastsShadows = true` on a point light is
 accepted and trap-free, but it does not allocate a shadow slot.
 
+Shadow filtering uses a 16-point Poisson-disk PCF rotated per pixel, with the
+tap count selected by `SetShadowQuality` (the software backend caps at 8 taps).
+Receivers are offset along the surface normal by about 1.5 shadow texels before
+projecting into light space, and the depth compare adds a slope-proportional
+per-texel bias — so `SetShadowBias` stays small (it is the constant base term)
+and `SetShadowSlopeBias` scales the grazing-angle term. Because both the offset
+and the slope term derive from each slot's actual texel footprint, far cascades
+automatically receive proportionally larger bias. If shadows detach from their
+casters ("peter-panning"), lower `SetShadowSlopeBias`; if surfaces show striping
+("acne") at grazing sun angles, raise it.
+
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
 `BackendSupports("etc2")` report native compressed texture upload support for
-the active backend/device. `BackendSupports("texture:bc7")`,
-`BackendSupports("texture:etc2")`, `BackendSupports("texture:astc")`, and
-`BackendSupports("texture:ktx2-cpu")` report runtime CPU fallback coverage.
-KTX2 supercompression is rejected; native mip payload lengths are validated
-against the declared format/block dimensions.
+the active backend/device. `BackendSupports("texture:bc1")` through
+`BackendSupports("texture:bc7")`, `texture:etc2`, `texture:astc`, and
+`texture:ktx2-cpu` report runtime CPU fallback coverage.
+KTX2 supercompression schemes 2 (Zstandard) and 3 (ZLIB) — the default output
+of `toktx --zcmp` and similar tools — are decompressed per level by the
+runtime's from-scratch decoders before decode/native retention; scheme 1
+(BasisLZ/ETC1S) is rejected with a recoverable diagnostic. Malformed or
+unsupported KTX2 input never traps: loads return null and the diagnostic is
+available through `Assets3D.GetLastLoadError`. Native mip payload lengths are
+validated against the declared format/block dimensions.
 `BackendSupports("anisotropy")` reports whether the active GPU backend applies
 `Material3D.Anisotropy`; the software backend accepts the property but ignores
 it and reports false.
@@ -307,7 +354,9 @@ it and reports false.
 | Texture format | Software / RenderTarget3D CPU path | Native GPU upload path | Undecodable CPU blocks |
 |----------------|-------------------------------------|------------------------|------------------------|
 | RGBA8 KTX2 | Full decode to `Pixels` | Uploaded as ordinary RGBA texture | Load fails on malformed bytes |
-| BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | No `BackendSupports` native key | Load fails on malformed bytes |
+| BC1 KTX2 | Full DXT1 decode (opaque + punch-through) to `Pixels` | Device-dependent `bc1` key | Load fails on malformed bytes |
+| BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | Device-dependent `bc3` key | Load fails on malformed bytes |
+| BC4/BC5 KTX2 | Single/two-channel decode to `Pixels` (R replicated / RG) | Device-dependent `bc4`/`bc5` keys | Load fails on malformed bytes |
 | BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `bc7` key | 8x8 magenta/black checker + load warning |
 | ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `etc2` key | 8x8 magenta/black checker + load warning |
 | ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `astc` key | 8x8 magenta/black checker + load warning |
@@ -726,28 +775,46 @@ Post-processing effect chain applied to a rendered scene.
 |---------------|---------|------------|-------------|
 | `Enabled`     | Boolean | Read/Write | Enable or disable the entire chain |
 | `EffectCount` | Integer | Read       | Number of effects currently in the chain |
+| `LastError`   | String  | Read       | Why `Canvas3D.SetPostFX` refused this chain (`""` when none). GPU-scene effects (SSAO/DOF/motion blur/TAA) validate against the canvas at bind time instead of trapping at first apply, supporting `BackendSupports`-gated fallback chains |
 
 #### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `AddBloom(threshold, intensity, passes)` | `Void(Double, Double, Integer)` | Add a bloom bloom effect |
-| `AddTonemap(mode, exposure)` | `Void(Integer, Double)` | Add tone mapping (`0 = Reinhard`, `1 = ACES`) |
+| `AddBloom(threshold, intensity, passes)` | `Void(Double, Double, Integer)` | Add bloom. `passes` selects the blur-chain depth (1–6 octaves; deeper = wider halo) |
+| `AddTonemap(mode, exposure)` | `Void(Integer, Double)` | Add tone mapping (`0 = off/linear`, `1 = Reinhard`, `2 = ACES`) |
 | `AddFXAA()` | `Void()` | Add FXAA anti-aliasing |
 | `AddColorGrade(brightnessOffset, contrast, saturation)` | `Void(Double, Double, Double)` | Add color grading. Brightness is an additive offset centered on `0.0`; contrast and saturation are multipliers centered on `1.0` |
 | `AddVignette(strength, radius)` | `Void(Double, Double)` | Add a vignette darkening effect |
-| `AddSSAO(radius, intensity, samples)` | `Void(Double, Double, Integer)` | Add screen-space ambient occlusion |
+| `AddSSAO(radius, intensity, samples)` | `Void(Double, Double, Integer)` | Add screen-space ambient occlusion (radius in world units, 4–16 samples) |
 | `AddDOF(focusDist, focalRange, blurRadius)` | `Void(Double, Double, Double)` | Add depth of field |
 | `AddMotionBlur(strength, samples)` | `Void(Double, Integer)` | Add motion blur |
+| `AddTAA(blend)` | `Void(Double)` | Add temporal anti-aliasing. `blend` is the history weight (0.5–0.98; typical 0.9) |
 | `Clear()` | `Void()` | Remove all effects from the chain |
+
+Bloom runs as a progressive downsample/upsample mip chain: the scene is thresholded
+with a Karis-averaged 13-tap filter (suppressing single-pixel fireflies), blurred
+across up to six octaves, and composited back at `intensity`. SSAO is normal-aware and
+range-checked — occlusion comes from a hemispheric spiral kernel around the
+reconstructed surface normal, so flat walls no longer darken and silhouettes no longer
+halo. TAA jitters the projection sub-pixel each frame (Halton 2,3) and reprojects a
+persistent history buffer through per-pixel motion vectors with neighborhood clamping;
+it requires GPU window post-FX (query `Canvas3D.BackendSupports("taa")`) and supersedes
+FXAA in the CINEMATIC quality profile when available.
+
+GPU window backends render the scene into a linear-HDR (RGBA16F) target, so bloom and
+tone mapping operate on unclamped color (`BackendSupports("hdr-scene")`). On HDR
+targets an explicit `AddTonemap(0, exposure)` applies exposure plus gamma-out (sRGB
+encoding) so "tonemap off" still produces display-referred output matching modes 1/2;
+on LDR targets mode 0 remains a passthrough.
 
 ```rust
 bind Viper.Graphics3D.PostFX3D as PostFX3D;
 
 var fx = PostFX3D.New()
 fx.AddBloom(0.8, 1.2, 4)
-fx.AddTonemap(1, 1.0)
-fx.AddFXAA()
+fx.AddTonemap(2, 1.0)
+fx.AddTAA(0.9)
 fx.Enabled = true
 ```
 

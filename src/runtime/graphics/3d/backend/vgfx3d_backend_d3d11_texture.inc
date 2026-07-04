@@ -419,13 +419,29 @@ static int64_t d3d11_get_native_texture_caps(void *ctx_ptr) {
         caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
     if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC7_UNORM))
         caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
+    if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC1_UNORM))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC1;
+    if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC3_UNORM))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC3;
+    if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC4_UNORM))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC4;
+    if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC5_UNORM))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC5;
     return caps;
 }
 
-/// @brief Map a native texture format id to its DXGI format (only BC7 is supported; else UNKNOWN).
+/// @brief Map a native texture format id to its DXGI format (UNKNOWN when unsupported).
 static DXGI_FORMAT d3d11_native_texture_format(int32_t format_id) {
     if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
         return DXGI_FORMAT_BC7_UNORM;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1)
+        return DXGI_FORMAT_BC1_UNORM;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3)
+        return DXGI_FORMAT_BC3_UNORM;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4)
+        return DXGI_FORMAT_BC4_UNORM;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5)
+        return DXGI_FORMAT_BC5_UNORM;
     return DXGI_FORMAT_UNKNOWN;
 }
 
@@ -1061,6 +1077,64 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Overlay the cubemap's GGX-prefiltered IBL chain onto the texture's tail mips.
+/// @details Mirrors the OpenGL/Metal backends: box mips above level_base keep the
+///   skybox sharp; levels level_base.. are replaced with the prefiltered chain so
+///   roughness-mapped environment lookups integrate correctly. Idempotent per
+///   ibl_identity; re-applied after base-face re-uploads.
+static void d3d11_apply_ibl_mips(d3d11_context_t *ctx,
+                                 d3d_cubemap_cache_entry_t *entry,
+                                 const rt_cubemap3d *cubemap) {
+    int32_t level_base = 0;
+    int32_t size;
+    int32_t total_mips;
+
+    if (!ctx || !ctx->ctx || !entry || !entry->tex || entry->upload_in_progress || !cubemap ||
+        !cubemap->ibl_ready || cubemap->ibl_mip_count <= 0)
+        return;
+    if (entry->applied_ibl_identity == cubemap->ibl_identity)
+        return;
+    size = entry->face_size;
+    while (size > cubemap->ibl_base_size && size > 1) {
+        size >>= 1;
+        level_base++;
+    }
+    if (size != cubemap->ibl_base_size)
+        return;
+    total_mips = vgfx3d_d3d11_compute_mip_count(entry->face_size, entry->face_size);
+    if (level_base + cubemap->ibl_mip_count > total_mips)
+        return;
+    d3d11_unbind_draw_resources(ctx);
+    for (int32_t m = 0; m < cubemap->ibl_mip_count; m++) {
+        for (int f = 0; f < 6; f++) {
+            int32_t w = 0;
+            int32_t h = 0;
+            uint8_t *rgba = NULL;
+            int32_t row_pitch = 0;
+
+            if (vgfx3d_unpack_pixels_rgba(cubemap->ibl_mips[m][f], &w, &h, &rgba) != 0 || !rgba) {
+                free(rgba);
+                return;
+            }
+            if (!vgfx3d_d3d11_compute_rgba8_upload_pitch(w, &row_pitch)) {
+                free(rgba);
+                return;
+            }
+            ID3D11DeviceContext_UpdateSubresource(
+                ctx->ctx,
+                (ID3D11Resource *)entry->tex,
+                D3D11CalcSubresource((UINT)(level_base + m), (UINT)f, (UINT)total_mips),
+                NULL,
+                rgba,
+                (UINT)row_pitch,
+                0);
+            d3d11_record_texture_upload_bytes(ctx, (uint64_t)(uint32_t)w * (uint32_t)h * 4u);
+            free(rgba);
+        }
+    }
+    entry->applied_ibl_identity = cubemap->ibl_identity;
+}
+
 /// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
 /// @return 1 if all six faces finished this call, 0 if more remains.
 static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
@@ -1148,6 +1222,7 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
     entry->generation = entry->pending_generation;
     entry->pending_generation = 0;
     entry->upload_in_progress = 0;
+    d3d11_apply_ibl_mips(ctx, entry, cubemap);
     return 1;
 }
 
@@ -1174,6 +1249,7 @@ static int d3d11_start_cubemap_upload(d3d11_context_t *ctx,
     entry->upload_face = 0;
     entry->upload_next_row = 0;
     entry->upload_in_progress = 1;
+    entry->applied_ibl_identity = 0; /* base faces changed: re-overlay after upload */
     entry->last_used_frame = ctx->frame_serial;
     d3d11_continue_cubemap_upload(ctx, entry, cubemap);
     if (ctx->texture_upload_budget_bytes == UINT64_MAX && entry->upload_in_progress) {
@@ -1204,6 +1280,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
             ctx->cubemap_cache[i].generation == generation && ctx->cubemap_cache[i].tex &&
             ctx->cubemap_cache[i].srv) {
             ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
+            d3d11_apply_ibl_mips(ctx, &ctx->cubemap_cache[i], cubemap);
             return ctx->cubemap_cache[i].srv;
         }
         if (ctx->cubemap_cache[i].cubemap_ptr == cubemap &&

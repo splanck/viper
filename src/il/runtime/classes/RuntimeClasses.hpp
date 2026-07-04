@@ -550,6 +550,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Game3DCollision3DEvent,
     RTCLS_Game3DAssets3D,
     RTCLS_Game3DModelTemplate,
+    RTCLS_Game3DBehavior3D,
     RTCLS_Game3DAnimator3D,
     RTCLS_Game3DEnvironment3D,
     RTCLS_Game3DEnvHandle,

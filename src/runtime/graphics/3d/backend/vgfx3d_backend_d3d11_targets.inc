@@ -256,6 +256,8 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
+    d3d11_destroy_bloom_targets(ctx);
+    d3d11_destroy_taa_targets(ctx);
     SAFE_RELEASE(ctx->presented_color_tex);
     SAFE_RELEASE(ctx->overlay_color_srv);
     SAFE_RELEASE(ctx->overlay_color_rtv);
@@ -451,6 +453,116 @@ static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
     }
     ctx->postfx_scratch_width = width;
     ctx->postfx_scratch_height = height;
+    return S_OK;
+}
+
+/// @brief Release the Plan 05 bloom mip-chain textures/RTVs/SRVs.
+static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    d3d11_unbind_postfx_resources(ctx);
+    for (int32_t i = 0; i < 6; i++) {
+        SAFE_RELEASE(ctx->bloom_mip_srv[i]);
+        SAFE_RELEASE(ctx->bloom_mip_rtv[i]);
+        SAFE_RELEASE(ctx->bloom_mip_tex[i]);
+        ctx->bloom_mip_w[i] = 0;
+        ctx->bloom_mip_h[i] = 0;
+    }
+    ctx->bloom_mip_count = 0;
+    ctx->bloom_base_width = 0;
+    ctx->bloom_base_height = 0;
+    ctx->postfx_current_bloom_srv = NULL;
+}
+
+/// @brief Build the Plan 05 half-res RGBA16F bloom mip chain for a scene of (w, h).
+/// @details Levels halve until the next level would drop below 8px on either axis
+///          (at most 6 levels). Rebuilt only when the scene size changes.
+static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    int32_t mw;
+    int32_t mh;
+    HRESULT hr;
+
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_bloom_down ||
+        !ctx->ps_bloom_up)
+        return E_INVALIDARG;
+    if (ctx->bloom_mip_count > 0 && ctx->bloom_base_width == width &&
+        ctx->bloom_base_height == height)
+        return S_OK;
+
+    d3d11_destroy_bloom_targets(ctx);
+    mw = width / 2;
+    mh = height / 2;
+    for (int32_t i = 0; i < 6 && mw >= 1 && mh >= 1; i++) {
+        hr = d3d11_create_color_target(ctx,
+                                       mw,
+                                       mh,
+                                       vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                       &ctx->bloom_mip_tex[i],
+                                       &ctx->bloom_mip_rtv[i],
+                                       &ctx->bloom_mip_srv[i]);
+        if (FAILED(hr)) {
+            d3d11_destroy_bloom_targets(ctx);
+            return hr;
+        }
+        ctx->bloom_mip_w[i] = mw;
+        ctx->bloom_mip_h[i] = mh;
+        ctx->bloom_mip_count = i + 1;
+        if (mw / 2 < 8 || mh / 2 < 8)
+            break;
+        mw /= 2;
+        mh /= 2;
+    }
+    if (ctx->bloom_mip_count <= 0)
+        return E_FAIL;
+    ctx->bloom_base_width = width;
+    ctx->bloom_base_height = height;
+    return S_OK;
+}
+
+/// @brief Release the Plan 05 TAA ping-pong history textures/RTVs/SRVs.
+static void d3d11_destroy_taa_targets(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    d3d11_unbind_postfx_resources(ctx);
+    for (int32_t i = 0; i < 2; i++) {
+        SAFE_RELEASE(ctx->taa_history_srv[i]);
+        SAFE_RELEASE(ctx->taa_history_rtv[i]);
+        SAFE_RELEASE(ctx->taa_history_tex[i]);
+    }
+    ctx->taa_history_width = 0;
+    ctx->taa_history_height = 0;
+    ctx->taa_history_parity = 0;
+    ctx->taa_history_valid = 0;
+}
+
+/// @brief Build the Plan 05 TAA ping-pong history pair (RGBA16F, scene-sized).
+static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    HRESULT hr;
+
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_taa)
+        return E_INVALIDARG;
+    if (ctx->taa_history_tex[0] && ctx->taa_history_width == width &&
+        ctx->taa_history_height == height)
+        return S_OK;
+
+    d3d11_destroy_taa_targets(ctx);
+    for (int32_t i = 0; i < 2; i++) {
+        hr = d3d11_create_color_target(ctx,
+                                       width,
+                                       height,
+                                       vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                       &ctx->taa_history_tex[i],
+                                       &ctx->taa_history_rtv[i],
+                                       &ctx->taa_history_srv[i]);
+        if (FAILED(hr)) {
+            d3d11_destroy_taa_targets(ctx);
+            return hr;
+        }
+    }
+    ctx->taa_history_width = width;
+    ctx->taa_history_height = height;
+    ctx->taa_history_parity = 0;
+    ctx->taa_history_valid = 0;
     return S_OK;
 }
 

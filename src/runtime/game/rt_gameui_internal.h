@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_gameui_draw.h"
 #include "rt_string.h"
 
 #include <stddef.h>
@@ -51,11 +52,19 @@ int64_t ui_ld_to_i64_sat(long double value);
 int8_t ui_coord_inside(int64_t start, int64_t extent, int64_t point);
 int64_t ui_coord_offset_clamped(int64_t start, int64_t extent, int64_t point);
 int8_t ui_validate_canvas(void *canvas, const char *api);
+/// @brief Resolve a Draw-call canvas (2D Canvas or Canvas3D) into a draw-ops table;
+///        traps @p api on unknown handles. @return 1 on success.
+int8_t ui_resolve_draw_ops(void *canvas, const char *api, rt_gameui_draw_ops_t *ops);
 void ui_copy_text(char *dst, size_t cap, rt_string text);
 void ui_release_obj(void *obj);
 int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font, int64_t scale);
-void ui_draw_text_basic(
-    void *canvas, int64_t x, int64_t y, const char *text, void *font, int64_t scale, int64_t color);
+void ui_draw_text_basic(const rt_gameui_draw_ops_t *ops,
+                        int64_t x,
+                        int64_t y,
+                        const char *text,
+                        void *font,
+                        int64_t scale,
+                        int64_t color);
 int8_t ui_point_inside(int64_t x, int64_t y, int64_t w, int64_t h, int64_t px, int64_t py);
 
 // Text/UTF-8 helpers shared with UITextInput (defined in rt_gameui.c).

@@ -211,6 +211,30 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
     for (int32_t i = 0; i < c->draw_count; i++)
         canvas3d_apply_shadow_light_params(
             cmds[i].lights, cmds[i].light_count, shadow_lights, c->shadow_count);
+
+    /* Shadow patching mutated every queued light snapshot, so the pre-patch
+     * revision stamps are stale. Remap each run of identical old stamps to a
+     * fresh stamp (preserving distinctness so mid-frame light changes never
+     * alias) and invalidate the snapshot cache for the next frame. */
+    if (c->shadow_count > 0 && c->draw_count > 0) {
+        uint32_t remap_from = 0;
+        uint32_t remap_to = 0;
+        c->last_light_snapshot_valid = 0;
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (cmds[i].light_count <= 0 || cmds[i].cmd.lights_revision == 0)
+                continue;
+            if (remap_to != 0 && cmds[i].cmd.lights_revision == remap_from) {
+                cmds[i].cmd.lights_revision = remap_to;
+                continue;
+            }
+            remap_from = cmds[i].cmd.lights_revision;
+            c->lights_revision++;
+            if (c->lights_revision == 0)
+                c->lights_revision = 1;
+            remap_to = c->lights_revision;
+            cmds[i].cmd.lights_revision = remap_to;
+        }
+    }
 }
 
 /// @brief Render the main 3D pass: frustum/occlusion culling then opaque+blended draws.

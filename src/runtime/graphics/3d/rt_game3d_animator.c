@@ -48,6 +48,7 @@
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include "rt_skeleton3d.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
@@ -478,4 +479,27 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
     }
     game3d_release_ref(&created_animator);
     return obj;
+}
+
+/// @brief Get the model-space matrix for a bone from the wrapped controller's
+///   final pose (freshly allocated Mat4, or NULL when unavailable).
+void *rt_game3d_animator_get_bone_matrix(void *obj, int64_t bone_index) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.getBoneMatrix: invalid animator");
+    void *controller = game3d_animator_controller_ref(animator);
+    if (!controller)
+        return NULL;
+    return rt_anim_controller3d_get_bone_matrix(controller, bone_index);
+}
+
+/// @brief Resolve a bone index by name via the wrapped controller's skeleton
+///   (-1 when the animator has no controller/skeleton or the name is unknown).
+int64_t rt_game3d_animator_find_bone(void *obj, rt_string name) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.findBone: invalid animator");
+    void *controller = game3d_animator_controller_ref(animator);
+    void *skeleton = controller ? rt_anim_controller3d_get_skeleton(controller) : NULL;
+    if (!skeleton)
+        return -1;
+    return rt_skeleton3d_find_bone(skeleton, name);
 }

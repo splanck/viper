@@ -1,0 +1,178 @@
+module quick_open_commands;
+
+bind "../commands/file_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../ui/app_shell";
+
+bind Viper.GUI;
+bind Str = Viper.String;
+
+// ============================================================================
+// MODULE: quick_open_commands
+// PURPOSE: Quick Open command-palette population and fuzzy file scoring.
+//
+// WHERE-THIS-FITS: search_commands.zia still exposes compatibility wrappers for
+//          existing probes and callers. This module owns Quick Open's focused
+//          behavior so project text search can stay about searching.
+//
+// TEACHING-NOTE: Search and Quick Open both read the project file cache, but
+//          they have different user workflows. Splitting them keeps each command
+//          module easier to scan and test.
+// ============================================================================
+
+final QUICK_OPEN_ID_PREFIX = "quickopen:";
+
+/// @brief Prompt for a file query and open the best matching project file.
+/// @param shell Workbench shell used for prompts and status.
+/// @param projMgr Project manager with the warmed file cache.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param tabs Editor tab controller.
+func handleQuickOpen(shell: app_shell.AppShell,
+                     projMgr: project_manager.ProjectManager,
+                     docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine,
+                     tabs: editor_tabs.EditorTabs) {
+    if projMgr.IsOpen() == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return;
+    }
+    var query = Str.Trim(GUI.MessageBox.Prompt("Quick Open", "File name or path:"));
+    if query == "" { return; }
+
+    var bestPath = "";
+    var bestScore = 999;
+    projMgr.WarmFileCache(256);
+    var cachedCount = projMgr.CachedFileCount();
+    var i = 0;
+    while i < cachedCount {
+        var filePath = projMgr.CachedFileAt(i);
+        var score = QuickOpenScore(projMgr.RelativePath(filePath), query);
+        if score >= 0 and score < bestScore {
+            bestScore = score;
+            bestPath = filePath;
+        }
+        i = i + 1;
+    }
+
+    if bestPath == "" and cachedCount == 0 {
+        GUI.Toast.Info(projMgr.FileCacheStatusText());
+        return;
+    }
+
+    if bestPath == "" {
+        var suffix = "";
+        if projMgr.fileCacheComplete == false {
+            suffix = " (still indexing project files)";
+        }
+        GUI.Toast.Info("No project file matched '" + query + "'" + suffix);
+        return;
+    }
+
+    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath);
+    shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+}
+
+/// @brief Populate and show the command palette with project file rows.
+/// @param shell Workbench shell containing the command palette.
+/// @param projMgr Project manager with the warmed file cache.
+/// @return True when the palette is shown.
+expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
+                                 projMgr: project_manager.ProjectManager) -> Boolean {
+    if shell == null or shell.commandPalette == null { return false; }
+    if projMgr.IsOpen() == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return false;
+    }
+    projMgr.WarmFileCache(256);
+    var cachedCount = projMgr.CachedFileCount();
+    if cachedCount == 0 {
+        GUI.Toast.Info(projMgr.FileCacheStatusText());
+        return false;
+    }
+
+    shell.commandPalette.Clear();
+    shell.commandPalette.SetPlaceholder("Open file by name or path...");
+
+    var i = 0;
+    while i < cachedCount {
+        var filePath = projMgr.CachedFileAt(i);
+        shell.commandPalette.AddCommandWithShortcut(QuickOpenCommandId(filePath),
+                                                    projMgr.RelativePath(filePath),
+                                                    "Files",
+                                                    "");
+        i = i + 1;
+    }
+
+    shell.commandPalette.Show();
+    if projMgr.fileCacheComplete {
+        shell.SetStatusLeft("Quick Open: type a file name or path");
+    } else {
+        shell.SetStatusLeft("Quick Open: partial results while project files index");
+    }
+    return true;
+}
+
+/// @brief Open a file selected from the Quick Open command-palette mode.
+/// @param shell Workbench shell used for status.
+/// @param projMgr Project manager used for relative display paths.
+/// @param docMgr Open document manager.
+/// @param engine Active editor engine.
+/// @param tabs Editor tab controller.
+/// @param selected Command id selected from the palette.
+/// @return True when the id represented a Quick Open file.
+expose func HandleQuickOpenPaletteSelection(shell: app_shell.AppShell,
+                                            projMgr: project_manager.ProjectManager,
+                                            docMgr: document_manager.DocumentManager,
+                                            engine: editor_engine.EditorEngine,
+                                            tabs: editor_tabs.EditorTabs,
+                                            selected: String) -> Boolean {
+    var path = QuickOpenPathFromCommandId(selected);
+    if path == "" { return false; }
+    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    shell.SetStatusLeft("Opened: " + projMgr.RelativePath(path));
+    return true;
+}
+
+/// @brief Convert an absolute path into a command-palette id.
+/// @param path Absolute file path.
+/// @return Quick Open command id.
+expose func QuickOpenCommandId(path: String) -> String {
+    return QUICK_OPEN_ID_PREFIX + path;
+}
+
+/// @brief Decode a Quick Open command-palette id into a path.
+/// @param id Command id to decode.
+/// @return Absolute file path, or empty when the id is not Quick Open.
+expose func QuickOpenPathFromCommandId(id: String) -> String {
+    if Str.StartsWith(id, QUICK_OPEN_ID_PREFIX) == false { return ""; }
+    var prefixLen = Str.get_Length(QUICK_OPEN_ID_PREFIX);
+    return Str.MidLen(id, prefixLen + 1, Str.get_Length(id) - prefixLen);
+}
+
+/// @brief Score a relative file path against a user query.
+/// @param relativePath Project-relative file path.
+/// @param query User-entered query.
+/// @return Lower is better; -1 means no match.
+/// @details The scoring is deliberately simple and deterministic so probes can
+///          lock down behavior while the UI remains responsive.
+expose func QuickOpenScore(relativePath: String, query: String) -> Integer {
+    var rel = Str.ToLower(relativePath);
+    var needle = Str.ToLower(Str.Trim(query));
+    if needle == "" { return -1; }
+    if rel == needle { return 0; }
+
+    var slash = Str.LastIndexOf(rel, "/");
+    var name = rel;
+    if slash != 0 {
+        name = Str.Mid(rel, slash + 1);
+    }
+    if name == needle { return 1; }
+    if Str.StartsWith(name, needle) { return 2; }
+    if Str.StartsWith(rel, needle) { return 3; }
+    if Str.IndexOf(rel, needle) != 0 { return 4; }
+    return -1;
+}

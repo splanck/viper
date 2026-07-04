@@ -568,6 +568,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "ldexp",
         "exp",
         "expf",
+        "exp2f",
         "log",
         "logf",
         "log2",

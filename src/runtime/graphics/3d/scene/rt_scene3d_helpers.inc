@@ -713,6 +713,66 @@ static void scene_node_set_world_transform(rt_scene_node3d *node,
     mark_dirty(node);
 }
 
+/// @brief Rotate a 3-vector by a unit quaternion: v' = v + 2*w*(q x v) + 2*(q x (q x v)).
+static void scene_node_quat_rotate_vec(const double q[4], const double v[3], double out[3]) {
+    double tx = 2.0 * (q[1] * v[2] - q[2] * v[1]);
+    double ty = 2.0 * (q[2] * v[0] - q[0] * v[2]);
+    double tz = 2.0 * (q[0] * v[1] - q[1] * v[0]);
+
+    out[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
+    out[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
+    out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
+}
+
+/// @brief Drive a socketed node's world transform from its bone binding.
+/// @details World pose = parentWorld x bonePose x socketOffset, composed as
+///   position + rotation (bone scale is normalized away; socket children do
+///   not inherit skeletal scale). The bone pose is model-space, so the node
+///   must be parented under the node that renders the skinned model for the
+///   composition to land in the right space.
+static void scene_node_apply_bone_socket(rt_scene_node3d *node) {
+    void *animator;
+    double bone_pos[3];
+    double bone_quat[4];
+    double parent_pos[3] = {0.0, 0.0, 0.0};
+    double parent_quat[4];
+    double model_pos[3];
+    double model_quat[4];
+    double rotated[3];
+    double world_pos[3];
+    double world_quat[4];
+
+    if (!node)
+        return;
+    animator = rt_g3d_checked_or_null(node->socket_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    if (!animator)
+        return;
+    if (!rt_anim_controller3d_get_bone_pose(
+            animator, (int64_t)node->socket_bone, bone_pos, bone_quat))
+        return;
+
+    /* Socket offset in bone space -> model space. */
+    scene_node_quat_rotate_vec(bone_quat, node->socket_offset_pos, rotated);
+    model_pos[0] = bone_pos[0] + rotated[0];
+    model_pos[1] = bone_pos[1] + rotated[1];
+    model_pos[2] = bone_pos[2] + rotated[2];
+    quat_mul_local(bone_quat, node->socket_offset_quat, model_quat);
+
+    /* Model space -> world space through the parent (skinned model) node. */
+    quat_identity(parent_quat);
+    if (node->parent) {
+        scene_node_get_world_position(
+            node->parent, &parent_pos[0], &parent_pos[1], &parent_pos[2]);
+        scene_node_get_world_rotation(node->parent, parent_quat);
+    }
+    scene_node_quat_rotate_vec(parent_quat, model_pos, rotated);
+    world_pos[0] = parent_pos[0] + rotated[0];
+    world_pos[1] = parent_pos[1] + rotated[1];
+    world_pos[2] = parent_pos[2] + rotated[2];
+    quat_mul_local(parent_quat, model_quat, world_quat);
+    scene_node_set_world_transform(node, world_pos, world_quat);
+}
+
 /// @brief Shift an entire root-level subtree by subtracting a world-space delta.
 static void scene_node_rebase_root_child(rt_scene_node3d *node, const double delta[3]) {
     double world_pos[3];
@@ -822,7 +882,12 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
                        (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
                         (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
 
-        if (pull_from_body) {
+        if (current->socket_animator) {
+            /* Bone sockets supersede body/root-motion sync for this node. */
+            scene_node_apply_bone_socket(current);
+            pull_from_body = 0;
+            push_to_body = 0;
+        } else if (pull_from_body) {
             double world_pos[3];
             double world_quat[4];
             rt_body3d_get_pose_raw(current->bound_body, world_pos, world_quat, NULL);

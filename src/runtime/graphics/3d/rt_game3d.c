@@ -1551,6 +1551,32 @@ int8_t rt_game3d_world_tick(void *obj) {
 /// the
 ///          resulting collision/trigger callbacks; called (possibly multiple times) from the world
 ///          step.
+/// @brief Tick every spawned entity's attached Behavior3D by @p dt.
+/// @details Runs before animations/physics/binding sync so behavior writes land
+///          in the same simulation step. Iterates a snapshot of the current
+///          count so a lifetime-despawn during the walk (which compacts the
+///          registry) can't skip or double-tick surviving entities.
+static void game3d_world_update_behaviors(rt_game3d_world *world, double dt) {
+    if (!world || !world->entities)
+        return;
+    int32_t entity_count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < entity_count && i < world->entity_count; i++) {
+        rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+            world->entities[i], RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (!entity || !entity->alive || entity->destroyed || !entity->behavior)
+            continue;
+        {
+            int32_t before = world->entity_count;
+            rt_game3d_behavior_update(entity->behavior, entity, dt);
+            /* A lifetime despawn removed this slot: revisit the same index. */
+            if (world->entity_count < before) {
+                i--;
+                entity_count--;
+            }
+        }
+    }
+}
+
 static void game3d_world_step_simulation_impl(rt_game3d_world *world,
                                               double step_sec,
                                               int8_t advance_time_counters) {
@@ -1564,6 +1590,7 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
         world->frame += 1;
     }
     game3d_world_update_controller(world, dt);
+    game3d_world_update_behaviors(world, dt);
     game3d_world_update_animations(world, dt);
     if (world->physics)
         rt_world3d_step(world->physics, dt);
