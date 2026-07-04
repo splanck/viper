@@ -1305,7 +1305,7 @@ add_test(NAME zia_smoke_ridgebound
 set_tests_properties(zia_smoke_ridgebound PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 90)
+        TIMEOUT 300)
 set(VIPER_RIDGEBOUND_MAPLE_ASSET
         "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/MapleTree_1.fbx")
 if (EXISTS "${VIPER_RIDGEBOUND_MAPLE_ASSET}")

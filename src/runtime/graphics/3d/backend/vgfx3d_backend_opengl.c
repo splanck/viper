@@ -224,6 +224,7 @@ typedef void (*PFNGLUNIFORM1FPROC)(GLint, GLfloat);
 typedef void (*PFNGLUNIFORM1FVPROC)(GLint, GLsizei, const GLfloat *);
 typedef void (*PFNGLUNIFORM2FPROC)(GLint, GLfloat, GLfloat);
 typedef void (*PFNGLUNIFORM3FPROC)(GLint, GLfloat, GLfloat, GLfloat);
+typedef void (*PFNGLUNIFORM3FVPROC)(GLint, GLsizei, const GLfloat *);
 typedef void (*PFNGLUNIFORM4FPROC)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (*PFNGLUNIFORM4IPROC)(GLint, GLint, GLint, GLint, GLint);
 typedef void (*PFNGLUNIFORM4FVPROC)(GLint, GLsizei, const GLfloat *);
@@ -333,6 +334,7 @@ static struct {
     PFNGLUNIFORM1FVPROC Uniform1fv;
     PFNGLUNIFORM2FPROC Uniform2f;
     PFNGLUNIFORM3FPROC Uniform3f;
+    PFNGLUNIFORM3FVPROC Uniform3fv;
     PFNGLUNIFORM4FPROC Uniform4f;
     PFNGLUNIFORM4IPROC Uniform4i;
     PFNGLUNIFORM4FVPROC Uniform4fv;
@@ -1237,6 +1239,7 @@ static int load_gl(void) {
     LOADP(Uniform1fv);
     LOADP(Uniform2f);
     LOADP(Uniform3f);
+    LOADP(Uniform3fv);
     LOADP(Uniform4f);
     LOADP(Uniform4i);
     LOADP(Uniform4fv);
