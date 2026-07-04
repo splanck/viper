@@ -163,10 +163,10 @@ void *rt_arr_obj_get(void **arr, size_t idx) {
     if (!rt_arr_obj_header_valid(hdr))
         return NULL;
     rt_arr_obj_assert_header(hdr);
-    if (idx >= hdr->len) {
+    if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
         return NULL;
-    }
     void *p = arr[idx];
     rt_obj_retain_maybe(p);
     return p;
@@ -193,10 +193,10 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
         rt_trap("rt_arr_obj_put: cannot mutate shared array");
         return;
     }
-    if (idx >= hdr->len) {
+    if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
+    if (idx >= hdr->len)
         return;
-    }
 
     // Retain new first to handle self-assignment safely
     rt_obj_retain_maybe(obj);

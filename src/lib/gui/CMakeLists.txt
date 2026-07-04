@@ -184,7 +184,11 @@ if (VIPER_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_audit_fixes COMMAND test_vg_audit_fixes)
-    set_tests_properties(test_vg_audit_fixes PROPERTIES LABELS "gui" TIMEOUT 180 RUN_SERIAL TRUE)
+    set_tests_properties(test_vg_audit_fixes PROPERTIES
+            LABELS "gui"
+            TIMEOUT 180
+            RUN_SERIAL TRUE
+            ENVIRONMENT "VIPER_GUI_TEST_VERBOSE=1")
 
     add_executable(test_vg_outputpane_metrics tests/test_vg_outputpane_metrics.c)
     target_link_libraries(test_vg_outputpane_metrics vipergui)

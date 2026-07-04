@@ -239,7 +239,7 @@ function(viper_add_il_core_tests)
     viper_add_ctest(il_call_indirect_roundtrip il_call_indirect_roundtrip)
 
     viper_add_test(test_il_correctness_fixes ${CMAKE_SOURCE_DIR}/src/tests/il/ILCorrectnessFixes.cpp)
-    target_link_libraries(test_il_correctness_fixes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_vm)
+    target_link_libraries(test_il_correctness_fixes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_transform il_vm il_runtime)
     viper_add_ctest(test_il_correctness_fixes test_il_correctness_fixes)
 
     viper_add_test(test_il_parse_call_ret_type ${_VIPER_IL_UNIT_DIR}/test_il_parse_call_ret_type.cpp)

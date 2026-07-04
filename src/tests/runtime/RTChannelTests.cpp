@@ -5,6 +5,9 @@
 // RTChannelTests.cpp - Tests for rt_channel (thread-safe bounded channel)
 //===----------------------------------------------------------------------===//
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <atomic>
 #include <cassert>
 #include <chrono>

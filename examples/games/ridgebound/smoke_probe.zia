@@ -58,10 +58,8 @@ func nearColor(px : Integer, r : Integer, g : Integer, b : Integer) -> Boolean {
     return true;
 }
 
-func isHudTextPixel(px : Integer) -> Boolean {
-    if (nearColor(px, 255, 255, 255)) {
-        return true;
-    }
+func isHudOverflowTextPixel(px : Integer) -> Boolean {
+    // Pure white can also occur in sky and snow highlights outside the HUD.
     if (nearColor(px, 168, 186, 203)) {
         return true;
     }
@@ -321,7 +319,7 @@ func assertRidgeboundFrame(img : Pixels) -> Boolean {
     while (oy < config.HUD_PANEL_Y + config.HUD_PANEL_H - 8) {
         var ox = hudRight + 2;
         while (ox < hudRight + 72 && ox < width - 2) {
-            if (isHudTextPixel(Pixels.Get(img, ox, oy))) {
+            if (isHudOverflowTextPixel(Pixels.Get(img, ox, oy))) {
                 overflow = overflow + 1;
             }
             ox = ox + 1;

@@ -1334,14 +1334,19 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 if (WIN32)
+    # Windows Debug builds currently spend several minutes in the Ridgebound
+    # compile/render path; keep the smoke tests correctness-focused.
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 600)
     if (TEST zia_smoke_ridgebound_tree_materials)
         set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
                 ENVIRONMENT "VIPER_3D_BACKEND=software")
     endif ()
     set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            RESOURCE_LOCK viper_display
+            TIMEOUT 600)
     add_test(NAME zia_smoke_ridgebound_d3d11
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
@@ -1349,7 +1354,8 @@ if (WIN32)
             PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
-            TIMEOUT 180)
+            RESOURCE_LOCK viper_display
+            TIMEOUT 600)
 endif ()
 if (APPLE)
     add_test(NAME zia_smoke_ridgebound_software

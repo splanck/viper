@@ -23,6 +23,9 @@
 #include "rt.hpp"
 #include "rt_savedata.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <csetjmp>
 #include <cstdio>

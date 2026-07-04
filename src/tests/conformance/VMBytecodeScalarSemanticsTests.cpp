@@ -30,6 +30,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -72,7 +73,7 @@ BytecodeRunResult runBytecode(const Module &module, bool threaded) {
     if (!compiled) {
         std::cerr << "bytecode scalar conformance compile failed: "
                   << compiled.error().message << "\n";
-        assert(false && "bytecode scalar conformance compile failed");
+        std::abort();
     }
 
     viper::bytecode::BytecodeModule bytecode = std::move(compiled.value());
@@ -95,8 +96,17 @@ BytecodeRunResult runBytecode(const Module &module, bool threaded) {
 void expectBytecodeValue(const Module &module, int64_t expected) {
     for (bool threaded : {false, true}) {
         const BytecodeRunResult result = runBytecode(module, threaded);
-        assert(!result.trapped && "BytecodeVM trapped unexpectedly");
-        assert(result.value == expected && "BytecodeVM produced the wrong value");
+        if (result.trapped) {
+            std::cerr << "BytecodeVM trapped unexpectedly in threaded=" << threaded
+                      << ": " << result.message << "\n";
+            std::abort();
+        }
+        if (result.value != expected) {
+            std::cerr << "BytecodeVM produced " << result.value
+                      << " in threaded=" << threaded << ", expected " << expected
+                      << "\n";
+            std::abort();
+        }
     }
 }
 
@@ -109,9 +119,16 @@ void expectBytecodeTrap(const Module &module, viper::bytecode::TrapKind expected
         if (!result.trapped) {
             std::cerr << "expected bytecode trap in threaded=" << threaded
                       << " but returned " << result.value << "\n";
+            std::abort();
         }
-        assert(result.trapped && "BytecodeVM did not trap");
-        assert(result.trapKind == expected && "BytecodeVM trapped with wrong kind");
+        if (result.trapKind != expected) {
+            std::cerr << "BytecodeVM trapped with kind "
+                      << static_cast<int>(result.trapKind)
+                      << " in threaded=" << threaded << ", expected "
+                      << static_cast<int>(expected) << ": " << result.message
+                      << "\n";
+            std::abort();
+        }
     }
 }
 
@@ -218,7 +235,11 @@ Module buildSignedNarrowModule(Type::Kind type, int64_t value) {
 void expectIlTrapContains(Module &module, const char *fragment) {
     viper::tests::VmFixture fixture;
     const std::string trapText = fixture.captureTrap(module);
-    assert(trapText.find(fragment) != std::string::npos && "IL VM trapped with wrong kind");
+    if (trapText.find(fragment) == std::string::npos) {
+        std::cerr << "IL VM trap text did not contain '" << fragment
+                  << "': " << trapText << "\n";
+        std::abort();
+    }
 }
 
 /// @brief Test that bytecode preserves IL `idx.chk` normalization.
@@ -227,7 +248,12 @@ void expectIlTrapContains(Module &module, const char *fragment) {
 void testIdxChkNormalizesLikeIlVm() {
     Module module = buildIdxChkModule(Type::Kind::I64, 15, 10, 20);
     viper::tests::VmFixture fixture;
-    assert(fixture.run(module) == 5 && "IL VM should normalize idx.chk to idx - lo");
+    const int64_t ilResult = fixture.run(module);
+    if (ilResult != 5) {
+        std::cerr << "IL VM should normalize idx.chk to idx - lo, got "
+                  << ilResult << "\n";
+        std::abort();
+    }
     expectBytecodeValue(module, 5);
 }
 

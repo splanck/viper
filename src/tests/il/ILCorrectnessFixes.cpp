@@ -37,6 +37,10 @@
 #include <stdexcept>
 #include <string>
 
+namespace il::runtime::signatures {
+void register_array_signatures();
+}
+
 using namespace il::core;
 
 namespace {
@@ -539,6 +543,7 @@ entry:
 
 TEST(ILCorrectness, RuntimeStringArrayRegistryUsesStringElements) {
     using Kind = il::runtime::signatures::SigParam::Kind;
+    il::runtime::signatures::register_array_signatures();
     const auto &signatures = il::runtime::signatures::all_signatures();
 
     auto find = [&](const std::string &name) {

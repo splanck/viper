@@ -22,6 +22,9 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <assert.h>
 #include <csetjmp>
 #include <cstring>

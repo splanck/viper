@@ -13,6 +13,9 @@
 #include "rt.hpp"
 #include "rt_threads.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <atomic>
 #include <cassert>
 #include <chrono>

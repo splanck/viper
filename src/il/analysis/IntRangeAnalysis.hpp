@@ -33,7 +33,7 @@
 #include <unordered_map>
 
 namespace il::core {
-class Function;
+struct Function;
 struct Instr;
 struct Value;
 } // namespace il::core

@@ -13,6 +13,9 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <csetjmp>
 #include <cstdint>

@@ -18,6 +18,9 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cstdint>
 #include <cstdio>

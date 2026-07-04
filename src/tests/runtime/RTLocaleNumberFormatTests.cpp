@@ -21,6 +21,9 @@
 #include "rt_option.h"
 #include "rt_string.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <cstdint>
