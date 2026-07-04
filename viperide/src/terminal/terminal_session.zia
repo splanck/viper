@@ -1,6 +1,7 @@
 module terminal_session;
 
 bind Pty = Viper.System.Pty;
+bind Map = Viper.Collections.Map;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 
@@ -25,6 +26,7 @@ class TerminalSession {
     expose Integer exitCode;
     expose Boolean exitedThisUpdate;
     expose String lastError;
+    expose Boolean outputTruncated;
 
     expose func init() {
         session = null;
@@ -33,6 +35,7 @@ class TerminalSession {
         exitCode = -1;
         exitedThisUpdate = false;
         lastError = "";
+        outputTruncated = false;
     }
 
     /// @brief Open a PTY-backed child. @return true when the session is live.
@@ -62,6 +65,7 @@ class TerminalSession {
         }
         active = true;
         exitCode = -1;
+        outputTruncated = false;
         return true;
     }
 
@@ -80,15 +84,28 @@ class TerminalSession {
     expose func Update() -> String {
         exitedThisUpdate = false;
         if session == null or active == false { return ""; }
-        var out = session.Read();
+        var out = ReadTerminalDelta();
         if session.IsRunning() == false {
-            out = out + session.Read();
+            out = out + ReadTerminalDelta();
             exitCode = session.ExitCode();
             active = false;
             exitedThisUpdate = true;
         }
         if Str.get_Length(out) > MAX_TERMINAL_OUTPUT_DELTA {
-            out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA);
+            out = Str.Left(out, MAX_TERMINAL_OUTPUT_DELTA)
+                + "\n[terminal frame output truncated]\n";
+            outputTruncated = true;
+        }
+        return out;
+    }
+
+    hide func ReadTerminalDelta() -> String {
+        if session == null { return ""; }
+        var result = session.ReadResult();
+        var out = Map.GetStr(result, "text");
+        if Map.GetBool(result, "truncated") {
+            outputTruncated = true;
+            out = out + "\n[terminal output truncated by runtime]\n";
         }
         return out;
     }

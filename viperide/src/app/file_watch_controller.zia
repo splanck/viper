@@ -1,6 +1,7 @@
 module file_watch_controller;
 
 bind "../core/document_manager";
+bind "../core/document";
 bind "../ui/app_shell";
 
 bind Viper.GUI;
@@ -86,19 +87,38 @@ class FileWatchController {
             StopWatching();
             return;
         }
+        if IO.File.Exists(doc.filePath) == false {
+            StopWatching();
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_MISSING,
+                                doc.fileName + " is missing on disk");
+            return;
+        }
         if doc.filePath != watchedPath {
             StartWatching(doc.filePath);
+        }
+        if docMgr.HasExternalChange(docMgr.activeIndex) {
+            pendingReload = true;
         }
         if hasWatcher == false { return; }
         var watchEvent = fileWatcher.Poll();
         if watchEvent == fileWatcher.EventModified {
-            if pendingReload == false {
-                pendingReload = true;
-                doc.externalChangeNotified = true;
-                GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
-                if shell != null {
-                    shell.SetStatusLeft("Warning: external change - " + doc.fileName);
-                }
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_CHANGED,
+                                doc.fileName + " changed on disk");
+        } else if watchEvent == fileWatcher.EventDeleted {
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_DELETED,
+                                doc.fileName + " was deleted on disk");
+        } else if watchEvent == fileWatcher.EventRenamed {
+            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
+                                document.EXTERNAL_STATE_RENAMED,
+                                doc.fileName + " was renamed or moved on disk");
+        } else if watchEvent == fileWatcher.EventOverflow {
+            var overflowState = docMgr.ExternalState(docMgr.activeIndex);
+            if overflowState != document.EXTERNAL_STATE_CLEAN {
+                NotifyExternalState(shell, docMgr, docMgr.activeIndex, overflowState,
+                                    docMgr.ExternalStateMessage(docMgr.activeIndex));
             }
         }
     }
@@ -108,6 +128,12 @@ class FileWatchController {
     hide func StartWatching(path: String) {
         if hasWatcher {
             fileWatcher.Stop();
+        }
+        if path == "" or IO.File.Exists(path) == false {
+            hasWatcher = false;
+            watchedPath = "";
+            pendingReload = false;
+            return;
         }
         watchedPath = path;
         fileWatcher = IO.Watcher.New(watchedPath);
@@ -157,9 +183,10 @@ class FileWatchController {
         var i = 0;
         while i < docMgr.GetCount() {
             var doc = docMgr.GetDocument(i);
-            if doc != null and doc!.externalChangeNotified == false {
-                if docMgr.HasExternalChange(i) {
-                    doc!.externalChangeNotified = true;
+            if doc != null {
+                var state = docMgr.ExternalState(i);
+                if state != document.EXTERNAL_STATE_CLEAN and doc!.externalChangeNotified == false {
+                    docMgr.MarkExternalState(i, state, ExternalStateMessageForDoc(doc!, state));
                     changed = changed + 1;
                     if firstName == "" { firstName = doc!.fileName; }
                 }
@@ -174,5 +201,53 @@ class FileWatchController {
             shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
         }
         return changed;
+    }
+
+    /// @brief Mark a document state and emit one concise user notification.
+    hide func NotifyExternalState(shell: app_shell.AppShell,
+                                  docMgr: document_manager.DocumentManager,
+                                  index: Integer,
+                                  state: Integer,
+                                  message: String) {
+        if docMgr == null or index < 0 or index >= docMgr.GetCount() { return; }
+        var maybeDoc = docMgr.GetDocument(index);
+        if maybeDoc == null { return; }
+        var doc = maybeDoc!;
+        if doc.externalChangeNotified == false or doc.externalState != state {
+            docMgr.MarkExternalState(index, state, message);
+            pendingReload = true;
+            if state == document.EXTERNAL_STATE_CHANGED {
+                GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+            } else if state == document.EXTERNAL_STATE_DELETED {
+                GUI.Toast.Warning("File deleted on disk. Save will recreate it after confirmation.");
+            } else if state == document.EXTERNAL_STATE_RENAMED {
+                GUI.Toast.Warning("File moved on disk. Save will recreate the original path after confirmation.");
+            } else {
+                GUI.Toast.Warning("File missing on disk. Save will recreate it after confirmation.");
+            }
+            if shell != null {
+                shell.SetStatusLeft("Warning: " + message);
+            }
+        } else if docMgr.HasExternalChange(index) {
+            pendingReload = true;
+        }
+    }
+
+    /// @brief Stable status text for inactive-tab polling.
+    hide func ExternalStateMessageForDoc(doc: document.Document,
+                                         state: Integer) -> String {
+        if state == document.EXTERNAL_STATE_CHANGED {
+            return doc.fileName + " changed on disk";
+        }
+        if state == document.EXTERNAL_STATE_DELETED {
+            return doc.fileName + " was deleted on disk";
+        }
+        if state == document.EXTERNAL_STATE_RENAMED {
+            return doc.fileName + " was renamed or moved on disk";
+        }
+        if state == document.EXTERNAL_STATE_MISSING {
+            return doc.fileName + " is missing on disk";
+        }
+        return doc.fileName + " changed on disk";
     }
 }

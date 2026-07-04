@@ -171,7 +171,8 @@ The IDE writes newline JSON commands to stdin and reads sentinel-prefixed JSON
 events from stderr. Program stdout is kept as program output. The session tracks
 stopped/running/terminated state, current stop path and line, locals, call
 stack, evaluation results, persistent watches, program output, and debug console
-text.
+text. Restart requests are queued and launched only after the old adapter
+process terminates.
 
 Touch this file for debug protocol transport and session state. UI presentation
 belongs in `commands/debug_commands.zia`, `ui/app_shell.zia`, or debug-specific
@@ -234,8 +235,8 @@ range in multiple commands.
 ### `commands/search_commands.zia`
 
 Project search, folder search, workspace symbols, and related result
-navigation. This module coordinates project file caches, search options, result
-rows, and location ids.
+navigation. This module coordinates runtime-paged file discovery, search
+options, result rows, and location ids.
 
 Search result display strings should never be the only source of navigation
 truth. Use `services/locations.zia` for stable location ids.
@@ -290,7 +291,7 @@ The `core/` directory owns persistent IDE domain state.
 
 The per-document record. It stores file path, display name, language, document
 kind, text content, modified/new/read-only flags, disk metadata, cursor/scroll
-state, and external-change notification state.
+state, and external disk-state/conflict fields.
 
 Do not add editor-widget references here. `Document` is model state, not UI.
 
@@ -307,6 +308,8 @@ Owns the open document list and active document index. Responsibilities:
 - Save All.
 - Close documents and maintain active index.
 - Track recently closed paths.
+- Classify external disk changes, including changed, deleted, renamed, and
+  missing files.
 - Use `Viper.Workspace.Edit` for safe existing-file replacement.
 
 If a feature needs to mutate open documents, prefer going through this module or
@@ -326,8 +329,9 @@ Owns the primary project, additional workspace roots, explorer tree, tree-node
 path data, Quick Open cache, incremental directory loading, ignore checks, and
 project file cache refresh.
 
-It uses `Viper.Workspace.FileIndex` for exclusion rules. Do not duplicate ignore
-logic elsewhere unless the runtime surface cannot answer the question.
+It uses `Viper.Workspace.FileIndex` for exclusion rules and paged project-file
+cache refresh. Do not duplicate ignore logic or recursive enumeration elsewhere
+unless the runtime surface cannot answer the question.
 
 ### `core/project_file_ops.zia`
 
@@ -392,7 +396,9 @@ when adding more background work.
 Completion controller. It handles automatic and explicit triggers, query
 snapshots, async result tracking, popup population, filtering, acceptance,
 commit characters, snippet cursor placement, and workspace-symbol completion
-cache updates.
+cache updates. Workspace-symbol discovery consumes the project manager's
+runtime-paged file cache incrementally; do not reset the symbol cache merely
+because the known file count grew.
 
 The file is large. Pure filtering helpers have already been split into
 `completion_filter.zia`, typed rows into `completion_items.zia`, and workspace
@@ -532,8 +538,9 @@ avoid partial or conflicting application.
 ### `terminal/terminal_session.zia`
 
 Thin wrapper around `Viper.System.Pty.PtySession`. It starts a child, drains
-bounded output, writes input, resizes, tracks exit, stores the latest startup
-error, and destroys the PTY on stop.
+bounded output through `ReadResult()`, writes input, resizes, tracks exit,
+stores the latest startup error, reports runtime/frame truncation in-band, and
+destroys the PTY on stop.
 
 ### `terminal/terminal_controller.zia`
 
@@ -543,7 +550,7 @@ shell, estimates rows/columns, appends output, forwards captured input, handles
 Stop and Restart, and updates the working directory for future sessions.
 
 Do not treat this as a full terminal emulator. It is a PTY-backed shell surface
-inside OutputPane.
+for line-oriented interactive work, not a full-screen TUI host.
 
 ## `scm/`
 
@@ -610,7 +617,9 @@ language display names.
 ### `ui/tool_panel_model.zia`
 
 Named ids and tab indexes for the bottom tool-panel strip. Use this instead of
-magic integers when adding bottom-panel behavior.
+magic integers when adding bottom-panel behavior. It also owns the bounded
+stable-row model used by ListBox-backed Problems, Search, References, Debug
+Console, Variables, and Call Stack panels.
 
 ### `ui/output_cache.zia`
 

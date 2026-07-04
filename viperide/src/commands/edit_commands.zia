@@ -219,7 +219,7 @@ func handleFindReferences(shell: app_shell.AppShell,
     indexer.SyncOpenDocuments(docMgr);
     if PrepareSemanticQuery(shell, indexer, "Find references") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No references found");
@@ -283,7 +283,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     indexer.SyncOpenDocuments(docMgr);
     if PrepareSemanticQuery(shell, indexer, "Incoming calls") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No incoming calls found");
@@ -374,7 +374,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     var callerName = ZiaFunctionNameFromLine(SourceLine(activeDoc.content, startLine));
     var endLine = ZiaFunctionEndLine(activeDoc.content, startLine);
     var tokens = OutgoingZiaCallTokens(activeDoc.content, startLine, endLine);
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
@@ -568,7 +568,7 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
         return;
     }
     var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     var i = 0;
     var count = 0;
     var lastGroup = "";
@@ -630,7 +630,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
     var callerName = semantic_scan.EnclosingBasicProcedureName(source, cursorLine);
     if callerName == "" { callerName = "<procedure>"; }
     var tokens = semantic_scan.OutgoingBasicCallTokens(source, startLine, endLine);
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
@@ -688,7 +688,7 @@ func RenderBasicReferences(shell: app_shell.AppShell,
                            locStore: locations.LocationStore,
                            refs: Any,
                            label: String) {
-    shell.referencesListBox.Clear();
+    shell.ClearToolRows(shell.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.HideReferencesPanel();
         GUI.Toast.Info("No " + label + " found");

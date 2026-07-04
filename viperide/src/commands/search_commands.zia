@@ -22,6 +22,7 @@ bind ZiaCompletion = Viper.Zia.Completion;
 bind IO = Viper.IO;
 bind Dir = Viper.IO.Dir;
 bind Path = Viper.IO.Path;
+bind FileIndex = Viper.Workspace.FileIndex;
 bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Obj = Viper.Core.Object;
@@ -50,7 +51,7 @@ bind Convert = Viper.Core.Convert;
 // ============================================================================
 
 final SEARCH_FILES_PER_FRAME = 16;
-final SEARCH_DISCOVERY_DIRS_PER_FRAME = 8;
+final SEARCH_DISCOVERY_PAGE_SIZE = 256;
 
 class SearchController {
     expose Boolean active;
@@ -71,6 +72,9 @@ class SearchController {
     expose Boolean discovering;
     expose List pendingDirs;
     expose Integer directoriesScanned;
+    expose Integer discoveryOffset;
+    expose Boolean discoveryTruncated;
+    expose String discoveryError;
     expose String panelRoot;
     expose String panelIgnorePatterns;
 
@@ -93,6 +97,9 @@ class SearchController {
         discovering = false;
         pendingDirs = new List();
         directoriesScanned = 0;
+        discoveryOffset = 0;
+        discoveryTruncated = false;
+        discoveryError = "";
         panelRoot = "";
         panelIgnorePatterns = "";
     }
@@ -126,11 +133,6 @@ class SearchController {
         if projMgr == null or projMgr.IsOpen() == false {
             return false;
         }
-        projMgr.WarmFileCache(128);
-        if projMgr.CachedFileCount() == 0 {
-            GUI.Toast.Info(projMgr.FileCacheStatusText());
-            return false;
-        }
         file_commands.SaveEditorState(docMgr, engine);
         OpenPanel(shell, projMgr.RootPath(), projMgr.IgnorePatterns());
         if searchTitle != "" {
@@ -148,20 +150,12 @@ class SearchController {
         if folderPath == "" or Dir.Exists(folderPath) == false {
             return false;
         }
-        if projMgr != null {
-            projMgr.WarmFileCache(64);
-        }
-        if projMgr != null and projMgr.IsOpen() and
-           projMgr.CachedFileCount() > 0 and IsWithinRoot(folderPath, projMgr.RootPath()) {
-            file_commands.SaveEditorState(docMgr, engine);
-            OpenPanel(shell, folderPath, projMgr.IgnorePatterns());
-            if searchTitle != "" {
-                shell.SetStatusLeft(searchTitle + ": " + folderPath);
-            }
-            return true;
+        var ignores = "";
+        if projMgr != null and projMgr.IsOpen() and IsWithinRoot(folderPath, projMgr.RootPath()) {
+            ignores = projMgr.IgnorePatterns();
         }
         file_commands.SaveEditorState(docMgr, engine);
-        OpenPanel(shell, folderPath, "");
+        OpenPanel(shell, folderPath, ignores);
         if searchTitle != "" {
             shell.SetStatusLeft(searchTitle + ": " + folderPath);
         }
@@ -227,10 +221,6 @@ class SearchController {
                                             shell.searchIncludeInput.get_Text(),
                                             shell.searchExcludeInput.get_Text(),
                                             panelIgnorePatterns);
-        if projMgr != null and projMgr.IsOpen()
-           and projMgr.CachedFileCount() > 0 and IsWithinRoot(rootPath, projMgr.RootPath()) {
-            return StartCachedRequest(shell, projMgr, request);
-        }
         return StartDirectRequest(shell, request);
     }
 
@@ -305,9 +295,10 @@ class SearchController {
     /// @param shell App shell that owns the search result panel and status bar.
     /// @param request Search request produced by prompt UI, probes, or tests.
     /// @return True when the controller accepted the request and queued work.
-    /// @details Direct searches discover files cooperatively over several UI
-    ///          frames. Keep this helper request-shaped so interactive and
-    ///          programmatic entry points share exactly the same setup code.
+    /// @details Searches discover files cooperatively through FileIndex.Page.
+    ///          This is authoritative for project searches: the run is complete
+    ///          only after file-index discovery reports `done`, so users never
+    ///          receive a silently partial result from a warming project cache.
     hide func StartDirectRequest(shell: app_shell.AppShell,
                                  request: search_request.SearchRequest) -> Boolean {
         if search_request.IsRunnable(request) == false { return false; }
@@ -316,16 +307,18 @@ class SearchController {
         ApplyRequest(request);
         files = new List();
         pendingDirs = new List();
-        pendingDirs.Push(root);
         discovering = true;
         directoriesScanned = 0;
+        discoveryOffset = 0;
+        discoveryTruncated = false;
+        discoveryError = "";
         totalFiles = 0;
         fileIndex = 0;
         resultCount = 0;
         canceled = false;
         active = true;
 
-        shell.searchListBox.Clear();
+        shell.ClearToolRows(shell.searchListBox);
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Discovering files for '" + query + "'...");
         return true;
@@ -379,36 +372,20 @@ class SearchController {
         return StartCachedRequest(shell, projMgr, request);
     }
 
-    /// @brief Start a search from ProjectManager's warmed file cache.
+    /// @brief Start a project search using the request's root and ignore policy.
     /// @param shell App shell that owns the search result panel and status bar.
     /// @param projMgr Project manager that provides cached project file paths.
     /// @param request Search request produced by prompt UI, probes, or tests.
     /// @return True when cached search state was initialized.
-    /// @details Cached searches are used for project scopes because the project
-    ///          manager already maintains FileIndex-backed paths for Quick Open.
-    ///          This avoids a second directory walk while retaining include,
-    ///          exclude, and extension filters from the request.
+    /// @details Historically this snapped ProjectManager's partial file cache.
+    ///          It now delegates to FileIndex.Page discovery so search results
+    ///          are complete even while Quick Open's project cache is still
+    ///          warming in the background.
     hide func StartCachedRequest(shell: app_shell.AppShell,
                                  projMgr: project_manager.ProjectManager,
                                  request: search_request.SearchRequest) -> Boolean {
-        if projMgr == null or search_request.IsRunnable(request) == false { return false; }
-        if Dir.Exists(request.rootPath) == false { return false; }
-
-        ApplyRequest(request);
-        files = BuildFileListFromCacheWithFilters(projMgr, root, fileKinds, includeGlobs, excludeGlobs);
-        totalFiles = files.count();
-        pendingDirs = new List();
-        discovering = false;
-        directoriesScanned = 0;
-        fileIndex = 0;
-        resultCount = 0;
-        canceled = false;
-        active = true;
-
-        shell.searchListBox.Clear();
-        shell.ShowSearchPanel();
-        shell.SetStatusLeft("Searching cached project files (" + totalFiles + ") for '" + query + "'...");
-        return true;
+        if projMgr == null { return false; }
+        return StartDirectRequest(shell, request);
     }
 
     /// @brief Copy normalized request fields into controller state for a new run.
@@ -435,9 +412,10 @@ class SearchController {
         canceled = true;
         discovering = false;
         pendingDirs = new List();
+        discoveryError = "";
         shell.SetStatusLeft("Search canceled after " + resultCount + " matches");
         if resultCount == 0 {
-            shell.searchListBox.Clear();
+            shell.ClearToolRows(shell.searchListBox);
             shell.AddToolInfoRow(shell.searchListBox, "search",
                                  "Search canceled before any matches were found");
             shell.ShowSearchPanel();
@@ -446,37 +424,46 @@ class SearchController {
 
     expose func PumpDiscovery(maxDirs: Integer) -> Integer {
         if discovering == false { return 0; }
-        var limit = maxDirs;
-        if limit <= 0 { limit = SEARCH_DISCOVERY_DIRS_PER_FRAME; }
-
+        var pageSize = maxDirs;
+        if pageSize <= 0 { pageSize = SEARCH_DISCOVERY_PAGE_SIZE; }
+        var oldOffset = discoveryOffset;
+        var page = FileIndex.Page(root,
+                                  fileKinds,
+                                  MergePatternLists(ignorePatterns, excludeGlobs),
+                                  false,
+                                  discoveryOffset,
+                                  pageSize);
+        if Map.GetBool(page, "valid") == false {
+            discoveryError = "Search file discovery failed";
+            discovering = false;
+            return 0;
+        }
+        var entries = Map.Get(page, "entries");
         var processed = 0;
-        while pendingDirs.count() > 0 and processed < limit {
-            var dirPath = Obj.ToString(pendingDirs.get(0));
-            pendingDirs.removeAt(0);
-            processed = processed + 1;
-            directoriesScanned = directoriesScanned + 1;
-
-            if Dir.Exists(dirPath) == false { continue; }
-
-            for dirName in Dir.DirsSeq(dirPath) {
-                var childDir = Path.Join(dirPath, dirName);
-                if ShouldSearchIgnore(root, childDir, true, MergePatternLists(ignorePatterns, excludeGlobs)) == false {
-                    pendingDirs.Push(childDir);
-                }
-            }
-
-            for fileName in Dir.FilesSeq(dirPath) {
-                var filePath = Path.Join(dirPath, fileName);
-                if ShouldSearchIgnore(root, filePath, false, MergePatternLists(ignorePatterns, excludeGlobs)) == false
-                   and SearchKindMatches(filePath, fileKinds)
-                   and SearchPathAllowed(root, filePath, includeGlobs, excludeGlobs) {
+        if entries != null {
+            var i = 0;
+            while i < Seq.get_Count(entries) {
+                var entry = Seq.Get(entries, i);
+                i = i + 1;
+                processed = processed + 1;
+                if Map.GetBool(entry, "isDirectory") { continue; }
+                var filePath = Map.GetStr(entry, "path");
+                if filePath != "" and SearchPathAllowed(root, filePath, includeGlobs, excludeGlobs)
+                   and workspace_file_index.ListContains(files, filePath) == false {
                     files.Push(filePath);
                 }
             }
         }
-
+        directoriesScanned = directoriesScanned + processed;
+        discoveryOffset = Map.GetInt(page, "nextOffset");
+        if Map.GetBool(page, "truncated") {
+            discoveryTruncated = true;
+        }
         totalFiles = files.count();
-        if pendingDirs.count() == 0 {
+        if Map.GetBool(page, "done") {
+            discovering = false;
+        } else if processed == 0 and discoveryOffset == oldOffset {
+            discoveryError = "Search file discovery made no progress";
             discovering = false;
         }
         return processed;
@@ -487,7 +474,7 @@ class SearchController {
                      locStore: locations.LocationStore) {
         if active == false { return; }
 
-        PumpDiscovery(SEARCH_DISCOVERY_DIRS_PER_FRAME);
+        PumpDiscovery(SEARCH_DISCOVERY_PAGE_SIZE);
         totalFiles = files.count();
 
         var scanned = 0;
@@ -503,19 +490,36 @@ class SearchController {
 
         if discovering == false and fileIndex >= files.count() {
             active = false;
-            if resultCount > 0 {
+            if discoveryError != "" {
+                shell.ClearToolRows(shell.searchListBox);
+                shell.AddToolStateRow(shell.searchListBox, "ERR", "search",
+                                      discoveryError, 14707829);
                 shell.ShowSearchPanel();
-                shell.SetStatusLeft("Found " + resultCount + " matches for '" + query + "'");
+                shell.SetStatusLeft(discoveryError);
+                GUI.Toast.Warning(discoveryError);
+            } else if resultCount > 0 {
+                shell.ShowSearchPanel();
+                var doneText = "Found " + resultCount + " matches for '" + query + "'";
+                if discoveryTruncated {
+                    doneText = doneText + " (file discovery truncated)";
+                    GUI.Toast.Warning("Search file discovery was truncated");
+                }
+                shell.SetStatusLeft(doneText);
             } else {
-                shell.searchListBox.Clear();
-                shell.AddToolInfoRow(shell.searchListBox, "search",
-                                     "No matches found for '" + query + "'");
+                shell.ClearToolRows(shell.searchListBox);
+                var noMatch = "No matches found for '" + query + "'";
+                if discoveryTruncated {
+                    noMatch = noMatch + " before file discovery was truncated";
+                }
+                shell.AddToolInfoRow(shell.searchListBox, "search", noMatch);
                 shell.ShowSearchPanel();
-                GUI.Toast.Info("No matches found for '" + query + "'");
+                GUI.Toast.Info(noMatch);
             }
         } else {
             if discovering {
-                shell.SetStatusLeft("Discovering files: " + totalFiles + " queued, " + fileIndex + " searched...");
+                shell.SetStatusLeft("Searching while discovering files: "
+                                    + fileIndex + "/" + totalFiles
+                                    + " searched, offset " + discoveryOffset + "...");
             } else {
                 shell.SetStatusLeft("Searching " + fileIndex + "/" + totalFiles + " files...");
             }
@@ -716,7 +720,7 @@ func handleWorkspaceSymbols(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Found " + count + " workspace symbols for '" + query + "'");
     } else {
-        shell.searchListBox.Clear();
+        shell.ClearToolRows(shell.searchListBox);
         shell.AddToolInfoRow(shell.searchListBox, "symbol",
                              "No workspace symbols matched '" + query + "'");
         shell.ShowSearchPanel();
@@ -735,7 +739,7 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
     var needle = Str.ToLower(Str.Trim(query));
     if needle == "" { return 0; }
 
-    shell.searchListBox.Clear();
+    shell.ClearToolRows(shell.searchListBox);
     var resultCount = 0;
     var i = 0;
     while i < projMgr.CachedFileCount() {
@@ -874,7 +878,7 @@ func RunSearch(shell: app_shell.AppShell,
                                                     activeRequest.excludeGlobs);
 
     var resultCount = 0;
-    shell.searchListBox.Clear();
+    shell.ClearToolRows(shell.searchListBox);
 
     resultCount = resultCount + searchFiles(shell,
                                             activeRequest.rootPath,
@@ -892,7 +896,7 @@ func RunSearch(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Found " + resultCount + " matches for '" + activeRequest.query + "'");
     } else {
-        shell.searchListBox.Clear();
+        shell.ClearToolRows(shell.searchListBox);
         shell.AddToolInfoRow(shell.searchListBox, "search",
                              "No matches found for '" + activeRequest.query + "'");
         shell.ShowSearchPanel();

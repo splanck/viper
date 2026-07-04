@@ -866,8 +866,10 @@ class CompletionController {
             return 0;
         }
 
+        workspaceProject.PumpFileCacheRefresh(maxFiles * 128);
+
         var root = workspaceProject.project.rootPath;
-        var fileCount = workspaceProject.CachedFileCount();
+        var fileCount = workspaceProject.PeekCachedFileCount();
         if completion_workspace_source.NeedsReset(root,
                                                   fileCount,
                                                   workspaceRoot,
@@ -885,6 +887,7 @@ class CompletionController {
             CancelWorkspaceSymbolJob();
             workspaceLastPumpMs = 0;
         }
+        workspaceFileCount = fileCount;
 
         if workspaceCacheReady { return 0; }
         if workspaceIndex.Count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
@@ -915,6 +918,9 @@ class CompletionController {
             processed = processed + 1;
         }
 
+        fileCount = workspaceProject.PeekCachedFileCount();
+        workspaceFileCount = fileCount;
+
         while workspaceFileIndex < workspaceFileCount and processed < limit
               and workspaceIndex.Count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
             var filePath = workspaceProject.CachedFileAt(workspaceFileIndex);
@@ -942,7 +948,8 @@ class CompletionController {
         }
 
         if workspacePendingJob == null {
-            if workspaceFileIndex >= workspaceFileCount
+            workspaceFileCount = workspaceProject.PeekCachedFileCount();
+            if (workspaceProject.IsFileCacheComplete() and workspaceFileIndex >= workspaceFileCount)
                or workspaceIndex.Count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
                 workspaceCacheReady = true;
             }

@@ -34,11 +34,15 @@ expose func IsProjectOpen(project: project_manager.ProjectManager) -> Boolean {
 /// @param cachedRoot Previously indexed root path.
 /// @param cachedFileCount Previously indexed file-cache size.
 /// @return True when completion should restart workspace-symbol indexing.
+/// @details Growth in fileCount does not reset the symbol cache: completion
+///          indexes newly discovered files incrementally. A count shrink means
+///          the project cache was rebuilt, so cached source identities may have
+///          disappeared and the symbol cache must restart.
 expose func NeedsReset(root: String,
                        fileCount: Integer,
                        cachedRoot: String,
                        cachedFileCount: Integer) -> Boolean {
-    return root != cachedRoot or fileCount != cachedFileCount;
+    return root != cachedRoot or fileCount < cachedFileCount;
 }
 
 /// @brief Load source text from an open document or small file on disk.

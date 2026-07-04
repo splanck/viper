@@ -24,8 +24,8 @@ Add a new runtime class pair, distinct from `Process`:
 - `Viper.System.Pty` (factory): `Open(program, args, cwd, env, cols, rows) ->
   PtySession`, `IsSupported() -> i1`, `LastError() -> str`.
 - `Viper.System.Pty.PtySession` (handle): `IsValid`, `Poll`, `IsRunning`, `Read`
-  (one **merged** ANSI-bearing stream), `Write`, `Resize(cols, rows)`,
-  `ExitCode`, `Kill`, `Wait`, `Destroy`.
+  (one **merged** ANSI-bearing stream), `ReadResult` (`text`/`truncated`),
+  `Write`, `Resize(cols, rows)`, `ExitCode`, `Kill`, `Wait`, `Destroy`.
 
 Rationale for a separate class (not extending `Process`): a PTY merges
 stdout+stderr into one TTY stream and adds resize, which would make the

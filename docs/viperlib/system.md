@@ -371,6 +371,8 @@ directory.
 | `IsRunning()`  | `Boolean()`  | Alias for polling the current running state                  |
 | `ReadStdout()` | `String()`   | Returns buffered stdout bytes available now, then clears them |
 | `ReadStderr()` | `String()`   | Returns buffered stderr bytes available now, then clears them |
+| `ReadStdoutResult()` | `Map()` | Returns `text` and `truncated` for buffered stdout |
+| `ReadStderrResult()` | `Map()` | Returns `text` and `truncated` for buffered stderr |
 | `ExitCode()`   | `Integer()`  | Returns exit code, or `-1` while running/invalid             |
 | `Kill()`       | `Boolean()`  | Requests process termination                                |
 | `Wait()`       | `Integer()`  | Blocks until process exit and returns the exit code          |
@@ -411,7 +413,8 @@ func start() {
 - `Start*` executes the program directly; it does not invoke a shell. Use an explicit shell executable only when shell
   syntax is required.
 - POSIX direct exec failures after a successful fork surface as process exit code `126` or `127`.
-- `ReadStdout()` and `ReadStderr()` are non-blocking incremental reads intended for GUI frame loops.
+- `ReadStdout()` and `ReadStderr()` are non-blocking incremental reads intended for simple callers. They trap when the runtime had to truncate unread stream data.
+- `ReadStdoutResult()` and `ReadStderrResult()` are preferred for long-running tools and GUI frame loops. They return a map with `text` and `truncated` so callers can surface overflow without crashing.
 - `Kill()` sends a termination request (`SIGTERM` on POSIX, `TerminateProcess` on Windows). `Destroy()` is idempotent
   and force-cleans a still-running child.
 - Output buffers are capped at 16 MB per stream between reads.
@@ -442,6 +445,7 @@ terminal-like IDE surfaces.
 | `Poll()` | `Boolean()` | Polls child state; returns `TRUE` while still running |
 | `IsRunning()` | `Boolean()` | Alias for polling the current running state |
 | `Read()` | `String()` | Returns merged stdout/stderr terminal bytes available now |
+| `ReadResult()` | `Map()` | Returns `text` and `truncated` for merged terminal output |
 | `Write(data)` | `Integer(String)` | Writes bytes to terminal input |
 | `Resize(cols, rows)` | `Boolean(Integer, Integer)` | Updates terminal size |
 | `ExitCode()` | `Integer()` | Returns exit code, or `-1` while running/invalid |
@@ -453,6 +457,11 @@ Prefer `OpenResult()` for production code. It returns `Err(message)` for
 unsupported platforms, startup failures, and validation errors. `Open()` and
 `LastError()` remain available for compatibility; existing callers can keep
 checking the nullable `Open()` result.
+
+Prefer `ReadResult()` for IDEs and other long-running terminal surfaces. The
+legacy `Read()` method returns a string directly and traps if the runtime had to
+drop unread PTY output; `ReadResult()` reports that condition through the
+`truncated` flag.
 
 ---
 

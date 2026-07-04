@@ -218,6 +218,12 @@ class AppShell {
     expose GUI.ListBox debugListBox;
     expose GUI.ListBox variablesListBox; // debug: locals at the current stop
     expose GUI.ListBox callStackListBox; // debug: call frames at the current stop
+    expose tool_panel_model.ToolPanelRows problemsRows;
+    expose tool_panel_model.ToolPanelRows searchRows;
+    expose tool_panel_model.ToolPanelRows referencesRows;
+    expose tool_panel_model.ToolPanelRows debugRows;
+    expose tool_panel_model.ToolPanelRows variablesRows;
+    expose tool_panel_model.ToolPanelRows callStackRows;
 
     // Integrated terminal (Phase 5E): panel + interactive PTY output pane + controls.
     expose GUI.VBox terminalPanel;
@@ -327,6 +333,12 @@ class AppShell {
         outputPartialItem = null;
         outputRenderedItems = new List();
         outputRenderedRowCount = 0;
+        problemsRows = new tool_panel_model.ToolPanelRows();
+        searchRows = new tool_panel_model.ToolPanelRows();
+        referencesRows = new tool_panel_model.ToolPanelRows();
+        debugRows = new tool_panel_model.ToolPanelRows();
+        variablesRows = new tool_panel_model.ToolPanelRows();
+        callStackRows = new tool_panel_model.ToolPanelRows();
         outputFilterText = "";
         outputWrapLines = false;
         outputAutoScroll = true;
@@ -1364,8 +1376,74 @@ class AppShell {
         return false;
     }
 
+    /// @brief Clear a ListBox-backed tool panel and its stable row model.
+    expose func ClearToolRows(listBox: GUI.ListBox) {
+        if listBox == null { return; }
+        listBox.Clear();
+        var model = ToolRowsForListBox(listBox);
+        if model != null {
+            model.Clear();
+        }
+    }
+
+    /// @brief Add a plain row through the bounded tool-panel row model.
+    /// @details Command modules use this for rows that do not need the fixed
+    ///          diagnostic/search columns. The returned value is the realized
+    ///          ListBox item so callers can still attach data or custom color.
+    expose func AddToolPlainRow(listBox: GUI.ListBox,
+                                text: String,
+                                color: Integer) -> Any {
+        if listBox == null { return null; }
+        var model = ToolRowsForListBox(listBox);
+        if model != null {
+            EnsureToolRowsCapacity(listBox, model);
+            var row = model.Add(text, color);
+            var item = listBox.AddItem(text);
+            row.item = item;
+            if color != 0 {
+                GUI.ListBox.ItemSetTextColor(item, color);
+            }
+            return item;
+        }
+        var fallback = listBox.AddItem(text);
+        if color != 0 {
+            GUI.ListBox.ItemSetTextColor(fallback, color);
+        }
+        return fallback;
+    }
+
+    /// @brief Add a muted section/header row to a ListBox-backed tool panel.
+    expose func AddToolSectionRow(listBox: GUI.ListBox,
+                                  text: String) -> Any {
+        return AddToolPlainRow(listBox, text, TOOL_COLOR_MUTED);
+    }
+
+    /// @brief Find the row model for a tool ListBox owned by AppShell.
+    hide func ToolRowsForListBox(listBox: GUI.ListBox) -> tool_panel_model.ToolPanelRows {
+        if listBox == diagListBox { return problemsRows; }
+        if listBox == searchListBox { return searchRows; }
+        if listBox == referencesListBox { return referencesRows; }
+        if listBox == debugListBox { return debugRows; }
+        if listBox == variablesListBox { return variablesRows; }
+        if listBox == callStackListBox { return callStackRows; }
+        return null;
+    }
+
+    /// @brief Trim oldest realized rows before adding another row.
+    hide func EnsureToolRowsCapacity(listBox: GUI.ListBox,
+                                     model: tool_panel_model.ToolPanelRows) {
+        if listBox == null or model == null { return; }
+        while model.maxRows > 0 and model.Count() >= model.maxRows {
+            var row = model.First();
+            if row != null and row.item != null {
+                listBox.RemoveItem(row.item);
+            }
+            model.RemoveFirst();
+        }
+    }
+
     expose func SetDebugOutput(output: String) {
-        debugListBox.Clear();
+        ClearToolRows(debugListBox);
         var text = output;
         if text == "" {
             AddToolInfoRow(debugListBox, "debug", "Debug console is idle");
@@ -1378,7 +1456,7 @@ class AppShell {
         while i < n {
             var line = Obj.ToString(Seq.Get(lines, i));
             if line != "" {
-                var item = debugListBox.AddItem(line);
+                var item = AddToolPlainRow(debugListBox, line, 0);
                 ApplyDebugLineColor(item, line);
             }
             i = i + 1;
@@ -1515,7 +1593,7 @@ class AppShell {
         return true;
     }
 
-    hide func AddOutputDisplayLine(line: String) -> Any {
+    expose func AddOutputDisplayLine(line: String) -> Any {
         if outputFilterText != "" and Str.IndexOf(Str.ToLower(line), outputFilterText) == 0 {
             return null;
         }
@@ -1599,20 +1677,22 @@ class AppShell {
     }
 
     expose func ClearProblemsPanel() {
-        diagListBox.Clear();
+        ClearToolRows(diagListBox);
         problemsHaveDiagnostics = false;
         HideProblemsPanel();
     }
 
     expose func BeginProblems() {
-        diagListBox.Clear();
+        ClearToolRows(diagListBox);
         problemsHaveDiagnostics = false;
-        var header = diagListBox.AddItem(PadToolColumn("TYPE", TOOL_KIND_COL)
-                                         + "  " + PadToolColumn("SOURCE", TOOL_SOURCE_COL)
-                                         + "  " + PadToolColumn("LOCATION", TOOL_LOCATION_COL)
-                                         + "  " + PadToolColumn("CODE", TOOL_CODE_COL)
-                                         + "  MESSAGE"
-                                         + "  " + PadToolColumn("ACTION", TOOL_ACTION_COL));
+        var header = AddToolPlainRow(diagListBox,
+                                     PadToolColumn("TYPE", TOOL_KIND_COL)
+                                     + "  " + PadToolColumn("SOURCE", TOOL_SOURCE_COL)
+                                     + "  " + PadToolColumn("LOCATION", TOOL_LOCATION_COL)
+                                     + "  " + PadToolColumn("CODE", TOOL_CODE_COL)
+                                     + "  MESSAGE"
+                                     + "  " + PadToolColumn("ACTION", TOOL_ACTION_COL),
+                                     TOOL_COLOR_MUTED);
         GUI.ListBox.ItemSetTextColor(header, TOOL_COLOR_MUTED);
     }
 
@@ -1647,9 +1727,7 @@ class AppShell {
         if detail != "" and detail != title {
             text = text + "  " + TrimToolText(detail, 96);
         }
-        var item = listBox.AddItem(text);
-        GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_MUTED);
-        return item;
+        return AddToolPlainRow(listBox, text, TOOL_COLOR_MUTED);
     }
 
     expose func AddToolLocationRow(listBox: GUI.ListBox,
@@ -1674,7 +1752,7 @@ class AppShell {
         if action != "" {
             text = text + "  " + PadToolColumn(action, TOOL_ACTION_COL);
         }
-        return listBox.AddItem(text);
+        return AddToolPlainRow(listBox, text, 0);
     }
 
     /// @brief Add a colorized informational row to any bottom tool ListBox.

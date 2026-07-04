@@ -162,30 +162,49 @@ func PumpGutter(shell: app_shell.AppShell,
 func handleDebugStart(shell: app_shell.AppShell,
                       docMgr: document_manager.DocumentManager,
                       engine: editor_engine.EditorEngine,
-	                      tabs: editor_tabs.EditorTabs,
-	                      buildSys: build_system.BuildSystem,
-	                      store: breakpoints.BreakpointStore,
-	                      session: debug_session.DebugSession,
-	                      saveAllBeforeBuild: Boolean) {
+                      tabs: editor_tabs.EditorTabs,
+                      buildSys: build_system.BuildSystem,
+                      store: breakpoints.BreakpointStore,
+                      session: debug_session.DebugSession,
+                      saveAllBeforeBuild: Boolean) {
     if session.IsActive() {
         shell.SetStatusLeft("A debug session is already running");
         return;
     }
-    if buildSys != null and buildSys.IsActive() {
+    var plan = PrepareDebugLaunch(shell, docMgr, engine, tabs, buildSys, saveAllBeforeBuild);
+    if Map.GetBool(plan, "ok") == false { return; }
+    LaunchPreparedDebug(shell, session, store, plan);
+}
+
+hide func PrepareDebugLaunch(shell: app_shell.AppShell,
+                             docMgr: document_manager.DocumentManager,
+                             engine: editor_engine.EditorEngine,
+                             tabs: editor_tabs.EditorTabs,
+                             buildSys: build_system.BuildSystem,
+                             saveAllBeforeBuild: Boolean) -> Any {
+    var result = Map.New();
+    Map.SetBool(result, "ok", false);
+    Map.SetStr(result, "viperBin", "");
+    Map.SetStr(result, "path", "");
+    if buildSys == null {
+        shell.SetStatusLeft("Debug failed: build system unavailable");
+        return result;
+    }
+    if buildSys.IsActive() {
         shell.SetStatusLeft("Debug disabled while a build or run job is active");
         GUI.Toast.Info("Wait for the active job to finish before debugging");
-        return;
+        return result;
     }
     file_commands.SaveEditorState(docMgr, engine);
     var maybeDoc = docMgr.GetActive();
     if maybeDoc == null {
         shell.SetStatusLeft("No file to debug");
-        return;
+        return result;
     }
     var doc = maybeDoc!;
     if doc.isNew {
         shell.SetStatusLeft("Save file before debugging");
-        return;
+        return result;
     }
 
     var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
@@ -196,13 +215,13 @@ func handleDebugStart(shell: app_shell.AppShell,
         } else {
             shell.SetStatusLeft("Debug canceled: files were not saved");
         }
-        return;
+        return result;
     }
     file_commands.SaveEditorState(docMgr, engine);
     maybeDoc = docMgr.GetActive();
-    if maybeDoc == null { return; }
+    if maybeDoc == null { return result; }
     doc = maybeDoc!;
-    if doc.isNew { return; }
+    if doc.isNew { return result; }
 
     var viperBin = buildSys.ResolveCompiler("viper");
     if viperBin == "" {
@@ -210,18 +229,32 @@ func handleDebugStart(shell: app_shell.AppShell,
             + "Add viper to your PATH or set VIPER_BINARY=/full/path/to/viper.");
         shell.SetStatusLeft("Debug failed: viper not found");
         GUI.Toast.Error("viper compiler not found");
-        return;
+        return result;
     }
 
-    if session.Launch(viperBin, doc.filePath, store) {
-        shell.SetDebugOutput("[debug] launched " + doc.filePath
+    Map.SetBool(result, "ok", true);
+    Map.SetStr(result, "viperBin", viperBin);
+    Map.SetStr(result, "path", doc.filePath);
+    return result;
+}
+
+hide func LaunchPreparedDebug(shell: app_shell.AppShell,
+                              session: debug_session.DebugSession,
+                              store: breakpoints.BreakpointStore,
+                              plan: Any) -> Boolean {
+    var viperBin = Map.GetStr(plan, "viperBin");
+    var path = Map.GetStr(plan, "path");
+    if session.Launch(viperBin, path, store) {
+        shell.SetDebugOutput("[debug] launched " + path
             + " — running to the first breakpoint...");
-        shell.SetStatusLeft("Debugging " + doc.filePath);
+        shell.SetStatusLeft("Debugging " + path);
         GUI.Toast.Info("Debugger started");
+        return true;
     } else {
         shell.SetStatusLeft("Debug session did not start");
         GUI.Toast.Warning("Debug session did not start");
     }
+    return false;
 }
 
 /// @brief Restart: terminate any active session, then relaunch the active file
@@ -234,11 +267,19 @@ func handleDebugRestart(shell: app_shell.AppShell,
                         store: breakpoints.BreakpointStore,
                         session: debug_session.DebugSession,
                         saveAllBeforeBuild: Boolean) {
+    var plan = PrepareDebugLaunch(shell, docMgr, engine, tabs, buildSys, saveAllBeforeBuild);
+    if Map.GetBool(plan, "ok") == false { return; }
     if session.IsActive() {
-        session.Terminate();
+        if session.RequestRestart(Map.GetStr(plan, "viperBin"), Map.GetStr(plan, "path")) {
+            shell.SetDebugOutput("[debug] restarting...");
+            shell.SetStatusLeft("Restarting debugger...");
+            GUI.Toast.Info("Restarting debugger");
+        } else {
+            shell.SetStatusLeft("Debug restart did not start");
+        }
+        return;
     }
-    handleDebugStart(shell, docMgr, engine, tabs, buildSys, store, session,
-                     saveAllBeforeBuild);
+    LaunchPreparedDebug(shell, session, store, plan);
 }
 
 /// @brief Per-frame pump: drain adapter events and refresh the UI on change.
@@ -246,9 +287,20 @@ func DebugUpdate(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
                  engine: editor_engine.EditorEngine,
                  tabs: editor_tabs.EditorTabs,
+                 store: breakpoints.BreakpointStore,
                  session: debug_session.DebugSession) {
     if session == null or session.processHandle == null { return; }
     if session.Poll() {
+        if session.restartPending and session.IsActive() == false {
+            var restartBin = session.restartViperBin;
+            var restartPath = session.restartPath;
+            session.ClearRestartRequest();
+            var plan = Map.New();
+            Map.SetBool(plan, "ok", true);
+            Map.SetStr(plan, "viperBin", restartBin);
+            Map.SetStr(plan, "path", restartPath);
+            LaunchPreparedDebug(shell, session, store, plan);
+        }
         Publish(shell, docMgr, engine, tabs, session);
         if session.evalJustArrived {
             session.evalJustArrived = false;
@@ -448,50 +500,80 @@ func Publish(shell: app_shell.AppShell,
 ///        are ready the moment they click Variables or Call Stack.
 func PopulateDebugPanels(shell: app_shell.AppShell,
                          session: debug_session.DebugSession) {
-    shell.variablesListBox.Clear();
-    shell.callStackListBox.Clear();
+    shell.ClearToolRows(shell.variablesListBox);
+    shell.ClearToolRows(shell.callStackListBox);
     if session == null or session.stopped == false { return; }
 
+    var variableTree = GUI.VirtualTree.New();
     var wc = session.WatchCount();
     if wc > 0 {
-        shell.variablesListBox.AddItem("Watches");
+        variableTree.AddNode("", "watches", "Watches");
         var wi = 0;
         while wi < wc {
-            shell.variablesListBox.AddItem("  " + session.WatchLabel(wi));
+            variableTree.AddNode("watches", "watch:" + wi, session.WatchLabel(wi));
             wi = wi + 1;
         }
+        variableTree.Expand("watches");
     }
 
     var lc = session.LocalCount();
     if lc == 0 {
         if wc == 0 {
-            shell.variablesListBox.AddItem("(no locals in scope)");
+            variableTree.AddNode("", "locals-empty", "(no locals in scope)");
         } else {
-            shell.variablesListBox.AddItem("Locals: (none)");
+            variableTree.AddNode("", "locals", "Locals: (none)");
         }
     } else {
-        if wc > 0 { shell.variablesListBox.AddItem("Locals"); }
+        variableTree.AddNode("", "locals", "Locals");
         var i = 0;
         while i < lc {
-            if wc > 0 {
-                shell.variablesListBox.AddItem("  " + session.LocalLabel(i));
-            } else {
-                shell.variablesListBox.AddItem(session.LocalLabel(i));
-            }
+            variableTree.AddNode("locals", "local:" + i, session.LocalLabel(i));
             i = i + 1;
         }
+        variableTree.Expand("locals");
     }
+    RenderVariableTree(shell, variableTree);
 
     var fc = session.FrameCount();
     if fc == 0 {
-        shell.callStackListBox.AddItem("(no frames)");
+        shell.AddToolSectionRow(shell.callStackListBox, "(no frames)");
     } else {
         var j = 0;
         while j < fc {
-            shell.callStackListBox.AddItem("#" + j + "  " + session.FrameLabel(j));
+            shell.AddToolPlainRow(shell.callStackListBox, "#" + j + "  " + session.FrameLabel(j), 0);
             j = j + 1;
         }
     }
+}
+
+/// @brief Render the structured Variables tree into the existing tool ListBox.
+hide func RenderVariableTree(shell: app_shell.AppShell,
+                             tree: GUI.VirtualTree) {
+    if shell == null or tree == null { return; }
+    var rows = tree.VisibleRows();
+    if rows == null { return; }
+    var i = 0;
+    while i < Seq.get_Count(rows) {
+        var row = Seq.Get(rows, i);
+        var depth = Map.GetInt(row, "depth");
+        var text = Map.GetStr(row, "text");
+        if depth <= 0 {
+            shell.AddToolSectionRow(shell.variablesListBox, text);
+        } else {
+            shell.AddToolPlainRow(shell.variablesListBox, IndentForDepth(depth) + text, 0);
+        }
+        i = i + 1;
+    }
+}
+
+hide func IndentForDepth(depth: Integer) -> String {
+    var text = "";
+    var i = 0;
+    while i < depth {
+        text = text + "  ";
+        i = i + 1;
+    }
+    return text;
 }
 
 /// @brief True if two paths denote the same source file after absolute

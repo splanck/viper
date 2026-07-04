@@ -7,10 +7,12 @@ bind "../services/workspace_file_index";
 bind Viper.GUI as GUI;
 bind Obj = Viper.Core.Object;
 bind Seq = Viper.Collections.Seq;
+bind Map = Viper.Collections.Map;
 bind IO = Viper.IO;
 bind Viper.IO.Path as Path;
 bind Viper.IO.Dir as Dir;
 bind Viper.String as Str;
+bind FileIndex = Viper.Workspace.FileIndex;
 bind "../core/document_manager";
 bind "../zia/bind_utils";
 
@@ -73,6 +75,12 @@ class ProjectManager {
     expose Boolean fileCacheRefreshing;
     /// Number of directories scanned by the current cache refresh.
     expose Integer fileCacheDirsScanned;
+    /// Root index currently being paged by FileIndex.Page.
+    expose Integer fileCacheRootIndex;
+    /// Runtime FileIndex.Page offset within the current root.
+    expose Integer fileCachePageOffset;
+    /// True if the runtime index hit its safety cap during the last refresh.
+    expose Boolean fileCacheTruncated;
     /// Destination path for the most recent explorer move-to-trash operation.
     expose String lastTrashPath;
     /// Absolute directory paths whose TreeView children have been populated.
@@ -90,6 +98,9 @@ class ProjectManager {
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
         fileCacheDirsScanned = 0;
+        fileCacheRootIndex = 0;
+        fileCachePageOffset = 0;
+        fileCacheTruncated = false;
         lastTrashPath = "";
         loadedTreeDirs = new List();
         lastBindRewriteCount = 0;
@@ -159,6 +170,9 @@ class ProjectManager {
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
         fileCacheDirsScanned = 0;
+        fileCacheRootIndex = 0;
+        fileCachePageOffset = 0;
+        fileCacheTruncated = false;
         lastTrashPath = "";
         loadedTreeDirs = new List();
         selectedFilePath = "";
@@ -212,6 +226,9 @@ class ProjectManager {
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
         fileCacheDirsScanned = 0;
+        fileCacheRootIndex = 0;
+        fileCachePageOffset = 0;
+        fileCacheTruncated = false;
         loadedTreeDirs = new List();
 
         // One top-level node per workspace root (primary first, then extras).
@@ -311,64 +328,81 @@ class ProjectManager {
         fileCache = new List();
         pendingFileCacheDirs = new List();
         var all = AllRoots();
-        var ri = 0;
-        while ri < all.count() {
-            pendingFileCacheDirs.Push(all.get(ri).rootPath);
-            ri = ri + 1;
-        }
+        fileCacheRootIndex = 0;
+        fileCachePageOffset = 0;
         fileCacheRefreshing = true;
         fileCacheComplete = false;
         fileCacheDirsScanned = 0;
+        fileCacheTruncated = false;
+        if all.count() == 0 {
+            fileCacheRefreshing = false;
+            fileCacheComplete = true;
+        }
     }
 
-    /// @brief Pump a bounded number of directories for project file discovery.
-    /// @param maxDirs Maximum directory entries to scan in this call.
-    /// @return Number of directories scanned.
+    /// @brief Pump a bounded file-index page for project file discovery.
+    /// @param maxDirs Historical directory budget; now used as page size.
+    /// @return Number of file-index entries examined.
     expose func PumpFileCacheRefresh(maxDirs: Integer) -> Integer {
         if project == null or project.isOpen == false { return 0; }
         if fileCacheRefreshing == false and fileCacheComplete == false {
             StartFileCacheRefresh();
         }
-        var limit = maxDirs;
-        if limit <= 0 { limit = 16; }
+        var pageSize = maxDirs;
+        if pageSize <= 0 { pageSize = 128; }
 
         var processed = 0;
-        while fileCacheRefreshing and pendingFileCacheDirs.count() > 0 and processed < limit {
-            var dirPath = Obj.ToString(pendingFileCacheDirs.get(0));
-            pendingFileCacheDirs.removeAt(0);
-            processed = processed + 1;
-            fileCacheDirsScanned = fileCacheDirsScanned + 1;
-
-            if Dir.Exists(dirPath) == false { continue; }
-
-            var dirs = new List();
-            for dirName in Dir.DirsSeq(dirPath) {
-                dirs.Push(dirName);
+        var all = AllRoots();
+        while fileCacheRefreshing and fileCacheRootIndex < all.count() and processed < pageSize {
+            var root = all.get(fileCacheRootIndex);
+            if root == null or root.isOpen == false or Dir.Exists(root.rootPath) == false {
+                fileCacheRootIndex = fileCacheRootIndex + 1;
+                fileCachePageOffset = 0;
+                continue;
             }
-            dirs.Sort();
-            for dirName in dirs {
-                var dirNameText = Obj.ToString(dirName);
-                var fullDir = Path.Join(dirPath, dirNameText);
-                if ShouldExcludePath(fullDir, true) == false {
-                    pendingFileCacheDirs.Push(fullDir);
+
+            var oldOffset = fileCachePageOffset;
+            var page = FileIndex.Page(root.rootPath,
+                                      "",
+                                      root.ignorePatterns,
+                                      false,
+                                      fileCachePageOffset,
+                                      pageSize - processed);
+            if Map.GetBool(page, "valid") == false {
+                fileCacheRootIndex = fileCacheRootIndex + 1;
+                fileCachePageOffset = 0;
+                continue;
+            }
+
+            var entries = Map.Get(page, "entries");
+            var i = 0;
+            while entries != null and i < Seq.get_Count(entries) {
+                var entry = Seq.Get(entries, i);
+                if Map.GetBool(entry, "isDirectory") == false {
+                    AddCachedFile(Map.GetStr(entry, "path"));
                 }
+                i = i + 1;
+                processed = processed + 1;
+                fileCacheDirsScanned = fileCacheDirsScanned + 1;
             }
 
-            var files = new List();
-            for fileName in Dir.FilesSeq(dirPath) {
-                files.Push(fileName);
+            var nextOffset = Map.GetInt(page, "nextOffset");
+            fileCachePageOffset = nextOffset;
+            if Map.GetBool(page, "truncated") {
+                fileCacheTruncated = true;
             }
-            files.Sort();
-            for fileName in files {
-                var fileNameText = Obj.ToString(fileName);
-                var fullPath = Path.Join(dirPath, fileNameText);
-                if ShouldExcludePath(fullPath, false) == false {
-                    AddCachedFile(fullPath);
-                }
+            if Map.GetBool(page, "done") {
+                fileCacheRootIndex = fileCacheRootIndex + 1;
+                fileCachePageOffset = 0;
+            } else if nextOffset == oldOffset and i == 0 {
+                fileCacheRootIndex = fileCacheRootIndex + 1;
+                fileCachePageOffset = 0;
+            } else if processed >= pageSize {
+                break;
             }
         }
 
-        if pendingFileCacheDirs.count() == 0 {
+        if fileCacheRootIndex >= all.count() {
             fileCacheRefreshing = false;
             fileCacheComplete = true;
         }
@@ -387,6 +421,9 @@ class ProjectManager {
     /// @brief Short status string for Quick Open and project-search surfaces.
     /// @return Human-readable cache progress.
     expose func FileCacheStatusText() -> String {
+        if fileCacheComplete and fileCacheTruncated {
+            return "Project file cache ready (truncated)";
+        }
         if fileCacheComplete { return "Project file cache ready"; }
         if fileCacheRefreshing {
             return "Indexing project files: " + fileCache.count() + " found";
@@ -405,6 +442,16 @@ class ProjectManager {
     expose func CachedFileCount() -> Integer {
         EnsureFullFileCache();
         return fileCache.count();
+    }
+
+    /// @brief Current known file-cache size without starting or pumping discovery.
+    expose func PeekCachedFileCount() -> Integer {
+        return fileCache.count();
+    }
+
+    /// @brief True when the cooperative file cache reached every workspace root.
+    expose func IsFileCacheComplete() -> Boolean {
+        return fileCacheComplete;
     }
 
     expose func CachedFileAt(index: Integer) -> String {

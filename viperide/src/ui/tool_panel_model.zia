@@ -31,6 +31,74 @@ final TAB_CALL_STACK = 5;
 final TAB_DEBUG = 6;
 final TAB_TERMINAL = 7;
 
+final DEFAULT_MAX_ROWS = 5000;
+
+/// @brief One realized row in a bottom tool panel.
+/// @details `id` is stable for the lifetime of the row even when earlier rows
+///          are trimmed. `item` stores the concrete ListBox row handle so the
+///          shell can remove old rows without rebuilding the full panel.
+class ToolPanelRow {
+    expose String id;
+    expose String text;
+    expose Integer color;
+    expose Any item;
+
+    expose func init() {
+        id = "";
+        text = "";
+        color = 0;
+        item = null;
+    }
+}
+
+/// @brief Bounded row model for ListBox-backed tool panels.
+/// @details The current GUI backend still realizes rows in a ListBox, but this
+///          model gives every panel a capped, stable-id data source so future
+///          viewport-only realization can swap in without changing command code.
+class ToolPanelRows {
+    expose List[ToolPanelRow] rows;
+    expose Integer nextId;
+    expose Integer maxRows;
+
+    expose func init() {
+        rows = [];
+        nextId = 1;
+        maxRows = DEFAULT_MAX_ROWS;
+    }
+
+    expose func Clear() {
+        rows = [];
+        nextId = 1;
+    }
+
+    expose func Count() -> Integer {
+        return rows.count();
+    }
+
+    expose func Add(text: String,
+                    color: Integer) -> ToolPanelRow {
+        var row = new ToolPanelRow();
+        row.id = "tool:" + nextId;
+        row.text = text;
+        row.color = color;
+        row.item = null;
+        nextId = nextId + 1;
+        rows.add(row);
+        return row;
+    }
+
+    expose func First() -> ToolPanelRow {
+        if rows.count() == 0 { return null; }
+        return rows.get(0);
+    }
+
+    expose func RemoveFirst() {
+        if rows.count() > 0 {
+            rows.removeAt(0);
+        }
+    }
+}
+
 /// @brief Return a human-readable name for a panel id.
 /// @param kind One of the `PANEL_*` constants.
 /// @return Display name for diagnostics, logging, or probes.

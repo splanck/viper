@@ -72,6 +72,9 @@ int64_t rt_pty_is_running(void *handle);
 /// @note The PTY merges stdout and stderr; the result may contain ANSI escapes.
 rt_string rt_pty_read(void *handle);
 
+/// @brief Read terminal output as `{ text, truncated }` without trapping on truncation.
+void *rt_pty_read_result(void *handle);
+
 /// @brief Write bytes to the terminal input.
 /// @return Bytes written, or -1 when the handle is invalid or the write failed.
 int64_t rt_pty_write(void *handle, rt_string data);

@@ -2,6 +2,12 @@ module document;
 
 bind "../services/file_utils";
 
+final EXTERNAL_STATE_CLEAN = 0;
+final EXTERNAL_STATE_CHANGED = 1;
+final EXTERNAL_STATE_DELETED = 2;
+final EXTERNAL_STATE_RENAMED = 3;
+final EXTERNAL_STATE_MISSING = 4;
+
 // ============================================================================
 // MODULE: document
 // PURPOSE: Plain-data record representing a single open file in the IDE.
@@ -53,6 +59,8 @@ class Document {
     expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified.
     expose Integer lastSizeOnDisk;     // Size from Viper.IO.File.Size.
     expose Boolean externalChangeNotified; // True after surfacing an on-disk change.
+    expose Integer externalState;      // EXTERNAL_STATE_* disk state.
+    expose String externalMessage;     // Last user-facing disk-state detail.
     expose Boolean hasPendingWorkspaceUndo; // Inactive workspace edit can be undone on activation.
     expose String pendingWorkspaceUndoContent; // Snapshot before the pending workspace edit.
     expose String pendingWorkspaceUndoLabel;   // User-facing name of the pending edit.
@@ -73,6 +81,8 @@ class Document {
         lastModifiedOnDisk = 0;
         lastSizeOnDisk = 0;
         externalChangeNotified = false;
+        externalState = EXTERNAL_STATE_CLEAN;
+        externalMessage = "";
         hasPendingWorkspaceUndo = false;
         pendingWorkspaceUndoContent = "";
         pendingWorkspaceUndoLabel = "";

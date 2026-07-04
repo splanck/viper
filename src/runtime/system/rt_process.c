@@ -31,6 +31,7 @@
 #include "rt_process.h"
 
 #include "rt_internal.h"
+#include "rt_map.h"
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
@@ -223,16 +224,48 @@ static int buffer_append(process_buffer *buf, const char *data, size_t len) {
     return 1;
 }
 
-static rt_string buffer_take(process_buffer *buf) {
-    if (!buf || buf->len == 0)
+static rt_string buffer_take_string(process_buffer *buf, int *was_truncated) {
+    int truncated = buf ? buf->truncated : 0;
+    if (was_truncated)
+        *was_truncated = truncated;
+    if (!buf) {
+        return empty_string();
+    }
+    buf->truncated = 0;
+    if (buf->len == 0)
         return empty_string();
     rt_string out = rt_string_from_bytes(buf->data, buf->len);
     buf->len = 0;
-    if (buf->truncated) {
-        buf->truncated = 0;
+    return out;
+}
+
+static rt_string buffer_take(process_buffer *buf) {
+    int truncated = 0;
+    rt_string out = buffer_take_string(buf, &truncated);
+    if (truncated) {
         rt_trap("Process: output truncated");
     }
     return out;
+}
+
+static void map_set_string_owned(void *map, const char *key, rt_string value) {
+    if (!map || !key)
+        return;
+    rt_map_set_str(map, rt_const_cstr(key), value ? value : rt_const_cstr(""));
+}
+
+static void *buffer_take_result(process_buffer *buf) {
+    int truncated = 0;
+    rt_string text = buffer_take_string(buf, &truncated);
+    void *result = rt_map_new();
+    if (!result) {
+        rt_str_release_maybe(text);
+        return NULL;
+    }
+    map_set_string_owned(result, "text", text);
+    rt_map_set_bool(result, rt_const_cstr("truncated"), truncated ? 1 : 0);
+    rt_str_release_maybe(text);
+    return result;
 }
 
 static void buffer_free(process_buffer *buf) {
@@ -1288,12 +1321,28 @@ rt_string rt_process_read_stdout(void *handle) {
     return buffer_take(&proc->stdout_buf);
 }
 
+void *rt_process_read_stdout_result(void *handle) {
+    rt_process_impl *proc = process_checked(handle);
+    if (!proc || !proc->started || proc->destroyed)
+        return buffer_take_result(NULL);
+    process_drain(proc);
+    return buffer_take_result(&proc->stdout_buf);
+}
+
 rt_string rt_process_read_stderr(void *handle) {
     rt_process_impl *proc = process_checked(handle);
     if (!proc || !proc->started || proc->destroyed)
         return empty_string();
     process_drain(proc);
     return buffer_take(&proc->stderr_buf);
+}
+
+void *rt_process_read_stderr_result(void *handle) {
+    rt_process_impl *proc = process_checked(handle);
+    if (!proc || !proc->started || proc->destroyed)
+        return buffer_take_result(NULL);
+    process_drain(proc);
+    return buffer_take_result(&proc->stderr_buf);
 }
 
 int64_t rt_process_write_stdin(void *handle, rt_string data) {

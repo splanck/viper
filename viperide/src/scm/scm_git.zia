@@ -1,14 +1,20 @@
 module scm_git;
 
+bind "../build/bounded_output";
+
 bind Process = Viper.System.Process;
 bind Env = Viper.System.Environment;
 bind Machine = Viper.System.Machine;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
+bind Map = Viper.Collections.Map;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 bind Obj = Viper.Core.Object;
 bind Time = Viper.Time;
+
+final MAX_GIT_STDOUT_CHARS = 500000;
+final MAX_GIT_STDERR_CHARS = 120000;
 
 // ============================================================================
 // MODULE: scm_git
@@ -74,6 +80,8 @@ class GitJob {
     expose Integer exitCode;
     expose Boolean running;
     expose Boolean started;
+    expose Boolean stdoutTruncated;
+    expose Boolean stderrTruncated;
 
     expose func init() {
         handle = null;
@@ -85,6 +93,8 @@ class GitJob {
         exitCode = -1;
         running = false;
         started = false;
+        stdoutTruncated = false;
+        stderrTruncated = false;
     }
 
     expose func Start(program: String,
@@ -99,6 +109,8 @@ class GitJob {
         stdoutText = "";
         stderrText = "";
         exitCode = -1;
+        stdoutTruncated = false;
+        stderrTruncated = false;
         handle = Process.StartWithEnv(program, args, cwd, null);
         if handle == null or handle.IsValid() == false {
             handle = null;
@@ -161,10 +173,42 @@ class GitJob {
 
     hide func Drain() {
         if handle == null { return; }
-        var out = handle.ReadStdout();
-        if out != "" { stdoutText = stdoutText + out; }
-        var err = handle.ReadStderr();
-        if err != "" { stderrText = stderrText + err; }
+        AppendStdoutResult(handle.ReadStdoutResult());
+        AppendStderrResult(handle.ReadStderrResult());
+    }
+
+    hide func AppendStdoutResult(result: Any) {
+        if result == null { return; }
+        var out = Map.GetStr(result, "text");
+        if out != "" {
+            stdoutText = bounded_output.Append(stdoutText, out,
+                                               "[git stdout truncated]\n",
+                                               MAX_GIT_STDOUT_CHARS);
+        }
+        if Map.GetBool(result, "truncated") and stdoutTruncated == false {
+            stdoutTruncated = true;
+            stdoutText = bounded_output.Append(stdoutText,
+                                               "\n[git stdout truncated by runtime]\n",
+                                               "[git stdout truncated]\n",
+                                               MAX_GIT_STDOUT_CHARS);
+        }
+    }
+
+    hide func AppendStderrResult(result: Any) {
+        if result == null { return; }
+        var err = Map.GetStr(result, "text");
+        if err != "" {
+            stderrText = bounded_output.Append(stderrText, err,
+                                               "[git stderr truncated]\n",
+                                               MAX_GIT_STDERR_CHARS);
+        }
+        if Map.GetBool(result, "truncated") and stderrTruncated == false {
+            stderrTruncated = true;
+            stderrText = bounded_output.Append(stderrText,
+                                               "\n[git stderr truncated by runtime]\n",
+                                               "[git stderr truncated]\n",
+                                               MAX_GIT_STDERR_CHARS);
+        }
     }
 }
 

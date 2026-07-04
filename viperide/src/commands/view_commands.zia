@@ -326,13 +326,13 @@ func handleKeybindings(shell: app_shell.AppShell,
     shell.BeginOutputRows();
     var conflictCount = registry.ShortcutConflictCount();
     if conflictCount == 0 {
-        shell.outputListBox.AddItem("Keyboard Shortcuts - no conflicts");
+        shell.AddOutputDisplayLine("Keyboard Shortcuts - no conflicts");
     } else {
-        shell.outputListBox.AddItem("Keyboard Shortcuts - " + conflictCount + " conflicts");
+        shell.AddOutputDisplayLine("Keyboard Shortcuts - " + conflictCount + " conflicts");
         var conflicts = Str.Split(registry.ShortcutConflictSummary(), "\n");
         var c = 0;
         while c < Seq.get_Count(conflicts) {
-            shell.outputListBox.AddItem("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
+            shell.AddOutputDisplayLine("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
             c = c + 1;
         }
     }
@@ -343,7 +343,7 @@ func handleKeybindings(shell: app_shell.AppShell,
         if cmd.shortcut != "" {
             var marker = " ";
             if registry.ShortcutHasConflict(cmd.shortcut) { marker = "!"; }
-            shell.outputListBox.AddItem(marker + " " + cmd.shortcut + "  " + cmd.label);
+            shell.AddOutputDisplayLine(marker + " " + cmd.shortcut + "  " + cmd.label);
         }
         i = i + 1;
     }
@@ -405,15 +405,17 @@ func handleRecentFiles(shell: app_shell.AppShell,
     shell.BeginOutputRows();
     var count = sessionMgr.RecentFileCount();
     if count <= 0 {
-        shell.outputListBox.AddItem("Recent Files - none");
+        shell.AddOutputDisplayLine("Recent Files - none");
     } else {
-        shell.outputListBox.AddItem("Recent Files");
+        shell.AddOutputDisplayLine("Recent Files");
         var i = 0;
         while i < count {
             var path = sessionMgr.RecentFileAt(i);
             if path != "" {
-                var item = shell.outputListBox.AddItem("  " + Path.Name(path) + "  -  " + path);
-                GUI.ListBox.ItemSetData(item, "file:" + path);
+                var item = shell.AddOutputDisplayLine("  " + Path.Name(path) + "  -  " + path);
+                if item != null {
+                    GUI.ListBox.ItemSetData(item, "file:" + path);
+                }
             }
             i = i + 1;
         }

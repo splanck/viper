@@ -117,7 +117,7 @@ class DocumentManager {
             doc.lastModifiedOnDisk = IO.File.Modified(path);
             doc.lastSizeOnDisk = IO.File.Size(path);
         }
-        doc.externalChangeNotified = false;
+        ClearExternalState(doc);
 
         documents.add(doc);
         activeIndex = documents.count() - 1;
@@ -137,12 +137,18 @@ class DocumentManager {
         var doc = documents.get(index);
         if doc.isNew { return false; }
         if doc.isReadOnlyPreview { return false; }
-        if WriteExistingTextAtomically(doc.filePath, doc.content) == false {
-            return false;
+        if IO.File.Exists(doc.filePath) {
+            if WriteExistingTextAtomically(doc.filePath, doc.content) == false {
+                return false;
+            }
+        } else {
+            if WriteTextForSaveAs(doc.filePath, doc.content) == false {
+                return false;
+            }
         }
         doc.isModified = false;
         RefreshDiskMetadata(doc);
-        doc.externalChangeNotified = false;
+        ClearExternalState(doc);
         return true;
     }
 
@@ -166,7 +172,7 @@ class DocumentManager {
         doc.isNew = false;
         doc.isModified = false;
         RefreshDiskMetadata(doc);
-        doc.externalChangeNotified = false;
+        ClearExternalState(doc);
         return true;
     }
 
@@ -188,10 +194,10 @@ class DocumentManager {
         while i < documents.count() {
             var doc = documents.get(i);
             if doc.isModified and doc.isNew == false and doc.isReadOnlyPreview == false {
-                if WriteExistingTextAtomically(doc.filePath, doc.content) {
+                if HasExternalChange(i) == false and WriteExistingTextAtomically(doc.filePath, doc.content) {
                     doc.isModified = false;
                     RefreshDiskMetadata(doc);
-                    doc.externalChangeNotified = false;
+                    ClearExternalState(doc);
                     count = count + 1;
                 }
             }
@@ -298,6 +304,15 @@ class DocumentManager {
         doc.lastSizeOnDisk = IO.File.Size(doc.filePath);
     }
 
+    /// @brief Clear all remembered external-disk conflict state for @p doc.
+    /// @details Called after successful load, reload, save, and path retargeting.
+    hide func ClearExternalState(doc: document.Document) {
+        if doc == null { return; }
+        doc.externalChangeNotified = false;
+        doc.externalState = document.EXTERNAL_STATE_CLEAN;
+        doc.externalMessage = "";
+    }
+
     /// @brief Compute the last line number of an existing file for full-file replacement.
     /// @details The runtime workspace edit range is expressed in 1-based line and
     ///          column coordinates. This helper reads the current on-disk file so
@@ -339,14 +354,85 @@ class DocumentManager {
     }
 
     expose func HasExternalChange(index: Integer) -> Boolean {
-        if index < 0 or index >= documents.count() { return false; }
+        return ExternalState(index) != document.EXTERNAL_STATE_CLEAN;
+    }
+
+    /// @brief Return the current disk state for an open document.
+    /// @details The probe considers explicit watcher hints first, then verifies
+    ///          whether the path exists and whether its timestamp or size changed.
+    expose func ExternalState(index: Integer) -> Integer {
+        if index < 0 or index >= documents.count() { return document.EXTERNAL_STATE_CLEAN; }
         var doc = documents.get(index);
-        if doc.isNew { return false; }
-        if IO.File.Exists(doc.filePath) == false { return false; }
-        var current = IO.File.Modified(doc.filePath);
-        var currentSize = IO.File.Size(doc.filePath);
-        return doc.lastModifiedOnDisk > 0
-            and (current != doc.lastModifiedOnDisk or currentSize != doc.lastSizeOnDisk);
+        if doc == null or doc.isNew or doc.filePath == "" { return document.EXTERNAL_STATE_CLEAN; }
+        if doc.externalState != document.EXTERNAL_STATE_CLEAN {
+            return doc.externalState;
+        }
+        if IO.File.Exists(doc.filePath) == false {
+            return document.EXTERNAL_STATE_MISSING;
+        }
+        if doc.lastModifiedOnDisk > 0 {
+            var current = IO.File.Modified(doc.filePath);
+            var currentSize = IO.File.Size(doc.filePath);
+            if current != doc.lastModifiedOnDisk or currentSize != doc.lastSizeOnDisk {
+                return document.EXTERNAL_STATE_CHANGED;
+            }
+        }
+        return document.EXTERNAL_STATE_CLEAN;
+    }
+
+    /// @brief Mark an open document with a watcher-derived disk state.
+    expose func MarkExternalState(index: Integer,
+                                  state: Integer,
+                                  message: String) {
+        if index < 0 or index >= documents.count() { return; }
+        var doc = documents.get(index);
+        if doc == null { return; }
+        doc.externalState = state;
+        doc.externalMessage = message;
+        doc.externalChangeNotified = true;
+    }
+
+    /// @brief Refresh and remember the current disk state for @p index.
+    /// @return The state after probing.
+    expose func RefreshExternalState(index: Integer,
+                                     hintedState: Integer,
+                                     message: String) -> Integer {
+        if index < 0 or index >= documents.count() { return document.EXTERNAL_STATE_CLEAN; }
+        var doc = documents.get(index);
+        if doc == null or doc.isNew or doc.filePath == "" { return document.EXTERNAL_STATE_CLEAN; }
+        if hintedState != document.EXTERNAL_STATE_CLEAN {
+            MarkExternalState(index, hintedState, message);
+            return hintedState;
+        }
+        var state = ExternalState(index);
+        if state == document.EXTERNAL_STATE_CLEAN {
+            ClearExternalState(doc);
+        } else {
+            MarkExternalState(index, state, message);
+        }
+        return state;
+    }
+
+    /// @brief User-facing label for the current external disk state.
+    expose func ExternalStateMessage(index: Integer) -> String {
+        if index < 0 or index >= documents.count() { return ""; }
+        var doc = documents.get(index);
+        if doc == null { return ""; }
+        if doc.externalMessage != "" { return doc.externalMessage; }
+        var state = ExternalState(index);
+        if state == document.EXTERNAL_STATE_CHANGED {
+            return doc.fileName + " changed on disk";
+        }
+        if state == document.EXTERNAL_STATE_DELETED {
+            return doc.fileName + " was deleted on disk";
+        }
+        if state == document.EXTERNAL_STATE_RENAMED {
+            return doc.fileName + " was renamed or moved on disk";
+        }
+        if state == document.EXTERNAL_STATE_MISSING {
+            return doc.fileName + " is missing on disk";
+        }
+        return "";
     }
 
     /// @brief Reload an existing document through the same safety rules as OpenFile.
@@ -365,7 +451,7 @@ class DocumentManager {
         doc.content = OpenableTextForPath(doc.filePath, doc.kind);
         RefreshDiskMetadata(doc);
         doc.isModified = false;
-        doc.externalChangeNotified = false;
+        ClearExternalState(doc);
         return true;
     }
 
@@ -572,7 +658,7 @@ class DocumentManager {
         doc.language = file_utils.DetectLanguage(newPath);
         doc.kind = file_utils.DetectKind(newPath);
         RefreshDiskMetadata(doc);
-        doc.externalChangeNotified = false;
+        ClearExternalState(doc);
     }
 
     hide func UpdateRecentlyClosedPath(oldPath: String, newPath: String) -> Boolean {

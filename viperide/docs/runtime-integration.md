@@ -92,8 +92,8 @@ until the UI uses virtual row realization end to end.
 ViperIDE uses:
 
 - `StartWithEnv(program, args, cwd, env)`.
-- `ReadStdout()`.
-- `ReadStderr()`.
+- `ReadStdoutResult()`.
+- `ReadStderrResult()`.
 - `WriteStdin()`.
 - `IsRunning()`.
 - `ExitCode()`.
@@ -106,8 +106,9 @@ Important constraints:
 - The process runtime does not search `PATH` for bare executables in the way a
   shell would, so ViperIDE resolves the `viper` and `git` paths before launch.
 - IDE-side retained output is bounded to avoid runaway memory usage.
-- Runtime process buffers are finite. Excessive child output must be handled
-  carefully by draining promptly and truncating at the IDE layer.
+- Runtime process buffers are finite. ViperIDE uses result reads so overflow
+  returns `{ text, truncated }` instead of trapping the IDE; callers append a
+  visible truncation marker and still keep their own retained-output caps.
 
 ## PTY Runtime
 
@@ -118,7 +119,7 @@ ViperIDE uses:
 - `Pty.IsSupported()`.
 - `Pty.LastError()`.
 - `Pty.Open(program, args, cwd, env, cols, rows)`.
-- `PtySession.Read()`.
+- `PtySession.ReadResult()`.
 - `PtySession.Write()`.
 - `PtySession.Resize()`.
 - `PtySession.IsRunning()`.
@@ -136,7 +137,8 @@ IDE constraints:
 
 - The terminal controller estimates columns and rows from OutputPane dimensions
   because font metrics are not exposed.
-- Output deltas are bounded per update.
+- Output deltas are bounded per update. Runtime and frame-level truncation are
+  surfaced in the terminal stream instead of being dropped silently.
 - Stop kills and destroys the PTY session.
 - Restart destroys the previous session and opens a new one.
 
@@ -163,6 +165,7 @@ Current constraints:
 - Project tree exclusion checks.
 - Quick Open cache population.
 - Project search enumeration.
+- Completion workspace-symbol source discovery.
 - Zia workspace indexing source discovery.
 
 It applies hard excludes, `.gitignore` support implemented by the runtime, and
@@ -175,6 +178,11 @@ process-local cursor for sequential calls with the same key and offset so large
 workspace consumers can avoid repeatedly walking from the root. Callers must
 still treat `nextOffset`, `done`, and `truncated` as the protocol; there is no
 public cursor handle to close.
+
+User-facing project search and completion workspace-symbol discovery must use
+`Page`-backed discovery. A visible explorer tree or partially warmed Quick Open
+cache is allowed as a UI hint, but it is not authoritative enough for complete
+workspace queries.
 
 ### Workspace.Edit
 

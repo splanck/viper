@@ -469,7 +469,7 @@ func main() {
         perfMon.AddDiagnostics(perfSpan);
         perfSpan = perfMon.StartSpan();
         build_commands.UpdateJob(shell, buildSys, locStore);
-        debug_commands.DebugUpdate(shell, docMgr, engine, tabs, dbgSession);
+        debug_commands.DebugUpdate(shell, docMgr, engine, tabs, breakpointStore, dbgSession);
         shell.SetDebugSessionState(dbgSession.IsActive(), dbgSession.stopped, buildSys.IsActive());
         perfMon.AddBuild(perfSpan);
         if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {

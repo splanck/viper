@@ -203,9 +203,9 @@ func main() {
         fail(shell, "copy output row");
         return;
     }
-    shell.outputListBox.Clear();
-    var rangeA = shell.outputListBox.AddItem("range one");
-    var rangeB = shell.outputListBox.AddItem("range two");
+    shell.BeginOutputRows();
+    var rangeA = shell.AddOutputDisplayLine("range one");
+    var rangeB = shell.AddOutputDisplayLine("range two");
     shell.outputListBox.Select(rangeA);
     shell.outputListBox.Select(rangeB);
     if copySelectedClipboardEquals(shell, "range one\nrange two") == false {
@@ -584,7 +584,7 @@ func main() {
         fail(shell, "debug console rows");
         return;
     }
-    shell.referencesListBox.AddItem("main.zia");
+    shell.AddToolPlainRow(shell.referencesListBox, "main.zia", 0);
     shell.ShowReferencesPanel();
     if !shell.referencesListBox.IsVisible() or shell.toolTabBar.GetActiveIndex() != 3 {
         fail(shell, "references panel rows");

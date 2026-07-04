@@ -31,6 +31,7 @@ class ScmView {
     expose GUI.ListBox statusList;
     expose GUI.TextInput commitInput;
     expose GUI.Button refreshBtn;
+    expose GUI.Button cancelBtn;
     expose GUI.Button pushBtn;
     expose GUI.Button pullBtn;
     expose GUI.Button stageBtn;
@@ -60,6 +61,7 @@ class ScmView {
         var topRow = GUI.HBox.New();
         host.AddChild(topRow);
         refreshBtn = GUI.Button.New(topRow, "Refresh");
+        cancelBtn = GUI.Button.New(topRow, "Cancel");
         pushBtn = GUI.Button.New(topRow, "Push");
         pullBtn = GUI.Button.New(topRow, "Pull");
 
@@ -249,6 +251,17 @@ class ScmView {
         if ready == false { return; }
 
         if activeJob != null {
+            if cancelBtn != null and cancelBtn.WasClicked() {
+                var kind = activeJob.kind;
+                activeJob.Kill();
+                activeJob = null;
+                statusLabel.SetText("Canceled git " + kind);
+                if diffPane != null {
+                    diffPane.Append("\n[canceled git " + kind + "]\n");
+                }
+                StartJob(git.StartStatus(), "Refreshing status...");
+                return;
+            }
             if activeJob.Pump() == false {
                 CompleteJob(activeJob);
             } else {

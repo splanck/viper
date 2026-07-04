@@ -41,6 +41,7 @@
 #include "rt_pty.h"
 
 #include "rt_internal.h"
+#include "rt_map.h"
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_result.h"
@@ -242,16 +243,48 @@ static int buffer_append(pty_buffer *buf, const char *data, size_t len) {
     return 1;
 }
 
-static rt_string buffer_take(pty_buffer *buf) {
-    if (!buf || buf->len == 0)
+static rt_string buffer_take_string(pty_buffer *buf, int *was_truncated) {
+    int truncated = buf ? buf->truncated : 0;
+    if (was_truncated)
+        *was_truncated = truncated;
+    if (!buf) {
+        return empty_string();
+    }
+    buf->truncated = 0;
+    if (buf->len == 0)
         return empty_string();
     rt_string out = rt_string_from_bytes(buf->data, buf->len);
     buf->len = 0;
-    if (buf->truncated) {
-        buf->truncated = 0;
+    return out;
+}
+
+static rt_string buffer_take(pty_buffer *buf) {
+    int truncated = 0;
+    rt_string out = buffer_take_string(buf, &truncated);
+    if (truncated) {
         rt_trap("Pty: output truncated");
     }
     return out;
+}
+
+static void map_set_string_owned(void *map, const char *key, rt_string value) {
+    if (!map || !key)
+        return;
+    rt_map_set_str(map, rt_const_cstr(key), value ? value : rt_const_cstr(""));
+}
+
+static void *buffer_take_result(pty_buffer *buf) {
+    int truncated = 0;
+    rt_string text = buffer_take_string(buf, &truncated);
+    void *result = rt_map_new();
+    if (!result) {
+        rt_str_release_maybe(text);
+        return NULL;
+    }
+    map_set_string_owned(result, "text", text);
+    rt_map_set_bool(result, rt_const_cstr("truncated"), truncated ? 1 : 0);
+    rt_str_release_maybe(text);
+    return result;
 }
 
 static void buffer_free(pty_buffer *buf) {
@@ -1207,6 +1240,14 @@ rt_string rt_pty_read(void *handle) {
         return empty_string();
     pty_drain(pty);
     return buffer_take(&pty->output_buf);
+}
+
+void *rt_pty_read_result(void *handle) {
+    rt_pty_impl *pty = pty_checked(handle);
+    if (!pty || !pty->started || pty->destroyed)
+        return buffer_take_result(NULL);
+    pty_drain(pty);
+    return buffer_take_result(&pty->output_buf);
 }
 
 int64_t rt_pty_write(void *handle, rt_string data) {

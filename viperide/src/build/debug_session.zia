@@ -73,6 +73,9 @@ class DebugSession {
     expose Boolean dirty;
     expose Boolean terminateRequested;
     expose Time.Countdown terminateCountdown;
+    expose Boolean restartPending;
+    expose String restartViperBin;
+    expose String restartPath;
 
     expose func init() {
         processHandle = null;
@@ -105,6 +108,9 @@ class DebugSession {
         dirty = false;
         terminateRequested = false;
         terminateCountdown = Time.Countdown.New(TERMINATE_GRACE_MS);
+        restartPending = false;
+        restartViperBin = "";
+        restartPath = "";
     }
 
     /// @brief Launch the adapter for @p path and install its breakpoints.
@@ -138,6 +144,9 @@ class DebugSession {
         dirty = true;
         terminateRequested = false;
         terminateCountdown.Reset();
+        restartPending = false;
+        restartViperBin = "";
+        restartPath = "";
 
         processHandle.WriteStdin(buildSetBreakpoints(path, store) + "\n");
         processHandle.WriteStdin("{\"type\":\"launch\"}\n");
@@ -358,6 +367,29 @@ class DebugSession {
         return RequestTerminate();
     }
 
+    /// @brief Queue a restart and begin asynchronous termination of this adapter.
+    /// @details Launching happens from debug_commands.DebugUpdate after Poll()
+    ///          observes the old process has stopped, so two adapters never race
+    ///          for the same debug UI state.
+    expose func RequestRestart(viperBin: String,
+                               path: String) -> Boolean {
+        if viperBin == "" or path == "" { return false; }
+        if IsActive() == false {
+            return false;
+        }
+        restartPending = true;
+        restartViperBin = viperBin;
+        restartPath = path;
+        return RequestTerminate();
+    }
+
+    /// @brief Clear any queued restart after it launches or is canceled.
+    expose func ClearRestartRequest() {
+        restartPending = false;
+        restartViperBin = "";
+        restartPath = "";
+    }
+
     expose func IsActive() -> Boolean {
         return hasSession and terminated == false;
     }
@@ -376,10 +408,8 @@ class DebugSession {
 
         if terminated == false and processHandle.IsRunning() == false {
             // Final drain after the child exited.
-            var tailOut = processHandle.ReadStdout();
-            if tailOut != "" { programOutput = AppendBoundedOutput(programOutput, tailOut); }
-            var tailErr = processHandle.ReadStderr();
-            if tailErr != "" { ctrlBuf = ctrlBuf + tailErr; drainControlLines(); }
+            AppendStdoutResult(processHandle.ReadStdoutResult());
+            AppendStderrResult(processHandle.ReadStderrResult());
             if terminated == false {
                 exitCode = processHandle.ExitCode();
                 terminated = true;
@@ -399,16 +429,35 @@ class DebugSession {
     ///          shutdown messages are not lost when Stop is clicked.
     hide func drainProcessOutput() {
         if processHandle == null { return; }
-        var out = processHandle.ReadStdout();
+        AppendStdoutResult(processHandle.ReadStdoutResult());
+        AppendStderrResult(processHandle.ReadStderrResult());
+    }
+
+    hide func AppendStdoutResult(result: Any) {
+        if result == null { return; }
+        var out = Map.GetStr(result, "text");
         if out != "" {
             programOutput = AppendBoundedOutput(programOutput, out);
             dirty = true;
         }
+        if Map.GetBool(result, "truncated") {
+            programOutput = AppendBoundedOutput(programOutput,
+                                                "\n[debug stdout truncated by runtime]\n");
+            dirty = true;
+        }
+    }
 
-        var err = processHandle.ReadStderr();
+    hide func AppendStderrResult(result: Any) {
+        if result == null { return; }
+        var err = Map.GetStr(result, "text");
         if err != "" {
             ctrlBuf = ctrlBuf + err;
             drainControlLines();
+        }
+        if Map.GetBool(result, "truncated") {
+            programOutput = AppendBoundedOutput(programOutput,
+                                                "\n[debug stderr truncated by runtime]\n");
+            dirty = true;
         }
     }
 

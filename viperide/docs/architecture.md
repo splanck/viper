@@ -214,6 +214,9 @@ project manifest. It never invokes a shell.
 `build/debug_session.zia` launches `viper run --debug-adapter <file>` as an
 external process, sends newline JSON commands on stdin, consumes sentinel-tagged
 newline JSON debug events on stderr, and surfaces program stdout separately.
+Restart is an asynchronous state transition: the active adapter is asked to
+terminate, the frame pump waits until the process has actually exited, and only
+then is the replacement adapter launched with the current breakpoint set.
 
 ### Terminal
 
@@ -232,7 +235,9 @@ scope for the current OutputPane terminal mode.
 sequences. It resolves `git`, captures stdout/stderr/exit code, parses
 porcelain v2 status, and keeps blocking compatibility wrappers for probes and
 older call sites. `scm_view.zia` pumps one active Git job at a time and
-maintains the Source Control UI state.
+maintains the Source Control UI state. Active Git jobs expose cancellation, and
+stdout/stderr capture uses the process read-result API so excessive output is
+reported as truncated rather than trapping the workbench.
 
 The Source Control view is intentionally lightweight. Push and pull are
 long-running operations with basic progress/error text rather than rich
@@ -247,10 +252,11 @@ debug panels, terminal, and Source Control view. Other subsystems receive
 references to widgets owned by `AppShell`.
 
 Current tool panels include Problems, Output, Search, References, Debug Console,
-Variables, Call Stack, Debug, and Terminal. Many rows are still implemented with
-ListBox-style widgets plus structured location ids. `Viper.GUI.VirtualList`
-exists as a runtime helper, but most tool surfaces are not true virtualized UI
-widgets yet.
+Variables, Call Stack, Debug, and Terminal. Problems, Search, References, Debug
+Console, Variables, and Call Stack share a bounded stable-row model; Output has
+its own bounded row/raw-pane model. The concrete widgets are still
+ListBox/OutputPane surfaces, so this is not yet a fully virtualized dockable
+workbench, but rows now have a consistent data boundary and memory cap.
 
 ## File Size Budget
 

@@ -404,9 +404,9 @@ expose func InvalidateWorkspaceLocations(shell: app_shell.AppShell,
     }
     if shell != null {
         shell.ClearProblemsPanel();
-        shell.searchListBox.Clear();
+        shell.ClearToolRows(shell.searchListBox);
         shell.HideSearchPanel();
-        shell.referencesListBox.Clear();
+        shell.ClearToolRows(shell.referencesListBox);
         shell.HideReferencesPanel();
         shell.minimap.ClearMarkers();
     }

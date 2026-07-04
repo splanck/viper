@@ -15,13 +15,14 @@ integrated terminal, and lightweight Git operations.
 It is not yet a polished product-complete IDE. The largest current gaps are:
 
 - Scene documents are recognized but do not have a visual scene editor.
-- Bottom tool surfaces are still largely listbox/output-pane based rather than
-  fully virtualized, dockable workbench views.
+- Bottom tool surfaces now share bounded stable-row models, but they are still
+  listbox/output-pane based rather than fully virtualized, dockable workbench
+  views.
 - Source Control is async and useful for common local Git actions, but still not
   a full Git client.
 - BASIC lacks project-index-backed semantic navigation and rename.
-- Debugging has persistent watch expressions, but still lacks rich expandable
-  variable trees and watch-management polish.
+- Debugging has persistent watch expressions and grouped watch/local rendering,
+  but still lacks rich object expansion and watch-management polish.
 - Some workflow prompts and overlays are still modal or command-palette based,
   although project search now uses a docked non-modal panel.
 - The application source still has several oversized coordinator modules.
@@ -90,14 +91,14 @@ debug inspection.
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
 | Scene files | Partial | `.scene` and `.level` are detected, saved, restored, and filtered, but display as text. |
 | Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
-| Search | Implemented | Docked project/folder search panel, literal/regex, case/word filters, include/exclude filters, grouped results. |
+| Search | Implemented | Docked project/folder search panel, runtime-paged file discovery, literal/regex, case/word filters, include/exclude filters, grouped results. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
-| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
+| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
 | Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Handles common line/display clears, but not a full terminal emulator. |
 | Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces/renames covered. |
 | Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options. |
 | Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
-| File watching | Implemented with limits | Active file watcher, inactive document polling, and capped recursive workspace watcher set with fallback scans. |
+| File watching | Implemented with limits | Active file watcher, inactive document polling, missing/deleted/moved-file conflict state, and capped recursive workspace watcher set with fallback scans. |
 | Visual polish | Partial | Functional shell, activity bar, status, panels; still reads as utilitarian/prototype in places. |
 | Cross-platform | Intended | Runtime adapters exist for process, PTY, GUI; display/runtime behavior still needs regular platform smoke. |
 
@@ -198,6 +199,8 @@ Known limits:
 - Ignore behavior is whatever `Viper.Workspace.FileIndex` supports; do not
   assume full Git ignore semantics beyond what the runtime implements.
 - Very large workspaces depend on cooperative cache/index pumping.
+- Quick Open and completion file discovery use runtime `FileIndex.Page` instead
+  of treating the visible tree as a complete workspace snapshot.
 
 ### Bottom Panels
 
@@ -213,10 +216,11 @@ Current bottom panel tabs:
 - Debug.
 - Terminal.
 
-Output rows are bounded by an OutputPane ring buffer, and tool rows are mostly
-list-backed. This prevents runaway UI memory in normal cases but is not the
-same as a fully virtualized workbench surface for very large logs/search
-results.
+Output rows are bounded by an OutputPane ring buffer plus a bounded row model.
+Problems, Search, References, Debug Console, Variables, and Call Stack share a
+bounded stable-row model. This prevents runaway UI memory in normal cases and
+gives panel rows stable identities, but it is not the same as a fully
+virtualized dockable workbench surface for very large logs/search results.
 
 ### Debugger
 
@@ -234,19 +238,24 @@ Supported behavior:
 - Continue, pause, step over, step in, step out.
 - Run to cursor.
 - Stop and restart.
+- Restart waits for the previous adapter process to terminate before launching
+  a replacement.
 - Current-line gutter marker.
 - Locals and call stack at stop points.
 - Expression evaluation while stopped.
 - Persistent watch expressions, shown in the Variables panel above locals.
+- Variables panel rows are grouped through a `VirtualTree` model for Watches and
+  Locals before being rendered into the current ListBox UI.
 - Debug console output.
 
 Known debugger UX gaps:
 
 - Watch expressions do not yet have a dedicated management panel.
-- Variables are rendered as flat rows, not expandable trees.
+- Variables are grouped, but object values are not expandable because the debug
+  adapter currently returns flat local/watch values.
 - Breakpoint metadata editing exists, but the UX is still lightweight.
-- Session state could be clearer when launching, running, stopping, and
-  terminating.
+- Session state could still be clearer while a long graceful stop/restart is
+  waiting for process exit.
 
 ### Terminal
 
@@ -285,8 +294,10 @@ It supports:
 
 Known limits:
 
-- Git operations run through `Viper.System.Process` and do not block the frame
-  loop, but the UI still shows only one active Source Control job at a time.
+- Git operations run through `Viper.System.Process`, use non-trapping
+  stdout/stderr result reads, and do not block the frame loop, but the UI still
+  shows only one active Source Control job at a time.
+- Active Source Control jobs can be canceled from the view.
 - Push and pull can be long-running and have no rich progress or credential UI.
 - Status parsing uses porcelain v2 and handles common spaces/renames, but exotic
   path bytes and complex conflict states still need more coverage.
@@ -301,7 +312,9 @@ Implemented protections:
 - Save All skips untitled and read-only preview buffers.
 - Existing-file saves use `Viper.Workspace.Edit.ApplyInRoot`.
 - Save As uses same-directory temporary writes for new files.
-- File watchers detect external changes.
+- File watchers detect external changes, deletions, and missing/moved files;
+  saves after a missing-file conflict require confirmation before recreating the
+  original path.
 - Session restore persists unsaved small text buffers as bounded base64 recovery
   data.
 - Build/debug preflight can save all modified files before launching.
@@ -319,8 +332,9 @@ These gaps are current documentation, not a plan commitment:
 
 - Replace ambiguous toolbar glyphs with a coherent icon system.
 - Move remaining prompt-style workflows into non-modal workbench overlays.
-- Make tool panels resizable, virtualized, and more consistent.
-- Add richer debugger variable-tree and watch-management UX.
+- Make tool panels resizable and fully virtualized beyond the current bounded
+  stable-row model.
+- Add richer debugger object expansion and watch-management UX.
 - Harden Source Control progress, conflict, credential, and recovery workflows.
 - Add real scene editing before advertising scene editor functionality.
 - Split oversized coordinator modules.
@@ -338,8 +352,8 @@ Use these phrasing rules when updating user-facing docs:
 - Say "Git Source Control view" instead of "SCM platform".
 - Say "scene files are recognized and open as text" instead of "scene editor".
 - Say "debug adapter supports stepping, breakpoints, locals, call stack,
-  evaluate, and watches" while still mentioning missing variable-tree and
-  watch-management UX.
+  evaluate, watches, and grouped watch/local rows" while still mentioning
+  missing object expansion and watch-management UX.
 
 The goal is to make the app feel more trustworthy by making the docs less
 optimistic than the code.

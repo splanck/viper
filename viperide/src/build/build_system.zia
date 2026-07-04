@@ -6,6 +6,7 @@ bind "diagnostic_parser";
 bind "run_config";
 bind Viper.String as Str;
 bind Viper.Collections.Seq as Seq;
+bind Viper.Collections.Map as Map;
 bind Viper.Core.Object as Obj;
 bind Viper.System.Process as Process;
 bind Viper.System.Environment as Env;
@@ -224,18 +225,14 @@ class BuildSystem {
 
     expose func Update() -> Boolean {
         if processHandle == null { return false; }
-        var out = processHandle.ReadStdout();
-        var err = processHandle.ReadStderr();
-        AppendOutput(out);
-        AppendOutput(err);
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
 
         if processHandle.IsRunning() {
             return true;
         }
-        out = processHandle.ReadStdout();
-        err = processHandle.ReadStderr();
-        AppendOutput(out);
-        AppendOutput(err);
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
         Finish(processHandle.ExitCode());
         processHandle.Destroy();
         processHandle = null;
@@ -245,15 +242,22 @@ class BuildSystem {
     expose func Stop() -> Boolean {
         if processHandle == null { return false; }
         var killed = processHandle.Kill();
-        var out = processHandle.ReadStdout();
-        var err = processHandle.ReadStderr();
-        AppendOutput(out);
-        AppendOutput(err);
+        AppendReadResult(processHandle.ReadStdoutResult(), "stdout");
+        AppendReadResult(processHandle.ReadStderrResult(), "stderr");
         Finish(-1);
         processHandle.Destroy();
         processHandle = null;
         AppendOutput("\n[stopped]\n");
         return killed;
+    }
+
+    func AppendReadResult(result: Any,
+                          streamName: String) {
+        if result == null { return; }
+        AppendOutput(Map.GetStr(result, "text"));
+        if Map.GetBool(result, "truncated") {
+            AppendOutput("\n[" + streamName + " output truncated by runtime]\n");
+        }
     }
 
     func AppendOutput(text: String) {

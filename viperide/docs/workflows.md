@@ -257,13 +257,13 @@ Debug output is split between:
 - Program output.
 - Debug console/control messages.
 - Variables panel.
-- Watch rows above locals in the Variables panel.
+- Grouped watch and local rows in the Variables panel.
 - Call Stack panel.
 - Current-line gutter marker.
 
 Limitations:
 
-- Variables are flat rows.
+- Variables are grouped, but object values are not expandable.
 - Watch expressions do not yet have dedicated add/remove management UI.
 - Debug session state is functional but still visually light.
 

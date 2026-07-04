@@ -331,8 +331,13 @@ func handleReload(shell: app_shell.AppShell,
         var doc = reloadDoc!;
         if doc.isNew == false {
             if docMgr.ReloadDocument(docMgr.activeIndex) == false {
-                shell.SetStatusLeft("Reload failed: " + doc.fileName);
-                GUI.Toast.Warning("Could not reload file");
+                if IO.File.Exists(doc.filePath) == false {
+                    shell.SetStatusLeft("Reload failed: file is missing on disk");
+                    GUI.Toast.Warning("The file was deleted or moved on disk");
+                } else {
+                    shell.SetStatusLeft("Reload failed: " + doc.fileName);
+                    GUI.Toast.Warning("Could not reload file");
+                }
                 return;
             }
             engine.LoadDocument(doc);
@@ -501,7 +506,7 @@ func AutoSaveActive(shell: app_shell.AppShell,
     if doc.isNew or doc.isModified == false { return false; }
     if doc.isReadOnlyPreview { return false; }
     if docMgr.HasExternalChange(docMgr.activeIndex) {
-        shell.SetStatusLeft("Auto-save paused: file changed on disk");
+        shell.SetStatusLeft("Auto-save paused: " + docMgr.ExternalStateMessage(docMgr.activeIndex));
         return false;
     }
     NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
@@ -834,15 +839,28 @@ func DocumentIsUnderPath(doc: document.Document, path: String) -> Boolean {
 func confirmOverwriteExternal(shell: app_shell.AppShell,
                               docMgr: document_manager.DocumentManager,
                               index: Integer) -> Boolean {
-    if docMgr.HasExternalChange(index) == false {
+    var state = docMgr.ExternalState(index);
+    if state == document.EXTERNAL_STATE_CLEAN {
         return true;
     }
     var doc = docMgr.documents.get(index);
+    var title = "File Changed on Disk";
+    var msg = doc.fileName + " changed on disk since it was opened or saved.\nOverwrite it?";
+    if state == document.EXTERNAL_STATE_DELETED {
+        title = "File Deleted on Disk";
+        msg = doc.fileName + " was deleted on disk.\nRecreate it at the original path?";
+    } else if state == document.EXTERNAL_STATE_RENAMED {
+        title = "File Moved on Disk";
+        msg = doc.fileName + " was renamed or moved on disk.\nRecreate it at the original path?";
+    } else if state == document.EXTERNAL_STATE_MISSING {
+        title = "File Missing on Disk";
+        msg = doc.fileName + " is missing on disk.\nRecreate it at the original path?";
+    }
     var confirmed = GUI.MessageBox.Confirm(
-        "File Changed on Disk",
-        doc.fileName + " changed on disk since it was opened or saved.\nOverwrite it?");
+        title,
+        msg);
     if confirmed == 0 {
-        shell.SetStatusLeft("Save canceled: external change");
+        shell.SetStatusLeft("Save canceled: " + docMgr.ExternalStateMessage(index));
         return false;
     }
     return true;

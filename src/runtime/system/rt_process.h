@@ -52,8 +52,14 @@ int64_t rt_process_is_running(void *handle);
 /// @brief Read currently buffered stdout plus any immediately available bytes.
 rt_string rt_process_read_stdout(void *handle);
 
+/// @brief Read stdout as `{ text, truncated }` without trapping on output truncation.
+void *rt_process_read_stdout_result(void *handle);
+
 /// @brief Read currently buffered stderr plus any immediately available bytes.
 rt_string rt_process_read_stderr(void *handle);
+
+/// @brief Read stderr as `{ text, truncated }` without trapping on output truncation.
+void *rt_process_read_stderr_result(void *handle);
 
 /// @brief Write bytes to the child's stdin pipe.
 /// @param handle Process handle.
