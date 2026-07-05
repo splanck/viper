@@ -151,11 +151,19 @@ class ScmView {
                 commitInput.SetText("");
             }
         } else {
-            statusLabel.SetText(JobLabel(job.kind) + " failed (" + job.exitCode + ")");
+            var combined = job.CombinedOutput();
+            var hint = scm_git.FailureHint(job.kind, combined);
+            if hint != "" {
+                statusLabel.SetText(JobLabel(job.kind) + " needs attention");
+            } else {
+                statusLabel.SetText(JobLabel(job.kind) + " failed (" + job.exitCode + ")");
+            }
             if diffPane != null {
                 diffPane.Clear();
-                var combined = job.CombinedOutput();
                 if combined == "" { combined = "git " + job.kind + " failed"; }
+                if hint != "" {
+                    diffPane.Append(hint + "\n\n");
+                }
                 diffPane.Append(combined + "\n");
             }
         }

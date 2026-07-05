@@ -274,6 +274,13 @@ class DebugSession {
         return true;
     }
 
+    /// @brief Add a persistent watch expression for this debug session.
+    /// @details Duplicate and blank expressions are ignored. When execution is
+    ///          currently stopped, adding the watch immediately starts a refresh
+    ///          so the Variables panel can show a value without waiting for the
+    ///          next breakpoint.
+    /// @param expr Expression text to evaluate in the current frame.
+    /// @return True when the watch was added; false for blank or duplicate text.
     expose func AddWatch(expr: String) -> Boolean {
         var clean = Str.Trim(expr);
         if clean == "" { return false; }
@@ -288,20 +295,64 @@ class DebugSession {
         return true;
     }
 
+    /// @brief Remove the watch expression at @p index.
+    /// @details Refresh bookkeeping is adjusted so an in-flight watch refresh
+    ///          does not continue to target a removed row. The session is marked
+    ///          dirty so the UI refreshes even when no adapter event arrives.
+    /// @param index Zero-based watch row index.
+    /// @return True when a watch was removed.
     expose func RemoveWatch(index: Integer) -> Boolean {
         if index < 0 or index >= watchExprs.count() { return false; }
+        var removedExpr = Obj.ToString(watchExprs.get(index));
         watchExprs.removeAt(index);
         watchValues.removeAt(index);
         watchTypes.removeAt(index);
         watchOk.removeAt(index);
         if watchRefreshIndex >= index { watchRefreshIndex = watchRefreshIndex - 1; }
+        if watchRequestExpr == removedExpr {
+            watchRequestActive = false;
+            watchRequestExpr = "";
+        }
+        dirty = true;
+        if stopped and watchRefreshIndex >= 0 {
+            PumpWatchRequest();
+        }
         return true;
     }
 
+    /// @brief Remove all watch expressions and pending watch refresh state.
+    /// @details Manual evaluate results are left intact; only the persistent
+    ///          watch list backing the Variables panel is cleared.
+    /// @return Nothing.
+    expose func ClearWatches() {
+        watchExprs.clear();
+        watchValues.clear();
+        watchTypes.clear();
+        watchOk.clear();
+        watchRefreshIndex = -1;
+        watchRequestActive = false;
+        watchRequestExpr = "";
+        dirty = true;
+    }
+
+    /// @brief Return the number of persistent watch expressions.
+    /// @return Number of watch expressions currently stored on the session.
     expose func WatchCount() -> Integer {
         return watchExprs.count();
     }
 
+    /// @brief Return the raw watch expression at @p i, or "" when out of range.
+    /// @param i Zero-based watch index.
+    /// @return Expression text, or empty string when @p i is invalid.
+    expose func WatchExpression(i: Integer) -> String {
+        if i < 0 or i >= watchExprs.count() { return ""; }
+        return Obj.ToString(watchExprs.get(i));
+    }
+
+    /// @brief Return a display label for watch @p i with its last known value.
+    /// @details Successful watch results include a type suffix when available.
+    ///          Failed or pending values remain visible so the user can tell the
+    ///          expression is being tracked.
     expose func WatchLabel(i: Integer) -> String {
         if i < 0 or i >= watchExprs.count() { return ""; }
         var expr = Obj.ToString(watchExprs.get(i));
@@ -316,6 +367,11 @@ class DebugSession {
         return expr + " = " + value;
     }
 
+    /// @brief Re-evaluate every watch expression at the current stop.
+    /// @details The debug adapter processes one evaluation request at a time, so
+    ///          this method seeds a small state machine that advances from later
+    ///          `evaluated` events in Poll().
+    /// @return Nothing.
     expose func RefreshWatches() {
         ClearWatchValues();
         if watchExprs.count() == 0 or stopped == false {

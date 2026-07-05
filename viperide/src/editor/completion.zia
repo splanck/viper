@@ -50,17 +50,15 @@ final COMPLETION_POPUP_MARGIN = 12.0;
 //     against the active file's directory — without it, completion
 //     loses accuracy whenever the editor opens a file outside the IDE's
 //     working directory.
-//   * SERIALIZED RESULT FORMAT. The engine returns one item per line,
-//     fields tab-separated:  `label \t insertText \t kind \t detail`
-//     We split, trim, and stuff the parts into the listbox plus a
-//     parallel `insertTexts` list for reverse lookup at accept time.
+//   * TYPED RESULT MODEL. Completion rows are converted into
+//     completion_items.CompletionCandidate records before filtering or accepting.
+//     Display strings go to the listbox; edits use the typed candidate object.
 //   * 1-BASED LINE / 0-BASED COL. The engine takes `line` 1-based and
 //     `col` 0-based, mirroring the convention in the rest of the editor
 //     stack. Don't change one without the other.
-//   * PARALLEL insertTexts LIST. The listbox stores the DISPLAY string
-//     (with kind tag and detail); the actual insertion uses a separate
-//     unadorned text. We keep two parallel lists to avoid having to
-//     reparse the display string when the user accepts.
+//   * DERIVED LEGACY LISTS. Older probes inspect exposed label/text lists, so the
+//     controller still mirrors candidates into those fields. Runtime behavior
+//     reads visibleCandidates instead of trusting parallel list alignment.
 //   * AUTO-DISMISS ON LINE CHANGE. If the user moves to a different
 //     line while the popup is showing, the candidates are no longer
 //     valid — Hide() and let the next trigger re-query.
@@ -109,7 +107,7 @@ class CompletionController {
     expose Integer pendingJobCursorCol;
     expose Integer visibleRevision;
 
-    // Cached semantic result plus the filtered visible insertTexts.
+    // Cached semantic results plus derived compatibility lists.
     expose List allLabels;
     expose List allDisplays;
     expose List allInsertTexts;
@@ -120,13 +118,13 @@ class CompletionController {
     expose List allCursorOffsets;
     expose List allCommitCharacters;
     expose List[completion_items.CompletionCandidate] allCandidates;
-    expose List insertTexts;
-    expose List replaceStartLines;
-    expose List replaceStartCols;
-    expose List replaceEndLines;
-    expose List replaceEndCols;
-    expose List cursorOffsets;
-    expose List commitCharacters;
+    expose List insertTexts;       // Derived from visibleCandidates for older probes.
+    expose List replaceStartLines; // Derived from visibleCandidates for older probes.
+    expose List replaceStartCols;  // Derived from visibleCandidates for older probes.
+    expose List replaceEndLines;   // Derived from visibleCandidates for older probes.
+    expose List replaceEndCols;    // Derived from visibleCandidates for older probes.
+    expose List cursorOffsets;     // Derived from visibleCandidates for older probes.
+    expose List commitCharacters;  // Derived from visibleCandidates for older probes.
     expose List[completion_items.CompletionCandidate] visibleCandidates;
     expose project_manager.ProjectManager workspaceProject;
     expose document_manager.DocumentManager workspaceDocs;
@@ -290,10 +288,10 @@ class CompletionController {
 
     /// @brief Start a completion query and show the popup when its result lands.
     /// @note Reads cursor coords from `editor`, sends them through
-    ///       `CompleteForFile` (path-aware), parses the tab-separated
-    ///       result format, populates the listbox, positions the popup
-    ///       under the caret, and focuses the listbox for arrow / Enter
-    ///       navigation. Hides immediately if the engine returns empty.
+    ///       `CompleteForFile` (path-aware), converts structured completion rows
+    ///       into typed candidates, populates the listbox from those candidates,
+    ///       positions the popup under the caret, and keeps focus on the editor for
+    ///       arrow / Enter navigation. Hides immediately if the engine returns empty.
     expose func TriggerCompletion() {
         if enabled == false or editor == null {
             return;
@@ -514,8 +512,9 @@ class CompletionController {
     }
 
     /// @brief Insert the currently-selected item at the cursor.
-    /// @note Looks up the parallel `insertTexts[index]` (the unadorned
-    ///       text), then applies the completion replacement range.
+    /// @details The selected `CompletionCandidate` is the source of truth for
+    ///          insert text, replacement range, cursor placement, and commit
+    ///          behavior. The legacy visible lists are derived probe state only.
     expose func AcceptSelected() {
         AcceptSelectedInternal(false);
     }
@@ -1141,10 +1140,11 @@ class CompletionController {
         return false;
     }
 
-    /// @brief Add a candidate to the typed list and legacy synchronized lists.
-    /// @details New code should use allCandidates directly. The old lists remain
-    ///          populated during this migration so older helpers and probes keep
-    ///          their existing assumptions.
+    /// @brief Add a candidate to the typed list and derived compatibility lists.
+    /// @details `allCandidates` is the authoritative completion model. The old
+    ///          field lists remain populated for existing probes, but command
+    ///          behavior reads typed candidates so filtering cannot desynchronize
+    ///          insertion text from replacement metadata.
     /// @param candidate Candidate to append.
     hide func AddCandidate(candidate: completion_items.CompletionCandidate) {
         if candidate == null { return; }

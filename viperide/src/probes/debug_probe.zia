@@ -185,6 +185,23 @@ func main() {
         fail("watch did not evaluate expression: " + session.WatchLabel(0));
         return;
     }
+    if session.WatchExpression(0) != "a + b" {
+        fail("WatchExpression returned '" + session.WatchExpression(0) + "'");
+        return;
+    }
+    if session.RemoveWatch(0) == false or session.WatchCount() != 0 {
+        fail("RemoveWatch did not clear the watch list");
+        return;
+    }
+    if session.AddWatch("a") == false {
+        fail("AddWatch rejected after RemoveWatch");
+        return;
+    }
+    session.ClearWatches();
+    if session.WatchCount() != 0 {
+        fail("ClearWatches left " + session.WatchCount() + " watches");
+        return;
+    }
 
     // 2) Step over → advance to the next source line (6).
     if session.StepOver() == false {

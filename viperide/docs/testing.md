@@ -180,10 +180,11 @@ Known areas needing stronger tests:
   tests.
 - Source Control push/pull, credential prompts, conflicts, and exotic path bytes
   are not deeply covered.
-- Terminal full-screen TUI behavior is out of scope and not tested.
+- Terminal row-addressing redraws are covered by probes; full-screen TUI behavior
+  remains out of scope and is not tested.
 - Cross-platform PTY/ConPTY behavior needs regular Windows/macOS/Linux smoke.
 - Tool-panel virtualization and huge-output behavior need stronger UI stress
   coverage.
-- Rich debugger variable-tree and watch-management UX is not present and not
-  covered.
+- Rich debugger object expansion and a dedicated watch-management panel are not
+  present or covered.
 - Accessibility and keyboard-focus behavior need more systematic checks.

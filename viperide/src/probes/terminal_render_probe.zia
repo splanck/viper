@@ -66,6 +66,16 @@ func main() {
     var t3 = pane.GetSelection();
     if t3.Contains("aXc") == false { fail(shell, "backspace overwrite wrong: " + t3); return; }
 
+    // Cursor row addressing: common shell redraws use CSI H/f to place output
+    // on more than one row. The terminal pane should retain separate lines.
+    pane.Clear();
+    pane.Append("\x1b[2J\x1b[1;1Htop\x1b[2;4Hmid");
+    pane.SelectAll();
+    var t4 = pane.GetSelection();
+    if t4.Contains("top") == false { fail(shell, "row 1 text missing: " + t4); return; }
+    if t4.Contains("mid") == false { fail(shell, "row 2 text missing: " + t4); return; }
+    if t4.Contains("topmid") { fail(shell, "row addressing collapsed into one line: " + t4); return; }
+
     shell.Destroy();
     Terminal.Say("RESULT: ok");
 }

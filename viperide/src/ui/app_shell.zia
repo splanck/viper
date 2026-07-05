@@ -679,8 +679,8 @@ class AppShell {
         searchQueryInput = GUI.TextInput.New(searchQueryRow);
         searchQueryInput.SetFlex(1.0);
         searchQueryInput.SetPlaceholder("Search");
-        searchRunButton = GUI.Button.New(searchQueryRow, "Run");
-        searchCancelButton = GUI.Button.New(searchQueryRow, "Cancel");
+        searchRunButton = GUI.Button.New(searchQueryRow, "Search");
+        searchCancelButton = GUI.Button.New(searchQueryRow, "Stop");
         var searchOptionsRow = GUI.HBox.New();
         searchOptionsRow.SetSpacing(4.0);
         searchPanel.AddChild(searchOptionsRow);
@@ -750,7 +750,7 @@ class AppShell {
         ctxOpen = treeContextMenu.AddItem("▷ Open");
         ctxOpenText = treeContextMenu.AddItem("T Open With Text Editor");
         treeContextMenu.AddSeparator();
-        ctxReveal = treeContextMenu.AddItem("▣ Reveal in Finder");
+        ctxReveal = treeContextMenu.AddItem("▣ Reveal in File Manager");
         ctxCopyPath = treeContextMenu.AddItem("⧉ Copy Path");
         ctxCopyRelativePath = treeContextMenu.AddItem("⧉ Copy Relative Path");
         ctxDuplicate = treeContextMenu.AddItem("◇ Duplicate File...");
@@ -805,7 +805,7 @@ class AppShell {
         tabContextMenu.AddSeparator();
         tcCopyPath = tabContextMenu.AddItem("⧉ Copy Path");
         tcCopyRelativePath = tabContextMenu.AddItem("⧉ Copy Relative Path");
-        tcReveal = tabContextMenu.AddItem("▣ Reveal in Finder");
+        tcReveal = tabContextMenu.AddItem("▣ Reveal in File Manager");
 
         // ====================================================================
         // Status Bar

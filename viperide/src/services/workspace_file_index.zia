@@ -7,6 +7,8 @@ bind Path = Viper.IO.Path;
 bind Seq = Viper.Collections.Seq;
 bind Str = Viper.String;
 
+final WORKSPACE_FILE_INDEX_PAGE_SIZE = 512;
+
 // ============================================================================
 // MODULE: workspace_file_index
 // PURPOSE: Shared workspace-file discovery and path-containment policy.
@@ -121,24 +123,47 @@ expose func ShouldIgnorePath(rootPath: String,
 /// @return List of absolute file paths.
 /// @details The returned List contains only file entries. Directory entries from
 ///          the runtime index are filtered here so callers share one simple shape.
+///          The implementation consumes FileIndex.Page rather than Enumerate so
+///          compatibility callers do not force the runtime to allocate a complete
+///          workspace entry sequence in one call.
 expose func EnumerateFiles(rootPath: String,
                            fileKinds: String,
                            ignorePatterns: String) -> List {
     var result = new List();
     if rootPath == "" { return result; }
-    var entries = FileIndex.Enumerate(rootPath, fileKinds, ignorePatterns, false);
-    if entries == null { return result; }
-
-    var i = 0;
-    while i < Seq.get_Count(entries) {
-        var entry = Seq.Get(entries, i);
-        if Map.GetBool(entry, "isDirectory") == false {
-            var filePath = Map.GetStr(entry, "path");
-            if filePath != "" and ListContains(result, filePath) == false {
-                result.Push(filePath);
+    var offset = 0;
+    var done = false;
+    while done == false {
+        var page = FileIndex.Page(rootPath,
+                                  fileKinds,
+                                  ignorePatterns,
+                                  false,
+                                  offset,
+                                  WORKSPACE_FILE_INDEX_PAGE_SIZE);
+        if Map.GetBool(page, "valid") == false {
+            return result;
+        }
+        var entries = Map.Get(page, "entries");
+        var emitted = 0;
+        if entries != null {
+            var i = 0;
+            while i < Seq.get_Count(entries) {
+                var entry = Seq.Get(entries, i);
+                emitted = emitted + 1;
+                if Map.GetBool(entry, "isDirectory") == false {
+                    var filePath = Map.GetStr(entry, "path");
+                    if filePath != "" and ListContains(result, filePath) == false {
+                        result.Push(filePath);
+                    }
+                }
+                i = i + 1;
             }
         }
-        i = i + 1;
+        offset = Map.GetInt(page, "nextOffset");
+        done = Map.GetBool(page, "done");
+        if emitted == 0 and done == false {
+            return result;
+        }
     }
     return result;
 }

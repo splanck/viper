@@ -12,7 +12,7 @@ bind IO = Viper.IO;
 // ============================================================================
 // MODULE: terminal_controller  (Phase 5E — interactive terminal)
 // PURPOSE: Drives the bottom-panel terminal. The OutputPane runs in interactive
-//          terminal mode (cursor-column rendering + keyboard capture); the user
+//          terminal mode (cursor-position rendering + keyboard capture); the user
 //          types directly into it. Each frame the controller drains queued
 //          keystrokes from the pane and writes them raw to a PTY-backed shell
 //          (terminal_session over Viper.System.Pty); the shell's echo + output
@@ -22,9 +22,9 @@ bind IO = Viper.IO;
 //          SetCwd()s it to the active project root, and calls Pump() each frame.
 //          Pump only works when the terminal panel is visible.
 //
-// SCOPE: a usable interactive shell (typing, colors, prompts, line editing).
-//   Full-screen TUI apps (vim/htop) needing cursor addressing / alt-screen are
-//   out of scope.
+// SCOPE: a usable interactive shell (typing, colors, prompts, line editing,
+//   and common cursor-addressed shell redraws). Full-screen TUI apps needing
+//   complete alternate-screen and terminal-mode semantics are out of scope.
 // ============================================================================
 
 /// @brief Integrated-terminal UI controller.

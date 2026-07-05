@@ -225,9 +225,10 @@ then is the replacement adapter launched with the current breakpoint set.
 resolution, terminal mode on `OutputPane`, raw key forwarding, output append,
 resize approximation, Stop, Restart, and shutdown cleanup.
 
-The terminal is intended for interactive shells and simple commands. Full-screen
-TUI programs requiring alternate-screen/cursor-addressing semantics are out of
-scope for the current OutputPane terminal mode.
+The terminal is intended for interactive shells and simple commands. OutputPane
+terminal mode handles common cursor addressing and clear-screen redraws, but
+full-screen TUI programs requiring complete alternate-screen and terminal-mode
+semantics are out of scope.
 
 ### Source Control
 

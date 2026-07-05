@@ -911,8 +911,8 @@ func handleBasicRenameSymbol(shell: app_shell.AppShell,
 /// @brief Pump a bounded amount of workspace indexing before a semantic query.
 /// @details Go-to-definition, references, call hierarchy, and rename require a
 ///          complete workspace index for trustworthy results. This helper keeps
-///          those commands responsive by advancing a small batch, reporting
-///          progress, and asking the user to retry when the index is not ready.
+///          those commands responsive by advancing a small batch and reporting
+///          progress when the index is still warming.
 /// @param shell Workbench shell used for status and toast feedback.
 /// @param indexer Project index owner.
 /// @param label User-facing command name for the status message.
@@ -924,7 +924,7 @@ func PrepareSemanticQuery(shell: app_shell.AppShell,
     if indexer.PrepareWorkspaceQuery(SEMANTIC_QUERY_PUMP_FILES) {
         return true;
     }
-    var msg = label + " will be available after indexing finishes ("
+    var msg = label + " is waiting for workspace indexing ("
               + indexer.WorkspaceIndexProgressText() + ")";
     if shell != null {
         shell.SetStatusLeft(msg);

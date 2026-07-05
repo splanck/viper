@@ -67,10 +67,10 @@ array, so long build logs and terminal sessions do not pay an O(n) cost per
 eviction.
 
 OutputPane terminal mode is intentionally not a complete terminal emulator. It
-supports line-oriented shell interaction, captured key input, cursor-column
-overwrite for common shell redraws, `CSI K` line erase, and `CSI J` display
-erase. It does not implement the full alternate-screen/cursor-addressing
-behavior required by applications like full-screen editors.
+supports line-oriented shell interaction, captured key input, cursor-position
+overwrite for common shell redraws, `CSI H/f` row addressing, `CSI K` line
+erase, `CSI J` display erase, and cursor save/restore. It does not implement the
+full alternate-screen and terminal-mode behavior required by full-screen editors.
 
 ### VirtualList And VirtualTree
 

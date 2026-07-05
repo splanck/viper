@@ -20,9 +20,10 @@ It is not yet a polished product-complete IDE. The largest current gaps are:
   views.
 - Source Control is async and useful for common local Git actions, but still not
   a full Git client.
-- BASIC lacks project-index-backed semantic navigation and rename.
-- Debugging has persistent watch expressions and grouped watch/local rendering,
-  but still lacks rich object expansion and watch-management polish.
+- BASIC semantic navigation and rename are implemented by the IDE-side scanner,
+  not by the Zia project index or external BASIC server.
+- Debugging has persistent watch expressions, basic watch-management commands,
+  and grouped watch/local rendering, but still lacks rich object expansion.
 - Some workflow prompts and overlays are still modal or command-palette based,
   although project search now uses a docked non-modal panel.
 - The application source still has several oversized coordinator modules.
@@ -87,7 +88,7 @@ debug inspection.
 | --- | --- | --- |
 | Text editing | Implemented | Multi-tab CodeEditor, undo/redo, selections, comments, formatting, folding, minimap option. |
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
-| BASIC IntelliSense | Partial | Completion, diagnostics, hover, and document symbols only. No project index, definition, references, rename, or signature help. |
+| BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
 | Scene files | Partial | `.scene` and `.level` are detected, saved, restored, and filtered, but display as text. |
 | Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
@@ -136,23 +137,29 @@ Known Zia limits:
 
 ### BASIC
 
-BASIC support is intentionally narrower:
+BASIC support is implemented through a mixed runtime/IDE path:
 
 - Completion.
 - Diagnostics.
 - Hover.
 - Document symbols.
+- Scanner-backed Go to Definition.
+- Scanner-backed Find References.
+- Scanner-backed Rename Symbol.
+- Scanner-backed Workspace Symbols.
+- Scanner-backed Signature Help.
+- Scanner-backed incoming/outgoing call hierarchy.
 - Formatting for supported line forms.
 - Build/run through the same `viper` toolchain path.
 
-BASIC does not currently support:
+BASIC still has important limits:
 
-- Go to Definition.
-- Find References.
-- Rename Symbol.
-- Workspace Symbols.
-- Signature Help.
-- Project-wide call hierarchy.
+- Semantic results come from `src/basic/semantic_scan.zia`, a lightweight
+  scanner, rather than the compiler's full semantic model.
+- Workspace scans are cooperative in the IDE but not backed by the Zia project
+  index data structure.
+- Ambiguous BASIC syntax and dynamic dispatch can still produce conservative or
+  incomplete navigation results.
 
 The command registry marks unavailable commands with language-specific reasons.
 
@@ -244,15 +251,16 @@ Supported behavior:
 - Locals and call stack at stop points.
 - Expression evaluation while stopped.
 - Persistent watch expressions, shown in the Variables panel above locals.
+- Command-palette watch management for add, remove selected, refresh, and clear.
 - Variables panel rows are grouped through a `VirtualTree` model for Watches and
   Locals before being rendered into the current ListBox UI.
 - Debug console output.
 
 Known debugger UX gaps:
 
-- Watch expressions do not yet have a dedicated management panel.
 - Variables are grouped, but object values are not expandable because the debug
   adapter currently returns flat local/watch values.
+- Watch management is command-palette based rather than a dedicated panel.
 - Breakpoint metadata editing exists, but the UX is still lightweight.
 - Session state could still be clearer while a long graceful stop/restart is
   waiting for process exit.
@@ -267,10 +275,10 @@ for new sessions.
 Current limitations:
 
 - The OutputPane terminal mode is not a full terminal emulator.
-- Full-screen TUI programs that require cursor addressing or alternate-screen
-  support are out of scope.
-- Common line and display erase sequences are handled, including `CSI K` and
-  `CSI J`, but full screen-state emulation is still absent.
+- Common cursor row/column addressing, cursor save/restore, line erase, and
+  display erase sequences are handled for shell redraws.
+- Full-screen TUI programs that require complete alternate-screen and terminal
+  mode semantics are still out of scope.
 - Terminal dimensions are estimated from widget size because OutputPane does not
   expose font metrics.
 - The controller pumps when the panel is visible; hidden-session behavior should
@@ -334,7 +342,7 @@ These gaps are current documentation, not a plan commitment:
 - Move remaining prompt-style workflows into non-modal workbench overlays.
 - Make tool panels resizable and fully virtualized beyond the current bounded
   stable-row model.
-- Add richer debugger object expansion and watch-management UX.
+- Add richer debugger object expansion and a dedicated watch-management panel.
 - Harden Source Control progress, conflict, credential, and recovery workflows.
 - Add real scene editing before advertising scene editor functionality.
 - Split oversized coordinator modules.
@@ -352,8 +360,8 @@ Use these phrasing rules when updating user-facing docs:
 - Say "Git Source Control view" instead of "SCM platform".
 - Say "scene files are recognized and open as text" instead of "scene editor".
 - Say "debug adapter supports stepping, breakpoints, locals, call stack,
-  evaluate, watches, and grouped watch/local rows" while still mentioning
-  missing object expansion and watch-management UX.
+  evaluate, watches, watch commands, and grouped watch/local rows" while still
+  mentioning missing object expansion and dedicated watch panel UX.
 
 The goal is to make the app feel more trustworthy by making the docs less
 optimistic than the code.

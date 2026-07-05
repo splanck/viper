@@ -389,8 +389,9 @@ When summarizing ViperIDE changes, be specific:
 - Say "Git Source Control view" rather than "complete SCM support".
 - Say "scene files open as text" unless a visual scene editor is actually
   implemented.
-- Say "debug adapter supports stepping/breakpoints/evaluate/watches" and
-  separately list missing variable-tree and watch-management UX.
+- Say "debug adapter supports stepping/breakpoints/evaluate/watches/watch
+  commands" and separately list missing object expansion and dedicated watch
+  panel UX.
 
 This avoids repeating the documentation drift that made the old plan files
 misleading.

@@ -17,6 +17,7 @@ bind Str = Viper.String;
 bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
+bind Convert = Viper.Core.Convert;
 bind Pixels = Viper.Graphics.Pixels;
 
 final DEBUG_STOP_SLOT = 1;
@@ -432,6 +433,115 @@ func handleEvaluateAtCursor(shell: app_shell.AppShell,
     }
 }
 
+/// @brief Prompt for a watch expression and add it to the Variables panel.
+/// @details Watches can be created before execution stops; they refresh as soon
+///          as the adapter reaches a stopped frame. Duplicate expressions are
+///          left in place instead of adding another row.
+/// @param shell Workbench shell for prompt/status feedback.
+/// @param session Debug session whose watch list should be updated.
+func handleAddWatch(shell: app_shell.AppShell,
+                    session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    var expr = Str.Trim(GUI.MessageBox.Prompt("Add Watch", "Expression:"));
+    if expr == "" {
+        shell.SetStatusLeft("Watch not added");
+        return;
+    }
+    if session.AddWatch(expr) {
+        if session.stopped {
+            session.RefreshWatches();
+            shell.SetStatusLeft("Watching " + expr);
+        } else {
+            shell.SetStatusLeft("Watching " + expr + " when the debugger stops");
+        }
+        PopulateDebugPanels(shell, session);
+        shell.ShowVariablesPanel();
+    } else {
+        shell.SetStatusLeft("Watch already exists: " + expr);
+        shell.ShowVariablesPanel();
+    }
+}
+
+/// @brief Remove the selected watch row from the Variables panel.
+/// @details The ListBox row data is populated from VirtualTree node IDs, so the
+///          handler does not parse visible labels that may contain arbitrary
+///          expression text.
+/// @param shell Workbench shell containing the selected Variables row.
+/// @param session Debug session whose watch list should be updated.
+func handleRemoveSelectedWatch(shell: app_shell.AppShell,
+                               session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    var index = SelectedWatchIndex(shell);
+    if index < 0 {
+        shell.SetStatusLeft("Select a watch row to remove");
+        shell.ShowVariablesPanel();
+        return;
+    }
+    var expr = session.WatchExpression(index);
+    if session.RemoveWatch(index) {
+        PopulateDebugPanels(shell, session);
+        shell.ShowVariablesPanel();
+        if expr != "" {
+            shell.SetStatusLeft("Removed watch " + expr);
+        } else {
+            shell.SetStatusLeft("Removed watch");
+        }
+    } else {
+        shell.SetStatusLeft("Watch row is no longer available");
+    }
+}
+
+/// @brief Refresh all watch expressions at the current debug stop.
+/// @details Refresh is explicit for cases where locals changed through a manual
+///          evaluate or an adapter event was missed; normal breakpoint stops
+///          still refresh automatically.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watches should be refreshed.
+func handleRefreshWatches(shell: app_shell.AppShell,
+                          session: debug_session.DebugSession) {
+    if session == null or session.WatchCount() == 0 {
+        shell.SetStatusLeft("No watches to refresh");
+        return;
+    }
+    if session.stopped == false {
+        shell.SetStatusLeft("Watches refresh when the debugger is paused");
+        GUI.Toast.Info("Pause at a breakpoint before refreshing watches");
+        return;
+    }
+    session.RefreshWatches();
+    PopulateDebugPanels(shell, session);
+    shell.ShowVariablesPanel();
+    shell.SetStatusLeft("Refreshing watches...");
+}
+
+/// @brief Clear every persistent watch expression from the debug session.
+/// @details This does not terminate the adapter or clear locals/call stack rows;
+///          it only removes the user-created Watches section.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watches should be cleared.
+func handleClearWatches(shell: app_shell.AppShell,
+                        session: debug_session.DebugSession) {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return;
+    }
+    if session.WatchCount() == 0 {
+        shell.SetStatusLeft("No watches to clear");
+        shell.ShowVariablesPanel();
+        return;
+    }
+    session.ClearWatches();
+    PopulateDebugPanels(shell, session);
+    shell.ShowVariablesPanel();
+    shell.SetStatusLeft("Cleared watches");
+}
+
 /// @brief "Run to Cursor": continue execution until it reaches the cursor's line
 ///        in the active document, via a one-shot breakpoint. Only valid while
 ///        paused at a breakpoint (mirrors Evaluate's gating).
@@ -502,10 +612,11 @@ func PopulateDebugPanels(shell: app_shell.AppShell,
                          session: debug_session.DebugSession) {
     shell.ClearToolRows(shell.variablesListBox);
     shell.ClearToolRows(shell.callStackListBox);
-    if session == null or session.stopped == false { return; }
+    if session == null { return; }
 
     var variableTree = GUI.VirtualTree.New();
     var wc = session.WatchCount();
+    if session.stopped == false and wc == 0 { return; }
     if wc > 0 {
         variableTree.AddNode("", "watches", "Watches");
         var wi = 0;
@@ -516,9 +627,14 @@ func PopulateDebugPanels(shell: app_shell.AppShell,
         variableTree.Expand("watches");
     }
 
-    var lc = session.LocalCount();
+    var lc = 0;
+    if session.stopped {
+        lc = session.LocalCount();
+    }
     if lc == 0 {
-        if wc == 0 {
+        if session.stopped == false {
+            variableTree.AddNode("", "locals", "Locals: pause debugger to inspect");
+        } else if wc == 0 {
             variableTree.AddNode("", "locals-empty", "(no locals in scope)");
         } else {
             variableTree.AddNode("", "locals", "Locals: (none)");
@@ -534,6 +650,7 @@ func PopulateDebugPanels(shell: app_shell.AppShell,
     }
     RenderVariableTree(shell, variableTree);
 
+    if session.stopped == false { return; }
     var fc = session.FrameCount();
     if fc == 0 {
         shell.AddToolSectionRow(shell.callStackListBox, "(no frames)");
@@ -557,13 +674,32 @@ hide func RenderVariableTree(shell: app_shell.AppShell,
         var row = Seq.Get(rows, i);
         var depth = Map.GetInt(row, "depth");
         var text = Map.GetStr(row, "text");
+        var id = Map.GetStr(row, "id");
+        var item: Any = null;
         if depth <= 0 {
-            shell.AddToolSectionRow(shell.variablesListBox, text);
+            item = shell.AddToolSectionRow(shell.variablesListBox, text);
         } else {
-            shell.AddToolPlainRow(shell.variablesListBox, IndentForDepth(depth) + text, 0);
+            item = shell.AddToolPlainRow(shell.variablesListBox, IndentForDepth(depth) + text, 0);
+        }
+        if item != null and id != "" {
+            GUI.ListBox.ItemSetData(item, id);
         }
         i = i + 1;
     }
+}
+
+/// @brief Return the selected watch index from the Variables panel, or -1.
+/// @details Only node IDs with the `watch:` prefix are accepted; section rows
+///          and locals intentionally cannot be removed by watch commands.
+/// @param shell Workbench shell containing the Variables list box.
+/// @return Zero-based watch index, or -1 when no watch row is selected.
+hide func SelectedWatchIndex(shell: app_shell.AppShell) -> Integer {
+    if shell == null or shell.variablesListBox == null { return -1; }
+    var item = shell.variablesListBox.Selected;
+    if item == null { return -1; }
+    var id = GUI.ListBox.ItemGetData(item);
+    if Str.StartsWith(id, "watch:") == false { return -1; }
+    return Convert.ToInt64(Str.Mid(id, 7));
 }
 
 hide func IndentForDepth(depth: Integer) -> String {

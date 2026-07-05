@@ -65,6 +65,7 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr size_t kGitignoreCacheMaxEntries = 64;
+constexpr size_t kFileIndexPageCursorMaxEntries = 8;
 constexpr int64_t kWorkspaceFileIndexMaxEntries = 100000;
 constexpr uint64_t kWorkspaceFingerprintOffset = 14695981039346656037ull;
 constexpr uint64_t kWorkspaceFingerprintPrime = 1099511628211ull;
@@ -82,6 +83,7 @@ GitignoreCacheEntry *g_gitignoreCacheHead = nullptr;
 std::atomic_flag g_gitignoreCacheLock = ATOMIC_FLAG_INIT;
 std::atomic<uint64_t> g_workspaceEditTempCounter{0};
 std::atomic_flag g_fileIndexPageCursorLock = ATOMIC_FLAG_INIT;
+std::atomic<uint64_t> g_fileIndexPageCursorClock{0};
 
 /// @brief Scope guard for the process-wide gitignore cache spin lock.
 /// @details The file-index runtime archive is linked into native programs, so
@@ -117,11 +119,11 @@ struct GitignoreCacheLockGuard {
     GitignoreCacheLockGuard &operator=(const GitignoreCacheLockGuard &) = delete;
 };
 
-/// @brief Scope guard for the private FileIndex.Page cursor.
+/// @brief Scope guard for the private FileIndex.Page cursor cache.
 /// @details The public paging API stays stateless, but sequential callers should
-///          not pay for a fresh recursive traversal on every page. A single
-///          process-local cursor covers the IDE's current background indexing
-///          pattern while preserving correct fallback for random offsets.
+///          not pay for a fresh recursive traversal on every page. A small
+///          process-local cursor cache lets independent IDE subsystems page
+///          concurrently without resetting each other's traversal state.
 struct FileIndexPageCursorLockGuard {
     FileIndexPageCursorLockGuard() {
         while (g_fileIndexPageCursorLock.test_and_set(std::memory_order_acquire)) {
@@ -641,9 +643,11 @@ struct WorkspaceFileIndexPageCursor {
     int64_t matched{0};
     bool done{false};
     bool truncated{false};
+    uint64_t lastUsed{0};
+    WorkspaceFileIndexPageCursor *next{nullptr};
 };
 
-WorkspaceFileIndexPageCursor *g_fileIndexPageCursor = nullptr;
+WorkspaceFileIndexPageCursor *g_fileIndexPageCursorHead = nullptr;
 
 std::set<std::string> parseExtensionSet(const std::string &extensionsCsv) {
     std::set<std::string> extensions;
@@ -663,28 +667,122 @@ std::string fileIndexPageKey(const fs::path &root,
            "\n" + (includeDirs ? "1" : "0");
 }
 
-void resetFileIndexPageCursor() {
-    delete g_fileIndexPageCursor;
-    g_fileIndexPageCursor = nullptr;
+/// @brief Destroy one FileIndex.Page cursor node.
+/// @details The recursive_directory_iterator and owned filter vectors release
+///          through the cursor destructor. The caller must unlink the node from
+///          the cache list before calling this helper.
+/// @param cursor Cursor node to destroy; may be NULL.
+void destroyFileIndexPageCursor(WorkspaceFileIndexPageCursor *cursor) {
+    delete cursor;
 }
 
-bool startFileIndexPageCursor(const std::string &key,
-                              const fs::path &root,
-                              const std::string &extensionsCsv,
-                              const std::string &excludesCsv,
-                              bool includeDirs,
-                              void *diagnostics) {
-    resetFileIndexPageCursor();
+/// @brief Insert @p cursor at the front of the process-local page cursor cache.
+/// @details Callers hold FileIndexPageCursorLockGuard while mutating the list.
+/// @param cursor Cursor node to link; ignored when NULL.
+void linkFileIndexPageCursor(WorkspaceFileIndexPageCursor *cursor) {
+    if (!cursor)
+        return;
+    cursor->next = g_fileIndexPageCursorHead;
+    g_fileIndexPageCursorHead = cursor;
+}
+
+/// @brief Remove @p cursor from the process-local page cursor cache.
+/// @details No memory is freed here; this split lets callers copy final cursor
+///          state before destroying a completed traversal.
+/// @param cursor Cursor node to unlink; ignored when NULL or absent.
+void unlinkFileIndexPageCursor(WorkspaceFileIndexPageCursor *cursor) {
+    if (!cursor)
+        return;
+    WorkspaceFileIndexPageCursor **slot = &g_fileIndexPageCursorHead;
+    while (*slot) {
+        if (*slot == cursor) {
+            *slot = cursor->next;
+            cursor->next = nullptr;
+            return;
+        }
+        slot = &(*slot)->next;
+    }
+}
+
+/// @brief Count live FileIndex.Page cursors in the process-local cache.
+/// @return Number of linked cursor nodes.
+size_t fileIndexPageCursorCount() {
+    size_t count = 0;
+    for (WorkspaceFileIndexPageCursor *cursor = g_fileIndexPageCursorHead; cursor;
+         cursor = cursor->next) {
+        count++;
+    }
+    return count;
+}
+
+/// @brief Evict least-recently-used page cursors until the cache is under limit.
+/// @details Each cursor can hold a recursive_directory_iterator. Keeping the
+///          cache deliberately small prevents a burst of unrelated page requests
+///          from retaining too many native directory handles.
+/// @return Nothing.
+void evictFileIndexPageCursorsIfNeeded() {
+    while (fileIndexPageCursorCount() > kFileIndexPageCursorMaxEntries) {
+        WorkspaceFileIndexPageCursor *oldest = nullptr;
+        for (WorkspaceFileIndexPageCursor *cursor = g_fileIndexPageCursorHead; cursor;
+             cursor = cursor->next) {
+            if (!oldest || cursor->lastUsed < oldest->lastUsed)
+                oldest = cursor;
+        }
+        if (!oldest)
+            return;
+        unlinkFileIndexPageCursor(oldest);
+        destroyFileIndexPageCursor(oldest);
+    }
+}
+
+/// @brief Find a cursor positioned exactly at @p offset for @p key.
+/// @details Exact-offset matching preserves the public stateless contract: random
+///          offsets start a fresh traversal, while sequential callers resume the
+///          cursor returned by their previous nextOffset.
+/// @param key Normalized traversal key for root, filters, and include-dir mode.
+/// @param offset Logical match offset the caller wants to resume from.
+/// @return Matching live cursor, or NULL when a fresh traversal is required.
+WorkspaceFileIndexPageCursor *findFileIndexPageCursor(const std::string &key, int64_t offset) {
+    for (WorkspaceFileIndexPageCursor *cursor = g_fileIndexPageCursorHead; cursor;
+         cursor = cursor->next) {
+        if (cursor->key == key && cursor->matched == offset && !cursor->done)
+            return cursor;
+    }
+    return nullptr;
+}
+
+/// @brief Start a new FileIndex.Page traversal cursor.
+/// @details The returned cursor is not linked into the cache; callers link it
+///          only after construction succeeds so failed traversals cannot leave
+///          partially initialized cache entries behind.
+/// @param key Normalized traversal key for cache lookup.
+/// @param root Absolute workspace root path.
+/// @param extensionsCsv Comma-separated extension allow-list.
+/// @param excludesCsv Comma-separated extra ignore patterns.
+/// @param includeDirs True to emit matching directory entries.
+/// @param diagnostics Runtime sequence receiving traversal diagnostics.
+/// @return Newly allocated cursor, or NULL on allocation/traversal failure.
+WorkspaceFileIndexPageCursor *startFileIndexPageCursor(const std::string &key,
+                                                       const fs::path &root,
+                                                       const std::string &extensionsCsv,
+                                                       const std::string &excludesCsv,
+                                                       bool includeDirs,
+                                                       void *diagnostics) {
     auto *cursor = new (std::nothrow) WorkspaceFileIndexPageCursor();
     if (!cursor) {
-        pushDiagnostic(diagnostics, "workspace file-index cursor allocation failed", root.string(), 0, "fileindex.cursor");
-        return false;
+        pushDiagnostic(diagnostics,
+                       "workspace file-index cursor allocation failed",
+                       root.string(),
+                       0,
+                       "fileindex.cursor");
+        return nullptr;
     }
     cursor->key = key;
     cursor->root = root;
     cursor->extensions = parseExtensionSet(extensionsCsv);
     cursor->extraPatterns = splitList(excludesCsv);
     cursor->includeDirs = includeDirs;
+    cursor->lastUsed = g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
     cursor->it = fs::recursive_directory_iterator(
         root, fs::directory_options::skip_permission_denied, cursor->ec);
     if (cursor->ec) {
@@ -694,10 +792,9 @@ bool startFileIndexPageCursor(const std::string &key,
                        0,
                        "fileindex.traverse");
         delete cursor;
-        return false;
+        return nullptr;
     }
-    g_fileIndexPageCursor = cursor;
-    return true;
+    return cursor;
 }
 
 void emitFileIndexEntry(void *entries,
@@ -729,8 +826,18 @@ void emitFileIndexEntry(void *entries,
     (void)root;
 }
 
-int64_t scanFileIndexPageCursor(void *entries, int64_t offset, int64_t limit) {
-    WorkspaceFileIndexPageCursor *cursor = g_fileIndexPageCursor;
+/// @brief Emit up to @p limit entries from @p cursor starting at @p offset.
+/// @details Cursor state advances across calls. The caller owns cache locking and
+///          is responsible for unlinking/destroying the cursor when done.
+/// @param cursor Live traversal cursor to scan.
+/// @param entries Runtime sequence receiving emitted file-index maps.
+/// @param offset Logical match offset requested by the caller.
+/// @param limit Maximum number of entries to emit.
+/// @return Number of entries emitted into @p entries.
+int64_t scanFileIndexPageCursor(WorkspaceFileIndexPageCursor *cursor,
+                                void *entries,
+                                int64_t offset,
+                                int64_t limit) {
     if (!cursor || cursor->done)
         return 0;
 
@@ -1197,32 +1304,42 @@ void *rt_workspace_file_index_page(rt_string root_s,
 
         const std::string extensionsCsv = toStd(extensions_csv);
         const std::string excludesCsv = toStd(excludes_csv);
-        const std::string key = fileIndexPageKey(root, extensionsCsv, excludesCsv, include_dirs != 0);
+        const std::string key =
+            fileIndexPageKey(root, extensionsCsv, excludesCsv, include_dirs != 0);
         int64_t emitted = 0;
         bool done = true;
         bool truncated = false;
         int64_t matched = offset;
         {
             FileIndexPageCursorLockGuard cursorLock;
-            if (!g_fileIndexPageCursor || g_fileIndexPageCursor->key != key ||
-                g_fileIndexPageCursor->matched != offset || g_fileIndexPageCursor->done) {
-                if (!startFileIndexPageCursor(
-                        key, root, extensionsCsv, excludesCsv, include_dirs != 0, diagnostics)) {
+            WorkspaceFileIndexPageCursor *cursor = findFileIndexPageCursor(key, offset);
+            if (!cursor) {
+                cursor = startFileIndexPageCursor(
+                    key, root, extensionsCsv, excludesCsv, include_dirs != 0, diagnostics);
+                if (!cursor) {
                     rt_map_set_bool(result, rt_const_cstr("valid"), 0);
                     releaseObject(entries);
                     releaseObject(diagnostics);
                     return result;
                 }
+                linkFileIndexPageCursor(cursor);
+                evictFileIndexPageCursorsIfNeeded();
             }
-            emitted = scanFileIndexPageCursor(entries, offset, limit);
-            if (g_fileIndexPageCursor) {
-                matched = g_fileIndexPageCursor->matched;
-                done = g_fileIndexPageCursor->done;
-                truncated = g_fileIndexPageCursor->truncated;
-                ec = g_fileIndexPageCursor->ec;
+            cursor->lastUsed =
+                g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
+            emitted = scanFileIndexPageCursor(cursor, entries, offset, limit);
+            if (cursor) {
+                matched = cursor->matched;
+                done = cursor->done;
+                truncated = cursor->truncated;
+                ec = cursor->ec;
+                cursor->lastUsed =
+                    g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
             }
-            if (done)
-                resetFileIndexPageCursor();
+            if (done) {
+                unlinkFileIndexPageCursor(cursor);
+                destroyFileIndexPageCursor(cursor);
+            }
         }
 
         if (ec) {

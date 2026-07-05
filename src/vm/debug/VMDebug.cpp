@@ -31,6 +31,7 @@
 #include "vm/VM.hpp"
 #include "vm/VMConstants.hpp"
 
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -109,6 +110,55 @@ std::string quoteRtString(rt_string s) {
     return out;
 }
 
+/// @brief Convert an owned runtime string to std::string and release it.
+/// @details Runtime object introspection returns newly allocated strings. The
+///          debugger copies the bytes immediately so the runtime handle can be
+///          released before the stop snapshot is serialized.
+/// @param s Owned runtime string handle, or NULL.
+/// @return Byte-for-byte copy of @p s, or an empty string for NULL/invalid data.
+std::string takeRtString(rt_string s) {
+    if (!s)
+        return {};
+    std::string out;
+    const char *data = rt_string_cstr(s);
+    const int64_t len = rt_str_len(s);
+    if (data && len > 0)
+        out.assign(data, data + len);
+    rt_string_unref(s);
+    return out;
+}
+
+/// @brief Format a pointer value for debugger local display.
+/// @details Managed runtime objects are identified by the object header and
+///          displayed with their runtime type name. Raw pointers remain hidden
+///          unless @p allowRaw is true, because arbitrary addresses are usually
+///          compiler temporaries rather than source-level values.
+/// @param value Pointer value to describe.
+/// @param local Local-display record to populate.
+/// @param allowRaw Whether non-managed pointers should be shown as "<ptr>".
+/// @return True when @p local was populated.
+bool formatPointerValue(void *value, DebugLocalInfo &local, bool allowRaw) {
+    if (!value) {
+        local.type = "ptr";
+        local.value = "null";
+        return true;
+    }
+
+    const int64_t typeId = rt_obj_type_id(value);
+    const std::string typeName = takeRtString(rt_obj_type_name(value));
+    if (typeId != 0 || (!typeName.empty() && typeName != "Object")) {
+        local.type = typeName.empty() ? "object" : typeName;
+        local.value = typeId == 0 ? "<object>" : "<object #" + std::to_string(typeId) + ">";
+        return true;
+    }
+
+    if (!allowRaw)
+        return false;
+    local.type = "ptr";
+    local.value = "<ptr>";
+    return true;
+}
+
 /// @brief Read a scalar of @p kind from a frame-stack alloca pointer into @p local.
 /// @details Bounds-checks @p ptr against the frame's fixed-size operand stack so a
 ///          stale or non-alloca pointer cannot fault. Only fixed-size scalars are
@@ -180,11 +230,15 @@ bool loadScalarFromAlloca(const Frame &fr, void *ptr, Type::Kind kind, DebugLoca
             local.value = quoteRtString(s);
         else
             local.value = "\"\"";
-    } else { // I64 / Ptr
+    } else if (kind == Type::Kind::Ptr) {
+        void *value = nullptr;
+        std::memcpy(&value, p, sizeof(void *));
+        formatPointerValue(value, local, true);
+    } else { // I64
         int64_t v = 0;
         std::memcpy(&v, p, 8);
-        local.type = kind == Type::Kind::Ptr ? "ptr" : "i64";
-        local.value = kind == Type::Kind::Ptr ? (v ? "<ptr>" : "null") : std::to_string(v);
+        local.type = "i64";
+        local.value = std::to_string(v);
     }
     return true;
 }
@@ -281,7 +335,8 @@ void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
             else
                 continue; // string/aggregate alloca or out-of-bounds: skip for now
         } else if (kinds[id] == Type::Kind::Ptr) {
-            continue; // raw non-alloca pointer: not user-meaningful
+            if (!formatPointerValue(fr.regs[id].ptr, local, false))
+                continue; // raw non-alloca pointer: not user-meaningful
         } else {
             formatRegScalar(fr, id, kinds[id], local);
         }

@@ -264,7 +264,8 @@ Debug output is split between:
 Limitations:
 
 - Variables are grouped, but object values are not expandable.
-- Watch expressions do not yet have dedicated add/remove management UI.
+- Watch add/remove/refresh/clear commands are command-palette based, not a
+  dedicated watch panel.
 - Debug session state is functional but still visually light.
 
 ## Terminal
@@ -287,11 +288,13 @@ Supported terminal operations:
 - Restart.
 - Resize with the panel.
 - Clear-screen shell redraws that use common `CSI J` sequences.
+- Cursor-position shell redraws that use common `CSI H/f` sequences.
 
 Limitations:
 
 - Not a full terminal emulator.
-- Full-screen TUIs are out of scope.
+- Full-screen TUIs that require complete alternate-screen or terminal-mode
+  semantics are out of scope.
 - Width/height are estimated from widget pixels, not font metrics.
 
 ## Source Control

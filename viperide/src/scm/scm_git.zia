@@ -102,7 +102,8 @@ class GitJob {
                       cwd: String,
                       jobKind: String,
                       jobPath: String,
-                      isStagedDiff: Boolean) -> Boolean {
+                      isStagedDiff: Boolean,
+                      env: Any) -> Boolean {
         kind = jobKind;
         path = jobPath;
         stagedDiff = isStagedDiff;
@@ -111,7 +112,7 @@ class GitJob {
         exitCode = -1;
         stdoutTruncated = false;
         stderrTruncated = false;
-        handle = Process.StartWithEnv(program, args, cwd, null);
+        handle = Process.StartWithEnv(program, args, cwd, env);
         if handle == null or handle.IsValid() == false {
             handle = null;
             running = false;
@@ -337,10 +338,59 @@ class Git {
             job.stderrText = lastError;
             return job;
         }
-        if job.Start(program, args, repo, kind, path, staged) == false {
+        if job.Start(program, args, repo, kind, path, staged, GitEnvironment()) == false {
             lastError = job.stderrText;
         }
         return job;
+    }
+
+    /// @brief Build the environment for non-interactive Git subprocesses.
+    /// @details `Process.StartWithEnv` receives a complete child environment, not
+    ///          a delta. Preserve common inherited variables that Git, credential
+    ///          helpers, SSH, and temporary-file handling need, then add controls
+    ///          that prevent push/pull/commit from blocking on terminal prompts or
+    ///          launching an editor inside the GUI process.
+    /// @return Sequence of `NAME=value` strings suitable for Process.StartWithEnv.
+    hide func GitEnvironment() -> Any {
+        var env = Seq.New();
+        CopyEnvIfPresent(env, "PATH");
+        CopyEnvIfPresent(env, "HOME");
+        CopyEnvIfPresent(env, "USER");
+        CopyEnvIfPresent(env, "LOGNAME");
+        CopyEnvIfPresent(env, "USERPROFILE");
+        CopyEnvIfPresent(env, "HOMEDRIVE");
+        CopyEnvIfPresent(env, "HOMEPATH");
+        CopyEnvIfPresent(env, "SystemRoot");
+        CopyEnvIfPresent(env, "WINDIR");
+        CopyEnvIfPresent(env, "TEMP");
+        CopyEnvIfPresent(env, "TMP");
+        CopyEnvIfPresent(env, "TMPDIR");
+        CopyEnvIfPresent(env, "SSH_AUTH_SOCK");
+        CopyEnvIfPresent(env, "SSH_AGENT_PID");
+        CopyEnvIfPresent(env, "TERM");
+        Seq.Push(env, "GIT_TERMINAL_PROMPT=0");
+        Seq.Push(env, "GCM_INTERACTIVE=Never");
+        Seq.Push(env, "GIT_ASKPASS=");
+        Seq.Push(env, "SSH_ASKPASS=");
+        Seq.Push(env, "GIT_MERGE_AUTOEDIT=no");
+        Seq.Push(env, "GIT_PAGER=cat");
+        Seq.Push(env, "PAGER=cat");
+        return env;
+    }
+
+    /// @brief Append one inherited environment variable to a child environment.
+    /// @details Empty and missing values are skipped so the child environment does
+    ///          not gain malformed assignments. Values are copied verbatim because
+    ///          the process runtime validates the final `NAME=value` string.
+    /// @param env Mutable sequence receiving assignments.
+    /// @param name Environment variable name to copy when present.
+    hide func CopyEnvIfPresent(env: Any,
+                               name: String) {
+        if env == null or name == "" { return; }
+        if Env.HasVariable(name) == false { return; }
+        var value = Env.GetVariable(name);
+        if value == "" { return; }
+        Seq.Push(env, name + "=" + value);
     }
 
     expose func StatusFromOutput(stdoutText: String,
@@ -561,4 +611,44 @@ class Git {
         if Machine.Os == "windows" { return ";"; }
         return ":";
     }
+}
+
+/// @brief Classify common Git failures into short user-actionable guidance.
+/// @details Source Control still preserves raw stdout/stderr in the output pane.
+///          This helper adds a concise first line for the cases that otherwise
+///          look like a generic non-zero exit: disabled terminal prompts, merge
+///          conflicts, non-fast-forward push rejection, missing upstream, and lock
+///          contention.
+/// @param kind Logical Git job kind such as `push`, `pull`, or `commit`.
+/// @param output Combined stdout/stderr text from the Git job.
+/// @return Human-readable recovery hint, or empty when no known pattern matches.
+expose func FailureHint(kind: String,
+                        output: String) -> String {
+    var text = Str.ToLower(output);
+    if Str.IndexOf(text, "terminal prompts disabled") != 0
+       or Str.IndexOf(text, "could not read username") != 0
+       or Str.IndexOf(text, "authentication failed") != 0
+       or Str.IndexOf(text, "gcm_interactive") != 0 {
+        return "Authentication needed. Open a terminal for this repository and run git "
+            + kind + " to complete sign-in, then refresh Source Control.";
+    }
+    if Str.IndexOf(text, "conflict") != 0
+       or Str.IndexOf(text, "merge failed") != 0
+       or Str.IndexOf(text, "fix conflicts") != 0 {
+        return "Git reported conflicts. Resolve conflicted files, stage them, then commit or continue the operation.";
+    }
+    if Str.IndexOf(text, "non-fast-forward") != 0
+       or Str.IndexOf(text, "fetch first") != 0
+       or Str.IndexOf(text, "rejected") != 0 {
+        return "Push was rejected by the remote. Pull or rebase first, then push again.";
+    }
+    if Str.IndexOf(text, "no upstream branch") != 0
+       or Str.IndexOf(text, "set-upstream") != 0 {
+        return "This branch has no upstream. Set an upstream in a terminal or push with an upstream before using the IDE button.";
+    }
+    if Str.IndexOf(text, "index.lock") != 0
+       or Str.IndexOf(text, "could not lock") != 0 {
+        return "Git could not acquire its repository lock. Finish or stop the other Git process, then retry.";
+    }
+    return "";
 }

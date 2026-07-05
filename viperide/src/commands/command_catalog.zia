@@ -80,6 +80,10 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "debugrestart", "Restart Debugging", "Terminate and relaunch the active debug session", "Ctrl+Shift+F5", "", true);
     AddSpec(specs, "debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);
     AddSpec(specs, "debugruntocursor", "Run to Cursor", "Continue until execution reaches the cursor line", "Ctrl+F8", "", true);
+    AddSpec(specs, "debugaddwatch", "Add Watch", "Add a debugger watch expression", "", "", true);
+    AddSpec(specs, "debugremovewatch", "Remove Selected Watch", "Remove the selected debugger watch expression", "", "", true);
+    AddSpec(specs, "debugrefreshwatches", "Refresh Watches", "Re-evaluate all debugger watch expressions", "", "", true);
+    AddSpec(specs, "debugclearwatches", "Clear Watches", "Remove all debugger watch expressions", "", "", true);
     AddSpec(specs, "togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
     AddSpec(specs, "debugcondition", "Conditional Breakpoint…", "Set a breakpoint that stops only when an expression is true", "", "", true);
     AddSpec(specs, "debuglogpoint", "Add Logpoint…", "Log a message (with {expr}) at a line without stopping", "", "", true);
