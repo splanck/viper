@@ -59,7 +59,8 @@ revision and reject stale results when the revision changes.
 
 Relevant methods include append, append line, append styled text, clear,
 selection, select all, max-line limit, line count, font, auto-scroll,
-terminal-mode toggle, and input draining.
+terminal-mode toggle, input draining, cell measurement, `ColumnsForWidth()`,
+and `RowsForHeight()`.
 
 OutputPane stores logical lines in a bounded ring buffer. Appending beyond the
 max-line limit evicts the oldest logical line without shifting the whole line
@@ -135,8 +136,11 @@ Platform behavior:
 
 IDE constraints:
 
-- The terminal controller estimates columns and rows from OutputPane dimensions
-  because font metrics are not exposed.
+- The terminal controller derives columns and rows from OutputPane cell metrics
+  through `ColumnsForWidth()` and `RowsForHeight()`.
+- Hidden panels do not auto-start shells, but already-running PTY sessions are
+  drained into a bounded replay buffer and flushed when the terminal becomes
+  visible again.
 - Output deltas are bounded per update. Runtime and frame-level truncation are
   surfaced in the terminal stream instead of being dropped silently.
 - Stop kills and destroys the PTY session.

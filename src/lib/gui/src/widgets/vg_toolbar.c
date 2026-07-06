@@ -1360,6 +1360,10 @@ static uint32_t toolbar_vector_icon_color(uint32_t cp, uint32_t fallback, bool e
             return 0x4E8FD8u;
         case 0x3F: // Find
             return 0xC65BCFu;
+        case 0x25A6: // Explorer
+            return 0x5AA3E8u;
+        case 0x2387: // Source control
+            return 0xD08A45u;
         default:
             return fallback;
     }
@@ -1382,8 +1386,7 @@ static bool toolbar_draw_vector_icon(
     uint32_t icon_color = toolbar_vector_icon_color(cp, color, enabled);
 #define IX(fx) (bx + (fx) * sz)
 #define IY(fy) (by + (fy) * sz)
-#define ILINE(x0, y0, x1, y1)                                                                            \
-    vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, icon_color)
+#define ILINE(x0, y0, x1, y1) vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, icon_color)
 #define IRING(cx, cy, r) vg_draw_circle_stroke(win, IX(cx), IY(cy), (r) * sz, sw, icon_color)
 #define IDISC(cx, cy, r) vg_draw_disc_fill(win, IX(cx), IY(cy), (r) * sz, icon_color)
 #define IRRS(x0, y0, w, h, rad)                                                                    \
@@ -1451,6 +1454,25 @@ static bool toolbar_draw_vector_icon(
         case 0x3F: // Find (magnifying glass)
             IRING(0.44f, 0.42f, 0.2f);
             ILINE(0.6f, 0.58f, 0.78f, 0.76f);
+            return true;
+        case 0x25A6: // Explorer (file tree)
+            IRRS(0.22f, 0.16f, 0.42f, 0.26f, 0.05f);
+            ILINE(0.43f, 0.42f, 0.72f, 0.42f);
+            ILINE(0.43f, 0.58f, 0.72f, 0.58f);
+            ILINE(0.43f, 0.74f, 0.64f, 0.74f);
+            IDISC(0.28f, 0.42f, 0.045f);
+            IDISC(0.28f, 0.58f, 0.045f);
+            IDISC(0.28f, 0.74f, 0.045f);
+            ILINE(0.28f, 0.46f, 0.28f, 0.54f);
+            ILINE(0.28f, 0.62f, 0.28f, 0.70f);
+            return true;
+        case 0x2387: // Source control (branch)
+            IRING(0.28f, 0.25f, 0.075f);
+            IRING(0.28f, 0.75f, 0.075f);
+            IRING(0.72f, 0.5f, 0.075f);
+            ILINE(0.28f, 0.33f, 0.28f, 0.67f);
+            ILINE(0.34f, 0.42f, 0.64f, 0.5f);
+            ILINE(0.5f, 0.45f, 0.64f, 0.5f);
             return true;
         default:
             return false;
@@ -1603,14 +1625,13 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     case VG_ICON_GLYPH:
                         // Prefer a crisp vector icon for known codepoints; fall
                         // back to the font glyph for anything unmapped.
-                        if (toolbar_draw_vector_icon(
-                                win,
-                                item->icon.data.glyph,
-                                icon_x,
-                                icon_y,
-                                icon_px,
-                                txt_color,
-                                item->enabled)) {
+                        if (toolbar_draw_vector_icon(win,
+                                                     item->icon.data.glyph,
+                                                     icon_x,
+                                                     icon_y,
+                                                     icon_px,
+                                                     txt_color,
+                                                     item->enabled)) {
                             break;
                         }
                         // Draw glyph using font

@@ -446,9 +446,25 @@ func handleAddWatch(shell: app_shell.AppShell,
         return;
     }
     var expr = Str.Trim(GUI.MessageBox.Prompt("Add Watch", "Expression:"));
+    handleAddWatchExpression(shell, session, expr);
+}
+
+/// @brief Add a watch expression captured by command UI.
+/// @param shell Workbench shell for status feedback.
+/// @param session Debug session whose watch list should be updated.
+/// @param expression User-entered expression text.
+/// @return True when a new watch was added.
+func handleAddWatchExpression(shell: app_shell.AppShell,
+                              session: debug_session.DebugSession,
+                              expression: String) -> Boolean {
+    if session == null {
+        shell.SetStatusLeft("Watch: debugger unavailable");
+        return false;
+    }
+    var expr = Str.Trim(expression);
     if expr == "" {
         shell.SetStatusLeft("Watch not added");
-        return;
+        return false;
     }
     if session.AddWatch(expr) {
         if session.stopped {
@@ -459,10 +475,12 @@ func handleAddWatch(shell: app_shell.AppShell,
         }
         PopulateDebugPanels(shell, session);
         shell.ShowVariablesPanel();
+        return true;
     } else {
         shell.SetStatusLeft("Watch already exists: " + expr);
         shell.ShowVariablesPanel();
     }
+    return false;
 }
 
 /// @brief Remove the selected watch row from the Variables panel.

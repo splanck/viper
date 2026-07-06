@@ -174,12 +174,14 @@ modified editable buffers.
 | Language | Completion | Diagnostics | Hover | Symbols | Definition/Refs/Rename | Signature |
 | --- | --- | --- | --- | --- | --- | --- |
 | Zia | yes | yes | yes | yes | yes | yes |
-| BASIC | yes | yes | yes | yes | no | no |
+| BASIC | yes | yes | yes | yes | yes | yes |
 | Text | no | no | no | no | no | no |
 | Scene | no | no | no | no | no | no |
 
 Commands with missing capabilities remain visible in the command palette when
 that is useful, but are marked unavailable and report a status/toast reason.
+BASIC semantic commands are scanner-backed rather than project-index-backed, so
+large workspaces can produce incomplete results while cooperative scans warm up.
 
 ### Editor Controllers
 
@@ -223,7 +225,8 @@ then is the replacement adapter launched with the current breakpoint set.
 `terminal/terminal_session.zia` wraps `Viper.System.Pty.PtySession`.
 `terminal/terminal_controller.zia` owns the UI side: lazy start, shell
 resolution, terminal mode on `OutputPane`, raw key forwarding, output append,
-resize approximation, Stop, Restart, and shutdown cleanup.
+cell-metric-based resize, bounded hidden-session draining, Stop, Restart, and
+shutdown cleanup.
 
 The terminal is intended for interactive shells and simple commands. OutputPane
 terminal mode handles common cursor addressing and clear-screen redraws, but
@@ -236,9 +239,10 @@ semantics are out of scope.
 sequences. It resolves `git`, captures stdout/stderr/exit code, parses
 porcelain v2 status, and keeps blocking compatibility wrappers for probes and
 older call sites. `scm_view.zia` pumps one active Git job at a time and
-maintains the Source Control UI state. Active Git jobs expose cancellation, and
-stdout/stderr capture uses the process read-result API so excessive output is
-reported as truncated rather than trapping the workbench.
+maintains the Source Control UI state, including conflict markers for porcelain
+v2 unmerged rows. Active Git jobs expose cancellation, and stdout/stderr capture
+uses the process read-result API so excessive output is reported as truncated
+rather than trapping the workbench.
 
 The Source Control view is intentionally lightweight. Push and pull are
 long-running operations with basic progress/error text rather than rich
@@ -251,6 +255,10 @@ integration, not a complete Git client.
 activity bar, editor area, bottom tool panels, preferences, overlays, status bar,
 debug panels, terminal, and Source Control view. Other subsystems receive
 references to widgets owned by `AppShell`.
+
+`ui/command_input.zia` owns reusable non-modal single-value command input for
+Go To Line, Add Watch, output filtering, Workspace Symbols, Rename Symbol, and
+source-extract names. Command modules still perform validation and effects.
 
 Current tool panels include Problems, Output, Search, References, Debug Console,
 Variables, Call Stack, Debug, and Terminal. Problems, Search, References, Debug

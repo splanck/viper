@@ -137,13 +137,63 @@ func handleFind(shell: app_shell.AppShell) {
 func handleGoToLine(shell: app_shell.AppShell,
                     engine: editor_engine.EditorEngine) {
     var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
-    if lineStr != "" {
-        var lineNum = Convert.ToInt64(lineStr);
-        if lineNum > 0 {
-            engine.GoToLine(lineNum);
-            shell.SetStatusLeft("Jumped to line " + lineNum);
-        }
+    handleGoToLineText(shell, engine, lineStr);
+}
+
+/// @brief Jump to a line from a non-modal command-input value.
+/// @param shell Workbench shell used for status feedback.
+/// @param engine Active editor engine.
+/// @param lineText User-entered line number text.
+/// @return True when the editor jumped to a valid positive line.
+func handleGoToLineText(shell: app_shell.AppShell,
+                        engine: editor_engine.EditorEngine,
+                        lineText: String) -> Boolean {
+    var clean = Str.Trim(lineText);
+    if clean == "" { return false; }
+    if IsPositiveIntegerText(clean) == false {
+        shell.SetStatusLeft("Go To Line: enter a positive line number");
+        GUI.Toast.Warning("Enter a positive line number");
+        return false;
     }
+    var lineNum = Convert.ToInt64(clean);
+    if lineNum <= 0 {
+        shell.SetStatusLeft("Go To Line: enter a positive line number");
+        GUI.Toast.Warning("Enter a positive line number");
+        return false;
+    }
+    engine.GoToLine(lineNum);
+    shell.SetStatusLeft("Jumped to line " + lineNum);
+    return true;
+}
+
+/// @brief Return whether text contains only ASCII decimal digits.
+/// @param text Trimmed candidate line number.
+/// @return True when every character is 0-9.
+hide func IsPositiveIntegerText(text: String) -> Boolean {
+    if text == "" { return false; }
+    var i = 1;
+    while i <= Str.get_Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch != "0" and ch != "1" and ch != "2" and ch != "3" and ch != "4"
+           and ch != "5" and ch != "6" and ch != "7" and ch != "8" and ch != "9" {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Return the active selection or cursor word for command-input defaults.
+/// @param engine Active editor engine, or null while no editor is ready.
+/// @return Trimmed selected text when present, otherwise the editor word at the cursor.
+/// @details The returned text is a convenience prefill only; command handlers
+///          still perform language-specific identifier validation before editing.
+func IdentifierAtCursor(engine: editor_engine.EditorEngine) -> String {
+    if engine == null or engine.editor == null { return ""; }
+    if engine.editor.CursorHasSelection(0) {
+        return Str.Trim(engine.editor.GetSelectedText());
+    }
+    return Str.Trim(engine.editor.GetWordAtCursor());
 }
 
 /// @brief Jump to the definition of the symbol at the cursor.
@@ -804,31 +854,49 @@ func handleRenameSymbol(shell: app_shell.AppShell,
                         engine: editor_engine.EditorEngine,
                         tabs: editor_tabs.EditorTabs,
                         indexer: project_index.ProjectIndexer) {
-    if engine == null or engine.editor == null { return; }
+    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+    handleRenameSymbolText(shell, docMgr, engine, tabs, indexer, newName);
+}
+
+/// @brief Rename the symbol at the cursor using a supplied new name.
+/// @param shell Workbench shell used for status, preview, and toast feedback.
+/// @param docMgr Open document manager containing the active file.
+/// @param engine Active editor engine containing the cursor position.
+/// @param tabs Editor tab controller refreshed after workspace edits.
+/// @param indexer Project indexer used for Zia and workspace file discovery.
+/// @param newNameText User-entered replacement identifier.
+/// @return True when rename edits were applied.
+func handleRenameSymbolText(shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            tabs: editor_tabs.EditorTabs,
+                            indexer: project_index.ProjectIndexer,
+                            newNameText: String) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
     var doc = docMgr.GetActive();
     if doc == null {
         GUI.Toast.Info("Rename is unavailable for this file");
-        return;
+        return false;
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        handleBasicRenameSymbol(shell, docMgr, engine, tabs, indexer, activeDoc);
-        return;
+        return handleBasicRenameSymbolText(shell, docMgr, engine, tabs, indexer,
+                                           activeDoc, newNameText);
     }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Rename is unavailable for this file");
-        return;
+        return false;
     }
-    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-    if newName == "" { return; }
+    var newName = Str.Trim(newNameText);
+    if newName == "" { return false; }
     if IsValidIdentifier(newName) == false {
         GUI.Toast.Warning("Invalid identifier");
-        return;
+        return false;
     }
     file_commands.SaveEditorState(docMgr, engine);
     indexer.SyncActiveNow(docMgr, engine);
     indexer.SyncOpenDocuments(docMgr);
-    if PrepareSemanticQuery(shell, indexer, "Rename") == false { return; }
+    if PrepareSemanticQuery(shell, indexer, "Rename") == false { return false; }
     var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
                                      engine.editor.CursorLine + 1,
                                      engine.editor.CursorCol,
@@ -838,22 +906,23 @@ func handleRenameSymbol(shell: app_shell.AppShell,
         if rename != null { reason = Map.GetStr(rename, "reason"); }
         if reason == "" { reason = "not_found"; }
         GUI.Toast.Warning("Rename failed: " + reason);
-        return;
+        return false;
     }
     var edits = Map.Get(rename, "edits");
     var preview = workspace_edits.PreviewRenameEdits(edits, 20);
     if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
-        return;
+        return false;
     }
     var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
     if result.success == false {
         GUI.Toast.Error(result.message);
-        return;
+        return false;
     }
     ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
     indexer.SyncActiveNow(docMgr, engine);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
+    return true;
 }
 
 func handleBasicRenameSymbol(shell: app_shell.AppShell,
@@ -862,15 +931,36 @@ func handleBasicRenameSymbol(shell: app_shell.AppShell,
                              tabs: editor_tabs.EditorTabs,
                              indexer: project_index.ProjectIndexer,
                              activeDoc: document.Document) {
+    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+    handleBasicRenameSymbolText(shell, docMgr, engine, tabs, indexer,
+                                activeDoc, newName);
+}
+
+/// @brief Rename a BASIC symbol using scanner-backed references and a supplied name.
+/// @param shell Workbench shell used for preview and toast feedback.
+/// @param docMgr Open document manager containing BASIC documents.
+/// @param engine Active editor engine containing the cursor position.
+/// @param tabs Editor tab controller refreshed after workspace edits.
+/// @param indexer Project indexer used only for workspace root discovery.
+/// @param activeDoc Active BASIC document.
+/// @param newNameText User-entered replacement identifier.
+/// @return True when rename edits were applied.
+func handleBasicRenameSymbolText(shell: app_shell.AppShell,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 tabs: editor_tabs.EditorTabs,
+                                 indexer: project_index.ProjectIndexer,
+                                 activeDoc: document.Document,
+                                 newNameText: String) -> Boolean {
     if activeDoc.filePath == "" {
         GUI.Toast.Info("Save the BASIC file before renaming across the workspace");
-        return;
+        return false;
     }
-    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-    if newName == "" { return; }
+    var newName = Str.Trim(newNameText);
+    if newName == "" { return false; }
     if semantic_scan.IsValidBasicIdentifier(newName) == false {
         GUI.Toast.Warning("Invalid BASIC identifier");
-        return;
+        return false;
     }
     file_commands.SaveEditorState(docMgr, engine);
     var source = engine.GetTextSnapshot();
@@ -879,33 +969,34 @@ func handleBasicRenameSymbol(shell: app_shell.AppShell,
                                            engine.editor.CursorCol);
     if token == "" {
         GUI.Toast.Info("No BASIC symbol at cursor");
-        return;
+        return false;
     }
     var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
     var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
                                            engine.editor.CursorLine + 1, token);
     if def == null or Map.GetBool(def, "found") == false {
         GUI.Toast.Warning("Rename failed: symbol not found");
-        return;
+        return false;
     }
     var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
     if refs == null or Seq.get_Count(refs) == 0 {
         GUI.Toast.Warning("Rename failed: no references found");
-        return;
+        return false;
     }
     var edits = semantic_scan.RenameEditsFromReferences(refs, newName);
     var preview = workspace_edits.PreviewRenameEdits(edits, 20);
     if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
-        return;
+        return false;
     }
     var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
     if result.success == false {
         GUI.Toast.Error(result.message);
-        return;
+        return false;
     }
     ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
     shell.SetStatusLeft("Renamed to " + newName);
     GUI.Toast.Success("Rename complete");
+    return true;
 }
 
 /// @brief Pump a bounded amount of workspace indexing before a semantic query.
@@ -1287,10 +1378,38 @@ func handleExtractLocalVariable(shell: app_shell.AppShell,
     source_transform_commands.handleExtractLocalVariable(shell, docMgr, engine);
 }
 
+/// @brief Extract the selected expression using a supplied local-variable name.
+/// @param shell Workbench shell used for status and toast feedback.
+/// @param docMgr Open document manager containing the active document.
+/// @param engine Active editor engine providing the selected expression.
+/// @param nameText User-entered local variable name.
+/// @return True when extraction changed the document.
+func handleExtractLocalVariableText(shell: app_shell.AppShell,
+                                    docMgr: document_manager.DocumentManager,
+                                    engine: editor_engine.EditorEngine,
+                                    nameText: String) -> Boolean {
+    return source_transform_commands.handleExtractLocalVariableText(shell, docMgr,
+                                                                    engine, nameText);
+}
+
 func handleExtractFunction(shell: app_shell.AppShell,
                            docMgr: document_manager.DocumentManager,
                            engine: editor_engine.EditorEngine) {
     source_transform_commands.handleExtractFunction(shell, docMgr, engine);
+}
+
+/// @brief Extract selected statements using a supplied function name.
+/// @param shell Workbench shell used for status and toast feedback.
+/// @param docMgr Open document manager containing the active document.
+/// @param engine Active editor engine providing the selected statements.
+/// @param nameText User-entered function name.
+/// @return True when extraction changed the document.
+func handleExtractFunctionText(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine,
+                               nameText: String) -> Boolean {
+    return source_transform_commands.handleExtractFunctionText(shell, docMgr,
+                                                               engine, nameText);
 }
 
 func handleTrimTrailingWhitespace(shell: app_shell.AppShell,

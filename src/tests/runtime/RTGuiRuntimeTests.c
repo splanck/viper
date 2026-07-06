@@ -986,6 +986,45 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     printf("test_menu_and_toolbar_pixel_icons_become_image_icons: PASSED\n");
 }
 
+static void test_toolbar_named_icons_become_glyph_icons(void) {
+    vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
+    assert(toolbar);
+
+    void *run_handle =
+        rt_toolbar_add_named_button(toolbar, rt_const_cstr("run"), rt_const_cstr("Run"));
+    vg_toolbar_item_t *run_item = rt_gui_toolbar_item_from_handle(run_handle);
+    assert(run_item);
+    assert(run_item->icon.type == VG_ICON_GLYPH);
+    assert(run_item->icon.data.glyph == 0x25B6u);
+
+    void *label_handle = rt_toolbar_add_named_button_with_text(toolbar,
+                                                               rt_const_cstr("source-control"),
+                                                               rt_const_cstr("SCM"),
+                                                               rt_const_cstr("Source Control"));
+    vg_toolbar_item_t *label_item = rt_gui_toolbar_item_from_handle(label_handle);
+    assert(label_item);
+    assert(label_item->icon.type == VG_ICON_GLYPH);
+    assert(label_item->icon.data.glyph == 0x2387u);
+    assert(label_item->show_label);
+
+    void *toggle_handle =
+        rt_toolbar_add_named_toggle(toolbar, rt_const_cstr("explorer"), rt_const_cstr("Explorer"));
+    vg_toolbar_item_t *toggle_item = rt_gui_toolbar_item_from_handle(toggle_handle);
+    assert(toggle_item);
+    assert(toggle_item->icon.type == VG_ICON_GLYPH);
+    assert(toggle_item->icon.data.glyph == 0x25A6u);
+
+    rt_toolbaritem_set_named_icon(run_handle, rt_const_cstr("save-all"));
+    assert(run_item->icon.type == VG_ICON_GLYPH);
+    assert(run_item->icon.data.glyph == 0x21D3u);
+
+    rt_toolbaritem_set_named_icon(run_handle, rt_const_cstr("does-not-exist"));
+    assert(run_item->icon.type == VG_ICON_NONE);
+
+    vg_widget_destroy(&toolbar->base);
+    printf("test_toolbar_named_icons_become_glyph_icons: PASSED\n");
+}
+
 static void test_splitpane_runtime_boolean_matches_horizontal_semantics(void) {
     vg_splitpane_t *horizontal = (vg_splitpane_t *)rt_splitpane_new(NULL, 1);
     vg_splitpane_t *vertical = (vg_splitpane_t *)rt_splitpane_new(NULL, 0);
@@ -2837,6 +2876,7 @@ int main(void) {
     test_tabbar_close_click_index_survives_auto_close();
     test_findbar_runtime_reads_live_text_and_reports_noop_replace();
     test_menu_and_toolbar_pixel_icons_become_image_icons();
+    test_toolbar_named_icons_become_glyph_icons();
     test_widget_destroy_refuses_app_root_and_app_handle();
     test_widget_set_size_refuses_app_root();
     test_widget_base_apis_reject_app_handles_and_invalid_children();

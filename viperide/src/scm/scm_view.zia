@@ -188,20 +188,32 @@ class ScmView {
         }
 
         var i = 0;
+        var conflicts = 0;
         while i < st.entries.count() {
             var e = st.entries.get(i);
             var label = StatusMarker(e) + " " + e.path;
             if e.renamed and e.oldPath != "" {
                 label = label + " <- " + e.oldPath;
             }
+            if e.conflicted {
+                label = label + "  (conflict)";
+                conflicts = conflicts + 1;
+            }
             var item = statusList.AddItem(label);
             GUI.ListBox.ItemSetData(item, e.path);
+            if e.conflicted {
+                GUI.ListBox.ItemSetTextColor(item, 14707829);
+            }
             i = i + 1;
         }
         if st.entries.count() == 0 {
             statusList.AddItem("(working tree clean)");
         }
-        statusLabel.SetText("" + st.entries.count() + " changed file(s)");
+        if conflicts > 0 {
+            statusLabel.SetText("" + conflicts + " conflict(s), " + st.entries.count() + " changed file(s)");
+        } else {
+            statusLabel.SetText("" + st.entries.count() + " changed file(s)");
+        }
     }
 
     hide func ApplyDiff(job: scm_git.GitJob) {
@@ -228,6 +240,7 @@ class ScmView {
 
     /// @brief Two-char marker for a status entry.
     hide func StatusMarker(e: scm_git.GitEntry) -> String {
+        if e.conflicted { return "[!]"; }
         if e.untracked { return "[?]"; }
         if e.renamed { return "[R]"; }
         if e.staged { return "[+]"; }

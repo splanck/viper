@@ -706,19 +706,38 @@ func handleWorkspaceSymbols(shell: app_shell.AppShell,
                             docMgr: document_manager.DocumentManager,
                             engine: editor_engine.EditorEngine,
                             locStore: locations.LocationStore) {
+    var query = Str.Trim(GUI.MessageBox.Prompt("Workspace Symbols", "Symbol name:"));
+    handleWorkspaceSymbolsText(shell, projMgr, docMgr, engine, locStore, query);
+}
+
+/// @brief Collect and display workspace symbols for an already-entered query.
+/// @param shell Workbench shell that owns the Search panel and status bar.
+/// @param projMgr Project manager providing workspace root and file cache.
+/// @param docMgr Open document manager used to prefer live unsaved buffers.
+/// @param engine Active editor engine whose state is saved before scanning.
+/// @param locStore Location store receiving structured result locations.
+/// @param queryText User-entered symbol search text.
+/// @return True when one or more symbol rows were produced.
+func handleWorkspaceSymbolsText(shell: app_shell.AppShell,
+                                projMgr: project_manager.ProjectManager,
+                                docMgr: document_manager.DocumentManager,
+                                engine: editor_engine.EditorEngine,
+                                locStore: locations.LocationStore,
+                                queryText: String) -> Boolean {
     if projMgr.IsOpen() == false {
         GUI.Toast.Warning("Open a project folder first");
-        return;
+        return false;
     }
 
-    var query = Str.Trim(GUI.MessageBox.Prompt("Workspace Symbols", "Symbol name:"));
-    if query == "" { return; }
+    var query = Str.Trim(queryText);
+    if query == "" { return false; }
 
     file_commands.SaveEditorState(docMgr, engine);
     var count = CollectWorkspaceSymbols(shell, projMgr, docMgr, locStore, query);
     if count > 0 {
         shell.ShowSearchPanel();
         shell.SetStatusLeft("Found " + count + " workspace symbols for '" + query + "'");
+        return true;
     } else {
         shell.ClearToolRows(shell.searchListBox);
         shell.AddToolInfoRow(shell.searchListBox, "symbol",
@@ -726,6 +745,7 @@ func handleWorkspaceSymbols(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
         GUI.Toast.Info("No workspace symbols matched '" + query + "'");
     }
+    return false;
 }
 
 func CollectWorkspaceSymbols(shell: app_shell.AppShell,
@@ -741,9 +761,10 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
 
     shell.ClearToolRows(shell.searchListBox);
     var resultCount = 0;
+    var files = WorkspaceSymbolFiles(projMgr, docMgr);
     var i = 0;
-    while i < projMgr.CachedFileCount() {
-        var filePath = projMgr.CachedFileAt(i);
+    while i < files.count() {
+        var filePath = Obj.ToString(files.get(i));
         i = i + 1;
         var language = file_utils.DetectLanguage(filePath);
         if language != "zia" and language != "basic" { continue; }
@@ -808,6 +829,37 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
         shell.ShowSearchPanel();
     }
     return resultCount;
+}
+
+/// @brief Build the complete candidate file list for workspace symbol search.
+/// @param projMgr Project manager providing root and ignore patterns.
+/// @param docMgr Open document manager whose live files must be included.
+/// @return List of absolute Zia/BASIC file paths without duplicates.
+/// @details The project file cache is intentionally not used as the authority
+///          here because symbol search should not silently miss files while
+///          Quick Open or explorer caches are still warming. Runtime FileIndex
+///          performs the workspace traversal and ignore filtering.
+func WorkspaceSymbolFiles(projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager) -> List {
+    var files = new List();
+    if projMgr != null and projMgr.IsOpen() {
+        workspace_file_index.AddEnumeratedFiles(files, projMgr.RootPath(),
+                                                ".zia,.bas,.vb",
+                                                projMgr.IgnorePatterns());
+    }
+    if docMgr != null {
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.documents.get(i);
+            if (doc.language == "zia" or doc.language == "basic")
+               and doc.filePath != ""
+               and workspace_file_index.ListContains(files, doc.filePath) == false {
+                files.Push(doc.filePath);
+            }
+            i = i + 1;
+        }
+    }
+    return files;
 }
 
 func AddBasicWorkspaceSymbols(shell: app_shell.AppShell,

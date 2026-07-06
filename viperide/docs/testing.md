@@ -39,17 +39,17 @@ Current ViperIDE-related CTest entries are registered in
 | `zia_viperide_file_tree` | Explorer interactions and file-tree workflows. | `zia;viperide;file-tree;requires_display` |
 | `zia_viperide_activity_bar` | Activity bar and workbench visibility behavior. | `zia;viperide;activity-bar;requires_display` |
 | `zia_viperide_multi_root` | Multi-root workspace behavior. | `zia;viperide;multi-root;requires_display` |
-| `zia_viperide_scm` | Git Source Control command layer, async job pump, spaces/rename parsing, and view model smoke. | `zia;viperide;scm` |
+| `zia_viperide_scm` | Git Source Control command layer, async job pump, spaces/rename/conflict parsing, and view model smoke. | `zia;viperide;scm` |
 | `zia_viperide_terminal` | Terminal session/controller non-display behavior. | `zia;viperide;terminal` |
 | `zia_viperide_terminal_open` | Terminal panel open/start behavior. | `zia;viperide;terminal;requires_display` |
-| `zia_viperide_terminal_hidden_start` | Terminal hidden/open lifecycle behavior. | `zia;viperide;terminal;requires_display` |
+| `zia_viperide_terminal_hidden_start` | Terminal hidden/open lifecycle and hidden-output draining behavior. | `zia;viperide;terminal;requires_display` |
 | `zia_viperide_terminal_render` | Terminal rendering path. | `zia;viperide;terminal;requires_display` |
 | `zia_viperide_context_menu` | Context menu routing and enabled state. | `zia;viperide;context-menu;requires_display` |
 | `zia_viperide_syntax_render` | Syntax rendering path. | `zia;viperide;syntax;requires_display` |
 | `zia_viperide_formatting` | Formatting commands and helpers. | `zia;viperide;format` |
 | `zia_viperide_debug` | VM-backed debug adapter integration. | `zia;viperide;debug` |
 | `zia_viperide_semantic_tokens` | Semantic token rendering behavior. | `zia;viperide;semantic;requires_display` |
-| `zia_viperide_console_search` | Output panel helpers, console behavior, docked search panel, and Quick Open ranking. | `zia;viperide;console;search;requires_display` |
+| `zia_viperide_console_search` | Output panel helpers, console behavior, docked search panel, workspace-symbol discovery, and Quick Open ranking. | `zia;viperide;console;search;requires_display` |
 | `native_smoke_viperide_completion_arm64` | Native completion link/e2e smoke on arm64 when enabled. | native/e2e labels from CMake |
 | `native_smoke_viperide_completion_x64` | Native completion link/e2e smoke on x64 when enabled. | native/e2e labels from CMake |
 
@@ -120,10 +120,10 @@ ViperIDE probes live in `viperide/src/probes/`.
 | `file_tree_probe.zia` | Explorer behavior. |
 | `activity_bar_probe.zia` | Activity bar/workbench view toggles. |
 | `multi_root_file_tree_probe.zia` | Multi-root workspace behavior. |
-| `scm_probe.zia` | Git command layer, async status jobs, paths with spaces, and staged renames. |
+| `scm_probe.zia` | Git command layer, async status jobs, paths with spaces, staged renames, and unmerged conflict rows. |
 | `terminal_probe.zia` | Terminal session/controller core behavior. |
 | `terminal_open_probe.zia` | Terminal panel start/open behavior. |
-| `terminal_hidden_start_probe.zia` | Hidden terminal lifecycle. |
+| `terminal_hidden_start_probe.zia` | Hidden terminal lifecycle and output replay. |
 | `terminal_render_probe.zia` | Terminal render behavior. |
 | `context_menu_probe.zia` | Context menu state and dispatch. |
 | `syntax_render_probe.zia` | Syntax rendering path. |
@@ -178,8 +178,8 @@ Known areas needing stronger tests:
 
 - Full visual scene editor behavior does not exist yet and therefore has no app
   tests.
-- Source Control push/pull, credential prompts, conflicts, and exotic path bytes
-  are not deeply covered.
+- Source Control push/pull, credential prompts, complex conflict recovery, and
+  exotic path bytes are not deeply covered.
 - Terminal row-addressing redraws are covered by probes; full-screen TUI behavior
   remains out of scope and is not tested.
 - Cross-platform PTY/ConPTY behavior needs regular Windows/macOS/Linux smoke.

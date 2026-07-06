@@ -4,6 +4,7 @@ bind "ui/app_shell";
 bind "ui/ide_overlays";
 bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
+bind "ui/command_input";
 bind "ui/activity_bar";
 bind "app/dispatch_helpers";
 bind "app/build_info";
@@ -174,6 +175,8 @@ func main() {
     explorerOverlay.Setup(shell);
     var debugOverlay = new debug_breakpoint_overlay.DebugBreakpointOverlay();
     debugOverlay.Setup(shell);
+    var commandInputOverlay = new command_input.CommandInputOverlay();
+    commandInputOverlay.Setup(shell);
 
     engine.Setup(shell.editorRow);
     engine.editor.Focus();
@@ -309,6 +312,7 @@ func main() {
     commandContext.paletteCtrl = paletteCtrl;
     commandContext.explorerOverlay = explorerOverlay;
     commandContext.debugOverlay = debugOverlay;
+    commandContext.commandInputOverlay = commandInputOverlay;
     commandContext.overlays = overlays;
     commandContext.liveDiag = liveDiag;
     commandContext.symbolOutline = symbolOutline;
@@ -577,7 +581,7 @@ func main() {
             shell, engine, projMgr, docMgr, tabs, sessionMgr, fileWatchCtrl,
             buildSys, locStore, searcher, explorerOverlay, paletteCtrl,
             commandRegistry, indexer, activeService, dbgSession, breakpointStore,
-            appSettings);
+            commandInputOverlay, appSettings);
 
         // ====================================================================
         // Dispatch commands via trigger helper
@@ -685,6 +689,46 @@ func main() {
         if overlayAction == ide_overlays.ACTION_CLOSE_ABOUT {
             overlays.CloseAbout();
             shell.SetStatusLeft("Ready");
+        }
+
+        var commandInputAction = commandInputOverlay.Pump(shell);
+        if commandInputAction == command_input.COMMAND_INPUT_GOTO_LINE {
+            edit_commands.handleGoToLineText(shell, engine, commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_ADD_WATCH {
+            debug_commands.handleAddWatchExpression(shell, dbgSession, commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_FILTER_OUTPUT {
+            shell.SetOutputFilter(commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_WORKSPACE_SYMBOLS {
+            search_commands.handleWorkspaceSymbolsText(shell, projMgr, docMgr,
+                                                       engine, locStore,
+                                                       commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_RENAME_SYMBOL {
+            edit_commands.handleRenameSymbolText(shell, docMgr, engine, tabs,
+                                                 indexer,
+                                                 commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_LOCAL {
+            edit_commands.handleExtractLocalVariableText(shell, docMgr, engine,
+                                                         commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_FUNCTION {
+            edit_commands.handleExtractFunctionText(shell, docMgr, engine,
+                                                    commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_CANCEL {
+            commandInputOverlay.Finish();
+            shell.SetStatusLeft("Command canceled");
         }
 
         // ====================================================================

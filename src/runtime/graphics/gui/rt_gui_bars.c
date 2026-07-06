@@ -30,6 +30,8 @@
 #include "rt_pixels.h"
 #include "rt_platform.h"
 
+#include <string.h>
+
 #ifdef VIPER_ENABLE_GRAPHICS
 
 void rt_gui_set_clicked_statusbar_item(void *item);
@@ -428,6 +430,60 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
 // Toolbar Widget (Phase 3)
 //=============================================================================
 
+/// @brief Map a semantic toolbar icon name to the vector-icon codepoint key.
+/// @details The underlying GUI toolbar already knows how to draw a compact set of
+///          codepoint-keyed vector icons. This bridge gives Zia and BASIC callers
+///          stable names instead of exposing those private glyph choices as UI
+///          text. Unknown names return 0, which callers convert to VG_ICON_NONE.
+/// @param name Lowercase semantic icon name; may be NULL.
+/// @return Unicode codepoint used by ViperGUI vector toolbar drawing, or 0.
+static uint32_t rt_toolbar_builtin_icon_codepoint(const char *name) {
+    if (!name || name[0] == '\0')
+        return 0;
+    if (strcmp(name, "new") == 0 || strcmp(name, "new-file") == 0)
+        return 0x2Bu;
+    if (strcmp(name, "open") == 0 || strcmp(name, "open-folder") == 0)
+        return 0x25A4u;
+    if (strcmp(name, "save") == 0)
+        return 0x25BCu;
+    if (strcmp(name, "save-all") == 0 || strcmp(name, "saveall") == 0)
+        return 0x21D3u;
+    if (strcmp(name, "build") == 0)
+        return 0x25A3u;
+    if (strcmp(name, "run") == 0 || strcmp(name, "play") == 0)
+        return 0x25B6u;
+    if (strcmp(name, "stop") == 0)
+        return 0x25A0u;
+    if (strcmp(name, "debug") == 0)
+        return 0x25C7u;
+    if (strcmp(name, "continue") == 0 || strcmp(name, "debug-continue") == 0)
+        return 0x25B7u;
+    if (strcmp(name, "step-over") == 0 || strcmp(name, "step") == 0)
+        return 0x2192u;
+    if (strcmp(name, "find") == 0 || strcmp(name, "search") == 0)
+        return 0x3Fu;
+    if (strcmp(name, "explorer") == 0 || strcmp(name, "files") == 0)
+        return 0x25A6u;
+    if (strcmp(name, "source-control") == 0 || strcmp(name, "scm") == 0 || strcmp(name, "git") == 0)
+        return 0x2387u;
+    return 0;
+}
+
+/// @brief Convert a runtime string semantic icon name into a GUI icon value.
+/// @param icon_name Runtime string containing a built-in icon name.
+/// @return Glyph icon on known names, otherwise VG_ICON_NONE.
+static vg_icon_t rt_toolbar_icon_from_name(rt_string icon_name) {
+    vg_icon_t icon = {0};
+    char *cname = rt_string_to_cstr_no_nul(icon_name);
+    if (icon_name && !cname)
+        return icon;
+    uint32_t cp = rt_toolbar_builtin_icon_codepoint(cname);
+    free(cname);
+    if (cp != 0)
+        icon = vg_icon_from_glyph(cp);
+    return icon;
+}
+
 /// @brief Create a new horizontal toolbar widget.
 /// @details Creates a vg_toolbar_t for displaying icon buttons, toggles,
 ///          separators, and dropdown items in a horizontal strip. Typically
@@ -545,6 +601,54 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     return rt_gui_wrap_toolbar_item(item);
 }
 
+/// @brief Append an icon-only toolbar button using a built-in semantic icon name.
+void *rt_toolbar_add_named_button(void *toolbar, rt_string icon_name, rt_string tooltip) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
+        return NULL;
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if (!ctooltip)
+        return NULL;
+
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, NULL, NULL, rt_toolbar_icon_from_name(icon_name), NULL, NULL);
+    if (item)
+        vg_toolbar_item_set_tooltip(item, ctooltip);
+
+    free(ctooltip);
+    return rt_gui_wrap_toolbar_item(item);
+}
+
+/// @brief Append a toolbar button with text plus a built-in semantic icon.
+void *rt_toolbar_add_named_button_with_text(void *toolbar,
+                                            rt_string icon_name,
+                                            rt_string text,
+                                            rt_string tooltip) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
+        return NULL;
+    char *ctext = rt_string_to_gui_cstr(text);
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if (!ctext || !ctooltip) {
+        free(ctext);
+        free(ctooltip);
+        return NULL;
+    }
+
+    vg_toolbar_item_t *item =
+        vg_toolbar_add_button(tb, NULL, ctext, rt_toolbar_icon_from_name(icon_name), NULL, NULL);
+    if (item) {
+        item->show_label = true;
+        vg_toolbar_item_set_tooltip(item, ctooltip);
+    }
+
+    free(ctext);
+    free(ctooltip);
+    return rt_gui_wrap_toolbar_item(item);
+}
+
 /// @brief Append a sticky toggle button (radio/checkbox-style press state).
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip) {
     RT_ASSERT_MAIN_THREAD();
@@ -567,6 +671,25 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
+
+    free(ctooltip);
+    return rt_gui_wrap_toolbar_item(item);
+}
+
+/// @brief Append a sticky toggle button using a built-in semantic icon name.
+void *rt_toolbar_add_named_toggle(void *toolbar, rt_string icon_name, rt_string tooltip) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
+    if (!tb)
+        return NULL;
+    char *ctooltip = rt_string_to_gui_cstr(tooltip);
+    if (!ctooltip)
+        return NULL;
+
+    vg_toolbar_item_t *item = vg_toolbar_add_toggle(
+        tb, NULL, NULL, rt_toolbar_icon_from_name(icon_name), false, NULL, NULL);
+    if (item)
+        vg_toolbar_item_set_tooltip(item, ctooltip);
 
     free(ctooltip);
     return rt_gui_wrap_toolbar_item(item);
@@ -709,6 +832,15 @@ void rt_toolbaritem_set_icon_pixels(void *item, void *pixels) {
     if (!ti)
         return;
     vg_toolbar_item_set_icon(ti, rt_gui_icon_from_pixels(pixels));
+}
+
+/// @brief Replace a toolbar item icon with a built-in semantic icon.
+void rt_toolbaritem_set_named_icon(void *item, rt_string icon_name) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
+    if (!ti)
+        return;
+    vg_toolbar_item_set_icon(ti, rt_toolbar_icon_from_name(icon_name));
 }
 
 /// @brief Set the text of the toolbaritem.
@@ -1010,10 +1142,38 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no named toolbar button is created.
+void *rt_toolbar_add_named_button(void *toolbar, rt_string icon_name, rt_string tooltip) {
+    (void)toolbar;
+    (void)icon_name;
+    (void)tooltip;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no named toolbar button with text is created.
+void *rt_toolbar_add_named_button_with_text(void *toolbar,
+                                            rt_string icon_name,
+                                            rt_string text,
+                                            rt_string tooltip) {
+    (void)toolbar;
+    (void)icon_name;
+    (void)text;
+    (void)tooltip;
+    return NULL;
+}
+
 /// @brief Stub: graphics disabled — returns NULL; no toolbar toggle button is created.
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip) {
     (void)toolbar;
     (void)icon_path;
+    (void)tooltip;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no named toolbar toggle button is created.
+void *rt_toolbar_add_named_toggle(void *toolbar, rt_string icon_name, rt_string tooltip) {
+    (void)toolbar;
+    (void)icon_name;
     (void)tooltip;
     return NULL;
 }
@@ -1096,6 +1256,12 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path) {
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels) {
     (void)item;
     (void)pixels;
+}
+
+/// @brief Set the named icon of the toolbaritem.
+void rt_toolbaritem_set_named_icon(void *item, rt_string icon_name) {
+    (void)item;
+    (void)icon_name;
 }
 
 /// @brief Set the text of the toolbaritem.

@@ -263,12 +263,24 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.Triggered("paste", ctx.shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(ctx.engine); }
     if dispatch_helpers.Triggered("selectall", ctx.shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(ctx.engine); }
     if dispatch_helpers.Triggered("find", ctx.shell.miFind, ctx.shell.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
-    if dispatch_helpers.TriggeredMenu("goto", ctx.shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(ctx.shell, ctx.engine); }
+    if dispatch_helpers.TriggeredMenu("goto", ctx.shell.miGoToLine, cpSelected) {
+        if ctx.commandInputOverlay != null and ctx.engine != null and ctx.engine.editor != null {
+            ctx.commandInputOverlay.OpenGoToLine(ctx.shell, ctx.engine.editor.CursorLine + 1);
+        } else {
+            edit_commands.handleGoToLine(ctx.shell, ctx.engine);
+        }
+    }
     if dispatch_helpers.TriggeredMenu("gotodef", ctx.shell.miGoToDefinition, cpSelected)  { RunOrQueueSemanticCommand(ctx, "gotodef", "Go to definition"); }
     if dispatch_helpers.TriggeredMenu("findrefs", ctx.shell.miFindReferences, cpSelected) { RunOrQueueSemanticCommand(ctx, "findrefs", "Find references"); }
     if dispatch_helpers.TriggeredMenu("incomingcalls", ctx.shell.miIncomingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "incomingcalls", "Incoming calls"); }
     if dispatch_helpers.TriggeredMenu("outgoingcalls", ctx.shell.miOutgoingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "outgoingcalls", "Outgoing calls"); }
-    if dispatch_helpers.TriggeredMenu("rename", ctx.shell.miRenameSymbol, cpSelected)     { RunOrQueueSemanticCommand(ctx, "rename", "Rename"); }
+    if dispatch_helpers.TriggeredMenu("rename", ctx.shell.miRenameSymbol, cpSelected) {
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenRenameSymbol(ctx.shell, edit_commands.IdentifierAtCursor(ctx.engine));
+        } else {
+            RunOrQueueSemanticCommand(ctx, "rename", "Rename");
+        }
+    }
     if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(ctx.shell, ctx.engine); }
@@ -281,8 +293,20 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(ctx.shell, ctx.docMgr, ctx.engine); }
+    if dispatch_helpers.TriggeredNoMenu("extractlocal", cpSelected) {
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenExtractLocal(ctx.shell);
+        } else {
+            edit_commands.handleExtractLocalVariable(ctx.shell, ctx.docMgr, ctx.engine);
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected) {
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenExtractFunction(ctx.shell);
+        } else {
+            edit_commands.handleExtractFunction(ctx.shell, ctx.docMgr, ctx.engine);
+        }
+    }
     if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(ctx.shell, ctx.docMgr, ctx.engine); }
@@ -339,7 +363,13 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                              { view_commands.handleCopyToolSelection(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                           { view_commands.handleCopyOutputText(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                              { view_commands.handleClearOutput(ctx.shell); }
-    if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected)                             { view_commands.handleFilterOutput(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected) {
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenFilterOutput(ctx.shell, ctx.shell.outputFilterText);
+        } else {
+            view_commands.handleFilterOutput(ctx.shell);
+        }
+    }
     if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                         { view_commands.handleToggleOutputWrap(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)                   { view_commands.handleToggleOutputAutoScroll(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("treenewfile", cpSelected) {
@@ -367,7 +397,13 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
         }
     }
     if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore, ctx.searcher); }
-    if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore); }
+    if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.miWorkspaceSymbols, cpSelected) {
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenWorkspaceSymbols(ctx.shell, "");
+        } else {
+            search_commands.handleWorkspaceSymbols(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore);
+        }
+    }
     if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
 }
 
@@ -440,7 +476,12 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                          ctx.engine, ctx.dbgSession);
     }
     if dispatch_helpers.TriggeredNoMenu("debugaddwatch", cpSelected) {
-        debug_commands.handleAddWatch(ctx.shell, ctx.dbgSession);
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenAddWatch(ctx.shell,
+                                                debug_commands.DebugExpressionFromEditor(ctx.engine));
+        } else {
+            debug_commands.handleAddWatch(ctx.shell, ctx.dbgSession);
+        }
     }
     if dispatch_helpers.TriggeredNoMenu("debugremovewatch", cpSelected) {
         debug_commands.handleRemoveSelectedWatch(ctx.shell, ctx.dbgSession);

@@ -87,6 +87,7 @@ When the toolbar is narrower than its contents, hidden items are exposed through
 Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
 Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
 Toolbar items now render pixel icons directly, keyboard focus is visible, and `Left` / `Right` / `Home` / `End` navigate the strip while `Enter` / `Space` activate the focused item or overflow button.
+Named toolbar icon helpers map stable semantic names such as `save`, `run`, `explorer`, and `source-control` to the runtime's built-in vector icons without requiring asset files.
 Items returned by runtime add methods can be removed by handle even when they do not have an internal string id.
 Removed toolbar item handles become inert until the toolbar is destroyed, and removing a clicked item clears the runtime click cache so `WasClicked()` cannot report a stale click.
 
@@ -98,6 +99,9 @@ Removed toolbar item handles become inert until the toolbar is destroyed, and re
 |-------------------------------------|--------------------------------|------------------------------------------|
 | `AddButton(icon, tooltip)`          | `Object(String, String)`       | Add icon button, returns item handle     |
 | `AddButtonWithText(icon, text, tooltip)` | `Object(String,String,String)` | Add button with text and optional icon   |
+| `AddNamedButton(name, tooltip)`     | `Object(String, String)`       | Add button using a built-in semantic icon |
+| `AddNamedButtonWithText(name, text, tooltip)` | `Object(String,String,String)` | Add text button using a built-in semantic icon |
+| `AddNamedToggle(name, tooltip)`     | `Object(String, String)`       | Add toggle using a built-in semantic icon |
 | `AddSeparator()`                    | `Object()`                     | Add separator                            |
 | `NewVertical(parent)`               | `Object(Object)`               | Create a vertical toolbar                |
 | `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
@@ -115,6 +119,7 @@ Toolbar item handles are runtime-managed and become inert after `RemoveItem()`, 
 | `SetEnabled(enabled)` | `Void(Boolean)` | Enable/disable button          |
 | `SetIcon(icon)`       | `Void(String)`  | Change icon                    |
 | `SetIconPixels(pixels)` | `Void(Object)` | Change icon from a `Pixels` handle |
+| `SetNamedIcon(name)`  | `Void(String)`  | Change icon to a built-in semantic icon |
 | `SetText(text)`       | `Void(String)`  | Change button label            |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
 | `WasClicked()`        | `Integer()`     | 1 if button was clicked        |

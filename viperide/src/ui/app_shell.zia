@@ -523,31 +523,24 @@ class AppShell {
         miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
-        // Toolbar — BMP-only Unicode glyphs rendered as button text via the
-        // system font. The runtime maps these codepoints to crisp vector icons,
-        // giving the IDE consistent cross-platform toolbar art without shipping
-        // external image assets.
-        // NOTE: AddButton(icon, tooltip) treats arg 1 as a FILE PATH
-        // (rt_gui_icon_from_path_cstr), so we pass "" for icon and put the
-        // glyph in the text slot via AddButtonWithText. Standard system fonts
-        // render every codepoint below — supplementary-plane emoji (U+1F000+)
-        // would fall back to the missing-glyph "hamburger" .notdef on UI fonts
-        // that lack color emoji support.
+        // Toolbar — semantic built-in icons. The runtime maps each name to a
+        // dependency-free vector icon, so ViperIDE does not ship image assets or
+        // expose private glyph choices as visible text.
         // ====================================================================
         toolbar = GUI.Toolbar.New(mainVBox);
-        tbNew     = toolbar.AddButtonWithText("", "+",  "New File (Ctrl+N)");
-        tbOpen    = toolbar.AddButtonWithText("", "▤",  "Open File (Ctrl+O)");
-        tbSave    = toolbar.AddButtonWithText("", "▼",  "Save File (Ctrl+S)");
-        tbSaveAll = toolbar.AddButtonWithText("", "⇓",  "Save All Files (Ctrl+Alt+Shift+S)");
+        tbNew     = toolbar.AddNamedButton("new-file", "New File (Ctrl+N)");
+        tbOpen    = toolbar.AddNamedButton("open-folder", "Open File (Ctrl+O)");
+        tbSave    = toolbar.AddNamedButton("save", "Save File (Ctrl+S)");
+        tbSaveAll = toolbar.AddNamedButton("save-all", "Save All Files (Ctrl+Alt+Shift+S)");
         toolbar.AddSeparator();
-        tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
-        tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
-        tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
-        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
-        tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
-        tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
+        tbBuild   = toolbar.AddNamedButton("build", "Build (Ctrl+Shift+B)");
+        tbRun     = toolbar.AddNamedButton("run", "Build & Run (F5)");
+        tbStop    = toolbar.AddNamedButton("stop", "Stop Running Job (Shift+F5)");
+        tbDebug   = toolbar.AddNamedButton("debug", "Start Debugging (F6)");
+        tbDebugContinue = toolbar.AddNamedButton("continue", "Continue Debugging (F7)");
+        tbDebugStep = toolbar.AddNamedButton("step-over", "Step Over (F10)");
         toolbar.AddSeparator();
-        tbFind    = toolbar.AddButtonWithText("", "?",  "Find (Ctrl+F)");
+        tbFind    = toolbar.AddNamedButton("find", "Find (Ctrl+F)");
         SetBuildJobActive(false, "");
         SetDebugSessionState(false, false, false);
 
@@ -564,8 +557,8 @@ class AppShell {
 
         // Activity bar — vertical icon strip that switches the left view.
         activityBar = GUI.Toolbar.NewVertical(workbenchHost);
-        abExplorer = activityBar.AddButtonWithText("", "▦", "Explorer");
-        abSourceControl = activityBar.AddButtonWithText("", "⎇", "Source Control");
+        abExplorer = activityBar.AddNamedButton("explorer", "Explorer");
+        abSourceControl = activityBar.AddNamedButton("source-control", "Source Control");
 
         splitPane = GUI.SplitPane.New(workbenchHost, 1);
         splitPane.SetFlex(1.0);
@@ -747,65 +740,65 @@ class AppShell {
 
         // Context menu for the file tree (populated on right-click)
         treeContextMenu = GUI.ContextMenu.New();
-        ctxOpen = treeContextMenu.AddItem("▷ Open");
-        ctxOpenText = treeContextMenu.AddItem("T Open With Text Editor");
+        ctxOpen = treeContextMenu.AddItem("Open");
+        ctxOpenText = treeContextMenu.AddItem("Open With Text Editor");
         treeContextMenu.AddSeparator();
-        ctxReveal = treeContextMenu.AddItem("▣ Reveal in File Manager");
-        ctxCopyPath = treeContextMenu.AddItem("⧉ Copy Path");
-        ctxCopyRelativePath = treeContextMenu.AddItem("⧉ Copy Relative Path");
-        ctxDuplicate = treeContextMenu.AddItem("◇ Duplicate File...");
+        ctxReveal = treeContextMenu.AddItem("Reveal in File Manager");
+        ctxCopyPath = treeContextMenu.AddItem("Copy Path");
+        ctxCopyRelativePath = treeContextMenu.AddItem("Copy Relative Path");
+        ctxDuplicate = treeContextMenu.AddItem("Duplicate File...");
         treeContextMenu.AddSeparator();
-        ctxRename = treeContextMenu.AddItem("✎ Rename");
+        ctxRename = treeContextMenu.AddItem("Rename");
         ctxRename.SetShortcut("Ctrl+Alt+R");
-        ctxDelete = treeContextMenu.AddItem("× Delete");
+        ctxDelete = treeContextMenu.AddItem("Delete");
         ctxDelete.SetShortcut("Ctrl+Alt+D");
         treeContextMenu.AddSeparator();
-        ctxNewFile = treeContextMenu.AddItem("+ New File...");
+        ctxNewFile = treeContextMenu.AddItem("New File...");
         ctxNewFile.SetShortcut("Ctrl+Alt+N");
-        ctxNewFolder = treeContextMenu.AddItem("▤ New Folder...");
+        ctxNewFolder = treeContextMenu.AddItem("New Folder...");
         ctxNewFolder.SetShortcut("Ctrl+Alt+Shift+N");
-        ctxSearchFolder = treeContextMenu.AddItem("? Search in Folder...");
-        ctxRunFile = treeContextMenu.AddItem("▶ Run This File");
-        ctxSetEntry = treeContextMenu.AddItem("◆ Set as Project Entry");
+        ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
+        ctxRunFile = treeContextMenu.AddItem("Run This File");
+        ctxSetEntry = treeContextMenu.AddItem("Set as Project Entry");
         treeContextMenu.AddSeparator();
-        ctxRefresh = treeContextMenu.AddItem("↻ Refresh");
+        ctxRefresh = treeContextMenu.AddItem("Refresh");
         ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
 
         // Context menu for the code editor surface (populated on right-click).
         editorContextMenu = GUI.ContextMenu.New();
-        ecCut = editorContextMenu.AddItem("✂ Cut");
+        ecCut = editorContextMenu.AddItem("Cut");
         ecCut.SetShortcut("Ctrl+X");
-        ecCopy = editorContextMenu.AddItem("⧉ Copy");
+        ecCopy = editorContextMenu.AddItem("Copy");
         ecCopy.SetShortcut("Ctrl+C");
-        ecPaste = editorContextMenu.AddItem("▣ Paste");
+        ecPaste = editorContextMenu.AddItem("Paste");
         ecPaste.SetShortcut("Ctrl+V");
         editorContextMenu.AddSeparator();
-        ecGotoDef = editorContextMenu.AddItem("→ Go to Definition");
+        ecGotoDef = editorContextMenu.AddItem("Go to Definition");
         ecGotoDef.SetShortcut("F12");
-        ecFindRefs = editorContextMenu.AddItem("? Find References");
+        ecFindRefs = editorContextMenu.AddItem("Find References");
         ecFindRefs.SetShortcut("Shift+F12");
-        ecRename = editorContextMenu.AddItem("✎ Rename Symbol");
+        ecRename = editorContextMenu.AddItem("Rename Symbol");
         ecRename.SetShortcut("F2");
         editorContextMenu.AddSeparator();
-        ecFormat = editorContextMenu.AddItem("◇ Format Document");
+        ecFormat = editorContextMenu.AddItem("Format Document");
         ecFormat.SetShortcut("Shift+Alt+F");
-        ecToggleBreakpoint = editorContextMenu.AddItem("● Toggle Breakpoint");
+        ecToggleBreakpoint = editorContextMenu.AddItem("Toggle Breakpoint");
         ecToggleBreakpoint.SetShortcut("F9");
-        ecEvaluate = editorContextMenu.AddItem("▸ Evaluate at Cursor");
+        ecEvaluate = editorContextMenu.AddItem("Evaluate at Cursor");
         editorContextMenu.AddSeparator();
-        ecPalette = editorContextMenu.AddItem("◆ Command Palette...");
+        ecPalette = editorContextMenu.AddItem("Command Palette...");
         ecPalette.SetShortcut("Ctrl+Shift+P");
 
         // Context menu for the editor tab strip (populated on right-click).
         tabContextMenu = GUI.ContextMenu.New();
-        tcClose = tabContextMenu.AddItem("× Close");
-        tcCloseOthers = tabContextMenu.AddItem("× Close Others");
-        tcCloseAll = tabContextMenu.AddItem("× Close All");
-        tcCloseSaved = tabContextMenu.AddItem("✓ Close Saved");
+        tcClose = tabContextMenu.AddItem("Close");
+        tcCloseOthers = tabContextMenu.AddItem("Close Others");
+        tcCloseAll = tabContextMenu.AddItem("Close All");
+        tcCloseSaved = tabContextMenu.AddItem("Close Saved");
         tabContextMenu.AddSeparator();
-        tcCopyPath = tabContextMenu.AddItem("⧉ Copy Path");
-        tcCopyRelativePath = tabContextMenu.AddItem("⧉ Copy Relative Path");
-        tcReveal = tabContextMenu.AddItem("▣ Reveal in File Manager");
+        tcCopyPath = tabContextMenu.AddItem("Copy Path");
+        tcCopyRelativePath = tabContextMenu.AddItem("Copy Relative Path");
+        tcReveal = tabContextMenu.AddItem("Reveal in File Manager");
 
         // ====================================================================
         // Status Bar

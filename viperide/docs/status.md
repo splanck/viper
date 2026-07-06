@@ -38,12 +38,13 @@ editing in a small or medium project, especially when the workflow is edit,
 search, build, run, diagnose, and debug one active program.
 
 The roughness shows up when the workflow starts to look like a mature IDE. Some
-panels are still row dumps instead of rich work surfaces. Some operations rely
-on prompt-style input instead of integrated overlays. The debug substrate is
-real and includes persistent watches, but variable inspection is still shallow.
-BASIC support is intentionally honest but incomplete. Source Control is useful
-for common Git actions and runs operations through async processes, but it does
-not have the workflow depth, progress UI, conflict handling, or authentication
+panels are still row dumps instead of rich work surfaces. Common short inputs
+use integrated overlays, but some operations still rely on prompt-style input.
+The debug substrate is real and includes persistent watches, but variable
+inspection is still shallow. BASIC support is intentionally honest but
+incomplete. Source Control is useful for common Git actions and runs operations
+through async processes, but it does not have the workflow depth, progress UI,
+complete conflict recovery, or authentication
 surface of a full client. Scene support exists in the runtime, and the IDE
 recognizes scene file extensions, but no visual editor is mounted.
 
@@ -95,8 +96,8 @@ debug inspection.
 | Search | Implemented | Docked project/folder search panel, runtime-paged file discovery, literal/regex, case/word filters, include/exclude filters, grouped results. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
 | Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
-| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Handles common line/display clears, but not a full terminal emulator. |
-| Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces/renames covered. |
+| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Uses OutputPane cell metrics for resize and drains already-running hidden sessions into a bounded replay buffer, but is not a full terminal emulator. |
+| Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces, renames, and basic unmerged conflict markers covered. |
 | Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options. |
 | Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
 | File watching | Implemented with limits | Active file watcher, inactive document polling, missing/deleted/moved-file conflict state, and capped recursive workspace watcher set with fallback scans. |
@@ -202,7 +203,8 @@ The explorer supports:
 
 Known limits:
 
-- Tree operations still rely on prompt-style input in some workflows.
+- Tree operations use integrated overlays for create/rename/delete/duplicate;
+  confirmation-heavy workflows still use dialogs.
 - Ignore behavior is whatever `Viper.Workspace.FileIndex` supports; do not
   assume full Git ignore semantics beyond what the runtime implements.
 - Very large workspaces depend on cooperative cache/index pumping.
@@ -279,10 +281,11 @@ Current limitations:
   display erase sequences are handled for shell redraws.
 - Full-screen TUI programs that require complete alternate-screen and terminal
   mode semantics are still out of scope.
-- Terminal dimensions are estimated from widget size because OutputPane does not
-  expose font metrics.
-- The controller pumps when the panel is visible; hidden-session behavior should
-  be treated carefully when changing PTY buffering.
+- Terminal dimensions come from OutputPane cell metrics via `ColumnsForWidth()`
+  and `RowsForHeight()`.
+- Hidden panels do not auto-start shells, but already-running sessions are pumped
+  into a bounded replay buffer so PTY output does not back up while another panel
+  is selected.
 
 ### Source Control
 
@@ -307,8 +310,9 @@ Known limits:
   shows only one active Source Control job at a time.
 - Active Source Control jobs can be canceled from the view.
 - Push and pull can be long-running and have no rich progress or credential UI.
-- Status parsing uses porcelain v2 and handles common spaces/renames, but exotic
-  path bytes and complex conflict states still need more coverage.
+- Status parsing uses porcelain v2 and handles common spaces, renames, and basic
+  unmerged conflict rows, but exotic path bytes and complex conflict recovery
+  still need more coverage.
 - Error feedback is captured from stderr and surfaced in the view, but recovery
   workflows are still basic.
 
@@ -338,7 +342,7 @@ Known data-safety gaps:
 
 These gaps are current documentation, not a plan commitment:
 
-- Replace ambiguous toolbar glyphs with a coherent icon system.
+- Extend named toolbar icons when new workbench actions are added.
 - Move remaining prompt-style workflows into non-modal workbench overlays.
 - Make tool panels resizable and fully virtualized beyond the current bounded
   stable-row model.

@@ -9,6 +9,8 @@ bind Machine = Viper.System.Machine;
 bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
 
+final MAX_HIDDEN_TERMINAL_BUFFER = 200000;
+
 // ============================================================================
 // MODULE: terminal_controller  (Phase 5E — interactive terminal)
 // PURPOSE: Drives the bottom-panel terminal. The OutputPane runs in interactive
@@ -20,7 +22,8 @@ bind IO = Viper.IO;
 //
 // WHERE-THIS-FITS: main.zia constructs it, Setup()s it with the shell widgets,
 //          SetCwd()s it to the active project root, and calls Pump() each frame.
-//          Pump only works when the terminal panel is visible.
+//          Pump starts shells only when visible, but drains already-running shells
+//          while hidden so PTY output does not back up behind the panel.
 //
 // SCOPE: a usable interactive shell (typing, colors, prompts, line editing,
 //   and common cursor-addressed shell redraws). Full-screen TUI apps needing
@@ -40,6 +43,10 @@ class TerminalController {
     expose Boolean didFocus;
     expose Integer lastCols;
     expose Integer lastRows;
+    expose String hiddenOutput;
+    expose Boolean hiddenOutputDropped;
+    expose Boolean hiddenHadExit;
+    expose Integer hiddenExitCode;
 
     expose func init() {
         sess = new terminal_session.TerminalSession();
@@ -49,6 +56,10 @@ class TerminalController {
         didFocus = false;
         lastCols = 0;
         lastRows = 0;
+        hiddenOutput = "";
+        hiddenOutputDropped = false;
+        hiddenHadExit = false;
+        hiddenExitCode = -1;
     }
 
     /// @brief Wire the shell-owned widgets and put the pane in interactive terminal mode.
@@ -200,13 +211,70 @@ class TerminalController {
         sess.Resize(cols, rows);
     }
 
-    /// @brief Per-frame pump; no-op unless the terminal panel is visible.
+    /// @brief Append hidden terminal output into the bounded replay buffer.
+    /// @param delta Newly drained PTY output captured while the panel is hidden.
+    /// @details The buffer is intentionally character-bounded: hidden terminals
+    ///          should not grow memory without limit, but recent output should be
+    ///          replayed when the user returns to the Terminal tab.
+    hide func BufferHiddenOutput(delta: String) {
+        if delta == "" { return; }
+        hiddenOutput = hiddenOutput + delta;
+        var len = Str.get_Length(hiddenOutput);
+        if len > MAX_HIDDEN_TERMINAL_BUFFER {
+            hiddenOutput = Str.MidLen(hiddenOutput,
+                                      len - MAX_HIDDEN_TERMINAL_BUFFER + 1,
+                                      MAX_HIDDEN_TERMINAL_BUFFER);
+            hiddenOutputDropped = true;
+        }
+    }
+
+    /// @brief Replay output drained while the terminal panel was hidden.
+    /// @details Called once the panel is visible again. Exit notifications are
+    ///          delayed with the drained output so the terminal history remains in
+    ///          chronological order from the user's perspective.
+    hide func FlushHiddenOutput() {
+        if pane == null { return; }
+        if hiddenOutputDropped {
+            pane.Append("\n[terminal output while hidden was truncated]\n");
+            hiddenOutputDropped = false;
+        }
+        if hiddenOutput != "" {
+            pane.Append(hiddenOutput);
+            hiddenOutput = "";
+        }
+        if hiddenHadExit {
+            pane.Append("\n[exited " + hiddenExitCode + "]\n");
+            hiddenHadExit = false;
+            hiddenExitCode = -1;
+        }
+    }
+
+    /// @brief Drain a running PTY while the terminal panel is hidden.
+    /// @details Hidden terminals are not auto-started. This only services an
+    ///          already-active shell so child output does not fill OS/runtime
+    ///          buffers while the user is working in another panel.
+    hide func PumpHiddenSession() {
+        didFocus = false;
+        if sess.IsActive() == false { return; }
+        var delta = sess.Update();
+        BufferHiddenOutput(delta);
+        if sess.exitedThisUpdate {
+            hiddenHadExit = true;
+            hiddenExitCode = sess.exitCode;
+        }
+    }
+
+    /// @brief Per-frame pump for the integrated terminal.
     expose func Pump() {
         if ready == false { return; }
-        if IsVisible() == false { didFocus = false; return; }
+        if IsVisible() == false {
+            PumpHiddenSession();
+            return;
+        }
 
         // Focus the pane the first frame it becomes visible so typing lands here.
         if didFocus == false and pane != null { pane.Focus(); didFocus = true; }
+        FlushHiddenOutput();
 
         EnsureStarted();
         ResizeIfNeeded();

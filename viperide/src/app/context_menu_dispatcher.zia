@@ -23,6 +23,7 @@ bind "../editor/language_service";
 bind "../editor/project_index";
 bind "../services/locations";
 bind "../ui/app_shell";
+bind "../ui/command_input";
 bind "../ui/explorer_actions";
 
 bind Viper.GUI;
@@ -66,6 +67,7 @@ bind Input = Viper.Input;
 /// @param activeService Active document language capability record.
 /// @param dbgSession Active debug session, if any.
 /// @param breakpointStore Persistent breakpoint store for editor context menu.
+/// @param commandInputOverlay Shared non-modal input overlay for short commands.
 /// @param appSettings Current settings used by build/run preflight.
 /// @return True when the frame's tree selection should not also open a file.
 expose func PumpContextMenus(shell: app_shell.AppShell,
@@ -85,6 +87,7 @@ expose func PumpContextMenus(shell: app_shell.AppShell,
                              activeService: language_service.LanguageService,
                              dbgSession: debug_session.DebugSession,
                              breakpointStore: breakpoints.BreakpointStore,
+                             commandInputOverlay: command_input.CommandInputOverlay,
                              appSettings: settings.SettingsManager) -> Boolean {
     var suppressTreeOpen = false;
 
@@ -100,7 +103,7 @@ expose func PumpContextMenus(shell: app_shell.AppShell,
                         sessionMgr, indexer, locStore, fileWatchCtrl);
     PumpEditorContextMenu(shell, docMgr, engine, tabs, indexer, locStore,
                           breakpointStore, dbgSession, paletteCtrl,
-                          commandRegistry, activeService);
+                          commandRegistry, activeService, commandInputOverlay);
     PumpTabContextMenu(shell, projMgr, docMgr, engine, tabs, fileWatchCtrl);
 
     return suppressTreeOpen;
@@ -299,6 +302,7 @@ hide func PumpExplorerOverlay(shell: app_shell.AppShell,
 /// @param locStore Location store.
 /// @param breakpointStore Persistent breakpoint store.
 /// @param dbgSession Active debug session.
+/// @param commandInputOverlay Shared non-modal input overlay for rename.
 hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                                 docMgr: document_manager.DocumentManager,
                                 engine: editor_engine.EditorEngine,
@@ -309,13 +313,20 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                                 dbgSession: debug_session.DebugSession,
                                 paletteCtrl: command_palette_controller.CommandPaletteController,
                                 commandRegistry: command_registry.CommandRegistry,
-                                activeService: language_service.LanguageService) {
+                                activeService: language_service.LanguageService,
+                                commandInputOverlay: command_input.CommandInputOverlay) {
     if shell.ecCut.WasClicked()        { edit_commands.handleCut(engine); }
     if shell.ecCopy.WasClicked()       { edit_commands.handleCopy(engine); }
     if shell.ecPaste.WasClicked()      { edit_commands.handlePaste(engine); }
     if shell.ecGotoDef.WasClicked()    { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
     if shell.ecFindRefs.WasClicked()   { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
-    if shell.ecRename.WasClicked()     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
+    if shell.ecRename.WasClicked() {
+        if commandInputOverlay != null {
+            commandInputOverlay.OpenRenameSymbol(shell, edit_commands.IdentifierAtCursor(engine));
+        } else {
+            edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer);
+        }
+    }
     if shell.ecFormat.WasClicked()     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
     if shell.ecToggleBreakpoint.WasClicked() { debug_commands.handleToggleBreakpoint(shell, docMgr, engine, breakpointStore); }
     if shell.ecEvaluate.WasClicked() { debug_commands.handleEvaluateAtCursor(shell, engine, dbgSession); }

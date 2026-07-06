@@ -24,6 +24,7 @@ bind "../ui/app_shell";
 bind "../ui/debug_breakpoint_overlay";
 bind "../ui/explorer_actions";
 bind "../ui/ide_overlays";
+bind "../ui/command_input";
 
 // ============================================================================
 // MODULE: command_context
@@ -71,6 +72,7 @@ class CommandContext {
     // Overlays and language-tool controllers.
     expose explorer_actions.ExplorerActionOverlay explorerOverlay;
     expose debug_breakpoint_overlay.DebugBreakpointOverlay debugOverlay;
+    expose command_input.CommandInputOverlay commandInputOverlay;
     expose ide_overlays.IdeOverlays overlays;
     expose diagnostics.LiveDiagnostics liveDiag;
     expose symbols.SymbolOutline symbolOutline;
@@ -101,6 +103,7 @@ class CommandContext {
         appSettings = null;
         explorerOverlay = null;
         debugOverlay = null;
+        commandInputOverlay = null;
         overlays = null;
         liveDiag = null;
         symbolOutline = null;

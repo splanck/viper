@@ -91,24 +91,38 @@ func handleInlineLocalVariable(shell: app_shell.AppShell,
 func handleExtractLocalVariable(shell: app_shell.AppShell,
                                 docMgr: document_manager.DocumentManager,
                                 engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
+    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Local Variable", "Variable name:"));
+    handleExtractLocalVariableText(shell, docMgr, engine, name);
+}
+
+/// @brief Extract the selected Zia expression using a supplied variable name.
+/// @param shell Workbench shell used for status and toast feedback.
+/// @param docMgr Open document manager containing the active document.
+/// @param engine Active editor engine providing the selection and source.
+/// @param nameText User-entered local variable name.
+/// @return True when the document was changed.
+func handleExtractLocalVariableText(shell: app_shell.AppShell,
+                                    docMgr: document_manager.DocumentManager,
+                                    engine: editor_engine.EditorEngine,
+                                    nameText: String) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
     var doc = docMgr.GetActive();
     if doc == null or doc.language != "zia" {
         GUI.Toast.Info("Extract Local Variable is only available for Zia files");
         shell.SetStatusLeft("Extract Local unavailable");
-        return;
+        return false;
     }
     if !engine.editor.CursorHasSelection(0) {
         GUI.Toast.Info("Select an expression to extract");
         shell.SetStatusLeft("Extract Local needs a selection");
-        return;
+        return false;
     }
 
-    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Local Variable", "Variable name:"));
+    var name = Str.Trim(nameText);
     if identifier_utils.IsValidIdentifier(name) == false {
         GUI.Toast.Info("Enter a valid new local variable name");
         shell.SetStatusLeft("Extract Local unavailable");
-        return;
+        return false;
     }
 
     var source = engine.GetTextSnapshot();
@@ -121,14 +135,16 @@ func handleExtractLocalVariable(shell: app_shell.AppShell,
     if extracted == source {
         GUI.Toast.Info("Select a single-line expression inside a Zia function");
         shell.SetStatusLeft("Extract Local unavailable");
-        return;
+        return false;
     }
 
     if editor_document_edit.ReplaceWholeDocument(engine, extracted) {
         file_commands.SaveEditorState(docMgr, engine);
         doc!.isModified = true;
         shell.SetStatusLeft("Extracted local variable " + name);
+        return true;
     }
+    return false;
 }
 
 /// @brief Extract selected Zia statements into a new function.
@@ -138,24 +154,38 @@ func handleExtractLocalVariable(shell: app_shell.AppShell,
 func handleExtractFunction(shell: app_shell.AppShell,
                            docMgr: document_manager.DocumentManager,
                            engine: editor_engine.EditorEngine) {
-    if engine == null or engine.editor == null { return; }
+    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Function", "Function name:"));
+    handleExtractFunctionText(shell, docMgr, engine, name);
+}
+
+/// @brief Extract selected Zia statements using a supplied function name.
+/// @param shell Workbench shell used for status and toast feedback.
+/// @param docMgr Open document manager containing the active document.
+/// @param engine Active editor engine providing the selection and source.
+/// @param nameText User-entered function name.
+/// @return True when the document was changed.
+func handleExtractFunctionText(shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine,
+                               nameText: String) -> Boolean {
+    if engine == null or engine.editor == null { return false; }
     var doc = docMgr.GetActive();
     if doc == null or doc.language != "zia" {
         GUI.Toast.Info("Extract Function is only available for Zia files");
         shell.SetStatusLeft("Extract Function unavailable");
-        return;
+        return false;
     }
     if !engine.editor.CursorHasSelection(0) {
         GUI.Toast.Info("Select complete statement lines to extract");
         shell.SetStatusLeft("Extract Function needs a selection");
-        return;
+        return false;
     }
 
-    var name = Str.Trim(GUI.MessageBox.Prompt("Extract Function", "Function name:"));
+    var name = Str.Trim(nameText);
     if identifier_utils.IsValidIdentifier(name) == false {
         GUI.Toast.Info("Enter a valid new function name");
         shell.SetStatusLeft("Extract Function unavailable");
-        return;
+        return false;
     }
 
     var source = engine.GetTextSnapshot();
@@ -168,14 +198,16 @@ func handleExtractFunction(shell: app_shell.AppShell,
     if extracted == source {
         GUI.Toast.Info("Select complete Zia statements that do not capture locals");
         shell.SetStatusLeft("Extract Function unavailable");
-        return;
+        return false;
     }
 
     if editor_document_edit.ReplaceWholeDocument(engine, extracted) {
         file_commands.SaveEditorState(docMgr, engine);
         doc!.isModified = true;
         shell.SetStatusLeft("Extracted function " + name);
+        return true;
     }
+    return false;
 }
 
 /// @brief Trim trailing whitespace in the active document.

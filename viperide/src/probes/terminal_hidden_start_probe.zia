@@ -15,6 +15,12 @@ bind "../ui/app_shell";
 bind "../terminal/terminal_controller";
 
 bind Terminal = Viper.Terminal;
+bind Pty = Viper.System.Pty;
+bind Machine = Viper.System.Machine;
+bind Env = Viper.System.Environment;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+bind Clock = Viper.Time.Clock;
 
 // ============================================================================
 // MODULE: terminal_hidden_start_probe
@@ -26,7 +32,8 @@ bind Terminal = Viper.Terminal;
 //
 // TEACHING-NOTE: Hidden controllers still need explicit pumping. Probe both
 //          visibility state and session state so UI and process lifetimes do not
-//          drift apart.
+//          drift apart. A manually-started session is also pumped while hidden to
+//          verify output draining does not depend on panel visibility.
 // ============================================================================
 
 /// @brief Report a probe failure and destroy the shell.
@@ -56,12 +63,43 @@ func main() {
         return;
     }
 
+    if Pty.IsSupported() {
+        var args = Seq.New();
+        var program = "/bin/echo";
+        if Machine.Os == "windows" {
+            program = Env.GetVariable("COMSPEC");
+            if program == "" { program = "cmd.exe"; }
+            Seq.Push(args, "/c");
+            Seq.Push(args, "echo");
+        }
+        Seq.Push(args, "termhidden789");
+        if ctrl.sess.Start(program, args, "", 80, 24) == false {
+            fail(shell, "manual PTY start failed");
+            return;
+        }
+        var i = 0;
+        while i < 400 and ctrl.sess.IsActive() {
+            ctrl.Pump();
+            Clock.Sleep(5);
+            i = i + 1;
+        }
+        ctrl.Pump();
+        if Str.IndexOf(ctrl.hiddenOutput, "termhidden789") < 0 {
+            fail(shell, "hidden pump did not buffer PTY output");
+            return;
+        }
+    }
+
     shell.ShowTerminalPanel();
     shell.Poll();
     shell.Render();
     ctrl.Pump();
     if ctrl.HasAttemptedStart() == false {
         fail(shell, "visible pump did not attempt PTY startup");
+        return;
+    }
+    if ctrl.hiddenOutput != "" {
+        fail(shell, "visible pump did not flush hidden terminal output");
         return;
     }
 

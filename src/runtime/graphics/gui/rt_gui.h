@@ -1862,12 +1862,40 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
                                       rt_string text,
                                       rt_string tooltip);
 
+/// @brief Add a button using one of the built-in semantic toolbar icons.
+/// @param toolbar Toolbar widget handle.
+/// @param icon_name Built-in icon name such as "save", "run", or "debug".
+/// @param tooltip Tooltip text.
+/// @return ToolbarItem handle, or NULL when the toolbar is invalid.
+/// @details Unknown icon names produce a textless button with no icon rather
+///          than trapping, so callers can keep using semantic names while older
+///          runtimes degrade safely.
+void *rt_toolbar_add_named_button(void *toolbar, rt_string icon_name, rt_string tooltip);
+
+/// @brief Add a text button with one of the built-in semantic toolbar icons.
+/// @param toolbar Toolbar widget handle.
+/// @param icon_name Built-in icon name such as "save", "run", or "debug".
+/// @param text Button text.
+/// @param tooltip Tooltip text.
+/// @return ToolbarItem handle, or NULL when the toolbar is invalid.
+void *rt_toolbar_add_named_button_with_text(void *toolbar,
+                                            rt_string icon_name,
+                                            rt_string text,
+                                            rt_string tooltip);
+
 /// @brief Add a toggle button to the toolbar.
 /// @param toolbar Toolbar widget handle.
 /// @param icon_path Path to icon image.
 /// @param tooltip Tooltip text.
 /// @return ToolbarItem handle.
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip);
+
+/// @brief Add a toggle button using one of the built-in semantic toolbar icons.
+/// @param toolbar Toolbar widget handle.
+/// @param icon_name Built-in icon name such as "explorer" or "source-control".
+/// @param tooltip Tooltip text.
+/// @return ToolbarItem handle, or NULL when the toolbar is invalid.
+void *rt_toolbar_add_named_toggle(void *toolbar, rt_string icon_name, rt_string tooltip);
 
 /// @brief Add a separator to the toolbar.
 /// @param toolbar Toolbar widget handle.
@@ -1939,6 +1967,12 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path);
 /// @param item ToolbarItem handle.
 /// @param pixels Pixels handle rendered as an image icon.
 void rt_toolbaritem_set_icon_pixels(void *item, void *pixels);
+
+/// @brief Set toolbar item icon from a built-in semantic icon name.
+/// @param item ToolbarItem handle.
+/// @param icon_name Built-in icon name such as "save", "run", or "find".
+/// @details Unknown icon names clear the icon to VG_ICON_NONE.
+void rt_toolbaritem_set_named_icon(void *item, rt_string icon_name);
 
 /// @brief Set toolbar item text.
 /// @param item ToolbarItem handle.

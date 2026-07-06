@@ -78,6 +78,16 @@ func entryRenamed(st: scm_git.GitStatus, newName: String, oldName: String) -> Bo
     return false;
 }
 
+func entryConflicted(st: scm_git.GitStatus, name: String) -> Boolean {
+    var i = 0;
+    while i < st.entries.count() {
+        var e = st.entries.get(i);
+        if Str.EndsWith(e.path, name) and e.conflicted { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
 func main() {
     var dir = TempFile.CreateDirWithPrefix("viperide_scm_");
 
@@ -143,6 +153,14 @@ func main() {
         return;
     }
     if git.Commit("rename spaced file") == false { Terminal.Say("RESULT: fail commit rename"); return; }
+
+    var conflictText = "# branch.head main\n";
+    conflictText = conflictText + "u UU N... 100644 100644 100644 100644 abc abc abc abc conflict file.zia\n";
+    var conflictStatus = git.StatusFromOutput(conflictText, "", 0);
+    if entryConflicted(conflictStatus, "conflict file.zia") == false {
+        Terminal.Say("RESULT: fail unmerged conflict row not parsed");
+        return;
+    }
 
     var asyncJob = git.StartStatus();
     if pumpJob(asyncJob, 8000) == false {

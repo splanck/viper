@@ -546,8 +546,10 @@ destroys the PTY on stop.
 
 UI-side integrated terminal controller. It wires the shell-owned OutputPane,
 sets terminal mode, lazily starts a shell when visible, resolves the platform
-shell, estimates rows/columns, appends output, forwards captured input, handles
-Stop and Restart, and updates the working directory for future sessions.
+shell, derives rows/columns from OutputPane cell metrics, appends output,
+forwards captured input, drains already-running hidden sessions into a bounded
+replay buffer, handles Stop and Restart, and updates the working directory for
+future sessions.
 
 Do not treat this as a full terminal emulator. It is a PTY-backed shell surface
 for line-oriented interactive work, not a full-screen TUI host.
@@ -603,6 +605,13 @@ temporary input UI and action result consumed by debug command code.
 Overlay for explorer create/rename/duplicate/delete workflows. It collects user
 input and reports action intent; actual filesystem/document mutation happens in
 `app/explorer_action_runner.zia`.
+
+### `ui/command_input.zia`
+
+Reusable non-modal single-value command input overlay. It is used by Go To Line,
+Add Watch, output filtering, Workspace Symbols, Rename Symbol, Extract Local,
+and Extract Function; command modules consume the completed value and perform
+validation/effects.
 
 ### `ui/ide_overlays.zia`
 
@@ -755,7 +764,7 @@ The source map should also make current weak spots explicit:
   cohesive new behavior.
 - Bottom panels are functional but not true virtualized workbench surfaces.
 - Scene document kind exists without a scene editor subsystem.
-- Source Control is async but still workflow-light.
+- Source Control is async and marks basic conflicts but still workflow-light.
 - Terminal behavior depends on OutputPane terminal mode, not a complete terminal
   emulator.
 - BASIC support is intentionally narrower than Zia.

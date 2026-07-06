@@ -385,10 +385,12 @@ binary to `PATH`.
 Save or wait for the editor debounce interval, then run "Run Check Now". For
 project navigation, allow workspace indexing to finish or narrow the workspace.
 
-### BASIC semantic commands are unavailable
+### BASIC semantic commands feel incomplete
 
-This is expected. BASIC currently lacks project-index-backed definition,
-references, rename, workspace symbol, and signature services.
+BASIC definition, references, rename, workspace symbol, call hierarchy, and
+signature help are scanner-backed. Results can be incomplete while cooperative
+workspace scans are still warming up or when code needs compiler-only semantic
+context.
 
 ### Scene file opens as text
 

@@ -541,6 +541,16 @@ func main() {
         fail(shell, "workspace symbols structured row");
         return;
     }
+    var uncachedSymbolPath = Path.Join(root, "uncached_symbol.zia");
+    File.WriteAllText(uncachedSymbolPath,
+                      "module UncachedSymbol;\nfunc uncachedSymbolProbe() -> Integer { return 3; }\n");
+    var uncachedCount = search_commands.CollectWorkspaceSymbols(shell, projMgr,
+                                                               docMgr, locStore,
+                                                               "uncachedSymbolProbe");
+    if uncachedCount != 1 {
+        fail(shell, "workspace symbols enumerate uncached files");
+        return;
+    }
     var cachedSearcher = new search_commands.SearchController();
     if cachedSearcher.StartCachedDirect(shell, projMgr, root, "needle", ".zia", false, false) == false {
         fail(shell, "start cached search");
