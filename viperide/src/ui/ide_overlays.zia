@@ -451,7 +451,7 @@ class IdeOverlays {
     }
 
     hide func setupSettingsPanel(shell: app_shell.AppShell) {
-        settingsPanel = shell.preferencesPanel;
+        settingsPanel = shell.workbench.preferencesPanel;
         settingsPanel.SetSize(SETTINGS_DOCK_WIDTH, 0);
         settingsPanel.SetVisible(false);
 

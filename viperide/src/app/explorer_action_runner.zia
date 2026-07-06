@@ -216,6 +216,12 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
         overlay.Reject(shell, "Target already exists.");
         return;
     }
+    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Rename",
+                                                    selectedPath) == false {
+        shell.SetStatusLeft("Rename canceled");
+        overlay.Finish();
+        return;
+    }
 
     var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, name, docMgr);
     if rewritePreview > 0 {

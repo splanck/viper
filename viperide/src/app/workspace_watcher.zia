@@ -49,6 +49,10 @@ class WorkspaceWatcherState {
     expose Boolean watching;
     expose Boolean degraded;
     expose String rootPath;
+    expose String rootSignature;
+    expose List[String] rootPaths;
+    expose List lastEntryCounts;
+    expose List lastFingerprints;
     expose Integer watcherPollPos;
     expose Threads.Throttler rescanThrottle;
     expose Integer lastEntryCount;
@@ -62,6 +66,10 @@ class WorkspaceWatcherState {
         watching = false;
         degraded = false;
         rootPath = "";
+        rootSignature = "";
+        rootPaths = new List();
+        lastEntryCounts = new List();
+        lastFingerprints = new List();
         watcherPollPos = 0;
         rescanThrottle = Threads.Throttler.New(3000);
         lastEntryCount = -1;
@@ -82,25 +90,27 @@ expose func PumpWorkspaceWatcher(shell: app_shell.AppShell,
                           engine: editor_engine.EditorEngine,
                           state: WorkspaceWatcherState) {
     var root = "";
+    var signature = "";
     if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
         root = projMgr.project.rootPath;
+        signature = projMgr.WorkspaceSignature();
     }
-    if root == "" or Dir.Exists(root) == false {
+    if root == "" or signature == "" or Dir.Exists(root) == false {
         StopWorkspaceWatcher(state);
         return;
     }
 
-    if state.rootPath != root or state.watching == false {
+    if state.rootSignature != signature or state.watching == false {
         StopWorkspaceWatcher(state);
-        StartWorkspaceWatchers(state, root);
-        PrimeWorkspaceWatcherRescanState(state, root);
+        StartWorkspaceWatchers(state, projMgr);
+        PrimeWorkspaceWatcherRescanState(state);
         return;
     }
 
     var changed = PollWorkspaceWatchers(shell, projMgr, docMgr, indexer, locStore, engine, state);
     if changed > 0 {
-        StartWorkspaceWatchers(state, root);
-        PrimeWorkspaceWatcherRescanState(state, root);
+        StartWorkspaceWatchers(state, projMgr);
+        PrimeWorkspaceWatcherRescanState(state);
         return;
     }
     if state.degraded {
@@ -129,58 +139,74 @@ expose func StopWorkspaceWatcher(state: WorkspaceWatcherState) {
     state.watching = false;
     state.degraded = false;
     state.rootPath = "";
+    state.rootSignature = "";
+    state.rootPaths = new List();
+    state.lastEntryCounts = new List();
+    state.lastFingerprints = new List();
     state.watcherPollPos = 0;
     state.rescanThrottle.Reset();
     state.lastEntryCount = -1;
     state.lastFingerprint = 0;
 }
 
-/// @brief Build the capped recursive watcher set for @p root.
+/// @brief Build the capped recursive watcher set for every workspace root.
 /// @details Directories are discovered through FileIndex.Page so watcher startup
 ///          shares the IDE ignore rules and does not allocate a whole workspace
 ///          listing. If the cap is reached, the watcher remains useful but marks
 ///          itself degraded so periodic fingerprint rescans still cover the tail.
 func StartWorkspaceWatchers(state: WorkspaceWatcherState,
-                            root: String) {
-    if state == null or root == "" { return; }
+                            projMgr: project_manager.ProjectManager) {
+    if state == null or projMgr == null or projMgr.IsOpen() == false { return; }
     StopWorkspaceWatcher(state);
-    state.rootPath = root;
+    state.rootPath = projMgr.RootPath();
+    state.rootSignature = projMgr.WorkspaceSignature();
+    state.rootPaths = new List();
     state.watchers = new List();
     state.watcherPaths = new List();
-    AddDirectoryWatcher(state, root);
 
-    var offset = 0;
-    var done = false;
-    while done == false and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
-        var page = FileIndex.Page(root, "", "", true, offset, WORKSPACE_WATCHER_DIR_PAGE_SIZE);
-        if Map.GetBool(page, "valid") == false {
-            state.degraded = true;
-            break;
-        }
-        var entries = Map.Get(page, "entries");
-        var entryCount = 0;
-        if entries != null { entryCount = Seq.get_Count(entries); }
-        var i = 0;
-        while entries != null and i < entryCount
-              and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
-            var entry = Seq.Get(entries, i);
-            i = i + 1;
-            if Map.GetBool(entry, "isDirectory") {
-                AddDirectoryWatcher(state, Map.GetStr(entry, "path"));
+    var rootIndex = 0;
+    while rootIndex < projMgr.RootCount()
+          and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+        var root = projMgr.RootPathAt(rootIndex);
+        var ignores = projMgr.RootIgnorePatternsAt(rootIndex);
+        rootIndex = rootIndex + 1;
+        if root == "" or Dir.Exists(root) == false { continue; }
+        state.rootPaths.Push(root);
+        AddDirectoryWatcher(state, root);
+
+        var offset = 0;
+        var done = false;
+        while done == false and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+            var page = FileIndex.Page(root, "", ignores, true, offset, WORKSPACE_WATCHER_DIR_PAGE_SIZE);
+            if Map.GetBool(page, "valid") == false {
+                state.degraded = true;
+                break;
+            }
+            var entries = Map.Get(page, "entries");
+            var entryCount = 0;
+            if entries != null { entryCount = Seq.get_Count(entries); }
+            var i = 0;
+            while entries != null and i < entryCount
+                  and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+                var entry = Seq.Get(entries, i);
+                i = i + 1;
+                if Map.GetBool(entry, "isDirectory") {
+                    AddDirectoryWatcher(state, Map.GetStr(entry, "path"));
+                }
+            }
+            offset = Map.GetInt(page, "nextOffset");
+            done = Map.GetBool(page, "done");
+            if Map.GetBool(page, "truncated") {
+                state.degraded = true;
+                done = true;
+            }
+            if entryCount == 0 and done == false {
+                state.degraded = true;
+                done = true;
             }
         }
-        offset = Map.GetInt(page, "nextOffset");
-        done = Map.GetBool(page, "done");
-        if Map.GetBool(page, "truncated") {
-            state.degraded = true;
-            done = true;
-        }
-        if entryCount == 0 and done == false {
-            state.degraded = true;
-            done = true;
-        }
     }
-    if done == false {
+    if rootIndex < projMgr.RootCount() {
         state.degraded = true;
     }
     state.watching = state.watchers.count() > 0;
@@ -257,17 +283,29 @@ func EventsRequireFallback(events: Any) -> Boolean {
     return false;
 }
 
-/// @brief Initialize fallback rescan counters for a workspace root.
+/// @brief Initialize fallback rescan counters for all watched workspace roots.
 /// @details This cheap snapshot gives degraded watcher mode a baseline for
 ///          detecting events missed because of watcher caps or native overflow.
 /// @param state Mutable watcher state owned by the frame loop.
-/// @param root Workspace root path.
-func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState,
-                                      root: String) {
-    if state == null or root == "" { return; }
-    var status = FileIndex.Status(root, "", "", false);
-    state.lastEntryCount = Map.GetInt(status, "entryCount");
-    state.lastFingerprint = Map.GetInt(status, "fingerprint");
+func PrimeWorkspaceWatcherRescanState(state: WorkspaceWatcherState) {
+    if state == null { return; }
+    state.lastEntryCounts = new List();
+    state.lastFingerprints = new List();
+    var i = 0;
+    while i < state.rootPaths.count() {
+        var root = state.rootPaths.get(i);
+        var status = FileIndex.Status(root, "", "", false);
+        state.lastEntryCounts.Push(Map.GetInt(status, "entryCount"));
+        state.lastFingerprints.Push(Map.GetInt(status, "fingerprint"));
+        i = i + 1;
+    }
+    if state.lastEntryCounts.count() > 0 {
+        state.lastEntryCount = state.lastEntryCounts.get(0);
+        state.lastFingerprint = state.lastFingerprints.get(0);
+    } else {
+        state.lastEntryCount = -1;
+        state.lastFingerprint = 0;
+    }
     state.rescanThrottle.Try();
 }
 
@@ -290,21 +328,37 @@ func PumpWorkspaceWatcherFallbackScan(shell: app_shell.AppShell,
                                       locStore: locations.LocationStore,
                                       engine: editor_engine.EditorEngine,
                                       state: WorkspaceWatcherState) {
-    if state == null or state.rootPath == "" { return; }
+    if state == null or state.rootPaths.count() == 0 { return; }
     if state.rescanThrottle.Try() == false {
         return;
     }
-    var status = FileIndex.Status(state.rootPath, "", "", false);
-    var count = Map.GetInt(status, "entryCount");
-    var fingerprint = Map.GetInt(status, "fingerprint");
-    if state.lastEntryCount < 0 {
-        state.lastEntryCount = count;
-        state.lastFingerprint = fingerprint;
-        return;
+    var changed = false;
+    var newCounts = new List();
+    var newFingerprints = new List();
+    var i = 0;
+    while i < state.rootPaths.count() {
+        var root = state.rootPaths.get(i);
+        var status = FileIndex.Status(root, "", "", false);
+        var count = Map.GetInt(status, "entryCount");
+        var fingerprint = Map.GetInt(status, "fingerprint");
+        var prevCount = -1;
+        var prevFingerprint = 0;
+        if i < state.lastEntryCounts.count() {
+            prevCount = state.lastEntryCounts.get(i);
+        }
+        if i < state.lastFingerprints.count() {
+            prevFingerprint = state.lastFingerprints.get(i);
+        }
+        newCounts.Push(count);
+        newFingerprints.Push(fingerprint);
+        if prevCount >= 0 and (count != prevCount or fingerprint != prevFingerprint) {
+            changed = true;
+        }
+        i = i + 1;
     }
-    if count != state.lastEntryCount or fingerprint != state.lastFingerprint {
-        state.lastEntryCount = count;
-        state.lastFingerprint = fingerprint;
+    state.lastEntryCounts = newCounts;
+    state.lastFingerprints = newFingerprints;
+    if changed {
         if projMgr != null {
             projMgr.RefreshTree();
         }
@@ -384,7 +438,7 @@ expose func ReindexAfterTreeMove(projMgr: project_manager.ProjectManager,
                           docMgr: document_manager.DocumentManager) {
     if indexer == null { return; }
     if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
-        indexer.Open(projMgr.project.rootPath, docMgr);
+        indexer.OpenProject(projMgr, docMgr);
         return;
     }
     indexer.SyncOpenDocuments(docMgr);
@@ -403,12 +457,12 @@ expose func InvalidateWorkspaceLocations(shell: app_shell.AppShell,
         locStore.Clear();
     }
     if shell != null {
-        shell.ClearProblemsPanel();
-        shell.ClearToolRows(shell.searchListBox);
-        shell.HideSearchPanel();
-        shell.ClearToolRows(shell.referencesListBox);
-        shell.HideReferencesPanel();
-        shell.minimap.ClearMarkers();
+        shell.toolPanels.ClearProblemsPanel();
+        shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
+        shell.toolPanels.HideSearchPanel();
+        shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
+        shell.toolPanels.HideReferencesPanel();
+        shell.workbench.minimap.ClearMarkers();
     }
     if engine != null and engine.editor != null {
         engine.editor.ClearHighlights();

@@ -44,7 +44,7 @@ func main() {
     shell.Render();
 
     var engine = new editor_engine.EditorEngine();
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
 
     // --- Test A: every language highlights without crashing -----------------
     var ilText = "il 0.3.0\nfunc @main() -> i64 {\n  %x = iadd.ovf 1, 2  # note\n  ret %x\n}\n";
@@ -96,15 +96,15 @@ func main() {
     }
 
     // --- Test D: TabBar point->index hit-test -------------------------------
-    shell.tabBar.AddTab("alpha.zia", 1);
-    shell.tabBar.AddTab("beta.zia", 1);
+    shell.workbench.tabBar.AddTab("alpha.zia", 1);
+    shell.workbench.tabBar.AddTab("beta.zia", 1);
     shell.Poll();
     shell.Render();
-    if shell.tabBar.GetTabIndexAt(-100, -100) != -1 {
+    if shell.workbench.tabBar.GetTabIndexAt(-100, -100) != -1 {
         fail(shell, "tab hit-test should miss far-out point");
         return;
     }
-    var firstIdx = shell.tabBar.GetTabIndexAt(shell.tabBar.GetX() + 6, shell.tabBar.GetY() + 6);
+    var firstIdx = shell.workbench.tabBar.GetTabIndexAt(shell.workbench.tabBar.GetX() + 6, shell.workbench.tabBar.GetY() + 6);
     if firstIdx != 0 {
         fail(shell, "tab hit-test first tab (got " + firstIdx + ")");
         return;

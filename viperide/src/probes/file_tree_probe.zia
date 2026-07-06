@@ -54,7 +54,7 @@ func main() {
     File.WriteAllText(Path.Join(root, "viper.project"), "project TreeProbe\nignore skipme/\n");
 
     var projMgr = new project_manager.ProjectManager();
-    projMgr.Setup(shell.sidebarTree);
+    projMgr.Setup(shell.workbench.sidebarTree);
     projMgr.OpenFolder(root);
     if projMgr.project.ignorePatterns != "skipme/" {
         fail(shell, "project ignore patterns");
@@ -72,9 +72,9 @@ func main() {
     shell.Poll();
     shell.Render();
 
-    var x = shell.sidebarTree.GetX() + 12;
-    var y = shell.sidebarTree.GetY() + 12;
-    var hit = shell.sidebarTree.GetNodeAt(x, y);
+    var x = shell.workbench.sidebarTree.GetX() + 12;
+    var y = shell.workbench.sidebarTree.GetY() + 12;
+    var hit = shell.workbench.sidebarTree.GetNodeAt(x, y);
     if hit == null {
         fail(shell, "root hit-test");
         return;
@@ -86,7 +86,7 @@ func main() {
         return;
     }
 
-    shell.sidebarTree.Select(hit);
+    shell.workbench.sidebarTree.Select(hit);
     if projMgr.SelectedPath() != root {
         fail(shell, "selected path");
         return;

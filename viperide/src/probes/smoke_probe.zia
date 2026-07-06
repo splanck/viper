@@ -43,15 +43,15 @@ func main() {
 
     shell.Build("ViperIDE Smoke", 960, 640);
     shell.CenterAndSize(72);
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
 
-    shell.minimap = GUI.Minimap.New(shell.editorRow);
-    shell.minimap.SetWidth(80);
-    shell.minimap.BindEditor(engine.editor);
-    shell.minimap.SetVisible(false);
-    shell.minimap.SetVisible(true);
+    shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
+    shell.workbench.minimap.SetWidth(80);
+    shell.workbench.minimap.BindEditor(engine.editor);
+    shell.workbench.minimap.SetVisible(false);
+    shell.workbench.minimap.SetVisible(true);
 
-    tabs.Setup(shell.tabBar);
+    tabs.Setup(shell.workbench.tabBar);
 
     var doc = docMgr.NewDocument();
     doc.content = "func main() {\n    return;\n}\n";

@@ -195,6 +195,74 @@ class ProjectManager {
         return roots;
     }
 
+    /// @brief Return the number of open workspace roots.
+    /// @return Count of primary plus extra roots that are currently open.
+    /// @details Consumers such as search, file watching, and workspace symbols
+    ///          should use this accessor rather than assuming RootPath is the
+    ///          whole workspace. The primary project remains index 0.
+    expose func RootCount() -> Integer {
+        return AllRoots().count();
+    }
+
+    /// @brief Return the absolute path for a workspace root by index.
+    /// @param index Zero-based root index; index 0 is the primary project.
+    /// @return Absolute root path, or empty when the index is out of range.
+    /// @details The returned path is stable for the current frame only; callers
+    ///          that cache roots should also compare WorkspaceSignature after
+    ///          project open/close/add-folder operations.
+    expose func RootPathAt(index: Integer) -> String {
+        var roots = AllRoots();
+        if index < 0 or index >= roots.count() { return ""; }
+        var root = roots.get(index);
+        if root == null { return ""; }
+        return root.rootPath;
+    }
+
+    /// @brief Return ignore patterns for a workspace root by index.
+    /// @param index Zero-based root index; index 0 is the primary project.
+    /// @return Comma-separated ignore pattern list, or empty when unavailable.
+    /// @details Ignore patterns are root-local because each folder may have a
+    ///          different viper.project manifest. FileIndex callers must pass
+    ///          the patterns that belong to the root they are paging.
+    expose func RootIgnorePatternsAt(index: Integer) -> String {
+        var roots = AllRoots();
+        if index < 0 or index >= roots.count() { return ""; }
+        var root = roots.get(index);
+        if root == null { return ""; }
+        return root.ignorePatterns;
+    }
+
+    /// @brief Return the display name for a workspace root by index.
+    /// @param index Zero-based root index; index 0 is the primary project.
+    /// @return Project display name, folder name, or empty when out of range.
+    expose func RootNameAt(index: Integer) -> String {
+        var roots = AllRoots();
+        if index < 0 or index >= roots.count() { return ""; }
+        var root = roots.get(index);
+        if root == null { return ""; }
+        return root.name;
+    }
+
+    /// @brief Return a compact signature for the currently open workspace roots.
+    /// @return Separator-delimited root path list.
+    /// @details File watchers compare this value each frame. Including every
+    ///          root path lets them restart when a folder is added or removed,
+    ///          not just when the primary root changes.
+    expose func WorkspaceSignature() -> String {
+        var result = "";
+        var roots = AllRoots();
+        var i = 0;
+        while i < roots.count() {
+            var root = roots.get(i);
+            if root != null {
+                if result != "" { result = result + "\n"; }
+                result = result + root.rootPath;
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
     /// @brief The workspace root owning @p path (longest rootPath prefix),
     ///        defaulting to the primary project when nothing matches.
     func OwningProject(path: String) -> project.Project {

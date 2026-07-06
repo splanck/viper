@@ -54,8 +54,8 @@ func main() {
     shell.Build("ViperIDE Terminal Hidden Start Probe", 1000, 700);
 
     var ctrl = new terminal_controller.TerminalController();
-    ctrl.Setup(shell.terminalPanel, shell.terminalPane,
-               shell.terminalKill, shell.terminalRestart);
+    ctrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
+               shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
 
     ctrl.Pump();
     if ctrl.HasAttemptedStart() {
@@ -90,7 +90,7 @@ func main() {
         }
     }
 
-    shell.ShowTerminalPanel();
+    shell.toolPanels.ShowTerminalPanel();
     shell.Poll();
     shell.Render();
     ctrl.Pump();

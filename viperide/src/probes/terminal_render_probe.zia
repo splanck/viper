@@ -38,7 +38,7 @@ func fail(shell: app_shell.AppShell, reason: String) {
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE Terminal Render Probe", 1000, 700);
-    var pane = shell.terminalPane;
+    var pane = shell.toolPanels.terminalPane;
     pane.SetTerminalMode(true);
 
     // OSC window-title (swallowed) + SGR color + "hello", then \r + ESC[K + "world".

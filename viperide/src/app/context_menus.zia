@@ -37,14 +37,14 @@ expose func DismissContextMenus(shell: app_shell.AppShell) {
     if shell.commandPalette.IsVisible() {
         shell.commandPalette.Hide();
     }
-    if shell.treeContextMenu.IsVisible() {
-        shell.treeContextMenu.Hide();
+    if shell.menuChrome.treeContextMenu.IsVisible() {
+        shell.menuChrome.treeContextMenu.Hide();
     }
-    if shell.editorContextMenu.IsVisible() {
-        shell.editorContextMenu.Hide();
+    if shell.menuChrome.editorContextMenu.IsVisible() {
+        shell.menuChrome.editorContextMenu.Hide();
     }
-    if shell.tabContextMenu.IsVisible() {
-        shell.tabContextMenu.Hide();
+    if shell.menuChrome.tabContextMenu.IsVisible() {
+        shell.menuChrome.tabContextMenu.Hide();
     }
 }
 
@@ -127,16 +127,16 @@ expose func ConfigureEditorContextMenu(shell: app_shell.AppShell,
     var canRename = hasEditor and service != null and service.canRename and readOnly == false;
     var canEvaluate = hasEditor and session != null and session.IsActive() and session.stopped;
 
-    SetContextMenuItemEnabled(shell.ecCut, hasSelection and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecCopy, hasSelection);
-    SetContextMenuItemEnabled(shell.ecPaste, hasEditor and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecGotoDef, canDefinition);
-    SetContextMenuItemEnabled(shell.ecFindRefs, canReferences);
-    SetContextMenuItemEnabled(shell.ecRename, canRename);
-    SetContextMenuItemEnabled(shell.ecFormat, hasEditor and readOnly == false);
-    SetContextMenuItemEnabled(shell.ecToggleBreakpoint, hasEditor);
-    SetContextMenuItemEnabled(shell.ecEvaluate, canEvaluate);
-    SetContextMenuItemEnabled(shell.ecPalette, true);
+    SetContextMenuItemEnabled(shell.menuChrome.ecCut, hasSelection and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecCopy, hasSelection);
+    SetContextMenuItemEnabled(shell.menuChrome.ecPaste, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecGotoDef, canDefinition);
+    SetContextMenuItemEnabled(shell.menuChrome.ecFindRefs, canReferences);
+    SetContextMenuItemEnabled(shell.menuChrome.ecRename, canRename);
+    SetContextMenuItemEnabled(shell.menuChrome.ecFormat, hasEditor and readOnly == false);
+    SetContextMenuItemEnabled(shell.menuChrome.ecToggleBreakpoint, hasEditor);
+    SetContextMenuItemEnabled(shell.menuChrome.ecEvaluate, canEvaluate);
+    SetContextMenuItemEnabled(shell.menuChrome.ecPalette, true);
 }
 
 /// @brief Resolve the current tree context-menu target path.
@@ -185,20 +185,20 @@ expose func ConfigureTreeContextMenuForPath(shell: app_shell.AppShell,
     var hasDir = contextDir != "" and Dir.Exists(contextDir) != false;
     var hasProject = projMgr != null and projMgr.project != null and projMgr.project.isOpen;
 
-    SetContextMenuItemEnabled(shell.ctxOpen, isFile);
-    SetContextMenuItemEnabled(shell.ctxOpenText, isFile);
-    SetContextMenuItemEnabled(shell.ctxReveal, hasPath);
-    SetContextMenuItemEnabled(shell.ctxCopyPath, hasPath);
-    SetContextMenuItemEnabled(shell.ctxCopyRelativePath, hasPath and hasProject);
-    SetContextMenuItemEnabled(shell.ctxDuplicate, isFile);
-    SetContextMenuItemEnabled(shell.ctxRename, hasPath);
-    SetContextMenuItemEnabled(shell.ctxDelete, hasPath);
-    SetContextMenuItemEnabled(shell.ctxNewFile, hasDir);
-    SetContextMenuItemEnabled(shell.ctxNewFolder, hasDir);
-    SetContextMenuItemEnabled(shell.ctxSearchFolder, hasDir);
-    SetContextMenuItemEnabled(shell.ctxRunFile, isFile);
-    SetContextMenuItemEnabled(shell.ctxSetEntry, isFile and hasProject);
-    SetContextMenuItemEnabled(shell.ctxRefresh, hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxOpen, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxOpenText, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxReveal, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyPath, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyRelativePath, hasPath and hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDuplicate, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRename, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDelete, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxNewFile, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxNewFolder, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxSearchFolder, hasDir);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRunFile, isFile);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxSetEntry, isFile and hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRefresh, hasProject);
 }
 
 /// @brief Set a context-menu item enabled flag when the item exists.

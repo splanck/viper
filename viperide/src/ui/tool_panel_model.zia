@@ -32,6 +32,7 @@ final TAB_DEBUG = 6;
 final TAB_TERMINAL = 7;
 
 final DEFAULT_MAX_ROWS = 5000;
+final DEFAULT_TRIM_BATCH_ROWS = 128;
 
 /// @brief One realized row in a bottom tool panel.
 /// @details `id` is stable for the lifetime of the row even when earlier rows

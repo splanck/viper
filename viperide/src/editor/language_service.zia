@@ -26,6 +26,8 @@ final LANGUAGE_SCENE = "scene";
 
 class LanguageService {
     expose String name;
+    expose String displayName;
+    expose String capabilityNote;
     expose String externalServerName;
     expose Boolean canComplete;
     expose Boolean canDiagnose;
@@ -46,6 +48,8 @@ class LanguageService {
 
     expose func init() {
         name = LANGUAGE_TEXT;
+        displayName = "Text";
+        capabilityNote = "";
         externalServerName = "";
         canComplete = false;
         canDiagnose = false;
@@ -75,6 +79,7 @@ class LanguageServiceManager {
     expose func init() {
         ziaService = new LanguageService();
         ziaService.name = LANGUAGE_ZIA;
+        ziaService.displayName = "Zia";
         ziaService.externalServerName = "zia-server";
         ziaService.canComplete = true;
         ziaService.canDiagnose = true;
@@ -95,6 +100,8 @@ class LanguageServiceManager {
 
         basicService = new LanguageService();
         basicService.name = LANGUAGE_BASIC;
+        basicService.displayName = "BASIC (scanner)";
+        basicService.capabilityNote = "BASIC semantic navigation is scanner-backed";
         basicService.externalServerName = "vbasic-server";
         // In-process BASIC language services use the Viper.Basic.* bridge for
         // compiler-backed features plus the IDE-side BASIC semantic scanner for
@@ -114,9 +121,11 @@ class LanguageServiceManager {
 
         textService = new LanguageService();
         textService.name = LANGUAGE_TEXT;
+        textService.displayName = "Text";
 
         sceneService = new LanguageService();
         sceneService.name = LANGUAGE_SCENE;
+        sceneService.displayName = "Scene";
         sceneService.externalServerName = "";
     }
 

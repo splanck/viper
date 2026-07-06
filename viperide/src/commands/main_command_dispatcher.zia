@@ -177,9 +177,9 @@ expose func DispatchCommandContext(ctx: command_context.CommandContext,
 /// @return True when the command path ran application cleanup and should exit.
 hide func DispatchFileCommands(ctx: command_context.CommandContext,
                                cpSelected: String) -> Boolean {
-    if dispatch_helpers.Triggered("new", ctx.shell.miNew, ctx.shell.tbNew, cpSelected)      { file_commands.handleNew(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
-    if dispatch_helpers.Triggered("open", ctx.shell.miOpen, ctx.shell.tbOpen, cpSelected)    { file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.Triggered("openfolder", ctx.shell.miOpenFolder, null, cpSelected) {
+    if dispatch_helpers.Triggered("new", ctx.shell.menuChrome.miNew, ctx.shell.menuChrome.tbNew, cpSelected)      { file_commands.handleNew(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("open", ctx.shell.menuChrome.miOpen, ctx.shell.menuChrome.tbOpen, cpSelected)    { file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("openfolder", ctx.shell.menuChrome.miOpenFolder, null, cpSelected) {
         if file_commands.ConfirmCloseDocuments(ctx.shell, ctx.docMgr, ctx.engine, "Open Folder", -1) {
             ctx.tabs.RefreshFromDocuments(ctx.docMgr);
             file_commands.handleOpenFolder(ctx.shell, ctx.projMgr);
@@ -195,22 +195,22 @@ hide func DispatchFileCommands(ctx: command_context.CommandContext,
             ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
         }
     }
-    if dispatch_helpers.Triggered("terminal", ctx.shell.miTerminal, null, cpSelected) {
+    if dispatch_helpers.Triggered("terminal", ctx.shell.menuChrome.miTerminal, null, cpSelected) {
         if ctx.projMgr.IsOpen() { ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath()); }
-        ctx.shell.ToggleTerminalPanel();
+        ctx.shell.toolPanels.ToggleTerminalPanel();
     }
-    if dispatch_helpers.Triggered("save", ctx.shell.miSave, ctx.shell.tbSave, cpSelected)   { file_commands.handleSave(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.Triggered("saveas", ctx.shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
-    if dispatch_helpers.Triggered("saveall", ctx.shell.miSaveAll, ctx.shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
-    if dispatch_helpers.Triggered("reload", ctx.shell.miReload, null, cpSelected)       { file_commands.handleReload(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
-    if dispatch_helpers.TriggeredMenu("recentfiles", ctx.shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(ctx.shell, ctx.sessionMgr); }
-    if dispatch_helpers.TriggeredMenu("reopenclosed", ctx.shell.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, ctx.sessionMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("save", ctx.shell.menuChrome.miSave, ctx.shell.menuChrome.tbSave, cpSelected)   { file_commands.handleSave(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("saveas", ctx.shell.menuChrome.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("saveall", ctx.shell.menuChrome.miSaveAll, ctx.shell.menuChrome.tbSaveAll, cpSelected) { file_commands.handleSaveAll(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("reload", ctx.shell.menuChrome.miReload, null, cpSelected)       { file_commands.handleReload(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.TriggeredMenu("recentfiles", ctx.shell.menuChrome.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(ctx.shell, ctx.sessionMgr); }
+    if dispatch_helpers.TriggeredMenu("reopenclosed", ctx.shell.menuChrome.miReopenClosed, cpSelected) { explorer_action_runner.ReopenClosedFile(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, ctx.sessionMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
 
     var closeIdx = -1;
-    if dispatch_helpers.Triggered("close", ctx.shell.miClose, null, cpSelected) {
+    if dispatch_helpers.Triggered("close", ctx.shell.menuChrome.miClose, null, cpSelected) {
         closeIdx = ctx.docMgr.activeIndex;
-    } else if ctx.shell.tabBar.WasCloseClicked() {
-        closeIdx = ctx.shell.tabBar.GetCloseClickedIndex();
+    } else if ctx.shell.workbench.tabBar.WasCloseClicked() {
+        closeIdx = ctx.shell.workbench.tabBar.GetCloseClickedIndex();
     }
     if closeIdx >= 0 {
         if file_commands.handleClose(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs, closeIdx) {
@@ -218,7 +218,7 @@ hide func DispatchFileCommands(ctx: command_context.CommandContext,
         }
     }
 
-    if ctx.shell.miExit.WasClicked() {
+    if ctx.shell.menuChrome.miExit.WasClicked() {
         file_commands.SaveEditorState(ctx.docMgr, ctx.engine);
         ctx.breakpointStore.Save();
         ctx.sessionMgr.Save(ctx.docMgr, ctx.projMgr);
@@ -256,25 +256,25 @@ hide func PumpFileTreeOpen(ctx: command_context.CommandContext,
 /// @param cpSelected Normalized command-palette selection id for this frame.
 hide func DispatchEditCommands(ctx: command_context.CommandContext,
                                cpSelected: String) {
-    if dispatch_helpers.Triggered("undo", ctx.shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(ctx.engine, ctx.docMgr); }
-    if dispatch_helpers.Triggered("redo", ctx.shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(ctx.engine); }
-    if dispatch_helpers.Triggered("cut", ctx.shell.miCut, null, cpSelected)             { edit_commands.handleCut(ctx.engine); }
-    if dispatch_helpers.Triggered("copy", ctx.shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(ctx.engine); }
-    if dispatch_helpers.Triggered("paste", ctx.shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(ctx.engine); }
-    if dispatch_helpers.Triggered("selectall", ctx.shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(ctx.engine); }
-    if dispatch_helpers.Triggered("find", ctx.shell.miFind, ctx.shell.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
-    if dispatch_helpers.TriggeredMenu("goto", ctx.shell.miGoToLine, cpSelected) {
+    if dispatch_helpers.Triggered("undo", ctx.shell.menuChrome.miUndo, null, cpSelected)           { edit_commands.handleUndo(ctx.engine, ctx.docMgr); }
+    if dispatch_helpers.Triggered("redo", ctx.shell.menuChrome.miRedo, null, cpSelected)           { edit_commands.handleRedo(ctx.engine); }
+    if dispatch_helpers.Triggered("cut", ctx.shell.menuChrome.miCut, null, cpSelected)             { edit_commands.handleCut(ctx.engine); }
+    if dispatch_helpers.Triggered("copy", ctx.shell.menuChrome.miCopy, null, cpSelected)           { edit_commands.handleCopy(ctx.engine); }
+    if dispatch_helpers.Triggered("paste", ctx.shell.menuChrome.miPaste, null, cpSelected)         { edit_commands.handlePaste(ctx.engine); }
+    if dispatch_helpers.Triggered("selectall", ctx.shell.menuChrome.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(ctx.engine); }
+    if dispatch_helpers.Triggered("find", ctx.shell.menuChrome.miFind, ctx.shell.menuChrome.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("goto", ctx.shell.menuChrome.miGoToLine, cpSelected) {
         if ctx.commandInputOverlay != null and ctx.engine != null and ctx.engine.editor != null {
             ctx.commandInputOverlay.OpenGoToLine(ctx.shell, ctx.engine.editor.CursorLine + 1);
         } else {
             edit_commands.handleGoToLine(ctx.shell, ctx.engine);
         }
     }
-    if dispatch_helpers.TriggeredMenu("gotodef", ctx.shell.miGoToDefinition, cpSelected)  { RunOrQueueSemanticCommand(ctx, "gotodef", "Go to definition"); }
-    if dispatch_helpers.TriggeredMenu("findrefs", ctx.shell.miFindReferences, cpSelected) { RunOrQueueSemanticCommand(ctx, "findrefs", "Find references"); }
-    if dispatch_helpers.TriggeredMenu("incomingcalls", ctx.shell.miIncomingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "incomingcalls", "Incoming calls"); }
-    if dispatch_helpers.TriggeredMenu("outgoingcalls", ctx.shell.miOutgoingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "outgoingcalls", "Outgoing calls"); }
-    if dispatch_helpers.TriggeredMenu("rename", ctx.shell.miRenameSymbol, cpSelected) {
+    if dispatch_helpers.TriggeredMenu("gotodef", ctx.shell.menuChrome.miGoToDefinition, cpSelected)  { RunOrQueueSemanticCommand(ctx, "gotodef", "Go to definition"); }
+    if dispatch_helpers.TriggeredMenu("findrefs", ctx.shell.menuChrome.miFindReferences, cpSelected) { RunOrQueueSemanticCommand(ctx, "findrefs", "Find references"); }
+    if dispatch_helpers.TriggeredMenu("incomingcalls", ctx.shell.menuChrome.miIncomingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "incomingcalls", "Incoming calls"); }
+    if dispatch_helpers.TriggeredMenu("outgoingcalls", ctx.shell.menuChrome.miOutgoingCalls, cpSelected) { RunOrQueueSemanticCommand(ctx, "outgoingcalls", "Outgoing calls"); }
+    if dispatch_helpers.TriggeredMenu("rename", ctx.shell.menuChrome.miRenameSymbol, cpSelected) {
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenRenameSymbol(ctx.shell, edit_commands.IdentifierAtCursor(ctx.engine));
         } else {
@@ -315,10 +315,10 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(ctx.shell, ctx.docMgr, ctx.engine); }
 
-    if dispatch_helpers.TriggeredMenu("nexterror", ctx.shell.miNextError, cpSelected) {
+    if dispatch_helpers.TriggeredMenu("nexterror", ctx.shell.menuChrome.miNextError, cpSelected) {
         NavigateDiagnostic(ctx, 1);
     }
-    if dispatch_helpers.TriggeredMenu("preverror", ctx.shell.miPreviousError, cpSelected) {
+    if dispatch_helpers.TriggeredMenu("preverror", ctx.shell.menuChrome.miPreviousError, cpSelected) {
         NavigateDiagnostic(ctx, -1);
     }
     if dispatch_helpers.TriggeredNoMenu("checknow", cpSelected) {
@@ -330,7 +330,7 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
             ctx.shell.SetStatusLeft("Diagnostics complete");
         }
     }
-    if (ctx.shell.miSignatureHelp != null and ctx.shell.miSignatureHelp.WasClicked())
+    if (ctx.shell.menuChrome.miSignatureHelp != null and ctx.shell.menuChrome.miSignatureHelp.WasClicked())
        or cpSelected == "signature_trigger" {
         ctx.sigCtrl.trigger(ctx.engine);
     }
@@ -347,25 +347,25 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
 /// @param cpSelected Normalized command-palette selection id for this frame.
 hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
                                      cpSelected: String) {
-    if dispatch_helpers.Triggered("togglesidebar", ctx.shell.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(ctx.shell); }
-    if dispatch_helpers.TriggeredMenu("statusbar", ctx.shell.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("zoomin", ctx.shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(ctx.shell, ctx.engine, ctx.appSettings); }
-    if dispatch_helpers.Triggered("zoomout", ctx.shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(ctx.shell, ctx.engine, ctx.appSettings); }
-    if dispatch_helpers.Triggered("zoomreset", ctx.shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(ctx.shell, ctx.engine, ctx.appSettings); }
-    if dispatch_helpers.Triggered("uizoomin", ctx.shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("uizoomout", ctx.shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("uizoomreset", ctx.shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("toggletheme", ctx.shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(ctx.shell, ctx.engine, ctx.liveDiag, ctx.appSettings); }
-    if dispatch_helpers.Triggered("fullscreen", ctx.shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("minimap", ctx.shell.miToggleMinimap, null, cpSelected)       { view_commands.handleToggleMinimap(ctx.shell, ctx.appSettings); }
-    if dispatch_helpers.Triggered("settings", ctx.shell.miPreferences, null, cpSelected)        { ctx.overlays.OpenSettings(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("togglesidebar", ctx.shell.menuChrome.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("statusbar", ctx.shell.menuChrome.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomin", ctx.shell.menuChrome.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomout", ctx.shell.menuChrome.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("zoomreset", ctx.shell.menuChrome.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(ctx.shell, ctx.engine, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomin", ctx.shell.menuChrome.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomout", ctx.shell.menuChrome.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("uizoomreset", ctx.shell.menuChrome.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("toggletheme", ctx.shell.menuChrome.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(ctx.shell, ctx.engine, ctx.liveDiag, ctx.appSettings); }
+    if dispatch_helpers.Triggered("fullscreen", ctx.shell.menuChrome.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("minimap", ctx.shell.menuChrome.miToggleMinimap, null, cpSelected)       { view_commands.handleToggleMinimap(ctx.shell, ctx.appSettings); }
+    if dispatch_helpers.Triggered("settings", ctx.shell.menuChrome.miPreferences, null, cpSelected)        { ctx.overlays.OpenSettings(ctx.shell, ctx.appSettings); }
     if dispatch_helpers.TriggeredNoMenu("keybindings", cpSelected)                              { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
     if dispatch_helpers.TriggeredNoMenu("copytoolrow", cpSelected)                              { view_commands.handleCopyToolSelection(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("copyoutputtext", cpSelected)                           { view_commands.handleCopyOutputText(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("clearoutput", cpSelected)                              { view_commands.handleClearOutput(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("filteroutput", cpSelected) {
         if ctx.commandInputOverlay != null {
-            ctx.commandInputOverlay.OpenFilterOutput(ctx.shell, ctx.shell.outputFilterText);
+            ctx.commandInputOverlay.OpenFilterOutput(ctx.shell, ctx.shell.toolPanels.outputFilterText);
         } else {
             view_commands.handleFilterOutput(ctx.shell);
         }
@@ -389,22 +389,22 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
         if overlayDeletePath != "" { ctx.explorerOverlay.OpenDelete(ctx.shell, overlayDeletePath); }
     }
     if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { ctx.projMgr.RefreshTree(); ctx.indexer.EnsureProject(ctx.projMgr, ctx.docMgr); ctx.shell.SetStatusLeft("Project tree refreshed"); }
-    if ctx.shell.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
-    if ctx.shell.miAbout.WasClicked()                                      { ctx.overlays.OpenAbout(ctx.shell); }
-    if dispatch_helpers.TriggeredMenu("quickopen", ctx.shell.miQuickOpen, cpSelected) {
+    if ctx.shell.menuChrome.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
+    if ctx.shell.menuChrome.miAbout.WasClicked()                                      { ctx.overlays.OpenAbout(ctx.shell); }
+    if dispatch_helpers.TriggeredMenu("quickopen", ctx.shell.menuChrome.miQuickOpen, cpSelected) {
         if search_commands.ShowQuickOpenPalette(ctx.shell, ctx.projMgr) {
             ctx.paletteCtrl.BeginQuickOpen();
         }
     }
-    if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore, ctx.searcher); }
-    if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.miWorkspaceSymbols, cpSelected) {
+    if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.menuChrome.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore, ctx.searcher); }
+    if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.menuChrome.miWorkspaceSymbols, cpSelected) {
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenWorkspaceSymbols(ctx.shell, "");
         } else {
             search_commands.handleWorkspaceSymbols(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore);
         }
     }
-    if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
+    if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.menuChrome.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
 }
 
 /// @brief Dispatch build, run, debug, and breakpoint metadata commands.
@@ -412,7 +412,7 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
 /// @param cpSelected Normalized command-palette selection id for this frame.
 hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                      cpSelected: String) {
-    if dispatch_helpers.Triggered("build", ctx.shell.miBuild, ctx.shell.tbBuild, cpSelected) {
+    if dispatch_helpers.Triggered("build", ctx.shell.menuChrome.miBuild, ctx.shell.menuChrome.tbBuild, cpSelected) {
         if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Build") {
             build_commands.handleBuild(ctx.shell, ctx.docMgr, ctx.projMgr,
                                        ctx.engine, ctx.tabs, ctx.buildSys,
@@ -420,7 +420,7 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                        ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("buildrun", ctx.shell.miBuildAndRun, ctx.shell.tbRun, cpSelected) {
+    if dispatch_helpers.Triggered("buildrun", ctx.shell.menuChrome.miBuildAndRun, ctx.shell.menuChrome.tbRun, cpSelected) {
         if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Build and Run") {
             build_commands.handleBuildAndRun(ctx.shell, ctx.docMgr, ctx.projMgr,
                                              ctx.engine, ctx.tabs, ctx.buildSys,
@@ -428,7 +428,7 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                              ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("run", ctx.shell.miRun, null, cpSelected) {
+    if dispatch_helpers.Triggered("run", ctx.shell.menuChrome.miRun, null, cpSelected) {
         if dispatch_helpers.CanStartBuildCommand(ctx.shell, ctx.dbgSession, "Run") {
             build_commands.handleRun(ctx.shell, ctx.docMgr, ctx.projMgr,
                                      ctx.engine, ctx.tabs, ctx.buildSys,
@@ -436,38 +436,38 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                      ctx.appSettings.saveAllBeforeBuild);
         }
     }
-    if dispatch_helpers.Triggered("stopjob", ctx.shell.miStop, ctx.shell.tbStop, cpSelected)         { build_commands.handleStop(ctx.shell, ctx.buildSys); }
-    if dispatch_helpers.Triggered("debugstart", ctx.shell.miDebugStart, ctx.shell.tbDebug, cpSelected) {
+    if dispatch_helpers.Triggered("stopjob", ctx.shell.menuChrome.miStop, ctx.shell.menuChrome.tbStop, cpSelected)         { build_commands.handleStop(ctx.shell, ctx.buildSys); }
+    if dispatch_helpers.Triggered("debugstart", ctx.shell.menuChrome.miDebugStart, ctx.shell.menuChrome.tbDebug, cpSelected) {
         debug_commands.handleDebugStart(ctx.shell, ctx.docMgr, ctx.engine,
                                         ctx.tabs, ctx.buildSys,
                                         ctx.breakpointStore, ctx.dbgSession,
                                         ctx.appSettings.saveAllBeforeBuild);
     }
-    if dispatch_helpers.Triggered("debugcontinue", ctx.shell.miDebugContinue, ctx.shell.tbDebugContinue, cpSelected) {
+    if dispatch_helpers.Triggered("debugcontinue", ctx.shell.menuChrome.miDebugContinue, ctx.shell.menuChrome.tbDebugContinue, cpSelected) {
         debug_commands.handleDebugContinue(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepover", ctx.shell.miDebugStepOver, ctx.shell.tbDebugStep, cpSelected) {
+    if dispatch_helpers.Triggered("debugstepover", ctx.shell.menuChrome.miDebugStepOver, ctx.shell.menuChrome.tbDebugStep, cpSelected) {
         debug_commands.handleDebugStepOver(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepin", ctx.shell.miDebugStepIn, null, cpSelected) {
+    if dispatch_helpers.Triggered("debugstepin", ctx.shell.menuChrome.miDebugStepIn, null, cpSelected) {
         debug_commands.handleDebugStepIn(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugstepout", ctx.shell.miDebugStepOut, null, cpSelected) {
+    if dispatch_helpers.Triggered("debugstepout", ctx.shell.menuChrome.miDebugStepOut, null, cpSelected) {
         debug_commands.handleDebugStepOut(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugpause", ctx.shell.miDebugPause, null, cpSelected) {
+    if dispatch_helpers.Triggered("debugpause", ctx.shell.menuChrome.miDebugPause, null, cpSelected) {
         debug_commands.handleDebugPause(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("debugrestart", ctx.shell.miDebugRestart, null, cpSelected) {
+    if dispatch_helpers.Triggered("debugrestart", ctx.shell.menuChrome.miDebugRestart, null, cpSelected) {
         debug_commands.handleDebugRestart(ctx.shell, ctx.docMgr, ctx.engine,
                                           ctx.tabs, ctx.buildSys,
                                           ctx.breakpointStore, ctx.dbgSession,
                                           ctx.appSettings.saveAllBeforeBuild);
     }
-    if dispatch_helpers.Triggered("debugstop", ctx.shell.miDebugStop, null, cpSelected) {
+    if dispatch_helpers.Triggered("debugstop", ctx.shell.menuChrome.miDebugStop, null, cpSelected) {
         debug_commands.handleDebugStop(ctx.shell, ctx.dbgSession);
     }
-    if dispatch_helpers.Triggered("togglebreakpoint", ctx.shell.miToggleBreakpoint, null, cpSelected) {
+    if dispatch_helpers.Triggered("togglebreakpoint", ctx.shell.menuChrome.miToggleBreakpoint, null, cpSelected) {
         debug_commands.handleToggleBreakpoint(ctx.shell, ctx.docMgr,
                                               ctx.engine, ctx.breakpointStore);
     }
@@ -672,7 +672,7 @@ hide func ExecuteSemanticCommand(ctx: command_context.CommandContext,
 /// @param direction 1 for next, -1 for previous.
 hide func NavigateDiagnostic(ctx: command_context.CommandContext,
                              direction: Integer) {
-    var count = ctx.shell.diagListBox.Count;
+    var count = ctx.shell.toolPanels.diagListBox.Count;
     if count <= 1 {
         GUI.Toast.Info("No diagnostics");
         return;
@@ -682,8 +682,8 @@ hide func NavigateDiagnostic(ctx: command_context.CommandContext,
     if currentDiagIdx >= count { currentDiagIdx = 1; }
     if currentDiagIdx < 1 { currentDiagIdx = count - 1; }
 
-    ctx.shell.diagListBox.SelectIndex(currentDiagIdx);
-    var selItem = ctx.shell.diagListBox.Selected;
+    ctx.shell.toolPanels.diagListBox.SelectIndex(currentDiagIdx);
+    var selItem = ctx.shell.toolPanels.diagListBox.Selected;
     if selItem != null {
         ctx.locStore.OpenLocation(ctx.shell, ctx.docMgr, ctx.engine,
                                   ctx.tabs, GUI.ListBox.ItemGetData(selItem));
