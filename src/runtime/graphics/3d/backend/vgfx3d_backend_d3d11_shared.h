@@ -54,6 +54,10 @@ extern "C" {
 #define VGFX3D_D3D11_POSTFX_SCALAR_MAX 1000000.0f
 #define VGFX3D_D3D11_SHADING_MODEL_MAX 5
 #define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
+#define VGFX3D_D3D11_CLUSTER_ZNEAR_MIN 0.0001f
+#define VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK 0.1f
+#define VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK 1000.0f
+#define VGFX3D_D3D11_CLUSTER_ZFAR_MAX 1000000000.0f
 
 /// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
@@ -204,6 +208,15 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
                                      float min_value,
                                      float max_value,
                                      float fallback);
+/// @brief Normalize arbitrary integer flags to shader-facing 0/1 values.
+int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested);
+/// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
+int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count);
+/// @brief Sanitize the clustered-light logarithmic Z range before shader upload.
+void vgfx3d_d3d11_sanitize_cluster_depth_range(float requested_near,
+                                               float requested_far,
+                                               float *out_near,
+                                               float *out_far);
 /// @brief Return non-zero only when every value in @p values is finite.
 int vgfx3d_d3d11_float_array_is_finite(const float *values, size_t count);
 /// @brief Copy float constants while replacing NaN/Inf lanes with @p fallback.
@@ -243,6 +256,15 @@ int vgfx3d_d3d11_compute_buffer_byte_width(size_t size, uint32_t *out_width);
 int vgfx3d_d3d11_compute_constant_buffer_byte_width(size_t size, uint32_t *out_width);
 /// @brief Compute a D3D11 UpdateSubresource pitch for tightly packed RGBA8 rows.
 int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch);
+/// @brief Compute one mip level extent for a square D3D11 texture chain.
+int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
+                                            int32_t mip_level,
+                                            int32_t *out_extent);
+/// @brief Validate an IBL mip payload extent against the destination cubemap mip.
+int vgfx3d_d3d11_validate_ibl_mip_extent(int32_t face_size,
+                                         int32_t mip_level,
+                                         int32_t width,
+                                         int32_t height);
 /// @brief Compute a bounded morph-delta float count for D3D11 float SRV uploads.
 int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
                                            int32_t requested_shape_count,

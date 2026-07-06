@@ -205,7 +205,7 @@ expose func BuildStringSetFromList(items: List) -> Any {
     while i < items.count() {
         var value = Obj.ToString(items.get(i));
         if value != "" {
-            Map.SetBool(seen, value, true);
+            Map.SetBool(seen, PathKey(value), true);
         }
         i = i + 1;
     }
@@ -223,8 +223,9 @@ expose func AddUniquePath(target: List,
                           seen: Any,
                           path: String) -> Boolean {
     if seen == null or path == "" { return false; }
-    if Map.Has(seen, path) { return false; }
-    Map.SetBool(seen, path, true);
+    var key = PathKey(path);
+    if Map.Has(seen, key) { return false; }
+    Map.SetBool(seen, key, true);
     target.Push(path);
     return true;
 }
@@ -237,12 +238,21 @@ expose func AddUniquePath(target: List,
 ///          Obj.ToString keeps comparisons stable for all current callers.
 expose func ListContains(items: List,
                          value: String) -> Boolean {
+    var target = PathKey(value);
     var i = 0;
     while i < items.count() {
-        if Obj.ToString(items.get(i)) == value {
+        if PathKey(Obj.ToString(items.get(i))) == target {
             return true;
         }
         i = i + 1;
     }
     return false;
+}
+
+/// @brief Normalize a path for membership checks without changing displayed values.
+/// @param path Absolute or relative file path spelling.
+/// @return Absolute normalized key suitable for path de-duplication.
+func PathKey(path: String) -> String {
+    if path == "" { return ""; }
+    return Path.Norm(Path.Abs(path));
 }

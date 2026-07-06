@@ -794,7 +794,8 @@ class ProjectManager {
             var d = 0;
             while d < docMgr.GetCount() {
                 var doc = docMgr.documents.get(d);
-                if doc.filePath != "" and IsZiaFile(doc.filePath) and ListContains(files, doc.filePath) == false {
+                if doc.filePath != "" and IsZiaFile(doc.filePath)
+                   and workspace_file_index.ListContains(files, doc.filePath) == false {
                     files.Push(doc.filePath);
                 }
                 d = d + 1;

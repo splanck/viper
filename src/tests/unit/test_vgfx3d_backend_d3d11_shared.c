@@ -426,6 +426,7 @@ static void test_capacity_and_mip_helpers(void) {
     size_t bytes = 0;
     uint32_t byte_width = 0;
     uint32_t row_pitch = 0;
+    int32_t mip_extent = 0;
 
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(4, 2) == 3,
@@ -477,6 +478,21 @@ static void test_capacity_and_mip_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(INT_MAX, &row_pitch) == 0 &&
                     row_pitch == 0u,
                 "RGBA8 upload-pitch helper rejects pitches beyond D3D11 UINT fields");
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 0, &mip_extent) == 1 &&
+                    mip_extent == 8,
+                "Square mip extent helper preserves level zero");
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 3, &mip_extent) == 1 &&
+                    mip_extent == 1,
+                "Square mip extent helper reaches the tail mip");
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 4, &mip_extent) == 0 &&
+                    mip_extent == 0,
+                "Square mip extent helper rejects levels beyond the chain");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_mip_extent(8, 1, 4, 4) == 1,
+                "IBL mip validation accepts the expected destination extent");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_mip_extent(8, 1, 4, 2) == 0,
+                "IBL mip validation rejects non-square payloads");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_mip_extent(8, 4, 1, 1) == 0,
+                "IBL mip validation rejects levels beyond the cubemap chain");
     EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(
                     3, sizeof(vgfx3d_d3d11_instance_data_t), &bytes) == 1 &&
                     bytes == 3u * sizeof(vgfx3d_d3d11_instance_data_t),
@@ -515,7 +531,13 @@ static void test_capacity_and_mip_helpers(void) {
 
 static void test_d3d11_sanitization_helpers(void) {
     size_t elements = 0;
+    float znear = 0.0f;
+    float zfar = 0.0f;
 
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(0) == 0,
+                "Boolean flag sanitizer preserves false");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(-7) == 1,
+                "Boolean flag sanitizer maps non-zero values to true");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(-4) == 0,
                 "UV-set sanitizer maps negative selectors to uv0");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(0) == 0,
@@ -610,6 +632,25 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Tonemap sanitizer preserves the highest valid mode");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_tonemap_mode(99) == 0,
                 "Tonemap sanitizer disables invalid modes");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(-1, 8) == -1,
+                "Cluster global-count sanitizer preserves flat-loop sentinel");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(4, 8) == 4,
+                "Cluster global-count sanitizer preserves valid prefixes");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(12, 8) == 8,
+                "Cluster global-count sanitizer clamps to uploaded light count");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(VGFX3D_MAX_LIGHTS + 8,
+                                                           VGFX3D_MAX_LIGHTS + 4) ==
+                    VGFX3D_MAX_LIGHTS,
+                "Cluster global-count sanitizer clamps to shader light capacity");
+    vgfx3d_d3d11_sanitize_cluster_depth_range(0.25f, 500.0f, &znear, &zfar);
+    EXPECT_NEAR(znear, 0.25f, 1e-6f, "Cluster depth sanitizer preserves valid near planes");
+    EXPECT_NEAR(zfar, 500.0f, 1e-6f, "Cluster depth sanitizer preserves valid far planes");
+    vgfx3d_d3d11_sanitize_cluster_depth_range(HUGE_VALF, -1.0f, &znear, &zfar);
+    EXPECT_NEAR(znear,
+                VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK,
+                1e-6f,
+                "Cluster depth sanitizer replaces non-finite near planes");
+    EXPECT_TRUE(zfar > znear, "Cluster depth sanitizer restores ordered depth bounds");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(0, 0) == 0,
                 "Bone upload helper skips unskinned draws");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(1, 0) == 1,

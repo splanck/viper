@@ -29,6 +29,7 @@ bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
 bind Str = Viper.String;
 bind Clock = Viper.Time.Clock;
+bind Env = Viper.System.Environment;
 
 final CLIPBOARD_RETRY_ATTEMPTS = 50;
 
@@ -613,4 +614,5 @@ func main() {
 
     shell.Destroy();
     Terminal.Say("RESULT: ok");
+    Env.EndProgram(0);
 }

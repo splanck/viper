@@ -361,9 +361,9 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->shadow_count = vgfx3d_d3d11_clamp_shadow_count(ctx->shadow_count);
     scene_data->ibl_intensity = ctx->ibl_intensity;
     for (int32_t sh_k = 0; sh_k < 9; sh_k++) {
-        scene_data->sh[sh_k][0] = ctx->ibl_sh[sh_k * 3 + 0];
-        scene_data->sh[sh_k][1] = ctx->ibl_sh[sh_k * 3 + 1];
-        scene_data->sh[sh_k][2] = ctx->ibl_sh[sh_k * 3 + 2];
+        scene_data->sh[sh_k][0] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 0], 0.0f);
+        scene_data->sh[sh_k][1] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 1], 0.0f);
+        scene_data->sh[sh_k][2] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 2], 0.0f);
         scene_data->sh[sh_k][3] = 0.0f;
     }
     scene_data->shadow_filter[0] = vgfx3d_d3d11_finite_or(ctx->shadow_slope_bias, 1.0f);
@@ -374,11 +374,18 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     {
         const vgfx3d_cluster_table_t *cluster =
             (const vgfx3d_cluster_table_t *)(cmd ? cmd->cluster_table : NULL);
-        scene_data->cluster_global_count = cluster ? cluster->global_light_count : -1;
+        float cluster_znear;
+        float cluster_zfar;
+        scene_data->cluster_global_count =
+            cluster ? vgfx3d_d3d11_sanitize_cluster_global_count(cluster->global_light_count,
+                                                                 scene_data->light_count)
+                    : -1;
         scene_data->cluster_params[0] = (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width);
         scene_data->cluster_params[1] = (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height);
-        scene_data->cluster_params[2] = ctx->cam_znear;
-        scene_data->cluster_params[3] = ctx->cam_zfar;
+        vgfx3d_d3d11_sanitize_cluster_depth_range(
+            ctx->cam_znear, ctx->cam_zfar, &cluster_znear, &cluster_zfar);
+        scene_data->cluster_params[2] = cluster_znear;
+        scene_data->cluster_params[3] = cluster_zfar;
     }
 }
 
@@ -439,8 +446,10 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
         ctx->opaque_depth_h = h;
     }
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 16, 1, &null_srv);
+    d3d11_unbind_output_targets(ctx);
     ID3D11DeviceContext_CopyResource(
         ctx->ctx, (ID3D11Resource *)ctx->opaque_depth_tex, (ID3D11Resource *)depth);
+    d3d11_restore_current_target_bindings(ctx);
     ctx->opaque_depth_valid = 1;
 }
 
@@ -466,18 +475,41 @@ static int d3d11_cmd_ibl_draw(d3d11_context_t *ctx,
                               const vgfx3d_draw_cmd_t *cmd,
                               float *out_lod_base,
                               float *out_max_lod) {
-    const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
+    const rt_cubemap3d *env_cm;
 
-    *out_lod_base = 0.0f;
+    if (out_lod_base)
+        *out_lod_base = 0.0f;
+    if (out_max_lod)
+        *out_max_lod = 0.0f;
+    if (!ctx || !cmd || !out_lod_base || !out_max_lod)
+        return 0;
+    env_cm = (const rt_cubemap3d *)cmd->env_map;
     *out_max_lod = env_cm ? d3d11_cubemap_max_lod(env_cm) : 0.0f;
-    if (!ctx || !ctx->ibl_enabled || !cmd->ibl_env || !env_cm || !env_cm->ibl_ready)
+    if (!ctx->ibl_enabled || !cmd->ibl_env || !env_cm || !env_cm->ibl_ready ||
+        env_cm->ibl_base_size <= 0 || env_cm->ibl_mip_count <= 0)
         return 0;
     {
-        int64_t size = env_cm->face_size;
+        int32_t face_size;
+        int64_t size;
+        int32_t level_base = 0;
+        int32_t total_mips;
+        if (env_cm->face_size <= 0 || env_cm->face_size > INT32_MAX ||
+            env_cm->ibl_mip_count > INT32_MAX)
+            return 0;
+        if (!vgfx3d_d3d11_is_valid_cubemap_extent((int32_t)env_cm->face_size))
+            return 0;
+        face_size = (int32_t)env_cm->face_size;
+        size = face_size;
         while (size > env_cm->ibl_base_size && size > 1) {
             size >>= 1;
-            *out_lod_base += 1.0f;
+            level_base++;
         }
+        if (size != env_cm->ibl_base_size)
+            return 0;
+        total_mips = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
+        if (level_base + env_cm->ibl_mip_count > total_mips)
+            return 0;
+        *out_lod_base = (float)level_base;
     }
     *out_max_lod = (float)(env_cm->ibl_mip_count - 1);
     return 1;
@@ -539,18 +571,18 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         cmd->normal_scale, 0.0f, D3D11_MATERIAL_NORMAL_SCALE_MAX, 1.0f);
     material_data->pbr_scalars1[1] =
         vgfx3d_d3d11_clamp_float_param(cmd->alpha_cutoff, 0.0f, 1.0f, 0.5f);
-    material_data->flags0[0] = has_texture;
-    material_data->flags0[1] = cmd->unlit;
-    material_data->flags0[2] = has_normal_map;
-    material_data->flags0[3] = has_specular_map;
-    material_data->flags1[0] = has_emissive_map;
-    material_data->flags1[1] = has_env_map;
-    material_data->flags1[2] = has_splat;
-    material_data->flags1[3] = ibl_draw;
+    material_data->flags0[0] = vgfx3d_d3d11_sanitize_bool_flag(has_texture);
+    material_data->flags0[1] = vgfx3d_d3d11_sanitize_bool_flag(cmd->unlit);
+    material_data->flags0[2] = vgfx3d_d3d11_sanitize_bool_flag(has_normal_map);
+    material_data->flags0[3] = vgfx3d_d3d11_sanitize_bool_flag(has_specular_map);
+    material_data->flags1[0] = vgfx3d_d3d11_sanitize_bool_flag(has_emissive_map);
+    material_data->flags1[1] = vgfx3d_d3d11_sanitize_bool_flag(has_env_map);
+    material_data->flags1[2] = vgfx3d_d3d11_sanitize_bool_flag(has_splat);
+    material_data->flags1[3] = vgfx3d_d3d11_sanitize_bool_flag(ibl_draw);
     material_data->pbr_flags[0] = vgfx3d_d3d11_sanitize_material_workflow(cmd->workflow);
     material_data->pbr_flags[1] = vgfx3d_d3d11_sanitize_alpha_mode(cmd->alpha_mode);
-    material_data->pbr_flags[2] = has_metallic_roughness_map;
-    material_data->pbr_flags[3] = has_ao_map;
+    material_data->pbr_flags[2] = vgfx3d_d3d11_sanitize_bool_flag(has_metallic_roughness_map);
+    material_data->pbr_flags[3] = vgfx3d_d3d11_sanitize_bool_flag(has_ao_map);
     material_data->shading_model = vgfx3d_d3d11_sanitize_shading_model(cmd->shading_model);
     vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
                                     VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
@@ -895,11 +927,11 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 /// D3D11 forbids a texture being bound as both SRV and RTV simultaneously.
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
-    ID3D11ShaderResourceView *null_ps[16] = {NULL};
+    ID3D11ShaderResourceView *null_ps[17] = {NULL};
     if (!ctx || !ctx->ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, null_ps);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 17, null_ps);
 }
 
 /// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.

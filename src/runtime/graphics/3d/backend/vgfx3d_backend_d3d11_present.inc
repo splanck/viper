@@ -42,7 +42,7 @@ static float d3d11_halton(uint32_t index, uint32_t base) {
 
 /// @brief True when the exported postfx chain contains an effect of @p type_value.
 static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
-    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
         return 0;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         if (chain->effects[i].type == type_value)
@@ -112,17 +112,17 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
-    ctx->ibl_enabled = cam->ibl_enabled;
+    ctx->ibl_enabled = cam->ibl_enabled ? 1 : 0;
     ctx->ibl_intensity = vgfx3d_d3d11_clamp_float_param(cam->ibl_intensity, 0.0f, 8.0f, 1.0f);
-    memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
+    vgfx3d_d3d11_copy_float_array_finite_or(ctx->ibl_sh, cam->ibl_sh, 27u, 0.0f);
     ctx->shadow_strength = cam->shadow_strength;
-    ctx->shadow_slope_bias = cam->shadow_slope_bias;
+    ctx->shadow_slope_bias = vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cam->shadow_slope_bias);
     ctx->shadow_quality = cam->shadow_quality;
     ctx->uploaded_lights_revision = 0; /* new frame: re-upload scene/light constants */
     /* Plan 10: the opaque depth snapshot is per-pass state. */
     ctx->opaque_depth_valid = 0;
-    ctx->cam_znear = cam->znear;
-    ctx->cam_zfar = cam->zfar;
+    vgfx3d_d3d11_sanitize_cluster_depth_range(
+        cam->znear, cam->zfar, &ctx->cam_znear, &ctx->cam_zfar);
     if (vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(ctx->rtt_active,
                                                                  cam->load_existing_color))
         ctx->scene_composited_to_swapchain = 0;

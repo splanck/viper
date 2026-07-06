@@ -1110,13 +1110,15 @@ static void d3d11_apply_ibl_mips(d3d11_context_t *ctx,
             int32_t w = 0;
             int32_t h = 0;
             uint8_t *rgba = NULL;
-            int32_t row_pitch = 0;
+            uint32_t row_pitch = 0;
 
             if (vgfx3d_unpack_pixels_rgba(cubemap->ibl_mips[m][f], &w, &h, &rgba) != 0 || !rgba) {
                 free(rgba);
                 return;
             }
-            if (!vgfx3d_d3d11_compute_rgba8_upload_pitch(w, &row_pitch)) {
+            if (!vgfx3d_d3d11_validate_ibl_mip_extent(
+                    entry->face_size, level_base + m, w, h) ||
+                !vgfx3d_d3d11_compute_rgba8_upload_pitch(w, &row_pitch)) {
                 free(rgba);
                 return;
             }

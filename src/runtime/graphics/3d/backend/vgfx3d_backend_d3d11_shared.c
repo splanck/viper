@@ -336,6 +336,59 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
     return requested;
 }
 
+/// @brief Normalize arbitrary integer flags to shader-facing 0/1 values.
+int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested) {
+    return requested ? 1 : 0;
+}
+
+/// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
+int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count) {
+    int32_t max_count;
+
+    if (requested < 0)
+        return -1;
+    max_count = vgfx3d_d3d11_clamp_int_param(light_count, 0, VGFX3D_MAX_LIGHTS);
+    return requested > max_count ? max_count : requested;
+}
+
+/// @brief Sanitize the clustered-light logarithmic Z range before shader upload.
+void vgfx3d_d3d11_sanitize_cluster_depth_range(float requested_near,
+                                               float requested_far,
+                                               float *out_near,
+                                               float *out_far) {
+    float znear;
+    float zfar;
+    float min_far;
+    float fallback_far;
+
+    znear = vgfx3d_d3d11_clamp_float_param(requested_near,
+                                           VGFX3D_D3D11_CLUSTER_ZNEAR_MIN,
+                                           VGFX3D_D3D11_CLUSTER_ZFAR_MAX * 0.5f,
+                                           VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK);
+    min_far = znear * (1.0f + 1.0e-3f);
+    fallback_far = znear * VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK;
+    if (!isfinite(fallback_far) || fallback_far <= min_far)
+        fallback_far = znear + VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK;
+    if (fallback_far > VGFX3D_D3D11_CLUSTER_ZFAR_MAX)
+        fallback_far = VGFX3D_D3D11_CLUSTER_ZFAR_MAX;
+
+    if (!isfinite(requested_far) || requested_far <= min_far)
+        zfar = fallback_far;
+    else if (requested_far > VGFX3D_D3D11_CLUSTER_ZFAR_MAX)
+        zfar = VGFX3D_D3D11_CLUSTER_ZFAR_MAX;
+    else
+        zfar = requested_far;
+
+    if (zfar <= min_far) {
+        znear = VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK;
+        zfar = VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK;
+    }
+    if (out_near)
+        *out_near = znear;
+    if (out_far)
+        *out_far = zfar;
+}
+
 /// @brief Sanitize slope-scaled rasterizer bias before D3D11 state creation/cache keys.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested) {
     return vgfx3d_d3d11_clamp_float_param(requested,
@@ -475,6 +528,41 @@ int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch) 
         return 0;
     *out_pitch = (uint32_t)row_bytes;
     return 1;
+}
+
+/// @brief Compute one mip level extent for a square D3D11 texture chain.
+int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
+                                            int32_t mip_level,
+                                            int32_t *out_extent) {
+    int32_t extent;
+    int32_t mip_count;
+
+    if (out_extent)
+        *out_extent = 0;
+    if (!out_extent || !vgfx3d_d3d11_is_valid_cubemap_extent(base_extent) || mip_level < 0)
+        return 0;
+    mip_count = vgfx3d_d3d11_compute_mip_count(base_extent, base_extent);
+    if (mip_level >= mip_count)
+        return 0;
+    extent = base_extent;
+    for (int32_t i = 0; i < mip_level; i++) {
+        if (extent > 1)
+            extent >>= 1;
+    }
+    *out_extent = extent > 0 ? extent : 1;
+    return 1;
+}
+
+/// @brief Validate an IBL mip payload extent against the destination cubemap mip.
+int vgfx3d_d3d11_validate_ibl_mip_extent(int32_t face_size,
+                                         int32_t mip_level,
+                                         int32_t width,
+                                         int32_t height) {
+    int32_t expected_extent;
+
+    if (!vgfx3d_d3d11_expected_square_mip_extent(face_size, mip_level, &expected_extent))
+        return 0;
+    return width == expected_extent && height == expected_extent;
 }
 
 /// @brief Compute a checked per-instance vertex-buffer upload size.
