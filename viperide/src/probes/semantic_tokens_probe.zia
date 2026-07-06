@@ -60,7 +60,7 @@ func main() {
     shell.Render();
 
     var engine = new editor_engine.EditorEngine();
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
 
     var src = "class Point {\n"
         + "    expose Integer x;\n"

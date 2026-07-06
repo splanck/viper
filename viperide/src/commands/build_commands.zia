@@ -78,7 +78,7 @@ func handleBuild(shell: app_shell.AppShell,
             if buildSys.StartConfig(cfg) {
                 shell.SetBuildJobActive(true, buildSys.activeName);
                 shell.SetStatusLeft("Building: " + cfg.targetPath);
-                shell.SetBuildOutput("Started: " + FormatCommand(cfg));
+                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
                 shell.SetBuildJobActive(false, "");
                 shell.SetStatusLeft("Build failed to start");
@@ -120,7 +120,7 @@ func handleBuildAndRun(shell: app_shell.AppShell,
             if buildSys.StartConfig(cfg) {
                 shell.SetBuildJobActive(true, buildSys.activeName);
                 shell.SetStatusLeft("Running: " + cfg.targetPath);
-                shell.SetBuildOutput("Started: " + FormatCommand(cfg));
+                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
                 shell.SetBuildJobActive(false, "");
                 shell.SetStatusLeft("Run failed to start");
@@ -170,7 +170,7 @@ func UpdateJob(shell: app_shell.AppShell,
         buildSys.Update();
         var outputDelta = buildSys.TakeOutputDelta();
         if outputDelta != "" {
-            shell.AppendBuildOutput(outputDelta);
+            shell.toolPanels.AppendBuildOutput(outputDelta);
         }
         if buildSys.IsActive() == false {
             shell.SetBuildJobActive(false, "");
@@ -208,8 +208,8 @@ func UpdateJob(shell: app_shell.AppShell,
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
                        locStore: locations.LocationStore) {
-    shell.BeginProblems();
-    shell.minimap.ClearMarkers();
+    shell.toolPanels.BeginProblems();
+    shell.workbench.minimap.ClearMarkers();
 
     var diagCount = buildSys.diagnostics.count();
     if diagCount > 0 {
@@ -234,7 +234,7 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
                 action = diag.fixitMessage;
                 if action == "" { action = "Quick fix available"; }
             }
-            var item = shell.AddProblem(sevLabel, "build", diag.filePath, diag.line, diag.column,
+            var item = shell.toolPanels.AddProblem(sevLabel, "build", diag.filePath, diag.line, diag.column,
                                         diag.code, diag.message, action);
             var endLine = diag.endLine;
             var endColumn = diag.endColumn;
@@ -244,27 +244,27 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
                                      endLine, endColumn,
                                      locations.KIND_BUILD, diag.message);
             GUI.ListBox.ItemSetData(item, locId);
-            shell.minimap.AddMarker(diag.line, 1, markerColor);
+            shell.workbench.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }
     }
-    shell.FinishProblems(diagCount);
+    shell.toolPanels.FinishProblems(diagCount);
 
     PopulateBuildOutput(shell, buildSys, locStore);
     // Land on the Problems tab when there is something to triage — those rows are
     // click-to-navigate — while a clean build stays on the Output log.
     if diagCount > 0 {
-        shell.ShowProblemsPanel();
+        shell.toolPanels.ShowProblemsPanel();
     }
 }
 
 func PopulateBuildOutput(shell: app_shell.AppShell,
                          buildSys: build_system.BuildSystem,
                          locStore: locations.LocationStore) {
-    shell.BeginOutputRows();
+    shell.toolPanels.BeginOutputRows();
     var output = buildSys.GetOutput();
     if output == "" {
-        shell.HideOutputPanel();
+        shell.toolPanels.HideOutputPanel();
         return;
     }
     var lines = Viper.String.Split(output, "\n");
@@ -272,7 +272,7 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
     while i < Seq.get_Count(lines) {
         var line = Obj.ToString(Seq.Get(lines, i));
         if line != "" {
-            var item = shell.AddOutputDisplayLine(line);
+            var item = shell.toolPanels.AddOutputDisplayLine(line);
             var diag = buildSys.ParseDiagnosticLine(line);
             if item != null {
                 if diag != null {
@@ -289,16 +289,16 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
                                              locations.KIND_BUILD, d.message);
                     GUI.ListBox.ItemSetData(item, locId);
                 } else {
-                    shell.ApplyOutputLineColor(item, line);
+                    shell.toolPanels.ApplyOutputLineColor(item, line);
                 }
             }
         }
         i = i + 1;
     }
-    if shell.outputAutoScroll {
-        shell.outputListBox.ScrollToBottom();
+    if shell.toolPanels.outputAutoScroll {
+        shell.toolPanels.outputListBox.ScrollToBottom();
     }
-    shell.ShowOutputPanel();
+    shell.toolPanels.ShowOutputPanel();
 }
 
 func FormatCommand(cfg: run_config.RunConfig) -> String {
@@ -358,6 +358,6 @@ func EnsureNoActiveJob(shell: app_shell.AppShell,
     }
     buildSys.Stop();
     shell.SetBuildJobActive(false, "");
-    shell.SetBuildOutput(buildSys.GetOutput());
+    shell.toolPanels.SetBuildOutput(buildSys.GetOutput());
     return true;
 }

@@ -37,7 +37,7 @@ func main() {
     var engine = new editor_engine.EditorEngine();
 
     shell.Build("ViperIDE Editor Hot Path Probe", 720, 480);
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
 
     var initialRevision = engine.GetRevision();
     if initialRevision <= 0 {
@@ -176,7 +176,7 @@ func main() {
 
     var docMgr = new document_manager.DocumentManager();
     var projMgr = new project_manager.ProjectManager();
-    projMgr.Setup(shell.sidebarTree);
+    projMgr.Setup(shell.workbench.sidebarTree);
     projMgr.OpenFolder(root);
     var doc = docMgr.OpenFile(filePath);
     engine.LoadDocument(doc);
@@ -325,7 +325,7 @@ func main() {
     }
 
     var visibleOutline = new symbols.SymbolOutline();
-    visibleOutline.setup(shell.editorArea);
+    visibleOutline.setup(shell.workbench.editorArea);
     visibleOutline.setSourcePath("fold_perf.zia");
     visibleOutline.toggle();
     visibleOutline.setSemanticFoldingEnabled(true, engine);

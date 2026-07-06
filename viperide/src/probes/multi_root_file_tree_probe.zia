@@ -49,7 +49,7 @@ func main() {
     File.WriteAllText(Path.Join(root2, "beta.zia"), "module Beta;\n");
 
     var projMgr = new project_manager.ProjectManager();
-    projMgr.Setup(shell.sidebarTree);
+    projMgr.Setup(shell.workbench.sidebarTree);
 
     // Single root first.
     projMgr.OpenFolder(root1);

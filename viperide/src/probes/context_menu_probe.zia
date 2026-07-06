@@ -57,25 +57,25 @@ func main() {
     file_commands.SetConfirmDirtyClose(false);
 
     var engine = new editor_engine.EditorEngine();
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
     var tabs = new editor_tabs.EditorTabs();
-    tabs.Setup(shell.tabBar);
+    tabs.Setup(shell.workbench.tabBar);
 
     // --- Test A: the new context menus exist and are idle at rest ----------
-    if shell.editorContextMenu == null {
+    if shell.menuChrome.editorContextMenu == null {
         fail(shell, "editor context menu missing");
         return;
     }
-    if shell.tabContextMenu == null {
+    if shell.menuChrome.tabContextMenu == null {
         fail(shell, "tab context menu missing");
         return;
     }
-    if shell.editorContextMenu.IsVisible() or shell.tabContextMenu.IsVisible() {
+    if shell.menuChrome.editorContextMenu.IsVisible() or shell.menuChrome.tabContextMenu.IsVisible() {
         fail(shell, "context menu visible at rest");
         return;
     }
     // GetClickedItem is edge-triggered: with no click it must report nothing.
-    if shell.editorContextMenu.GetClickedItem() != null {
+    if shell.menuChrome.editorContextMenu.GetClickedItem() != null {
         fail(shell, "editor menu reports a stale click");
         return;
     }

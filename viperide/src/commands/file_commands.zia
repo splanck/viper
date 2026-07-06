@@ -723,10 +723,24 @@ func ConfirmCloseDocumentsUnderPath(shell: app_shell.AppShell,
         names = names + "\n...and " + (dirtyCount - 5) + " more";
     }
     var choice = DirtyCloseChoice("Unsaved Changes - " + reason,
-                                  names + "\n\nSave changes before deleting?");
+                                  names + "\n\nSave changes before "
+                                  + DirtyPathActionVerb(reason) + "?");
     if choice == CLOSE_CHOICE_CANCEL { return false; }
     if choice == CLOSE_CHOICE_DISCARD { return true; }
     return SaveDirtyDocumentsUnderPath(shell, docMgr, engine, path);
+}
+
+/// @brief Return the verb used in dirty-document prompts for path operations.
+/// @param reason Operation name passed by the caller.
+/// @return Lowercase gerund that fits "Save changes before ...?".
+/// @details Rename and delete share the same dirty-document preflight helper,
+///          but the prompt must describe the actual operation so users can make
+///          the right save/discard/cancel decision.
+func DirtyPathActionVerb(reason: String) -> String {
+    if reason == "Move to Trash" { return "moving to trash"; }
+    if reason == "Rename" { return "renaming"; }
+    if reason == "Delete" { return "deleting"; }
+    return "continuing";
 }
 
 /// @brief Show a Save / Discard / Cancel prompt for dirty-close flows.

@@ -125,11 +125,11 @@ func handleSelectAll(engine: editor_engine.EditorEngine) {
 
 /// @brief Toggle the find bar; auto-focuses when shown.
 func handleFind(shell: app_shell.AppShell) {
-    if shell.findBar.IsVisible() {
-        shell.findBar.SetVisible(false);
+    if shell.workbench.findBar.IsVisible() {
+        shell.workbench.findBar.SetVisible(false);
     } else {
-        shell.findBar.SetVisible(true);
-        shell.findBar.Focus();
+        shell.workbench.findBar.SetVisible(true);
+        shell.workbench.findBar.Focus();
     }
 }
 
@@ -269,9 +269,9 @@ func handleFindReferences(shell: app_shell.AppShell,
     indexer.SyncOpenDocuments(docMgr);
     if PrepareSemanticQuery(shell, indexer, "Find references") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No references found");
         return;
     }
@@ -290,21 +290,21 @@ func handleFindReferences(shell: app_shell.AppShell,
             marker = "definition";
         }
         if file != lastFile {
-            shell.AddToolGroupHeader(shell.referencesListBox, Path.Name(file), file);
+            shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox, Path.Name(file), file);
             lastFile = file;
         }
         var preview = ReferencePreviewLine(docMgr, file, line);
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_REFERENCE, name);
-        var item = shell.AddToolLocationRow(shell.referencesListBox,
+        var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                             "ref", "zia",
                                             "" + line + ":" + col,
                                             marker, preview, "");
         GUI.ListBox.ItemSetData(item, id);
         i = i + 1;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " references");
 }
 
@@ -333,9 +333,9 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     indexer.SyncOpenDocuments(docMgr);
     if PrepareSemanticQuery(shell, indexer, "Incoming calls") == false { return; }
     var refs = indexer.References(activeDoc.filePath, activeDoc.content, engine.editor.CursorLine + 1, engine.editor.CursorCol);
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No incoming calls found");
         return;
     }
@@ -363,14 +363,14 @@ func handleIncomingCalls(shell: app_shell.AppShell,
         }
         var group = file + "|" + caller;
         if group != lastGroup {
-            shell.AddToolGroupHeader(shell.referencesListBox, caller, Path.Name(file));
+            shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox, caller, Path.Name(file));
             lastGroup = group;
         }
 
         var preview = ReferencePreviewLine(docMgr, file, line);
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_REFERENCE, name);
-        var item = shell.AddToolLocationRow(shell.referencesListBox,
+        var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                             "call", "zia",
                                             "" + line + ":" + col,
                                             "", preview, "");
@@ -380,12 +380,12 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     }
 
     if count == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No incoming calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " incoming calls");
 }
 
@@ -417,16 +417,16 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     var cursorLine = engine.editor.CursorLine + 1;
     var startLine = EnclosingZiaFunctionStartLine(activeDoc.content, cursorLine);
     if startLine <= 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No enclosing function found");
         return;
     }
     var callerName = ZiaFunctionNameFromLine(SourceLine(activeDoc.content, startLine));
     var endLine = ZiaFunctionEndLine(activeDoc.content, startLine);
     var tokens = OutgoingZiaCallTokens(activeDoc.content, startLine, endLine);
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
         return;
     }
@@ -453,7 +453,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
             }
             var targetGroup = file + "|" + targetName + "|" + line + "|" + col;
             if targetGroup != lastTarget {
-                shell.AddToolGroupHeader(shell.referencesListBox,
+                shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox,
                                          callerName + " -> " + targetName,
                                          Path.Name(file));
                 lastTarget = targetGroup;
@@ -461,7 +461,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
             var preview = ReferencePreviewLine(docMgr, activeDoc.filePath, tokenLine);
             var id = locStore.Add(file, line, col, endDefLine, endDefCol,
                                   locations.KIND_DEFINITION, targetName);
-            var item = shell.AddToolLocationRow(shell.referencesListBox,
+            var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                                 "call", "zia",
                                                 "" + tokenLine + ":" + tokenCol,
                                                 "definition", preview, "");
@@ -472,12 +472,12 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     }
 
     if count == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " outgoing calls");
 }
 
@@ -618,7 +618,7 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
         return;
     }
     var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     var i = 0;
     var count = 0;
     var lastGroup = "";
@@ -635,14 +635,14 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
         if caller == "" { caller = "<top-level>"; }
         var group = file + "|" + caller;
         if group != lastGroup {
-            shell.AddToolGroupHeader(shell.referencesListBox, caller, Path.Name(file));
+            shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox, caller, Path.Name(file));
             lastGroup = group;
         }
         var preview = ReferencePreviewLine(docMgr, file, line);
         var id = locStore.Add(file, line, col, Map.GetIntOr(ref, "endLine", line),
                               Map.GetIntOr(ref, "endColumn", col + 1),
                               locations.KIND_REFERENCE, Map.GetStr(ref, "name"));
-        var item = shell.AddToolLocationRow(shell.referencesListBox,
+        var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                             "call", "basic",
                                             "" + line + ":" + col,
                                             "", preview, "");
@@ -651,12 +651,12 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
         i = i + 1;
     }
     if count == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No incoming calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " incoming calls");
 }
 
@@ -672,7 +672,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
     var cursorLine = engine.editor.CursorLine + 1;
     var startLine = semantic_scan.EnclosingBasicProcedureStartLine(source, cursorLine);
     if startLine <= 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No enclosing BASIC procedure found");
         return;
     }
@@ -680,9 +680,9 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
     var callerName = semantic_scan.EnclosingBasicProcedureName(source, cursorLine);
     if callerName == "" { callerName = "<procedure>"; }
     var tokens = semantic_scan.OutgoingBasicCallTokens(source, startLine, endLine);
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
         return;
     }
@@ -704,7 +704,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
             var targetName = Map.GetStr(def, "name");
             var targetGroup = file + "|" + targetName + "|" + line + "|" + col;
             if targetGroup != lastTarget {
-                shell.AddToolGroupHeader(shell.referencesListBox,
+                shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox,
                                          callerName + " -> " + targetName,
                                          Path.Name(file));
                 lastTarget = targetGroup;
@@ -714,7 +714,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
                                   Map.GetIntOr(def, "endLine", line),
                                   Map.GetIntOr(def, "endColumn", col + 1),
                                   locations.KIND_DEFINITION, targetName);
-            var item = shell.AddToolLocationRow(shell.referencesListBox,
+            var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                                 "call", "basic",
                                                 "" + tokenLine + ":" + tokenCol,
                                                 "definition", preview, "");
@@ -724,12 +724,12 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
         i = i + 1;
     }
     if count == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No outgoing calls found");
         return;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " outgoing calls");
 }
 
@@ -738,9 +738,9 @@ func RenderBasicReferences(shell: app_shell.AppShell,
                            locStore: locations.LocationStore,
                            refs: Any,
                            label: String) {
-    shell.ClearToolRows(shell.referencesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
-        shell.HideReferencesPanel();
+        shell.toolPanels.HideReferencesPanel();
         GUI.Toast.Info("No " + label + " found");
         return;
     }
@@ -756,21 +756,21 @@ func RenderBasicReferences(shell: app_shell.AppShell,
         var marker = "";
         if Map.GetBool(ref, "isDefinition") { marker = "definition"; }
         if file != lastFile {
-            shell.AddToolGroupHeader(shell.referencesListBox, Path.Name(file), file);
+            shell.toolPanels.AddToolGroupHeader(shell.toolPanels.referencesListBox, Path.Name(file), file);
             lastFile = file;
         }
         var preview = ReferencePreviewLine(docMgr, file, line);
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_REFERENCE, Map.GetStr(ref, "name"));
-        var item = shell.AddToolLocationRow(shell.referencesListBox,
+        var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.referencesListBox,
                                             "ref", "basic",
                                             "" + line + ":" + col,
                                             marker, preview, "");
         GUI.ListBox.ItemSetData(item, id);
         i = i + 1;
     }
-    shell.referencesListBox.SetVisible(true);
-    shell.ShowReferencesPanel();
+    shell.toolPanels.referencesListBox.SetVisible(true);
+    shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " " + label);
 }
 

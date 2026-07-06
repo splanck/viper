@@ -6,7 +6,6 @@ bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
 bind "ui/command_input";
 bind "ui/activity_bar";
-bind "app/dispatch_helpers";
 bind "app/build_info";
 bind "app/command_palette_controller";
 bind "app/context_menus";
@@ -15,6 +14,7 @@ bind "app/workspace_watcher";
 bind "app/file_watch_controller";
 bind "app/explorer_action_runner";
 bind "app/lifecycle_controller";
+bind "app/language_tool_frame";
 bind "app/settings_applier";
 bind "scm/scm_view";
 bind "terminal/terminal_controller";
@@ -51,7 +51,6 @@ bind "commands/main_command_dispatcher";
 bind "commands/file_commands";
 bind "commands/edit_commands";
 bind "commands/view_commands";
-bind "commands/build_commands";
 bind "commands/debug_commands";
 bind "commands/search_commands";
 
@@ -59,7 +58,6 @@ bind Viper.GUI;
 bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
 bind Terminal = Viper.Terminal;
-bind Input = Viper.Input;
 bind Str = Viper.String;
 bind Threads = Viper.Threads;
 
@@ -108,9 +106,6 @@ final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
-final MAIN_INDEX_FILES_PER_FRAME = 4;
-final MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME = 2;
-final FRAME_BACKGROUND_BUDGET_MS = 10;
 final VIPERIDE_VERSION = "0.1.0";
 
 func hasArg(name: String) -> Boolean {
@@ -178,7 +173,7 @@ func main() {
     var commandInputOverlay = new command_input.CommandInputOverlay();
     commandInputOverlay.Setup(shell);
 
-    engine.Setup(shell.editorRow);
+    engine.Setup(shell.workbench.editorRow);
     engine.editor.Focus();
 
     var completer = new completion.CompletionController();
@@ -205,20 +200,25 @@ func main() {
 
     // Symbol outline panel (below diagnostics, toggled via View menu)
     var symbolOutline = new symbols.SymbolOutline();
-    symbolOutline.setup(shell.editorArea);
+    symbolOutline.setup(shell.workbench.editorArea);
     symbolOutline.SetScheduler(editorScheduler);
 
-    shell.minimap = GUI.Minimap.New(shell.editorRow);
-    shell.minimap.SetWidth(100);
-    shell.minimap.BindEditor(engine.editor);
+    var languageFrame = new language_tool_frame.LanguageToolFrameController();
+    languageFrame.Setup(completer, liveDiag, semHighlighter, hoverCtrl,
+                        sigCtrl, inlayCtrl, symbolOutline, indexer,
+                        editorScheduler, perfMon);
 
-    tabs.Setup(shell.tabBar);
-    projMgr.Setup(shell.sidebarTree);
-    activityBarCtrl.Setup(shell.explorerView, shell.scmViewHost, shell.abExplorer, shell.abSourceControl);
-    scmView.Setup(shell.scmViewHost);
+    shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
+    shell.workbench.minimap.SetWidth(100);
+    shell.workbench.minimap.BindEditor(engine.editor);
+
+    tabs.Setup(shell.workbench.tabBar);
+    projMgr.Setup(shell.workbench.sidebarTree);
+    activityBarCtrl.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
+    scmView.Setup(shell.workbench.scmViewHost);
     if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
-    terminalCtrl.Setup(shell.terminalPanel, shell.terminalPane,
-                       shell.terminalKill, shell.terminalRestart);
+    terminalCtrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
+                       shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
     if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
 
     shell.ApplyCommandShortcuts(commandRegistry);
@@ -286,7 +286,7 @@ func main() {
     shell.SetStatusLeft("Ready");
     shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
 
-    shell.findBar.BindEditor(engine.editor);
+    shell.workbench.findBar.BindEditor(engine.editor);
 
     // File watcher state lives in FileWatchController so the frame loop only
     // resets/bumps it when commands resolve external-change notifications.
@@ -326,11 +326,8 @@ func main() {
     var prevStatusRevision = engine.GetRevision();
     var prevStatusLineCount = engine.GetLineCount();
     var prevStatusCursorCount = engine.editor.GetCursorCount();
-    var lastBreakpointPath = "";
-    var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
-    var lastWorkspaceIndexStatus = "";
 
     // ========================================================================
     // Main event loop
@@ -340,8 +337,8 @@ func main() {
         shell.Poll();
 
         // Activity bar — switch the left view (Explorer / Source Control).
-        if shell.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
-        if shell.abSourceControl.WasClicked() {
+        if shell.workbench.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
+        if shell.workbench.abSourceControl.WasClicked() {
             activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
             if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
         }
@@ -362,195 +359,23 @@ func main() {
         // ====================================================================
         // Code Completion + IDE Intelligence
         // ====================================================================
-        var serviceChanged = activeWorkbench.Refresh(docMgr, projMgr, languageServices);
-        var activeToolDoc = activeWorkbench.activeDocument;
-        var activeToolPath = activeWorkbench.activePath;
-        var activeService = activeWorkbench.activeService;
-        var activeProjectName = activeWorkbench.activeProjectName;
-        shell.SetWorkspaceStatus(activeProjectName, activeService.name);
-        if serviceChanged {
-            if paletteCtrl.IsCommands() {
-                paletteCtrl.ResetToCommands(shell, commandRegistry, activeService);
-            }
-            commandRegistry.ApplyCapabilities(activeService);
-            shell.ApplyLanguageCommandState(activeService);
-        }
-        completer.SetSourcePath(activeToolPath);
-        completer.SetEnabled(activeService.canComplete);
-        completer.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
-        liveDiag.setSourcePath(activeToolPath);
-        liveDiag.enabled = appSettings.autoCheckOnSave and activeService.canDiagnose;
-        liveDiag.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
-        semHighlighter.setSourcePath(activeToolPath);
-        semHighlighter.enabled = activeService.name == language_service.LANGUAGE_ZIA;
-        hoverCtrl.setSourcePath(activeToolPath);
-        hoverCtrl.setEnabled(activeService.canHover);
-        hoverCtrl.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
-        sigCtrl.setSourcePath(activeToolPath);
-        sigCtrl.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
-        inlayCtrl.SetEnabled(activeService.name == language_service.LANGUAGE_ZIA);
-        symbolOutline.setSourcePath(activeToolPath);
-        symbolOutline.setEnabled(activeService.canDocumentSymbols);
-        symbolOutline.isBasic = activeService.name == language_service.LANGUAGE_BASIC;
-        symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
-                                                and activeService.canDocumentSymbols,
-                                                engine);
-        var typedThisFrame = Input.Keyboard.GetText();
-        var frameWorkStartMs = Viper.Time.Clock.Ticks();
-        var perfSpan = perfMon.StartSpan();
-        indexer.EnsureProject(projMgr, docMgr);
-        indexer.SyncActiveWhenIdle(docMgr, engine);
-        if indexer.valid and indexer.workspaceIndexComplete == false {
-            if indexer.indexing == false and indexer.pendingIndexFiles == null {
-                indexer.StartIndexWorkspace();
-            }
-            indexer.PumpIndex(MAIN_INDEX_FILES_PER_FRAME);
-        }
-        if indexer.workspaceIndexStatusMessage != lastWorkspaceIndexStatus {
-            lastWorkspaceIndexStatus = indexer.workspaceIndexStatusMessage;
-            if lastWorkspaceIndexStatus != "" {
-                shell.SetStatusLeft(lastWorkspaceIndexStatus);
-                GUI.Toast.Warning(lastWorkspaceIndexStatus);
-            }
-        }
-        if indexer.valid {
-            shell.SetIndexStatus(indexer.WorkspaceIndexProgressText());
-        } else {
-            shell.SetIndexStatus("Workspace index idle");
-        }
-        shell.SetSchedulerStatus(editorScheduler.StatusText());
-        completer.PumpWorkspaceSymbolCache(MAIN_WORKSPACE_SYMBOL_FILES_PER_FRAME);
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) and projMgr != null and projMgr.fileCacheRefreshing {
-            projMgr.PumpFileCacheRefresh(2);
-        }
-        perfMon.AddIndex(perfSpan);
-        if activeToolDoc != null {
-            if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
-                breakpointStore.ApplyToEditor(engine, activeToolDoc);
-                lastBreakpointPath = activeToolDoc.filePath;
-                lastBreakpointVersion = breakpointStore.version;
-            }
-        } else if lastBreakpointPath != "" {
-            engine.editor.ClearGutterIcons(0);
-            lastBreakpointPath = "";
-            lastBreakpointVersion = breakpointStore.version;
-        }
+        languageFrame.BeginFrame(shell, docMgr, projMgr, languageServices,
+                                 activeWorkbench, paletteCtrl, commandRegistry,
+                                 appSettings, engine);
+        var activeService = languageFrame.activeService;
+        languageFrame.PumpWorkspace(shell, projMgr, docMgr, engine);
+        languageFrame.SyncBreakpoints(engine, breakpointStore);
         debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
 
-        if completer.isVisible {
-            if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyTab()) {
-                completer.AcceptTabKey();
-                typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEnter()) {
-                completer.AcceptSelected();
-                typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
-                completer.Hide();
-                typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyDown()) {
-                completer.NavigateDown();
-                typedThisFrame = "";
-            } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KeyUp()) {
-                completer.NavigateUp();
-                typedThisFrame = "";
-            } else if completer.AcceptTypedTab(typedThisFrame) {
-                typedThisFrame = "";
-            } else if completer.AcceptIfEditorInsertedTab() {
-                typedThisFrame = "";
-            } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KeyTab())) {
-                typedThisFrame = "";
-            } else if typedThisFrame != "" {
-                completer.AcceptIfCommitCharacter(typedThisFrame);
-            }
-        }
-
-        perfSpan = perfMon.StartSpan();
-        completer.Update(typedThisFrame);
-        perfMon.AddCompletion(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        liveDiag.update(engine, shell, locStore);
-        semHighlighter.update(engine);
-        perfMon.AddDiagnostics(perfSpan);
-        perfSpan = perfMon.StartSpan();
-        build_commands.UpdateJob(shell, buildSys, locStore);
-        debug_commands.DebugUpdate(shell, docMgr, engine, tabs, breakpointStore, dbgSession);
-        shell.SetDebugSessionState(dbgSession.IsActive(), dbgSession.stopped, buildSys.IsActive());
-        perfMon.AddBuild(perfSpan);
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
-            perfSpan = perfMon.StartSpan();
-            searcher.Pump(shell, docMgr, locStore);
-            perfMon.AddSearch(perfSpan);
-        }
-        searcher.HandlePanel(shell, projMgr, docMgr, engine);
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
-            perfSpan = perfMon.StartSpan();
-            hoverCtrl.update(engine);
-            perfMon.AddHover(perfSpan);
-        }
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
-            perfSpan = perfMon.StartSpan();
-            sigCtrl.update(engine);
-            perfMon.AddSignature(perfSpan);
-        }
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
-            perfSpan = perfMon.StartSpan();
-            inlayCtrl.update(engine);
-            perfMon.AddInlay(perfSpan);
-        }
-        if dispatch_helpers.FrameBudgetAllows(frameWorkStartMs, FRAME_BACKGROUND_BUDGET_MS) {
-            perfSpan = perfMon.StartSpan();
-            symbolOutline.update(engine);
-            perfMon.AddSymbols(perfSpan);
-        }
-        symbolOutline.handleClicks(engine);
-        if Shortcuts.WasTriggered("completion_trigger") {
-            perfSpan = perfMon.StartSpan();
-            completer.TriggerCompletion();
-            perfMon.AddCompletion(perfSpan);
-        }
-        if Shortcuts.WasTriggered("signature_trigger") {
-            perfSpan = perfMon.StartSpan();
-            sigCtrl.trigger(engine);
-            perfMon.AddSignature(perfSpan);
-        }
-
-        // Dot / paren triggers must come from text input, not cursor motion.
-        var curCursorLine = engine.GetCursorLine();
-        var curCursorCol  = engine.GetCursorCol();
-        var typedDot = Str.IndexOf(typedThisFrame, ".") != 0;
-        var typedIdentifier = dispatch_helpers.HasIdentifierInput(typedThisFrame);
-        var suppressAutoCompletion = false;
-        if typedDot or typedIdentifier {
-            suppressAutoCompletion = completer.ShouldSuppressAutoTrigger();
-        }
-        if typedDot and suppressAutoCompletion == false {
-            perfSpan = perfMon.StartSpan();
-            completer.TriggerCompletion();
-            perfMon.AddCompletion(perfSpan);
-        } else if typedIdentifier and suppressAutoCompletion == false {
-            completer.ScheduleCompletion();
-        }
-        if Str.IndexOf(typedThisFrame, "(") != 0 {
-            hoverCtrl.hideTooltip();
-            if activeService.canSignatureHelp {
-                perfSpan = perfMon.StartSpan();
-                sigCtrl.trigger(engine);
-                perfMon.AddSignature(perfSpan);
-            }
-        } else if Str.IndexOf(typedThisFrame, ",") != 0 {
-            if activeService.canSignatureHelp {
-                perfSpan = perfMon.StartSpan();
-                sigCtrl.trigger(engine);
-                perfMon.AddSignature(perfSpan);
-            }
-        }
-        if Str.IndexOf(typedThisFrame, ")") != 0 {
-            hoverCtrl.hideTooltip();
-            sigCtrl.Hide();
-        }
-        if searcher.active and Input.Keyboard.WasPressed(Input.Keyboard.get_KeyEscape()) {
-            searcher.Cancel(shell);
-        }
+        languageFrame.RouteCompletionKeys();
+        languageFrame.PumpForegroundTools(shell, docMgr, engine, tabs, locStore,
+                                          buildSys, dbgSession, breakpointStore);
+        languageFrame.PumpBudgetedTools(shell, docMgr, engine, locStore,
+                                        searcher, projMgr);
+        languageFrame.HandleManualIntelligenceTriggers(engine);
+        languageFrame.HandleTypedLanguageTriggers(engine);
+        var curCursorLine = languageFrame.curCursorLine;
+        var curCursorCol = languageFrame.curCursorCol;
 
         // ====================================================================
         // Command Palette + trigger source detection
@@ -594,28 +419,28 @@ func main() {
         }
 
         // FindBar per-frame updates
-        if shell.findBar.IsVisible() {
-            shell.findBar.FindNext();
-            shell.findBar.FindPrev();
-            shell.findBar.Replace();
-            shell.findBar.ReplaceAll();
-            var matchCount = shell.findBar.GetMatchCount();
+        if shell.workbench.findBar.IsVisible() {
+            shell.workbench.findBar.FindNext();
+            shell.workbench.findBar.FindPrev();
+            shell.workbench.findBar.Replace();
+            shell.workbench.findBar.ReplaceAll();
+            var matchCount = shell.workbench.findBar.GetMatchCount();
             if matchCount > 0 {
-                var currMatch = shell.findBar.GetCurrentMatch();
+                var currMatch = shell.workbench.findBar.GetCurrentMatch();
                 shell.SetStatusLeft("" + currMatch + " of " + matchCount + " matches");
             }
         }
 
         // Diagnostics panel: click to navigate to error line
-        if shell.diagListBox.WasSelectionChanged() {
-            var selItem = shell.diagListBox.Selected;
+        if shell.toolPanels.diagListBox.WasSelectionChanged() {
+            var selItem = shell.toolPanels.diagListBox.Selected;
             if selItem != null {
                 locStore.OpenLocation(shell, docMgr, engine, tabs, GUI.ListBox.ItemGetData(selItem));
             }
         }
 
-        if shell.outputListBox.WasSelectionChanged() {
-            var outItem = shell.outputListBox.Selected;
+        if shell.toolPanels.outputListBox.WasSelectionChanged() {
+            var outItem = shell.toolPanels.outputListBox.Selected;
             if outItem != null {
                 var data = GUI.ListBox.ItemGetData(outItem);
                 if locations.IsLocationData(data) {
@@ -629,8 +454,8 @@ func main() {
                 }
             }
         }
-        if shell.searchListBox.WasSelectionChanged() {
-            var searchItem = shell.searchListBox.Selected;
+        if shell.toolPanels.searchListBox.WasSelectionChanged() {
+            var searchItem = shell.toolPanels.searchListBox.Selected;
             if searchItem != null {
                 var searchData = GUI.ListBox.ItemGetData(searchItem);
                 if locations.IsLocationData(searchData) {
@@ -638,8 +463,8 @@ func main() {
                 }
             }
         }
-        if shell.referencesListBox.WasSelectionChanged() {
-            var refItem = shell.referencesListBox.Selected;
+        if shell.toolPanels.referencesListBox.WasSelectionChanged() {
+            var refItem = shell.toolPanels.referencesListBox.Selected;
             if refItem != null {
                 var refData = GUI.ListBox.ItemGetData(refItem);
                 if locations.IsLocationData(refData) {
@@ -647,10 +472,10 @@ func main() {
                 }
             }
         }
-        if shell.callStackListBox.WasSelectionChanged() {
+        if shell.toolPanels.callStackListBox.WasSelectionChanged() {
             debug_commands.handleCallStackSelect(shell, docMgr, engine, tabs, dbgSession);
         }
-        shell.PumpToolTabs();
+        shell.toolPanels.PumpToolTabs();
 
         // Inline overlay actions
         var overlayAction = overlays.Pump(shell);
@@ -701,7 +526,7 @@ func main() {
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_FILTER_OUTPUT {
-            shell.SetOutputFilter(commandInputOverlay.ReadValue());
+            shell.toolPanels.SetOutputFilter(commandInputOverlay.ReadValue());
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_WORKSPACE_SYMBOLS {
@@ -734,8 +559,8 @@ func main() {
         // ====================================================================
         // Tab switching
         // ====================================================================
-        if shell.tabBar.WasChanged() {
-            var newIdx = shell.tabBar.GetActiveIndex();
+        if shell.workbench.tabBar.WasChanged() {
+            var newIdx = shell.workbench.tabBar.GetActiveIndex();
             if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
                 file_commands.SaveEditorState(docMgr, engine);
                 docMgr.SetActive(newIdx);
@@ -823,7 +648,7 @@ func main() {
         prevStatusLineCount = statusLineCount;
         prevStatusCursorCount = statusCursorCount;
 
-        perfSpan = perfMon.StartSpan();
+        var perfSpan = perfMon.StartSpan();
         shell.Render();
         perfMon.AddRender(perfSpan);
         perfMon.EndFrame(engine.editor, indexer);

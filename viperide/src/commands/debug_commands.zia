@@ -111,7 +111,7 @@ func handleCallStackSelect(shell: app_shell.AppShell,
                            tabs: editor_tabs.EditorTabs,
                            session: debug_session.DebugSession) {
     if session == null { return; }
-    var idx = shell.callStackListBox.SelectedIndex;
+    var idx = shell.toolPanels.callStackListBox.SelectedIndex;
     if idx < 0 or idx >= session.FrameCount() { return; }
     var path = session.FramePath(idx);
     var line = session.FrameLine(idx);
@@ -226,7 +226,7 @@ hide func PrepareDebugLaunch(shell: app_shell.AppShell,
 
     var viperBin = buildSys.ResolveCompiler("viper");
     if viperBin == "" {
-        shell.SetDebugOutput("Cannot debug: the viper compiler was not found.\n"
+        shell.toolPanels.SetDebugOutput("Cannot debug: the viper compiler was not found.\n"
             + "Add viper to your PATH or set VIPER_BINARY=/full/path/to/viper.");
         shell.SetStatusLeft("Debug failed: viper not found");
         GUI.Toast.Error("viper compiler not found");
@@ -246,7 +246,7 @@ hide func LaunchPreparedDebug(shell: app_shell.AppShell,
     var viperBin = Map.GetStr(plan, "viperBin");
     var path = Map.GetStr(plan, "path");
     if session.Launch(viperBin, path, store) {
-        shell.SetDebugOutput("[debug] launched " + path
+        shell.toolPanels.SetDebugOutput("[debug] launched " + path
             + " — running to the first breakpoint...");
         shell.SetStatusLeft("Debugging " + path);
         GUI.Toast.Info("Debugger started");
@@ -272,7 +272,7 @@ func handleDebugRestart(shell: app_shell.AppShell,
     if Map.GetBool(plan, "ok") == false { return; }
     if session.IsActive() {
         if session.RequestRestart(Map.GetStr(plan, "viperBin"), Map.GetStr(plan, "path")) {
-            shell.SetDebugOutput("[debug] restarting...");
+            shell.toolPanels.SetDebugOutput("[debug] restarting...");
             shell.SetStatusLeft("Restarting debugger...");
             GUI.Toast.Info("Restarting debugger");
         } else {
@@ -367,7 +367,7 @@ func handleDebugPause(shell: app_shell.AppShell,
 func handleDebugStop(shell: app_shell.AppShell,
                      session: debug_session.DebugSession) {
     if session.RequestTerminate() {
-        shell.SetDebugOutput("[debug] stopping...");
+        shell.toolPanels.SetDebugOutput("[debug] stopping...");
         shell.SetStatusLeft("Stopping debugger...");
         GUI.Toast.Info("Stopping debugger");
     } else {
@@ -474,11 +474,11 @@ func handleAddWatchExpression(shell: app_shell.AppShell,
             shell.SetStatusLeft("Watching " + expr + " when the debugger stops");
         }
         PopulateDebugPanels(shell, session);
-        shell.ShowVariablesPanel();
+        shell.toolPanels.ShowVariablesPanel();
         return true;
     } else {
         shell.SetStatusLeft("Watch already exists: " + expr);
-        shell.ShowVariablesPanel();
+        shell.toolPanels.ShowVariablesPanel();
     }
     return false;
 }
@@ -498,13 +498,13 @@ func handleRemoveSelectedWatch(shell: app_shell.AppShell,
     var index = SelectedWatchIndex(shell);
     if index < 0 {
         shell.SetStatusLeft("Select a watch row to remove");
-        shell.ShowVariablesPanel();
+        shell.toolPanels.ShowVariablesPanel();
         return;
     }
     var expr = session.WatchExpression(index);
     if session.RemoveWatch(index) {
         PopulateDebugPanels(shell, session);
-        shell.ShowVariablesPanel();
+        shell.toolPanels.ShowVariablesPanel();
         if expr != "" {
             shell.SetStatusLeft("Removed watch " + expr);
         } else {
@@ -534,7 +534,7 @@ func handleRefreshWatches(shell: app_shell.AppShell,
     }
     session.RefreshWatches();
     PopulateDebugPanels(shell, session);
-    shell.ShowVariablesPanel();
+    shell.toolPanels.ShowVariablesPanel();
     shell.SetStatusLeft("Refreshing watches...");
 }
 
@@ -551,12 +551,12 @@ func handleClearWatches(shell: app_shell.AppShell,
     }
     if session.WatchCount() == 0 {
         shell.SetStatusLeft("No watches to clear");
-        shell.ShowVariablesPanel();
+        shell.toolPanels.ShowVariablesPanel();
         return;
     }
     session.ClearWatches();
     PopulateDebugPanels(shell, session);
-    shell.ShowVariablesPanel();
+    shell.toolPanels.ShowVariablesPanel();
     shell.SetStatusLeft("Cleared watches");
 }
 
@@ -609,7 +609,7 @@ func Publish(shell: app_shell.AppShell,
         if console != "" { console = console + "\n"; }
         console = console + stopInfo;
     }
-    shell.SetDebugOutput(console);
+    shell.toolPanels.SetDebugOutput(console);
     PopulateDebugPanels(shell, session);
     if session.lastType == "stopped" {
         shell.SetStatusLeft("Stopped at " + session.activePath + ":" + session.lastLine
@@ -628,8 +628,8 @@ func Publish(shell: app_shell.AppShell,
 ///        are ready the moment they click Variables or Call Stack.
 func PopulateDebugPanels(shell: app_shell.AppShell,
                          session: debug_session.DebugSession) {
-    shell.ClearToolRows(shell.variablesListBox);
-    shell.ClearToolRows(shell.callStackListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.variablesListBox);
+    shell.toolPanels.ClearToolRows(shell.toolPanels.callStackListBox);
     if session == null { return; }
 
     var variableTree = GUI.VirtualTree.New();
@@ -671,11 +671,11 @@ func PopulateDebugPanels(shell: app_shell.AppShell,
     if session.stopped == false { return; }
     var fc = session.FrameCount();
     if fc == 0 {
-        shell.AddToolSectionRow(shell.callStackListBox, "(no frames)");
+        shell.toolPanels.AddToolSectionRow(shell.toolPanels.callStackListBox, "(no frames)");
     } else {
         var j = 0;
         while j < fc {
-            shell.AddToolPlainRow(shell.callStackListBox, "#" + j + "  " + session.FrameLabel(j), 0);
+            shell.toolPanels.AddToolPlainRow(shell.toolPanels.callStackListBox, "#" + j + "  " + session.FrameLabel(j), 0);
             j = j + 1;
         }
     }
@@ -695,9 +695,9 @@ hide func RenderVariableTree(shell: app_shell.AppShell,
         var id = Map.GetStr(row, "id");
         var item: Any = null;
         if depth <= 0 {
-            item = shell.AddToolSectionRow(shell.variablesListBox, text);
+            item = shell.toolPanels.AddToolSectionRow(shell.toolPanels.variablesListBox, text);
         } else {
-            item = shell.AddToolPlainRow(shell.variablesListBox, IndentForDepth(depth) + text, 0);
+            item = shell.toolPanels.AddToolPlainRow(shell.toolPanels.variablesListBox, IndentForDepth(depth) + text, 0);
         }
         if item != null and id != "" {
             GUI.ListBox.ItemSetData(item, id);
@@ -712,8 +712,8 @@ hide func RenderVariableTree(shell: app_shell.AppShell,
 /// @param shell Workbench shell containing the Variables list box.
 /// @return Zero-based watch index, or -1 when no watch row is selected.
 hide func SelectedWatchIndex(shell: app_shell.AppShell) -> Integer {
-    if shell == null or shell.variablesListBox == null { return -1; }
-    var item = shell.variablesListBox.Selected;
+    if shell == null or shell.toolPanels.variablesListBox == null { return -1; }
+    var item = shell.toolPanels.variablesListBox.Selected;
     if item == null { return -1; }
     var id = GUI.ListBox.ItemGetData(item);
     if Str.StartsWith(id, "watch:") == false { return -1; }

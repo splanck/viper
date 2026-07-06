@@ -257,9 +257,9 @@ class LiveDiagnostics {
         }
         if Seq.get_Count(records) == 0 {
             // Clean — clear all markers and highlights
-            shell.ClearProblemsPanel();
+            shell.toolPanels.ClearProblemsPanel();
             shell.SetDiagnosticsSummary(0, 0, 0);
-            shell.minimap.ClearMarkers();
+            shell.workbench.minimap.ClearMarkers();
             engine.editor.ClearHighlights();
             lastErrorCount = 0;
             lastWarningCount = 0;
@@ -272,8 +272,8 @@ class LiveDiagnostics {
         var warningCount = 0;
         var noteCount = 0;
         var shownCount = 0;
-        shell.BeginProblems();
-        shell.minimap.ClearMarkers();
+        shell.toolPanels.BeginProblems();
+        shell.workbench.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
 
         var i = 0;
@@ -322,14 +322,14 @@ class LiveDiagnostics {
             if isBasic {
                 diagnosticSource = "basic";
             }
-            var item = shell.AddProblem(sevLabel, diagnosticSource, displayPath, diagLine, diagCol,
+            var item = shell.toolPanels.AddProblem(sevLabel, diagnosticSource, displayPath, diagLine, diagCol,
                                         code, msg, ProblemActionForDiagnosticRecord(record));
             shownCount = shownCount + 1;
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
                                      locations.KIND_DIAGNOSTIC, msg);
             GUI.ListBox.ItemSetData(item, locId);
             if activeDiagnostic {
-                shell.minimap.AddMarker(diagLine, 1, markerColor);
+                shell.workbench.minimap.AddMarker(diagLine, 1, markerColor);
 
                 // Add inline highlight span (underline the error location)
                 var diagCol0 = diagCol - 1;
@@ -342,7 +342,7 @@ class LiveDiagnostics {
             }
         }
 
-        shell.FinishProblems(shownCount);
+        shell.toolPanels.FinishProblems(shownCount);
         shell.SetDiagnosticsSummary(errorCount, warningCount, noteCount);
         lastErrorCount = errorCount;
         lastWarningCount = warningCount;

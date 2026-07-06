@@ -1,0 +1,651 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/ui/menu_chrome.zia
+// Purpose: Menu bar, toolbar, and context-menu construction for ViperIDE.
+// Key invariants:
+//   - This module owns persistent command chrome, not editor/workbench layout.
+//   - Menu items remain exposed so the dispatcher can poll stable handles.
+// Ownership/Lifetime:
+//   - AppShell owns one MenuChrome for the lifetime of the IDE window.
+//   - GUI widgets are created during BuildMainMenus/BuildToolbar/BuildContextMenus.
+// Links: viperide/src/ui/app_shell.zia, viperide/src/commands/command_catalog.zia
+//
+//===----------------------------------------------------------------------===//
+
+module menu_chrome;
+
+bind "../commands/command_registry";
+bind "../editor/language_service";
+bind "../ui/status_bar_model";
+
+bind Viper.GUI as GUI;
+
+/// @brief Owns the IDE's command menus, toolbar, and context menus.
+/// @details The main dispatcher polls these exposed handles directly. Keeping
+///          them together prevents the top-level AppShell from becoming a giant
+///          constructor while preserving the existing pull-based event model.
+class MenuChrome {
+    expose GUI.MenuBar menuBar;
+    expose GUI.Menu fileMenu;
+    expose GUI.Menu editMenu;
+    expose GUI.Menu navigateMenu;
+    expose GUI.Menu viewMenu;
+    expose GUI.Menu helpMenu;
+    expose GUI.Menu buildMenu;
+
+    expose GUI.MenuItem miNew;
+    expose GUI.MenuItem miOpen;
+    expose GUI.MenuItem miOpenFolder;
+    expose GUI.MenuItem miQuickOpen;
+    expose GUI.MenuItem miSave;
+    expose GUI.MenuItem miSaveAs;
+    expose GUI.MenuItem miSaveAll;
+    expose GUI.MenuItem miClose;
+    expose GUI.MenuItem miReload;
+    expose GUI.MenuItem miRecentFiles;
+    expose GUI.MenuItem miReopenClosed;
+    expose GUI.MenuItem miExit;
+    expose GUI.MenuItem miUndo;
+    expose GUI.MenuItem miRedo;
+    expose GUI.MenuItem miCut;
+    expose GUI.MenuItem miCopy;
+    expose GUI.MenuItem miPaste;
+    expose GUI.MenuItem miSelectAll;
+    expose GUI.MenuItem miFind;
+    expose GUI.MenuItem miSearchProject;
+    expose GUI.MenuItem miGoToLine;
+    expose GUI.MenuItem miGoToDefinition;
+    expose GUI.MenuItem miFindReferences;
+    expose GUI.MenuItem miIncomingCalls;
+    expose GUI.MenuItem miOutgoingCalls;
+    expose GUI.MenuItem miWorkspaceSymbols;
+    expose GUI.MenuItem miSymbolOutline;
+    expose GUI.MenuItem miNextError;
+    expose GUI.MenuItem miPreviousError;
+    expose GUI.MenuItem miSignatureHelp;
+    expose GUI.MenuItem miRenameSymbol;
+    expose GUI.MenuItem miPreferences;
+    expose GUI.MenuItem miToggleSidebar;
+    expose GUI.MenuItem miToggleStatusBar;
+    expose GUI.MenuItem miZoomIn;
+    expose GUI.MenuItem miZoomOut;
+    expose GUI.MenuItem miZoomReset;
+    expose GUI.MenuItem miUiZoomIn;
+    expose GUI.MenuItem miUiZoomOut;
+    expose GUI.MenuItem miUiZoomReset;
+    expose GUI.MenuItem miToggleTheme;
+    expose GUI.MenuItem miFullscreen;
+    expose GUI.MenuItem miToggleMinimap;
+    expose GUI.MenuItem miTerminal;
+    expose GUI.MenuItem miBuild;
+    expose GUI.MenuItem miBuildAndRun;
+    expose GUI.MenuItem miRun;
+    expose GUI.MenuItem miStop;
+    expose GUI.MenuItem miDebugStart;
+    expose GUI.MenuItem miDebugContinue;
+    expose GUI.MenuItem miDebugStepOver;
+    expose GUI.MenuItem miDebugStepIn;
+    expose GUI.MenuItem miDebugStepOut;
+    expose GUI.MenuItem miDebugPause;
+    expose GUI.MenuItem miDebugRestart;
+    expose GUI.MenuItem miDebugStop;
+    expose GUI.MenuItem miToggleBreakpoint;
+    expose GUI.MenuItem miKeyboardShortcuts;
+    expose GUI.MenuItem miAbout;
+
+    expose GUI.Toolbar toolbar;
+    expose GUI.ToolbarItem tbNew;
+    expose GUI.ToolbarItem tbOpen;
+    expose GUI.ToolbarItem tbSave;
+    expose GUI.ToolbarItem tbSaveAll;
+    expose GUI.ToolbarItem tbBuild;
+    expose GUI.ToolbarItem tbRun;
+    expose GUI.ToolbarItem tbStop;
+    expose GUI.ToolbarItem tbDebug;
+    expose GUI.ToolbarItem tbDebugContinue;
+    expose GUI.ToolbarItem tbDebugStep;
+    expose GUI.ToolbarItem tbFind;
+
+    expose GUI.ContextMenu treeContextMenu;
+    expose GUI.MenuItem ctxOpen;
+    expose GUI.MenuItem ctxOpenText;
+    expose GUI.MenuItem ctxReveal;
+    expose GUI.MenuItem ctxCopyPath;
+    expose GUI.MenuItem ctxCopyRelativePath;
+    expose GUI.MenuItem ctxDuplicate;
+    expose GUI.MenuItem ctxRename;
+    expose GUI.MenuItem ctxDelete;
+    expose GUI.MenuItem ctxNewFile;
+    expose GUI.MenuItem ctxNewFolder;
+    expose GUI.MenuItem ctxSearchFolder;
+    expose GUI.MenuItem ctxRunFile;
+    expose GUI.MenuItem ctxSetEntry;
+    expose GUI.MenuItem ctxRefresh;
+
+    expose GUI.ContextMenu editorContextMenu;
+    expose GUI.MenuItem ecCut;
+    expose GUI.MenuItem ecCopy;
+    expose GUI.MenuItem ecPaste;
+    expose GUI.MenuItem ecGotoDef;
+    expose GUI.MenuItem ecFindRefs;
+    expose GUI.MenuItem ecRename;
+    expose GUI.MenuItem ecFormat;
+    expose GUI.MenuItem ecToggleBreakpoint;
+    expose GUI.MenuItem ecEvaluate;
+    expose GUI.MenuItem ecPalette;
+
+    expose GUI.ContextMenu tabContextMenu;
+    expose GUI.MenuItem tcClose;
+    expose GUI.MenuItem tcCloseOthers;
+    expose GUI.MenuItem tcCloseAll;
+    expose GUI.MenuItem tcCloseSaved;
+    expose GUI.MenuItem tcCopyPath;
+    expose GUI.MenuItem tcCopyRelativePath;
+    expose GUI.MenuItem tcReveal;
+
+    /// @brief Create an empty menu chrome controller.
+    expose func init() {
+    }
+
+    /// @brief Build the top menu bar and all command menu items.
+    /// @param parent Main vertical container that receives the menu bar.
+    expose func BuildMainMenus(parent: GUI.VBox) {
+        menuBar = GUI.MenuBar.New(parent);
+        BuildFileMenu();
+        BuildEditMenu();
+        BuildNavigateMenu();
+        BuildViewMenu();
+        BuildBuildMenu();
+        BuildHelpMenu();
+    }
+
+    /// @brief Build the File menu.
+    hide func BuildFileMenu() {
+        fileMenu = menuBar.AddMenu("File");
+        miNew = fileMenu.AddItem("New File");
+        miNew.SetShortcut("Ctrl+N");
+        miOpen = fileMenu.AddItem("Open File...");
+        miOpen.SetShortcut("Ctrl+O");
+        miOpenFolder = fileMenu.AddItem("Open Folder...");
+        miOpenFolder.SetShortcut("Ctrl+Alt+O");
+        miQuickOpen = fileMenu.AddItem("Quick Open File");
+        miQuickOpen.SetShortcut("Ctrl+P");
+        fileMenu.AddSeparator();
+        miSave = fileMenu.AddItem("Save");
+        miSave.SetShortcut("Ctrl+S");
+        miSaveAs = fileMenu.AddItem("Save As...");
+        miSaveAs.SetShortcut("Ctrl+Shift+S");
+        miSaveAll = fileMenu.AddItem("Save All");
+        miSaveAll.SetShortcut("Ctrl+Alt+Shift+S");
+        fileMenu.AddSeparator();
+        miClose = fileMenu.AddItem("Close File");
+        miClose.SetShortcut("Ctrl+W");
+        miReload = fileMenu.AddItem("Reload File");
+        miReload.SetShortcut("Ctrl+Shift+R");
+        miRecentFiles = fileMenu.AddItem("Recent Files");
+        miRecentFiles.SetShortcut("Ctrl+K Ctrl+R");
+        miReopenClosed = fileMenu.AddItem("Reopen Closed File");
+        miReopenClosed.SetShortcut("Ctrl+Alt+T");
+        fileMenu.AddSeparator();
+        miExit = fileMenu.AddItem("Exit");
+    }
+
+    /// @brief Build the Edit menu.
+    hide func BuildEditMenu() {
+        editMenu = menuBar.AddMenu("Edit");
+        miUndo = editMenu.AddItem("Undo");
+        miUndo.SetShortcut("Ctrl+Z");
+        miRedo = editMenu.AddItem("Redo");
+        miRedo.SetShortcut("Ctrl+Y");
+        editMenu.AddSeparator();
+        miCut = editMenu.AddItem("Cut");
+        miCut.SetShortcut("Ctrl+X");
+        miCopy = editMenu.AddItem("Copy");
+        miCopy.SetShortcut("Ctrl+C");
+        miPaste = editMenu.AddItem("Paste");
+        miPaste.SetShortcut("Ctrl+V");
+        editMenu.AddSeparator();
+        miSelectAll = editMenu.AddItem("Select All");
+        miSelectAll.SetShortcut("Ctrl+A");
+        miFind = editMenu.AddItem("Find...");
+        miFind.SetShortcut("Ctrl+F");
+        miSearchProject = editMenu.AddItem("Search in Project");
+        miSearchProject.SetShortcut("Ctrl+Shift+F");
+        miGoToLine = editMenu.AddItem("Go To Line");
+        miGoToLine.SetShortcut("Ctrl+G");
+        miRenameSymbol = editMenu.AddItem("Rename Symbol");
+        miRenameSymbol.SetShortcut("F2");
+        editMenu.AddSeparator();
+        miPreferences = editMenu.AddItem("Preferences...");
+        miPreferences.SetShortcut("Ctrl+,");
+    }
+
+    /// @brief Build the Navigate menu.
+    hide func BuildNavigateMenu() {
+        navigateMenu = menuBar.AddMenu("Navigate");
+        miGoToDefinition = navigateMenu.AddItem("Go To Definition");
+        miGoToDefinition.SetShortcut("F12");
+        miFindReferences = navigateMenu.AddItem("Find References");
+        miFindReferences.SetShortcut("Shift+F12");
+        navigateMenu.AddSeparator();
+        miIncomingCalls = navigateMenu.AddItem("Incoming Calls");
+        miIncomingCalls.SetShortcut("Ctrl+Alt+H");
+        miOutgoingCalls = navigateMenu.AddItem("Outgoing Calls");
+        miOutgoingCalls.SetShortcut("Ctrl+Alt+Shift+H");
+        miWorkspaceSymbols = navigateMenu.AddItem("Workspace Symbols");
+        miWorkspaceSymbols.SetShortcut("Ctrl+T");
+        miSymbolOutline = navigateMenu.AddItem("Symbol Outline");
+        miSymbolOutline.SetShortcut("Ctrl+Shift+O");
+        navigateMenu.AddSeparator();
+        miNextError = navigateMenu.AddItem("Next Error");
+        miNextError.SetShortcut("F8");
+        miPreviousError = navigateMenu.AddItem("Previous Error");
+        miPreviousError.SetShortcut("Shift+F8");
+        miSignatureHelp = navigateMenu.AddItem("Trigger Signature Help");
+        miSignatureHelp.SetShortcut("Ctrl+Shift+Space");
+    }
+
+    /// @brief Build the View menu.
+    hide func BuildViewMenu() {
+        viewMenu = menuBar.AddMenu("View");
+        miToggleSidebar = viewMenu.AddItem("Toggle Sidebar");
+        miToggleSidebar.SetShortcut("Ctrl+B");
+        miToggleStatusBar = viewMenu.AddItem("Toggle Status Bar");
+        viewMenu.AddSeparator();
+        miZoomIn = viewMenu.AddItem("Zoom In");
+        miZoomIn.SetShortcut("Ctrl+=");
+        miZoomOut = viewMenu.AddItem("Zoom Out");
+        miZoomOut.SetShortcut("Ctrl+-");
+        miZoomReset = viewMenu.AddItem("Reset Zoom");
+        miZoomReset.SetShortcut("Ctrl+0");
+        miUiZoomIn = viewMenu.AddItem("UI Zoom In");
+        miUiZoomIn.SetShortcut("Ctrl+Shift+=");
+        miUiZoomOut = viewMenu.AddItem("UI Zoom Out");
+        miUiZoomOut.SetShortcut("Ctrl+Shift+-");
+        miUiZoomReset = viewMenu.AddItem("Reset UI Zoom");
+        miUiZoomReset.SetShortcut("Ctrl+Shift+0");
+        viewMenu.AddSeparator();
+        miToggleTheme = viewMenu.AddItem("Toggle Theme");
+        miToggleTheme.SetShortcut("Ctrl+Shift+T");
+        miFullscreen = viewMenu.AddItem("Toggle Fullscreen");
+        miFullscreen.SetShortcut("F11");
+        miToggleMinimap = viewMenu.AddItem("Toggle Minimap");
+        miToggleMinimap.SetShortcut("Ctrl+Shift+M");
+        viewMenu.AddSeparator();
+        miTerminal = viewMenu.AddItem("Terminal");
+        miTerminal.SetShortcut("Ctrl+`");
+    }
+
+    /// @brief Build the Build/Debug menu.
+    hide func BuildBuildMenu() {
+        buildMenu = menuBar.AddMenu("Build");
+        miBuild = buildMenu.AddItem("Build");
+        miBuild.SetShortcut("Ctrl+Shift+B");
+        miBuildAndRun = buildMenu.AddItem("Build and Run");
+        miBuildAndRun.SetShortcut("F5");
+        miRun = buildMenu.AddItem("Run without Build");
+        miRun.SetShortcut("Ctrl+F5");
+        miStop = buildMenu.AddItem("Stop");
+        miStop.SetShortcut("Shift+F5");
+        buildMenu.AddSeparator();
+        miDebugStart = buildMenu.AddItem("Start Debugging");
+        miDebugStart.SetShortcut("F6");
+        miDebugContinue = buildMenu.AddItem("Continue Debugging");
+        miDebugContinue.SetShortcut("F7");
+        miDebugStepOver = buildMenu.AddItem("Step Over");
+        miDebugStepOver.SetShortcut("F10");
+        miDebugStepIn = buildMenu.AddItem("Step Into");
+        miDebugStepIn.SetShortcut("Ctrl+F10");
+        miDebugStepOut = buildMenu.AddItem("Step Out");
+        miDebugStepOut.SetShortcut("Ctrl+Shift+F10");
+        miDebugPause = buildMenu.AddItem("Pause Debugging");
+        miDebugRestart = buildMenu.AddItem("Restart Debugging");
+        miDebugRestart.SetShortcut("Ctrl+Shift+F5");
+        miDebugStop = buildMenu.AddItem("Stop Debugging");
+        miToggleBreakpoint = buildMenu.AddItem("Toggle Breakpoint");
+        miToggleBreakpoint.SetShortcut("F9");
+    }
+
+    /// @brief Build the Help menu.
+    hide func BuildHelpMenu() {
+        helpMenu = menuBar.AddMenu("Help");
+        miKeyboardShortcuts = helpMenu.AddItem("Keyboard Shortcuts");
+        miKeyboardShortcuts.SetShortcut("Ctrl+K Ctrl+S");
+        miAbout = helpMenu.AddItem("About ViperIDE");
+    }
+
+    /// @brief Build the icon toolbar below the menu bar.
+    /// @param parent Main vertical container that receives the toolbar.
+    expose func BuildToolbar(parent: GUI.VBox) {
+        toolbar = GUI.Toolbar.New(parent);
+        tbNew = toolbar.AddNamedButton("new-file", "New File (Ctrl+N)");
+        tbOpen = toolbar.AddNamedButton("open-folder", "Open File (Ctrl+O)");
+        tbSave = toolbar.AddNamedButton("save", "Save File (Ctrl+S)");
+        tbSaveAll = toolbar.AddNamedButton("save-all", "Save All Files (Ctrl+Alt+Shift+S)");
+        toolbar.AddSeparator();
+        tbBuild = toolbar.AddNamedButton("build", "Build (Ctrl+Shift+B)");
+        tbRun = toolbar.AddNamedButton("run", "Build & Run (F5)");
+        tbStop = toolbar.AddNamedButton("stop", "Stop Running Job (Shift+F5)");
+        tbDebug = toolbar.AddNamedButton("debug", "Start Debugging (F6)");
+        tbDebugContinue = toolbar.AddNamedButton("continue", "Continue Debugging (F7)");
+        tbDebugStep = toolbar.AddNamedButton("step-over", "Step Over (F10)");
+        toolbar.AddSeparator();
+        tbFind = toolbar.AddNamedButton("find", "Find (Ctrl+F)");
+    }
+
+    /// @brief Build persistent tree, editor, and tab context menus.
+    expose func BuildContextMenus() {
+        BuildTreeContextMenu();
+        BuildEditorContextMenu();
+        BuildTabContextMenu();
+    }
+
+    /// @brief Build the Explorer tree context menu.
+    hide func BuildTreeContextMenu() {
+        treeContextMenu = GUI.ContextMenu.New();
+        ctxOpen = treeContextMenu.AddItem("Open");
+        ctxOpenText = treeContextMenu.AddItem("Open With Text Editor");
+        treeContextMenu.AddSeparator();
+        ctxReveal = treeContextMenu.AddItem("Reveal in File Manager");
+        ctxCopyPath = treeContextMenu.AddItem("Copy Path");
+        ctxCopyRelativePath = treeContextMenu.AddItem("Copy Relative Path");
+        ctxDuplicate = treeContextMenu.AddItem("Duplicate File...");
+        treeContextMenu.AddSeparator();
+        ctxRename = treeContextMenu.AddItem("Rename");
+        ctxRename.SetShortcut("Ctrl+Alt+R");
+        ctxDelete = treeContextMenu.AddItem("Delete");
+        ctxDelete.SetShortcut("Ctrl+Alt+D");
+        treeContextMenu.AddSeparator();
+        ctxNewFile = treeContextMenu.AddItem("New File...");
+        ctxNewFile.SetShortcut("Ctrl+Alt+N");
+        ctxNewFolder = treeContextMenu.AddItem("New Folder...");
+        ctxNewFolder.SetShortcut("Ctrl+Alt+Shift+N");
+        ctxSearchFolder = treeContextMenu.AddItem("Search in Folder...");
+        ctxRunFile = treeContextMenu.AddItem("Run This File");
+        ctxSetEntry = treeContextMenu.AddItem("Set as Project Entry");
+        treeContextMenu.AddSeparator();
+        ctxRefresh = treeContextMenu.AddItem("Refresh");
+        ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
+    }
+
+    /// @brief Build the code editor context menu.
+    hide func BuildEditorContextMenu() {
+        editorContextMenu = GUI.ContextMenu.New();
+        ecCut = editorContextMenu.AddItem("Cut");
+        ecCut.SetShortcut("Ctrl+X");
+        ecCopy = editorContextMenu.AddItem("Copy");
+        ecCopy.SetShortcut("Ctrl+C");
+        ecPaste = editorContextMenu.AddItem("Paste");
+        ecPaste.SetShortcut("Ctrl+V");
+        editorContextMenu.AddSeparator();
+        ecGotoDef = editorContextMenu.AddItem("Go to Definition");
+        ecGotoDef.SetShortcut("F12");
+        ecFindRefs = editorContextMenu.AddItem("Find References");
+        ecFindRefs.SetShortcut("Shift+F12");
+        ecRename = editorContextMenu.AddItem("Rename Symbol");
+        ecRename.SetShortcut("F2");
+        editorContextMenu.AddSeparator();
+        ecFormat = editorContextMenu.AddItem("Format Document");
+        ecFormat.SetShortcut("Shift+Alt+F");
+        ecToggleBreakpoint = editorContextMenu.AddItem("Toggle Breakpoint");
+        ecToggleBreakpoint.SetShortcut("F9");
+        ecEvaluate = editorContextMenu.AddItem("Evaluate at Cursor");
+        editorContextMenu.AddSeparator();
+        ecPalette = editorContextMenu.AddItem("Command Palette...");
+        ecPalette.SetShortcut("Ctrl+Shift+P");
+    }
+
+    /// @brief Build the editor tab-strip context menu.
+    hide func BuildTabContextMenu() {
+        tabContextMenu = GUI.ContextMenu.New();
+        tcClose = tabContextMenu.AddItem("Close");
+        tcCloseOthers = tabContextMenu.AddItem("Close Others");
+        tcCloseAll = tabContextMenu.AddItem("Close All");
+        tcCloseSaved = tabContextMenu.AddItem("Close Saved");
+        tabContextMenu.AddSeparator();
+        tcCopyPath = tabContextMenu.AddItem("Copy Path");
+        tcCopyRelativePath = tabContextMenu.AddItem("Copy Relative Path");
+        tcReveal = tabContextMenu.AddItem("Reveal in File Manager");
+    }
+
+    /// @brief Apply command-catalog shortcuts to visible menu/context items.
+    /// @param registry Runtime command registry populated from command_catalog.
+    expose func ApplyCommandShortcuts(registry: command_registry.CommandRegistry) {
+        if registry == null { return; }
+        ApplyShortcut(miNew, "new", registry);
+        ApplyShortcut(miOpen, "open", registry);
+        ApplyShortcut(miOpenFolder, "openfolder", registry);
+        ApplyShortcut(miQuickOpen, "quickopen", registry);
+        ApplyShortcut(miSave, "save", registry);
+        ApplyShortcut(miSaveAs, "saveas", registry);
+        ApplyShortcut(miSaveAll, "saveall", registry);
+        ApplyShortcut(miClose, "close", registry);
+        ApplyShortcut(miReload, "reload", registry);
+        ApplyShortcut(miRecentFiles, "recentfiles", registry);
+        ApplyShortcut(miReopenClosed, "reopenclosed", registry);
+        ApplyShortcut(miUndo, "undo", registry);
+        ApplyShortcut(miRedo, "redo", registry);
+        ApplyShortcut(miCut, "cut", registry);
+        ApplyShortcut(miCopy, "copy", registry);
+        ApplyShortcut(miPaste, "paste", registry);
+        ApplyShortcut(miSelectAll, "selectall", registry);
+        ApplyShortcut(miFind, "find", registry);
+        ApplyShortcut(miSearchProject, "searchproject", registry);
+        ApplyShortcut(miGoToLine, "goto", registry);
+        ApplyShortcut(miRenameSymbol, "rename", registry);
+        ApplyShortcut(miPreferences, "settings", registry);
+        ApplyShortcut(miGoToDefinition, "gotodef", registry);
+        ApplyShortcut(miFindReferences, "findrefs", registry);
+        ApplyShortcut(miIncomingCalls, "incomingcalls", registry);
+        ApplyShortcut(miOutgoingCalls, "outgoingcalls", registry);
+        ApplyShortcut(miWorkspaceSymbols, "workspacesymbols", registry);
+        ApplyShortcut(miSymbolOutline, "symboloutline", registry);
+        ApplyShortcut(miNextError, "nexterror", registry);
+        ApplyShortcut(miPreviousError, "preverror", registry);
+        ApplyShortcut(miSignatureHelp, "signature_trigger", registry);
+        ApplyShortcut(miToggleSidebar, "togglesidebar", registry);
+        ApplyShortcut(miToggleStatusBar, "statusbar", registry);
+        ApplyShortcut(miZoomIn, "zoomin", registry);
+        ApplyShortcut(miZoomOut, "zoomout", registry);
+        ApplyShortcut(miZoomReset, "zoomreset", registry);
+        ApplyShortcut(miUiZoomIn, "uizoomin", registry);
+        ApplyShortcut(miUiZoomOut, "uizoomout", registry);
+        ApplyShortcut(miUiZoomReset, "uizoomreset", registry);
+        ApplyShortcut(miToggleTheme, "toggletheme", registry);
+        ApplyShortcut(miFullscreen, "fullscreen", registry);
+        ApplyShortcut(miToggleMinimap, "minimap", registry);
+        ApplyShortcut(miTerminal, "terminal", registry);
+        ApplyShortcut(miBuild, "build", registry);
+        ApplyShortcut(miBuildAndRun, "buildrun", registry);
+        ApplyShortcut(miRun, "run", registry);
+        ApplyShortcut(miStop, "stopjob", registry);
+        ApplyShortcut(miDebugStart, "debugstart", registry);
+        ApplyShortcut(miDebugContinue, "debugcontinue", registry);
+        ApplyShortcut(miDebugStepOver, "debugstepover", registry);
+        ApplyShortcut(miDebugStepIn, "debugstepin", registry);
+        ApplyShortcut(miDebugStepOut, "debugstepout", registry);
+        ApplyShortcut(miDebugRestart, "debugrestart", registry);
+        ApplyShortcut(miToggleBreakpoint, "togglebreakpoint", registry);
+        ApplyShortcut(miKeyboardShortcuts, "keybindings", registry);
+        ApplyShortcut(ctxRename, "treerename", registry);
+        ApplyShortcut(ctxDelete, "treedelete", registry);
+        ApplyShortcut(ctxNewFile, "treenewfile", registry);
+        ApplyShortcut(ctxNewFolder, "treenewfolder", registry);
+        ApplyShortcut(ctxRefresh, "treerefresh", registry);
+        ApplyShortcut(ecCut, "cut", registry);
+        ApplyShortcut(ecCopy, "copy", registry);
+        ApplyShortcut(ecPaste, "paste", registry);
+        ApplyShortcut(ecGotoDef, "gotodef", registry);
+        ApplyShortcut(ecFindRefs, "findrefs", registry);
+        ApplyShortcut(ecRename, "rename", registry);
+        ApplyShortcut(ecFormat, "formatdocument", registry);
+        ApplyShortcut(ecToggleBreakpoint, "togglebreakpoint", registry);
+        ApplyShortcut(ecPalette, "palette", registry);
+    }
+
+    /// @brief Apply one command shortcut to one menu item.
+    /// @param item Menu or context-menu item that displays a shortcut label.
+    /// @param commandId Command id in CommandRegistry.
+    /// @param registry Runtime command registry to query.
+    hide func ApplyShortcut(item: GUI.MenuItem,
+                            commandId: String,
+                            registry: command_registry.CommandRegistry) {
+        if item == null or registry == null { return; }
+        var shortcut = registry.ShortcutFor(commandId);
+        if shortcut == "" { return; }
+        item.SetShortcut(shortcut);
+    }
+
+    /// @brief Apply build/run job state to toolbar and menu controls.
+    /// @param active True while a build/run job is active.
+    /// @param name Human-readable job name.
+    expose func SetBuildJobActive(active: Boolean, name: String) {
+        var enabled = true;
+        var stopEnabled = false;
+        var jobName = status_bar_model.JobDisplayName(name);
+        if active {
+            enabled = false;
+            stopEnabled = true;
+        }
+        SetToolbarItemState(tbBuild, enabled,
+                            "Build (Ctrl+Shift+B)",
+                            "Build disabled while " + jobName + " is running");
+        SetToolbarItemState(tbRun, enabled,
+                            "Build & Run (F5)",
+                            "Run disabled while " + jobName + " is running");
+        SetToolbarItemState(tbDebug, enabled,
+                            "Start Debugging (F6)",
+                            "Debug disabled while " + jobName + " is running");
+        if tbStop != null {
+            tbStop.SetEnabled(stopEnabled);
+            if active {
+                tbStop.SetTooltip("Stop " + jobName + " (Shift+F5)");
+            } else {
+                tbStop.SetTooltip("No running job");
+            }
+        }
+        SetMenuEnabled(miBuild, enabled);
+        SetMenuEnabled(miBuildAndRun, enabled);
+        SetMenuEnabled(miRun, enabled);
+        SetMenuEnabled(miDebugStart, enabled);
+        SetMenuEnabled(miStop, stopEnabled);
+    }
+
+    /// @brief Apply running/paused debug-session state to visible controls.
+    /// @param active True while a debug adapter session exists.
+    /// @param stopped True while the debuggee is paused at a stop location.
+    /// @param buildJobActive True while the build/run process controller is busy.
+    expose func SetDebugSessionState(active: Boolean,
+                                     stopped: Boolean,
+                                     buildJobActive: Boolean) {
+        var startEnabled = true;
+        if active or buildJobActive { startEnabled = false; }
+        var pausedEnabled = false;
+        if active and stopped { pausedEnabled = true; }
+        var runningEnabled = false;
+        if active and stopped == false { runningEnabled = true; }
+        var activeEnabled = false;
+        if active { activeEnabled = true; }
+
+        if active {
+            SetToolbarItemState(tbBuild, false,
+                                "Build (Ctrl+Shift+B)",
+                                "Build disabled while debugging");
+            SetToolbarItemState(tbRun, false,
+                                "Build & Run (F5)",
+                                "Run disabled while debugging");
+            SetMenuEnabled(miBuild, false);
+            SetMenuEnabled(miBuildAndRun, false);
+            SetMenuEnabled(miRun, false);
+        } else if buildJobActive == false {
+            SetToolbarItemState(tbBuild, true,
+                                "Build (Ctrl+Shift+B)",
+                                "Build disabled while another job is running");
+            SetToolbarItemState(tbRun, true,
+                                "Build & Run (F5)",
+                                "Run disabled while another job is running");
+            SetMenuEnabled(miBuild, true);
+            SetMenuEnabled(miBuildAndRun, true);
+            SetMenuEnabled(miRun, true);
+        }
+
+        var startDisabled = "Debug disabled while another job is running";
+        if active { startDisabled = "Debug session already running"; }
+        SetToolbarItemState(tbDebug, startEnabled,
+                            "Start Debugging (F6)", startDisabled);
+        SetToolbarItemState(tbDebugContinue, pausedEnabled,
+                            "Continue Debugging (F7)",
+                            "Continue is available while paused at a breakpoint");
+        SetToolbarItemState(tbDebugStep, pausedEnabled,
+                            "Step Over (F10)",
+                            "Step is available while paused at a breakpoint");
+
+        SetMenuEnabled(miDebugStart, startEnabled);
+        SetMenuEnabled(miDebugContinue, pausedEnabled);
+        SetMenuEnabled(miDebugStepOver, pausedEnabled);
+        SetMenuEnabled(miDebugStepIn, pausedEnabled);
+        SetMenuEnabled(miDebugStepOut, pausedEnabled);
+        SetMenuEnabled(miDebugPause, runningEnabled);
+        SetMenuEnabled(miDebugRestart, activeEnabled);
+        SetMenuEnabled(miDebugStop, activeEnabled);
+    }
+
+    /// @brief Apply active-language capability state to semantic menu actions.
+    /// @param service Capability record selected for the active document.
+    expose func ApplyLanguageCommandState(service: language_service.LanguageService) {
+        var canDefinition = false;
+        var canReferences = false;
+        var canRename = false;
+        var canSymbols = false;
+        var canSignature = false;
+        if service != null {
+            canDefinition = service.canGoToDefinition;
+            canReferences = service.canFindReferences;
+            canRename = service.canRename;
+            canSymbols = service.canDocumentSymbols;
+            canSignature = service.canSignatureHelp;
+        }
+        SetMenuEnabled(miGoToDefinition, canDefinition);
+        SetMenuEnabled(miFindReferences, canReferences);
+        SetMenuEnabled(miIncomingCalls, canReferences);
+        SetMenuEnabled(miOutgoingCalls, canDefinition);
+        SetMenuEnabled(miRenameSymbol, canRename);
+        SetMenuEnabled(miWorkspaceSymbols, canSymbols);
+        SetMenuEnabled(miSymbolOutline, canSymbols);
+        SetMenuEnabled(miSignatureHelp, canSignature);
+        SetMenuEnabled(ecGotoDef, canDefinition);
+        SetMenuEnabled(ecFindRefs, canReferences);
+        SetMenuEnabled(ecRename, canRename);
+    }
+
+    /// @brief Enable or disable one menu item when the handle exists.
+    /// @param item Menu item handle that may be null during partial setup.
+    /// @param enabled True to enable, false to grey the item out.
+    expose func SetMenuEnabled(item: GUI.MenuItem, enabled: Boolean) {
+        if item == null { return; }
+        item.SetEnabled(enabled);
+    }
+
+    /// @brief Apply enabled state and matching hover text to one toolbar item.
+    /// @param item Toolbar item handle; null is ignored during partial setup.
+    /// @param enabled Runtime GUI enabled flag.
+    /// @param enabledTooltip Tooltip used when the item can be activated.
+    /// @param disabledTooltip Tooltip used when the item is disabled.
+    hide func SetToolbarItemState(item: GUI.ToolbarItem,
+                                  enabled: Boolean,
+                                  enabledTooltip: String,
+                                  disabledTooltip: String) {
+        if item == null { return; }
+        item.SetEnabled(enabled);
+        if enabled {
+            item.SetTooltip(enabledTooltip);
+        } else {
+            item.SetTooltip(disabledTooltip);
+        }
+    }
+}

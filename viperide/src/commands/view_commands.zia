@@ -182,20 +182,20 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     if appSettings.autoCheckOnSave {
         liveDiag.invalidate();
     } else {
-        shell.ClearProblemsPanel();
-        shell.minimap.ClearMarkers();
+        shell.toolPanels.ClearProblemsPanel();
+        shell.workbench.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
     }
 
     if appSettings.minimapVisible {
-        shell.minimap.SetVisible(true);
+        shell.workbench.minimap.SetVisible(true);
     } else {
-        shell.minimap.SetVisible(false);
+        shell.workbench.minimap.SetVisible(false);
     }
     if appSettings.statusBarVisible {
-        shell.statusBar.SetVisible(true);
+        shell.statusShell.statusBar.SetVisible(true);
     } else {
-        shell.statusBar.SetVisible(false);
+        shell.statusShell.statusBar.SetVisible(false);
     }
     shell.app.SetFullscreen(appSettings.fullscreen);
 
@@ -210,12 +210,12 @@ func handleToggleSidebar(shell: app_shell.AppShell) {
 /// @brief Toggle status bar visibility and persist the new state.
 func handleToggleStatusBar(shell: app_shell.AppShell,
                            appSettings: settings.SettingsManager) {
-    if shell.statusBar.IsVisible() {
-        shell.statusBar.SetVisible(false);
+    if shell.statusShell.statusBar.IsVisible() {
+        shell.statusShell.statusBar.SetVisible(false);
         appSettings.statusBarVisible = false;
         shell.SetStatusLeft("Status bar hidden");
     } else {
-        shell.statusBar.SetVisible(true);
+        shell.statusShell.statusBar.SetVisible(true);
         appSettings.statusBarVisible = true;
         shell.SetStatusLeft("Status bar shown");
     }
@@ -323,16 +323,16 @@ func handleToggleTheme(shell: app_shell.AppShell,
 func handleKeybindings(shell: app_shell.AppShell,
                        registry: command_registry.CommandRegistry) {
     if shell == null or registry == null { return; }
-    shell.BeginOutputRows();
+    shell.toolPanels.BeginOutputRows();
     var conflictCount = registry.ShortcutConflictCount();
     if conflictCount == 0 {
-        shell.AddOutputDisplayLine("Keyboard Shortcuts - no conflicts");
+        shell.toolPanels.AddOutputDisplayLine("Keyboard Shortcuts - no conflicts");
     } else {
-        shell.AddOutputDisplayLine("Keyboard Shortcuts - " + conflictCount + " conflicts");
+        shell.toolPanels.AddOutputDisplayLine("Keyboard Shortcuts - " + conflictCount + " conflicts");
         var conflicts = Str.Split(registry.ShortcutConflictSummary(), "\n");
         var c = 0;
         while c < Seq.get_Count(conflicts) {
-            shell.AddOutputDisplayLine("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
+            shell.toolPanels.AddOutputDisplayLine("  conflict: " + Obj.ToString(Seq.Get(conflicts, c)));
             c = c + 1;
         }
     }
@@ -343,16 +343,16 @@ func handleKeybindings(shell: app_shell.AppShell,
         if cmd.shortcut != "" {
             var marker = " ";
             if registry.ShortcutHasConflict(cmd.shortcut) { marker = "!"; }
-            shell.AddOutputDisplayLine(marker + " " + cmd.shortcut + "  " + cmd.label);
+            shell.toolPanels.AddOutputDisplayLine(marker + " " + cmd.shortcut + "  " + cmd.label);
         }
         i = i + 1;
     }
-    shell.ShowOutputPanel();
+    shell.toolPanels.ShowOutputPanel();
     shell.SetStatusLeft("Keyboard shortcuts");
 }
 
 func handleCopyToolSelection(shell: app_shell.AppShell) {
-    if shell.CopySelectedToolRow() {
+    if shell.toolPanels.CopySelectedToolRow() {
         GUI.Toast.Success("Copied selected rows");
         shell.SetStatusLeft("Copied selected tool rows");
     } else {
@@ -361,7 +361,7 @@ func handleCopyToolSelection(shell: app_shell.AppShell) {
 }
 
 func handleCopyOutputText(shell: app_shell.AppShell) {
-    if shell.CopyOutputText() {
+    if shell.toolPanels.CopyOutputText() {
         GUI.Toast.Success("Copied output text");
         shell.SetStatusLeft("Copied full output");
     } else {
@@ -370,13 +370,13 @@ func handleCopyOutputText(shell: app_shell.AppShell) {
 }
 
 func handleClearOutput(shell: app_shell.AppShell) {
-    shell.ClearOutputPanel();
+    shell.toolPanels.ClearOutputPanel();
     shell.SetStatusLeft("Output cleared");
 }
 
 func handleFilterOutput(shell: app_shell.AppShell) {
     var filter = GUI.MessageBox.Prompt("Filter Output", "Show output rows containing:");
-    shell.SetOutputFilter(filter);
+    shell.toolPanels.SetOutputFilter(filter);
     if filter == "" {
         shell.SetStatusLeft("Output filter cleared");
     } else {
@@ -385,7 +385,7 @@ func handleFilterOutput(shell: app_shell.AppShell) {
 }
 
 func handleToggleOutputWrap(shell: app_shell.AppShell) {
-    if shell.ToggleOutputWrap() {
+    if shell.toolPanels.ToggleOutputWrap() {
         shell.SetStatusLeft("Output wrap enabled");
     } else {
         shell.SetStatusLeft("Output wrap disabled");
@@ -393,7 +393,7 @@ func handleToggleOutputWrap(shell: app_shell.AppShell) {
 }
 
 func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
-    if shell.ToggleOutputAutoScroll() {
+    if shell.toolPanels.ToggleOutputAutoScroll() {
         shell.SetStatusLeft("Output auto-scroll enabled");
     } else {
         shell.SetStatusLeft("Output auto-scroll locked");
@@ -402,17 +402,17 @@ func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
 
 func handleRecentFiles(shell: app_shell.AppShell,
                        sessionMgr: session.SessionManager) {
-    shell.BeginOutputRows();
+    shell.toolPanels.BeginOutputRows();
     var count = sessionMgr.RecentFileCount();
     if count <= 0 {
-        shell.AddOutputDisplayLine("Recent Files - none");
+        shell.toolPanels.AddOutputDisplayLine("Recent Files - none");
     } else {
-        shell.AddOutputDisplayLine("Recent Files");
+        shell.toolPanels.AddOutputDisplayLine("Recent Files");
         var i = 0;
         while i < count {
             var path = sessionMgr.RecentFileAt(i);
             if path != "" {
-                var item = shell.AddOutputDisplayLine("  " + Path.Name(path) + "  -  " + path);
+                var item = shell.toolPanels.AddOutputDisplayLine("  " + Path.Name(path) + "  -  " + path);
                 if item != null {
                     GUI.ListBox.ItemSetData(item, "file:" + path);
                 }
@@ -420,7 +420,7 @@ func handleRecentFiles(shell: app_shell.AppShell,
             i = i + 1;
         }
     }
-    shell.ShowOutputPanel();
+    shell.toolPanels.ShowOutputPanel();
     shell.SetStatusLeft("Recent files");
 }
 
@@ -445,9 +445,9 @@ func handleToggleMinimap(shell: app_shell.AppShell,
     var nowVisible = appSettings.minimapVisible == false;
     appSettings.minimapVisible = nowVisible;
     if nowVisible {
-        shell.minimap.SetVisible(true);
+        shell.workbench.minimap.SetVisible(true);
     } else {
-        shell.minimap.SetVisible(false);
+        shell.workbench.minimap.SetVisible(false);
     }
     appSettings.Save();
     return nowVisible;

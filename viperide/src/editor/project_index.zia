@@ -38,6 +38,9 @@ final INDEX_FILE_PAGE_SIZE = 512;
 class ProjectIndexer {
     expose Any handle;
     expose String rootPath;
+    expose String workspaceSignature;
+    expose List rootPaths;
+    expose List rootIgnorePatterns;
     expose Boolean valid;
     expose String syncedActivePath;
     expose Integer syncedActiveRevision;
@@ -47,6 +50,7 @@ class ProjectIndexer {
     expose Integer syncCount;
     expose Any pendingIndexFiles;
     expose Integer pendingIndexPos;
+    expose Integer pendingIndexRootIndex;
     expose Integer pendingIndexOffset;
     expose Boolean pendingIndexDone;
     expose Boolean indexing;
@@ -64,6 +68,9 @@ class ProjectIndexer {
     expose func init() {
         handle = null;
         rootPath = "";
+        workspaceSignature = "";
+        rootPaths = new List();
+        rootIgnorePatterns = new List();
         valid = false;
         syncedActivePath = "";
         syncedActiveRevision = -1;
@@ -73,6 +80,7 @@ class ProjectIndexer {
         syncCount = 0;
         pendingIndexFiles = null;
         pendingIndexPos = 0;
+        pendingIndexRootIndex = 0;
         pendingIndexOffset = 0;
         pendingIndexDone = true;
         indexing = false;
@@ -94,8 +102,10 @@ class ProjectIndexer {
     expose func EnsureProject(projMgr: project_manager.ProjectManager,
                               docMgr: document_manager.DocumentManager) {
         var root = "";
+        var signature = "";
         if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
-            root = projMgr.project.rootPath;
+            root = projMgr.RootPath();
+            signature = projMgr.WorkspaceSignature();
         }
         if root == "" {
             var active = docMgr.GetActive();
@@ -103,18 +113,52 @@ class ProjectIndexer {
                 var activeDoc = active!;
                 if activeDoc.filePath != "" {
                     root = Viper.IO.Path.Dir(activeDoc.filePath);
+                    signature = root;
                 }
             }
         }
         if root == "" { return; }
-        if root != rootPath {
-            Open(root, docMgr);
+        if root != rootPath or signature != workspaceSignature {
+            if projMgr != null and projMgr.IsOpen() {
+                OpenProject(projMgr, docMgr);
+            } else {
+                Open(root, docMgr);
+            }
         }
     }
 
+    /// @brief Open a semantic index covering every root in ProjectManager.
+    /// @param projMgr Project manager providing root paths and ignore patterns.
+    /// @param docMgr Open document manager whose live buffers should overlay disk.
+    /// @details The runtime ProjectIndex handle still uses the primary root for
+    ///          compatibility, while ViperIDE pages every root and updates the
+    ///          handle with absolute file paths from the full workspace.
+    expose func OpenProject(projMgr: project_manager.ProjectManager,
+                            docMgr: document_manager.DocumentManager) {
+        if projMgr == null or projMgr.IsOpen() == false { return; }
+        Open(projMgr.RootPath(), docMgr);
+        workspaceSignature = projMgr.WorkspaceSignature();
+        rootPaths = new List();
+        rootIgnorePatterns = new List();
+        var i = 0;
+        while i < projMgr.RootCount() {
+            rootPaths.Push(projMgr.RootPathAt(i));
+            rootIgnorePatterns.Push(projMgr.RootIgnorePatternsAt(i));
+            i = i + 1;
+        }
+    }
+
+    /// @brief Open a semantic index for one root.
+    /// @param root Absolute root path used to create the runtime index handle.
+    /// @param docMgr Open document manager whose live buffers should overlay disk.
     expose func Open(root: String, docMgr: document_manager.DocumentManager) {
         Destroy();
         rootPath = root;
+        workspaceSignature = root;
+        rootPaths = new List();
+        rootPaths.Push(root);
+        rootIgnorePatterns = new List();
+        rootIgnorePatterns.Push("");
         handle = ProjectIndex.New(root);
         valid = ProjectIndex.IsValid(handle);
         if valid {
@@ -128,6 +172,9 @@ class ProjectIndexer {
         }
         handle = null;
         rootPath = "";
+        workspaceSignature = "";
+        rootPaths = new List();
+        rootIgnorePatterns = new List();
         valid = false;
         syncedActivePath = "";
         syncedActiveRevision = -1;
@@ -136,6 +183,7 @@ class ProjectIndexer {
         pendingSinceMs = 0;
         pendingIndexFiles = null;
         pendingIndexPos = 0;
+        pendingIndexRootIndex = 0;
         pendingIndexOffset = 0;
         pendingIndexDone = true;
         indexing = false;
@@ -160,6 +208,7 @@ class ProjectIndexer {
         workspaceIndexTruncated = false;
         workspaceIndexStatusMessage = "";
         pendingIndexOffset = 0;
+        pendingIndexRootIndex = 0;
         pendingIndexDone = false;
         pendingIndexPos = 0;
         pendingIndexFiles = null;
@@ -455,29 +504,73 @@ class ProjectIndexer {
     ///          The indexer keeps only one page of entry maps live at a time and
     ///          advances `pendingIndexOffset` from the returned `nextOffset`.
     hide func FetchNextIndexPage() {
-        if valid == false or rootPath == "" {
+        if valid == false or rootPaths.count() == 0 {
             pendingIndexFiles = null;
             pendingIndexDone = true;
             return;
         }
-        var page = FileIndex.Page(rootPath, ".zia", "", false,
-                                  pendingIndexOffset, INDEX_FILE_PAGE_SIZE);
-        if Map.GetBool(page, "valid") == false {
-            pendingIndexFiles = null;
-            pendingIndexDone = true;
-            workspaceIndexStatusMessage = "Workspace index unavailable";
+        while pendingIndexRootIndex < rootPaths.count() {
+            var currentRoot = CurrentIndexRoot();
+            if currentRoot == "" {
+                AdvanceIndexRoot();
+                continue;
+            }
+            var page = FileIndex.Page(currentRoot, ".zia", CurrentIndexIgnores(), false,
+                                      pendingIndexOffset, INDEX_FILE_PAGE_SIZE);
+            if Map.GetBool(page, "valid") == false {
+                AdvanceIndexRoot();
+                continue;
+            }
+            pendingIndexFiles = Map.Get(page, "entries");
+            pendingIndexPos = 0;
+            pendingIndexOffset = Map.GetInt(page, "nextOffset");
+            pendingIndexDone = false;
+            workspaceIndexEntryCount = workspaceIndexEntryCount + PageEntryCount(pendingIndexFiles);
+            workspaceIndexTruncated = workspaceIndexTruncated or Map.GetBool(page, "truncated");
+            if workspaceIndexTruncated {
+                workspaceIndexStatusMessage = "Workspace index truncated at "
+                    + INDEX_ENUM_CAP + " file(s)";
+            }
+            if Map.GetBool(page, "done") {
+                AdvanceIndexRoot();
+                if pendingIndexRootIndex >= rootPaths.count() {
+                    pendingIndexDone = true;
+                }
+            }
             return;
         }
-        pendingIndexFiles = Map.Get(page, "entries");
-        pendingIndexPos = 0;
-        pendingIndexOffset = Map.GetInt(page, "nextOffset");
-        pendingIndexDone = Map.GetBool(page, "done");
-        workspaceIndexEntryCount = pendingIndexOffset;
-        workspaceIndexTruncated = Map.GetBool(page, "truncated");
-        if workspaceIndexTruncated {
-            workspaceIndexStatusMessage = "Workspace index truncated at "
-                + INDEX_ENUM_CAP + " file(s)";
+        pendingIndexFiles = null;
+        pendingIndexDone = true;
+    }
+
+    /// @brief Return the root currently being paged for workspace indexing.
+    /// @return Absolute root path, or empty when all roots are consumed.
+    hide func CurrentIndexRoot() -> String {
+        if pendingIndexRootIndex < 0 or pendingIndexRootIndex >= rootPaths.count() { return ""; }
+        return Obj.ToString(rootPaths.get(pendingIndexRootIndex));
+    }
+
+    /// @brief Return ignore patterns for the current indexing root.
+    /// @return Comma-separated ignore pattern list aligned with rootPaths.
+    hide func CurrentIndexIgnores() -> String {
+        if pendingIndexRootIndex < 0 or pendingIndexRootIndex >= rootIgnorePatterns.count() {
+            return "";
         }
+        return Obj.ToString(rootIgnorePatterns.get(pendingIndexRootIndex));
+    }
+
+    /// @brief Advance workspace indexing to the next root and reset the page offset.
+    hide func AdvanceIndexRoot() {
+        pendingIndexRootIndex = pendingIndexRootIndex + 1;
+        pendingIndexOffset = 0;
+    }
+
+    /// @brief Count entries in a FileIndex.Page result sequence.
+    /// @param entries Sequence returned by FileIndex.Page, or null.
+    /// @return Number of entries in the page.
+    hide func PageEntryCount(entries: Any) -> Integer {
+        if entries == null { return 0; }
+        return Seq.get_Count(entries);
     }
 
     expose func Definition(path: String,

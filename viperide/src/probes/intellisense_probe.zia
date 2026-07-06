@@ -134,8 +134,8 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
 
     shell.Build("ViperIDE IntelliSense Probe", 820, 520);
-    engine.Setup(shell.editorRow);
-    projMgr.Setup(shell.sidebarTree);
+    engine.Setup(shell.workbench.editorRow);
+    projMgr.Setup(shell.workbench.sidebarTree);
     completer.Setup(engine.editor, shell.app);
     completer.SetEngine(engine);
     completer.SetWorkspaceContext(projMgr, docMgr);
@@ -1261,16 +1261,16 @@ func main() {
     callIndexer.FinishPendingIndex();
     var callLocs = new locations.LocationStore();
     edit_commands.handleIncomingCalls(shell, callDocMgr, engine, callIndexer, callLocs);
-    if shell.referencesListBox.Count < 2 or callLocs.items.count() != 1 {
+    if shell.toolPanels.referencesListBox.Count < 2 or callLocs.items.count() != 1 {
         fail(shell, "incoming calls command rows");
         return;
     }
     var foundCaller = false;
     var refIdx = 0;
-    while refIdx < shell.referencesListBox.Count {
-        shell.referencesListBox.SelectIndex(refIdx);
-        if shell.referencesListBox.Selected != null {
-            var rowText = GUI.ListBox.ItemGetText(shell.referencesListBox.Selected);
+    while refIdx < shell.toolPanels.referencesListBox.Count {
+        shell.toolPanels.referencesListBox.SelectIndex(refIdx);
+        if shell.toolPanels.referencesListBox.Selected != null {
+            var rowText = GUI.ListBox.ItemGetText(shell.toolPanels.referencesListBox.Selected);
             if Str.IndexOf(rowText, "caller") != 0 {
                 foundCaller = true;
             }
@@ -1295,16 +1295,16 @@ func main() {
     engine.editor.SetCursor(5, 15);
     var outLocs = new locations.LocationStore();
     edit_commands.handleOutgoingCalls(shell, callDocMgr, engine, callIndexer, outLocs);
-    if shell.referencesListBox.Count < 2 or outLocs.items.count() != 1 {
+    if shell.toolPanels.referencesListBox.Count < 2 or outLocs.items.count() != 1 {
         fail(shell, "outgoing calls command rows");
         return;
     }
     var foundTarget = false;
     refIdx = 0;
-    while refIdx < shell.referencesListBox.Count {
-        shell.referencesListBox.SelectIndex(refIdx);
-        if shell.referencesListBox.Selected != null {
-            var rowText2 = GUI.ListBox.ItemGetText(shell.referencesListBox.Selected);
+    while refIdx < shell.toolPanels.referencesListBox.Count {
+        shell.toolPanels.referencesListBox.SelectIndex(refIdx);
+        if shell.toolPanels.referencesListBox.Selected != null {
+            var rowText2 = GUI.ListBox.ItemGetText(shell.toolPanels.referencesListBox.Selected);
             if Str.IndexOf(rowText2, "target") != 0 {
                 foundTarget = true;
             }

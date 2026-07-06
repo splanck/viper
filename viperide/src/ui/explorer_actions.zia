@@ -361,7 +361,7 @@ class ExplorerActionOverlay {
 
         var x = EXPLORER_PANEL_MARGIN;
         var y = 118;
-        if shell.sidebarVisible == false {
+        if shell.workbench.sidebarVisible == false {
             x = (rootW - panelW) / 2;
         }
         if x + panelW + EXPLORER_PANEL_MARGIN > rootW {
