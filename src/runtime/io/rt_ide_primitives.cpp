@@ -1310,35 +1310,42 @@ void *rt_workspace_file_index_page(rt_string root_s,
         bool done = true;
         bool truncated = false;
         int64_t matched = offset;
+        WorkspaceFileIndexPageCursor *cursor = nullptr;
+
         {
             FileIndexPageCursorLockGuard cursorLock;
-            WorkspaceFileIndexPageCursor *cursor = findFileIndexPageCursor(key, offset);
+            cursor = findFileIndexPageCursor(key, offset);
+            if (cursor) {
+                unlinkFileIndexPageCursor(cursor);
+            }
+        }
+
+        if (!cursor) {
+            cursor = startFileIndexPageCursor(
+                key, root, extensionsCsv, excludesCsv, include_dirs != 0, diagnostics);
             if (!cursor) {
-                cursor = startFileIndexPageCursor(
-                    key, root, extensionsCsv, excludesCsv, include_dirs != 0, diagnostics);
-                if (!cursor) {
-                    rt_map_set_bool(result, rt_const_cstr("valid"), 0);
-                    releaseObject(entries);
-                    releaseObject(diagnostics);
-                    return result;
-                }
+                rt_map_set_bool(result, rt_const_cstr("valid"), 0);
+                releaseObject(entries);
+                releaseObject(diagnostics);
+                return result;
+            }
+        }
+
+        cursor->lastUsed = g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
+        emitted = scanFileIndexPageCursor(cursor, entries, offset, limit);
+        matched = cursor->matched;
+        done = cursor->done;
+        truncated = cursor->truncated;
+        ec = cursor->ec;
+        cursor->lastUsed = g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
+
+        {
+            FileIndexPageCursorLockGuard cursorLock;
+            if (done) {
+                destroyFileIndexPageCursor(cursor);
+            } else {
                 linkFileIndexPageCursor(cursor);
                 evictFileIndexPageCursorsIfNeeded();
-            }
-            cursor->lastUsed =
-                g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
-            emitted = scanFileIndexPageCursor(cursor, entries, offset, limit);
-            if (cursor) {
-                matched = cursor->matched;
-                done = cursor->done;
-                truncated = cursor->truncated;
-                ec = cursor->ec;
-                cursor->lastUsed =
-                    g_fileIndexPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
-            }
-            if (done) {
-                unlinkFileIndexPageCursor(cursor);
-                destroyFileIndexPageCursor(cursor);
             }
         }
 

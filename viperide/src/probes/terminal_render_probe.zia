@@ -26,8 +26,8 @@ bind Terminal = Viper.Terminal;
 //          owns escape handling and visible terminal text. This probe focuses on
 //          rendering behavior after terminal bytes are appended.
 //
-// TEACHING-NOTE: Terminal rendering is intentionally limited. Probe the supported
-//          subset explicitly and keep full-screen TUI behavior out of scope.
+// TEACHING-NOTE: Probe the supported terminal contract explicitly: cursor redraws,
+//          escape swallowing, alternate-screen preservation, and visible text state.
 // ============================================================================
 
 func fail(shell: app_shell.AppShell, reason: String) {

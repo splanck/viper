@@ -1072,10 +1072,11 @@ rt_string rt_outputpane_take_input(void *pane) {
     vg_outputpane_t *out = rt_outputpane_checked(pane);
     if (!out)
         return rt_str_empty();
-    char *input = vg_outputpane_take_input(out);
+    size_t input_len = 0;
+    char *input = vg_outputpane_take_input_bytes(out, &input_len);
     if (!input)
         return rt_str_empty();
-    rt_string result = rt_string_from_bytes(input, strlen(input));
+    rt_string result = rt_string_from_bytes(input, input_len);
     free(input);
     return result;
 }

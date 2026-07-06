@@ -9,6 +9,7 @@ bind "../ui/app_shell";
 
 bind Viper.GUI;
 bind Str = Viper.String;
+bind Text = Viper.Text;
 
 // ============================================================================
 // MODULE: quick_open_commands
@@ -157,8 +158,10 @@ expose func QuickOpenPathFromCommandId(id: String) -> String {
 /// @param relativePath Project-relative file path.
 /// @param query User-entered query.
 /// @return Lower is better; -1 means no match.
-/// @details The scoring is deliberately simple and deterministic so probes can
-///          lock down behavior while the UI remains responsive.
+/// @details Exact and prefix cases keep their historical scores for stable
+///          probes. Less direct matches fall through to the runtime fuzzy matcher
+///          so file-name abbreviations like `pmgr` can still find
+///          `project_manager.zia` without loading an external dependency.
 expose func QuickOpenScore(relativePath: String, query: String) -> Integer {
     var rel = Str.ToLower(relativePath);
     var needle = Str.ToLower(Str.Trim(query));
@@ -174,5 +177,9 @@ expose func QuickOpenScore(relativePath: String, query: String) -> Integer {
     if Str.StartsWith(name, needle) { return 2; }
     if Str.StartsWith(rel, needle) { return 3; }
     if Str.IndexOf(rel, needle) != 0 { return 4; }
+    var fuzzy = Text.FuzzyMatch.Match(needle, rel);
+    if fuzzy.GetBool("matched") {
+        return 10 + fuzzy.GetInt("score");
+    }
     return -1;
 }

@@ -52,6 +52,8 @@ bind Convert = Viper.Core.Convert;
 
 final SEARCH_FILES_PER_FRAME = 16;
 final SEARCH_DISCOVERY_PAGE_SIZE = 256;
+final MAX_SEARCH_FILE_BYTES = 2000000;
+final MAX_SEARCH_RESULTS = 5000;
 
 class SearchController {
     expose Boolean active;
@@ -69,12 +71,15 @@ class SearchController {
     expose Integer resultCount;
     expose Integer totalFiles;
     expose List files;
+    expose Any filesSeen;
     expose Boolean discovering;
     expose List pendingDirs;
     expose Integer directoriesScanned;
     expose Integer discoveryOffset;
     expose Boolean discoveryTruncated;
     expose String discoveryError;
+    expose Integer skippedLargeFiles;
+    expose Boolean resultLimitReached;
     expose String panelRoot;
     expose String panelIgnorePatterns;
 
@@ -94,12 +99,15 @@ class SearchController {
         resultCount = 0;
         totalFiles = 0;
         files = new List();
+        filesSeen = Map.New();
         discovering = false;
         pendingDirs = new List();
         directoriesScanned = 0;
         discoveryOffset = 0;
         discoveryTruncated = false;
         discoveryError = "";
+        skippedLargeFiles = 0;
+        resultLimitReached = false;
         panelRoot = "";
         panelIgnorePatterns = "";
     }
@@ -306,6 +314,7 @@ class SearchController {
 
         ApplyRequest(request);
         files = new List();
+        filesSeen = Map.New();
         pendingDirs = new List();
         discovering = true;
         directoriesScanned = 0;
@@ -315,6 +324,8 @@ class SearchController {
         totalFiles = 0;
         fileIndex = 0;
         resultCount = 0;
+        skippedLargeFiles = 0;
+        resultLimitReached = false;
         canceled = false;
         active = true;
 
@@ -448,9 +459,8 @@ class SearchController {
                 processed = processed + 1;
                 if Map.GetBool(entry, "isDirectory") { continue; }
                 var filePath = Map.GetStr(entry, "path");
-                if filePath != "" and SearchPathAllowed(root, filePath, includeGlobs, excludeGlobs)
-                   and workspace_file_index.ListContains(files, filePath) == false {
-                    files.Push(filePath);
+                if filePath != "" and SearchPathAllowed(root, filePath, includeGlobs, excludeGlobs) {
+                    workspace_file_index.AddUniquePath(files, filesSeen, filePath);
                 }
             }
         }
@@ -484,11 +494,21 @@ class SearchController {
             scanned = scanned + 1;
 
             if IO.File.Exists(filePath) == false { continue; }
+            if SearchDiskFileTooLarge(docMgr, filePath) {
+                skippedLargeFiles = skippedLargeFiles + 1;
+                continue;
+            }
             resultCount = resultCount + searchOneFile(shell, filePath, query, caseSensitive, wholeWord,
-                                                      regexMode, docMgr, locStore);
+                                                      regexMode, docMgr, locStore,
+                                                      MAX_SEARCH_RESULTS - resultCount);
+            if resultCount >= MAX_SEARCH_RESULTS {
+                resultLimitReached = true;
+                discovering = false;
+                active = false;
+            }
         }
 
-        if discovering == false and fileIndex >= files.count() {
+        if resultLimitReached or (discovering == false and fileIndex >= files.count()) {
             active = false;
             if discoveryError != "" {
                 shell.ClearToolRows(shell.searchListBox);
@@ -500,6 +520,13 @@ class SearchController {
             } else if resultCount > 0 {
                 shell.ShowSearchPanel();
                 var doneText = "Found " + resultCount + " matches for '" + query + "'";
+                if resultLimitReached {
+                    doneText = doneText + " (showing first " + MAX_SEARCH_RESULTS + ")";
+                    GUI.Toast.Warning("Search stopped at " + MAX_SEARCH_RESULTS + " matches");
+                }
+                if skippedLargeFiles > 0 {
+                    doneText = doneText + " (" + skippedLargeFiles + " large file(s) skipped)";
+                }
                 if discoveryTruncated {
                     doneText = doneText + " (file discovery truncated)";
                     GUI.Toast.Warning("Search file discovery was truncated");
@@ -508,6 +535,9 @@ class SearchController {
             } else {
                 shell.ClearToolRows(shell.searchListBox);
                 var noMatch = "No matches found for '" + query + "'";
+                if skippedLargeFiles > 0 {
+                    noMatch = noMatch + " (" + skippedLargeFiles + " large file(s) skipped)";
+                }
                 if discoveryTruncated {
                     noMatch = noMatch + " before file discovery was truncated";
                 }
@@ -980,10 +1010,29 @@ func searchFiles(shell: app_shell.AppShell,
 
         if IO.File.Exists(filePath) == false { continue; }
         if SearchPathAllowed(rootPath, filePath, includeGlobs, excludeGlobs) == false { continue; }
+        if SearchDiskFileTooLarge(docMgr, filePath) { continue; }
         count = count + searchOneFile(shell, filePath, query, caseSensitive, wholeWord,
-                                      regexMode, docMgr, locStore);
+                                      regexMode, docMgr, locStore,
+                                      MAX_SEARCH_RESULTS - count);
+        if count >= MAX_SEARCH_RESULTS { return count; }
     }
     return count;
+}
+
+/// @brief Return true when a disk-backed file should be skipped by project search.
+/// @param docMgr Open document manager used to detect edited in-memory buffers.
+/// @param filePath Absolute candidate path.
+/// @return True when the file is not open in the editor and exceeds the search
+///         size guard.
+/// @details Open documents are searched from their current buffer even when the
+///          backing file is large, because that is the text the user is editing.
+///          Closed disk files are capped before ReadAllText so a workspace search
+///          cannot freeze the IDE by copying very large generated files.
+func SearchDiskFileTooLarge(docMgr: document_manager.DocumentManager,
+                            filePath: String) -> Boolean {
+    if filePath == "" or IO.File.Exists(filePath) == false { return false; }
+    if docMgr != null and docMgr.FindByPath(filePath) >= 0 { return false; }
+    return IO.File.Size(filePath) > MAX_SEARCH_FILE_BYTES;
 }
 
 func searchOneFile(shell: app_shell.AppShell,
@@ -993,8 +1042,10 @@ func searchOneFile(shell: app_shell.AppShell,
                    wholeWord: Boolean,
                    regexMode: Boolean,
                    docMgr: document_manager.DocumentManager,
-                   locStore: locations.LocationStore) -> Integer {
+                   locStore: locations.LocationStore,
+                   maxResults: Integer) -> Integer {
     var count = 0;
+    if maxResults <= 0 { return 0; }
     var content = contentForPath(docMgr, filePath);
     var contentLines = Str.Split(content, "\n");
     var lineNum = 0;
@@ -1003,7 +1054,7 @@ func searchOneFile(shell: app_shell.AppShell,
         var line = Obj.ToString(Seq.Get(contentLines, lineNum));
         lineNum = lineNum + 1;
         var match = FindLineMatch(line, query, caseSensitive, wholeWord, regexMode);
-        if match.matched {
+        if match.matched and count < maxResults {
             if addedHeader == false {
                 shell.AddToolGroupHeader(shell.searchListBox, Path.Name(filePath), filePath);
                 addedHeader = true;
@@ -1027,6 +1078,9 @@ func QuickOpenScore(relativePath: String, query: String) -> Integer {
 }
 
 func contentForPath(docMgr: document_manager.DocumentManager, filePath: String) -> String {
+    if docMgr == null {
+        return IO.File.ReadAllText(filePath);
+    }
     var idx = docMgr.FindByPath(filePath);
     if idx >= 0 {
         return docMgr.documents.get(idx).content;

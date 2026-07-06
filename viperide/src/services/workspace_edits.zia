@@ -95,16 +95,17 @@ func ApplyRenameEdits(edits: Any,
         i = i + 1;
     }
 
-    var j = Seq.get_Count(edits) - 1;
-    while j >= 0 {
-        var edit2 = Seq.Get(edits, j);
+    var applyOrder = SortEditsForApplication(edits);
+    var j = 0;
+    while j < Seq.get_Count(applyOrder) {
+        var edit2 = Seq.Get(applyOrder, j);
         var path2 = Map.GetStr(edit2, "file");
         var idx = docMgr.FindByPath(path2);
         if idx >= 0 {
             var current = Map.GetStr(newContentByPath, path2);
             Map.SetStr(newContentByPath, path2, ApplyEditToText(current, edit2));
         }
-        j = j - 1;
+        j = j + 1;
     }
 
     if Seq.get_Count(closedEdits) > 0 {
@@ -328,6 +329,80 @@ func PositionBefore(lineA: Integer,
     if lineA < lineB { return true; }
     if lineA > lineB { return false; }
     return colA < colB;
+}
+
+/// @brief Sort workspace edits into safe in-memory application order.
+/// @param edits Sequence of workspace edit maps.
+/// @return New sequence containing the same edit maps.
+/// @details Applying multiple edits to the same text buffer must happen from the
+///          end of the file toward the start, otherwise an earlier replacement can
+///          shift the range for a later one. Disk-backed edits are handled by the
+///          runtime workspace edit API, which performs its own offset sort; this
+///          helper gives open documents the same order-independent behavior.
+func SortEditsForApplication(edits: Any) -> Any {
+    var sorted: Any = Seq.New();
+    if edits == null { return sorted; }
+    var i = 0;
+    while i < Seq.get_Count(edits) {
+        sorted = InsertEditInApplicationOrder(sorted, Seq.Get(edits, i));
+        i = i + 1;
+    }
+    return sorted;
+}
+
+/// @brief Insert one edit into a descending per-file application sequence.
+/// @param sorted Existing sequence sorted for safe application.
+/// @param edit Edit map to insert.
+/// @return New sequence containing @p edit at its application-safe position.
+/// @details Zia's runtime Seq API used here is append-oriented, so insertion is
+///          implemented by rebuilding a short sequence. Rename edit batches are
+///          typically small; correctness and deterministic provider-order handling
+///          are more important than in-place mutation in this path.
+func InsertEditInApplicationOrder(sorted: Any,
+                                  edit: Any) -> Any {
+    var result: Any = Seq.New();
+    var inserted = false;
+    var i = 0;
+    while i < Seq.get_Count(sorted) {
+        var existing = Seq.Get(sorted, i);
+        if inserted == false and EditShouldApplyBefore(edit, existing) {
+            Seq.Push(result, edit);
+            inserted = true;
+        }
+        Seq.Push(result, existing);
+        i = i + 1;
+    }
+    if inserted == false {
+        Seq.Push(result, edit);
+    }
+    return result;
+}
+
+/// @brief Compare two edits for descending source-position application order.
+/// @param candidate Edit being inserted.
+/// @param existing Existing sorted edit.
+/// @return True when @p candidate must run before @p existing.
+/// @details Only edits in the same file are reordered. Cross-file ordering is left
+///          stable because files are independent. Within one file, later start
+///          positions run first; equal starts use the later end position first so
+///          replacement ranges remain conservative.
+func EditShouldApplyBefore(candidate: Any,
+                           existing: Any) -> Boolean {
+    if Map.GetStr(candidate, "file") != Map.GetStr(existing, "file") {
+        return false;
+    }
+    var candStartLine = Map.GetInt(candidate, "startLine");
+    var candStartCol = Map.GetInt(candidate, "startColumn");
+    var existingStartLine = Map.GetInt(existing, "startLine");
+    var existingStartCol = Map.GetInt(existing, "startColumn");
+    if PositionBefore(existingStartLine, existingStartCol, candStartLine, candStartCol) {
+        return true;
+    }
+    if candStartLine == existingStartLine and candStartCol == existingStartCol {
+        return PositionBefore(Map.GetInt(existing, "endLine"), Map.GetInt(existing, "endColumn"),
+                              Map.GetInt(candidate, "endLine"), Map.GetInt(candidate, "endColumn"));
+    }
+    return false;
 }
 
 func CanApplyEditToText(content: String, edit: Any) -> Boolean {

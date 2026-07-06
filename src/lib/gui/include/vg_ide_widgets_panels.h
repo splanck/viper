@@ -389,6 +389,21 @@ typedef struct vg_outputpane {
     float caret_blink_time;    ///< Accumulated time toward the next caret blink toggle
     bool caret_visible;        ///< Current caret on/off phase (terminal mode)
 
+    // Alternate-screen preservation. CSI ?1047/1049 h swaps the active terminal
+    // buffer into an empty full-screen buffer; CSI ?1047/1049 l restores it.
+    bool alternate_screen;               ///< True when the pane is showing the alternate buffer.
+    vg_output_line_t *primary_lines;     ///< Saved primary scrollback while alternate_screen is true.
+    size_t primary_line_start;           ///< Saved primary ring start.
+    size_t primary_line_count;           ///< Saved primary logical line count.
+    size_t primary_line_capacity;        ///< Saved primary ring capacity.
+    float primary_scroll_y;              ///< Saved primary vertical scroll.
+    bool primary_scroll_locked;          ///< Saved primary scroll-lock flag.
+    size_t primary_term_cursor_line;     ///< Saved primary terminal cursor line.
+    size_t primary_term_origin_line;     ///< Saved primary cursor-addressing origin line.
+    size_t primary_saved_cursor_line;    ///< Saved primary saved-cursor line.
+    uint32_t primary_saved_cursor_col;   ///< Saved primary saved-cursor column.
+    uint32_t primary_cursor_col;         ///< Saved primary terminal cursor column.
+
     // Callbacks
     void (*on_line_click)(struct vg_outputpane *pane, int line, int col, void *user_data);
     void *user_data;
@@ -486,7 +501,23 @@ void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled);
 
 /// @brief Drain queued keystroke bytes (terminal mode). Returns a heap string the caller
 ///        must free, or NULL when nothing is queued.
+///
+/// @details This compatibility helper NUL-terminates the returned buffer. Call
+///          vg_outputpane_take_input_bytes when the exact byte length matters,
+///          because terminal input can contain embedded NUL control bytes.
 char *vg_outputpane_take_input(vg_outputpane_t *pane);
+
+/// @brief Drain queued terminal-input bytes with an explicit byte count.
+///
+/// @details The returned buffer is still NUL-terminated for debugging and legacy
+///          callers, but @p len_out is authoritative. Use this for PTY bridges
+///          and other raw terminal consumers so control bytes such as Ctrl+Space
+///          are not truncated by C string functions.
+///
+/// @param pane Terminal-mode output pane whose pending input should be drained.
+/// @param len_out Optional output receiving the number of queued bytes copied.
+/// @return Heap buffer owned by the caller, or NULL when no bytes are queued.
+char *vg_outputpane_take_input_bytes(vg_outputpane_t *pane, size_t *len_out);
 
 /// @brief Advance the terminal caret blink timer by @p dt seconds (terminal mode + focused);
 ///        toggles caret visibility and marks the pane for repaint on each phase change.

@@ -208,6 +208,10 @@ func main() {
         fail("StepOver rejected while stopped");
         return;
     }
+    if session.FrameCount() != 0 or session.LocalCount() != 0 or session.stopped {
+        fail("StepOver left stale paused debugger state visible");
+        return;
+    }
     pollUntilSettled(session, 8000);
     if session.stopped == false {
         fail("did not stop after StepOver (terminated=" + session.terminated + ")");
@@ -224,6 +228,10 @@ func main() {
         fail("RunToLine rejected while stopped");
         return;
     }
+    if session.FrameCount() != 0 or session.LocalCount() != 0 or session.stopped {
+        fail("RunToLine left stale paused debugger state visible");
+        return;
+    }
     pollUntilSettled(session, 8000);
     if session.stopped == false {
         fail("did not stop after RunToLine (terminated=" + session.terminated + ")");
@@ -237,6 +245,10 @@ func main() {
     // 3) Continue → run to completion; main returns 30, program prints c=30.
     if session.Continue() == false {
         fail("Continue rejected while stopped");
+        return;
+    }
+    if session.FrameCount() != 0 or session.LocalCount() != 0 or session.stopped {
+        fail("Continue left stale paused debugger state visible");
         return;
     }
     pollUntilSettled(session, 8000);

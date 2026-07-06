@@ -118,6 +118,7 @@ class DebugSession {
                        path: String,
                        store: breakpoints.BreakpointStore) -> Boolean {
         if viperBin == "" or path == "" { return false; }
+        ReleaseProcessHandle();
 
         var args = Seq.New();
         Seq.Push(args, "run");
@@ -139,6 +140,8 @@ class DebugSession {
         consoleText = "";
         programOutput = "";
         exitCode = -1;
+        ClearStopSnapshot();
+        ClearEvaluationSnapshot();
         ClearWatchValues();
         ctrlBuf = "";
         dirty = true;
@@ -167,6 +170,10 @@ class DebugSession {
         processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
         terminateRequested = true;
         terminateCountdown.Start();
+        ClearStopSnapshot();
+        ClearEvaluationSnapshot();
+        ClearWatchValues();
+        stopped = false;
         lastType = "terminating";
         dirty = true;
         return true;
@@ -225,8 +232,7 @@ class DebugSession {
     expose func RunToLine(path: String, line: Integer) -> Boolean {
         if hasSession == false or terminated or processHandle == null { return false; }
         if stopped == false or path == "" or line <= 0 { return false; }
-        stopped = false;
-        dirty = true;
+        EnterRunningState("running");
         processHandle.WriteStdin("{\"type\":\"runToLine\",\"path\":\"" + jsonEscape(path)
             + "\",\"line\":" + line + "}\n");
         return true;
@@ -249,8 +255,7 @@ class DebugSession {
     hide func sendStep(kind: String) -> Boolean {
         if hasSession == false or terminated or processHandle == null { return false; }
         if stopped == false { return false; }
-        stopped = false;
-        dirty = true;
+        EnterRunningState("running");
         processHandle.WriteStdin("{\"type\":\"" + kind + "\"}\n");
         return true;
     }
@@ -259,6 +264,8 @@ class DebugSession {
     expose func Pause() -> Boolean {
         if hasSession == false or terminated or processHandle == null { return false; }
         if stopped { return false; }
+        lastType = "pausing";
+        dirty = true;
         processHandle.WriteStdin("{\"type\":\"pause\"}\n");
         return true;
     }
@@ -399,6 +406,62 @@ class DebugSession {
         watchRequestExpr = "";
     }
 
+    /// @brief Clear data that is valid only while execution is paused.
+    /// @details Call-stack rows, local variables, and the formatted stop
+    ///          console block all describe one specific suspended frame. They
+    ///          must be removed as soon as the adapter resumes or terminates so
+    ///          the IDE never shows stale variables from an older breakpoint.
+    /// @return Nothing.
+    hide func ClearStopSnapshot() {
+        stopFrames = null;
+        stopLocals = null;
+        consoleText = "";
+    }
+
+    /// @brief Clear pending and completed manual evaluation state.
+    /// @details Evaluation replies arrive asynchronously. When execution resumes
+    ///          or a session is relaunched, any outstanding reply belongs to the
+    ///          old stop context and should not be surfaced as a fresh status
+    ///          toast in the IDE.
+    /// @return Nothing.
+    hide func ClearEvaluationSnapshot() {
+        lastEvalExpr = "";
+        lastEvalValue = "";
+        lastEvalType = "";
+        lastEvalOk = false;
+        evalJustArrived = false;
+        pendingManualEvalExpr = "";
+    }
+
+    /// @brief Transition the session from a paused stop back to running state.
+    /// @details Stepping, continue, and run-to-line all invalidate stop locals,
+    ///          call-stack frames, pending evaluates, and watch values. Keeping
+    ///          the transition in one helper prevents individual commands from
+    ///          leaving stale debugger panel rows behind.
+    /// @param runningType Status token stored in lastType while the adapter runs.
+    /// @return Nothing.
+    hide func EnterRunningState(runningType: String) {
+        stopped = false;
+        lastType = runningType;
+        lastReason = "";
+        ClearStopSnapshot();
+        ClearEvaluationSnapshot();
+        ClearWatchValues();
+        dirty = true;
+    }
+
+    /// @brief Destroy and clear the current adapter process handle, if present.
+    /// @details The runtime process handle owns OS resources. Debug sessions can
+    ///          terminate via an adapter event, process exit, explicit stop, or
+    ///          restart; centralizing cleanup avoids handle leaks and prevents a
+    ///          dead process from blocking a subsequent launch.
+    /// @return Nothing.
+    hide func ReleaseProcessHandle() {
+        if processHandle == null { return; }
+        processHandle.Destroy();
+        processHandle = null;
+    }
+
     hide func PumpWatchRequest() {
         if stopped == false or processHandle == null { return; }
         if watchRequestActive { return; }
@@ -462,7 +525,7 @@ class DebugSession {
             dirty = true;
         }
 
-        if terminated == false and processHandle.IsRunning() == false {
+        if processHandle.IsRunning() == false {
             // Final drain after the child exited.
             AppendStdoutResult(processHandle.ReadStdoutResult());
             AppendStderrResult(processHandle.ReadStderrResult());
@@ -475,7 +538,14 @@ class DebugSession {
                 lastType = "terminated";
                 if lastReason == "" { lastReason = "exit"; }
                 dirty = true;
+            } else {
+                stopped = false;
+                hasSession = false;
+                terminateRequested = false;
             }
+            ClearStopSnapshot();
+            ClearWatchValues();
+            ReleaseProcessHandle();
         }
         return dirty;
     }
@@ -570,11 +640,11 @@ class DebugSession {
             terminated = true;
             stopped = false;
             hasSession = false;
-            stopFrames = null;
-            stopLocals = null;
+            ClearStopSnapshot();
             lastType = "terminated";
             lastReason = Viper.Collections.Map.GetStr(ev, "reason");
             exitCode = Viper.Collections.Map.GetInt(ev, "exitCode");
+            ClearEvaluationSnapshot();
             ClearWatchValues();
             dirty = true;
         } else if evType == "evaluated" {
@@ -602,7 +672,7 @@ class DebugSession {
                 }
                 PumpWatchRequest();
             }
-            if pendingManualEvalExpr == "" or expr == pendingManualEvalExpr {
+            if pendingManualEvalExpr != "" and expr == pendingManualEvalExpr {
                 lastEvalExpr = expr;
                 lastEvalValue = value;
                 lastEvalType = valueType;

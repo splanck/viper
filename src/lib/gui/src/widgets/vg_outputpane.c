@@ -99,6 +99,165 @@ static uint32_t ansi_code_to_color(int code) {
     return 0xFFCCCCCC; // Default
 }
 
+/// @brief Pack 8-bit red, green, and blue channels into the pane's AARRGGBB format.
+/// @details OutputPane stores colors as opaque ARGB values.  Extended ANSI SGR
+///          true-color sequences provide separate RGB channel values, so this
+///          helper centralizes the byte clamping and channel packing used by
+///          both append-only output and interactive terminal mode.
+/// @param r Red channel, clamped to the inclusive range [0, 255].
+/// @param g Green channel, clamped to the inclusive range [0, 255].
+/// @param b Blue channel, clamped to the inclusive range [0, 255].
+/// @return Opaque 0xAARRGGBB color value.
+static uint32_t ansi_rgb_to_color(int r, int g, int b) {
+    if (r < 0)
+        r = 0;
+    if (r > 255)
+        r = 255;
+    if (g < 0)
+        g = 0;
+    if (g > 255)
+        g = 255;
+    if (b < 0)
+        b = 0;
+    if (b > 255)
+        b = 255;
+    return 0xFF000000u | ((uint32_t)r << 16u) | ((uint32_t)g << 8u) | (uint32_t)b;
+}
+
+/// @brief Convert an xterm 256-color palette index into AARRGGBB.
+/// @details SGR 38;5;N and 48;5;N use the xterm indexed palette: 0-15 are
+///          standard/bright ANSI colors, 16-231 form a 6x6x6 RGB cube, and
+///          232-255 are a grayscale ramp. Invalid indexes fall back to the
+///          default foreground color used by the existing eight-color parser.
+/// @param index Palette index from an ANSI extended-color SGR sequence.
+/// @return Opaque 0xAARRGGBB color value.
+static uint32_t ansi_256_to_color(int index) {
+    static const int cube_levels[6] = {0, 95, 135, 175, 215, 255};
+
+    if (index >= 0 && index < 8)
+        return g_ansi_colors[index];
+    if (index >= 8 && index < 16)
+        return g_ansi_bright_colors[index - 8];
+    if (index >= 16 && index <= 231) {
+        int n = index - 16;
+        int r = cube_levels[n / 36];
+        int g = cube_levels[(n / 6) % 6];
+        int b = cube_levels[n % 6];
+        return ansi_rgb_to_color(r, g, b);
+    }
+    if (index >= 232 && index <= 255) {
+        int v = 8 + (index - 232) * 10;
+        return ansi_rgb_to_color(v, v, v);
+    }
+    return 0xFFCCCCCC;
+}
+
+/// @brief Parse CSI/SGR integer parameters from an escape buffer.
+/// @details Accepts buffers with or without the leading '[' and records a leading
+///          '?' DEC-private marker for mode-setting sequences such as CSI ?1049h.
+///          Empty parameters are represented as 0, matching the terminal default
+///          handling used throughout the OutputPane parser.
+/// @param buffer Escape parameter buffer; may include the '[' introducer.
+/// @param params Destination integer array.
+/// @param max_params Maximum number of parameters that can be written.
+/// @param private_mode Optional output flag set when a leading '?' is present.
+/// @return Number of parsed parameters written to @p params.
+static int ansi_parse_csi_params(const char *buffer, int *params, int max_params, bool *private_mode) {
+    int count = 0;
+    const char *p = buffer;
+
+    if (private_mode)
+        *private_mode = false;
+    if (!buffer || !params || max_params <= 0)
+        return 0;
+    if (*p == '[')
+        p++;
+    if (*p == '?') {
+        if (private_mode)
+            *private_mode = true;
+        p++;
+    }
+    while (*p && count < max_params) {
+        if (*p >= '0' && *p <= '9') {
+            char *end = NULL;
+            params[count++] = (int)strtol(p, &end, 10);
+            p = end ? end : p + 1;
+            if (*p == ';' || *p == ':')
+                p++;
+        } else if (*p == ';' || *p == ':') {
+            params[count++] = 0;
+            p++;
+        } else if (*p >= 0x40 && *p <= 0x7e) {
+            break;
+        } else {
+            p++;
+        }
+    }
+    return count;
+}
+
+/// @brief Apply parsed ANSI SGR parameters to the pane's current style.
+/// @details Handles reset, bold, normal/bright 8-color codes, default foreground
+///          and background resets, and xterm extended colors (38/48 with 256-color
+///          or true-color operands). The parser advances over operands consumed by
+///          extended-color sequences so malformed tails do not corrupt later codes.
+/// @param pane Output pane whose current style should be changed.
+/// @param params Parsed SGR parameters.
+/// @param count Number of parsed SGR parameters.
+static void outputpane_apply_sgr_params(vg_outputpane_t *pane, const int *params, int count) {
+    if (!pane)
+        return;
+    if (!params || count == 0) {
+        pane->current_fg = pane->default_fg;
+        pane->current_bg = 0;
+        pane->ansi_bold = false;
+        return;
+    }
+
+    for (int i = 0; i < count; i++) {
+        int code = params[i];
+        if (code == 0) {
+            pane->current_fg = pane->default_fg;
+            pane->current_bg = 0;
+            pane->ansi_bold = false;
+        } else if (code == 1) {
+            pane->ansi_bold = true;
+        } else if (code == 22) {
+            pane->ansi_bold = false;
+        } else if (code >= 30 && code <= 37) {
+            pane->current_fg = ansi_code_to_color(code);
+        } else if (code == 39) {
+            pane->current_fg = pane->default_fg;
+        } else if (code >= 40 && code <= 47) {
+            pane->current_bg = ansi_code_to_color(code - 10);
+        } else if (code == 49) {
+            pane->current_bg = 0;
+        } else if (code >= 90 && code <= 97) {
+            pane->current_fg = ansi_code_to_color(code);
+        } else if (code >= 100 && code <= 107) {
+            pane->current_bg = ansi_code_to_color(code - 10);
+        } else if ((code == 38 || code == 48) && i + 1 < count) {
+            uint32_t color = pane->default_fg;
+            bool valid = false;
+            if (params[i + 1] == 5 && i + 2 < count) {
+                color = ansi_256_to_color(params[i + 2]);
+                i += 2;
+                valid = true;
+            } else if (params[i + 1] == 2 && i + 4 < count) {
+                color = ansi_rgb_to_color(params[i + 2], params[i + 3], params[i + 4]);
+                i += 4;
+                valid = true;
+            }
+            if (valid) {
+                if (code == 38)
+                    pane->current_fg = color;
+                else
+                    pane->current_bg = color;
+            }
+        }
+    }
+}
+
 /// @brief VTable set_font trampoline — forwards to vg_outputpane_set_font.
 static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float size) {
     if (!widget || !font)
@@ -244,6 +403,28 @@ static void free_output_line(vg_output_line_t *line) {
         free(line->segments[i].text);
     }
     free(line->segments);
+}
+
+/// @brief Free every logical line in an output-line ring without freeing the ring array.
+/// @details The OutputPane can hold both an active line ring and a saved primary
+///          ring while terminal alternate-screen mode is active. This helper
+///          applies the same logical-to-physical indexing to either storage block
+///          so destroy/clear paths do not depend on the pane's current active ring.
+/// @param lines Ring storage to clear; may be NULL.
+/// @param line_start Physical index of logical line zero.
+/// @param line_count Number of live logical lines in the ring.
+/// @param line_capacity Allocated ring capacity.
+static void outputpane_free_line_storage(vg_output_line_t *lines,
+                                         size_t line_start,
+                                         size_t line_count,
+                                         size_t line_capacity) {
+    if (!lines || line_capacity == 0)
+        return;
+    for (size_t i = 0; i < line_count; i++) {
+        size_t idx = (line_start + i) % line_capacity;
+        free_output_line(&lines[idx]);
+        memset(&lines[idx], 0, sizeof(vg_output_line_t));
+    }
 }
 
 /// @brief Reset all selection state fields to the unselected state.
@@ -421,56 +602,24 @@ static vg_output_line_t *add_line(vg_outputpane_t *pane) {
 
 /// @brief Apply the buffered ANSI SGR escape sequence to pane's current color/bold state.
 static void process_ansi_escape(vg_outputpane_t *pane) {
-    // Parse escape sequence: ESC[<params>m
-    // Common codes:
-    // 0 = reset, 1 = bold, 30-37 = fg color, 40-47 = bg color
-    // 90-97 = bright fg, 100-107 = bright bg
-
+    int params[16];
+    int param_count = 0;
     char *buf = pane->escape_buf;
-    if (buf[0] != '[') {
+
+    if (!pane || buf[0] != '[') {
+        pane->escape_len = 0;
+        pane->in_escape = false;
+        return;
+    }
+    size_t len = strlen(buf);
+    if (len == 0 || buf[len - 1] != 'm') {
         pane->escape_len = 0;
         pane->in_escape = false;
         return;
     }
 
-    // Parse parameters
-    int params[16];
-    int param_count = 0;
-    char *p = buf + 1;
-
-    while (*p && param_count < 16) {
-        if (*p >= '0' && *p <= '9') {
-            params[param_count] = (int)strtol(p, &p, 10);
-            param_count++;
-            if (*p == ';')
-                p++;
-        } else if (*p == 'm') {
-            break;
-        } else {
-            p++;
-        }
-    }
-
-    // Apply parameters
-    for (int i = 0; i < param_count; i++) {
-        int code = params[i];
-        if (code == 0) {
-            // Reset
-            pane->current_fg = pane->default_fg;
-            pane->current_bg = 0;
-            pane->ansi_bold = false;
-        } else if (code == 1) {
-            pane->ansi_bold = true;
-        } else if (code >= 30 && code <= 37) {
-            pane->current_fg = ansi_code_to_color(code);
-        } else if (code >= 40 && code <= 47) {
-            pane->current_bg = ansi_code_to_color(code - 10);
-        } else if (code >= 90 && code <= 97) {
-            pane->current_fg = ansi_code_to_color(code);
-        } else if (code >= 100 && code <= 107) {
-            pane->current_bg = ansi_code_to_color(code - 10);
-        }
-    }
+    param_count = ansi_parse_csi_params(buf, params, 16, NULL);
+    outputpane_apply_sgr_params(pane, params, param_count);
 
     pane->escape_len = 0;
     pane->in_escape = false;
@@ -515,10 +664,13 @@ vg_outputpane_t *vg_outputpane_create(void) {
 static void outputpane_destroy(vg_widget_t *widget) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
 
-    for (size_t i = 0; i < pane->line_count; i++) {
-        free_output_line(outputpane_line_at(pane, i));
-    }
+    outputpane_free_line_storage(pane->lines, pane->line_start, pane->line_count, pane->line_capacity);
+    outputpane_free_line_storage(pane->primary_lines,
+                                 pane->primary_line_start,
+                                 pane->primary_line_count,
+                                 pane->primary_line_capacity);
     free(pane->lines);
+    free(pane->primary_lines);
     free(pane->cells);
     free(pane->pending_input);
 }
@@ -707,6 +859,137 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
 static void term_queue_input(vg_outputpane_t *pane, const char *bytes, size_t len);
 static int outputpane_encode_utf8(uint32_t cp, char *out);
 
+/// @brief Convert GUI modifier flags into the xterm CSI modifier parameter.
+/// @details Xterm encodes special-key modifiers as 1 plus bit weights for Shift,
+///          Alt, and Control. The IDE treats Super like Control for shortcuts, so
+///          terminal special keys do the same to match local keyboard conventions.
+/// @param mods Bitwise OR of VG_MOD_* flags from a key event.
+/// @return xterm modifier parameter in the range [1, 8].
+static int term_modifier_parameter(uint32_t mods) {
+    int value = 1;
+    if ((mods & VG_MOD_SHIFT) != 0)
+        value += 1;
+    if ((mods & VG_MOD_ALT) != 0)
+        value += 2;
+    if ((mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0)
+        value += 4;
+    return value;
+}
+
+/// @brief Queue a CSI final-byte key such as arrows, Home, or End.
+/// @details Unmodified keys use the compact sequence expected by shells. Modified
+///          keys use CSI 1;<modifier><final>, which is the common xterm encoding
+///          used by readline, shells, and terminal applications.
+/// @param pane Terminal pane receiving queued bytes.
+/// @param final CSI final byte, for example 'A' for Up or 'H' for Home.
+/// @param plain Unmodified byte sequence to send when no modifiers are present.
+/// @param mods Active GUI modifier flags.
+static void term_queue_csi_final_key(vg_outputpane_t *pane,
+                                     char final,
+                                     const char *plain,
+                                     uint32_t mods) {
+    int mod = term_modifier_parameter(mods);
+    if (mod == 1) {
+        term_queue_input(pane, plain, strlen(plain));
+        return;
+    }
+    char seq[16];
+    int len = snprintf(seq, sizeof(seq), "\x1b[1;%d%c", mod, final);
+    if (len > 0)
+        term_queue_input(pane, seq, (size_t)len);
+}
+
+/// @brief Queue a tilde-terminated CSI key such as Insert, Delete, or PageUp.
+/// @details Modified variants follow xterm's CSI <code>;<modifier>~ form while
+///          unmodified variants use CSI <code>~.
+/// @param pane Terminal pane receiving queued bytes.
+/// @param code Numeric CSI key code.
+/// @param mods Active GUI modifier flags.
+static void term_queue_csi_tilde_key(vg_outputpane_t *pane, int code, uint32_t mods) {
+    char seq[24];
+    int mod = term_modifier_parameter(mods);
+    int len = 0;
+    if (mod == 1)
+        len = snprintf(seq, sizeof(seq), "\x1b[%d~", code);
+    else
+        len = snprintf(seq, sizeof(seq), "\x1b[%d;%d~", code, mod);
+    if (len > 0)
+        term_queue_input(pane, seq, (size_t)len);
+}
+
+/// @brief Translate a Ctrl+key chord into its ASCII control byte.
+/// @details Handles letters plus common terminal punctuation controls. Ctrl+Space
+///          returns NUL, so callers must queue the returned byte by length rather
+///          than treating it as a C string.
+/// @param key GUI virtual key from the key event.
+/// @param out_byte Receives the control byte when a mapping exists.
+/// @return true when @p key has a terminal control-byte mapping.
+static bool term_control_byte_for_key(vg_key_t key, char *out_byte) {
+    if (!out_byte)
+        return false;
+    if (key >= VG_KEY_A && key <= VG_KEY_Z) {
+        *out_byte = (char)(key - VG_KEY_A + 1);
+        return true;
+    }
+    switch (key) {
+        case VG_KEY_SPACE:
+        case VG_KEY_2:
+            *out_byte = '\0';
+            return true;
+        case VG_KEY_LEFT_BRACKET:
+        case VG_KEY_ESCAPE:
+            *out_byte = 0x1b;
+            return true;
+        case VG_KEY_BACKSLASH:
+            *out_byte = 0x1c;
+            return true;
+        case VG_KEY_RIGHT_BRACKET:
+            *out_byte = 0x1d;
+            return true;
+        case VG_KEY_6:
+            *out_byte = 0x1e;
+            return true;
+        case VG_KEY_MINUS:
+        case VG_KEY_SLASH:
+            *out_byte = 0x1f;
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Queue an xterm-compatible function-key sequence.
+/// @details F1-F4 use SS3 OP/OQ/OR/OS when unmodified and CSI 1;<modifier>P-S
+///          when modified. F5-F12 use the standard tilde-key numeric codes, with
+///          the same modifier encoding as other CSI tilde keys.
+/// @param pane Terminal pane receiving queued bytes.
+/// @param key Function key in the inclusive range VG_KEY_F1..VG_KEY_F12.
+/// @param mods Active GUI modifier flags.
+/// @return true when @p key was a supported function key.
+static bool term_queue_function_key(vg_outputpane_t *pane, vg_key_t key, uint32_t mods) {
+    static const char ss3_finals[4] = {'P', 'Q', 'R', 'S'};
+    static const int tilde_codes[8] = {15, 17, 18, 19, 20, 21, 23, 24};
+
+    if (key < VG_KEY_F1 || key > VG_KEY_F12)
+        return false;
+    int index = key - VG_KEY_F1;
+    int mod = term_modifier_parameter(mods);
+    if (index < 4) {
+        if (mod == 1) {
+            char seq[3] = {'\x1b', 'O', ss3_finals[index]};
+            term_queue_input(pane, seq, sizeof(seq));
+        } else {
+            char seq[16];
+            int len = snprintf(seq, sizeof(seq), "\x1b[1;%d%c", mod, ss3_finals[index]);
+            if (len > 0)
+                term_queue_input(pane, seq, (size_t)len);
+        }
+        return true;
+    }
+    term_queue_csi_tilde_key(pane, tilde_codes[index - 4], mods);
+    return true;
+}
+
 /// @brief Widget-vtable can_focus: focusable only in interactive terminal mode.
 static bool outputpane_can_focus(vg_widget_t *widget) {
     vg_outputpane_t *pane = (vg_outputpane_t *)widget;
@@ -738,45 +1021,64 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
             vg_key_t k = event->key.key;
             uint32_t mods = event->modifiers;
             // Ctrl + letter -> control byte (Ctrl-C = 0x03, Ctrl-D = 0x04, ...).
-            if ((mods & VG_MOD_CTRL) && ((k >= 'a' && k <= 'z') || (k >= 'A' && k <= 'Z'))) {
-                char up = (char)((k >= 'a' && k <= 'z') ? k - 32 : k);
-                char ctl = (char)(up - 'A' + 1);
-                term_queue_input(pane, &ctl, 1);
-                return true;
+            if ((mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0) {
+                char ctl = 0;
+                if (term_control_byte_for_key(k, &ctl)) {
+                    term_queue_input(pane, &ctl, 1);
+                    return true;
+                }
             }
+            if (term_queue_function_key(pane, k, mods))
+                return true;
             switch (k) {
                 case VG_KEY_ENTER:
                     term_queue_input(pane, "\r", 1);
                     return true;
                 case VG_KEY_BACKSPACE:
-                    term_queue_input(pane, "\x7f", 1);
+                    if ((mods & VG_MOD_ALT) != 0) {
+                        term_queue_input(pane, "\x1b\x7f", 2);
+                    } else {
+                        term_queue_input(pane, "\x7f", 1);
+                    }
                     return true;
                 case VG_KEY_TAB:
-                    term_queue_input(pane, "\t", 1);
+                    if ((mods & VG_MOD_SHIFT) != 0)
+                        term_queue_input(pane, "\x1b[Z", 3);
+                    else
+                        term_queue_input(pane, "\t", 1);
                     return true;
                 case VG_KEY_ESCAPE:
                     term_queue_input(pane, "\x1b", 1);
                     return true;
                 case VG_KEY_UP:
-                    term_queue_input(pane, "\x1b[A", 3);
+                    term_queue_csi_final_key(pane, 'A', "\x1b[A", mods);
                     return true;
                 case VG_KEY_DOWN:
-                    term_queue_input(pane, "\x1b[B", 3);
+                    term_queue_csi_final_key(pane, 'B', "\x1b[B", mods);
                     return true;
                 case VG_KEY_RIGHT:
-                    term_queue_input(pane, "\x1b[C", 3);
+                    term_queue_csi_final_key(pane, 'C', "\x1b[C", mods);
                     return true;
                 case VG_KEY_LEFT:
-                    term_queue_input(pane, "\x1b[D", 3);
+                    term_queue_csi_final_key(pane, 'D', "\x1b[D", mods);
                     return true;
                 case VG_KEY_HOME:
-                    term_queue_input(pane, "\x1b[H", 3);
+                    term_queue_csi_final_key(pane, 'H', "\x1b[H", mods);
                     return true;
                 case VG_KEY_END:
-                    term_queue_input(pane, "\x1b[F", 3);
+                    term_queue_csi_final_key(pane, 'F', "\x1b[F", mods);
+                    return true;
+                case VG_KEY_INSERT:
+                    term_queue_csi_tilde_key(pane, 2, mods);
                     return true;
                 case VG_KEY_DELETE:
-                    term_queue_input(pane, "\x1b[3~", 4);
+                    term_queue_csi_tilde_key(pane, 3, mods);
+                    return true;
+                case VG_KEY_PAGE_UP:
+                    term_queue_csi_tilde_key(pane, 5, mods);
+                    return true;
+                case VG_KEY_PAGE_DOWN:
+                    term_queue_csi_tilde_key(pane, 6, mods);
                     return true;
                 default:
                     break;
@@ -785,9 +1087,12 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
         if (event->type == VG_EVENT_KEY_CHAR) {
             uint32_t cp = event->key.codepoint;
+            uint32_t mods = event->modifiers;
             if (cp >= 0x20 && cp != 0x7f) {
                 char u[4];
                 int l = outputpane_encode_utf8(cp, u);
+                if ((mods & VG_MOD_ALT) != 0)
+                    term_queue_input(pane, "\x1b", 1);
                 term_queue_input(pane, u, (size_t)l);
             }
             return true;
@@ -1110,9 +1415,7 @@ static void term_newline(vg_outputpane_t *pane) {
 static void term_clear_display(vg_outputpane_t *pane) {
     if (!pane)
         return;
-    for (size_t i = 0; i < pane->line_count; i++) {
-        free_output_line(outputpane_line_at(pane, i));
-    }
+    outputpane_free_line_storage(pane->lines, pane->line_start, pane->line_count, pane->line_capacity);
     pane->line_count = 0;
     pane->line_start = 0;
     pane->cell_count = 0;
@@ -1125,6 +1428,109 @@ static void term_clear_display(vg_outputpane_t *pane) {
     pane->scroll_locked = false;
     outputpane_clear_selection(pane);
     (void)add_line(pane);
+    pane->base.needs_paint = true;
+}
+
+/// @brief Switch the terminal pane into its alternate screen buffer.
+/// @details Full-screen terminal applications use DEC private modes 47, 1047,
+///          and 1049 to get a clean screen while preserving the user's shell
+///          scrollback. This function flushes the active cursor row, moves the
+///          primary line ring into the pane's saved-primary fields without
+///          copying, and starts a fresh empty active ring for alternate-screen
+///          output.
+/// @param pane Terminal-mode pane to swap into alternate-screen storage.
+static void term_enter_alternate_screen(vg_outputpane_t *pane) {
+    if (!pane)
+        return;
+    if (pane->alternate_screen) {
+        term_clear_display(pane);
+        return;
+    }
+
+    term_flush_cells(pane);
+    outputpane_free_line_storage(pane->primary_lines,
+                                 pane->primary_line_start,
+                                 pane->primary_line_count,
+                                 pane->primary_line_capacity);
+    free(pane->primary_lines);
+
+    pane->primary_lines = pane->lines;
+    pane->primary_line_start = pane->line_start;
+    pane->primary_line_count = pane->line_count;
+    pane->primary_line_capacity = pane->line_capacity;
+    pane->primary_scroll_y = pane->scroll_y;
+    pane->primary_scroll_locked = pane->scroll_locked;
+    pane->primary_term_cursor_line = pane->term_cursor_line;
+    pane->primary_term_origin_line = pane->term_origin_line;
+    pane->primary_saved_cursor_line = pane->saved_cursor_line;
+    pane->primary_saved_cursor_col = pane->saved_cursor_col;
+    pane->primary_cursor_col = pane->cursor_col;
+
+    pane->lines = NULL;
+    pane->line_start = 0;
+    pane->line_count = 0;
+    pane->line_capacity = 0;
+    pane->term_cursor_line = 0;
+    pane->term_origin_line = 0;
+    pane->saved_cursor_line = 0;
+    pane->saved_cursor_col = 0;
+    pane->cursor_col = 0;
+    pane->cell_count = 0;
+    pane->scroll_y = 0;
+    pane->scroll_locked = false;
+    pane->alternate_screen = true;
+    outputpane_clear_selection(pane);
+    (void)add_line(pane);
+    pane->base.needs_paint = true;
+}
+
+/// @brief Restore the primary terminal screen after alternate-screen mode.
+/// @details Leaves the alternate buffer by freeing its active line ring, moving
+///          the saved primary ring back into the active fields, and reloading the
+///          saved cursor row into the terminal cell buffer. The saved primary
+///          storage fields are cleared so destroy/clear paths retain a single
+///          owner for every line-ring allocation.
+/// @param pane Terminal-mode pane to restore to the primary buffer.
+static void term_leave_alternate_screen(vg_outputpane_t *pane) {
+    if (!pane || !pane->alternate_screen)
+        return;
+
+    term_flush_cells(pane);
+    outputpane_free_line_storage(pane->lines, pane->line_start, pane->line_count, pane->line_capacity);
+    free(pane->lines);
+
+    pane->lines = pane->primary_lines;
+    pane->line_start = pane->primary_line_start;
+    pane->line_count = pane->primary_line_count;
+    pane->line_capacity = pane->primary_line_capacity;
+    pane->scroll_y = pane->primary_scroll_y;
+    pane->scroll_locked = pane->primary_scroll_locked;
+    pane->term_cursor_line = pane->primary_term_cursor_line;
+    pane->term_origin_line = pane->primary_term_origin_line;
+    pane->saved_cursor_line = pane->primary_saved_cursor_line;
+    pane->saved_cursor_col = pane->primary_saved_cursor_col;
+    pane->cursor_col = pane->primary_cursor_col;
+
+    pane->primary_lines = NULL;
+    pane->primary_line_start = 0;
+    pane->primary_line_count = 0;
+    pane->primary_line_capacity = 0;
+    pane->primary_scroll_y = 0;
+    pane->primary_scroll_locked = false;
+    pane->primary_term_cursor_line = 0;
+    pane->primary_term_origin_line = 0;
+    pane->primary_saved_cursor_line = 0;
+    pane->primary_saved_cursor_col = 0;
+    pane->primary_cursor_col = 0;
+    pane->alternate_screen = false;
+    pane->cell_count = 0;
+
+    if (pane->line_count == 0)
+        (void)add_line(pane);
+    if (pane->line_count > 0 && pane->term_cursor_line >= pane->line_count)
+        pane->term_cursor_line = pane->line_count - 1;
+    term_load_cells_from_line(pane, pane->term_cursor_line);
+    outputpane_clear_selection(pane);
     pane->base.needs_paint = true;
 }
 
@@ -1157,55 +1563,21 @@ static void term_clear_lines_before_cursor(vg_outputpane_t *pane) {
     }
 }
 
-/// @brief Dispatch a completed CSI sequence (escape_buf holds the params, no '[').
+/// @brief Dispatch a completed CSI control sequence.
+/// @details The escape buffer contains only CSI parameter/intermediate bytes, not
+///          the leading '[' or the final byte. Supported controls include SGR
+///          styling, erase-in-line/display, cursor movement/positioning, cursor
+///          save/restore, and DEC alternate-screen private modes.
+/// @param pane Terminal-mode pane receiving the CSI action.
+/// @param final Final CSI byte that determines the control family.
 static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
     int params[16];
-    int pc = 0;
-    char *p = pane->escape_buf;
-    while (*p && pc < 16) {
-        if (*p >= '0' && *p <= '9') {
-            params[pc++] = (int)strtol(p, &p, 10);
-            if (*p == ';')
-                p++;
-        } else if (*p == ';') {
-            params[pc++] = 0;
-            p++;
-        } else {
-            p++;
-        }
-    }
+    bool private_mode = false;
+    int pc = ansi_parse_csi_params(pane->escape_buf, params, 16, &private_mode);
     int p0 = pc > 0 ? params[0] : 0;
     switch (final) {
         case 'm':
-            if (pc == 0) {
-                pane->current_fg = pane->default_fg;
-                pane->current_bg = 0;
-                pane->ansi_bold = false;
-            }
-            for (int i = 0; i < pc; i++) {
-                int code = params[i];
-                if (code == 0) {
-                    pane->current_fg = pane->default_fg;
-                    pane->current_bg = 0;
-                    pane->ansi_bold = false;
-                } else if (code == 1) {
-                    pane->ansi_bold = true;
-                } else if (code == 22) {
-                    pane->ansi_bold = false;
-                } else if (code >= 30 && code <= 37) {
-                    pane->current_fg = ansi_code_to_color(code);
-                } else if (code == 39) {
-                    pane->current_fg = pane->default_fg;
-                } else if (code >= 40 && code <= 47) {
-                    pane->current_bg = ansi_code_to_color(code - 10);
-                } else if (code == 49) {
-                    pane->current_bg = 0;
-                } else if (code >= 90 && code <= 97) {
-                    pane->current_fg = ansi_code_to_color(code);
-                } else if (code >= 100 && code <= 107) {
-                    pane->current_bg = ansi_code_to_color(code - 10);
-                }
-            }
+            outputpane_apply_sgr_params(pane, params, pc);
             break;
         case 'K': // erase in line
             if (p0 == 0) {
@@ -1305,8 +1677,16 @@ static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
             break;
         case 'h':
         case 'l':
-            if (p0 == 47 || p0 == 1047 || p0 == 1049)
-                term_clear_display(pane);
+            if (private_mode) {
+                for (int i = 0; i < pc; i++) {
+                    if (params[i] == 47 || params[i] == 1047 || params[i] == 1049) {
+                        if (final == 'h')
+                            term_enter_alternate_screen(pane);
+                        else
+                            term_leave_alternate_screen(pane);
+                    }
+                }
+            }
             break;
         default:
             break; // Unsupported controls are consumed without leaking bytes.
@@ -1452,6 +1832,8 @@ static void term_queue_input(vg_outputpane_t *pane, const char *bytes, size_t le
 void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled) {
     if (!pane)
         return;
+    if (!enabled && pane->alternate_screen)
+        term_leave_alternate_screen(pane);
     pane->terminal_mode = enabled;
     if (enabled) {
         if (pane->line_count == 0)
@@ -1464,8 +1846,20 @@ void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled) {
     }
 }
 
-/// @brief Drain queued keystroke bytes; caller frees. NULL when empty.
-char *vg_outputpane_take_input(vg_outputpane_t *pane) {
+/// @brief Drain queued keystroke bytes with an explicit byte length.
+///
+/// @details Terminal input is binary at the PTY boundary even though most
+///          keystrokes are printable UTF-8 or ASCII escape sequences. This helper
+///          preserves embedded NUL bytes and returns the authoritative length
+///          through @p len_out while still appending a trailing NUL byte for
+///          diagnostics and compatibility callers.
+///
+/// @param pane Terminal-mode output pane whose queued bytes should be drained.
+/// @param len_out Optional output receiving the number of bytes copied.
+/// @return Heap buffer owned by the caller, or NULL when no bytes are queued.
+char *vg_outputpane_take_input_bytes(vg_outputpane_t *pane, size_t *len_out) {
+    if (len_out)
+        *len_out = 0;
     if (!pane || pane->pending_len == 0)
         return NULL;
     char *out = malloc(pane->pending_len + 1);
@@ -1473,8 +1867,15 @@ char *vg_outputpane_take_input(vg_outputpane_t *pane) {
         return NULL;
     memcpy(out, pane->pending_input, pane->pending_len);
     out[pane->pending_len] = '\0';
+    if (len_out)
+        *len_out = pane->pending_len;
     pane->pending_len = 0;
     return out;
+}
+
+/// @brief Drain queued keystroke bytes; caller frees. NULL when empty.
+char *vg_outputpane_take_input(vg_outputpane_t *pane) {
+    return vg_outputpane_take_input_bytes(pane, NULL);
 }
 
 /// @brief Advance the terminal caret blink (no-op unless terminal mode + focused).
@@ -1687,11 +2088,26 @@ void vg_outputpane_clear(vg_outputpane_t *pane) {
     if (!pane)
         return;
 
-    for (size_t i = 0; i < pane->line_count; i++) {
-        free_output_line(outputpane_line_at(pane, i));
-    }
+    outputpane_free_line_storage(pane->lines, pane->line_start, pane->line_count, pane->line_capacity);
     pane->line_count = 0;
     pane->line_start = 0;
+    outputpane_free_line_storage(pane->primary_lines,
+                                 pane->primary_line_start,
+                                 pane->primary_line_count,
+                                 pane->primary_line_capacity);
+    free(pane->primary_lines);
+    pane->primary_lines = NULL;
+    pane->primary_line_start = 0;
+    pane->primary_line_count = 0;
+    pane->primary_line_capacity = 0;
+    pane->primary_scroll_y = 0;
+    pane->primary_scroll_locked = false;
+    pane->primary_term_cursor_line = 0;
+    pane->primary_term_origin_line = 0;
+    pane->primary_saved_cursor_line = 0;
+    pane->primary_saved_cursor_col = 0;
+    pane->primary_cursor_col = 0;
+    pane->alternate_screen = false;
 
     // Reset ANSI state
     pane->current_fg = pane->default_fg;

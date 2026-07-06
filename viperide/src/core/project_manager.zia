@@ -67,6 +67,8 @@ class ProjectManager {
     expose Boolean fileWasSelected;
     /// Project file paths collected while building the tree, reused by Quick Open.
     expose List fileCache;
+    /// Map-backed set mirroring `fileCache` so cache warming stays linear.
+    expose Any fileCacheSeen;
     /// True after `fileCache` has been populated by the full workspace index.
     expose Boolean fileCacheComplete;
     /// Directories waiting for incremental project-file cache discovery.
@@ -94,6 +96,7 @@ class ProjectManager {
         extraRoots = [];
         fileWasSelected = false;
         fileCache = new List();
+        fileCacheSeen = Map.New();
         fileCacheComplete = false;
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
@@ -166,6 +169,7 @@ class ProjectManager {
         extraRoots = [];
         treeView.Clear();
         fileCache = new List();
+        fileCacheSeen = Map.New();
         fileCacheComplete = false;
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
@@ -222,6 +226,7 @@ class ProjectManager {
         }
 
         fileCache = new List();
+        fileCacheSeen = Map.New();
         fileCacheComplete = false;
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
@@ -326,6 +331,7 @@ class ProjectManager {
     expose func StartFileCacheRefresh() {
         if project == null or project.isOpen == false { return; }
         fileCache = new List();
+        fileCacheSeen = Map.New();
         pendingFileCacheDirs = new List();
         var all = AllRoots();
         fileCacheRootIndex = 0;
@@ -434,9 +440,7 @@ class ProjectManager {
     /// @brief Add a file path to the cache if it has not already been recorded.
     /// @param path Absolute file path discovered from the tree or incremental scan.
     hide func AddCachedFile(path: String) {
-        if path != "" and ListContains(fileCache, path) == false {
-            fileCache.Push(path);
-        }
+        workspace_file_index.AddUniquePath(fileCache, fileCacheSeen, path);
     }
 
     expose func CachedFileCount() -> Integer {

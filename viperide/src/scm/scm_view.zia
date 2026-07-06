@@ -40,6 +40,7 @@ class ScmView {
     expose GUI.Button commitBtn;
     expose GUI.OutputPane diffPane;
     expose Boolean ready;
+    expose Boolean repoReady;
     expose String repoPath;
     expose String queuedDiffPath;
 
@@ -47,6 +48,7 @@ class ScmView {
         git = new scm_git.Git();
         activeJob = null;
         ready = false;
+        repoReady = false;
         repoPath = "";
         queuedDiffPath = "";
     }
@@ -91,6 +93,7 @@ class ScmView {
     expose func SetRepo(path: String) {
         if path == repoPath and ready { return; }
         repoPath = path;
+        repoReady = false;
         git.SetRepo(path);
         Refresh();
     }
@@ -173,6 +176,7 @@ class ScmView {
     hide func ApplyStatus(st: scm_git.GitStatus) {
         statusList.Clear();
         if st.isRepo == false {
+            repoReady = false;
             branchLabel.SetText("Not a git repository");
             statusLabel.SetText(st.errorText);
             if diffPane != null and st.errorText != "" {
@@ -181,6 +185,7 @@ class ScmView {
             }
             return;
         }
+        repoReady = true;
         if Str.get_Length(st.branch) > 0 {
             branchLabel.SetText("Branch: " + st.branch);
         } else {
@@ -255,6 +260,37 @@ class ScmView {
         return GUI.ListBox.ItemGetData(item);
     }
 
+    /// @brief Return whether a mutating SCM command can run right now.
+    /// @param actionLabel Human-readable action phrase for status feedback.
+    /// @return True when the view is wired, points at a repository, and is idle.
+    /// @details Button clicks can arrive while no project repository is open or
+    ///          before the first status refresh has completed. Reporting that
+    ///          locally is clearer than starting a Git process that is guaranteed
+    ///          to fail and then replacing the message during the follow-up status.
+    hide func CanRunRepositoryAction(actionLabel: String) -> Boolean {
+        if ready == false { return false; }
+        if Busy() {
+            statusLabel.SetText("Waiting for " + activeJob.kind + "...");
+            return false;
+        }
+        if repoPath == "" or repoReady == false {
+            statusLabel.SetText("Open a Git repository before " + actionLabel);
+            return false;
+        }
+        return true;
+    }
+
+    /// @brief Return the selected changed-file path or report an actionable status.
+    /// @param actionLabel Action verb shown when no changed file is selected.
+    /// @return Repo-relative selected path, or empty when no file action should run.
+    hide func SelectedPathForAction(actionLabel: String) -> String {
+        var p = SelectedPath();
+        if p == "" {
+            statusLabel.SetText("Select a changed file to " + actionLabel);
+        }
+        return p;
+    }
+
     /// @brief Show the diff of @p path.
     hide func ShowDiff(path: String) {
         if diffPane == null { return; }
@@ -293,25 +329,27 @@ class ScmView {
 
         if refreshBtn.WasClicked() { Refresh(); }
 
-        if stageAllBtn.WasClicked() {
+        if stageAllBtn.WasClicked() and CanRunRepositoryAction("staging changes") {
             StartJob(git.StartStageAll(), "Staging all changes...");
         }
-        if stageBtn.WasClicked() {
-            var p = SelectedPath();
+        if stageBtn.WasClicked() and CanRunRepositoryAction("staging a file") {
+            var p = SelectedPathForAction("stage");
             if p != "" { StartJob(git.StartStage(p), "Staging " + p + "..."); }
         }
-        if unstageBtn.WasClicked() {
-            var p2 = SelectedPath();
+        if unstageBtn.WasClicked() and CanRunRepositoryAction("unstaging a file") {
+            var p2 = SelectedPathForAction("unstage");
             if p2 != "" { StartJob(git.StartUnstage(p2), "Unstaging " + p2 + "..."); }
         }
-        if commitBtn.WasClicked() {
+        if commitBtn.WasClicked() and CanRunRepositoryAction("committing") {
             var msg = commitInput.get_Text();
             if Str.get_Length(Str.Trim(msg)) > 0 {
                 StartJob(git.StartCommit(msg), "Committing...");
+            } else {
+                statusLabel.SetText("Enter a commit message");
             }
         }
-        if pushBtn.WasClicked() { StartJob(git.StartPush(), "Pushing..."); }
-        if pullBtn.WasClicked() { StartJob(git.StartPull(), "Pulling..."); }
+        if pushBtn.WasClicked() and CanRunRepositoryAction("pushing") { StartJob(git.StartPush(), "Pushing..."); }
+        if pullBtn.WasClicked() and CanRunRepositoryAction("pulling") { StartJob(git.StartPull(), "Pulling..."); }
 
         if statusList.WasSelectionChanged() {
             ShowDiff(SelectedPath());

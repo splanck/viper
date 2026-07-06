@@ -2599,6 +2599,100 @@ TEST(outputpane_terminal_csi_clear_display_preserves_ansi_style) {
     vg_outputpane_destroy(pane);
 }
 
+/// @brief Verify DEC alternate-screen mode preserves and restores primary scrollback.
+/// @details Full-screen terminal programs enter CSI ?1049h and leave CSI ?1049l.
+///          The output pane must show the alternate buffer while active, then
+///          restore the original primary lines, cursor row, and ownership fields
+///          when the program exits alternate-screen mode.
+TEST(outputpane_terminal_alternate_screen_restores_primary_buffer) {
+    vg_outputpane_t *pane = vg_outputpane_create();
+    ASSERT_NOT_NULL(pane);
+
+    vg_outputpane_set_terminal_mode(pane, true);
+    vg_outputpane_append(pane, "shell\nprompt");
+    ASSERT_EQ(pane->line_count, 2u);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 0)->segments[0].text, "shell"), 0);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 1)->segments[0].text, "prompt"), 0);
+
+    vg_outputpane_append(pane, "\033[?1049hfull\nscreen");
+    ASSERT_TRUE(pane->alternate_screen);
+    ASSERT_EQ(pane->primary_line_count, 2u);
+    ASSERT_EQ(pane->line_count, 2u);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 0)->segments[0].text, "full"), 0);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 1)->segments[0].text, "screen"), 0);
+
+    vg_outputpane_append(pane, "\033[?1049l");
+    ASSERT_FALSE(pane->alternate_screen);
+    ASSERT_NULL(pane->primary_lines);
+    ASSERT_EQ(pane->primary_line_count, 0u);
+    ASSERT_EQ(pane->line_count, 2u);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 0)->segments[0].text, "shell"), 0);
+    ASSERT_EQ(strcmp(test_outputpane_line_at(pane, 1)->segments[0].text, "prompt"), 0);
+
+    vg_outputpane_destroy(pane);
+}
+
+/// @brief Verify terminal SGR supports true-color foregrounds and 256-color backgrounds.
+/// @details The terminal parser and append-only ANSI parser share the same SGR
+///          application helper. This regression ensures 38;2;r;g;b and 48;5;n
+///          sequences produce explicit ARGB segment colors instead of being
+///          ignored as unknown SGR operands.
+TEST(outputpane_terminal_extended_sgr_colors_are_rendered) {
+    vg_outputpane_t *pane = vg_outputpane_create();
+    ASSERT_NOT_NULL(pane);
+
+    vg_outputpane_set_terminal_mode(pane, true);
+    vg_outputpane_append(pane, "\033[38;2;1;2;3mtrue\033[0m \033[48;5;196mback");
+
+    vg_output_line_t *line = test_outputpane_line_at(pane, 0);
+    ASSERT_NOT_NULL(line);
+    ASSERT_EQ(line->segment_count, 3u);
+    ASSERT_EQ(strcmp(line->segments[0].text, "true"), 0);
+    ASSERT_EQ(line->segments[0].fg_color, (uint32_t)0xFF010203u);
+    ASSERT_EQ(strcmp(line->segments[1].text, " "), 0);
+    ASSERT_EQ(line->segments[1].fg_color, pane->default_fg);
+    ASSERT_EQ(strcmp(line->segments[2].text, "back"), 0);
+    ASSERT_EQ(line->segments[2].bg_color, (uint32_t)0xFFFF0000u);
+
+    vg_outputpane_destroy(pane);
+}
+
+/// @brief Verify terminal key capture emits raw bytes with an authoritative length.
+/// @details Ctrl+Space queues an embedded NUL byte, Shift+Tab queues CSI Z, modified
+///          arrows use xterm CSI modifier encoding, and function keys use xterm
+///          tilde sequences. The byte-counted drain must preserve the NUL instead
+///          of truncating through strlen.
+TEST(outputpane_terminal_key_input_uses_byte_counted_xterm_sequences) {
+    vg_outputpane_t *pane = vg_outputpane_create();
+    ASSERT_NOT_NULL(pane);
+    vg_outputpane_set_terminal_mode(pane, true);
+
+    vg_event_t ctrl_space = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_SPACE, 0, VG_MOD_CTRL);
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &ctrl_space));
+    size_t len = 0;
+    char *bytes = vg_outputpane_take_input_bytes(pane, &len);
+    ASSERT_NOT_NULL(bytes);
+    ASSERT_EQ(len, 1u);
+    ASSERT_EQ(bytes[0], '\0');
+    free(bytes);
+
+    vg_event_t shift_tab = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_TAB, 0, VG_MOD_SHIFT);
+    vg_event_t ctrl_right = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_RIGHT, 0, VG_MOD_CTRL);
+    vg_event_t f5 = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_F5, 0, VG_MOD_NONE);
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &shift_tab));
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &ctrl_right));
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &f5));
+
+    bytes = vg_outputpane_take_input_bytes(pane, &len);
+    ASSERT_NOT_NULL(bytes);
+    const char expected[] = "\033[Z\033[1;5C\033[15~";
+    ASSERT_EQ(len, sizeof(expected) - 1u);
+    ASSERT_EQ(memcmp(bytes, expected, sizeof(expected) - 1u), 0);
+    free(bytes);
+
+    vg_outputpane_destroy(pane);
+}
+
 static void *g_context_select_ud = NULL;
 static void *g_context_dismiss_ud = NULL;
 
@@ -4500,6 +4594,9 @@ int main(void) {
     RUN(outputpane_append_line_and_clear_keep_line_state_consistent);
     RUN(outputpane_ring_buffer_preserves_logical_order_after_eviction);
     RUN(outputpane_terminal_csi_clear_display_preserves_ansi_style);
+    RUN(outputpane_terminal_alternate_screen_restores_primary_buffer);
+    RUN(outputpane_terminal_extended_sgr_colors_are_rendered);
+    RUN(outputpane_terminal_key_input_uses_byte_counted_xterm_sequences);
     RUN(contextmenu_callbacks_capture_and_registry_are_lifetime_safe);
     RUN(direct_event_send_restores_mouse_coordinates_after_bubbling);
     RUN(custom_widget_paint_can_query_layout_geometry);

@@ -26,8 +26,7 @@ final MAX_HIDDEN_TERMINAL_BUFFER = 200000;
 //          while hidden so PTY output does not back up behind the panel.
 //
 // SCOPE: a usable interactive shell (typing, colors, prompts, line editing,
-//   and common cursor-addressed shell redraws). Full-screen TUI apps needing
-//   complete alternate-screen and terminal-mode semantics are out of scope.
+//   cursor-addressed redraws, alternate-screen programs, and raw PTY input).
 // ============================================================================
 
 /// @brief Integrated-terminal UI controller.

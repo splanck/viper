@@ -131,6 +131,7 @@ expose func EnumerateFiles(rootPath: String,
                            ignorePatterns: String) -> List {
     var result = new List();
     if rootPath == "" { return result; }
+    var seen = Map.New();
     var offset = 0;
     var done = false;
     while done == false {
@@ -152,9 +153,7 @@ expose func EnumerateFiles(rootPath: String,
                 emitted = emitted + 1;
                 if Map.GetBool(entry, "isDirectory") == false {
                     var filePath = Map.GetStr(entry, "path");
-                    if filePath != "" and ListContains(result, filePath) == false {
-                        result.Push(filePath);
-                    }
+                    AddUniquePath(result, seen, filePath);
                 }
                 i = i + 1;
             }
@@ -181,17 +180,53 @@ expose func AddEnumeratedFiles(target: List,
                                fileKinds: String,
                                ignorePatterns: String) -> Integer {
     var added = 0;
+    var seen = BuildStringSetFromList(target);
     var files = EnumerateFiles(rootPath, fileKinds, ignorePatterns);
     var i = 0;
     while i < files.count() {
         var filePath = Obj.ToString(files.get(i));
-        if filePath != "" and ListContains(target, filePath) == false {
-            target.Push(filePath);
+        if AddUniquePath(target, seen, filePath) {
             added = added + 1;
         }
         i = i + 1;
     }
     return added;
+}
+
+/// @brief Build a map-backed set from a list of string-like path values.
+/// @param items List whose entries should be recorded; may be empty.
+/// @return Runtime Map where each path string is present with a boolean true value.
+/// @details Several IDE features merge FileIndex pages with existing open-document
+///          lists. Using a Map keeps those merges linear instead of repeatedly
+///          scanning the accumulated List for every discovered file.
+expose func BuildStringSetFromList(items: List) -> Any {
+    var seen = Map.New();
+    var i = 0;
+    while i < items.count() {
+        var value = Obj.ToString(items.get(i));
+        if value != "" {
+            Map.SetBool(seen, value, true);
+        }
+        i = i + 1;
+    }
+    return seen;
+}
+
+/// @brief Append a path to a list only when a companion string set has not seen it.
+/// @param target Mutable list receiving unique path values.
+/// @param seen Map-backed set produced by BuildStringSetFromList or Map.New.
+/// @param path Absolute path candidate to append.
+/// @return True when @p path was appended; false for empty or duplicate paths.
+/// @details The helper updates @p seen before returning so callers can process
+///          large FileIndex pages without O(n^2) duplicate checks.
+expose func AddUniquePath(target: List,
+                          seen: Any,
+                          path: String) -> Boolean {
+    if seen == null or path == "" { return false; }
+    if Map.Has(seen, path) { return false; }
+    Map.SetBool(seen, path, true);
+    target.Push(path);
+    return true;
 }
 
 /// @brief Return true when a List already contains a string value.
