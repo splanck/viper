@@ -345,13 +345,9 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->fog_color[1] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[1], 0.0f, 1.0f, 0.5f);
     scene_data->fog_color[2] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[2], 0.0f, 1.0f, 0.5f);
     scene_data->fog_color[3] = ctx->fog_enabled ? 1.0f : 0.0f;
-    scene_data->fog_near = vgfx3d_d3d11_finite_or(ctx->fog_near, 10.0f);
-    if (scene_data->fog_near < 0.0f)
-        scene_data->fog_near = 0.0f;
-    scene_data->fog_far = vgfx3d_d3d11_finite_or(ctx->fog_far, 50.0f);
-    if (scene_data->fog_far <= scene_data->fog_near)
-        scene_data->fog_far = scene_data->fog_near + 1.0f;
-    scene_data->shadow_bias = vgfx3d_d3d11_finite_or(ctx->shadow_bias, 0.0f);
+    vgfx3d_d3d11_sanitize_fog_range(
+        ctx->fog_near, ctx->fog_far, &scene_data->fog_near, &scene_data->fog_far);
+    scene_data->shadow_bias = vgfx3d_d3d11_sanitize_shadow_bias(ctx->shadow_bias);
     scene_data->light_count =
         lights ? (light_count < 0
                       ? 0
@@ -408,7 +404,7 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
     depth = ctx->rtt_active ? ctx->rtt_depth_tex : ctx->scene_depth_tex;
     w = ctx->rtt_active ? ctx->rtt_width : ctx->width;
     h = ctx->rtt_active ? ctx->rtt_height : ctx->height;
-    if (!depth || w <= 0 || h <= 0)
+    if (!depth || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
     if (!ctx->opaque_depth_tex || ctx->opaque_depth_w != w || ctx->opaque_depth_h != h) {
         D3D11_TEXTURE2D_DESC desc;
@@ -428,6 +424,7 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
         hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->opaque_depth_tex);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateTexture2D(opaqueDepth)", hr);
+            d3d11_destroy_opaque_depth_target(ctx);
             return;
         }
         memset(&srv_desc, 0, sizeof(srv_desc));
@@ -440,7 +437,7 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
                                                    &ctx->opaque_depth_srv);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateSRV(opaqueDepth)", hr);
-            SAFE_RELEASE(ctx->opaque_depth_tex);
+            d3d11_destroy_opaque_depth_target(ctx);
             return;
         }
         ctx->opaque_depth_w = w;

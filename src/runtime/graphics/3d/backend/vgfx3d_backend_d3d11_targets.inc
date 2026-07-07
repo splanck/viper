@@ -210,19 +210,29 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
 /// @brief Capture the current swapchain backbuffer before Present invalidates it.
 static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
     ID3D11Texture2D *back_buffer = NULL;
+    D3D11_TEXTURE2D_DESC back_buffer_desc;
     HRESULT hr;
 
     if (!ctx || !ctx->swap_chain || !ctx->ctx)
         return 0;
     ctx->presented_color_valid = 0;
-    hr = d3d11_ensure_presented_snapshot_texture(ctx, ctx->width, ctx->height);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateTexture2D(presentedSnapshot)", hr);
-        return 0;
-    }
     hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::GetBuffer(presentedSnapshot)", hr);
+        return 0;
+    }
+    ID3D11Texture2D_GetDesc(back_buffer, &back_buffer_desc);
+    if (back_buffer_desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent((int32_t)back_buffer_desc.Width,
+                                                (int32_t)back_buffer_desc.Height)) {
+        SAFE_RELEASE(back_buffer);
+        return 0;
+    }
+    hr = d3d11_ensure_presented_snapshot_texture(
+        ctx, (int32_t)back_buffer_desc.Width, (int32_t)back_buffer_desc.Height);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D(presentedSnapshot)", hr);
+        SAFE_RELEASE(back_buffer);
         return 0;
     }
     d3d11_unbind_draw_resources(ctx);
@@ -256,6 +266,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
+    d3d11_destroy_opaque_depth_target(ctx);
     d3d11_destroy_bloom_targets(ctx);
     d3d11_destroy_taa_targets(ctx);
     d3d11_destroy_ssr_target(ctx);
@@ -740,6 +751,7 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->rtt_depth_tex);
     SAFE_RELEASE(ctx->rtt_rtv);
     SAFE_RELEASE(ctx->rtt_color_tex);
+    d3d11_destroy_opaque_depth_target(ctx);
     ctx->rtt_width = 0;
     ctx->rtt_height = 0;
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
@@ -792,7 +804,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_depth_target(
-        ctx, rt->width, rt->height, 0, &ctx->rtt_depth_tex, &ctx->rtt_dsv, NULL);
+        ctx, rt->width, rt->height, 1, &ctx->rtt_depth_tex, &ctx->rtt_dsv, NULL);
     if (FAILED(hr)) {
         d3d11_destroy_rtt_targets(ctx);
         return hr;

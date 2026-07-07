@@ -549,6 +549,7 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      int32_t width,
                                                      int32_t height,
                                                      const char *log_context);
+static void d3d11_destroy_opaque_depth_target(d3d11_context_t *ctx);
 static void d3d11_begin_frame_timing(d3d11_context_t *ctx);
 static void d3d11_end_frame_timing(d3d11_context_t *ctx);
 static void d3d11_release_texture_cache(d3d11_context_t *ctx);
@@ -1156,6 +1157,17 @@ static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
     ctx->overlay_used_this_frame = 0;
     ctx->scene_composited_to_swapchain = 0;
     ctx->presented_color_valid = 0;
+}
+
+/// @brief Release the soft-particle opaque-depth snapshot and clear its size/validity state.
+static void d3d11_destroy_opaque_depth_target(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    SAFE_RELEASE(ctx->opaque_depth_srv);
+    SAFE_RELEASE(ctx->opaque_depth_tex);
+    ctx->opaque_depth_w = 0;
+    ctx->opaque_depth_h = 0;
+    ctx->opaque_depth_valid = 0;
 }
 
 /// @brief Return whether every scene color/motion/depth resource is complete.

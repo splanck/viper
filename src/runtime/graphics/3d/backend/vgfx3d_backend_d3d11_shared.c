@@ -461,12 +461,99 @@ int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested) {
     return requested;
 }
 
+/// @brief Sanitize fog near/far distances before scene constant upload.
+void vgfx3d_d3d11_sanitize_fog_range(float requested_near,
+                                      float requested_far,
+                                      float *out_near,
+                                      float *out_far) {
+    float fog_near = vgfx3d_d3d11_clamp_float_param(
+        requested_near, 0.0f, VGFX3D_D3D11_FOG_DISTANCE_MAX, 10.0f);
+    float min_far = fog_near + 1.0f;
+    float fog_far;
+
+    if (min_far > VGFX3D_D3D11_FOG_DISTANCE_MAX)
+        min_far = VGFX3D_D3D11_FOG_DISTANCE_MAX;
+    fog_far = vgfx3d_d3d11_clamp_float_param(
+        requested_far, min_far, VGFX3D_D3D11_FOG_DISTANCE_MAX, 50.0f);
+    if (fog_far <= fog_near) {
+        fog_near = 10.0f;
+        fog_far = 50.0f;
+    }
+    if (out_near)
+        *out_near = fog_near;
+    if (out_far)
+        *out_far = fog_far;
+}
+
+/// @brief Sanitize D3D11 shader-facing shadow depth bias.
+float vgfx3d_d3d11_sanitize_shadow_bias(float requested) {
+    return vgfx3d_d3d11_clamp_float_param(
+        requested, -VGFX3D_D3D11_SHADOW_BIAS_MAX, VGFX3D_D3D11_SHADOW_BIAS_MAX, 0.0f);
+}
+
 /// @brief Validate a backend-facing post-FX chain before indexed iteration.
 int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain) {
     if (!chain || !chain->enabled || !chain->effects || chain->effect_count <= 0 ||
         chain->effect_capacity < chain->effect_count)
         return 0;
     return 1;
+}
+
+/// @brief Return non-zero when one PostFX effect descriptor actually changes rendering.
+int vgfx3d_d3d11_postfx_effect_is_active(const vgfx3d_postfx_effect_desc_t *effect) {
+    const vgfx3d_postfx_snapshot_t *snapshot;
+
+    if (!effect)
+        return 0;
+    snapshot = &effect->snapshot;
+    switch (effect->type) {
+    case VGFX3D_POSTFX_EFFECT_BLOOM:
+        return snapshot->bloom_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_TONEMAP:
+        return snapshot->tonemap_explicit ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_FXAA:
+        return snapshot->fxaa_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_COLOR_GRADE:
+        return snapshot->color_grade_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_VIGNETTE:
+        return snapshot->vignette_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_SSAO:
+        return snapshot->ssao_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_DOF:
+        return snapshot->dof_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_MOTION_BLUR:
+        return snapshot->motion_blur_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_TAA:
+        return snapshot->taa_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_SSR:
+        return snapshot->ssr_enabled ? 1 : 0;
+    default:
+        return 0;
+    }
+}
+
+/// @brief Return non-zero when a usable chain contains an active effect of @p type_value.
+int vgfx3d_d3d11_postfx_chain_has_active_effect(const vgfx3d_postfx_chain_t *chain,
+                                                int32_t type_value) {
+    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == type_value &&
+            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i]))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Return non-zero when a usable chain contains any active effect.
+int vgfx3d_d3d11_postfx_chain_has_active_effects(const vgfx3d_postfx_chain_t *chain) {
+    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i]))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Decide whether a draw needs current/previous bone cbuffer uploads.

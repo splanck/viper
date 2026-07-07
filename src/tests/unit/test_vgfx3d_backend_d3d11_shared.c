@@ -602,6 +602,8 @@ static void test_d3d11_sanitization_helpers(void) {
     size_t elements = 0;
     float znear = 0.0f;
     float zfar = 0.0f;
+    float fog_near = 0.0f;
+    float fog_far = 0.0f;
 
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(0) == 0, "Boolean flag sanitizer preserves false");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(-7) == 1,
@@ -700,6 +702,31 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Tonemap sanitizer preserves the highest valid mode");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_tonemap_mode(99) == 0,
                 "Tonemap sanitizer disables invalid modes");
+    vgfx3d_d3d11_sanitize_fog_range(2.0f, 32.0f, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 2.0f, 1e-6f, "Fog sanitizer preserves finite near distances");
+    EXPECT_NEAR(fog_far, 32.0f, 1e-6f, "Fog sanitizer preserves ordered finite far distances");
+    vgfx3d_d3d11_sanitize_fog_range(HUGE_VALF, -HUGE_VALF, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 10.0f, 1e-6f, "Fog sanitizer replaces non-finite near distances");
+    EXPECT_NEAR(fog_far, 50.0f, 1e-6f, "Fog sanitizer replaces non-finite far distances");
+    vgfx3d_d3d11_sanitize_fog_range(VGFX3D_D3D11_FOG_DISTANCE_MAX, 1.0f, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 10.0f, 1e-6f, "Fog sanitizer falls back when far cannot exceed near");
+    EXPECT_NEAR(fog_far, 50.0f, 1e-6f, "Fog sanitizer restores an ordered fallback range");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(0.125f),
+                0.125f,
+                1e-6f,
+                "Shadow-bias sanitizer preserves small finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(HUGE_VALF),
+                0.0f,
+                1e-6f,
+                "Shadow-bias sanitizer replaces non-finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(VGFX3D_D3D11_SHADOW_BIAS_MAX * 2.0f),
+                VGFX3D_D3D11_SHADOW_BIAS_MAX,
+                1e-6f,
+                "Shadow-bias sanitizer clamps oversized positive values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(-VGFX3D_D3D11_SHADOW_BIAS_MAX * 2.0f),
+                -VGFX3D_D3D11_SHADOW_BIAS_MAX,
+                1e-6f,
+                "Shadow-bias sanitizer clamps oversized negative values");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(-1, 8) == -1,
                 "Cluster global-count sanitizer preserves flat-loop sentinel");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(4, 8) == 4,
@@ -1081,6 +1108,32 @@ static void test_postfx_readback_policy_helpers(void) {
     chain.effects = &effect;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 1,
                 "PostFX chain validator accepts enabled chains with enough storage");
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_TAA;
+    effect.snapshot.taa_enabled = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 0,
+                "PostFX active-effect helper ignores disabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
+                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
+                    0,
+                "PostFX active-chain helper ignores disabled TAA entries");
+    effect.snapshot.taa_enabled = 1;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 1,
+                "PostFX active-effect helper accepts enabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
+                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
+                    1,
+                "PostFX active-chain helper accepts enabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effects(&chain) == 1,
+                "PostFX active-chain helper reports any enabled effect");
+    effect.snapshot.taa_enabled = 0;
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_TONEMAP;
+    effect.snapshot.tonemap_explicit = 1;
+    effect.snapshot.tonemap_mode = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 1,
+                "PostFX active-effect helper keeps explicit tonemap mode-zero entries active");
+    effect.snapshot.tonemap_explicit = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effects(&chain) == 0,
+                "PostFX active-chain helper rejects structurally valid but inert chains");
     chain.effect_capacity = 0;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
                 "PostFX chain validator rejects effect counts beyond capacity");
