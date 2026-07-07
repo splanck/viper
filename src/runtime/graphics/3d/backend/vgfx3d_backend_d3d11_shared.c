@@ -96,6 +96,37 @@ void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
         dst[i] = isfinite(src[i]) ? src[i] : safe_fallback;
 }
 
+/// @brief Validate a finite direction vector before CPU constants or HLSL normalize.
+int vgfx3d_d3d11_vec3_direction_is_usable(const float *values) {
+    double len2;
+
+    if (!values || !vgfx3d_d3d11_float_array_is_finite(values, 3u))
+        return 0;
+    len2 = (double)values[0] * (double)values[0] + (double)values[1] * (double)values[1] +
+           (double)values[2] * (double)values[2];
+    return len2 > 1.0e-12 && len2 < 1.0e20 ? 1 : 0;
+}
+
+/// @brief Copy a direction vector with a stable default for zero/non-finite/huge sources.
+void vgfx3d_d3d11_copy_vec3_direction_or(float *dst,
+                                         const float *src,
+                                         const float fallback[3]) {
+    static const float default_forward[3] = {0.0f, 0.0f, -1.0f};
+    const float *chosen;
+
+    if (!dst)
+        return;
+    if (vgfx3d_d3d11_vec3_direction_is_usable(src))
+        chosen = src;
+    else if (vgfx3d_d3d11_vec3_direction_is_usable(fallback))
+        chosen = fallback;
+    else
+        chosen = default_forward;
+    dst[0] = chosen[0];
+    dst[1] = chosen[1];
+    dst[2] = chosen[2];
+}
+
 /// @brief Copy a matrix when finite, otherwise write identity.
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src) {
     if (!dst)
@@ -556,6 +587,39 @@ int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
             extent >>= 1;
     }
     *out_extent = extent > 0 ? extent : 1;
+    return 1;
+}
+
+/// @brief Compute a bloom mip extent using the backend's bounded half-res policy.
+int vgfx3d_d3d11_compute_bloom_mip_extent(int32_t width,
+                                          int32_t height,
+                                          int32_t mip_level,
+                                          int32_t *out_width,
+                                          int32_t *out_height) {
+    int32_t mip_width;
+    int32_t mip_height;
+
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (!out_width || !out_height || mip_level < 0 ||
+        mip_level >= VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+        return 0;
+
+    mip_width = width > 1 ? width / 2 : 1;
+    mip_height = height > 1 ? height / 2 : 1;
+    for (int32_t i = 0; i < mip_level; i++) {
+        if (mip_width / 2 < VGFX3D_D3D11_BLOOM_MIN_DOWNSAMPLE_EXTENT ||
+            mip_height / 2 < VGFX3D_D3D11_BLOOM_MIN_DOWNSAMPLE_EXTENT)
+            return 0;
+        mip_width = mip_width > 1 ? mip_width / 2 : 1;
+        mip_height = mip_height > 1 ? mip_height / 2 : 1;
+    }
+
+    *out_width = mip_width > 0 ? mip_width : 1;
+    *out_height = mip_height > 0 ? mip_height : 1;
     return 1;
 }
 

@@ -489,8 +489,9 @@ static int d3d11_bloom_targets_complete(const d3d11_context_t *ctx, int32_t widt
 }
 
 /// @brief Build the Plan 05 half-res RGBA16F bloom mip chain for a scene of (w, h).
-/// @details Levels halve until the next level would drop below 8px on either axis
-///          (at most 6 levels). Rebuilt only when the scene size changes.
+/// @details Level 0 starts at half-res clamped to at least 1px; deeper levels halve
+///          until the next level would drop below 8px on either axis (at most 6 levels).
+///          Rebuilt only when the scene size changes.
 static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     int32_t mw;
     int32_t mh;
@@ -503,9 +504,9 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
         return S_OK;
 
     d3d11_destroy_bloom_targets(ctx);
-    mw = width / 2;
-    mh = height / 2;
-    for (int32_t i = 0; i < 6 && mw >= 1 && mh >= 1; i++) {
+    for (int32_t i = 0; i < VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX; i++) {
+        if (!vgfx3d_d3d11_compute_bloom_mip_extent(width, height, i, &mw, &mh))
+            break;
         hr = d3d11_create_color_target(ctx,
                                        mw,
                                        mh,
@@ -520,10 +521,6 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
         ctx->bloom_mip_w[i] = mw;
         ctx->bloom_mip_h[i] = mh;
         ctx->bloom_mip_count = i + 1;
-        if (mw / 2 < 8 || mh / 2 < 8)
-            break;
-        mw /= 2;
-        mh /= 2;
     }
     if (ctx->bloom_mip_count <= 0)
         return E_FAIL;

@@ -94,12 +94,9 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
     vgfx3d_d3d11_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
-    if (vgfx3d_d3d11_float_array_is_finite(cam->forward, 3u))
-        memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3u);
-    else {
-        ctx->cam_forward[0] = 0.0f;
-        ctx->cam_forward[1] = 0.0f;
-        ctx->cam_forward[2] = -1.0f;
+    {
+        static const float forward_fallback[3] = {0.0f, 0.0f, -1.0f};
+        vgfx3d_d3d11_copy_vec3_direction_or(ctx->cam_forward, cam->forward, forward_fallback);
     }
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
@@ -635,8 +632,8 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
     read_slot = 1 - write_slot;
 
     memset(&taa_data, 0, sizeof(taa_data));
-    memcpy(taa_data.inv_vp, ctx->scene_inv_vp, sizeof(taa_data.inv_vp));
-    memcpy(taa_data.prev_vp, ctx->scene_prev_vp, sizeof(taa_data.prev_vp));
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(taa_data.inv_vp, ctx->scene_inv_vp);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(taa_data.prev_vp, ctx->scene_prev_vp);
     taa_data.inv_resolution[0] = width > 0 ? 1.0f / (float)width : 0.0f;
     taa_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
     taa_data.jitter_delta[0] = (ctx->taa_jitter_clip[0] - ctx->taa_prev_jitter_clip[0]) * 0.5f;

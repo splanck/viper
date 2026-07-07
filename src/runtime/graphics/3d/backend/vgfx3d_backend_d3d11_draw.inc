@@ -333,10 +333,9 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     }
     vgfx3d_d3d11_copy_float_array_finite_or(scene_data->camera_pos, ctx->cam_pos, 3u, 0.0f);
     scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
-    if (vgfx3d_d3d11_float_array_is_finite(ctx->cam_forward, 3u))
-        memcpy(scene_data->camera_forward, ctx->cam_forward, sizeof(scene_data->camera_forward));
-    else
-        memcpy(scene_data->camera_forward, forward_fallback, sizeof(forward_fallback));
+    vgfx3d_d3d11_copy_vec3_direction_or(scene_data->camera_forward,
+                                         ctx->cam_forward,
+                                         forward_fallback);
     if (ambient)
         vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, ambient, 3u, 0.0f);
     else
@@ -359,14 +358,16 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                       : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count))
                : 0;
     scene_data->shadow_count = vgfx3d_d3d11_clamp_shadow_count(ctx->shadow_count);
-    scene_data->ibl_intensity = ctx->ibl_intensity;
+    scene_data->ibl_intensity =
+        vgfx3d_d3d11_clamp_float_param(ctx->ibl_intensity, 0.0f, 8.0f, 1.0f);
     for (int32_t sh_k = 0; sh_k < 9; sh_k++) {
         scene_data->sh[sh_k][0] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 0], 0.0f);
         scene_data->sh[sh_k][1] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 1], 0.0f);
         scene_data->sh[sh_k][2] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 2], 0.0f);
         scene_data->sh[sh_k][3] = 0.0f;
     }
-    scene_data->shadow_filter[0] = vgfx3d_d3d11_finite_or(ctx->shadow_slope_bias, 1.0f);
+    scene_data->shadow_filter[0] =
+        vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(ctx->shadow_slope_bias);
     scene_data->shadow_filter[1] =
         vgfx3d_d3d11_clamp_float_param(ctx->shadow_strength, 0.0f, 1.0f, 0.85f);
     scene_data->shadow_filter[2] =
@@ -936,9 +937,11 @@ static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
 
 /// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.
 static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *skybox_data) {
+    static const float forward_fallback[3] = {0.0f, 0.0f, -1.0f};
+    float safe_projection[16];
     float view_rotation[16];
 
-    memcpy(view_rotation, ctx->view, sizeof(view_rotation));
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(view_rotation, ctx->view);
     view_rotation[3] = 0.0f;
     view_rotation[7] = 0.0f;
     view_rotation[11] = 0.0f;
@@ -946,14 +949,17 @@ static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *sky
     view_rotation[13] = 0.0f;
     view_rotation[14] = 0.0f;
     view_rotation[15] = 1.0f;
-    if (vgfx3d_invert_matrix4(ctx->projection, skybox_data->inverse_projection) != 0)
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(safe_projection, ctx->projection);
+    if (vgfx3d_invert_matrix4(safe_projection, skybox_data->inverse_projection) != 0)
         memcpy(skybox_data->inverse_projection,
                k_identity4x4,
                sizeof(skybox_data->inverse_projection));
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             skybox_data->inverse_view_rotation[r * 4 + c] = view_rotation[c * 4 + r];
-    memcpy(skybox_data->camera_forward, ctx->cam_forward, sizeof(float) * 3);
+    vgfx3d_d3d11_copy_vec3_direction_or(skybox_data->camera_forward,
+                                         ctx->cam_forward,
+                                         forward_fallback);
     skybox_data->camera_forward[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
 }
 
@@ -967,9 +973,9 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
                                       const vgfx3d_postfx_snapshot_t *snapshot,
                                       d3d_postfx_cb_t *postfx_data) {
     memset(postfx_data, 0, sizeof(*postfx_data));
-    memcpy(postfx_data->inv_vp, ctx->scene_inv_vp, sizeof(postfx_data->inv_vp));
-    memcpy(postfx_data->prev_vp, ctx->scene_prev_vp, sizeof(postfx_data->prev_vp));
-    memcpy(postfx_data->camera_pos, ctx->scene_cam_pos, sizeof(float) * 3);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->inv_vp, ctx->scene_inv_vp);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->prev_vp, ctx->scene_prev_vp);
+    vgfx3d_d3d11_copy_float_array_finite_or(postfx_data->camera_pos, ctx->scene_cam_pos, 3u, 0.0f);
     postfx_data->camera_pos[3] = 1.0f;
     postfx_data->inv_resolution[0] = ctx->scene_width > 0 ? 1.0f / (float)ctx->scene_width : 0.0f;
     postfx_data->inv_resolution[1] = ctx->scene_height > 0 ? 1.0f / (float)ctx->scene_height : 0.0f;

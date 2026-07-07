@@ -54,6 +54,8 @@ extern "C" {
 #define VGFX3D_D3D11_POSTFX_SCALAR_MAX 1000000.0f
 #define VGFX3D_D3D11_SHADING_MODEL_MAX 5
 #define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
+#define VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX 6
+#define VGFX3D_D3D11_BLOOM_MIN_DOWNSAMPLE_EXTENT 8
 #define VGFX3D_D3D11_CLUSTER_ZNEAR_MIN 0.0001f
 #define VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK 0.1f
 #define VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK 1000.0f
@@ -224,6 +226,12 @@ void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
                                              const float *src,
                                              size_t count,
                                              float fallback);
+/// @brief Validate a finite, non-degenerate direction vector for CPU/shader upload.
+int vgfx3d_d3d11_vec3_direction_is_usable(const float *values);
+/// @brief Copy a direction vector or a stable fallback when the source is unusable.
+void vgfx3d_d3d11_copy_vec3_direction_or(float *dst,
+                                         const float *src,
+                                         const float fallback[3]);
 /// @brief Copy a matrix when finite, otherwise write the identity matrix.
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
 /// @brief Copy a matrix when finite, otherwise copy @p fallback or identity.
@@ -260,6 +268,12 @@ int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch);
 int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
                                             int32_t mip_level,
                                             int32_t *out_extent);
+/// @brief Compute one bloom mip extent for a scene-sized D3D11 post-FX chain.
+int vgfx3d_d3d11_compute_bloom_mip_extent(int32_t width,
+                                          int32_t height,
+                                          int32_t mip_level,
+                                          int32_t *out_width,
+                                          int32_t *out_height);
 /// @brief Validate an IBL mip payload extent against the destination cubemap mip.
 int vgfx3d_d3d11_validate_ibl_mip_extent(int32_t face_size,
                                          int32_t mip_level,

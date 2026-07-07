@@ -27,6 +27,12 @@
 #include "rt_textureasset3d.h"
 #include "vgfx3d_backend_d3d11_shared.h"
 
+#define VGFX3D_STR_IMPL(x) #x
+#define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+#include "vgfx3d_backend_d3d11_shaders.inc"
+#undef VGFX3D_STR
+#undef VGFX3D_STR_IMPL
+
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -35,6 +41,10 @@
 
 static int tests_run = 0;
 static int tests_passed = 0;
+
+static int contains_text(const char *haystack, const char *needle) {
+    return haystack && needle && strstr(haystack, needle) != NULL;
+}
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -160,6 +170,11 @@ static void test_pack_scalar_array4_matches_hlsl_layout(void) {
 static void test_finite_copy_helpers(void) {
     float good[4] = {1.0f, 2.0f, 3.0f, 4.0f};
     float bad[4] = {1.0f, HUGE_VALF, 3.0f, -HUGE_VALF};
+    float direction[3] = {0.0f, 0.0f, -2.0f};
+    float zero_direction[3] = {0.0f, 0.0f, 0.0f};
+    float huge_direction[3] = {1.0e11f, 0.0f, 0.0f};
+    float fallback_direction[3] = {1.0f, 0.0f, 0.0f};
+    float copied_direction[3];
     float copied[4];
     float matrix[16];
     float fallback[16];
@@ -184,6 +199,19 @@ static void test_finite_copy_helpers(void) {
     fallback[3] = 9.0f;
     vgfx3d_d3d11_copy_mat4_finite_or(out, matrix, fallback);
     EXPECT_NEAR(out[3], 9.0f, 1e-6f, "Invalid matrix copies finite fallback matrix");
+
+    EXPECT_TRUE(vgfx3d_d3d11_vec3_direction_is_usable(direction) == 1,
+                "Direction helper accepts finite non-degenerate vectors");
+    EXPECT_TRUE(vgfx3d_d3d11_vec3_direction_is_usable(zero_direction) == 0,
+                "Direction helper rejects zero-length vectors before HLSL normalize");
+    EXPECT_TRUE(vgfx3d_d3d11_vec3_direction_is_usable(huge_direction) == 0,
+                "Direction helper rejects vectors whose squared length exceeds shader guards");
+    vgfx3d_d3d11_copy_vec3_direction_or(copied_direction, zero_direction, fallback_direction);
+    EXPECT_NEAR(copied_direction[0], 1.0f, 1e-6f, "Direction copy uses fallback X");
+    EXPECT_NEAR(copied_direction[2], 0.0f, 1e-6f, "Direction copy uses fallback Z");
+    vgfx3d_d3d11_copy_vec3_direction_or(copied_direction, bad, zero_direction);
+    EXPECT_NEAR(copied_direction[0], 0.0f, 1e-6f, "Direction copy defaults invalid fallback X");
+    EXPECT_NEAR(copied_direction[2], -1.0f, 1e-6f, "Direction copy defaults invalid fallback Z");
 }
 
 static void test_constant_buffer_struct_sizes_match_expected_layout(void) {
@@ -449,6 +477,8 @@ static void test_capacity_and_mip_helpers(void) {
     uint32_t byte_width = 0;
     uint32_t row_pitch = 0;
     int32_t mip_extent = 0;
+    int32_t bloom_w = 0;
+    int32_t bloom_h = 0;
 
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(4, 2) == 3,
@@ -512,6 +542,21 @@ static void test_capacity_and_mip_helpers(void) {
                 "IBL mip validation rejects non-square payloads");
     EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_mip_extent(8, 4, 1, 1) == 0,
                 "IBL mip validation rejects levels beyond the cubemap chain");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_bloom_mip_extent(1, 1, 0, &bloom_w, &bloom_h) == 1 &&
+                    bloom_w == 1 && bloom_h == 1,
+                "Bloom mip helper keeps tiny valid viewports allocatable");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_bloom_mip_extent(17, 9, 0, &bloom_w, &bloom_h) == 1 &&
+                    bloom_w == 8 && bloom_h == 4,
+                "Bloom mip helper computes the first half-res target with floor division");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_bloom_mip_extent(128, 64, 1, &bloom_w, &bloom_h) == 1 &&
+                    bloom_w == 32 && bloom_h == 16,
+                "Bloom mip helper halves deeper levels while the next mip stays useful");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_bloom_mip_extent(17, 9, 1, &bloom_w, &bloom_h) == 0 &&
+                    bloom_w == 0 && bloom_h == 0,
+                "Bloom mip helper stops before deeper levels collapse below the bloom floor");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_bloom_mip_extent(0, 64, 0, &bloom_w, &bloom_h) == 0 &&
+                    bloom_w == 0 && bloom_h == 0,
+                "Bloom mip helper rejects invalid base extents");
     EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(
                     3, sizeof(vgfx3d_d3d11_instance_data_t), &bytes) == 1 &&
                     bytes == 3u * sizeof(vgfx3d_d3d11_instance_data_t),
@@ -1167,6 +1212,35 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
     EXPECT_NEAR(uv_depth[2], 0.0f, 1e-6f, "Failed shadow projection clears stale depth");
 }
 
+static void test_d3d11_shader_sources_keep_numeric_guards(void) {
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "len2 > 1e-12 && len2 < 1e20"),
+                "Main D3D11 shader bounds safeNormalize before rsqrt");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
+                "Main D3D11 shader source remains available to the compile path");
+    EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),
+                "Skybox D3D11 shader bounds safeNormalize before rsqrt");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "float w = (world.w < 0.0 ? -1.0 : 1.0) * "
+                              "max(abs(world.w), 0.0001);"),
+                "PostFX D3D11 shader preserves homogeneous-W sign during reconstruction");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "return world.xyz / w;"),
+                "PostFX D3D11 shader uses the signed homogeneous divide");
+    EXPECT_TRUE(contains_text(d3d11_bloom_shader_source, "PSBloomDown"),
+                "Bloom D3D11 shader source remains available to the compile path");
+    EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "PSTAA"),
+                "TAA D3D11 shader source remains available to the compile path");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "len2 > 1e-12 && len2 < 1e20"),
+                "SSR D3D11 shader bounds safeNormalize before rsqrt");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "bool refineValid = true;"),
+                "SSR D3D11 shader tracks invalid binary-search samples");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "if (mc.w <= 0.0001)"),
+                "SSR D3D11 shader rejects refined samples behind the camera");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "float3 mndc = mc.xyz / mc.w;"),
+                "SSR D3D11 shader divides by guarded mid-sample W");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "float3 hndc = hc.xyz / hc.w;"),
+                "SSR D3D11 shader divides by guarded hit-sample W");
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -1190,6 +1264,7 @@ int main(void) {
     test_shadow_and_rtt_policy_helpers();
     test_postfx_readback_policy_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
+    test_d3d11_shader_sources_keep_numeric_guards();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
