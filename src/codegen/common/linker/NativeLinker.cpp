@@ -1292,10 +1292,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         dynamicSyms.erase("__ImageBase");
         const bool haveVmTrapDefault = globalSyms.find("vm_trap_default") != globalSyms.end();
         const bool needTlsIndex =
+            globalSyms.find("_tls_index") != globalSyms.end() || dynamicSyms.count("_tls_index") ||
+            dynamicSyms.count("__imp__tls_index") ||
             std::any_of(allObjects.begin(), allObjects.end(), [](const ObjFile &obj) {
                 return std::any_of(
                     obj.sections.begin(), obj.sections.end(), [](const ObjSection &sec) {
-                        return sec.alloc && sec.tls && objSectionMemSize(sec) > 0;
+                        return sec.alloc && sec.tls;
                     });
             });
 

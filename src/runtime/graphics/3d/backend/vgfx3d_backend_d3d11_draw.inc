@@ -626,24 +626,24 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
                                      int32_t light_count,
                                      int32_t advertised_shadow_count,
                                      d3d_light_t *light_data) {
+    static const float default_light_direction[3] = {0.0f, -1.0f, 0.0f};
+
     if (!light_data)
         return;
     memset(light_data, 0, sizeof(d3d_light_t) * VGFX3D_MAX_LIGHTS);
     if (!lights || light_count <= 0)
         return;
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
-        light_data[i].type = (lights[i].type >= 0 && lights[i].type <= 3) ? lights[i].type : 0;
+        light_data[i].type = vgfx3d_d3d11_sanitize_light_type(lights[i].type);
         light_data[i].shadow_index =
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
         light_data[i].shadow_cascade_count = vgfx3d_d3d11_sanitize_shadow_cascade_count(
             lights[i].shadow_cascade_count, light_data[i].shadow_index, advertised_shadow_count);
         light_data[i].shadow_projection_type =
-            (light_data[i].shadow_index >= 0 &&
-             lights[i].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE)
-                ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
-                : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
-        vgfx3d_d3d11_copy_float_array_finite_or(
-            light_data[i].direction, lights[i].direction, 3u, 0.0f);
+            vgfx3d_d3d11_sanitize_shadow_projection_type(light_data[i].shadow_index,
+                                                         lights[i].shadow_projection_type);
+        vgfx3d_d3d11_copy_vec3_direction_or(
+            light_data[i].direction, lights[i].direction, default_light_direction);
         vgfx3d_d3d11_copy_float_array_finite_or(
             light_data[i].position, lights[i].position, 3u, 0.0f);
         light_data[i].color[0] =
@@ -656,20 +656,15 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             lights[i].intensity, 0.0f, VGFX3D_D3D11_LIGHT_INTENSITY_MAX, 1.0f);
         light_data[i].attenuation = vgfx3d_d3d11_clamp_float_param(
             lights[i].attenuation, 0.0f, VGFX3D_D3D11_LIGHT_ATTENUATION_MAX, 0.0f);
-        light_data[i].inner_cos =
-            vgfx3d_d3d11_clamp_float_param(lights[i].inner_cos, -1.0f, 1.0f, 1.0f);
-        light_data[i].outer_cos =
-            vgfx3d_d3d11_clamp_float_param(lights[i].outer_cos, -1.0f, 1.0f, 0.0f);
-        if (light_data[i].inner_cos < light_data[i].outer_cos) {
-            float tmp = light_data[i].inner_cos;
-            light_data[i].inner_cos = light_data[i].outer_cos;
-            light_data[i].outer_cos = tmp;
-        }
-        for (size_t split = 0; split < sizeof(light_data[i].shadow_cascade_splits) /
-                                           sizeof(light_data[i].shadow_cascade_splits[0]);
-             split++)
-            light_data[i].shadow_cascade_splits[split] = vgfx3d_d3d11_clamp_float_param(
-                lights[i].shadow_cascade_splits[split], 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 0.0f);
+        vgfx3d_d3d11_sanitize_spot_cone(lights[i].inner_cos,
+                                         lights[i].outer_cos,
+                                         &light_data[i].inner_cos,
+                                         &light_data[i].outer_cos);
+        vgfx3d_d3d11_sanitize_shadow_cascade_splits(
+            light_data[i].shadow_cascade_splits,
+            lights[i].shadow_cascade_splits,
+            sizeof(light_data[i].shadow_cascade_splits) /
+                sizeof(light_data[i].shadow_cascade_splits[0]));
     }
 }
 

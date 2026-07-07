@@ -214,6 +214,18 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
                                      float fallback);
 /// @brief Normalize arbitrary integer flags to shader-facing 0/1 values.
 int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested);
+/// @brief Normalize light type constants to the shader-visible range.
+int32_t vgfx3d_d3d11_sanitize_light_type(int32_t requested);
+/// @brief Normalize shadow projection type, disabling perspective for unshadowed lights.
+int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_index,
+                                                     int32_t requested_projection_type);
+/// @brief Clamp and order spot-light cone cosines before shader upload.
+void vgfx3d_d3d11_sanitize_spot_cone(float requested_inner,
+                                      float requested_outer,
+                                      float *out_inner,
+                                      float *out_outer);
+/// @brief Sanitize shadow cascade split distances into a finite nondecreasing sequence.
+void vgfx3d_d3d11_sanitize_shadow_cascade_splits(float *dst, const float *src, size_t count);
 /// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
 int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count);
 /// @brief Sanitize the clustered-light logarithmic Z range before shader upload.

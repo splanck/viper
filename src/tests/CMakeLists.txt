@@ -1005,6 +1005,18 @@ if (NOT WIN32)
             TIMEOUT 60)
 endif ()
 
+if (WIN32)
+    add_test(NAME native_run_windows_environment
+            COMMAND ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_BINARY_DIR}/native_windows_environment
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_windows_native_environment.cmake
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_run_windows_environment PROPERTIES
+            LABELS "zia;native_run;windows"
+            TIMEOUT 90)
+endif ()
+
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
             COMMAND "${VIPER_BASH_EXECUTABLE}"
