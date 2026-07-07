@@ -1024,6 +1024,18 @@ if (NOT WIN32)
     endforeach ()
 endif ()
 
+if (WIN32)
+    add_test(NAME native_run_windows_environment
+            COMMAND ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_BINARY_DIR}/native_windows_environment
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_windows_native_environment.cmake
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_run_windows_environment PROPERTIES
+            LABELS "zia;native_run;windows"
+            TIMEOUT 90)
+endif ()
+
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
             COMMAND "${VIPER_BASH_EXECUTABLE}"
@@ -1373,7 +1385,8 @@ add_test(NAME zia_viperide_console_search
 set_tests_properties(zia_viperide_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;console;search;requires_display"
-        TIMEOUT 300)
+        PROCESSORS 4
+        TIMEOUT 420)
 
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
@@ -1480,7 +1493,8 @@ if (WIN32)
     # compile/render path; keep the smoke tests correctness-focused.
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software"
-            TIMEOUT 600)
+            PROCESSORS 8
+            TIMEOUT 900)
     if (TEST zia_smoke_ridgebound_tree_materials)
         set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
                 ENVIRONMENT "VIPER_3D_BACKEND=software")
@@ -1488,6 +1502,7 @@ if (WIN32)
     set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             RESOURCE_LOCK viper_display
+            PROCESSORS 8
             TIMEOUT 600)
     add_test(NAME zia_smoke_ridgebound_d3d11
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
@@ -1497,6 +1512,7 @@ if (WIN32)
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
             RESOURCE_LOCK viper_display
+            PROCESSORS 8
             TIMEOUT 600)
 endif ()
 if (APPLE)

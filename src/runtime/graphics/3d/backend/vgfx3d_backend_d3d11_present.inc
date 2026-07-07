@@ -40,15 +40,9 @@ static float d3d11_halton(uint32_t index, uint32_t base) {
     return r;
 }
 
-/// @brief True when the exported postfx chain contains an effect of @p type_value.
+/// @brief True when the exported postfx chain contains an active effect of @p type_value.
 static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
-    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
-        return 0;
-    for (int32_t i = 0; i < chain->effect_count; i++) {
-        if (chain->effects[i].type == type_value)
-            return 1;
-    }
-    return 0;
+    return vgfx3d_d3d11_postfx_chain_has_active_effect(chain, type_value);
 }
 
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
@@ -109,12 +103,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
                                    cam->height_fog_density * cam->height_fog_blend, 0.0f)
                              : 0.0f;
     ctx->height_fog[3] = 0.0f;
-    ctx->fog_near = vgfx3d_d3d11_finite_or(cam->fog_near, 10.0f);
-    if (ctx->fog_near < 0.0f)
-        ctx->fog_near = 0.0f;
-    ctx->fog_far = vgfx3d_d3d11_finite_or(cam->fog_far, 50.0f);
-    if (ctx->fog_far <= ctx->fog_near)
-        ctx->fog_far = ctx->fog_near + 1.0f;
+    vgfx3d_d3d11_sanitize_fog_range(cam->fog_near, cam->fog_far, &ctx->fog_near, &ctx->fog_far);
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
@@ -901,7 +890,8 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
      * entry uses bloom; passes composite mip 0 via slot t4 while the SRV is non-NULL. */
     ctx->postfx_current_bloom_srv = NULL;
     for (int32_t i = 0; i < chain->effect_count; i++) {
-        if (chain->effects[i].snapshot.bloom_enabled) {
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM &&
+            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i])) {
             ctx->postfx_current_bloom_srv =
                 d3d11_encode_bloom_chain(ctx,
                                          ctx->scene_width,
@@ -1023,7 +1013,7 @@ static int d3d11_readback_rgba(
         ctx->gpu_postfx_chain_valid,
         ctx->gpu_postfx_chain.enabled,
         ctx->gpu_postfx_chain.effect_count,
-        vgfx3d_d3d11_postfx_chain_is_usable(&ctx->gpu_postfx_chain),
+        vgfx3d_d3d11_postfx_chain_has_active_effects(&ctx->gpu_postfx_chain),
         d3d11_has_scene_targets(ctx),
         ctx->current_target_kind);
     if (readback_kind == VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT) {
@@ -1066,7 +1056,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
         ctx->scene_composited_to_swapchain = 0;
         return;
     }
-    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(chain) && ctx->gpu_postfx_enabled &&
+    use_postfx = (vgfx3d_d3d11_postfx_chain_has_active_effects(chain) && ctx->gpu_postfx_enabled &&
                   d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
@@ -1111,7 +1101,7 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
                                                     d3d11_has_scene_targets(ctx),
                                                     ctx->scene_composited_to_swapchain))
         return;
-    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(postfx) && ctx->gpu_postfx_enabled &&
+    use_postfx = (vgfx3d_d3d11_postfx_chain_has_active_effects(postfx) && ctx->gpu_postfx_enabled &&
                   d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
@@ -1449,7 +1439,7 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     }
     ctx->shadow_slot_complete[slot] = 1;
     d3d11_recompute_shadow_count(ctx);
-    ctx->shadow_bias = vgfx3d_d3d11_finite_or(bias, 0.0f);
+    ctx->shadow_bias = vgfx3d_d3d11_sanitize_shadow_bias(bias);
     ctx->shadow_pass_slot = -1;
     d3d11_select_current_targets(ctx);
 }

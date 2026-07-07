@@ -803,6 +803,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
         return;
 
     if (ctx->ctx) {
+        if (ctx->frame_time_active)
+            d3d11_end_frame_timing(ctx);
         d3d11_unbind_draw_resources(ctx);
         d3d11_unbind_shadow_resources(ctx);
         d3d11_unbind_output_targets(ctx);
@@ -837,8 +839,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->cb_per_lights);
     SAFE_RELEASE(ctx->cb_cluster_offsets);
     SAFE_RELEASE(ctx->cb_cluster_indices);
-    SAFE_RELEASE(ctx->opaque_depth_srv);
-    SAFE_RELEASE(ctx->opaque_depth_tex);
+    d3d11_destroy_opaque_depth_target(ctx);
     SAFE_RELEASE(ctx->cb_per_material);
     SAFE_RELEASE(ctx->cb_per_scene);
     SAFE_RELEASE(ctx->cb_per_object);

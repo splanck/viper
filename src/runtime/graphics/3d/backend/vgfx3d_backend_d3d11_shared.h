@@ -52,6 +52,8 @@ extern "C" {
 #define VGFX3D_D3D11_LIGHT_INTENSITY_MAX 1000000.0f
 #define VGFX3D_D3D11_LIGHT_ATTENUATION_MAX 1000000.0f
 #define VGFX3D_D3D11_POSTFX_SCALAR_MAX 1000000.0f
+#define VGFX3D_D3D11_FOG_DISTANCE_MAX 1000000000.0f
+#define VGFX3D_D3D11_SHADOW_BIAS_MAX 1000000.0f
 #define VGFX3D_D3D11_SHADING_MODEL_MAX 5
 #define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
 #define VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX 6
@@ -212,6 +214,18 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
                                      float fallback);
 /// @brief Normalize arbitrary integer flags to shader-facing 0/1 values.
 int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested);
+/// @brief Normalize light type constants to the shader-visible range.
+int32_t vgfx3d_d3d11_sanitize_light_type(int32_t requested);
+/// @brief Normalize shadow projection type, disabling perspective for unshadowed lights.
+int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_index,
+                                                     int32_t requested_projection_type);
+/// @brief Clamp and order spot-light cone cosines before shader upload.
+void vgfx3d_d3d11_sanitize_spot_cone(float requested_inner,
+                                      float requested_outer,
+                                      float *out_inner,
+                                      float *out_outer);
+/// @brief Sanitize shadow cascade split distances into a finite nondecreasing sequence.
+void vgfx3d_d3d11_sanitize_shadow_cascade_splits(float *dst, const float *src, size_t count);
 /// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
 int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count);
 /// @brief Sanitize the clustered-light logarithmic Z range before shader upload.
@@ -246,8 +260,22 @@ int32_t vgfx3d_d3d11_sanitize_alpha_mode(int32_t requested);
 int32_t vgfx3d_d3d11_sanitize_shading_model(int32_t requested);
 /// @brief Normalize tonemap mode constants before post-FX shader upload.
 int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested);
+/// @brief Sanitize fog near/far distances before scene constant upload.
+void vgfx3d_d3d11_sanitize_fog_range(float requested_near,
+                                      float requested_far,
+                                      float *out_near,
+                                      float *out_far);
+/// @brief Sanitize D3D11 shader-facing shadow depth bias.
+float vgfx3d_d3d11_sanitize_shadow_bias(float requested);
 /// @brief Validate a backend-facing post-FX chain before indexed iteration.
 int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain);
+/// @brief Return non-zero when one PostFX effect descriptor actually changes rendering.
+int vgfx3d_d3d11_postfx_effect_is_active(const vgfx3d_postfx_effect_desc_t *effect);
+/// @brief Return non-zero when a usable chain contains an active effect of @p type_value.
+int vgfx3d_d3d11_postfx_chain_has_active_effect(const vgfx3d_postfx_chain_t *chain,
+                                                int32_t type_value);
+/// @brief Return non-zero when a usable chain contains any active effect.
+int vgfx3d_d3d11_postfx_chain_has_active_effects(const vgfx3d_postfx_chain_t *chain);
 /// @brief Decide whether the bone constant buffers need a per-draw upload.
 int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning);
 /// @brief Saturating unsigned 64-bit addition for upload counters.

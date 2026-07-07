@@ -65,6 +65,9 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size);
 static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
                                                int wide_len,
                                                const char *context);
+static wchar_t *rt_env_utf8_span_to_wide_or_trap(const char *utf8,
+                                                 size_t utf8_len,
+                                                 const char *context);
 #endif
 
 /// @brief Get the argument store from the active context (or legacy fallback).
@@ -281,64 +284,143 @@ static RtArgsState *rt_args_query_state(void) {
 }
 
 #ifdef _WIN32
-/// @brief Convert a NUL-terminated UTF-8 string to a heap-allocated wide string (Windows).
-/// @details Uses `MultiByteToWideChar` with `MB_ERR_INVALID_CHARS` so
-///          malformed UTF-8 traps cleanly instead of producing a
-///          silently-mangled wide string. Used by environment-API
-///          calls that need to hit the W (wide) Win32 entry points.
-///          Caller owns the returned buffer (must `free`). Traps on
-///          conversion failure or allocation failure; there is no
-///          recoverable path for an invalid env-var name on Windows.
-static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
+/// @brief Convert a UTF-8 byte span to a heap-allocated wide string (Windows).
+/// @details Performs strict in-tree UTF-8 decoding so native PE binaries do not
+///          depend on Win32 conversion helpers before runtime heap allocation is
+///          fully usable. Caller owns the returned buffer and must `free` it.
+///          Traps on malformed UTF-8 or allocation failure.
+static wchar_t *rt_env_utf8_span_to_wide_or_trap(const char *utf8,
+                                                 size_t utf8_len,
+                                                 const char *context) {
     if (!utf8)
         return NULL;
-    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
-    if (needed <= 0) {
-        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
-        return NULL;
-    }
-    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    wchar_t *wide = (wchar_t *)malloc((utf8_len + 1u) * sizeof(wchar_t));
     if (!wide) {
         rt_trap("Environment: allocation failed");
         return NULL;
     }
-    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
-        free(wide);
-        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
-        return NULL;
+
+    size_t out = 0;
+    for (size_t i = 0; i < utf8_len;) {
+        unsigned char c = (unsigned char)utf8[i++];
+        uint32_t cp = 0;
+        int need = 0;
+        uint32_t min_cp = 0;
+        if (c < 0x80) {
+            cp = c;
+        } else if ((c & 0xE0u) == 0xC0u) {
+            cp = c & 0x1Fu;
+            need = 1;
+            min_cp = 0x80u;
+        } else if ((c & 0xF0u) == 0xE0u) {
+            cp = c & 0x0Fu;
+            need = 2;
+            min_cp = 0x800u;
+        } else if ((c & 0xF8u) == 0xF0u) {
+            cp = c & 0x07u;
+            need = 3;
+            min_cp = 0x10000u;
+        } else {
+            free(wide);
+            rt_trap(context ? context : "Environment: invalid UTF-8");
+            return NULL;
+        }
+
+        if (i + (size_t)need > utf8_len) {
+            free(wide);
+            rt_trap(context ? context : "Environment: truncated UTF-8");
+            return NULL;
+        }
+        for (int j = 0; j < need; ++j) {
+            unsigned char cc = (unsigned char)utf8[i++];
+            if ((cc & 0xC0u) != 0x80u) {
+                free(wide);
+                rt_trap(context ? context : "Environment: invalid UTF-8 continuation");
+                return NULL;
+            }
+            cp = (cp << 6) | (uint32_t)(cc & 0x3Fu);
+        }
+
+        if (cp < min_cp || cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) {
+            free(wide);
+            rt_trap(context ? context : "Environment: invalid UTF-8 codepoint");
+            return NULL;
+        }
+        if (cp <= 0xFFFFu) {
+            wide[out++] = (wchar_t)cp;
+        } else {
+            cp -= 0x10000u;
+            wide[out++] = (wchar_t)(0xD800u + (cp >> 10));
+            wide[out++] = (wchar_t)(0xDC00u + (cp & 0x3FFu));
+        }
     }
+    wide[out] = L'\0';
     return wide;
 }
 
 /// @brief Convert a wide string of known length to an `rt_string` (UTF-8) on Windows.
-/// @details Inverse of `rt_env_utf8_to_wide_or_trap`. Two-call
-///          `WideCharToMultiByte` pattern: first call sizes the
-///          output, second fills it. Traps on conversion failure
-///          rather than returning empty so callers don't silently
-///          lose data on weird input from the OS.
+/// @details Inverse of `rt_env_utf8_span_to_wide_or_trap`. Performs strict
+///          in-tree UTF-16 decoding and traps instead of silently losing data
+///          on malformed input from the OS.
 static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
                                                int wide_len,
                                                const char *context) {
     if (!wide || wide_len <= 0)
         return rt_str_empty();
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);
-    if (needed <= 0) {
-        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
-        return rt_str_empty();
+
+    size_t needed = 0;
+    for (int i = 0; i < wide_len; ++i) {
+        uint32_t cp = (uint32_t)wide[i];
+        if (cp >= 0xD800u && cp <= 0xDBFFu) {
+            if (i + 1 >= wide_len) {
+                rt_trap(context ? context : "Environment: truncated UTF-16 surrogate pair");
+                return rt_str_empty();
+            }
+            uint32_t lo = (uint32_t)wide[++i];
+            if (lo < 0xDC00u || lo > 0xDFFFu) {
+                rt_trap(context ? context : "Environment: invalid UTF-16 surrogate pair");
+                return rt_str_empty();
+            }
+            cp = 0x10000u + (((cp - 0xD800u) << 10) | (lo - 0xDC00u));
+        } else if (cp >= 0xDC00u && cp <= 0xDFFFu) {
+            rt_trap(context ? context : "Environment: unpaired UTF-16 surrogate");
+            return rt_str_empty();
+        }
+        needed += (cp < 0x80u) ? 1u : (cp < 0x800u) ? 2u : (cp < 0x10000u) ? 3u : 4u;
     }
-    char *buffer = (char *)malloc((size_t)needed);
+
+    char *buffer = (char *)malloc(needed ? needed : 1u);
     if (!buffer) {
         rt_trap("Environment: allocation failed");
         return rt_str_empty();
     }
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, buffer, needed, NULL, NULL) <= 0) {
-        free(buffer);
-        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
-        return rt_str_empty();
+
+    size_t out = 0;
+    for (int i = 0; i < wide_len; ++i) {
+        uint32_t cp = (uint32_t)wide[i];
+        if (cp >= 0xD800u && cp <= 0xDBFFu) {
+            uint32_t lo = (uint32_t)wide[++i];
+            cp = 0x10000u + (((cp - 0xD800u) << 10) | (lo - 0xDC00u));
+        }
+        if (cp < 0x80u) {
+            buffer[out++] = (char)cp;
+        } else if (cp < 0x800u) {
+            buffer[out++] = (char)(0xC0u | (cp >> 6));
+            buffer[out++] = (char)(0x80u | (cp & 0x3Fu));
+        } else if (cp < 0x10000u) {
+            buffer[out++] = (char)(0xE0u | (cp >> 12));
+            buffer[out++] = (char)(0x80u | ((cp >> 6) & 0x3Fu));
+            buffer[out++] = (char)(0x80u | (cp & 0x3Fu));
+        } else {
+            buffer[out++] = (char)(0xF0u | (cp >> 18));
+            buffer[out++] = (char)(0x80u | ((cp >> 12) & 0x3Fu));
+            buffer[out++] = (char)(0x80u | ((cp >> 6) & 0x3Fu));
+            buffer[out++] = (char)(0x80u | (cp & 0x3Fu));
+        }
     }
-    rt_string out = rt_string_from_bytes(buffer, (size_t)needed);
+    rt_string out_str = rt_string_from_bytes(buffer, out);
     free(buffer);
-    return out;
+    return out_str;
 }
 #endif
 
@@ -582,6 +664,12 @@ static const char *rt_env_require_name(rt_string name, const char *context) {
         rt_trap(context ? context : "Environment: variable name is empty");
         return "";
     }
+    size_t c_len = strlen(cname);
+    int64_t rt_len = rt_str_len(name);
+    if (c_len != (size_t)rt_len) {
+        rt_trap(context ? context : "Environment: variable name must not contain null bytes");
+        return "";
+    }
     return cname;
 }
 
@@ -595,8 +683,10 @@ rt_string rt_env_get_var(rt_string name) {
         rt_env_require_name(name, "Viper.System.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
-    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.System.Environment.GetVariable: invalid UTF-8 variable name");
+    wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
+        cname,
+        (size_t)rt_str_len(name),
+        "Viper.System.Environment.GetVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     if (required == 0) {
@@ -657,8 +747,10 @@ int64_t rt_env_has_var(rt_string name) {
         rt_env_require_name(name, "Viper.System.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
-    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.System.Environment.HasVariable: invalid UTF-8 variable name");
+    wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
+        cname,
+        (size_t)rt_str_len(name),
+        "Viper.System.Environment.HasVariable: invalid UTF-8 variable name");
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     DWORD err = GetLastError();
@@ -695,10 +787,14 @@ void rt_env_set_var(rt_string name, rt_string value) {
     }
 
 #ifdef _WIN32
-    wchar_t *wname = rt_env_utf8_to_wide_or_trap(
-        cname, "Viper.System.Environment.SetVariable: invalid UTF-8 variable name");
-    wchar_t *wvalue = rt_env_utf8_to_wide_or_trap(
-        cvalue, "Viper.System.Environment.SetVariable: invalid UTF-8 variable value");
+    wchar_t *wname = rt_env_utf8_span_to_wide_or_trap(
+        cname,
+        (size_t)rt_str_len(name),
+        "Viper.System.Environment.SetVariable: invalid UTF-8 variable name");
+    wchar_t *wvalue = rt_env_utf8_span_to_wide_or_trap(
+        cvalue,
+        value ? (size_t)rt_str_len(value) : 0,
+        "Viper.System.Environment.SetVariable: invalid UTF-8 variable value");
     int ok = SetEnvironmentVariableW(wname, wvalue) ? 1 : 0;
     free(wname);
     free(wvalue);
@@ -713,9 +809,14 @@ void rt_env_set_var(rt_string name, rt_string value) {
 }
 
 /// @brief Terminate the process with the provided exit code.
-/// @details Delegates to exit so any registered atexit handlers run
-///          before shutdown. The exit code is truncated to int for compatibility.
+/// @details Delegates to the platform termination primitive. Windows native PE
+///          binaries use a CRT-less startup shim, so they must not route through
+///          the CRT exit machinery.
 /// @param code Exit status to report.
 void rt_env_exit(int64_t code) {
+#if RT_PLATFORM_WINDOWS
+    ExitProcess((UINT)(uint32_t)code);
+#else
     exit((int)code);
+#endif
 }

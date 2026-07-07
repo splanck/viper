@@ -103,10 +103,13 @@ func createNormalMap(size: Integer, strength: Float) -> Pixels {
 }
 
 func bumpHeight(x: Integer, y: Integer, size: Integer) -> Float {
-    var xx = x % size;
-    if (xx < 0) { xx = xx + size; }
-    var yy = y % size;
-    if (yy < 0) { yy = yy + size; }
+    if (size <= 0) { return 0.0; }
+    var xx = x;
+    while (xx < 0) { xx = xx + size; }
+    while (xx >= size) { xx = xx - size; }
+    var yy = y;
+    while (yy < 0) { yy = yy + size; }
+    while (yy >= size) { yy = yy - size; }
     var n = (xx * 13 + yy * 7 + xx * yy * 3) % 23;
     return (n + 0.0) / 23.0;
 }
@@ -127,7 +130,8 @@ class RidgeboundTerrain {
             land, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
         Terrain3D.SetMaterial(land, terrainMat);
 
-        Terrain3D.SetLayerTexture(land, 0, createGrassTexture(config.TERRAIN_TEXTURE_SIZE));
+        var grassTex = createGrassTexture(config.TERRAIN_TEXTURE_SIZE);
+        Terrain3D.SetLayerTexture(land, 0, grassTex);
         Terrain3D.SetLayerTexture(land, 1, createRockTexture(config.TERRAIN_TEXTURE_SIZE));
         Terrain3D.SetLayerTexture(land, 2, createDirtTexture(config.TERRAIN_TEXTURE_SIZE));
         Terrain3D.SetLayerTexture(land, 3, createSnowTexture(config.TERRAIN_TEXTURE_SIZE));
@@ -172,18 +176,22 @@ class RidgeboundTerrain {
         return land;
     }
 
+    hide func grassPixel(px: Integer, py: Integer) -> Integer {
+        // Wider tonal spread + soft patches for a richer, less uniform green.
+        var noise = ((px * 7 + py * 11 + px * py) % 40) - 20;
+        var patch = ((px / 9 + py / 7) % 3) * 10 - 10;
+        var r = mathutil.clampByte(58 + noise / 2 + patch / 2);
+        var g = mathutil.clampByte(104 + noise + patch);
+        var b = mathutil.clampByte(42 + noise / 3 + patch / 3);
+        return mathutil.packPixel(r, g, b, 255);
+    }
+
     hide func createGrassTexture(size: Integer) -> Pixels {
         var tex = Pixels.New(size, size);
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
-                // Wider tonal spread + soft patches for a richer, less uniform green.
-                var noise = ((px * 7 + py * 11 + px * py) % 40) - 20;
-                var patch = ((px / 9 + py / 7) % 3) * 10 - 10;
-                var r = mathutil.clampByte(58 + noise / 2 + patch / 2);
-                var g = mathutil.clampByte(104 + noise + patch);
-                var b = mathutil.clampByte(42 + noise / 3 + patch / 3);
-                tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
+                tex.Set(px, py, grassPixel(px, py));
             }
         }
 

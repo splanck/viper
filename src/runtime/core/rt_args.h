@@ -83,7 +83,8 @@ int64_t rt_env_has_var(rt_string name);
 void rt_env_set_var(rt_string name, rt_string value);
 
 /// @brief Terminate the current process with the provided exit code.
-/// @details Delegates to exit so any atexit handlers run before exit.
+/// @details Delegates to the platform termination primitive. Windows native PE
+///          binaries bypass the CRT exit path.
 /// @param code Exit status to report to the host OS.
 void rt_env_exit(int64_t code);
 
