@@ -616,7 +616,6 @@ class Renderer {
         if not player.isDashing { return; }
         var sx = player.pixelX() - camX;
         var sy = player.pixelY() - camY;
-        var trailLen = 40;
         var trailDir = player.facing;
         // Multiple translucent streaks
         var i = 0;
@@ -883,7 +882,7 @@ class Renderer {
     ///        layers (calls into `drawAmbientEffects`,
     ///        `drawIceOverlay`, `drawPoisonOverlay`, etc.
     ///        depending on the active biome).
-    expose func drawBiomeAmbient(canvas: Canvas, camX: Integer, camY: Integer,
+    expose func drawBiomeAmbient(canvas: Canvas, _camX: Integer, _camY: Integer,
                                   theme: Integer, timer: Integer) {
         // Floating particles based on biome theme
         var i = 0;

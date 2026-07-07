@@ -1,0 +1,242 @@
+// =============================================================================
+// level_validation.zia - Campaign structural checks
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// This module is intentionally separate from the runtime game loop.  It gives
+// maintainers a cheap probe for procedural level data problems: out-of-bounds
+// bosses, missing exits, mismatched spawn arrays, and side-scroller ordering
+// mistakes where a critical objective is placed before the player start.
+//
+// =============================================================================
+
+module level_validation;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt;
+bind "./config";
+bind "./level";
+
+/// @brief Mutable result object returned by the campaign validator.
+///
+/// The probe keeps this small on purpose: `checkedLevels` records coverage and
+/// `errors` records hard failures.  Detailed failure lines are emitted as the
+/// validator finds them so CI or a local shell can show the exact bad level.
+class LevelValidationReport {
+    expose Integer checkedLevels;
+    expose Integer errors;
+
+    /// @brief Initialise the report counters to zero.
+    expose func init() {
+        checkedLevels = 0;
+        errors = 0;
+    }
+
+    /// @brief True when every checked level passed all structural checks.
+    expose func ok() -> Boolean {
+        return errors == 0;
+    }
+}
+
+/// @brief Structural validator for all Xenoscape campaign level builders.
+///
+/// This validates the properties that can be proven without simulating human
+/// platforming skill: level dimensions, player start, checkpoint, boss, enemy
+/// spawns, pickup spawns, exit-sign presence, and broad left-to-right objective
+/// ordering.  It is deliberately conservative so it catches broken data without
+/// blocking valid but difficult platforming layouts.
+class LevelValidator {
+    hide LevelValidationReport report;
+
+    /// @brief Construct a fresh validator with an empty report.
+    expose func init() {
+        report = new LevelValidationReport();
+    }
+
+    /// @brief Validate every campaign level from 1 through LEVEL_COUNT.
+    ///
+    /// @param verbose When true, prints a pass line for every valid level.
+    /// @return A report containing the number of checked levels and failures.
+    expose func validateCampaign(verbose: Boolean) -> LevelValidationReport {
+        report = new LevelValidationReport();
+
+        var levelNum = 1;
+        while levelNum <= LEVEL_COUNT {
+            validateLevel(levelNum, verbose);
+            levelNum = levelNum + 1;
+        }
+
+        return report;
+    }
+
+    /// @brief Validate one procedural level builder and append failures.
+    ///
+    /// The level is loaded exactly as the game loads it, including enrichment,
+    /// so this catches bugs in both the base tilemap and the post-build spawn
+    /// additions.
+    ///
+    /// @param levelNum One-based campaign level index.
+    /// @param verbose When true, prints a pass line if the level has no errors.
+    expose func validateLevel(levelNum: Integer, verbose: Boolean) {
+        var before = report.errors;
+        report.checkedLevels = report.checkedLevels + 1;
+
+        var lvl = new Level();
+        lvl.loadLevel(levelNum);
+        lvl.enrichEnemies(levelNum);
+
+        if lvl.levelWidth <= 0 {
+            fail(levelNum, "level width must be positive");
+        }
+        if lvl.levelHeight <= 0 {
+            fail(levelNum, "level height must be positive");
+        }
+
+        validatePoint(levelNum, "player start",
+                      lvl.playerStartX, lvl.playerStartY,
+                      lvl.levelWidth, lvl.levelHeight);
+
+        if lvl.hasCheckpoint {
+            validatePoint(levelNum, "checkpoint",
+                          lvl.checkpointX, lvl.checkpointY,
+                          lvl.levelWidth, lvl.levelHeight);
+        }
+
+        if lvl.hasBoss {
+            validatePoint(levelNum, "boss",
+                          lvl.bossX, lvl.bossY,
+                          lvl.levelWidth, lvl.levelHeight);
+        }
+
+        validateEnemySpawns(levelNum, lvl);
+        validatePickupSpawns(levelNum, lvl);
+
+        var exitCol = findExitCol(lvl);
+        if exitCol < 0 {
+            fail(levelNum, "missing TILE_SIGN_END exit");
+        } else {
+            validateCriticalOrder(levelNum, lvl, exitCol);
+        }
+
+        if verbose and report.errors == before {
+            Terminal.Say("LEVEL " + Int(levelNum) + ": ok");
+        }
+    }
+
+    /// @brief Record a validation failure and print it immediately.
+    ///
+    /// @param levelNum One-based campaign level index.
+    /// @param message Human-readable failure description.
+    hide func fail(levelNum: Integer, message: String) {
+        report.errors = report.errors + 1;
+        Terminal.Say("LEVEL " + Int(levelNum) + ": " + message);
+    }
+
+    /// @brief Ensure a world-pixel point lies inside the tilemap.
+    ///
+    /// @param levelNum One-based campaign level index for failure output.
+    /// @param label Name of the checked point.
+    /// @param x World pixel X.
+    /// @param y World pixel Y.
+    /// @param width Level width in tiles.
+    /// @param height Level height in tiles.
+    hide func validatePoint(levelNum: Integer, label: String,
+                             x: Integer, y: Integer,
+                             width: Integer, height: Integer) {
+        if x < 0 or y < 0 {
+            fail(levelNum, label + " is negative");
+            return;
+        }
+        if x >= width * TILE_SIZE {
+            fail(levelNum, label + " x outside level bounds");
+        }
+        if y >= height * TILE_SIZE {
+            fail(levelNum, label + " y outside level bounds");
+        }
+    }
+
+    /// @brief Validate enemy spawn arrays and every enemy spawn point.
+    ///
+    /// @param levelNum One-based campaign level index for failure output.
+    /// @param lvl Loaded level whose enemy spawn lists are checked.
+    hide func validateEnemySpawns(levelNum: Integer, lvl: Level) {
+        if lvl.enemyTypes.length() != lvl.enemyX.length() {
+            fail(levelNum, "enemy type/x spawn list length mismatch");
+        }
+        if lvl.enemyTypes.length() != lvl.enemyY.length() {
+            fail(levelNum, "enemy type/y spawn list length mismatch");
+        }
+
+        var count = lvl.enemyTypes.length();
+        var i = 0;
+        while i < count {
+            validatePoint(levelNum, "enemy " + Int(i),
+                          lvl.enemyX.get(i), lvl.enemyY.get(i),
+                          lvl.levelWidth, lvl.levelHeight);
+            i = i + 1;
+        }
+    }
+
+    /// @brief Validate pickup spawn arrays and every pickup spawn point.
+    ///
+    /// @param levelNum One-based campaign level index for failure output.
+    /// @param lvl Loaded level whose pickup spawn lists are checked.
+    hide func validatePickupSpawns(levelNum: Integer, lvl: Level) {
+        if lvl.pickupTypes.length() != lvl.pickupX.length() {
+            fail(levelNum, "pickup type/x spawn list length mismatch");
+        }
+        if lvl.pickupTypes.length() != lvl.pickupY.length() {
+            fail(levelNum, "pickup type/y spawn list length mismatch");
+        }
+
+        var count = lvl.pickupTypes.length();
+        var i = 0;
+        while i < count {
+            validatePoint(levelNum, "pickup " + Int(i),
+                          lvl.pickupX.get(i), lvl.pickupY.get(i),
+                          lvl.levelWidth, lvl.levelHeight);
+            i = i + 1;
+        }
+    }
+
+    /// @brief Find the first exit-sign column in a loaded tilemap.
+    ///
+    /// @param lvl Loaded level to scan.
+    /// @return The first column containing TILE_SIGN_END, or -1 if absent.
+    hide func findExitCol(lvl: Level) -> Integer {
+        var row = 0;
+        while row < lvl.levelHeight {
+            var col = 0;
+            while col < lvl.levelWidth {
+                if lvl.getTile(col, row) == TILE_SIGN_END {
+                    return col;
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Check broad side-scroller progression ordering.
+    ///
+    /// @param levelNum One-based campaign level index for failure output.
+    /// @param lvl Loaded level being checked.
+    /// @param exitCol Column containing the level exit sign.
+    hide func validateCriticalOrder(levelNum: Integer, lvl: Level, exitCol: Integer) {
+        var startCol = lvl.playerStartX / TILE_SIZE;
+        if exitCol <= startCol {
+            fail(levelNum, "exit is not to the right of the player start");
+        }
+
+        if lvl.hasBoss {
+            var bossCol = lvl.bossX / TILE_SIZE;
+            if bossCol <= startCol {
+                fail(levelNum, "boss is not to the right of the player start");
+            }
+            if bossCol > exitCol {
+                fail(levelNum, "boss is placed after the exit sign");
+            }
+        }
+    }
+}

@@ -1100,7 +1100,7 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 
     if (event->type == VG_EVENT_MOUSE_WHEEL) {
-        float delta = event->wheel.delta_y * 30; // 30 pixels per scroll unit
+        float delta = event->wheel.delta_y * 30 * vg_get_wheel_speed(); // 30px per unit * sensitivity
         pane->scroll_y -= delta;
 
         // Clamp scroll

@@ -251,6 +251,19 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 ///
 /// @note To simulate events, use vgfx_mock_inject_key_event(),
 ///       vgfx_mock_inject_mouse_move(), etc.
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    /* Events already pending: return immediately. */
+    if (platform->pending_head != platform->pending_tail)
+        return 1;
+    if (timeout_ms > 0)
+        vgfx_platform_sleep_ms(timeout_ms);
+    /* An event may have been injected concurrently while we slept. */
+    return platform->pending_head != platform->pending_tail ? 1 : 0;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;

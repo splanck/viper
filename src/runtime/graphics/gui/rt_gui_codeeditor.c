@@ -186,8 +186,51 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
     icon->line = line_i;
     icon->type = type;
+    icon->style = 0;
     icon->color = s_type_colors[type];
     icon->image = new_image;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.SetGutterBar(line, colorRGB, slot)` — add/update a change
+///        bar (thin vertical bar at the gutter's left edge) on a line. Used for
+///        SCM diff markers; coexists with disc icons in other slots.
+void rt_codeeditor_set_gutter_bar(void *editor, int64_t line, int64_t color, int64_t slot) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    int type = 0;
+    if (!rt_codeeditor_gutter_slot_checked(slot, &type))
+        return;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    uint32_t rgb = (uint32_t)(color & 0xFFFFFFFF);
+    /* Update an existing bar on the same line+slot. */
+    for (int i = 0; i < ce->gutter_icon_count; i++) {
+        if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
+            ce->gutter_icons[i].style = 1;
+            ce->gutter_icons[i].color = rgb;
+            vg_icon_destroy(&ce->gutter_icons[i].image);
+            memset(&ce->gutter_icons[i].image, 0, sizeof(ce->gutter_icons[i].image));
+            ce->base.needs_paint = true;
+            return;
+        }
+    }
+    if (ce->gutter_icon_count >= ce->gutter_icon_cap) {
+        if (ce->gutter_icon_cap > INT_MAX / 2)
+            return;
+        int new_cap = ce->gutter_icon_cap ? ce->gutter_icon_cap * 2 : 8;
+        void *p = realloc(ce->gutter_icons, (size_t)new_cap * sizeof(*ce->gutter_icons));
+        if (!p)
+            return;
+        ce->gutter_icons = p;
+        ce->gutter_icon_cap = new_cap;
+    }
+    struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
+    icon->line = line_i;
+    icon->type = type;
+    icon->style = 1;
+    icon->color = rgb;
+    memset(&icon->image, 0, sizeof(icon->image));
     ce->base.needs_paint = true;
 }
 
@@ -1049,6 +1092,26 @@ int64_t rt_codeeditor_get_word_wrap(void *editor) {
     return ce->word_wrap ? 1 : 0;
 }
 
+/// @brief `CodeEditor.SetWhitespaceMode` — set space/tab marker rendering
+///        (0=none, 1=boundary, 2=all). Out-of-range values clamp to none.
+void rt_codeeditor_set_whitespace_mode(void *editor, int64_t mode) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    if (mode < VG_WHITESPACE_NONE || mode > VG_WHITESPACE_ALL)
+        mode = VG_WHITESPACE_NONE;
+    ce->render_whitespace_mode = (int)mode;
+    ce->base.needs_paint = true;
+}
+
+/// @brief `CodeEditor.GetWhitespaceMode` — return the whitespace marker mode.
+int64_t rt_codeeditor_get_whitespace_mode(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return 0;
+    return (int64_t)ce->render_whitespace_mode;
+}
+
 /// @brief `CodeEditor.SetShowIndentGuides` — toggle faint indentation guides.
 void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
@@ -1698,6 +1761,120 @@ int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor) {
     return rt_codeeditor_perf_i64(stats.full_text_copy_bytes);
 }
 
+//=============================================================================
+// EditorBuffer — detachable per-document editor state (Viper.GUI.EditorBuffer)
+//=============================================================================
+
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+
+#define RT_EDITORBUFFER_MAGIC 0x45444255464652ULL /* "EDBUFFR" */
+
+typedef struct rt_editorbuffer_data {
+    uint64_t magic;
+    vg_editor_buffer_t *buf; /* NULL once consumed by an attach */
+} rt_editorbuffer_data_t;
+
+/// @brief Authenticate an EditorBuffer handle via its magic tag.
+static rt_editorbuffer_data_t *rt_editorbuffer_checked(void *handle) {
+    rt_editorbuffer_data_t *d = (rt_editorbuffer_data_t *)handle;
+    return (d && d->magic == RT_EDITORBUFFER_MAGIC) ? d : NULL;
+}
+
+/// @brief GC finalizer: free the owned buffer if it was never attached.
+static void rt_editorbuffer_finalize(void *obj) {
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(obj);
+    if (!d)
+        return;
+    if (d->buf) {
+        vg_editor_buffer_destroy(d->buf);
+        d->buf = NULL;
+    }
+    d->magic = 0;
+}
+
+/// @brief Wrap a detached buffer in a GC handle (takes ownership).
+static void *rt_editorbuffer_wrap(vg_editor_buffer_t *buf) {
+    rt_editorbuffer_data_t *d = (rt_editorbuffer_data_t *)rt_obj_new_i64(
+        0, (int64_t)sizeof(rt_editorbuffer_data_t));
+    if (!d) {
+        vg_editor_buffer_destroy(buf);
+        return NULL;
+    }
+    d->magic = RT_EDITORBUFFER_MAGIC;
+    d->buf = buf;
+    rt_obj_set_finalizer(d, rt_editorbuffer_finalize);
+    return d;
+}
+
+/// @brief `EditorBuffer.New` — detached buffer initialised from text.
+void *rt_editorbuffer_new(rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_editor_buffer_t *buf = vg_editor_buffer_create(ctext);
+    if (ctext)
+        free(ctext);
+    if (!buf)
+        return NULL;
+    return rt_editorbuffer_wrap(buf);
+}
+
+/// @brief `EditorBuffer.get_Text` — full document text.
+rt_string rt_editorbuffer_get_text(void *handle) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(handle);
+    if (!d || !d->buf)
+        return rt_str_empty();
+    char *t = vg_editor_buffer_get_text(d->buf);
+    if (!t)
+        return rt_str_empty();
+    rt_string s = rt_string_from_bytes(t, strlen(t));
+    free(t);
+    return s;
+}
+
+/// @brief `EditorBuffer.get_Revision` — content revision.
+int64_t rt_editorbuffer_get_revision(void *handle) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(handle);
+    if (!d || !d->buf)
+        return 0;
+    return (int64_t)vg_editor_buffer_get_revision(d->buf);
+}
+
+/// @brief `EditorBuffer.IsModified`.
+int64_t rt_editorbuffer_is_modified(void *handle) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(handle);
+    if (!d || !d->buf)
+        return 0;
+    return vg_editor_buffer_is_modified(d->buf) ? 1 : 0;
+}
+
+/// @brief `EditorBuffer.ClearModified`.
+void rt_editorbuffer_clear_modified(void *handle) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(handle);
+    if (d && d->buf)
+        vg_editor_buffer_clear_modified(d->buf);
+}
+
+/// @brief `CodeEditor.AttachBuffer` — swap the editor's document for @p bufHandle
+///        and return the editor's previous document as a new EditorBuffer. The
+///        passed buffer is consumed.
+void *rt_codeeditor_attach_buffer(void *editor, void *bufHandle) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    rt_editorbuffer_data_t *d = rt_editorbuffer_checked(bufHandle);
+    if (!ce || !d || !d->buf)
+        return NULL;
+    vg_editor_buffer_t *prev = vg_codeeditor_swap_buffer(ce, d->buf);
+    d->buf = NULL; /* consumed by swap (its shell was freed); block double-free */
+    if (!prev)
+        return NULL;
+    return rt_editorbuffer_wrap(prev);
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 //=============================================================================
@@ -1738,6 +1915,14 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     (void)editor;
     (void)line;
     (void)pixels;
+    (void)slot;
+}
+
+/// @brief Stub: `CodeEditor.SetGutterBar` is a no-op without graphics.
+void rt_codeeditor_set_gutter_bar(void *editor, int64_t line, int64_t color, int64_t slot) {
+    (void)editor;
+    (void)line;
+    (void)color;
     (void)slot;
 }
 
@@ -2059,6 +2244,18 @@ int64_t rt_codeeditor_get_word_wrap(void *editor) {
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SetWhitespaceMode` is a no-op without graphics.
+void rt_codeeditor_set_whitespace_mode(void *editor, int64_t mode) {
+    (void)editor;
+    (void)mode;
+}
+
+/// @brief Stub: returns 0 (no whitespace mode in headless builds).
+int64_t rt_codeeditor_get_whitespace_mode(void *editor) {
+    (void)editor;
+    return 0;
+}
+
 /// @brief Stub: `CodeEditor.SetShowIndentGuides` is a no-op without graphics.
 void rt_codeeditor_set_show_indent_guides(void *editor, int64_t enabled) {
     (void)editor;
@@ -2181,6 +2378,32 @@ int64_t rt_codeeditor_get_highlight_span_check_count(void *editor) {
 int64_t rt_codeeditor_get_full_text_copy_byte_count(void *editor) {
     (void)editor;
     return 0;
+}
+
+/// @brief Stubs: EditorBuffer is unavailable without graphics.
+void *rt_editorbuffer_new(rt_string text) {
+    (void)text;
+    return NULL;
+}
+rt_string rt_editorbuffer_get_text(void *handle) {
+    (void)handle;
+    return rt_str_empty();
+}
+int64_t rt_editorbuffer_get_revision(void *handle) {
+    (void)handle;
+    return 0;
+}
+int64_t rt_editorbuffer_is_modified(void *handle) {
+    (void)handle;
+    return 0;
+}
+void rt_editorbuffer_clear_modified(void *handle) {
+    (void)handle;
+}
+void *rt_codeeditor_attach_buffer(void *editor, void *bufHandle) {
+    (void)editor;
+    (void)bufHandle;
+    return NULL;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

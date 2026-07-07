@@ -23,6 +23,7 @@
 #include "viper/vm/debug/Debug.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,10 +37,35 @@ struct DebugFrameInfo {
 };
 
 /// @brief One named local at a debugger stop.
+/// @details Composite values (lists, seqs, maps) advertise a non-zero @ref varRef
+///          and a @ref childCount; a host expands them one level at a time through
+///          the stop's DebugVarExpander. Leaves keep varRef == 0, matching the
+///          historical flat shape so pre-expansion consumers are unaffected.
 struct DebugLocalInfo {
-    std::string name;  ///< Source-level variable name.
-    std::string value; ///< Formatted value.
-    std::string type;  ///< Type label (e.g. "i64", "f64", "str").
+    std::string name;       ///< Source-level variable name.
+    std::string value;      ///< Formatted value (a compact summary for composites).
+    std::string type;       ///< Type label (e.g. "i64", "f64", "str", "List").
+    int64_t varRef = 0;     ///< >0 when expandable this stop; 0 = leaf. Dies on resume.
+    int64_t childCount = 0; ///< Child count when varRef>0; 0 for leaves.
+};
+
+/// @brief Lazy, one-level child provider for structured debugger values.
+/// @details Produced by the VM for a single stop and owned by that stop's
+///          DebugStopInfo. All @ref varRef handles it hands out are valid only
+///          while that DebugStopInfo is alive (i.e. while the VM is paused at the
+///          stop); they become invalid as soon as execution resumes and the info
+///          is discarded. Implementations never recurse — each call expands
+///          exactly one level so depth is bounded by host requests.
+class DebugVarExpander {
+  public:
+    virtual ~DebugVarExpander() = default;
+
+    /// @brief Return children [start, start+count) of the value behind @p ref.
+    /// @param ref A varRef previously advertised on a DebugLocalInfo this stop.
+    /// @param start First child index to return (0-based).
+    /// @param count Maximum number of children to return.
+    /// @return The requested slice of children; empty when @p ref is unknown.
+    virtual std::vector<DebugLocalInfo> expand(int64_t ref, int64_t start, int64_t count) = 0;
 };
 
 /// @brief Plain, serializable description of why and where execution paused.
@@ -50,6 +76,9 @@ struct DebugStopInfo {
     uint32_t column = 0;                ///< 1-based column; 0 if unknown.
     std::vector<DebugFrameInfo> frames; ///< Backtrace, most-recent first.
     std::vector<DebugLocalInfo> locals; ///< Named locals of the top frame.
+    /// @brief Expander for locals whose varRef>0, or null when nothing is
+    ///        expandable at this stop. Lifetime is tied to this DebugStopInfo.
+    std::shared_ptr<DebugVarExpander> vars;
 };
 
 /// @brief Interactive debugger driver implemented by the host.

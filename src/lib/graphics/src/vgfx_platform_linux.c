@@ -45,6 +45,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
@@ -1536,6 +1537,27 @@ static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requ
 /// @post All pending XEvents processed and translated
 /// @post win->key_state and win->mouse_* updated to reflect current input state
 /// @post Corresponding vgfx_event_t enqueued for each XEvent
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display)
+        return 0;
+    if (timeout_ms <= 0)
+        return 0;
+    /* Events already buffered client-side: return immediately. */
+    if (XPending(x11->display) > 0)
+        return 1;
+    /* Block on the X connection fd until data arrives or the timeout elapses.
+       Events are left for vgfx_platform_process_events to read. */
+    struct pollfd pfd;
+    pfd.fd = ConnectionNumber(x11->display);
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int r = poll(&pfd, 1, timeout_ms);
+    return r > 0 ? 1 : 0;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;

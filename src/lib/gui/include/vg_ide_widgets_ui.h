@@ -588,6 +588,9 @@ typedef struct vg_commandpalette {
     // Search state
     char *placeholder_text; ///< Placeholder shown when query is empty
     char *current_query;    ///< Current search query (UTF-8)
+    uint64_t query_generation; ///< Bumped whenever current_query changes (poll key for the runtime).
+    bool client_filtered;   ///< When true, the widget skips its own fuzzy filter and shows
+                            ///< commands[] in insertion order (the app ranks/repopulates per keystroke).
 
     // State
     bool is_visible;         ///< Is palette visible
@@ -690,6 +693,19 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
 /// @param palette Command palette.
 /// @param text    Placeholder text (copied internally).
 void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text);
+
+/// @brief Return the live query text (never NULL; "" when empty).
+const char *vg_commandpalette_get_query(vg_commandpalette_t *palette);
+
+/// @brief Return the query generation counter (bumped on every query change).
+uint64_t vg_commandpalette_get_query_generation(vg_commandpalette_t *palette);
+
+/// @brief Programmatically set the query text and re-filter.
+void vg_commandpalette_set_query(vg_commandpalette_t *palette, const char *text);
+
+/// @brief Enable client-filtered mode: show commands in insertion order and let
+///        the application filter/rank them (repopulating per keystroke).
+void vg_commandpalette_set_client_filtered(vg_commandpalette_t *palette, bool enabled);
 
 //=============================================================================
 // Notification Widget

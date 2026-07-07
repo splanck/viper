@@ -340,7 +340,9 @@ func handleReload(shell: app_shell.AppShell,
                 }
                 return;
             }
-            engine.LoadDocument(doc);
+            // Force a content reload (docMgr.ReloadDocument refreshed doc.content
+            // from disk); this resets the editor buffer and undo history.
+            engine.ReloadDocument(doc, doc.content);
             engine.ClearModified();
             tabs.SetModified(docMgr.activeIndex, false);
             shell.SetStatusLeft("Reloaded: " + doc.fileName);

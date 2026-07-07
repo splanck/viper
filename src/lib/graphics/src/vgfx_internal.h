@@ -385,6 +385,14 @@ void vgfx_platform_destroy_window(struct vgfx_window *win);
 /// @post win->key_state, mouse_*, and event queue are updated
 int vgfx_platform_process_events(struct vgfx_window *win);
 
+/// @brief Block until an OS event is available for @p win, or the timeout
+///        elapses. Does not dequeue or dispatch — callers pump normally after.
+/// @param win Window structure.
+/// @param timeout_ms Maximum wait in milliseconds (0 = return immediately).
+/// @return 1 if events are (probably) available, 0 on timeout.
+/// @pre win != NULL && win->platform_data != NULL
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms);
+
 /// @brief Present (blit) the framebuffer to the native window.
 /// @details Transfers the contents of win->pixels to the OS window surface
 ///          so they become visible on screen.  This may involve creating a

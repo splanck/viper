@@ -866,7 +866,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_MOUSE_WHEEL: {
-            float scroll_delta = -event->wheel.delta_y * lb->item_height;
+            float scroll_delta = -event->wheel.delta_y * lb->item_height * vg_get_wheel_speed();
             lb->scroll_y += scroll_delta;
             listbox_clamp_scroll(lb, widget->height);
             widget->needs_paint = true;

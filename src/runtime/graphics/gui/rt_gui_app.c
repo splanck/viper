@@ -1737,6 +1737,11 @@ void rt_gui_app_render(void *app_ptr) {
     bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
     if (!did_layout && !size_changed && !root_needs_paint && !overlays_need_paint) {
         vgfx_pump_events(app->window);
+        // Nothing to repaint this frame. Pace the frame anyway so an idle GUI
+        // does not busy-loop a CPU core: with an FPS cap we sleep to the frame
+        // deadline; uncapped, we take a 1ms anti-spin floor. Presentation is
+        // skipped because the framebuffer is unchanged.
+        vgfx_frame_pace(app->window, 1);
         return;
     }
 
@@ -1819,6 +1824,30 @@ void rt_gui_app_render(void *app_ptr) {
     // Present
     rt_gui_app_clear_paint_flags(app);
     vgfx_update(app->window);
+}
+
+/// @brief `App.PollWait` — block up to timeout_ms for OS events, then poll.
+/// @details Sleeps on the OS event queue while the window is idle so the frame
+///          loop does not busy-poll, then drains events exactly like
+///          rt_gui_app_poll (a drop-in replacement for App.Poll). Callers that
+///          animate must cap timeout_ms at their next animation deadline.
+/// @param app_ptr Pointer to the app.
+/// @param timeout_ms Maximum idle wait (clamped to [0, 1000] inside vgfx).
+/// @return 1 if events arrived (wake-from-input), 0 on timeout.
+int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app || !app->window) {
+        rt_gui_app_poll(app_ptr);
+        return 0;
+    }
+    if (timeout_ms < 0)
+        timeout_ms = 0;
+    if (timeout_ms > 1000)
+        timeout_ms = 1000;
+    int32_t had_events = vgfx_wait_events(app->window, (int32_t)timeout_ms);
+    rt_gui_app_poll(app_ptr);
+    return had_events ? 1 : 0;
 }
 
 /// @brief Return the root container widget of the app's widget tree.
@@ -2083,6 +2112,13 @@ int64_t rt_gui_app_should_close(void *app_ptr) {
 /// @brief Poll the app.
 void rt_gui_app_poll(void *app_ptr) {
     (void)app_ptr;
+}
+
+/// @brief Stub: `App.PollWait` returns 0 without graphics.
+int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
+    (void)app_ptr;
+    (void)timeout_ms;
+    return 0;
 }
 
 /// @brief Render the app.

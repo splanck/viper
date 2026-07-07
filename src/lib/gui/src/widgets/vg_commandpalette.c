@@ -177,6 +177,7 @@ static void filter_commands(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 
+    int prev_selected = palette->selected_index;
     palette->filtered_count = 0;
 
     // Get query from search input
@@ -187,9 +188,17 @@ static void filter_commands(vg_commandpalette_t *palette) {
         if (!cmd || !cmd->enabled)
             continue;
 
-        // Check if matches
-        int score = fuzzy_match_score(query, cmd->label);
-        if (score > 0 || !query || !query[0]) {
+        // Client-filtered mode: the application has already filtered and ranked
+        // the commands (repopulating per keystroke), so show them in insertion
+        // order without applying the built-in fuzzy filter.
+        bool include;
+        if (palette->client_filtered) {
+            include = true;
+        } else {
+            int score = fuzzy_match_score(query, cmd->label);
+            include = (score > 0 || !query || !query[0]);
+        }
+        if (include) {
             // Add to filtered list
             if (palette->filtered_count >= palette->filtered_capacity) {
                 size_t new_cap = palette->filtered_capacity * 2;
@@ -209,8 +218,15 @@ static void filter_commands(vg_commandpalette_t *palette) {
         }
     }
 
-    // Reset selection
-    palette->selected_index = palette->filtered_count > 0 ? 0 : -1;
+    // Selection: client-filtered mode preserves the row position across a
+    // repopulation (so live re-adding does not flicker the highlight back to
+    // the top); the built-in filter resets to the best match as before.
+    if (palette->client_filtered && prev_selected >= 0 &&
+        prev_selected < (int)palette->filtered_count) {
+        palette->selected_index = prev_selected;
+    } else {
+        palette->selected_index = palette->filtered_count > 0 ? 0 : -1;
+    }
     palette->first_visible_index = 0;
     palette->base.needs_paint = true;
 }
@@ -293,6 +309,7 @@ static void append_query_char(vg_commandpalette_t *palette, uint32_t codepoint) 
     memcpy(next + old_len, encoded, encoded_len);
     next[old_len + encoded_len] = '\0';
     palette->current_query = next;
+    palette->query_generation++;
     filter_commands(palette);
 }
 
@@ -312,6 +329,46 @@ static void remove_query_char(vg_commandpalette_t *palette) {
         free(palette->current_query);
         palette->current_query = NULL;
     }
+    palette->query_generation++;
+    filter_commands(palette);
+}
+
+/// @brief Return the current query text (never NULL; empty string when unset).
+const char *vg_commandpalette_get_query(vg_commandpalette_t *palette) {
+    if (!palette || !palette->current_query)
+        return "";
+    return palette->current_query;
+}
+
+/// @brief Return the query generation counter, bumped on every query change.
+uint64_t vg_commandpalette_get_query_generation(vg_commandpalette_t *palette) {
+    return palette ? palette->query_generation : 0;
+}
+
+/// @brief Programmatically set the query text and re-run the filter pass.
+void vg_commandpalette_set_query(vg_commandpalette_t *palette, const char *text) {
+    if (!palette)
+        return;
+    free(palette->current_query);
+    palette->current_query = NULL;
+    if (text && text[0]) {
+        size_t len = strlen(text);
+        char *copy = malloc(len + 1);
+        if (copy) {
+            memcpy(copy, text, len + 1);
+            palette->current_query = copy;
+        }
+    }
+    palette->query_generation++;
+    filter_commands(palette);
+}
+
+/// @brief Toggle client-filtered mode: when on, the widget shows commands in
+///        insertion order and lets the application do the filtering/ranking.
+void vg_commandpalette_set_client_filtered(vg_commandpalette_t *palette, bool enabled) {
+    if (!palette)
+        return;
+    palette->client_filtered = enabled;
     filter_commands(palette);
 }
 
@@ -717,6 +774,7 @@ void vg_commandpalette_show(vg_commandpalette_t *palette) {
     // Clear search and filter all
     free(palette->current_query);
     palette->current_query = NULL;
+    palette->query_generation++;
     filter_commands(palette);
     palette->first_visible_index = 0;
 

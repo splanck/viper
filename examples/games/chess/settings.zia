@@ -1,0 +1,206 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/settings.zia
+// Purpose: Persistent release-game settings for the Chess demo.
+// Key invariants:
+//   - Settings are clamped before use and before persistence.
+//   - Defaults produce the same playable mode as the original demo.
+// Ownership/Lifetime:
+//   - ChessGame owns one ChessSettings instance for the app lifetime.
+//   - SaveData owns cross-platform persistence for the "chess-settings" key.
+// Links: examples/games/chess/ui/game.zia, docs/viperlib/game/persistence.md
+//
+//===----------------------------------------------------------------------===//
+
+module settings;
+
+bind Viper.IO;
+
+final BOARD_TOURNAMENT = 0;
+final BOARD_SLATE = 1;
+final BOARD_MARBLE = 2;
+final BOARD_HIGH_CONTRAST = 3;
+final BOARD_CLASSIC = 4;
+final BOARD_THEME_COUNT = 5;
+
+final PIECES_STAUNTON = 0;
+final PIECES_CARVED = 1;
+final PIECE_THEME_COUNT = 2;
+
+final TIME_CASUAL = 0;
+final TIME_BLITZ = 1;
+final TIME_RAPID = 2;
+final TIME_CLASSICAL = 3;
+final TIME_CONTROL_COUNT = 4;
+
+/// @brief Persistent chess preferences backed by SaveData.
+class ChessSettings {
+    hide SaveData store;
+
+    expose Integer boardTheme;
+    expose Integer pieceTheme;
+    expose Integer timeControl;
+    expose Integer masterVolume;
+    expose Integer musicVolume;
+    expose Integer sfxVolume;
+    expose Boolean muted;
+    expose Boolean showLegalMoves;
+    expose Boolean showCoordinates;
+    expose Boolean showAttackMap;
+    expose Boolean highContrast;
+    expose Boolean reducedMotion;
+    expose Boolean largeText;
+    expose Integer lastMode;
+    expose Integer lastDepth;
+    expose Boolean lastPlayerWhite;
+
+    expose func init(saveKey: String) {
+        store = SaveData.New(saveKey);
+        self.resetDefaults();
+    }
+
+    expose func resetDefaults() {
+        boardTheme = BOARD_TOURNAMENT;
+        pieceTheme = PIECES_STAUNTON;
+        timeControl = TIME_CASUAL;
+        masterVolume = 76;
+        musicVolume = 24;
+        sfxVolume = 100;
+        muted = false;
+        showLegalMoves = true;
+        showCoordinates = true;
+        showAttackMap = false;
+        highContrast = false;
+        reducedMotion = false;
+        largeText = false;
+        lastMode = 1;
+        lastDepth = 4;
+        lastPlayerWhite = true;
+    }
+
+    expose func load() {
+        self.resetDefaults();
+        store.Load();
+        boardTheme = clampRange(store.GetInt("board_theme", boardTheme), 0, BOARD_THEME_COUNT - 1);
+        pieceTheme = clampRange(store.GetInt("piece_theme", pieceTheme), 0, PIECE_THEME_COUNT - 1);
+        timeControl = clampRange(store.GetInt("time_control", timeControl), 0, TIME_CONTROL_COUNT - 1);
+        masterVolume = clampRange(store.GetInt("master_volume", masterVolume), 0, 100);
+        musicVolume = clampRange(store.GetInt("music_volume", musicVolume), 0, 100);
+        sfxVolume = clampRange(store.GetInt("sfx_volume", sfxVolume), 0, 100);
+        muted = store.GetInt("muted", 0) != 0;
+        showLegalMoves = store.GetInt("show_legal_moves", 1) != 0;
+        showCoordinates = store.GetInt("show_coordinates", 1) != 0;
+        showAttackMap = store.GetInt("show_attack_map", 0) != 0;
+        highContrast = store.GetInt("high_contrast", 0) != 0;
+        reducedMotion = store.GetInt("reduced_motion", 0) != 0;
+        largeText = store.GetInt("large_text", 0) != 0;
+        lastMode = clampRange(store.GetInt("last_mode", lastMode), 0, 2);
+        lastDepth = clampRange(store.GetInt("last_depth", lastDepth), 2, 5);
+        lastPlayerWhite = store.GetInt("last_player_white", 1) != 0;
+    }
+
+    expose func save() {
+        store.SetInt("board_theme", boardTheme);
+        store.SetInt("piece_theme", pieceTheme);
+        store.SetInt("time_control", timeControl);
+        store.SetInt("master_volume", masterVolume);
+        store.SetInt("music_volume", musicVolume);
+        store.SetInt("sfx_volume", sfxVolume);
+        store.SetInt("muted", boolToInt(muted));
+        store.SetInt("show_legal_moves", boolToInt(showLegalMoves));
+        store.SetInt("show_coordinates", boolToInt(showCoordinates));
+        store.SetInt("show_attack_map", boolToInt(showAttackMap));
+        store.SetInt("high_contrast", boolToInt(highContrast));
+        store.SetInt("reduced_motion", boolToInt(reducedMotion));
+        store.SetInt("large_text", boolToInt(largeText));
+        store.SetInt("last_mode", lastMode);
+        store.SetInt("last_depth", lastDepth);
+        store.SetInt("last_player_white", boolToInt(lastPlayerWhite));
+        store.Save();
+    }
+
+    expose func cycleBoardTheme() {
+        boardTheme = (boardTheme + 1) % BOARD_THEME_COUNT;
+    }
+
+    expose func cyclePieceTheme() {
+        pieceTheme = (pieceTheme + 1) % PIECE_THEME_COUNT;
+    }
+
+    expose func cycleTimeControl() {
+        timeControl = (timeControl + 1) % TIME_CONTROL_COUNT;
+    }
+
+    expose func toggleLegalMoves() { showLegalMoves = !showLegalMoves; }
+    expose func toggleCoordinates() { showCoordinates = !showCoordinates; }
+    expose func toggleAttackMap() { showAttackMap = !showAttackMap; }
+    expose func toggleHighContrast() { highContrast = !highContrast; }
+    expose func toggleReducedMotion() { reducedMotion = !reducedMotion; }
+    expose func toggleLargeText() { largeText = !largeText; }
+    expose func toggleMuted() { muted = !muted; }
+
+    expose func adjustMaster(delta: Integer) {
+        masterVolume = clampRange(masterVolume + delta, 0, 100);
+    }
+
+    expose func adjustMusic(delta: Integer) {
+        musicVolume = clampRange(musicVolume + delta, 0, 100);
+    }
+
+    expose func adjustSfx(delta: Integer) {
+        sfxVolume = clampRange(sfxVolume + delta, 0, 100);
+    }
+
+    expose func clockBaseSeconds() -> Integer {
+        if timeControl == TIME_BLITZ { return 5 * 60; }
+        if timeControl == TIME_RAPID { return 10 * 60; }
+        if timeControl == TIME_CLASSICAL { return 15 * 60; }
+        return 0;
+    }
+
+    expose func clockIncrementSeconds() -> Integer {
+        if timeControl == TIME_RAPID { return 5; }
+        if timeControl == TIME_CLASSICAL { return 10; }
+        return 0;
+    }
+
+    expose func isTimed() -> Boolean {
+        return timeControl != TIME_CASUAL;
+    }
+}
+
+func boolToInt(v: Boolean) -> Integer {
+    if v { return 1; }
+    return 0;
+}
+
+func clampRange(v: Integer, lo: Integer, hi: Integer) -> Integer {
+    if v < lo { return lo; }
+    if v > hi { return hi; }
+    return v;
+}
+
+func boardThemeName(id: Integer) -> String {
+    if id == BOARD_SLATE { return "Slate"; }
+    if id == BOARD_MARBLE { return "Marble"; }
+    if id == BOARD_HIGH_CONTRAST { return "High Contrast"; }
+    if id == BOARD_CLASSIC { return "Classic"; }
+    return "Tournament";
+}
+
+func pieceThemeName(id: Integer) -> String {
+    if id == PIECES_CARVED { return "Carved"; }
+    return "Staunton";
+}
+
+func timeControlName(id: Integer) -> String {
+    if id == TIME_BLITZ { return "5+0 Blitz"; }
+    if id == TIME_RAPID { return "10+5 Rapid"; }
+    if id == TIME_CLASSICAL { return "15+10 Classical"; }
+    return "Casual";
+}

@@ -1010,6 +1010,71 @@ void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
     return rt_gui_wrap_tree_node(vg_treeview_node_at(tv, (float)x, (float)y));
 }
 
+/// @brief Extract a tree node's runtime string data, or empty string.
+static rt_string rt_treeview_node_data_string(vg_tree_node_t *n) {
+    if (!n || !n->user_data || !n->owns_user_data)
+        return rt_str_empty();
+    return rt_gui_string_data_to_rt_string(n->user_data);
+}
+
+/// @brief `TreeView.SetDragDropEnabled` — enable poll-model drag-and-drop.
+void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    vg_treeview_set_app_directed_dnd(tv, enabled != 0);
+}
+
+/// @brief `TreeView.WasDropReceived` — true while a completed drop is pending.
+int64_t rt_treeview_was_drop_received(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    return (tv && vg_treeview_has_pending_drop(tv)) ? 1 : 0;
+}
+
+/// @brief `TreeView.GetDropSourceData` — data string of the dragged node.
+rt_string rt_treeview_get_drop_source_data(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return rt_str_empty();
+    return rt_treeview_node_data_string(vg_treeview_drop_source(tv));
+}
+
+/// @brief `TreeView.GetDropTargetData` — data string of the target node.
+rt_string rt_treeview_get_drop_target_data(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return rt_str_empty();
+    return rt_treeview_node_data_string(vg_treeview_drop_target_node(tv));
+}
+
+/// @brief `TreeView.GetDropPosition` — 0=before, 1=into, 2=after.
+int64_t rt_treeview_get_drop_position(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return 1;
+    return (int64_t)vg_treeview_drop_position_value(tv);
+}
+
+/// @brief `TreeView.ClearDrop` — consume the latched drop.
+void rt_treeview_clear_drop(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    vg_treeview_clear_drop(tv);
+}
+
 /// @brief Check if the tree view selection changed since the last call (edge-triggered).
 int64_t rt_treeview_was_selection_changed(void *tree) {
     RT_ASSERT_MAIN_THREAD();
@@ -1439,6 +1504,31 @@ void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
     (void)x;
     (void)y;
     return NULL;
+}
+
+/// @brief Stub: poll-model drag-and-drop is a no-op without graphics.
+void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled) {
+    (void)tree;
+    (void)enabled;
+}
+int64_t rt_treeview_was_drop_received(void *tree) {
+    (void)tree;
+    return 0;
+}
+rt_string rt_treeview_get_drop_source_data(void *tree) {
+    (void)tree;
+    return rt_str_empty();
+}
+rt_string rt_treeview_get_drop_target_data(void *tree) {
+    (void)tree;
+    return rt_str_empty();
+}
+int64_t rt_treeview_get_drop_position(void *tree) {
+    (void)tree;
+    return 1;
+}
+void rt_treeview_clear_drop(void *tree) {
+    (void)tree;
 }
 
 /// @brief Check if the tree view selection changed since the last call (edge-triggered).

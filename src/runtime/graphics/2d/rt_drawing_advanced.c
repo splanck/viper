@@ -249,7 +249,7 @@ static int8_t rt_canvas_get_scaled_clip_bounds(
     if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
         return 0;
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
     if (scale_out)
         *scale_out = scale;
     if (px0)
@@ -1404,7 +1404,7 @@ void rt_canvas_gradient_h(
         return;
     }
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
     int64_t px0 = rtg_scale_up_i64(x, scale);
     int64_t px1 = rtg_scale_up_i64(rtg_add_sat64(x, w), scale);
     int64_t py0 = rtg_scale_up_i64(y, scale);
@@ -1504,7 +1504,7 @@ void rt_canvas_gradient_v(
         return;
     }
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
     int64_t px0 = rtg_scale_up_i64(x, scale);
     int64_t px1 = rtg_scale_up_i64(rtg_add_sat64(x, w), scale);
     int64_t py0 = rtg_scale_up_i64(y, scale);

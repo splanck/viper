@@ -132,7 +132,7 @@ class WorldMap {
         // sub-visual (edges are rendered before nodes so they
         // disappear behind them).
         connFrom = [0, 1, 0, 1, 2, 3, 4, 5, 3, 6, 7, 8];
-        connTo =   [1, 2, 3, 4, 5, 4, 5, 5, 6, 7, 8, 9];
+        connTo =   [1, 2, 3, 4, 5, 4, 5, 8, 6, 7, 8, 9];
 
         // Ability-gate per edge.  Gates are the reason the world
         // map doubles as a progression overview: the player sees
@@ -146,7 +146,7 @@ class WorldMap {
             GATE_DASH,         // Crystal → Thermal (need dash)
             GATE_NONE,         // Surface Ruins → Underground Lake
             GATE_NONE,         // Underground Lake → Thermal
-            GATE_NONE,         // placeholder / self-loop
+            GATE_GROUND_POUND, // Thermal → Corrupted
             GATE_NONE,         // Surface Ruins → Overgrowth
             GATE_CHARGE_SHOT,  // Overgrowth → Frozen (need charge shot)
             GATE_GROUND_POUND, // Frozen → Corrupted (need ground pound)
@@ -156,14 +156,11 @@ class WorldMap {
 
     /// @brief Draw the whole map screen.
     ///
-    /// @param currentLevel      index of the level the player is
-    ///                          currently in — rendered with a
-    ///                          bright highlight.
-    /// @param bossesDefeated    a bit-mask (not really — see note
-    ///                          below about the `(... / (1+i)) %
-    ///                          2` trick) of which bosses are
-    ///                          down.  Defeated levels get a
-    ///                          green tint + "OK" check.
+    /// @param currentLevel      one-based index of the level the player is
+    ///                          currently in — rendered with a bright
+    ///                          highlight.
+    /// @param bossesDefeated    power-of-two bitmask of defeated bosses.
+    ///                          Defeated levels get a green tint + "OK" check.
     /// @param abilities         ability manager, consulted for
     ///                          each gated edge so the lock icon
     ///                          disappears once the player has
@@ -182,6 +179,9 @@ class WorldMap {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
 
         canvas.TextCenteredScaled(30, "XENOSCAPE — WORLD MAP", Color.RGB(200, 200, 220), 2);
+        var currentIdx = currentLevel - 1;
+        if currentIdx < 0 { currentIdx = 0; }
+        if currentIdx >= MAP_NODES { currentIdx = MAP_NODES - 1; }
 
         // ---- Edges ----
         var c = 0;
@@ -221,16 +221,7 @@ class WorldMap {
             var borderColor = Color.RGB(80, 80, 100);
             var textColor = Color.RGB(160, 160, 180);
 
-            // Boss-defeated mask test.
-            // NOTE: `(bossesDefeated / (1 + i)) % 2` is NOT a
-            // correct bitmask read — it's an ad-hoc encoding
-            // used when this code was written.  It happens to
-            // work for the current use pattern but if you add
-            // more than ~16 bosses it starts misbehaving.
-            // Flag-don't-fix: a proper `(bossesDefeated >> i) &
-            // 1` (or the bit-mask helpers in `abilities.zia`)
-            // would be cleaner.
-            if (bossesDefeated / (1 + i)) % 2 == 1 {
+            if defeated(bossesDefeated, i) {
                 bgColor = Color.RGB(30, 60, 40);
                 borderColor = Color.RGB(60, 120, 80);
                 textColor = Color.RGB(180, 255, 200);
@@ -238,7 +229,7 @@ class WorldMap {
 
             // "Current level" overrides "defeated" so the
             // player always sees where they are.
-            if i == currentLevel {
+            if i == currentIdx {
                 bgColor = Color.RGB(50, 50, 90);
                 borderColor = Color.RGB(100, 150, 255);
                 textColor = Color.RGB(255, 255, 255);
@@ -248,8 +239,7 @@ class WorldMap {
             canvas.Frame(nx, ny, nodeW, nodeH, borderColor);
             canvas.Text(nx + 4, ny + 4, nodeNames.get(i), textColor);
 
-            // "OK" check for defeated (same quirky mask test).
-            if (bossesDefeated / (1 + i)) % 2 == 1 {
+            if defeated(bossesDefeated, i) {
                 canvas.Text(nx + nodeW - 14, ny + 2, "OK", Color.RGB(100, 255, 100));
             }
 
@@ -259,5 +249,24 @@ class WorldMap {
         // ---- Legend ----
         canvas.Text(40, SCREEN_H - 60, "Current: [highlighted]   Completed: [OK]", Color.RGB(120, 120, 140));
         canvas.Text(40, SCREEN_H - 40, "Red X = Locked (need ability)", Color.RGB(120, 120, 140));
+    }
+
+    /// @brief Read a defeated-boss bit from the campaign bitmask.
+    ///
+    /// Zia code in this demo represents bitmasks with integer division by a
+    /// power-of-two flag.  Node index 0 maps to bit 1, index 1 maps to bit 2,
+    /// index 2 maps to bit 4, and so on.
+    ///
+    /// @param mask Defeated-boss mask stored by Game.
+    /// @param nodeIndex Zero-based world-map node index.
+    /// @return True when the matching boss/level bit is set.
+    hide func defeated(mask: Integer, nodeIndex: Integer) -> Boolean {
+        var flag = 1;
+        var i = 0;
+        while i < nodeIndex {
+            flag = flag * 2;
+            i = i + 1;
+        }
+        return (mask / flag) % 2 == 1;
     }
 }

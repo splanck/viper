@@ -155,7 +155,7 @@ func moveListRect() -> Rect {
 }
 
 func menuCardRect() -> Rect {
-    return rect((WIN_W - 640) / 2, 128, 640, 520);
+    return rect((WIN_W - 840) / 2, 86, 840, 650);
 }
 
 func heroBoardRect() -> Rect {
@@ -185,7 +185,55 @@ func difficultyButtonRect(idx: Integer) -> Rect {
 
 func startButtonRect() -> Rect {
     var card = menuCardRect();
-    return rect(card.x + 42, card.y + 418, card.w - 84, 56);
+    return rect(card.x + 42, card.y + 418, 480, 56);
+}
+
+func continueButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 150, 238, 46);
+}
+
+func puzzleButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 210, 238, 46);
+}
+
+func analysisButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 270, 238, 46);
+}
+
+func settingsButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 330, 238, 46);
+}
+
+func menuSaveButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 390, 238, 46);
+}
+
+func settingsCardRect() -> Rect {
+    return rect((WIN_W - 760) / 2, 86, 760, 650);
+}
+
+func settingsOptionRect(idx: Integer) -> Rect {
+    var card = settingsCardRect();
+    return rect(card.x + 42, card.y + 116 + idx * 36, card.w - 84, 30);
+}
+
+func settingsBackRect() -> Rect {
+    var card = settingsCardRect();
+    return rect(card.x + 42, card.y + card.h - 74, card.w - 84, 48);
+}
+
+func pauseDialogRect() -> Rect {
+    return rect((WIN_W - 420) / 2, (WIN_H - 430) / 2, 420, 430);
+}
+
+func pauseButtonRect(idx: Integer) -> Rect {
+    var dialog = pauseDialogRect();
+    return rect(dialog.x + 42, dialog.y + 92 + idx * 52, dialog.w - 84, 42);
 }
 
 func promoDialogRect() -> Rect {

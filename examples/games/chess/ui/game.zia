@@ -20,6 +20,12 @@ bind "../core/config";
 bind "../core/board";
 bind "../core/moves";
 bind "../core/eval";
+bind "../settings";
+bind "../save";
+bind "../stats";
+bind "../sound";
+bind "../puzzles";
+bind "../notation";
 bind "./renderer";
 bind "./pieces";
 bind "./layout";
@@ -154,6 +160,10 @@ class ChessGame {
     hide MoveGen       moveGen;
     hide BoardRenderer renderer;
     hide StateMachine  flow;
+    hide ChessSettings userSettings;
+    hide ChessSaveManager saveManager;
+    hide ChessStats profile;
+    hide ChessSound audio;
 
     // --- Game configuration ---
     hide Integer gameMode;
@@ -162,6 +172,12 @@ class ChessGame {
     hide ButtonGroup modeButtons;
     hide ButtonGroup sideButtons;
     hide ButtonGroup difficultyButtons;
+    hide Boolean analysisMode;
+    hide Boolean puzzleMode;
+    hide Integer activePuzzle;
+    hide Boolean puzzleSolved;
+    hide Integer settingsReturnState;
+    hide Boolean gameStatsRecorded;
 
     // --- Input state ---
     hide Integer selectedSq;          // square clicked/selected (-1 = none)
@@ -215,6 +231,8 @@ class ChessGame {
     hide List[Integer]  undoPrevFromStack;       // lastFrom before the move
     hide List[Integer]  undoPrevToStack;         // lastTo before the move
     hide List[Integer]  undoCaptureColorStack;   // 1=white captured, -1=black, 0=none
+    hide List[Move]     redoMoveStack;
+    hide Boolean        suppressRedoClear;
 
     // --- Legal moves cache (invalidated after each board change) ---
     hide List[Move] cachedLegalMoves_;
@@ -233,9 +251,20 @@ class ChessGame {
         // Pre-render piece sprites for high-quality rendering
         pieces.initSprites();
 
-        gameMode      = MODE_PVC;
-        aiDepth       = DIFF_HARD;
-        playerIsWhite = true;
+        userSettings = new ChessSettings("chess-settings");
+        userSettings.load();
+        saveManager = new ChessSaveManager("chess-saves");
+        profile = new ChessStats("chess-profile");
+        profile.load();
+        audio = new ChessSound();
+        audio.setup();
+        audio.configure(userSettings.masterVolume, userSettings.musicVolume,
+                        userSettings.sfxVolume, userSettings.muted);
+        pieces.setTheme(userSettings.pieceTheme);
+
+        gameMode      = userSettings.lastMode;
+        aiDepth       = userSettings.lastDepth;
+        playerIsWhite = userSettings.lastPlayerWhite;
         setupStateMachine();
         setupMenuGroups();
 
@@ -276,6 +305,12 @@ class ChessGame {
 
         gameOverReason = "";
         gameOverWinner = "";
+        analysisMode = false;
+        puzzleMode = false;
+        activePuzzle = 0;
+        puzzleSolved = false;
+        settingsReturnState = STATE_MENU;
+        gameStatsRecorded = false;
 
         aiThinkStartMs = 0;
 
@@ -284,6 +319,8 @@ class ChessGame {
         undoPrevFromStack     = [];
         undoPrevToStack       = [];
         undoCaptureColorStack = [];
+        redoMoveStack         = [];
+        suppressRedoClear     = false;
 
         setupActions();
         cleanupAIWorker();
@@ -310,6 +347,17 @@ class ChessGame {
         bindUndoChord(Key.LeftControl);
         bindUndoChord(Key.RightControl);
 
+        Action.Define(ACT_REDO);
+        bindRedoChord(Key.LeftControl);
+        bindRedoChord(Key.RightControl);
+
+        Action.Define(ACT_SAVE);
+        bindSaveChord(Key.LeftControl);
+        bindSaveChord(Key.RightControl);
+
+        Action.Define(ACT_PAUSE);
+        Action.BindKey(ACT_PAUSE, Key.P);
+
         Action.BindPadButton(ACT_CONFIRM, -1, Pad.get_ButtonA());
         Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonB());
         Action.BindPadButton(ACT_BACK, -1, Pad.get_ButtonStart());
@@ -323,6 +371,20 @@ class ChessGame {
         Action.BindChord(ACT_UNDO, undoChord);
     }
 
+    hide func bindRedoChord(ctrlKey: Integer) {
+        var redoChord = Seq.New();
+        Seq.Push(redoChord, ctrlKey);
+        Seq.Push(redoChord, Key.Y);
+        Action.BindChord(ACT_REDO, redoChord);
+    }
+
+    hide func bindSaveChord(ctrlKey: Integer) {
+        var saveChord = Seq.New();
+        Seq.Push(saveChord, ctrlKey);
+        Seq.Push(saveChord, Key.S);
+        Action.BindChord(ACT_SAVE, saveChord);
+    }
+
     /// @brief Register all chess UI states with Viper.Game.StateMachine.
     hide func setupStateMachine() {
         flow = StateMachine.New();
@@ -333,6 +395,8 @@ class ChessGame {
         flow.AddState(STATE_CHECKMATE);
         flow.AddState(STATE_STALEMATE);
         flow.AddState(STATE_DRAW);
+        flow.AddState(STATE_SETTINGS);
+        flow.AddState(STATE_PAUSED);
         flow.SetInitial(STATE_MENU);
     }
 
@@ -419,6 +483,7 @@ class ChessGame {
 
             handleInput();
             updateClocks();
+            profile.update(canvas.DeltaTime);
 
             if isState(STATE_AI_THINK) {
                 pollAITurn();
@@ -428,6 +493,7 @@ class ChessGame {
         }
 
         cleanupAIWorker();
+        audio.shutdown();
         Action.Clear();
     }
 
@@ -447,9 +513,30 @@ class ChessGame {
             return;
         }
 
+        if isState(STATE_SETTINGS) {
+            handleSettingsInput(mx, my);
+            return;
+        }
+
+        if isState(STATE_PAUSED) {
+            handlePauseInput(mx, my);
+            return;
+        }
+
         if Action.Pressed(ACT_BACK) {
             cleanupAIWorker();
-            setGameState(STATE_MENU);
+            setGameState(STATE_PAUSED);
+            return;
+        }
+
+        if Action.Pressed(ACT_PAUSE) {
+            cleanupAIWorker();
+            setGameState(STATE_PAUSED);
+            return;
+        }
+
+        if Action.Pressed(ACT_SAVE) {
+            saveCurrentGame(0);
             return;
         }
 
@@ -457,6 +544,10 @@ class ChessGame {
         // non-menu state including game-over screens.
         if Action.Pressed(ACT_UNDO) {
             handleUndo();
+        }
+
+        if Action.Pressed(ACT_REDO) {
+            handleRedo();
         }
 
         if isGameOverState() {
@@ -605,6 +696,261 @@ class ChessGame {
         if layout.contains(layout.startButtonRect(), mx, my) {
             startNewGame();
         }
+
+        if layout.contains(layout.continueButtonRect(), mx, my) {
+            loadSavedGame(0);
+        }
+
+        if layout.contains(layout.puzzleButtonRect(), mx, my) {
+            startPuzzle(activePuzzle);
+        }
+
+        if layout.contains(layout.analysisButtonRect(), mx, my) {
+            startAnalysisBoard();
+        }
+
+        if layout.contains(layout.settingsButtonRect(), mx, my) {
+            settingsReturnState = STATE_MENU;
+            setGameState(STATE_SETTINGS);
+        }
+
+        if layout.contains(layout.menuSaveButtonRect(), mx, my) {
+            saveCurrentGame(0);
+        }
+    }
+
+    /// @brief Settings menu click handling. Rows cycle/toggle settings.
+    hide func handleSettingsInput(mx: Integer, my: Integer) {
+        if Action.Pressed(ACT_BACK) {
+            setGameState(settingsReturnState);
+            return;
+        }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return; }
+
+        if layout.contains(layout.settingsBackRect(), mx, my) {
+            userSettings.save();
+            audio.configure(userSettings.masterVolume, userSettings.musicVolume,
+                            userSettings.sfxVolume, userSettings.muted);
+            pieces.setTheme(userSettings.pieceTheme);
+            setGameState(settingsReturnState);
+            return;
+        }
+
+        for i in 0..13 {
+            if layout.contains(layout.settingsOptionRect(i), mx, my) {
+                applySettingsRow(i);
+                userSettings.save();
+                audio.configure(userSettings.masterVolume, userSettings.musicVolume,
+                                userSettings.sfxVolume, userSettings.muted);
+                pieces.setTheme(userSettings.pieceTheme);
+                audio.playMenu();
+                return;
+            }
+        }
+    }
+
+    /// @brief Pause overlay click handling.
+    hide func handlePauseInput(mx: Integer, my: Integer) {
+        if Action.Pressed(ACT_BACK) || Action.Pressed(ACT_PAUSE) {
+            setGameState(STATE_PLAYING);
+            return;
+        }
+        if !Mouse.WasClicked(Mouse.get_ButtonLeft()) { return; }
+
+        if layout.contains(layout.pauseButtonRect(0), mx, my) {
+            setGameState(STATE_PLAYING);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(1), mx, my) {
+            saveCurrentGame(0);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(2), mx, my) {
+            settingsReturnState = STATE_PAUSED;
+            setGameState(STATE_SETTINGS);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(3), mx, my) {
+            startNewGame();
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(4), mx, my) {
+            cleanupAIWorker();
+            setGameState(STATE_MENU);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(5), mx, my) {
+            resignCurrentSide();
+        }
+    }
+
+    hide func applySettingsRow(idx: Integer) {
+        if idx == 0 { userSettings.cycleBoardTheme(); }
+        if idx == 1 { userSettings.cyclePieceTheme(); }
+        if idx == 2 { userSettings.cycleTimeControl(); }
+        if idx == 3 { userSettings.toggleLegalMoves(); }
+        if idx == 4 { userSettings.toggleCoordinates(); }
+        if idx == 5 { userSettings.toggleAttackMap(); }
+        if idx == 6 {
+            userSettings.toggleHighContrast();
+            if userSettings.highContrast { userSettings.boardTheme = BOARD_HIGH_CONTRAST; }
+        }
+        if idx == 7 { userSettings.toggleReducedMotion(); }
+        if idx == 8 { userSettings.toggleLargeText(); }
+        if idx == 9 { userSettings.adjustMaster(10); if userSettings.masterVolume == 100 { userSettings.masterVolume = 0; } }
+        if idx == 10 { userSettings.adjustMusic(10); if userSettings.musicVolume == 100 { userSettings.musicVolume = 0; } }
+        if idx == 11 { userSettings.adjustSfx(10); if userSettings.sfxVolume == 100 { userSettings.sfxVolume = 0; } }
+        if idx == 12 { userSettings.toggleMuted(); }
+    }
+
+    hide func resignCurrentSide() {
+        cleanupAIWorker();
+        setGameState(STATE_CHECKMATE);
+        gameOverReason = "Resignation";
+        if board.whiteToMove {
+            gameOverWinner = "Black wins!";
+        } else {
+            gameOverWinner = "White wins!";
+        }
+        audio.playGameOver();
+        recordGameStatsOnce();
+    }
+
+    hide func saveCurrentGame(slot: Integer) {
+        if isState(STATE_AI_THINK) { return; }
+        if saveManager.saveSlot(slot, board, sanHistory, whiteCaptured, blackCaptured,
+                                gameMode, aiDepth, playerIsWhite,
+                                userSettings.timeControl,
+                                whiteTimeSec, blackTimeSec,
+                                lastFrom, lastTo) {
+            profile.noteSave();
+            audio.playMenu();
+        }
+    }
+
+    hide func loadSavedGame(slot: Integer) {
+        if !saveManager.loadSlot(slot) {
+            audio.playInvalid();
+            return;
+        }
+        var loadedBoard = new Board();
+        if !notation.applyFEN(loadedBoard, saveManager.payload.fen) {
+            audio.playInvalid();
+            return;
+        }
+
+        cleanupAIWorker();
+        board = loadedBoard;
+        invalidateLegalMoves();
+        gameMode = saveManager.payload.gameMode;
+        aiDepth = saveManager.payload.aiDepth;
+        playerIsWhite = saveManager.payload.playerIsWhite;
+        syncLoadedMenuSelections();
+        userSettings.timeControl = saveManager.payload.timeControl;
+        whiteTimeSec = saveManager.payload.whiteClock;
+        blackTimeSec = saveManager.payload.blackClock;
+        sanHistory = save.decodeStringList(saveManager.payload.historyText);
+        whiteCaptured = save.decodePieceList(saveManager.payload.whiteCaptureText);
+        blackCaptured = save.decodePieceList(saveManager.payload.blackCaptureText);
+        lastFrom = saveManager.payload.lastFrom;
+        lastTo = saveManager.payload.lastTo;
+        checkedKingSq = -1;
+        if moveGen.isInCheck(board, board.whiteToMove) {
+            checkedKingSq = board.kingSquare(board.whiteToMove);
+        }
+        selectedSq = -1;
+        dragFrom = -1;
+        movesForSelected = [];
+        positionHashes = [];
+        clearUndoStacks();
+        redoMoveStack = [];
+        analysisMode = false;
+        puzzleMode = false;
+        puzzleSolved = false;
+        gameStatsRecorded = false;
+        stopAnimation();
+        setGameState(STATE_PLAYING);
+        audio.playStart();
+        if isAITurn() { startAITurn(); }
+    }
+
+    hide func startPuzzle(idx: Integer) {
+        cleanupAIWorker();
+        var puzzleBoard = new Board();
+        if !notation.applyFEN(puzzleBoard, puzzles.fen(idx)) {
+            audio.playInvalid();
+            return;
+        }
+        board = puzzleBoard;
+        invalidateLegalMoves();
+        gameMode = MODE_PVP;
+        aiDepth = DIFF_EASY;
+        playerIsWhite = true;
+        syncLoadedMenuSelections();
+        selectedSq = -1;
+        dragFrom = -1;
+        movesForSelected = [];
+        sanHistory = [];
+        whiteCaptured = [];
+        blackCaptured = [];
+        positionHashes = [];
+        clearUndoStacks();
+        redoMoveStack = [];
+        lastFrom = -1;
+        lastTo = -1;
+        checkedKingSq = -1;
+        activePuzzle = idx;
+        puzzleMode = true;
+        puzzleSolved = false;
+        analysisMode = false;
+        gameStatsRecorded = false;
+        whiteTimeSec = 0;
+        blackTimeSec = 0;
+        clockTimer.Stop();
+        clockTimer.StartRepeatingMs(1000);
+        stopAnimation();
+        setGameState(STATE_PLAYING);
+        audio.playStart();
+    }
+
+    hide func startAnalysisBoard() {
+        cleanupAIWorker();
+        board = new Board();
+        invalidateLegalMoves();
+        gameMode = MODE_PVP;
+        aiDepth = userSettings.lastDepth;
+        playerIsWhite = true;
+        syncLoadedMenuSelections();
+        selectedSq = -1;
+        dragFrom = -1;
+        movesForSelected = [];
+        sanHistory = [];
+        whiteCaptured = [];
+        blackCaptured = [];
+        positionHashes = [];
+        clearUndoStacks();
+        redoMoveStack = [];
+        lastFrom = -1;
+        lastTo = -1;
+        checkedKingSq = -1;
+        puzzleMode = false;
+        puzzleSolved = false;
+        analysisMode = true;
+        gameStatsRecorded = false;
+        whiteTimeSec = 0;
+        blackTimeSec = 0;
+        clockTimer.Stop();
+        clockTimer.StartRepeatingMs(1000);
+        stopAnimation();
+        setGameState(STATE_PLAYING);
+        audio.playStart();
+    }
+
+    hide func syncLoadedMenuSelections() {
+        modeButtons.Select(gameMode);
+        if playerIsWhite { sideButtons.Select(0); }
+        else { sideButtons.Select(1); }
+        difficultyButtons.Select(aiDepth);
     }
 
     /// @brief Game-over overlay click handler (NEW GAME / MAIN MENU).
@@ -655,18 +1001,13 @@ class ChessGame {
             setGameState(STATE_DRAW);
             gameOverReason = "Draw agreed";
             gameOverWinner = "Draw";
+            audio.playGameOver();
+            recordGameStatsOnce();
             return true;
         }
 
         if layout.contains(layout.resignButtonRect(), mx, my) {
-            cleanupAIWorker();
-            setGameState(STATE_CHECKMATE);
-            gameOverReason = "Resignation";
-            if board.whiteToMove {
-                gameOverWinner = "Black wins!";
-            } else {
-                gameOverWinner = "White wins!";
-            }
+            resignCurrentSide();
             return true;
         }
 
@@ -694,6 +1035,19 @@ class ChessGame {
 
     }
 
+    /// @brief Replay one undone move.
+    hide func handleRedo() {
+        if isState(STATE_AI_THINK) { return; }
+        if redoMoveStack.length() == 0 { return; }
+
+        var m = redoMoveStack.pop();
+        suppressRedoClear = true;
+        applyMoveFields(m.from, m.to, m.captured, m.enPassant,
+                        m.castleKing, m.castleQueen, m.promotion,
+                        m.promotePiece);
+        suppressRedoClear = false;
+    }
+
     /// @brief Pop one ply from every undo stack and restore board + UI.
     hide func undoLastMove() {
         if undoMoveStack.length() == 0 { return; }
@@ -710,6 +1064,7 @@ class ChessGame {
         var prevFrom = undoPrevFromStack.pop();
         var prevTo   = undoPrevToStack.pop();
         var capColor = undoCaptureColorStack.pop();
+        redoMoveStack.add(m);
 
         // Restore board state
         board.unmakeMove(m, undo);
@@ -840,6 +1195,9 @@ class ChessGame {
             }
         }
         undoCaptureColorStack.add(captureColor);
+        if !suppressRedoClear {
+            redoMoveStack = [];
+        }
 
         // Update move highlight
         lastFrom = fromSq;
@@ -862,10 +1220,51 @@ class ChessGame {
         sanHistory.add(san);
 
         moveCount = moveCount + 1;
+        profile.noteMove(castleKing || castleQueen, promotion);
+        if moveCount % 4 == 0 { profile.save(); }
+
+        if userSettings.isTimed() {
+            var inc = userSettings.clockIncrementSeconds();
+            if movingWhite { whiteTimeSec = whiteTimeSec + inc; }
+            else { blackTimeSec = blackTimeSec + inc; }
+        }
+
         startMoveAnimation(fromSq, toSq, movingType, movingWhite);
 
         // Check for terminal conditions
         checkGameOver();
+
+        if puzzleMode && !puzzleSolved {
+            if fromSq == puzzles.targetFrom(activePuzzle) &&
+               toSq == puzzles.targetTo(activePuzzle) &&
+               promotePiece == puzzles.targetPromotion(activePuzzle) {
+                puzzleSolved = true;
+                profile.notePuzzleSolved();
+                setGameState(STATE_DRAW);
+                gameOverReason = puzzles.instruction(activePuzzle);
+                gameOverWinner = "Puzzle solved: " + puzzles.goal(activePuzzle);
+                activePuzzle = puzzles.nextIndex(activePuzzle);
+            } else {
+                setGameState(STATE_DRAW);
+                gameOverReason = "Target move was " + puzzles.goal(activePuzzle);
+                gameOverWinner = "Puzzle missed";
+            }
+        }
+
+        if promotion {
+            audio.playPromote();
+        } else if captured != 0 || enPassant {
+            audio.playCapture();
+        } else if checkedKingSq >= 0 {
+            audio.playCheck();
+        } else {
+            audio.playMove();
+        }
+
+        if isGameOverState() {
+            audio.playGameOver();
+            recordGameStatsOnce();
+        }
 
         // Schedule AI move if it is now the AI's turn
         if isState(STATE_PLAYING) {
@@ -1009,6 +1408,10 @@ class ChessGame {
 
     /// @brief Begin a 180-ms slide+lift animation between two squares.
     hide func startMoveAnimation(fromSq: Integer, toSq: Integer, pieceType: Integer, white: Boolean) {
+        if userSettings.reducedMotion {
+            stopAnimation();
+            return;
+        }
         animActive = true;
         animFromSq = fromSq;
         animToSq = toSq;
@@ -1106,6 +1509,11 @@ class ChessGame {
     hide func startNewGame() {
         cleanupAIWorker();
         syncMenuSelections();
+        userSettings.lastMode = gameMode;
+        userSettings.lastDepth = aiDepth;
+        userSettings.lastPlayerWhite = playerIsWhite;
+        userSettings.save();
+        pieces.setTheme(userSettings.pieceTheme);
 
         // new Board() automatically calls init() → setupStartPosition()
         board = new Board();
@@ -1123,10 +1531,19 @@ class ChessGame {
         lastTo           = -1;
         checkedKingSq    = -1;
         stopAnimation();
+        analysisMode     = false;
+        puzzleMode       = false;
+        puzzleSolved     = false;
+        gameStatsRecorded = false;
 
-        // Clocks count up from 0
-        whiteTimeSec = 0;
-        blackTimeSec = 0;
+        // Casual clocks count up from 0; timed clocks count down from base.
+        if userSettings.isTimed() {
+            whiteTimeSec = userSettings.clockBaseSeconds();
+            blackTimeSec = userSettings.clockBaseSeconds();
+        } else {
+            whiteTimeSec = 0;
+            blackTimeSec = 0;
+        }
         clockTimer.Stop();
         clockTimer.StartRepeatingMs(1000);
 
@@ -1135,8 +1552,11 @@ class ChessGame {
         undoPrevFromStack     = [];
         undoPrevToStack       = [];
         undoCaptureColorStack = [];
+        redoMoveStack         = [];
+        suppressRedoClear     = false;
 
         setGameState(STATE_PLAYING);
+        audio.playStart();
 
         // In PvC with AI as white, trigger AI immediately
         if isAITurn() {
@@ -1150,17 +1570,41 @@ class ChessGame {
 
     /// @brief Tick the active player's count-up clock once per second.
     hide func updateClocks() {
-        if !isState(STATE_PLAYING) { return; }
+        if !isState(STATE_PLAYING) && !isState(STATE_AI_THINK) { return; }
 
         var dt = canvas.DeltaTime;
         if dt <= 0 { return; }
         if dt > 50 { dt = 50; }
 
         if clockTimer.UpdateMs(dt) {
-            if board.whiteToMove {
-                whiteTimeSec = whiteTimeSec + 1;
+            if userSettings.isTimed() {
+                if board.whiteToMove {
+                    whiteTimeSec = whiteTimeSec - 1;
+                    if whiteTimeSec <= 0 {
+                        whiteTimeSec = 0;
+                        setGameState(STATE_CHECKMATE);
+                        gameOverReason = "White flag fell";
+                        gameOverWinner = "Black wins!";
+                        audio.playGameOver();
+                        recordGameStatsOnce();
+                    }
+                } else {
+                    blackTimeSec = blackTimeSec - 1;
+                    if blackTimeSec <= 0 {
+                        blackTimeSec = 0;
+                        setGameState(STATE_CHECKMATE);
+                        gameOverReason = "Black flag fell";
+                        gameOverWinner = "White wins!";
+                        audio.playGameOver();
+                        recordGameStatsOnce();
+                    }
+                }
             } else {
-                blackTimeSec = blackTimeSec + 1;
+                if board.whiteToMove {
+                    whiteTimeSec = whiteTimeSec + 1;
+                } else {
+                    blackTimeSec = blackTimeSec + 1;
+                }
             }
         }
     }
@@ -1183,7 +1627,32 @@ class ChessGame {
         }
 
         if isState(STATE_MENU) {
-            renderer.drawMainMenu(gameMode, aiDepth, playerIsWhite, mx, my, mouseDown);
+            renderer.drawMainMenu(gameMode, aiDepth, playerIsWhite,
+                                  saveManager.hasSlot(0),
+                                  userSettings.timeControl,
+                                  userSettings.boardTheme,
+                                  mx, my, mouseDown);
+            profile.draw(canvas);
+            canvas.Flip();
+            return;
+        }
+
+        if isState(STATE_SETTINGS) {
+            renderer.drawSettingsMenu(userSettings.boardTheme,
+                                      userSettings.pieceTheme,
+                                      userSettings.timeControl,
+                                      userSettings.showLegalMoves,
+                                      userSettings.showCoordinates,
+                                      userSettings.showAttackMap,
+                                      userSettings.highContrast,
+                                      userSettings.reducedMotion,
+                                      userSettings.largeText,
+                                      userSettings.masterVolume,
+                                      userSettings.musicVolume,
+                                      userSettings.sfxVolume,
+                                      userSettings.muted,
+                                      mx, my, mouseDown);
+            profile.draw(canvas);
             canvas.Flip();
             return;
         }
@@ -1191,9 +1660,16 @@ class ChessGame {
         renderer.drawGameBackdrop();
 
         // Draw board and pieces
-        renderer.drawBoard(lastFrom, lastTo, hoverSq);
+        renderer.drawBoard(lastFrom, lastTo, hoverSq,
+                           userSettings.boardTheme,
+                           userSettings.showCoordinates);
         renderer.drawCheckHighlight(checkedKingSq);
-        renderer.drawHighlights(selectedSq, movesForSelected);
+        if userSettings.showAttackMap {
+            renderer.drawAttackMap(buildAttackMap());
+        }
+        if userSettings.showLegalMoves {
+            renderer.drawHighlights(selectedSq, movesForSelected);
+        }
         var skipSq = -1;
         if animProgress >= 0 {
             skipSq = animToSq;
@@ -1216,7 +1692,7 @@ class ChessGame {
         if isState(STATE_AI_THINK) { turnStr = "AI thinking..."; }
         renderer.drawTopBar(turnStr, gameMode, mx, my, mouseDown);
 
-        var statusStr = "Move " + Fmt.Int(board.fullMoveNumber) + "  Halfmove " + Fmt.Int(board.halfMoveClock);
+        var statusStr = gameStatusText();
         renderer.drawFooter(statusStr, mx, my, mouseDown);
 
         // Side panel
@@ -1240,6 +1716,11 @@ class ChessGame {
             renderer.drawGameOverOverlay(gameOverReason, gameOverWinner, mx, my, mouseDown);
         }
 
+        if isState(STATE_PAUSED) {
+            renderer.drawPauseOverlay(mx, my, mouseDown);
+        }
+
+        profile.draw(canvas);
         canvas.Flip();
     }
 
@@ -1254,6 +1735,51 @@ class ChessGame {
             legalMovesValid_  = true;
         }
         return cachedLegalMoves_;
+    }
+
+    hide func buildAttackMap() -> List[Integer] {
+        var attacked = [];
+        var byWhite = !board.whiteToMove;
+        for sq in 0..64 {
+            if moveGen.isAttacked(board, sq, byWhite) {
+                attacked.add(sq);
+            }
+        }
+        return attacked;
+    }
+
+    hide func gameStatusText() -> String {
+        var prefix = "";
+        if analysisMode { prefix = "Analysis  "; }
+        if puzzleMode { prefix = "Puzzle: " + puzzles.title(activePuzzle) + "  "; }
+        var clockMode = settings.timeControlName(userSettings.timeControl);
+        return prefix + "Move " + Fmt.Int(board.fullMoveNumber) +
+               "  Halfmove " + Fmt.Int(board.halfMoveClock) +
+               "  " + clockMode +
+               "  FEN " + notation.boardToFEN(board);
+    }
+
+    hide func recordGameStatsOnce() {
+        if gameStatsRecorded { return; }
+        if puzzleMode || analysisMode { return; }
+        gameStatsRecorded = true;
+
+        var result = 0;
+        var engineWin = false;
+        if gameOverWinner == "White wins!" {
+            if gameMode == MODE_CVC || (gameMode == MODE_PVC && !playerIsWhite) {
+                engineWin = true;
+            }
+            if gameMode == MODE_PVC && playerIsWhite { result = 1; }
+            else if gameMode == MODE_PVC { result = -1; }
+        } else if gameOverWinner == "Black wins!" {
+            if gameMode == MODE_CVC || (gameMode == MODE_PVC && playerIsWhite) {
+                engineWin = true;
+            }
+            if gameMode == MODE_PVC && !playerIsWhite { result = 1; }
+            else if gameMode == MODE_PVC { result = -1; }
+        }
+        profile.noteGame(result, moveCount, engineWin);
     }
 
     /// @brief Invalidate the legal-move cache. Call after every board change.

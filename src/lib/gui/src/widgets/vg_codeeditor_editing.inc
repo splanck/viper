@@ -406,8 +406,22 @@ static void record_edit_history(vg_codeeditor_t *editor,
                                       cursor_col_before,
                                       cursor_line_after,
                                       cursor_col_after);
-    if (op)
-        edit_history_push(editor->history, op);
+    if (!op)
+        return;
+    // Merge single-character typing into the previous undo unit when it continues
+    // an in-progress run; otherwise push a new op and (for a fresh coalescable
+    // insert) anchor the next run.
+    if (edit_history_try_coalesce_insert(editor->history, op, editor->typing_clock_ms)) {
+        edit_op_destroy(op);
+        return;
+    }
+    if (op->type == VG_EDIT_INSERT && op->cursor_id == 0 && !editor->history->is_grouping &&
+        op->new_text && codeeditor_single_codepoint_len(op->new_text) != 0 &&
+        op->new_text[0] != '\n') {
+        editor->history->last_insert_time_ms = editor->typing_clock_ms;
+        editor->history->coalesce_break = false;
+    }
+    edit_history_push(editor->history, op);
 }
 
 /// @brief Applies @p replacement_text at each edit target in descending order, recording undo ops,

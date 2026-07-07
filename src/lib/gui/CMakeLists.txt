@@ -231,6 +231,22 @@ if (VIPER_BUILD_TESTING)
     add_test(NAME test_vg_codeeditor_perf COMMAND test_vg_codeeditor_perf)
     set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
 
+    add_executable(test_vg_codeeditor_behavior tests/test_vg_codeeditor_behavior.c)
+    target_link_libraries(test_vg_codeeditor_behavior vipergui)
+    target_include_directories(test_vg_codeeditor_behavior PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_codeeditor_behavior COMMAND test_vg_codeeditor_behavior)
+    set_tests_properties(test_vg_codeeditor_behavior PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
+
+    add_executable(test_vg_treeview_dnd tests/test_vg_treeview_dnd.c)
+    target_link_libraries(test_vg_treeview_dnd vipergui)
+    target_include_directories(test_vg_treeview_dnd PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_treeview_dnd COMMAND test_vg_treeview_dnd)
+    set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
+
     # Anti-aliased drawing core. Built self-contained against the mock backend so
     # the pixel-exact and determinism assertions run headless on every platform.
     add_executable(test_vg_draw

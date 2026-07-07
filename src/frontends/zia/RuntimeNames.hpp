@@ -313,7 +313,8 @@ inline constexpr const char *kFutureGet = kThreadsFutureGet;
 inline constexpr size_t kMaxImportDepth = 50;
 
 /// @brief Maximum number of imported files to prevent runaway compilation.
-inline constexpr size_t kMaxImportedFiles = 100;
+/// @details Raised to 256 to accommodate large dogfood projects (ViperIDE).
+inline constexpr size_t kMaxImportedFiles = 256;
 
 /// @brief Native machine word size used by Zia IL pointer/i64 stack slots.
 /// @details Zia currently lowers references, i64 values, and f64 values into 8-byte IL slots.

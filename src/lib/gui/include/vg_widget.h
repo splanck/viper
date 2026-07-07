@@ -809,6 +809,14 @@ void vg_widget_release_input_capture(void);
 /// @return The widget capturing input, or NULL if no capture is active.
 vg_widget_t *vg_widget_get_input_capture(void);
 
+/// @brief Set the global mouse-wheel speed multiplier for scrolling widgets.
+/// @param speed Multiplier (clamped to [0.1, 8.0]); 1.0 is the default.
+void vg_set_wheel_speed(float speed);
+
+/// @brief Get the global mouse-wheel speed multiplier.
+/// @return Current multiplier (1.0 by default).
+float vg_get_wheel_speed(void);
+
 /// @brief Save the current toolkit-global widget runtime state.
 void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state);
 

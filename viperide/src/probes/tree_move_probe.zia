@@ -1,0 +1,75 @@
+module tree_move_probe;
+
+// ============================================================================
+// MODULE: tree_move_probe
+// PURPOSE: Verify plan 12 — ProjectManager.MovePathInto moves a file/folder
+//          into a target directory on disk and rejects invalid drops (onto
+//          itself, into its own subtree). Runs headless (no GUI needed).
+// ============================================================================
+
+bind "../core/project_manager";
+bind "../core/document_manager";
+
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind TempFile = Viper.IO.TempFile;
+bind Terminal = Viper.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("viperide_move_");
+    var srcFolder = Path.Join(root, "src");
+    Dir.MakeAll(srcFolder);
+    var filePath = Path.Join(root, "a.zia");
+    File.WriteAllText(filePath, "module A;\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.OpenFolder(root); // defensively sets up project without a tree
+    var docMgr = new document_manager.DocumentManager();
+
+    // Move a.zia into src/.
+    var moved = projMgr.MovePathInto(filePath, srcFolder, docMgr);
+    var expectNew = Path.Join(srcFolder, "a.zia");
+    if moved != expectNew {
+        fail("move returned '" + moved + "' want '" + expectNew + "'");
+        return;
+    }
+    if File.Exists(expectNew) == false {
+        fail("file missing at destination");
+        return;
+    }
+    if File.Exists(filePath) {
+        fail("file still exists at source");
+        return;
+    }
+
+    // Reject: move a folder onto itself.
+    if projMgr.MovePathInto(srcFolder, srcFolder, docMgr) != "" {
+        fail("self-move was not rejected");
+        return;
+    }
+
+    // Reject: move a folder into its own descendant.
+    var outer = Path.Join(root, "outer");
+    var inner = Path.Join(outer, "inner");
+    Dir.MakeAll(inner);
+    if projMgr.MovePathInto(outer, inner, docMgr) != "" {
+        fail("move into own subtree was not rejected");
+        return;
+    }
+
+    // Reject: move onto an existing destination.
+    File.WriteAllText(Path.Join(srcFolder, "dup.zia"), "module Dup;\n");
+    var dupSource = Path.Join(root, "dup.zia");
+    File.WriteAllText(dupSource, "module Dup2;\n");
+    if projMgr.MovePathInto(dupSource, srcFolder, docMgr) != "" {
+        fail("overwrite move was not rejected");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

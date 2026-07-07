@@ -1,0 +1,251 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/notation.zia
+// Purpose: FEN and PGN helpers for Chess save/replay/analysis features.
+// Key invariants:
+//   - FEN export always emits six fields.
+//   - FEN import validates board shape before publishing the position.
+// Ownership/Lifetime:
+//   - Pure helper functions; callers own Board/List values.
+//   - Imported positions rebuild Board hash through Board finish hooks.
+// Links: examples/games/chess/core/board.zia, examples/games/chess/save.zia
+//
+//===----------------------------------------------------------------------===//
+
+module notation;
+
+bind Viper.Core.Parse as Parse;
+bind Viper.String as String;
+bind Fmt = Viper.Text.Fmt;
+bind "./core/config";
+bind "./core/board";
+
+func boardToFEN(b: Board) -> String {
+    var fen = "";
+    for r in 0..8 {
+        var empty = 0;
+        for f in 0..8 {
+            var piece = b.get(r * 8 + f);
+            if piece == 0 {
+                empty = empty + 1;
+            } else {
+                if empty > 0 {
+                    fen = fen + Fmt.Int(empty);
+                    empty = 0;
+                }
+                fen = fen + pieceToFen(piece);
+            }
+        }
+        if empty > 0 { fen = fen + Fmt.Int(empty); }
+        if r < 7 { fen = fen + "/"; }
+    }
+
+    if b.whiteToMove { fen = fen + " w "; }
+    else { fen = fen + " b "; }
+
+    var castles = "";
+    if b.castleWK { castles = castles + "K"; }
+    if b.castleWQ { castles = castles + "Q"; }
+    if b.castleBK { castles = castles + "k"; }
+    if b.castleBQ { castles = castles + "q"; }
+    if castles == "" { castles = "-"; }
+    fen = fen + castles + " ";
+
+    if b.enPassantFile >= 0 {
+        fen = fen + fileChar(b.enPassantFile);
+        if b.whiteToMove { fen = fen + "6"; }
+        else { fen = fen + "3"; }
+    } else {
+        fen = fen + "-";
+    }
+
+    fen = fen + " " + Fmt.Int(b.halfMoveClock) + " " + Fmt.Int(b.fullMoveNumber);
+    return fen;
+}
+
+func applyFEN(b: Board, fen: String) -> Boolean {
+    var placement = fenField(fen, 0);
+    if placement == "" { return false; }
+
+    var active = fenField(fen, 1);
+    var castles = fenField(fen, 2);
+    var ep = fenField(fen, 3);
+    var halfText = fenField(fen, 4);
+    var fullText = fenField(fen, 5);
+    if active == "" { active = "w"; }
+    if castles == "" { castles = "-"; }
+    if ep == "" { ep = "-"; }
+
+    var whiteMove = active != "b";
+    var epFile = -1;
+    if Viper.String.get_Length(ep) >= 2 {
+        epFile = fileIndex(String.Substring(ep, 0, 1));
+    }
+
+    var halfClock = Parse.IntOr(halfText, 0);
+    var fullMove = Parse.IntOr(fullText, 1);
+    if fullMove < 1 { fullMove = 1; }
+
+    var parsed = new Board();
+    parsed.setupManualPosition(whiteMove,
+                               epFile,
+                               String.IndexOf(castles, "K") > 0,
+                               String.IndexOf(castles, "Q") > 0,
+                               String.IndexOf(castles, "k") > 0,
+                               String.IndexOf(castles, "q") > 0,
+                               halfClock,
+                               fullMove);
+
+    var rank = 0;
+    var file = 0;
+    var len = Viper.String.get_Length(placement);
+    for i in 0..len {
+        var ch = String.Substring(placement, i, 1);
+        if ch == "/" {
+            if file != 8 { return false; }
+            rank = rank + 1;
+            file = 0;
+        } else if isDigit(ch) {
+            file = file + (String.Asc(ch) - String.Asc("0"));
+            if file > 8 { return false; }
+        } else {
+            var piece = fenToPiece(ch);
+            if piece == 0 { return false; }
+            if rank < 0 || rank > 7 || file < 0 || file > 7 { return false; }
+            parsed.set(rank * 8 + file, piece);
+            file = file + 1;
+        }
+    }
+
+    if rank != 7 || file != 8 { return false; }
+    parsed.finishManualPosition();
+
+    b.setupManualPosition(parsed.whiteToMove, parsed.enPassantFile,
+                          parsed.castleWK, parsed.castleWQ,
+                          parsed.castleBK, parsed.castleBQ,
+                          parsed.halfMoveClock, parsed.fullMoveNumber);
+    for sq in 0..64 {
+        b.set(sq, parsed.get(sq));
+    }
+    b.finishManualPosition();
+    return true;
+}
+
+func historyToPGN(history: List[String]) -> String {
+    var pgn = "";
+    var i = 0;
+    while i < history.length() {
+        var moveNum = i / 2 + 1;
+        pgn = pgn + Fmt.Int(moveNum) + ". " + history.get(i);
+        if i + 1 < history.length() {
+            pgn = pgn + " " + history.get(i + 1);
+        }
+        if i + 2 < history.length() {
+            pgn = pgn + " ";
+        }
+        i = i + 2;
+    }
+    return pgn;
+}
+
+func squareName(sq: Integer) -> String {
+    if sq < 0 || sq >= 64 { return "-"; }
+    return fileChar(sq % 8) + Fmt.Int(8 - sq / 8);
+}
+
+func squareIndex(name: String) -> Integer {
+    if Viper.String.get_Length(name) < 2 { return -1; }
+    var file = fileIndex(String.Substring(name, 0, 1));
+    var rankCh = String.Substring(name, 1, 1);
+    var rank = String.Asc(rankCh) - String.Asc("0");
+    if file < 0 || rank < 1 || rank > 8 { return -1; }
+    return (8 - rank) * 8 + file;
+}
+
+func pieceToFen(piece: Integer) -> String {
+    if piece == PAWN { return "P"; }
+    if piece == KNIGHT { return "N"; }
+    if piece == BISHOP { return "B"; }
+    if piece == ROOK { return "R"; }
+    if piece == QUEEN { return "Q"; }
+    if piece == KING { return "K"; }
+    if piece == -PAWN { return "p"; }
+    if piece == -KNIGHT { return "n"; }
+    if piece == -BISHOP { return "b"; }
+    if piece == -ROOK { return "r"; }
+    if piece == -QUEEN { return "q"; }
+    if piece == -KING { return "k"; }
+    return "";
+}
+
+func fenToPiece(ch: String) -> Integer {
+    if ch == "P" { return PAWN; }
+    if ch == "N" { return KNIGHT; }
+    if ch == "B" { return BISHOP; }
+    if ch == "R" { return ROOK; }
+    if ch == "Q" { return QUEEN; }
+    if ch == "K" { return KING; }
+    if ch == "p" { return -PAWN; }
+    if ch == "n" { return -KNIGHT; }
+    if ch == "b" { return -BISHOP; }
+    if ch == "r" { return -ROOK; }
+    if ch == "q" { return -QUEEN; }
+    if ch == "k" { return -KING; }
+    return 0;
+}
+
+func fileChar(file: Integer) -> String {
+    if file == 0 { return "a"; }
+    if file == 1 { return "b"; }
+    if file == 2 { return "c"; }
+    if file == 3 { return "d"; }
+    if file == 4 { return "e"; }
+    if file == 5 { return "f"; }
+    if file == 6 { return "g"; }
+    return "h";
+}
+
+func fileIndex(ch: String) -> Integer {
+    if ch == "a" { return 0; }
+    if ch == "b" { return 1; }
+    if ch == "c" { return 2; }
+    if ch == "d" { return 3; }
+    if ch == "e" { return 4; }
+    if ch == "f" { return 5; }
+    if ch == "g" { return 6; }
+    if ch == "h" { return 7; }
+    return -1;
+}
+
+func fenField(fen: String, target: Integer) -> String {
+    var start = 0;
+    var field = 0;
+    var len = Viper.String.get_Length(fen);
+    var i = 0;
+    while i <= len {
+        var atEnd = i == len;
+        var isSpace = false;
+        if !atEnd {
+            isSpace = String.Substring(fen, i, 1) == " ";
+        }
+        if atEnd || isSpace {
+            if field == target {
+                return String.Substring(fen, start, i - start);
+            }
+            field = field + 1;
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func isDigit(ch: String) -> Boolean {
+    var code = String.Asc(ch);
+    return code >= String.Asc("0") && code <= String.Asc("9");
+}

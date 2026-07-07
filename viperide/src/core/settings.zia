@@ -64,6 +64,9 @@ class SettingsManager {
     expose Boolean statusBarVisible; // Whether the status bar is shown.
     expose Boolean fullscreen;     // Whether the main app starts fullscreen.
     expose Boolean wordWrap;       // Whether editor lines wrap within the viewport.
+    expose Integer renderWhitespaceMode; // Whitespace markers: 0=none, 1=boundary, 2=all.
+    expose Integer wheelSpeedPct;  // Mouse-wheel scroll sensitivity, percent (100 = 1.0x).
+    expose Integer bottomPanelSplitPct; // Editor's share of the editor/panel split, percent (default 70).
     expose Boolean lineNumbers;    // Whether the editor gutter shows line numbers.
     expose Boolean insertSpaces;   // Whether Tab inserts spaces instead of a hard tab.
     expose Boolean trimTrailingWhitespace; // Trim trailing spaces/tabs when saving.
@@ -95,6 +98,9 @@ class SettingsManager {
         statusBarVisible = true;
         fullscreen = false;
         wordWrap       = false;
+        renderWhitespaceMode = 0;
+        wheelSpeedPct  = 100;
+        bottomPanelSplitPct = 70;
         lineNumbers    = true;
         insertSpaces   = true;
         trimTrailingWhitespace = false;
@@ -199,6 +205,24 @@ class SettingsManager {
         var wwStr = Ini.Get(ini, "settings", "wordWrap");
         if wwStr != "" {
             wordWrap = wwStr == "1";
+        }
+
+        var rwStr = Ini.Get(ini, "settings", "renderWhitespace");
+        if rwStr != "" {
+            var rw = Parse.IntOr(rwStr, renderWhitespaceMode);
+            if rw >= 0 and rw <= 2 { renderWhitespaceMode = rw; }
+        }
+
+        var wsStr = Ini.Get(ini, "settings", "wheelSpeed");
+        if wsStr != "" {
+            var ws = Parse.IntOr(wsStr, wheelSpeedPct);
+            if ws >= 25 and ws <= 400 { wheelSpeedPct = ws; }
+        }
+
+        var bpStr = Ini.Get(ini, "settings", "bottomPanelSplit");
+        if bpStr != "" {
+            var bp = Parse.IntOr(bpStr, bottomPanelSplitPct);
+            if bp >= 30 and bp <= 95 { bottomPanelSplitPct = bp; }
         }
 
         var lnStr = Ini.Get(ini, "settings", "lineNumbers");
@@ -318,6 +342,9 @@ class SettingsManager {
         } else {
             Ini.Set(ini, "settings", "wordWrap", "0");
         }
+        Ini.Set(ini, "settings", "renderWhitespace", "" + renderWhitespaceMode);
+        Ini.Set(ini, "settings", "wheelSpeed", "" + wheelSpeedPct);
+        Ini.Set(ini, "settings", "bottomPanelSplit", "" + bottomPanelSplitPct);
         if lineNumbers {
             Ini.Set(ini, "settings", "lineNumbers", "1");
         } else {

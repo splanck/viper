@@ -1,0 +1,189 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/save.zia
+// Purpose: Three-slot game save/load persistence for Chess.
+// Key invariants:
+//   - Slot data is namespaced by slot index and stores FEN as source of truth.
+//   - Loading never mutates the board directly; callers decide when to apply.
+// Ownership/Lifetime:
+//   - ChessGame owns one ChessSaveManager instance.
+//   - SaveData owns durable key-value storage under "chess-saves".
+// Links: examples/games/chess/notation.zia, docs/viperlib/game/persistence.md
+//
+//===----------------------------------------------------------------------===//
+
+module save;
+
+bind Viper.IO;
+bind Viper.String as String;
+bind Fmt = Viper.Text.Fmt;
+bind "./core/board";
+bind "./notation";
+
+final SAVE_SLOT_COUNT = 3;
+
+/// @brief Last loaded save-slot payload.
+class ChessSavePayload {
+    expose String fen;
+    expose String historyText;
+    expose String whiteCaptureText;
+    expose String blackCaptureText;
+    expose Integer gameMode;
+    expose Integer aiDepth;
+    expose Integer timeControl;
+    expose Integer whiteClock;
+    expose Integer blackClock;
+    expose Integer lastFrom;
+    expose Integer lastTo;
+    expose Boolean playerIsWhite;
+    expose Boolean valid;
+
+    expose func init() {
+        fen = "";
+        historyText = "";
+        whiteCaptureText = "";
+        blackCaptureText = "";
+        gameMode = 1;
+        aiDepth = 4;
+        timeControl = 0;
+        whiteClock = 0;
+        blackClock = 0;
+        lastFrom = -1;
+        lastTo = -1;
+        playerIsWhite = true;
+        valid = false;
+    }
+}
+
+/// @brief Three-slot save manager.
+class ChessSaveManager {
+    hide SaveData store;
+    expose ChessSavePayload payload;
+
+    expose func init(saveKey: String) {
+        store = SaveData.New(saveKey);
+        payload = new ChessSavePayload();
+        store.Load();
+    }
+
+    expose func hasSlot(slot: Integer) -> Boolean {
+        if !validSlot(slot) { return false; }
+        store.Load();
+        return store.GetInt(prefix(slot) + "present", 0) != 0;
+    }
+
+    expose func saveSlot(slot: Integer,
+                         b: Board,
+                         sanHistory: List[String],
+                         whiteCaps: List[Integer],
+                         blackCaps: List[Integer],
+                         gameMode: Integer,
+                         aiDepth: Integer,
+                         playerIsWhite: Boolean,
+                         timeControl: Integer,
+                         whiteClock: Integer,
+                         blackClock: Integer,
+                         lastFrom: Integer,
+                         lastTo: Integer) -> Boolean {
+        if !validSlot(slot) { return false; }
+        var p = prefix(slot);
+        store.Load();
+        store.SetInt(p + "present", 1);
+        store.SetString(p + "fen", notation.boardToFEN(b));
+        store.SetString(p + "history", encodeStringList(sanHistory));
+        store.SetString(p + "white_caps", encodePieceList(whiteCaps));
+        store.SetString(p + "black_caps", encodePieceList(blackCaps));
+        store.SetInt(p + "game_mode", gameMode);
+        store.SetInt(p + "ai_depth", aiDepth);
+        store.SetInt(p + "player_white", boolToInt(playerIsWhite));
+        store.SetInt(p + "time_control", timeControl);
+        store.SetInt(p + "white_clock", whiteClock);
+        store.SetInt(p + "black_clock", blackClock);
+        store.SetInt(p + "last_from", lastFrom);
+        store.SetInt(p + "last_to", lastTo);
+        return store.Save();
+    }
+
+    expose func loadSlot(slot: Integer) -> Boolean {
+        payload = new ChessSavePayload();
+        if !validSlot(slot) { return false; }
+        store.Load();
+        var p = prefix(slot);
+        if store.GetInt(p + "present", 0) == 0 { return false; }
+        payload.fen = store.GetString(p + "fen", "");
+        if payload.fen == "" { return false; }
+        payload.historyText = store.GetString(p + "history", "");
+        payload.whiteCaptureText = store.GetString(p + "white_caps", "");
+        payload.blackCaptureText = store.GetString(p + "black_caps", "");
+        payload.gameMode = store.GetInt(p + "game_mode", 1);
+        payload.aiDepth = store.GetInt(p + "ai_depth", 4);
+        payload.playerIsWhite = store.GetInt(p + "player_white", 1) != 0;
+        payload.timeControl = store.GetInt(p + "time_control", 0);
+        payload.whiteClock = store.GetInt(p + "white_clock", 0);
+        payload.blackClock = store.GetInt(p + "black_clock", 0);
+        payload.lastFrom = store.GetInt(p + "last_from", -1);
+        payload.lastTo = store.GetInt(p + "last_to", -1);
+        payload.valid = true;
+        return true;
+    }
+}
+
+func decodeStringList(text: String) -> List[String] {
+    var out = [];
+    var len = Viper.String.get_Length(text);
+    if len == 0 { return out; }
+    var start = 0;
+    for i in 0..len + 1 {
+        if i == len || String.Substring(text, i, 1) == "|" {
+            out.add(String.Substring(text, start, i - start));
+            start = i + 1;
+        }
+    }
+    return out;
+}
+
+func decodePieceList(text: String) -> List[Integer] {
+    var out = [];
+    var len = Viper.String.get_Length(text);
+    for i in 0..len {
+        var piece = notation.fenToPiece(String.Substring(text, i, 1));
+        if piece < 0 { piece = -piece; }
+        if piece > 0 { out.add(piece); }
+    }
+    return out;
+}
+
+func encodeStringList(items: List[String]) -> String {
+    var out = "";
+    for i in 0..items.length() {
+        if i > 0 { out = out + "|"; }
+        out = out + items.get(i);
+    }
+    return out;
+}
+
+func encodePieceList(items: List[Integer]) -> String {
+    var out = "";
+    for i in 0..items.length() {
+        out = out + notation.pieceToFen(items.get(i));
+    }
+    return out;
+}
+
+func prefix(slot: Integer) -> String {
+    return "slot_" + Fmt.Int(slot) + "_";
+}
+
+func validSlot(slot: Integer) -> Boolean {
+    return slot >= 0 && slot < SAVE_SLOT_COUNT;
+}
+
+func boolToInt(v: Boolean) -> Integer {
+    if v { return 1; }
+    return 0;
+}

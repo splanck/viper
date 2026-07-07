@@ -163,6 +163,9 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     } else {
         engine.editor.SetWordWrap(false);
     }
+    engine.editor.SetWhitespaceMode(appSettings.renderWhitespaceMode);
+    shell.app.SetWheelSpeed(appSettings.wheelSpeedPct / 100.0);
+    shell.toolPanels.SetBottomSplitPct(appSettings.bottomPanelSplitPct);
     if appSettings.lineNumbers {
         engine.editor.SetShowLineNumbers(true);
     } else {
@@ -317,6 +320,26 @@ func handleToggleTheme(shell: app_shell.AppShell,
     }
     applyShellFont(shell);
     applyPersistentSettings(shell, engine, liveDiag, appSettings);
+    appSettings.Save();
+}
+
+/// @brief Cycle whitespace-marker rendering (off -> boundary -> all -> off) on
+///        the active editor and persist the new mode.
+func handleToggleRenderWhitespace(shell: app_shell.AppShell,
+                                  engine: editor_engine.EditorEngine,
+                                  appSettings: settings.SettingsManager) {
+    if shell == null or engine == null or appSettings == null { return; }
+    var mode = appSettings.renderWhitespaceMode + 1;
+    if mode > 2 { mode = 0; }
+    appSettings.renderWhitespaceMode = mode;
+    engine.editor.SetWhitespaceMode(mode);
+    if mode == 0 {
+        shell.SetStatusLeft("Whitespace markers: off");
+    } else if mode == 1 {
+        shell.SetStatusLeft("Whitespace markers: boundary");
+    } else {
+        shell.SetStatusLeft("Whitespace markers: all");
+    }
     appSettings.Save();
 }
 

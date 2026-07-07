@@ -106,6 +106,7 @@ module game;
 
 bind Viper.Graphics;
 bind Viper.Input;
+bind Viper.Input.Keyboard as Keyboard;
 bind Viper.Text.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
@@ -189,10 +190,21 @@ class Game {
     hide Integer bossesDefeated;    // bitmask
     hide Integer totalPlaytime;     // seconds
     hide Integer saveSlot;          // active save slot (0-2)
+    hide Integer completionMask;    // completed-level mask
+    hide Integer deathCount;        // run deaths
     hide Boolean showWorldMap;
     hide Boolean showLore;
     hide Integer poundImpactTimer;  // ground pound visual timer
     hide Boolean wasPounding;       // track pound landing (one-shot)
+    hide Boolean fullscreenOn;
+    hide Boolean optionsReturnToPause;
+    hide Boolean controlsReturnToPause;
+    hide Integer bossCueTimer;
+    hide Boolean bossIntroPlayed;
+    hide Integer openingIntroTimer;
+    hide Integer achBrowse;
+    hide Integer bestiaryBrowse;
+    hide Integer loreBrowse;
 
     // Death flash tracking (draw bright circle at kill position)
     hide Integer killFlashX;       // world pixel X of last kill
@@ -205,6 +217,7 @@ class Game {
     hide Integer enemiesKilled;  // per-level kill tally for the complete screen (#7)
     hide Integer currentLevel;
     hide Integer levelTimer;     // milliseconds elapsed in level
+    hide Integer levelDamageTaken;
     hide Boolean reachedCheckpoint;
 
     // Level complete state
@@ -250,12 +263,21 @@ class Game {
         sm.Add("bossfight");
         sm.Add("victory");
         sm.Add("levelselect");
+        sm.Add("options");
+        sm.Add("loadgame");
+        sm.Add("extras");
+        sm.Add("credits");
+        sm.Add("intro");
+        sm.Add("achievements");
+        sm.Add("bestiary");
+        sm.Add("lorearchive");
         sm.Switch("menu");
 
         score = 0;
         coins = 0;
         currentLevel = 1;
         levelTimer = 0;
+        levelDamageTaken = 0;
         reachedCheckpoint = false;
         levelCompleteTimer = 0;
         timeBonus = 0;
@@ -267,6 +289,15 @@ class Game {
         wallSparkTimer = 0;
         jetFlameTimer = 0;
         introTimer = 0;
+        fullscreenOn = false;
+        optionsReturnToPause = false;
+        controlsReturnToPause = false;
+        bossCueTimer = 0;
+        bossIntroPlayed = false;
+        openingIntroTimer = 0;
+        achBrowse = 0;
+        bestiaryBrowse = 0;
+        loreBrowse = 0;
 
         // Create palette first — passed to all subsystems that use colors
         pal = new Palette();
@@ -346,6 +377,10 @@ class Game {
         // Debug overlay toggle (F3)
         Action.Define("debug");
         Action.BindKey("debug", KEY_F3);
+
+        // Fullscreen toggle (F11)
+        Action.Define(ACT_FULLSCREEN);
+        Action.BindKey(ACT_FULLSCREEN, KEY_F11);
     }
 
     // =========================================================================
@@ -366,6 +401,11 @@ class Game {
             // Debug overlay toggle (F3)
             if debugEnabled and Action.Pressed("debug") {
                 debugOverlay.Toggle();
+            }
+            if Keyboard.WasPressed(KEY_F11) {
+                toggleFullscreen();
+            } else if Action.Pressed(ACT_FULLSCREEN) {
+                toggleFullscreen();
             }
 
             sm.Update(dt);
@@ -391,17 +431,55 @@ class Game {
             if sm.IsScene("controls") {
                 updateControls();
             } else {
+            if sm.IsScene("options") {
+                updateOptions();
+            } else {
+            if sm.IsScene("loadgame") {
+                updateLoadGame();
+            } else {
+            if sm.IsScene("extras") {
+                updateExtras();
+            } else {
+            if sm.IsScene("credits") {
+                updateCredits();
+            } else {
+            if sm.IsScene("intro") {
+                updateIntro();
+            } else {
+            if sm.IsScene("achievements") {
+                updateAchievements();
+            } else {
+            if sm.IsScene("bestiary") {
+                updateBestiary();
+            } else {
+            if sm.IsScene("lorearchive") {
+                updateLoreArchive();
+            } else {
             if sm.IsScene("victory") {
                 updateVictory();
             } else {
             if sm.IsScene("levelselect") {
                 updateLevelSelect();
             }
-            }}}}}}}}
+            }}}}}}}}}}}}}}}}
 
             updateDebugOverlay();
 
             canvas.Flip();
+        }
+    }
+
+    /// @brief Toggle the game window between fullscreen and windowed modes.
+    ///
+    /// Uses the Viper `Canvas.Fullscreen()` and `Canvas.Windowed()` APIs so the
+    /// same path is available from F11 and the Options menu.
+    hide func toggleFullscreen() {
+        if fullscreenOn {
+            canvas.Windowed();
+            fullscreenOn = false;
+        } else {
+            canvas.Fullscreen();
+            fullscreenOn = true;
         }
     }
 
@@ -474,8 +552,16 @@ class Game {
         if sm.IsScene("levelcomplete") { return 4; }
         if sm.IsScene("highscores") { return 5; }
         if sm.IsScene("controls") { return 6; }
-        if sm.IsScene("victory") { return 7; }
-        if sm.IsScene("levelselect") { return 8; }
+        if sm.IsScene("options") { return 7; }
+        if sm.IsScene("loadgame") { return 8; }
+        if sm.IsScene("extras") { return 9; }
+        if sm.IsScene("credits") { return 10; }
+        if sm.IsScene("intro") { return 11; }
+        if sm.IsScene("achievements") { return 12; }
+        if sm.IsScene("bestiary") { return 13; }
+        if sm.IsScene("lorearchive") { return 14; }
+        if sm.IsScene("victory") { return 15; }
+        if sm.IsScene("levelselect") { return 16; }
         return -1;
     }
 
@@ -538,17 +624,40 @@ class Game {
         if action == STATE_PLAYING {
             startNewGame();
         } else {
+        if action == MENU_ACTION_CONTINUE {
+            if loadMostAdvancedSlot() == false {
+                sm.Switch("loadgame");
+                menus.resetSelection();
+            }
+        } else {
         if action == STATE_LEVELSELECT {
             sm.Switch("levelselect");
+        } else {
+        if action == STATE_OPTIONS {
+            optionsReturnToPause = false;
+            sm.Switch("options");
+            menus.resetSelection();
+        } else {
+        if action == STATE_LOADGAME {
+            sm.Switch("loadgame");
+            menus.resetSelection();
+        } else {
+        if action == STATE_EXTRAS {
+            sm.Switch("extras");
+            menus.resetSelection();
+        } else {
+        if action == STATE_CREDITS {
+            sm.Switch("credits");
         } else {
         if action == STATE_HIGHSCORES {
             sm.Switch("highscores");
             menus.resetSelection();
         } else {
         if action == STATE_CONTROLS {
+            controlsReturnToPause = false;
             sm.Switch("controls");
         }
-        }}}
+        }}}}}}}}
         renderObj.menuFadeIn(450);
     }
 
@@ -734,6 +843,7 @@ class Game {
         checkHazards();
         checkCheckpoint();
         checkLevelEnd();
+        updateBossDiscoveryCue();
 
         // Handle player death
         if player.state == PS_DEAD {
@@ -762,6 +872,8 @@ class Game {
             }
             killFlashTimer = killFlashTimer - 1;
         }
+
+        drawNewSystems(canvas, camera.x, camera.y);
 
         // Level intro splash overlay
         if introTimer > 0 {
@@ -830,6 +942,7 @@ class Game {
                         renderObj.shake(8, 4);
                         sfx.playEnemyDeath();
                         achSys.onEnemyKilled();
+                        loreSystem.unlockBestiaryEntry(etype);
                         enemiesKilled = enemiesKilled + 1;
                         // Trigger visible kill flash
                         killFlashX = ex;
@@ -845,6 +958,7 @@ class Game {
             }
 
             player.takeDamage(1);
+            levelDamageTaken = levelDamageTaken + 1;
             renderObj.shake(8, 4);
             renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
@@ -869,6 +983,18 @@ class Game {
                 particles.burstCoinCollect(player.centerX(), player.centerY());
                 sfx.playCoin();
                 achSys.onCoinCollected();
+            } else if collected == PICKUP_GEM {
+                gems = gems + 1;
+                score = score + COIN_SCORE * 2;
+                particles.burstCoinCollect(player.centerX(), player.centerY());
+                sfx.playCoin();
+                achSys.onGemCollected();
+            } else if collected == PICKUP_HP_UP {
+                player.maxHp = player.maxHp + 1;
+                player.hp = player.maxHp;
+                particles.burstSpark(player.centerX(), player.centerY(),
+                                     pal.sparkYellow);
+                sfx.playPowerup();
             } else {
                 player.collectPowerUp(collected);
                 particles.burstSpark(player.centerX(), player.centerY(),
@@ -913,6 +1039,7 @@ class Game {
                         }
                         sfx.playEnemyDeath();
                         achSys.onEnemyKilled();
+                        loreSystem.unlockBestiaryEntry(etype2);
                         enemiesKilled = enemiesKilled + 1;
                         // Trigger visible kill flash
                         killFlashX = bx;
@@ -938,6 +1065,7 @@ class Game {
 
         if enemies.checkEnemyBulletHit(player.pixelX(), player.pixelY()) {
             player.takeDamage(1);
+            levelDamageTaken = levelDamageTaken + 1;
             renderObj.shake(8, 4);
             renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
@@ -957,6 +1085,7 @@ class Game {
 
         if phys.isOnHazard(player.x, player.y, PLAYER_W, PLAYER_H, level) {
             player.takeDamage(2);
+            levelDamageTaken = levelDamageTaken + 2;
             renderObj.shake(10, 5);
             renderObj.flash(pal.lavaBright, 8);
             sfx.playHurt();
@@ -992,6 +1121,67 @@ class Game {
         }
     }
 
+    /// @brief Update one-shot boss discovery state for the active level.
+    ///
+    /// The cue triggers when the player gets close enough to the boss arena for
+    /// the fight to be imminent.  A separate directional marker is drawn while
+    /// the boss is alive and still off-screen.
+    hide func updateBossDiscoveryCue() {
+        if bossCueTimer > 0 {
+            bossCueTimer = bossCueTimer - dt;
+            if bossCueTimer < 0 { bossCueTimer = 0; }
+        }
+
+        if level.hasBoss == false { return; }
+        if bossIntroPlayed { return; }
+        if enemies.isBossAlive() == false { return; }
+
+        var dx = level.bossX - player.pixelX();
+        if dx < 0 { dx = 0 - dx; }
+        if dx < SCREEN_W {
+            bossIntroPlayed = true;
+            bossCueTimer = 1800;
+            renderObj.shake(5, 2);
+        }
+    }
+
+    /// @brief Draw boss direction and discovery UI over gameplay.
+    ///
+    /// @param canvas Active gameplay canvas.
+    /// @param camX Camera world X.
+    /// @param camY Camera world Y.
+    hide func drawBossCue(canvas: Canvas, camX: Integer, camY: Integer) {
+        if level.hasBoss == false { return; }
+        if enemies.isBossAlive() == false { return; }
+
+        var bossScreenX = level.bossX - camX;
+        var bossScreenY = level.bossY - camY;
+
+        if bossCueTimer > 0 {
+            canvas.BoxAlpha(360, 92, 560, 54, Color.RGB(0, 0, 10), 190);
+            canvas.Frame(360, 92, 560, 54, Color.RGB(120, 210, 240));
+            canvas.TextCenteredScaled(106, "BOSS SIGNATURE DETECTED",
+                                      Color.RGB(180, 240, 255), 2);
+        }
+
+        if bossScreenX > SCREEN_W - 96 {
+            canvas.BoxAlpha(SCREEN_W - 142, 308, 120, 56, Color.RGB(0, 0, 10), 150);
+            canvas.TextScaled(SCREEN_W - 122, 320, ">>", Color.RGB(255, 180, 80), 3);
+            canvas.Text(SCREEN_W - 118, 348, "BOSS", Color.RGB(255, 220, 160));
+        }
+        if bossScreenX < 64 {
+            canvas.BoxAlpha(22, 308, 120, 56, Color.RGB(0, 0, 10), 150);
+            canvas.TextScaled(40, 320, "<<", Color.RGB(255, 180, 80), 3);
+            canvas.Text(48, 348, "BOSS", Color.RGB(255, 220, 160));
+        }
+        if bossScreenX >= 64 {
+            if bossScreenX <= SCREEN_W - 96 {
+                canvas.Ring(bossScreenX + 32, bossScreenY + 32, 46,
+                            Color.RGB(255, 180, 80));
+            }
+        }
+    }
+
     // =========================================================================
     // Level end check
     // =========================================================================
@@ -999,12 +1189,7 @@ class Game {
     /// @brief Player vs level-exit tile.  Transitions to
     ///        LEVEL_COMPLETE state.
     hide func checkLevelEnd() {
-        var px = player.pixelX();
-
-        var tileX = px / TILE_SIZE;
-        var tileY = GROUND_ROW - 1;
-
-        if level.getTile(tileX, tileY) == TILE_SIGN_END {
+        if isTouchingExitSign() {
             if level.hasBoss {
                 if enemies.isBossAlive() {
                     return;
@@ -1015,8 +1200,9 @@ class Game {
             if timeBonus < 0 { timeBonus = 0; }
             levelCompleteTimer = 0;
             menus.resetSelection();
-            sm.Switch("levelcomplete");
-            menus.startLevelComplete(score);   // arm the score count-up + burst (#8)
+            grantCompletionAbility();
+            markLevelComplete(currentLevel);
+            achSys.onLevelComplete(levelTimer, levelDamageTaken);
             sfx.playLevelComplete();
 
             var totalScore = score + timeBonus;
@@ -1027,8 +1213,89 @@ class Game {
 
             if currentLevel == LEVEL_COUNT {
                 sm.Switch("victory");
+            } else {
+                sm.Switch("levelcomplete");
+                menus.startLevelComplete(score);   // arm the score count-up + burst (#8)
             }
         }
+    }
+
+    /// @brief Test whether the player's hitbox overlaps any exit-sign tile.
+    ///
+    /// Older code checked only `(playerX / TILE_SIZE, GROUND_ROW - 1)`, which
+    /// missed exits in taller or non-standard levels.  This scans the tile
+    /// range touched by the player's current hitbox with a one-tile margin for
+    /// forgiving interaction.
+    ///
+    /// @return True when a TILE_SIGN_END tile is within the player's overlap
+    ///         area.
+    hide func isTouchingExitSign() -> Boolean {
+        var minCol = player.pixelX() / TILE_SIZE - 1;
+        var maxCol = (player.pixelX() + PLAYER_W - 1) / TILE_SIZE + 1;
+        var minRow = player.pixelY() / TILE_SIZE - 1;
+        var maxRow = (player.pixelY() + PLAYER_H - 1) / TILE_SIZE + 1;
+
+        if minCol < 0 { minCol = 0; }
+        if minRow < 0 { minRow = 0; }
+        if maxCol >= level.levelWidth { maxCol = level.levelWidth - 1; }
+        if maxRow >= level.levelHeight { maxRow = level.levelHeight - 1; }
+
+        var row = minRow;
+        while row <= maxRow {
+            var col = minCol;
+            while col <= maxCol {
+                if level.getTile(col, row) == TILE_SIGN_END {
+                    return true;
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+
+        return false;
+    }
+
+    /// @brief Grant non-boss campaign abilities that are earned on completion.
+    ///
+    /// Boss-granted abilities are handled when the boss dies.  Secret-area
+    /// abilities need a reliable fallback in the procedural demo so the world
+    /// map gates remain completable during linear testing.
+    hide func grantCompletionAbility() {
+        if currentLevel == 5 {
+            if not abilities.has(ABILITY_CHARGE_SHOT) {
+                abilities.grant(ABILITY_CHARGE_SHOT);
+                sfx.playAbilityGet();
+            }
+        }
+        if currentLevel == 7 {
+            if not abilities.has(ABILITY_GRAPPLE) {
+                abilities.grant(ABILITY_GRAPPLE);
+                sfx.playAbilityGet();
+            }
+        }
+    }
+
+    /// @brief Mark a one-based level as completed in the
+    ///        campaign bitmask.
+    hide func markLevelComplete(levelNum: Integer) {
+        var bit = bitForLevel(levelNum);
+        if bit <= 0 { return; }
+        if (completionMask / bit) % 2 == 0 {
+            completionMask = completionMask + bit;
+        }
+    }
+
+    /// @brief Convert one-based level number to a power-of-two
+    ///        mask bit.
+    hide func bitForLevel(levelNum: Integer) -> Integer {
+        if levelNum < 1 { return 0; }
+        var bit = 1;
+        var i = 1;
+        while i < levelNum {
+            bit = bit * 2;
+            i = i + 1;
+        }
+        return bit;
     }
 
     // =========================================================================
@@ -1045,6 +1312,7 @@ class Game {
             renderObj.flash(pal.hudRed, 10);
             sfx.playDeath();
             achSys.onPlayerDeath();
+            deathCount = deathCount + 1;
         }
 
         deathTimer = deathTimer + dt;
@@ -1054,6 +1322,7 @@ class Game {
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
+        drawNewSystems(canvas, camera.x, camera.y);
 
         if deathTimer >= DEATH_TIMER_MS {
             deathTimer = 0;
@@ -1092,16 +1361,49 @@ class Game {
 
     /// @brief Per-frame: paused state input handling.
     hide func updatePaused() {
+        if showWorldMap {
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            if Action.Pressed(ACT_BACK) or Action.Pressed(ACT_CONFIRM) {
+                showWorldMap = false;
+                sfx.playMenuBack();
+            }
+            return;
+        }
+
         var result = menus.updatePause();
 
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
-        menus.drawPause(canvas);
+        drawNewSystems(canvas, camera.x, camera.y);
+        menus.drawEnhancedPause(canvas, pal, currentLevel, totalPlaytime, gems,
+                                player.hp, player.maxHp, score,
+                                menus.getPauseSelection());
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
             sm.Switch("playing");
+        }
+        if result == MENU_ACTION_WORLD_MAP {
+            sfx.playMenuSelect();
+            showWorldMap = true;
+        }
+        if result == MENU_ACTION_SAVE {
+            saveProgress();
+            sfx.playSave();
+        }
+        if result == STATE_OPTIONS {
+            sfx.playMenuSelect();
+            optionsReturnToPause = true;
+            sm.Switch("options");
+        }
+        if result == STATE_CONTROLS {
+            sfx.playMenuSelect();
+            controlsReturnToPause = true;
+            sm.Switch("controls");
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
@@ -1219,10 +1521,266 @@ class Game {
 
         if result == STATE_MENU {
             sfx.playMenuBack();
+            if controlsReturnToPause {
+                controlsReturnToPause = false;
+                sm.Switch("paused");
+            } else {
+                sm.Switch("menu");
+                menus.resetSelection();
+                menus.resetTitleAnim();
+                renderObj.menuFadeIn(350);
+            }
+        }
+    }
+
+    // =========================================================================
+    // State: Options
+    // =========================================================================
+
+    /// @brief Per-frame: options-screen input and rendering.
+    ///
+    /// Owns settings that live outside MenuSystem: fullscreen on the Canvas and
+    /// audio mix values on SoundManager.  The menu only reports row/action IDs.
+    hide func updateOptions() {
+        renderObj.update(dt);
+        var result = menus.updateOptions();
+
+        if optionsReturnToPause {
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+        } else {
+            menus.drawTitle(canvas);
+        }
+
+        menus.drawSettings(canvas, pal, sfx.getMasterVolume(), sfx.getSfxVolume(),
+                           fullscreenOn, menus.getOptionsSelection());
+        renderObj.drawTransition(canvas);
+
+        if result == OPTIONS_ACTION_MASTER_DOWN {
+            sfx.setMasterVolume(sfx.getMasterVolume() - 5);
+            sfx.playMenuMove();
+        }
+        if result == OPTIONS_ACTION_MASTER_UP {
+            sfx.setMasterVolume(sfx.getMasterVolume() + 5);
+            sfx.playMenuMove();
+        }
+        if result == OPTIONS_ACTION_SFX_DOWN {
+            sfx.setSfxVolume(sfx.getSfxVolume() - 5);
+            sfx.playMenuMove();
+        }
+        if result == OPTIONS_ACTION_SFX_UP {
+            sfx.setSfxVolume(sfx.getSfxVolume() + 5);
+            sfx.playMenuMove();
+        }
+        if result == OPTIONS_ACTION_TOGGLE_FULLSCREEN {
+            toggleFullscreen();
+            sfx.playMenuSelect();
+        }
+        if result == OPTIONS_ACTION_BACK {
+            sfx.playMenuBack();
+            if optionsReturnToPause {
+                optionsReturnToPause = false;
+                sm.Switch("paused");
+            } else {
+                sm.Switch("menu");
+                menus.resetSelection();
+                menus.resetTitleAnim();
+                renderObj.menuFadeIn(350);
+            }
+        }
+    }
+
+    // =========================================================================
+    // State: Load Game / Extras / Credits
+    // =========================================================================
+
+    /// @brief Load-game slot browser.
+    hide func updateLoadGame() {
+        renderObj.update(dt);
+        var result = menus.updateLoadGame();
+        menus.drawSaveSlotScreen(canvas, menus.getLoadSelection(),
+                                 saveManager.getSlotSummary(0),
+                                 saveManager.getSlotSummary(1),
+                                 saveManager.getSlotSummary(2));
+        renderObj.drawTransition(canvas);
+
+        if result == STATE_MENU {
+            sfx.playMenuBack();
             sm.Switch("menu");
             menus.resetSelection();
             menus.resetTitleAnim();
             renderObj.menuFadeIn(350);
+        }
+        if result == MENU_ACTION_LOAD_SLOT0 {
+            tryLoadSlot(0);
+        }
+        if result == MENU_ACTION_LOAD_SLOT1 {
+            tryLoadSlot(1);
+        }
+        if result == MENU_ACTION_LOAD_SLOT2 {
+            tryLoadSlot(2);
+        }
+    }
+
+    /// @brief Extras hub.
+    hide func updateExtras() {
+        renderObj.update(dt);
+        var result = menus.updateExtras();
+        menus.drawExtras(canvas,
+                         achSys.getUnlockedCount(), ACH_COUNT,
+                         loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
+                         loreSystem.getBestiaryCount(), loreSystem.getBestiaryTotal());
+        renderObj.drawTransition(canvas);
+
+        if result == MENU_ACTION_EXTRAS_ACHIEVEMENTS {
+            sfx.playMenuSelect();
+            sm.Switch("achievements");
+        }
+        if result == MENU_ACTION_EXTRAS_BESTIARY {
+            sfx.playMenuSelect();
+            sm.Switch("bestiary");
+        }
+        if result == MENU_ACTION_EXTRAS_LORE {
+            sfx.playMenuSelect();
+            sm.Switch("lorearchive");
+        }
+        if result == STATE_HIGHSCORES {
+            sfx.playMenuSelect();
+            sm.Switch("highscores");
+        }
+        if result == STATE_MENU {
+            sfx.playMenuBack();
+            sm.Switch("menu");
+            menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
+        }
+    }
+
+    /// @brief Credits screen.
+    hide func updateCredits() {
+        renderObj.update(dt);
+        var result = menus.updateCredits();
+        menus.drawCredits(canvas);
+        renderObj.drawTransition(canvas);
+
+        if result == STATE_MENU {
+            sfx.playMenuBack();
+            sm.Switch("menu");
+            menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
+        }
+    }
+
+    /// @brief Skippable opening crash-landing intro.
+    hide func updateIntro() {
+        openingIntroTimer = openingIntroTimer + dt;
+        drawOpeningIntro();
+
+        if Action.Pressed(ACT_CONFIRM) or Action.Pressed(ACT_BACK) {
+            openingIntroTimer = 2600;
+        }
+        if openingIntroTimer >= 2500 {
+            openingIntroTimer = 0;
+            sm.Switch("playing");
+            sfx.playGameMusic();
+        }
+    }
+
+    /// @brief Render the opening story beat before gameplay.
+    hide func drawOpeningIntro() {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, Color.RGB(3, 5, 14));
+
+        var i = 0;
+        while i < 90 {
+            var sx = (i * 137 + openingIntroTimer / 12) % SCREEN_W;
+            var sy = (i * 89 + 31) % SCREEN_H;
+            canvas.Box(sx, sy, 2, 2, Color.RGB(140, 165, 210));
+            i = i + 1;
+        }
+
+        var shipX = 240 + openingIntroTimer / 18;
+        var shipY = 120 + openingIntroTimer / 26;
+        canvas.Line(shipX - 120, shipY - 40, shipX + 60, shipY + 34,
+                    Color.RGB(255, 120, 50));
+        canvas.Line(shipX - 100, shipY - 20, shipX + 48, shipY + 44,
+                    Color.RGB(255, 210, 80));
+        canvas.Box(shipX, shipY, 160, 34, Color.RGB(90, 108, 132));
+        canvas.Box(shipX + 26, shipY - 20, 82, 24, Color.RGB(114, 132, 156));
+        canvas.Box(shipX + 34, shipY - 12, 24, 10, Color.RGB(40, 190, 230));
+        canvas.Box(shipX + 70, shipY - 12, 24, 10, Color.RGB(40, 190, 230));
+
+        canvas.BoxAlpha(140, 440, 1000, 150, Color.RGB(7, 10, 22), 210);
+        canvas.Frame(140, 440, 1000, 150, Color.RGB(70, 95, 150));
+        canvas.TextScaled(174, 466, "Emergency Log 001", 2, Color.RGB(220, 230, 255));
+        canvas.Text(174, 506,
+                    "Colony ship XENOSCAPE has entered uncontrolled descent. Unknown biosphere below. Architect core unresponsive.",
+                    Color.RGB(160, 175, 205));
+        canvas.Text(174, 536,
+                    "Find shelter. Recover the relics. Reach the core before the planet is processed.",
+                    Color.RGB(180, 200, 220));
+        canvas.TextCenteredScaled(628, "ENTER / ESC to skip", Color.RGB(80, 90, 120), 1);
+    }
+
+    /// @brief Achievements browser entry from Extras.
+    hide func updateAchievements() {
+        if Action.Pressed(ACT_DOWN) {
+            achBrowse = achBrowse + 1;
+            if achBrowse >= ACH_COUNT { achBrowse = 0; }
+            sfx.playMenuMove();
+        }
+        if Action.Pressed(ACT_UP) {
+            achBrowse = achBrowse - 1;
+            if achBrowse < 0 { achBrowse = ACH_COUNT - 1; }
+            sfx.playMenuMove();
+        }
+        achSys.drawScreen(canvas, achBrowse);
+        if Action.Pressed(ACT_BACK) or Action.Pressed(ACT_CONFIRM) {
+            sfx.playMenuBack();
+            sm.Switch("extras");
+        }
+    }
+
+    /// @brief Bestiary browser entry from Extras.
+    hide func updateBestiary() {
+        var total = loreSystem.getBestiaryTotal();
+        if Action.Pressed(ACT_DOWN) {
+            bestiaryBrowse = bestiaryBrowse + 1;
+            if bestiaryBrowse >= total { bestiaryBrowse = 0; }
+            sfx.playMenuMove();
+        }
+        if Action.Pressed(ACT_UP) {
+            bestiaryBrowse = bestiaryBrowse - 1;
+            if bestiaryBrowse < 0 { bestiaryBrowse = total - 1; }
+            sfx.playMenuMove();
+        }
+        loreSystem.drawBestiary(canvas, bestiaryBrowse);
+        if Action.Pressed(ACT_BACK) or Action.Pressed(ACT_CONFIRM) {
+            sfx.playMenuBack();
+            sm.Switch("extras");
+        }
+    }
+
+    /// @brief Lore archive entry from Extras.
+    hide func updateLoreArchive() {
+        var total = loreSystem.getTotalCount();
+        if Action.Pressed(ACT_DOWN) {
+            loreBrowse = loreBrowse + 1;
+            if loreBrowse >= total { loreBrowse = 0; }
+            sfx.playMenuMove();
+        }
+        if Action.Pressed(ACT_UP) {
+            loreBrowse = loreBrowse - 1;
+            if loreBrowse < 0 { loreBrowse = total - 1; }
+            sfx.playMenuMove();
+        }
+        loreSystem.drawArchive(canvas, loreBrowse);
+        if Action.Pressed(ACT_BACK) or Action.Pressed(ACT_CONFIRM) {
+            sfx.playMenuBack();
+            sm.Switch("extras");
         }
     }
 
@@ -1239,13 +1797,85 @@ class Game {
         if currentLevel < 1 { currentLevel = 1; }
         if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
         levelTimer = 0;
+        levelDamageTaken = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
+        bossesDefeated = 0;
+        completionMask = 0;
+        deathCount = 0;
+        gems = 0;
+        totalPlaytime = 0;
+        abilities.setMask(ABILITY_WALL_JUMP);
+        loreSystem.setCollectedMask(0);
+        loreSystem.setBestiaryMask(0);
 
         player.reset();
         loadLevel(currentLevel);
 
+        openingIntroTimer = 0;
+        sm.Switch("intro");
+    }
+
+    /// @brief Load the best available save slot for Continue.
+    hide func loadMostAdvancedSlot() -> Boolean {
+        var slot = saveManager.getContinueSlot();
+        if slot < 0 { return false; }
+        return loadFromSlot(slot);
+    }
+
+    /// @brief Try to load a specific slot from the Load Game
+    ///        screen.  Empty slots stay on the browser.
+    hide func tryLoadSlot(slot: Integer) {
+        if loadFromSlot(slot) {
+            sfx.playMenuSelect();
+        } else {
+            sfx.playMenuBack();
+        }
+    }
+
+    /// @brief Restore campaign state from a save slot and
+    ///        enter gameplay.
+    hide func loadFromSlot(slot: Integer) -> Boolean {
+        if saveManager.isSlotUsed(slot) == false { return false; }
+
+        saveSlot = slot;
+        currentLevel = saveManager.getSlotLevel(slot);
+        if currentLevel < 1 { currentLevel = 1; }
+        if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
+
+        abilities.setMask(saveManager.getSlotAbilities(slot));
+        player.reset();
+        player.maxHp = saveManager.getSlotMaxHp(slot);
+        player.hp = player.maxHp;
+        gems = saveManager.getSlotGems(slot);
+        totalPlaytime = saveManager.getSlotTime(slot) * 1000;
+        bossesDefeated = saveManager.getSlotBosses(slot);
+        completionMask = saveManager.getSlotCompletionMask(slot);
+        deathCount = saveManager.getSlotDeaths(slot);
+        loreSystem.setCollectedMask(saveManager.getSlotLoreMask(slot));
+        loreSystem.setBestiaryMask(saveManager.getSlotBestiaryMask(slot));
+
+        score = 0;
+        coins = 0;
+        levelTimer = 0;
+        levelDamageTaken = 0;
+        reachedCheckpoint = false;
+        deathTimer = 0;
+        loadLevel(currentLevel);
+        introTimer = tuning.getInt("presentation.introSplashMs", 1200);
         sm.Switch("playing");
+        sfx.playGameMusic();
+        return true;
+    }
+
+    /// @brief Persist the active slot using the release
+    ///        metadata snapshot.
+    hide func saveProgress() {
+        saveManager.saveSlotFull(saveSlot, currentLevel, abilities.getMask(),
+                                 player.maxHp, gems, totalPlaytime / 1000,
+                                 bossesDefeated, loreSystem.getCollectedMask(),
+                                 loreSystem.getBestiaryMask(), completionMask,
+                                 deathCount);
     }
 
     /// @brief Load level `num` — wipes pools, builds the
@@ -1282,8 +1912,11 @@ class Game {
         else { lighting.setDarkness(0); }
 
         levelTimer = 0;
+        levelDamageTaken = 0;
         reachedCheckpoint = false;
         deathTimer = 0;
+        bossCueTimer = 0;
+        bossIntroPlayed = false;
         introTimer = tuning.getInt("presentation.introSplashMs", 1200);
     }
 
@@ -1325,6 +1958,8 @@ class Game {
         bossesDefeated = 0;
         totalPlaytime = 0;
         saveSlot = 0;
+        completionMask = 0;
+        deathCount = 0;
         showWorldMap = false;
         showLore = false;
         poundImpactTimer = 0;
@@ -1395,6 +2030,7 @@ class Game {
         if loreIdx >= 0 and Action.Pressed("jump") {
             var mappedIdx = loreIdx % loreSystem.getTotalCount();
             loreSystem.showEntry(mappedIdx);
+            achSys.onLoreFound(loreSystem.getCollectedCount());
             sfx.playLoreFound();
         }
 
@@ -1402,8 +2038,7 @@ class Game {
         if phys.isNearSaveStation(player.x, player.y, PLAYER_W, PLAYER_H, level) {
             if Action.Pressed("jump") {
                 // Save progress
-                saveManager.saveSlot(saveSlot, currentLevel, abilities.getMask(),
-                                     player.maxHp, gems, levelTimer / 1000);
+                saveProgress();
                 sfx.playSave();
                 // Heal player
                 player.hp = player.maxHp;
@@ -1421,6 +2056,7 @@ class Game {
             if levelTimer % 500 < dt {
                 if player.iframes <= 0 {
                     player.hp = player.hp - 1;
+                    levelDamageTaken = levelDamageTaken + 1;
                     player.iframes = 200;
                 }
             }
@@ -1479,16 +2115,18 @@ class Game {
             // Boss just died
             var bossBit = 1;
             var b = 0;
-            while b < currentLevel {
+            while b < currentLevel - 1 {
                 bossBit = bossBit * 2;
                 b = b + 1;
             }
             if (bossesDefeated / bossBit) % 2 == 0 {
                 bossesDefeated = bossesDefeated + bossBit;
+                achSys.onBossDefeated(level.bossType);
+                loreSystem.unlockBestiaryEntry(level.bossType);
                 // Grant ability based on which boss
-                if currentLevel == 2 { abilities.grant(2); sfx.playAbilityGet(); } // Double Jump
-                if currentLevel == 3 { abilities.grant(4); sfx.playAbilityGet(); } // Dash
-                if currentLevel == 6 { abilities.grant(16); sfx.playAbilityGet(); } // Ground Pound
+                if currentLevel == 2 { abilities.grant(ABILITY_DOUBLE_JUMP); sfx.playAbilityGet(); }
+                if currentLevel == 3 { abilities.grant(ABILITY_DASH); sfx.playAbilityGet(); }
+                if currentLevel == 6 { abilities.grant(ABILITY_GROUND_POUND); sfx.playAbilityGet(); }
             }
         }
     }
@@ -1548,6 +2186,9 @@ class Game {
 
         // Floating damage/score popups (#14) — world-space, over the scene.
         hudObj.drawPopups(canvas, camX, camY);
+
+        // Boss discovery/direction cue.
+        drawBossCue(canvas, camX, camY);
 
         // Transition overlay (on top of everything)
         if transitions.isActive() {

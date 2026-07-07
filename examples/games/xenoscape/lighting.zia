@@ -235,7 +235,7 @@ class LightingSystem {
     ///
     /// We centre the light on the tile by adding
     /// `TILE_SIZE / 2` to both coordinates.
-    expose func drawTileLight(canvas: Canvas, screenX: Integer, screenY: Integer,
+    expose func drawTileLight(_canvas: Canvas, screenX: Integer, screenY: Integer,
                               radius: Integer, color: Integer) {
         if lit.Darkness <= 0 { return; }
         var cx = screenX + TILE_SIZE / 2;

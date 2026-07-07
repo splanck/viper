@@ -69,7 +69,7 @@ static void testAppleStyleSignatureLayout() {
 
     const size_t pageSize = 16384;
     const size_t codeLimit = 20000;
-    const std::string identifier = "chess-zia";
+    const std::string identifier = "chess";
 
     std::vector<uint8_t> file(codeLimit);
     for (size_t i = 0; i < file.size(); ++i)

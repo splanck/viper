@@ -138,7 +138,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
 
     // Display options
     editor->show_indent_guides = true;
-    editor->render_whitespace = false;
+    editor->render_whitespace_mode = VG_WHITESPACE_NONE;
+    editor->whitespace_color = 0; // 0 = derive a faint default from the text color at paint time
     editor->indent_guide_color = 0; // 0 = derive a muted default at paint time
 
     // State

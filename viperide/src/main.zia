@@ -1,6 +1,7 @@
 module viperide;
 
 bind "ui/app_shell";
+bind "ui/welcome_view";
 bind "ui/ide_overlays";
 bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
@@ -12,11 +13,13 @@ bind "app/context_menus";
 bind "app/context_menu_dispatcher";
 bind "app/workspace_watcher";
 bind "app/file_watch_controller";
+bind "app/focus_throttle";
 bind "app/explorer_action_runner";
 bind "app/lifecycle_controller";
 bind "app/language_tool_frame";
 bind "app/settings_applier";
 bind "scm/scm_view";
+bind "scm/scm_gutter_controller";
 bind "terminal/terminal_controller";
 bind "core/document";
 bind "core/document_manager";
@@ -24,6 +27,7 @@ bind "core/project";
 bind "core/project_manager";
 bind "core/settings";
 bind "core/session";
+bind "core/recovery_store";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
 bind "editor/zia_query";
@@ -51,6 +55,7 @@ bind "commands/main_command_dispatcher";
 bind "commands/file_commands";
 bind "commands/edit_commands";
 bind "commands/view_commands";
+bind "app/dispatch_helpers";
 bind "commands/debug_commands";
 bind "commands/search_commands";
 
@@ -108,6 +113,19 @@ final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
 final VIPERIDE_VERSION = "0.1.0";
 
+/// @brief Re-point the focused-pane controllers at engine.editor after a split
+///        or focus change. Minimap and find bar bind the widget directly; the
+///        completion controller re-syncs via SetEngine. Hover and signature read
+///        engine.editor fresh each frame, so they need no explicit re-bind.
+func RebindFocusedPane(shell: app_shell.AppShell,
+                       engine: editor_engine.EditorEngine,
+                       completer: completion.CompletionController) {
+    if shell == null or engine == null { return; }
+    if shell.workbench.minimap != null { shell.workbench.minimap.BindEditor(engine.editor); }
+    if shell.workbench.findBar != null { shell.workbench.findBar.BindEditor(engine.editor); }
+    if completer != null { completer.SetEngine(engine); }
+}
+
 func hasArg(name: String) -> Boolean {
     var i = 0;
     while i < Env.GetArgumentCount() {
@@ -158,6 +176,7 @@ func main() {
     var searcher = new search_commands.SearchController();
     var paletteCtrl = new command_palette_controller.CommandPaletteController();
     var fileWatchCtrl = new file_watch_controller.FileWatchController();
+    var focusThrottle = new focus_throttle.FocusThrottle();
     indexer.SetScheduler(editorScheduler);
 
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
@@ -172,6 +191,9 @@ func main() {
     debugOverlay.Setup(shell);
     var commandInputOverlay = new command_input.CommandInputOverlay();
     commandInputOverlay.Setup(shell);
+
+    var welcomeView = new welcome_view.WelcomeView();
+    welcomeView.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
 
     engine.Setup(shell.workbench.editorRow);
     engine.editor.Focus();
@@ -219,6 +241,7 @@ func main() {
     if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
     terminalCtrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
                        shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
+    terminalCtrl.SetupButtons(shell.toolPanels.terminalNew, shell.toolPanels.terminalNext);
     if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
 
     shell.ApplyCommandShortcuts(commandRegistry);
@@ -240,36 +263,54 @@ func main() {
 
     var sessionMgr = new session.SessionManager();
     sessionMgr.Setup(appSettings.settingsPath);
+    var recoveryStore = new recovery_store.RecoveryStore();
+    recoveryStore.Setup(appSettings.settingsDir);
     var restoredCount = 0;
     if appSettings.restoreSession {
         restoredCount = sessionMgr.Restore(docMgr, projMgr, tabs);
     }
 
-    // ========================================================================
-    // Create welcome document if no session was restored
-    // ========================================================================
-    // The `module` declaration is required for the Zia completion engine to
-    // parse the buffer; without it, CompleteForFile returns "" and the popup
-    // shows nothing. Try typing `Viper.` after a save to see live completions.
-    var welcomeText = "module Welcome;\n";
-    welcomeText = welcomeText + "\n";
-    welcomeText = welcomeText + "// Welcome to ViperIDE!\n";
-    welcomeText = welcomeText + "// Zia and Viper BASIC share editor assistance, build, run, and debug workflows.\n";
-    welcomeText = welcomeText + "\n";
-    welcomeText = welcomeText + "func main() {\n";
-    welcomeText = welcomeText + "    Viper.Terminal.Say(\"Hello from ViperIDE!\");\n";
-    welcomeText = welcomeText + "}\n";
+    // After an unclean exit, re-open documents captured in swap files with their
+    // recovered (unsaved) content, marked modified so the user can save or
+    // discard. Then clear the swaps.
+    if recoveryStore.uncleanExit {
+        var recovered = recoveryStore.CollectRecovered();
+        var rc = recovered.count();
+        var ri = 0;
+        var recoveredOpened = 0;
+        while ri < rc {
+            var rec = recovered.get(ri) as recovery_store.RecoveryRecord;
+            var rdoc = docMgr.NewDocument();
+            rdoc.content = rec.content;
+            rdoc.isModified = true;
+            if rec.path != "" {
+                rdoc.filePath = rec.path;
+                rdoc.fileName = IO.Path.Name(rec.path);
+                rdoc.isNew = false;
+            }
+            tabs.AddTab(rdoc.fileName, 1);
+            recoveredOpened = recoveredOpened + 1;
+            ri = ri + 1;
+        }
+        recoveryStore.ClearAll();
+        if recoveredOpened > 0 {
+            docMgr.SetActive(docMgr.GetCount() - 1);
+            tabs.SetActive(docMgr.GetCount() - 1);
+            restoredCount = restoredCount + recoveredOpened;
+            GUI.Toast.Info("Recovered " + recoveredOpened + " unsaved file(s) from a previous session");
+        }
+    }
 
+    // ========================================================================
+    // Show the welcome surface if no session was restored, otherwise load the
+    // restored active document. No fake editable "welcome document" is created.
+    // ========================================================================
     if restoredCount == 0 {
-        var welcomeDoc = docMgr.NewDocument();
-        welcomeDoc.content = welcomeText;
-        tabs.AddTab(welcomeDoc.fileName, 1);
-        tabs.SetTooltip(0, welcomeDoc.fileName);
-        tabs.SetActive(0);
-        engine.LoadDocument(welcomeDoc);
-        shell.SelectSurface(welcomeDoc.kind);
-        shell.SetStatusRight(file_commands.DocStatusLabel(welcomeDoc));
+        welcomeView.Refresh(sessionMgr);
+        welcomeView.SetShown(true);
+        shell.SetStatusRight("");
     } else {
+        welcomeView.SetShown(false);
         var restoredDoc = docMgr.GetActive();
         if restoredDoc != null {
             engine.LoadDocument(restoredDoc);
@@ -320,6 +361,9 @@ func main() {
     commandContext.searcher = searcher;
     commandContext.appSettings = appSettings;
 
+    // Welcome-surface visibility tracking (refresh recents on transition to shown).
+    var prevDocCount = -1;
+
     // Cursor tracking for dot-trigger and status bar caching
     var prevCursorLine = 1;
     var prevCursorCol  = 1;
@@ -328,6 +372,12 @@ func main() {
     var prevStatusCursorCount = engine.editor.GetCursorCount();
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
+    var recoveryRevision = engine.GetRevision();
+    var recoveryDebounce = Threads.Debouncer.New(2000);
+    var scmGutter = new scm_gutter_controller.ScmGutterController();
+    var scmGutterRevision = engine.GetRevision();
+    var scmGutterDebounce = Threads.Debouncer.New(700);
+    var scmGutterActiveIndex = -1;
 
     // ========================================================================
     // Main event loop
@@ -335,6 +385,12 @@ func main() {
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
         shell.Poll();
+
+        // Ration background work (indexing, budgeted tools, workspace watching)
+        // when the window is unfocused. Input, rendering, process streams
+        // (build/debug/terminal), and auto-save are never gated.
+        focusThrottle.Update(shell.app);
+        var allowBackground = focusThrottle.AllowBackgroundWork();
 
         // Activity bar — switch the left view (Explorer / Source Control).
         if shell.workbench.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
@@ -344,11 +400,36 @@ func main() {
         }
         scmView.HandleEvents();
         terminalCtrl.Pump();
+
+        // Welcome / start surface: shown only when no documents are open.
+        var curDocCount = docMgr.GetCount();
+        if curDocCount == 0 {
+            if prevDocCount != 0 { welcomeView.Refresh(sessionMgr); }
+            welcomeView.SetShown(true);
+            if welcomeView.newFileButton.WasClicked() {
+                file_commands.handleNew(shell, docMgr, engine, tabs);
+            }
+            if welcomeView.openFolderButton.WasClicked() {
+                file_commands.handleOpenFolder(shell, projMgr);
+            }
+            var recentSel = welcomeView.TakeRecentSelection();
+            if Str.StartsWith(recentSel, "file:") {
+                var recentPath = Str.Mid(recentSel, 6);
+                if IO.File.Exists(recentPath) != false {
+                    explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                    fileWatchCtrl.ResetPendingReload();
+                }
+            }
+        } else {
+            welcomeView.SetShown(false);
+        }
+        prevDocCount = curDocCount;
         if shell.WasCloseRequested() {
             file_commands.SaveEditorState(docMgr, engine);
             breakpointStore.Save();
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
+                recoveryStore.MarkCleanExit();
                 lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
                                                 terminalCtrl, fileWatchCtrl, workspaceWatcherState,
                                                 indexer, breakpointStore, sessionMgr);
@@ -363,15 +444,19 @@ func main() {
                                  activeWorkbench, paletteCtrl, commandRegistry,
                                  appSettings, engine);
         var activeService = languageFrame.activeService;
-        languageFrame.PumpWorkspace(shell, projMgr, docMgr, engine);
+        if allowBackground {
+            languageFrame.PumpWorkspace(shell, projMgr, docMgr, engine);
+        }
         languageFrame.SyncBreakpoints(engine, breakpointStore);
         debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
 
         languageFrame.RouteCompletionKeys();
         languageFrame.PumpForegroundTools(shell, docMgr, engine, tabs, locStore,
                                           buildSys, dbgSession, breakpointStore);
-        languageFrame.PumpBudgetedTools(shell, docMgr, engine, locStore,
-                                        searcher, projMgr);
+        if allowBackground {
+            languageFrame.PumpBudgetedTools(shell, docMgr, engine, locStore,
+                                            searcher, projMgr);
+        }
         languageFrame.HandleManualIntelligenceTriggers(engine);
         languageFrame.HandleTypedLanguageTriggers(engine);
         var curCursorLine = languageFrame.curCursorLine;
@@ -380,10 +465,17 @@ func main() {
         // ====================================================================
         // Command Palette + trigger source detection
         // ====================================================================
+        // Live palette prefix modes (":" go to line) update rows per keystroke.
+        paletteCtrl.PumpLiveQuery(shell, commandRegistry, activeService);
+
         var cpSelected = "";
         if shell.commandPalette.WasSelected() {
             var rawPaletteSelection = shell.commandPalette.GetSelected();
-            if paletteCtrl.IsQuickOpen() {
+            if paletteCtrl.IsGoto() {
+                edit_commands.handleGoToLineText(shell, engine,
+                                                 paletteCtrl.GotoArgFromId(rawPaletteSelection));
+                paletteCtrl.ResetToCommands(shell, commandRegistry, activeService);
+            } else if paletteCtrl.IsQuickOpen() {
                 search_commands.HandleQuickOpenPaletteSelection(shell, projMgr, docMgr, engine, tabs,
                                                                 rawPaletteSelection);
                 paletteCtrl.ResetToCommands(shell, commandRegistry, activeService);
@@ -408,6 +500,9 @@ func main() {
             commandRegistry, indexer, activeService, dbgSession, breakpointStore,
             commandInputOverlay, appSettings);
 
+        // Apply any completed file-tree drag-and-drop as a file move.
+        explorer_action_runner.PumpTreeDrops(shell, projMgr, docMgr, engine, indexer);
+
         // ====================================================================
         // Dispatch commands via trigger helper
         // ====================================================================
@@ -416,6 +511,28 @@ func main() {
                                                           cpSelected,
                                                           suppressTreeOpen) {
             return;
+        }
+
+        // Split-editor commands. Handled here (not the dispatcher) so the
+        // focused-pane controllers can be re-bound with `completer` in scope.
+        if dispatch_helpers.TriggeredNoMenu("spliteditorright", cpSelected) {
+            if engine.PaneCount() < 2 {
+                engine.SplitRight(shell.workbench.editorRow);
+                RebindFocusedPane(shell, engine, completer);
+            }
+        }
+        if dispatch_helpers.TriggeredNoMenu("focusotherpane", cpSelected) {
+            engine.FocusOtherPane();
+            RebindFocusedPane(shell, engine, completer);
+        }
+        if dispatch_helpers.TriggeredNoMenu("closesplit", cpSelected) {
+            engine.CloseSplit();
+            RebindFocusedPane(shell, engine, completer);
+        }
+        // Click-to-focus: when the other pane gains keyboard focus, retarget the
+        // focused-pane controllers to it.
+        if engine.SyncFocusFromWidgets() {
+            RebindFocusedPane(shell, engine, completer);
         }
 
         // FindBar per-frame updates
@@ -474,6 +591,9 @@ func main() {
         }
         if shell.toolPanels.callStackListBox.WasSelectionChanged() {
             debug_commands.handleCallStackSelect(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if shell.toolPanels.variablesListBox.WasSelectionChanged() {
+            debug_commands.HandleVariableActivate(shell, dbgSession);
         }
         shell.toolPanels.PumpToolTabs();
 
@@ -567,7 +687,6 @@ func main() {
                 var switchDoc = docMgr.GetActive();
                 if switchDoc != null {
                     engine.LoadDocument(switchDoc);
-                    engine.editor.ClearCursors();
                     shell.SelectSurface(switchDoc.kind);
                     if switchDoc.isNew {
                         shell.SetBreadcrumbPath("");
@@ -618,13 +737,42 @@ func main() {
             autoSaveDebounce.Reset();
         }
 
+        // Crash-recovery swaps: write modified documents to swap files a short
+        // time after edits settle, independent of the autosave setting, so a
+        // crash never loses more than the last ~2s of unsaved work.
+        if currentRevisionForSave != recoveryRevision {
+            recoveryRevision = currentRevisionForSave;
+            recoveryDebounce.Signal();
+        } else if recoveryDebounce.get_IsReady() {
+            recoveryStore.WriteSwaps(docMgr, engine);
+            recoveryDebounce.Reset();
+        }
+
+        // SCM gutter change bars: refresh immediately on a tab switch and a
+        // short time after edits settle. Gated to the unfocused throttle so it
+        // never runs git while the window is in the background.
+        if allowBackground {
+            if docMgr.activeIndex != scmGutterActiveIndex {
+                scmGutterActiveIndex = docMgr.activeIndex;
+                scmGutter.RefreshActive(engine, docMgr, projMgr);
+            } else if currentRevisionForSave != scmGutterRevision {
+                scmGutterRevision = currentRevisionForSave;
+                scmGutterDebounce.Signal();
+            } else if scmGutterDebounce.get_IsReady() {
+                scmGutter.RefreshActive(engine, docMgr, projMgr);
+                scmGutterDebounce.Reset();
+            }
+        }
+
         // ====================================================================
         // File change detection
         // ====================================================================
         fileWatchCtrl.Pump(shell, docMgr, OPEN_DOC_EXTERNAL_POLL_MS);
 
-        workspace_watcher.PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
-                             workspaceWatcherState);
+        if allowBackground {
+            workspace_watcher.PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
+                                 workspaceWatcherState);
+        }
 
 	        // ====================================================================
         // Update status bar (only when cursor moves)
@@ -657,6 +805,7 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
+    recoveryStore.MarkCleanExit();
     lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
                                     terminalCtrl, fileWatchCtrl, workspaceWatcherState,
                                     indexer, breakpointStore, sessionMgr);

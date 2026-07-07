@@ -75,7 +75,7 @@ ZIA_DEMOS=(
     "ridgebound:${GAMES_DIR}/ridgebound"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
-    "chess-zia:${GAMES_DIR}/chess"
+    "chess:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"
     "baseball:${GAMES_DIR}/baseball"
     "centipede:${GAMES_DIR}/centipede"
@@ -90,7 +90,6 @@ ZIA_DEMOS=(
 # first native-build coverage for the BASIC frontend's larger programs.
 BASIC_DEMOS=(
     "pacman-basic:${GAMES_DIR}/pacman-basic"
-    "chess-basic:${GAMES_DIR}/chess-basic"
     "frogger-basic:${GAMES_DIR}/frogger-basic"
     "centipede-basic:${GAMES_DIR}/centipede-basic"
 )
@@ -180,7 +179,7 @@ build_demo() {
     fi
 
     # All demos build at -O2. The loop-rotate SSA-reconstruction and inliner
-    # escaped-param typing bugs that previously forced centipede/chess-zia/
+    # escaped-param typing bugs that previously forced centipede/chess/
     # crackman down to -O0 have been fixed in the IL optimizer.
     local codegen_opt="-O2"
 

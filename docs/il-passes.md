@@ -177,7 +177,7 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
 | Parameter | Current Default | History |
 |-----------|-----------------|---------|
 | `instrThreshold` | 80 | raised from 32 on 2026-02-17 to capture medium-sized helpers |
-| `blockBudget` | 1 | raised to 8 on 2026-02-17, reverted to 1 after viperide/chess-zia regressions at O1 |
+| `blockBudget` | 1 | raised to 8 on 2026-02-17, reverted to 1 after viperide/chess regressions at O1 |
 | `maxInlineDepth` | 3 | raised from 2 on 2026-02-17 to enable deeper utility-function chains |
 
 ## LateCleanup

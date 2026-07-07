@@ -149,13 +149,12 @@ Viper ships with 14 example games demonstrating the engine at every scale:
 |------|-----|-------|---------------------|
 | [XENOSCAPE](../../examples/games/xenoscape/) | 17,005 | Metroidvania | Entity, AnimState, Camera, Tilemap, Particles, ScreenFX, Audio, SceneManager, Save |
 | [Graphics Show](../../examples/games/graphics-show/) | 8,000+ | Demo collection | Canvas primitives, particles, physics, fractals (10 sub-demos) |
-| [Chess](../../examples/games/chess/) | 2,937 | Board game | Canvas rendering, AI evaluation, StateMachine |
+| [Chess](../../examples/games/chess/) | 4,000+ | Board game | Canvas rendering, AI evaluation, StateMachine, SaveData, SoundBank |
 | [Centipede](../../examples/games/centipede/) | 2,553 | Arcade shooter | Grid2D, Timer, ScreenFX, ParticleEmitter, ObjectPool |
 | [Crackman](../../examples/games/crackman/) | 2,230 | Arcade | Ghost AI, StateMachine, ButtonGroup, Tween, SmoothValue |
 | [Frogger](../../examples/games/frogger/) | ~1,500 | Arcade | Entity, grid movement, collision, AI traffic |
 | [VTris](../../examples/games/vtris/) | 1,132 | Puzzle (BASIC) | Terminal rendering, OOP classes, matrix rotation |
 | [Frogger BASIC](../../examples/games/frogger-basic/) | 1,320 | Arcade (BASIC) | OOP stress test, nested objects, collision |
-| [Chess BASIC](../../examples/games/chess-basic/) | 1,100+ | Board game (BASIC) | Complex game logic, AI, terminal rendering |
 | [Pac-Man BASIC](../../examples/games/pacman-basic/) | 450 | Arcade (BASIC) | Ghost pathfinding, ANSI rendering |
 | [Centipede BASIC](../../examples/games/centipede-basic/) | 450 | Arcade (BASIC) | Class-based architecture, grid field |
 | [Fade Test](../../examples/games/fade-test/) | 168 | Test harness | ScreenFX, Canvas coverage verification |

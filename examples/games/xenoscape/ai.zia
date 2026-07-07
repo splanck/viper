@@ -334,7 +334,7 @@ func aimAt(ex: Integer, ey: Integer,
 /// But for the 80% case it saves writing the same switch
 /// statement for every grunt.
 func updateState(currentState: Integer, stateTimer: Integer,
-                 hp: Integer, maxHp: Integer,
+                 hp: Integer, _maxHp: Integer,
                  ex: Integer, ey: Integer,
                  px: Integer, py: Integer,
                  aggroRange: Integer, deaggroRange: Integer,

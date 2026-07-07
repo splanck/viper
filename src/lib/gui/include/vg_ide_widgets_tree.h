@@ -318,6 +318,16 @@ typedef struct vg_treeview {
     vg_tree_on_drop_callback_t on_drop;
     void *drag_user_data;
 
+    // Application-directed drag-and-drop (poll model for the Zia runtime).
+    // When enabled, a completed drop is INTO-only, is latched for polling
+    // instead of firing on_drop, and the tree does NOT reorder itself — the
+    // application performs the move and refreshes the tree.
+    bool app_directed_dnd;                 ///< Latch drops instead of self-reordering.
+    bool drop_latched;                     ///< A completed drop is waiting to be consumed.
+    vg_tree_node_t *latched_src;           ///< Dragged node at the latched drop.
+    vg_tree_node_t *latched_tgt;           ///< Target node at the latched drop.
+    vg_tree_drop_position_t latched_pos;   ///< Drop position at the latched drop.
+
     // State
     vg_tree_node_t *hovered; ///< Currently hovered node
     bool suppress_click;     ///< Swallow the synthetic click that follows a drag
@@ -442,6 +452,29 @@ void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon);
 /// @param tree    Tree view widget.
 /// @param enabled true to allow nodes to be dragged.
 void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled);
+
+/// @brief Enable application-directed (poll-model) drag-and-drop.
+/// @details Turns on dragging, restricts drops to INTO an expandable node, and
+///          latches a completed drop for polling instead of self-reordering.
+///          Intended for the Zia runtime, which cannot register C callbacks.
+/// @param tree    Tree view widget.
+/// @param enabled true to enable the poll model.
+void vg_treeview_set_app_directed_dnd(vg_treeview_t *tree, bool enabled);
+
+/// @brief True when a completed drop is waiting to be consumed.
+bool vg_treeview_has_pending_drop(const vg_treeview_t *tree);
+
+/// @brief The dragged (source) node of the latched drop, or NULL.
+vg_tree_node_t *vg_treeview_drop_source(vg_treeview_t *tree);
+
+/// @brief The target node of the latched drop, or NULL.
+vg_tree_node_t *vg_treeview_drop_target_node(vg_treeview_t *tree);
+
+/// @brief The latched drop position (0=before, 1=into, 2=after).
+int vg_treeview_drop_position_value(const vg_treeview_t *tree);
+
+/// @brief Consume the latched drop so the next drop can be observed.
+void vg_treeview_clear_drop(vg_treeview_t *tree);
 
 /// @brief Set all three drag-and-drop callbacks at once.
 /// @param tree      Tree view widget.

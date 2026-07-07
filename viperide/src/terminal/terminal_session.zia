@@ -27,6 +27,8 @@ class TerminalSession {
     expose Boolean exitedThisUpdate;
     expose String lastError;
     expose Boolean outputTruncated;
+    expose String replayBuffer; // Output accumulated while this session is not shown.
+    expose String title;        // Display label for the terminal selector.
 
     expose func init() {
         session = null;
@@ -36,6 +38,8 @@ class TerminalSession {
         exitedThisUpdate = false;
         lastError = "";
         outputTruncated = false;
+        replayBuffer = "";
+        title = "";
     }
 
     /// @brief Open a PTY-backed child. @return true when the session is live.

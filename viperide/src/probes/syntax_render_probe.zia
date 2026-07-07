@@ -110,6 +110,34 @@ func main() {
         return;
     }
 
+    // --- Test E: whitespace-marker mode round-trips and renders -------------
+    // A line with leading, interior, and trailing whitespace exercises all modes.
+    engine.SetText("    if x:\t\tdo()   \n");
+    engine.editor.SetLanguage("zia");
+    if engine.editor.GetWhitespaceMode() != 0 {
+        fail(shell, "whitespace markers not off by default");
+        return;
+    }
+    engine.editor.SetWhitespaceMode(2); // all
+    shell.Poll();
+    shell.Render();
+    if engine.editor.GetWhitespaceMode() != 2 {
+        fail(shell, "whitespace mode 'all' did not stick");
+        return;
+    }
+    engine.editor.SetWhitespaceMode(1); // boundary
+    shell.Poll();
+    shell.Render();
+    if engine.editor.GetWhitespaceMode() != 1 {
+        fail(shell, "whitespace mode 'boundary' did not stick");
+        return;
+    }
+    engine.editor.SetWhitespaceMode(99); // out of range -> clamps to none
+    if engine.editor.GetWhitespaceMode() != 0 {
+        fail(shell, "out-of-range whitespace mode did not clamp to none");
+        return;
+    }
+
     shell.Destroy();
     Terminal.Say("RESULT: ok");
 }

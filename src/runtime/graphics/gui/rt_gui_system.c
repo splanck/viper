@@ -860,6 +860,23 @@ void rt_app_set_ui_scale(void *app, double scale) {
     gui_app->user_scale = (float)scale;
 }
 
+/// @brief `App.SetWheelSpeed` — set the global mouse-wheel scroll sensitivity
+///        used by the code editor, list box, and output pane. The value is
+///        clamped inside the gui library. The app handle is accepted for API
+///        symmetry but the setting is process-global.
+void rt_app_set_wheel_speed(void *app, double speed) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    vg_set_wheel_speed((float)speed);
+}
+
+/// @brief `App.GetWheelSpeed` — return the global mouse-wheel scroll sensitivity.
+double rt_app_get_wheel_speed(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    return (double)vg_get_wheel_speed();
+}
+
 /// @brief Get the current user UI zoom multiplier (1.0 = default).
 double rt_app_get_ui_scale(void *app) {
     RT_ASSERT_MAIN_THREAD();
@@ -1286,6 +1303,18 @@ void rt_app_set_ui_scale(void *app, double scale) {
 
 /// @brief Stub: graphics disabled — returns 1.0.
 double rt_app_get_ui_scale(void *app) {
+    (void)app;
+    return 1.0;
+}
+
+/// @brief Stub: `App.SetWheelSpeed` is a no-op without graphics.
+void rt_app_set_wheel_speed(void *app, double speed) {
+    (void)app;
+    (void)speed;
+}
+
+/// @brief Stub: graphics disabled — returns 1.0.
+double rt_app_get_wheel_speed(void *app) {
     (void)app;
     return 1.0;
 }

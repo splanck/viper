@@ -45,7 +45,22 @@
 /// @param editor The code editor to tick.
 /// @param dt     Elapsed time in seconds since the last frame.
 void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
-    if (!editor || !(editor->base.state & VG_STATE_FOCUSED))
+    if (!editor)
+        return;
+
+    // Edge autoscroll during a selection drag must run before the focus gate:
+    // the drag holds input capture and should keep scrolling even if the blink
+    // focus flag is not set. No-op unless a drag is in progress.
+    codeeditor_drag_autoscroll_tick(editor, &editor->base, dt);
+
+    // Advance the deterministic typing clock that drives undo coalescing. Using
+    // accumulated frame dt (not a wall clock) keeps the gui library free of
+    // platform time calls and lets tests control elapsed time via tick(dt).
+    if (dt > 0.0f) {
+        editor->typing_clock_ms += (uint64_t)(dt * 1000.0f);
+    }
+
+    if (!(editor->base.state & VG_STATE_FOCUSED))
         return;
 
     editor->cursor_blink_time += dt;
@@ -736,6 +751,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
+    edit_history_break_coalescing(editor->history);
     vg_edit_op_t *op = edit_history_pop_undo(editor->history);
     if (!op)
         return;
@@ -802,6 +818,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
+    edit_history_break_coalescing(editor->history);
     vg_edit_op_t *op = edit_history_pop_redo(editor->history);
     if (!op)
         return;
@@ -999,6 +1016,8 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only)
         return false;
 
+    // A paste is its own undo unit even if it happens to be one character.
+    edit_history_break_coalescing(editor->history);
     char *text = vgfx_clipboard_get_text();
     if (text) {
         vg_codeeditor_insert_text(editor, text);

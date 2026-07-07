@@ -84,6 +84,8 @@ final CX = PIECE_SZ / 2;      // center X
 final CY = PIECE_SZ / 2;      // center Y
 final MINI_SZ = 22;
 
+var activePieceTheme: Integer = 0;
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -130,6 +132,16 @@ func initSprites() {
     blackBishopMini = blackBishop.Scale(MINI_SZ, MINI_SZ);
     blackQueenMini  = blackQueen.Scale(MINI_SZ, MINI_SZ);
     blackKingMini   = blackKing.Scale(MINI_SZ, MINI_SZ);
+}
+
+/// @brief Switch visual piece theme and rebuild cached sprites if needed.
+func setTheme(themeId: Integer) {
+    var nextTheme = themeId;
+    if nextTheme < 0 { nextTheme = 0; }
+    if nextTheme > 1 { nextTheme = 1; }
+    if nextTheme == activePieceTheme && whitePawn != null { return; }
+    activePieceTheme = nextTheme;
+    initSprites();
 }
 
 /// @brief Look up the full-size sprite for a piece. Null on invalid type.
@@ -197,21 +209,37 @@ func getMiniPiece(pieceType: Integer, isWhite: Boolean) -> Pixels {
 // ============================================================================
 
 func fillColor(white: Boolean) -> Integer {
+    if activePieceTheme == 1 {
+        if white { return 0xF1F3EA; }
+        return 0x161B22;
+    }
     if white { return 0xF6E9CE; }
     return 0x2E2521;
 }
 
 func outlineColor(white: Boolean) -> Integer {
+    if activePieceTheme == 1 {
+        if white { return 0x24323A; }
+        return 0xD8E2E3;
+    }
     if white { return 0x433127; }
     return 0xD7C5A1;
 }
 
 func accentColor(white: Boolean) -> Integer {
+    if activePieceTheme == 1 {
+        if white { return 0xBBC6C2; }
+        return 0x56646A;
+    }
     if white { return 0xD8BD86; }
     return 0x69564A;
 }
 
 func detailColor(white: Boolean) -> Integer {
+    if activePieceTheme == 1 {
+        if white { return 0xFFFFFF; }
+        return 0xA9B7B9;
+    }
     if white { return 0xFFF9EA; }
     return 0xB79F85;
 }

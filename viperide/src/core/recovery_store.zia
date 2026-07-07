@@ -1,0 +1,167 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/core/recovery_store.zia
+// Purpose: Crash-safe swap-file recovery. Writes a per-document swap file for
+//          every modified buffer on the autosave debounce tick, keeps a session
+//          lock so an unclean exit is detectable, and collects recoverable
+//          documents on the next launch. Complements the bounded session INI
+//          recovery with full, uncapped, continuously-written swaps.
+// Key invariants:
+//   - Each document maps to two files under <settingsDir>/recovery/:
+//     swap-<hash>.swp (full text) and swap-<hash>.path (origin path). Two files
+//     avoid any in-content parsing.
+//   - A clean exit removes the lock and clears all swaps.
+// Links: viperide/src/main.zia, viperide/src/core/session.zia
+//
+//===----------------------------------------------------------------------===//
+
+module recovery_store;
+
+bind "../core/document";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Hash = Viper.Crypto.Hash;
+bind Str = Viper.String;
+bind Seq = Viper.Collections.Seq;
+
+/// @brief One recovered document (origin path + last-known text).
+class RecoveryRecord {
+    expose String path;    // Original file path, or "" for an untitled buffer.
+    expose String content; // Recovered text.
+    expose func init() { path = ""; content = ""; }
+}
+
+/// @brief Owns the recovery directory, session lock, and swap read/write.
+class RecoveryStore {
+    expose String recoveryDir;
+    expose Boolean uncleanExit; // True when a prior session left a lock behind.
+
+    expose func init() {
+        recoveryDir = "";
+        uncleanExit = false;
+    }
+
+    /// @brief Resolve the recovery directory, detect an unclean exit, and claim
+    ///        the session lock.
+    /// @param settingsDir Platform config directory.
+    expose func Setup(settingsDir: String) {
+        if settingsDir == "" { return; }
+        recoveryDir = Path.Join(settingsDir, "recovery");
+        Dir.MakeAll(recoveryDir);
+        var lock = LockPath();
+        uncleanExit = File.Exists(lock);
+        File.WriteAllText(lock, "active");
+    }
+
+    hide func LockPath() -> String {
+        return Path.Join(recoveryDir, "session.lock");
+    }
+
+    hide func KeyFor(doc: document.Document) -> String {
+        if doc.filePath != "" { return doc.filePath; }
+        return "untitled:" + doc.fileName;
+    }
+
+    hide func SwapBase(doc: document.Document) -> String {
+        var h = "" + Hash.CRC32(KeyFor(doc));
+        return Path.Join(recoveryDir, "swap-" + h);
+    }
+
+    /// @brief Write swap files for every modified, editable document.
+    /// @param docMgr Open-document set.
+    /// @param engine Editor engine (for the active document's live text).
+    expose func WriteSwaps(docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine) {
+        if recoveryDir == "" or docMgr == null { return; }
+        var n = docMgr.GetCount();
+        var i = 0;
+        while i < n {
+            var d = docMgr.GetDocument(i);
+            if d != null and d!.isModified and d!.isReadOnlyPreview == false {
+                var content = d!.content;
+                if i == docMgr.activeIndex and engine != null {
+                    content = engine.GetTextSnapshot();
+                }
+                var base = SwapBase(d!);
+                File.WriteAllText(base + ".swp", content);
+                File.WriteAllText(base + ".path", d!.filePath);
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Delete a document's swap files (after save or close).
+    expose func DeleteSwap(doc: document.Document) {
+        if recoveryDir == "" or doc == null { return; }
+        var base = SwapBase(doc);
+        if File.Exists(base + ".swp") { File.Delete(base + ".swp"); }
+        if File.Exists(base + ".path") { File.Delete(base + ".path"); }
+    }
+
+    /// @brief Collect documents recoverable after an unclean exit.
+    /// @return List of RecoveryRecord; empty when nothing needs recovering. A
+    ///         file whose swap matches the on-disk content is skipped.
+    expose func CollectRecovered() -> List {
+        var out = new List();
+        if recoveryDir == "" { return out; }
+        var files = Dir.Files(recoveryDir);
+        var count = Seq.get_Count(files);
+        var i = 0;
+        while i < count {
+            var name = Seq.GetStr(files, i);
+            if Str.EndsWith(name, ".path") {
+                var pathFile = Path.Join(recoveryDir, name);
+                var swapFile = Str.MidLen(pathFile, 1, Str.get_Length(pathFile) - 5) + ".swp";
+                if File.Exists(swapFile) {
+                    var origin = File.ReadAllText(pathFile);
+                    var content = File.ReadAllText(swapFile);
+                    var keep = true;
+                    if origin != "" and File.Exists(origin) {
+                        // Skip when the swap matches what's already on disk.
+                        if File.ReadAllText(origin) == content { keep = false; }
+                    }
+                    if keep {
+                        var rec = new RecoveryRecord();
+                        rec.path = origin;
+                        rec.content = content;
+                        out.add(rec);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    /// @brief Delete every swap file (used after restoring or discarding).
+    expose func ClearAll() {
+        if recoveryDir == "" { return; }
+        var files = Dir.Files(recoveryDir);
+        var count = Seq.get_Count(files);
+        var i = 0;
+        while i < count {
+            var name = Seq.GetStr(files, i);
+            if Str.EndsWith(name, ".swp") or Str.EndsWith(name, ".path") {
+                File.Delete(Path.Join(recoveryDir, name));
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Remove the session lock and clear swaps on a clean exit.
+    expose func MarkCleanExit() {
+        if recoveryDir == "" { return; }
+        var lock = LockPath();
+        if File.Exists(lock) { File.Delete(lock); }
+        ClearAll();
+    }
+}

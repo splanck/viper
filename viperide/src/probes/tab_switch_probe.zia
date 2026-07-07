@@ -1,0 +1,72 @@
+module tab_switch_probe;
+
+// ============================================================================
+// MODULE: tab_switch_probe
+// PURPOSE: Verify plan 10 — switching back to a warmed, same-language document
+//          reuses its cached syntax colors instead of re-highlighting every
+//          visible line (no "flash of unstyled text").
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+bind "../core/document_manager";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func makeZia(prefix: String) -> String {
+    var t = "module " + prefix + ";\n";
+    var i = 0;
+    while i < 40 {
+        t = t + "func f" + i + "(a: Integer) -> Integer { return a + " + i + "; }\n";
+        i = i + 1;
+    }
+    return t;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Tab Switch Probe", 900, 640);
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    engine.SetSize(700, 500);
+    var docMgr = new document_manager.DocumentManager();
+
+    // Two Zia documents, both warmed (highlighted) by rendering.
+    var docA = docMgr.NewDocument();
+    docA.language = "zia";
+    docA.content = makeZia("alpha");
+    engine.LoadDocument(docA);
+    shell.Poll();
+    shell.Render();
+
+    var docB = docMgr.NewDocument();
+    docB.language = "zia";
+    docB.content = makeZia("beta");
+    engine.LoadDocument(docB);
+    shell.Poll();
+    shell.Render();
+
+    // Switch back to A (same language) and measure re-highlighting.
+    engine.LoadDocument(docA);
+    engine.editor.ResetPerfStats();
+    shell.Poll();
+    shell.Render();
+    var calls = engine.editor.GetSyntaxHighlightCallCount();
+
+    // With the buffer's color cache preserved and no highlighter reinstall, the
+    // returning document should re-highlight few (ideally zero) lines.
+    if calls > 3 {
+        fail(shell, "returning same-language doc re-highlighted " + calls + " lines");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

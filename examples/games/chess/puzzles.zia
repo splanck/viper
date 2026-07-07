@@ -1,0 +1,73 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/puzzles.zia
+// Purpose: Built-in no-asset chess lessons/puzzles.
+// Key invariants:
+//   - Puzzle target squares are 0..63 Board indices.
+//   - Every puzzle FEN is loadable by notation.applyFEN.
+// Ownership/Lifetime:
+//   - Stateless helper module; ChessGame owns active puzzle selection.
+//   - Puzzle content is repo-owned and deterministic.
+// Links: examples/games/chess/notation.zia, examples/games/chess/ui/game.zia
+//
+//===----------------------------------------------------------------------===//
+
+module puzzles;
+
+final PUZZLE_COUNT = 3;
+
+func count() -> Integer { return PUZZLE_COUNT; }
+
+func title(idx: Integer) -> String {
+    if idx == 1 { return "Develop the Knight"; }
+    if idx == 2 { return "Spanish Bishop"; }
+    return "Claim the Center";
+}
+
+func instruction(idx: Integer) -> String {
+    if idx == 1 { return "Find White's natural developing move."; }
+    if idx == 2 { return "Pin the c6 knight and build pressure."; }
+    return "Open with the king pawn.";
+}
+
+func fen(idx: Integer) -> String {
+    if idx == 1 {
+        return "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2";
+    }
+    if idx == 2 {
+        return "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
+    }
+    return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+}
+
+func targetFrom(idx: Integer) -> Integer {
+    if idx == 1 { return 62; } // g1
+    if idx == 2 { return 61; } // f1
+    return 52;                 // e2
+}
+
+func targetTo(idx: Integer) -> Integer {
+    if idx == 1 { return 45; } // f3
+    if idx == 2 { return 33; } // b5
+    return 36;                 // e4
+}
+
+func targetPromotion(idx: Integer) -> Integer {
+    if idx < 0 { return 0; }
+    return 0;
+}
+
+func goal(idx: Integer) -> String {
+    if idx == 1 { return "Nf3"; }
+    if idx == 2 { return "Bb5"; }
+    return "e4";
+}
+
+func nextIndex(idx: Integer) -> Integer {
+    return (idx + 1) % PUZZLE_COUNT;
+}

@@ -58,6 +58,7 @@ struct BpMeta {
     std::string condition;
     std::string logMessage;
 };
+
 using BpMetaMap = std::unordered_map<std::string, BpMeta>;
 
 std::string metaKey(const std::string &path, uint32_t line) {
@@ -103,7 +104,10 @@ JsonValue logEvent(uint32_t line, const std::string &message) {
 class DebugChannel {
   public:
     DebugChannel() : reader_([this] { readerLoop(); }) {}
-    ~DebugChannel() { reader_.detach(); } // the process exits via _Exit; no join
+
+    ~DebugChannel() {
+        reader_.detach();
+    } // the process exits via _Exit; no join
 
     void emit(const JsonValue &event) {
         std::lock_guard<std::mutex> lock(outMutex_);
@@ -182,6 +186,11 @@ JsonValue stoppedEvent(const il::vm::DebugStopInfo &info) {
             {"name", JsonValue(l.name)},
             {"value", JsonValue(l.value)},
             {"type", JsonValue(l.type)},
+            // Additive structured-variable fields (back-compatible; a consumer that
+            // ignores them sees the historical flat locals). varRef>0 marks an
+            // expandable composite; the IDE fetches children with a "variables" cmd.
+            {"varRef", JsonValue(l.varRef)},
+            {"childCount", JsonValue(l.childCount)},
         }));
     }
     return JsonValue::object({
@@ -192,6 +201,38 @@ JsonValue stoppedEvent(const il::vm::DebugStopInfo &info) {
         {"column", JsonValue(static_cast<int64_t>(info.column))},
         {"frames", JsonValue::array(std::move(frames))},
         {"locals", JsonValue::array(std::move(locals))},
+    });
+}
+
+/// @brief Build a `variables` response: one level of children of @p varRef, paged
+///        by @p start / @p count. Children carry their own varRef>0 when they are
+///        themselves expandable, so the IDE can drill down. Refs are only valid at
+///        the current stop; a stale ref (after resume) yields an empty child list.
+JsonValue variablesEvent(const il::vm::DebugStopInfo &info,
+                         int64_t varRef,
+                         int64_t start,
+                         int64_t count) {
+    JsonValue::ArrayType vars;
+    if (info.vars && varRef > 0) {
+        if (start < 0)
+            start = 0;
+        if (count <= 0)
+            count = 100; // default page size when the IDE omits a bound
+        for (const auto &c : info.vars->expand(varRef, start, count)) {
+            vars.push_back(JsonValue::object({
+                {"name", JsonValue(c.name)},
+                {"value", JsonValue(c.value)},
+                {"type", JsonValue(c.type)},
+                {"varRef", JsonValue(c.varRef)},
+                {"childCount", JsonValue(c.childCount)},
+            }));
+        }
+    }
+    return JsonValue::object({
+        {"type", JsonValue("variables")},
+        {"varRef", JsonValue(varRef)},
+        {"start", JsonValue(start)},
+        {"vars", JsonValue::array(std::move(vars))},
     });
 }
 
@@ -257,6 +298,10 @@ JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &e
             {"value", JsonValue(value.str())},
             {"valueType", JsonValue(debugValueType(value))},
             {"ok", JsonValue(true)},
+            // Watch results are pure scalars today, so always leaves. Emitting the
+            // structured fields keeps their shape aligned with locals for the IDE.
+            {"varRef", JsonValue(static_cast<int64_t>(0))},
+            {"childCount", JsonValue(static_cast<int64_t>(0))},
         });
     return JsonValue::object({
         {"type", JsonValue("evaluated")},
@@ -264,6 +309,8 @@ JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &e
         {"value", JsonValue("")},
         {"valueType", JsonValue("")},
         {"ok", JsonValue(false)},
+        {"varRef", JsonValue(static_cast<int64_t>(0))},
+        {"childCount", JsonValue(static_cast<int64_t>(0))},
     });
 }
 
@@ -275,8 +322,7 @@ JsonValue evaluatedEvent(const il::vm::DebugStopInfo &info, const std::string &e
 ///          only when the line changes (or a breakpoint intervenes).
 class AdapterFrontend : public il::vm::DebugFrontend {
   public:
-    AdapterFrontend(DebugChannel &chan, BpMetaMap meta)
-        : chan_(chan), bpMeta_(std::move(meta)) {}
+    AdapterFrontend(DebugChannel &chan, BpMetaMap meta) : chan_(chan), bpMeta_(std::move(meta)) {}
 
     il::vm::DebugAction onStop(const il::vm::DebugStopInfo &info) override {
         // Run-to-cursor: keep stepping over until the target line is reached. A
@@ -300,8 +346,7 @@ class AdapterFrontend : public il::vm::DebugFrontend {
         // Continue an in-progress line step while still on the origin line. Step-out
         // always surfaces its first pause (it lands in the caller). A breakpoint or
         // an unhandled trap always surfaces, even mid-step.
-        if (mode_ != StepMode::None && info.reason != "breakpoint" &&
-            info.reason != "exception") {
+        if (mode_ != StepMode::None && info.reason != "breakpoint" && info.reason != "exception") {
             const bool sameLine = info.line == originLine_ && info.path == originPath_;
             if (mode_ != StepMode::Out && sameLine && info.line != 0 &&
                 autoSteps_ < kMaxAutoSteps) {
@@ -362,6 +407,19 @@ class AdapterFrontend : public il::vm::DebugFrontend {
             if (type == "evaluate") {
                 // Watch/hover query: report the value and stay stopped.
                 chan_.emit(evaluatedEvent(info, (*cmd)["expr"].asString()));
+                continue;
+            }
+            if (type == "variables") {
+                // Lazy one-level expansion of a composite local; stay stopped. The
+                // VM thread is paused here, so reading child values is safe.
+                const int64_t ref = (*cmd)["varRef"].asInt();
+                int64_t start = 0;
+                int64_t count = 0;
+                if (const JsonValue *s = cmd->get("start"))
+                    start = s->asInt();
+                if (const JsonValue *c = cmd->get("count"))
+                    count = c->asInt();
+                chan_.emit(variablesEvent(info, ref, start, count));
                 continue;
             }
             if (type == "terminate") {

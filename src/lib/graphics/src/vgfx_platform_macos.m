@@ -41,6 +41,7 @@
 #import <QuartzCore/QuartzCore.h>
 #include <errno.h>
 #include <mach/mach_time.h>
+#include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -148,11 +149,14 @@ static void vgfx_macos_init_timebase(void) {
 ///
 /// @invariant window != nil implies view != nil && delegate != nil
 typedef struct {
-    NSWindow *window;             ///< Native NSWindow instance
-    VGFXView *view;               ///< Custom view for framebuffer display
-    VGFXWindowDelegate *delegate; ///< Delegate for window events
-    int close_requested;          ///< 1 if user clicked close button, 0 otherwise
-    int cursor_type;              ///< Current cursor type for persistent cursor rects
+    NSWindow *window;               ///< Native NSWindow instance
+    VGFXView *view;                 ///< Custom view for framebuffer display
+    VGFXWindowDelegate *delegate;   ///< Delegate for window events
+    int close_requested;            ///< 1 if user clicked close button, 0 otherwise
+    int cursor_type;                ///< Current cursor type for persistent cursor rects
+    int fullscreen_resizable_added; ///< 1 if fullscreen temporarily enabled resizable style
+    NSSize windowed_content_size;   ///< Last windowed content size before native fullscreen
+    int has_windowed_content_size;  ///< 1 if windowed_content_size is valid
 } vgfx_macos_platform;
 
 static BOOL g_finish_launching_called = NO;
@@ -286,6 +290,36 @@ static NSRect macos_screen_frame_for_window(NSWindow *window) {
     return screen ? [screen frame] : NSZeroRect;
 }
 
+static void macos_set_view_tracks_window(VGFXView *view) {
+    if (!view)
+        return;
+    [view setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+}
+
+static void macos_sync_view_frame_to_content(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+    if (!platform->window || !platform->view)
+        return;
+
+    macos_set_view_tracks_window(platform->view);
+
+    NSRect content_rect = [platform->window contentRectForFrameRect:[platform->window frame]];
+    if (content_rect.size.width <= 0.0 || content_rect.size.height <= 0.0)
+        return;
+
+    NSRect view_frame = [platform->view frame];
+    if (fabs(view_frame.size.width - content_rect.size.width) <= 0.5 &&
+        fabs(view_frame.size.height - content_rect.size.height) <= 0.5)
+        return;
+
+    view_frame.origin = NSZeroPoint;
+    view_frame.size = content_rect.size;
+    [platform->view setFrame:view_frame];
+}
+
 static void macos_sync_window_metrics(struct vgfx_window *win,
                                       int emit_resize_event,
                                       int invoke_resize_callback) {
@@ -295,6 +329,8 @@ static void macos_sync_window_metrics(struct vgfx_window *win,
     vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
     if (!platform->window || !platform->view)
         return;
+
+    macos_sync_view_frame_to_content(win);
 
     CGFloat backing_scale = [platform->window backingScaleFactor];
     vgfx_internal_refresh_scale_factor(win, (float)backing_scale);
@@ -659,6 +695,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     self = [super initWithFrame:frameRect];
     if (self) {
         _vgfxWindow = NULL;
+        [self setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
         // Register as a file drop target
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
@@ -909,6 +946,51 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     macos_sync_window_metrics(_vgfxWindow, 1, 0);
 }
 
+- (void)windowWillEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    if (!_vgfxWindow || !_vgfxWindow->platform_data)
+        return;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+    if (platform->view)
+        platform->windowed_content_size = [platform->view bounds].size;
+    platform->has_windowed_content_size = platform->view != nil ? 1 : 0;
+    macos_set_view_tracks_window(platform->view);
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    macos_sync_window_metrics(_vgfxWindow, 1, 1);
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+
+    if (_vgfxWindow && _vgfxWindow->platform_data) {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+        if (platform->window && platform->fullscreen_resizable_added && !_vgfxWindow->resizable) {
+            [platform->window
+                setStyleMask:([platform->window styleMask] & ~NSWindowStyleMaskResizable)];
+            platform->fullscreen_resizable_added = 0;
+        }
+
+        if (platform->window && platform->view && platform->has_windowed_content_size) {
+            [platform->window setContentSize:platform->windowed_content_size];
+            [platform->view setFrame:NSMakeRect(0.0,
+                                                0.0,
+                                                platform->windowed_content_size.width,
+                                                platform->windowed_content_size.height)];
+            platform->has_windowed_content_size = 0;
+        }
+    }
+
+    macos_sync_window_metrics(_vgfxWindow, 1, 1);
+}
+
+- (NSSize)window:(NSWindow *)window willUseFullScreenContentSize:(NSSize)proposedSize {
+    (void)window;
+    return proposedSize;
+}
+
 /// @brief Handle window gaining focus.
 /// @details Called when the window becomes the key window (receives keyboard
 ///          input).  Enqueues a FOCUS_GAINED event.
@@ -1051,6 +1133,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         if ([platform->window respondsToSelector:@selector(setTabbingMode:)]) {
             [platform->window setTabbingMode:NSWindowTabbingModeDisallowed];
         }
+        [platform->window setCollectionBehavior:([platform->window collectionBehavior] |
+                                                 NSWindowCollectionBehaviorFullScreenPrimary)];
 
         /* Create custom view for framebuffer display */
         platform->view = [[VGFXView alloc] initWithFrame:contentRect];
@@ -1205,6 +1289,24 @@ static void macos_enqueue_text_input_events(struct vgfx_window *win,
                 .data.text = {.codepoint = codepoint, .modifiers = modifiers}};
             vgfx_internal_enqueue_event(win, &text_event);
         }
+    }
+}
+
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    if (timeout_ms <= 0)
+        return 0;
+
+    @autoreleasepool {
+        /* Block up to timeout for the next event, but leave it queued
+           (dequeue:NO) so vgfx_platform_process_events handles it normally. */
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:(double)timeout_ms / 1000.0];
+        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                            untilDate:deadline
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:NO];
+        return event != nil ? 1 : 0;
     }
 }
 
@@ -1618,9 +1720,23 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
 
         /* Only toggle if state needs to change */
         if (fullscreen && !is_currently_fullscreen) {
+            [platform->window setCollectionBehavior:([platform->window collectionBehavior] |
+                                                     NSWindowCollectionBehaviorFullScreenPrimary)];
+            if (([platform->window styleMask] & NSWindowStyleMaskResizable) == 0) {
+                [platform->window
+                    setStyleMask:([platform->window styleMask] | NSWindowStyleMaskResizable)];
+                platform->fullscreen_resizable_added = 1;
+            }
+            [platform->window makeKeyAndOrderFront:nil];
+            if (!vgfx_macos_no_activate_on_create())
+                [NSApp activateIgnoringOtherApps:YES];
             [platform->window toggleFullScreen:nil];
         } else if (!fullscreen && is_currently_fullscreen) {
             [platform->window toggleFullScreen:nil];
+        } else if (!fullscreen && platform->fullscreen_resizable_added && !win->resizable) {
+            [platform->window
+                setStyleMask:([platform->window styleMask] & ~NSWindowStyleMaskResizable)];
+            platform->fullscreen_resizable_added = 0;
         }
 
         return 1;

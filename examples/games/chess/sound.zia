@@ -1,0 +1,127 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/sound.zia
+// Purpose: Procedural sound and music wrapper for Chess.
+// Key invariants:
+//   - Audio failure is always non-fatal; every playback method is a no-op.
+//   - Master/music/SFX volume settings are clamped to 0..100.
+// Ownership/Lifetime:
+//   - ChessGame owns and shuts down one ChessSound instance.
+//   - SoundBank owns generated Sound handles after setup.
+// Links: examples/games/chess/settings.zia, docs/viperlib/game/audio.md
+//
+//===----------------------------------------------------------------------===//
+
+module sound;
+
+bind Viper.Sound;
+
+/// @brief Named procedural audio bank for chess UI/game events.
+class ChessSound {
+    hide Boolean ready;
+    hide SoundBank bank;
+    hide Integer musicVoice;
+    hide Integer masterVolume;
+    hide Integer musicVolume;
+    hide Integer sfxVolume;
+    hide Boolean muted;
+
+    expose func init() {
+        ready = false;
+        musicVoice = -1;
+        masterVolume = 76;
+        musicVolume = 24;
+        sfxVolume = 100;
+        muted = false;
+    }
+
+    expose func setup() {
+        if Audio.IsAvailable() == false { return; }
+        if Audio.Init() == 0 { return; }
+        bank = SoundBank.New();
+        bank.RegisterSound("menu", Synth.Tone(720, 42, 1));
+        bank.RegisterSound("start", Synth.Sweep(560, 980, 88, 1));
+        bank.RegisterSound("move", Synth.Tone(420, 58, 0));
+        bank.RegisterSound("capture", Synth.Sweep(780, 260, 120, 2));
+        bank.RegisterSound("check", Synth.Sweep(520, 1040, 150, 1));
+        bank.RegisterSound("invalid", Synth.Tone(140, 90, 3));
+        bank.RegisterSound("promote", Synth.Sweep(720, 1440, 180, 0));
+        bank.RegisterSound("gameover", Synth.Sweep(660, 330, 260, 2));
+        bank.RegisterSound("music", Synth.Tone(196, 900, 2));
+        ready = true;
+        self.applyMix();
+    }
+
+    expose func configure(masterVol: Integer, musicVol: Integer, sfxVol: Integer, isMuted: Boolean) {
+        masterVolume = clampVol(masterVol);
+        musicVolume = clampVol(musicVol);
+        sfxVolume = clampVol(sfxVol);
+        muted = isMuted;
+        self.applyMix();
+    }
+
+    expose func shutdown() {
+        if ready == false { return; }
+        self.stopMusic();
+        Audio.StopAllSounds();
+        Audio.Shutdown();
+        ready = false;
+    }
+
+    expose func playMenu() { self.playSfx("menu", 38); }
+    expose func playStart() { self.playSfx("start", 58); }
+    expose func playMove() { self.playSfx("move", 42); }
+    expose func playCapture() { self.playSfx("capture", 68); }
+    expose func playCheck() { self.playSfx("check", 66); }
+    expose func playInvalid() { self.playSfx("invalid", 48); }
+    expose func playPromote() { self.playSfx("promote", 70); }
+    expose func playGameOver() { self.playSfx("gameover", 68); }
+
+    expose func playMusic() {
+        if ready == false { return; }
+        if musicVoice >= 0 { return; }
+        if bank.Has("music") {
+            musicVoice = bank.Get("music").PlayLoopGroup(24, 0, 0);
+        }
+    }
+
+    expose func stopMusic() {
+        if musicVoice >= 0 {
+            Voice.Stop(musicVoice);
+            musicVoice = -1;
+        }
+    }
+
+    hide func playSfx(name: String, volume: Integer) {
+        if ready == false { return; }
+        if bank.Has(name) {
+            bank.Get(name).PlayExGroup(volume, 0, 1);
+        }
+    }
+
+    hide func applyMix() {
+        if ready == false { return; }
+        var masterOut = masterVolume;
+        var musicOut = musicVolume;
+        var sfxOut = sfxVolume;
+        if muted {
+            masterOut = 0;
+            musicOut = 0;
+            sfxOut = 0;
+        }
+        Audio.SetMasterVolume(masterOut);
+        Audio.SetGroupVolume(0, musicOut);
+        Audio.SetGroupVolume(1, sfxOut);
+    }
+}
+
+func clampVol(v: Integer) -> Integer {
+    if v < 0 { return 0; }
+    if v > 100 { return 100; }
+    return v;
+}

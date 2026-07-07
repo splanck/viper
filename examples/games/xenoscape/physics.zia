@@ -129,7 +129,6 @@
 
 module physics;
 
-bind Viper.Math;
 bind Viper.Game;
 bind "./config";
 bind "./level";

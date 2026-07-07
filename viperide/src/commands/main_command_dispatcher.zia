@@ -372,6 +372,7 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
     }
     if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                         { view_commands.handleToggleOutputWrap(ctx.shell); }
     if dispatch_helpers.TriggeredNoMenu("toggleoutputautoscroll", cpSelected)                   { view_commands.handleToggleOutputAutoScroll(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("togglerenderwhitespace", cpSelected)                   { view_commands.handleToggleRenderWhitespace(ctx.shell, ctx.engine, ctx.appSettings); }
     if dispatch_helpers.TriggeredNoMenu("treenewfile", cpSelected) {
         var overlayNewFileDir = contextDirForSelectedProjectPath(ctx.projMgr);
         if overlayNewFileDir != "" { ctx.explorerOverlay.OpenNewFile(ctx.shell, overlayNewFileDir); }

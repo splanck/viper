@@ -88,6 +88,9 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "debugcondition", "Conditional Breakpoint…", "Set a breakpoint that stops only when an expression is true", "", "", true);
     AddSpec(specs, "debuglogpoint", "Add Logpoint…", "Log a message (with {expr}) at a line without stopping", "", "", true);
     AddSpec(specs, "togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
+    AddSpec(specs, "spliteditorright", "Split Editor Right", "Open a second editor pane to the right", "Ctrl+\\", "", true);
+    AddSpec(specs, "focusotherpane", "Focus Other Editor Pane", "Move focus to the other split pane", "", "", true);
+    AddSpec(specs, "closesplit", "Close Editor Split", "Close the second editor pane", "", "", true);
     AddSpec(specs, "statusbar", "Toggle Status Bar", "Show or hide the status bar", "", "", true);
     AddSpec(specs, "zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);
     AddSpec(specs, "zoomout", "Zoom Out", "Decrease editor font size", "Ctrl+-", "", true);
@@ -152,6 +155,7 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "applydiagnosticfix", "Apply Diagnostic Fix-It", "Apply the first language-proposed diagnostic fix at the cursor", "Ctrl+.", "diagnostics", true);
     AddSpec(specs, "createmissingbind", "Create Missing Bind", "Add a safe runtime bind for an undefined Viper namespace alias", "", "diagnostics", true);
     AddSpec(specs, "trimtrailingwhitespace", "Trim Trailing Whitespace", "Remove trailing spaces and tabs from the active document", "Shift+Alt+T", "", true);
+    AddSpec(specs, "togglerenderwhitespace", "Toggle Render Whitespace", "Cycle whitespace markers: off, boundary, all", "", "", true);
     AddSpec(specs, "formatdocument", "Format Document", "Format the active document when a formatter is available", "Shift+Alt+F", "", true);
     AddSpec(specs, "formatselection", "Format Selection", "Format the selected text when a formatter is available", "", "", true);
     return specs;
@@ -225,7 +229,8 @@ expose func CategoryForCommand(id: String) -> String {
     if id == "togglesidebar" or id == "statusbar" or id == "zoomin"
        or id == "zoomout" or id == "zoomreset" or id == "uizoomin"
        or id == "uizoomout" or id == "uizoomreset"
-       or id == "toggletheme" or id == "fullscreen" or id == "minimap" {
+       or id == "toggletheme" or id == "fullscreen" or id == "minimap"
+       or id == "spliteditorright" or id == "focusotherpane" or id == "closesplit" {
         return "View";
     }
     if id == "settings" or id == "keybindings" {

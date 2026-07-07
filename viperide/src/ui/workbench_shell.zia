@@ -27,9 +27,12 @@ bind Viper.GUI as GUI;
 /// @brief Owns the IDE's sidebar/editor layout widgets.
 class WorkbenchShell {
     expose GUI.SplitPane splitPane;
+    expose GUI.SplitPane editorSplit;
     expose GUI.HBox workbenchRow;
     expose GUI.VBox editorArea;
+    expose GUI.VBox bottomPanelHost;
     expose GUI.HBox editorRow;
+    expose GUI.VBox welcomeHost;
     expose GUI.VBox preferencesPanel;
     expose GUI.TabBar tabBar;
     expose GUI.Breadcrumb breadcrumb;
@@ -49,9 +52,12 @@ class WorkbenchShell {
     /// @brief Initialize detached workbench state.
     expose func init() {
         splitPane = null;
+        editorSplit = null;
         workbenchRow = null;
         editorArea = null;
+        bottomPanelHost = null;
         editorRow = null;
+        welcomeHost = null;
         preferencesPanel = null;
         tabBar = null;
         breadcrumb = null;
@@ -140,14 +146,39 @@ class WorkbenchShell {
         findBar = GUI.FindBar.New(editorArea);
         findBar.SetVisible(false);
 
+        // Editor and the bottom tool panels share one vertical splitter so the
+        // panel area has a single drag-resizable height instead of each panel
+        // carrying its own fixed height (which made the editor jump when the user
+        // switched panel tabs). 0 = vertical (top/bottom) split.
+        editorSplit = GUI.SplitPane.New(editorArea, 0);
+        editorSplit.SetFlex(1.0);
+        editorSplit.SetPosition(1.0); // bottom collapsed until a panel is shown
+
+        var editorHost: GUI.Widget = editorSplit.First;
+
         editorRow = GUI.HBox.New();
         editorRow.SetSpacing(0.0);
         editorRow.SetPadding(0.0);
         editorRow.SetFlex(1.0);
-        editorArea.AddChild(editorRow);
+        editorHost.AddChild(editorRow);
+
+        // Welcome / start surface, shown in place of the editor when no
+        // documents are open. Built empty here; WelcomeView fills it.
+        welcomeHost = GUI.VBox.New();
+        welcomeHost.SetFlex(1.0);
+        welcomeHost.SetVisible(false);
+        editorHost.AddChild(welcomeHost);
+
+        // Bottom half of the split hosts every tool panel; they fill it via flex
+        // and the splitter owns the height.
+        bottomPanelHost = GUI.VBox.New();
+        bottomPanelHost.SetSpacing(0.0);
+        bottomPanelHost.SetPadding(0.0);
+        bottomPanelHost.SetFlex(1.0);
+        editorSplit.Second.AddChild(bottomPanelHost);
 
         if toolPanels != null {
-            toolPanels.Build(editorArea, app);
+            toolPanels.Build(bottomPanelHost, app, editorSplit);
         }
     }
 

@@ -72,6 +72,8 @@ class SoundManager {
     hide SoundBank bank;
     hide Integer musicVoice;
     hide Integer currentTrack;
+    hide Integer masterVolume;
+    hide Integer sfxVolume;
 
     /// @brief Construct in "not-ready" state.  Real init is
     ///        `setup(basePath)`; until then every `play*`
@@ -80,6 +82,8 @@ class SoundManager {
         ready = false;
         musicVoice = -1;
         currentTrack = -1;
+        masterVolume = 80;
+        sfxVolume = 100;
     }
 
     // Initialize audio system and register all sounds.
@@ -101,7 +105,7 @@ class SoundManager {
         var ok = Audio.Init();
         if ok == 0 { return; }
 
-        Audio.SetMasterVolume(80);
+        applyVolumeSettings();
         bank = SoundBank.New();
 
         // Try WAV files first — they sound better but require assets.
@@ -284,6 +288,64 @@ class SoundManager {
         }
 
         ready = true;
+        applyVolumeSettings();
+    }
+
+    /// @brief Set the global audio master volume.
+    ///
+    /// @param value Volume in the inclusive range 0..100.  Values outside the
+    /// range are clamped before being applied.
+    expose func setMasterVolume(value: Integer) {
+        masterVolume = clampVolume(value);
+        applyVolumeSettings();
+    }
+
+    /// @brief Set the sound-effect mix volume.
+    ///
+    /// @param value Volume in the inclusive range 0..100.  Values outside the
+    /// range are clamped before being applied.
+    expose func setSfxVolume(value: Integer) {
+        sfxVolume = clampVolume(value);
+        applyVolumeSettings();
+    }
+
+    /// @brief Read the current global audio master volume.
+    expose func getMasterVolume() -> Integer {
+        return masterVolume;
+    }
+
+    /// @brief Read the current sound-effect mix volume.
+    expose func getSfxVolume() -> Integer {
+        return sfxVolume;
+    }
+
+    /// @brief Clamp a user-facing volume value into the audio API range.
+    ///
+    /// @param value Candidate volume.
+    /// @return `value` clamped to 0..100.
+    hide func clampVolume(value: Integer) -> Integer {
+        if value < 0 { return 0; }
+        if value > 100 { return 100; }
+        return value;
+    }
+
+    /// @brief Apply stored volume fields to the Viper audio mixer.
+    ///
+    /// This is safe to call before audio is ready; in that case it only updates
+    /// stored state and returns.  Once ready, master volume is set globally and
+    /// group 1 is also updated for future grouped SFX calls.
+    hide func applyVolumeSettings() {
+        if ready == false { return; }
+        Audio.SetMasterVolume(masterVolume);
+        Audio.SetGroupVolume(1, sfxVolume);
+    }
+
+    /// @brief Scale a base sound-effect volume by the current SFX slider.
+    ///
+    /// @param base The authored per-effect volume, usually 40..80.
+    /// @return The effective per-effect volume after SFX scaling.
+    hide func scaledSfx(base: Integer) -> Integer {
+        return base * sfxVolume / 100;
     }
 
     // Shut down audio system cleanly.
@@ -317,79 +379,79 @@ class SoundManager {
     /// @brief Player jump.  Short upward whoosh.
     expose func playJump() {
         if ready == false { return; }
-        bank.PlayEx("jump", 60, 0);
+        bank.PlayEx("jump", scaledSfx(60), 0);
     }
 
     /// @brief Bullet fired.
     expose func playShoot() {
         if ready == false { return; }
-        bank.PlayEx("shoot", 50, 0);
+        bank.PlayEx("shoot", scaledSfx(50), 0);
     }
 
     /// @brief Coin pickup chime.
     expose func playCoin() {
         if ready == false { return; }
-        bank.PlayEx("coin", 70, 0);
+        bank.PlayEx("coin", scaledSfx(70), 0);
     }
 
     /// @brief Player took damage.  Lower-pitched bark.
     expose func playHurt() {
         if ready == false { return; }
-        bank.PlayEx("hurt", 80, 0);
+        bank.PlayEx("hurt", scaledSfx(80), 0);
     }
 
     /// @brief Enemy killed.  Sharp pop.
     expose func playEnemyDeath() {
         if ready == false { return; }
-        bank.PlayEx("enemy_death", 65, 0);
+        bank.PlayEx("enemy_death", scaledSfx(65), 0);
     }
 
     /// @brief Powerup pickup arpeggio.
     expose func playPowerup() {
         if ready == false { return; }
-        bank.PlayEx("powerup", 70, 0);
+        bank.PlayEx("powerup", scaledSfx(70), 0);
     }
 
     /// @brief Checkpoint activated.
     expose func playCheckpoint() {
         if ready == false { return; }
-        bank.PlayEx("checkpoint", 70, 0);
+        bank.PlayEx("checkpoint", scaledSfx(70), 0);
     }
 
     /// @brief Level cleared fanfare.
     expose func playLevelComplete() {
         if ready == false { return; }
-        bank.PlayEx("level_complete", 80, 0);
+        bank.PlayEx("level_complete", scaledSfx(80), 0);
     }
 
     /// @brief Menu confirm click.
     expose func playMenuSelect() {
         if ready == false { return; }
-        bank.PlayEx("menu_select", 60, 0);
+        bank.PlayEx("menu_select", scaledSfx(60), 0);
     }
 
     /// @brief Menu cursor tick.
     expose func playMenuMove() {
         if ready == false { return; }
-        bank.PlayEx("menu_move", 40, 0);
+        bank.PlayEx("menu_move", scaledSfx(40), 0);
     }
 
     /// @brief Backing out of a sub-screen.  Lower, softer than confirm.
     expose func playMenuBack() {
         if ready == false { return; }
-        bank.PlayEx("menu_back", 50, 0);
+        bank.PlayEx("menu_back", scaledSfx(50), 0);
     }
 
     /// @brief Player death.  Falling-pitch wail.
     expose func playDeath() {
         if ready == false { return; }
-        bank.PlayEx("death", 80, 0);
+        bank.PlayEx("death", scaledSfx(80), 0);
     }
 
     /// @brief Mario-style stomp on enemy.
     expose func playStomp() {
         if ready == false { return; }
-        bank.PlayEx("stomp", 65, 0);
+        bank.PlayEx("stomp", scaledSfx(65), 0);
     }
 
     // =========================================================================

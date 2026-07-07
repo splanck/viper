@@ -31,6 +31,8 @@
 #include "vm/VM.hpp"
 #include "vm/VMConstants.hpp"
 
+#include "rt_box.h"
+#include "rt_collection_ids.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -40,9 +42,23 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+
+// Collection element accessors used only for read-only debugger inspection of a
+// paused frame. Forward-declared (rather than pulling the collection headers into
+// this VM TU) to keep the debug surface minimal; signatures mirror the runtime.
+extern "C" {
+int64_t rt_list_len(void *list);
+void *rt_list_get(void *list, int64_t index);
+int64_t rt_seq_len(void *obj);
+void *rt_seq_get(void *obj, int64_t idx);
+int64_t rt_map_len(void *obj);
+void *rt_map_keys_to_seq(void *map);
+void *rt_map_values_to_seq(void *map);
+}
 
 using namespace il::core;
 
@@ -136,8 +152,14 @@ std::string takeRtString(rt_string s) {
 /// @param value Pointer value to describe.
 /// @param local Local-display record to populate.
 /// @param allowRaw Whether non-managed pointers should be shown as "<ptr>".
+/// @param managedOut When non-null, receives @p value if it is a managed runtime
+///        object (so the caller can offer structured expansion); left untouched
+///        for null/raw pointers.
 /// @return True when @p local was populated.
-bool formatPointerValue(void *value, DebugLocalInfo &local, bool allowRaw) {
+bool formatPointerValue(void *value,
+                        DebugLocalInfo &local,
+                        bool allowRaw,
+                        void **managedOut = nullptr) {
     if (!value) {
         local.type = "ptr";
         local.value = "null";
@@ -149,6 +171,8 @@ bool formatPointerValue(void *value, DebugLocalInfo &local, bool allowRaw) {
     if (typeId != 0 || (!typeName.empty() && typeName != "Object")) {
         local.type = typeName.empty() ? "object" : typeName;
         local.value = typeId == 0 ? "<object>" : "<object #" + std::to_string(typeId) + ">";
+        if (managedOut)
+            *managedOut = value;
         return true;
     }
 
@@ -164,7 +188,11 @@ bool formatPointerValue(void *value, DebugLocalInfo &local, bool allowRaw) {
 ///          stale or non-alloca pointer cannot fault. Only fixed-size scalars are
 ///          loaded; aggregate/string pointees are left to the caller.
 /// @return True when a value was read and formatted.
-bool loadScalarFromAlloca(const Frame &fr, void *ptr, Type::Kind kind, DebugLocalInfo &local) {
+bool loadScalarFromAlloca(const Frame &fr,
+                          void *ptr,
+                          Type::Kind kind,
+                          DebugLocalInfo &local,
+                          void **managedOut = nullptr) {
     if (!ptr)
         return false;
     size_t size = 0;
@@ -233,7 +261,7 @@ bool loadScalarFromAlloca(const Frame &fr, void *ptr, Type::Kind kind, DebugLoca
     } else if (kind == Type::Kind::Ptr) {
         void *value = nullptr;
         std::memcpy(&value, p, sizeof(void *));
-        formatPointerValue(value, local, true);
+        formatPointerValue(value, local, true, managedOut);
     } else { // I64
         int64_t v = 0;
         std::memcpy(&v, p, 8);
@@ -269,11 +297,230 @@ void formatRegScalar(const Frame &fr, size_t id, Type::Kind kind, DebugLocalInfo
     }
 }
 
+/// @brief Cap on map pairs materialized eagerly for a single map value, bounding
+///        the work done at a stop for very large maps (the UI pages within this).
+constexpr int64_t kMaxEagerMapPairs = 2000;
+
+/// @brief Lazy, one-level child provider backing DebugStopInfo::vars for the
+///        current stop. Expands List, Seq, and the canonical Map; every other
+///        managed value (user class instances, other collection kinds) is a leaf.
+/// @details Safety: this runs on the paused VM thread inside onStop, so it must
+///          never re-enter the interpreter. Values are formatted purely — boxed
+///          primitives via rt_unbox_* (guarded by a rt_box_type tag check so they
+///          cannot trap), strings quoted directly — never through user ToString.
+///          List/Seq handles are owned by the paused frame and read in place
+///          (no retain). The only allocations are the transient key/value seqs
+///          used to enumerate a map, which are released immediately.
+class VmDebugVarStore : public DebugVarExpander {
+  public:
+    /// @brief If @p v is an expandable container, register it and populate the
+    ///        display fields for a top-level local; return true. Leaves return false.
+    bool classify(void *v, DebugLocalInfo &local) {
+        Kind k;
+        int64_t n = 0;
+        if (!detect(v, k, n))
+            return false;
+        local.type = kindName(k);
+        local.value = summaryOf(k, n);
+        local.varRef = registerContainer(v, k, n);
+        local.childCount = childCountOf(local.varRef, k, n);
+        return true;
+    }
+
+    bool empty() const {
+        return entries_.empty();
+    }
+
+    std::vector<DebugLocalInfo> expand(int64_t ref, int64_t start, int64_t count) override {
+        std::vector<DebugLocalInfo> out;
+        if (ref < 1 || static_cast<size_t>(ref) > entries_.size() || count <= 0)
+            return out;
+        Entry &e = entries_[static_cast<size_t>(ref) - 1];
+        if (start < 0)
+            start = 0;
+        if (e.kind == Kind::Map) {
+            for (int64_t i = start;
+                 i < start + count && static_cast<size_t>(i) < e.mapChildren.size();
+                 ++i)
+                out.push_back(e.mapChildren[static_cast<size_t>(i)]);
+            return out;
+        }
+        for (int64_t i = start; i < start + count && i < e.count; ++i) {
+            DebugLocalInfo child;
+            child.name = "[" + std::to_string(i) + "]";
+            void *elem =
+                (e.kind == Kind::List) ? rt_list_get(e.handle, i) : rt_seq_get(e.handle, i);
+            describeValue(elem, child, /*allowRegister=*/true);
+            out.push_back(std::move(child));
+        }
+        return out;
+    }
+
+  private:
+    enum class Kind { List, Seq, Map };
+
+    struct Entry {
+        Kind kind = Kind::List;
+        void *handle = nullptr; // frame-owned list/seq handle (Map: unused)
+        int64_t count = 0;
+        std::vector<DebugLocalInfo> mapChildren; // Map only, pre-materialized
+    };
+
+    static const char *kindName(Kind k) {
+        switch (k) {
+            case Kind::List:
+                return "List";
+            case Kind::Seq:
+                return "Seq";
+            default:
+                return "Map";
+        }
+    }
+
+    static std::string summaryOf(Kind k, int64_t n) {
+        return std::string(kindName(k)) + "(" + std::to_string(n < 0 ? 0 : n) + ")";
+    }
+
+    int64_t childCountOf(int64_t ref, Kind k, int64_t n) const {
+        if (k == Kind::Map)
+            return static_cast<int64_t>(entries_[static_cast<size_t>(ref) - 1].mapChildren.size());
+        return n < 0 ? 0 : n;
+    }
+
+    static bool detect(void *v, Kind &k, int64_t &n) {
+        if (rt_obj_is_instance(v, RT_LIST_CLASS_ID, 0)) {
+            k = Kind::List;
+            n = rt_list_len(v);
+            return true;
+        }
+        if (rt_obj_is_instance(v, RT_SEQ_CLASS_ID, 0)) {
+            k = Kind::Seq;
+            n = rt_seq_len(v);
+            return true;
+        }
+        if (rt_obj_is_instance(v, RT_MAP_CLASS_ID, 0)) {
+            k = Kind::Map;
+            n = rt_map_len(v);
+            return true;
+        }
+        return false;
+    }
+
+    int64_t registerContainer(void *v, Kind k, int64_t n) {
+        Entry e;
+        e.kind = k;
+        e.handle = v;
+        e.count = n < 0 ? 0 : n;
+        if (k == Kind::Map)
+            materializeMap(v, e);
+        entries_.push_back(std::move(e));
+        return static_cast<int64_t>(entries_.size()); // 1-based ref
+    }
+
+    void materializeMap(void *map, Entry &e) {
+        void *keys = rt_map_keys_to_seq(map);
+        void *vals = rt_map_values_to_seq(map);
+        if (keys && vals) {
+            const int64_t kn = rt_seq_len(keys);
+            const int64_t vn = rt_seq_len(vals);
+            const int64_t n = kn < vn ? kn : vn;
+            const int64_t limit = n < kMaxEagerMapPairs ? n : kMaxEagerMapPairs;
+            for (int64_t i = 0; i < limit; ++i) {
+                DebugLocalInfo keyView;
+                describeValue(rt_seq_get(keys, i), keyView, /*allowRegister=*/false);
+                DebugLocalInfo child;
+                child.name = unquote(keyView.value);
+                // Map values are shown one level deep as leaf summaries to keep the
+                // transient key/value seqs' lifetime trivial (no nested registration).
+                describeValue(rt_seq_get(vals, i), child, /*allowRegister=*/false);
+                e.mapChildren.push_back(std::move(child));
+            }
+        }
+        if (keys)
+            rt_memory_release(keys);
+        if (vals)
+            rt_memory_release(vals);
+    }
+
+    /// @brief Strip one pair of surrounding quotes so a string key reads cleanly
+    ///        as a child name.
+    static std::string unquote(const std::string &s) {
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+            return s.substr(1, s.size() - 2);
+        return s;
+    }
+
+    /// @brief Fill @p out from a runtime value without ever invoking user code.
+    ///        Containers are registered for expansion when @p allowRegister is true.
+    void describeValue(void *v, DebugLocalInfo &out, bool allowRegister) {
+        if (!v) {
+            out.type = "ptr";
+            out.value = "null";
+            return;
+        }
+        if (rt_string_is_handle(v)) {
+            out.type = "str";
+            out.value = quoteRtString(static_cast<rt_string>(v));
+            return;
+        }
+        const int64_t tag = rt_box_type(v);
+        if (tag == RT_BOX_I64) {
+            out.type = "i64";
+            out.value = std::to_string(rt_unbox_i64(v));
+            return;
+        }
+        if (tag == RT_BOX_F64) {
+            out.type = "f64";
+            out.value = formatDouble(rt_unbox_f64(v));
+            return;
+        }
+        if (tag == RT_BOX_I1) {
+            out.type = "bool";
+            out.value = rt_unbox_i1(v) ? "true" : "false";
+            return;
+        }
+        if (tag == RT_BOX_STR) {
+            rt_string s = nullptr;
+            if (rt_box_try_to_str(v, &s)) {
+                out.type = "str";
+                out.value = quoteRtString(s);
+                rt_string_unref(s);
+            } else {
+                out.type = "str";
+                out.value = "\"\"";
+            }
+            return;
+        }
+        Kind k;
+        int64_t n = 0;
+        if (detect(v, k, n)) {
+            out.type = kindName(k);
+            out.value = summaryOf(k, n);
+            if (allowRegister) {
+                out.varRef = registerContainer(v, k, n);
+                out.childCount = childCountOf(out.varRef, k, n);
+            }
+            return;
+        }
+        std::string tn = takeRtString(rt_obj_type_name(v));
+        if (tn.empty())
+            tn = "object";
+        out.type = tn;
+        out.value = "<" + tn + ">";
+    }
+
+    std::vector<Entry> entries_;
+};
+
 /// @brief Collect source-named locals of @p fr (skipping SSA temporaries),
 ///        loading mutable variables through their frame-stack allocas and showing
 ///        immutable SSA values directly. Dedups by source name, preferring the
 ///        alloca-backed (current) value. All memory reads are bounds-checked.
-void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
+/// @param outPtrs Parallel to @p out: the managed runtime handle for each local
+///        that is one (else null), so the caller can offer structured expansion.
+void collectFrameLocals(const Frame &fr,
+                        std::vector<DebugLocalInfo> &out,
+                        std::vector<void *> &outPtrs) {
     const Function *fn = fr.func;
     if (!fn)
         return;
@@ -305,16 +552,24 @@ void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
     }
 
     // Insertion-ordered dedup by display name; alloca-backed values are authoritative.
-    std::vector<std::pair<std::string, DebugLocalInfo>> ordered;
-    auto upsert = [&](std::string name, DebugLocalInfo info, bool authoritative) {
+    struct OrderedLocal {
+        std::string name;
+        DebugLocalInfo info;
+        void *managed; // runtime object handle when this local is one, else null
+    };
+
+    std::vector<OrderedLocal> ordered;
+    auto upsert = [&](std::string name, DebugLocalInfo info, void *managed, bool authoritative) {
         for (auto &e : ordered) {
-            if (e.first == name) {
-                if (authoritative)
-                    e.second = std::move(info);
+            if (e.name == name) {
+                if (authoritative) {
+                    e.info = std::move(info);
+                    e.managed = managed;
+                }
                 return;
             }
         }
-        ordered.emplace_back(std::move(name), std::move(info));
+        ordered.push_back({std::move(name), std::move(info), managed});
     };
 
     for (size_t id = 0; id < count; ++id) {
@@ -329,24 +584,28 @@ void collectFrameLocals(const Frame &fr, std::vector<DebugLocalInfo> &out) {
         local.name = dollar == std::string::npos ? name : name.substr(0, dollar);
 
         bool authoritative = false;
+        void *managed = nullptr;
         if (isAlloca[id]) {
-            if (loadScalarFromAlloca(fr, fr.regs[id].ptr, allocaPointee[id], local))
+            if (loadScalarFromAlloca(fr, fr.regs[id].ptr, allocaPointee[id], local, &managed))
                 authoritative = true;
             else
                 continue; // string/aggregate alloca or out-of-bounds: skip for now
         } else if (kinds[id] == Type::Kind::Ptr) {
-            if (!formatPointerValue(fr.regs[id].ptr, local, false))
+            if (!formatPointerValue(fr.regs[id].ptr, local, false, &managed))
                 continue; // raw non-alloca pointer: not user-meaningful
         } else {
             formatRegScalar(fr, id, kinds[id], local);
         }
         std::string displayName = local.name;
-        upsert(std::move(displayName), std::move(local), authoritative);
+        upsert(std::move(displayName), std::move(local), managed, authoritative);
     }
 
     out.reserve(ordered.size());
-    for (auto &e : ordered)
-        out.push_back(std::move(e.second));
+    outPtrs.reserve(ordered.size());
+    for (auto &e : ordered) {
+        out.push_back(std::move(e.info));
+        outPtrs.push_back(e.managed);
+    }
 }
 
 } // namespace
@@ -370,8 +629,20 @@ DebugStopInfo VM::buildStopInfo(std::string_view reason, const il::support::Sour
 
     if (!execStack.empty()) {
         const ExecState *top = execStack.back();
-        if (top)
-            collectFrameLocals(top->fr, info.locals);
+        if (top) {
+            std::vector<void *> managed;
+            collectFrameLocals(top->fr, info.locals, managed);
+            // Offer structured expansion for any local that is an inspectable
+            // container. The store owns the varRefs; it lives on the stop info and
+            // dies when execution resumes, invalidating those refs (DAP semantics).
+            auto store = std::make_shared<VmDebugVarStore>();
+            for (size_t i = 0; i < info.locals.size() && i < managed.size(); ++i) {
+                if (managed[i])
+                    store->classify(managed[i], info.locals[i]);
+            }
+            if (!store->empty())
+                info.vars = std::move(store);
+        }
     }
     return info;
 }

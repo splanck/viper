@@ -2,6 +2,8 @@ module document;
 
 bind "../services/file_utils";
 
+bind Viper.GUI as GUI;
+
 final EXTERNAL_STATE_CLEAN = 0;
 final EXTERNAL_STATE_CHANGED = 1;
 final EXTERNAL_STATE_DELETED = 2;
@@ -47,7 +49,9 @@ final EXTERNAL_STATE_MISSING = 4;
 class Document {
     expose String filePath;            // Absolute path; "" for untitled.
     expose String fileName;            // Display name in the tab.
-    expose String content;             // Full text buffer.
+    expose String content;             // Full text snapshot (kept in sync on save/switch).
+    expose GUI.EditorBuffer buffer;    // Detached editor state while inactive; null when active
+                                       // (content lives in the shared editor widget) or unopened.
     expose String language;            // "zia", "basic", "text".
     expose Integer kind;               // file_utils.KIND_* document surface kind.
     expose Boolean isModified;         // Has unsaved changes.
@@ -70,6 +74,7 @@ class Document {
         filePath = "";
         fileName = "Untitled";
         content = "";
+        buffer = null;
         language = "text";
         kind = file_utils.DOC_KIND_TEXT;
         isModified = false;

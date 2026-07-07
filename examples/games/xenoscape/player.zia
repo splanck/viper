@@ -81,7 +81,6 @@ module player;
 
 bind Viper.Graphics;
 bind Viper.Input;
-bind Viper.Math;
 bind Viper.Game;
 bind "./config";
 bind "./level";
@@ -691,7 +690,7 @@ class Player {
 
     /// @brief Per-frame driver: stay at pound velocity until
     ///        we land, then clear the flag.
-    expose func updatePound(dt: Integer) {
+    expose func updatePound(_dt: Integer) {
         if not isPounding { return; }
         vy = poundVy;
         ctrl.VelocityY = vy;

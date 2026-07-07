@@ -369,6 +369,17 @@ void vgfx_destroy_window(vgfx_window_t window);
 /// @return 1 on success, 0 on fatal error
 int vgfx_update(vgfx_window_t window);
 
+/// @brief Apply frame-rate pacing for a window without presenting a frame.
+/// @details Runs the same deadline-based sleep vgfx_update() performs after
+///          presenting. With a positive FPS cap it sleeps until the next frame
+///          deadline (advanced additively to avoid drift). With no FPS cap
+///          (fps <= 0) it sleeps @p min_idle_sleep_ms milliseconds when that is
+///          positive, else returns immediately. GUI event loops call this on
+///          frames that needed no repaint so an idle window does not busy-loop.
+/// @param window Window handle (NULL is a no-op).
+/// @param min_idle_sleep_ms Anti-spin floor applied only when fps <= 0.
+void vgfx_frame_pace(vgfx_window_t window, int32_t min_idle_sleep_ms);
+
 /// @brief Pump pending OS events without presenting the framebuffer.
 /// @details Polls the native event queue and enqueues translated ViperGFX
 ///          events for later consumption via vgfx_poll_event(). Use this when
@@ -376,6 +387,17 @@ int vgfx_update(vgfx_window_t window);
 /// @param window Window handle
 /// @return 1 on success, 0 on fatal error
 int vgfx_pump_events(vgfx_window_t window);
+
+/// @brief Block until an OS event is available for the window, or the timeout
+///        elapses, without dequeuing anything.
+/// @details A hint, not a contract: spurious wakeups are fine, so callers pump
+///          normally afterwards. The timeout is clamped to [0, 1000] ms so a
+///          bug can never hang the UI. Use in event loops to sleep while idle
+///          instead of busy-polling.
+/// @param window Window handle.
+/// @param timeout_ms Maximum wait in milliseconds (0 returns immediately).
+/// @return 1 if events are (probably) available, 0 on timeout.
+int vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms);
 
 /// @brief Get the current window dimensions.
 /// @details Retrieves the current drawable size. When coord scaling is

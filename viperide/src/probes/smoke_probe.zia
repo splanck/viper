@@ -106,6 +106,16 @@ func main() {
 
     shell.Poll();
     shell.Render();
+
+    // PollWait must return within its (clamped) timeout and not trap: a couple
+    // of short idle waits exercise the blocking-event-wait runtime path.
+    var i = 0;
+    while i < 3 {
+        shell.PollWait(5);
+        shell.Render();
+        i = i + 1;
+    }
+
     shell.Destroy();
 
     Terminal.Say("RESULT: ok");

@@ -1112,6 +1112,94 @@ set_tests_properties(zia_viperide_editor_hot_path PROPERTIES
         PROCESSORS 4
         TIMEOUT 60)
 
+add_test(NAME zia_viperide_palette_query
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/palette_query_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_palette_query PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;palette;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_welcome
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/welcome_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_welcome PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;shell;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_editor_buffer
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/editor_buffer_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_editor_buffer PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;editor;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_undo_across_tabs
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/undo_across_tabs_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_undo_across_tabs PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;editor;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_tab_switch
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/tab_switch_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_tab_switch PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;editor;perf;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_split_editor
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/split_editor_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_split_editor PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;editor;shell;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_tree_move
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/tree_move_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_tree_move PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;explorer"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_recovery
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/recovery_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_recovery PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;session"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_palette_modes
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/palette_modes_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_palette_modes PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;palette;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_scm_diff
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/scm_diff_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_scm_diff PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;scm"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_scm_gutter
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/scm_gutter_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_scm_gutter PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;scm;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_viperide_intellisense
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/intellisense_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
@@ -1185,6 +1273,14 @@ set_tests_properties(zia_viperide_terminal_render PROPERTIES
         LABELS "zia;viperide;terminal;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_viperide_terminal_multi
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/terminal_multi_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_terminal_multi PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;terminal;requires_display"
+        TIMEOUT 30)
+
 add_test(NAME zia_viperide_context_menu
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/context_menu_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
@@ -1213,6 +1309,24 @@ add_test(NAME zia_viperide_debug
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/debug_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
 set_tests_properties(zia_viperide_debug PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;debug"
+        RUN_SERIAL TRUE
+        TIMEOUT 120)
+
+add_test(NAME zia_viperide_debug_vars
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/debug_vars_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_debug_vars PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;debug"
+        RUN_SERIAL TRUE
+        TIMEOUT 120)
+
+add_test(NAME zia_viperide_debug_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/debug_tree_probe.zia" -- --viper-bin $<TARGET_FILE:viper>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_debug_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;debug"
         RUN_SERIAL TRUE
@@ -1429,6 +1543,14 @@ set_tests_properties(zia_smoke_chess PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
+add_test(NAME zia_smoke_chess_release
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/chess/release_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/chess")
+set_tests_properties(zia_smoke_chess_release PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
 add_test(NAME zia_smoke_crackman
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
@@ -1471,6 +1593,9 @@ set(VIPER_DISPLAY_TESTS
         zia_viperide_multi_root
         zia_viperide_terminal_open
         zia_viperide_terminal_hidden_start
+        zia_viperide_terminal_multi
+        zia_viperide_bottom_panel
+        zia_viperide_split_editor
         zia_viperide_console_search
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim

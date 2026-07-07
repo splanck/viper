@@ -107,8 +107,10 @@ class ProjectilePool {
         trailClock = Timer.New();
         trailClock.StartRepeatingMs(48);
 
-        for i in 0..MAX_BULLETS {
+        var fill = 0;
+        while fill < MAX_BULLETS {
             bx.add(0); by.add(0); bvx.add(0); bcharge.add(0);
+            fill = fill + 1;
         }
     }
 

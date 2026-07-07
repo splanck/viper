@@ -1212,6 +1212,26 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 /// @post All pending messages processed and translated
 /// @post win->key_state and win->mouse_* updated to reflect current input state
 /// @post Corresponding vgfx_event_t enqueued for each message
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+        return 0;
+    if (timeout_ms <= 0)
+        return 0;
+
+    /* Already have a message? Return without waiting. */
+    MSG msg;
+    if (PeekMessageW(&msg, w32->hwnd, 0, 0, PM_NOREMOVE))
+        return 1;
+    /* Block until input arrives on this thread's queue or the timeout elapses.
+       Messages are left queued for vgfx_platform_process_events. */
+    DWORD result = MsgWaitForMultipleObjectsEx(
+        0, NULL, (DWORD)timeout_ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+    return result != WAIT_TIMEOUT ? 1 : 0;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;

@@ -86,7 +86,6 @@ module level;
 bind Viper.Graphics;
 bind Viper.Graphics2D.Tilemap as Tilemap;
 bind Viper.Game;
-bind Viper.Math;
 bind "./config";
 
 class Level {
@@ -1447,6 +1446,17 @@ class Level {
         addEnemy(ENEMY_BAT, 200, 4);
         addEnemy(ENEMY_SLIME, 212, 14);
 
+        // Thermal Vents now has the boss encounter promised by progression.
+        // The ground-pound unlock is tied to defeating this Magma Core.
+        fillRow(GROUND_ROW, 213, 225, TILE_MAGMA);
+        fillRow(FLOOR_ROW, 213, 225, TILE_MAGMA);
+        addPickup(PICKUP_HEALTH, 216, 14);
+        addPickup(PICKUP_SHIELD, 218, 14);
+        bossX = 214 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        bossType = ENEMY_MAGMA_CORE;
+
         // End sign
         tilemap.SetTile(225, GROUND_ROW - 1, TILE_SIGN_END);
     }
@@ -2186,6 +2196,10 @@ class Level {
         pickupTypes.add(PICKUP_HEALTH);
         pickupX.add(192 * TILE_SIZE);
         pickupY.add(8 * TILE_SIZE);
+
+        // Exit sign after the final arena.  checkLevelEnd() scans the player's
+        // tile overlap, so this works with The Core's 22-row layout.
+        tilemap.SetTile(198, levelHeight - 3, TILE_SIGN_END);
 
         // Player spawn
         playerStartX = 3 * TILE_SIZE;

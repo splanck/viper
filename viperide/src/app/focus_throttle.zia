@@ -1,0 +1,65 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/app/focus_throttle.zia
+// Purpose: Gate non-essential per-frame background work (workspace indexing,
+//          budgeted editor tools, workspace watching) to a slow cadence while
+//          the IDE window is unfocused, restoring full cadence the moment it
+//          regains focus. Process streams (build/debug/terminal) and input are
+//          never gated — those callers do not consult this class.
+// Key invariants:
+//   - Before the window has ever been focused (headless probes, cold start),
+//     background work runs at full cadence so tests behave normally.
+//   - AllowBackgroundWork() is true every frame while focused, and ~10Hz while
+//     unfocused.
+// Links: viperide/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module focus_throttle;
+
+bind Viper.GUI as GUI;
+bind Time = Viper.Time;
+
+// Minimum spacing (ms) between background passes while the window is unfocused.
+final UNFOCUSED_INTERVAL_MS = 100;
+
+/// @brief Tracks window focus and rations background work while unfocused.
+class FocusThrottle {
+    expose Boolean focused;      // Current focus state.
+    expose Boolean everFocused;  // True once the window has been focused at least once.
+    hide Integer lastAllowTick;  // Tick of the last allowed background pass while unfocused.
+
+    expose func init() {
+        focused = true;
+        everFocused = false;
+        lastAllowTick = 0;
+    }
+
+    /// @brief Sample the window focus state for this frame.
+    /// @param app Owning GUI application.
+    expose func Update(app: GUI.App) {
+        if app == null { return; }
+        var f = app.IsFocused();
+        if f { everFocused = true; }
+        focused = f;
+    }
+
+    /// @brief Whether non-essential background work should run this frame.
+    /// @return True every frame while focused; ~10Hz while unfocused; always
+    ///         true before the window has ever been focused (headless/cold start).
+    expose func AllowBackgroundWork() -> Boolean {
+        if focused { return true; }
+        if everFocused == false { return true; }
+        var now = Time.Clock.Ticks();
+        if now - lastAllowTick >= UNFOCUSED_INTERVAL_MS {
+            lastAllowTick = now;
+            return true;
+        }
+        return false;
+    }
+}

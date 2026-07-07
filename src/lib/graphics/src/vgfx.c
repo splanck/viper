@@ -1173,7 +1173,34 @@ int32_t vgfx_update(vgfx_window_t window) {
         return 0;
     }
 
-    /* FPS limiting (only if fps > 0) */
+    /* FPS limiting (only if fps > 0). No idle floor here: vgfx_update() is the
+     * game/render loop entry point, and unlimited FPS must stay uncapped. */
+    vgfx_frame_pace(window, 0);
+
+    /* Calculate frame time (for diagnostics) */
+    int64_t frame_end = vgfx_platform_now_ms();
+    window->last_frame_time_ms = frame_end - frame_start;
+
+    return 1;
+}
+
+/// @brief Apply frame-rate pacing for a window without presenting a frame.
+/// @details Runs the same deadline-based sleep that vgfx_update() performs
+///          after presenting: when the window has a positive FPS cap, it sleeps
+///          until the next frame deadline, advancing the deadline additively to
+///          avoid drift and resyncing if it fell more than one frame behind.
+///          When the window has no FPS cap (fps <= 0) it sleeps
+///          @p min_idle_sleep_ms milliseconds if that is positive, otherwise it
+///          returns immediately. GUI applications call this on frames where
+///          nothing needed repainting so an idle window does not busy-loop a
+///          CPU core; passing a small positive floor there keeps idle CPU near
+///          zero even when the window is running uncapped.
+/// @param window Window handle (NULL is a no-op).
+/// @param min_idle_sleep_ms Anti-spin floor applied only when fps <= 0.
+void vgfx_frame_pace(vgfx_window_t window, int32_t min_idle_sleep_ms) {
+    if (!window)
+        return;
+
     if (window->fps > 0) {
         int64_t now = vgfx_platform_now_ms();
         double target_frame_time = 1000.0 / (double)window->fps;
@@ -1195,13 +1222,9 @@ int32_t vgfx_update(vgfx_window_t window) {
         if (window->next_frame_deadline_ms < (double)now - target_frame_time) {
             window->next_frame_deadline_ms = (double)now + target_frame_time;
         }
+    } else if (min_idle_sleep_ms > 0) {
+        vgfx_platform_sleep_ms(min_idle_sleep_ms);
     }
-
-    /* Calculate frame time (for diagnostics) */
-    int64_t frame_end = vgfx_platform_now_ms();
-    window->last_frame_time_ms = frame_end - frame_start;
-
-    return 1;
 }
 
 /// @brief Get the duration of the last frame in milliseconds.
@@ -1229,6 +1252,18 @@ int32_t vgfx_pump_events(vgfx_window_t window) {
         return 0;
     }
     return 1;
+}
+
+int32_t vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms) {
+    if (!window)
+        return 0;
+    if (timeout_ms < 0)
+        timeout_ms = 0;
+    if (timeout_ms > 1000)
+        timeout_ms = 1000; /* hard cap: a bug can never hang the UI for long */
+    if (timeout_ms == 0)
+        return 0;
+    return vgfx_platform_wait_events(window, timeout_ms);
 }
 
 /// @brief Get the window's dimensions.

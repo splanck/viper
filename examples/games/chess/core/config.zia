@@ -99,6 +99,8 @@ final STATE_AI_THINK  = 3;
 final STATE_CHECKMATE = 4;
 final STATE_STALEMATE = 5;
 final STATE_DRAW      = 6;
+final STATE_SETTINGS  = 7;
+final STATE_PAUSED    = 8;
 
 // ============================================================================
 // Game Modes
@@ -154,3 +156,6 @@ final ACT_NEW_GAME = "new_game";
 final ACT_BACK     = "back";
 final ACT_CONFIRM  = "confirm";
 final ACT_UNDO     = "undo";
+final ACT_REDO     = "redo";
+final ACT_SAVE     = "save";
+final ACT_PAUSE    = "pause";

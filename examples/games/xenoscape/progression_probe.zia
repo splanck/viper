@@ -1,0 +1,93 @@
+// =============================================================================
+// progression_probe.zia - Save/progression metadata probe
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// Lightweight targeted probe for release-shell persistence: lore bitmasks,
+// bestiary bitmasks, rich save-slot metadata, and Continue-slot selection.
+// Uses an isolated SaveData store so it does not modify real player saves.
+//
+// =============================================================================
+
+module progression_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./palette";
+bind "./save";
+bind "./lore";
+
+func fail(message: String) {
+    Terminal.Say("RESULT: " + message);
+}
+
+func main() {
+    var pal = new Palette();
+
+    var lore = new LoreSystem();
+    lore.initLore(pal);
+    lore.showEntry(0);
+    lore.showEntry(0);
+    lore.showEntry(2);
+    if lore.getCollectedCount() != 2 {
+        fail("lore_count_bad");
+        return;
+    }
+    if lore.getCollectedMask() != 5 {
+        fail("lore_mask_bad");
+        return;
+    }
+
+    lore.unlockBestiaryEntry(ENEMY_SPOREWALKER);
+    lore.unlockBestiaryEntry(ENEMY_SPOREWALKER);
+    lore.unlockBestiaryEntry(ENEMY_GLOWMOTH);
+    if lore.getBestiaryCount() != 2 {
+        fail("bestiary_count_bad");
+        return;
+    }
+
+    var saves = new SaveManager();
+    saves.initSaveWithName("xenoscape_progression_probe");
+    saves.deleteSlot(0);
+    saves.deleteSlot(1);
+    saves.deleteSlot(2);
+
+    saves.saveSlotFull(0, 2, 3, 6, 4, 90, 1,
+                       lore.getCollectedMask(), lore.getBestiaryMask(),
+                       1, 1);
+    saves.saveSlotFull(1, 5, 7, 8, 11, 120, 3,
+                       lore.getCollectedMask(), lore.getBestiaryMask(),
+                       7, 2);
+
+    var loaded = new SaveManager();
+    loaded.initSaveWithName("xenoscape_progression_probe");
+    if loaded.getContinueSlot() != 1 {
+        fail("continue_slot_bad");
+        return;
+    }
+    if loaded.getSlotLevel(1) != 5 {
+        fail("slot_level_bad");
+        return;
+    }
+    if loaded.getSlotLoreMask(1) != lore.getCollectedMask() {
+        fail("slot_lore_bad");
+        return;
+    }
+    if loaded.getSlotBestiaryMask(1) != lore.getBestiaryMask() {
+        fail("slot_bestiary_bad");
+        return;
+    }
+    if loaded.getSlotCompletionMask(1) != 7 {
+        fail("slot_completion_bad");
+        return;
+    }
+    if loaded.getSlotDeaths(1) != 2 {
+        fail("slot_deaths_bad");
+        return;
+    }
+
+    loaded.deleteSlot(0);
+    loaded.deleteSlot(1);
+    loaded.deleteSlot(2);
+    Terminal.Say("RESULT: ok");
+}

@@ -38,7 +38,7 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 | Project | Description | Highlights |
 |---------|-------------|------------|
 | [Ridgebound](games/ridgebound/) | Open-world Game3D sample | Game3D world loop, procedural terrain, water, skybox, PBR materials, beacon objectives, post-FX, final overlay |
-| [Chess](games/chess/) | Chess with AI opponent | Iterative deepening, alpha-beta, quiescence search, transposition table, drag-and-drop GUI |
+| [Chess](games/chess/) | Polished chess game with AI opponent | Alpha-beta AI, save slots, clocks, puzzles, themes, audio, FEN/PGN, drag-and-drop GUI |
 | [XENOSCAPE](games/xenoscape/) | Metroidvania sidescroller | 25+ enemies, 10 levels, parallax, particles, lighting, abilities, saves, VAPS Windows demo packaging (17K LOC) |
 | [Crackman](games/crackman/) | Maze chase game with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |
 | [Centipede](games/centipede/) | Arcade centipede game | Multiple enemy types, particle effects, Canvas graphics |
@@ -50,7 +50,6 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 
 | Project | Description | Highlights |
 |---------|-------------|------------|
-| [Chess](games/chess-basic/) | Chess with minimax AI | Alpha-beta pruning, ANSI board rendering |
 | [Pac-Man](games/pacman-basic/) | Pac-Man with ghost AI | Chase/scatter/frightened FSM, ANSI rendering |
 | [Centipede](games/centipede-basic/) | Terminal centipede | OOP entities, level progression |
 | [Frogger](games/frogger-basic/) | Frogger clone | Multi-lane traffic, river mechanics, OOP |
