@@ -285,7 +285,9 @@ static void fake_apply_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
 static int64_t fake_native_texture_caps(void *) {
     return RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
-           RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
+           RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY |
+           RT_CANVAS3D_BACKEND_CAP_BC1 | RT_CANVAS3D_BACKEND_CAP_BC3 | RT_CANVAS3D_BACKEND_CAP_BC4 |
+           RT_CANVAS3D_BACKEND_CAP_BC5;
 }
 
 static vgfx3d_backend_t make_fake_gpu_backend() {
@@ -365,6 +367,14 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "software backend advertises CPU skinning support");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT) != 0,
                 "software backend advertises terrain splat support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC1) == 0,
+                "software backend does not advertise BC1 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC3) == 0,
+                "software backend does not advertise BC3 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC4) == 0,
+                "software backend does not advertise BC4 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC5) == 0,
+                "software backend does not advertise BC5 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
                 "software backend does not advertise BC7 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
@@ -392,6 +402,14 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "BackendSupports accepts skinning capability alias");
     EXPECT_TRUE(backend_supports(&canvas, "terrain-splat"),
                 "BackendSupports accepts terrain-splat capability alias");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc1"),
+                "BackendSupports reports bc1 unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc3"),
+                "BackendSupports reports bc3 unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc4"),
+                "BackendSupports reports bc4 unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc5"),
+                "BackendSupports reports bc5 unsupported until backend upload exists");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
                 "BackendSupports reports bc7 unsupported until backend upload exists");
     EXPECT_TRUE(!backend_supports(&canvas, "astc"),
@@ -446,6 +464,14 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "GPU backend advertises skinning support");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT) != 0,
                 "GPU backend advertises terrain splat support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC1) == 0,
+                "generic GPU backend does not imply BC1 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC3) == 0,
+                "generic GPU backend does not imply BC3 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC4) == 0,
+                "generic GPU backend does not imply BC4 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC5) == 0,
+                "generic GPU backend does not imply BC5 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
                 "generic GPU backend does not imply BC7 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
@@ -471,16 +497,22 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports accepts impostor alias for HLOD proxies");
     EXPECT_TRUE(backend_supports(&canvas, "physically_based"),
                 "BackendSupports accepts physically_based alias for PBR");
-    EXPECT_TRUE(backend_supports(&canvas, "normalmap"),
-                "BackendSupports accepts normalmap alias");
+    EXPECT_TRUE(backend_supports(&canvas, "normalmap"), "BackendSupports accepts normalmap alias");
     EXPECT_TRUE(backend_supports(&canvas, "masked-alpha"),
                 "BackendSupports accepts masked-alpha alias");
-    EXPECT_TRUE(backend_supports(&canvas, "morphing"),
-                "BackendSupports accepts morphing alias");
+    EXPECT_TRUE(backend_supports(&canvas, "morphing"), "BackendSupports accepts morphing alias");
     EXPECT_TRUE(backend_supports(&canvas, "skeletal-animation"),
                 "BackendSupports accepts skeletal-animation alias");
     EXPECT_TRUE(backend_supports(&canvas, "terrain_splatting"),
                 "BackendSupports accepts terrain_splatting alias");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc1"),
+                "BackendSupports accepts bc1 as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc3"),
+                "BackendSupports accepts bc3 as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc4"),
+                "BackendSupports accepts bc4 as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc5"),
+                "BackendSupports accepts bc5 as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
                 "BackendSupports accepts bc7 as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "astc"),
@@ -500,6 +532,14 @@ static void test_gpu_backend_native_texture_capability_hook() {
     canvas.backend = &fake_gpu_backend;
 
     int64_t caps = rt_canvas3d_get_backend_capabilities(&canvas);
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC1) != 0,
+                "native texture hook advertises BC1 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC3) != 0,
+                "native texture hook advertises BC3 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC4) != 0,
+                "native texture hook advertises BC4 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC5) != 0,
+                "native texture hook advertises BC5 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) != 0,
                 "native texture hook advertises BC7 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) != 0,
@@ -508,6 +548,10 @@ static void test_gpu_backend_native_texture_capability_hook() {
                 "native texture hook advertises ETC2 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ANISOTROPY) != 0,
                 "native texture hook advertises anisotropic filtering");
+    EXPECT_TRUE(backend_supports(&canvas, "bc1"), "BackendSupports reports hooked BC1 support");
+    EXPECT_TRUE(backend_supports(&canvas, "bc3"), "BackendSupports reports hooked BC3 support");
+    EXPECT_TRUE(backend_supports(&canvas, "bc4"), "BackendSupports reports hooked BC4 support");
+    EXPECT_TRUE(backend_supports(&canvas, "bc5"), "BackendSupports reports hooked BC5 support");
     EXPECT_TRUE(backend_supports(&canvas, "bc7"), "BackendSupports reports hooked BC7 support");
     EXPECT_TRUE(backend_supports(&canvas, "astc"), "BackendSupports reports hooked ASTC support");
     EXPECT_TRUE(backend_supports(&canvas, "etc2"), "BackendSupports reports hooked ETC2 support");
@@ -844,9 +888,8 @@ static void test_software_ibl_environment_lights_pbr_sphere() {
     /* Frame A: no IBL — a lightless, zero-ambient PBR sphere renders black. */
     rt_canvas3d_clear(&canvas, 0.0, 0.0, 0.0);
     rt_canvas3d_begin(&canvas, camera);
-    EXPECT_TRUE(
-        project_world_to_pixel(&canvas, 0.0f, 0.72f, 0.65f, width, height, &top_x, &top_y),
-        "Sphere upper-front point projects inside the IBL render target");
+    EXPECT_TRUE(project_world_to_pixel(&canvas, 0.0f, 0.72f, 0.65f, width, height, &top_x, &top_y),
+                "Sphere upper-front point projects inside the IBL render target");
     EXPECT_TRUE(
         project_world_to_pixel(&canvas, 0.0f, -0.72f, 0.65f, width, height, &bottom_x, &bottom_y),
         "Sphere lower-front point projects inside the IBL render target");

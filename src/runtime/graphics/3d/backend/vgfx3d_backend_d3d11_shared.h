@@ -301,6 +301,11 @@ uint64_t vgfx3d_d3d11_native_mip_row_bytes(const vgfx3d_native_texture_mip_t *mi
 uint64_t vgfx3d_d3d11_native_mip_block_rows(const vgfx3d_native_texture_mip_t *mip);
 /// @brief Minimum bytes needed for the complete compressed/native mip payload.
 uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_t *mip);
+/// @brief Expected block layout for a D3D11-native compressed texture format.
+int vgfx3d_d3d11_native_format_block_layout(int32_t format_id,
+                                            int32_t *out_block_width,
+                                            int32_t *out_block_height,
+                                            int32_t *out_block_bytes);
 /// @brief Check that a native compressed mip is valid for a D3D11 texture mip chain.
 int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip,
                                           const vgfx3d_native_texture_mip_t *previous_mip,

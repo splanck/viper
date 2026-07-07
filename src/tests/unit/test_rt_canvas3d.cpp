@@ -4859,6 +4859,14 @@ static void test_canvas_texture_backend_support_queries() {
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &vgfx3d_software_backend;
 
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc1")) == 1,
+                "software backend reports BC1 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc3")) == 1,
+                "software backend reports BC3 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc4")) == 1,
+                "software backend reports BC4 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc5")) == 1,
+                "software backend reports BC5 CPU texture fallback support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc7")) == 1,
                 "software backend reports BC7 CPU texture fallback support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:etc2")) == 1,
@@ -4869,6 +4877,8 @@ static void test_canvas_texture_backend_support_queries() {
                 "software backend reports KTX2 CPU decode support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("bc7")) == 0,
                 "software backend does not report native BC7 upload support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("bc1")) == 0,
+                "software backend does not report native BC1 upload support");
     PASS();
 }
 

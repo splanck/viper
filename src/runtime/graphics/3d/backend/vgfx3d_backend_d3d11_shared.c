@@ -26,6 +26,7 @@
 
 #include "vgfx3d_backend_d3d11_shared.h"
 
+#include "rt_textureasset3d.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <limits.h>
@@ -181,26 +182,31 @@ void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
                                        const float *cam_pos,
                                        int8_t is_overlay_pass,
                                        int8_t uses_separate_overlay_target) {
+    float safe_vp[16];
+    float safe_inv_vp[16];
+
     if (!history || !vp || !inv_vp)
         return;
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(safe_vp, vp);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(safe_inv_vp, inv_vp);
 
     if (!is_overlay_pass) {
         if (history->scene_history_valid) {
             memcpy(history->scene_prev_vp, history->scene_vp, sizeof(history->scene_prev_vp));
         } else {
-            memcpy(history->scene_prev_vp, vp, sizeof(history->scene_prev_vp));
+            memcpy(history->scene_prev_vp, safe_vp, sizeof(history->scene_prev_vp));
             history->scene_history_valid = 1;
         }
-        memcpy(history->scene_vp, vp, sizeof(history->scene_vp));
-        memcpy(history->scene_inv_vp, inv_vp, sizeof(history->scene_inv_vp));
+        memcpy(history->scene_vp, safe_vp, sizeof(history->scene_vp));
+        memcpy(history->scene_inv_vp, safe_inv_vp, sizeof(history->scene_inv_vp));
         memcpy(history->draw_prev_vp, history->scene_prev_vp, sizeof(history->draw_prev_vp));
         if (cam_pos)
-            memcpy(history->scene_cam_pos, cam_pos, sizeof(history->scene_cam_pos));
+            vgfx3d_d3d11_copy_float_array_finite_or(history->scene_cam_pos, cam_pos, 3u, 0.0f);
         history->overlay_used_this_frame = 0;
         return;
     }
 
-    memcpy(history->draw_prev_vp, vp, sizeof(history->draw_prev_vp));
+    memcpy(history->draw_prev_vp, safe_vp, sizeof(history->draw_prev_vp));
     history->overlay_used_this_frame = uses_separate_overlay_target ? 1 : 0;
 }
 
@@ -597,6 +603,8 @@ int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
         *out_bytes = 0;
     if (!out_bytes || element_count == 0 || element_count > capacity)
         return 0;
+    if (element_count > (size_t)(UINT_MAX / sizeof(float)))
+        return 0;
     return vgfx3d_d3d11_checked_mul_size(element_count, sizeof(float), out_bytes);
 }
 
@@ -705,6 +713,39 @@ uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_
     return row_bytes * block_rows;
 }
 
+/// @brief Return the block footprint D3D11 expects for one native compressed format.
+int vgfx3d_d3d11_native_format_block_layout(int32_t format_id,
+                                            int32_t *out_block_width,
+                                            int32_t *out_block_height,
+                                            int32_t *out_block_bytes) {
+    int32_t block_bytes = 0;
+
+    if (out_block_width)
+        *out_block_width = 0;
+    if (out_block_height)
+        *out_block_height = 0;
+    if (out_block_bytes)
+        *out_block_bytes = 0;
+    if (!out_block_width || !out_block_height || !out_block_bytes)
+        return 0;
+
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1 ||
+        format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4) {
+        block_bytes = 8;
+    } else if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3 ||
+               format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5 ||
+               format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7) {
+        block_bytes = 16;
+    } else {
+        return 0;
+    }
+
+    *out_block_width = 4;
+    *out_block_height = 4;
+    *out_block_bytes = block_bytes;
+    return 1;
+}
+
 /// @brief Check one native compressed mip against D3D11 chain and block invariants.
 int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip,
                                           const vgfx3d_native_texture_mip_t *previous_mip,
@@ -713,16 +754,25 @@ int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip
                                           int32_t expected_block_height,
                                           int32_t expected_block_bytes) {
     uint64_t required_bytes;
+    int32_t format_block_width;
+    int32_t format_block_height;
+    int32_t format_block_bytes;
 
     if (!mip || !mip->data || mip->bytes == 0 || expected_format_id <= 0)
         return 0;
     if (mip->bytes > UINT_MAX)
+        return 0;
+    if (!vgfx3d_d3d11_native_format_block_layout(
+            expected_format_id, &format_block_width, &format_block_height, &format_block_bytes))
         return 0;
     if (!vgfx3d_d3d11_is_valid_texture2d_extent(mip->width, mip->height))
         return 0;
     if (mip->format_id != expected_format_id)
         return 0;
     if (mip->block_width <= 0 || mip->block_height <= 0 || mip->block_bytes <= 0)
+        return 0;
+    if (mip->block_width != format_block_width || mip->block_height != format_block_height ||
+        mip->block_bytes != format_block_bytes)
         return 0;
     if (expected_block_width > 0 && mip->block_width != expected_block_width)
         return 0;

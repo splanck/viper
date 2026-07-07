@@ -475,6 +475,19 @@ static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx) {
     ctx->postfx_current_bloom_srv = NULL;
 }
 
+/// @brief Whether the cached bloom target chain is complete for the requested scene size.
+static int d3d11_bloom_targets_complete(const d3d11_context_t *ctx, int32_t width, int32_t height) {
+    if (!ctx || ctx->bloom_mip_count <= 0 || ctx->bloom_base_width != width ||
+        ctx->bloom_base_height != height)
+        return 0;
+    for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
+        if (!ctx->bloom_mip_tex[i] || !ctx->bloom_mip_rtv[i] || !ctx->bloom_mip_srv[i] ||
+            ctx->bloom_mip_w[i] <= 0 || ctx->bloom_mip_h[i] <= 0)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Build the Plan 05 half-res RGBA16F bloom mip chain for a scene of (w, h).
 /// @details Levels halve until the next level would drop below 8px on either axis
 ///          (at most 6 levels). Rebuilt only when the scene size changes.
@@ -486,8 +499,7 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_bloom_down ||
         !ctx->ps_bloom_up)
         return E_INVALIDARG;
-    if (ctx->bloom_mip_count > 0 && ctx->bloom_base_width == width &&
-        ctx->bloom_base_height == height)
+    if (d3d11_bloom_targets_complete(ctx, width, height))
         return S_OK;
 
     d3d11_destroy_bloom_targets(ctx);
@@ -536,14 +548,24 @@ static void d3d11_destroy_taa_targets(d3d11_context_t *ctx) {
     ctx->taa_history_valid = 0;
 }
 
+/// @brief Whether both cached TAA history targets are complete for the requested scene size.
+static int d3d11_taa_targets_complete(const d3d11_context_t *ctx, int32_t width, int32_t height) {
+    if (!ctx || ctx->taa_history_width != width || ctx->taa_history_height != height)
+        return 0;
+    for (int32_t i = 0; i < 2; i++) {
+        if (!ctx->taa_history_tex[i] || !ctx->taa_history_rtv[i] || !ctx->taa_history_srv[i])
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Build the Plan 05 TAA ping-pong history pair (RGBA16F, scene-sized).
 static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_taa)
         return E_INVALIDARG;
-    if (ctx->taa_history_tex[0] && ctx->taa_history_width == width &&
-        ctx->taa_history_height == height)
+    if (d3d11_taa_targets_complete(ctx, width, height))
         return S_OK;
 
     d3d11_destroy_taa_targets(ctx);
@@ -579,13 +601,19 @@ static void d3d11_destroy_ssr_target(d3d11_context_t *ctx) {
     ctx->ssr_height = 0;
 }
 
+/// @brief Whether the cached SSR target is complete for the requested scene size.
+static int d3d11_ssr_target_complete(const d3d11_context_t *ctx, int32_t width, int32_t height) {
+    return ctx && ctx->ssr_width == width && ctx->ssr_height == height && ctx->ssr_tex &&
+           ctx->ssr_rtv && ctx->ssr_srv;
+}
+
 /// @brief Build the Plan 10 SSR output target (scene color format, scene-sized).
 static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_ssr)
         return E_INVALIDARG;
-    if (ctx->ssr_tex && ctx->ssr_width == width && ctx->ssr_height == height)
+    if (d3d11_ssr_target_complete(ctx, width, height))
         return S_OK;
 
     d3d11_destroy_ssr_target(ctx);

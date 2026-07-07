@@ -349,10 +349,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAsync\""),
                  "Assets3D.LoadTemplateAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok =
-        require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
-                "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
-        ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadTemplateAssetAsync\""),
+                 "Assets3D.LoadTemplateAssetAsync must use Game3D PascalCase factory naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Prefab.Load\""),
                  "Prefab.Load canonical loader missing") &&
          ok;
@@ -978,6 +977,18 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"AvoidanceRadius\""),
                  "NavAgent3D.AvoidanceRadius property missing") &&
          ok;
+    ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_BC1"),
+                 "Canvas3D backend capability bit for bc1 missing") &&
+         ok;
+    ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_BC3"),
+                 "Canvas3D backend capability bit for bc3 missing") &&
+         ok;
+    ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_BC4"),
+                 "Canvas3D backend capability bit for bc4 missing") &&
+         ok;
+    ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_BC5"),
+                 "Canvas3D backend capability bit for bc5 missing") &&
+         ok;
     ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_BC7"),
                  "Canvas3D backend capability bit for bc7 missing") &&
          ok;
@@ -989,6 +1000,18 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_ANISOTROPY"),
                  "Canvas3D backend capability bit for anisotropy missing") &&
+         ok;
+    ok = require(contains(canvas_overlay, "strcmp(name, \"bc1\")"),
+                 "Canvas3D.BackendSupports missing bc1 capability name") &&
+         ok;
+    ok = require(contains(canvas_overlay, "strcmp(name, \"bc3\")"),
+                 "Canvas3D.BackendSupports missing bc3 capability name") &&
+         ok;
+    ok = require(contains(canvas_overlay, "strcmp(name, \"bc4\")"),
+                 "Canvas3D.BackendSupports missing bc4 capability name") &&
+         ok;
+    ok = require(contains(canvas_overlay, "strcmp(name, \"bc5\")"),
+                 "Canvas3D.BackendSupports missing bc5 capability name") &&
          ok;
     ok = require(contains(canvas_overlay, "strcmp(name, \"bc7\")"),
                  "Canvas3D.BackendSupports missing bc7 capability name") &&
@@ -1248,9 +1271,10 @@ bool check_runtime_surface_names() {
              contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
              "Material3D.HasMetallicRoughnessMap getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap\""),
-                 "Material3D.HasAmbientOcclusionMap getter must use Graphics3D PascalCase naming") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAmbientOcclusionMap\""),
+                "Material3D.HasAmbientOcclusionMap getter must use Graphics3D PascalCase naming") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasEnvMap\""),
                  "Material3D.HasEnvMap getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -1290,8 +1314,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Reflectivity\""),
                  "Material3D.Reflectivity property setter missing") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.set_ClusteredLighting\""),
-                 "Canvas3D.ClusteredLighting property setter must use Graphics3D PascalCase naming") &&
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.set_ClusteredLighting\""),
+             "Canvas3D.ClusteredLighting property setter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MaxActiveLights\""),
                  "Canvas3D.MaxActiveLights getter must use Graphics3D PascalCase naming") &&
@@ -1412,9 +1437,10 @@ bool check_runtime_surface_names() {
                  "SceneNode.SetImpostor method missing") &&
          ok;
 
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
-                 "Diagnostics.BroadphaseFallbackCount getter missing") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_BroadphaseFallbackCount\""),
+                "Diagnostics.BroadphaseFallbackCount getter missing") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics3D.get_CcdClampedFrames\""),
                  "Diagnostics.CcdClampedFrames getter missing") &&
          ok;

@@ -335,9 +335,10 @@ automatically receive proportionally larger bias. If shadows detach from their
 casters ("peter-panning"), lower `SetShadowSlopeBias`; if surfaces show striping
 ("acne") at grazing sun angles, raise it.
 
-`BackendSupports("bc7")`, `BackendSupports("astc")`, and
-`BackendSupports("etc2")` report native compressed texture upload support for
-the active backend/device. `BackendSupports("texture:bc1")` through
+`BackendSupports("bc1")`, `BackendSupports("bc3")`, `BackendSupports("bc4")`,
+`BackendSupports("bc5")`, `BackendSupports("bc7")`, `BackendSupports("astc")`,
+and `BackendSupports("etc2")` report native compressed texture upload support
+for the active backend/device. `BackendSupports("texture:bc1")` through
 `BackendSupports("texture:bc7")`, `texture:etc2`, `texture:astc`, and
 `texture:ktx2-cpu` report runtime CPU fallback coverage.
 KTX2 supercompression schemes 2 (Zstandard) and 3 (ZLIB) — the default output
@@ -693,8 +694,8 @@ sprite draws.
 | `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
 
 Texture map methods accept `Pixels` or `TextureAsset3D` handles with either an
-active RGBA8 fallback or retained native mip blocks. KTX2 BC3, BC7, supported
-ETC2 RGBA8/EAC, and ASTC LDR void-extent texture assets expose CPU fallbacks
+active RGBA8 fallback or retained native mip blocks. KTX2 BC1, BC3, BC4/BC5,
+BC7, supported ETC2 RGBA8/EAC, and ASTC LDR void-extent texture assets expose CPU fallbacks
 alongside retained native mip block payloads and mip residency byte telemetry;
 unsupported compressed blocks use an 8x8 magenta/black checker fallback and
 record a load warning naming the format. Native-only assets draw on GPU backends

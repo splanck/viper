@@ -410,8 +410,8 @@ static int d3d11_format_supports_texture_sampling(d3d11_context_t *ctx, DXGI_FOR
             (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0);
 }
 
-/// @brief Report which native compressed texture formats this device can upload (BC7 only on
-/// D3D11), plus sampler anisotropy support.
+/// @brief Report which native BC compressed texture formats this device can upload on D3D11,
+/// plus sampler anisotropy support.
 static int64_t d3d11_get_native_texture_caps(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int64_t caps = 0;
@@ -550,7 +550,8 @@ static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
     return hr;
 }
 
-/// @brief Create a native compressed (BC7) 2D texture and its shader-resource view for a mip chain.
+/// @brief Create a native compressed BC-family 2D texture and its shader-resource view for a mip
+/// chain.
 /// @return S_OK with the texture/SRV set, or a failure HRESULT.
 static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
                                                  const vgfx3d_native_texture_mip_t *first_mip,
@@ -1021,10 +1022,14 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_material_srv(d3d11_context_
                                                                   int64_t mip_start,
                                                                   int64_t mip_count,
                                                                   d3d_temp_srv_t *out_temp) {
-    /* Native-supported assets stay on the native upload path. Falling back to
-     * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
-    if (asset && vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
-        return d3d11_get_or_create_native_srv(ctx, asset, asset_cache_key, mip_start, mip_count);
+    if (asset && vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx))) {
+        ID3D11ShaderResourceView *native_srv =
+            d3d11_get_or_create_native_srv(ctx, asset, asset_cache_key, mip_start, mip_count);
+        if (native_srv)
+            return native_srv;
+        /* NULL means validation/allocation failed. Budget-paused native uploads return the
+         * backend white fallback, so an RGBA fallback is only used for invalid native payloads. */
+    }
     return d3d11_get_or_create_srv(ctx, pixels, out_temp);
 }
 
@@ -1116,8 +1121,7 @@ static void d3d11_apply_ibl_mips(d3d11_context_t *ctx,
                 free(rgba);
                 return;
             }
-            if (!vgfx3d_d3d11_validate_ibl_mip_extent(
-                    entry->face_size, level_base + m, w, h) ||
+            if (!vgfx3d_d3d11_validate_ibl_mip_extent(entry->face_size, level_base + m, w, h) ||
                 !vgfx3d_d3d11_compute_rgba8_upload_pitch(w, &row_pitch)) {
                 free(rgba);
                 return;

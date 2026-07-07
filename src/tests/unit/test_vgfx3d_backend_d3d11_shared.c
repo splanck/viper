@@ -312,6 +312,28 @@ static void test_frame_history_preserves_scene_state_across_overlay_passes(void)
                 "Overlay pass uses its own VP for draw-time history");
     EXPECT_TRUE(history.overlay_used_this_frame == 1,
                 "Overlay pass marks the separate overlay target as used");
+
+    memset(&history, 0, sizeof(history));
+    scene_vp0[0] = HUGE_VALF;
+    inv0[5] = -HUGE_VALF;
+    cam0[1] = HUGE_VALF;
+    vgfx3d_d3d11_update_frame_history(&history, scene_vp0, inv0, cam0, 0, 0);
+    EXPECT_NEAR(history.scene_vp[0],
+                1.0f,
+                1e-6f,
+                "Frame history replaces invalid scene VP matrices with identity");
+    EXPECT_NEAR(history.scene_vp[1],
+                0.0f,
+                1e-6f,
+                "Frame history clears invalid scene VP off-diagonal lanes");
+    EXPECT_NEAR(history.scene_inv_vp[5],
+                1.0f,
+                1e-6f,
+                "Frame history replaces invalid inverse VP matrices with identity");
+    EXPECT_NEAR(history.scene_cam_pos[1],
+                0.0f,
+                1e-6f,
+                "Frame history replaces invalid camera-position lanes with zero");
 }
 
 static void test_upload_status_helpers_drop_stale_state(void) {
@@ -478,14 +500,11 @@ static void test_capacity_and_mip_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(INT_MAX, &row_pitch) == 0 &&
                     row_pitch == 0u,
                 "RGBA8 upload-pitch helper rejects pitches beyond D3D11 UINT fields");
-    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 0, &mip_extent) == 1 &&
-                    mip_extent == 8,
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 0, &mip_extent) == 1 && mip_extent == 8,
                 "Square mip extent helper preserves level zero");
-    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 3, &mip_extent) == 1 &&
-                    mip_extent == 1,
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 3, &mip_extent) == 1 && mip_extent == 1,
                 "Square mip extent helper reaches the tail mip");
-    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 4, &mip_extent) == 0 &&
-                    mip_extent == 0,
+    EXPECT_TRUE(vgfx3d_d3d11_expected_square_mip_extent(8, 4, &mip_extent) == 0 && mip_extent == 0,
                 "Square mip extent helper rejects levels beyond the chain");
     EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_mip_extent(8, 1, 4, 4) == 1,
                 "IBL mip validation accepts the expected destination extent");
@@ -509,6 +528,11 @@ static void test_capacity_and_mip_helpers(void) {
                 "Float-SRV update helper covers only live elements, not total capacity");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(9, 8, &bytes) == 0 && bytes == 0u,
                 "Float-SRV update helper rejects spans beyond allocated capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes((size_t)UINT_MAX / sizeof(float) + 1u,
+                                                            (size_t)UINT_MAX / sizeof(float) + 1u,
+                                                            &bytes) == 0 &&
+                    bytes == 0u,
+                "Float-SRV update helper rejects ranges wider than D3D11 update boxes");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(
                     SIZE_MAX / sizeof(float) + 1u, SIZE_MAX, &bytes) == 0 &&
                     bytes == 0u,
@@ -534,8 +558,7 @@ static void test_d3d11_sanitization_helpers(void) {
     float znear = 0.0f;
     float zfar = 0.0f;
 
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(0) == 0,
-                "Boolean flag sanitizer preserves false");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(0) == 0, "Boolean flag sanitizer preserves false");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(-7) == 1,
                 "Boolean flag sanitizer maps non-zero values to true");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(-4) == 0,
@@ -638,9 +661,8 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Cluster global-count sanitizer preserves valid prefixes");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(12, 8) == 8,
                 "Cluster global-count sanitizer clamps to uploaded light count");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(VGFX3D_MAX_LIGHTS + 8,
-                                                           VGFX3D_MAX_LIGHTS + 4) ==
-                    VGFX3D_MAX_LIGHTS,
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(
+                    VGFX3D_MAX_LIGHTS + 8, VGFX3D_MAX_LIGHTS + 4) == VGFX3D_MAX_LIGHTS,
                 "Cluster global-count sanitizer clamps to shader light capacity");
     vgfx3d_d3d11_sanitize_cluster_depth_range(0.25f, 500.0f, &znear, &zfar);
     EXPECT_NEAR(znear, 0.25f, 1e-6f, "Cluster depth sanitizer preserves valid near planes");
@@ -728,6 +750,9 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
     vgfx3d_native_texture_mip_t mip1;
     size_t src_row_bytes = 0;
     size_t dst_row_bytes = 0;
+    int32_t block_width = 0;
+    int32_t block_height = 0;
+    int32_t block_bytes = 0;
 
     EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
                     3, 12, 32, 8, &src_row_bytes, &dst_row_bytes) == 1 &&
@@ -763,6 +788,24 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
     mip1.block_bytes = 16;
     mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
 
+    EXPECT_TRUE(
+        vgfx3d_d3d11_native_format_block_layout(
+            RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1, &block_width, &block_height, &block_bytes) == 1 &&
+            block_width == 4 && block_height == 4 && block_bytes == 8,
+        "Native format layout helper reports D3D11 BC1 block geometry");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_native_format_block_layout(
+            RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7, &block_width, &block_height, &block_bytes) == 1 &&
+            block_width == 4 && block_height == 4 && block_bytes == 16,
+        "Native format layout helper reports D3D11 BC7 block geometry");
+    block_width = 13;
+    block_height = 13;
+    block_bytes = 13;
+    EXPECT_TRUE(
+        vgfx3d_d3d11_native_format_block_layout(
+            RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC, &block_width, &block_height, &block_bytes) == 0 &&
+            block_width == 0 && block_height == 0 && block_bytes == 0,
+        "Native format layout helper rejects non-D3D11-native ASTC blocks");
     EXPECT_TRUE(vgfx3d_d3d11_native_mip_row_bytes(&mip0) == 32u,
                 "Native mip row-byte helper counts BC7 block columns");
     EXPECT_TRUE(vgfx3d_d3d11_native_mip_block_rows(&mip0) == 1u,
@@ -785,6 +828,36 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
             &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
             1,
         "Native mip validation accepts the expected halved next mip");
+
+    {
+        vgfx3d_native_texture_mip_t bc1_mip = mip0;
+        bc1_mip.bytes = 16;
+        bc1_mip.block_bytes = 8;
+        bc1_mip.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&bc1_mip,
+                                                          NULL,
+                                                          RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1,
+                                                          bc1_mip.block_width,
+                                                          bc1_mip.block_height,
+                                                          bc1_mip.block_bytes) == 1,
+                    "Native mip validation accepts D3D11 BC1 block geometry");
+        bc1_mip.block_bytes = 16;
+        bc1_mip.bytes = 32;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&bc1_mip,
+                                                          NULL,
+                                                          RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1,
+                                                          bc1_mip.block_width,
+                                                          bc1_mip.block_height,
+                                                          8) == 0,
+                    "Native mip validation rejects BC1 payloads with BC7-sized blocks");
+    }
+    {
+        vgfx3d_native_texture_mip_t bad_bc7_mip = mip0;
+        bad_bc7_mip.block_width = 8;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(
+                        &bad_bc7_mip, NULL, mip0.format_id, 4, 4, mip0.block_bytes) == 0,
+                    "Native mip validation rejects BC7 payloads with non-D3D11 block widths");
+    }
 
     mip1.width = 5;
     EXPECT_TRUE(

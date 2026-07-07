@@ -569,7 +569,8 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
         HRESULT hr;
         bloom_data.src_inv_size[0] = src_w > 0 ? 1.0f / (float)src_w : 0.0f;
         bloom_data.src_inv_size[1] = src_h > 0 ? 1.0f / (float)src_h : 0.0f;
-        bloom_data.threshold = threshold;
+        bloom_data.threshold =
+            vgfx3d_d3d11_clamp_float_param(threshold, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 1.0f);
         bloom_data.first_pass = (i == 0) ? 1 : 0;
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
         if (FAILED(hr))
@@ -640,7 +641,8 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
     taa_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
     taa_data.jitter_delta[0] = (ctx->taa_jitter_clip[0] - ctx->taa_prev_jitter_clip[0]) * 0.5f;
     taa_data.jitter_delta[1] = -(ctx->taa_jitter_clip[1] - ctx->taa_prev_jitter_clip[1]) * 0.5f;
-    taa_data.blend = (snapshot && snapshot->taa_enabled) ? snapshot->taa_blend : 0.9f;
+    taa_data.blend = vgfx3d_d3d11_clamp_float_param(
+        (snapshot && snapshot->taa_enabled) ? snapshot->taa_blend : 0.9f, 0.0f, 1.0f, 0.9f);
     taa_data.history_valid = (ctx->taa_history_valid && ctx->scene_history_valid) ? 1 : 0;
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_taa, &taa_data, sizeof(taa_data));
     if (FAILED(hr)) {
@@ -694,12 +696,18 @@ static ID3D11ShaderResourceView *d3d11_encode_ssr_pass(d3d11_context_t *ctx,
         return NULL;
 
     memset(&ssr_data, 0, sizeof(ssr_data));
-    memcpy(ssr_data.inv_vp, ctx->scene_inv_vp, sizeof(ssr_data.inv_vp));
-    memcpy(ssr_data.vp, ctx->scene_vp, sizeof(ssr_data.vp));
-    memcpy(ssr_data.cam_pos, ctx->scene_cam_pos, sizeof(float) * 3);
-    ssr_data.params0[0] = (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_intensity : 0.5f;
-    ssr_data.params0[1] = (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_max_roughness : 0.4f;
-    ssr_data.params0[2] = (float)((snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps : 24);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ssr_data.inv_vp, ctx->scene_inv_vp);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ssr_data.vp, ctx->scene_vp);
+    vgfx3d_d3d11_copy_float_array_finite_or(ssr_data.cam_pos, ctx->scene_cam_pos, 3u, 0.0f);
+    ssr_data.params0[0] = vgfx3d_d3d11_clamp_float_param(
+        (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_intensity : 0.5f,
+        0.0f,
+        VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+        0.5f);
+    ssr_data.params0[1] = vgfx3d_d3d11_clamp_float_param(
+        (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_max_roughness : 0.4f, 0.0f, 1.0f, 0.4f);
+    ssr_data.params0[2] = (float)vgfx3d_d3d11_clamp_int_param(
+        (snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps : 24, 1, 256);
     ssr_data.inv_resolution[0] = width > 0 ? 1.0f / (float)width : 0.0f;
     ssr_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_ssr, &ssr_data, sizeof(ssr_data));

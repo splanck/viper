@@ -847,7 +847,9 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (backend->get_native_texture_caps)
         caps |= backend->get_native_texture_caps(c->backend_ctx) &
                 (RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
-                 RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY);
+                 RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY |
+                 RT_CANVAS3D_BACKEND_CAP_BC1 | RT_CANVAS3D_BACKEND_CAP_BC3 |
+                 RT_CANVAS3D_BACKEND_CAP_BC4 | RT_CANVAS3D_BACKEND_CAP_BC5);
     caps |= RT_CANVAS3D_BACKEND_CAP_PBR | RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS |
             RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK | RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS |
             RT_CANVAS3D_BACKEND_CAP_SKINNING | RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
@@ -916,6 +918,14 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         strcmp(name, "impostors") == 0 || strcmp(name, "auto-lod") == 0 ||
         strcmp(name, "auto_lod") == 0)
         return RT_CANVAS3D_BACKEND_CAP_HLOD;
+    if (strcmp(name, "bc1") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_BC1;
+    if (strcmp(name, "bc3") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_BC3;
+    if (strcmp(name, "bc4") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_BC4;
+    if (strcmp(name, "bc5") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_BC5;
     if (strcmp(name, "bc7") == 0)
         return RT_CANVAS3D_BACKEND_CAP_BC7;
     if (strcmp(name, "astc") == 0)

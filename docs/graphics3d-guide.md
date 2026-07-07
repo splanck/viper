@@ -210,7 +210,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
 | `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open, `0` when closed/unavailable |
 | `PollEvent()` | `i64()` | Dequeue the next raw canvas event type, or `0` when none are pending |
-| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay`; `runtime-fallback`, `backend-fallback`, and `software-fallback` report `BackendFallback` |
+| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `bc1`, `bc3`, `bc4`, `bc5`, or `bc7`; `runtime-fallback`, `backend-fallback`, and `software-fallback` report `BackendFallback` |
 
 ### Drawing Methods
 
@@ -703,7 +703,7 @@ KTX2 texture asset metadata and material binding bridge.
 | `Width` | Integer | Pixel width |
 | `Height` | Integer | Pixel height |
 | `MipCount` | Integer | Declared mip level count |
-| `Format` | String | `rgba8`, `bc3`, `bc7`, `astc`, `etc2`, or `unknown` |
+| `Format` | String | `rgba8`, `bc1`, `bc3`, `bc4`, `bc5`, `bc7`, `astc`, `etc2`, or `unknown` |
 | `Compressed` | Bool | True for native block-compressed mip payloads |
 | `ResidentMipStart` | Integer | First resident/requested mip level |
 | `ResidentMipCount` | Integer | Number of resident/requested mip levels |
@@ -711,7 +711,7 @@ KTX2 texture asset metadata and material binding bridge.
 
 The current runtime parses KTX2 headers, rejects unsupported supercompression,
 validates each mip payload length against the declared format/block dimensions,
-records declared mip byte ranges, and decodes RGBA8, BC3, BC7 modes 0-7,
+records declared mip byte ranges, and decodes RGBA8, BC1, BC3, BC4/BC5, BC7 modes 0-7,
 representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallbacks.
 `SetResidentMipRange` updates mip residency telemetry and selects the first
 resident RGBA8 mip as the active fallback resolved by materials at draw time;
@@ -719,12 +719,12 @@ negative arguments trap, `mipCount` clamps to the available range, and a zero
 count releases all resident telemetry/fallback binding. `Material3D.Textured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
 `SetSpecularMap`, and `SetEmissiveMap` accept texture assets directly when they
-have an RGBA8 fallback or native compressed mip blocks. BC3/BC7/ASTC/ETC2
+have an RGBA8 fallback or native compressed mip blocks. BC1/BC3/BC4/BC5/BC7/ASTC/ETC2
 assets expose metadata, residency byte counts, retained native mip payloads,
 and software fallbacks for supported compressed blocks; unsupported ASTC or
 ETC2 modes remain native-only. Native mip block payloads upload through capable
 GPU backends under `Canvas3D.SetTextureUploadBudget`;
-`BackendSupports("bc7"|"astc"|"etc2")` advertises the device-specific native
+`BackendSupports("bc1"|"bc3"|"bc4"|"bc5"|"bc7"|"astc"|"etc2")` advertises the device-specific native
 paths. The open-world native-compressed hitch CTest records raw RGBA bytes,
 compressed resident/upload bytes, RAM/VRAM reduction percentages, and a
 final-frame tolerance check for the selected capable backend.
@@ -3458,7 +3458,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `occlusion`, `hlod`, `bc1`, `bc3`, `bc4`, `bc5`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
 
 | Bit | Capability |
 |-----|------------|
@@ -3481,6 +3481,21 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x10000` | BC7 compressed texture upload |
 | `0x20000` | ASTC compressed texture upload |
 | `0x40000` | ETC2 compressed texture upload |
+| `0x80000` | Sampler anisotropy |
+| `0x100000` | PBR material path |
+| `0x200000` | Normal maps |
+| `0x400000` | Alpha masking |
+| `0x800000` | Morph targets |
+| `0x1000000` | Skinning |
+| `0x2000000` | Terrain splatting |
+| `0x4000000` | BC1 compressed texture upload |
+| `0x8000000` | BC3 compressed texture upload |
+| `0x10000000` | BC4 compressed texture upload |
+| `0x20000000` | BC5 compressed texture upload |
+| `0x40000000` | HDR scene color |
+| `0x80000000` | Temporal anti-aliasing |
+| `0x100000000` | Soft particles |
+| `0x200000000` | Screen-space reflections |
 
 **Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to four directional slots, primary-directional cascaded shadow maps with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 
@@ -3490,7 +3505,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, clamps clustered-light prefix/depth constants before shader upload, rejects malformed post-FX chain storage before indexed iteration, validates IBL mip payload extents before overlaying cubemap tail mips, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, clamps clustered-light prefix/depth constants before shader upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and IBL mip payload extents before GPU upload, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
 
 ## Performance Tips
 

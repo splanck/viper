@@ -466,8 +466,9 @@ typedef struct vgfx3d_backend {
      * frame time in microseconds, or 0 when unsupported/not yet available. */
     uint64_t (*get_frame_gpu_time_us)(void *ctx);
     /* Optional backend texture capability bits. Return a mask using
-     * RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 for native block upload and
-     * RT_CANVAS3D_BACKEND_CAP_ANISOTROPY when sampler anisotropy is supported. */
+     * RT_CANVAS3D_BACKEND_CAP_BC1/BC3/BC4/BC5/BC7/ASTC/ETC2 for native block
+     * upload and RT_CANVAS3D_BACKEND_CAP_ANISOTROPY when sampler anisotropy is
+     * supported. */
     int64_t (*get_native_texture_caps)(void *ctx);
 
     /// @brief Optional backend diagnostics hook.
