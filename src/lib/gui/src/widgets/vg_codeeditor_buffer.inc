@@ -146,6 +146,11 @@ vg_editor_buffer_t *vg_codeeditor_swap_buffer(vg_codeeditor_t *editor,
     editor->cursor_visible = true;
     editor->base.needs_paint = true;
     editor->base.needs_layout = true;
+
+    // The sync journal is editor-resident, not part of the swapped buffer bundle,
+    // so its deltas belong to the previous document. Force the next language pull
+    // to full-sync the newly attached document.
+    codeeditor_journal_mark_overflow(editor);
     return prev;
 }
 

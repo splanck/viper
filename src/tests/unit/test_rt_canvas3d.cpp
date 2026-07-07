@@ -2827,16 +2827,16 @@ static void test_ssr_chain_and_mask_plumbing() {
         vgfx3d_postfx_chain_free(&chain);
     }
     {
-        /* Software canvases refuse GPU-scene chains at bind time (Plan 09 path). */
+        /* Software canvases run GPU-scene chains through the CPU reference
+         * implementations, so binding now succeeds (postfx software parity). */
         rt_canvas3d canvas = {};
         canvas.backend = &vgfx3d_software_backend;
         rt_canvas3d_set_post_fx(&canvas, fx);
-        EXPECT_TRUE(canvas.postfx == NULL, "SSR chain is not attached on software");
-        rt_string err = rt_postfx3d_get_last_error(fx);
-        EXPECT_TRUE(std::strstr(rt_string_cstr(err), "SSR") != nullptr,
-                    "Rejection message names SSR");
+        EXPECT_TRUE(canvas.postfx == fx, "SSR chain attaches on software (CPU reference path)");
+        EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("postfx-full")) == 1,
+                    "software backend advertises the full postfx chain (CPU reference path)");
         EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("ssr")) == 0,
-                    "software backend does not advertise ssr");
+                    "native GPU SSR pipeline stays unadvertised on software");
     }
     {
         vgfx3d_draw_cmd_t cmd;
@@ -4448,7 +4448,7 @@ static void bindcheck_present_postfx(void *ctx, const vgfx3d_postfx_chain_t *cha
 }
 
 static void test_canvas_postfx_bind_time_capability_validation() {
-    TEST("Canvas3D.SetPostFX validates GPU-scene effects at bind time (Plan 09)");
+    TEST("Canvas3D.SetPostFX binds GPU-scene effects on every path (Plan 06 parity)");
     vgfx3d_backend_t cpu_backend = {};
     vgfx3d_backend_t gpu_backend = {};
     rt_canvas3d canvas;
@@ -4461,22 +4461,24 @@ static void test_canvas_postfx_bind_time_capability_validation() {
 
     rt_postfx3d_add_ssao(fx, 0.5, 0.65, 8);
 
-    /* CPU-path canvas: bind refused, reason recorded, no trap. */
+    /* CPU-path canvas: depth-aware effects run through the CPU reference
+     * implementations, so the bind succeeds with no recorded error. */
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &cpu_backend;
     rt_canvas3d_set_post_fx(&canvas, fx);
-    if (canvas.postfx != NULL) {
-        FAIL("unsupported chain was attached to a CPU-path canvas");
+    if (canvas.postfx != fx) {
+        FAIL("GPU-scene chain failed to attach to a CPU-path canvas");
         return;
     }
     {
         rt_string err = rt_postfx3d_get_last_error(fx);
         const char *msg = rt_string_cstr(err);
-        if (!msg || !strstr(msg, "GPU window postfx")) {
-            FAIL("LastError did not record the bind refusal reason");
+        if (msg && msg[0] != '\0') {
+            FAIL("LastError was not cleared on the CPU-path bind");
             return;
         }
     }
+    rt_canvas3d_set_post_fx(&canvas, NULL);
 
     /* GPU window canvas: binds and clears the error. */
     memset(&canvas, 0, sizeof(canvas));
@@ -4836,8 +4838,10 @@ static void test_canvas_shadow_cascades_capability_gate() {
                 "software backend advertises cascaded shadows");
     rt_canvas3d_set_shadow_cascades(&canvas, 0);
     EXPECT_EQ(canvas.shadow_cascade_count, 1);
-    rt_canvas3d_set_shadow_cascades(&canvas, VGFX3D_MAX_SHADOW_LIGHTS + 2);
-    EXPECT_EQ(canvas.shadow_cascade_count, VGFX3D_MAX_SHADOW_LIGHTS);
+    /* Cascade counts are a CSM concept: they clamp to the dedicated cascade
+     * slots, not the (larger) total shadow-light budget. */
+    rt_canvas3d_set_shadow_cascades(&canvas, VGFX3D_CSM_SLOTS + 2);
+    EXPECT_EQ(canvas.shadow_cascade_count, VGFX3D_CSM_SLOTS);
 
     vgfx3d_backend_t unsupported = {};
     unsupported.name = "fake";
@@ -6065,8 +6069,8 @@ static void test_canvas_postfx_hdr_mode0_tonemap_applies_gamma() {
     PASS();
 }
 
-static void test_canvas_postfx_rejects_taa_on_cpu_rtt_path() {
-    TEST("Canvas3D postfx rejects TAA on CPU/render-target path");
+static void test_canvas_postfx_applies_taa_on_cpu_rtt_path() {
+    TEST("Canvas3D postfx applies TAA on CPU/render-target path (Plan 06 parity)");
     rt_canvas3d canvas;
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
     void *fx = rt_postfx3d_new();
@@ -6078,16 +6082,15 @@ static void test_canvas_postfx_rejects_taa_on_cpu_rtt_path() {
     rt_postfx3d_add_taa(fx, 0.9);
     rt_postfx3d_set_enabled(fx, 1);
 
-    if (!expect_trap_contains([&]() { rt_postfx3d_apply_to_canvas(&canvas); },
-                              "require GPU window postfx")) {
-        FAIL("TAA on the render-target postfx path did not trap");
-        return;
-    }
+    /* The old bind/apply refusal is gone: the CPU TAA implementation runs on the
+     * render-target path (history seeds from the first frame), no trap. */
+    rt_postfx3d_apply_to_canvas(&canvas);
+    rt_postfx3d_apply_to_canvas(&canvas);
     PASS();
 }
 
-static void test_canvas_postfx_rejects_advanced_cpu_rtt_effects() {
-    TEST("Canvas3D postfx rejects advanced effects on CPU/render-target path");
+static void test_canvas_postfx_applies_advanced_cpu_rtt_effects() {
+    TEST("Canvas3D postfx applies advanced effects on CPU/render-target path (Plan 06 parity)");
     rt_canvas3d canvas;
     rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(1, 1);
     void *fx = rt_postfx3d_new();
@@ -6099,11 +6102,8 @@ static void test_canvas_postfx_rejects_advanced_cpu_rtt_effects() {
     rt_postfx3d_add_ssao(fx, 0.5, 1.0, 8);
     rt_postfx3d_set_enabled(fx, 1);
 
-    if (!expect_trap_contains([&]() { rt_postfx3d_apply_to_canvas(&canvas); },
-                              "require GPU window postfx")) {
-        FAIL("Advanced render-target postfx did not trap");
-        return;
-    }
+    /* SSAO runs through its CPU reference implementation on this path. */
+    rt_postfx3d_apply_to_canvas(&canvas);
     PASS();
 }
 
@@ -8053,27 +8053,29 @@ static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
 }
 
 static void test_canvas_instanced_fallback_caps_instance_count() {
-    TEST("Canvas3D caps per-instance fallback draws");
+    TEST("Canvas3D clamps per-instance fallback draws with telemetry");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *mat = rt_material3d_new();
-    float instance[16] = {0.0f};
+    const int32_t requested = 65537; /* CANVAS3D_MAX_FALLBACK_INSTANCES + 1 */
+    std::vector<float> instances((size_t)requested * 16, 0.0f);
 
     backend.name = "software";
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &backend;
     canvas.gfx_win = (vgfx_window_t)1;
     canvas.in_frame = 1;
-    instance[0] = instance[5] = instance[10] = instance[15] = 1.0f;
+    for (int32_t i = 0; i < requested; i++) {
+        float *m = &instances[(size_t)i * 16];
+        m[0] = m[5] = m[10] = m[15] = 1.0f;
+    }
 
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() {
-                        rt_canvas3d_queue_instanced_batch(
-                            &canvas, mesh, mat, instance, 65537, NULL, 0);
-                    },
-                    "fallback instance count exceeds limit"),
-                "Fallback instancing refuses unbounded per-instance draw expansion");
+    /* The old hard trap is gone: overflow clamps to the fallback cap and the
+     * clamped count is observable through get_InstancedFallbackCount. */
+    rt_canvas3d_queue_instanced_batch(
+        &canvas, mesh, mat, instances.data(), requested, NULL, 0);
+    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_count(&canvas), 65536);
     PASS();
 }
 
@@ -8443,8 +8445,8 @@ int main() {
     test_gameui_widgets_draw_on_canvas3d();
     test_canvas_postfx_uses_hdr_render_target_mirror();
     test_canvas_postfx_hdr_mode0_tonemap_applies_gamma();
-    test_canvas_postfx_rejects_taa_on_cpu_rtt_path();
-    test_canvas_postfx_rejects_advanced_cpu_rtt_effects();
+    test_canvas_postfx_applies_taa_on_cpu_rtt_path();
+    test_canvas_postfx_applies_advanced_cpu_rtt_effects();
     test_canvas_postfx_bind_time_capability_validation();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();

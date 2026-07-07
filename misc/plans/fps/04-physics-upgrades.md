@@ -1,6 +1,26 @@
 # 04 — Engine: Swept CCD, Convex Hull Reduction, Kinematic Mesh Colliders, Query Capacity
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · 1–2 sessions.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: E13 swept time-of-impact CCD — allocation-free `world3d_ccd_sweep_sphere_raw`
+> (reuses the proven march+bisection sweep, static/kinematic targets, layer-mask + trigger
+> aware) clips CCD bodies' substep translation at first impact with restitution-honoring
+> reflection; `get_CcdToiCount` telemetry. Anti-tunneling proven by
+> `tests/runtime/test_physics3d_ccd_toi.zia`: 3 speeds × 3 thicknesses (300 m/s vs 0.05 m
+> included) all stopped, non-CCD control demonstrably tunnels, bouncy path reflects.
+> E14 from-scratch quickhull (`rt_quickhull3d.c`: conflict-list construction, horizon
+> stitching, outward-winding invariant) + farthest-point reduction;
+> `Collider3D.NewConvexHullReduced(mesh, maxVerts)` re-hulls the reduced set and
+> materializes an owned hull mesh with faces (raycastable). Property tests
+> (`test_quickhull3d.cpp`): cube+noise → exactly 8 verts/12 faces, containment ≤1e-7,
+> degenerate rejection, extreme preservation. `NewConvexHull` semantics unchanged (support
+> over cloud == over hull). E15 kinematic triangle-mesh colliders: motion-mode guard
+> relaxed to STATIC|KINEMATIC (local-space narrow phase transforms by body pose — no BVH
+> refit needed for rigid motion); elevator test carries a resting crate. E16
+> `Physics3DWorld.SetMaxQueryHits` (16–4096, world-owned scratch, TotalCount/Truncated
+> contract verified at 16 and 64). Physics suites 14/14 green; runtime completeness +
+> surface audit green (baseline bumps: contract files 804, stubs 889 — SoundSource3D from
+> doc 02). Docs: physics3d.md (CCD guarantee, collider constructors, query capacity).
+> Heightfields stay static-only (documented; no consumer).
 > Eliminates constraints #3 (substep-only CCD, untested anti-tunneling), #4 (`NewConvexHull`
 > uses the raw vertex cloud), #5 (mesh/heightfield colliders static-only), #6 (fixed 256-hit
 > query cap). Consumers: 14-weapons-physics (grenades, rockets), 17-bosses (SHRIKE rockets,

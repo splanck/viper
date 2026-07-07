@@ -81,6 +81,26 @@ typedef struct vg_edit_history {
     uint64_t last_insert_time_ms; ///< Editor typing-clock time of the last coalesced insert.
 } vg_edit_history_t;
 
+/// @brief Forward content delta for incremental language-service sync (plan 08).
+/// @details One content mutation on the hot editing path: the pre-edit byte range
+///          [(start_line,start_col) .. (end_line,end_col)) was replaced by @p text
+///          (empty for a pure delete; start == end for a pure insert). Positions
+///          are 0-based byte line/column, matching the widget and
+///          codeeditor_materialize_lines() (lines joined by '\n', no trailing
+///          newline). Deltas are captured in application order, so a document
+///          mirror that replays them in order against its own text stays byte-exact.
+typedef struct vg_edit_delta {
+    uint64_t revision; ///< Editor content revision AFTER this delta.
+    int start_line;    ///< 0-based start line of the replaced range.
+    int start_col;     ///< 0-based start byte column.
+    int end_line;      ///< 0-based end line of the replaced range.
+    int end_col;       ///< 0-based end byte column.
+    char *text;        ///< Owned replacement text ("" for a pure delete).
+} vg_edit_delta_t;
+
+/// @brief Capacity of the per-editor delta ring; overflow forces a full re-sync.
+#define VG_EDIT_JOURNAL_CAP 256
+
 /// @brief Line information
 typedef struct vg_code_line {
     char *text;                       ///< Line text (owned)
@@ -268,6 +288,16 @@ typedef struct vg_codeeditor {
 
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
+
+    // Incremental sync journal (plan 08): bounded ring of forward content deltas
+    // captured on the hot editing path so language services update a document
+    // mirror by delta instead of re-copying the whole buffer per keystroke. Cold
+    // mutations (undo/redo, SetText) set journal_overflowed to force a full sync.
+    vg_edit_delta_t journal[VG_EDIT_JOURNAL_CAP]; ///< Ring of retained deltas.
+    int journal_head;            ///< Ring index of the oldest retained delta.
+    int journal_count;           ///< Deltas currently retained (<= VG_EDIT_JOURNAL_CAP).
+    uint64_t journal_oldest_rev; ///< Revision of the oldest retained delta (0 = none).
+    bool journal_overflowed;     ///< A cold mutation or ring wrap requires a full re-sync.
 
     // Scrollbar drag state
     bool scrollbar_dragging;           ///< True while user is dragging the scroll thumb
@@ -509,6 +539,18 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor);
 /// @param editor Code editor widget.
 /// @return Content revision, or 0 if editor is NULL.
 uint64_t vg_codeeditor_get_revision(vg_codeeditor_t *editor);
+
+/// @brief Take the forward content deltas recorded since @p since_revision as a
+///        compact JSON array, pruning the consumed entries (plan 08).
+/// @details Each element is {"r":revision,"sl","sc","el","ec","t":text}: the
+///          pre-edit byte range [(sl,sc)..(el,ec)) was replaced by t. Returns the
+///          literal string "overflow" when a cold mutation (undo/redo, SetText,
+///          buffer swap) or a ring wrap means the caller must full-sync instead.
+///          Caller owns and frees the returned string.
+/// @param editor Code editor widget.
+/// @param since_revision Last revision the caller has already applied.
+/// @return Owned JSON array string, "overflow", or NULL on OOM/NULL editor.
+char *vg_codeeditor_take_deltas_json(vg_codeeditor_t *editor, uint64_t since_revision);
 
 /// @brief Return the currently selected text as a newly allocated string.
 /// @param editor Code editor widget.

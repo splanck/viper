@@ -1,0 +1,152 @@
+module TestAnimNavUpgrades;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-08 coverage:
+//   - BlendTree3D freeform-directional 2D mode: at most 3 non-zero weights
+//     inside the hull (was: every sample non-zero under inverse-distance).
+//   - Skeleton3D.SetBoneAlias: retargeting maps mixamo-style names onto a
+//     differently-named skeleton via explicit aliases.
+//   - NavMesh auto-tiling: every Bake reports a positive TileSize so
+//     RebuildTile takes the O(tile) path.
+//   - NavAgent3D.OnOffMeshLink/LinkKind surface (safe defaults off-path).
+
+func start() {
+    // --- Freeform 2D blend tree ------------------------------------------
+    var skel = Skeleton3D.New();
+    var ident = Mat4.Identity();
+    Skeleton3D.AddBone(skel, "root", -1, ident);
+    var tree = BlendTree3D.New2D(skel);
+    if (tree.BlendMode != 0) {
+        Say("FAIL: freeform mode should be the default");
+        return;
+    }
+    // Idle center + 8-direction ring of clips.
+    BlendTree3D.AddSample(tree, Animation3D.New("idle", 1.0), 0.0, 0.0);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_e", 1.0), 1.0, 0.0);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_ne", 1.0), 0.7071, 0.7071);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_n", 1.0), 0.0, 1.0);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_nw", 1.0), -0.7071, 0.7071);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_w", 1.0), -1.0, 0.0);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_sw", 1.0), -0.7071, -0.7071);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_s", 1.0), 0.0, -1.0);
+    BlendTree3D.AddSample(tree, Animation3D.New("run_se", 1.0), 0.7071, -0.7071);
+    BlendTree3D.SetParam(tree, 0.4, 0.4);
+    var blend = tree.Blend;
+    var nonzero = 0;
+    var total = 0.0;
+    var k = 0;
+    while (k < 9) {
+        var w = AnimBlend3D.GetWeight(blend, k);
+        if (w > 0.0001) {
+            nonzero = nonzero + 1;
+        }
+        total = total + w;
+        k = k + 1;
+    }
+    if (nonzero > 3) {
+        Say("FAIL: freeform blending should activate at most 3 clips");
+        return;
+    }
+    if (nonzero < 1) {
+        Say("FAIL: freeform blending should activate at least 1 clip");
+        return;
+    }
+    if (total < 0.999 || total > 1.001) {
+        Say("FAIL: freeform weights should sum to 1");
+        return;
+    }
+    // Legacy mode spreads weight across everything (regression escape hatch).
+    BlendTree3D.set_BlendMode(tree, 1);
+    if (tree.BlendMode != 1) {
+        Say("FAIL: BlendMode setter should stick");
+        return;
+    }
+    BlendTree3D.SetParam(tree, 0.4, 0.4);
+    nonzero = 0;
+    k = 0;
+    while (k < 9) {
+        if (AnimBlend3D.GetWeight(blend, k) > 0.0001) {
+            nonzero = nonzero + 1;
+        }
+        k = k + 1;
+    }
+    if (nonzero < 5) {
+        Say("FAIL: legacy IDW mode should spread weights across samples");
+        return;
+    }
+
+    // --- Retarget bone aliases -------------------------------------------
+    var src = Skeleton3D.New();
+    Skeleton3D.AddBone(src, "mixamorig:Hips", -1, ident);
+    Skeleton3D.AddBone(src, "mixamorig:Spine", 0, ident);
+    Skeleton3D.AddBone(src, "mixamorig:Head", 1, ident);
+    var dst = Skeleton3D.New();
+    Skeleton3D.AddBone(dst, "pelvis_bone", -1, ident);
+    Skeleton3D.AddBone(dst, "torso_bone", 0, ident);
+    Skeleton3D.AddBone(dst, "skull_bone", 1, ident);
+    Skeleton3D.SetBoneAlias(dst, "mixamorig:Hips", "pelvis_bone");
+    Skeleton3D.SetBoneAlias(dst, "mixamorig:Spine", "torso_bone");
+    Skeleton3D.SetBoneAlias(dst, "mixamorig:Head", "skull_bone");
+    if (Skeleton3D.get_AliasCount(dst) != 3) {
+        Say("FAIL: alias count should be 3");
+        return;
+    }
+    // Alias removal + replacement semantics.
+    Skeleton3D.SetBoneAlias(dst, "mixamorig:Head", "");
+    if (Skeleton3D.get_AliasCount(dst) != 2) {
+        Say("FAIL: empty local name should remove the alias");
+        return;
+    }
+    Skeleton3D.SetBoneAlias(dst, "mixamorig:Head", "skull_bone");
+    if (Skeleton3D.get_AliasCount(dst) != 3) {
+        Say("FAIL: re-adding a removed alias should restore the count");
+        return;
+    }
+
+    var rot = Quat.Identity();
+    var scl = Vec3.New(1.0, 1.0, 1.0);
+    var clip = Animation3D.New("walk", 1.0);
+    Animation3D.AddKeyframe(clip, 0, 0.0, Vec3.New(0.0, 1.0, 0.0), rot, scl);
+    Animation3D.AddKeyframe(clip, 0, 1.0, Vec3.New(0.0, 2.0, 0.0), rot, scl);
+    Animation3D.AddKeyframe(clip, 2, 0.0, Vec3.New(0.0, 0.5, 0.0), rot, scl);
+    var retargeted = Animation3D.Retarget(clip, src, dst);
+    if (retargeted == null) {
+        Say("FAIL: alias-aware retarget returned null");
+        return;
+    }
+
+    // --- Nav auto-tiling ---------------------------------------------------
+    var scene = SceneGraph.New();
+    var node = SceneNode.New();
+    SceneNode.set_Mesh(node, Mesh3D.NewPlane(40.0, 40.0));
+    SceneGraph.Add(scene, node);
+    var nm = NavMesh3D.Bake(scene, 0.4, 1.8, 45.0, 0.5);
+    if (nm == null) {
+        Say("FAIL: bake returned null");
+        return;
+    }
+    if (NavMesh3D.get_TileSize(nm) <= 0.0) {
+        Say("FAIL: Bake should auto-tile (TileSize must be > 0)");
+        return;
+    }
+    if (!NavMesh3D.RebuildTile(nm, 0, 0)) {
+        Say("FAIL: RebuildTile on an auto-tiled bake should succeed");
+        return;
+    }
+
+    // --- Agent link-state surface ------------------------------------------
+    var agent = NavAgent3D.New(nm, 0.4, 1.8);
+    if (NavAgent3D.get_OnOffMeshLink(agent)) {
+        Say("FAIL: idle agent must not report link traversal");
+        return;
+    }
+    if (NavAgent3D.get_LinkKind(agent) != "") {
+        Say("FAIL: idle agent LinkKind should be empty");
+        return;
+    }
+
+    Say("PASS");
+}

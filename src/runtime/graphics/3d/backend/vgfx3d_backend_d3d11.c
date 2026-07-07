@@ -151,6 +151,10 @@ typedef struct {
     float sh[9][4];      /* SH-9 RGB irradiance, one coefficient per float4 */
     /* Plan 06 shadow knobs: x = slope-bias factor, y = strength, z = tap count. */
     float shadow_filter[4];
+    /* Track E doc 07: exponential height fog (x = base, y = falloff,
+     * z = density*blend with 0 = off, w = pad). Position mirrors the HLSL
+     * cbuffer exactly. */
+    float height_fog[4];
     /* Plan 07: x/y = viewport size, z/w = znear/zfar; global count -1 = flat loop. */
     float cluster_params[4];
     int32_t cluster_global_count;
@@ -454,6 +458,16 @@ typedef struct {
     int32_t shadow_pass_slot;
     int32_t shadow_count;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    /* Shadow atlas for slots >= VGFX3D_CSM_SLOTS: 4x2 tiles at the per-slot
+     * resolution, sampled at t17; cleared once per frame on first tile pass. */
+    ID3D11Texture2D *shadow_atlas_tex;
+    ID3D11DepthStencilView *shadow_atlas_dsv;
+    ID3D11ShaderResourceView *shadow_atlas_srv;
+    int32_t shadow_atlas_w;
+    int32_t shadow_atlas_h;
+    int8_t shadow_atlas_cleared;
+    /* Per-slot render completeness (atlas slots have no per-slot resources). */
+    int8_t shadow_slot_complete[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_bias;
     /* Plan 06: per-frame shadow filtering params from camera params. */
     float shadow_strength;
@@ -499,6 +513,7 @@ typedef struct {
     float clear_g;
     float clear_b;
     int8_t fog_enabled;
+    float height_fog[4]; /* base, falloff, density*blend (0 = off), pad */
     float fog_near;
     float fog_far;
     float fog_color[3];
@@ -1111,12 +1126,13 @@ static void d3d11_unbind_postfx_resources(d3d11_context_t *ctx) {
 /// @details Shadow maps are rebound as depth outputs during shadow passes; D3D11
 ///   requires their shader-resource views to be detached first.
 static void d3d11_unbind_shadow_resources(d3d11_context_t *ctx) {
-    ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_MAX_SHADOW_LIGHTS] = {NULL};
+    ID3D11ShaderResourceView *null_shadow_srvs[VGFX3D_CSM_SLOTS] = {NULL};
+    ID3D11ShaderResourceView *null_atlas_srv[1] = {NULL};
 
     if (!ctx || !ctx->ctx)
         return;
-    ID3D11DeviceContext_PSSetShaderResources(
-        ctx->ctx, 4, VGFX3D_MAX_SHADOW_LIGHTS, null_shadow_srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 4, VGFX3D_CSM_SLOTS, null_shadow_srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 17, 1, null_atlas_srv);
 }
 
 /// @brief Rebind the CPU-tracked current output targets after a temporary unbind.
@@ -1720,6 +1736,8 @@ static void d3d11_get_backend_stats(void *ctx_ptr, vgfx3d_backend_stats_t *out_s
 
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .name = "d3d11",
+    /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas (t17). */
+    .shadow_atlas_slots = 1,
     .create_ctx = d3d11_create_ctx,
     .destroy_ctx = d3d11_destroy_ctx,
     .clear = d3d11_clear,

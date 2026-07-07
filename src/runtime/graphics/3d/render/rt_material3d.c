@@ -164,6 +164,8 @@ void *rt_material3d_resolve_texture_pixels(void *texture_ref) {
         return NULL;
     if (rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID))
         return rt_textureasset3d_get_pixels(texture_ref);
+    if (rt_g3d_has_class(texture_ref, RT_G3D_RENDERTARGET3D_CLASS_ID))
+        return rt_rendertarget3d_material_pixels(texture_ref);
     return material_pixels_handle_valid(texture_ref) ? texture_ref : NULL;
 }
 
@@ -184,7 +186,8 @@ static int material_texture_ref_has_drawable_source(void *texture_ref) {
 /// @brief Whether a texture slot points at a supported material texture handle type.
 static int material_texture_ref_supported(void *texture_ref) {
     return texture_ref && (material_pixels_handle_valid(texture_ref) ||
-                           rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
+                           rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID) ||
+                           rt_g3d_has_class(texture_ref, RT_G3D_RENDERTARGET3D_CLASS_ID));
 }
 
 /// @brief Return whether a texture slot is currently drawable, clearing stale invalid refs.
@@ -237,7 +240,7 @@ static int material_texture_ref_valid_or_trap(void *texture, const char *method)
         return 1;
     if (rt_material3d_resolve_texture_native_asset(texture))
         return 1;
-    rt_trap(method ? method : "Material3D: texture must be Pixels or TextureAsset3D");
+    rt_trap(method ? method : "Material3D: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
     return 0;
 }
 
@@ -673,6 +676,46 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
         return;
     (void)material_assign_texture_ref_checked(
         &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels or TextureAsset3D");
+}
+
+/// @brief Bind a RenderTarget3D's live contents as the albedo texture.
+/// @details The material samples the target's last completed frame; the mirror
+///   refreshes automatically whenever a frame rendered into the target ends, so
+///   security-monitor/scope setups need no per-frame readback or rebinding.
+void rt_material3d_set_albedo_render_target(void *obj, void *target) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    if (!target || !rt_g3d_has_class(target, RT_G3D_RENDERTARGET3D_CLASS_ID)) {
+        rt_trap("Material3D.SetAlbedoRenderTarget: target must be a RenderTarget3D");
+        return;
+    }
+    (void)material_assign_texture_ref_checked(
+        &mat->texture, target, "Material3D.SetAlbedoRenderTarget: target must be a RenderTarget3D");
+}
+
+/// @brief Detach a render-target albedo binding (leaves the material textureless).
+void rt_material3d_clear_albedo_render_target(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    if (mat->texture && rt_g3d_has_class(mat->texture, RT_G3D_RENDERTARGET3D_CLASS_ID))
+        material_assign_ref(&mat->texture, NULL);
+}
+
+/// @brief Bind a RenderTarget3D's live contents as the emissive map (glowing monitors).
+void rt_material3d_set_emissive_render_target(void *obj, void *target) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    if (!target || !rt_g3d_has_class(target, RT_G3D_RENDERTARGET3D_CLASS_ID)) {
+        rt_trap("Material3D.SetEmissiveRenderTarget: target must be a RenderTarget3D");
+        return;
+    }
+    (void)material_assign_texture_ref_checked(
+        &mat->emissive_map,
+        target,
+        "Material3D.SetEmissiveRenderTarget: target must be a RenderTarget3D");
 }
 
 /// @brief Coerce an incoming texture-wrap mode to a known-valid enum value.

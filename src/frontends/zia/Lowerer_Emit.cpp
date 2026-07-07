@@ -601,7 +601,7 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                          {heapPtr,
                           Value::constInt(static_cast<int64_t>(field.offset)),
                           Value::constInt(field.kind),
-                          Value::constInt(field.retainNow)});
+                          Value::constBool(field.retainNow != 0)});
             }
 
             for (size_t i = 0; i < info->fields.size(); ++i) {

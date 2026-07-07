@@ -57,6 +57,7 @@
 #endif
 
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1333,6 +1334,15 @@ static bool g_mouse_double_clicked[VIPER_MOUSE_BUTTON_MAX];
 static bool g_mouse_hidden = false;
 static bool g_mouse_captured = false;
 
+// Relative (raw) mouse mode state. `requested` is the application's ask;
+// `native` records whether the platform window actually delivers raw deltas
+// (reported back by the Canvas3D poll). The f64 deltas carry sub-pixel
+// precision alongside the rounded i64 g_mouse_delta_x/y.
+static bool g_mouse_relative_requested = false;
+static bool g_mouse_relative_native = false;
+static double g_mouse_delta_fx = 0.0;
+static double g_mouse_delta_fy = 0.0;
+
 // Initialization flag
 static bool g_mouse_initialized = false;
 
@@ -1370,6 +1380,10 @@ void rt_mouse_init(void) {
     g_mouse_wheel_y = 0.0;
     g_mouse_hidden = false;
     g_mouse_captured = false;
+    g_mouse_relative_requested = false;
+    g_mouse_relative_native = false;
+    g_mouse_delta_fx = 0.0;
+    g_mouse_delta_fy = 0.0;
     g_mouse_canvas = NULL;
 
     for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
@@ -1400,6 +1414,8 @@ void rt_mouse_begin_frame(void) {
     g_mouse_delta_y = g_mouse_y - g_mouse_prev_y;
     g_mouse_prev_x = g_mouse_x;
     g_mouse_prev_y = g_mouse_y;
+    g_mouse_delta_fx = (double)g_mouse_delta_x;
+    g_mouse_delta_fy = (double)g_mouse_delta_y;
 
     // Reset per-frame event arrays
     for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
@@ -1442,6 +1458,25 @@ void rt_mouse_force_delta(int64_t dx, int64_t dy) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_delta_x = dx;
     g_mouse_delta_y = dy;
+    g_mouse_delta_fx = (double)dx;
+    g_mouse_delta_fy = (double)dy;
+}
+
+/// @brief Override the mouse delta with sub-pixel precision.
+///
+/// Relative-mode variant of `rt_mouse_force_delta`: stores the exact f64
+/// motion for `rt_mouse_delta_xf/yf` and a round-to-nearest i64 for the
+/// legacy `Mouse.DeltaX/DeltaY` surface. Called by the Canvas3D poll while
+/// native raw deltas are active.
+///
+/// @param dx Sub-pixel horizontal motion for this frame.
+/// @param dy Sub-pixel vertical motion for this frame (positive = down).
+void rt_mouse_force_delta_f(double dx, double dy) {
+    RT_ASSERT_MAIN_THREAD();
+    g_mouse_delta_fx = dx;
+    g_mouse_delta_fy = dy;
+    g_mouse_delta_x = (int64_t)llround(dx);
+    g_mouse_delta_y = (int64_t)llround(dy);
 }
 
 /// @brief Forward an OS mouse-button-press event into the runtime state.
@@ -1829,6 +1864,64 @@ void rt_mouse_release(void) {
 int8_t rt_mouse_is_captured(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_captured ? 1 : 0;
+}
+
+/// @brief Request or release relative (raw) mouse mode.
+///
+/// Enabling implies capture (cursor hidden, absolute position frozen at the
+/// capture point); disabling releases capture. The actual platform raw-input
+/// mode is applied by the Canvas3D poll (which owns the window handle) and
+/// reported back through `rt_mouse_set_relative_native`; until then the
+/// existing warp-to-center capture path serves the deltas, so mouse-look is
+/// correct either way.
+void rt_mouse_set_relative_mode(int8_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    bool want = enabled != 0;
+    if (g_mouse_relative_requested == want)
+        return;
+    g_mouse_relative_requested = want;
+    if (want) {
+        if (!g_mouse_captured)
+            rt_mouse_capture();
+    } else {
+        g_mouse_relative_native = false;
+        if (g_mouse_captured)
+            rt_mouse_release();
+    }
+}
+
+/// @brief Whether relative (raw) mouse mode has been requested.
+int8_t rt_mouse_get_relative_mode(void) {
+    RT_ASSERT_MAIN_THREAD();
+    return g_mouse_relative_requested ? 1 : 0;
+}
+
+/// @brief Record whether the platform window delivers native raw deltas.
+///
+/// Called by the Canvas3D poll after applying `vgfx_set_relative_mouse` so
+/// diagnostics (`Mouse.RelativeModeNative`) reflect the truth: `0` means the
+/// warp-to-center fallback is serving the deltas.
+void rt_mouse_set_relative_native(int8_t native) {
+    RT_ASSERT_MAIN_THREAD();
+    g_mouse_relative_native = native != 0;
+}
+
+/// @brief Whether native raw deltas are currently active.
+int8_t rt_mouse_get_relative_native(void) {
+    RT_ASSERT_MAIN_THREAD();
+    return (g_mouse_relative_requested && g_mouse_relative_native) ? 1 : 0;
+}
+
+/// @brief Sub-pixel horizontal mouse delta for the current frame.
+double rt_mouse_delta_xf(void) {
+    RT_ASSERT_MAIN_THREAD();
+    return g_mouse_delta_fx;
+}
+
+/// @brief Sub-pixel vertical mouse delta for the current frame.
+double rt_mouse_delta_yf(void) {
+    RT_ASSERT_MAIN_THREAD();
+    return g_mouse_delta_fy;
 }
 
 /// @brief Move the OS cursor to the given canvas pixel position and

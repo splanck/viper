@@ -1,0 +1,57 @@
+module TestFbxAscii;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+// Doc-09 E31 coverage:
+//   - ASCII FBX exports (";FBX" comment signature) load through the ASCII
+//     geometry path: positions, polygon triangulation, normals, UVs.
+//   - Malformed ASCII with the signature returns null plus a diagnostic
+//     instead of trapping.
+//   - The binary FBX path is untouched.
+
+func start() {
+    var cube = FBX.Load("tests/runtime/test_fbx_ascii_cube.fbx");
+    if (cube == null) {
+        Say("FAIL: ASCII cube should load: " + AssetDiagnostics3D.LastLoadError);
+        return;
+    }
+    if (cube.MeshCount != 1) {
+        Say("FAIL: ASCII cube should contain one mesh");
+        return;
+    }
+    var cubeMesh = cube.GetMesh(0);
+    if (cubeMesh.TriangleCount != 12 || cubeMesh.VertexCount != 36) {
+        Say("FAIL: ASCII cube should triangulate to 12 tris / 36 verts");
+        return;
+    }
+
+    var quad = FBX.Load("tests/runtime/test_fbx_ascii_quad.fbx");
+    if (quad == null) {
+        Say("FAIL: ASCII quad with normals/UVs should load: " + AssetDiagnostics3D.LastLoadError);
+        return;
+    }
+    var quadMesh = quad.GetMesh(0);
+    if (quadMesh.TriangleCount != 2 || quadMesh.VertexCount != 4) {
+        Say("FAIL: ASCII quad should triangulate to 2 tris over 4 indexed verts");
+        return;
+    }
+
+    var broken = FBX.Load("tests/runtime/test_fbx_ascii_malformed.fbx");
+    if (broken != null) {
+        Say("FAIL: malformed ASCII FBX must return null");
+        return;
+    }
+    if (AssetDiagnostics3D.LastLoadError == "") {
+        Say("FAIL: malformed ASCII FBX must set a load diagnostic");
+        return;
+    }
+
+    var binary = FBX.Load("tests/runtime/test_humanoid.fbx");
+    if (binary == null || binary.MeshCount < 1) {
+        Say("FAIL: binary FBX path must keep working");
+        return;
+    }
+
+    Say("PASS");
+}

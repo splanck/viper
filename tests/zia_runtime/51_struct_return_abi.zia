@@ -1,0 +1,253 @@
+module RuntimeTest51;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: struct (value type) return ABI coverage.
+//
+// Pins the aggregate-return shapes that historically miscompiled on the
+// native AArch64 path (xenoscape MoveResult workaround; ridgebound BUG-006
+// family) and the struct-with-managed-field construction path
+// (Viper.Core.Box.ValueTypeAddField retain flag must lower as i1).
+//
+// Shapes covered:
+//   - HFA {f64 x2} and {f64 x4} register returns
+//   - {i64,i64} register return and {i64 x3} indirect (sret) return
+//   - >16-byte mixed {i64 x2, i1 x4} indirect return (MoveResult shape)
+//   - mixed {i64,f64} return
+//   - nested struct return
+//   - struct with a String field (managed field boxing)
+//   - method (member function) struct return
+//   - chained call-in-call struct returns
+// Runs under the VM chapter suite and the native_run e2e at -O0 and -O2.
+
+struct IPair {
+    expose Integer a;
+    expose Integer b;
+
+    expose func init(x: Integer, y: Integer) {
+        a = x;
+        b = y;
+    }
+}
+
+struct FPair {
+    expose Float x;
+    expose Float y;
+
+    expose func init(px: Float, py: Float) {
+        x = px;
+        y = py;
+    }
+}
+
+struct FQuad {
+    expose Float x;
+    expose Float y;
+    expose Float z;
+    expose Float w;
+
+    expose func init(a: Float, b: Float, c: Float, d: Float) {
+        x = a;
+        y = b;
+        z = c;
+        w = d;
+    }
+}
+
+struct Mixed {
+    expose Integer i;
+    expose Float f;
+
+    expose func init(a: Integer, b: Float) {
+        i = a;
+        f = b;
+    }
+}
+
+struct MoveRes {
+    expose Integer x;
+    expose Integer y;
+    expose Boolean hitFloor;
+    expose Boolean hitCeiling;
+    expose Boolean hitLeft;
+    expose Boolean hitRight;
+
+    expose func init(px: Integer, py: Integer,
+                     floor: Boolean, ceiling: Boolean,
+                     left: Boolean, right: Boolean) {
+        x = px;
+        y = py;
+        hitFloor = floor;
+        hitCeiling = ceiling;
+        hitLeft = left;
+        hitRight = right;
+    }
+}
+
+struct Triple {
+    expose Integer a;
+    expose Integer b;
+    expose Integer c;
+
+    expose func init(x: Integer, y: Integer, z: Integer) {
+        a = x;
+        b = y;
+        c = z;
+    }
+}
+
+struct Inner {
+    expose Integer v;
+
+    expose func init(x: Integer) {
+        v = x;
+    }
+}
+
+struct Outer {
+    expose Inner one;
+    expose Inner two;
+    expose Integer tag;
+
+    expose func init(a: Integer, b: Integer, t: Integer) {
+        one = new Inner(a);
+        two = new Inner(b);
+        tag = t;
+    }
+}
+
+struct Named {
+    expose Integer id;
+    expose String name;
+
+    expose func init(i: Integer, n: String) {
+        id = i;
+        name = n;
+    }
+}
+
+class Mover {
+    expose func moveAndCollide(px: Integer, py: Integer) -> MoveRes {
+        return new MoveRes(px + 1, py + 2, px > 0, py > 0, px < 0, py < 0);
+    }
+}
+
+func makeIPair(a: Integer, b: Integer) -> IPair {
+    return new IPair(a, b);
+}
+
+func makeFPair(a: Float, b: Float) -> FPair {
+    return new FPair(a, b);
+}
+
+func makeFQuad(a: Float) -> FQuad {
+    return new FQuad(a, a + 1.0, a + 2.0, a + 3.0);
+}
+
+func makeMixed(a: Integer, b: Float) -> Mixed {
+    return new Mixed(a, b);
+}
+
+func makeMoveRes(px: Integer, py: Integer) -> MoveRes {
+    return new MoveRes(px + 1, py + 2, px > 0, py > 0, px < 0, py < 0);
+}
+
+func makeTriple(a: Integer) -> Triple {
+    return new Triple(a, a * 2, a * 3);
+}
+
+func makeOuter(a: Integer) -> Outer {
+    return new Outer(a, a + 1, a + 2);
+}
+
+func makeNamed(i: Integer) -> Named {
+    return new Named(i, "item" + toString(i));
+}
+
+func flag(b: Boolean) -> String {
+    if (b) {
+        return "1";
+    }
+    return "0";
+}
+
+func start() {
+    // Register-return pairs and HFAs in a loop (loop-varying inputs so the
+    // register allocator cannot fold the calls away).
+    var isum: Integer = 0;
+    var fsum: Float = 0.0;
+    var fi: Float = 0.0;
+    var i: Integer = 0;
+    while (i < 10) {
+        var ip = makeIPair(i, i * 2);
+        isum = isum + ip.a + ip.b;
+
+        var fp = makeFPair(1.5 + fi, 2.5);
+        fsum = fsum + fp.x + fp.y;
+
+        var fq = makeFQuad(0.25);
+        fsum = fsum + fq.x + fq.y + fq.z + fq.w;
+
+        var m = makeMixed(i, 0.5);
+        isum = isum + m.i;
+        fsum = fsum + m.f;
+
+        fi = fi + 1.0;
+        i = i + 1;
+    }
+    assertEqInt(isum, 180, "register_pair_sums");
+    // fsum = 10*(1.5+2.5) + 45 (fi ramp) + 10*7.0 + 10*0.5 = 160.0
+    assertTrue(fsum > 159.999, "hfa_sum_low");
+    assertTrue(fsum < 160.001, "hfa_sum_high");
+
+    // Indirect (>16 byte) mixed int/bool returns in a loop.
+    var acc: Integer = 0;
+    var flags: String = "";
+    i = 0;
+    while (i < 6) {
+        var mr = makeMoveRes(i - 3, 4 - i);
+        acc = acc + mr.x + mr.y;
+        flags = flags + flag(mr.hitFloor) + flag(mr.hitCeiling)
+            + flag(mr.hitLeft) + flag(mr.hitRight);
+        i = i + 1;
+    }
+    assertEqInt(acc, 24, "indirect_mixed_acc");
+    assertEqStr(flags, "011001100110010010001001", "indirect_mixed_flags");
+
+    // Method returning a large struct.
+    var mv = new Mover();
+    var r = mv.moveAndCollide(5, -7);
+    assertEqInt(r.x, 6, "method_ret_x");
+    assertEqInt(r.y, -5, "method_ret_y");
+    assertTrue(r.hitFloor, "method_ret_floor");
+    assertTrue(!r.hitCeiling, "method_ret_ceiling");
+    assertTrue(!r.hitLeft, "method_ret_left");
+    assertTrue(r.hitRight, "method_ret_right");
+
+    // Three-i64 indirect return.
+    var t = makeTriple(7);
+    assertEqInt(t.a, 7, "triple_a");
+    assertEqInt(t.b, 14, "triple_b");
+    assertEqInt(t.c, 21, "triple_c");
+
+    // Nested struct return.
+    var o = makeOuter(10);
+    assertEqInt(o.one.v, 10, "nested_one");
+    assertEqInt(o.two.v, 11, "nested_two");
+    assertEqInt(o.tag, 12, "nested_tag");
+
+    // Struct with a String (managed) field: construction + return + field read.
+    var n = makeNamed(42);
+    assertEqInt(n.id, 42, "named_id");
+    assertEqStr(n.name, "item42", "named_name");
+
+    // Chained: returned struct feeds another call's argument.
+    var t2 = makeTriple(makeTriple(2).b);
+    assertEqInt(t2.a, 4, "chain_a");
+    assertEqInt(t2.b, 8, "chain_b");
+    assertEqInt(t2.c, 12, "chain_c");
+
+    report();
+}

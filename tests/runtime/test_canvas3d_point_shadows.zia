@@ -1,0 +1,90 @@
+module TestCanvas3DPointShadows;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-03 E9 coverage: omnidirectional point-light shadows.
+//   - A shadow-casting point light claims six consecutive slots (cube faces).
+//   - Its shadow visibly darkens geometry: toggling only CastsShadows changes
+//     scene brightness. A shadowed sun stays enabled in both frames so the
+//     software backend keeps the per-pixel shading path in both (no confound).
+
+func sumShot(canvas: Canvas3D) -> Integer {
+    var shot = Canvas3D.Screenshot(canvas);
+    var total = 0;
+    var gy = 0;
+    while (gy < 64) {
+        var gx = 0;
+        while (gx < 96) {
+            total = total + (Pixels.Get(shot, gx, gy) / 65536) % 256;
+            gx = gx + 1;
+        }
+        gy = gy + 8;
+    }
+    return total;
+}
+
+func drawIt(canvas: Canvas3D, cam: Camera3D, ground: Mesh3D, pillar: Mesh3D, mat: Material3D) {
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, ground, Mat4.Translate(0.0, -1.0, 0.0), mat);
+    Canvas3D.DrawMesh(canvas, pillar, Mat4.Translate(3.0, 0.5, 0.0), mat);
+    Canvas3D.End(canvas);
+    Canvas3D.Flip(canvas);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Point Shadows", 96, 64);
+    if (!Canvas3D.BackendSupports(canvas, "shadow-point")) {
+        Say("PASS"); // backend without extended shadow slots (e.g. OpenGL)
+        return;
+    }
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 200.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 9.0, 16.0),
+                    new Vec3(3.0, 0.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var ground = Mesh3D.NewPlane(50.0, 50.0);
+    var pillar = Mesh3D.NewBox(1.0, 3.0, 3.0);
+    var mat = Material3D.NewColor(0.7, 0.7, 0.7);
+
+    Canvas3D.EnableShadows(canvas, 256);
+    Canvas3D.SetAmbient(canvas, 0.05, 0.05, 0.05);
+
+    // Path-keeper: a dim shadowed sun keeps per-pixel shading in both frames.
+    var sun = Light3D.NewDirectional(new Vec3(0.2, -1.0, 0.1), 0.15, 0.15, 0.15);
+    sun.CastsShadows = true;
+    Canvas3D.SetLight(canvas, 0, sun);
+
+    var point = Light3D.NewPoint(new Vec3(0.0, 2.0, 0.0), 1.0, 1.0, 1.0, 0.0);
+    point.CastsShadows = true;
+    Canvas3D.SetLight(canvas, 1, point);
+
+    drawIt(canvas, cam, ground, pillar, mat);
+    if (canvas.ShadowSlotsUsed != 7) {
+        Say("FAIL: sun (1 slot) + cube point light (6 faces) should use 7 slots");
+        return;
+    }
+    if (canvas.ShadowRequestsDropped != 0) {
+        Say("FAIL: both shadow requests should be granted");
+        return;
+    }
+    var withShadow = sumShot(canvas);
+
+    point.CastsShadows = false;
+    drawIt(canvas, cam, ground, pillar, mat);
+    if (canvas.ShadowSlotsUsed != 1) {
+        Say("FAIL: only the sun slot should remain after disabling the point shadow");
+        return;
+    }
+    var withoutShadow = sumShot(canvas);
+
+    if (withShadow >= withoutShadow) {
+        Say("FAIL: the point light's cube shadow should darken the pillar's shadow region");
+        return;
+    }
+
+    Say("PASS");
+}

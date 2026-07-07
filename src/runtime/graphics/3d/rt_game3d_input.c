@@ -72,6 +72,8 @@ void *rt_game3d_input_new(void) {
     }
     memset(input, 0, sizeof(*input));
     input->look_sensitivity = 0.01;
+    input->bound_pad = -1;
+    input->pad_look_sensitivity = 1.5;
     return input;
 }
 
@@ -114,7 +116,23 @@ void rt_game3d_input_update(void *obj) {
     }
     input->mouse_dx = rt_mouse_delta_x();
     input->mouse_dy = rt_mouse_delta_y();
+    input->mouse_fdx = rt_mouse_delta_xf();
+    input->mouse_fdy = rt_mouse_delta_yf();
     input->wheel_y = game3d_finite_or(rt_mouse_wheel_yf(), 0.0);
+    /* Snapshot bound-gamepad stick axes so Move/LookAxis observe a coherent
+     * frame even if the pad is polled again mid-frame. */
+    input->pad_connected = 0;
+    input->pad_lx = 0.0;
+    input->pad_ly = 0.0;
+    input->pad_rx = 0.0;
+    input->pad_ry = 0.0;
+    if (input->bound_pad >= 0 && rt_pad_is_connected(input->bound_pad)) {
+        input->pad_connected = 1;
+        input->pad_lx = game3d_finite_or(rt_pad_left_x(input->bound_pad), 0.0);
+        input->pad_ly = game3d_finite_or(rt_pad_left_y(input->bound_pad), 0.0);
+        input->pad_rx = game3d_finite_or(rt_pad_right_x(input->bound_pad), 0.0);
+        input->pad_ry = game3d_finite_or(rt_pad_right_y(input->bound_pad), 0.0);
+    }
     input->has_snapshot = 1;
 }
 
@@ -137,9 +155,10 @@ int8_t rt_game3d_input_released(void *obj, int64_t key) {
 }
 
 /// @brief Get this frame's raw mouse movement delta as a Vec2.
+/// @details Sub-pixel precise while relative (raw) mouse mode is active.
 void *rt_game3d_input_mouse_delta(void *obj) {
     rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.mouseDelta: invalid input");
-    return rt_vec2_new((double)game3d_input_mouse_dx(input), (double)game3d_input_mouse_dy(input));
+    return rt_vec2_new(game3d_input_mouse_fdx(input), game3d_input_mouse_fdy(input));
 }
 
 /// @brief True while mouse `button` is held this frame.
@@ -190,6 +209,23 @@ void game3d_input_move_axis_components(rt_game3d_input *input,
         game3d_input_key_down(input, rt_keyboard_key_lctrl()) ||
         game3d_input_key_down(input, rt_keyboard_key_rctrl()))
         y -= 1.0;
+    /* Merge the bound gamepad's left stick (radial deadzone, magnitude
+     * preserving) — keyboard and stick sum, then normalize below. Stick +Y
+     * is down on every pad backend, so it maps to backward (-z). */
+    if (input && input->pad_connected) {
+        double lx = input->pad_lx;
+        double ly = input->pad_ly;
+        double mag = sqrt(lx * lx + ly * ly);
+        const double deadzone = 0.18;
+        if (mag > deadzone) {
+            double scale = (mag - deadzone) / (1.0 - deadzone);
+            if (scale > 1.0)
+                scale = 1.0;
+            scale /= mag;
+            x += lx * scale;
+            z -= ly * scale;
+        }
+    }
     game3d_normalize_axis3(&x, &y, &z);
     if (out_x)
         *out_x = x;
@@ -211,6 +247,9 @@ void *rt_game3d_input_move_axis(void *obj) {
 }
 
 /// @brief Build the mouse-look axis as a Vec2 (mouse delta scaled by sensitivity).
+/// @details Sub-pixel precise in relative mouse mode; merges the bound
+///          gamepad's right stick (response curve x^1.8, per-frame contribution
+///          scaled by the pad look sensitivity).
 void *rt_game3d_input_look_axis(void *obj) {
     rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.lookAxis: invalid input");
     double s =
@@ -218,12 +257,26 @@ void *rt_game3d_input_look_axis(void *obj) {
                                               0.01,
                                               RT_GAME3D_LOOK_SENSITIVITY_MAX)
               : 0.01;
-    double x = game3d_clamp_abs_or((double)game3d_input_mouse_dx(input) * s,
-                                   0.0,
-                                   RT_GAME3D_ANGLE_DEG_ABS_MAX);
-    double y = game3d_clamp_abs_or((double)game3d_input_mouse_dy(input) * s,
-                                   0.0,
-                                   RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    double dx = game3d_input_mouse_fdx(input) * s;
+    double dy = game3d_input_mouse_fdy(input) * s;
+    if (input && input->pad_connected) {
+        double rx = input->pad_rx;
+        double ry = input->pad_ry;
+        double mag = sqrt(rx * rx + ry * ry);
+        const double deadzone = 0.18;
+        if (mag > deadzone) {
+            double scale = (mag - deadzone) / (1.0 - deadzone);
+            if (scale > 1.0)
+                scale = 1.0;
+            /* Response curve: fine aim near center, fast sweep at the rim. */
+            scale = pow(scale, 1.8) / mag;
+            double ps = game3d_nonnegative_clamped_or(input->pad_look_sensitivity, 0.0, 20.0);
+            dx += rx * scale * ps;
+            dy += ry * scale * ps;
+        }
+    }
+    double x = game3d_clamp_abs_or(dx, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    double y = game3d_clamp_abs_or(dy, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     return rt_vec2_new(x, y);
 }
 
@@ -237,4 +290,51 @@ void rt_game3d_input_capture_mouse(void *obj) {
 void rt_game3d_input_release_mouse(void *obj) {
     (void)game3d_input_checked(obj, "Game3D.Input3D.releaseMouse: invalid input");
     rt_mouse_release();
+}
+
+/// @brief Enable/disable raw relative mouse-look (capture + OS raw deltas).
+/// @details Convenience over Mouse.SetRelativeMode: enabling captures the
+///          cursor and requests native raw motion; LookAxis/MouseDelta become
+///          unbounded and sub-pixel. Disabling releases the capture.
+void rt_game3d_input_set_relative_look(void *obj, int8_t enabled) {
+    (void)game3d_input_checked(obj, "Game3D.Input3D.setRelativeLook: invalid input");
+    rt_mouse_set_relative_mode(enabled);
+}
+
+/// @brief Bind a gamepad index into MoveAxis/LookAxis (-1 unbinds).
+void rt_game3d_input_bind_pad(void *obj, int64_t pad) {
+    rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.bindPad: invalid input");
+    if (!input)
+        return;
+    input->bound_pad = pad < 0 ? -1 : pad;
+    if (input->bound_pad < 0) {
+        input->pad_connected = 0;
+        input->pad_lx = 0.0;
+        input->pad_ly = 0.0;
+        input->pad_rx = 0.0;
+        input->pad_ry = 0.0;
+    }
+}
+
+/// @brief Currently bound gamepad index (-1 when unbound).
+int64_t rt_game3d_input_get_pad_bound(void *obj) {
+    rt_game3d_input *input =
+        game3d_input_checked(obj, "Game3D.Input3D.get_PadBound: invalid input");
+    return input ? input->bound_pad : -1;
+}
+
+/// @brief Set the right-stick look sensitivity (degrees per frame at full tilt).
+void rt_game3d_input_set_pad_look_sensitivity(void *obj, double sensitivity) {
+    rt_game3d_input *input =
+        game3d_input_checked(obj, "Game3D.Input3D.setPadLookSensitivity: invalid input");
+    if (!input)
+        return;
+    input->pad_look_sensitivity = game3d_nonnegative_clamped_or(sensitivity, 0.0, 20.0);
+}
+
+/// @brief Get the right-stick look sensitivity.
+double rt_game3d_input_get_pad_look_sensitivity(void *obj) {
+    rt_game3d_input *input =
+        game3d_input_checked(obj, "Game3D.Input3D.get_PadLookSensitivity: invalid input");
+    return input ? input->pad_look_sensitivity : 0.0;
 }

@@ -91,6 +91,18 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/localization/rt_locale_platform.h")
 // Mixed headers below contain frontend-visible wrapper functions that stay in
 // runtime.def plus lower-level helper declarations that are intentionally
 // internal to the runtime implementation.
+// Raw-relative-mouse plumbing (fps plan 01/E1): platform-native mode toggle
+// and the mock backend's deterministic delta injector, both driven through
+// Mouse.SetRelativeMode / Input3D rather than as script-facing symbols.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mouse_set_relative_native")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mouse_force_delta_f")
+// NavMesh internals (fps plan 08/E28-E29): off-mesh-link segment classifier
+// shared between the path smoother and NavAgent link traversal.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_segment_is_offmesh_link")
+// Quickhull core (fps plan 04/E14): consumed by Collider3D.NewConvexHullReduced;
+// the hull builder itself is not a script-facing API.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_quickhull3d_build")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_quickhull3d_reduce")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_data_const")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_bytes_is_bytes")

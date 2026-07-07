@@ -487,6 +487,7 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         history_group_open = true;
     }
 
+    const uint64_t pending_rev = codeeditor_pending_revision(editor);
     for (int i = 0; i < target_count; i++) {
         const vg_edit_target_t *target = &clamped_targets[i];
         char *old_text = old_texts[i];
@@ -550,6 +551,23 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
                                 target->start_line,
                                 target->start_col);
         }
+
+        // Incremental sync journal (plan 08): capture the forward delta for the
+        // single-cursor hot path — the pre-edit range [start..end) was replaced by
+        // the replacement text (empty for a pure delete). Multi-cursor batches
+        // fall back to an overflow (full re-sync) after the loop to avoid any
+        // delta-ordering hazard.
+        if (target_count == 1 &&
+            ((replacement_text && replacement_text[0] != '\0') || has_old_text)) {
+            codeeditor_journal_push(
+                editor,
+                target->start_line,
+                target->start_col,
+                target->end_line,
+                target->end_col,
+                (replacement_text && replacement_text[0] != '\0') ? replacement_text : "",
+                pending_rev);
+        }
     }
 
 cleanup:
@@ -570,6 +588,8 @@ cleanup:
         return;
     codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
+    if (target_count > 1)
+        codeeditor_journal_mark_overflow(editor); // multi-cursor batch: consumer full-syncs
     if (syntax_global_dirty)
         codeeditor_invalidate_all_highlights(editor);
     editor->modified = true;

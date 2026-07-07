@@ -1095,6 +1095,31 @@ static float canvas3d_shadow_spot_light_param_score(const vgfx3d_light_params_t 
     return base_score / (1.0f + distance);
 }
 
+/// @brief Score a shadow-requesting point light like a spot (luminance / camera proximity).
+static float canvas3d_shadow_point_light_param_score(const vgfx3d_light_params_t *l,
+                                                     const float *camera_pos) {
+    float base_score;
+    float dx;
+    float dy;
+    float dz;
+    float distance;
+
+    if (!l || l->type != 1)
+        return -1.0f;
+    base_score = canvas3d_shadow_light_luminance_score(l);
+    if (base_score <= 0.0f)
+        return -1.0f;
+    if (!camera_pos)
+        return base_score;
+    dx = l->position[0] - camera_pos[0];
+    dy = l->position[1] - camera_pos[1];
+    dz = l->position[2] - camera_pos[2];
+    distance = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (!isfinite(distance) || distance < 0.0f)
+        distance = 0.0f;
+    return base_score / (1.0f + distance);
+}
+
 /// @brief Tolerance-based scalar equality for light parameters.
 /// @details Uses a *relative* epsilon scaled by the larger magnitude of the two inputs
 ///          (floored at 1.0 so near-zero values still compare sensibly). This is what
@@ -1115,7 +1140,8 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
         return 0;
-    if ((a->type != 0 && a->type != 3) || !a->casts_shadows || !b->casts_shadows)
+    if ((a->type != 0 && a->type != 1 && a->type != 3) || !a->casts_shadows ||
+        !b->casts_shadows)
         return 0;
     if (a->identity || b->identity)
         return a->identity == b->identity;
@@ -1126,16 +1152,34 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
     }
     if (!canvas3d_light_param_close(a->intensity, b->intensity))
         return 0;
-    if (a->type == 3) {
+    if (a->type == 3 || a->type == 1) {
         for (int i = 0; i < 3; i++) {
             if (!canvas3d_light_param_close(a->position[i], b->position[i]))
                 return 0;
         }
-        return canvas3d_light_param_close(a->attenuation, b->attenuation) &&
-               canvas3d_light_param_close(a->inner_cos, b->inner_cos) &&
+        if (!canvas3d_light_param_close(a->attenuation, b->attenuation))
+            return 0;
+        if (a->type == 1)
+            return 1;
+        return canvas3d_light_param_close(a->inner_cos, b->inner_cos) &&
                canvas3d_light_param_close(a->outer_cos, b->outer_cos);
     }
     return 1;
+}
+
+/// @brief Record a distinct shadow-requesting light for drop telemetry.
+static void canvas3d_note_shadow_request(vgfx3d_light_params_t *requests,
+                                         int32_t *request_count,
+                                         const vgfx3d_light_params_t *light,
+                                         float score) {
+    if (!requests || !request_count || !light || score <= 0.0f)
+        return;
+    for (int32_t i = 0; i < *request_count; i++) {
+        if (canvas3d_shadow_light_params_match(light, &requests[i]))
+            return;
+    }
+    if (*request_count < VGFX3D_MAX_LIGHTS)
+        requests[(*request_count)++] = *light;
 }
 
 static void canvas3d_insert_shadow_light_candidate(vgfx3d_light_params_t *out_lights,
@@ -1207,11 +1251,17 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
                                                         const deferred_draw_t *cmds,
                                                         int32_t draw_count,
                                                         vgfx3d_light_params_t *out_lights,
-                                                        int32_t max_shadow_lights) {
+                                                        int32_t max_shadow_lights,
+                                                        int32_t *out_request_count) {
     float best_scores[VGFX3D_MAX_SHADOW_LIGHTS];
+    /* Unique shadow-requesting lights seen this frame (for drop telemetry). */
+    vgfx3d_light_params_t requests[VGFX3D_MAX_LIGHTS];
+    int32_t request_count = 0;
     int32_t count = 0;
     int32_t spot_phase_start;
 
+    if (out_request_count)
+        *out_request_count = 0;
     if (!cmds || draw_count <= 0 || !out_lights || max_shadow_lights <= 0)
         return 0;
     if (max_shadow_lights > VGFX3D_MAX_SHADOW_LIGHTS)
@@ -1230,6 +1280,7 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
             const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
             float score = canvas3d_shadow_directional_light_param_score(light);
 
+            canvas3d_note_shadow_request(requests, &request_count, light, score);
             canvas3d_insert_shadow_light_candidate(
                 out_lights, best_scores, 0, max_shadow_lights, &count, light, score);
         }
@@ -1243,11 +1294,16 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
             const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
             float score =
                 canvas3d_shadow_spot_light_param_score(light, c ? c->cached_cam_pos : NULL);
+            if (light->type == 1)
+                score = canvas3d_shadow_point_light_param_score(light, c ? c->cached_cam_pos : NULL);
 
+            canvas3d_note_shadow_request(requests, &request_count, light, score);
             canvas3d_insert_shadow_light_candidate(
                 out_lights, best_scores, spot_phase_start, max_shadow_lights, &count, light, score);
         }
     }
+    if (out_request_count)
+        *out_request_count = request_count;
     return count;
 }
 

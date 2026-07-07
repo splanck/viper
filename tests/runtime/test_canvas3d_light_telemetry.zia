@@ -1,0 +1,64 @@
+module TestCanvas3DLightTelemetry;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-03 E11/E12 coverage: previously-silent light budgets are observable.
+//   - 20 enabled lights on the fixed-forward path -> DroppedLightCount == 4.
+//   - SetClusterLightBudget clamps and ClusterOverflowCount reads back.
+
+func start() {
+    var canvas = Canvas3D.New("Light Telemetry", 96, 64);
+    // Force the fixed-forward path (16-light cap) so drops are deterministic.
+    canvas.ClusteredLighting = false;
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 100.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 0.0, 5.0),
+                    new Vec3(0.0, 0.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var mat = Material3D.NewColor(0.8, 0.8, 0.8);
+
+    var i = 0;
+    while (i < 20) {
+        var pos = new Vec3(-5.0 + i * 0.5, 1.0, 1.0);
+        Canvas3D.SetLight(canvas, i, Light3D.NewPoint(pos, 1.0, 1.0, 1.0, 1.0));
+        i = i + 1;
+    }
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, box, Mat4.Identity(), mat);
+    Canvas3D.End(canvas);
+    Canvas3D.Flip(canvas);
+
+    if (canvas.DroppedLightCount != 4) {
+        Say("FAIL: 20 lights over the 16-light forward cap should drop exactly 4");
+        return;
+    }
+
+    Canvas3D.SetClusterLightBudget(canvas, 8);
+    if (canvas.ClusterOverflowCount < 0) {
+        Say("FAIL: cluster overflow counter should read back");
+        return;
+    }
+
+    // Under the cap: no drops.
+    i = 16;
+    while (i < 20) {
+        Canvas3D.SetLight(canvas, i, null);
+        i = i + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, box, Mat4.Identity(), mat);
+    Canvas3D.End(canvas);
+    Canvas3D.Flip(canvas);
+    if (canvas.DroppedLightCount != 0) {
+        Say("FAIL: 16 lights should fit the forward cap with no drops");
+        return;
+    }
+
+    Say("PASS");
+}

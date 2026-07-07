@@ -567,6 +567,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_AnimController3D,
     RTCLS_Decal3D,
     RTCLS_Sprite3D,
+    RTCLS_LensFlare3D,
     RTCLS_Vegetation3D,
     RTCLS_VideoPlayer,
     RTCLS_VideoWidget,

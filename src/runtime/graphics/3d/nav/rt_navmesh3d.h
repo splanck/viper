@@ -64,6 +64,15 @@ int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
 double rt_navmesh3d_get_last_path_cost(void *navmesh);
 /// @brief Add an authored off-mesh traversal link between two walkable points.
 int8_t rt_navmesh3d_add_offmesh_link(void *navmesh, void *from, void *to, int8_t bidirectional);
+/// @brief Tile edge length for O(tile) rebuilds (0 for Build-constructed meshes).
+double rt_navmesh3d_get_tile_size(void *navmesh);
+/// @brief True when segment (a -> b) matches a registered off-mesh link
+///        (either direction for bidirectional links); optionally reports the
+///        link's authored kind string (borrowed).
+int8_t rt_navmesh3d_segment_is_offmesh_link(void *navmesh,
+                                            const double *a,
+                                            const double *b,
+                                            rt_string *out_kind);
 /// @brief Number of authored off-mesh traversal links.
 int64_t rt_navmesh3d_get_offmesh_link_count(void *navmesh);
 /// @brief Attach kind/cost/state metadata to an authored off-mesh link by index.

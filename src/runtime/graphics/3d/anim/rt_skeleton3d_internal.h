@@ -55,13 +55,27 @@ typedef struct {
 
 /// @brief Skeleton3D payload: the bone array and a `frozen` flag set once pose buffers exist
 ///   (bones immutable thereafter). Runtime global-pose builders tolerate non-topological order.
+/// @brief External-name alias: "a rig calling this bone `external` means my
+///   bone `local`". Consulted by animation retargeting before role inference.
+typedef struct {
+    char external[64];
+    char local[64];
+} rt_skeleton3d_alias;
+
 typedef struct rt_skeleton3d {
     void *vptr;
     vgfx3d_bone_t *bones;
     int32_t bone_count;
     int32_t bone_capacity;
     int8_t frozen;
+    rt_skeleton3d_alias *aliases;
+    int32_t alias_count;
+    int32_t alias_capacity;
 } rt_skeleton3d;
+
+/// @brief Resolve an external bone name through a skeleton's alias table
+///        (defined in rt_skeleton3d_skeleton.inc). NULL when unmapped.
+const char *skeleton3d_alias_lookup(const rt_skeleton3d *s, const char *external);
 
 /// @brief Animation3D payload: a named clip holding per-bone channels, total duration,
 ///   and the loop flag.

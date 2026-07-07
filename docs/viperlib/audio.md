@@ -50,6 +50,7 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 |--------------------------|------------------------------------|----------------------------------------------------------|
 | `Play()`                 | `Integer()`                        | Play once through the SFX mix group. Returns voice ID for control |
 | `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play through the SFX mix group with volume (0–100) and pan (−100 to +100) |
+| `PlayEx2(volume, pan, pitch)` | `Integer(Integer, Integer, Float)` | `PlayEx` plus a playback-rate multiplier (0.25–4.0; 1.0 = native) |
 | `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped through the SFX mix group with volume and pan |
 
 > **Voice limit:** Up to 32 sounds may play simultaneously. A 33rd `Play()` call stops
@@ -265,14 +266,29 @@ Static class for controlling individual playing voices (sound instances).
 
 | Method                     | Signature                      | Description                                              |
 |----------------------------|--------------------------------|----------------------------------------------------------|
+| `GetPitch(id)`             | `Float(Integer)`               | Current playback-rate multiplier (1.0 default)           |
 | `IsPlaying(id)`            | `Boolean(Integer)`             | Check if voice is playing                                |
+| `SetLowpass(id, hz)`       | `Void(Integer, Float)`         | Direct lowpass cutoff in Hz (≤ 0 disables)               |
+| `SetOcclusion(id, amt)`    | `Void(Integer, Float)`         | Occlusion 0 (open) … 1 (occluded); smoothed ~80 ms       |
 | `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Pan: −100 = hard left, 0 = center, +100 = hard right     |
+| `SetPitch(id, pitch)`      | `Void(Integer, Float)`         | Playback-rate multiplier, clamped 0.25–4.0               |
 | `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0–100)                           |
 | `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                                     |
 
 > **Pan law:** Mono sounds use equal-power panning, so `pan=0` plays evenly in both
 > channels without the center-volume drop of a linear pan law. Stereo sounds keep
 > their original channel balance at `pan=0`; panning attenuates the far side.
+
+> **Pitch:** Rates other than 1.0 resample with a fractional cursor (linear
+> interpolation), so pitch and duration scale together — pitch 2.0 plays one
+> octave up in half the time. Typical gunshot variation: `PlayEx2(vol, pan,
+> 0.92 + 0.16 * rng)`.
+
+> **Occlusion:** The amount maps to a perceptual lowpass sweep (~22 kHz open
+> down to ~800 Hz fully occluded) plus up to −6 dB of attenuation. Drive it
+> from your own line-of-sight checks each frame; the mixer smooths changes so
+> cover flips never click. `SetLowpass` composes with occlusion — the lower
+> cutoff wins (useful for scoped-focus or underwater effects).
 
 > **Invalid IDs:** All voice functions are safe to call with any integer ID. If the
 > voice has already stopped or the ID was never valid, the call is a no-op.
@@ -742,6 +758,14 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Audio.GroupSetFxBypass(group, fxId, bypass)` | `Void(Integer, Integer, Boolean)` | Enable or bypass one group effect |
 | `Audio.GroupRemoveFx(group, fxId)` | `Void(Integer, Integer)` | Remove one group effect |
 | `Audio.GroupClearFx(group)` | `Void(Integer)` | Remove every effect from the group |
+| `Audio.SetGroupDucking(trigger, target, amount, attackSec, releaseSec)` | `Void(String, String, Float, Float, Float)` | Sidechain duck: while `trigger` is audible, `target`'s gain eases toward `1 − amount` |
+
+> **Ducking:** Groups are resolved (and registered on first use) by name. While
+> anything in the trigger group is audible, the target group's gain follows an
+> exponential envelope toward `1 − amount` over `attackSec` and recovers to
+> unity over `releaseSec`. Re-registering the same (trigger, target) pair
+> replaces the rule; `amount <= 0` removes it. Up to 8 rules may be active.
+> Classic use: `Audio.SetGroupDucking("weapons", "music", 0.35, 0.03, 0.4)`.
 
 ### Sound Methods (Group-Aware)
 

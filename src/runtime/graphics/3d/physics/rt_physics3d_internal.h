@@ -88,6 +88,8 @@ extern double rt_quat_w(void *q);
 #define PH3D_MAX_MANIFOLD_POINTS 4
 #define PH3D_INITIAL_CONTACTS 128
 #define PH3D_MAX_QUERY_HITS 256
+#define PH3D_QUERY_HITS_MIN 16
+#define PH3D_QUERY_HITS_MAX 4096
 #define PH3D_INITIAL_JOINTS 128
 
 //===----------------------------------------------------------------------===//
@@ -207,12 +209,19 @@ struct rt_world3d {
     int8_t query_broadphase_valid;
     void *query_sphere_collider;
     void *query_box_collider;
+    /* Configurable query result capacity (RaycastAll/Overlap*): lists still
+     * report TotalCount/Truncated; this bounds how many hits are returned.
+     * The scratch buffer holds max_query_hits rt_query_hit3d entries (typed
+     * void* here because rt_query_hit3d is defined below this struct). */
+    void *query_hits_scratch;
+    int32_t max_query_hits;
     int64_t broadphase_fallback_count;
     int32_t last_ccd_requested_substeps;
     int32_t last_ccd_substeps;
     int64_t ccd_substep_clamped_count;
     int32_t last_ccd_clamped_body_count;
     int64_t ccd_substep_clamped_body_count;
+    int64_t ccd_toi_count; /* total swept time-of-impact clips applied */
     int32_t solver_iterations;
     int32_t position_iterations;
     double contact_beta;

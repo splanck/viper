@@ -375,6 +375,11 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uFogEnabled,
                  (ctx->fog_enabled && ctx->cam_is_ortho && !cmd->disable_depth_test) ? 1 : 0);
     gl.Uniform1f(ctx->uFogNear, ctx->fog_near);
+    gl.Uniform4f(ctx->uHeightFog,
+                 ctx->height_fog[0],
+                 ctx->height_fog[1],
+                 ctx->height_fog[2],
+                 ctx->height_fog[3]);
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
     gl.Uniform3f(ctx->uFogColor, ctx->fog_color[0], ctx->fog_color[1], ctx->fog_color[2]);
     gl.Uniform1f(ctx->uShadowBias, ctx->shadow_bias);
@@ -506,7 +511,11 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
                                    emissive_tex,
                                    cmd,
                                    RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
-    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+    /* GL 3.3's 16 fragment sampler units are fully assigned, so OpenGL keeps
+     * the classic per-texture shadow slots (0..VGFX3D_CSM_SLOTS-1) and opts out
+     * of the atlas slots (shadow_atlas_slots = 0 caps the runtime accordingly).
+     * Binding beyond CSM slots would clobber the splat/env/PBR units. */
+    for (int32_t slot = 0; slot < VGFX3D_CSM_SLOTS; slot++) {
         bind_texture_unit(ctx->uShadowTex[slot],
                           GL_TU_SHADOW0 + slot,
                           GL_TEXTURE_2D,
@@ -717,6 +726,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasSplat);
     U(uFogEnabled);
     U(uFogNear);
+    U(uHeightFog);
     U(uFogFar);
     U(uFogColor);
     U(uIblEnabled);

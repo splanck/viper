@@ -570,6 +570,16 @@ void *rt_game3d_input_look_axis(void *input);
 void rt_game3d_input_capture_mouse(void *input);
 /// @brief Release the captured cursor back to the OS.
 void rt_game3d_input_release_mouse(void *input);
+/// @brief Enable/disable raw relative mouse-look (capture + OS raw deltas).
+void rt_game3d_input_set_relative_look(void *input, int8_t enabled);
+/// @brief Bind a gamepad index into MoveAxis/LookAxis (-1 unbinds).
+void rt_game3d_input_bind_pad(void *input, int64_t pad);
+/// @brief Currently bound gamepad index (-1 when unbound).
+int64_t rt_game3d_input_get_pad_bound(void *input);
+/// @brief Set the right-stick look sensitivity (degrees/frame at full tilt).
+void rt_game3d_input_set_pad_look_sensitivity(void *input, double sensitivity);
+/// @brief Get the right-stick look sensitivity.
+double rt_game3d_input_get_pad_look_sensitivity(void *input);
 
 //=========================================================================
 // Entity3D — scene entity composing node, mesh, material, body, animator
@@ -1167,6 +1177,13 @@ void *rt_game3d_world_new_with_horizontal_camera(rt_string title,
                                                  double horizontal_fov_deg,
                                                  double near_plane,
                                                  double far_plane);
+/// @brief Create a fullscreen world at desktop resolution (no windowed flash).
+void *rt_game3d_world_new_fullscreen(rt_string title);
+/// @brief Create a fullscreen world with a camera FOV authored in horizontal degrees.
+void *rt_game3d_world_new_fullscreen_with_horizontal_camera(rt_string title,
+                                                            double horizontal_fov_deg,
+                                                            double near_plane,
+                                                            double far_plane);
 /// @brief Destroy the world and all owned subsystems, closing its window.
 void rt_game3d_world_destroy(void *world);
 /// @brief True if the world has been destroyed.

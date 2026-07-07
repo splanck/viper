@@ -103,6 +103,13 @@ struct ParticlesView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
+    double stretch_k;      /* velocity-aligned stretch factor */
+    float trail_lifetime;  /* ribbon trail history seconds */
+    int32_t trail_segments;
+    float *trail_pos;
+    float *trail_age;
+    int16_t *trail_len;
+    int16_t *trail_head;
     double softness; /* Plan 10: soft-particle fade distance */
     void *texture;
     int32_t emitter_shape;

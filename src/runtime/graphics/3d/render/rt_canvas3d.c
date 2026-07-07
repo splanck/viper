@@ -57,7 +57,7 @@
 // Light flattening lives in rt_canvas3d_lighting.c; its prototype is declared here
 // (not in rt_canvas3d_internal.h) because vgfx3d_light_params_t needs vgfx3d_backend.h,
 // included above — keeping the type-less TUs that share the internal header clean.
-int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
 
 static int g_canvas3d_backend_fallback_notice_emitted = 0;
 
@@ -89,7 +89,7 @@ static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 int32_t canvas3d_active_light_limit(rt_canvas3d *c);
-int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
 uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
                                        const vgfx3d_light_params_t *lights,
                                        int32_t light_count);
@@ -1433,6 +1433,14 @@ static void canvas3d_close_window(rt_canvas3d *c) {
     if (!c)
         return;
     if (c->gfx_win) {
+        /* Restore normal cursor behavior before the window goes away —
+         * relative mouse mode is a per-process setting on some platforms
+         * (macOS cursor dissociation) and must not outlive the window. */
+        if (c->relative_mouse_applied) {
+            (void)vgfx_set_relative_mouse(c->gfx_win, 0);
+            rt_mouse_set_relative_native(0);
+            c->relative_mouse_applied = 0;
+        }
         rt_canvas3d_detach_input(c->gfx_win);
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
@@ -1450,9 +1458,18 @@ static void canvas3d_close_window(rt_canvas3d *c) {
 /// @param w     Window width in pixels (1–8192).
 /// @param h     Window height in pixels (1–8192).
 /// @return Opaque canvas handle, or NULL on failure.
-void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
+static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fullscreen) {
     vgfx_framebuffer_t fb;
 
+    if (fullscreen) {
+        /* Fullscreen creation sizes the window to the desktop; the requested
+         * dimensions are ignored (vgfx resolves the display size). */
+        int32_t disp_w = 0;
+        int32_t disp_h = 0;
+        vgfx_get_display_size(&disp_w, &disp_h);
+        w = disp_w > 0 ? disp_w : 1280;
+        h = disp_h > 0 ? disp_h : 720;
+    }
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
@@ -1478,6 +1495,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = (int32_t)w;
     params.height = (int32_t)h;
+    params.fullscreen = fullscreen;
     if (title)
         params.title = rt_string_cstr(title);
 
@@ -1493,6 +1511,16 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
         initial_framebuffer_width = fb.width;
         initial_framebuffer_height = fb.height;
+    }
+    if (fullscreen) {
+        /* The window may have settled at a different logical size than the
+         * display query suggested (menu bars, WM policy) — trust the window. */
+        int32_t actual_w = 0;
+        int32_t actual_h = 0;
+        if (vgfx_get_size(c->gfx_win, &actual_w, &actual_h) && actual_w > 0 && actual_h > 0) {
+            initial_width = actual_w;
+            initial_height = actual_h;
+        }
     }
 
     c->width = initial_width;
@@ -1572,6 +1600,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->fog_near = 10.0f;
     c->fog_far = 50.0f;
     c->fog_color[0] = c->fog_color[1] = c->fog_color[2] = 0.5f;
+    c->height_fog_enabled = 0;
+    c->height_fog_base = 0.0f;
+    c->height_fog_falloff = 0.1f;
+    c->height_fog_density = 0.02f;
+    c->height_fog_blend = 1.0f;
     c->cached_cam_near = 0.1f;
     c->cached_cam_far = 1000.0f;
     c->shadows_enabled = 0;
@@ -1582,6 +1615,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->shadow_quality = 1;      /* 8-tap rotated-Poisson PCF */
     c->shadow_count = 0;
     c->shadow_cascade_count = 1;
+    c->cluster_light_budget = 64;
+    c->last_dropped_light_count = 0;
+    c->shadow_budget = VGFX3D_MAX_SHADOW_LIGHTS;
+    c->last_shadow_slots_used = 0;
+    c->last_shadow_requests_dropped = 0;
     memset(c->shadow_rts, 0, sizeof(c->shadow_rts));
     memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
     c->frame_serial = 0;
@@ -1615,6 +1653,20 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     rt_pad_init();
 
     return c;
+}
+
+/// @brief Create a new 3D rendering canvas (window + backend context).
+/// @details See canvas3d_new_impl — this is the windowed entry point.
+void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
+    return canvas3d_new_impl(title, w, h, 0);
+}
+
+/// @brief Create a fullscreen 3D canvas at desktop resolution.
+/// @details The window is created directly in fullscreen (no windowed flash);
+///          requested dimensions come from the primary display. Toggle back
+///          to windowed at runtime via SetFullscreen/ToggleFullscreen.
+void *rt_canvas3d_new_fullscreen(rt_string title) {
+    return canvas3d_new_impl(title, 0, 0, 1);
 }
 
 #include "rt_canvas3d_draw.inc"
@@ -1786,6 +1838,7 @@ int64_t rt_canvas3d_poll(void *obj) {
     int8_t use_live = c->input_source != 1;
     int8_t use_synthetic = c->input_source != 0;
     int8_t captured = use_live ? rt_mouse_is_captured() : 0;
+    int8_t relative_native = 0;
     c->last_event_type = VGFX_EVENT_NONE;
 
     /* Begin frame (resets per-frame state for keyboard/mouse/pad) */
@@ -1807,15 +1860,34 @@ int64_t rt_canvas3d_poll(void *obj) {
             return 0;
         }
 
+        /* Reconcile relative (raw) mouse mode with the platform window. The
+         * runtime input layer records the request; this poll owns the window
+         * handle, so it applies the change and reports back whether native
+         * raw deltas are available (else the warp-to-center path serves). */
+        int8_t relative_requested = (int8_t)(captured && rt_mouse_get_relative_mode());
+        if (relative_requested != c->relative_mouse_applied) {
+            int32_t native = vgfx_set_relative_mouse(c->gfx_win, relative_requested);
+            rt_mouse_set_relative_native(relative_requested ? (int8_t)native : 0);
+            c->relative_mouse_applied = relative_requested;
+        }
+        relative_native = (int8_t)(captured && rt_mouse_get_relative_native());
+
         /* Read current platform mouse position. vgfx_mouse_pos() returns
          * logical coordinates because Canvas3D enables coord_scale at window
          * creation. Raw events below still arrive in physical pixels. */
         int32_t mx, my;
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
 
-        /* For captured (FPS) mode: compute delta as offset from window center.
-         * This avoids issues with warp timing, stale events, and OS mouse tracking. */
-        if (captured) {
+        if (captured && relative_native) {
+            /* Native raw deltas: unbounded, unaccelerated (platform-
+             * dependent), sub-pixel. No warping needed. */
+            double rdx = 0.0;
+            double rdy = 0.0;
+            vgfx_get_relative_deltas(c->gfx_win, &rdx, &rdy);
+            rt_mouse_force_delta_f(rdx, rdy);
+        } else if (captured) {
+            /* For captured (FPS) mode: compute delta as offset from window center.
+             * This avoids issues with warp timing, stale events, and OS mouse tracking. */
             int32_t cw, ch;
             vgfx_get_size(c->gfx_win, &cw, &ch);
             int32_t cx = cw / 2, cy = ch / 2;
@@ -1885,8 +1957,9 @@ int64_t rt_canvas3d_poll(void *obj) {
     if (c->clock_source == 1)
         canvas3d_apply_synthetic_clock(c);
 
-    /* Warp cursor to center for next frame (only when captured) */
-    if (use_live && captured) {
+    /* Warp cursor to center for next frame (only for the captured fallback
+     * path — native relative mode never needs warping). */
+    if (use_live && captured && !relative_native) {
         int32_t cw, ch;
         vgfx_get_size(c->gfx_win, &cw, &ch);
         vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
@@ -2378,12 +2451,37 @@ void rt_canvas3d_set_fog(
     c->fog_color[2] = canvas3d_clamp01_f64(b);
 }
 
-/// @brief Disable distance fog on the canvas.
+/// @brief Enable exponential height fog on top of (or independent of) distance fog.
+/// @details Fog density scales by exp(-(worldY - baseHeight) * falloff), so fog pools
+///   below @p base_height and thins above it. It combines with distance fog via
+///   combined transmittance (1 - (1-df)(1-hf)), weighted by @p blend, and shares the
+///   distance fog's color (call SetFog first to pick the color; height fog alone
+///   defaults to the current fog color).
+void rt_canvas3d_set_height_fog(
+    void *obj, double base_height, double falloff, double density, double blend) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->height_fog_enabled = 1;
+    c->height_fog_base = canvas3d_sanitize_f64_to_float(base_height, 0.0f);
+    c->height_fog_falloff =
+        canvas3d_sanitize_nonnegative_f64(falloff, 0.1f);
+    c->height_fog_density = canvas3d_sanitize_nonnegative_f64(density, 0.02f);
+    float b = (float)(isfinite(blend) ? blend : 1.0);
+    if (b < 0.0f)
+        b = 0.0f;
+    if (b > 1.0f)
+        b = 1.0f;
+    c->height_fog_blend = b;
+}
+
+/// @brief Disable distance AND height fog on the canvas.
 void rt_canvas3d_clear_fog(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
     c->fog_enabled = 0;
+    c->height_fog_enabled = 0;
 }
 
 /*==========================================================================
@@ -2480,8 +2578,8 @@ void rt_canvas3d_set_shadow_cascades(void *obj, int64_t count) {
         return;
     if (count < 1)
         count = 1;
-    if (count > VGFX3D_MAX_SHADOW_LIGHTS)
-        count = VGFX3D_MAX_SHADOW_LIGHTS;
+    if (count > VGFX3D_CSM_SLOTS)
+        count = VGFX3D_CSM_SLOTS;
     if (count > 1 && !rt_canvas3d_backend_supports(c, rt_const_cstr("shadow-csm"))) {
         rt_trap("Canvas3D.SetShadowCascades: cascaded shadows are not supported by this backend");
         return;

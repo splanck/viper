@@ -934,6 +934,8 @@ set(ZIA_LANG_TESTS
         48_optional_method_chain
         49_aggregate_final_initializers
         50_world_projection_runtime
+        51_struct_return_abi
+        52_path_datadir
 )
 
 foreach (test_name IN LISTS ZIA_LANG_TESTS)
@@ -1003,6 +1005,23 @@ if (NOT WIN32)
     set_tests_properties(native_run_zia_44_language_promises PROPERTIES
             LABELS "zia;native_run"
             TIMEOUT 60)
+
+    # Struct-return ABI coverage runs at both optimization extremes: the
+    # historical aggregate-return miscompiles (xenoscape MoveResult, BUG-006
+    # family) only surfaced in optimized native builds.
+    foreach (opt_level IN ITEMS O0 O2)
+        add_test(NAME native_run_zia_51_struct_return_abi_${opt_level}
+                COMMAND ${CMAKE_COMMAND}
+                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DTEST_FILE=${ZIA_LANG_TESTS_DIR}/51_struct_return_abi.zia
+                -DOUT_EXE=${CMAKE_BINARY_DIR}/zia_51_struct_return_abi_native_${opt_level}
+                -DOPT_FLAG=-${opt_level}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(native_run_zia_51_struct_return_abi_${opt_level} PROPERTIES
+                LABELS "zia;native_run"
+                TIMEOUT 60)
+    endforeach ()
 endif ()
 
 if (VIPER_BASH_EXECUTABLE)
@@ -1158,6 +1177,14 @@ add_test(NAME zia_viperide_split_editor
 set_tests_properties(zia_viperide_split_editor PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;editor;shell;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_viperide_bottom_panel
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/bottom_panel_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_bottom_panel PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;shell;requires_display"
         TIMEOUT 60)
 
 add_test(NAME zia_viperide_tree_move
@@ -1821,6 +1848,14 @@ set(G3D_ZIA_TESTS
         test_physics3d_rotation
         test_collider3d_advanced
         test_physics3d_queries
+        test_physics3d_ccd_toi
+        test_physics3d_hull_kinematic
+        test_anim_nav_upgrades
+        test_canvas3d_viewmodel_sprite
+        test_canvas3d_renderer_upgrades
+        test_canvas3d_light_telemetry
+        test_mesh_simplify
+        test_fbx_ascii
         test_collisionevent3d
 )
 foreach (test_name IN LISTS G3D_ZIA_TESTS)
@@ -2087,6 +2122,54 @@ if (EXISTS "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}")
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 30)
+endif ()
+
+set(CANVAS3D_SHADOW_BUDGET_PROBE "${G3D_TESTS_DIR}/test_canvas3d_shadow_budget.zia")
+if (EXISTS "${CANVAS3D_SHADOW_BUDGET_PROBE}")
+    add_test(NAME g3d_test_canvas3d_shadow_budget
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_SHADOW_BUDGET_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_shadow_budget PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
+endif ()
+
+set(CANVAS3D_VISUAL_POLISH_PROBE "${G3D_TESTS_DIR}/test_canvas3d_visual_polish.zia")
+if (EXISTS "${CANVAS3D_VISUAL_POLISH_PROBE}")
+    add_test(NAME g3d_test_canvas3d_visual_polish
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_VISUAL_POLISH_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_visual_polish PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
+endif ()
+
+set(CANVAS3D_POSTFX_PARITY_PROBE "${G3D_TESTS_DIR}/test_canvas3d_postfx_parity.zia")
+if (EXISTS "${CANVAS3D_POSTFX_PARITY_PROBE}")
+    add_test(NAME g3d_test_canvas3d_postfx_parity
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_POSTFX_PARITY_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_postfx_parity PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
+endif ()
+
+set(CANVAS3D_POINT_SHADOWS_PROBE "${G3D_TESTS_DIR}/test_canvas3d_point_shadows.zia")
+if (EXISTS "${CANVAS3D_POINT_SHADOWS_PROBE}")
+    add_test(NAME g3d_test_canvas3d_point_shadows
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_POINT_SHADOWS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_point_shadows PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
 endif ()
 
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")

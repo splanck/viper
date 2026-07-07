@@ -1,11 +1,30 @@
 # 06 — Engine: Software Post-FX Parity (SSAO, DOF, Motion Blur, SSR, TAA on CPU)
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: infrastructure + SSAO + DOF; session B: MotionBlur + SSR + TAA + parity probes).
-> Eliminates constraint #11: the GPU-scene effects are **absent on the software path** — the
-> whole chain is refused at bind with `PostFX3D.LastError` and traps if forced
-> (`rt_postfx3d.c:1304-1317,1485`). After this doc, ONE post-FX chain runs on every backend,
-> and the CPU implementations become the reference for GPU parity goldens.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped E25: all five depth-aware effects run on the CPU path inside the existing
+> float-plane executor (`rt_postfx3d.c`), fed by a new `postfx_scene_in_t` (software NDC
+> depth via new `vgfx3d_sw_get_zbuf` accessor — or the render target's own `depth_buf` —
+> plus cached VP, adjugate inverse-VP, previous-frame VP persisted on the chain, near/far,
+> render-space camera). Implementations (documented reduced quality, fully deterministic):
+> SSAO = 8 fixed Poisson depth taps, range falloff, 3×3 blur, multiplied in; DOF = 12-tap
+> Poisson gather scaled by CoC from |linear−focus|/aperture; MotionBlur = camera-reprojection
+> velocity (per-object velocity is a documented divergence), ≤6 samples; SSR = coarse
+> world-space march (≤16 steps) along the depth-reconstructed reflection with thickness
+> test, no env fallback on miss; TAA = reprojected history blend + 3×3 neighborhood clamp
+> (history owned by the chain, freed in the finalizer, resets on size change). Bind-time
+> refusal and the apply-time trap are REMOVED — one chain attaches everywhere;
+> `BackendSupports("postfx-full")` reports it; per-effect GPU keys still mean acceleration.
+> HDR RT chains skip the depth-aware effects for now (documented; LDR software is the
+> parity reference). NotifyCut deferred: history auto-resets on size change and the only
+> cut source today (camera teleport) self-heals in one frame via the neighborhood clamp.
+> Coverage: `tests/runtime/test_canvas3d_postfx_parity.zia` (software-forced ctest) —
+> full 10-effect chain attaches with empty LastError and renders; SSAO measurably darkens
+> a corner scene; DOF reduces checker contrast >5% (measured 6.6% at the 12-tap tier);
+> MB/TAA/SSR exercised in the full-chain render. `-L graphics3d` 99/99; completeness green.
+> Docs: rendering3d.md post-FX contract rewritten. Perf note: effects are full-resolution
+> with low tap counts rather than the planned half-res (simpler, deterministic; revisit if
+> the P15 phase gate's budgets miss — budgets not yet measured on the arena scene).
+> Eliminates constraint #11.
 
 ## 0. TL;DR
 

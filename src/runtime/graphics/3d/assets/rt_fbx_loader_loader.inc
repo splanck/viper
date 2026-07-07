@@ -1319,13 +1319,17 @@ static void *fbx_load_impl(rt_string path) {
 
     /* Verify magic */
     if (!fbx_has_binary_magic(data, fsize)) {
-        if (fbx_has_ascii_fbx_signature(data, fsize)) {
+        /* ASCII FBX (";FBX ..." header or bare node text): parse the geometry
+         * subset — meshes with normals/UVs/vertex colors — through the ASCII
+         * path. Skins and animation curves in ASCII exports are the recorded
+         * follow-up; the binary loader covers them today. */
+        void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
+        if (!ascii_asset && fbx_has_ascii_fbx_signature(data, fsize)) {
             free(data);
             rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
-                               "ASCII FBX is not supported; re-export as binary FBX");
+                               "ASCII FBX file did not contain parsable mesh geometry");
             return NULL;
         }
-        void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
         free(data);
         if (ascii_asset)
             return ascii_asset;

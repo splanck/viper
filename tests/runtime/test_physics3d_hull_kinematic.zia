@@ -1,0 +1,139 @@
+module TestPhysics3DHullKinematic;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+bind Viper.Core.Convert as Convert;
+
+// Coverage for the doc-04 physics upgrades:
+//   - Collider3D.NewConvexHullReduced: quickhull over a dense mesh, vertex
+//     budget honored, collider usable on a dynamic body and raycastable.
+//   - Kinematic triangle-mesh colliders: a script-driven mesh platform can
+//     move (was static-only) and blocks/pushes dynamic bodies.
+//   - Physics3DWorld.SetMaxQueryHits: query capacity is configurable and the
+//     truncation contract holds.
+
+func start() {
+    // --- Reduced convex hull -------------------------------------------
+    var dense = Mesh3D.Sphere(1.0, 24); // hundreds of vertices
+    var hull = Collider3D.NewConvexHullReduced(dense, 32);
+    if (hull == null) {
+        Say("FAIL: NewConvexHullReduced returned null");
+        return;
+    }
+
+    var world = Physics3DWorld.New(0.0, -9.81, 0.0);
+    var floor = Physics3DBody.NewAABB(10.0, 0.5, 10.0, 0.0);
+    Physics3DBody.SetPosition(floor, 0.0, -0.5, 0.0);
+    Physics3DWorld.Add(world, floor);
+
+    var ball = Physics3DBody.New(1.0);
+    Physics3DBody.set_Collider(ball, hull);
+    Physics3DBody.SetPosition(ball, 0.0, 3.0, 0.0);
+    Physics3DWorld.Add(world, ball);
+
+    var i = 0;
+    while (i < 240) {
+        Physics3DWorld.Step(world, 1.0 / 60.0);
+        i = i + 1;
+    }
+    var rest = Physics3DBody.get_Position(ball);
+    // A unit sphere hull resting on a floor at y=0 should sit near y=1.
+    if (Vec3.get_Y(rest) < 0.7 || Vec3.get_Y(rest) > 1.3) {
+        Say("FAIL: reduced-hull ball did not rest on the floor (y_x100="
+            + toString(Convert.NumToInt(Vec3.get_Y(rest) * 100.0)) + ")");
+        return;
+    }
+
+    // Raycast down at the resting hull must hit it (hull mesh has faces).
+    var hit = Physics3DWorld.Raycast(
+        world, Vec3.New(0.0, 5.0, 0.0), Vec3.New(0.0, -1.0, 0.0), 10.0, 1);
+    if (hit == null) {
+        Say("FAIL: raycast at the reduced hull found nothing");
+        return;
+    }
+    if (PhysicsHit3D.get_Body(hit) != ball) {
+        Say("FAIL: raycast should hit the hull ball first");
+        return;
+    }
+
+    // --- Kinematic mesh platform ----------------------------------------
+    var world2 = Physics3DWorld.New(0.0, -9.81, 0.0);
+    var platMesh = Mesh3D.Box(4.0, 0.5, 4.0);
+    var platCollider = Collider3D.NewMesh(platMesh);
+    var platform = Physics3DBody.New(0.0);
+    Physics3DBody.set_Collider(platform, platCollider);
+    Physics3DBody.set_Kinematic(platform, true);
+    Physics3DBody.SetPosition(platform, 0.0, 0.0, 0.0);
+    Physics3DWorld.Add(world2, platform);
+
+    var crate = Physics3DBody.NewAABB(0.25, 0.25, 0.25, 1.0);
+    Physics3DBody.SetPosition(crate, 0.0, 1.5, 0.0);
+    Physics3DWorld.Add(world2, crate);
+
+    // Let the crate settle onto the platform.
+    i = 0;
+    while (i < 120) {
+        Physics3DWorld.Step(world2, 1.0 / 60.0);
+        i = i + 1;
+    }
+    var settled = Physics3DBody.get_Position(crate);
+    if (Vec3.get_Y(settled) < 0.3 || Vec3.get_Y(settled) > 0.8) {
+        Say("FAIL: crate did not settle on the kinematic mesh platform (y_x100="
+            + toString(Convert.NumToInt(Vec3.get_Y(settled) * 100.0)) + ")");
+        return;
+    }
+
+    // Rise like an elevator: the platform must push the crate upward.
+    var y = 0.0;
+    i = 0;
+    while (i < 120) {
+        y = y + 0.01;
+        Physics3DBody.SetPosition(platform, 0.0, y, 0.0);
+        Physics3DWorld.Step(world2, 1.0 / 60.0);
+        i = i + 1;
+    }
+    var lifted = Physics3DBody.get_Position(crate);
+    if (Vec3.get_Y(lifted) < Vec3.get_Y(settled) + 0.8) {
+        Say("FAIL: kinematic mesh elevator did not lift the crate (dy_x100="
+            + toString(Convert.NumToInt((Vec3.get_Y(lifted) - Vec3.get_Y(settled)) * 100.0)) + ")");
+        return;
+    }
+
+    // --- Configurable query capacity ------------------------------------
+    var world3 = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var n = 0;
+    while (n < 24) {
+        var pellet = Physics3DBody.NewSphere(0.1, 0.0);
+        Physics3DBody.SetPosition(pellet, 0.0, 0.0, 0.2 * (0.0 + n));
+        Physics3DWorld.Add(world3, pellet);
+        n = n + 1;
+    }
+    Physics3DWorld.SetMaxQueryHits(world3, 16);
+    if (Physics3DWorld.get_MaxQueryHits(world3) != 16) {
+        Say("FAIL: MaxQueryHits should read back 16");
+        return;
+    }
+    var clipped = Physics3DWorld.OverlapSphere(world3, Vec3.New(0.0, 0.0, 2.4), 10.0, 1);
+    if (PhysicsHitList3D.get_Count(clipped) != 16) {
+        Say("FAIL: capacity 16 should return 16 hits (got "
+            + toString(PhysicsHitList3D.get_Count(clipped)) + ")");
+        return;
+    }
+    if (PhysicsHitList3D.get_TotalCount(clipped) != 24) {
+        Say("FAIL: TotalCount should still report 24");
+        return;
+    }
+    if (!PhysicsHitList3D.get_Truncated(clipped)) {
+        Say("FAIL: Truncated should be true at capacity 16");
+        return;
+    }
+    Physics3DWorld.SetMaxQueryHits(world3, 64);
+    var full = Physics3DWorld.OverlapSphere(world3, Vec3.New(0.0, 0.0, 2.4), 10.0, 1);
+    if (PhysicsHitList3D.get_Count(full) != 24 || PhysicsHitList3D.get_Truncated(full)) {
+        Say("FAIL: capacity 64 should return all 24 hits untruncated");
+        return;
+    }
+
+    Say("PASS");
+}

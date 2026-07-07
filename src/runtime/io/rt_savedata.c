@@ -28,6 +28,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_savedata.h"
+#include "../rt_platform.h"
 #include "network/rt_entropy_platform.h"
 #include "rt_dir.h"
 #include "rt_file_path.h"
@@ -1478,4 +1479,102 @@ rt_string rt_savedata_get_path(void *obj) {
     if (!sd->file_path)
         return rt_str_empty();
     return rt_string_from_bytes(sd->file_path, strlen(sd->file_path));
+}
+
+//=============================================================================
+// Path.DataDir — per-user writable data directory
+//=============================================================================
+
+/// @brief Viper.IO.Path.DataDir(app) — resolve (and create) the per-user
+///        writable data directory for an application.
+///
+/// Locations follow each OS's convention for per-user data, mirroring the
+/// SaveData layout but rooted directly at the app's own folder:
+///   - Windows: `%APPDATA%\<app>` (or `<home>\AppData\Roaming\<app>` when
+///     APPDATA is unset).
+///   - macOS: `~/Library/Application Support/<app>`.
+///   - Linux/other: `$XDG_DATA_HOME/<app>` when set, else
+///     `~/.local/share/<app>`.
+///
+/// The directory (including parents) is created on demand so callers can
+/// write settings/saves immediately. The app name is validated with the same
+/// traversal-safe rules as SaveData game names.
+///
+/// @param app_name Application folder name (alphanumeric/dash/underscore).
+/// @return GC-managed absolute path string (no trailing separator).
+rt_string rt_path_data_dir(rt_string app_name) {
+    const char *name = app_name ? rt_string_cstr(app_name) : NULL;
+    if (!name || !*name) {
+        rt_trap("Path.DataDir: app name must be non-empty");
+        return NULL;
+    }
+    if (!is_safe_game_name(name)) {
+        rt_trap("Path.DataDir: app name must be alphanumeric, dash, or underscore (max 64 chars)");
+        return NULL;
+    }
+
+    char *path = NULL;
+
+#if RT_PLATFORM_WINDOWS
+    const char *appdata_env = getenv("APPDATA");
+    char *appdata = (appdata_env && *appdata_env) ? savedata_absolute_dup(appdata_env) : NULL;
+    char *home = appdata ? NULL : get_home_dir();
+    const char *base = appdata ? appdata : home;
+    const char *middle = appdata ? "\\" : "\\AppData\\Roaming\\";
+    if (base) {
+        size_t needed = strlen(base) + strlen(middle) + strlen(name) + 1;
+        path = (char *)malloc(needed);
+        if (path)
+            snprintf(path, needed, "%s%s%s", base, middle, name);
+    }
+    free(appdata);
+    free(home);
+#elif RT_PLATFORM_MACOS
+    char *home = get_home_dir();
+    if (home) {
+        const char *middle = "/Library/Application Support/";
+        size_t needed = strlen(home) + strlen(middle) + strlen(name) + 1;
+        path = (char *)malloc(needed);
+        if (path)
+            snprintf(path, needed, "%s%s%s", home, middle, name);
+        free(home);
+    }
+#else
+    const char *xdg = getenv("XDG_DATA_HOME");
+    if (xdg && *xdg && savedata_path_is_abs(xdg)) {
+        size_t needed = strlen(xdg) + 1 + strlen(name) + 1;
+        path = (char *)malloc(needed);
+        if (path)
+            snprintf(path, needed, "%s/%s", xdg, name);
+    } else {
+        char *home = get_home_dir();
+        if (home) {
+            const char *middle = "/.local/share/";
+            size_t needed = strlen(home) + strlen(middle) + strlen(name) + 1;
+            path = (char *)malloc(needed);
+            if (path)
+                snprintf(path, needed, "%s%s%s", home, middle, name);
+            free(home);
+        }
+    }
+#endif
+
+    if (!path) {
+        rt_trap("Path.DataDir: could not resolve a per-user data directory");
+        return NULL;
+    }
+    if (!savedata_path_is_abs(path)) {
+        char *abs = savedata_absolute_dup(path);
+        free(path);
+        path = abs;
+        if (!path) {
+            rt_trap("Path.DataDir: could not resolve a per-user data directory");
+            return NULL;
+        }
+    }
+
+    rt_string dir_str = rt_string_from_bytes(path, strlen(path));
+    rt_dir_make_all(dir_str);
+    free(path);
+    return dir_str;
 }

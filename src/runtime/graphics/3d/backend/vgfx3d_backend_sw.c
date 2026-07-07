@@ -83,6 +83,11 @@ typedef struct {
     int8_t fog_enabled;
     float fog_near, fog_far;
     float fog_color[3];
+    int8_t height_fog_enabled;
+    float height_fog_base;
+    float height_fog_falloff;
+    float height_fog_density;
+    float height_fog_blend;
     /* Image-based lighting (copied from Canvas3D each begin_frame) */
     int8_t ibl_enabled;
     float ibl_intensity;
@@ -386,6 +391,26 @@ static int32_t sw_resolve_shadow_slot(
     if (!ctx || !light || light->shadow_index < 0)
         return -1;
     base_slot = light->shadow_index;
+    if (light->shadow_projection_type == VGFX3D_SHADOW_PROJECTION_CUBE) {
+        /* Omni shadow: pick the face slot by the dominant axis of light->fragment. */
+        float dx = wx - light->position[0];
+        float dy = wy - light->position[1];
+        float dz = wz - light->position[2];
+        float ax = fabsf(dx);
+        float ay = fabsf(dy);
+        float az = fabsf(dz);
+        int32_t face;
+        if (ax >= ay && ax >= az)
+            face = dx >= 0.0f ? 0 : 1;
+        else if (ay >= az)
+            face = dy >= 0.0f ? 2 : 3;
+        else
+            face = dz >= 0.0f ? 4 : 5;
+        base_slot += face;
+        if (base_slot >= ctx->shadow_count || base_slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+            return -1;
+        return base_slot;
+    }
     cascade_count = light->shadow_cascade_count;
     if (cascade_count <= 1)
         return base_slot;
@@ -537,14 +562,37 @@ static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_cou
  * Exported backend + selection
  *=========================================================================*/
 
+/// @brief Read-only view of the software rasterizer's NDC depth buffer for the
+///   CPU post-FX scene effects. Returns NULL for non-software contexts, when a
+///   render target is bound (its own depth_buf is used instead), or before the
+///   first frame allocates the buffer.
+const float *vgfx3d_sw_get_zbuf(void *ctx_ptr, int32_t *out_w, int32_t *out_h) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (out_w)
+        *out_w = 0;
+    if (out_h)
+        *out_h = 0;
+    if (!ctx || ctx->render_target || !ctx->zbuf || ctx->width <= 0 || ctx->height <= 0)
+        return NULL;
+    if (out_w)
+        *out_w = ctx->width;
+    if (out_h)
+        *out_h = ctx->height;
+    return ctx->zbuf;
+}
+
 const vgfx3d_backend_t vgfx3d_software_backend = {
     .name = "software",
     .create_ctx = sw_create_ctx,
     .destroy_ctx = sw_destroy_ctx,
     .clear = sw_clear,
+    /* CPU sampling is index-based with macro-sized slot arrays, so the
+     * software backend supports the full 12-slot shadow budget directly. */
+    .shadow_atlas_slots = 1,
     .resize = sw_resize,
     .begin_frame = sw_begin_frame,
     .submit_draw = sw_submit_draw,
+    .submit_draw_instanced = sw_submit_draw_instanced,
     .end_frame = sw_end_frame,
     .set_render_target = sw_set_render_target,
     .shadow_begin = sw_shadow_begin,

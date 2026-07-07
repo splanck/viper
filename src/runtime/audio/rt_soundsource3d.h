@@ -49,6 +49,15 @@ int64_t rt_soundsource3d_get_volume(void *source);
 /// @brief Set the source's pre-attenuation volume (clamped to 0–100).
 void rt_soundsource3d_set_volume(void *source, int64_t volume);
 
+/// @brief Get the user playback-rate multiplier (1.0 default; composes with Doppler).
+double rt_soundsource3d_get_pitch(void *source);
+/// @brief Set the user playback-rate multiplier (applies immediately to a live voice).
+void rt_soundsource3d_set_pitch(void *source, double pitch);
+/// @brief Get the occlusion amount (0 open .. 1 fully occluded).
+double rt_soundsource3d_get_occlusion(void *source);
+/// @brief Set the occlusion amount (game-driven; the mixer smooths ~80 ms).
+void rt_soundsource3d_set_occlusion(void *source, double amount);
+
 /// @brief True if the source loops automatically when its sound finishes.
 int8_t rt_soundsource3d_get_looping(void *source);
 /// @brief Toggle looping playback.

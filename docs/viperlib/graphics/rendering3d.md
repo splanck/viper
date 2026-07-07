@@ -66,10 +66,14 @@ Warnings are per outer load, append-only, and capped. Use
 | `SceneGraph.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
 
-ASCII FBX files with the standard `; FBX` comment header are rejected as
-unsupported content with the exact error
-`ASCII FBX is not supported; re-export as binary FBX`. This is distinct from
-wrong-magic and corrupt binary FBX diagnostics.
+ASCII FBX files (the standard `; FBX` comment header, or bare node text)
+load through a geometry-subset parser: mesh positions, polygon
+triangulation, normals, UVs, and vertex colors are imported as one mesh per
+`Geometry` record. ASCII exports carrying skins or animation curves import
+their geometry only — re-export as binary FBX for rigged content. A
+signature-matching ASCII file with no parsable geometry returns `null` with
+the exact error `ASCII FBX file did not contain parsable mesh geometry`,
+distinct from wrong-magic and corrupt binary FBX diagnostics.
 
 glTF extension support is explicit:
 
@@ -97,6 +101,31 @@ accessors and language-level property assignment where supported, such as
 ---
 
 ## Camera And Rendering
+
+### Canvas3D View-Model Pass
+
+`Canvas3D.BeginViewModel(camera, fovYDegrees)` opens a secondary 3D pass over the
+finished scene for first-person weapon/hands rendering. Call it after `End` of the
+world pass and close it with `End` before HUD overlays. The pass keeps the scene's
+color buffer, clears depth, and renders with the camera's view but an independent
+vertical FOV (pass `<= 0.0` to keep the camera's FOV):
+
+- view-model draws can never depth-clip against world geometry, yet still
+  self-occlude correctly;
+- the world FOV stays independent, so a 90° world camera can render a 54° weapon;
+- draws use the canvas light set and *receive* the world pass's shadow maps but
+  never cast shadows, and the skybox is not redrawn;
+- post-FX applies to the composited result (weapon included), and HUD overlays
+  still draw on top.
+
+```rust
+Canvas3D.Begin(canvas, worldCam)
+// ... world draws ...
+Canvas3D.End(canvas)
+Canvas3D.BeginViewModel(canvas, worldCam, 54.0)
+Canvas3D.DrawMeshSkinned(canvas, weaponMesh, weaponXform, weaponMat, pose)
+Canvas3D.End(canvas)
+```
 
 ### Canvas3D Frame Finalization
 
@@ -286,6 +315,12 @@ lights.
 | `SetShadowCascades(count)` | `Void(Integer)` | Request cascaded shadow maps; counts above `1` require backend CSM support |
 | `SetShadowStrength(s)` | `Void(Double)` | How dark fully-occluded texels get (`0` = shadows off, `1` = black; default `0.85`) |
 | `SetShadowQuality(tier)` | `Void(Integer)` | Shadow PCF tier: `0` = 4 taps, `1` = 8 (default), `2` = 16 rotated-Poisson taps |
+| `SetShadowBudget(n)` | `Void(Integer)` | Cap the shadow slots a frame may use (1..12, default all) |
+| `ShadowSlotsUsed` | `Integer` | Shadow slots rendered in the latest frame, cascades and cube faces included |
+| `ShadowRequestsDropped` | `Integer` | Shadow-requesting lights denied a slot in the latest frame |
+| `SetClusterLightBudget(n)` | `Void(Integer)` | Per-cluster light-index capacity for the clustered path (8..64, default 64) |
+| `ClusterOverflowCount` | `Integer` | Lifetime count of cluster light entries truncated by capacity |
+| `DroppedLightCount` | `Integer` | Enabled lights truncated by the fixed-forward 16-light cap this frame |
 
 Image-based lighting (`IblEnabled`) replaces the flat ambient term on PBR
 materials with real environment lighting derived from the canvas skybox:
@@ -314,15 +349,24 @@ metadata in the backend light payload, and keep unsupported/fake backends
 trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
 fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
 
-Shadow-map slots are a shared four-light budget. Enabled directional lights with
-`CastsShadows` are selected first by luminance-weighted intensity. Any remaining
-slots are filled by enabled spot lights with `CastsShadows`, ranked by
-intensity and distance to the active camera. Directional lights may use cascades;
-spot lights always use one perspective shadow map built from the light position,
-direction, outer cone angle, and range. Shadow contribution is limited to the
-spot cone, so pixels outside the outer cone do not sample the map border. Point
-lights do not cast shadows yet: setting `CastsShadows = true` on a point light is
-accepted and trap-free, but it does not allocate a shadow slot.
+Shadow storage is twelve slots: the first four are classic per-texture slots and
+the remaining eight are tiles of a shared depth atlas on the GPU backends
+(software keeps per-slot buffers; OpenGL 3.3's 16-sampler budget is fully
+assigned, so GL stays on the four classic slots and never receives higher
+indices). CSM cascades size against their own four-cascade limit, so a
+3-cascade sun plus several shadowed spot lights coexist instead of exhausting a
+shared four-slot pool. Enabled directional lights with `CastsShadows` are
+selected first by luminance-weighted intensity; remaining budget goes to spot
+and point lights with `CastsShadows`, ranked by intensity and distance to the
+active camera. Directional lights may use cascades; spot lights use one
+perspective map built from the light position, direction, outer cone angle, and
+range. **Point lights cast omnidirectional shadows**: a granted point light
+claims six consecutive slots (one 92-degree perspective face per axis) and the
+shaders pick the face by the dominant axis of the light-to-fragment vector —
+`BackendSupports("shadow-point")` reports availability (true wherever the
+extended slots exist). `SetShadowBudget` caps per-frame slot spending, and
+`ShadowSlotsUsed` / `ShadowRequestsDropped` make the budget observable —
+overflow is never silent.
 
 Shadow filtering uses a 16-point Poisson-disk PCF rotated per pixel, with the
 tap count selected by `SetShadowQuality` (the software backend caps at 8 taps).
@@ -447,6 +491,7 @@ paths are not GPU occlusion queries or Hi-Z culling.
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
+| `InstancedFallbackCount` | `Integer` | Instances routed through the per-draw fallback (blended/rebased batches) this frame; opaque batches use the backend instanced hook on every backend — including software — and report `0`. The fallback clamps at 65,536 instances per call instead of trapping |
 | `OcclusionCandidateCount` | `Integer` | Opaque draw candidates tested by the CPU occlusion grid in the latest frame |
 | `TextureUploadBytes` | `Integer` | Backend texture upload bytes in the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
@@ -476,6 +521,18 @@ SceneGraph interior PVS is authored on the scene:
 | `VisibilityZoneCount` | `Integer` | Authored zone count |
 | `VisibilityPortalCount` | `Integer` | Directed portal-link count |
 | `PvsCulledCount` | `Integer` | Drawables skipped by the latest portal/PVS pass |
+| `PortalClipping` | `Boolean` | Portal-frustum clipping (default `true`); `false` restores the legacy any-portal reachability flood-fill |
+| `PortalTraversalCount` | `Integer` | Portal expansions evaluated by the latest PVS build |
+
+By default the PVS uses portal-frustum clipping: each portal propagates
+visibility only through its projected screen window (derived from the interval
+between the two linked zone AABBs — their shared face when touching, the gap
+slab when separated), narrowed by the window it was reached through. Zones
+whose every portal chain falls outside the view — behind the camera, or
+narrowed away by intervening portals — are culled even when the zone itself
+overlaps the frustum. The traversal runs to a fixpoint so a wider path found
+later re-expands a zone's window, and degenerate/near-plane-straddling portals
+degrade to the conservative full view rather than over-culling.
 
 Nodes that intersect no visibility zone remain visible, which keeps outdoor or
 mixed scenes from disappearing when a PVS graph is only authored for interiors.
@@ -553,6 +610,7 @@ skips nonresident meshes and falls back to the next resident choice.
 | Method / Property | Signature | Description |
 |-------------------|-----------|-------------|
 | `AddLOD(distance, mesh)` | `Void(Double, Object)` | Use `mesh` once camera distance reaches `distance` |
+| `GenerateLODs(levels, ratio)` | `Void(Integer, Double)` | Synthesize up to 4 simplified LOD meshes from the base mesh via `Mesh3D.Simplify` (level *k* targets `ratio^k` of the base triangle count), register them with distance thresholds derived from the mesh radius, and enable auto LOD |
 | `SetAutoLOD(enabled, screenErrorPx)` | `Void(Boolean, Double)` | Select authored LODs by projected screen size instead of distance thresholds |
 | `SetImpostor(distance, pixels)` | `Void(Double, Object)` | Generate an unlit textured quad proxy used at or beyond `distance`; pass `null` pixels to clear |
 | `ClearLOD()` | `Void()` | Remove authored LOD entries |
@@ -563,8 +621,9 @@ skips nonresident meshes and falls back to the next resident choice.
 | `GetLodResident(index)` | `Boolean(Integer)` | Return whether an LOD mesh payload is resident |
 | `GetLodResidentBytes(index)` | `Integer(Integer)` | Return resident bytes for an LOD mesh payload |
 
-`SetAutoLOD` does not synthesize new meshes; it selects among meshes already
-registered with `AddLOD`. A lower `screenErrorPx` keeps the base mesh longer,
+`SetAutoLOD` selects among meshes registered with `AddLOD`; `GenerateLODs`
+synthesizes that chain automatically from the base mesh using quadric-error
+simplification, so downloaded models get a real LOD chain in one call. A lower `screenErrorPx` keeps the base mesh longer,
 while a higher value switches to lower-detail meshes sooner. `SetImpostor`
 retains the supplied `Pixels` object and builds a regular textured `Mesh3D`
 proxy, so it works on the same draw path as other meshes.
@@ -652,11 +711,15 @@ Offscreen color buffer for 3D scenes, optionally in HDR format.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `NewHdr(width, height)` | `Object(Integer, Integer)` | Create an HDR floating-point render target |
-| `AsPixels()` | `Object()` | Download the color buffer into a `Pixels` object |
+| `AsPixels()` | `Object()` | Download the color buffer into a new `Pixels` object (allocates per call) |
+| `CopyTo(pixels)` | `Void(Object)` | Allocation-free readback into an existing same-size `Pixels`; traps `"RenderTarget3D.CopyTo: size mismatch"` on dimension disagreement |
 
-GPU-backed render targets synchronize their CPU `Pixels` mirror lazily when `AsPixels()` or a
-screenshot requests it. Resetting a render target or destroying its owning `Canvas3D` detaches the
-backend sync callback, so later CPU readback cannot call into a stale GPU context.
+GPU-backed render targets synchronize their CPU `Pixels` mirror lazily when `AsPixels()`,
+`CopyTo()`, or a screenshot requests it. Resetting a render target or destroying its owning
+`Canvas3D` detaches the backend sync callback, so later CPU readback cannot call into a stale
+GPU context. For per-frame monitor/scope loops prefer `CopyTo` (reuses the caller's buffer) or,
+better, bind the target directly as a material texture via
+`Material3D.SetAlbedoRenderTarget` — no readback code at all.
 
 ---
 
@@ -692,6 +755,9 @@ sprite draws.
 | `SetMetallicRoughnessMap(texture)` | `Void(Object)` | Bind or clear the packed PBR metallic-roughness map |
 | `SetAOMap(texture)` | `Void(Object)` | Bind or clear the ambient-occlusion map |
 | `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
+| `SetAlbedoRenderTarget(rt)` | `Void(Object)` | Bind a `RenderTarget3D`'s live contents as the albedo texture |
+| `ClearAlbedoRenderTarget()` | `Void()` | Detach a render-target albedo binding |
+| `SetEmissiveRenderTarget(rt)` | `Void(Object)` | Bind a `RenderTarget3D`'s live contents as the emissive map (glowing monitors) |
 
 Texture map methods accept `Pixels` or `TextureAsset3D` handles with either an
 active RGBA8 fallback or retained native mip blocks. KTX2 BC1, BC3, BC4/BC5,
@@ -733,6 +799,14 @@ Texture setters accept `Pixels` handles, except `SetEnvMap`, which accepts a
 `CubeMap3D`. Passing `NULL` clears the slot and immediately updates the matching
 `Has*` property.
 
+Render-target bindings are live: the material samples the target's most recent
+*completed* frame, refreshing automatically whenever a `Canvas3D.End` into the
+target finishes — render the monitor's content each frame and the bound
+material picks it up with no `AsPixels`/`SetTexture` churn and no per-frame
+allocation. While a frame into the target is still open, draws sampling it see
+the previous completed frame, which makes self-referential setups (a monitor
+visible inside its own feed) safe by construction.
+
 ---
 
 ### Viper.Graphics3D.Light3D
@@ -757,7 +831,7 @@ Scene light with configurable color, intensity, and enabled state.
 | `Color` | Object | Read | RGB `Vec3` |
 | `Intensity` | Double | Read | Brightness multiplier |
 | `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
-| `CastsShadows` | Boolean | Read/Write | Enabled directional lights are selected first for shadow passes; enabled spot lights may use remaining slots; point lights accept the flag but do not shadow yet; ambient lights default to false |
+| `CastsShadows` | Boolean | Read/Write | Enabled directional lights are selected first for shadow passes; spot and point lights use remaining budget (a point light claims six slots for its cube faces); ambient lights default to false |
 | `Direction` | Object | Read | Direction `Vec3` |
 | `Position` | Object | Read | Position `Vec3` |
 
@@ -776,7 +850,7 @@ Post-processing effect chain applied to a rendered scene.
 |---------------|---------|------------|-------------|
 | `Enabled`     | Boolean | Read/Write | Enable or disable the entire chain |
 | `EffectCount` | Integer | Read       | Number of effects currently in the chain |
-| `LastError`   | String  | Read       | Why `Canvas3D.SetPostFX` refused this chain (`""` when none). GPU-scene effects (SSAO/DOF/motion blur/TAA) validate against the canvas at bind time instead of trapping at first apply, supporting `BackendSupports`-gated fallback chains |
+| `LastError`   | String  | Read       | Last recoverable configuration error (`""` when none). Depth-aware effects now run on every backend, so bind-time refusals no longer occur for them |
 
 #### Methods
 
@@ -799,9 +873,21 @@ across up to six octaves, and composited back at `intensity`. SSAO is normal-awa
 range-checked — occlusion comes from a hemispheric spiral kernel around the
 reconstructed surface normal, so flat walls no longer darken and silhouettes no longer
 halo. TAA jitters the projection sub-pixel each frame (Halton 2,3) and reprojects a
-persistent history buffer through per-pixel motion vectors with neighborhood clamping;
-it requires GPU window post-FX (query `Canvas3D.BackendSupports("taa")`) and supersedes
-FXAA in the CINEMATIC quality profile when available.
+persistent history buffer through per-pixel motion vectors with neighborhood clamping
+on GPU backends, and supersedes FXAA in the CINEMATIC quality profile when available.
+
+**One chain runs on every backend.** The depth-aware effects (SSAO, DOF, motion blur,
+TAA, SSR) have CPU implementations on the software path, so `Canvas3D.SetPostFX` no
+longer refuses chains that carry them — `BackendSupports("postfx-full")` is true
+everywhere and games stop gating chain *construction* by backend. The software
+versions render the same phenomena at documented reduced quality: SSAO uses 8 fixed
+Poisson depth taps with a 3×3 blur; DOF is a 12-tap gather scaled by the circle of
+confusion; motion blur is camera-reprojection only (no per-object velocity — fast
+movers diverge from the GPU look); SSR is a coarse screen-space march with no
+environment fallback on miss; TAA blends a reprojected history with a 3×3
+neighborhood clamp but without sub-pixel jitter. All are deterministic (fixed tap
+tables, no clock). Per-backend GPU capability keys (`"taa"`, `"ssao"`, …) still
+report only hardware acceleration.
 
 GPU window backends render the scene into a linear-HDR (RGBA16F) target, so bloom and
 tone mapping operate on unclamped color (`BackendSupports("hdr-scene")`). On HDR
@@ -900,6 +986,7 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 | Property    | Type    | Access | Description |
 |-------------|---------|--------|-------------|
 | `BoneCount` | Integer | Read   | Number of bones in the skeleton |
+| `AliasCount`| Integer | Read   | Number of registered external bone-name aliases |
 
 #### Methods
 
@@ -910,9 +997,17 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 | `FindBone(name)` | `Integer(String)` | Return the bone index, or `-1` if not found |
 | `FindBoneOption(name)` | `Option[Integer](String)` | Return `Some(index)` for a matching bone, or `None` |
 | `GetBoneName(index)` | `String(Integer)` | Return the name of bone at `index` |
+| `SetBoneAlias(externalName, localName)` | `Void(String, String)` | Map an external rig's bone name (e.g. `"mixamorig:Hips"`) onto a local bone; an empty `localName` removes the alias |
 
 Prefer `FindBoneOption()` for new code. `FindBone()` remains available for
 compatibility with existing `-1` checks.
+
+Aliases registered with `SetBoneAlias` are consulted by `Animation3D.Retarget`
+(in both directions: a destination alias matching the source bone name, or a
+source alias resolving to a destination bone name); `FindBone`/`FindBoneOption`
+stay exact-name so typos still surface as `-1`/`None`. Re-registering an existing
+external name replaces its mapping. Use this to retarget clips from downloaded
+rigs whose naming convention does not match your skeleton without renaming bones.
 
 Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
 vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
@@ -944,7 +1039,10 @@ Single keyframe animation track referencing a `Skeleton3D`.
 | `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds; `null` TRS parts fall back to bind pose |
 | `Retarget(srcSkeleton, dstSkeleton)` | `Object(Object, Object)` | Copy channels onto matching destination bones |
 
-`Retarget` maps channels by exact bone name first, then humanoid role aliases, then matching bone
+`Retarget` resolves each source bone in order: explicit destination-side
+`Skeleton3D.SetBoneAlias` mapping for the source bone's name, exact name match,
+source-side alias reversal (a source alias naming this bone is tried against the
+destination's bones and aliases), then humanoid role aliases, then matching bone
 index as a fallback. It preserves clip name, duration, looping, and keyframe values, scales keyed
 translations by source/destination bind-length ratio where both bones expose a comparable segment,
 and leaves destination-only bones in bind pose.
@@ -1041,6 +1139,8 @@ Parametric 1D/2D blendspaces over `AnimBlend3D`. `Canvas3D.DrawMeshBlended` acce
 | Property      | Type    | Access | Description |
 |---------------|---------|--------|-------------|
 | `SampleCount` | Integer | Read   | Number of animation samples in the tree |
+| `BlendMode`   | Integer | Read/Write | 2D weighting mode: `0` freeform-directional (default), `1` legacy inverse-distance |
+| `Blend`       | `AnimBlend3D` | Read | Internal blend driven by `Update`; exposes per-sample weights via `GetWeight(index)` |
 
 #### Methods
 
@@ -1051,8 +1151,13 @@ Parametric 1D/2D blendspaces over `AnimBlend3D`. `Canvas3D.DrawMeshBlended` acce
 | `Update(deltaSeconds)` | `Void(Double)` | Recompute weights and advance the underlying blended pose |
 
 `New1D` linearly blends between neighboring `x` samples and clamps outside the sample range.
-`New2D` uses exact-coordinate selection when possible, otherwise normalized inverse-distance
-weights across registered samples.
+`New2D` defaults to freeform-directional blending: samples are Delaunay-triangulated in
+parameter space and the query point is resolved to barycentric weights over its containing
+triangle, so at most three clips are ever active and weights always sum to one. Points
+outside the sample hull project onto the nearest hull edge. Trees with fewer than three
+non-collinear samples, and trees with `BlendMode = 1`, use the legacy behavior:
+exact-coordinate selection when possible, otherwise normalized inverse-distance weights
+across all registered samples.
 
 ---
 
@@ -1321,8 +1426,11 @@ the audio-owned spatial listener state.
 3D audio source positioned in world space, with range and Doppler support.
 Sources are full-volume through `RefDistance`, attenuate linearly until
 `MaxDistance`, and compute a Doppler factor from listener/source velocity. The
-current mixer applies volume and pan; the Doppler factor is kept in the spatial
-calculation path for playback-rate-capable backends.
+mixer applies volume, pan, and playback rate: the Doppler factor multiplies the
+source's user `Pitch` and is applied as the voice's resampling rate, so
+fly-bys audibly bend pitch. `Occlusion` drives a smoothed lowpass sweep plus
+attenuation for through-cover muffling (the game supplies the amount, e.g.
+from its own line-of-sight raycasts).
 
 **Type:** Instance (obj)
 **Constructor:** `SoundSource3D.New(sound)`
@@ -1334,6 +1442,8 @@ calculation path for playback-rate-capable backends.
 | `Position`    | Object  | Read/Write | Source world position as `Vec3` |
 | `Velocity`    | Object  | Read/Write | Source velocity for Doppler as `Vec3` |
 | `DopplerFactor` | Double | Read       | Latest computed Doppler pitch multiplier |
+| `Pitch`       | Double  | Read/Write | User playback-rate multiplier; composes with Doppler (combined rate clamps to 0.25–4.0) |
+| `Occlusion`   | Double  | Read/Write | 0 (open) … 1 (fully occluded): smoothed lowpass sweep + up to −6 dB |
 | `RefDistance` | Double  | Read/Write | Full-volume radius before linear falloff begins |
 | `MaxDistance` | Double  | Read/Write | Attenuation roll-off distance |
 | `Volume`      | Integer | Read/Write | Base volume `0–100` |
@@ -1392,6 +1502,7 @@ ambiguous.
 | `OffMeshLinkCount` | Integer | Read | Number of authored traversal links |
 | `ObstacleCount` | Integer | Read | Number of authored coarse AABB obstacles |
 | `LastPathCost` | Float | Read | Weighted cost of the latest successful path query |
+| `TileSize` | Float | Read | World-space tile edge length of a tiled bake, or `0.0` for `Build`/`Import` meshes |
 
 #### Methods
 
@@ -1422,10 +1533,13 @@ Prefer `FindPathOption()` for new path queries. `FindPath()` remains available
 for compatibility with existing `null` checks.
 
 `Bake` flattens every `Mesh3D` attached under a `SceneGraph` through each node's
-world transform and runs the voxel baker. `BakeTiled` keeps retained voxel-cell
-source data for each tile; `RebuildTile(tileX, tileZ)` refreshes only that tile's
-geometry, heights, and blocked state from the retained source without a
-whole-scene voxel pass.
+world transform and runs the voxel baker. Every `Bake` is tiled: it derives a
+tile size from the scene extent (roughly a 16×16 tile grid, clamped to at least
+4 world units per tile) and retains voxel-cell source data for each tile, so
+`RebuildTile` is always available on baked meshes. `BakeTiled` does the same
+with an explicit tile size. `RebuildTile(tileX, tileZ)` refreshes only that
+tile's geometry, heights, and blocked state from the retained source without a
+whole-scene voxel pass; `TileSize` reports the tile edge length in world units.
 
 `AddOffMeshLink` is for authored traversal such as jumps, ladders, and
 drop-downs. Both endpoints must be on current walkable polygons. The pathfinder
@@ -1456,7 +1570,7 @@ but it cannot regenerate new voxel heights from an external tile source.
 Pathfinding agent that moves along a `NavMesh3D` toward a target.
 
 **Type:** Instance (obj)
-**Constructor:** `NavAgent3D.New(navMesh)`
+**Constructor:** `NavAgent3D.New(navMesh, radius, height)`
 
 #### Properties
 
@@ -1472,6 +1586,8 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `AutoRepath`        | Boolean | Read/Write | Automatically repath when blocked |
 | `AvoidanceEnabled`  | Boolean | Read/Write | Enable same-NavMesh RVO-style steering against other enabled agents |
 | `AvoidanceRadius`   | Double  | Read/Write | Local RVO radius; defaults to the agent radius and clamps to `>= 0` |
+| `OnOffMeshLink`     | Boolean | Read       | True while the agent's current path segment traverses an authored off-mesh link |
+| `LinkKind`          | String  | Read       | Kind string of the link being traversed (from `SetOffMeshLinkMetadata`), or `""` |
 
 #### Methods
 
@@ -1485,6 +1601,12 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode` position from agent |
 
 Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` solve a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before the update drives a character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and has a named 200-agent CTest baseline.
+
+`OnOffMeshLink` and `LinkKind` let gameplay code react to authored traversal
+(play a jump animation, disable gravity on a ladder): they match the agent's
+current waypoint segment against the navmesh's off-mesh links, so they report
+`true` only while the segment between the current and next waypoint is a link
+edge. An idle agent, or one walking ordinary polygons, reports `false`/`""`.
 
 ```rust
 bind Viper.Graphics3D.NavMesh3D as NavMesh3D;
@@ -1712,6 +1834,13 @@ synthesizes previous instance matrices on the GPU path when explicit previous ma
 supplied. Motion history is separated by batch buffer identity, so keep the same instance-matrix
 buffer across frames when continuous motion vectors are desired.
 
+Every backend — including software — implements the instanced-draw hook for
+opaque batches, so large batches (up to 1,048,576 instances) never fall back to
+per-instance queueing or trap. `BackendSupports("instancing")` reports the hook;
+`BackendSupports("hardware_instancing")` additionally requires a GPU backend.
+Blended-material and floating-origin-rebased batches still route per instance
+(clamped at 65,536, observable via `Canvas3D.InstancedFallbackCount`).
+
 ---
 
 ### Viper.Graphics3D.Sprite3D
@@ -1721,6 +1850,12 @@ Billboard sprite placed in 3D world space, suitable for particles, UI labels, or
 **Type:** Instance (obj)
 **Constructor:** `Sprite3D.New(pixels)`
 
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Additive` | Boolean | Read/Write | Additive blending (muzzle glows, tracers); overlapping additive sprites sum toward white. Default off (alpha blend) |
+
 #### Methods
 
 | Method | Signature | Description |
@@ -1729,6 +1864,7 @@ Billboard sprite placed in 3D world space, suitable for particles, UI labels, or
 | `SetScale(w, h)` | `Void(Double, Double)` | Set billboard scale in world units |
 | `SetAnchor(ax, ay)` | `Void(Double, Double)` | Set anchor offset `[0.0–1.0]` |
 | `SetFrame(x, y, width, height)` | `Void(Integer, Integer, Integer, Integer)` | Set the source pixel region |
+| `SetColor(rgb)` | `Void(Integer)` | Packed `0xRRGGBB` tint multiplied into the texture (Particles3D convention) |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift the sprite position by `-delta` |
 
 ---

@@ -1,10 +1,41 @@
 # 03 — Engine: Point-Light Shadows, Shadow Budget Decoupling, Light Telemetry
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: E10 decoupling/atlas + E11/E12 telemetry; session B: E9 omni shadows on all
-> four backends). Eliminates constraints #1 (point lights never shadow) and #2 (4-slot budget
-> shared with CSM cascades, silent overflow). Showcase consumer: L5 Hydroponics Caverns
-> (bioluminescent point-light shadows), L2/L4 interiors, muzzle-flash shadows in set-pieces.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: **E10** — `VGFX3D_MAX_SHADOW_LIGHTS` 4→12 with `VGFX3D_CSM_SLOTS 4` for
+> cascade-semantic sizes (splits stay a float4; audited so the shader payload cannot widen).
+> Slots 0-3 stay per-texture; slots 4-11 are tiles of each GPU backend's INTERNAL 4×2 depth
+> atlas (Metal texture 17 / D3D11 t17; static per-tile UV rects in-shader — no constant-buffer
+> layout change), driven through the unchanged `shadow_begin/draw/end` vtable. Software keeps
+> per-slot CPU buffers for all 12. New `vgfx3d_backend_t.shadow_atlas_slots` capability clamps
+> the frame to 4 slots on backends without atlas sampling — **OpenGL stays there by explicit
+> waiver: its 16 fragment samplers are fully assigned (units 0-15 + morph 16/17); the recorded
+> follow-up is unifying ALL GL slots into one atlas, which frees three units.** The flip also
+> surfaced and fixed two latent bind bugs the old constant masked (D3D11 srvs[4..15] clobbering
+> splat/env slots; the same loop shape on GL). CSM decoupling proof:
+> `tests/runtime/test_canvas3d_shadow_budget.zia` — 3 cascades + 5 shadowed spots →
+> `ShadowSlotsUsed == 8`, zero drops (impossible on the old shared budget), budget starvation
+> observable, plus a toggle-based visual assert that an atlas-slot shadow really darkens.
+> **E9** — omnidirectional point shadows: a granted point light claims 6 consecutive atlas
+> slots (92° perspective faces, +X,-X,+Y,-Y,+Z,-Z, far plane derived from caster bounds like
+> spots — SetShadowNearFar deemed unnecessary; resolution is the uniform EnableShadows tile
+> size; hemisphere demotion deferred until a consumer needs it). Shaders (MSL/HLSL/SW) select
+> the face by dominant axis then reuse the perspective path; `VGFX3D_SHADOW_PROJECTION_CUBE`;
+> selection scores point lights like spots; `BackendSupports("shadow-point")`. Proof:
+> `tests/runtime/test_canvas3d_point_shadows.zia` — sun + cube = exactly 7 slots, zero drops,
+> and toggling only the point light's `CastsShadows` measurably darkens the scene (PASS on
+> Metal AND software; self-skips on non-atlas backends). **E11/E12** — `SetClusterLightBudget`
+> (8..64 per-cluster cap in the cluster prefix-sum), `get_ClusterOverflowCount`,
+> `get_DroppedLightCount` (forward-path truncation), `SetShadowBudget`/`get_ShadowSlotsUsed`/
+> `get_ShadowRequestsDropped`; stale `rt_light3d.c` "up to 16" comment fixed.
+> **Bugs found & fixed along the way:** BUG-E8 — software legacy materials NEVER received
+> shadows (per-vertex path lacks shadow sampling; now forced per-pixel when a shadowed light
+> is present), plus the shadow-light dedupe/match and shading-loop gates predating point
+> lights. Full `-L graphics3d` 98/98; runtime completeness green. D3D11 changes are
+> pattern-matched for the Windows lane. Docs: rendering3d.md lighting/shadow sections
+> rewritten (12-slot model, point shadows, budgets/telemetry, Light3D.CastsShadows).
+> Eliminates constraints #1 (point lights never shadow) and #2 (4-slot budget shared with
+> CSM cascades, silent overflow). Showcase consumer: L5 Hydroponics Caverns (bioluminescent
+> point-light shadows), L2/L4 interiors, muzzle-flash shadows in set-pieces.
 
 ## 0. TL;DR
 

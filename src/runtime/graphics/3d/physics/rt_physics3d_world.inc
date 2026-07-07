@@ -56,6 +56,8 @@ static void world3d_finalizer(void *obj) {
     free(w->joints);
     free(w->joint_types);
     free(w->broadphase_entries);
+    free(w->query_hits_scratch);
+    w->query_hits_scratch = NULL;
     if (w->query_sphere_collider && rt_obj_release_check0(w->query_sphere_collider))
         rt_obj_free(w->query_sphere_collider);
     if (w->query_box_collider && rt_obj_release_check0(w->query_box_collider))
@@ -76,6 +78,8 @@ static void world3d_finalizer(void *obj) {
     w->broadphase_entries = NULL;
     w->query_sphere_collider = NULL;
     w->query_box_collider = NULL;
+    w->query_hits_scratch = NULL;
+    w->max_query_hits = PH3D_MAX_QUERY_HITS;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;
@@ -85,6 +89,7 @@ static void world3d_finalizer(void *obj) {
     w->ccd_substep_clamped_count = 0;
     w->last_ccd_clamped_body_count = 0;
     w->ccd_substep_clamped_body_count = 0;
+    w->ccd_toi_count = 0;
     w->body_capacity = 0;
     w->contact_capacity = 0;
     w->frame_contact_capacity = 0;
@@ -121,6 +126,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     }
     w->vptr = NULL;
     ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
+    w->max_query_hits = PH3D_MAX_QUERY_HITS;
     w->body_count = 0;
     w->contact_count = 0;
     w->frame_contact_count = 0;
@@ -357,6 +363,90 @@ void rt_world3d_step(void *obj, double dt) {
                 /* Sleep is decided post-solve (world3d_update_sleep), not here:
                  * a body resting under gravity carries -g*dt velocity at this
                  * point and only returns to ~0 once contacts are resolved. */
+            }
+
+            /* Swept CCD (time of impact): clip this substep's translation at
+             * the first static/kinematic surface so fast bodies can never
+             * tunnel regardless of dt. The substep subdivision above keeps
+             * displacements small; this pass makes the guarantee exact. The
+             * bounding sphere over-approximates non-spherical colliders
+             * (conservative — clipping early is safe; the regular contact
+             * solve takes over at the surface). */
+            if (b->use_ccd && b->motion_mode == PH3D_MODE_DYNAMIC && !b->is_sleeping) {
+                double delta[3] = {
+                    b->velocity[0] * sub_dt,
+                    b->velocity[1] * sub_dt,
+                    b->velocity[2] * sub_dt,
+                };
+                double move_len = vec3_len(delta);
+                double threshold = body3d_ccd_threshold(b);
+                if (isfinite(move_len) && threshold > 1e-6 && move_len > threshold * 0.5) {
+                    double bmin[3];
+                    double bmax[3];
+                    body_aabb(b, bmin, bmax);
+                    double radius = 0.5 * fmax(bmax[0] - bmin[0],
+                                               fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
+                    double toi = 1.0;
+                    double normal[3] = {0.0, 1.0, 0.0};
+                    if (radius > 1e-6 &&
+                        world3d_ccd_sweep_sphere_raw(
+                            w, b->position, radius, delta, b, &toi, normal) &&
+                        toi < 1.0) {
+                        /* Speculative clip: stop the NORMAL component of the
+                         * translation just before the surface, but carry the
+                         * full tangential component. A body rolling or sliding
+                         * along a surface it is barely separated from sweeps
+                         * into it every substep with toi ~= 0; clipping the
+                         * whole delta would freeze its tangential motion (the
+                         * bowling-ball-stalls-on-the-lane failure). Head-on
+                         * impacts have no tangential part, so the thin-wall
+                         * anti-tunneling guarantee is unchanged. */
+                        double dn = delta[0] * normal[0] + delta[1] * normal[1] +
+                                    delta[2] * normal[2];
+                        double clipped_n = dn * toi;
+                        if (dn < 0.0) {
+                            /* Small skin keeps the narrowphase from starting
+                             * embedded next substep. */
+                            clipped_n += 1e-3;
+                            if (clipped_n > 0.0)
+                                clipped_n = 0.0;
+                        }
+                        ph3d_vec3_accumulate_state(b->position,
+                                                   (delta[0] - dn * normal[0]) +
+                                                       normal[0] * clipped_n,
+                                                   (delta[1] - dn * normal[1]) +
+                                                       normal[1] * clipped_n,
+                                                   (delta[2] - dn * normal[2]) +
+                                                       normal[2] * clipped_n);
+                        /* Reflect the approaching normal component by the
+                         * body's restitution (matches what the solver would
+                         * do); the tangential component is preserved so the
+                         * body slides. If the contact persists next substep,
+                         * the solver sees a separating/neutral velocity and
+                         * adds no double bounce. */
+                        double vn = b->velocity[0] * normal[0] + b->velocity[1] * normal[1] +
+                                    b->velocity[2] * normal[2];
+                        if (vn < 0.0) {
+                            double e = b->restitution;
+                            if (!isfinite(e) || e < 0.0)
+                                e = 0.0;
+                            if (e > 1.0)
+                                e = 1.0;
+                            double impulse = -(1.0 + e) * vn;
+                            ph3d_vec3_accumulate_state(b->velocity,
+                                                       normal[0] * impulse,
+                                                       normal[1] * impulse,
+                                                       normal[2] * impulse);
+                        }
+                        w->ccd_toi_count++;
+                        quat_integrate(b->orientation, b->angular_velocity, sub_dt);
+                        ph3d_vec3_sanitize_state(b->position);
+                        ph3d_vec3_sanitize_state(b->velocity);
+                        quat_normalize(b->orientation);
+                        body3d_touch_broadphase(b);
+                        continue;
+                    }
+                }
             }
 
             ph3d_vec3_accumulate_state(b->position,
@@ -853,6 +943,40 @@ int64_t rt_world3d_get_last_ccd_clamped_body_count(void *obj) {
 int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->ccd_substep_clamped_body_count > 0) ? w->ccd_substep_clamped_body_count : 0;
+}
+
+/// @brief `Physics3DWorld.SetMaxQueryHits(n)` — configure query result capacity.
+/// @details Bounds how many hits `RaycastAll`/`OverlapSphere`/`OverlapAABB`
+///          return (lists still report `TotalCount`/`Truncated`). Clamped to
+///          16–4096; reallocates the world's scratch buffer on next use.
+void rt_world3d_set_max_query_hits(void *obj, int64_t max_hits) {
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
+        return;
+    if (max_hits < PH3D_QUERY_HITS_MIN)
+        max_hits = PH3D_QUERY_HITS_MIN;
+    if (max_hits > PH3D_QUERY_HITS_MAX)
+        max_hits = PH3D_QUERY_HITS_MAX;
+    if ((int32_t)max_hits == w->max_query_hits)
+        return;
+    free(w->query_hits_scratch);
+    w->query_hits_scratch = NULL;
+    w->max_query_hits = (int32_t)max_hits;
+}
+
+/// @brief `Physics3DWorld.MaxQueryHits` — current query result capacity.
+int64_t rt_world3d_get_max_query_hits(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->max_query_hits : 0;
+}
+
+/// @brief `World3D.CcdToiCount` — total swept time-of-impact clips applied.
+/// @details Each count is one CCD body whose substep translation was clipped
+///          at a static/kinematic surface by the swept pass (i.e. a tunnel
+///          that substep subdivision alone would not have prevented exactly).
+int64_t rt_world3d_get_ccd_toi_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return (w && w->ccd_toi_count > 0) ? w->ccd_toi_count : 0;
 }
 
 /// @brief `World3D.BroadphaseFallbackCount` — brute-force broadphase fallback count.

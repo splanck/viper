@@ -164,19 +164,24 @@ func StartWorkspaceWatchers(state: WorkspaceWatcherState,
     state.watchers = new List();
     state.watcherPaths = new List();
 
+    // Set when the OS refuses further watchers (descriptor exhaustion); we stop
+    // adding and let periodic fingerprint rescans cover the rest of the tree.
+    var exhausted = false;
     var rootIndex = 0;
     while rootIndex < projMgr.RootCount()
+          and exhausted == false
           and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
         var root = projMgr.RootPathAt(rootIndex);
         var ignores = projMgr.RootIgnorePatternsAt(rootIndex);
         rootIndex = rootIndex + 1;
         if root == "" or Dir.Exists(root) == false { continue; }
         state.rootPaths.Push(root);
-        AddDirectoryWatcher(state, root);
+        if AddDirectoryWatcher(state, root) == false { exhausted = true; }
 
         var offset = 0;
         var done = false;
-        while done == false and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
+        while done == false and exhausted == false
+              and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
             var page = FileIndex.Page(root, "", ignores, true, offset, WORKSPACE_WATCHER_DIR_PAGE_SIZE);
             if Map.GetBool(page, "valid") == false {
                 state.degraded = true;
@@ -187,11 +192,14 @@ func StartWorkspaceWatchers(state: WorkspaceWatcherState,
             if entries != null { entryCount = Seq.get_Count(entries); }
             var i = 0;
             while entries != null and i < entryCount
+                  and exhausted == false
                   and state.watchers.count() < WORKSPACE_WATCHER_MAX_DIRS {
                 var entry = Seq.Get(entries, i);
                 i = i + 1;
                 if Map.GetBool(entry, "isDirectory") {
-                    AddDirectoryWatcher(state, Map.GetStr(entry, "path"));
+                    if AddDirectoryWatcher(state, Map.GetStr(entry, "path")) == false {
+                        exhausted = true;
+                    }
                 }
             }
             offset = Map.GetInt(page, "nextOffset");
@@ -213,18 +221,28 @@ func StartWorkspaceWatchers(state: WorkspaceWatcherState,
     state.watcherPollPos = 0;
 }
 
+/// @brief Create and start a watcher for @p dirPath.
+/// @return false when the OS refused to start the watcher (e.g. descriptor
+///         exhaustion); the runtime leaves it inactive instead of trapping, so
+///         the caller should stop adding more and rely on periodic rescans.
 func AddDirectoryWatcher(state: WorkspaceWatcherState,
-                         dirPath: String) {
-    if state == null or dirPath == "" { return; }
-    if Dir.Exists(dirPath) == false { return; }
-    if ListContainsString(state.watcherPaths, dirPath) { return; }
+                         dirPath: String) -> Boolean {
+    if state == null or dirPath == "" { return true; }
+    if Dir.Exists(dirPath) == false { return true; }
+    if ListContainsString(state.watcherPaths, dirPath) { return true; }
     var watcher = IO.Watcher.New(dirPath);
     watcher.Start();
+    if watcher.IsWatching == false {
+        // Ran out of OS watch resources; degrade to fingerprint rescans.
+        state.degraded = true;
+        return false;
+    }
     state.watchers.add(watcher);
     state.watcherPaths.add(dirPath);
     if state.watcher == null {
         state.watcher = watcher;
     }
+    return true;
 }
 
 func ListContainsString(items: List[String],

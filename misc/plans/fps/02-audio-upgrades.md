@@ -1,6 +1,21 @@
 # 02 — Engine: Voice Pitch, 3D Source Pitch, Occlusion Filter, Ducking
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · 1 session.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: E5 per-voice playback rate in the ViperAUD mixer (fractional cursor + linear
+> interpolation, clamp 0.25–4.0, fast path untouched at pitch 1.0) — `Voice.SetPitch/GetPitch`,
+> `Sound.PlayEx2(vol,pan,pitch)`, vaud `vaud_set_voice_pitch`/`vaud_play_ex2`. E6
+> `SoundSource3D.Pitch` (composes with Doppler) — and the **Doppler factor is now actually
+> applied** (it was computed and discarded; see ENGINE_BUGS_FOUND.md BUG-E5). E7 per-voice
+> one-pole lowpass + `Voice.SetLowpass` / `Voice.SetOcclusion` / `SoundSource3D.Occlusion`
+> (perceptual 22 kHz→800 Hz sweep, −6 dB at full, ~80 ms anti-zipper smoothing in the mixer).
+> E8 `Audio.SetGroupDucking(trigger,target,amount,attack,release)` — sidechain envelopes per
+> rule (≤8), updated per render chunk, applied to voices and music via group gains.
+> Audio-disabled stubs added for every new entry point (both-impl rule). Tests: three new
+> rendered-buffer DSP suites in `test_vaud_core_fixes` (pitch consumption ±2 frames at 2.0×/0.5×,
+> clamp behavior, lowpass/occlusion RMS drops >6×, duck engage <0.35× / release >0.7×) — audio
+> label 4/4, sound3d suites 7/7 green. Zia surface type-checks (Voice/Sound/SoundSource3D/Audio).
+> Docs: audio.md (Voice/PlayEx2/ducking sections), rendering3d.md (SoundSource3D Pitch/Occlusion,
+> Doppler-applied note). Runtime completeness green. Music streams keep rate 1.0 (documented).
 > Eliminates constraint #16: no pitch/playback-rate anywhere in `Viper.Sound`
 > (`PlayEx` is volume+pan only — runtime.def:3471 `"i64(obj,i64,i64)"`), no per-voice
 > occlusion filtering. Adds the mix polish an FPS needs: shot variation, beam heat ramps,

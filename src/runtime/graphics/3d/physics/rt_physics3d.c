@@ -42,6 +42,7 @@
 #include "rt_raycast3d.h"
 
 #include "rt_physics3d_internal.h"
+#include "rt_physics3d_query_internal.h"
 
 #include <limits.h>
 #include <math.h>

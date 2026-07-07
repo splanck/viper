@@ -22,6 +22,8 @@
 
 #include <stdint.h>
 
+#include "rt_string.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -46,6 +48,10 @@ void *rt_navagent3d_get_velocity(void *agent);
 void *rt_navagent3d_get_desired_velocity(void *agent);
 /// @brief True if the agent currently has a valid path to its goal.
 int8_t rt_navagent3d_get_has_path(void *agent);
+/// @brief True while the current path segment traverses an off-mesh link.
+int8_t rt_navagent3d_get_on_offmesh_link(void *agent);
+/// @brief Authored kind of the link being traversed (empty when none).
+rt_string rt_navagent3d_get_link_kind(void *agent);
 /// @brief Distance in world units left along the path (0 when within stopping distance).
 double rt_navagent3d_get_remaining_distance(void *agent);
 /// @brief Get the radius around the goal at which the agent stops issuing motion.

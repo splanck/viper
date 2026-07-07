@@ -286,6 +286,17 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return resolveRuntimeClassFieldAccess(expr, baseType);
     }
 
+    // Any other resolved base type has no member namespace at all (for example
+    // the anonymous object handles returned by untyped runtime signatures).
+    // Diagnose here: an undiagnosed unknown() from this path surfaces later as
+    // an internal lowering error instead of a source-level diagnostic.
+    if (baseType && baseType->kind != TypeKindSem::Unknown) {
+        error(expr->loc,
+              "Type '" + baseType->toDisplayString() + "' has no member '" + expr->field +
+                  "'; if this value came from a runtime call returning an untyped object, "
+                  "use the owning class's static form (e.g. Mesh3D.get_TriangleCount(m))");
+    }
+
     return types::unknown();
 }
 

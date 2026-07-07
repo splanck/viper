@@ -1,0 +1,160 @@
+module TestCanvas3DPostfxParity;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-06 E25 coverage: the depth-aware post-FX chain runs on the CPU path.
+//   - A chain carrying SSAO/DOF/MotionBlur/TAA/SSR attaches on the software
+//     backend (previously refused at bind with LastError, trapped if forced).
+//   - SSAO measurably darkens a corner scene; DOF measurably blurs a
+//     high-contrast surface far from focus; the full 10-effect chain renders.
+
+func sumRegion(shot: Pixels, x0: Integer, y0: Integer, x1: Integer, y1: Integer) -> Integer {
+    var total = 0;
+    var y = y0;
+    while (y < y1) {
+        var x = x0;
+        while (x < x1) {
+            total = total + (Pixels.Get(shot, x, y) / 65536) % 256;
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return total;
+}
+
+func contrast(shot: Pixels, x0: Integer, y0: Integer, x1: Integer, y1: Integer) -> Integer {
+    var total = 0;
+    var y = y0;
+    while (y < y1) {
+        var x = x0;
+        while (x < x1) {
+            var a = (Pixels.Get(shot, x, y) / 65536) % 256;
+            var b = (Pixels.Get(shot, x + 1, y) / 65536) % 256;
+            if (a > b) {
+                total = total + a - b;
+            } else {
+                total = total + b - a;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return total;
+}
+
+func drawScene(canvas: Canvas3D, cam: Camera3D, floor: Mesh3D, wall: Mesh3D, mat: Material3D) {
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, floor, Mat4.Translate(0.0, -1.0, 0.0), mat);
+    Canvas3D.DrawMesh(canvas, wall, Mat4.Translate(0.0, 1.0, -4.0), mat);
+    Canvas3D.End(canvas);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Postfx Parity", 96, 64);
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 100.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 2.0, 6.0),
+                    new Vec3(0.0, 0.0, -4.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var floor = Mesh3D.NewPlane(30.0, 30.0);
+    var wall = Mesh3D.NewBox(30.0, 4.0, 0.5);
+    var mat = Material3D.NewColor(0.8, 0.8, 0.8);
+    Material3D.SetUnlit(mat, true);
+
+    // --- Bind acceptance: the full 10-effect chain attaches on software ------
+    var full = PostFX3D.New();
+    PostFX3D.AddBloom(full, 0.8, 0.5, 2);
+    PostFX3D.AddTonemap(full, 1, 1.0);
+    PostFX3D.AddFXAA(full);
+    PostFX3D.AddColorGrade(full, 0.0, 1.0, 1.0);
+    PostFX3D.AddVignette(full, 0.8, 0.5);
+    PostFX3D.AddSSAO(full, 0.6, 1.0, 8);
+    PostFX3D.AddDOF(full, 2.0, 3.0, 1.0);
+    PostFX3D.AddMotionBlur(full, 1.0, 4);
+    PostFX3D.AddTAA(full, 0.5);
+    PostFX3D.AddSSR(full, 0.6, 0.8);
+    Canvas3D.SetPostFX(canvas, full);
+    if (full.LastError != "") {
+        Say("FAIL: full chain should attach on the software backend");
+        return;
+    }
+    if (full.EffectCount != 10) {
+        Say("FAIL: chain should hold all ten effects");
+        return;
+    }
+    drawScene(canvas, cam, floor, wall, mat);
+    var fullShot = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    if (fullShot == null) {
+        Say("FAIL: full chain should render");
+        return;
+    }
+
+    // --- SSAO darkens the wall/floor junction ---------------------------------
+    Canvas3D.SetPostFX(canvas, null);
+    drawScene(canvas, cam, floor, wall, mat);
+    var plain = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var plainSum = sumRegion(plain, 8, 24, 88, 48);
+
+    var ssaoChain = PostFX3D.New();
+    PostFX3D.AddSSAO(ssaoChain, 1.2, 1.5, 8);
+    Canvas3D.SetPostFX(canvas, ssaoChain);
+    drawScene(canvas, cam, floor, wall, mat);
+    var ssaoShot = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var ssaoSum = sumRegion(ssaoShot, 8, 24, 88, 48);
+    if (ssaoSum >= plainSum) {
+        Say("FAIL: SSAO should darken the corner region");
+        return;
+    }
+
+    // --- DOF blurs a checkered plane far from focus ----------------------------
+    var checker = Pixels.New(32, 32);
+    var cy = 0;
+    while (cy < 32) {
+        var cx = 0;
+        while (cx < 32) {
+            if ((cx / 4 + cy / 4) % 2 == 0) {
+                Pixels.Set(checker, cx, cy, 4294967295); // white
+            } else {
+                Pixels.Set(checker, cx, cy, 255); // black
+            }
+            cx = cx + 1;
+        }
+        cy = cy + 1;
+    }
+    var checkerMat = Material3D.New();
+    Material3D.SetUnlit(checkerMat, true);
+    Material3D.SetTexture(checkerMat, checker);
+
+    Canvas3D.SetPostFX(canvas, null);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, wall, Mat4.Translate(0.0, 1.0, -4.0), checkerMat);
+    Canvas3D.End(canvas);
+    var sharp = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var sharpContrast = contrast(sharp, 24, 16, 72, 40);
+
+    var dofChain = PostFX3D.New();
+    PostFX3D.AddDOF(dofChain, 1.0, 1.5, 1.0); // focus at 1.0, wall ~10 away
+    Canvas3D.SetPostFX(canvas, dofChain);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, wall, Mat4.Translate(0.0, 1.0, -4.0), checkerMat);
+    Canvas3D.End(canvas);
+    var blurred = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var blurredContrast = contrast(blurred, 24, 16, 72, 40);
+    if (blurredContrast * 20 >= sharpContrast * 19) {
+        Say("FAIL: DOF should reduce checker contrast by more than 5 percent");
+        return;
+    }
+
+    Say("PASS");
+}

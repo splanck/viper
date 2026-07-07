@@ -2870,7 +2870,9 @@ static void test_spot_shadow_selection_fills_budget_after_directionals(void) {
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_TRUE(shadow_begin_calls == VGFX3D_MAX_SHADOW_LIGHTS && shadow_draw_calls == 4 &&
+    /* This fake backend has no atlas-slot sampling, so the frame budget is the
+     * classic per-texture cap (VGFX3D_CSM_SLOTS), not VGFX3D_MAX_SHADOW_LIGHTS. */
+    EXPECT_TRUE(shadow_begin_calls == VGFX3D_CSM_SLOTS && shadow_draw_calls == 4 &&
                     shadow_end_calls == 4,
                 "Shadow selection fills the fixed budget with directionals first then spots");
     EXPECT_TRUE(last_draw_light_count == 5 && last_draw_lights[0].shadow_index == 0 &&

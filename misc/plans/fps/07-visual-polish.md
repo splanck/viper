@@ -1,15 +1,41 @@
 # 07 — Engine: Visual Polish — Auto-Exposure, LUT Grading, Height Fog & Sun Shafts, Lens Flares, Particle Stretch/Trails, AA Overlay Text
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: E37 auto-exposure + E38 LUT + E39 fog/shafts; session B: E40 flares +
-> E41 particles + E42 overlay text/9-slice). This is the "beautiful" doc: the six features
-> that separate a tech demo from an art-directed game. Verified missing at baseline:
-> no auto-exposure or color LUT (`rt_postfx3d.c` — only fixed `exposure` param at `:90,478`
-> and an internal gamma table at `:344-366`); fog is linear-distance only
-> (`rt_canvas3d.h:676-680`); zero hits for volumetric/godray/lens-flare in the 3D tree;
-> `Particles3D` has no stretch/trails (runtime.def Particles3D block); overlay text is an
-> integer-scaled bitmap font (`DrawText2DScaled`, runtime.def:13358).
-
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped all six features. **E37 auto-exposure**: `PostFX3D.AddAutoExposure(minEv,maxEv,
+> adaptSpeed)` — geometric-mean luminance (bounded 4096-pixel sampling) → target EV centering
+> middle gray, clamped, smoothed at a fixed deterministic 1/60 step with 2.5× faster downward
+> adaptation; state persists on the chain. **E38 LUT grading**: `AddColorLUT(pixels, blend)`
+> (256×16 strip, 16³ trilinear, chain retains the Pixels) + `MakeIdentityLUT()`; the
+> screenshot-grade-crop authoring workflow is documented in the API doc comment. **E39**:
+> `Canvas3D.SetHeightFog(base, falloff, density, blend)` — exponential height term combined
+> with distance fog via combined transmittance, implemented in ALL FOUR shader sources
+> (MSL/HLSL/GLSL/SW; PerScene additions position-mirrored per the BUG-E7 alignment contract;
+> `ClearFog` clears both) — plus `PostFX3D.AddSunShafts(intensity, decay, samples)`: CPU
+> radial sky-mask accumulation toward the primary directional light's projected position
+> (sun resolved canvas-side into the post-FX scene inputs; auto-fades off-screen/behind).
+> **E40 lens flares**: new `rt_lensflare3d.c` — `LensFlare3D.New(light)` +
+> `AddElement(axisOffset, size, color, rotation)` (≤16 pre-tinted procedural radial-disc
+> ghosts) + `Canvas3D.DrawLensFlare` in overlay space; occlusion = 3×3 CPU-depth probe
+> (software zbuf / RT depth; GPU windows draw unoccluded — documented until GPU readback
+> occlusion lands; the 120 ms fade is likewise deferred for determinism — visibility scales
+> ghost size instantly). **E41**: `Particles3D.SetStretch(k)` (velocity-projected quad axes,
+> winding-correct, length ∝ 1+k·|v| capped 64×) and `SetTrail(lifetimeSec, segments≤16)` —
+> per-particle position rings in parallel arrays kept in sync with the pool's swap-remove
+> kills via `particles3d_swap_kill`; ribbons emit as tapered, alpha-fading camera-facing
+> quads appended to the emitter's single draw. **E42**: `Canvas3D.DrawText2DAA(x,y,text,
+> color,scale)` — 8×8 font supersampled 4×4 per output pixel (coverage→alpha) into a
+> frame-lifetime temp Pixels, one image blit; `MeasureText2DAA`; `DrawImage2DNineSlice`
+> (corners unscaled, edges axis-stretched, insets sanitized). GPU postfx pipelines skip the
+> new CPU-side chain effects gracefully (they key on known type values); native GPU
+> implementations of E37/E38/shafts are the recorded follow-up. Also fixed in passing:
+> `log2f` missing from the native linker's dynamic-symbol allow-list (exp2f was present).
+> Coverage: `tests/runtime/test_canvas3d_visual_polish.zia` (software-forced ctest) —
+> auto-exposure ≥2× dark-frame lift, identity-LUT no-op + inverting-LUT inversion, height
+> fog pooling + ClearFog restore, stretch/trail coverage growth over a plain-billboard
+> baseline, AA text visibility + monotonic measure, nine-slice corner/center classes, and
+> lens-flare brightness delta. `-L graphics3d` 100/100; completeness + source-health green
+> (contract files 806). Docs: covered by the runtime API doc comments; rendering3d.md
+> "Cinematic look" section is folded into the postfx/fog rewrites from docs 03/06.
 ## 0. TL;DR
 
 Six self-contained upgrades, all four-backend (GPU shader + CPU reference each, keeping the

@@ -1,6 +1,18 @@
 # 10 — Toolchain: Aggregate-Return Miscompile Fix, -O0/-O2 Differential Harness, Papercuts
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · 1 session · **runs first (P0)**.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **runs first (P0)**.
+> Outcome notes: the "aggregate-return miscompile" no longer reproduces at the codegen
+> layer on any tested shape — the residual breakage was two Zia **lowerer** bugs
+> (uninitialized struct alloca whose managed-field release-old freed stack garbage in
+> native builds; `ValueTypeAddField` retain flag lowered as i64 vs the i1 ABI). Both are
+> fixed at the root and pinned by `tests/zia_runtime/51_struct_return_abi.zia` running on
+> the VM and natively at -O0/-O2 (`native_run_zia_51_struct_return_abi_{O0,O2}`), which
+> covers every shape in §2 step 3 end-to-end (superseding the planned Arm64Bugfix unit
+> cases — the fix is architecture-independent frontend lowering). E35 harness shipped as
+> `scripts/native_opt_diff.sh`. E36: `for _ in` discard already worked (now documented in
+> the Zia bible ch. 5); V3001 already per-bind — no change. Extra fixes en route:
+> `DynamicSymbolPolicy.hpp` getrlimit/setrlimit, broken test source in
+> `test_zia_control_flow.cpp`. Full log: `ENGINE_BUGS_FOUND.md`. zia label suite 331/331.
 > Eliminates constraint #22: the macOS native **aggregate-return miscompile** (xenoscape
 > `VIPER_ZIA_BUGS.md:9-16` — struct-by-value returns miscompile in native-linked builds, forcing
 > the reusable-heap-instance workaround) — a correctness bug that would otherwise dictate the

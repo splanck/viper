@@ -89,11 +89,13 @@ typedef uint32_t vgfx_color_t;
 ///          of a new window.  Invalid or zero values for width/height are
 ///          replaced with VGFX_DEFAULT_WIDTH and VGFX_DEFAULT_HEIGHT.
 typedef struct {
-    int32_t width;     ///< Window width in pixels (≤ 0 → use default)
-    int32_t height;    ///< Window height in pixels (≤ 0 → use default)
-    const char *title; ///< Window title (UTF-8 string; NULL → use default)
-    int32_t fps;       ///< Target FPS (< 0: unlimited, 0: default, > 0: limit)
-    int32_t resizable; ///< 0 = fixed size, non-zero = user-resizable
+    int32_t width;      ///< Window width in pixels (≤ 0 → use default)
+    int32_t height;     ///< Window height in pixels (≤ 0 → use default)
+    const char *title;  ///< Window title (UTF-8 string; NULL → use default)
+    int32_t fps;        ///< Target FPS (< 0: unlimited, 0: default, > 0: limit)
+    int32_t resizable;  ///< 0 = fixed size, non-zero = user-resizable
+    int32_t fullscreen; ///< Non-zero = create fullscreen at desktop resolution
+                        ///< (width/height ignored; no windowed flash)
 } vgfx_window_params_t;
 
 /// @brief Construct default window parameters.
@@ -816,6 +818,39 @@ int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 /// @param x Target X coordinate (logical pixels)
 /// @param y Target Y coordinate (logical pixels)
 void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y);
+
+/// @brief Query the primary display's logical (point) dimensions.
+/// @details Used to size fullscreen windows. Falls back to the default window
+///          size when the platform cannot report a display size (mock/headless).
+/// @param out_w Receives the display width in logical pixels (may be NULL)
+/// @param out_h Receives the display height in logical pixels (may be NULL)
+void vgfx_get_display_size(int32_t *out_w, int32_t *out_h);
+
+/// @brief Enable or disable relative (raw) mouse mode for FPS mouse-look.
+/// @details While enabled, platform backends that support raw motion deliver
+///          unbounded, sub-pixel motion deltas (drained via
+///          vgfx_get_relative_deltas()) instead of the cursor tracking
+///          absolute positions. Backends without raw motion support (e.g.
+///          X11 without XInput2) return 0 and callers should fall back to
+///          warp-to-center capture. Disabling always restores normal cursor
+///          behavior and clears any accumulated deltas.
+/// @param window Window handle
+/// @param enabled Non-zero to enable, zero to disable
+/// @return 1 when the platform delivers native raw deltas, 0 otherwise
+int32_t vgfx_set_relative_mouse(vgfx_window_t window, int32_t enabled);
+
+/// @brief Query whether native raw deltas are currently being delivered.
+/// @return 1 when relative mode is enabled AND the platform is native, else 0
+int32_t vgfx_relative_mouse_native(vgfx_window_t window);
+
+/// @brief Drain the accumulated relative mouse deltas (read-and-clear).
+/// @details Returns the motion accumulated since the previous call. Values
+///          are doubles in logical units and may be sub-pixel. Both output
+///          pointers may be NULL. Returns zeros when relative mode is off.
+/// @param window Window handle
+/// @param out_dx Receives horizontal motion (may be NULL)
+/// @param out_dy Receives vertical motion, positive = down (may be NULL)
+void vgfx_get_relative_deltas(vgfx_window_t window, double *out_dx, double *out_dy);
 
 /// @brief Hide the OS mouse cursor.
 void vgfx_hide_cursor(void);

@@ -1,9 +1,25 @@
 # 01 — Engine: Raw Mouse, Gamepad→Input3D, Fullscreen Creation, DataDir
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: E1 raw mouse across 4 platform backends; session B: E2/E3/E4 + docs/tests).
-> Eliminates constraints: no OS raw-relative mouse (#17), gamepad outside Input3D (#18),
-> no fullscreen-at-creation and no per-user data directory (#19).
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: E1 relative mouse (`Mouse.SetRelativeMode`/`RelativeModeNative`/`DeltaXF/YF`,
+> `Input3D.SetRelativeLook`) across macOS (CGAssociate dissociation + NSEvent deltas),
+> Win32 (WM_INPUT raw + ClipCursor), Linux (dlopen'd libXi XI2 RawMotion + pointer grab —
+> zero new build deps), and mock (`vgfx_mock_push_relative_delta`); warp-to-center remains
+> the universal fallback and Canvas3D reconciles the mode per poll. E2 `Input3D.BindPad`
+> (+`PadBound`/`PadLookSensitivity`): left stick merges into MoveAxis (radial deadzone),
+> right stick into LookAxis (x^1.8 curve); Move/Look/FirstPerson/FreeFly controllers all
+> upgraded to sub-pixel f64 deltas. E3 `World3D.NewFullscreen` /
+> `NewFullscreenWithHorizontalCamera` / `Canvas3D.NewFullscreen` + `vgfx_get_display_size`
+> + params.fullscreen (desktop-sized at creation, no windowed flash; verified live:
+> 1920×1080, IsFullscreen true). E4 `Path.DataDir(app)` (APPDATA / Application Support /
+> XDG, created on demand, RT_PLATFORM_* adapter macros — platform lint clean).
+> Tests: vgfx T22 relative-mode mock test; `tests/zia_runtime/52_path_datadir.zia`;
+> live hidden-window probes green (relative-look enable/native/release; fullscreen create).
+> Docs: input.md (relative-mode section), files.md (DataDir), game3d.md (Input3D + ctors).
+> Runtime completeness + surface audit + zia suite 332/332 green.
+> Deferred (documented): Win32/Linux raw paths compile-checked + lint-clean but first
+> exercised live in the P4/P12 platform lanes; ADR note for the new vgfx ABI entries goes
+> with the next docs/adr batch.
 
 ## 0. TL;DR
 

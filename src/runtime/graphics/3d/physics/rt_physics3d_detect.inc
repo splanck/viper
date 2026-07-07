@@ -706,16 +706,19 @@ static void body3d_refresh_motion_mode(rt_body3d *b) {
 
 /// @brief Validate that a desired motion mode is compatible with the collider.
 ///
-/// Some collider types (e.g., concave triangle meshes) are static-only
-/// because the dynamic-collision math doesn't handle them. Traps with
-/// `api_name` as the trap message when an invalid combination is
-/// requested. Returns 1 when the mode is allowed.
+/// Concave triangle meshes and heightfields are restricted to STATIC and
+/// KINEMATIC bodies: their narrow phase works in the collider's local space
+/// (transformed by the body pose each query), so script-driven kinematic
+/// movers — platforms, crushers, elevators — are fine, while mass-driven
+/// DYNAMIC bodies remain rejected because dynamic-vs-mesh response is
+/// numerically unstable. Traps with `api_name` as the trap message when an
+/// invalid combination is requested. Returns 1 when the mode is allowed.
 static int body3d_motion_mode_allowed(const rt_body3d *body,
                                       void *collider,
                                       int32_t desired_mode,
                                       const char *api_name) {
     (void)body;
-    if (desired_mode == PH3D_MODE_STATIC)
+    if (desired_mode == PH3D_MODE_STATIC || desired_mode == PH3D_MODE_KINEMATIC)
         return 1;
     collider = rt_g3d_checked_or_null(collider, RT_G3D_COLLIDER3D_CLASS_ID);
     if (collider && rt_collider3d_is_static_only_raw(collider)) {

@@ -50,10 +50,12 @@
 #include <limits.h>
 #include <poll.h>
 #include <sys/inotify.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #elif RT_PLATFORM_MACOS
 #include <fcntl.h>
 #include <sys/event.h>
+#include <sys/resource.h>
 #include <sys/time.h>
 #include <unistd.h>
 #ifndef O_EVTONLY
@@ -558,6 +560,32 @@ int8_t rt_watcher_get_is_watching(void *obj) {
     return watcher_require(obj, "Watcher: invalid watcher")->is_watching;
 }
 
+/// @brief Best-effort one-time raise of the process open-file-descriptor limit.
+/// @details Each watcher consumes descriptors (a kqueue/inotify fd plus the
+///          watched path fd). A workspace watcher over a large tree opens many,
+///          and the default soft RLIMIT_NOFILE (256 on macOS) is easily
+///          exhausted. Raising the soft limit toward the hard limit lets the
+///          watcher — and the IDE's file handles generally — scale. Failure is
+///          ignored: callers already degrade gracefully when a watcher cannot start.
+static void watcher_raise_fd_limit_once(void) {
+#if RT_PLATFORM_MACOS || RT_PLATFORM_LINUX
+    static int attempted = 0;
+    if (attempted)
+        return;
+    attempted = 1;
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl) != 0)
+        return;
+    rlim_t want = 16384;
+    if (rl.rlim_max != RLIM_INFINITY && want > rl.rlim_max)
+        want = rl.rlim_max;
+    if (rl.rlim_cur < want) {
+        rl.rlim_cur = want;
+        (void)setrlimit(RLIMIT_NOFILE, &rl);
+    }
+#endif
+}
+
 /// @brief Begin watching. Per platform:
 ///   - **Linux:** `inotify_init1(IN_NONBLOCK)` + `inotify_add_watch` with mask covering create/
 ///     delete/modify/move events.
@@ -565,7 +593,10 @@ int8_t rt_watcher_get_is_watching(void *obj) {
 ///   - **Win32:** `CreateFileW(FILE_LIST_DIRECTORY, FILE_FLAG_OVERLAPPED)` + initial
 ///     `ReadDirectoryChangesW`. Always watches the parent directory (file-mode filtering happens
 ///     at event-decode time via `watch_leaf_name`).
-/// Traps if already watching, on syscall failure, or on unsupported platform.
+/// @details Programmer errors (null/already-watching/invalid path) still trap. A
+///          transient OS resource failure (out of descriptors, path vanished)
+///          instead leaves the watcher inactive (`IsWatching` stays false) and
+///          returns, so callers can degrade to periodic rescans rather than crash.
 void rt_watcher_start(void *obj) {
     if (!obj) {
         rt_trap("Watcher.Start: null watcher");
@@ -580,14 +611,18 @@ void rt_watcher_start(void *obj) {
         return;
     }
 
+    watcher_raise_fd_limit_once();
+
 #if RT_PLATFORM_LINUX
     w->inotify_fd = inotify_init1(IN_NONBLOCK
 #ifdef IN_CLOEXEC
                                   | IN_CLOEXEC
 #endif
     );
-    if (w->inotify_fd < 0)
-        rt_trap("Watcher.Start: failed to initialize inotify");
+    if (w->inotify_fd < 0) {
+        w->inotify_fd = -1;
+        return; // out of descriptors: stay inactive, caller degrades to rescans
+    }
 #if defined(FD_CLOEXEC) && !defined(IN_CLOEXEC)
     int inotify_flags = fcntl(w->inotify_fd, F_GETFD);
     if (inotify_flags >= 0)
@@ -604,14 +639,16 @@ void rt_watcher_start(void *obj) {
     if (w->watch_descriptor < 0) {
         close(w->inotify_fd);
         w->inotify_fd = -1;
-        rt_trap("Watcher.Start: failed to add watch");
+        return; // watch limit reached / path gone: stay inactive
     }
 
 #elif RT_PLATFORM_MACOS
     const char *cpath = rt_string_cstr(w->watch_path);
     w->kqueue_fd = kqueue();
-    if (w->kqueue_fd < 0)
-        rt_trap("Watcher.Start: failed to create kqueue");
+    if (w->kqueue_fd < 0) {
+        w->kqueue_fd = -1;
+        return; // out of descriptors: stay inactive, caller degrades to rescans
+    }
 #if defined(FD_CLOEXEC)
     int kq_flags = fcntl(w->kqueue_fd, F_GETFD);
     if (kq_flags >= 0)
@@ -626,7 +663,8 @@ void rt_watcher_start(void *obj) {
     if (w->watched_fd < 0) {
         close(w->kqueue_fd);
         w->kqueue_fd = -1;
-        rt_trap("Watcher.Start: failed to open path for watching");
+        w->watched_fd = -1;
+        return; // out of descriptors / path gone: stay inactive
     }
 #if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
     int watched_flags = fcntl(w->watched_fd, F_GETFD);
@@ -648,7 +686,7 @@ void rt_watcher_start(void *obj) {
         close(w->kqueue_fd);
         w->watched_fd = -1;
         w->kqueue_fd = -1;
-        rt_trap("Watcher.Start: failed to register kevent");
+        return; // kevent registration failed: stay inactive
     }
 
 #elif RT_PLATFORM_WINDOWS

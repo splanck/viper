@@ -958,13 +958,16 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     rt_canvas3d_draw_text_3d_scaled(obj, x, y, text, color, 1.0);
 }
 
-/// @brief Begin a 3D rendering frame with the given camera.
-/// @details Must be called after Clear and before any DrawMesh calls. Captures
-///          the camera's view/projection matrices, resets the deferred draw queue,
-///          and updates per-frame timing state. Begin/End must not be nested.
-/// @param obj    Canvas handle.
-/// @param camera Camera3D handle providing view and projection matrices.
-void rt_canvas3d_begin(void *obj, void *camera) {
+/// @brief Shared Begin implementation for the main scene pass and the view-model pass.
+/// @details The view-model variant renders over the finished scene color while
+///   clearing depth (`load_existing_color=1`, fresh depth), so camera-space
+///   weapon geometry never depth-clips against world walls yet self-occludes
+///   correctly. A positive @p fov_override_deg replaces the camera's horizontal
+///   FOV terms in the perspective projection (world FOV stays independent).
+static void canvas3d_begin_camera_pass(void *obj,
+                                       void *camera,
+                                       double fov_override_deg,
+                                       int8_t view_model_pass) {
     vgfx3d_camera_params_t params = {0};
     int32_t output_w = 0;
     int32_t output_h = 0;
@@ -1023,6 +1026,18 @@ void rt_canvas3d_begin(void *obj, void *camera) {
         return;
     }
     rt_camera3d_get_render_projection(cam, render_aspect, params.projection);
+    if (fov_override_deg > 0.0 && !cam->is_ortho && isfinite(fov_override_deg)) {
+        /* Same layout as build_perspective: m[0] = f/aspect, m[5] = f. */
+        double fov = fov_override_deg;
+        if (fov < 1.0)
+            fov = 1.0;
+        if (fov > 179.0)
+            fov = 179.0;
+        double f = 1.0 / tan(fov * 0.017453292519943295 * 0.5); /* deg → rad */
+        double aspect = render_aspect > 1e-6 ? render_aspect : 1.0;
+        params.projection[0] = (float)(f / aspect);
+        params.projection[5] = (float)f;
+    }
     if (!canvas3d_matrices_f32_are_finite(params.projection, 1)) {
         rt_trap("Canvas3D.Begin: camera projection matrix must contain finite values");
         return;
@@ -1050,7 +1065,12 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     params.fog_color[0] = c->fog_color[0];
     params.fog_color[1] = c->fog_color[1];
     params.fog_color[2] = c->fog_color[2];
-    params.load_existing_color = 0;
+    params.height_fog_enabled = c->height_fog_enabled;
+    params.height_fog_base = c->height_fog_base;
+    params.height_fog_falloff = c->height_fog_falloff;
+    params.height_fog_density = c->height_fog_density;
+    params.height_fog_blend = c->height_fog_blend;
+    params.load_existing_color = view_model_pass ? 1 : 0;
     params.load_existing_depth = 0;
     if (c->ibl_enabled && c->skybox && c->skybox->ibl_ready) {
         params.ibl_enabled = 1;
@@ -1094,6 +1114,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     }
     c->draw_count = 0;
     c->frame_is_2d = 0;
+    c->frame_is_view_model = view_model_pass ? 1 : 0;
+    c->last_instanced_fallback_count = 0;
     c->last_draw_count = 0;
     c->last_occluded_draw_count = 0;
     c->last_frustum_culled_draw_count = 0;
@@ -1119,6 +1141,27 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     canvas3d_latch_gpu_postfx_state(c);
     c->backend->begin_frame(c->backend_ctx, &params);
     c->in_frame = 1;
+}
+
+/// @brief Begin a 3D rendering frame with the given camera.
+/// @details Must be called after Clear and before any DrawMesh calls. Captures
+///          the camera's view/projection matrices, resets the deferred draw queue,
+///          and updates per-frame timing state. Begin/End must not be nested.
+/// @param obj    Canvas handle.
+/// @param camera Camera3D handle providing view and projection matrices.
+void rt_canvas3d_begin(void *obj, void *camera) {
+    canvas3d_begin_camera_pass(obj, camera, 0.0, 0);
+}
+
+/// @brief Begin a view-model pass over the finished scene (weapon rendering).
+/// @details Call after `End` of the world pass. Keeps the scene color, clears
+///   depth, and renders subsequent draws with the camera's view but an
+///   independent FOV (@p fov_y_degrees; <= 0 keeps the camera FOV). View-model
+///   draws never depth-clip against world geometry, still self-occlude, use the
+///   canvas light set, and neither cast shadows nor redraw the skybox. Close
+///   the pass with `End` before HUD overlay drawing.
+void rt_canvas3d_begin_view_model(void *obj, void *camera, double fov_y_degrees) {
+    canvas3d_begin_camera_pass(obj, camera, fov_y_degrees, 1);
 }
 
 /// @brief Monotonically-increasing per-frame serial; used for cache invalidation.

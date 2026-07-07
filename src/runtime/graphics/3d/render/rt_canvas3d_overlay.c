@@ -35,6 +35,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_object.h"
+#include "rt_font.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
 #include "rt_textureasset3d.h"
@@ -629,6 +630,209 @@ void rt_canvas3d_draw_image2d_region(void *obj,
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw anti-aliased screen-space text at an arbitrary scale.
+/// @details The string is rasterized from the built-in 8x8 bitmap font with a
+///   4x4 box filter per output pixel (coverage -> alpha), written into a
+///   temp Pixels, and queued as one image blit. This keeps the chunky pixel
+///   *style* while giving clean edges at fractional scales (1.5x, 3.7x, ...).
+///   The Pixels rides the canvas temp-object queue, so lifetime is frame-bound.
+void rt_canvas3d_draw_text2d_aa(
+    void *obj, int64_t x, int64_t y, rt_string text, int64_t color, double scale) {
+    int8_t started_temp_frame = 0;
+    const char *str;
+    size_t len;
+    int32_t out_w;
+    int32_t out_h;
+    void *pixels;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
+        return;
+    str = rt_string_cstr(text);
+    if (!str)
+        return;
+    len = strlen(str);
+    if (len == 0)
+        return;
+    if (len > 512)
+        len = 512;
+    if (!isfinite(scale) || scale <= 0.0)
+        scale = 1.0;
+    if (scale > 64.0)
+        scale = 64.0;
+    out_w = (int32_t)ceil((double)len * 8.0 * scale);
+    out_h = (int32_t)ceil(8.0 * scale);
+    if (out_w <= 0 || out_h <= 0 || out_w > 8192)
+        return;
+
+    pixels = rt_pixels_new((int64_t)out_w, (int64_t)out_h);
+    if (!pixels)
+        return;
+    {
+        int64_t rgb_hi = ((color >> 16) & 0xFF);
+        int64_t rgb_mid = ((color >> 8) & 0xFF);
+        int64_t rgb_lo = (color & 0xFF);
+        double inv_scale = 1.0 / scale;
+        for (int32_t oy = 0; oy < out_h; oy++) {
+            for (int32_t ox = 0; ox < out_w; ox++) {
+                int hits = 0;
+                for (int sy = 0; sy < 4; sy++) {
+                    for (int sx = 0; sx < 4; sx++) {
+                        double fx = ((double)ox + ((double)sx + 0.5) * 0.25) * inv_scale;
+                        double fy = ((double)oy + ((double)sy + 0.5) * 0.25) * inv_scale;
+                        int32_t ci = (int32_t)(fx / 8.0);
+                        int32_t gx = (int32_t)fx - ci * 8;
+                        int32_t gy = (int32_t)fy;
+                        if (ci < 0 || (size_t)ci >= len || gx < 0 || gx > 7 || gy < 0 || gy > 7)
+                            continue;
+                        const uint8_t *glyph = rt_font_get_glyph((int)(unsigned char)str[ci]);
+                        if (glyph && (glyph[gy] & (uint8_t)(0x80u >> gx)))
+                            hits++;
+                    }
+                }
+                if (hits == 0)
+                    continue;
+                int64_t alpha = (int64_t)((hits * 255) / 16);
+                int64_t packed = (rgb_hi << 24) | (rgb_mid << 16) | (rgb_lo << 8) | alpha;
+                rt_pixels_set_rgba(pixels, ox, oy, packed);
+            }
+        }
+    }
+
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1)) {
+            if (rt_obj_release_check0(pixels))
+                rt_obj_free(pixels);
+            return;
+        }
+        started_temp_frame = 1;
+    }
+    if (!rt_canvas3d_add_temp_object(c, pixels)) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        if (started_temp_frame)
+            rt_canvas3d_end(c);
+        return;
+    }
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels); /* temp queue holds the surviving reference */
+    (void)canvas3d_queue_screen_image_uv(
+        c, (float)x, (float)y, (float)out_w, (float)out_h, pixels, 0.0f, 0.0f, 1.0f, 1.0f);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
+/// @brief Width in pixels of DrawText2DAA output for @p text at @p scale.
+int64_t rt_canvas3d_measure_text2d_aa(void *obj, rt_string text, double scale) {
+    const char *str;
+    size_t len;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
+        return 0;
+    str = rt_string_cstr(text);
+    if (!str)
+        return 0;
+    len = strlen(str);
+    if (len > 512)
+        len = 512;
+    if (!isfinite(scale) || scale <= 0.0)
+        scale = 1.0;
+    if (scale > 64.0)
+        scale = 64.0;
+    return (int64_t)ceil((double)len * 8.0 * scale);
+}
+
+/// @brief Draw a 9-slice image: corners unscaled, edges stretched on one axis,
+///   center stretched on both — HUD panels/buttons from a single texture.
+void rt_canvas3d_draw_image2d_nine_slice(void *obj,
+                                         int64_t x,
+                                         int64_t y,
+                                         int64_t w,
+                                         int64_t h,
+                                         void *pixels,
+                                         int64_t inset_l,
+                                         int64_t inset_t,
+                                         int64_t inset_r,
+                                         int64_t inset_b) {
+    int8_t started_temp_frame = 0;
+    int64_t pw;
+    int64_t ph;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !pixels || w <= 0 || h <= 0)
+        return;
+    pw = rt_pixels_width(pixels);
+    ph = rt_pixels_height(pixels);
+    if (pw <= 0 || ph <= 0)
+        return;
+    if (inset_l < 0)
+        inset_l = 0;
+    if (inset_t < 0)
+        inset_t = 0;
+    if (inset_r < 0)
+        inset_r = 0;
+    if (inset_b < 0)
+        inset_b = 0;
+    if (inset_l + inset_r >= pw) {
+        inset_l = pw / 3;
+        inset_r = pw / 3;
+    }
+    if (inset_t + inset_b >= ph) {
+        inset_t = ph / 3;
+        inset_b = ph / 3;
+    }
+    /* Destination insets clamp to half the rect so slices never overlap. */
+    int64_t dl = inset_l;
+    int64_t dr = inset_r;
+    int64_t dt = inset_t;
+    int64_t db = inset_b;
+    if (dl + dr > w) {
+        dl = w / 2;
+        dr = w - dl;
+    }
+    if (dt + db > h) {
+        dt = h / 2;
+        db = h - dt;
+    }
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    {
+        const float su[4] = {0.0f,
+                             (float)inset_l / (float)pw,
+                             (float)(pw - inset_r) / (float)pw,
+                             1.0f};
+        const float sv[4] = {0.0f,
+                             (float)inset_t / (float)ph,
+                             (float)(ph - inset_b) / (float)ph,
+                             1.0f};
+        const float dx[4] = {(float)x, (float)(x + dl), (float)(x + w - dr), (float)(x + w)};
+        const float dy[4] = {(float)y, (float)(y + dt), (float)(y + h - db), (float)(y + h)};
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++) {
+                float dw = dx[col + 1] - dx[col];
+                float dh = dy[row + 1] - dy[row];
+                if (dw <= 0.0f || dh <= 0.0f)
+                    continue;
+                (void)canvas3d_queue_screen_image_uv(c,
+                                                     dx[col],
+                                                     dy[row],
+                                                     dw,
+                                                     dh,
+                                                     pixels,
+                                                     su[col],
+                                                     sv[row],
+                                                     su[col + 1],
+                                                     sv[row + 1]);
+            }
+        }
+    }
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
 /// @brief Restrict subsequent overlay 2D drawing to a screen rect (Plan 08).
 /// @details Enqueue-time CPU clipping: rects, lines, images, and text queued while the
 ///          clip is active are trimmed canvas-side, so all four backends behave
@@ -818,7 +1022,16 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (backend->draw_skybox || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
         caps |= RT_CANVAS3D_BACKEND_CAP_SKYBOX;
     if (backend->submit_draw_instanced)
+        caps |= RT_CANVAS3D_BACKEND_CAP_INSTANCING;
+    if (backend->submit_draw_instanced && (caps & RT_CANVAS3D_BACKEND_CAP_GPU))
         caps |= RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
+    if (backend->shadow_atlas_slots && backend->shadow_begin && backend->shadow_draw &&
+        backend->shadow_end)
+        caps |= RT_CANVAS3D_BACKEND_CAP_SHADOW_POINT;
+    /* Depth-aware post-FX runs everywhere: natively on GPU backends, via the
+     * CPU parity implementations on software. */
+    if (backend->present_postfx || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_FULL;
     if (backend->present_postfx || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX;
     if (backend->present_postfx)
@@ -880,8 +1093,15 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         return RT_CANVAS3D_BACKEND_CAP_SHADOWS;
     if (strcmp(name, "skybox") == 0 || strcmp(name, "cubemap_skybox") == 0)
         return RT_CANVAS3D_BACKEND_CAP_SKYBOX;
-    if (strcmp(name, "hardware_instancing") == 0 || strcmp(name, "instancing") == 0)
+    if (strcmp(name, "hardware_instancing") == 0)
         return RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
+    if (strcmp(name, "instancing") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_INSTANCING;
+    if (strcmp(name, "shadow-point") == 0 || strcmp(name, "shadow_point") == 0 ||
+        strcmp(name, "point-shadows") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SHADOW_POINT;
+    if (strcmp(name, "postfx-full") == 0 || strcmp(name, "postfx_full") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_POSTFX_FULL;
     if (strcmp(name, "postfx") == 0 || strcmp(name, "post_fx") == 0 || strcmp(name, "bloom") == 0 ||
         strcmp(name, "tonemap") == 0 || strcmp(name, "tone_map") == 0 ||
         strcmp(name, "color-grade") == 0 || strcmp(name, "color_grade") == 0 ||
@@ -1030,6 +1250,63 @@ int64_t rt_canvas3d_get_draw_count(void *obj) {
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_occluded_draw_count : 0;
+}
+
+/// @brief Set the shadow-light slot budget (clamped 1..VGFX3D_MAX_SHADOW_LIGHTS).
+void rt_canvas3d_set_shadow_budget(void *obj, int64_t budget) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (budget < 1)
+        budget = 1;
+    if (budget > VGFX3D_MAX_SHADOW_LIGHTS)
+        budget = VGFX3D_MAX_SHADOW_LIGHTS;
+    c->shadow_budget = (int32_t)budget;
+}
+
+/// @brief Shadow slots rendered in the latest frame (cascades included).
+int64_t rt_canvas3d_get_shadow_slots_used(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_shadow_slots_used : 0;
+}
+
+/// @brief Shadow-requesting lights denied a slot in the latest frame.
+int64_t rt_canvas3d_get_shadow_requests_dropped(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_shadow_requests_dropped : 0;
+}
+
+/// @brief Set the per-cluster light-index capacity (clamped 8..64; default 64).
+void rt_canvas3d_set_cluster_light_budget(void *obj, int64_t budget) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (budget < 8)
+        budget = 8;
+    if (budget > 64)
+        budget = 64;
+    c->cluster_light_budget = (int32_t)budget;
+}
+
+/// @brief Lifetime count of cluster light-index entries truncated by capacity.
+int64_t rt_canvas3d_get_cluster_overflow_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->cluster_overflow_total : 0;
+}
+
+/// @brief Enabled lights truncated by the forward-path light limit this frame.
+int64_t rt_canvas3d_get_dropped_light_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_dropped_light_count : 0;
+}
+
+/// @brief Instances routed through the per-draw instanced fallback (blend/rebase)
+///        in the current/latest frame. Opaque batches use the backend hook and
+///        contribute zero; sustained non-zero values flag material setups that
+///        forgo real instancing.
+int64_t rt_canvas3d_get_instanced_fallback_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_instanced_fallback_count : 0;
 }
 
 /// @brief Number of latest draw submissions rejected by CPU frustum culling.

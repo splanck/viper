@@ -600,7 +600,8 @@ static int sweep_capsule_against_body(const double *a,
 /// transient collider is released before returning.
 void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
+    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+    int32_t hit_capacity = w ? w->max_query_hits : 0;
     int32_t hit_count = 0;
     int64_t total_count = 0;
     double center[3];
@@ -632,7 +633,7 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
             continue;
         if (overlap_query_body_against_body(&query_body, body, &hit)) {
             total_count++;
-            if (hit_count < PH3D_MAX_QUERY_HITS)
+            if (hits && hit_count < hit_capacity)
                 hits[hit_count++] = hit;
         }
     }
@@ -647,7 +648,8 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
 /// from the corner spread; the center is the midpoint.
 void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
+    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+    int32_t hit_capacity = w ? w->max_query_hits : 0;
     int32_t hit_count = 0;
     int64_t total_count = 0;
     double mn[3], mx[3], center[3], half[3];
@@ -686,7 +688,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
             continue;
         if (overlap_query_body_against_body(&query_body, body, &hit)) {
             total_count++;
-            if (hit_count < PH3D_MAX_QUERY_HITS)
+            if (hits && hit_count < hit_capacity)
                 hits[hit_count++] = hit;
         }
     }
@@ -746,6 +748,90 @@ void *rt_world3d_sweep_sphere(
         }
     }
     return found ? physics_hit3d_new(&best_hit) : NULL;
+}
+
+rt_query_hit3d *world3d_query_hits_scratch(rt_world3d *w) {
+    if (!w)
+        return NULL;
+    if (w->max_query_hits < PH3D_QUERY_HITS_MIN)
+        w->max_query_hits = PH3D_QUERY_HITS_MIN;
+    if (w->max_query_hits > PH3D_QUERY_HITS_MAX)
+        w->max_query_hits = PH3D_QUERY_HITS_MAX;
+    if (!w->query_hits_scratch) {
+        w->query_hits_scratch = malloc((size_t)w->max_query_hits * sizeof(rt_query_hit3d));
+    }
+    return (rt_query_hit3d *)w->query_hits_scratch;
+}
+
+int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
+                                 const double *center,
+                                 double radius,
+                                 const double *delta,
+                                 const rt_body3d *ignore_body,
+                                 double *out_t,
+                                 double *out_normal) {
+    rt_query_hit3d best_hit = {0};
+    int found = 0;
+    double max_distance;
+    void *sphere_collider;
+    if (!w || !center || !delta || !isfinite(radius) || radius <= 0.0)
+        return 0;
+    max_distance = vec3_len(delta);
+    if (!isfinite(max_distance) || max_distance <= 1e-12)
+        return 0;
+
+    sphere_collider = world3d_query_sphere_collider(w, radius);
+    if (!sphere_collider)
+        return 0;
+
+    /* Direct body iteration: CCD targets are the (few, large) static and
+     * kinematic bodies whose poses are stable for the whole step, so the
+     * cached query broadphase — which is invalidated as dynamic bodies
+     * integrate — is deliberately not used here. */
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        rt_body3d *body = w->bodies[i];
+        rt_query_hit3d hit;
+        if (!body || body == ignore_body)
+            continue;
+        if (body->motion_mode == PH3D_MODE_DYNAMIC)
+            continue;
+        if (!body3d_has_collision_geometry(body))
+            continue;
+        /* Honor the mutual layer/mask contract (same rule the solver applies). */
+        if (ignore_body && (!(ignore_body->collision_layer & body->collision_mask) ||
+                            !(body->collision_layer & ignore_body->collision_mask)))
+            continue;
+        /* Triggers report overlaps but never block motion. */
+        if (body->is_trigger)
+            continue;
+        if (!sweep_sphere_against_body(
+                sphere_collider, center, radius, delta, body, max_distance, &hit))
+            continue;
+        if (!query_sanitize_hit(&hit, max_distance, delta))
+            continue;
+        /* Persistent contacts belong to the impulse solver: a body resting on
+         * (or rolling along) a surface starts every substep already touching
+         * it, and clipping that sweep at t=0 would freeze tangential motion
+         * entirely. CCD only guards surfaces the body is separated from at
+         * substep start — which is exactly the anti-tunneling case. */
+        if (hit.started_penetrating)
+            continue;
+        if (!found || hit.distance < best_hit.distance) {
+            best_hit = hit;
+            found = 1;
+        }
+    }
+
+    if (!found)
+        return 0;
+    if (out_t)
+        *out_t = best_hit.distance / max_distance;
+    if (out_normal) {
+        out_normal[0] = best_hit.normal[0];
+        out_normal[1] = best_hit.normal[1];
+        out_normal[2] = best_hit.normal[2];
+    }
+    return 1;
 }
 
 /// @brief `World3D.SweepCapsule(a, b, radius, delta, mask)` — first hit along a capsule sweep.

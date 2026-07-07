@@ -56,6 +56,8 @@ extern int rt_canvas3d_get_camera_relative_origin(void *canvas, double out_origi
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
+extern void rt_material3d_set_color(void *m, double r, double g, double b);
+extern void rt_material3d_set_alpha_mode(void *m, int64_t mode);
 
 #define SPRITE3D_WORLD_ABS_MAX 1000000000000.0
 #define SPRITE3D_SCALE_MAX 1000000.0
@@ -68,6 +70,8 @@ typedef struct {
     double anchor[2];   /* pivot [0,1], default (0.5, 0.5) */
     int32_t frame_x, frame_y, frame_w, frame_h;
     int32_t tex_w, tex_h;
+    int8_t additive;    /* route through the additive blend state (muzzle glows, tracers) */
+    double tint[3];     /* multiplies the texture; default white */
     void *cached_mesh;     /* Reused each frame (billboard changes with camera) */
     void *cached_material; /* Created once, reused until texture changes */
     void *cached_texture;  /* Track texture for material invalidation */
@@ -321,6 +325,8 @@ void *rt_sprite3d_new(void *texture) {
     s->frame_h = 0; /* 0 = use full texture */
     s->tex_w = 0;
     s->tex_h = 0;
+    s->additive = 0;
+    s->tint[0] = s->tint[1] = s->tint[2] = 1.0;
     s->cached_mesh = NULL;
     s->cached_material = NULL;
     s->cached_texture = NULL;
@@ -394,6 +400,30 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     s->frame_y = (int32_t)fy;
     s->frame_w = (int32_t)fw;
     s->frame_h = (int32_t)fh;
+}
+
+/// @brief Toggle additive blending (1 = additive for glows/tracers, 0 = alpha blend).
+void rt_sprite3d_set_additive(void *obj, int8_t additive) {
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
+        return;
+    s->additive = additive ? 1 : 0;
+}
+
+/// @brief Current additive-blend flag.
+int8_t rt_sprite3d_get_additive(void *obj) {
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    return s ? s->additive : 0;
+}
+
+/// @brief Set a packed 0xRRGGBB tint multiplied into the texture (Particles3D convention).
+void rt_sprite3d_set_color(void *obj, int64_t rgb) {
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
+        return;
+    s->tint[0] = (double)((rgb >> 16) & 0xFF) / 255.0;
+    s->tint[1] = (double)((rgb >> 8) & 0xFF) / 255.0;
+    s->tint[2] = (double)(rgb & 0xFF) / 255.0;
 }
 
 /// @brief Shift standalone Sprite3D world-space position by -delta for floating-origin rebases.
@@ -509,6 +539,14 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
         rt_material3d_set_unlit(s->cached_material, 1);
         s->cached_texture = s->texture;
     }
+
+    /* Blend state and tint can change frame-to-frame; refresh the cached material.
+       Same recipe as Particles3D: additive routes through the transparent queue. */
+    rt_material3d_set_color(s->cached_material, s->tint[0], s->tint[1], s->tint[2]);
+    ((rt_material3d *)s->cached_material)->additive_blend = s->additive ? 1 : 0;
+    rt_material3d_set_alpha_mode(s->cached_material,
+                                 s->additive ? RT_MATERIAL3D_ALPHA_MODE_BLEND
+                                             : RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
 
     /* Rebuild billboard quad each frame (orientation changes with camera).
        Clear resets vertex/index counts without freeing the backing arrays. */

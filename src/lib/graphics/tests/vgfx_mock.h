@@ -76,6 +76,10 @@ void vgfx_mock_inject_text_input(vgfx_window_t window, uint32_t codepoint);
 /** Inject synthetic scroll wheel/trackpad delta */
 void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x, int32_t y);
 
+/** Inject synthetic relative (raw) mouse motion; drained by
+ * vgfx_get_relative_deltas() while relative mouse mode is enabled. */
+void vgfx_mock_push_relative_delta(vgfx_window_t window, double dx, double dy);
+
 #ifdef __cplusplus
 }
 #endif

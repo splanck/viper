@@ -40,12 +40,17 @@ extern "C" {
 
 /// @brief Create a new 3D canvas window with the given title and pixel dimensions.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h);
+/// @brief Create a fullscreen 3D canvas at desktop resolution (no windowed flash).
+void *rt_canvas3d_new_fullscreen(rt_string title);
 /// @brief Resize the canvas and active backend output targets.
 void rt_canvas3d_resize(void *obj, int64_t w, int64_t h);
 /// @brief Clear the back buffer to the given RGB color (each channel 0.0–1.0).
 void rt_canvas3d_clear(void *obj, double r, double g, double b);
 /// @brief Begin a 3D draw pass with the given camera (must be paired with `_end`).
 void rt_canvas3d_begin(void *obj, void *camera);
+/// @brief Begin a view-model pass over the finished scene: keeps color, clears depth,
+///        renders with an independent FOV (<= 0 keeps the camera FOV). Pair with `_end`.
+void rt_canvas3d_begin_view_model(void *obj, void *camera, double fov_y_degrees);
 /// @brief Begin a 2D screen-space overlay pass (orthographic, no depth test).
 void rt_canvas3d_begin_2d(void *obj);
 /// @brief Draw a screen-space filled rectangle inside the current 2D pass.
@@ -210,6 +215,15 @@ int8_t rt_canvas3d_get_backend_fallback(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_TAA 0x80000000LL
 #define RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES 0x100000000LL
 #define RT_CANVAS3D_BACKEND_CAP_SSR 0x200000000LL
+/* Backend implements the instanced-draw hook (any backend, incl. software).
+ * HARDWARE_INSTANCING additionally requires a GPU backend. */
+#define RT_CANVAS3D_BACKEND_CAP_INSTANCING 0x400000000LL
+/* Omnidirectional point-light shadows (requires the extended shadow slots:
+ * a cube light consumes six tiles beyond the four classic slots). */
+#define RT_CANVAS3D_BACKEND_CAP_SHADOW_POINT 0x800000000LL
+/* The full post-FX chain (incl. SSAO/DOF/MotionBlur/TAA/SSR) executes on this
+ * backend — GPU-accelerated or via the CPU parity implementations. */
+#define RT_CANVAS3D_BACKEND_CAP_POSTFX_FULL 0x1000000000LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
@@ -219,6 +233,39 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 int64_t rt_canvas3d_get_draw_count(void *obj);
 /// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
+/// @brief Enable exponential height fog (pools below baseHeight; combines with distance fog).
+void rt_canvas3d_set_height_fog(
+    void *obj, double base_height, double falloff, double density, double blend);
+/// @brief Draw anti-aliased screen-space text at an arbitrary scale.
+void rt_canvas3d_draw_text2d_aa(
+    void *obj, int64_t x, int64_t y, rt_string text, int64_t color, double scale);
+/// @brief Width in pixels of DrawText2DAA output for @p text at @p scale.
+int64_t rt_canvas3d_measure_text2d_aa(void *obj, rt_string text, double scale);
+/// @brief Draw a 9-slice image: corners unscaled, edges axis-stretched, center stretched.
+void rt_canvas3d_draw_image2d_nine_slice(void *obj,
+                                         int64_t x,
+                                         int64_t y,
+                                         int64_t w,
+                                         int64_t h,
+                                         void *pixels,
+                                         int64_t inset_l,
+                                         int64_t inset_t,
+                                         int64_t inset_r,
+                                         int64_t inset_b);
+/// @brief Instances drawn via the per-draw instanced fallback this frame.
+int64_t rt_canvas3d_get_instanced_fallback_count(void *obj);
+/// @brief Set the shadow-light slot budget (1..max slots).
+void rt_canvas3d_set_shadow_budget(void *obj, int64_t budget);
+/// @brief Shadow slots rendered in the latest frame (cascades included).
+int64_t rt_canvas3d_get_shadow_slots_used(void *obj);
+/// @brief Shadow-requesting lights denied a slot in the latest frame.
+int64_t rt_canvas3d_get_shadow_requests_dropped(void *obj);
+/// @brief Set the per-cluster light-index capacity (8..64, default 64).
+void rt_canvas3d_set_cluster_light_budget(void *obj, int64_t budget);
+/// @brief Lifetime count of cluster light-index entries truncated by capacity.
+int64_t rt_canvas3d_get_cluster_overflow_count(void *obj);
+/// @brief Enabled lights truncated by the forward-path light limit this frame.
+int64_t rt_canvas3d_get_dropped_light_count(void *obj);
 /// @brief Number of draw submissions rejected by CPU frustum culling in the latest ended frame.
 int64_t rt_canvas3d_get_frustum_culled_draw_count(void *obj);
 /// @brief Number of opaque draw submissions rejected by the CPU occlusion grid in the latest frame.
@@ -303,6 +350,8 @@ int64_t rt_rendertarget3d_get_height(void *obj);
 int32_t rt_rendertarget3d_get_is_hdr(void *obj);
 /// @brief Get a Pixels view of the render target's color attachment (CPU readback).
 void *rt_rendertarget3d_as_pixels(void *obj);
+/// @brief Allocation-free readback into an existing same-size Pixels buffer.
+void rt_rendertarget3d_copy_to(void *obj, void *pixels);
 
 /// @brief Redirect subsequent draws to @p target instead of the swapchain.
 void rt_canvas3d_set_render_target(void *canvas, void *target);
@@ -452,6 +501,12 @@ void rt_material3d_set_color(void *obj, double r, double g, double b);
 void *rt_material3d_get_color(void *obj);
 /// @brief Set the diffuse texture (legacy workflow); aliased to albedo for PBR.
 void rt_material3d_set_texture(void *obj, void *pixels);
+/// @brief Bind a RenderTarget3D's live contents as the albedo texture (auto-refreshing).
+void rt_material3d_set_albedo_render_target(void *obj, void *target);
+/// @brief Detach a render-target albedo binding.
+void rt_material3d_clear_albedo_render_target(void *obj);
+/// @brief Bind a RenderTarget3D's live contents as the emissive map.
+void rt_material3d_set_emissive_render_target(void *obj, void *target);
 /// @brief Set the PBR albedo (base color) texture.
 void rt_material3d_set_albedo_map(void *obj, void *pixels);
 /// @brief Set the legacy specular shininess exponent (higher = sharper highlights).

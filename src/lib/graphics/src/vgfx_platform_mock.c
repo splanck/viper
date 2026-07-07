@@ -376,6 +376,38 @@ void vgfx_platform_hide_cursor(void) {}
 
 void vgfx_platform_show_cursor(void) {}
 
+/// @brief Mock display size: unavailable, so fullscreen creation falls back
+///        to the default window dimensions (deterministic for tests).
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    (void)out_w;
+    (void)out_h;
+    return 0;
+}
+
+/// @brief Mock relative mouse mode: always reports native raw support.
+/// @details Tests drive the accumulators deterministically through
+///          vgfx_mock_push_relative_delta(), exercising the exact code path
+///          real backends use (vgfx_internal_add_relative_delta +
+///          vgfx_get_relative_deltas drain).
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    (void)win;
+    (void)enabled;
+    return 1;
+}
+
+/// @brief Inject a synthetic relative mouse motion delta (test hook).
+/// @details Accumulates into the window's relative delta accumulators exactly
+///          like a platform raw-motion event would. Only meaningful while
+///          relative mouse mode is enabled on @p window.
+/// @param window Target window.
+/// @param dx Horizontal motion delta (sub-pixel capable).
+/// @param dy Vertical motion delta, positive = down (sub-pixel capable).
+void vgfx_mock_push_relative_delta(vgfx_window_t window, double dx, double dy) {
+    if (!window)
+        return;
+    vgfx_internal_add_relative_delta(window, dx, dy);
+}
+
 /// @brief Get the current mock time.
 /// @details Returns the current value of g_mock_time_ms.  Equivalent to
 ///          vgfx_platform_now_ms() but more explicit for test code.

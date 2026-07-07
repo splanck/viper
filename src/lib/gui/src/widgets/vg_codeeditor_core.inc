@@ -205,6 +205,74 @@ static void codeeditor_bump_revision(vg_codeeditor_t *editor) {
     editor->revision = editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
 }
 
+/// @brief The revision codeeditor_bump_revision() will produce on its next call.
+static uint64_t codeeditor_pending_revision(const vg_codeeditor_t *editor) {
+    if (!editor)
+        return 1;
+    return editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
+}
+
+/// @brief Drop all retained sync deltas, freeing their replacement text.
+static void codeeditor_journal_reset(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    for (int i = 0; i < editor->journal_count; i++) {
+        int idx = (editor->journal_head + i) % VG_EDIT_JOURNAL_CAP;
+        free(editor->journal[idx].text);
+        editor->journal[idx].text = NULL;
+    }
+    editor->journal_head = 0;
+    editor->journal_count = 0;
+    editor->journal_oldest_rev = 0;
+}
+
+/// @brief Signal that a mutation could not be captured as a delta, so the next
+///        language-service pull must full-sync. Retained deltas are dropped
+///        because they now precede a gap and cannot be applied incrementally.
+static void codeeditor_journal_mark_overflow(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_journal_reset(editor);
+    editor->journal_overflowed = true;
+}
+
+/// @brief Append one forward content delta (pre-edit range [start..end) replaced
+///        by @p text) at @p revision. A full ring or OOM marks overflow instead.
+static void codeeditor_journal_push(vg_codeeditor_t *editor,
+                                    int start_line,
+                                    int start_col,
+                                    int end_line,
+                                    int end_col,
+                                    const char *text,
+                                    uint64_t revision) {
+    if (!editor || editor->journal_overflowed)
+        return; // already need a full sync
+    if (editor->journal_count == VG_EDIT_JOURNAL_CAP) {
+        codeeditor_journal_mark_overflow(editor);
+        return;
+    }
+    const char *src = text ? text : "";
+    size_t len = strlen(src);
+    char *copy = malloc(len + 1);
+    if (!copy) {
+        codeeditor_journal_mark_overflow(editor);
+        return;
+    }
+    memcpy(copy, src, len + 1);
+
+    int tail = (editor->journal_head + editor->journal_count) % VG_EDIT_JOURNAL_CAP;
+    vg_edit_delta_t *d = &editor->journal[tail];
+    d->revision = revision;
+    d->start_line = start_line;
+    d->start_col = start_col;
+    d->end_line = end_line;
+    d->end_col = end_col;
+    d->text = copy;
+    if (editor->journal_count == 0)
+        editor->journal_oldest_rev = revision;
+    editor->journal_count++;
+}
+
 /// @brief Advance the syntax-cache generation after a language/theme/global-state change.
 static void codeeditor_bump_highlight_generation(vg_codeeditor_t *editor) {
     if (!editor)

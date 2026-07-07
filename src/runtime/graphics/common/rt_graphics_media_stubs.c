@@ -364,6 +364,36 @@ void rt_soundsource3d_set_volume(void *s, int64_t v) {
     (void)v;
 }
 
+/// @brief Stub for `SoundSource3D.Pitch` getter — playback-rate multiplier.
+///
+/// Silent stub returning the native rate.
+///
+/// @param s SoundSource3D handle (ignored).
+///
+/// @return `1.0`.
+double rt_soundsource3d_get_pitch(void *s) {
+    (void)s;
+    return 1.0;
+}
+
+/// @brief Stub for `SoundSource3D.Pitch` setter. Silent no-op.
+void rt_soundsource3d_set_pitch(void *s, double pitch) {
+    (void)s;
+    (void)pitch;
+}
+
+/// @brief Stub for `SoundSource3D.Occlusion` getter. Returns fully open.
+double rt_soundsource3d_get_occlusion(void *s) {
+    (void)s;
+    return 0.0;
+}
+
+/// @brief Stub for `SoundSource3D.Occlusion` setter. Silent no-op.
+void rt_soundsource3d_set_occlusion(void *s, double amount) {
+    (void)s;
+    (void)amount;
+}
+
 /// @brief Stub for `SoundSource3D.Looping` — get the looping flag.
 ///
 /// Silent stub returning `0`.

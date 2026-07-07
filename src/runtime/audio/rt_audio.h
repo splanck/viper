@@ -146,6 +146,31 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan);
 /// @return 1 if playing, 0 if stopped or invalid.
 int64_t rt_voice_is_playing(int64_t voice_id);
 
+/// @brief Play a sound with volume (0-100), pan (-100..100), and pitch.
+/// @param pitch Playback-rate multiplier (clamped 0.25–4.0; 1.0 = native).
+/// @return Voice ID for controlling playback, or -1 on failure.
+int64_t rt_sound_play_ex2(void *sound, int64_t volume, int64_t pan, double pitch);
+
+/// @brief Set a voice's playback-rate (pitch) multiplier (0.25–4.0).
+void rt_voice_set_pitch(int64_t voice_id, double pitch);
+
+/// @brief Get a voice's playback-rate (pitch) multiplier (1.0 default).
+double rt_voice_get_pitch(int64_t voice_id);
+
+/// @brief Set a direct per-voice lowpass cutoff in Hz (<= 0 disables).
+void rt_voice_set_lowpass(int64_t voice_id, double cutoff_hz);
+
+/// @brief Set a voice's occlusion amount (0 open .. 1 occluded, smoothed).
+void rt_voice_set_occlusion(int64_t voice_id, double amount);
+
+/// @brief Register/replace/remove a sidechain ducking rule between mix groups.
+/// @details amount <= 0 removes the (trigger, target) rule.
+void rt_audio_set_group_ducking(rt_string trigger_group,
+                                rt_string target_group,
+                                double amount,
+                                double attack_sec,
+                                double release_sec);
+
 /// @brief Return non-zero when @p sound is a live runtime Sound wrapper.
 /// @details This is intentionally a runtime-handle check, not a playback-capability
 ///          check. A detached Sound after Audio.Shutdown() is still a Sound object,

@@ -361,6 +361,10 @@ typedef struct {
     const sw_context_t *fog_ctx;
     int depth_disabled;
     int have_splat;
+    /* 1 when any light carries a resolvable shadow slot: legacy materials must
+     * take the per-pixel lighting path so shadows land (parity with the GPU
+     * backends, which always shade per pixel). */
+    int per_pixel_shadows;
     const sw_pixels_view *splat_view;
     const sw_pixels_view *layer_views;
 } sw_fragment_ctx;
@@ -765,7 +769,8 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
             continue;
 
-        if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
+        if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
+            la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
             la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
         }
@@ -913,7 +918,8 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
         if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
             continue;
 
-        if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
+        if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
+            la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
             la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
         }
@@ -977,9 +983,23 @@ static void sw_shade_apply_fog(const sw_context_t *fog_ctx,
     float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
     float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
     float dist = sw_compute_fog_distance(fog_ctx, wx, wy, wz);
-    float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
-    float fog_f = (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
-    fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
+    float fog_f = 0.0f;
+    if (fog_ctx->fog_enabled) {
+        float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
+        fog_f = (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
+        fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
+    }
+    if (fog_ctx->height_fog_enabled) {
+        /* Exponential height fog: density pools below the base height; combine
+         * with distance fog via combined transmittance. */
+        float hd = fog_ctx->height_fog_density *
+                   expf(-(wy - fog_ctx->height_fog_base) * fog_ctx->height_fog_falloff);
+        float hf = 1.0f - expf(-hd * dist);
+        if (!isfinite(hf))
+            hf = 1.0f;
+        hf = (hf < 0.0f ? 0.0f : (hf > 1.0f ? 1.0f : hf)) * fog_ctx->height_fog_blend;
+        fog_f = 1.0f - (1.0f - fog_f) * (1.0f - hf);
+    }
     *fr = *fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
     *fg = *fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;
     *fb_c = *fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
@@ -1122,7 +1142,8 @@ static int sw_shade_fragment(
      * recomputing the TBN a second time. */
     float shading_normal[3] = {0.0f, 0.0f, 0.0f};
     int shading_normal_valid = 0;
-    if (cmd && !cmd->unlit && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
+    if (cmd && !cmd->unlit &&
+        (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map || fc->per_pixel_shadows)) {
         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
         if (fabsf(pp_iw) > 1e-7f) {
             sw_slot_uvs uv = {0};
@@ -1213,8 +1234,9 @@ static int sw_shade_fragment(
                                         &fb_c);
     }
 
-    /* Distance fog — interpolate world position, compute camera distance */
-    if (fog_ctx && fog_ctx->fog_enabled)
+    /* Fog — interpolate world position, compute camera distance (distance
+     * and/or exponential height fog; both share the fog color). */
+    if (fog_ctx && (fog_ctx->fog_enabled || fog_ctx->height_fog_enabled))
         sw_shade_apply_fog(fog_ctx, b0, b1, b2, v0, v1, v2, &fr, &fg, &fb_c);
 
     return sw_blend_and_write(fc, x, y, idx, z, b0, b1, b2, fr, fg, fb_c, tex_alpha, pixel_ndv);
@@ -1466,6 +1488,16 @@ static void raster_triangle_scissored(uint8_t *pixels,
                          ? sw_setup_complete_splat(cmd, &splat_view, layer_views)
                          : 0;
 
+    int per_pixel_shadows = 0;
+    if (fog_ctx && fog_ctx->shadow_count > 0 && lights) {
+        for (int32_t li = 0; li < light_count; li++) {
+            if ((lights[li].type == 0 || lights[li].type == 1 || lights[li].type == 3) &&
+                lights[li].shadow_index >= 0) {
+                per_pixel_shadows = 1;
+                break;
+            }
+        }
+    }
     sw_fragment_ctx fc = {.pixels = pixels,
                           .zbuf = zbuf,
                           .stride = stride,
@@ -1486,6 +1518,7 @@ static void raster_triangle_scissored(uint8_t *pixels,
                           .fog_ctx = fog_ctx,
                           .depth_disabled = depth_disabled,
                           .have_splat = have_splat,
+                          .per_pixel_shadows = per_pixel_shadows,
                           .splat_view = &splat_view,
                           .layer_views = layer_views};
 

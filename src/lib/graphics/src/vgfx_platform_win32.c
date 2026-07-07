@@ -603,6 +603,8 @@ static int win32_modifiers(void) {
 ///            - WM_KEYDOWN/WM_KEYUP: Keyboard input
 ///            - WM_MOUSEMOVE: Mouse movement
 ///            - WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN/UP, WM_MBUTTONDOWN/UP: Mouse buttons
+static void win32_apply_cursor_clip(struct vgfx_window *win, int enable);
+
 static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     /* Retrieve vgfx_window pointer stored in GWLP_USERDATA */
     struct vgfx_window *win = (struct vgfx_window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
@@ -676,6 +678,9 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_SETFOCUS: {
             /* Window gained focus */
             vgfx_internal_set_focus_state(win, 1);
+            /* Re-confine the cursor while relative (raw) mouse mode is on. */
+            if (win->relative_mouse_enabled)
+                win32_apply_cursor_clip(win, 1);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -687,9 +692,36 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             if (w32)
                 w32->pending_high_surrogate = 0;
             vgfx_internal_clear_input_state(win);
+            /* Release the cursor clip so the rest of the desktop is usable
+             * while unfocused (re-applied on WM_SETFOCUS). */
+            if (win->relative_mouse_enabled)
+                win32_apply_cursor_clip(win, 0);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
+        }
+
+        case WM_INPUT: {
+            /* Raw mouse input for relative (FPS mouse-look) mode. Deltas are
+             * unaccelerated hardware counts; injected absolute motion (e.g.
+             * SetCursorPos warps) reports MOUSE_MOVE_ABSOLUTE and is skipped. */
+            if (!win->relative_mouse_enabled || !win->relative_mouse_native)
+                return DefWindowProcW(hwnd, msg, wparam, lparam);
+
+            RAWINPUT raw;
+            UINT raw_size = sizeof(raw);
+            UINT copied = GetRawInputData(
+                (HRAWINPUT)lparam, RID_INPUT, &raw, &raw_size, sizeof(RAWINPUTHEADER));
+            if (copied != (UINT)-1 && raw.header.dwType == RIM_TYPEMOUSE &&
+                (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == 0) {
+                double cs = (double)vgfx_internal_coord_scale(win);
+                if (cs <= 0.0)
+                    cs = 1.0;
+                vgfx_internal_add_relative_delta(win,
+                                                 (double)raw.data.mouse.lLastX / cs,
+                                                 (double)raw.data.mouse.lLastY / cs);
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
 
         case WM_KEYDOWN: {
@@ -1004,6 +1036,25 @@ float vgfx_platform_get_display_scale(void) {
         dpi = 96; /* clamp against bogus values */
 
     return (float)dpi / 96.0f;
+}
+
+/// @brief Query the primary display's logical dimensions.
+/// @details GetSystemMetrics returns physical pixels under our DPI-aware
+///          process; divide by the display scale to get vgfx logical units.
+/// @return 1 on success, 0 when the metrics are unavailable.
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    int phys_w = GetSystemMetrics(SM_CXSCREEN);
+    int phys_h = GetSystemMetrics(SM_CYSCREEN);
+    if (phys_w <= 0 || phys_h <= 0)
+        return 0;
+    float scale = vgfx_platform_get_display_scale();
+    if (scale < 1.0f)
+        scale = 1.0f;
+    if (out_w)
+        *out_w = (int32_t)((float)phys_w / scale);
+    if (out_h)
+        *out_h = (int32_t)((float)phys_h / scale);
+    return 1;
 }
 
 /// @brief Initialize platform-specific window resources for Win32.
@@ -1808,6 +1859,61 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
                 (LONG)win32_public_to_client_coord(window, y)};
     ClientToScreen(w32->hwnd, &pt);
     SetCursorPos(pt.x, pt.y);
+}
+
+/// @brief Confine or release the OS cursor to the window's client rect.
+/// @details Used by relative mouse mode: raw WM_INPUT deltas drive look
+///          motion, while the (hidden) system cursor is clipped so stray
+///          movement can't click a different window or monitor.
+static void win32_apply_cursor_clip(struct vgfx_window *win, int enable) {
+    if (!win || !win->platform_data) {
+        ClipCursor(NULL);
+        return;
+    }
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!enable || !w32->hwnd) {
+        ClipCursor(NULL);
+        return;
+    }
+    RECT client = {0};
+    if (!GetClientRect(w32->hwnd, &client)) {
+        ClipCursor(NULL);
+        return;
+    }
+    POINT tl = {client.left, client.top};
+    POINT br = {client.right, client.bottom};
+    ClientToScreen(w32->hwnd, &tl);
+    ClientToScreen(w32->hwnd, &br);
+    RECT screen_rect = {tl.x, tl.y, br.x, br.y};
+    ClipCursor(&screen_rect);
+}
+
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+        return 0;
+
+    /* Register (or unregister) for raw mouse input. Raw deltas arrive as
+     * WM_INPUT messages while this window is in the foreground; they are
+     * unaccelerated hardware counts, independent of pointer ballistics. */
+    RAWINPUTDEVICE rid;
+    rid.usUsagePage = 0x01; /* HID_USAGE_PAGE_GENERIC */
+    rid.usUsage = 0x02;     /* HID_USAGE_GENERIC_MOUSE */
+    if (enabled) {
+        rid.dwFlags = 0;
+        rid.hwndTarget = w32->hwnd;
+    } else {
+        rid.dwFlags = RIDEV_REMOVE;
+        rid.hwndTarget = NULL;
+    }
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+        ClipCursor(NULL);
+        return 0;
+    }
+    win32_apply_cursor_clip(win, enabled);
+    return 1;
 }
 
 void vgfx_platform_hide_cursor(void) {

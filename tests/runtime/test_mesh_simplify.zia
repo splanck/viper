@@ -1,0 +1,77 @@
+module TestMeshSimplify;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-09 E30 coverage:
+//   - QEM Simplify hits the triangle budget on a dense sphere and the result
+//     renders without traps.
+//   - Deterministic: two runs produce identical counts.
+//   - Already-minimal targets return a mesh no larger than the source.
+//   - GenerateLODs registers the requested levels and enables auto-LOD.
+
+func start() {
+    var dense = Mesh3D.NewSphere(1.0, 32);
+    var srcTris = dense.TriangleCount;
+    if (srcTris < 500) {
+        Say("FAIL: test sphere should be dense");
+        return;
+    }
+
+    var lod = Mesh3D.Simplify(dense, 200);
+    if (lod == null) {
+        Say("FAIL: Simplify returned null");
+        return;
+    }
+    if (lod.TriangleCount > 260) {
+        Say("FAIL: Simplify should reach the neighborhood of the 200-triangle target");
+        return;
+    }
+    if (lod.TriangleCount < 40) {
+        Say("FAIL: Simplify should not collapse the sphere to a sliver");
+        return;
+    }
+
+    var lod2 = Mesh3D.Simplify(dense, 200);
+    if (lod2.TriangleCount != lod.TriangleCount || lod2.VertexCount != lod.VertexCount) {
+        Say("FAIL: Simplify must be deterministic");
+        return;
+    }
+
+    var noop = Mesh3D.Simplify(dense, 100000);
+    if (noop == null || noop.TriangleCount > srcTris) {
+        Say("FAIL: an over-large target must not grow the mesh");
+        return;
+    }
+
+    // The simplified mesh renders.
+    var canvas = Canvas3D.New("simplify", 96, 64);
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 100.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 0.0, 4.0),
+                    new Vec3(0.0, 0.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var mat = Material3D.NewColor(0.8, 0.4, 0.2);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, lod, Mat4.Identity(), mat);
+    Canvas3D.End(canvas);
+    Canvas3D.Flip(canvas);
+
+    // GenerateLODs wires the chain and enables auto selection.
+    var scene = SceneGraph.New();
+    var node = SceneNode.New();
+    SceneNode.set_Mesh(node, dense);
+    SceneGraph.Add(scene, node);
+    SceneNode.GenerateLODs(node, 3, 0.4);
+    if (node.LodCount != 3) {
+        Say("FAIL: GenerateLODs(3) should register three LOD levels");
+        return;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    SceneGraph.Draw(scene, canvas, cam);
+    Canvas3D.Flip(canvas);
+
+    Say("PASS");
+}

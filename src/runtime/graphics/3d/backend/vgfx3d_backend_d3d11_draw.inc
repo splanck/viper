@@ -372,6 +372,7 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
         vgfx3d_d3d11_clamp_float_param(ctx->shadow_strength, 0.0f, 1.0f, 0.85f);
     scene_data->shadow_filter[2] =
         (float)(ctx->shadow_quality <= 0 ? 4 : (ctx->shadow_quality == 1 ? 8 : 16));
+    memcpy(scene_data->height_fog, ctx->height_fog, sizeof(scene_data->height_fog));
     {
         const vgfx3d_cluster_table_t *cluster =
             (const vgfx3d_cluster_table_t *)(cmd ? cmd->cluster_table : NULL);
@@ -1043,7 +1044,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      d3d_draw_resources_t *resources) {
-    ID3D11ShaderResourceView *srvs[16];
+    ID3D11ShaderResourceView *srvs[18];
 
     if (!ctx || !cmd || !resources)
         return 0;
@@ -1081,8 +1082,11 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
         cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
         &resources->textures[3]);
-    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+    for (int32_t slot = 0; slot < VGFX3D_CSM_SLOTS; slot++)
         srvs[4 + slot] = ctx->shadow_count > slot ? ctx->shadow_srv[slot] : NULL;
+    /* Atlas tiles back shadow slots >= VGFX3D_CSM_SLOTS (sampled at t17). */
+    srvs[16] = NULL; /* t16 is the opaque-depth SRV, bound separately */
+    srvs[17] = ctx->shadow_atlas_srv;
     srvs[8] = cmd->has_splat ? d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4])
                              : NULL;
     srvs[9] = cmd->has_splat
@@ -1142,7 +1146,9 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         srvs[12] = NULL;
     }
 
+    /* Bind 0..15 and t17 (atlas) while leaving t16 (opaque depth) alone. */
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, srvs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 17, 1, &srvs[17]);
     return resources->has_splat;
 }
 

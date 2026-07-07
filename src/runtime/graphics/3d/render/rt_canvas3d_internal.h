@@ -487,7 +487,15 @@ typedef struct {
 
 #define VGFX3D_FORWARD_LIGHT_LIMIT 16
 #define VGFX3D_MAX_LIGHTS 64
-#define VGFX3D_MAX_SHADOW_LIGHTS 4
+/* Total shadow slots: 0..3 are per-texture slots (CSM cascades and/or the
+ * highest-priority lights); 4..11 are tiles of the GPU backends' internal
+ * shadow atlas (software keeps per-slot buffers). */
+#define VGFX3D_MAX_SHADOW_LIGHTS 12
+/* CSM cascade slot count. Cascade-semantic sizes (split arrays, cascade
+ * clamps) key on this, NOT on the total shadow-slot count, so growing the
+ * general shadow budget cannot silently widen the float4 cascade-split
+ * payload the shaders consume. */
+#define VGFX3D_CSM_SLOTS 4
 #define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
 #define RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET (256ull * 1024ull * 1024ull)
 #define RT_CANVAS3D_WORLD_BOUNDS_CACHE_SIZE 1024
@@ -600,6 +608,9 @@ struct vgfx3d_rendertarget {
     uint64_t estimated_bytes; /* color + depth footprint reserved against RT budget */
     int8_t color_dirty;
     int8_t hdr_color_valid;
+    /* Bumped when a Canvas3D frame that rendered into this target ends; lets
+     * RT-as-material-texture mirrors refresh only on real content changes. */
+    uint64_t content_revision;
     vgfx3d_rendertarget_sync_fn sync_color;
     void *sync_color_userdata;
 };
@@ -768,13 +779,20 @@ static inline void vgfx3d_rendertarget_detach_sync_preserve_dirty(vgfx3d_rendert
 }
 
 /// @brief RenderTarget3D payload: a GC wrapper holding the backing render target plus
-///   its width/height.
+///   its width/height and a lazily-created Pixels mirror for material binding.
 typedef struct {
     void *vptr;
     vgfx3d_rendertarget_t *target;
     int64_t width;
     int64_t height;
+    void *material_pixels;             /* cached Pixels mirror for RT-as-texture binding */
+    uint64_t material_pixels_revision; /* content_revision the mirror was refreshed at */
 } rt_rendertarget3d;
+
+/// @brief Resolve a RenderTarget3D handle to its material-binding Pixels mirror,
+///   refreshing the mirror only when the target's content changed since the last
+///   completed frame into it. Returns NULL for invalid handles.
+void *rt_rendertarget3d_material_pixels(void *obj);
 
 /// @brief Canvas3D payload — the central 3D rendering context. Holds the window and
 ///   selected backend vtable+ctx, per-frame state and the deferred draw-command queues
@@ -799,6 +817,16 @@ typedef struct {
     /* Frame state */
     int8_t in_frame;                /* 1 = between Begin/End */
     int8_t frame_is_2d;             /* 1 = active frame uses orthographic 2D projection */
+    int8_t frame_is_view_model;     /* 1 = secondary camera-space pass over a fresh depth
+                                       buffer (weapon view models); skips skybox + shadows */
+    int64_t last_instanced_fallback_count; /* instances routed through the per-draw
+                                              fallback (blend/rebase) this frame */
+    /* Exponential height fog (shares fog_color with distance fog). */
+    int8_t height_fog_enabled;
+    float height_fog_base;
+    float height_fog_falloff;
+    float height_fog_density;
+    float height_fog_blend;
     float cached_vp[16];            /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3];        /* camera position cached for sort key computation */
     double cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
@@ -964,6 +992,11 @@ typedef struct {
     int32_t cluster_table_count;
     int32_t cluster_table_cursor;
     int64_t cluster_overflow_total; /* lifetime truncated cluster entries (diagnostics) */
+    int32_t cluster_light_budget;   /* per-cluster light-index capacity (8..64) */
+    int32_t last_dropped_light_count; /* forward-path lights truncated by the active limit */
+    int32_t shadow_budget;            /* general shadow-light slots (1..VGFX3D_MAX_SHADOW_LIGHTS) */
+    int32_t last_shadow_slots_used;   /* shadow slots rendered in the latest frame (incl. cascades) */
+    int32_t last_shadow_requests_dropped; /* shadow-requesting lights denied a slot this frame */
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
     int32_t last_frustum_culled_draw_count;
@@ -1000,6 +1033,10 @@ typedef struct {
     int64_t synthetic_mouse_buttons;
     int8_t synthetic_mouse_has_buttons;
     uint8_t synthetic_mouse_button_state[VIPER_MOUSE_BUTTON_MAX];
+    /* Relative (raw) mouse mode applied to the platform window; reconciled
+     * against rt_mouse_get_relative_mode() each poll so the runtime input
+     * layer stays window-handle-free. */
+    int8_t relative_mouse_applied;
     int8_t should_close;
     int64_t last_event_type;
     int64_t event_type_queue[RT_CANVAS3D_EVENT_QUEUE_CAPACITY];

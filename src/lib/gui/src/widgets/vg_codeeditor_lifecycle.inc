@@ -210,6 +210,9 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     edit_history_destroy(editor->history);
     editor->history = NULL;
 
+    // Free retained sync-journal delta text (plan 08).
+    codeeditor_journal_reset(editor);
+
     if (editor->custom_keywords) {
         for (int i = 0; i < editor->custom_keyword_count; i++)
             free(editor->custom_keywords[i]);

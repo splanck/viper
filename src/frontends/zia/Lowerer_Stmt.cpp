@@ -617,6 +617,13 @@ void Lowerer::lowerForInTuple(ForInStmt *stmt, TypeRef iterableType) {
     localTypes_[stmt->variable] = firstType;
     localTypes_[stmt->secondVariable] = secondType;
 
+    // Null-init string slots so the first store's releaseDisplaced frees null
+    // (safe) instead of the uninitialized slot — native codegen leaves it garbage.
+    if (firstIl.kind == Type::Kind::Str)
+        storeToSlot(stmt->variable, Value::null(), Type(Type::Kind::Ptr));
+    if (secondIl.kind == Type::Kind::Str)
+        storeToSlot(stmt->secondVariable, Value::null(), Type(Type::Kind::Ptr));
+
     size_t bodyIdx = createBlock("forin_tuple_body");
     size_t endIdx = createBlock("forin_tuple_end");
 
@@ -664,6 +671,13 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     } else {
         createSlot(stmt->variable, elemIlType);
         localTypes_[stmt->variable] = elemType;
+    }
+
+    // Null-init a string element slot (see lowerForInSeq): the per-iteration
+    // store releases the displaced value, which is uninitialized on iteration 1.
+    if (elemIlType.kind == Type::Kind::Str) {
+        const std::string &elemSlot = hasTupleBinding ? stmt->secondVariable : stmt->variable;
+        storeToSlot(elemSlot, Value::null(), Type(Type::Kind::Ptr));
     }
 
     auto listValue = lowerExpr(stmt->iterable.get());
@@ -760,6 +774,13 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
         createSlot(stmt->secondVariable, valueIlType);
         localTypes_[stmt->secondVariable] = valueType;
     }
+
+    // Null-init string key/value slots (see lowerForInSeq): the per-iteration
+    // store releases the displaced value, uninitialized on the first iteration.
+    if (keyIlType.kind == Type::Kind::Str)
+        storeToSlot(stmt->variable, Value::null(), Type(Type::Kind::Ptr));
+    if (stmt->isTuple && valueIlType.kind == Type::Kind::Str)
+        storeToSlot(stmt->secondVariable, Value::null(), Type(Type::Kind::Ptr));
 
     auto mapValue = lowerExpr(stmt->iterable.get());
     Value keysSeq =
@@ -868,6 +889,21 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     } else {
         createSlot(stmt->variable, elemIlType);
         localTypes_[stmt->variable] = elemType;
+    }
+
+    // Zero-initialize a string element slot to null before the loop. Each
+    // iteration stores the new element with releaseDisplaced=true, which releases
+    // the slot's previous value; on the first iteration that previous value is
+    // the freshly-allocated (uninitialized) slot. The VM zero-inits allocas so
+    // rt_str_release_maybe(null) is a safe no-op, but native codegen leaves stack
+    // garbage there — releasing it traps "invalid string handle". A null init
+    // makes the first release safe on every backend.
+    if (elemIlType.kind == Type::Kind::Str) {
+        // A str slot is a pointer; zero it with a null Ptr store (the same shape
+        // emitInlineValueZero uses for Str), which the verifier accepts for a str
+        // alloca while a str-typed null operand would not.
+        const std::string &elemSlot = hasTupleBinding ? stmt->secondVariable : stmt->variable;
+        storeToSlot(elemSlot, Value::null(), Type(Type::Kind::Ptr));
     }
 
     std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());

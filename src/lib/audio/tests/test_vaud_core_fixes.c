@@ -822,6 +822,200 @@ static void test_mixer_processes_effect_group_bus_only_once(void) {
     vaud_mutex_destroy(&ctx.mutex);
 }
 
+//=============================================================================
+// Voice DSP: pitch resampling, occlusion/lowpass filtering, group ducking
+//=============================================================================
+
+/// @brief Write a stereo WAV whose samples alternate +/-16000 every frame
+///        (a Nyquist-rate square) — maximal high-frequency content so lowpass
+///        attenuation is directly measurable in the output RMS.
+static int write_square_wav(const char *path, int32_t frames) {
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return 0;
+
+    uint32_t data_bytes = (uint32_t)frames * 2u * sizeof(int16_t);
+    fwrite("RIFF", 1, 4, f);
+    write_u32_le(f, 36u + data_bytes);
+    fwrite("WAVE", 1, 4, f);
+    fwrite("fmt ", 1, 4, f);
+    write_u32_le(f, 16);
+    write_u16_le(f, 1);
+    write_u16_le(f, 2);
+    write_u32_le(f, (uint32_t)VAUD_SAMPLE_RATE);
+    write_u32_le(f, (uint32_t)VAUD_SAMPLE_RATE * 2u * sizeof(int16_t));
+    write_u16_le(f, 2u * sizeof(int16_t));
+    write_u16_le(f, 16);
+    fwrite("data", 1, 4, f);
+    write_u32_le(f, data_bytes);
+    for (int32_t i = 0; i < frames; i++) {
+        int16_t s = (i & 1) ? (int16_t)-16000 : (int16_t)16000;
+        write_u16_le(f, (uint16_t)s);
+        write_u16_le(f, (uint16_t)s);
+    }
+
+    int ok = ferror(f) == 0;
+    fclose(f);
+    return ok;
+}
+
+/// @brief RMS of an interleaved stereo int16 chunk.
+static double chunk_rms(const int16_t *buf, int32_t frames) {
+    double acc = 0.0;
+    int32_t n = frames * 2;
+    for (int32_t i = 0; i < n; i++)
+        acc += (double)buf[i] * (double)buf[i];
+    return sqrt(acc / (double)n);
+}
+
+static void test_voice_pitch_scales_consumption(void) {
+    char path[128];
+    make_temp_wav_path(path, sizeof(path), "pitch");
+    EXPECT_TRUE(write_square_wav(path, 44100));
+
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+    vaud_sound_t sound = vaud_load_sound(ctx, path);
+    EXPECT_TRUE(sound != NULL);
+
+    int16_t out[1024 * VAUD_CHANNELS];
+
+    /* Pitch 2.0 consumes ~2 source frames per output frame. */
+    vaud_voice_id id = vaud_play_ex(sound, 1.0f, 0.0f);
+    EXPECT_TRUE(id != VAUD_INVALID_VOICE);
+    vaud_set_voice_pitch(ctx, id, 2.0f);
+    EXPECT_TRUE(vaud_get_voice_pitch(ctx, id) == 2.0f);
+    vaud_mixer_render(ctx, out, 1024);
+    vaud_voice *voice = find_voice_by_id(ctx, id);
+    EXPECT_TRUE(voice != NULL);
+    EXPECT_TRUE(voice->position >= 2046 && voice->position <= 2050);
+    vaud_stop_voice(ctx, id);
+
+    /* PlayEx2 applies the rate before the first rendered chunk. */
+    id = vaud_play_ex2(sound, 1.0f, 0.0f, 0.5f);
+    EXPECT_TRUE(id != VAUD_INVALID_VOICE);
+    vaud_mixer_render(ctx, out, 1024);
+    voice = find_voice_by_id(ctx, id);
+    EXPECT_TRUE(voice != NULL);
+    EXPECT_TRUE(voice->position >= 510 && voice->position <= 514);
+    vaud_stop_voice(ctx, id);
+
+    /* Clamps: huge -> 4.0, non-positive -> reset to 1.0, tiny -> 0.25. */
+    id = vaud_play_ex(sound, 1.0f, 0.0f);
+    vaud_set_voice_pitch(ctx, id, 100.0f);
+    EXPECT_TRUE(vaud_get_voice_pitch(ctx, id) == 4.0f);
+    vaud_set_voice_pitch(ctx, id, -3.0f);
+    EXPECT_TRUE(vaud_get_voice_pitch(ctx, id) == 1.0f);
+    vaud_set_voice_pitch(ctx, id, 0.01f);
+    EXPECT_TRUE(vaud_get_voice_pitch(ctx, id) == 0.25f);
+    vaud_stop_voice(ctx, id);
+
+    vaud_destroy(ctx);
+    vaud_free_sound(sound);
+    remove(path);
+}
+
+static void test_voice_lowpass_and_occlusion_attenuate(void) {
+    char path[128];
+    make_temp_wav_path(path, sizeof(path), "lowpass");
+    EXPECT_TRUE(write_square_wav(path, 44100));
+
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+    vaud_sound_t sound = vaud_load_sound(ctx, path);
+    EXPECT_TRUE(sound != NULL);
+
+    int16_t out[1024 * VAUD_CHANNELS];
+
+    /* Baseline: unfiltered Nyquist square is loud. */
+    vaud_voice_id id = vaud_play_loop(sound, 1.0f, 0.0f);
+    EXPECT_TRUE(id != VAUD_INVALID_VOICE);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    double base = chunk_rms(out, 1024);
+    EXPECT_TRUE(base > 1000.0);
+
+    /* Direct lowpass at 500 Hz kills a 22 kHz square immediately. */
+    vaud_set_voice_lowpass(ctx, id, 500.0f);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    double filtered = chunk_rms(out, 1024);
+    EXPECT_TRUE(filtered < base / 6.0);
+
+    /* Removing the filter restores the fast path. */
+    vaud_set_voice_lowpass(ctx, id, 0.0f);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    EXPECT_TRUE(chunk_rms(out, 1024) > base / 2.0);
+
+    /* Occlusion sweeps in smoothly (~80 ms) and both muffles and attenuates. */
+    vaud_set_voice_occlusion(ctx, id, 1.0f);
+    double occluded = base;
+    for (int32_t i = 0; i < 12; i++) { /* ~280 ms >> smoothing constant */
+        memset(out, 0, sizeof(out));
+        vaud_mixer_render(ctx, out, 1024);
+        occluded = chunk_rms(out, 1024);
+    }
+    EXPECT_TRUE(occluded < base / 6.0);
+
+    vaud_stop_voice(ctx, id);
+    vaud_destroy(ctx);
+    vaud_free_sound(sound);
+    remove(path);
+}
+
+static void test_group_ducking_engages_and_releases(void) {
+    char path[128];
+    make_temp_wav_path(path, sizeof(path), "duck");
+    EXPECT_TRUE(write_square_wav(path, 44100));
+
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+    vaud_sound_t sound = vaud_load_sound(ctx, path);
+    EXPECT_TRUE(sound != NULL);
+
+    int16_t out[1024 * VAUD_CHANNELS];
+
+    /* Target: loud loop in group 2. Trigger: near-silent loop in group 3
+     * (audible per the >0.001 activity threshold but negligible in the RMS). */
+    vaud_voice_id target = vaud_play_loop_group(sound, 1.0f, 0.0f, 2);
+    vaud_voice_id trigger = vaud_play_loop_group(sound, 0.01f, 0.0f, 3);
+    EXPECT_TRUE(target != VAUD_INVALID_VOICE && trigger != VAUD_INVALID_VOICE);
+
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    double base = chunk_rms(out, 1024);
+    EXPECT_TRUE(base > 1000.0);
+
+    /* Duck group 2 by 90% while group 3 is audible; attack settles well
+     * within one 1024-frame chunk (23 ms >> 5 ms tau). */
+    vaud_set_group_duck(ctx, 3, 2, 0.9f, 0.005f, 0.005f);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    double ducked = chunk_rms(out, 1024);
+    EXPECT_TRUE(ducked < base * 0.35);
+
+    /* Stop the trigger: the gain releases back toward unity. */
+    vaud_stop_voice(ctx, trigger);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    memset(out, 0, sizeof(out));
+    vaud_mixer_render(ctx, out, 1024);
+    double released = chunk_rms(out, 1024);
+    EXPECT_TRUE(released > base * 0.7);
+
+    /* amount <= 0 removes the rule. */
+    vaud_set_group_duck(ctx, 3, 2, 0.0f, 0.005f, 0.005f);
+    EXPECT_TRUE(ctx->duck_rule_count == 0);
+
+    vaud_stop_voice(ctx, target);
+    vaud_destroy(ctx);
+    vaud_free_sound(sound);
+    remove(path);
+}
+
 int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
@@ -843,6 +1037,9 @@ int main(void) {
     test_mixer_outputs_silence_when_state_lock_is_busy();
     test_vaud_get_stats_handles_nulls_and_counts_render();
     test_mixer_processes_effect_group_bus_only_once();
+    test_voice_pitch_scales_consumption();
+    test_voice_lowpass_and_occlusion_attenuate();
+    test_group_ducking_engages_and_releases();
 
     if (tests_failed != 0)
         return 1;

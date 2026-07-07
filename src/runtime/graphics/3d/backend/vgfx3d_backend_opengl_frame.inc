@@ -139,6 +139,12 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3);
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
+    ctx->height_fog[0] = cam->height_fog_base;
+    ctx->height_fog[1] = cam->height_fog_falloff;
+    ctx->height_fog[2] = cam->height_fog_enabled
+                             ? cam->height_fog_density * cam->height_fog_blend
+                             : 0.0f;
+    ctx->height_fog[3] = 0.0f;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;
     ctx->fog_color[0] = cam->fog_color[0];

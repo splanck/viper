@@ -34,6 +34,13 @@ void *rt_skeleton3d_new(void);
 /// @brief Append a bone with the given name, parent index (-1 = root bone), and bind-pose matrix.
 /// Returns the new bone's index. Bones must be added in topological (parent-first) order.
 int64_t rt_skeleton3d_add_bone(void *skel, rt_string name, int64_t parent_index, void *bind_mat4);
+
+/// @brief Register (or remove, with empty local) an external bone-name alias
+///        consulted by animation retargeting (e.g. "mixamorig:Hips" -> "hips").
+void rt_skeleton3d_set_bone_alias(void *skeleton, rt_string external, rt_string local);
+
+/// @brief Number of registered bone-name aliases.
+int64_t rt_skeleton3d_get_alias_count(void *skeleton);
 /// @brief Pre-compute inverse bind-pose matrices used during skinning. Call after all bones added.
 void rt_skeleton3d_compute_inverse_bind(void *skel);
 /// @brief Total number of bones in the skeleton.

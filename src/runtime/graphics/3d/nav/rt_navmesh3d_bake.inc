@@ -192,6 +192,26 @@ void *rt_navmesh3d_bake(
     nm = (rt_navmesh3d *)navmesh3d_voxel_bake(
         (rt_mesh3d *)source_mesh, agent_radius, agent_height, max_slope, cell_size);
     navmesh3d_release_local(source_mesh);
+
+    /* Every bake is tiled: derive a default tile size (~1/16th of the larger
+     * XZ extent, clamped) so RebuildTile/AddObstacle always take the O(tile)
+     * in-place re-carve path — destructibles never pay a whole-mesh refilter.
+     * BakeTiled still overrides with an explicit tile size. */
+    if (nm && nm->tile_size <= 0.0 && nm->qgrid_nx > 0 && nm->qgrid_nz > 0 &&
+        nm->qgrid_inv_cell > 0.0) {
+        double cell = 1.0 / nm->qgrid_inv_cell;
+        double extent_x = (double)nm->qgrid_nx * cell;
+        double extent_z = (double)nm->qgrid_nz * cell;
+        double extent = extent_x > extent_z ? extent_x : extent_z;
+        double tile = extent / 16.0;
+        if (tile < 4.0)
+            tile = 4.0;
+        if (tile > NAVMESH3D_TILE_SIZE_MAX)
+            tile = NAVMESH3D_TILE_SIZE_MAX;
+        if (tile < NAVMESH3D_CELL_SIZE_MIN)
+            tile = NAVMESH3D_CELL_SIZE_MIN;
+        nm->tile_size = tile;
+    }
     return nm;
 }
 

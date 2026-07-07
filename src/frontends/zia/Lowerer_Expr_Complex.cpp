@@ -489,16 +489,14 @@ std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) 
     {
         const StructTypeInfo &valInfo = *valueInfo;
 
-        // Allocate stack space for the value
-        unsigned allocaId = nextTempId();
-        il::core::Instr allocaInstr;
-        allocaInstr.result = allocaId;
-        allocaInstr.op = Opcode::Alloca;
-        allocaInstr.type = Type(Type::Kind::Ptr);
-        allocaInstr.operands = {Value::constInt(static_cast<int64_t>(valInfo.totalSize))};
-        allocaInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
-        Value ptr = Value::temp(allocaId);
+        // Allocate zero-initialized stack space for the value. Zeroing is
+        // load-bearing: field assignments in `init` (and the direct-store path
+        // below) release the slot's previous value for managed fields. The VM
+        // zero-inits allocas so that first release sees null, but native
+        // codegen leaves stack garbage — releasing it traps or corrupts the
+        // heap (same hazard class as the for-in string-slot init in
+        // Lowerer_Stmt.cpp).
+        Value ptr = emitStructTypeAlloc(valInfo);
 
         // Check if the struct type has an explicit init method
         MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);

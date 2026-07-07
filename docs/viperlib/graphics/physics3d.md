@@ -109,6 +109,17 @@ and joint integration.
   fixture covers 16 static mesh tiles while building only the one overlapping
   tile's per-mesh BVH.
 - Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
+- **CCD is a hard guarantee against static geometry**: bodies with `UseCcd`
+  combine adaptive substep subdivision with a swept time-of-impact pass that
+  clips each substep's translation at the first static/kinematic surface —
+  a fast projectile cannot tunnel a thin wall at any speed/dt combination
+  (covered by the `test_physics3d_ccd_toi` speed x thickness matrix). The TOI
+  reflection honors the body's restitution; dynamic-vs-dynamic pairs stay on
+  the substep path. `CcdToiCount` reports applied clips.
+- `SetMaxQueryHits(n)` configures how many results `RaycastAll`/`OverlapSphere`/
+  `OverlapAABB` return (16–4096, default 256). Lists always report `TotalCount`
+  and `Truncated`, so raising the capacity is only needed when you must
+  enumerate more than the nearest 256 matches.
 - `LastCcdRequestedSubsteps`, `LastCcdSubsteps`, and `CcdSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
 - `SolverIterations` defaults to `6` and drives velocity contact solving plus joint
   constraint passes. `PositionIterations` defaults to `1` and controls the split
@@ -230,7 +241,8 @@ content; bodies now own a collider instead of baking all shape state directly in
 | `Sphere(radius)` | `Collider3D(Double)` | Sphere collider |
 | `Capsule(radius, height)` | `Collider3D(Double, Double)` | Upright capsule collider; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
 | `NewConvexHull(mesh)` | `Collider3D(Object)` | Convex-hull collider sourced from a `Mesh3D` |
-| `NewMesh(mesh)` | `Collider3D(Object)` | Static triangle-mesh collider |
+| `NewConvexHullReduced(mesh, maxVerts)` | `Collider3D(Object, Integer)` | Quickhull over the mesh's vertices (interior points removed), reduced to at most `maxVerts` (clamped 8–255) hull vertices, materialized as an owned hull mesh with faces |
+| `NewMesh(mesh)` | `Collider3D(Object)` | Triangle-mesh collider (static or kinematic bodies) |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `Collider3D(Object, Double, Double, Double)` | Static heightfield collider from `Pixels` |
 | `NewCompound()` | `Collider3D()` | Empty compound collider |
 
@@ -250,7 +262,14 @@ content; bodies now own a collider instead of baking all shape state directly in
 
 ### Notes
 
-- `NewMesh()` and `NewHeightfield()` are static-only in v1 and must be attached to static bodies.
+- `NewMesh()` colliders attach to STATIC and KINEMATIC bodies (script-driven
+  platforms, crushers, elevators); mass-driven DYNAMIC bodies remain rejected
+  because dynamic-vs-mesh response is numerically unstable. `NewHeightfield()`
+  stays static-only.
+- `NewConvexHullReduced()` is the right constructor for downloaded art meshes:
+  it removes interior vertices via quickhull (GJK support scans then touch only
+  real hull corners) and re-hulls to the vertex budget when needed, trapping on
+  degenerate (flat/collinear) input.
 - Primitive collider constructors substitute a positive unit extent/radius for zero, negative-zero,
   or non-finite inputs; capsule height is still clamped to at least its diameter.
 - `NewHeightfield()` requires a valid `Pixels` object, not just a matching class ID.

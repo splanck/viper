@@ -253,6 +253,14 @@ typedef struct {
     int8_t fog_enabled;
     float fog_near, fog_far;
     float fog_color[3];
+    /* Exponential height fog (Track E doc 07): density scales by
+     * exp(-(worldY - base) * falloff); combines with distance fog via
+     * combined transmittance, weighted by blend. Shares fog_color. */
+    int8_t height_fog_enabled;
+    float height_fog_base;
+    float height_fog_falloff;
+    float height_fog_density;
+    float height_fog_blend;
     /* Secondary passes can preserve the previous scene color while resetting
      * depth for overlays or UI. */
     int8_t load_existing_color;
@@ -283,6 +291,12 @@ typedef struct {
 
 #define VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC 0
 #define VGFX3D_SHADOW_PROJECTION_PERSPECTIVE 1
+/* Omnidirectional point-light shadow: shadow_index is the FIRST of six
+ * consecutive slots (atlas tiles), one 90-degree perspective face per axis in
+ * the order +X,-X,+Y,-Y,+Z,-Z. Shaders pick the face by the dominant axis of
+ * light->fragment and then sample it exactly like a perspective slot. */
+#define VGFX3D_SHADOW_PROJECTION_CUBE 2
+#define VGFX3D_SHADOW_CUBE_FACES 6
 
 /*==========================================================================
  * Clustered forward+ light culling (Plan 07)
@@ -328,7 +342,7 @@ typedef struct {
     float direction[3];
     float position[3];
     float color[3];
-    float shadow_cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
+    float shadow_cascade_splits[VGFX3D_CSM_SLOTS]; /* consumed as one float4 by shaders */
     float intensity;
     float attenuation;
     float inner_cos; /* spot: cosine of inner cone angle (full brightness) */
@@ -366,6 +380,12 @@ typedef struct {
 typedef struct vgfx3d_backend {
     const char *name; /* "software", "metal", "d3d11", "opengl" */
 
+    /* 1 = the backend can render AND sample shadow slots beyond
+     * VGFX3D_CSM_SLOTS (its internal atlas tiles). Canvas3D clamps its
+     * per-frame shadow slot usage to VGFX3D_CSM_SLOTS when 0, so lights never
+     * receive slot indices the backend's shaders cannot resolve. */
+    int8_t shadow_atlas_slots;
+
     /* Lifecycle */
     void *(*create_ctx)(vgfx_window_t win, int32_t w, int32_t h);
     void (*destroy_ctx)(void *ctx);
@@ -395,6 +415,12 @@ typedef struct vgfx3d_backend {
         void *ctx, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, int32_t slot, float bias);
+
+    /* Shadow slots beyond VGFX3D_CSM_SLOTS are "atlas slots": Canvas3D still
+     * drives them through shadow_begin/draw/end with per-slot CPU depth
+     * buffers, but GPU backends store them as tiles of one internal depth
+     * atlas (static 4x2 grid keyed by slot - VGFX3D_CSM_SLOTS) so the general
+     * shadow budget can grow without consuming more texture bind points. */
 
     /* Optional skybox pass. When non-NULL, Canvas3D may delegate cubemap skybox
      * rendering to the backend instead of rasterizing it into the software
@@ -483,6 +509,10 @@ typedef struct vgfx3d_backend {
 
 /// @brief The always-available CPU software backend (fallback of last resort).
 extern const vgfx3d_backend_t vgfx3d_software_backend;
+
+/// @brief Software backend: read-only NDC depth buffer view for CPU post-FX
+///   (NULL when unavailable). Only valid for the software backend's context.
+const float *vgfx3d_sw_get_zbuf(void *ctx, int32_t *out_w, int32_t *out_h);
 
 #if RT_PLATFORM_MACOS
 /// @brief The Metal GPU backend (macOS only).

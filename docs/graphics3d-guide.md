@@ -460,6 +460,7 @@ compatibility aliases for the shape factories.
 | `CalcTangents()` | `void()` | Compute tangent vectors (required for normal mapping) |
 | `Clone()` | `obj()` | Deep copy of mesh data, including attached morph targets |
 | `Transform(mat4)` | `void(obj)` | Transform all vertices in-place by Mat4 |
+| `Mesh3D.Simplify(mesh, targetTriangles)` | `obj(obj, i64)` | Return a new simplified mesh via quadric-error-metric edge collapse (static form; deterministic, boundary- and seam-preserving, never grows the mesh) |
 
 ### Skeletal and Morph Extensions
 

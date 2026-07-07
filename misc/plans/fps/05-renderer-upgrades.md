@@ -1,10 +1,44 @@
 # 05 — Engine: View-Model Pass, Additive Sprites, Zero-Copy RT, SW Instancing, Portal Frustum PVS
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: E18 view-model pass + E19 sprite additive + E21 CopyTo; session B: E20 RT→material,
-> E22 software instancing, E23 portal-frustum PVS). Eliminates constraints #10, #12, #13, #14,
-> #15. Consumers: 12-core-loop/13-weapons (view-model), 20-levels-act2 (L4 monitors + PVS),
-> 13/14 weapons FX (additive sprites), 22-world-systems (instanced debris/foliage on SW).
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: E18 `Canvas3D.BeginViewModel(camera, fovY)` — implemented as a secondary pass
+> (`load_existing_color=1`, fresh depth) rather than the planned per-backend depth-range
+> remap: identical guarantees (never clips walls, self-occludes, independent FOV via
+> projection patch, receives world shadow maps, casts none, skips skybox) with ZERO
+> backend-specific code — one shared implementation on all four backends. E19
+> `Sprite3D.Additive` prop + `SetColor(0xRRGGBB)` tint riding the existing
+> material `additive_blend` path (Particles3D recipe). E20 RT→material:
+> `Material3D.SetAlbedoRenderTarget/ClearAlbedoRenderTarget/SetEmissiveRenderTarget` —
+> RenderTarget3D became a first-class material texture source via a generation-tracked
+> Pixels mirror (`content_revision` bumps at frame end; mirror refreshes only on real
+> content change; self-bind is inherently safe: mid-frame draws sample the previous
+> completed frame). Uniform across backends; native GPU-texture bind noted as a future
+> Metal-first optimization. E21 `RenderTarget3D.CopyTo(pixels)` allocation-free readback
+> (exact trap `"RenderTarget3D.CopyTo: size mismatch"`; bumps Pixels generation for GPU
+> caches). E22 software `submit_draw_instanced` hook — opaque batches never fall back on
+> ANY backend; the blend/rebase fallback trap became clamp+telemetry
+> (`Canvas3D.InstancedFallbackCount`); capability split: `"instancing"` = hook present
+> (now true on software), `"hardware_instancing"` = GPU+hook. E23 portal-frustum PVS —
+> portals propagate through projected NDC windows (portal frame = interval box between
+> the linked zone AABBs; near-plane straddle → conservative full view) with per-zone
+> window unions run to fixpoint; `SceneGraph.PortalClipping` toggle (default on) +
+> `get_PortalTraversalCount`; discriminating test: a frustum-visible zone reachable only
+> through a behind-camera portal culls with clipping on, draws with it off.
+> **Bugs found & fixed along the way:** BUG-E6 (Metal RTT frame end double-ended the
+> command encoder — crashed every windowed `SetRenderTarget` use) and BUG-E7 (Metal
+> `PerMaterial` C/MSL layout mismatch — ALL textured sampling on Metal read shifted
+> garbage UV transforms; latent under uniform/palette textures). See ENGINE_BUGS_FOUND.md.
+> Coverage: `tests/runtime/test_canvas3d_viewmodel_sprite.zia` (behind-wall view-model
+> draw, FOV magnification, additive sum-to-white, tint, CopyTo==AsPixels) and
+> `test_canvas3d_renderer_upgrades.zia` (non-uniform-texture texel asserts, live RT
+> material rebind-free refresh, 70k-instance batch with fallback count 0, portal-PVS
+> discriminator + corridor no-over-cull) — both PASS on Metal and software;
+> `-L graphics3d` 95/95; runtime completeness green. Docs: rendering3d.md (view-model
+> pass section, Sprite3D, RenderTarget3D CopyTo, Material3D RT bindings, PVS clipping,
+> InstancedFallbackCount, instancing capability split).
+> Eliminates constraints #10, #12, #13, #14, #15. Consumers: 12-core-loop/13-weapons
+> (view-model), 20-levels-act2 (L4 monitors + PVS), 13/14 weapons FX (additive sprites),
+> 22-world-systems (instanced debris/foliage on SW).
 
 ## 0. TL;DR
 

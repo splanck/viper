@@ -833,7 +833,14 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
         SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
         ctx->shadow_width[slot] = 0;
         ctx->shadow_height[slot] = 0;
+        ctx->shadow_slot_complete[slot] = 0;
     }
+    SAFE_RELEASE(ctx->shadow_atlas_srv);
+    SAFE_RELEASE(ctx->shadow_atlas_dsv);
+    SAFE_RELEASE(ctx->shadow_atlas_tex);
+    ctx->shadow_atlas_w = 0;
+    ctx->shadow_atlas_h = 0;
+    ctx->shadow_atlas_cleared = 0;
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
 }
@@ -856,6 +863,7 @@ static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
     ctx->shadow_width[slot] = 0;
     ctx->shadow_height[slot] = 0;
+    ctx->shadow_slot_complete[slot] = 0;
 }
 
 /// @brief Recompute the highest contiguous shadow slot advertised to shaders.
@@ -868,8 +876,14 @@ static void d3d11_recompute_shadow_count(d3d11_context_t *ctx) {
     if (!ctx)
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
+        if (slot < VGFX3D_CSM_SLOTS) {
+            if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
+                complete[slot] = 1;
+        } else if (ctx->shadow_atlas_srv && ctx->shadow_slot_complete[slot]) {
+            /* Atlas tiles have no per-slot resources; completeness is stamped
+             * by shadow_end after the tile pass renders. */
             complete[slot] = 1;
+        }
     }
     ctx->shadow_count = vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete);
 }
@@ -907,5 +921,46 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
      * failure/release paths recompute, but this success path previously did not, leaving a
      * valid shadow map silently unsampled until some other path refreshed the count. */
     d3d11_recompute_shadow_count(ctx);
+    return S_OK;
+}
+
+/// @brief Allocate (or resize) the shared shadow atlas for slots >= VGFX3D_CSM_SLOTS.
+/// @details One depth target holding a 4x2 tile grid at the per-slot resolution;
+///   the main pass samples it at t17 through static per-tile UV rects.
+static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, int32_t tile_h) {
+    HRESULT hr;
+    int32_t atlas_w;
+    int32_t atlas_h;
+
+    if (!ctx || tile_w <= 0 || tile_h <= 0 || tile_w > INT32_MAX / 4 || tile_h > INT32_MAX / 2)
+        return E_INVALIDARG;
+    atlas_w = tile_w * 4;
+    atlas_h = tile_h * 2;
+    if (!vgfx3d_d3d11_is_valid_texture2d_extent(atlas_w, atlas_h))
+        return E_INVALIDARG;
+    if (ctx->shadow_atlas_tex && ctx->shadow_atlas_dsv && ctx->shadow_atlas_srv &&
+        ctx->shadow_atlas_w == atlas_w && ctx->shadow_atlas_h == atlas_h)
+        return S_OK;
+
+    d3d11_unbind_shadow_resources(ctx);
+    SAFE_RELEASE(ctx->shadow_atlas_srv);
+    SAFE_RELEASE(ctx->shadow_atlas_dsv);
+    SAFE_RELEASE(ctx->shadow_atlas_tex);
+    ctx->shadow_atlas_w = 0;
+    ctx->shadow_atlas_h = 0;
+    ctx->shadow_atlas_cleared = 0;
+    for (int32_t slot = VGFX3D_CSM_SLOTS; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        ctx->shadow_slot_complete[slot] = 0;
+    hr = d3d11_create_depth_target(ctx,
+                                   atlas_w,
+                                   atlas_h,
+                                   1,
+                                   &ctx->shadow_atlas_tex,
+                                   &ctx->shadow_atlas_dsv,
+                                   &ctx->shadow_atlas_srv);
+    if (FAILED(hr))
+        return hr;
+    ctx->shadow_atlas_w = atlas_w;
+    ctx->shadow_atlas_h = atlas_h;
     return S_OK;
 }

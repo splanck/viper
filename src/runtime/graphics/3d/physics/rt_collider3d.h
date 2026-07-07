@@ -39,6 +39,8 @@ void *rt_collider3d_new_sphere(double radius);
 void *rt_collider3d_new_capsule(double radius, double height);
 /// @brief Create a convex-hull collider from a mesh's vertex cloud (computes the hull internally).
 void *rt_collider3d_new_convex_hull(void *mesh);
+/// @brief Quickhull-reduced convex hull collider (max_verts clamped 8-255).
+void *rt_collider3d_new_convex_hull_reduced(void *mesh, int64_t max_verts);
 /// @brief Create a triangle-mesh collider (static only — cannot rotate dynamically).
 void *rt_collider3d_new_mesh(void *mesh);
 /// @brief Create a heightfield collider from a Pixels heightmap with per-axis world-scale.

@@ -29,7 +29,19 @@
 
 #define VGFX3D_STR_IMPL(x) #x
 #define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+// The embedded HLSL shader sources are single string literals well past ISO
+// C99's 4095-char minimum, which Apple Clang flags under -Werror. The runtime
+// target that also includes this file is not built warning-as-error, so this
+// suppression only re-aligns the test's stricter flags with it. Guarded to
+// GCC/Clang so MSVC (which uses a different long-string limit) is untouched.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+#endif
 #include "vgfx3d_backend_d3d11_shaders.inc"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #undef VGFX3D_STR
 #undef VGFX3D_STR_IMPL
 

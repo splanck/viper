@@ -775,7 +775,10 @@ static void test_software_spot_light_shadow_render_is_stable() {
 #if RT_COMPILER_MSVC
     const uint64_t expected_hash = 0x2a3dee15e4bee83full;
 #else
-    const uint64_t expected_hash = 0x728c7560b310b408ull;
+    /* Rebaselined when shadowed legacy materials moved from Gouraud to the
+     * per-pixel path on software (GPU-parity shading; see BUG-E8 in
+     * misc/plans/fps/ENGINE_BUGS_FOUND.md). */
+    const uint64_t expected_hash = 0xce6879d79c8a44b8ull;
 #endif
     SoftwareSceneRenderResult result;
 

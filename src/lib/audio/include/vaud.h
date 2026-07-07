@@ -298,6 +298,50 @@ void vaud_set_voice_group(vaud_context_t ctx, vaud_voice_id voice, int64_t group
 /// @return 1 if playing, 0 if stopped or invalid.
 int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice);
 
+/// @brief Play a sound with volume, pan, and pitch (playback-rate) control.
+/// @param sound Sound to play.
+/// @param volume Playback volume (0.0 to 1.0).
+/// @param pan Stereo pan (-1.0 to 1.0).
+/// @param pitch Playback-rate multiplier (clamped to 0.25–4.0; 1.0 = native).
+/// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
+vaud_voice_id vaud_play_ex2(vaud_sound_t sound, float volume, float pan, float pitch);
+
+/// @brief Set the playback-rate (pitch) multiplier of a playing voice.
+/// @details Values are clamped to 0.25–4.0; non-positive/NaN values reset to
+///          1.0. Rates other than 1.0 resample with linear interpolation
+///          (sub-sample fractional cursor), so pitch and duration both scale.
+/// @param ctx Audio context.
+/// @param voice Voice ID.
+/// @param pitch Playback-rate multiplier (1.0 = native rate).
+void vaud_set_voice_pitch(vaud_context_t ctx, vaud_voice_id voice, float pitch);
+
+/// @brief Get the playback-rate (pitch) multiplier of a voice (1.0 default).
+float vaud_get_voice_pitch(vaud_context_t ctx, vaud_voice_id voice);
+
+/// @brief Set a direct per-voice one-pole lowpass cutoff in Hz.
+/// @details Values <= 0 (or NaN) bypass the filter. Composes with occlusion:
+///          the effective cutoff is the lower of the two.
+void vaud_set_voice_lowpass(vaud_context_t ctx, vaud_voice_id voice, float cutoff_hz);
+
+/// @brief Set the occlusion amount of a voice (0 = open .. 1 = fully occluded).
+/// @details Maps to a perceptual lowpass sweep (~22 kHz down to ~800 Hz) plus
+///          up to -6 dB of gain reduction. Changes are smoothed inside the
+///          mixer (~80 ms) so gameplay-driven toggles never zipper.
+void vaud_set_voice_occlusion(vaud_context_t ctx, vaud_voice_id voice, float amount);
+
+/// @brief Register, replace, or remove a sidechain-style group ducking rule.
+/// @details While any voice in @p trigger_group is audible, the gain of
+///          @p target_group eases toward (1 - amount) over @p attack_sec and
+///          recovers to unity over @p release_sec. Re-registering the same
+///          (trigger, target) pair replaces the rule; amount <= 0 removes it.
+///          At most VAUD-internal rule-table capacity (8) rules are active.
+void vaud_set_group_duck(vaud_context_t ctx,
+                         int64_t trigger_group,
+                         int64_t target_group,
+                         float amount,
+                         float attack_sec,
+                         float release_sec);
+
 //===----------------------------------------------------------------------===//
 // Music Streaming
 //===----------------------------------------------------------------------===//

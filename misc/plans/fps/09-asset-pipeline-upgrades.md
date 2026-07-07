@@ -1,8 +1,30 @@
 # 09 — Engine: Mesh Simplification (Auto-LOD), ASCII FBX, meshopt Decode
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · **2-session chunk**
-> (session A: E30 QEM simplification + GenerateLODs; session B: E31 ASCII FBX + E32 meshopt
-> stretch + docs). Eliminates constraints #20 (`SetAutoLOD` only selects among *existing*
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E
+>
+> **Shipped.** E30: from-scratch QEM decimation (`rt_mesh_simplify.c/.h`) behind
+> `Mesh3D.Simplify(mesh, targetTris)` — full-record vertex weld so attribute seams become
+> protected borders (UV/material seams survive; subset placement keeps surviving-vertex
+> attrs, skinning-safe), boundary edges penalized 10x via perpendicular planes,
+> lazy-invalidation heap with deterministic tie-break, triangle-flip rejection, emits a
+> compacted NEW mesh. `SceneNode.GenerateLODs(levels, ratio)` builds a ratio^k chain
+> (<=4 levels), registers radius-derived distances via AddLOD, enables SetAutoLOD.
+> Test: `g3d_test_mesh_simplify` (dense-sphere budget hit, determinism, no-grow guard,
+> render smoke, LodCount). E31: ASCII FBX with the standard `; FBX` signature now routes
+> through the ASCII geometry parser (loader.inc gate fix) instead of being rejected —
+> positions/triangulation/normals/UVs/vertex colors import; signature files with no
+> parsable geometry return null + `ASCII FBX file did not contain parsable mesh geometry`.
+> Skins/anim curves in ASCII remain geometry-only (binary loader covers rigged content).
+> Test: `g3d_test_fbx_ascii` (cube + attributed quad fixtures, malformed-null-plus-
+> diagnostic, binary-path regression). Docs: rendering3d.md format matrix + LOD workflow,
+> graphics3d-guide.md Mesh3D table.
+>
+> **Cut per plan section 2 stretch line:** E32 EXT_meshopt decoder — the glTF
+> required-extension gate already fails cleanly (`requires EXT_meshopt_compression
+> (unsupported)`); this is the documented next chunk. Deviation: quadric attribute-space
+> extension (10-coeff position-only quadrics + protected seams instead of extended
+> attribute quadrics) — seams are preserved rather than smoothly collapsed, which is the
+> conservative choice for game LODs. Eliminates constraints #20 (`SetAutoLOD` only selects among *existing*
 > meshes — rendering3d.md:566 — nothing synthesizes LODs) and #21 partially (ASCII FBX
 > unsupported — rendering3d.md:70-71; EXT_meshopt_compression deferred —
 > 3d_overhaul/09-gltf-coverage.md:24,40; Draco stays out of scope). Consumers: 26-assets

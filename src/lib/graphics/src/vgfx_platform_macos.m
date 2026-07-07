@@ -1005,6 +1005,12 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         return;
 
     vgfx_internal_set_focus_state(_vgfxWindow, 1);
+
+    /* Re-engage relative mouse mode (cursor dissociation is a global,
+     * per-process setting — only hold it while we own focus). */
+    if (_vgfxWindow->relative_mouse_enabled)
+        CGAssociateMouseAndMouseCursorPosition(false);
+
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -1024,6 +1030,12 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
 
     vgfx_internal_set_focus_state(_vgfxWindow, 0);
     vgfx_internal_clear_input_state(_vgfxWindow);
+
+    /* Suspend relative mouse mode while unfocused so the rest of the desktop
+     * gets a normal cursor back (resumed in windowDidBecomeKey). */
+    if (_vgfxWindow->relative_mouse_enabled)
+        CGAssociateMouseAndMouseCursorPosition(true);
+
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -1053,6 +1065,25 @@ float vgfx_platform_get_display_scale(void) {
 
         CGFloat s = [main backingScaleFactor];
         return (s >= 1.0) ? (float)s : 1.0f;
+    }
+}
+
+/// @brief Query the primary display's logical (point) dimensions.
+/// @details NSScreen frames are already in points, which matches vgfx's
+///          logical coordinate space. Used to size fullscreen windows.
+/// @return 1 on success, 0 when no screen is available.
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        NSScreen *main = [NSScreen mainScreen];
+        if (!main)
+            return 0;
+        NSRect frame = [main frame];
+        if (out_w)
+            *out_w = (int32_t)frame.size.width;
+        if (out_h)
+            *out_h = (int32_t)frame.size.height;
+        return frame.size.width > 0 && frame.size.height > 0;
     }
 }
 
@@ -1399,6 +1430,22 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
+
+                    /* Relative (raw) mouse mode: while the hardware mouse is
+                     * dissociated from the cursor, deltaX/deltaY keep flowing
+                     * unbounded. Accumulate them in logical units so relative
+                     * deltas match the coordinate space of the warp-to-center
+                     * fallback (points * backing scale / coord scale). */
+                    if (win->relative_mouse_enabled && win->relative_mouse_native) {
+                        double sf = win->scale_factor > 0.0f ? (double)win->scale_factor : 1.0;
+                        double cs = (double)vgfx_internal_coord_scale(win);
+                        if (cs <= 0.0)
+                            cs = 1.0;
+                        double k = sf / cs;
+                        vgfx_internal_add_relative_delta(win,
+                                                         (double)[event deltaX] * k,
+                                                         (double)[event deltaY] * k);
+                    }
 
                     vgfx_internal_set_mouse_position(win, x, y);
 
@@ -1993,6 +2040,16 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
 
     CGDisplayMoveCursorToPoint(display_id, display_point);
     CGAssociateMouseAndMouseCursorPosition(true);
+}
+
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    (void)win;
+    /* Decouple the hardware mouse from the on-screen cursor. While
+     * dissociated the cursor stays parked (no edge pinning) and NSEvent
+     * mouse-moved events continue reporting deltaX/deltaY, which the event
+     * pump accumulates into the window's relative delta accumulators. */
+    CGAssociateMouseAndMouseCursorPosition(enabled ? false : true);
+    return 1;
 }
 
 void vgfx_platform_hide_cursor(void) {

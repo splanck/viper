@@ -1,6 +1,26 @@
 # 08 — Engine: Barycentric 2D Blend Trees, Retarget Bone Maps, Always-Tiled NavMesh, Agent Link State
 
-> **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · Track E · 1 session.
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2` · Track E.
+> Shipped: E26 freeform-directional 2D blending — from-scratch Bowyer–Watson Delaunay
+> triangulation over sample space + barycentric weights (≤3 active clips, weights sum to 1;
+> outside-hull queries project onto the nearest hull edge; <3 non-collinear samples falls
+> back to legacy). `BlendTree3D.BlendMode` (0 freeform default / 1 legacy IDW) and a new
+> read-only `BlendTree3D.Blend` property exposing the internal `AnimBlend3D` (per-sample
+> weights were previously unobservable from Zia — surface gap closed). E27 explicit retarget
+> maps: `Skeleton3D.SetBoneAlias(external, local)` + `get_AliasCount` (empty local removes);
+> `Animation3D.Retarget` resolves dst-alias → exact name → src-alias reversal → humanoid
+> role → index fallback. E28 always-tiled bakes: `NavMesh3D.Bake` auto-derives a tile size
+> (extent/16, clamped ≥4 wu) and retains per-tile voxel sources, so `RebuildTile` is O(tile)
+> on every baked mesh; `get_TileSize` reports it (0.0 for `Build`/`Import`). E29 agent link
+> state: `NavAgent3D.OnOffMeshLink`/`LinkKind` match the current waypoint segment against
+> off-mesh links (0.25 endpoint tolerance) for jump/ladder gameplay hooks. Coverage:
+> `tests/runtime/test_anim_nav_upgrades.zia` (freeform ≤3-weight + sum-to-1 vs legacy ≥5
+> spread on a 9-sample ring, alias add/remove/re-add + alias-only retarget non-null,
+> Bake TileSize>0 + RebuildTile, idle-agent link defaults); anim/nav regression sweep and
+> full `-L graphics3d` (93/93) green; runtime completeness green. Docs: rendering3d.md
+> (BlendTree3D modes/Blend, Skeleton3D aliases, Retarget order, NavMesh tiling/TileSize,
+> NavAgent link state + `New(navMesh, radius, height)` ctor fix), game3d.md (world bake
+> hooks always tiled).
 > Eliminates constraints #7 (`RebuildTile` refilters the whole mesh on non-tiled bakes),
 > #8 (2D blend trees are inverse-distance², not barycentric), #9 (retargeting is name-based
 > humanoid mapping only). Consumers: 18-animation (locomotion), 16-enemies (downloaded rigs),

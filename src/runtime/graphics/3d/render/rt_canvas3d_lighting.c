@@ -88,7 +88,7 @@ int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
 ///   sum, so the flat path's output is unchanged by the reorder; within each
 ///   group the original slot order is preserved so revision stamps stay stable.
 /// @return The number of lights actually copied into `out`.
-int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
+int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
     if (!c || !out || max <= 0)
         return 0;
@@ -116,6 +116,19 @@ int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int
             canvas3d_copy_light_params(c, l, &out[count]);
             count++;
         }
+    }
+    /* Telemetry: record how many enabled lights the active limit truncated
+     * this pass — lights silently exceeding the forward cap were previously
+     * unobservable (get_DroppedLightCount). */
+    {
+        int32_t enabled = 0;
+        for (int i = 0; i < VGFX3D_MAX_LIGHTS; i++)
+            if (c->lights[i] && c->lights[i]->enabled)
+                enabled++;
+        for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS; i++)
+            if (c->scene_lights[i] && c->scene_lights[i]->enabled)
+                enabled++;
+        c->last_dropped_light_count = enabled > count ? enabled - count : 0;
     }
     return count;
 }

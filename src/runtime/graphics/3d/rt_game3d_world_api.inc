@@ -30,9 +30,16 @@ static void *game3d_world_new_with_camera_impl(rt_string title,
                                                double fov_deg,
                                                double near_plane,
                                                double far_plane,
-                                               int8_t horizontal_fov) {
+                                               int8_t horizontal_fov,
+                                               int8_t fullscreen) {
     double aspect;
 
+    if (fullscreen) {
+        /* Dimensions resolve from the display after the canvas is created;
+         * seed with a sane aspect so early math never divides by zero. */
+        width = 1280;
+        height = 720;
+    }
     if (width <= 0 || height <= 0) {
         rt_trap("Game3D.World3D.New: dimensions must be positive");
         return NULL;
@@ -58,7 +65,19 @@ static void *game3d_world_new_with_camera_impl(rt_string title,
     world->clear_b = 0.065;
     world->debug_axis_size = 1.0;
 
-    world->canvas = rt_canvas3d_new(title, width, height);
+    world->canvas =
+        fullscreen ? rt_canvas3d_new_fullscreen(title) : rt_canvas3d_new(title, width, height);
+    if (fullscreen && world->canvas) {
+        /* Adopt the real fullscreen dimensions for the world and camera aspect. */
+        int64_t actual_w = rt_canvas3d_get_width(world->canvas);
+        int64_t actual_h = rt_canvas3d_get_height(world->canvas);
+        if (actual_w > 0 && actual_h > 0) {
+            width = actual_w;
+            height = actual_h;
+            world->width = width;
+            world->height = height;
+        }
+    }
     world->scene = rt_scene3d_new();
     aspect = (double)width / (double)height;
     world->camera = horizontal_fov
@@ -95,7 +114,21 @@ void *rt_game3d_world_new_with_camera(rt_string title,
                                       double near_plane,
                                       double far_plane) {
     return game3d_world_new_with_camera_impl(
-        title, width, height, fov_deg, near_plane, far_plane, 0);
+        title, width, height, fov_deg, near_plane, far_plane, 0, 0);
+}
+
+/// @brief Create a fullscreen world at desktop resolution with a horizontal-FOV camera.
+/// @details The window is created directly in fullscreen (no windowed flash); world and
+///   camera dimensions adopt the actual display size. F11/SetFullscreen still toggles.
+void *rt_game3d_world_new_fullscreen(rt_string title) {
+    return game3d_world_new_with_camera_impl(title,
+                                             0,
+                                             0,
+                                             RT_GAME3D_DEFAULT_FOV_DEG,
+                                             RT_GAME3D_DEFAULT_NEAR,
+                                             RT_GAME3D_DEFAULT_FAR,
+                                             0,
+                                             1);
 }
 
 /// @brief Create a world whose initial camera FOV is interpreted horizontally.
@@ -110,7 +143,16 @@ void *rt_game3d_world_new_with_horizontal_camera(rt_string title,
                                                  double near_plane,
                                                  double far_plane) {
     return game3d_world_new_with_camera_impl(
-        title, width, height, horizontal_fov_deg, near_plane, far_plane, 1);
+        title, width, height, horizontal_fov_deg, near_plane, far_plane, 1, 0);
+}
+
+/// @brief Create a fullscreen world at desktop resolution with a horizontal-FOV camera.
+void *rt_game3d_world_new_fullscreen_with_horizontal_camera(rt_string title,
+                                                            double horizontal_fov_deg,
+                                                            double near_plane,
+                                                            double far_plane) {
+    return game3d_world_new_with_camera_impl(
+        title, 0, 0, horizontal_fov_deg, near_plane, far_plane, 1, 1);
 }
 
 /// @brief Allocate and initialize a world-stream object bound to a world, with default

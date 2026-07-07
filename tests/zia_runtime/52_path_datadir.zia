@@ -1,0 +1,36 @@
+module RuntimeTest52;
+
+bind "./_support";
+bind Viper.IO.Path as Path;
+bind Viper.IO.Dir as Dir;
+bind Viper.Input.Mouse as Mouse;
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Path.DataDir (per-user writable data directory) and the passive
+// relative-mouse surface defaults. Headless-safe: DataDir only touches the
+// filesystem; the Mouse getters read runtime state without a window.
+
+func start() {
+    // DataDir returns an absolute path containing the app name and creates
+    // the directory on demand.
+    var dir = Path.DataDir("viper_test_datadir");
+    assertTrue(dir.Length() > 0, "datadir_nonempty");
+    assertTrue(Path.IsAbs(dir), "datadir_absolute");
+    assertTrue(dir.Contains("viper_test_datadir"), "datadir_contains_app");
+    assertTrue(Dir.Exists(dir), "datadir_created");
+
+    // Idempotent: a second call resolves to the same path.
+    var dir2 = Path.DataDir("viper_test_datadir");
+    assertEqStr(dir2, dir, "datadir_idempotent");
+
+    // Relative mouse mode defaults: off, no native raw deltas, zero deltas.
+    assertTrue(!Mouse.RelativeMode, "relmode_default_off");
+    assertTrue(!Mouse.RelativeModeNative, "relmode_native_default_off");
+    var dx = Mouse.DeltaXF();
+    var dy = Mouse.DeltaYF();
+    assertTrue(dx == 0.0, "deltaxf_default_zero");
+    assertTrue(dy == 0.0, "deltayf_default_zero");
+
+    report();
+}
