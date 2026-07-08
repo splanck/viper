@@ -106,7 +106,7 @@ class ChessAI {
         ttScore = [];
         ttDepth = [];
         ttFlag  = [];
-        for i in 0..ttSize {
+        for _ in 0..ttSize {
             ttHash.add(0);
             ttScore.add(0);
             ttDepth.add(-1);
@@ -115,7 +115,7 @@ class ChessAI {
 
         killerA = [];
         killerB = [];
-        for i in 0..maxPly {
+        for _ in 0..maxPly {
             killerA.add(-1);
             killerB.add(-1);
         }
@@ -427,7 +427,7 @@ class ChessAI {
         if killerA.length() != maxPly || killerB.length() != maxPly {
             killerA = [];
             killerB = [];
-            for i in 0..maxPly {
+            for _ in 0..maxPly {
                 killerA.add(-1);
                 killerB.add(-1);
             }

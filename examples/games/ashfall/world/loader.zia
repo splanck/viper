@@ -30,6 +30,8 @@ func serialize(lb: level_base.LevelBuilder) -> String {
     Map.SetStr(m, "spawns", encodeSpawns(lb));
     Map.SetStr(m, "picks", encodePicks(lb));
     Map.SetStr(m, "props", encodeProps(lb));
+    Map.SetStr(m, "covers", encodeCovers(lb));
+    Map.SetStr(m, "gates", encodeGates(lb));
     Map.SetStr(m, "terrain", S.intStr(lb.terrainKindOf()));
     return Json.Format(m);
 }
@@ -69,7 +71,7 @@ hide func encodeSpawns(lb: level_base.LevelBuilder) -> String {
     while i < lb.spawnCount() {
         if i > 0 { out = out + ";"; }
         out = out + S.intStr(lb.spawnArchAt(i)) + "," + f(lb.spawnXat(i)) + "," + f(lb.spawnZat(i)) + "," +
-              S.intStr(lb.spawnWaveAt(i));
+              S.intStr(lb.spawnWaveAt(i)) + "," + f(lb.spawnRouteXat(i)) + "," + f(lb.spawnRouteZat(i));
         i = i + 1;
     }
     return out;
@@ -99,6 +101,33 @@ hide func encodeProps(lb: level_base.LevelBuilder) -> String {
     return out;
 }
 
+/// Encode authored AI cover hints for manifest round-trips.
+hide func encodeCovers(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.coverCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.coverXat(i)) + "," + f(lb.coverZat(i)) + "," +
+              f(lb.coverFaceXat(i)) + "," + f(lb.coverFaceZat(i));
+        i = i + 1;
+    }
+    return out;
+}
+
+/// Encode objective gates as compact CSV records.
+hide func encodeGates(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.gateCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.gateXat(i)) + "," + f(lb.gateYat(i)) + "," + f(lb.gateZat(i)) + "," +
+              f(lb.gateHXat(i)) + "," + f(lb.gateHYat(i)) + "," + f(lb.gateHZat(i)) + "," +
+              S.intStr(lb.gateUnlockAt(i));
+        i = i + 1;
+    }
+    return out;
+}
+
 // --- Load --------------------------------------------------------------------
 // Parse a manifest string and populate a fresh LevelBuilder. Returns false on
 // invalid JSON (the caller keeps its previous level).
@@ -116,6 +145,8 @@ func load(text: String, lb: level_base.LevelBuilder) -> Boolean {
     decodeSpawns(Map.GetStr(m, "spawns"), lb);
     decodePicks(Map.GetStr(m, "picks"), lb);
     decodeProps(Map.GetStr(m, "props"), lb);
+    decodeCovers(Map.GetStr(m, "covers"), lb);
+    decodeGates(Map.GetStr(m, "gates"), lb);
     var terr = Map.GetStr(m, "terrain");
     if Str.get_Length(terr) > 0 { lb.setTerrain(Convert.ToInt64(terr)); }
     return true;
@@ -184,6 +215,33 @@ hide func decodeProps(s: String, lb: level_base.LevelBuilder) {
     }
 }
 
+/// Decode cover-hint records emitted by `encodeCovers`.
+hide func decodeCovers(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 4 {
+            lb.addCover(num(fld, 0), num(fld, 1), num(fld, 2), num(fld, 3));
+        }
+        i = i + 1;
+    }
+}
+
+/// Decode objective gates emitted by `encodeGates`.
+hide func decodeGates(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 7 {
+            lb.addGate(num(fld, 0), num(fld, 1), num(fld, 2),
+                       num(fld, 3), num(fld, 4), num(fld, 5), inum(fld, 6));
+        }
+        i = i + 1;
+    }
+}
+
 hide func decodeLights(s: String, lb: level_base.LevelBuilder) {
     var recs = splitRecords(s);
     var i = 0;
@@ -205,7 +263,15 @@ hide func decodeSpawns(s: String, lb: level_base.LevelBuilder) {
     var i = 0;
     while i < recs.Count {
         var fld = splitCsv(recs[i]);
-        if fld.Count >= 4 {
+        if fld.Count >= 6 {
+            var rx = num(fld, 4);
+            var rz = num(fld, 5);
+            if rx > 90000.0 {
+                lb.addSpawn(inum(fld, 0), num(fld, 1), num(fld, 2), inum(fld, 3));
+            } else {
+                lb.addSpawnRoute(inum(fld, 0), num(fld, 1), num(fld, 2), inum(fld, 3), rx, rz);
+            }
+        } else if fld.Count >= 4 {
             lb.addSpawn(inum(fld, 0), num(fld, 1), num(fld, 2), inum(fld, 3));
         }
         i = i + 1;

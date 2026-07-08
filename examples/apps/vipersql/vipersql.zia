@@ -239,7 +239,6 @@ func runServer(config: ServerConfig) {
     Terminal.Say("");
 
     var running = 1;
-    var activeConns = 0;
     while running == 1 {
         var client = Network.TcpServer.Accept(pgServer);
         sql_pool_submit_pg(client);

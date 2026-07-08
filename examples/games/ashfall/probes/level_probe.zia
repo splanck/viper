@@ -40,13 +40,34 @@ func start() {
         if g.getLevelMgr().levelName().Length == 0 { fail("level " + toString(lv) + " has no name"); return; }
         if lv != config.LV_HUB {
             if g.getEnemies().aliveCount() < 1 { fail("level " + toString(lv) + " spawned no enemies"); return; }
+            var routed = 0;
+            var si = 0;
+            var lb = g.getLevelMgr().getBuilder();
+            while si < lb.spawnCount() {
+                if lb.spawnRouteXat(si) < 90000.0 { routed = routed + 1; }
+                si = si + 1;
+            }
+            if routed < 1 { fail("level " + toString(lv) + " has no routed spawns"); return; }
+            if lb.coverCount() < 1 { fail("level " + toString(lv) + " has no AI cover hints"); return; }
         }
         if g.getLevelMgr().getObjectives().count() < 1 { fail("level " + toString(lv) + " has no objectives"); return; }
+        var ai = g.getLevelMgr().getObjectives().activeIndex();
+        if ai >= 0 && g.getLevelMgr().getObjectives().promptOf(ai).Length == 0 {
+            fail("level " + toString(lv) + " active objective has no prompt");
+            return;
+        }
         g.devSetGod(true);
         var t = 0;
         while t < 30 { tick(g); t = t + 1; }   // must not trap
         lv = lv + 1;
     }
+
+    // L1 has a sequential exit objective and an objective-opened gate.
+    var gGate = bootLevel(config.LV_L1, 0x9050);
+    var lbGate = gGate.getLevelMgr().getBuilder();
+    var objGate = gGate.getLevelMgr().getObjectives();
+    if lbGate.gateCount() < 1 { fail("L1 has no objective gate"); return; }
+    if objGate.prereqOf(1) != 0 { fail("L1 exit objective is not gated by clear objective"); return; }
 
     // --- 2. REACH objective completes -> LEVEL_COMPLETE ---------------------
     // L3 is a single REACH objective at (0, -46). Place the player there.

@@ -36,12 +36,20 @@ func start() {
         if a.lightCount() != b.lightCount() { fail("light count L" + toString(lv)); return; }
         if a.spawnCount() != b.spawnCount() { fail("spawn count L" + toString(lv)); return; }
         if a.pickupCount() != b.pickupCount() { fail("pickup count L" + toString(lv)); return; }
+        if a.coverCount() != b.coverCount() { fail("cover count L" + toString(lv)); return; }
+        if a.gateCount() != b.gateCount() { fail("gate count L" + toString(lv)); return; }
         if M.absf(a.startZv() - b.startZv()) > 0.01 { fail("start Z mismatch L" + toString(lv)); return; }
         if a.boxCount() > 0 {
             if M.absf(a.boxCXat(0) - b.boxCXat(0)) > 0.01 { fail("box[0] cx mismatch L" + toString(lv)); return; }
         }
         if a.spawnCount() > 0 {
             if a.spawnArchAt(0) != b.spawnArchAt(0) { fail("spawn[0] arch mismatch L" + toString(lv)); return; }
+        }
+        if a.coverCount() > 0 {
+            if M.absf(a.coverXat(0) - b.coverXat(0)) > 0.01 { fail("cover[0] x mismatch L" + toString(lv)); return; }
+        }
+        if a.gateCount() > 0 {
+            if a.gateUnlockAt(0) != b.gateUnlockAt(0) { fail("gate[0] unlock mismatch L" + toString(lv)); return; }
         }
         lv = lv + 1;
     }

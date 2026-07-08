@@ -72,7 +72,7 @@ class BrushTool implements Tool {
         drawing = 0;
     }
 
-    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+    expose func drawPreview(_gfx: Canvas, _view: CanvasViewport, _ctx: ToolContext) {
         // Freehand tool: the live brush cursor preview is drawn by the chrome.
     }
 

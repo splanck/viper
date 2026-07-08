@@ -407,47 +407,18 @@ class Parser {
     /// Falls through to postfix parsing for non-unary expressions.
     ExprPtr parseUnary();
 
-    /// @brief Parse multiplicative expressions (*, /, %).
-    /// @return The parsed expression.
-    ExprPtr parseMultiplicative();
+    /// @brief Continue parsing binary operators from an already-parsed left operand.
+    /// @details Shared precedence-climbing routine that folds the uniform
+    /// left-associative binary operators (logical-OR through multiplicative) into
+    /// @p left. This is the single source of truth for binary operator precedence,
+    /// used by both the normal descent (parseCoalesce) and match-arm continuation
+    /// (parseBinaryFrom). It does not handle `??`, ranges, ternary, or assignment.
+    /// @param left The already-parsed left operand.
+    /// @param minPrec The minimum precedence to consume (callers pass the loosest).
+    /// @return The extended expression, or nullptr on error.
+    ExprPtr parseBinaryRhs(ExprPtr left, int minPrec);
 
-    /// @brief Parse additive expressions (+, -).
-    /// @return The parsed expression.
-    ExprPtr parseAdditive();
-
-    /// @brief Parse shift expressions (<<, >>).
-    /// @return The parsed expression.
-    ExprPtr parseShift();
-
-    /// @brief Parse comparison expressions (<, >, <=, >=).
-    /// @return The parsed expression.
-    ExprPtr parseComparison();
-
-    /// @brief Parse equality expressions (==, !=).
-    /// @return The parsed expression.
-    ExprPtr parseEquality();
-
-    /// @brief Parse bitwise AND expressions (&).
-    /// @return The parsed expression.
-    ExprPtr parseBitwiseAnd();
-
-    /// @brief Parse bitwise XOR expressions (^).
-    /// @return The parsed expression.
-    ExprPtr parseBitwiseXor();
-
-    /// @brief Parse bitwise OR expressions (|).
-    /// @return The parsed expression.
-    ExprPtr parseBitwiseOr();
-
-    /// @brief Parse logical AND expressions (&&).
-    /// @return The parsed expression.
-    ExprPtr parseLogicalAnd();
-
-    /// @brief Parse logical OR expressions (||).
-    /// @return The parsed expression.
-    ExprPtr parseLogicalOr();
-
-    /// @brief Parse null coalesce expressions (??).
+    /// @brief Parse null coalesce expressions (??) and everything tighter.
     /// @return The parsed expression.
     ExprPtr parseCoalesce();
 

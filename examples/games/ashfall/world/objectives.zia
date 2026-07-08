@@ -28,33 +28,87 @@ class Objectives {
     hide List[Integer] progress;
     hide List[Integer] done;
     hide List[String] text;
+    hide List[String] prompt;
     hide List[Integer] optional;
+    hide List[Integer] prereq;
+    hide List[Float] timer;
     hide Integer killBaseline;      // killCount at objective start (for KILL deltas)
 
     expose func init() {
         kind = []; tx = []; tz = []; radius = []; targetCount = []; progress = [];
-        done = []; text = []; optional = [];
+        done = []; text = []; prompt = []; optional = []; prereq = []; timer = [];
         killBaseline = 0;
     }
 
     expose func clear() {
         kind = []; tx = []; tz = []; radius = []; targetCount = []; progress = [];
-        done = []; text = []; optional = [];
+        done = []; text = []; prompt = []; optional = []; prereq = []; timer = [];
         killBaseline = 0;
     }
 
+    /// Add an objective that is active immediately unless it is optional.
+    ///
+    /// Objective order is still the mission spine, but `addAfter` can author a
+    /// dependency when a later objective should be hidden behind a completed
+    /// gate, wave, or console beat.
     expose func add(k: Integer, x: Float, z: Float, r: Float, count: Integer, txt: String, opt: Boolean) {
         kind.Add(k); tx.Add(x); tz.Add(z); radius.Add(r); targetCount.Add(count);
         progress.Add(0); done.Add(0); text.Add(txt);
+        prompt.Add(defaultPrompt(k));
         if opt { optional.Add(1); } else { optional.Add(0); }
+        prereq.Add(-1);
+        timer.Add(0.0);
+    }
+
+    /// Add an objective that unlocks only after `after` has completed.
+    ///
+    /// This creates explicit objective chains for level scripting. The HUD,
+    /// completion check, update loop, interactions, and collection handling all
+    /// ignore locked objectives so the player sees one clear next step.
+    expose func addAfter(k: Integer, x: Float, z: Float, r: Float, count: Integer,
+                         txt: String, opt: Boolean, after: Integer) {
+        add(k, x, z, r, count, txt, opt);
+        prereq[prereq.Count - 1] = after;
+    }
+
+    /// Return the default HUD prompt for an objective kind.
+    ///
+    /// Level builders can override this text with `setPrompt` when a mission
+    /// needs more specific player-facing direction.
+    hide func defaultPrompt(k: Integer) -> String {
+        if k == OBJ_REACH { return "MOVE TO MARKER"; }
+        if k == OBJ_ACTIVATE { return "FIND THE CONSOLE"; }
+        if k == OBJ_KILL || k == OBJ_CLEAR { return "ELIMINATE HOSTILES"; }
+        if k == OBJ_SURVIVE { return "HOLD POSITION"; }
+        if k == OBJ_COLLECT { return "COLLECT DATACORES"; }
+        return "";
+    }
+
+    /// Override the HUD prompt for a specific objective.
+    expose func setPrompt(i: Integer, txt: String) {
+        if i >= 0 && i < prompt.Count { prompt[i] = txt; }
     }
 
     expose func setKillBaseline(k: Integer) { killBaseline = k; }
     expose func count() -> Integer { return kind.Count; }
     expose func textOf(i: Integer) -> String { return text[i]; }
+    /// Return the HUD prompt for an objective.
+    expose func promptOf(i: Integer) -> String { return prompt[i]; }
     expose func isDone(i: Integer) -> Boolean { return done[i] == 1; }
     expose func progressOf(i: Integer) -> Integer { return progress[i]; }
     expose func targetOf(i: Integer) -> Integer { return targetCount[i]; }
+    /// Return the interaction or reach radius authored for an objective.
+    expose func radiusOf(i: Integer) -> Float { return radius[i]; }
+    /// Return the prerequisite objective index, or -1 when this objective is open.
+    expose func prereqOf(i: Integer) -> Integer { return prereq[i]; }
+    /// Return true when an objective can currently receive progress.
+    expose func isUnlocked(i: Integer) -> Boolean {
+        if i < 0 || i >= kind.Count { return false; }
+        var p = prereq[i];
+        if p < 0 { return true; }
+        if p >= done.Count { return false; }
+        return done[p] == 1;
+    }
 
     expose func kindOf(i: Integer) -> Integer { return kind[i]; }
     expose func txAt(i: Integer) -> Float { return tx[i]; }
@@ -64,7 +118,7 @@ class Objectives {
     expose func activeIndex() -> Integer {
         var i = 0;
         while i < kind.Count {
-            if optional[i] == 0 && done[i] == 0 { return i; }
+            if optional[i] == 0 && done[i] == 0 && isUnlocked(i) { return i; }
             i = i + 1;
         }
         return -1;
@@ -72,24 +126,26 @@ class Objectives {
 
     expose func allRequiredDone() -> Boolean { return activeIndex() < 0; }
 
-    expose func markInteract(x: Float, z: Float) {
+    /// Complete any unlocked ACTIVATE objective within interaction range.
+    expose func markInteract(x: Float, z: Float, bus: events.EventBus) {
         var i = 0;
         while i < kind.Count {
-            if done[i] == 0 && kind[i] == OBJ_ACTIVATE {
+            if done[i] == 0 && kind[i] == OBJ_ACTIVATE && isUnlocked(i) {
                 if M.distXZ(x, z, tx[i], tz[i]) < radius[i] {
-                    complete(i);
+                    doneNow(i, bus);
                 }
             }
             i = i + 1;
         }
     }
 
-    expose func addCollect() {
+    /// Credit one collected objective item to the first unlocked COLLECT objective.
+    expose func addCollect(bus: events.EventBus) {
         var i = 0;
         while i < kind.Count {
-            if done[i] == 0 && kind[i] == OBJ_COLLECT {
+            if done[i] == 0 && kind[i] == OBJ_COLLECT && isUnlocked(i) {
                 progress[i] = progress[i] + 1;
-                if progress[i] >= targetCount[i] { complete(i); }
+                if progress[i] >= targetCount[i] { doneNow(i, bus); }
                 return;
             }
             i = i + 1;
@@ -105,7 +161,7 @@ class Objectives {
                        enemiesAlive: Integer, bus: events.EventBus) {
         var i = 0;
         while i < kind.Count {
-            if done[i] == 0 {
+            if done[i] == 0 && isUnlocked(i) {
                 var k = kind[i];
                 if k == OBJ_REACH {
                     if M.distXZ(px, pz, tx[i], tz[i]) < radius[i] { doneNow(i, bus); }
@@ -115,9 +171,11 @@ class Objectives {
                 } else if k == OBJ_CLEAR {
                     if totalKills > killBaseline && enemiesAlive == 0 { doneNow(i, bus); }
                 } else if k == OBJ_SURVIVE {
-                    // targetCount is seconds*10; progress in ticks-as-tenths.
-                    progress[i] = progress[i] + M.roundi(dt * 600.0);   // dt*60 ticks *10
-                    if progress[i] >= targetCount[i] * 100 { doneNow(i, bus); }
+                    // targetCount is authored in seconds; progress is displayed
+                    // as elapsed seconds so a 30s holdout really lasts 30s.
+                    timer[i] = timer[i] + dt;
+                    progress[i] = M.roundi(timer[i]);
+                    if timer[i] >= targetCount[i] + 0.0 { doneNow(i, bus); }
                 }
             }
             i = i + 1;

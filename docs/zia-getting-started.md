@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-31
+last-verified: 2026-07-08
 ---
 
 # Zia — Getting Started
@@ -407,9 +407,9 @@ if scores.has("Alice") {
 ```
 
 > `Map.get` returns `V?`; use `??`, `getOr`, or an explicit null check before
-> passing the value to non-optional code. Map keys must be `String` (the Sema
-> layer rejects other key types). For `Map[String, String]`, a missing key is
-> `null`, not an empty string. Use `{}` for an empty map literal, or
+> passing the value to non-optional code. Map keys must be `String` or `Integer`
+> (the Sema layer rejects other key types). For `Map[String, String]`, a missing
+> key is `null`, not an empty string. Use `{}` for an empty map literal, or
 > `new Map[String, V]()` when an explicit constructed map is clearer.
 
 ### Class Instance Lists

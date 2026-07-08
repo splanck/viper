@@ -136,6 +136,8 @@ class Hud {
                      ph: health.PlayerHealth, weapons: weapon_base.WeaponController,
                      obj: objectives.Objectives, maxAwareness: Float, isCampaign: Boolean,
                      yawDeg: Float, objBearingDeg: Float, hasObjMarker: Boolean,
+                     objDistance: Float, objectivePrompt: String, objectiveReady: Boolean,
+                     grenadeName: String, grenadeCount: Integer, flashlightOn: Boolean,
                      bossName: String, bossFrac: Float) {
         // Ghost bars chase the real values (fast down, instant up).
         var hf = ph.healthFrac();
@@ -197,10 +199,10 @@ class Hud {
 
         // Bottom-right: weapon plate.
         var ax = w - 300;
-        G3D.Canvas3D.DrawRect2DAlpha(canvas, ax - 12, h - 110, 290, 96, COL_BACK, 0.55);
+        G3D.Canvas3D.DrawRect2DAlpha(canvas, ax - 12, h - 132, 290, 118, COL_BACK, 0.55);
         G3D.Canvas3D.DrawRect2D(canvas, ax + 276, h - 16, 22, 2, HUD_ACCENT);
         G3D.Canvas3D.DrawRect2D(canvas, ax + 296 - 2, h - 36, 2, 22, HUD_ACCENT);
-        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 100, weapons.weaponName(), COL_WHITE, 1.5);
+        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 122, weapons.weaponName(), COL_WHITE, 1.5);
         var ammoCol = COL_AMMO;
         var magNow = weapons.getMag();
         var magFrac = 1.0;
@@ -212,7 +214,11 @@ class Hud {
             }
         }
         var ammo = S.intStr(magNow) + " / " + S.intStr(weapons.getReserve());
-        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 72, ammo, ammoCol, 2.2);
+        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 94, ammo, ammoCol, 2.2);
+        var utility = grenadeName + " x" + S.intStr(grenadeCount);
+        if flashlightOn { utility = utility + "   LAMP ON"; }
+        else { utility = utility + "   LAMP OFF"; }
+        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 52, utility, COL_WHITE, 1.0);
         if weapons.isReloading() {
             bar(canvas, ax, h - 34, 180, 6, weapons.reloadFrac(), COL_OBJ);
             G3D.Canvas3D.DrawText2DAA(canvas, ax + 190, h - 38, "RELOADING", COL_OBJ, 1.0);
@@ -230,6 +236,9 @@ class Hud {
                 if obj.targetOf(oi) > 0 {
                     txt = txt + "  (" + S.intStr(obj.progressOf(oi)) + "/" + S.intStr(obj.targetOf(oi)) + ")";
                 }
+                if hasObjMarker && objDistance >= 0.0 {
+                    txt = txt + "  " + S.intStr(M.roundi(objDistance)) + "m";
+                }
             }
             if txt != lastObjText {
                 lastObjText = txt;
@@ -242,6 +251,19 @@ class Hud {
                 G3D.Canvas3D.DrawRect2DAlpha(canvas, w / 2 - tw2 / 2 - 10, 46, tw2 + 20, 22,
                                              COL_BACK, 0.5 * a2);
                 G3D.Canvas3D.DrawText2DAA(canvas, w / 2 - tw2 / 2, 50, txt, COL_OBJ, 1.2);
+            }
+            if objectivePrompt.Length > 0 {
+                var pcol = COL_WHITE;
+                var pscale = 1.0;
+                if objectiveReady {
+                    pcol = 0xFFFFFF;
+                    pscale = 1.25;
+                }
+                var twp = G3D.Canvas3D.MeasureText2DAA(canvas, objectivePrompt, pscale);
+                G3D.Canvas3D.DrawRect2DAlpha(canvas, w / 2 - twp / 2 - 10, 74,
+                                             twp + 20, 20, COL_BACK, 0.46);
+                G3D.Canvas3D.DrawText2DAA(canvas, w / 2 - twp / 2, 78,
+                                          objectivePrompt, pcol, pscale);
             }
         }
 
@@ -274,10 +296,10 @@ class Hud {
         while fi < FEED {
             if feedT[fi] > 0.0 {
                 var fa = M.clampf(feedT[fi], 0.0, 1.0);
-                G3D.Canvas3D.DrawText2DAA(canvas, w - 300, h - 136 - fi * 20, feedText[fi],
+                G3D.Canvas3D.DrawText2DAA(canvas, w - 300, h - 158 - fi * 20, feedText[fi],
                                           COL_WHITE, 1.0);
                 if fa < 1.0 {
-                    G3D.Canvas3D.DrawRect2DAlpha(canvas, w - 300, h - 136 - fi * 20, 260, 16,
+                    G3D.Canvas3D.DrawRect2DAlpha(canvas, w - 300, h - 158 - fi * 20, 260, 16,
                                                  COL_BACK, (1.0 - fa) * 0.8);
                 }
             }

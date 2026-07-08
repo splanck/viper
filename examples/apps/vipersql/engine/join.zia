@@ -213,8 +213,8 @@ class JoinEngine {
                                    leftTable: Table, leftAlias: String, rightAlias: String,
                                    joinCond: Expr, colOffsets: List[Integer],
                                    leftTableIdx: Integer, rightTableIdx: Integer,
-                                   totalCols: Integer, tables: List[Table],
-                                   aliases: List[String]) -> List[Row] {
+                                   totalCols: Integer, _tables: List[Table],
+                                   _aliases: List[String]) -> List[Row] {
         var result = new List[Row]();
         var rightOffset = colOffsets.get(rightTableIdx);
 
@@ -673,7 +673,7 @@ class JoinEngine {
                     if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
                     var rv = right.realValue;
                     if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
-                    if rv != 0.0 {
+                    if rv < 0.0 || rv > 0.0 {
                         var res = lv / rv;
                         return sqlReal(res, Fmt.Num(res));
                     }
@@ -1525,7 +1525,7 @@ class JoinEngine {
     // Execute GROUP BY on JOIN results
     hide func executeJoinGroupBy(stmt: SelectStmt, filteredRows: List[Row],
                                   tables: List[Table], aliases: List[String],
-                                  colOffsets: List[Integer], totalCols: Integer,
+                                  colOffsets: List[Integer], _totalCols: Integer,
                                   result: QueryResult) {
         var groupKeys = new List[String]();
         var groupRowLists = new List[List[Row]]();

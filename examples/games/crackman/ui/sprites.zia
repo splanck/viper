@@ -58,34 +58,34 @@ hide func ensureStorage() {
     storageReady_ = true;
 
     wallTiles_ = [];
-    for i in 0..16 {
+    for _ in 0..16 {
         wallTiles_.add(null);
     }
 
     pacmanSprites_ = [];
-    for i in 0..8 {
+    for _ in 0..8 {
         pacmanSprites_.add(null);
     }
 
     ghostSprites_ = [];
-    for i in 0..16 {
+    for _ in 0..16 {
         ghostSprites_.add(null);
     }
 
     eatenSprites_ = [];
-    for i in 0..4 {
+    for _ in 0..4 {
         eatenSprites_.add(null);
     }
 
     frightenedSprites_ = [];
     frightenedFlashSprites_ = [];
-    for i in 0..4 {
+    for _ in 0..4 {
         frightenedSprites_.add(null);
         frightenedFlashSprites_.add(null);
     }
 
     fruitSprites_ = [];
-    for i in 0..9 {
+    for _ in 0..9 {
         fruitSprites_.add(null);
     }
 }

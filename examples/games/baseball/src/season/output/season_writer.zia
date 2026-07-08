@@ -508,7 +508,7 @@ func battingMetricText(line: season_model.SeasonBattingLine,
 }
 
 func battingMetricDetail(line: season_model.SeasonBattingLine,
-                         metric: String) -> String {
+                         _metric: String) -> String {
     return "PA=" + Fmt.Int(line.PA) +
            " AB=" + Fmt.Int(line.AB) +
            " H=" + Fmt.Int(line.H) +
@@ -541,7 +541,7 @@ func pitchingMetricText(line: season_model.SeasonPitchingLine,
 }
 
 func pitchingMetricDetail(line: season_model.SeasonPitchingLine,
-                          metric: String) -> String {
+                          _metric: String) -> String {
     return "G=" + Fmt.Int(line.games) +
            " GS=" + Fmt.Int(line.gamesStarted) +
            " IP=" + ipText(line.outsRecorded) +

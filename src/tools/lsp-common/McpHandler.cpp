@@ -493,7 +493,8 @@ McpHandler::ToolCallResult McpHandler::callCheck(const JsonValue &args) {
     for (const auto &d : diags)
         diagArr.push_back(diagnosticToJson(d));
 
-    JsonValue structured(std::move(diagArr));
+    // MCP requires structuredContent to be a JSON object, not a bare array.
+    JsonValue structured = JsonValue::object({{"diagnostics", JsonValue(std::move(diagArr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
@@ -534,7 +535,7 @@ McpHandler::ToolCallResult McpHandler::callCompletions(const JsonValue &args) {
         }));
     }
 
-    JsonValue structured(std::move(arr));
+    JsonValue structured = JsonValue::object({{"completions", JsonValue(std::move(arr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
@@ -566,7 +567,7 @@ McpHandler::ToolCallResult McpHandler::callSymbols(const JsonValue &args) {
         }));
     }
 
-    JsonValue structured(std::move(arr));
+    JsonValue structured = JsonValue::object({{"symbols", JsonValue(std::move(arr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
@@ -605,7 +606,7 @@ McpHandler::ToolCallResult McpHandler::callRuntimeClasses(const JsonValue & /*ar
         }));
     }
 
-    JsonValue structured(std::move(arr));
+    JsonValue structured = JsonValue::object({{"classes", JsonValue(std::move(arr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
@@ -623,7 +624,7 @@ McpHandler::ToolCallResult McpHandler::callRuntimeMembers(const JsonValue &args)
         }));
     }
 
-    JsonValue structured(std::move(arr));
+    JsonValue structured = JsonValue::object({{"members", JsonValue(std::move(arr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 
@@ -641,7 +642,7 @@ McpHandler::ToolCallResult McpHandler::callRuntimeSearch(const JsonValue &args) 
         }));
     }
 
-    JsonValue structured(std::move(arr));
+    JsonValue structured = JsonValue::object({{"results", JsonValue(std::move(arr))}});
     return {textContent(structured.toCompactString()), std::move(structured)};
 }
 

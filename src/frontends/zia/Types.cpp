@@ -361,25 +361,10 @@ bool ViperType::isConvertibleTo(const ViperType &target) const {
     if (target.isAssignableFrom(*this))
         return true;
 
-    // Explicit conversions
+    // Explicit numeric conversions the lowerer actually implements.
     // Integer <-> Number
     if ((kind == TypeKindSem::Integer && target.kind == TypeKindSem::Number) ||
         (kind == TypeKindSem::Number && target.kind == TypeKindSem::Integer))
-        return true;
-
-    // Integer <-> String (via toString/parse)
-    if ((kind == TypeKindSem::Integer && target.kind == TypeKindSem::String) ||
-        (kind == TypeKindSem::String && target.kind == TypeKindSem::Integer))
-        return true;
-
-    // Number <-> String
-    if ((kind == TypeKindSem::Number && target.kind == TypeKindSem::String) ||
-        (kind == TypeKindSem::String && target.kind == TypeKindSem::Number))
-        return true;
-
-    // Boolean <-> String
-    if ((kind == TypeKindSem::Boolean && target.kind == TypeKindSem::String) ||
-        (kind == TypeKindSem::String && target.kind == TypeKindSem::Boolean))
         return true;
 
     // Byte <-> Integer
@@ -387,6 +372,10 @@ bool ViperType::isConvertibleTo(const ViperType &target) const {
         (kind == TypeKindSem::Integer && target.kind == TypeKindSem::Byte))
         return true;
 
+    // String <-> scalar conversions are intentionally NOT `as` casts: there is
+    // no defined failure behavior for parsing, and the previous rows compiled to
+    // broken IL. Use string interpolation ("${x}") to format and the
+    // Viper.Core.Parse.* helpers to parse. analyzeAs() emits a targeted hint.
     return false;
 }
 

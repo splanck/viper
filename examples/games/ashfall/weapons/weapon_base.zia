@@ -64,6 +64,28 @@ class WeaponController {
         }
     }
 
+    /// Remove all owned weapons and reset transient weapon state.
+    ///
+    /// Campaign loading uses this to grant a level-appropriate kit without
+    /// leaking late-game equipment backward into early missions. Probes and the
+    /// arena can still call `give` for the full sandbox loadout.
+    expose func clearLoadout() {
+        var i = 0;
+        while i < config.WEAPON_COUNT {
+            mag[i] = 0;
+            reserve[i] = 0;
+            owned[i] = 0;
+            i = i + 1;
+        }
+        current = config.W_BOLT;
+        cooldown = 0.0;
+        reloading = false;
+        reloadTimer = 0.0;
+        heat = 0.0;
+        overheated = false;
+        bloom = 0.0;
+    }
+
     // Grant a weapon and top up its ammo.
     expose func give(w: Integer) {
         owned[w] = 1;

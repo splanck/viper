@@ -128,6 +128,36 @@ func start() {
     g.stepPhysics(config.FIXED_DT);
     if arena.dummyHealthAt(6) >= b0 { fail("blast did no damage"); return; }
 
+    // --- Player ability verbs: melee + grenade -----------------------------
+    var gm = newGame();
+    var am = gm.getArena();
+    gm.devSpawnPlayer(am.dummyPosX(0) - 2.0, 0.2, am.dummyPosZ(0));
+    gm.scriptAimAt(am.dummyPosX(0), 1.0, am.dummyPosZ(0));
+    var mhp0 = am.dummyHealthAt(0);
+    gm.scriptMelee(true);
+    gm.tickSim(config.FIXED_DT); gm.stepPhysics(config.FIXED_DT);
+    gm.scriptMelee(false);
+    gm.tickSim(config.FIXED_DT); gm.stepPhysics(config.FIXED_DT);
+    if am.dummyHealthAt(0) >= mhp0 { fail("melee did no damage"); return; }
+
+    var gg = newGame();
+    var ag = gg.getArena();
+    gg.devSpawnPlayer(ag.dummyPosX(0) - 5.0, 0.2, ag.dummyPosZ(0));
+    gg.scriptAimAt(ag.dummyPosX(0), 0.6, ag.dummyPosZ(0));
+    var gren0 = gg.devGrenadeCount();
+    var ghp0 = ag.dummyHealthAt(0);
+    gg.scriptGrenade(true);
+    gg.tickSim(config.FIXED_DT); gg.stepPhysics(config.FIXED_DT);
+    gg.scriptGrenade(false);
+    var gt = 0;
+    while gt < 180 {
+        gg.tickSim(config.FIXED_DT);
+        gg.stepPhysics(config.FIXED_DT);
+        gt = gt + 1;
+    }
+    if gg.devGrenadeCount() >= gren0 { fail("grenade inventory did not decrease"); return; }
+    if ag.dummyHealthAt(0) >= ghp0 { fail("frag grenade did no damage"); return; }
+
     // --- Determinism: two accuracy runs land identical hit counts -----------
     var ga = newGame();
     fireAtBodyUntil(ga, 0, 1.0, 5);

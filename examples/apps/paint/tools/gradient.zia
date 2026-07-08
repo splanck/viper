@@ -52,7 +52,7 @@ class GradientTool implements Tool {
     expose func isDrawing() -> Integer { return drawing; }
     expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onPress(x: Integer, y: Integer, _ctx: ToolContext) {
         drawing = 1;
         startX = x;
         startY = y;
@@ -60,7 +60,7 @@ class GradientTool implements Tool {
         endY = y;
     }
 
-    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onDrag(x: Integer, y: Integer, _ctx: ToolContext) {
         if drawing == 1 {
             endX = x;
             endY = y;

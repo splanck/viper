@@ -340,6 +340,10 @@ TypeRef Sema::checkBitwiseBinary(BinaryExpr *expr, TypeRef leftType, TypeRef rig
     if (leftType->kind == TypeKindSem::Unknown || rightType->kind == TypeKindSem::Unknown)
         return types::unknown();
 
+    // W017/W018 are opt-in (`-Wall`) rather than default-on: ordinary integer bit
+    // manipulation (flags, masks, hashing) is the common, correct use of `^`/`&`,
+    // so warning on every occurrence by default is noise. They remain useful for
+    // catching operator confusion when a project opts into the full warning set.
     if (expr->op == BinaryOp::BitXor) {
         warn(WarningCode::W017_XorConfusion,
              expr->loc,

@@ -1313,7 +1313,7 @@ class Executor {
                 if left.kind == SQL_INTEGER { lv = left.intValue * 1.0; }
                 var rv = right.realValue;
                 if right.kind == SQL_INTEGER { rv = right.intValue * 1.0; }
-                if rv != 0.0 {
+                if rv < 0.0 || rv > 0.0 {
                     var res = lv / rv;
                     return sqlReal(res, Fmt.Num(res));
                 }
@@ -1720,7 +1720,7 @@ class Executor {
             return sqlInteger(mvccTxnId);
         }
         if name == "OBJ_DESCRIPTION" && expr.args.count() >= 1 {
-            var objIdVal = evalExpr(expr.args.get(0), row, table);
+            var _ = evalExpr(expr.args.get(0), row, table);
             // Look up by oid — we store by name, so return empty for now
             return sqlNull();
         }
@@ -2261,7 +2261,6 @@ class Executor {
                 var sqlIdx = maybeIdx;
                 if sqlIdx.tableName == tableName {
                     // Drop old B-tree, create new one
-                    var oldBtree = btrees.get(i);
                     var colName = sqlIdx.getColumnName(0);
                     var newBtree = se.createBTree(idxName, 0, colName, sqlIdx.isUnique);
 
@@ -5584,7 +5583,7 @@ class Executor {
     // COPY HANDLER (Phase 34)
     //=========================================================================
 
-    hide func executeCopy(parser: Parser, fullSql: String) -> QueryResult {
+    hide func executeCopy(parser: Parser, _fullSql: String) -> QueryResult {
         var result = new QueryResult();
         result.init();
 
@@ -6183,7 +6182,7 @@ class Executor {
     // CREATE TABLE AS SELECT (Phase 39)
     //=========================================================================
 
-    hide func executeCreateTableAs(tableName: String, querySql: String, isTemp: Boolean) -> QueryResult {
+    hide func executeCreateTableAs(tableName: String, querySql: String, _isTemp: Boolean) -> QueryResult {
         var result = new QueryResult();
         result.init();
 

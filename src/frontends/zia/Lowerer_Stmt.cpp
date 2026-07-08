@@ -451,6 +451,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
             lowerForInTuple(stmt, iterableType);
         } else if (iterableType->kind == TypeKindSem::List) {
             lowerForInList(stmt, iterableType);
+        } else if (iterableType->kind == TypeKindSem::String) {
+            lowerForInString(stmt);
         } else if (iterableType->kind == TypeKindSem::Map) {
             lowerForInMap(stmt, iterableType);
         } else if (iterableType->kind == TypeKindSem::Ptr &&
@@ -753,6 +755,90 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     removeSlot(indexVar);
     removeSlot(lenVar);
     removeSlot(listVar);
+}
+
+void Lowerer::lowerForInString(ForInStmt *stmt) {
+    // Iterating a String yields one-character Strings (like `str[i]`). For a
+    // tuple binding (for i, ch in s) the first variable is the i64 index.
+    TypeRef charType = types::string();
+    Type charIlType = Type(Type::Kind::Str);
+
+    bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
+
+    if (hasTupleBinding) {
+        createSlot(stmt->variable, Type(Type::Kind::I64));
+        localTypes_[stmt->variable] = types::integer();
+        createSlot(stmt->secondVariable, charIlType);
+        localTypes_[stmt->secondVariable] = charType;
+    } else {
+        createSlot(stmt->variable, charIlType);
+        localTypes_[stmt->variable] = charType;
+    }
+
+    // Null-init the character slot: the per-iteration store releases the
+    // displaced value, which is uninitialized on the first iteration.
+    const std::string &charSlot = hasTupleBinding ? stmt->secondVariable : stmt->variable;
+    storeToSlot(charSlot, Value::null(), Type(Type::Kind::Ptr));
+
+    auto strValue = lowerExpr(stmt->iterable.get());
+
+    std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
+    std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+    std::string strVar = "__forin_str_" + std::to_string(nextTempId());
+
+    createSlot(indexVar, Type(Type::Kind::I64));
+    createSlot(lenVar, Type(Type::Kind::I64));
+    createSlot(strVar, Type(Type::Kind::Str));
+    storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+    storeOwnedStringToSlot(strVar, strValue.value, /*releaseDisplaced=*/false);
+    Value lenVal = emitCallRet(Type(Type::Kind::I64), kStringLength, {strValue.value});
+    storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
+
+    size_t condIdx = createBlock("forin_str_cond");
+    size_t bodyIdx = createBlock("forin_str_body");
+    size_t updateIdx = createBlock("forin_str_update");
+    size_t endIdx = createBlock("forin_str_end");
+
+    loopStack_.push(endIdx, updateIdx);
+    emitBr(condIdx);
+
+    setBlock(condIdx);
+    Value idxVal = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value lenLoaded = loadFromSlot(lenVar, Type(Type::Kind::I64));
+    Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), idxVal, lenLoaded);
+    emitCBr(cond, bodyIdx, endIdx);
+
+    setBlock(bodyIdx);
+    Value strLoaded = loadFromSlot(strVar, Type(Type::Kind::Str));
+    Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    if (hasTupleBinding)
+        storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
+    Value ch =
+        emitCallRet(Type(Type::Kind::Str), kStringSubstring, {strLoaded, idxInBody, Value::constInt(1)});
+    storeOwnedStringToSlot(charSlot, ch, /*releaseDisplaced=*/true);
+
+    lowerStmt(stmt->body.get());
+    if (!isTerminated())
+        emitBr(updateIdx);
+
+    setBlock(updateIdx);
+    Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    Value idxNext =
+        emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+    storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    loopStack_.pop();
+    setBlock(endIdx);
+
+    releaseOwnedStringSlot(charSlot);
+    releaseOwnedStringSlot(strVar);
+    removeSlot(stmt->variable);
+    if (hasTupleBinding)
+        removeSlot(stmt->secondVariable);
+    removeSlot(indexVar);
+    removeSlot(lenVar);
+    removeSlot(strVar);
 }
 
 void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {

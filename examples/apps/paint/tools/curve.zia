@@ -74,10 +74,10 @@ class CurveTool implements Tool {
         }
     }
 
-    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onDrag(_x: Integer, _y: Integer, _ctx: ToolContext) {
     }
 
-    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onRelease(_x: Integer, _y: Integer, _ctx: ToolContext) {
     }
 
     expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {

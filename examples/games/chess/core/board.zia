@@ -162,17 +162,17 @@ class Board {
 
         // Simple deterministic LCG PRNG for Zobrist key generation
         var seed = 1070372317;
-        for i in 0..768 {   // 64 * 12
+        for _ in 0..768 {   // 64 * 12
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkPieces.add(seed);
         }
         seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
         self.zkSide.add(seed);
-        for i in 0..4 {
+        for _ in 0..4 {
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkCastle.add(seed);
         }
-        for i in 0..8 {
+        for _ in 0..8 {
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkEP.add(seed);
         }

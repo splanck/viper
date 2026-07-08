@@ -73,6 +73,11 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                                                         TypeRef baseType,
                                                         const std::string &methodName,
                                                         CallExpr *expr) {
+    // Functional combinators are not in the shared collection-method table; they
+    // lower to inline loops that invoke the closure argument.
+    if (auto combinator = lowerListCombinator(baseValue, baseType, methodName, expr))
+        return combinator;
+
     // Use O(1) dispatch table lookup instead of sequential string comparisons
     const CollectionMethod method = il::frontends::common::lookupCollectionMethod(methodName);
 
@@ -238,6 +243,247 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
     }
 
     return std::nullopt;
+}
+
+//=============================================================================
+// List Combinator Helper (map / filter / reduce / firstWhere / any / all / sum)
+//=============================================================================
+
+std::optional<LowerResult> Lowerer::lowerListCombinator(Value baseValue,
+                                                        TypeRef baseType,
+                                                        const std::string &methodName,
+                                                        CallExpr *expr) {
+    const std::string &m = methodName;
+    const bool isCombinator = (m == "map" || m == "filter" || m == "reduce" ||
+                               m == "firstWhere" || m == "any" || m == "all" || m == "sum");
+    if (!isCombinator)
+        return std::nullopt;
+
+    TypeRef elemType =
+        baseType && baseType->elementType() ? baseType->elementType() : types::unknown();
+    Type ilElemType = mapType(elemType);
+    const Type i64 = Type(Type::Kind::I64);
+    const Type i1 = Type(Type::Kind::I1);
+    const Type ptr = Type(Type::Kind::Ptr);
+
+    const std::string tag = std::to_string(nextTempId());
+    const std::string listVar = "__cmb_list_" + tag;
+    const std::string idxVar = "__cmb_idx_" + tag;
+    const std::string lenVar = "__cmb_len_" + tag;
+
+    // Loop scaffolding shared by every combinator: iterate index 0..count over a
+    // snapshot of the receiver list held in a slot.
+    auto beginLoop = [&](Value list) {
+        createSlot(listVar, ptr);
+        createSlot(idxVar, i64);
+        createSlot(lenVar, i64);
+        storeToSlot(listVar, list, ptr);
+        storeToSlot(idxVar, Value::constInt(0), i64);
+        storeToSlot(lenVar, emitCallRet(i64, kListCount, {list}), i64);
+    };
+    auto cleanupLoop = [&]() {
+        removeSlot(listVar);
+        removeSlot(idxVar);
+        removeSlot(lenVar);
+    };
+
+    // Load and unbox the current element inside a loop body.
+    auto currentElement = [&]() -> LowerResult {
+        Value list = loadFromSlot(listVar, ptr);
+        Value idx = loadFromSlot(idxVar, i64);
+        Value boxed = emitCallRet(ptr, kListGet, {list, idx});
+        return emitUnboxValue(boxed, ilElemType, elemType);
+    };
+    auto advance = [&]() {
+        Value idx = loadFromSlot(idxVar, i64);
+        storeToSlot(idxVar, emitBinary(Opcode::IAddOvf, i64, idx, Value::constInt(1)), i64);
+    };
+
+    // Invoke the closure argument at `argIndex` with the given arguments.
+    auto callClosure = [&](size_t argIndex, const std::vector<Value> &callArgs,
+                           Type retIl) -> Value {
+        auto closure = lowerExpr(expr->args[argIndex].value.get());
+        Value funcPtr = emitLoad(closure.value, ptr);
+        Value envPtr = emitLoad(emitGEP(closure.value, /*kClosureEnvOffset=*/8), ptr);
+        std::vector<Value> full;
+        full.reserve(callArgs.size() + 1);
+        full.push_back(envPtr);
+        for (const auto &a : callArgs)
+            full.push_back(a);
+        return emitCallIndirectRet(retIl, funcPtr, full);
+    };
+
+    // --- sum: no closure; accumulate element values ---
+    if (m == "sum") {
+        const bool isFloat = elemType && elemType->kind == TypeKindSem::Number;
+        const Type accIl = isFloat ? Type(Type::Kind::F64) : i64;
+        const std::string accVar = "__cmb_acc_" + tag;
+        beginLoop(baseValue);
+        createSlot(accVar, accIl);
+        storeToSlot(accVar, isFloat ? Value::constFloat(0.0) : Value::constInt(0), accIl);
+
+        size_t cond = createBlock("sum_cond"), body = createBlock("sum_body"),
+               end = createBlock("sum_end");
+        emitBr(cond);
+        setBlock(cond);
+        emitCBr(emitBinary(Opcode::SCmpLT, i1, loadFromSlot(idxVar, i64), loadFromSlot(lenVar, i64)),
+                body, end);
+        setBlock(body);
+        LowerResult elem = currentElement();
+        Value acc = loadFromSlot(accVar, accIl);
+        storeToSlot(accVar, emitBinary(isFloat ? Opcode::FAdd : Opcode::IAddOvf, accIl, acc,
+                                       elem.value),
+                    accIl);
+        advance();
+        emitBr(cond);
+        setBlock(end);
+        Value result = loadFromSlot(accVar, accIl);
+        removeSlot(accVar);
+        cleanupLoop();
+        return LowerResult{result, accIl};
+    }
+
+    // --- reduce(initial, (acc, item) => acc) ---
+    if (m == "reduce") {
+        auto init = lowerExpr(expr->args[0].value.get());
+        TypeRef accType = sema_.typeOf(expr->args[0].value.get());
+        Type accIl = accType ? mapType(accType) : init.type;
+        const std::string accVar = "__cmb_acc_" + tag;
+        createSlot(accVar, accIl);
+        storeToSlot(accVar, init.value, accIl);
+        beginLoop(baseValue);
+
+        size_t cond = createBlock("reduce_cond"), body = createBlock("reduce_body"),
+               end = createBlock("reduce_end");
+        emitBr(cond);
+        setBlock(cond);
+        emitCBr(emitBinary(Opcode::SCmpLT, i1, loadFromSlot(idxVar, i64), loadFromSlot(lenVar, i64)),
+                body, end);
+        setBlock(body);
+        LowerResult elem = currentElement();
+        Value acc = loadFromSlot(accVar, accIl);
+        Value next = callClosure(1, {acc, elem.value}, accIl);
+        storeToSlot(accVar, next, accIl);
+        advance();
+        emitBr(cond);
+        setBlock(end);
+        Value result = loadFromSlot(accVar, accIl);
+        removeSlot(accVar);
+        cleanupLoop();
+        return LowerResult{result, accIl};
+    }
+
+    // --- map: build a new list of the closure's results ---
+    if (m == "map") {
+        TypeRef fnType = sema_.typeOf(expr->args[0].value.get());
+        TypeRef outElem = (fnType && fnType->kind == TypeKindSem::Function) ? fnType->returnType()
+                                                                            : types::unknown();
+        Type outElemIl = mapType(outElem);
+        Value outList = emitCallRet(ptr, kListNew, {});
+        const std::string outVar = "__cmb_out_" + tag;
+        createSlot(outVar, ptr);
+        storeToSlot(outVar, outList, ptr);
+        beginLoop(baseValue);
+
+        size_t cond = createBlock("map_cond"), body = createBlock("map_body"),
+               end = createBlock("map_end");
+        emitBr(cond);
+        setBlock(cond);
+        emitCBr(emitBinary(Opcode::SCmpLT, i1, loadFromSlot(idxVar, i64), loadFromSlot(lenVar, i64)),
+                body, end);
+        setBlock(body);
+        LowerResult elem = currentElement();
+        Value mapped = callClosure(0, {elem.value}, outElemIl);
+        Value boxed = emitBoxValue(mapped, outElemIl, outElem);
+        emitCall(kListAdd, {loadFromSlot(outVar, ptr), boxed});
+        advance();
+        emitBr(cond);
+        setBlock(end);
+        Value result = loadFromSlot(outVar, ptr);
+        removeSlot(outVar);
+        cleanupLoop();
+        return LowerResult{result, ptr};
+    }
+
+    // --- filter: keep elements for which the predicate is true ---
+    if (m == "filter") {
+        Value outList = emitCallRet(ptr, kListNew, {});
+        const std::string outVar = "__cmb_out_" + tag;
+        createSlot(outVar, ptr);
+        storeToSlot(outVar, outList, ptr);
+        beginLoop(baseValue);
+
+        size_t cond = createBlock("filter_cond"), body = createBlock("filter_body"),
+               keep = createBlock("filter_keep"), next = createBlock("filter_next"),
+               end = createBlock("filter_end");
+        emitBr(cond);
+        setBlock(cond);
+        emitCBr(emitBinary(Opcode::SCmpLT, i1, loadFromSlot(idxVar, i64), loadFromSlot(lenVar, i64)),
+                body, end);
+        setBlock(body);
+        LowerResult elem = currentElement();
+        Value pred = callClosure(0, {elem.value}, i1);
+        emitCBr(pred, keep, next);
+        setBlock(keep);
+        emitCall(kListAdd, {loadFromSlot(outVar, ptr), emitBoxValue(elem.value, ilElemType, elemType)});
+        emitBr(next);
+        setBlock(next);
+        advance();
+        emitBr(cond);
+        setBlock(end);
+        Value result = loadFromSlot(outVar, ptr);
+        removeSlot(outVar);
+        cleanupLoop();
+        return LowerResult{result, ptr};
+    }
+
+    // --- any / all / firstWhere: short-circuit predicate scans ---
+    const bool isAny = (m == "any");
+    const bool isAll = (m == "all");
+    const bool isFirst = (m == "firstWhere");
+
+    const std::string resVar = "__cmb_res_" + tag;
+    TypeRef optType = types::optional(elemType);
+    const Type resIl = isFirst ? mapType(optType) : i1;
+    createSlot(resVar, resIl);
+    if (isFirst)
+        storeToSlot(resVar, Value::null(), resIl); // optional element defaults to null
+    else
+        storeToSlot(resVar, Value::constBool(isAll), resIl); // any:false, all:true
+    beginLoop(baseValue);
+
+    size_t cond = createBlock("scan_cond"), body = createBlock("scan_body"),
+           hit = createBlock("scan_hit"), next = createBlock("scan_next"),
+           end = createBlock("scan_end");
+    emitBr(cond);
+    setBlock(cond);
+    emitCBr(emitBinary(Opcode::SCmpLT, i1, loadFromSlot(idxVar, i64), loadFromSlot(lenVar, i64)),
+            body, end);
+    setBlock(body);
+    LowerResult elem = currentElement();
+    Value pred = callClosure(0, {elem.value}, i1);
+    // any/firstWhere fire on true; all fires (records false and stops) on false.
+    if (isAll) {
+        emitCBr(pred, next, hit);
+    } else {
+        emitCBr(pred, hit, next);
+    }
+    setBlock(hit);
+    if (isFirst) {
+        auto wrapped = emitOptionalWrap(elem.value, elemType);
+        storeToSlot(resVar, wrapped, resIl);
+    } else {
+        storeToSlot(resVar, Value::constBool(isAny), resIl); // any->true, all->false
+    }
+    emitBr(end); // short-circuit out of the loop
+    setBlock(next);
+    advance();
+    emitBr(cond);
+    setBlock(end);
+    Value result = loadFromSlot(resVar, resIl);
+    removeSlot(resVar);
+    cleanupLoop();
+    return LowerResult{result, resIl};
 }
 
 //=============================================================================

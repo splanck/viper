@@ -64,10 +64,15 @@ class EnemyManager {
     hide List[Integer] hasToken;
     hide List[Integer] alive;
     hide List[Integer] phase;
+    hide List[Integer] routeOn;
+    hide List[Float] routeX; hide List[Float] routeZ;
+    hide List[Float] bossPulseT;
     hide List[Float] lastKnownX; hide List[Float] lastKnownZ;
     hide List[Float] orbitPhase;
     hide List[G3D.Physics3DBody] torso;
     hide List[G3D.Physics3DBody] head;
+    hide List[G3D.Physics3DBody] weakBody;
+    hide List[Float] coverX; hide List[Float] coverZ; hide List[Float] coverFaceX; hide List[Float] coverFaceZ;
     hide enemy_models.EnemyModels models;
     hide Integer cap;
     hide Integer killCount;
@@ -81,8 +86,10 @@ class EnemyManager {
         platesLeft = []; plateHp = []; shield = []; state = []; awareness = [];
         stateTimer = []; atkCd = []; telegraphT = []; telegraphKind = [];
         disabledT = []; staggerT = []; hasToken = []; alive = []; phase = [];
+        routeOn = []; routeX = []; routeZ = []; bossPulseT = [];
         lastKnownX = []; lastKnownZ = []; orbitPhase = [];
-        torso = []; head = [];
+        torso = []; head = []; weakBody = [];
+        coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
         cap = config.POOL_AI;
         killCount = 0;
         attacksLanded = 0;
@@ -100,7 +107,8 @@ class EnemyManager {
             platesLeft.Add(0); plateHp.Add(0.0); shield.Add(0.0); state.Add(AI_DEAD);
             awareness.Add(0.0); stateTimer.Add(0.0); atkCd.Add(0.0); telegraphT.Add(0.0);
             telegraphKind.Add(0); disabledT.Add(0.0); staggerT.Add(0.0); hasToken.Add(0);
-            alive.Add(0); phase.Add(0); lastKnownX.Add(0.0); lastKnownZ.Add(0.0); orbitPhase.Add(0.0);
+            alive.Add(0); phase.Add(0); routeOn.Add(0); routeX.Add(0.0); routeZ.Add(0.0);
+            bossPulseT.Add(0.0); lastKnownX.Add(0.0); lastKnownZ.Add(0.0); orbitPhase.Add(0.0);
             // Persistent colliders + nodes, reused across the pool.
             var t = G3D.Physics3DBody.NewAABB(0.4, 0.9, 0.4, 0.0);
             G3D.Physics3DBody.set_CollisionLayer(t, config.LAYER_ENEMY);
@@ -112,9 +120,31 @@ class EnemyManager {
             G3D.Physics3DBody.set_CollisionMask(hd, 0);
             G3D.Physics3DBody.SetPosition(hd, 0.0, -100.0, 0.0);
             G3D.Physics3DWorld.Add(phys, hd);
-            torso.Add(t); head.Add(hd);
+            var wk = G3D.Physics3DBody.NewAABB(0.22, 0.22, 0.22, 0.0);
+            G3D.Physics3DBody.set_CollisionLayer(wk, config.LAYER_ENEMY);
+            G3D.Physics3DBody.set_CollisionMask(wk, 0);
+            G3D.Physics3DBody.SetPosition(wk, 0.0, -100.0, 0.0);
+            G3D.Physics3DWorld.Add(phys, wk);
+            torso.Add(t); head.Add(hd); weakBody.Add(wk);
             i = i + 1;
         }
+    }
+
+    /// Remove authored cover hints before loading a new level.
+    ///
+    /// Cover points are per-level metadata injected by LevelManager after the
+    /// LevelBuilder is built. Clearing them prevents ranged units from trying
+    /// to move toward stale coordinates after a scene transition.
+    expose func clearCovers() {
+        coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
+    }
+
+    /// Register a level-authored cover hint for ranged AI.
+    ///
+    /// The facing vector is stored for future animation/lean work; the current
+    /// behavior uses the point itself to pick believable firing pockets.
+    expose func addCover(x0: Float, z0: Float, faceX0: Float, faceZ0: Float) {
+        coverX.Add(x0); coverZ.Add(z0); coverFaceX.Add(faceX0); coverFaceZ.Add(faceZ0);
     }
 
     // --- Spawn / despawn -----------------------------------------------------
@@ -149,6 +179,10 @@ class EnemyManager {
         staggerT[s] = 0.0;
         hasToken[s] = 0;
         phase[s] = 0;
+        bossPulseT[s] = 2.5;
+        routeOn[s] = 0;
+        routeX[s] = sx;
+        routeZ[s] = sz;
         alive[s] = 1;
         orbitPhase[s] = rngAi.range(0.0, 6.28);
         // Hand the slot's visuals to the model layer (GLB rig or composite).
@@ -157,7 +191,21 @@ class EnemyManager {
         placeBodies(s);
         reg.register(torso[s], config.TGT_ENEMY, s, config.REGION_BODY);
         reg.register(head[s], config.TGT_ENEMY, s, config.REGION_HEAD);
+        reg.register(weakBody[s], config.TGT_ENEMY, s, config.REGION_WEAKPOINT);
         return s;
+    }
+
+    /// Assign an authored first-move waypoint to a live enemy slot.
+    ///
+    /// Level scripts use this for readable ingress lanes. The route is consumed
+    /// once the enemy reaches the waypoint, after which normal archetype combat
+    /// movement resumes.
+    expose func assignRoute(slot: Integer, rx: Float, rz: Float) {
+        if slot < 0 || slot >= cap { return; }
+        if alive[slot] == 0 { return; }
+        routeOn[slot] = 1;
+        routeX[slot] = rx;
+        routeZ[slot] = rz;
     }
 
     // Probe helper: point an enemy toward a world point (deterministic detection).
@@ -173,6 +221,9 @@ class EnemyManager {
         var hy = y[s] + 1.85;
         G3D.Physics3DBody.SetPosition(torso[s], x[s], by, z[s]);
         G3D.Physics3DBody.SetPosition(head[s], x[s], hy, z[s]);
+        var backX = 0.0 - Math.Sin(M.toRad(yaw[s])) * 0.42;
+        var backZ = Math.Cos(M.toRad(yaw[s])) * 0.42;
+        G3D.Physics3DBody.SetPosition(weakBody[s], x[s] + backX, y[s] + 1.25, z[s] + backZ);
         var hpFrac = 1.0;
         var mx = defs.hpOf(arch[s]);
         if mx > 0.5 { hpFrac = health[s] / mx; }
@@ -183,9 +234,11 @@ class EnemyManager {
     hide func despawn(s: Integer) {
         alive[s] = 0;
         arch[s] = -1;
+        routeOn[s] = 0;
         reg.unregisterEntity(config.TGT_ENEMY, s);
         G3D.Physics3DBody.SetPosition(torso[s], 0.0, -100.0, 0.0);
         G3D.Physics3DBody.SetPosition(head[s], 0.0, -100.0, 0.0);
+        G3D.Physics3DBody.SetPosition(weakBody[s], 0.0, -100.0, 0.0);
         models.onDespawn(s);
     }
 
@@ -418,7 +471,18 @@ class EnemyManager {
     }
 
     hide func moveToward(s: Integer, dt: Float, tx: Float, tz: Float, speed: Float) {
-        var dx = tx - x[s]; var dz = tz - z[s];
+        var gx = tx;
+        var gz = tz;
+        if routeOn[s] == 1 {
+            var rd = M.distXZ(x[s], z[s], routeX[s], routeZ[s]);
+            if rd > 1.2 {
+                gx = routeX[s];
+                gz = routeZ[s];
+            } else {
+                routeOn[s] = 0;
+            }
+        }
+        var dx = gx - x[s]; var dz = gz - z[s];
         var d = Math.Sqrt(dx * dx + dz * dz);
         if d < 0.05 { return; }
         var step = speed * dt;
@@ -499,12 +563,42 @@ class EnemyManager {
                            dist: Float, seen: Boolean, playerAlive: Boolean) {
         var a = arch[s];
         var band = defs.atkRangeOf(a);
+        var cover = bestCoverFor(s, px, pz, band);
         // Hold a firing band: approach if too far, back off if too close.
         if dist > band { moveToward(s, dt, px, pz, defs.speedOf(a)); }
-        else if dist < band * 0.4 { moveToward(s, dt, x[s] * 2.0 - px, z[s] * 2.0 - pz, defs.speedOf(a) * 0.6); }
+        else if cover >= 0 && dist < band * 0.9 {
+            moveToward(s, dt, coverX[cover], coverZ[cover], defs.speedOf(a) * 0.78);
+        } else if dist < band * 0.4 {
+            moveToward(s, dt, x[s] * 2.0 - px, z[s] * 2.0 - pz, defs.speedOf(a) * 0.6);
+        }
         if playerAlive && seen {
             tryAttack(s, dt, px, pz, dist <= band, config.DMG_HITSCAN);
         }
+    }
+
+    /// Pick the nearest useful authored cover point for a ranged enemy.
+    ///
+    /// The score favors points the enemy can reach quickly while avoiding cover
+    /// that sits too close to the player, which would make the unit charge into
+    /// melee range instead of taking a firing pocket.
+    hide func bestCoverFor(s: Integer, px: Float, pz: Float, band: Float) -> Integer {
+        var best = -1;
+        var bestScore = 1000000.0;
+        var i = 0;
+        while i < coverX.Count {
+            var pd = M.distXZ(coverX[i], coverZ[i], px, pz);
+            if pd > band * 0.35 && pd < band * 1.35 {
+                var ed = M.distXZ(coverX[i], coverZ[i], x[s], z[s]);
+                var prefer = M.absf(pd - band * 0.72);
+                var score = ed + prefer * 0.55;
+                if score < bestScore {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
     }
 
     hide func combatFlyer(s: Integer, dt: Float, px: Float, pz: Float,
@@ -544,6 +638,11 @@ class EnemyManager {
         if frac < 0.66 { ph = 1; }
         if frac < 0.33 { ph = 2; }
         phase[s] = ph;
+        if bossPulseT[s] > 0.0 { bossPulseT[s] = bossPulseT[s] - dt; }
+        if ph > 0 && bossPulseT[s] <= 0.0 {
+            bossShockwave(s, px, pz, dist, ph);
+            bossPulseT[s] = 6.0 - (ph + 0.0) * 1.4;
+        }
         if defs.isFlyer(a) {
             combatFlyer(s, dt, px, pz, dist, seen, playerAlive);
         } else {
@@ -552,6 +651,21 @@ class EnemyManager {
             if playerAlive && seen {
                 tryAttack(s, dt, px, pz, dist <= defs.atkRangeOf(a), config.DMG_HITSCAN);
             }
+        }
+    }
+
+    /// Emit a phase shockwave for boss pressure without damaging the boss itself.
+    ///
+    /// This creates a readable arena hazard and player damage event directly,
+    /// while keeping the shared blast pipeline for player-authored explosions.
+    hide func bossShockwave(s: Integer, px: Float, pz: Float, dist: Float, ph: Integer) {
+        var r = 6.0 + (ph + 0.0) * 2.0;
+        bus.pushAt(config.EV_EXPLOSION, arch[s], M.roundi(r), x[s], y[s] + 0.9, z[s]);
+        if dist < r {
+            var falloff = M.clampf(1.0 - dist / r, 0.0, 1.0);
+            var dirDeg = M.toDeg(Math.Atan2(x[s] - px, 0.0 - (z[s] - pz)));
+            bus.push(config.EV_DAMAGE, config.TGT_PLAYER, s, config.REGION_BODY,
+                     (18.0 + (ph + 0.0) * 10.0) * falloff, dirDeg, config.DMG_EXPLOSION + 0.0);
         }
     }
 
@@ -618,10 +732,13 @@ class EnemyManager {
         }
         var remaining = amt;
         // Frontal energy shield (Vanguard) absorbs first.
-        if shield[s] > 0.0 {
+        if shield[s] > 0.0 && region != config.REGION_WEAKPOINT {
             var ab = M.minf(shield[s], remaining);
             shield[s] = shield[s] - ab;
             remaining = remaining - ab;
+        }
+        if arch[s] == config.EN_SAPPER && region == config.REGION_WEAKPOINT {
+            remaining = remaining * 1.35;
         }
         if remaining <= 0.0 { awaken(s); return; }
         // Plates ablate before the core (region ARMOR untouched here — plates are

@@ -74,9 +74,9 @@ class DefaultManagerPolicy {
     // Decision: should we issue an intentional walk to this batter? Default
     // policy: never. The Stage-1 AI is conservative; smarter policies can
     // override this method.
-    expose func decideIntentionalWalkAction(state: game_state.GameState,
-                                            batter: player.Player,
-                                            pitcher: player.Player) -> ManagerAction {
+    expose func decideIntentionalWalkAction(_state: game_state.GameState,
+                                            _batter: player.Player,
+                                            _pitcher: player.Player) -> ManagerAction {
         return new ManagerAction(ACTION_NOOP, "default_no_ibb");
     }
 
@@ -104,7 +104,7 @@ class DefaultManagerPolicy {
     // (otherwise the franchise decision log balloons by ~5x).
     expose func decidePitchIntentAction(state: game_state.GameState,
                                         batter: player.Player,
-                                        pitcher: player.Player) -> ManagerAction {
+                                        _pitcher: player.Player) -> ManagerAction {
         var action = new ManagerAction(ACTION_SET_PITCH_INTENT, "attack_default");
         action.intentValue = INTENT_ATTACK;
         if state.strikes >= 2 {
@@ -201,8 +201,8 @@ class DefaultManagerPolicy {
     // The engine calls this before every between-PA pitching check so the
     // human sees a substitution opportunity first. Because the default stays
     // NOOP, AI simulation is behavior-preserving.
-    expose func decideSubstitutionAction(state: game_state.GameState,
-                                         offense: game_state.TeamGameState) -> ManagerAction {
+    expose func decideSubstitutionAction(_state: game_state.GameState,
+                                         _offense: game_state.TeamGameState) -> ManagerAction {
         return new ManagerAction(ACTION_NOOP, "default_no_substitution");
     }
 
@@ -212,8 +212,8 @@ class DefaultManagerPolicy {
     // pitch engine call-site, so this virtual is exposed for parity with
     // plan 14 but remains inert until plate_appearance_engine.resolve gains
     // the matching checkpoint.
-    expose func decideBuntStealAction(state: game_state.GameState,
-                                      offense: game_state.TeamGameState) -> ManagerAction {
+    expose func decideBuntStealAction(_state: game_state.GameState,
+                                      _offense: game_state.TeamGameState) -> ManagerAction {
         return new ManagerAction(ACTION_NOOP, "default_no_bunt_steal");
     }
 }

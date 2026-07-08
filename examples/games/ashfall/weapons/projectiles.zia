@@ -93,6 +93,12 @@ class Projectiles {
     }
 
     hide func detonate(s: Integer) {
+        if dmgKind[s] == config.DMG_DECOY {
+            bus.pushAt(config.EV_DECOY, 0, 36, px[s], py[s], pz[s]);
+            bus.pushAt(config.EV_EXPLOSION, 0, 3, px[s], py[s], pz[s]);
+            kill(s);
+            return;
+        }
         if blastRadius[s] > 0.0 {
             ball.blast(px[s], py[s], pz[s], blastRadius[s], damage[s], dmgKind[s]);
         }

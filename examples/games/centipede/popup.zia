@@ -92,7 +92,7 @@ class PopupManager {
         maxPopups = 20;
 
         // Pre-allocate popup pool
-        for i in 0..maxPopups {
+        for _ in 0..maxPopups {
             var p = new ScorePopup();
             popups.add(p);
         }
@@ -129,4 +129,3 @@ class PopupManager {
         }
     }
 }
-

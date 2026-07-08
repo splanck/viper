@@ -131,6 +131,13 @@ class Game {
     hide Boolean inJump; hide Boolean inCrouch; hide Boolean inSprint;
     hide Boolean inFire; hide Boolean inADS; hide Boolean inInteract;
     hide Boolean inReload; hide Boolean inNextWeapon; hide Boolean inPrevWeapon;
+    hide Boolean inGrenade; hide Boolean inCycleGrenade; hide Boolean inMelee; hide Boolean inFlashlight;
+    hide Integer grenadeSelected;
+    hide List[Integer] grenadeStock;
+    hide Float grenadeCd;
+    hide Float meleeCd;
+    hide Boolean flashlightOn;
+    hide Float flashlightPulseT;
 
     // --- State machine -------------------------------------------------------
     hide Integer state;
@@ -192,6 +199,14 @@ class Game {
         inJump = false; inCrouch = false; inSprint = false;
         inFire = false; inADS = false; inInteract = false;
         inReload = false; inNextWeapon = false; inPrevWeapon = false;
+        inGrenade = false; inCycleGrenade = false; inMelee = false; inFlashlight = false;
+        grenadeSelected = config.GRENADE_FRAG;
+        grenadeStock = [];
+        grenadeStock.Add(2); grenadeStock.Add(1); grenadeStock.Add(1);
+        grenadeCd = 0.0;
+        meleeCd = 0.0;
+        flashlightOn = false;
+        flashlightPulseT = 0.0;
         state = config.ST_BOOT;
         prevState = config.ST_BOOT;
         pendingState = -1;
@@ -241,6 +256,14 @@ class Game {
     expose func scriptFire(v: Boolean) { inFire = v; }
     expose func scriptADS(v: Boolean) { inADS = v; }
     expose func scriptReload(v: Boolean) { inReload = v; }
+    /// Set scripted grenade input for headless probes.
+    expose func scriptGrenade(v: Boolean) { inGrenade = v; }
+    /// Set scripted grenade cycling input for headless probes.
+    expose func scriptCycleGrenade(v: Boolean) { inCycleGrenade = v; }
+    /// Set scripted melee input for headless probes.
+    expose func scriptMelee(v: Boolean) { inMelee = v; }
+    /// Set scripted flashlight toggle input for headless probes.
+    expose func scriptFlashlight(v: Boolean) { inFlashlight = v; }
     expose func scriptAimAt(tx: Float, ty: Float, tz: Float) {
         // Point the camera yaw/pitch at a world target (probe aiming helper).
         var ex = camRig.getEyeX(); var ey = camRig.getEyeY(); var ez = camRig.getEyeZ();
@@ -409,6 +432,8 @@ class Game {
         prepareLevelMaterials(id);
         levelMgr.load(id);
         applyEnvironment(id);
+        grantCampaignLoadout(id);
+        resetGrenadesForLevel(id);
         player.spawn(levelMgr.startX(), levelMgr.startY(), levelMgr.startZ());
         camRig.setYaw(levelMgr.startYaw());
         playerHealth.reset();
@@ -443,6 +468,16 @@ class Game {
     }
 
     hide func giveStartingLoadout() {
+        grantAllWeapons();
+    }
+
+    /// Grant every weapon and select the Bolt sidearm.
+    ///
+    /// The arena and probes use the full arsenal as a sandbox. The campaign
+    /// calls `grantCampaignLoadout` after loading a level to stage weapons more
+    /// deliberately for real play.
+    hide func grantAllWeapons() {
+        weapons.clearLoadout();
         weapons.give(config.W_BOLT);
         weapons.give(config.W_SCATTER);
         weapons.give(config.W_CYCLER);
@@ -450,7 +485,75 @@ class Game {
         weapons.give(config.W_RAIL);
         weapons.give(config.W_ARC);
         weapons.give(config.W_RIVET);
+        weapons.give(config.W_SHARD);
+        weapons.give(config.W_EMP);
+        weapons.give(config.W_LANCE);
         weapons.switchTo(config.W_BOLT);
+    }
+
+    /// Grant the interactive campaign loadout appropriate for `levelId`.
+    ///
+    /// Early missions stay legible with a small kit, then later missions add
+    /// counter-tools before the enemy roster demands them. Headless runs keep
+    /// the full arsenal so existing probes remain broad regression coverage.
+    hide func grantCampaignLoadout(levelId: Integer) {
+        if headless {
+            grantAllWeapons();
+            return;
+        }
+        weapons.clearLoadout();
+        weapons.give(config.W_BOLT);
+        weapons.give(config.W_SCATTER);
+        if levelId >= config.LV_L2 { weapons.give(config.W_CYCLER); }
+        if levelId >= config.LV_L3 { weapons.give(config.W_RAIL); }
+        if levelId >= config.LV_L4 { weapons.give(config.W_PULSE); }
+        if levelId >= config.LV_L5 { weapons.give(config.W_ARC); }
+        if levelId >= config.LV_L6 { weapons.give(config.W_RIVET); }
+        if levelId >= config.LV_L7 { weapons.give(config.W_EMP); }
+        if levelId >= config.LV_L8 { weapons.give(config.W_SHARD); }
+        if levelId >= config.LV_L9 { weapons.give(config.W_LANCE); }
+        weapons.switchTo(config.W_BOLT);
+    }
+
+    /// Reset grenade inventory for a newly loaded campaign level.
+    ///
+    /// Grenade availability escalates with mission complexity: frag first,
+    /// EMP once shields/turrets matter, and decoys once stealthier enemies and
+    /// routed encounters appear.
+    hide func resetGrenadesForLevel(levelId: Integer) {
+        if grenadeStock.Count < config.GRENADE_COUNT {
+            grenadeStock = [];
+            var gi = 0;
+            while gi < config.GRENADE_COUNT { grenadeStock.Add(0); gi = gi + 1; }
+        }
+        grenadeStock[config.GRENADE_FRAG] = 2 + levelId / 3;
+        grenadeStock[config.GRENADE_EMP] = 0;
+        grenadeStock[config.GRENADE_DECOY] = 0;
+        if levelId >= config.LV_L2 { grenadeStock[config.GRENADE_EMP] = 1 + levelId / 5; }
+        if levelId >= config.LV_L3 { grenadeStock[config.GRENADE_DECOY] = 1 + levelId / 6; }
+        if headless {
+            grenadeStock[config.GRENADE_FRAG] = 4;
+            grenadeStock[config.GRENADE_EMP] = 3;
+            grenadeStock[config.GRENADE_DECOY] = 3;
+        }
+        grenadeSelected = config.GRENADE_FRAG;
+        grenadeCd = 0.0;
+        meleeCd = 0.0;
+        flashlightOn = false;
+        flashlightPulseT = 0.0;
+    }
+
+    /// Return the display name for the currently selected grenade.
+    hide func grenadeName() -> String {
+        if grenadeSelected == config.GRENADE_EMP { return "EMP"; }
+        if grenadeSelected == config.GRENADE_DECOY { return "DECOY"; }
+        return "FRAG";
+    }
+
+    /// Return the remaining count for the currently selected grenade.
+    hide func grenadeCount() -> Integer {
+        if grenadeSelected < 0 || grenadeSelected >= grenadeStock.Count { return 0; }
+        return grenadeStock[grenadeSelected];
     }
 
     expose func getWeapons() -> weapon_base.WeaponController { return weapons; }
@@ -498,6 +601,8 @@ class Game {
     expose func devCurrentLevel() -> Integer { return currentLevel; }
     expose func devGiveWeapon(w: Integer) { weapons.give(w); }
     expose func devSwitchWeapon(w: Integer) { weapons.switchTo(w); }
+    /// Return remaining grenades of the selected type for gameplay probes.
+    expose func devGrenadeCount() -> Integer { return grenadeCount(); }
     expose func devKillPlayer() {
         bus.push(config.EV_DAMAGE, config.TGT_PLAYER, 0, config.REGION_BODY, 10000.0, 0.0, 0.0);
     }
@@ -539,6 +644,10 @@ class Game {
         inReload = actionMap.pressed(input, config.A_RELOAD);
         inNextWeapon = actionMap.pressed(input, config.A_NEXT_WEAPON);
         inPrevWeapon = actionMap.pressed(input, config.A_PREV_WEAPON);
+        inGrenade = actionMap.pressed(input, config.A_GRENADE);
+        inCycleGrenade = actionMap.pressed(input, config.A_CYCLE_GRENADE);
+        inMelee = actionMap.pressed(input, config.A_MELEE);
+        inFlashlight = actionMap.pressed(input, config.A_FLASHLIGHT);
         // Toggles.
         if actionMap.pressed(input, config.A_DIAG) { diag.toggle(); }
         if actionMap.pressed(input, config.A_DEV_LIGHTS) { arenaMap.cycleLighting(); }
@@ -620,7 +729,7 @@ class Game {
                 var k = bus.aAt(i);
                 if k == config.PK_AMMO { weapons.addReserveAll(bus.bAt(i)); }
                 else if k == config.PK_SALVAGE { econ.addSalvage(bus.bAt(i)); }
-                else if k == config.PK_DATACORE { levelMgr.getObjectives().addCollect(); }
+                else if k == config.PK_DATACORE { levelMgr.getObjectives().addCollect(bus); }
             }
             i = i + 1;
         }
@@ -661,10 +770,16 @@ class Game {
             // Weapon switch.
             if inNextWeapon { weapons.nextWeapon(); }
             if inPrevWeapon { weapons.prevWeapon(); }
+            if inCycleGrenade { cycleGrenade(); }
+            if grenadeCd > 0.0 { grenadeCd = grenadeCd - dt; }
+            if meleeCd > 0.0 { meleeCd = meleeCd - dt; }
 
             // Fire from the camera eye along the aim direction.
             var ex = camRig.getEyeX(); var ey = camRig.getEyeY(); var ez = camRig.getEyeZ();
             var fdx = camRig.forwardX(); var fdy = camRig.forwardY(); var fdz = camRig.forwardZ();
+            if inGrenade { throwGrenade(ex, ey, ez, fdx, fdy, fdz); }
+            if inMelee { meleeAttack(ex, ey, ez, fdx, fdy, fdz); }
+            updateFlashlight(dt, ex, ey, ez, fdx, fdy, fdz);
             weapons.update(dt, inFire, inADS, inReload, ex, ey, ez, fdx, fdy, fdz);
             weapons.autoReloadIfEmpty();
             proj.update(dt);
@@ -783,6 +898,7 @@ class Game {
             var id = menuSys.selectedLevelId();
             if id == config.LV_ARENA {
                 currentLevel = config.LV_ARENA;
+                giveStartingLoadout();
                 arenaMap.setup(world, texLib);
                 arenaMap.registerTargets(targetReg);
                 applyEnvironment(config.LV_ARENA);
@@ -852,6 +968,81 @@ class Game {
         }
     }
 
+    /// Cycle to the next grenade type that has stock, if any.
+    hide func cycleGrenade() {
+        var tries = 0;
+        while tries < config.GRENADE_COUNT {
+            grenadeSelected = (grenadeSelected + 1) % config.GRENADE_COUNT;
+            if grenadeStock[grenadeSelected] > 0 { return; }
+            tries = tries + 1;
+        }
+    }
+
+    /// Throw the selected grenade from the camera eye with a light upward arc.
+    hide func throwGrenade(ox: Float, oy: Float, oz: Float,
+                           fdx: Float, fdy: Float, fdz: Float) {
+        if grenadeCd > 0.0 { return; }
+        if grenadeSelected < 0 || grenadeSelected >= grenadeStock.Count { return; }
+        if grenadeStock[grenadeSelected] <= 0 { return; }
+        grenadeStock[grenadeSelected] = grenadeStock[grenadeSelected] - 1;
+        grenadeCd = 0.85;
+        var dx = fdx;
+        var dy = fdy + 0.18;
+        var dz = fdz;
+        var len = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        if len > 0.01 { dx = dx / len; dy = dy / len; dz = dz / len; }
+        var dmg = 110.0;
+        var radius = 6.0;
+        var kind = config.DMG_EXPLOSION;
+        var life = 2.6;
+        if grenadeSelected == config.GRENADE_EMP {
+            dmg = 6.0; radius = 7.0; kind = config.DMG_EMP; life = 2.4;
+        } else if grenadeSelected == config.GRENADE_DECOY {
+            dmg = 0.0; radius = 0.0; kind = config.DMG_DECOY; life = 2.1;
+        }
+        proj.spawn(ox + fdx * 0.35, oy - 0.12, oz + fdz * 0.35,
+                   dx, dy, dz, 18.0, dmg, radius, 0.0, 0.0, -14.0, 1, life, kind);
+        bus.pushAt(config.EV_GUNSHOT, weapons.getCurrent(), 14, ox, oy, oz);
+        camRig.addShake(0.04);
+        vm.addKick(2.0);
+        cycleGrenadeIfEmpty();
+    }
+
+    /// Advance grenade selection after a throw empties the current type.
+    hide func cycleGrenadeIfEmpty() {
+        if grenadeSelected >= 0 && grenadeSelected < grenadeStock.Count {
+            if grenadeStock[grenadeSelected] > 0 { return; }
+        }
+        cycleGrenade();
+    }
+
+    /// Perform a short-range melee strike using the shared ballistics pipeline.
+    hide func meleeAttack(ox: Float, oy: Float, oz: Float,
+                          fdx: Float, fdy: Float, fdz: Float) {
+        if meleeCd > 0.0 { return; }
+        meleeCd = 0.55;
+        ball.fireHitscan(ox, oy, oz, fdx, fdy, fdz, 1, 0.0, 70.0, 1, 2.4, config.DMG_MELEE);
+        bus.pushAt(config.EV_MELEE, 0, 8, ox, oy, oz);
+        camRig.addShake(0.035);
+        vm.addKick(3.0);
+    }
+
+    /// Toggle and pulse the flashlight as a narrow forward utility light.
+    hide func updateFlashlight(dt: Float, ox: Float, oy: Float, oz: Float,
+                               fdx: Float, fdy: Float, fdz: Float) {
+        if inFlashlight {
+            flashlightOn = flashlightOn == false;
+            flashlightPulseT = 0.0;
+        }
+        if flashlightOn == false { return; }
+        flashlightPulseT = flashlightPulseT - dt;
+        if flashlightPulseT <= 0.0 {
+            lightRig.pulse(ox + fdx * 5.0, oy + fdy * 5.0, oz + fdz * 5.0,
+                           0.95, 0.92, 0.76, 14.0, 0.10);
+            flashlightPulseT = 0.08;
+        }
+    }
+
     // Step the physics world one fixed increment (called after tickSim).
     expose func stepPhysics(dt: Float) {
         if graphicsUp { G3D.Physics3DWorld.Step(phys, dt); }
@@ -906,22 +1097,34 @@ class Game {
             // Compass bearing toward the active positional objective.
             var objBearing = 0.0;
             var hasMarker = false;
+            var objDistance = -1.0;
+            var objPrompt = "";
+            var objReady = false;
             if campaign {
                 var obj = levelMgr.getObjectives();
                 var oi = obj.activeIndex();
                 if oi >= 0 {
                     var k = obj.kindOf(oi);
+                    objPrompt = obj.promptOf(oi);
                     if k == objectives.OBJ_REACH || k == objectives.OBJ_ACTIVATE {
                         var dx = obj.txAt(oi) - player.getX();
                         var dz = obj.tzAt(oi) - player.getZ();
                         objBearing = M.toDeg(Math.Atan2(dx, 0.0 - dz));
+                        objDistance = Math.Sqrt(dx * dx + dz * dz);
                         hasMarker = true;
+                        if k == objectives.OBJ_ACTIVATE {
+                            if objDistance <= obj.radiusOf(oi) {
+                                objPrompt = "PRESS E TO ACTIVATE";
+                                objReady = true;
+                            }
+                        }
                     }
                 }
             }
             hudSys.draw(canvas, w, h, playerHealth, weapons, levelMgr.getObjectives(),
                         enemies.maxAwareness(), campaign, camRig.getYaw(),
-                        objBearing, hasMarker, bossName, bossFrac);
+                        objBearing, hasMarker, objDistance, objPrompt, objReady,
+                        grenadeName(), grenadeCount(), flashlightOn, bossName, bossFrac);
         }
         if diag.isEnabled() {
             G3D.Canvas3D.DrawText2D(canvas, 8, 8, diag.line1(), 0xFFFFFF);

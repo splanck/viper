@@ -893,7 +893,7 @@ func pgParseClose(body: Bytes) -> PgCloseMsg {
 // Read startup message, handle SSL/cancel, optionally exchange password.
 // Returns PgStartupInfo on success (with password field populated if auth requested).
 // Does NOT send AuthOk or parameters — caller must do that via pgCompleteStartup.
-func pgHandleStartup(client: Viper.Network.Tcp, sessionId: Integer, authRequired: Boolean) -> PgStartupInfo? {
+func pgHandleStartup(client: Viper.Network.Tcp, _sessionId: Integer, authRequired: Boolean) -> PgStartupInfo? {
     var startup = pgReadStartup(client);
 
     // Handle SSL request — respond 'N' (no SSL), then read the real startup

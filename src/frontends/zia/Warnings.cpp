@@ -109,7 +109,8 @@ const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled() {
     // Conservative set — these catch common real bugs without being noisy.
     // W002 (unreachable), W003 (narrowing), W004 (shadowing), W006 (empty loop),
     // W007 (assign-in-cond), W011 (redundant bool), W013 (empty body),
-    // W014 (unused result) are -Wall only.
+    // W014 (unused result), W017 (xor-confusion), W018 (bitwise-and-confusion)
+    // are -Wall only.
     static const std::unordered_set<WarningCode> defaults = {
         WarningCode::W001_UnusedVariable,
         WarningCode::W005_FloatEquality,
@@ -119,8 +120,8 @@ const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled() {
         WarningCode::W012_DuplicateImport,
         WarningCode::W015_UninitializedVariable,
         WarningCode::W016_OptionalWithoutCheck,
-        WarningCode::W017_XorConfusion,
-        WarningCode::W018_BitwiseAndConfusion,
+        // W017 (xor-confusion) and W018 (bitwise-and-confusion) are -Wall only:
+        // they fire on every `^`/`&`, which is noise for real bit manipulation.
         WarningCode::W019_NonExhaustiveMatch,
     };
     return defaults;

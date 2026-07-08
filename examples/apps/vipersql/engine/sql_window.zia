@@ -271,7 +271,7 @@ func hasExplicitFrame(winExpr: Expr) -> Boolean {
 //=============================================================================
 
 // Compute window function values for a specific result column
-func computeWindowColumn(winExpr: Expr, result: QueryResult, colIdx: Integer, table: Table) {
+func computeWindowColumn(winExpr: Expr, result: QueryResult, colIdx: Integer, _table: Table) {
     var funcName = String.ToUpper(winExpr.funcName);
     var rowCount = result.rowCount();
     if rowCount == 0 { return; }
@@ -772,17 +772,15 @@ func computeWindowColumn(winExpr: Expr, result: QueryResult, colIdx: Integer, ta
                 // Count rows with ORDER BY value <= current
                 // Since sorted, find last row with same value
                 var lastSame = wi;
-                while lastSame + 1 < partSize {
+                var scanningPeers = true;
+                while scanningPeers && lastSame + 1 < partSize {
                     var nextIdx = indices.get(partStart + lastSame + 1);
                     if windowOrderValuesEqual(winExpr, result.rows.get(origIdx), result.rows.get(nextIdx), result) {
                         lastSame = lastSame + 1;
                     } else {
-                        lastSame = lastSame;  // break equivalent
-                        nextIdx = nextIdx;  // dummy to exit
-                        lastSame = lastSame + partSize;  // force exit
+                        scanningPeers = false;
                     }
                 }
-                if lastSame >= partSize { lastSame = lastSame - partSize; }
                 var numLE = lastSame + 1;
                 windowValues.set(origIdx, sqlText(formatDecimalRatio(numLE, partSize)));
                 wi = wi + 1;

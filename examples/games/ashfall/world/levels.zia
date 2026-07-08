@@ -49,6 +49,7 @@ hide func scatterCoverMat(lb: level_base.LevelBuilder, count: Integer, radius: F
         var cx = Math.Cos(ang) * radius;
         var cz = Math.Sin(ang) * radius;
         lb.addBoxMat(cx, 0.8, cz, 0.8, 0.8, 0.8, surf, r, g, b, true);
+        lb.addCover(cx, cz, 0.0 - Math.Cos(ang), 0.0 - Math.Sin(ang));
         // Dressing: a smaller offset cap + a ground skirt (visual only).
         var ox = Math.Cos(ang + 0.9) * 0.55;
         var oz = Math.Sin(ang + 0.9) * 0.55;
@@ -60,6 +61,23 @@ hide func scatterCoverMat(lb: level_base.LevelBuilder, count: Integer, radius: F
     }
 }
 
+/// Add a low emissive-style guide strip to make the intended route readable.
+///
+/// Strips are visual-only floor decals built from thin boxes so the graybox
+/// level language can communicate path direction without adding a decal system.
+hide func addGuide(lb: level_base.LevelBuilder, x: Float, z: Float, hx: Float, hz: Float) {
+    lb.addBoxMat(x, 0.035, z, hx, 0.035, hz, textures.SURF_ACCENT,
+                 0.92, 0.62, 0.18, false);
+}
+
+/// Mark a visible prop or collider as useful AI cover.
+///
+/// The authored geometry stays responsible for sightline blocking; this helper
+/// only adds the metadata ranged enemies use to choose believable firing pockets.
+hide func markCover(lb: level_base.LevelBuilder, x: Float, z: Float, faceX: Float, faceZ: Float) {
+    lb.addCover(x, z, faceX, faceZ);
+}
+
 // L1 — Crashsite Canyon: dawn canyon under the wreck arch (terrain rim hero).
 hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Crashsite Canyon");
@@ -69,7 +87,13 @@ hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     // Shell: ash-rock floor, canyon-wall berms.
     lb.addArenaShellMat(40.0, 8.0, textures.SURF_ROCK, textures.SURF_ROCK,
                         0.42, 0.36, 0.31, 0.40, 0.34, 0.30);
-    scatterCoverMat(lb, 8, 16.0, textures.SURF_ROCK, 0.42, 0.36, 0.30);
+    // Directed canyon route: broken berms form a readable S-curve from the
+    // drop-in to the wreck, then toward the lit relay exit.
+    lb.addBoxMat(-18.0, 1.0, 22.0, 1.0, 1.0, 10.0, textures.SURF_ROCK, 0.38, 0.32, 0.28, true);
+    lb.addBoxMat(18.0, 1.0, 14.0, 1.0, 1.0, 9.0, textures.SURF_ROCK, 0.38, 0.32, 0.28, true);
+    lb.addBoxMat(-14.0, 0.8, 2.0, 1.0, 0.8, 8.0, textures.SURF_ROCK, 0.40, 0.34, 0.30, true);
+    lb.addBoxMat(15.0, 0.8, -8.0, 1.0, 0.8, 8.0, textures.SURF_ROCK, 0.40, 0.34, 0.30, true);
+    scatterCoverMat(lb, 5, 12.0, textures.SURF_ROCK, 0.42, 0.36, 0.30);
     // Wreckage cluster under the arch (collider kept at its frozen footprint).
     lb.addBoxMat(0.0, 1.2, -20.0, 4.0, 1.2, 2.0, textures.SURF_HULL, 0.44, 0.38, 0.32, true);
     lb.addBoxMat(-3.2, 0.5, -17.5, 1.4, 0.5, 1.0, textures.SURF_HULL, 0.40, 0.34, 0.30, false);
@@ -85,6 +109,12 @@ hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_CRATE, 6.9, 0.0, 22.6, 1.1, 0.8);
     lb.addProp(props.PROP_BARREL, -5.5, 0.0, 21.4, 0.0, 1.0);
     lb.addProp(props.PROP_BARREL, -6.4, 0.0, 22.3, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -3.6, 0.0, 18.0, 0.2, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 3.8, 0.0, 6.0, -0.4, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 0.0, 0.0, -34.0, 0.0, 1.2);
+    lb.addGate(0.0, 1.35, -31.8, 4.8, 1.35, 0.22, 0);
+    lb.addProp(props.PROP_PYLON, -4.0, 0.0, -33.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 4.0, 0.0, -33.0, 0.0, 1.0);
     lb.addProp(props.PROP_STALAGMITE, -24.0, 0.0, -30.0, 0.8, 1.6);
     lb.addProp(props.PROP_STALAGMITE, 27.0, 0.0, -14.0, 2.2, 1.3);
     lb.addProp(props.PROP_STALAGMITE, -30.0, 0.0, 12.0, 3.9, 1.8);
@@ -93,16 +123,24 @@ hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addPoint(0.0, 6.0, -20.0, 0.9, 0.55, 0.3, 18.0);
     lb.addPoint(-8.0, 2.5, -16.0, 0.8, 0.5, 0.25, 10.0);
     lb.addPoint(6.0, 2.0, 24.0, 0.5, 0.55, 0.7, 9.0);
-    lb.addSpawn(config.EN_HUSK, -8.0, 8.0, 0);
-    lb.addSpawn(config.EN_HUSK, 8.0, 8.0, 0);
-    lb.addSpawn(config.EN_HUSK, 0.0, -4.0, 0);
-    lb.addSpawn(config.EN_SAPPER, -6.0, -12.0, 0);
-    lb.addSpawn(config.EN_HUSK, 6.0, -12.0, 1);
-    lb.addSpawn(config.EN_SAPPER, 0.0, -18.0, 1);
+    lb.addPoint(0.0, 2.8, -34.0, 1.0, 0.78, 0.25, 12.0);
+    addGuide(lb, 0.0, 25.0, 0.5, 1.8);
+    addGuide(lb, -5.0, 12.0, 1.8, 0.5);
+    addGuide(lb, 0.0, -2.0, 0.5, 2.2);
+    addGuide(lb, 4.5, -17.0, 1.8, 0.5);
+    addGuide(lb, 0.0, -29.0, 0.7, 2.2);
+    lb.addSpawnRoute(config.EN_HUSK, -20.0, 8.0, 0, -10.0, 8.0);
+    lb.addSpawnRoute(config.EN_HUSK, 20.0, 6.0, 0, 9.0, 5.0);
+    lb.addSpawnRoute(config.EN_HUSK, 0.0, -4.0, 0, 0.0, -10.0);
+    lb.addSpawnRoute(config.EN_SAPPER, -16.0, -18.0, 0, -6.0, -14.0);
+    lb.addSpawnRoute(config.EN_HUSK, 14.0, -20.0, 1, 6.0, -16.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 0.0, -28.0, 1, 0.0, -18.0);
     lb.addPickup(config.PK_AMMO, 4.0, 0.0, 20.0, 40.0);
     lb.addPickup(config.PK_HEALTH, -4.0, 0.0, 20.0, 30.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the crashsite", false);
-    obj.add(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Reach the relay path", false);
+    obj.setPrompt(0, "CLEAR HOSTILES TO OPEN THE RELAY PATH");
+    obj.addAfter(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Reach the relay path", false, 0);
+    obj.setPrompt(1, "FOLLOW THE LIT EXIT BEACON");
 }
 
 // L2 — Relay Outpost: night interior — real rooms, cyan coves, console glow.
@@ -123,12 +161,15 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     // Door frames on the passages past the back wall's ends.
     lb.addProp(props.PROP_DOORFRAME, -13.6, 0.0, -8.0, 0.0, 1.0);
     lb.addProp(props.PROP_DOORFRAME, 13.6, 0.0, -8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 0.0, 0.0, -18.0, 0.0, 1.1);
     // Consoles: the relay (ACTIVATE objective, frozen coord) + operations row.
     lb.addProp(props.PROP_CONSOLE, 0.0, 0.0, -18.0, 3.1415927, 1.0);
     lb.addProp(props.PROP_CONSOLE, -10.0, 0.0, -15.5, 2.6, 1.0);
     lb.addProp(props.PROP_CONSOLE, 8.5, 0.0, -14.5, 3.6, 1.0);
     lb.addProp(props.PROP_CONSOLE, -12.0, 0.0, 10.0, 1.5707963, 1.0);
     lb.addProp(props.PROP_CONSOLE, 12.0, 0.0, 10.0, -1.5707963, 1.0);
+    markCover(lb, -12.0, 10.0, 1.0, 0.0);
+    markCover(lb, 12.0, 10.0, -1.0, 0.0);
     // Cyan cove pylons along the walls.
     lb.addProp(props.PROP_PYLON, -24.0, 0.0, 8.0, 0.0, 1.0);
     lb.addProp(props.PROP_PYLON, 24.0, 0.0, 8.0, 0.0, 1.0);
@@ -136,6 +177,8 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_PYLON, 24.0, 0.0, -8.0, 0.0, 1.0);
     lb.addProp(props.PROP_PYLON, -10.0, 0.0, 24.0, 0.0, 1.0);
     lb.addProp(props.PROP_PYLON, 10.0, 0.0, 24.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -3.0, 0.0, -18.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 3.0, 0.0, -18.0, 0.0, 1.0);
     // Server racks + storage + the radar dish under the skylight.
     lb.addProp(props.PROP_RACK, -10.0, 0.0, -22.5, 0.2, 1.0);
     lb.addProp(props.PROP_RACK, 10.0, 0.0, -22.5, -0.15, 1.0);
@@ -146,6 +189,8 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_CRATE, -3.2, 0.0, 18.0, 0.5, 1.0);
     lb.addProp(props.PROP_BARREL, 3.4, 0.0, 17.6, 0.0, 1.0);
     lb.addProp(props.PROP_BARREL, 4.3, 0.0, 18.4, 0.0, 0.9);
+    markCover(lb, -3.2, 18.0, 0.0, -1.0);
+    markCover(lb, 3.8, 18.0, 0.0, -1.0);
     // Practicals: cool room coves + relay amber pool + skylight spill.
     lb.addPoint(-8.0, 4.0, 10.0, 0.5, 0.7, 0.95, 12.0);
     lb.addPoint(8.0, 4.0, 10.0, 0.5, 0.7, 0.95, 12.0);
@@ -153,14 +198,20 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addPoint(-24.0, 3.0, 0.0, 0.35, 0.65, 0.9, 9.0);
     lb.addPoint(24.0, 3.0, 0.0, 0.35, 0.65, 0.9, 9.0);
     lb.addPoint(18.0, 5.0, -20.0, 0.4, 0.5, 0.7, 11.0);
-    lb.addSpawn(config.EN_RANGER, -6.0, 0.0, 0);
-    lb.addSpawn(config.EN_RANGER, 6.0, 0.0, 0);
+    addGuide(lb, 0.0, 18.0, 0.6, 1.6);
+    addGuide(lb, -8.0, 7.0, 1.8, 0.5);
+    addGuide(lb, 8.0, -2.0, 1.8, 0.5);
+    addGuide(lb, 0.0, -14.0, 0.6, 1.8);
+    lb.addSpawnRoute(config.EN_RANGER, -18.0, 12.0, 0, -6.0, 2.0);
+    lb.addSpawnRoute(config.EN_RANGER, 18.0, 12.0, 0, 6.0, 2.0);
     lb.addSpawn(config.EN_TURRET, 0.0, -16.0, 0);
-    lb.addSpawn(config.EN_DRONE, 0.0, 4.0, 0);
+    lb.addSpawnRoute(config.EN_DRONE, 0.0, 18.0, 0, 0.0, 4.0);
     lb.addPickup(config.PK_SALVAGE, 0.0, 0.0, -16.0, 50.0);
     lb.addPickup(config.PK_DATACORE, -10.0, 0.0, -16.0, 1.0);
     obj.add(objectives.OBJ_ACTIVATE, 0.0, -18.0, 3.0, 0, "Reach and activate the relay console", false);
+    obj.setPrompt(0, "FOLLOW THE CYAN BEACONS TO THE CONSOLE");
     obj.add(objectives.OBJ_KILL, 0.0, 0.0, 0.0, 2, "Neutralize the garrison (optional)", true);
+    obj.setPrompt(1, "OPTIONAL: CLEAR THE RELAY ROOM");
 }
 
 // L3 — Ashveil Crossing: a girder span over an ash sea, vanishing into fog.
@@ -200,6 +251,16 @@ hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_BARRICADE, -2.5, 0.0, 24.0, 0.0, 1.0);
     lb.addProp(props.PROP_BARRICADE, 2.5, 0.0, 4.0, 3.1415927, 1.0);
     lb.addProp(props.PROP_BARRICADE, -2.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_BARRICADE, 2.2, 0.0, -32.0, 3.1415927, 1.0);
+    markCover(lb, -2.5, 24.0, 0.0, -1.0);
+    markCover(lb, 2.5, 4.0, 0.0, 1.0);
+    markCover(lb, -2.0, -16.0, 0.0, -1.0);
+    markCover(lb, 2.2, -32.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -5.2, 0.0, 30.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 5.2, 0.0, 10.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -5.2, 0.0, -10.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 5.2, 0.0, -30.0, 0.0, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 0.0, 0.0, -47.5, 0.0, 1.2);
     lb.addProp(props.PROP_CRATE, -7.5, 0.0, 45.0, 0.3, 1.0);
     lb.addProp(props.PROP_BARREL, 7.8, 0.0, 44.2, 0.0, 1.0);
     lb.addProp(props.PROP_CRATE, 6.8, 0.0, -47.0, 1.2, 1.0);
@@ -209,16 +270,22 @@ hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addPoint(-7.2, 3.8, 24.0, 0.9, 0.25, 0.2, 9.0);
     lb.addPoint(0.0, 3.0, 46.0, 0.55, 0.6, 0.75, 11.0);
     lb.addPoint(0.0, 3.0, -48.0, 0.55, 0.6, 0.75, 11.0);
+    addGuide(lb, 0.0, 34.0, 0.45, 2.2);
+    addGuide(lb, 0.0, 14.0, 0.45, 2.2);
+    addGuide(lb, 0.0, -6.0, 0.45, 2.2);
+    addGuide(lb, 0.0, -26.0, 0.45, 2.2);
+    addGuide(lb, 0.0, -43.0, 0.6, 2.0);
     var seg = 0;
     while seg < 4 {
         var z = 30.0 - seg * 20.0;
-        lb.addSpawn(config.EN_RANGER, -4.0, z, seg);
-        lb.addSpawn(config.EN_DRONE, 4.0, z, seg);
+        lb.addSpawnRoute(config.EN_RANGER, -9.0, z, seg, -4.0, z - 6.0);
+        lb.addSpawnRoute(config.EN_DRONE, 9.0, z, seg, 4.0, z - 4.0);
         seg = seg + 1;
     }
     lb.addPickup(config.PK_AMMO, 0.0, 0.0, 0.0, 60.0);
     lb.addPickup(config.PK_HEALTH, 0.0, 0.0, -20.0, 40.0);
     obj.add(objectives.OBJ_REACH, 0.0, -46.0, 5.0, 0, "Cross to the far platform", false);
+    obj.setPrompt(0, "PUSH FORWARD TO THE FAR PLATFORM");
 }
 
 // L4 — Habitat Arcology: sterile atrium — column grid, mezzanines, HELIX wall.
@@ -240,6 +307,12 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_COLUMN, 22.0, 0.0, 6.0, 0.0, 1.0);
     lb.addProp(props.PROP_COLUMN, -22.0, 0.0, -6.0, 0.0, 1.0);
     lb.addProp(props.PROP_COLUMN, 22.0, 0.0, -6.0, 0.0, 1.0);
+    markCover(lb, -10.0, 16.0, 0.0, -1.0);
+    markCover(lb, 10.0, 16.0, 0.0, -1.0);
+    markCover(lb, -10.0, -16.0, 0.0, 1.0);
+    markCover(lb, 10.0, -16.0, 0.0, 1.0);
+    markCover(lb, -22.0, 6.0, 1.0, 0.0);
+    markCover(lb, 22.0, 6.0, -1.0, 0.0);
     // Mezzanine catwalk ring along the walls (visual, y=3.2).
     var cw = -12.0;
     while cw < 13.0 {
@@ -271,13 +344,18 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     }
     // The eye-wall's cold glow.
     lb.addPoint(0.0, 3.5, -30.0, 0.55, 0.7, 0.9, 14.0);
-    lb.addSpawn(config.EN_MARAUDER, 0.0, -18.0, 0);
-    lb.addSpawn(config.EN_VANGUARD, -8.0, -10.0, 0);
-    lb.addSpawn(config.EN_VANGUARD, 8.0, -10.0, 0);
-    lb.addSpawn(config.EN_RANGER, 0.0, 6.0, 0);
+    addGuide(lb, 0.0, 22.0, 0.65, 1.8);
+    addGuide(lb, -8.0, 8.0, 1.8, 0.5);
+    addGuide(lb, 8.0, -8.0, 1.8, 0.5);
+    addGuide(lb, 0.0, -25.0, 0.65, 1.8);
+    lb.addSpawnRoute(config.EN_MARAUDER, 0.0, -24.0, 0, 0.0, -16.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, -24.0, -8.0, 0, -8.0, -10.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, 24.0, -8.0, 0, 8.0, -10.0);
+    lb.addSpawnRoute(config.EN_RANGER, 0.0, 18.0, 0, 0.0, 6.0);
     lb.addPickup(config.PK_ARMOR, 0.0, 0.0, 24.0, 50.0);
     lb.addPickup(config.PK_SALVAGE, 12.0, 0.0, -22.0, 80.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the Warden garrison", false);
+    obj.setPrompt(0, "BREAK THE SHIELDED PUSH");
 }
 
 // L5 — Hydroponics Caverns: biolume grotto — moss walls, glowing pool, spires.
@@ -316,11 +394,21 @@ hide func buildL5(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_RACK, 14.0, 0.0, 12.0, -0.05, 1.0);
     lb.addProp(props.PROP_RACK, 10.0, 0.0, 16.0, 0.15, 1.0);
     lb.addProp(props.PROP_RACK, 14.0, 0.0, 16.0, 0.0, 1.0);
+    markCover(lb, 10.0, 12.0, -1.0, 0.0);
+    markCover(lb, 14.0, 12.0, 1.0, 0.0);
+    markCover(lb, 10.0, 16.0, -1.0, 0.0);
+    markCover(lb, 14.0, 16.0, 1.0, 0.0);
     lb.addProp(props.PROP_PYLON, -22.0, 0.0, 4.0, 0.0, 1.0);
     lb.addProp(props.PROP_PYLON, 22.0, 0.0, -4.0, 0.0, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, -24.0, 0.0, -2.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 24.0, 0.0, -2.0, 1.5707963, 1.0);
     // Pool up-light + grow-row glow.
     lb.addPoint(-12.0, 1.0, -14.0, 0.2, 0.85, 0.7, 10.0);
     lb.addPoint(12.0, 2.5, 14.0, 0.3, 0.7, 0.5, 9.0);
+    addGuide(lb, 0.0, 20.0, 0.6, 1.7);
+    addGuide(lb, 8.0, 10.0, 1.7, 0.5);
+    addGuide(lb, 0.0, -6.0, 0.6, 1.7);
+    addGuide(lb, -8.0, -18.0, 1.7, 0.5);
     // Glowing pools (emissive-ish point lights).
     var k = 0;
     while k < 8 {
@@ -328,14 +416,15 @@ hide func buildL5(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
         lb.addPoint(Math.Cos(ang) * 12.0, 1.2, Math.Sin(ang) * 12.0, 0.2, 0.9, 0.7, 8.0);
         k = k + 1;
     }
-    lb.addSpawn(config.EN_STALKER, -10.0, 0.0, 0);
-    lb.addSpawn(config.EN_STALKER, 10.0, 0.0, 0);
-    lb.addSpawn(config.EN_WRAITH, 0.0, -12.0, 0);
-    lb.addSpawn(config.EN_MITE, -4.0, -6.0, 0);
-    lb.addSpawn(config.EN_MITE, 4.0, -6.0, 0);
+    lb.addSpawnRoute(config.EN_STALKER, -24.0, 0.0, 0, -10.0, 0.0);
+    lb.addSpawnRoute(config.EN_STALKER, 24.0, 0.0, 0, 10.0, 0.0);
+    lb.addSpawnRoute(config.EN_WRAITH, 0.0, -24.0, 0, 0.0, -12.0);
+    lb.addSpawnRoute(config.EN_MITE, -16.0, -12.0, 0, -4.0, -6.0);
+    lb.addSpawnRoute(config.EN_MITE, 16.0, -12.0, 0, 4.0, -6.0);
     lb.addPickup(config.PK_HEALTH, 0.0, 0.0, 20.0, 50.0);
     lb.addPickup(config.PK_DATACORE, 0.0, 0.0, -24.0, 1.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Hunt the Wraith", false);
+    obj.setPrompt(0, "WATCH THE SIDE CAVES");
 }
 
 // L6 — Storm Terraces: holdout defense, escalating waves.
@@ -357,6 +446,10 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_BARRICADE, 6.0, 0.0, 10.0, 3.1415927, 1.0);
     lb.addProp(props.PROP_BARRICADE, -6.0, 0.0, -10.0, 0.0, 1.0);
     lb.addProp(props.PROP_BARRICADE, 6.0, 0.0, -10.0, 0.0, 1.0);
+    markCover(lb, -6.0, 10.0, 0.0, -1.0);
+    markCover(lb, 6.0, 10.0, 0.0, -1.0);
+    markCover(lb, -6.0, -10.0, 0.0, 1.0);
+    markCover(lb, 6.0, -10.0, 0.0, 1.0);
     lb.addProp(props.PROP_LAMPPOST, -14.0, 0.0, 14.0, 0.8, 1.0);
     lb.addProp(props.PROP_LAMPPOST, 14.0, 0.0, 14.0, -0.8, 1.0);
     lb.addProp(props.PROP_LAMPPOST, -14.0, 0.0, -14.0, 2.4, 1.0);
@@ -368,6 +461,10 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addPoint(14.0, 2.8, 14.0, 0.5, 0.6, 0.85, 10.0);
     lb.addPoint(-14.0, 2.8, -14.0, 0.5, 0.6, 0.85, 10.0);
     lb.addPoint(14.0, 2.8, -14.0, 0.5, 0.6, 0.85, 10.0);
+    addGuide(lb, 0.0, 0.0, 1.4, 1.4);
+    addGuide(lb, -10.0, 0.0, 1.8, 0.5);
+    addGuide(lb, 10.0, 0.0, 1.8, 0.5);
+    addGuide(lb, 0.0, -14.0, 0.6, 1.8);
     var w = 0;
     while w < 3 {
         var per = 3 + w;
@@ -376,7 +473,8 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
             var ang = (j + 0.0) / (per + 0.0) * 6.2831853 + w;
             var arche = config.EN_HUSK;
             if j % 3 == 2 { arche = config.EN_SAPPER; }
-            lb.addSpawn(arche, Math.Cos(ang) * 24.0, Math.Sin(ang) * 24.0, w);
+            lb.addSpawnRoute(arche, Math.Cos(ang) * 24.0, Math.Sin(ang) * 24.0, w,
+                             Math.Cos(ang) * 13.0, Math.Sin(ang) * 13.0);
             j = j + 1;
         }
         w = w + 1;
@@ -384,7 +482,9 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addPickup(config.PK_AMMO, 0.0, 0.0, 6.0, 80.0);
     lb.addPickup(config.PK_ARMOR, 0.0, 0.0, -6.0, 50.0);
     obj.add(objectives.OBJ_SURVIVE, 0.0, 0.0, 0.0, 30, "Hold the terrace for 30s", false);
-    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the final wave", false);
+    obj.setPrompt(0, "HOLD THE LIT TERRACE");
+    obj.addAfter(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the final wave", false, 0);
+    obj.setPrompt(1, "FINISH THE LAST WAVE");
 }
 
 // L7 — The Foundry: WARDEN Goliath boss.
@@ -414,14 +514,20 @@ hide func buildL7(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_BARREL, -8.2, 0.0, 16.0, 0.0, 1.0);
     lb.addProp(props.PROP_BARREL, -9.1, 0.0, 16.8, 0.0, 0.9);
     lb.addProp(props.PROP_CRATE, 8.5, 0.0, 16.4, 0.6, 1.0);
+    markCover(lb, -8.6, 16.4, 0.0, -1.0);
+    markCover(lb, 8.5, 16.4, 0.0, -1.0);
     // Crucible glow.
     lb.addPoint(14.0, 2.5, 4.0, 1.0, 0.45, 0.15, 16.0);
-    lb.addSpawn(config.BOSS_WARDEN, 0.0, -14.0, 0);
-    lb.addSpawn(config.EN_HUSK, -8.0, -8.0, 1);
-    lb.addSpawn(config.EN_HUSK, 8.0, -8.0, 1);
+    addGuide(lb, 0.0, 20.0, 0.7, 1.6);
+    addGuide(lb, -10.0, 8.0, 1.6, 0.5);
+    addGuide(lb, 10.0, -6.0, 1.6, 0.5);
+    lb.addSpawnRoute(config.BOSS_WARDEN, 0.0, -22.0, 0, 0.0, -14.0);
+    lb.addSpawnRoute(config.EN_HUSK, -24.0, -12.0, 1, -8.0, -8.0);
+    lb.addSpawnRoute(config.EN_HUSK, 24.0, -12.0, 1, 8.0, -8.0);
     lb.addPickup(config.PK_AMMO, 8.0, 0.0, 20.0, 80.0);
     lb.addPickup(config.PK_HEALTH, -8.0, 0.0, 20.0, 50.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Destroy WARDEN Goliath", false);
+    obj.setPrompt(0, "BREAK ARMOR PLATES AND USE THE CRUCIBLE COVER");
 }
 
 // L8 — Spire Ascent: SHRIKE Prime aerial boss.
@@ -444,15 +550,22 @@ hide func buildL8(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addProp(props.PROP_RADAR, 26.0, 0.0, 26.0, 0.0, 1.2);
     lb.addProp(props.PROP_CRATE, -3.0, 0.0, 22.0, 0.4, 1.0);
     lb.addProp(props.PROP_BARREL, 3.2, 0.0, 22.4, 0.0, 1.0);
+    markCover(lb, -3.0, 22.0, 0.0, -1.0);
+    markCover(lb, 3.2, 22.4, 0.0, -1.0);
     // Beacon practicals.
     lb.addPoint(24.0, 3.2, 0.0, 0.55, 0.75, 1.0, 10.0);
     lb.addPoint(-24.0, 3.2, 0.0, 0.55, 0.75, 1.0, 10.0);
     lb.addPoint(0.0, 3.2, 20.8, 0.55, 0.75, 1.0, 10.0);
-    lb.addSpawn(config.BOSS_SHRIKE, 0.0, -20.0, 0);
-    lb.addSpawn(config.EN_DRONE, -10.0, 6.0, 0);
-    lb.addSpawn(config.EN_DRONE, 10.0, 6.0, 0);
+    addGuide(lb, 0.0, 0.0, 1.4, 1.4);
+    addGuide(lb, 17.0, 0.0, 1.8, 0.5);
+    addGuide(lb, -17.0, 0.0, 1.8, 0.5);
+    addGuide(lb, 0.0, 17.0, 0.5, 1.8);
+    lb.addSpawnRoute(config.BOSS_SHRIKE, 0.0, -28.0, 0, 0.0, -20.0);
+    lb.addSpawnRoute(config.EN_DRONE, -24.0, 12.0, 0, -10.0, 6.0);
+    lb.addSpawnRoute(config.EN_DRONE, 24.0, 12.0, 0, 10.0, 6.0);
     lb.addPickup(config.PK_AMMO, 0.0, 0.0, 24.0, 100.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Down SHRIKE Prime", false);
+    obj.setPrompt(0, "KEEP MOVING BETWEEN SPIRE BEACONS");
 }
 
 // L9 — Helix Core: HELIX Avatar 3-phase finale.
@@ -472,6 +585,7 @@ hide func buildL9(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
         var ca = (kc + 0.0) / 6.0 * 6.2831853 + 0.5236;
         lb.addProp(props.PROP_CONSOLE, Math.Cos(ca) * 14.0, 0.0, Math.Sin(ca) * 14.0,
                    1.5707963 - ca, 1.0);
+        lb.addCover(Math.Cos(ca) * 14.0, Math.Sin(ca) * 14.0, 0.0 - Math.Cos(ca), 0.0 - Math.Sin(ca));
         kc = kc + 1;
     }
     lb.addProp(props.PROP_DOORFRAME, -4.0, 0.0, 26.0, 1.5707963, 1.0);
@@ -489,10 +603,15 @@ hide func buildL9(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     }
     // Core up-light.
     lb.addPoint(0.0, 1.5, 0.0, 0.3, 0.85, 0.9, 12.0);
-    lb.addSpawn(config.BOSS_HELIX, 0.0, -18.0, 0);
+    addGuide(lb, 0.0, 25.0, 0.7, 1.6);
+    addGuide(lb, -13.0, 8.0, 1.6, 0.5);
+    addGuide(lb, 13.0, 8.0, 1.6, 0.5);
+    addGuide(lb, 0.0, -13.0, 0.7, 1.6);
+    lb.addSpawnRoute(config.BOSS_HELIX, 0.0, -26.0, 0, 0.0, -18.0);
     lb.addPickup(config.PK_AMMO, 10.0, 0.0, 24.0, 120.0);
     lb.addPickup(config.PK_HEALTH, -10.0, 0.0, 24.0, 60.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "End HELIX", false);
+    obj.setPrompt(0, "FOCUS THE AVATAR AS THE CORE SHIFTS PHASE");
 }
 
 // Hub — The Redoubt: safe zone, no combat, workbench + mission select.

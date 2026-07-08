@@ -171,7 +171,7 @@ func executeSystemView(tableName: String, server: DatabaseServer, currentDbName:
 // INFORMATION_SCHEMA.TABLES
 //=============================================================================
 
-func viewInformationSchemaTables(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewInformationSchemaTables(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -221,7 +221,7 @@ func viewInformationSchemaTables(server: DatabaseServer, currentDbName: String) 
 // INFORMATION_SCHEMA.COLUMNS
 //=============================================================================
 
-func viewInformationSchemaColumns(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewInformationSchemaColumns(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -340,7 +340,7 @@ func viewSysDatabases(server: DatabaseServer) -> QueryResult {
 // SYS.TABLES — Tables in current database with row counts
 //=============================================================================
 
-func viewSysTables(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewSysTables(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -378,7 +378,7 @@ func viewSysTables(server: DatabaseServer, currentDbName: String) -> QueryResult
 // SYS.COLUMNS — All columns across all tables
 //=============================================================================
 
-func viewSysColumns(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewSysColumns(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -630,7 +630,7 @@ func sqlTypeToPgName(typeCode: Integer) -> String {
 // PG_CATALOG.PG_CLASS  — tables, indexes, sequences, views
 //=============================================================================
 
-func viewPgClass(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewPgClass(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -738,7 +738,7 @@ func viewPgClass(server: DatabaseServer, currentDbName: String) -> QueryResult {
 // PG_CATALOG.PG_ATTRIBUTE  — columns of all relations
 //=============================================================================
 
-func viewPgAttribute(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewPgAttribute(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -879,7 +879,7 @@ func viewPgNamespace(server: DatabaseServer) -> QueryResult {
 // PG_CATALOG.PG_INDEX  — index metadata
 //=============================================================================
 
-func viewPgIndex(server: DatabaseServer, currentDbName: String) -> QueryResult {
+func viewPgIndex(server: DatabaseServer, _currentDbName: String) -> QueryResult {
     var result = new QueryResult();
     result.init();
 
@@ -979,7 +979,7 @@ func viewPgDatabase(server: DatabaseServer) -> QueryResult {
 // PG_CATALOG.PG_PROC  — functions/procedures
 //=============================================================================
 
-func viewPgProc(server: DatabaseServer) -> QueryResult {
+func viewPgProc(_server: DatabaseServer) -> QueryResult {
     var result = new QueryResult();
     result.init();
 

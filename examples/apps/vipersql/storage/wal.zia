@@ -1002,7 +1002,7 @@ class RecoveryResult {
 /// @brief Module-level helper: construct a `RecoveryResult`
 ///        pre-marked as complete.  Used by the no-WAL fast-path
 ///        in `recover()` when `enabled == false`.
-func createRecoveryResult(walEnabled: Boolean) -> RecoveryResult {
+func createRecoveryResult(_walEnabled: Boolean) -> RecoveryResult {
     var result = new RecoveryResult();
     result.init();
     result.recoveryComplete = true;

@@ -115,7 +115,7 @@ Class Centipede
 
     ' Configure the centipede for a level:
     '   * Length: 8 + level, capped at MAX_SEGMENTS.
-    '   * Speed:  4 - (level / 3), floored at 1. Lower = faster.
+    '   * Speed:  4 - (level \ 3), floored at 1. Lower = faster.
     '   * Position: one horizontal row at `y = 0` starting at `startX` and
     '     trailing to the left (segment i is at `startX - i`). This places
     '     the head on the right with the body trailing behind.
@@ -129,7 +129,7 @@ Class Centipede
         If length > MAX_SEGMENTS Then length = MAX_SEGMENTS
 
         Me.SegmentCount = length
-        Me.Speed = 4 - (level / 3)
+        Me.Speed = 4 - (level \ 3)
         If Me.Speed < 1 Then Me.Speed = 1
         Me.MoveTimer = 0
 

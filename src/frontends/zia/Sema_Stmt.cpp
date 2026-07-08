@@ -365,7 +365,13 @@ void Sema::analyzeVarStmt(VarStmt *stmt) {
                   "' cannot be used for a local value");
         declaredType = types::unknown();
     }
+    // Give a lambda initializer the declared function type so it can infer
+    // omitted parameter types (target-typed lambdas). Cleared afterward so it
+    // never leaks to a non-lambda initializer.
+    if (stmt->initializer && declaredType && declaredType->kind == TypeKindSem::Function)
+        lambdaTypeHint_ = declaredType;
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
+    lambdaTypeHint_ = nullptr;
     if (declaredType && declaredType->kind == TypeKindSem::Set && stmt->initializer &&
         stmt->initializer->kind == ExprKind::MapLiteral) {
         auto *mapLiteral = static_cast<MapLiteralExpr *>(stmt->initializer.get());
@@ -630,6 +636,9 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
         elementType = types::unknown();
     } else if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set) {
         elementType = iterableType->elementType();
+    } else if (iterableType->kind == TypeKindSem::String) {
+        // Iterating a String yields one-character Strings, mirroring `str[i]`.
+        elementType = types::string();
     } else if (iterableType->kind == TypeKindSem::Map) {
         elementType = iterableType->keyType() ? iterableType->keyType() : types::string();
         secondType = iterableType->valueType();
@@ -650,8 +659,9 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
             // Map iteration binds (key, value)
         } else if (iterableType && (iterableType->kind == TypeKindSem::List ||
                                     iterableType->kind == TypeKindSem::Set ||
+                                    iterableType->kind == TypeKindSem::String ||
                                     isTypedRuntimeSequence(iterableType))) {
-            // List/Set iteration with tuple binding: (index, element)
+            // List/Set/String iteration with tuple binding: (index, element)
             secondType = elementType;       // Element goes to second variable
             elementType = types::integer(); // Index goes to first variable
         } else if (iterableType && iterableType->kind == TypeKindSem::Tuple) {

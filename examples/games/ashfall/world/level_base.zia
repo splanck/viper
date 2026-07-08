@@ -49,6 +49,14 @@ class LevelBuilder {
     hide Float ambR; hide Float ambG; hide Float ambB;
     // Enemy spawns.
     hide List[Integer] spArch; hide List[Float] spX; hide List[Float] spZ; hide List[Integer] spWave;
+    hide List[Float] spRouteX; hide List[Float] spRouteZ;
+    // AI cover hints: world position plus a preferred facing vector.
+    hide List[Float] covX; hide List[Float] covZ; hide List[Float] covFaceX; hide List[Float] covFaceZ;
+    // Objective gates: physical blockers that open after an objective completes.
+    hide List[Float] gtX; hide List[Float] gtY; hide List[Float] gtZ;
+    hide List[Float] gtHX; hide List[Float] gtHY; hide List[Float] gtHZ;
+    hide List[Integer] gtUnlockObj; hide List[Integer] gtOpen;
+    hide List[Game3D.Entity3D] gtNode; hide List[G3D.Physics3DBody] gtBody;
     // Pickups.
     hide List[Integer] pkKind; hide List[Float] pkX; hide List[Float] pkY; hide List[Float] pkZ; hide List[Float] pkAmt;
     // Player start.
@@ -74,7 +82,10 @@ class LevelBuilder {
         watX = 0.0; watY = 0.0; watZ = 0.0; watW = 4.0; watD = 4.0;
         lkind = []; lx = []; ly = []; lz = []; lr = []; lg = []; lb = []; lrange = [];
         ambR = 0.15; ambG = 0.15; ambB = 0.18;
-        spArch = []; spX = []; spZ = []; spWave = [];
+        spArch = []; spX = []; spZ = []; spWave = []; spRouteX = []; spRouteZ = [];
+        covX = []; covZ = []; covFaceX = []; covFaceZ = [];
+        gtX = []; gtY = []; gtZ = []; gtHX = []; gtHY = []; gtHZ = [];
+        gtUnlockObj = []; gtOpen = []; gtNode = []; gtBody = [];
         pkKind = []; pkX = []; pkY = []; pkZ = []; pkAmt = [];
         startX = 0.0; startY = 0.2; startZ = 0.0; startYaw = 0.0;
         levelName = "Level";
@@ -162,6 +173,19 @@ class LevelBuilder {
 
     expose func addSpawn(archetype: Integer, x: Float, z: Float, wave: Integer) {
         spArch.Add(archetype); spX.Add(x); spZ.Add(z); spWave.Add(wave);
+        spRouteX.Add(99999.0); spRouteZ.Add(99999.0);
+        if wave + 1 > waveCount { waveCount = wave + 1; }
+    }
+
+    /// Add an enemy spawn with an authored first-move waypoint.
+    ///
+    /// The AI moves through this lane before resuming its archetype behavior,
+    /// giving encounters readable ingress paths without adding a navmesh
+    /// dependency.
+    expose func addSpawnRoute(archetype: Integer, x: Float, z: Float, wave: Integer,
+                              routeX: Float, routeZ: Float) {
+        spArch.Add(archetype); spX.Add(x); spZ.Add(z); spWave.Add(wave);
+        spRouteX.Add(routeX); spRouteZ.Add(routeZ);
         if wave + 1 > waveCount { waveCount = wave + 1; }
     }
     expose func spawnCount() -> Integer { return spArch.Count; }
@@ -169,7 +193,72 @@ class LevelBuilder {
     expose func spawnXat(i: Integer) -> Float { return spX[i]; }
     expose func spawnZat(i: Integer) -> Float { return spZ[i]; }
     expose func spawnWaveAt(i: Integer) -> Integer { return spWave[i]; }
+    /// Return the authored first waypoint X coordinate for a spawn, or a sentinel.
+    expose func spawnRouteXat(i: Integer) -> Float { return spRouteX[i]; }
+    /// Return the authored first waypoint Z coordinate for a spawn, or a sentinel.
+    expose func spawnRouteZat(i: Integer) -> Float { return spRouteZ[i]; }
     expose func waveTotal() -> Integer { return waveCount; }
+
+    /// Add an AI cover hint at a readable piece of level geometry.
+    ///
+    /// Cover hints are non-physical metadata. The visible/solid cover remains
+    /// authored with boxes and props; the enemy director reads these points so
+    /// ranged units can strafe to believable firing pockets instead of orbiting
+    /// in the open.
+    expose func addCover(x: Float, z: Float, faceX: Float, faceZ: Float) {
+        covX.Add(x); covZ.Add(z); covFaceX.Add(faceX); covFaceZ.Add(faceZ);
+    }
+    /// Return the number of authored AI cover hints in this level.
+    expose func coverCount() -> Integer { return covX.Count; }
+    /// Return the X coordinate for an authored AI cover hint.
+    expose func coverXat(i: Integer) -> Float { return covX[i]; }
+    /// Return the Z coordinate for an authored AI cover hint.
+    expose func coverZat(i: Integer) -> Float { return covZ[i]; }
+    /// Return the preferred X-facing component for an authored AI cover hint.
+    expose func coverFaceXat(i: Integer) -> Float { return covFaceX[i]; }
+    /// Return the preferred Z-facing component for an authored AI cover hint.
+    expose func coverFaceZat(i: Integer) -> Float { return covFaceZ[i]; }
+
+    /// Add a physical gate that opens after `unlockObjective` is completed.
+    ///
+    /// Gates are ordinary world boxes while closed. They stay under LevelBuilder
+    /// ownership so unload removes them exactly like other level geometry.
+    expose func addGate(x: Float, y: Float, z: Float, hx: Float, hy: Float, hz: Float,
+                        unlockObjective: Integer) {
+        gtX.Add(x); gtY.Add(y); gtZ.Add(z); gtHX.Add(hx); gtHY.Add(hy); gtHZ.Add(hz);
+        gtUnlockObj.Add(unlockObjective); gtOpen.Add(0);
+        gtNode.Add(null); gtBody.Add(null);
+    }
+    /// Return the number of authored objective gates in this level.
+    expose func gateCount() -> Integer { return gtX.Count; }
+    /// Return the X coordinate of an objective gate.
+    expose func gateXat(i: Integer) -> Float { return gtX[i]; }
+    /// Return the Y coordinate of an objective gate.
+    expose func gateYat(i: Integer) -> Float { return gtY[i]; }
+    /// Return the Z coordinate of an objective gate.
+    expose func gateZat(i: Integer) -> Float { return gtZ[i]; }
+    /// Return the X half-extent of an objective gate.
+    expose func gateHXat(i: Integer) -> Float { return gtHX[i]; }
+    /// Return the Y half-extent of an objective gate.
+    expose func gateHYat(i: Integer) -> Float { return gtHY[i]; }
+    /// Return the Z half-extent of an objective gate.
+    expose func gateHZat(i: Integer) -> Float { return gtHZ[i]; }
+    /// Return the objective index that opens the gate.
+    expose func gateUnlockAt(i: Integer) -> Integer { return gtUnlockObj[i]; }
+    /// Return true when the gate has already opened this load.
+    expose func gateIsOpen(i: Integer) -> Boolean { return gtOpen[i] == 1; }
+
+    /// Open a gate by moving its visual and collider below the playable space.
+    ///
+    /// The object remains owned by the level and is still unloaded normally, but
+    /// it no longer blocks traversal or draws in the arena.
+    expose func openGate(i: Integer) {
+        if i < 0 || i >= gtOpen.Count { return; }
+        if gtOpen[i] == 1 { return; }
+        gtOpen[i] = 1;
+        if gtNode[i] != null { gtNode[i].SetPosition(gtX[i], -100.0, gtZ[i]); }
+        if gtBody[i] != null { G3D.Physics3DBody.SetPosition(gtBody[i], gtX[i], -100.0, gtZ[i]); }
+    }
 
     expose func addPickup(kind: Integer, x: Float, y: Float, z: Float, amt: Float) {
         pkKind.Add(kind); pkX.Add(x); pkY.Add(y); pkZ.Add(z); pkAmt.Add(amt);
@@ -250,6 +339,30 @@ class LevelBuilder {
                 G3D.Canvas3D.SetLight(canvas, slot, lt);
             }
             slot = slot + 1;
+            i = i + 1;
+        }
+        // Gates are authored separately from regular boxes so the level manager
+        // can open them when objective dependencies complete.
+        i = 0;
+        while i < gtX.Count {
+            var meshG = G3D.Mesh3D.Box(gtHX[i] * 2.0, gtHY[i] * 2.0, gtHZ[i] * 2.0);
+            var matG = G3D.Material3D.NewPBR(0.95, 0.58, 0.18);
+            if texLib != null {
+                matG = texLib.mat(textures.SURF_HAZARD, 0.95, 0.58, 0.18);
+            }
+            var eg = Game3D.Entity3D.New();
+            eg.Mesh = meshG;
+            eg.Material = matG;
+            eg.SetPosition(gtX[i], gtY[i], gtZ[i]);
+            world.Spawn(eg);
+            ownedNodes.Add(eg);
+            gtNode[i] = eg;
+            var bgate = G3D.Physics3DBody.NewAABB(gtHX[i], gtHY[i], gtHZ[i], 0.0);
+            G3D.Physics3DBody.SetPosition(bgate, gtX[i], gtY[i], gtZ[i]);
+            G3D.Physics3DBody.set_CollisionLayer(bgate, config.LAYER_WORLD);
+            G3D.Physics3DWorld.Add(phys, bgate);
+            ownedBodies.Add(bgate);
+            gtBody[i] = bgate;
             i = i + 1;
         }
         if terrainKind > 0 && texLib != null { buildTerrain(texLib); }

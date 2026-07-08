@@ -184,6 +184,7 @@ var DMG_BEAM: Integer = 4;
 var DMG_EMP: Integer = 5;
 var DMG_DOT: Integer = 6;
 var DMG_CRUSH: Integer = 7;
+var DMG_DECOY: Integer = 8;
 
 // --- Hit regions (locational damage multipliers x1000) -----------------------
 var REGION_BODY: Integer = 0;

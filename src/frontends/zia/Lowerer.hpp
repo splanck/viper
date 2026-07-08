@@ -732,6 +732,9 @@ class Lowerer {
     /// @brief Lower a for-in over a List collection (with optional index binding).
     void lowerForInList(ForInStmt *stmt, TypeRef iterableType);
 
+    /// @brief Lower a for-in over a String, yielding one-character Strings.
+    void lowerForInString(ForInStmt *stmt);
+
     /// @brief Lower a for-in over a Map collection (iterates `Map.Keys()`).
     void lowerForInMap(ForInStmt *stmt, TypeRef iterableType);
 
@@ -1319,6 +1322,14 @@ class Lowerer {
     /// @param expr The call expression for arguments.
     /// @return The call result, or nullopt if method not recognized.
     std::optional<LowerResult> lowerListMethodCall(Value baseValue,
+                                                   TypeRef baseType,
+                                                   const std::string &methodName,
+                                                   CallExpr *expr);
+
+    /// @brief Lower a functional combinator (map/filter/reduce/firstWhere/any/all/sum)
+    ///        on a List into an inline loop that invokes the closure argument.
+    /// @return The combinator result, or nullopt if @p methodName is not a combinator.
+    std::optional<LowerResult> lowerListCombinator(Value baseValue,
                                                    TypeRef baseType,
                                                    const std::string &methodName,
                                                    CallExpr *expr);

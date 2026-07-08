@@ -74,6 +74,12 @@ class LevelManager {
         currentLevel = levelId;
         levels.build(levelId, lb, obj);
         lb.build(world, phys, canvas, texLib);
+        enemies.clearCovers();
+        var ci = 0;
+        while ci < lb.coverCount() {
+            enemies.addCover(lb.coverXat(ci), lb.coverZat(ci), lb.coverFaceXat(ci), lb.coverFaceZat(ci));
+            ci = ci + 1;
+        }
         // Instantiate the level's props (entities + instance batches).
         var pi = 0;
         while pi < lb.propCount() {
@@ -99,7 +105,10 @@ class LevelManager {
         var i = 0;
         while i < lb.spawnCount() {
             if lb.spawnWaveAt(i) == wave {
-                enemies.spawn(lb.spawnArchAt(i), lb.spawnXat(i), lb.spawnZat(i));
+                var slot = enemies.spawn(lb.spawnArchAt(i), lb.spawnXat(i), lb.spawnZat(i));
+                if slot >= 0 && lb.spawnRouteXat(i) < 90000.0 {
+                    enemies.assignRoute(slot, lb.spawnRouteXat(i), lb.spawnRouteZat(i));
+                }
             }
             i = i + 1;
         }
@@ -108,6 +117,15 @@ class LevelManager {
     expose func update(dt: Float, px: Float, pz: Float) {
         if loaded == false { return; }
         obj.update(dt, px, pz, enemies.killCountTotal(), enemies.aliveCount(), bus);
+        var gi = 0;
+        while gi < lb.gateCount() {
+            var unlock = lb.gateUnlockAt(gi);
+            if lb.gateIsOpen(gi) == false && unlock >= 0 && unlock < obj.count() && obj.isDone(unlock) {
+                lb.openGate(gi);
+                bus.pushKind(config.EV_CHECKPOINT, gi, currentLevel);
+            }
+            gi = gi + 1;
+        }
         // Wave progression: when the field clears, stage the next wave.
         if currentWave < lb.waveTotal() - 1 {
             if enemies.aliveCount() == 0 {
@@ -125,7 +143,7 @@ class LevelManager {
 
     // The player interacted at (px, pz): advance ACTIVATE objectives.
     expose func onInteract(px: Float, pz: Float) {
-        obj.markInteract(px, pz);
+        obj.markInteract(px, pz, bus);
     }
 
     // --- Render/tick delegation for props + terrain ---------------------------
