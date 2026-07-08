@@ -634,6 +634,10 @@ rt_string rt_codeeditor_get_text(void *editor);
 /// @return Monotonic content revision, or 0 when unavailable.
 int64_t rt_codeeditor_get_revision(void *editor);
 
+/// @brief Serialize buffered edit deltas after @p since_revision as compact JSON
+///        for incremental language-service sync; "overflow" means full-sync.
+rt_string rt_codeeditor_take_deltas(void *editor, int64_t since_revision);
+
 /// @brief Get the currently selected text.
 /// @param editor CodeEditor widget handle.
 /// @return Selected text, or empty string if no selection.
@@ -1396,6 +1400,15 @@ void rt_app_focus(void *app);
 /// @param app GUI application handle.
 /// @return 1 if focused, 0 otherwise.
 int64_t rt_app_is_focused(void *app);
+
+/// @brief Count of frames that took the full-window repaint path (plan 07).
+int64_t rt_app_get_paint_frames_full(void *app);
+
+/// @brief Count of frames that took the damage-region (partial) repaint path.
+int64_t rt_app_get_paint_frames_partial(void *app);
+
+/// @brief Enable/disable damage-region rendering at runtime (0 forces full repaint).
+void rt_app_set_partial_paint(void *app, int64_t enabled);
 
 /// @brief Enable or disable close prevention.
 /// @param app GUI application handle.
@@ -3395,6 +3408,29 @@ rt_string rt_zia_check(rt_string source);
 
 /// @brief Run semantic analysis with a source path for relative bind resolution.
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
+
+// Incremental document mirror sync (plan 08): the IDE pushes edit deltas so
+// semantic requests avoid re-materializing the whole buffer on each keystroke.
+// See src/runtime/graphics/common/rt_zia_completion.h for full contracts.
+
+/// @brief Replace the mirror for @p path with @p text, stamping @p revision.
+void rt_zia_doc_sync_full(rt_string path, rt_string text, int64_t revision);
+
+/// @brief Apply @p deltas_json to the mirror for @p path, advancing to
+///        @p end_revision. Returns 1 on success, 0 if no baseline/malformed.
+int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_revision);
+
+/// @brief Drop the mirror for @p path (document closed).
+void rt_zia_doc_close(rt_string path);
+
+/// @brief Return the current mirror text for @p path, or "" when absent.
+rt_string rt_zia_doc_text(rt_string path);
+
+/// @brief Run diagnostics for @p file_path straight off its mirror text.
+rt_string rt_zia_check_for_file_mirror(rt_string file_path);
+
+/// @brief Start async structured diagnostics for @p file_path off its mirror.
+void *rt_zia_doc_begin_check_for_file(rt_string file_path);
 
 /// @brief Run semantic analysis and return structured diagnostic maps.
 void *rt_zia_toolchain_check(rt_string source);

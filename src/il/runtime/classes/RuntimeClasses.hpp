@@ -618,6 +618,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_IKSolver3D,
     RTCLS_NodeAnimation3D,
     RTCLS_NodeAnimator3D,
+    RTCLS_ZiaDocument,
 };
 
 /// @brief Describes a property on a runtime class.

@@ -1,0 +1,147 @@
+// =============================================================================
+// probes/combat_probe.zia — P2 gate: weapons + damage pipeline (headless)
+// =============================================================================
+//
+// Fires the weapon systems at the arena dummies and asserts the damage pipeline
+// invariants: hitscan lands on an aimed target, the headshot multiplier applies,
+// enough shots kill (and unregister) a target, the shotgun fires its pellet
+// count, projectiles travel and impact, blasts damage through the registry, and
+// the whole sequence is deterministic run-to-run.
+// =============================================================================
+module combat_probe;
+
+bind Viper.Terminal as Terminal;
+bind "../config" as config;
+bind "../core/mathutil" as M;
+bind "../game" as game;
+
+func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
+
+// Aim at a dummy body (chest) and hold-fire until `shots` shots have gone off.
+func fireAtBodyUntil(g: game.Game, dummy: Integer, chestY: Float, shots: Integer) {
+    var ball = g.getBallistics();
+    var start = ball.getShotsFired();
+    var spins = 0;
+    while ball.getShotsFired() - start < shots && spins < 4000 {
+        var ax = g.getArena().dummyPosX(dummy);
+        var az = g.getArena().dummyPosZ(dummy);
+        g.scriptAimAt(ax, chestY, az);
+        g.scriptFire(true);
+        g.tickSim(config.FIXED_DT);
+        g.stepPhysics(config.FIXED_DT);
+        spins = spins + 1;
+    }
+    g.scriptFire(false);
+}
+
+func newGame() -> game.Game {
+    var g = new game.Game();
+    g.initCore(0x2222);
+    g.setScripted(true);
+    g.boot(true, false);
+    // Stand at the arena center so every target on the ring has a clear lane.
+    g.devSpawnPlayer(0.0, 0.2, 0.0);
+    // Prime the camera eye position with one idle tick.
+    g.scriptFire(false);
+    g.tickSim(config.FIXED_DT);
+    g.stepPhysics(config.FIXED_DT);
+    return g;
+}
+
+func start() {
+    var g = newGame();
+    var arena = g.getArena();
+    var ball = g.getBallistics();
+
+    // --- Hitscan lands on an aimed target -----------------------------------
+    var hpBefore = arena.dummyHealthAt(0);
+    fireAtBodyUntil(g, 0, 1.0, 1);
+    if ball.getHitsLanded() < 1 { fail("no hitscan hit landed"); return; }
+    if arena.dummyHealthAt(0) >= hpBefore { fail("aimed target took no damage"); return; }
+
+    // --- Headshot multiplier ------------------------------------------------
+    // Fresh target: one body shot vs one head shot; head must remove >2x more.
+    var body0 = arena.dummyHealthAt(1);
+    fireAtBodyUntil(g, 1, 0.9, 1);
+    var bodyDelta = body0 - arena.dummyHealthAt(1);
+    var head0 = arena.dummyHealthAt(2);
+    // Aim at the head (2.0m up).
+    var spins = 0;
+    var startShots = ball.getShotsFired();
+    while ball.getShotsFired() - startShots < 1 && spins < 400 {
+        g.scriptAimAt(arena.dummyPosX(2), 2.0, arena.dummyPosZ(2));
+        g.scriptFire(true);
+        g.tickSim(config.FIXED_DT); g.stepPhysics(config.FIXED_DT);
+        spins = spins + 1;
+    }
+    g.scriptFire(false);
+    var headDelta = head0 - arena.dummyHealthAt(2);
+    if headDelta <= bodyDelta * 2.0 {
+        fail("headshot not 2x body: body=" + toString(M.roundi(bodyDelta)) + " head=" + toString(M.roundi(headDelta)));
+        return;
+    }
+
+    // --- Kill: enough body shots kill + unregister --------------------------
+    var aliveBefore = arena.dummyAliveCount();
+    fireAtBodyUntil(g, 3, 0.9, 8);   // 8 * 24 = 192 > 100 hp
+    if arena.dummyIsAlive(3) { fail("target not killed by sustained fire"); return; }
+    if arena.dummyAliveCount() != aliveBefore - 1 { fail("kill did not reduce alive count"); return; }
+    if arena.killCountTotal() < 1 { fail("kill not counted"); return; }
+
+    // --- Shotgun fires its pellet count -------------------------------------
+    var w = g.getWeapons();
+    w.switchTo(config.W_SCATTER);
+    var s0 = ball.getShotsFired();
+    // one shot after switch cooldown
+    var g2 = 0;
+    while ball.getShotsFired() - s0 < 8 && g2 < 200 {
+        g.scriptAimAt(arena.dummyPosX(4), 1.0, arena.dummyPosZ(4));
+        g.scriptFire(true);
+        g.tickSim(config.FIXED_DT); g.stepPhysics(config.FIXED_DT);
+        g2 = g2 + 1;
+    }
+    g.scriptFire(false);
+    if ball.getShotsFired() - s0 < 8 { fail("shotgun did not fire 8 pellets"); return; }
+
+    // --- Projectile (rivet) travels + impacts -------------------------------
+    w.switchTo(config.W_RIVET);
+    var proj = g.getProjectiles();
+    var rivetTarget = 7;
+    var rhp0 = arena.dummyHealthAt(rivetTarget);
+    // Hold fire past the switch cooldown until a rivet is airborne, then let it fly.
+    var rg = 0;
+    while rg < 90 {
+        g.scriptAimAt(arena.dummyPosX(rivetTarget), 1.0, arena.dummyPosZ(rivetTarget));
+        // Stop pressing once one rivet exists so we watch a single shot resolve.
+        var pressFire = proj.activeProjectiles() == 0 && arena.dummyHealthAt(rivetTarget) >= rhp0;
+        g.scriptFire(pressFire);
+        g.tickSim(config.FIXED_DT); g.stepPhysics(config.FIXED_DT);
+        rg = rg + 1;
+    }
+    g.scriptFire(false);
+    if arena.dummyHealthAt(rivetTarget) >= rhp0 { fail("rivet projectile did no damage"); return; }
+
+    // --- Blast damages nearby targets (direct API) --------------------------
+    var b0 = arena.dummyHealthAt(6);
+    ball.blast(arena.dummyPosX(6), 1.0, arena.dummyPosZ(6), 5.0, 60.0, config.DMG_EXPLOSION);
+    g.tickSim(config.FIXED_DT);   // drains EV_DAMAGE
+    g.stepPhysics(config.FIXED_DT);
+    if arena.dummyHealthAt(6) >= b0 { fail("blast did no damage"); return; }
+
+    // --- Determinism: two accuracy runs land identical hit counts -----------
+    var ga = newGame();
+    fireAtBodyUntil(ga, 0, 1.0, 5);
+    var ha = ga.getBallistics().getHitsLanded();
+    var gb = newGame();
+    fireAtBodyUntil(gb, 0, 1.0, 5);
+    var hb = gb.getBallistics().getHitsLanded();
+    if ha != hb { fail("nondeterministic hit count: " + toString(ha) + " vs " + toString(hb)); return; }
+
+    Terminal.Say("hits=" + toString(ball.getHitsLanded()) +
+                 " bodyDelta=" + toString(M.roundi(bodyDelta)) +
+                 " headDelta=" + toString(M.roundi(headDelta)) +
+                 " kills=" + toString(arena.killCountTotal()) +
+                 " detHits=" + toString(ha));
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

@@ -614,10 +614,16 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
                                      looksLikeObjectFilePath(opts_.output_obj_path);
 
-        // Derive .o path from IL path.
+        // Derive the intermediate .o path. For a native-exe build, place it next
+        // to the (unique) output binary rather than the shared source/IL path —
+        // otherwise two concurrent builds of the same source to different -o
+        // outputs (the -O0/-O2 struct-return ABI tests) race on the same .o.
         std::filesystem::path objPath;
         if (wantsObjectOnly) {
             objPath = opts_.output_obj_path;
+        } else if (!opts_.output_obj_path.empty()) {
+            objPath = std::filesystem::path(opts_.output_obj_path);
+            objPath.replace_extension(".o");
         } else {
             objPath = std::filesystem::path(opts_.input_il_path);
             objPath.replace_extension(".o");

@@ -62,11 +62,13 @@ and joint integration.
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
 | `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`, `2 = HingeJoint3D`, `3 = RopeJoint3D`, `4 = SixDofJoint3D`) |
 | `RemoveJoint(joint)`      | `Void(Object)`        | Remove a joint from the world |
-| `Raycast(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return the nearest `PhysicsHit3D` or `Nothing` |
-| `RaycastAll(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return a sorted `PhysicsHitList3D` or `Nothing` |
-| `SweepSphere(center, radius, delta, mask)` | `Object(Object, Double, Object, Integer)` | Sweep a sphere and return the first `PhysicsHit3D` or `Nothing` |
+| `Raycast(origin, direction, maxDistance, mask)` | `PhysicsHit3D(Object, Object, Double, Integer)` | Return the nearest `PhysicsHit3D` or `Nothing` |
+| `RaycastAll(origin, direction, maxDistance, mask)` | `PhysicsHitList3D(Object, Object, Double, Integer)` | Return a sorted `PhysicsHitList3D` or `Nothing` |
+| `SweepSphere(center, radius, delta, mask)` | `PhysicsHit3D(Object, Double, Object, Integer)` | Sweep a sphere and return the first `PhysicsHit3D` or `Nothing` |
 | `SweepCapsule(a, b, radius, delta, mask)` | `Object(Object, Object, Double, Object, Integer)` | Sweep a capsule segment and return the first `PhysicsHit3D` or `Nothing` |
-| `OverlapSphere(center, radius, mask)` | `Object(Object, Double, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
+| `OverlapSphere(center, radius, mask)` | `PhysicsHitList3D(Object, Double, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
+
+`PhysicsHit3D.Body` returns a typed `Physics3DBody`; `Point`/`Normal` return `Vec3`; `PhysicsHitList3D.Get` returns a `PhysicsHit3D` — so hit results flow into typed bindings without casts.
 | `OverlapAABB(min, max, mask)` | `Object(Object, Object, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift registered bodies and contact/query state by `-delta` |
 | `GetCollisionBodyA(i)`    | `Object(Integer)`     | Get the first body in contact pair `i` |

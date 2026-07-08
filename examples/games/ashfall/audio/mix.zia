@@ -1,0 +1,85 @@
+// =============================================================================
+// audio/mix.zia — audio bring-up + a lightweight event-driven mixer
+// =============================================================================
+//
+// Owns audio init (which may fail headless — guarded by a `ready` flag; every
+// play path early-outs when not ready) and master volume. It reacts to the
+// event bus: gunshots, explosions, hits, pickups, and objective completions
+// map to mix cues. Real sample playback attaches once a synth/sound bank is
+// built (24-audio); until then this is the safe, headless-clean mix spine that
+// tracks a music-state target from combat intensity.
+// =============================================================================
+module mix;
+
+bind Viper.Sound.Audio as Audio;
+bind "../config" as config;
+bind "../core/events" as events;
+bind "../core/mathutil" as M;
+
+// Music states (drives a stinger/loop target once a bank exists).
+var MUS_AMBIENT: Integer = 0;
+var MUS_TENSION: Integer = 1;
+var MUS_COMBAT: Integer = 2;
+var MUS_BOSS: Integer = 3;
+var MUS_VICTORY: Integer = 4;
+
+class Mixer {
+    hide Boolean ready;
+    hide Integer masterVol;       // 0..100
+    hide Integer musicState;
+    hide Float combatIntensity;   // 0..1, decays; drives music state
+    hide Integer shotsThisFrame;
+
+    expose func init() {
+        ready = false;
+        masterVol = 80;
+        musicState = MUS_AMBIENT;
+        combatIntensity = 0.0;
+        shotsThisFrame = 0;
+    }
+
+    // Try to bring audio up. Headless / no device -> stays not-ready, no trap.
+    expose func setup(headless: Boolean) {
+        if headless {
+            ready = false;
+            return;
+        }
+        var r = Audio.Init();
+        ready = r != 0;
+        if ready {
+            Audio.SetMasterVolume(masterVol);
+        }
+    }
+
+    expose func isReady() -> Boolean { return ready; }
+    expose func setMasterVolume(v: Integer) {
+        masterVol = M.clampi(v, 0, 100);
+        if ready { Audio.SetMasterVolume(masterVol); }
+    }
+    expose func getMusicState() -> Integer { return musicState; }
+    expose func getCombatIntensity() -> Float { return combatIntensity; }
+
+    // React to the frame's events and update the music target.
+    expose func update(dt: Float, bus: events.EventBus, bossActive: Boolean, inCombat: Boolean) {
+        var n = bus.getCount();
+        var i = 0;
+        while i < n {
+            var k = bus.kindAt(i);
+            if k == config.EV_GUNSHOT { combatIntensity = M.minf(combatIntensity + 0.05, 1.0); }
+            else if k == config.EV_EXPLOSION { combatIntensity = M.minf(combatIntensity + 0.15, 1.0); }
+            else if k == config.EV_PLAYER_DAMAGED { combatIntensity = M.minf(combatIntensity + 0.2, 1.0); }
+            else if k == config.EV_KILL { combatIntensity = M.minf(combatIntensity + 0.05, 1.0); }
+            i = i + 1;
+        }
+        combatIntensity = combatIntensity - combatIntensity * M.clampf(0.4 * dt, 0.0, 1.0);
+
+        // Music state target.
+        var target = MUS_AMBIENT;
+        if inCombat { target = MUS_TENSION; }
+        if combatIntensity > 0.35 { target = MUS_COMBAT; }
+        if bossActive { target = MUS_BOSS; }
+        musicState = target;
+    }
+
+    expose func setMusic(state: Integer) { musicState = state; }
+}

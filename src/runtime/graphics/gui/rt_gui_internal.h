@@ -157,6 +157,15 @@ typedef struct {
     vg_tooltip_t *manual_tooltip;
     uint32_t manual_tooltip_delay_ms;
     vg_widget_runtime_state_t widget_runtime_state;
+
+    // Damage-region (partial) rendering — plan 07. When partial_paint_enabled is
+    // 0 (kill switch via VIPER_GUI_FULL_REPAINT=1), every dirty frame full-clears
+    // and repaints the whole tree, matching the pre-plan-07 behavior exactly.
+    int32_t partial_paint_enabled; ///< 1 = damage-region path allowed; 0 = always full repaint.
+    uint64_t frames_full;          ///< Dirty frames that took the full-window repaint path.
+    uint64_t frames_partial;       ///< Dirty frames that took the damage-region repaint path.
+    float last_damage_w;           ///< Width of the last partial-paint damage rect (0 if full).
+    float last_damage_h;           ///< Height of the last partial-paint damage rect (0 if full).
 } rt_gui_app_t;
 
 #define RT_GUI_APP_MAGIC UINT64_C(0x5254475541505031)

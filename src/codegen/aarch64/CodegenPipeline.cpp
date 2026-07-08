@@ -644,6 +644,13 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (!opts_.output_obj_path.empty() && isObjectOutputPath(opts_.output_obj_path)) {
             objPath = opts_.output_obj_path;
             outputIsObj = true;
+        } else if (!opts_.output_obj_path.empty()) {
+            // Native-exe build: the intermediate object belongs next to the
+            // (unique) output binary, not next to the shared source/IL path.
+            // Deriving it from input_il_path lets two concurrent builds of the
+            // same source to different -o outputs (e.g. the -O0/-O2 struct-return
+            // ABI tests) clobber each other's intermediate .o under parallel ctest.
+            objPath = std::filesystem::path(opts_.output_obj_path).replace_extension(".o");
         } else {
             objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
         }

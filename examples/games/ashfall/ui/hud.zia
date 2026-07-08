@@ -1,0 +1,119 @@
+// =============================================================================
+// ui/hud.zia — the combat HUD (drawn in the overlay pass)
+// =============================================================================
+//
+// Draws health/shield/armor, ammo, the active weapon, crosshair + hitmarker,
+// the current objective, a detection indicator, and damage-direction/low-health
+// flashes. Takes its data as explicit subsystem refs so it never binds `game`
+// (which would be circular). All numbers are precomposed strings (no %f).
+// =============================================================================
+module hud;
+
+bind Viper.Graphics3D as G3D;
+bind "../config" as config;
+bind "../core/mathutil" as M;
+bind "../core/strings" as S;
+bind "../player/health" as health;
+bind "../weapons/weapon_base" as weapon_base;
+bind "../world/objectives" as objectives;
+
+var COL_WHITE: Integer = 0xFFFFFF;
+var COL_HEALTH: Integer = 0x40D060;
+var COL_SHIELD: Integer = 0x4090FF;
+var COL_ARMOR: Integer = 0xC0C0D0;
+var COL_AMMO: Integer = 0xF0D040;
+var COL_OBJ: Integer = 0xFFD060;
+var COL_DETECT: Integer = 0xFF5030;
+var COL_BACK: Integer = 0x101018;
+
+class Hud {
+    hide Float hitmarkerT;
+    hide Float damageFlashT;
+
+    expose func init() {
+        hitmarkerT = 0.0;
+        damageFlashT = 0.0;
+    }
+
+    expose func pulseHitmarker() { hitmarkerT = 0.12; }
+    expose func pulseDamage() { damageFlashT = 0.35; }
+
+    expose func tick(dt: Float) {
+        if hitmarkerT > 0.0 { hitmarkerT = hitmarkerT - dt; }
+        if damageFlashT > 0.0 { damageFlashT = damageFlashT - dt; }
+    }
+
+    hide func bar(canvas: G3D.Canvas3D, x: Integer, y: Integer, w: Integer, h: Integer,
+                  frac: Float, col: Integer) {
+        G3D.Canvas3D.DrawRect2D(canvas, x, y, w, h, COL_BACK);
+        var fw = M.roundi((w + 0.0) * M.clampf(frac, 0.0, 1.0));
+        if fw > 0 { G3D.Canvas3D.DrawRect2D(canvas, x, y, fw, h, col); }
+    }
+
+    // The full combat HUD. `w`/`h` are the overlay dimensions.
+    expose func draw(canvas: G3D.Canvas3D, w: Integer, h: Integer,
+                     ph: health.PlayerHealth, weapons: weapon_base.WeaponController,
+                     obj: objectives.Objectives, maxAwareness: Float, isCampaign: Boolean) {
+        // Damage / low-health flash (full-screen red).
+        var flash = 0.0;
+        if damageFlashT > 0.0 { flash = damageFlashT / 0.35 * 0.4; }
+        if ph.healthFrac() < 0.3 { flash = M.maxf(flash, 0.18); }
+        if flash > 0.01 {
+            G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, 0, w, h, 0xC01818, flash);
+        }
+
+        // Crosshair + hitmarker.
+        G3D.Canvas3D.DrawCrosshair(canvas, w / 2, h / 2);
+        if hitmarkerT > 0.0 {
+            var cx = w / 2;
+            var cy = h / 2;
+            G3D.Canvas3D.DrawLine2D(canvas, cx - 10, cy - 10, cx - 4, cy - 4, 0xFFFFFF, 1.0);
+            G3D.Canvas3D.DrawLine2D(canvas, cx + 10, cy - 10, cx + 4, cy - 4, 0xFFFFFF, 1.0);
+            G3D.Canvas3D.DrawLine2D(canvas, cx - 10, cy + 10, cx - 4, cy + 4, 0xFFFFFF, 1.0);
+            G3D.Canvas3D.DrawLine2D(canvas, cx + 10, cy + 10, cx + 4, cy + 4, 0xFFFFFF, 1.0);
+        }
+
+        // Bottom-left: shield / health / armor bars.
+        var bx = 24;
+        var byy = h - 70;
+        bar(canvas, bx, byy, 240, 8, ph.shieldFrac(), COL_SHIELD);
+        bar(canvas, bx, byy + 12, 240, 14, ph.healthFrac(), COL_HEALTH);
+        bar(canvas, bx, byy + 30, 240, 6, ph.armorFrac(), COL_ARMOR);
+        G3D.Canvas3D.DrawText2D(canvas, bx, byy - 16, "HP " + S.intStr(M.roundi(ph.getHealth())), COL_WHITE);
+
+        // Bottom-right: ammo + weapon.
+        var ax = w - 220;
+        G3D.Canvas3D.DrawText2D(canvas, ax, h - 54, weapons.weaponName(), COL_WHITE);
+        var ammo = S.intStr(weapons.getMag()) + " / " + S.intStr(weapons.getReserve());
+        G3D.Canvas3D.DrawText2D(canvas, ax, h - 36, ammo, COL_AMMO);
+        if weapons.isReloading() {
+            G3D.Canvas3D.DrawText2D(canvas, ax, h - 18, "RELOADING", COL_OBJ);
+        }
+
+        // Top-center: current objective (campaign).
+        if isCampaign {
+            var oi = obj.activeIndex();
+            if oi >= 0 {
+                var txt = obj.textOf(oi);
+                if obj.targetOf(oi) > 0 {
+                    txt = txt + "  (" + S.intStr(obj.progressOf(oi)) + "/" + S.intStr(obj.targetOf(oi)) + ")";
+                }
+                G3D.Canvas3D.DrawText2D(canvas, w / 2 - 120, 24, txt, COL_OBJ);
+            } else {
+                G3D.Canvas3D.DrawText2D(canvas, w / 2 - 60, 24, "OBJECTIVE COMPLETE", COL_HEALTH);
+            }
+        }
+
+        // Top-right: detection indicator.
+        if maxAwareness > 1.0 {
+            bar(canvas, w - 180, 20, 150, 8, maxAwareness / 100.0, COL_DETECT);
+            G3D.Canvas3D.DrawText2D(canvas, w - 180, 4, "DETECTION", COL_DETECT);
+        }
+    }
+
+    // Simple centered banner (PAUSED / DEATH / LEVEL COMPLETE).
+    expose func banner(canvas: G3D.Canvas3D, w: Integer, h: Integer, text: String, col: Integer) {
+        G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, h / 2 - 30, w, 60, 0x000000, 0.5);
+        G3D.Canvas3D.DrawText2DScaled(canvas, w / 2 - text.Length * 8, h / 2 - 12, text, col, 2.0);
+    }
+}

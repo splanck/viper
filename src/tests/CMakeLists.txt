@@ -1379,6 +1379,22 @@ set_tests_properties(zia_viperide_semantic_tokens PROPERTIES
         LABELS "zia;viperide;semantic;requires_display"
         TIMEOUT 60)
 
+add_test(NAME zia_viperide_language_service_sync
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/language_service_sync_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_language_service_sync PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;semantic;requires_display"
+        TIMEOUT 90)
+
+add_test(NAME zia_viperide_paint_damage
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/paint_damage_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
+set_tests_properties(zia_viperide_paint_damage PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;viperide;perf;requires_display"
+        TIMEOUT 90)
+
 add_test(NAME zia_viperide_console_search
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/probes/console_search_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src/probes")
@@ -1420,6 +1436,102 @@ set_tests_properties(zia_smoke_3dbowling_trajectory PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d"
         TIMEOUT 120)
+
+# --- ASHFALL (FPS showcase) probes -------------------------------------------
+add_test(NAME zia_smoke_ashfall_core
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/core_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_core PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_movement
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/movement_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_movement PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_perf
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/perf_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_perf PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_combat
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/combat_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_combat PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_enemy
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/enemy_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_enemy PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 180)
+
+add_test(NAME zia_smoke_ashfall_level
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/level_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_level PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 180)
+
+add_test(NAME zia_smoke_ashfall_manifest
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/manifest_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_manifest PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_meta
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/meta_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_meta PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_campaign
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/campaign_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 240)
 
 add_test(NAME zia_smoke_3dbowling_aim
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"

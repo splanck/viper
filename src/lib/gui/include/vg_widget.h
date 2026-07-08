@@ -317,6 +317,16 @@ struct vg_widget {
     bool manual_position;     ///< Runtime: parent layout should not overwrite x/y.
     bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
 
+    // Damage-region rendering (plan 07): absolute screen bounds recorded at this
+    // widget's last paint. The renderer diffs them against the current bounds to
+    // detect moves/resizes, so a partial repaint can damage both the old and new
+    // rectangles. `last_paint_valid` stays false until the first paint records them.
+    float last_paint_x;    ///< Screen X at last paint.
+    float last_paint_y;    ///< Screen Y at last paint.
+    float last_paint_w;    ///< Width at last paint.
+    float last_paint_h;    ///< Height at last paint.
+    bool last_paint_valid; ///< Whether last_paint_* hold a recorded paint.
+
     // Animation: eased 0..1 state amounts, advanced each paint by
     // vg_widget_anim_tick() and read by widget paint code for smooth
     // hover/press/focus transitions. Snap to target when motion is disabled.

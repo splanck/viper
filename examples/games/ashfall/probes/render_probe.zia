@@ -1,0 +1,62 @@
+// =============================================================================
+// probes/render_probe.zia — P5 gate: full render pipeline draws headless
+// =============================================================================
+//
+// The sim probes never render; this one drives real frames on the software
+// backend to prove the whole draw path is trap-free: retained scene geometry,
+// projectiles + particle FX in the scene pass, the post-FX chain, and the 2D
+// HUD overlay. It boots a campaign level and the arena, fires weapons so FX and
+// projectiles are live, and renders a batch of frames.
+// =============================================================================
+module render_probe;
+
+bind Viper.Terminal as Terminal;
+bind "../config" as config;
+bind "../game" as game;
+
+func tick(g: game.Game) {
+    g.tickSim(config.FIXED_DT);
+    g.stepPhysics(config.FIXED_DT);
+}
+
+func start() {
+    // --- Campaign level: scene + HUD + post-FX ------------------------------
+    var g = new game.Game();
+    g.initCore(0xAA01);
+    g.setScripted(true);
+    g.setLevel(config.LV_L1);
+    g.boot(true, false);
+    g.devEnablePostfx();
+    g.devSetGod(true);
+    // Fire the SMG so particles + projectiles + hitmarkers are exercised.
+    g.getWeapons().switchTo(config.W_CYCLER);
+    var i = 0;
+    while i < 24 {
+        g.scriptAimAt(0.0, 1.0, 0.0);
+        g.scriptFire(i % 2 == 0);
+        tick(g);
+        g.devRenderFrame();
+        i = i + 1;
+    }
+
+    // --- Arena: projectiles + blast FX --------------------------------------
+    var a = new game.Game();
+    a.initCore(0xAA02);
+    a.setScripted(true);
+    a.setLevel(config.LV_ARENA);
+    a.boot(true, false);
+    a.devSpawnPlayer(0.0, 0.2, 0.0);
+    a.getWeapons().switchTo(config.W_ARC);   // lobbed grenades -> blast FX
+    var j = 0;
+    while j < 24 {
+        a.scriptAimAt(10.0, 0.5, 0.0);
+        a.scriptFire(j < 8);
+        tick(a);
+        a.devRenderFrame();
+        j = j + 1;
+    }
+
+    Terminal.Say("renderedFrames=48 pipeline=ok");
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

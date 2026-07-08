@@ -1,0 +1,101 @@
+module paint_damage_probe;
+
+// ============================================================================
+// MODULE: paint_damage_probe
+// PURPOSE: Regression probe for damage-region (partial) rendering (plan 07).
+//          Confirms that an in-place editor edit repaints only a damage region
+//          instead of the whole window, that the kill switch restores full
+//          repaints, and that toggling back resumes partial paints — all across
+//          many render cycles without a trap or visual corruption.
+//
+// WHERE-THIS-FITS: rt_gui_app_render chooses between a full-window repaint and a
+//          clip-bounded partial repaint of the dirty widgets' bounding rect. The
+//          App exposes frame counters and a runtime kill switch so this probe can
+//          assert on which path each frame took.
+//
+// TEACHING-NOTE: The oracle is the App's own frame counters. Partial paint is a
+//          performance optimization layered over a retained software framebuffer;
+//          correctness (no stale pixels) is additionally covered by every other
+//          gui/viperide probe now running with partial paint ON by default. Here
+//          we prove the partial path actually engages and that the kill switch
+//          deterministically forces the full path.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func renderTimes(shell: app_shell.AppShell, n: Integer) {
+    var i = 0;
+    while i < n {
+        shell.Poll();
+        shell.Render();
+        i = i + 1;
+    }
+}
+
+func editAndRender(shell: app_shell.AppShell, engine: editor_engine.EditorEngine,
+                   text: String, count: Integer) {
+    var k = 0;
+    while k < count {
+        engine.editor.InsertAtCursor(text);
+        shell.Poll();
+        shell.Render();
+        k = k + 1;
+    }
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Paint Damage Probe", 1000, 700);
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    engine.SetText("module m;\nfunc f() {\n    var a = 1;\n}\n");
+    engine.editor.SetLanguage("zia");
+
+    // Settle: render until the UI reaches a steady (clean) state.
+    renderTimes(shell, 24);
+
+    // --- Test A: in-place edits repaint a damage region, not the whole window --
+    var partialBefore = shell.app.GetPaintFramesPartial();
+    editAndRender(shell, engine, "x", 6);
+    var partialAfter = shell.app.GetPaintFramesPartial();
+    if partialAfter <= partialBefore {
+        fail(shell, "A no partial repaint occurred for in-place edits");
+        return;
+    }
+
+    // --- Test B: the kill switch forces full-window repaints ------------------
+    renderTimes(shell, 3);
+    shell.app.SetPartialPaint(false);
+    var partialMid = shell.app.GetPaintFramesPartial();
+    var fullBefore = shell.app.GetPaintFramesFull();
+    editAndRender(shell, engine, "y", 6);
+    if shell.app.GetPaintFramesPartial() != partialMid {
+        fail(shell, "B partial repaint happened while the kill switch was off");
+        return;
+    }
+    if shell.app.GetPaintFramesFull() <= fullBefore {
+        fail(shell, "B expected full-window repaints with the kill switch off");
+        return;
+    }
+
+    // --- Test C: re-enabling resumes partial repaints -------------------------
+    shell.app.SetPartialPaint(true);
+    var partialResumeBefore = shell.app.GetPaintFramesPartial();
+    editAndRender(shell, engine, "z", 6);
+    if shell.app.GetPaintFramesPartial() <= partialResumeBefore {
+        fail(shell, "C partial repaint did not resume after re-enable");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

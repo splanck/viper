@@ -118,6 +118,48 @@ RT_WEAK rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
     return rt_zia_check(source);
 }
 
+/// @brief Weak stub: no document mirror exists without editor services; the
+///        caller will full-sync on the next request.
+RT_WEAK void rt_zia_doc_sync_full(rt_string path, rt_string text, int64_t revision) {
+    (void)path;
+    (void)text;
+    (void)revision;
+}
+
+/// @brief Weak stub: no baseline mirror to patch; report failure so the caller
+///        falls back to a full sync.
+RT_WEAK int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_revision) {
+    (void)path;
+    (void)deltas_json;
+    (void)end_revision;
+    return 0;
+}
+
+/// @brief Weak stub: no-op; there is no mirror to drop.
+RT_WEAK void rt_zia_doc_close(rt_string path) {
+    (void)path;
+}
+
+/// @brief Weak stub: no mirror text without editor services.
+RT_WEAK rt_string rt_zia_doc_text(rt_string path) {
+    (void)path;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: mirror-sourced diagnostics unavailable means "no
+///        diagnostics" (a missing analyzer must not paint editor warnings).
+RT_WEAK rt_string rt_zia_check_for_file_mirror(rt_string file_path) {
+    (void)file_path;
+    return rt_str_empty();
+}
+
+/// @brief Weak stub: async mirror-sourced diagnostics unavailable; return null
+///        job so the caller full-syncs and falls back to the wrapped path.
+RT_WEAK void *rt_zia_doc_begin_check_for_file(rt_string file_path) {
+    (void)file_path;
+    return NULL;
+}
+
 /// @brief Weak stub: structured diagnostics unavailable means "no diagnostics".
 RT_WEAK void *rt_zia_toolchain_check(rt_string source) {
     (void)source;

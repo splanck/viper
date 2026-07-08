@@ -1,0 +1,249 @@
+// =============================================================================
+// world/levels.zia — the 9 campaign levels + the Redoubt hub (graybox builders)
+// =============================================================================
+//
+// One builder per level fills a LevelBuilder (geometry/lights/spawns/pickups) +
+// Objectives. These are graybox blockouts — distinct silhouette, lighting mood,
+// encounter, and objective per level, matching each level's showcase in
+// 19-21-levels — playable before any art is downloaded. The level manager picks
+// the builder by level id.
+// =============================================================================
+module levels;
+
+bind Viper.Math as Math;
+bind "../config" as config;
+bind "./level_base" as level_base;
+bind "./objectives" as objectives;
+
+// Dispatch: fill lb + obj for the given level id.
+func build(levelId: Integer, lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.reset();
+    obj.clear();
+    if levelId == config.LV_L1 { buildL1(lb, obj); }
+    else if levelId == config.LV_L2 { buildL2(lb, obj); }
+    else if levelId == config.LV_L3 { buildL3(lb, obj); }
+    else if levelId == config.LV_L4 { buildL4(lb, obj); }
+    else if levelId == config.LV_L5 { buildL5(lb, obj); }
+    else if levelId == config.LV_L6 { buildL6(lb, obj); }
+    else if levelId == config.LV_L7 { buildL7(lb, obj); }
+    else if levelId == config.LV_L8 { buildL8(lb, obj); }
+    else if levelId == config.LV_L9 { buildL9(lb, obj); }
+    else if levelId == config.LV_HUB { buildHub(lb, obj); }
+    else { buildL1(lb, obj); }
+}
+
+// Scatter some cover blocks in a ring for readability.
+hide func scatterCover(lb: level_base.LevelBuilder, count: Integer, radius: Float, r: Float, g: Float, b: Float) {
+    var i = 0;
+    while i < count {
+        var ang = (i + 0.0) / (count + 0.0) * 6.2831853;
+        var cx = Math.Cos(ang) * radius;
+        var cz = Math.Sin(ang) * radius;
+        lb.addBox(cx, 0.8, cz, 0.8, 0.8, 0.8, r, g, b, true);
+        i = i + 1;
+    }
+}
+
+// L1 — Crashsite Canyon: open canyon, dawn sun, Husk/Sapper intro.
+hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Crashsite Canyon");
+    lb.setAmbient(0.26, 0.22, 0.20);
+    lb.setStart(0.0, 0.2, 34.0, 0.0);
+    lb.addArenaShell(40.0, 8.0, 0.30, 0.25, 0.22, 0.34, 0.28, 0.24);
+    lb.addDirectional(-0.6, -0.7, -0.3, 1.1, 0.85, 0.6);
+    scatterCover(lb, 8, 16.0, 0.35, 0.30, 0.26);
+    // Wreckage cluster.
+    lb.addBox(0.0, 1.2, -20.0, 4.0, 1.2, 2.0, 0.40, 0.30, 0.22, true);
+    lb.addSpawn(config.EN_HUSK, -8.0, 8.0, 0);
+    lb.addSpawn(config.EN_HUSK, 8.0, 8.0, 0);
+    lb.addSpawn(config.EN_HUSK, 0.0, -4.0, 0);
+    lb.addSpawn(config.EN_SAPPER, -6.0, -12.0, 0);
+    lb.addSpawn(config.EN_HUSK, 6.0, -12.0, 1);
+    lb.addSpawn(config.EN_SAPPER, 0.0, -18.0, 1);
+    lb.addPickup(config.PK_AMMO, 4.0, 0.0, 20.0, 40.0);
+    lb.addPickup(config.PK_HEALTH, -4.0, 0.0, 20.0, 30.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the crashsite", false);
+    obj.add(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Reach the relay path", false);
+}
+
+// L2 — Relay Outpost: interior rooms, spot/point lights, Rangers + a Turret.
+hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Relay Outpost");
+    lb.setAmbient(0.10, 0.11, 0.14);
+    lb.setStart(0.0, 0.2, 22.0, 0.0);
+    lb.addArenaShell(26.0, 6.0, 0.22, 0.23, 0.26, 0.28, 0.29, 0.33);
+    // Interior partitions.
+    lb.addBox(-8.0, 3.0, 4.0, 0.4, 3.0, 10.0, 0.30, 0.31, 0.35, true);
+    lb.addBox(8.0, 3.0, 4.0, 0.4, 3.0, 10.0, 0.30, 0.31, 0.35, true);
+    lb.addBox(0.0, 3.0, -8.0, 12.0, 3.0, 0.4, 0.30, 0.31, 0.35, true);
+    lb.addPoint(-8.0, 4.0, 10.0, 0.6, 0.7, 0.9, 12.0);
+    lb.addPoint(8.0, 4.0, 10.0, 0.6, 0.7, 0.9, 12.0);
+    lb.addPoint(0.0, 4.0, -14.0, 0.9, 0.6, 0.3, 14.0);
+    lb.addSpawn(config.EN_RANGER, -6.0, 0.0, 0);
+    lb.addSpawn(config.EN_RANGER, 6.0, 0.0, 0);
+    lb.addSpawn(config.EN_TURRET, 0.0, -16.0, 0);
+    lb.addSpawn(config.EN_DRONE, 0.0, 4.0, 0);
+    lb.addPickup(config.PK_SALVAGE, 0.0, 0.0, -16.0, 50.0);
+    lb.addPickup(config.PK_DATACORE, -10.0, 0.0, -16.0, 1.0);
+    obj.add(objectives.OBJ_ACTIVATE, 0.0, -18.0, 3.0, 0, "Reach and activate the relay console", false);
+    obj.add(objectives.OBJ_KILL, 0.0, 0.0, 0.0, 2, "Neutralize the garrison (optional)", true);
+}
+
+// L3 — Ashveil Crossing: long crossing, drones + snipers, reach the far end.
+hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Ashveil Crossing");
+    lb.setAmbient(0.18, 0.17, 0.20);
+    lb.setStart(0.0, 0.2, 44.0, 0.0);
+    lb.addArenaShell(18.0, 7.0, 0.28, 0.26, 0.28, 0.30, 0.28, 0.30);
+    lb.addBox(0.0, -0.25, 0.0, 6.0, 0.25, 48.0, 0.30, 0.28, 0.30, true);   // long bridge deck
+    lb.addDirectional(-0.3, -0.8, -0.5, 0.7, 0.7, 0.9);
+    var seg = 0;
+    while seg < 4 {
+        var z = 30.0 - seg * 20.0;
+        lb.addSpawn(config.EN_RANGER, -4.0, z, seg);
+        lb.addSpawn(config.EN_DRONE, 4.0, z, seg);
+        seg = seg + 1;
+    }
+    lb.addPickup(config.PK_AMMO, 0.0, 0.0, 0.0, 60.0);
+    lb.addPickup(config.PK_HEALTH, 0.0, 0.0, -20.0, 40.0);
+    obj.add(objectives.OBJ_REACH, 0.0, -46.0, 5.0, 0, "Cross to the far platform", false);
+}
+
+// L4 — Habitat Arcology: connected rooms, many point lights, Marauder miniboss.
+hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Habitat Arcology");
+    lb.setAmbient(0.09, 0.10, 0.12);
+    lb.setStart(0.0, 0.2, 30.0, 0.0);
+    lb.addArenaShell(34.0, 7.0, 0.24, 0.24, 0.28, 0.30, 0.30, 0.34);
+    // Room dividers.
+    lb.addBox(-14.0, 3.5, 0.0, 0.4, 3.5, 20.0, 0.30, 0.30, 0.36, true);
+    lb.addBox(14.0, 3.5, 0.0, 0.4, 3.5, 20.0, 0.30, 0.30, 0.36, true);
+    // A ring of point lights (60+ light stress showcase, scaled to budget).
+    var k = 0;
+    while k < 10 {
+        var ang = (k + 0.0) / 10.0 * 6.2831853;
+        lb.addPoint(Math.Cos(ang) * 20.0, 4.0, Math.Sin(ang) * 20.0, 0.5, 0.6, 0.8, 12.0);
+        k = k + 1;
+    }
+    lb.addSpawn(config.EN_MARAUDER, 0.0, -18.0, 0);
+    lb.addSpawn(config.EN_VANGUARD, -8.0, -10.0, 0);
+    lb.addSpawn(config.EN_VANGUARD, 8.0, -10.0, 0);
+    lb.addSpawn(config.EN_RANGER, 0.0, 6.0, 0);
+    lb.addPickup(config.PK_ARMOR, 0.0, 0.0, 24.0, 50.0);
+    lb.addPickup(config.PK_SALVAGE, 12.0, 0.0, -22.0, 80.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the Warden garrison", false);
+}
+
+// L5 — Hydroponics Caverns: bioluminescent points, Wraith + Stalker hunt.
+hide func buildL5(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Hydroponics Caverns");
+    lb.setAmbient(0.05, 0.08, 0.09);
+    lb.setStart(0.0, 0.2, 28.0, 0.0);
+    lb.addArenaShell(30.0, 9.0, 0.10, 0.16, 0.14, 0.12, 0.18, 0.16);
+    scatterCover(lb, 10, 14.0, 0.10, 0.20, 0.16);
+    // Glowing pools (emissive-ish point lights).
+    var k = 0;
+    while k < 8 {
+        var ang = (k + 0.0) / 8.0 * 6.2831853;
+        lb.addPoint(Math.Cos(ang) * 12.0, 1.2, Math.Sin(ang) * 12.0, 0.2, 0.9, 0.7, 8.0);
+        k = k + 1;
+    }
+    lb.addSpawn(config.EN_STALKER, -10.0, 0.0, 0);
+    lb.addSpawn(config.EN_STALKER, 10.0, 0.0, 0);
+    lb.addSpawn(config.EN_WRAITH, 0.0, -12.0, 0);
+    lb.addSpawn(config.EN_MITE, -4.0, -6.0, 0);
+    lb.addSpawn(config.EN_MITE, 4.0, -6.0, 0);
+    lb.addPickup(config.PK_HEALTH, 0.0, 0.0, 20.0, 50.0);
+    lb.addPickup(config.PK_DATACORE, 0.0, 0.0, -24.0, 1.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Hunt the Wraith", false);
+}
+
+// L6 — Storm Terraces: holdout defense, escalating waves.
+hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Storm Terraces");
+    lb.setAmbient(0.14, 0.14, 0.16);
+    lb.setStart(0.0, 0.2, 0.0, 0.0);
+    lb.addArenaShell(28.0, 6.0, 0.26, 0.26, 0.28, 0.28, 0.28, 0.30);
+    scatterCover(lb, 6, 8.0, 0.28, 0.28, 0.30);
+    lb.addDirectional(-0.2, -0.9, -0.3, 0.5, 0.5, 0.6);
+    var w = 0;
+    while w < 3 {
+        var per = 3 + w;
+        var j = 0;
+        while j < per {
+            var ang = (j + 0.0) / (per + 0.0) * 6.2831853 + w;
+            var arche = config.EN_HUSK;
+            if j % 3 == 2 { arche = config.EN_SAPPER; }
+            lb.addSpawn(arche, Math.Cos(ang) * 24.0, Math.Sin(ang) * 24.0, w);
+            j = j + 1;
+        }
+        w = w + 1;
+    }
+    lb.addPickup(config.PK_AMMO, 0.0, 0.0, 6.0, 80.0);
+    lb.addPickup(config.PK_ARMOR, 0.0, 0.0, -6.0, 50.0);
+    obj.add(objectives.OBJ_SURVIVE, 0.0, 0.0, 0.0, 30, "Hold the terrace for 30s", false);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the final wave", false);
+}
+
+// L7 — The Foundry: WARDEN Goliath boss.
+hide func buildL7(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("The Foundry");
+    lb.setAmbient(0.12, 0.09, 0.07);
+    lb.setStart(0.0, 0.2, 26.0, 0.0);
+    lb.addArenaShell(30.0, 10.0, 0.20, 0.14, 0.10, 0.24, 0.16, 0.12);
+    lb.addPoint(0.0, 6.0, 0.0, 1.0, 0.5, 0.2, 30.0);
+    scatterCover(lb, 6, 12.0, 0.22, 0.16, 0.12);
+    lb.addSpawn(config.BOSS_WARDEN, 0.0, -14.0, 0);
+    lb.addSpawn(config.EN_HUSK, -8.0, -8.0, 1);
+    lb.addSpawn(config.EN_HUSK, 8.0, -8.0, 1);
+    lb.addPickup(config.PK_AMMO, 8.0, 0.0, 20.0, 80.0);
+    lb.addPickup(config.PK_HEALTH, -8.0, 0.0, 20.0, 50.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Destroy WARDEN Goliath", false);
+}
+
+// L8 — Spire Ascent: SHRIKE Prime aerial boss.
+hide func buildL8(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Spire Ascent");
+    lb.setAmbient(0.14, 0.15, 0.20);
+    lb.setStart(0.0, 0.2, 0.0, 0.0);
+    lb.addArenaShell(34.0, 14.0, 0.22, 0.23, 0.28, 0.26, 0.27, 0.32);
+    lb.addDirectional(-0.4, -0.6, -0.5, 0.6, 0.7, 1.0);
+    scatterCover(lb, 8, 16.0, 0.24, 0.25, 0.30);
+    lb.addSpawn(config.BOSS_SHRIKE, 0.0, -20.0, 0);
+    lb.addSpawn(config.EN_DRONE, -10.0, 6.0, 0);
+    lb.addSpawn(config.EN_DRONE, 10.0, 6.0, 0);
+    lb.addPickup(config.PK_AMMO, 0.0, 0.0, 24.0, 100.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Down SHRIKE Prime", false);
+}
+
+// L9 — Helix Core: HELIX Avatar 3-phase finale.
+hide func buildL9(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("Helix Core");
+    lb.setAmbient(0.08, 0.14, 0.16);
+    lb.setStart(0.0, 0.2, 30.0, 0.0);
+    lb.addArenaShell(36.0, 12.0, 0.10, 0.16, 0.18, 0.12, 0.20, 0.24);
+    var k = 0;
+    while k < 6 {
+        var ang = (k + 0.0) / 6.0 * 6.2831853;
+        lb.addPoint(Math.Cos(ang) * 22.0, 5.0, Math.Sin(ang) * 22.0, 0.3, 0.8, 0.9, 16.0);
+        k = k + 1;
+    }
+    lb.addSpawn(config.BOSS_HELIX, 0.0, -18.0, 0);
+    lb.addPickup(config.PK_AMMO, 10.0, 0.0, 24.0, 120.0);
+    lb.addPickup(config.PK_HEALTH, -10.0, 0.0, 24.0, 60.0);
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "End HELIX", false);
+}
+
+// Hub — The Redoubt: safe zone, no combat, workbench + mission select.
+hide func buildHub(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
+    lb.setName("The Redoubt");
+    lb.setAmbient(0.20, 0.20, 0.24);
+    lb.setStart(0.0, 0.2, 8.0, 0.0);
+    lb.addArenaShell(16.0, 5.0, 0.28, 0.28, 0.30, 0.32, 0.32, 0.36);
+    lb.addPoint(0.0, 4.0, 0.0, 0.9, 0.85, 0.7, 20.0);
+    lb.addPoint(-6.0, 3.0, -6.0, 0.5, 0.6, 0.9, 10.0);
+    lb.addPoint(6.0, 3.0, -6.0, 0.5, 0.6, 0.9, 10.0);
+    // Workbench block.
+    lb.addBox(0.0, 0.6, -8.0, 2.0, 0.6, 1.0, 0.40, 0.42, 0.48, true);
+    obj.add(objectives.OBJ_REACH, 0.0, -8.0, 3.0, 0, "Visit the workbench", true);
+}

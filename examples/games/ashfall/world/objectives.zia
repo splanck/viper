@@ -1,0 +1,131 @@
+// =============================================================================
+// world/objectives.zia — mission objective tracking
+// =============================================================================
+//
+// A small ordered list of objectives per level. Each has a kind, parameters,
+// and progress; the level completes when every required objective is done.
+// Objectives advance from gameplay signals: the player's position (REACH), the
+// kill counter (KILL/CLEAR), interacts (ACTIVATE), a timer (SURVIVE), or
+// collectibles (COLLECT). Completion posts EV_OBJECTIVE for HUD/audio/stats.
+// =============================================================================
+module objectives;
+
+bind "../config" as config;
+bind "../core/mathutil" as M;
+bind "../core/events" as events;
+
+var OBJ_REACH: Integer = 0;
+var OBJ_KILL: Integer = 1;
+var OBJ_ACTIVATE: Integer = 2;
+var OBJ_SURVIVE: Integer = 3;
+var OBJ_COLLECT: Integer = 4;
+var OBJ_CLEAR: Integer = 5;
+
+class Objectives {
+    hide List[Integer] kind;
+    hide List[Float] tx; hide List[Float] tz; hide List[Float] radius;
+    hide List[Integer] targetCount;
+    hide List[Integer] progress;
+    hide List[Integer] done;
+    hide List[String] text;
+    hide List[Integer] optional;
+    hide Integer killBaseline;      // killCount at objective start (for KILL deltas)
+
+    expose func init() {
+        kind = []; tx = []; tz = []; radius = []; targetCount = []; progress = [];
+        done = []; text = []; optional = [];
+        killBaseline = 0;
+    }
+
+    expose func clear() {
+        kind = []; tx = []; tz = []; radius = []; targetCount = []; progress = [];
+        done = []; text = []; optional = [];
+        killBaseline = 0;
+    }
+
+    expose func add(k: Integer, x: Float, z: Float, r: Float, count: Integer, txt: String, opt: Boolean) {
+        kind.Add(k); tx.Add(x); tz.Add(z); radius.Add(r); targetCount.Add(count);
+        progress.Add(0); done.Add(0); text.Add(txt);
+        if opt { optional.Add(1); } else { optional.Add(0); }
+    }
+
+    expose func setKillBaseline(k: Integer) { killBaseline = k; }
+    expose func count() -> Integer { return kind.Count; }
+    expose func textOf(i: Integer) -> String { return text[i]; }
+    expose func isDone(i: Integer) -> Boolean { return done[i] == 1; }
+    expose func progressOf(i: Integer) -> Integer { return progress[i]; }
+    expose func targetOf(i: Integer) -> Integer { return targetCount[i]; }
+
+    expose func kindOf(i: Integer) -> Integer { return kind[i]; }
+    expose func txAt(i: Integer) -> Float { return tx[i]; }
+    expose func tzAt(i: Integer) -> Float { return tz[i]; }
+
+    // The first not-yet-done required objective, or -1 if all required are done.
+    expose func activeIndex() -> Integer {
+        var i = 0;
+        while i < kind.Count {
+            if optional[i] == 0 && done[i] == 0 { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    expose func allRequiredDone() -> Boolean { return activeIndex() < 0; }
+
+    expose func markInteract(x: Float, z: Float) {
+        var i = 0;
+        while i < kind.Count {
+            if done[i] == 0 && kind[i] == OBJ_ACTIVATE {
+                if M.distXZ(x, z, tx[i], tz[i]) < radius[i] {
+                    complete(i);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func addCollect() {
+        var i = 0;
+        while i < kind.Count {
+            if done[i] == 0 && kind[i] == OBJ_COLLECT {
+                progress[i] = progress[i] + 1;
+                if progress[i] >= targetCount[i] { complete(i); }
+                return;
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func complete(i: Integer) {
+        done[i] = 1;
+    }
+
+    // Advance timed/positional/kill objectives.
+    expose func update(dt: Float, px: Float, pz: Float, totalKills: Integer,
+                       enemiesAlive: Integer, bus: events.EventBus) {
+        var i = 0;
+        while i < kind.Count {
+            if done[i] == 0 {
+                var k = kind[i];
+                if k == OBJ_REACH {
+                    if M.distXZ(px, pz, tx[i], tz[i]) < radius[i] { doneNow(i, bus); }
+                } else if k == OBJ_KILL {
+                    progress[i] = totalKills - killBaseline;
+                    if progress[i] >= targetCount[i] { doneNow(i, bus); }
+                } else if k == OBJ_CLEAR {
+                    if totalKills > killBaseline && enemiesAlive == 0 { doneNow(i, bus); }
+                } else if k == OBJ_SURVIVE {
+                    // targetCount is seconds*10; progress in ticks-as-tenths.
+                    progress[i] = progress[i] + M.roundi(dt * 600.0);   // dt*60 ticks *10
+                    if progress[i] >= targetCount[i] * 100 { doneNow(i, bus); }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func doneNow(i: Integer, bus: events.EventBus) {
+        done[i] = 1;
+        bus.pushKind(config.EV_OBJECTIVE, i, 1);
+    }
+}

@@ -1,0 +1,109 @@
+// =============================================================================
+// fx/effects.zia — fire-and-forget particle effects (muzzle / impact / blast)
+// =============================================================================
+//
+// A fixed ring of Particles3D emitters, reused round-robin. Weapons and the
+// damage pipeline request bursts (muzzle flash, bullet impact sparks, explosion
+// balls); update() ages them and draw() renders the active ones in the scene
+// pass (after opaques, before EndScene — the Particles3D.Draw landmine rule).
+// =============================================================================
+module effects;
+
+bind Viper.Graphics3D as G3D;
+bind "../config" as config;
+
+var COUNT: Integer = 12;
+
+class Effects {
+    hide List[G3D.Particles3D] emitters;
+    hide List[Float] life;
+    hide Integer nextIdx;
+    hide Boolean ready;
+
+    expose func init() {
+        emitters = []; life = [];
+        nextIdx = 0;
+        ready = false;
+    }
+
+    expose func setup() {
+        var i = 0;
+        while i < COUNT {
+            var p = G3D.Particles3D.New(64);
+            emitters.Add(p);
+            life.Add(0.0);
+            i = i + 1;
+        }
+        ready = true;
+    }
+
+    hide func grab() -> Integer {
+        var idx = nextIdx;
+        nextIdx = (nextIdx + 1) % COUNT;
+        return idx;
+    }
+
+    expose func muzzle(x: Float, y: Float, z: Float) {
+        if ready == false { return; }
+        var i = grab();
+        var p = emitters[i];
+        G3D.Particles3D.SetPosition(p, x, y, z);
+        G3D.Particles3D.SetColor(p, 0xFFE080FF, 0xFF400000);
+        G3D.Particles3D.SetSpeed(p, 2.0, 6.0);
+        G3D.Particles3D.SetLifetime(p, 0.05, 0.15);
+        G3D.Particles3D.SetSize(p, 0.05, 0.12);
+        G3D.Particles3D.Burst(p, 10);
+        life[i] = 0.2;
+    }
+
+    expose func impact(x: Float, y: Float, z: Float) {
+        if ready == false { return; }
+        var i = grab();
+        var p = emitters[i];
+        G3D.Particles3D.SetPosition(p, x, y, z);
+        G3D.Particles3D.SetColor(p, 0xFFC060FF, 0x80300000);
+        G3D.Particles3D.SetSpeed(p, 1.0, 4.0);
+        G3D.Particles3D.SetLifetime(p, 0.1, 0.3);
+        G3D.Particles3D.SetSize(p, 0.03, 0.08);
+        G3D.Particles3D.SetGravity(p, 0.0, -6.0, 0.0);
+        G3D.Particles3D.Burst(p, 14);
+        life[i] = 0.35;
+    }
+
+    expose func explosion(x: Float, y: Float, z: Float, radius: Float) {
+        if ready == false { return; }
+        var i = grab();
+        var p = emitters[i];
+        G3D.Particles3D.SetPosition(p, x, y, z);
+        G3D.Particles3D.SetColor(p, 0xFFD070FF, 0x40202000);
+        G3D.Particles3D.SetSpeed(p, radius * 1.5, radius * 3.0);
+        G3D.Particles3D.SetLifetime(p, 0.2, 0.6);
+        G3D.Particles3D.SetSize(p, 0.2, 0.5);
+        G3D.Particles3D.SetGravity(p, 0.0, -2.0, 0.0);
+        G3D.Particles3D.Burst(p, 40);
+        life[i] = 0.7;
+    }
+
+    expose func update(dt: Float) {
+        if ready == false { return; }
+        var i = 0;
+        while i < COUNT {
+            if life[i] > 0.0 {
+                G3D.Particles3D.Update(emitters[i], dt);
+                life[i] = life[i] - dt;
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func draw(canvas: G3D.Canvas3D, camera: G3D.Camera3D) {
+        if ready == false { return; }
+        var i = 0;
+        while i < COUNT {
+            if life[i] > 0.0 {
+                G3D.Particles3D.Draw(emitters[i], canvas, camera);
+            }
+            i = i + 1;
+        }
+    }
+}

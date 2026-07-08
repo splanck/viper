@@ -1,0 +1,32 @@
+// =============================================================================
+// fx/postfx.zia — the post-processing chain
+// =============================================================================
+//
+// Builds a PostFX3D chain (bloom + subtle color grade + vignette + FXAA) and
+// binds it to the canvas. After the Track E software-parity work the chain runs
+// on every backend, so no capability gate is needed here — but binding is
+// guarded so a canvas that refuses it just runs unprocessed. Color-grade
+// brightness is additive (~0.015), per the landmine note.
+// =============================================================================
+module postfx;
+
+bind Viper.Graphics3D as G3D;
+
+class PostFX {
+    hide G3D.PostFX3D chain;
+    hide Boolean enabled;
+
+    expose func init() { enabled = false; }
+
+    expose func setup(canvas: G3D.Canvas3D) {
+        chain = G3D.PostFX3D.New();
+        G3D.PostFX3D.AddBloom(chain, 0.6, 1.1, 4);
+        G3D.PostFX3D.AddColorGrade(chain, 0.015, 1.05, 0.98);   // additive brightness
+        G3D.PostFX3D.AddVignette(chain, 0.35, 0.7);
+        G3D.PostFX3D.AddFXAA(chain);
+        G3D.Canvas3D.SetPostFX(canvas, chain);
+        enabled = true;
+    }
+
+    expose func isEnabled() -> Boolean { return enabled; }
+}

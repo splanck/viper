@@ -1,0 +1,632 @@
+// =============================================================================
+// game.zia — the root orchestrator: boot, fixed-timestep loop, state machine
+// =============================================================================
+//
+// `Game` owns every subsystem. Rendering uses the manual world.Tick() loop
+// (ridgebound-proven) with a game-owned fixed-timestep accumulator: each display
+// frame accumulates world.Dt, runs `tickSim`+`stepPhysics` in whole FIXED_DT
+// increments, then renders once with an interpolation alpha. This gives an FPS
+// the camera/view-model/HUD control the auto-render RunFixed loop can't, while
+// keeping deterministic fixed-step simulation. Headless probes drive `tickSim`+
+// `stepPhysics` directly for per-tick input control with no window.
+//
+// This file grows phase by phase; P1 wires input/player/camera/arena/HUD.
+// =============================================================================
+module game;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+bind "./config" as config;
+bind "./core/mathutil" as M;
+bind "./core/entity" as entity;
+bind "./core/events" as events;
+bind "./core/rng" as rng;
+bind "./core/savegame" as savegame;
+bind "./core/devtools" as devtools;
+bind "./core/strings" as S;
+bind "./player/actions" as actions;
+bind "./player/playerctl" as playerctl;
+bind "./player/camera_rig" as camera_rig;
+bind "./player/viewmodel" as viewmodel;
+bind "./player/health" as health;
+bind "./world/arena" as arena;
+bind "./world/pickups" as pickups;
+bind "./world/level_manager" as level_manager;
+bind "./weapons/weapon_defs" as weapon_defs;
+bind "./weapons/targets" as targets;
+bind "./weapons/ballistics" as ballistics;
+bind "./weapons/projectiles" as projectiles;
+bind "./weapons/weapon_base" as weapon_base;
+bind "./ai/enemy_defs" as enemy_defs;
+bind "./ai/ai_core" as ai_core;
+bind "./ui/hud" as hud;
+bind "./fx/effects" as effects;
+bind "./fx/postfx" as postfx;
+bind "./audio/mix" as mix;
+bind "./meta/economy" as economy;
+bind "./meta/difficulty" as difficulty;
+bind "./meta/scoring" as scoring;
+
+class Game {
+    // --- Core logic systems --------------------------------------------------
+    hide entity.EntityReg reg;
+    hide events.EventBus bus;
+    hide rng.RngStreams rngs;
+    hide savegame.SaveManager save;
+    hide devtools.Diagnostics diag;
+
+    // --- Graphics / world ----------------------------------------------------
+    hide Game3D.World3D world;
+    hide G3D.Canvas3D canvas;
+    hide G3D.Camera3D camera;
+    hide G3D.Physics3DWorld phys;
+    hide Game3D.Input3D input;
+    hide Boolean graphicsUp;
+    hide Boolean fullscreenWanted;
+
+    // --- Subsystems ----------------------------------------------------------
+    hide actions.ActionMap actionMap;
+    hide playerctl.PlayerCtl player;
+    hide camera_rig.CameraRig camRig;
+    hide viewmodel.ViewModel vm;
+    hide arena.Arena arenaMap;
+
+    // --- Weapons -------------------------------------------------------------
+    hide weapon_defs.WeaponDefs wdefs;
+    hide targets.TargetRegistry targetReg;
+    hide ballistics.Ballistics ball;
+    hide projectiles.Projectiles proj;
+    hide weapon_base.WeaponController weapons;
+    hide G3D.Mesh3D projMesh;
+    hide G3D.Material3D projMat;
+
+    // --- Combatants ----------------------------------------------------------
+    hide health.PlayerHealth playerHealth;
+    hide enemy_defs.EnemyDefs edefs;
+    hide ai_core.EnemyManager enemies;
+
+    // --- World / levels ------------------------------------------------------
+    hide pickups.Pickups pickupSys;
+    hide level_manager.LevelManager levelMgr;
+
+    // --- UI / FX / audio / meta ----------------------------------------------
+    hide hud.Hud hudSys;
+    hide effects.Effects fx;
+    hide postfx.PostFX postfxSys;
+    hide mix.Mixer mixer;
+    hide economy.Economy econ;
+    hide difficulty.Difficulty diffSys;
+    hide scoring.Scoring score;
+
+    // --- Per-tick input (real path fills from Input3D; probes set directly) --
+    hide Boolean scripted;
+    hide Float inMoveX; hide Float inMoveZ;
+    hide Float inLookDX; hide Float inLookDY;
+    hide Boolean inJump; hide Boolean inCrouch; hide Boolean inSprint;
+    hide Boolean inFire; hide Boolean inADS; hide Boolean inInteract;
+    hide Boolean inReload; hide Boolean inNextWeapon; hide Boolean inPrevWeapon;
+
+    // --- State machine -------------------------------------------------------
+    hide Integer state;
+    hide Integer prevState;
+    hide Integer pendingState;
+    hide Integer currentLevel;
+    hide Integer difficulty;
+    hide Integer tickCount;
+    hide Boolean headless;
+    hide Boolean running;
+    hide Boolean mouseCaptured;
+    hide Float playTime;
+
+    expose func init() {
+        reg = new entity.EntityReg();
+        bus = new events.EventBus();
+        rngs = new rng.RngStreams();
+        save = new savegame.SaveManager();
+        diag = new devtools.Diagnostics();
+        actionMap = new actions.ActionMap();
+        player = new playerctl.PlayerCtl();
+        camRig = new camera_rig.CameraRig();
+        vm = new viewmodel.ViewModel();
+        arenaMap = new arena.Arena();
+        wdefs = new weapon_defs.WeaponDefs();
+        targetReg = new targets.TargetRegistry();
+        ball = new ballistics.Ballistics();
+        proj = new projectiles.Projectiles();
+        weapons = new weapon_base.WeaponController();
+        playerHealth = new health.PlayerHealth();
+        edefs = new enemy_defs.EnemyDefs();
+        enemies = new ai_core.EnemyManager();
+        pickupSys = new pickups.Pickups();
+        levelMgr = new level_manager.LevelManager();
+        hudSys = new hud.Hud();
+        fx = new effects.Effects();
+        postfxSys = new postfx.PostFX();
+        mixer = new mix.Mixer();
+        econ = new economy.Economy();
+        diffSys = new difficulty.Difficulty();
+        score = new scoring.Scoring();
+        graphicsUp = false;
+        fullscreenWanted = true;
+        scripted = false;
+        inMoveX = 0.0; inMoveZ = 0.0; inLookDX = 0.0; inLookDY = 0.0;
+        inJump = false; inCrouch = false; inSprint = false;
+        inFire = false; inADS = false; inInteract = false;
+        inReload = false; inNextWeapon = false; inPrevWeapon = false;
+        state = config.ST_BOOT;
+        prevState = config.ST_BOOT;
+        pendingState = -1;
+        currentLevel = config.LV_ARENA;
+        difficulty = config.DIFF_SOLDIER;
+        tickCount = 0;
+        headless = false;
+        running = true;
+        mouseCaptured = false;
+        playTime = 0.0;
+    }
+
+    expose func initCore(masterSeed: Integer) {
+        reg.setup();
+        rngs.reseed(masterSeed);
+    }
+
+    // --- Accessors -----------------------------------------------------------
+    expose func setHeadless(v: Boolean) { headless = v; }
+    expose func isHeadless() -> Boolean { return headless; }
+    expose func setFullscreen(v: Boolean) { fullscreenWanted = v; }
+    expose func getReg() -> entity.EntityReg { return reg; }
+    expose func getBus() -> events.EventBus { return bus; }
+    expose func getRng() -> rng.RngStreams { return rngs; }
+    expose func getSave() -> savegame.SaveManager { return save; }
+    expose func getDiag() -> devtools.Diagnostics { return diag; }
+    expose func getPlayer() -> playerctl.PlayerCtl { return player; }
+    expose func getCamRig() -> camera_rig.CameraRig { return camRig; }
+    expose func getArena() -> arena.Arena { return arenaMap; }
+    expose func getState() -> Integer { return state; }
+    expose func getLevel() -> Integer { return currentLevel; }
+    expose func setLevel(l: Integer) { currentLevel = l; }
+    expose func getDifficulty() -> Integer { return difficulty; }
+    expose func setDifficulty(d: Integer) { difficulty = d; }
+    expose func getTickCount() -> Integer { return tickCount; }
+    expose func getPlayTime() -> Float { return playTime; }
+    expose func isRunning() -> Boolean { return running; }
+    expose func stop() { running = false; }
+
+    // --- Scripted-input control (probes) -------------------------------------
+    expose func setScripted(v: Boolean) { scripted = v; }
+    expose func scriptMove(mx: Float, mz: Float) { inMoveX = mx; inMoveZ = mz; }
+    expose func scriptLook(dx: Float, dy: Float) { inLookDX = dx; inLookDY = dy; }
+    expose func scriptJump(v: Boolean) { inJump = v; }
+    expose func scriptCrouch(v: Boolean) { inCrouch = v; }
+    expose func scriptSprint(v: Boolean) { inSprint = v; }
+    expose func scriptFire(v: Boolean) { inFire = v; }
+    expose func scriptADS(v: Boolean) { inADS = v; }
+    expose func scriptReload(v: Boolean) { inReload = v; }
+    expose func scriptAimAt(tx: Float, ty: Float, tz: Float) {
+        // Point the camera yaw/pitch at a world target (probe aiming helper).
+        var ex = camRig.getEyeX(); var ey = camRig.getEyeY(); var ez = camRig.getEyeZ();
+        var dx = tx - ex; var dy = ty - ey; var dz = tz - ez;
+        var horiz = Math.Sqrt(dx * dx + dz * dz);
+        var yaw = Math.Atan2(dx, 0.0 - dz) * 57.2957795130823;
+        var pitch = Math.Atan2(dy, horiz) * 57.2957795130823;
+        camRig.setYaw(yaw);
+        camRig.setPitchDeg(pitch);
+    }
+
+    // --- State machine -------------------------------------------------------
+    hide func legal(from: Integer, to: Integer) -> Boolean {
+        if from == to { return false; }
+        if to == config.ST_PAUSED { return from == config.ST_PLAYING; }
+        if from == config.ST_PAUSED {
+            return to == config.ST_PLAYING || to == config.ST_TITLE || to == config.ST_HUB;
+        }
+        if to == config.ST_PHOTO { return from == config.ST_PLAYING; }
+        if from == config.ST_PHOTO { return to == config.ST_PLAYING; }
+        if from == config.ST_BOOT { return to == config.ST_TITLE; }
+        if from == config.ST_TITLE { return to == config.ST_HUB || to == config.ST_LOADING || to == config.ST_CREDITS; }
+        if from == config.ST_HUB { return to == config.ST_LOADING || to == config.ST_TITLE || to == config.ST_CREDITS; }
+        if from == config.ST_LOADING { return to == config.ST_PLAYING; }
+        if from == config.ST_PLAYING {
+            return to == config.ST_DEATH || to == config.ST_LEVEL_COMPLETE || to == config.ST_HUB || to == config.ST_TITLE;
+        }
+        if from == config.ST_DEATH { return to == config.ST_LOADING || to == config.ST_TITLE || to == config.ST_HUB; }
+        if from == config.ST_LEVEL_COMPLETE { return to == config.ST_HUB || to == config.ST_LOADING || to == config.ST_CREDITS; }
+        if from == config.ST_CREDITS { return to == config.ST_TITLE; }
+        return false;
+    }
+
+    expose func requestState(to: Integer) {
+        if legal(state, to) { pendingState = to; }
+    }
+    expose func forceState(to: Integer) { pendingState = to; }
+    hide func applyPending() {
+        if pendingState < 0 { return; }
+        prevState = state;
+        state = pendingState;
+        bus.pushKind(config.EV_STATE_CHANGE, prevState, state);
+        pendingState = -1;
+    }
+    expose func inState(s: Integer) -> Boolean { return state == s; }
+
+    // --- Boot ----------------------------------------------------------------
+    expose func boot(hl: Boolean, fullscreen: Boolean) {
+        headless = hl;
+        if hl {
+            world = Game3D.World3D.NewWithCamera(config.WINDOW_TITLE, 160, 90,
+                config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
+        } else if fullscreen {
+            world = Game3D.World3D.NewFullscreenWithHorizontalCamera(config.WINDOW_TITLE,
+                config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
+        } else {
+            world = Game3D.World3D.NewWithCamera(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT,
+                config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
+        }
+        canvas = world.Canvas;
+        camera = world.Camera;
+        phys = world.Physics;
+        input = world.Input;
+        if hl {
+            G3D.Canvas3D.SetInputSource(canvas, 1);
+            G3D.Canvas3D.SetClockSource(canvas, 1);
+            G3D.Canvas3D.SetSyntheticDeltaTimeSec(canvas, config.FIXED_DT);
+        } else {
+            input.SetRelativeLook(true);
+        }
+        G3D.Canvas3D.SetShadowBudget(canvas, config.BUDGET_SHADOW_SLOTS);
+        actionMap.setupDefaults();
+        player.setup(phys);
+
+        // Weapons.
+        wdefs.setup();
+        targetReg.clear();
+        ball.setup(phys, bus, targetReg, rngs.getSpread());
+        proj.setup(phys, bus, ball, targetReg);
+        weapons.setup(wdefs, ball, proj, camRig, vm, bus, rngs.getSpread());
+        projMesh = G3D.Mesh3D.Sphere(0.08, 6);
+        projMat = G3D.Material3D.NewColor(1.0, 0.8, 0.3);
+        giveStartingLoadout();
+
+        // Combatants + world systems.
+        edefs.setup();
+        enemies.setup(world, edefs, targetReg, ball, bus, rngs.getAi());
+        pickupSys.setup(world, bus, playerHealth);
+        levelMgr.setup(world, canvas, phys, enemies, pickupSys, bus);
+        playerHealth.reset();
+
+        // UI / FX / audio / meta.
+        fx.setup();
+        econ.setup();
+        mixer.setup(headless);
+        enemies.setHealthScale(diffSys.enemyHealthScale());
+        if headless == false { postfxSys.setup(canvas); }
+
+        if save.isReady() == false { save.setupDefault(); }
+        graphicsUp = true;
+
+        // Build the initial scene: the standing arena (dev/probes) or a campaign level.
+        if currentLevel == config.LV_ARENA {
+            arenaMap.setup(world);
+            arenaMap.registerTargets(targetReg);
+            spawnIntoArena();
+        } else {
+            loadCampaignLevel(currentLevel);
+        }
+    }
+
+    // Load a campaign level: build it, spawn the player at its start, reset combat.
+    expose func loadCampaignLevel(id: Integer) {
+        currentLevel = id;
+        levelMgr.load(id);
+        player.spawn(levelMgr.startX(), levelMgr.startY(), levelMgr.startZ());
+        camRig.setYaw(levelMgr.startYaw());
+        playerHealth.reset();
+        forceState(config.ST_PLAYING);
+        applyPending();
+    }
+
+    hide func giveStartingLoadout() {
+        weapons.give(config.W_BOLT);
+        weapons.give(config.W_SCATTER);
+        weapons.give(config.W_CYCLER);
+        weapons.give(config.W_PULSE);
+        weapons.give(config.W_RAIL);
+        weapons.give(config.W_ARC);
+        weapons.give(config.W_RIVET);
+        weapons.switchTo(config.W_BOLT);
+    }
+
+    expose func getWeapons() -> weapon_base.WeaponController { return weapons; }
+    expose func getBallistics() -> ballistics.Ballistics { return ball; }
+    expose func getProjectiles() -> projectiles.Projectiles { return proj; }
+    expose func getTargetReg() -> targets.TargetRegistry { return targetReg; }
+    expose func getPlayerHealth() -> health.PlayerHealth { return playerHealth; }
+    expose func getEnemies() -> ai_core.EnemyManager { return enemies; }
+
+    // Probe helper: spawn an enemy of `archetype` at (x, z).
+    expose func devSpawnEnemy(archetype: Integer, ex: Float, ez: Float) -> Integer {
+        return enemies.spawn(archetype, ex, ez);
+    }
+    // Probe helper: point an enemy toward a world point.
+    expose func devFaceEnemy(slot: Integer, tx: Float, tz: Float) {
+        enemies.devFace(slot, tx, tz);
+    }
+    expose func devSetGod(v: Boolean) { playerHealth.setGod(v); }
+    expose func devKillAllEnemies() { enemies.devKillAll(); }
+    expose func devInteract() { if currentLevel != config.LV_ARENA { levelMgr.onInteract(player.getX(), player.getZ()); } }
+
+    expose func devDamagePlayer(amt: Float) { playerHealth.applyDamage(amt, 0.0); }
+
+    hide func spawnIntoArena() {
+        // Corner spawn with a clear -Z lane (the dummy ring sits within r=11).
+        player.spawn(16.0, 0.2, 16.0);
+        camRig.setYaw(0.0);       // face -Z down the open lane
+        forceState(config.ST_PLAYING);
+        applyPending();
+    }
+
+    // Probe helper: reposition the player (e.g. to the arena center for clear
+    // firing lanes to the target ring).
+    expose func devSpawnPlayer(x: Float, y: Float, z: Float) {
+        player.spawn(x, y, z);
+    }
+
+    // --- Input gather --------------------------------------------------------
+    hide func gatherInput() {
+        if scripted { return; }
+        var md = input.MouseDelta();
+        inLookDX = Math.Vec2.get_X(md);
+        inLookDY = Math.Vec2.get_Y(md);
+        inMoveX = 0.0; inMoveZ = 0.0;
+        if actionMap.held(input, config.A_FORWARD) { inMoveZ = inMoveZ + 1.0; }
+        if actionMap.held(input, config.A_BACK) { inMoveZ = inMoveZ - 1.0; }
+        if actionMap.held(input, config.A_RIGHT) { inMoveX = inMoveX + 1.0; }
+        if actionMap.held(input, config.A_LEFT) { inMoveX = inMoveX - 1.0; }
+        inJump = actionMap.pressed(input, config.A_JUMP);
+        inCrouch = actionMap.held(input, config.A_CROUCH);
+        inSprint = actionMap.held(input, config.A_SPRINT);
+        inFire = actionMap.held(input, config.A_FIRE);
+        inADS = actionMap.held(input, config.A_ADS);
+        inInteract = actionMap.pressed(input, config.A_INTERACT);
+        inReload = actionMap.pressed(input, config.A_RELOAD);
+        inNextWeapon = actionMap.pressed(input, config.A_NEXT_WEAPON);
+        inPrevWeapon = actionMap.pressed(input, config.A_PREV_WEAPON);
+        // Toggles.
+        if actionMap.pressed(input, config.A_DIAG) { diag.toggle(); }
+        if actionMap.pressed(input, config.A_DEV_LIGHTS) { arenaMap.cycleLighting(); }
+        if actionMap.pressed(input, config.A_PAUSE) {
+            if state == config.ST_PLAYING { requestState(config.ST_PAUSED); }
+            else if state == config.ST_PAUSED { requestState(config.ST_PLAYING); }
+        }
+    }
+
+    hide func adsZoomFov() -> Float {
+        return config.CAMERA_FOV * 0.62;   // default weapon zoom; per-weapon later
+    }
+
+    // Drain feedback rows: muzzle/blast particles, hitmarkers, kills, damage flash.
+    hide func drainFeedbackEvents() {
+        var n = bus.getCount();
+        var i = 0;
+        while i < n {
+            var k = bus.kindAt(i);
+            if k == config.EV_GUNSHOT && bus.bAt(i) >= 18 {
+                fx.muzzle(bus.xAt(i), bus.yAt(i) + 1.2, bus.zAt(i));
+            } else if k == config.EV_EXPLOSION {
+                fx.explosion(bus.xAt(i), bus.yAt(i), bus.zAt(i), bus.bAt(i) + 0.0);
+            } else if k == config.EV_HITMARKER {
+                hudSys.pulseHitmarker();
+            } else if k == config.EV_KILL {
+                score.addKill();
+            } else if k == config.EV_DAMAGE && bus.aAt(i) == config.TGT_PLAYER {
+                hudSys.pulseDamage();
+                score.addDamage(M.roundi(bus.xAt(i)));
+            }
+            i = i + 1;
+        }
+    }
+
+    // Drain "collected pickup" rows (EV_PICKUP with the collected marker c==1).
+    hide func drainCollectedPickups() {
+        var n = bus.getCount();
+        var i = 0;
+        while i < n {
+            if bus.kindAt(i) == config.EV_PICKUP && bus.cAt(i) == 1 {
+                var k = bus.aAt(i);
+                if k == config.PK_AMMO { weapons.addReserveAll(bus.bAt(i)); }
+                else if k == config.PK_SALVAGE { econ.addSalvage(bus.bAt(i)); }
+                else if k == config.PK_DATACORE { levelMgr.getObjectives().addCollect(); }
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func getLevelMgr() -> level_manager.LevelManager { return levelMgr; }
+    expose func getPickups() -> pickups.Pickups { return pickupSys; }
+
+    // --- One fixed simulation tick (no physics step, no render) --------------
+    expose func tickSim(dt: Float) {
+        applyPending();
+        tickCount = tickCount + 1;
+        playTime = playTime + dt;
+
+        if state == config.ST_PLAYING {
+            gatherInput();
+            camRig.applyLook(inLookDX, inLookDY);
+            player.update(dt, inMoveX, inMoveZ, inJump, inCrouch, inSprint, camRig.getYaw(), bus);
+            camRig.updateSim(dt, player, inADS, weapons.adsFov());
+            vm.updateSim(dt, inLookDX, inLookDY, player.getSpeed(), player.isGrounded(), camRig.getAdsT());
+
+            // Weapon switch.
+            if inNextWeapon { weapons.nextWeapon(); }
+            if inPrevWeapon { weapons.prevWeapon(); }
+
+            // Fire from the camera eye along the aim direction.
+            var ex = camRig.getEyeX(); var ey = camRig.getEyeY(); var ez = camRig.getEyeZ();
+            var fdx = camRig.forwardX(); var fdy = camRig.forwardY(); var fdz = camRig.forwardZ();
+            weapons.update(dt, inFire, inADS, inReload, ex, ey, ez, fdx, fdy, fdz);
+            weapons.autoReloadIfEmpty();
+            proj.update(dt);
+
+            // Enemies perceive (hearing reads this tick's gunshots), act, and may
+            // post EV_DAMAGE(TGT_PLAYER) + chain EV_DAMAGE(TGT_ENEMY).
+            var chestY = player.getFeetY() + 1.2;
+            var alive = playerHealth.isDead() == false;
+            enemies.update(dt, player.getX(), chestY, player.getZ(), alive);
+            if currentLevel == config.LV_ARENA { arenaMap.update(dt); }
+
+            // Consumers: apply this tick's damage events before the bus drains.
+            if currentLevel == config.LV_ARENA { arenaMap.applyDamageEvents(bus, targetReg); }
+            enemies.applyDamageEvents();
+            playerHealth.update(dt, bus, diffSys.incomingDamageScale());
+            if playerHealth.isDead() { requestState(config.ST_DEATH); }
+
+            // Campaign world systems (arena is standalone).
+            if currentLevel != config.LV_ARENA {
+                pickupSys.drainDrops();
+                pickupSys.update(dt, player.getX(), player.getFeetY() + 0.9, player.getZ());
+                drainCollectedPickups();
+                if inInteract { levelMgr.onInteract(player.getX(), player.getZ()); }
+                levelMgr.update(dt, player.getX(), player.getZ());
+                if levelMgr.isComplete() {
+                    score.recordLevel(currentLevel);
+                    requestState(config.ST_LEVEL_COMPLETE);
+                }
+            }
+
+            // Feedback: fx / hitmarkers / audio / scoring from the frame's events.
+            drainFeedbackEvents();
+            mixer.update(dt, bus, false, enemies.aliveCount() > 0);
+            score.tick(dt);
+            fx.update(dt);
+            hudSys.tick(dt);
+        }
+
+        updateDiag();
+        diag.checkBudgets();
+        bus.drain();
+    }
+
+    // Step the physics world one fixed increment (called after tickSim).
+    expose func stepPhysics(dt: Float) {
+        if graphicsUp { G3D.Physics3DWorld.Step(phys, dt); }
+    }
+
+    hide func updateDiag() {
+        diag.setCounts(reg.countOf(config.ARCH_ENEMY), reg.countOf(config.ARCH_PROJECTILE), 0, 0);
+    }
+
+    // --- Render (manual scene + overlay) -------------------------------------
+    hide func render(alpha: Float) {
+        world.BeginFrame();
+        G3D.Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
+        camRig.applyToCamera(camera, alpha);
+        world.DrawScene();
+        if proj.activeProjectiles() > 0 {
+            proj.draw(canvas, projMesh, projMat);
+        }
+        fx.draw(canvas, camera);
+        world.DrawEffects();
+        world.EndScene();
+        G3D.Canvas3D.BeginOverlay(canvas);
+        drawHud();
+        G3D.Canvas3D.EndOverlay(canvas);
+    }
+
+    hide func drawHud() {
+        var w = config.WINDOW_WIDTH;
+        var h = config.WINDOW_HEIGHT;
+        var campaign = currentLevel != config.LV_ARENA;
+        if state == config.ST_PLAYING {
+            hudSys.draw(canvas, w, h, playerHealth, weapons, levelMgr.getObjectives(),
+                        enemies.maxAwareness(), campaign);
+        }
+        if diag.isEnabled() {
+            G3D.Canvas3D.DrawText2D(canvas, 8, 8, diag.line1(), 0xFFFFFF);
+            G3D.Canvas3D.DrawText2D(canvas, 8, 22, diag.line2(), 0xFFFFFF);
+            G3D.Canvas3D.DrawText2D(canvas, 8, 36, diag.line3(), 0xFFFFFF);
+        }
+        if state == config.ST_PAUSED { hudSys.banner(canvas, w, h, "PAUSED", 0xFFD060); }
+        else if state == config.ST_DEATH { hudSys.banner(canvas, w, h, "YOU DIED", 0xFF4040); }
+        else if state == config.ST_LEVEL_COMPLETE {
+            hudSys.banner(canvas, w, h, "LEVEL COMPLETE", 0x40FF80);
+        }
+    }
+
+    expose func getEconomy() -> economy.Economy { return econ; }
+    expose func getDifficulty2() -> difficulty.Difficulty { return diffSys; }
+    expose func getScoring() -> scoring.Scoring { return score; }
+    expose func getMixer() -> mix.Mixer { return mixer; }
+
+    hide func handleMouseCapture() {
+        if headless { return; }
+        if state == config.ST_PLAYING && mouseCaptured == false {
+            input.CaptureMouse();
+            mouseCaptured = true;
+        }
+        if state != config.ST_PLAYING && mouseCaptured {
+            input.ReleaseMouse();
+            mouseCaptured = false;
+        }
+    }
+
+    // --- The interactive loop (assumes boot() already ran) -------------------
+    expose func run() {
+        var accum = 0.0;
+        while running && world.Tick() {
+            handleMouseCapture();
+            var frameDt = world.Dt;
+            if frameDt > 0.1 { frameDt = 0.1; }
+            accum = accum + frameDt;
+            var steps = 0;
+            while accum >= config.FIXED_DT && steps < config.MAX_SUBSTEPS {
+                tickSim(config.FIXED_DT);
+                stepPhysics(config.FIXED_DT);
+                accum = accum - config.FIXED_DT;
+                steps = steps + 1;
+            }
+            if accum > config.FIXED_DT * (config.MAX_SUBSTEPS + 0.0) { accum = 0.0; }
+            var alpha = accum / config.FIXED_DT;
+            render(alpha);
+            world.Present();
+        }
+        if mouseCaptured { input.ReleaseMouse(); }
+        world.Destroy();
+    }
+
+    // Probe helper: run one full render frame (scene + fx + HUD + present),
+    // exercising the render pipeline headless. Optionally enable post-FX first.
+    expose func devEnablePostfx() {
+        if graphicsUp { postfxSys.setup(canvas); }
+    }
+    expose func devRenderFrame() {
+        if graphicsUp == false { return; }
+        render(1.0);
+        world.Present();
+    }
+
+    // --- Bounded headless integration smoke (assumes boot(true,...)) ---------
+    expose func runSmoke(frames: Integer) {
+        var i = 0;
+        while i < frames {
+            tickSim(config.FIXED_DT);
+            stepPhysics(config.FIXED_DT);
+            i = i + 1;
+        }
+    }
+
+    // --- Pure-logic tick (graphics-free; used by the P1a smoke_probe) --------
+    expose func tickLogic(dt: Float) {
+        applyPending();
+        playTime = playTime + dt;
+        tickCount = tickCount + 1;
+        diag.checkBudgets();
+        bus.drain();
+    }
+}
+
+// --- Module-global singleton -------------------------------------------------
+var g_game: Game = null;
+func setGame(g: Game) { g_game = g; }
+func getGame() -> Game { return g_game; }

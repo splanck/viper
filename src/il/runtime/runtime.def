@@ -2262,6 +2262,9 @@ RT_FUNC(GuiAppGetTitle,         rt_app_get_title,            "Viper.GUI.App.GetT
 RT_FUNC(GuiAppSetSize,          rt_app_set_size,             "Viper.GUI.App.SetSize",           "void(obj,i64,i64)")
 RT_FUNC(GuiAppWasCloseRequested,rt_app_was_close_requested,  "Viper.GUI.App.WasCloseRequested", "i1(obj)")
 RT_FUNC(GuiAppIsFocused,        rt_app_is_focused,           "Viper.GUI.App.IsFocused",         "i1(obj)")
+RT_FUNC(GuiAppGetPaintFramesFull,    rt_app_get_paint_frames_full,    "Viper.GUI.App.GetPaintFramesFull",    "i64(obj)")
+RT_FUNC(GuiAppGetPaintFramesPartial, rt_app_get_paint_frames_partial, "Viper.GUI.App.GetPaintFramesPartial", "i64(obj)")
+RT_FUNC(GuiAppSetPartialPaint,       rt_app_set_partial_paint,        "Viper.GUI.App.SetPartialPaint",       "void(obj,i1)")
 
 //=============================================================================
 // GUI - FONT
@@ -2421,6 +2424,7 @@ RT_FUNC(GuiCodeEditorNew,           rt_codeeditor_new,            "Viper.GUI.Cod
 RT_FUNC(GuiCodeEditorSetText,       rt_codeeditor_set_text,       "Viper.GUI.CodeEditor.SetText",       "void(obj,str)")
 RT_FUNC(GuiCodeEditorGetText,           rt_codeeditor_get_text,          "Viper.GUI.CodeEditor.get_Text",         "str(obj)")
 RT_FUNC(GuiCodeEditorGetRevision,       rt_codeeditor_get_revision,      "Viper.GUI.CodeEditor.get_Revision",     "i64(obj)")
+RT_FUNC(GuiCodeEditorTakeDeltas,        rt_codeeditor_take_deltas,       "Viper.GUI.CodeEditor.TakeDeltas",       "str(obj,i64)")
 RT_FUNC(GuiCodeEditorGetSelectedText,   rt_codeeditor_get_selected_text, "Viper.GUI.CodeEditor.GetSelectedText",  "str(obj)")
 RT_FUNC(GuiCodeEditorSetCursor,     rt_codeeditor_set_cursor,     "Viper.GUI.CodeEditor.SetCursor",     "void(obj,i64,i64)")
 RT_FUNC(GuiCodeEditorScrollToLine,  rt_codeeditor_scroll_to_line, "Viper.GUI.CodeEditor.ScrollToLine",  "void(obj,i64)")
@@ -2938,6 +2942,22 @@ RT_FUNC(ZiaSemanticJobHoverInfo,      rt_zia_semantic_job_hover_info,    "Viper.
 RT_FUNC(ZiaSemanticJobSymbols,        rt_zia_semantic_job_symbols,       "Viper.Zia.SemanticJob.Symbols", "str(obj)")
 RT_FUNC(ZiaSemanticJobTokens,         rt_zia_semantic_job_tokens,        "Viper.Zia.SemanticJob.Tokens", "str(obj)")
 RT_FUNC(ZiaSemanticJobDiagnostics,    rt_zia_semantic_job_diagnostics,   "Viper.Zia.SemanticJob.Diagnostics", "obj<Viper.Collections.Seq>(obj)")
+
+//=============================================================================
+// Viper.Zia.Document — incremental document mirror sync (plan 08). The IDE
+// pushes edit deltas so semantic requests avoid re-materializing the full
+// buffer on every keystroke; the service keeps a per-path text mirror keyed by
+// revision. SyncDelta returns i1 (0 = no baseline / malformed → caller must
+// full-sync). CheckForFile runs diagnostics straight off the mirror (no text
+// argument). Text is a testability accessor.
+//=============================================================================
+
+RT_FUNC(ZiaDocSyncFull,     rt_zia_doc_sync_full,          "Viper.Zia.Document.SyncFull",     "void(str,str,i64)")
+RT_FUNC(ZiaDocSyncDelta,    rt_zia_doc_sync_delta,         "Viper.Zia.Document.SyncDelta",    "i1(str,str,i64)")
+RT_FUNC(ZiaDocClose,        rt_zia_doc_close,              "Viper.Zia.Document.Close",        "void(str)")
+RT_FUNC(ZiaDocText,         rt_zia_doc_text,               "Viper.Zia.Document.Text",         "str(str)")
+RT_FUNC(ZiaDocCheckForFile, rt_zia_check_for_file_mirror,  "Viper.Zia.Document.CheckForFile", "str(str)")
+RT_FUNC(ZiaDocBeginCheckForFile, rt_zia_doc_begin_check_for_file, "Viper.Zia.Document.BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)")
 
 //=============================================================================
 // Viper BASIC Language Services (Phase 4 IDE) — sync, in-process bridge over the
@@ -4324,7 +4344,7 @@ RT_FUNC(IniRemove,         rt_ini_remove,            "Viper.Text.Ini.Remove",   
 //=============================================================================
 
 RT_FUNC(JsonParse,          rt_json_parse,            "Viper.Text.Json.Parse",          "obj(str)")
-RT_FUNC(JsonParseObject,    rt_json_parse_object,     "Viper.Text.Json.ParseObject",    "obj(str)")
+RT_FUNC(JsonParseObject,    rt_json_parse_object,     "Viper.Text.Json.ParseObject",    "obj<Viper.Collections.Map>(str)")
 RT_FUNC(JsonParseArray,     rt_json_parse_array,      "Viper.Text.Json.ParseArray",     "obj(str)")
 RT_FUNC(JsonFormat,         rt_json_format,           "Viper.Text.Json.Format",         "str(obj)")
 RT_FUNC(JsonFormatPretty,   rt_json_format_pretty,    "Viper.Text.Json.FormatPretty",   "str(obj,i64)")
@@ -8999,6 +9019,9 @@ RT_CLASS_BEGIN("Viper.GUI.App", GuiApp, "obj", GuiAppNew)
     RT_METHOD("SetSize",          "void(i64,i64)",  GuiAppSetSize)
     RT_METHOD("WasCloseRequested","i1()",          GuiAppWasCloseRequested)
     RT_METHOD("IsFocused",        "i1()",          GuiAppIsFocused)
+    RT_METHOD("GetPaintFramesFull",    "i64()",     GuiAppGetPaintFramesFull)
+    RT_METHOD("GetPaintFramesPartial", "i64()",     GuiAppGetPaintFramesPartial)
+    RT_METHOD("SetPartialPaint",       "void(i1)",  GuiAppSetPartialPaint)
     RT_METHOD("WasFileDropped",   "i1()",          AppWasFileDropped)
     RT_METHOD("GetDroppedFileCount","i64()",        AppGetDroppedFileCount)
     RT_METHOD("GetDroppedFile",   "str(i64)",       AppGetDroppedFile)
@@ -9176,6 +9199,7 @@ RT_CLASS_BEGIN("Viper.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
     RT_METHOD("ScrollToLine",         "void(i64)",        GuiCodeEditorScrollToLine)
     RT_METHOD("IsModified",           "i1()",             GuiCodeEditorIsModified)
     RT_METHOD("ClearModified",        "void()",           GuiCodeEditorClearModified)
+    RT_METHOD("TakeDeltas",           "str(i64)",         GuiCodeEditorTakeDeltas)
     RT_METHOD("SetFont",              "void(obj,f64)",    GuiCodeEditorSetFont)
     RT_METHOD("GetFontSize",          "f64()",            GuiCodeEditorGetFontSize)
     RT_METHOD("SetFontSize",          "void(f64)",        GuiCodeEditorSetFontSize)
@@ -11268,7 +11292,7 @@ RT_CLASS_BEGIN("Viper.Text.Json", Json, "obj", none)
     RT_METHOD("SetBool", "void(obj,str,i1)", MapSetBool)
     RT_METHOD("Parse", "obj(str)", JsonParse)
     RT_METHOD("ParseArray", "obj(str)", JsonParseArray)
-    RT_METHOD("ParseObject", "obj(str)", JsonParseObject)
+    RT_METHOD("ParseObject", "obj<Viper.Collections.Map>(str)", JsonParseObject)
     RT_METHOD("TypeOf", "str(obj)", JsonTypeOf)
 RT_CLASS_END()
 
@@ -13076,6 +13100,16 @@ RT_CLASS_BEGIN("Viper.Zia.Toolchain", ZiaToolchain, "none", none)
     RT_METHOD("CompileForFile", "obj<Viper.Collections.Map>(str,str)", ZiaToolchainCompileForFile)
 RT_CLASS_END()
 
+// Viper.Zia.Document - incremental document mirror sync (plan 08), static-only
+RT_CLASS_BEGIN("Viper.Zia.Document", ZiaDocument, "none", none)
+    RT_METHOD("SyncFull",     "void(str,str,i64)", ZiaDocSyncFull)
+    RT_METHOD("SyncDelta",    "i1(str,str,i64)",   ZiaDocSyncDelta)
+    RT_METHOD("Close",        "void(str)",         ZiaDocClose)
+    RT_METHOD("Text",         "str(str)",          ZiaDocText)
+    RT_METHOD("CheckForFile", "str(str)",          ZiaDocCheckForFile)
+    RT_METHOD("BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)", ZiaDocBeginCheckForFile)
+RT_CLASS_END()
+
 RT_CLASS_BEGIN("Viper.Basic.LanguageService", BasicLanguageService, "none", none)
     RT_METHOD("CheckForFile",    "obj<Viper.Collections.Seq>(str,str)",         BasicToolchainCheckForFile)
     RT_METHOD("ItemsForFile",    "obj<Viper.Collections.Seq>(str,str,i64,i64)", BasicCompletionItemsForFile)
@@ -14463,11 +14497,11 @@ RT_FUNC(World3DGetStayEvent, rt_world3d_get_stay_event, "Viper.Graphics3D.Physic
 RT_FUNC(World3DExitEventCount, rt_world3d_get_exit_event_count, "Viper.Graphics3D.Physics3DWorld.get_ExitEventCount", "i64(obj)")
 RT_FUNC(World3DGetExitEvent, rt_world3d_get_exit_event, "Viper.Graphics3D.Physics3DWorld.GetExitEvent", "obj(obj,i64)")
 RT_FUNC(World3DClearCollisionEvents, rt_world3d_clear_collision_events, "Viper.Graphics3D.Physics3DWorld.ClearCollisionEvents", "void(obj)")
-RT_FUNC(World3DRaycast, rt_world3d_raycast, "Viper.Graphics3D.Physics3DWorld.Raycast", "obj(obj,obj,obj,f64,i64)")
-RT_FUNC(World3DRaycastAll, rt_world3d_raycast_all, "Viper.Graphics3D.Physics3DWorld.RaycastAll", "obj(obj,obj,obj,f64,i64)")
-RT_FUNC(World3DSweepSphere, rt_world3d_sweep_sphere, "Viper.Graphics3D.Physics3DWorld.SweepSphere", "obj(obj,obj,f64,obj,i64)")
+RT_FUNC(World3DRaycast, rt_world3d_raycast, "Viper.Graphics3D.Physics3DWorld.Raycast", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,obj,f64,i64)")
+RT_FUNC(World3DRaycastAll, rt_world3d_raycast_all, "Viper.Graphics3D.Physics3DWorld.RaycastAll", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,obj,f64,i64)")
+RT_FUNC(World3DSweepSphere, rt_world3d_sweep_sphere, "Viper.Graphics3D.Physics3DWorld.SweepSphere", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,obj,i64)")
 RT_FUNC(World3DSweepCapsule, rt_world3d_sweep_capsule, "Viper.Graphics3D.Physics3DWorld.SweepCapsule", "obj(obj,obj,obj,f64,obj,i64)")
-RT_FUNC(World3DOverlapSphere, rt_world3d_overlap_sphere, "Viper.Graphics3D.Physics3DWorld.OverlapSphere", "obj(obj,obj,f64,i64)")
+RT_FUNC(World3DOverlapSphere, rt_world3d_overlap_sphere, "Viper.Graphics3D.Physics3DWorld.OverlapSphere", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)")
 RT_FUNC(World3DOverlapAABB, rt_world3d_overlap_aabb, "Viper.Graphics3D.Physics3DWorld.OverlapAABB", "obj(obj,obj,obj,i64)")
 RT_FUNC(World3DRebaseOrigin, rt_world3d_rebase_origin, "Viper.Graphics3D.Physics3DWorld.RebaseOrigin", "void(obj,f64,f64,f64)")
 
@@ -14532,11 +14566,11 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3D
     RT_METHOD("SetGravity", "void(f64,f64,f64)", World3DSetGravity)
     RT_METHOD("AddJoint", "void(obj,i64)", World3DAddJoint)
     RT_METHOD("RemoveJoint", "void(obj)", World3DRemoveJoint)
-    RT_METHOD("Raycast", "obj(obj,obj,f64,i64)", World3DRaycast)
-    RT_METHOD("RaycastAll", "obj(obj,obj,f64,i64)", World3DRaycastAll)
-    RT_METHOD("SweepSphere", "obj(obj,f64,obj,i64)", World3DSweepSphere)
+    RT_METHOD("Raycast", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,obj,f64,i64)", World3DRaycast)
+    RT_METHOD("RaycastAll", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,obj,f64,i64)", World3DRaycastAll)
+    RT_METHOD("SweepSphere", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,f64,obj,i64)", World3DSweepSphere)
     RT_METHOD("SweepCapsule", "obj(obj,obj,f64,obj,i64)", World3DSweepCapsule)
-    RT_METHOD("OverlapSphere", "obj(obj,f64,i64)", World3DOverlapSphere)
+    RT_METHOD("OverlapSphere", "obj<Viper.Graphics3D.PhysicsHitList3D>(obj,f64,i64)", World3DOverlapSphere)
     RT_METHOD("OverlapAABB", "obj(obj,obj,i64)", World3DOverlapAABB)
     RT_METHOD("RebaseOrigin", "void(f64,f64,f64)", World3DRebaseOrigin)
     RT_METHOD("GetCollisionBodyA", "obj(i64)", World3DCollisionBodyA)
@@ -14550,20 +14584,20 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3D
     RT_METHOD("ClearCollisionEvents", "void()", World3DClearCollisionEvents)
 RT_CLASS_END()
 
-RT_FUNC(PhysicsHit3DGetBody, rt_physics_hit3d_get_body, "Viper.Graphics3D.PhysicsHit3D.get_Body", "obj(obj)")
+RT_FUNC(PhysicsHit3DGetBody, rt_physics_hit3d_get_body, "Viper.Graphics3D.PhysicsHit3D.get_Body", "obj<Viper.Graphics3D.Physics3DBody>(obj)")
 RT_FUNC(PhysicsHit3DGetCollider, rt_physics_hit3d_get_collider, "Viper.Graphics3D.PhysicsHit3D.get_Collider", "obj<Viper.Graphics3D.Collider3D>(obj)")
-RT_FUNC(PhysicsHit3DGetPoint, rt_physics_hit3d_get_point, "Viper.Graphics3D.PhysicsHit3D.get_Point", "obj(obj)")
-RT_FUNC(PhysicsHit3DGetNormal, rt_physics_hit3d_get_normal, "Viper.Graphics3D.PhysicsHit3D.get_Normal", "obj(obj)")
+RT_FUNC(PhysicsHit3DGetPoint, rt_physics_hit3d_get_point, "Viper.Graphics3D.PhysicsHit3D.get_Point", "obj<Viper.Math.Vec3>(obj)")
+RT_FUNC(PhysicsHit3DGetNormal, rt_physics_hit3d_get_normal, "Viper.Graphics3D.PhysicsHit3D.get_Normal", "obj<Viper.Math.Vec3>(obj)")
 RT_FUNC(PhysicsHit3DGetDistance, rt_physics_hit3d_get_distance, "Viper.Graphics3D.PhysicsHit3D.get_Distance", "f64(obj)")
 RT_FUNC(PhysicsHit3DGetFraction, rt_physics_hit3d_get_fraction, "Viper.Graphics3D.PhysicsHit3D.get_Fraction", "f64(obj)")
 RT_FUNC(PhysicsHit3DGetStartedPenetrating, rt_physics_hit3d_get_started_penetrating, "Viper.Graphics3D.PhysicsHit3D.get_StartedPenetrating", "i1(obj)")
 RT_FUNC(PhysicsHit3DGetIsTrigger, rt_physics_hit3d_get_is_trigger, "Viper.Graphics3D.PhysicsHit3D.get_IsTrigger", "i1(obj)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.PhysicsHit3D", PhysicsHit3D, "none", none)
-    RT_PROP("Body", "obj", PhysicsHit3DGetBody, none)
+    RT_PROP("Body", "obj<Viper.Graphics3D.Physics3DBody>", PhysicsHit3DGetBody, none)
     RT_PROP("Collider", "obj<Viper.Graphics3D.Collider3D>", PhysicsHit3DGetCollider, none)
-    RT_PROP("Point", "obj", PhysicsHit3DGetPoint, none)
-    RT_PROP("Normal", "obj", PhysicsHit3DGetNormal, none)
+    RT_PROP("Point", "obj<Viper.Math.Vec3>", PhysicsHit3DGetPoint, none)
+    RT_PROP("Normal", "obj<Viper.Math.Vec3>", PhysicsHit3DGetNormal, none)
     RT_PROP("Distance", "f64", PhysicsHit3DGetDistance, none)
     RT_PROP("Fraction", "f64", PhysicsHit3DGetFraction, none)
     RT_PROP("StartedPenetrating", "i1", PhysicsHit3DGetStartedPenetrating, none)
@@ -14573,13 +14607,13 @@ RT_CLASS_END()
 RT_FUNC(PhysicsHitList3DGetCount, rt_physics_hit_list3d_get_count, "Viper.Graphics3D.PhysicsHitList3D.get_Count", "i64(obj)")
 RT_FUNC(PhysicsHitList3DGetTotalCount, rt_physics_hit_list3d_get_total_count, "Viper.Graphics3D.PhysicsHitList3D.get_TotalCount", "i64(obj)")
 RT_FUNC(PhysicsHitList3DGetTruncated, rt_physics_hit_list3d_get_truncated, "Viper.Graphics3D.PhysicsHitList3D.get_Truncated", "i1(obj)")
-RT_FUNC(PhysicsHitList3DGet, rt_physics_hit_list3d_get, "Viper.Graphics3D.PhysicsHitList3D.Get", "obj(obj,i64)")
+RT_FUNC(PhysicsHitList3DGet, rt_physics_hit_list3d_get, "Viper.Graphics3D.PhysicsHitList3D.Get", "obj<Viper.Graphics3D.PhysicsHit3D>(obj,i64)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.PhysicsHitList3D", PhysicsHitList3D, "none", none)
     RT_PROP("Count", "i64", PhysicsHitList3DGetCount, none)
     RT_PROP("TotalCount", "i64", PhysicsHitList3DGetTotalCount, none)
     RT_PROP("Truncated", "i1", PhysicsHitList3DGetTruncated, none)
-    RT_METHOD("Get", "obj(i64)", PhysicsHitList3DGet)
+    RT_METHOD("Get", "obj<Viper.Graphics3D.PhysicsHit3D>(i64)", PhysicsHitList3DGet)
 RT_CLASS_END()
 
 RT_FUNC(CollisionEvent3DGetBodyA, rt_collision_event3d_get_body_a, "Viper.Graphics3D.CollisionEvent3D.get_BodyA", "obj(obj)")

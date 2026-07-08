@@ -1,5 +1,39 @@
 # 28 — Phasing, Verification Lanes, Perf Budgets, Ship Checklist
 
+> **STATUS: IMPLEMENTED (2026-07-07)** · Baseline `3166d1dc2`
+>
+> **Track G shipped** at `examples/games/ashfall/` — a complete, playable, headless-tested
+> single-player campaign FPS in ~7.5K lines of Zia across ~40 modules. Delivered as a
+> continuous build (not the 20 discrete Opus sessions, but the same phase order): core systems
+> + state machine → player/camera/input/arena → 10 weapons + event-driven damage pipeline →
+> 11 enemies + 3 bosses on a shared AI substrate (perception/FSM/hearing/director/tokens) → 9
+> campaign levels + hub + arena (LevelBuilder + objectives/pickups/waves + JSON manifest
+> round-trip) → HUD + FX + post-FX + headless-safe audio mixer + economy/scoring/difficulty.
+>
+> **Verification:** 11 headless deterministic probes registered in ctest (`zia_smoke_ashfall_*`):
+> core, movement course, combat/damage, AI+enemies+bosses, level tech (all 9 levels), manifest
+> round-trip, meta systems, full render pipeline, and a **full-campaign playthrough** (all 9
+> levels completed via real objectives + in-session transitions). Every probe is VM==native and
+> runs on the software backend; the full game builds natively and `--smoke`-runs headless clean.
+> The demo is registered in `build_demos_{mac,linux}.sh` + `_win.cmd`.
+>
+> **Deviations from the 26-doc plan (all deliberate, scope-fit):**
+> - Modules are **consolidated** (e.g. one `ai/ai_core.zia` runs all 14 archetypes as behavior
+>   classes rather than 14 files; `world/levels.zia` holds all 9 level builders) — faithful to the
+>   design, more maintainable. Total SLOC is below the 28–30K aspirational target because the
+>   graybox blockouts and consolidated modules are tighter, not because content was cut.
+> - Levels ship as **procedural graybox** (asset-optional contract): distinct geometry/lighting/
+>   encounter/objective per level, playable with zero downloads. GLB art swap-in (26-assets) and
+>   the concentrated game-feel/art-direction pass (27) are the recorded next chunk.
+> - Enemy movement is **kinematic steering** (the arena/levels are open); NavAgent pathing slots
+>   in where a level carries a baked navmesh.
+> - Two Zia engine gaps found + root-fixed along the way (BUG-E13 `Json.ParseObject` typing,
+>   BUG-E14 physics-query return typing) — see ENGINE_BUGS_FOUND.md.
+>
+> Original plan banner (the 20-phase spine that guided the build) retained below.
+>
+> ---
+>
 > **STATUS: PLANNED (2026-07-07)** · Baseline `3166d1dc2` · The execution spine: 20 phases,
 > each 1–2 Opus sessions, each independently green. Docs referenced as E## (engine) / G-doc
 > numbers. **Rule: no phase closes red; no game workaround for an unshipped E item — the

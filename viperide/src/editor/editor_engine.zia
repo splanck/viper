@@ -2,6 +2,7 @@ module editor_engine;
 
 bind "../core/document";
 bind Viper.GUI as GUI;
+bind Doc = Viper.Zia.Document;
 
 // ============================================================================
 // MODULE: editor_engine
@@ -74,6 +75,12 @@ class EditorEngine {
     expose Boolean secondaryFocused;    // Whether the right pane is focused.
     expose PaneState shadow;            // Non-focused pane's metadata (null when unsplit).
 
+    // Incremental language-service sync (plan 08). Tracks what the focused pane
+    // last pushed to the service's document mirror so the next sync sends only
+    // edit deltas. syncedRevision < 0 forces a full sync on the next call.
+    expose Integer syncedRevision;
+    expose String  syncedPath;
+
     /// @brief Initialize with no widget yet. Call Setup to attach.
     expose func init() {
         currentDoc = null;
@@ -87,6 +94,8 @@ class EditorEngine {
         splitActive = false;
         secondaryFocused = false;
         shadow = null;
+        syncedRevision = -1;
+        syncedPath = "";
     }
 
     /// @brief Construct the CodeEditor inside `parent` and configure it.
@@ -277,6 +286,56 @@ class EditorEngine {
             return 0;
         }
         return editor.Revision;
+    }
+
+    /// @brief Keep the language service's document mirror for `path` current
+    ///        using incremental edit deltas, so semantic requests need not
+    ///        re-send the whole buffer on every revision.
+    /// @param path Mirror key — the active document's path (the semantic query
+    ///        key). A change of `path` means the focused document changed.
+    /// @return True when the mirror matches the editor's current revision.
+    /// @details Full-syncs on first use, on an active-document change, or when
+    ///          the editor reports a delta `overflow` (a cold mutation such as
+    ///          undo/redo/SetText/buffer-swap, or a journal wrap). Otherwise it
+    ///          pushes only `TakeDeltas`, which walks the edit journal without
+    ///          materializing the buffer — so `CodeEditor.GetFullTextCopyCount`
+    ///          stays flat across a typing burst (only full-syncs materialize).
+    expose func SyncActiveDocument(path: String) -> Boolean {
+        if editor == null {
+            return false;
+        }
+        var revision = editor.Revision;
+
+        // First sync of this path, or the focused document changed → full sync.
+        if syncedPath != path or syncedRevision < 0 {
+            Doc.SyncFull(path, GetTextSnapshot(), revision);
+            syncedPath = path;
+            syncedRevision = revision;
+            return true;
+        }
+        if revision == syncedRevision {
+            return true;   // Mirror already current — nothing changed.
+        }
+
+        // Incremental: push only the edit deltas captured since the last sync.
+        var deltas = editor.TakeDeltas(syncedRevision);
+        if deltas != "overflow" and Doc.SyncDelta(path, deltas, revision) {
+            syncedRevision = revision;
+            return true;
+        }
+
+        // Overflow or a delta gap → recover with a single full sync.
+        Doc.SyncFull(path, GetTextSnapshot(), revision);
+        syncedRevision = revision;
+        return true;
+    }
+
+    /// @brief Forget the mirror-sync bookkeeping so the next SyncActiveDocument
+    ///        performs a full sync. Call when a document is closed or its buffer
+    ///        is replaced out from under the editor.
+    expose func InvalidateDocumentSync() {
+        syncedRevision = -1;
+        syncedPath = "";
     }
 
     /// @brief Replace the buffer contents.

@@ -73,6 +73,7 @@ ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
     "ridgebound:${GAMES_DIR}/ridgebound"
+    "ashfall:${GAMES_DIR}/ashfall"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess:${GAMES_DIR}/chess"

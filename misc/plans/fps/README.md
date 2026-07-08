@@ -1,5 +1,12 @@
 # ASHFALL — FPS Showcase + Engine Upgrade Program
 
+> **STATUS: IMPLEMENTED (2026-07-07)** · Track E (engine, docs 01–10) and Track G (game, docs
+> 11–28) are both shipped. Track E eliminated every validated runtime constraint (see each doc's
+> banner + ENGINE_BUGS_FOUND.md). Track G is a complete, headless-tested campaign FPS at
+> `examples/games/ashfall/` (11 ctest probes, VM==native, demo-registered). See
+> [28-phasing-verification.md](28-phasing-verification.md) for the implementation summary and
+> deviations. Original plan preserved below.
+>
 > **STATUS: PLANNED (2026-07-07)** · Baseline: `3166d1dc2` · Owner docs: this directory.
 > Mission: take Viper 3D to a **Unity-tier quality bar** by (Track E) eliminating every validated
 > runtime limitation and (Track G) shipping ASHFALL — a ~28–30K-line single-player sci-fi campaign

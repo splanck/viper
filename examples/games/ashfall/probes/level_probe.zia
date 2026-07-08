@@ -1,0 +1,111 @@
+// =============================================================================
+// probes/level_probe.zia — P4 gate: level tech + 9 levels + hub (headless)
+// =============================================================================
+//
+// Boots each campaign level and asserts: it builds without a trap (geometry +
+// wave-0 enemies + objectives), a REACH objective completes and drives the game
+// to LEVEL_COMPLETE, placed pickups are collected and apply their effect, a
+// killed machine drops salvage into the pickup pool, and level builds are
+// deterministic. Each level uses a fresh boot (which also exercises unload of
+// the previous scene through the level manager).
+// =============================================================================
+module level_probe;
+
+bind Viper.Terminal as Terminal;
+bind "../config" as config;
+bind "../core/mathutil" as M;
+bind "../game" as game;
+
+func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
+
+func bootLevel(levelId: Integer, seed: Integer) -> game.Game {
+    var g = new game.Game();
+    g.initCore(seed);
+    g.setScripted(true);
+    g.setLevel(levelId);
+    g.boot(true, false);
+    return g;
+}
+
+func tick(g: game.Game) {
+    g.tickSim(config.FIXED_DT);
+    g.stepPhysics(config.FIXED_DT);
+}
+
+func start() {
+    // --- 1. Every campaign level + hub builds and ticks without a trap ------
+    var lv = config.LV_L1;
+    while lv <= config.LV_HUB {
+        var g = bootLevel(lv, 0x9000 + lv);
+        if g.getLevelMgr().levelName().Length == 0 { fail("level " + toString(lv) + " has no name"); return; }
+        if lv != config.LV_HUB {
+            if g.getEnemies().aliveCount() < 1 { fail("level " + toString(lv) + " spawned no enemies"); return; }
+        }
+        if g.getLevelMgr().getObjectives().count() < 1 { fail("level " + toString(lv) + " has no objectives"); return; }
+        g.devSetGod(true);
+        var t = 0;
+        while t < 30 { tick(g); t = t + 1; }   // must not trap
+        lv = lv + 1;
+    }
+
+    // --- 2. REACH objective completes -> LEVEL_COMPLETE ---------------------
+    // L3 is a single REACH objective at (0, -46). Place the player there.
+    var g3 = bootLevel(config.LV_L3, 0x9100);
+    g3.devSetGod(true);
+    g3.devSpawnPlayer(0.0, 0.2, -44.0);
+    var t2 = 0;
+    while g3.getState() != config.ST_LEVEL_COMPLETE && t2 < 120 { tick(g3); t2 = t2 + 1; }
+    if g3.getState() != config.ST_LEVEL_COMPLETE { fail("REACH objective did not complete the level"); return; }
+
+    // --- 3. Placed pickup collect applies its effect ------------------------
+    // L1 places a health pickup at (-4, 0, 20). Damage the player, then stand on it.
+    var g1 = bootLevel(config.LV_L1, 0x9200);
+    g1.devSetGod(false);
+    g1.devDamagePlayer(120.0);   // strip shield + bite health
+    var hpLow = g1.getPlayerHealth().getHealth();
+    g1.devSetGod(true);          // avoid dying to enemies during the walk-in
+    g1.devSpawnPlayer(-4.0, 0.2, 20.0);
+    var t3 = 0;
+    while t3 < 20 { tick(g1); t3 = t3 + 1; }
+    if g1.getPlayerHealth().getHealth() <= hpLow { fail("health pickup did not heal"); return; }
+
+    // --- 4. Killed machine drops salvage into the pool ----------------------
+    var g4 = bootLevel(config.LV_L1, 0x9300);
+    g4.devSetGod(true);
+    var enemies = g4.getEnemies();
+    // Aim + spray the Cycler at the nearest enemy until a kill registers.
+    g4.getWeapons().switchTo(config.W_CYCLER);
+    var pickupsBefore = g4.getPickups().activeCount();
+    var t4 = 0;
+    while enemies.killCountTotal() < 1 && t4 < 600 {
+        // Find a live enemy to aim at.
+        var target = -1;
+        var s = 0;
+        while s < config.POOL_AI {
+            if enemies.isAlive(s) { target = s; s = config.POOL_AI; }
+            s = s + 1;
+        }
+        if target >= 0 {
+            g4.scriptAimAt(enemies.posX(target), 1.0, enemies.posZ(target));
+            g4.scriptFire(true);
+        }
+        tick(g4);
+        t4 = t4 + 1;
+    }
+    g4.scriptFire(false);
+    if enemies.killCountTotal() < 1 { fail("could not kill an enemy in L1"); return; }
+    // A salvage drop should have entered the pool (net of any auto-collected).
+    var droppedOrCollected = g4.getPickups().activeCount() > pickupsBefore || g4.getPickups().getSalvage() > 0;
+    if droppedOrCollected == false { fail("kill produced no salvage drop"); return; }
+
+    // --- 5. Deterministic build --------------------------------------------
+    var da = bootLevel(config.LV_L4, 0x9400).getEnemies().aliveCount();
+    var db = bootLevel(config.LV_L4, 0x9400).getEnemies().aliveCount();
+    if da != db { fail("nondeterministic level build: " + toString(da) + " vs " + toString(db)); return; }
+
+    Terminal.Say("levelsBuilt=" + toString(config.LV_HUB - config.LV_L1 + 1) +
+                 " reachComplete=ok pickupHeal=ok salvage=" + toString(g4.getPickups().getSalvage()) +
+                 " l4enemies=" + toString(da));
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

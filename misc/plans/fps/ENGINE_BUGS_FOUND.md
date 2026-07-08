@@ -1,7 +1,8 @@
 # Viper/Zia Bugs Found & Fixed During Engine-Plan Implementation
 
-Running log for the Track E implementation (docs 01–10). Every entry was fixed
-at the root (no workarounds), with regression coverage where applicable.
+Running log for the ASHFALL implementation — Track E engine work (docs 01–10) and Track G
+game work (docs 11–28). Every entry was fixed at the root (no workarounds), with regression
+coverage where applicable. BUG-E13/E14 were found while building the game on the upgraded engine.
 
 ## Fixed
 
@@ -188,7 +189,57 @@ at the root (no workarounds), with regression coverage where applicable.
 - **Tests:** `zia_smoke_3dbowling_trajectory` (fails before, passes after — verified by
   reverting just this fix), `g3d_test_physics3d_ccd_toi`, `test_rt_physics3d` (760/760).
 
-## Resolved-as-already-fixed (stale bug notes updated)
+### BUG-E13 — Zia: `Json.ParseObject` returned bare `obj`, unusable as a Map without casting
+- **Found:** 2026-07-07 (ASHFALL Track G, save system: `readMap` returns `Json.ParseObject(text)`)
+- **Severity:** P2 API usability (same family as BUG-E9)
+- **Symptom:** assigning `Json.ParseObject(...)` to a `Map`-typed binding failed sema
+  (`expected Map[String, ?], got Viper.Text.Json`), and the parsed value could not reach the
+  `Map.GetIntOr`/`GetFloatOr` default-supplying accessors that graceful save recovery needs —
+  even though `ParseObject` returns a `Map` at runtime (its impl shares `rt_map_*`, and the
+  sibling `Json.NewObject` is literally `rt_map_new`).
+- **Root cause:** the `ParseObject` RT_FUNC and RT_METHOD were annotated `obj(str)`; the untyped
+  return got sema-typed as the declaring class `Viper.Text.Json`, not `Map`.
+- **Fix:** typed both to `obj<Viper.Collections.Map>(str)`, matching runtime reality and the
+  already-typed `NewObject`. Verified the apiaudit `json_demo` (passes the result to
+  `Json.TypeOf(obj)`) still checks clean. `ParseArray`/`Parse` left polymorphic intentionally.
+
+### BUG-E14 — Zia: physics query results returned bare `obj`, unusable from typed code
+- **Found:** 2026-07-07 (ASHFALL Track G, hitscan/damage pipeline)
+- **Severity:** P2 API usability (BUG-E9 family)
+- **Symptom:** `Physics3DWorld.Raycast`/`RaycastAll`/`OverlapSphere`, `PhysicsHit3D.get_Body/
+  get_Point/get_Normal`, and `PhysicsHitList3D.Get` all returned bare `obj`. A weapon system
+  that stores a `Physics3DBody` (for reference-equality target resolution) or reads a hit
+  `Vec3` point/normal could not: the values typed as `Any` and failed to bind to typed
+  parameters (`expected Viper.Graphics3D.Physics3DBody, got Any`), even though the runtime
+  hands back exactly those object types.
+- **Root cause:** the RT_FUNC/RT_METHOD/RT_PROP signatures were untyped `obj` (same gap as
+  BUG-E9/E13).
+- **Fix:** typed the query returns — `Raycast`/`SweepSphere` -> `obj<PhysicsHit3D>`,
+  `RaycastAll`/`OverlapSphere` -> `obj<PhysicsHitList3D>`, `PhysicsHitList3D.Get` ->
+  `obj<PhysicsHit3D>`, `PhysicsHit3D.Body` -> `obj<Physics3DBody>`, `Point`/`Normal` ->
+  `obj<Vec3>` (RT_FUNC + RT_METHOD + RT_PROP forms). Nullable-on-miss preserved (`obj<Class>`
+  reference types compare to null). Regression-verified: physics3d unit tests + the 3dbowling
+  raycast/overlap probes stay green.
+
+### BUG-E15 — Toolchain: concurrent native builds of one source collided on the intermediate `.o`
+- **Found:** 2026-07-07 (surfaced as a parallel-ctest failure of `native_run_zia_51_struct_return_abi_O2`
+  with `error: cannot open object file '.../51_struct_return_abi.o'`)
+- **Severity:** P2 build correctness under parallelism (intermittent CI/local flake)
+- **Symptom:** running `viper build src.zia -o outA` and `viper build src.zia -o outB` concurrently
+  (e.g. the `-O0`/`-O2` struct-return ABI test pair under `ctest -j`) intermittently failed —
+  both writes targeted the *same* intermediate object file next to the source, so one build
+  clobbered the other's `.o` mid-read/write.
+- **Root cause:** for a native-exe build the codegen pipelines derived the intermediate object
+  path from `input_il_path` (the source: `<stem>.o`) whenever the `-o` output was an executable
+  rather than a `.o` (`CodegenPipeline.cpp`, both aarch64 and x86_64). Two builds of the same
+  source share that path regardless of their distinct `-o` outputs.
+- **Fix:** when building an executable, derive the intermediate `.o` from the (unique) output
+  path instead of the shared source/IL path — `output.replace_extension(".o")`. Distinct `-o`
+  outputs now yield distinct intermediates. Verified: 8 concurrent parallel-build rounds with
+  0 races (previously intermittent), the ctest pair passes under `-j2`, and native_run (6/6) +
+  codegen (145/145) regress cleanly. Also stops polluting source trees with stray `.o` files.
+
+## Resolved-as-already-fixed (stale bug notes updated)## Resolved-as-already-fixed (stale bug notes updated)
 
 - **Aggregate-return miscompile (xenoscape)** — the codegen-side return-classification
   story no longer reproduces on any tested shape (HFA {f64×2}/{f64×4}, {i64,i64},

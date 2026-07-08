@@ -9,6 +9,7 @@ bind "../editor/quick_fixes";
 
 bind ZiaToolchain = Viper.Zia.Toolchain;
 bind BasicToolchain = Viper.Basic.LanguageService;
+bind Doc = Viper.Zia.Document;
 bind SemanticJob = Viper.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Seq = Viper.Collections.Seq;
@@ -206,7 +207,21 @@ class LiveDiagnostics {
         var qsource = zia_query.WrapForQuery(source);
         var lineOff = zia_query.LineOffset(source);
         CancelPendingJob();
-        var job = ZiaToolchain.BeginCheckForFile(qsource, sourcePath);
+
+        // When the buffer is already query-ready (has its own `module` line, so
+        // lineOff == 0), keep the language service's document mirror current with
+        // incremental edit deltas and run the check straight off the mirror — the
+        // full buffer text no longer crosses the ABI into the worker on each
+        // debounced check. Module-less buffers (lineOff == 1) still take the
+        // wrapped full-text path so the synthetic prefix and line un-shift apply.
+        var job: Any = null;
+        if lineOff == 0 {
+            engine.SyncActiveDocument(sourcePath);
+            job = Doc.BeginCheckForFile(sourcePath);
+        }
+        if job == null {
+            job = ZiaToolchain.BeginCheckForFile(qsource, sourcePath);
+        }
         if job != null {
             pendingJob = job;
             pendingJobRevision = revision;

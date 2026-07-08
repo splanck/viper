@@ -22,7 +22,7 @@ JSON parsing and formatting per ECMA-404/RFC 8259.
 | Method              | Signature           | Description                                      |
 |---------------------|---------------------|--------------------------------------------------|
 | `Parse(text)`       | `Object(String)`    | Parse JSON string into a value tree              |
-| `ParseObject(text)` | `Object(String)`    | Parse JSON, expecting an object (Map)            |
+| `ParseObject(text)` | `Map(String)`       | Parse JSON, expecting an object (returns a typed `Map`) |
 | `ParseArray(text)`  | `Object(String)`    | Parse JSON, expecting an array (Seq)             |
 | `Format(value)`     | `String(Object)`    | Format value as compact JSON string              |
 | `Stringify(value)`  | `String(Object)`    | Alias for `Format(value)`                        |

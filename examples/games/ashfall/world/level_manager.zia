@@ -1,0 +1,114 @@
+// =============================================================================
+// world/level_manager.zia — load/unload levels, wave progression, completion
+// =============================================================================
+//
+// Owns the active LevelBuilder + Objectives. load() tears down the previous
+// level, builds the requested one into the world, spawns wave 0 and the level's
+// pickups, and resets objective baselines. update() advances objectives, spawns
+// the next enemy wave once the current one is cleared, and reports completion so
+// the game state machine can advance to LEVEL_COMPLETE.
+// =============================================================================
+module level_manager;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind "../config" as config;
+bind "../core/events" as events;
+bind "./level_base" as level_base;
+bind "./objectives" as objectives;
+bind "./levels" as levels;
+bind "./pickups" as pickups;
+bind "../ai/ai_core" as ai_core;
+
+class LevelManager {
+    hide Game3D.World3D world;
+    hide G3D.Canvas3D canvas;
+    hide G3D.Physics3DWorld phys;
+    hide ai_core.EnemyManager enemies;
+    hide pickups.Pickups pickupSys;
+    hide events.EventBus bus;
+    hide level_base.LevelBuilder lb;
+    hide objectives.Objectives obj;
+    hide Integer currentLevel;
+    hide Integer currentWave;
+    hide Float waveDelay;
+    hide Boolean loaded;
+
+    expose func init() {
+        lb = new level_base.LevelBuilder();
+        obj = new objectives.Objectives();
+        currentLevel = config.LV_L1;
+        currentWave = 0;
+        waveDelay = 0.0;
+        loaded = false;
+    }
+
+    expose func setup(w: Game3D.World3D, c: G3D.Canvas3D, p: G3D.Physics3DWorld,
+                      en: ai_core.EnemyManager, pk: pickups.Pickups, bus0: events.EventBus) {
+        world = w; canvas = c; phys = p; enemies = en; pickupSys = pk; bus = bus0;
+    }
+
+    expose func getObjectives() -> objectives.Objectives { return obj; }
+    expose func getBuilder() -> level_base.LevelBuilder { return lb; }
+    expose func levelName() -> String { return lb.getName(); }
+    expose func startX() -> Float { return lb.startXv(); }
+    expose func startY() -> Float { return lb.startYv(); }
+    expose func startZ() -> Float { return lb.startZv(); }
+    expose func startYaw() -> Float { return lb.startYawv(); }
+    expose func isComplete() -> Boolean { return loaded && obj.allRequiredDone(); }
+    expose func currentLevelId() -> Integer { return currentLevel; }
+
+    expose func load(levelId: Integer) {
+        if loaded { lb.unload(world, phys); }
+        enemies.clearAll();
+        pickupSys.clear();
+        currentLevel = levelId;
+        levels.build(levelId, lb, obj);
+        lb.build(world, phys, canvas);
+        // Wave 0 enemies + all pickups.
+        spawnWave(0);
+        var i = 0;
+        while i < lb.pickupCount() {
+            pickupSys.spawn(lb.pickupKindAt(i), lb.pickupXat(i), lb.pickupYat(i),
+                            lb.pickupZat(i), lb.pickupAmtAt(i));
+            i = i + 1;
+        }
+        obj.setKillBaseline(enemies.killCountTotal());
+        currentWave = 0;
+        waveDelay = 0.0;
+        loaded = true;
+    }
+
+    hide func spawnWave(wave: Integer) {
+        var i = 0;
+        while i < lb.spawnCount() {
+            if lb.spawnWaveAt(i) == wave {
+                enemies.spawn(lb.spawnArchAt(i), lb.spawnXat(i), lb.spawnZat(i));
+            }
+            i = i + 1;
+        }
+    }
+
+    expose func update(dt: Float, px: Float, pz: Float) {
+        if loaded == false { return; }
+        obj.update(dt, px, pz, enemies.killCountTotal(), enemies.aliveCount(), bus);
+        // Wave progression: when the field clears, stage the next wave.
+        if currentWave < lb.waveTotal() - 1 {
+            if enemies.aliveCount() == 0 {
+                waveDelay = waveDelay + dt;
+                if waveDelay > 1.5 {
+                    currentWave = currentWave + 1;
+                    spawnWave(currentWave);
+                    waveDelay = 0.0;
+                }
+            } else {
+                waveDelay = 0.0;
+            }
+        }
+    }
+
+    // The player interacted at (px, pz): advance ACTIVATE objectives.
+    expose func onInteract(px: Float, pz: Float) {
+        obj.markInteract(px, pz);
+    }
+}

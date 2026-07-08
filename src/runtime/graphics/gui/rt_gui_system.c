@@ -1016,6 +1016,30 @@ int64_t rt_app_is_focused(void *app) {
     return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
 }
 
+/// @brief Count of frames that took the full-window repaint path (plan 07).
+int64_t rt_app_get_paint_frames_full(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    return gui_app ? (int64_t)gui_app->frames_full : 0;
+}
+
+/// @brief Count of frames that took the damage-region (partial) repaint path.
+int64_t rt_app_get_paint_frames_partial(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    return gui_app ? (int64_t)gui_app->frames_partial : 0;
+}
+
+/// @brief Enable or disable damage-region rendering at runtime (kill switch).
+/// @details Complements the VIPER_GUI_FULL_REPAINT=1 env var. Passing 0 forces
+///          every dirty frame through the full-window repaint path.
+void rt_app_set_partial_paint(void *app, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (gui_app)
+        gui_app->partial_paint_enabled = (enabled != 0) ? 1 : 0;
+}
+
 /// @brief Control whether the OS close button is allowed to close the window.
 /// @details When `prevent` is non-zero the platform close request is intercepted
 ///          and `rt_app_was_close_requested` returns 1 instead, letting the app
@@ -1386,6 +1410,24 @@ void rt_app_focus(void *app) {
 int64_t rt_app_is_focused(void *app) {
     (void)app;
     return 0;
+}
+
+/// @brief Stub: graphics disabled — no frames are ever painted.
+int64_t rt_app_get_paint_frames_full(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no frames are ever painted.
+int64_t rt_app_get_paint_frames_partial(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no-op; there is no render path to toggle.
+void rt_app_set_partial_paint(void *app, int64_t enabled) {
+    (void)app;
+    (void)enabled;
 }
 
 /// @brief Stub: graphics disabled — no-op; no window close event can be intercepted.
