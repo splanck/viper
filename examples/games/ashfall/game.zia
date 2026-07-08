@@ -32,16 +32,27 @@ bind "./player/camera_rig" as camera_rig;
 bind "./player/viewmodel" as viewmodel;
 bind "./player/health" as health;
 bind "./world/arena" as arena;
+bind "./world/level_env" as level_env;
+bind "./fx/sky" as sky;
+bind "./fx/lighting" as lighting;
+bind "./assets/textures" as textures;
+bind "./assets/registry" as registry;
+bind "./assets/enemy_models" as enemy_models;
 bind "./world/pickups" as pickups;
 bind "./world/level_manager" as level_manager;
+bind "./world/objectives" as objectives;
 bind "./weapons/weapon_defs" as weapon_defs;
 bind "./weapons/targets" as targets;
 bind "./weapons/ballistics" as ballistics;
 bind "./weapons/projectiles" as projectiles;
 bind "./weapons/weapon_base" as weapon_base;
+bind "./weapons/weapon_models" as weapon_models;
 bind "./ai/enemy_defs" as enemy_defs;
 bind "./ai/ai_core" as ai_core;
 bind "./ui/hud" as hud;
+bind "./ui/menu" as menu;
+bind "./ui/cinematics" as cinematics;
+bind Viper.Input.Key as Key;
 bind "./fx/effects" as effects;
 bind "./fx/postfx" as postfx;
 bind "./audio/mix" as mix;
@@ -79,6 +90,7 @@ class Game {
     hide ballistics.Ballistics ball;
     hide projectiles.Projectiles proj;
     hide weapon_base.WeaponController weapons;
+    hide weapon_models.WeaponModels weaponVis;
     hide G3D.Mesh3D projMesh;
     hide G3D.Material3D projMat;
 
@@ -93,8 +105,20 @@ class Game {
 
     // --- UI / FX / audio / meta ----------------------------------------------
     hide hud.Hud hudSys;
+    hide menu.MenuSystem menuSys;
+    hide cinematics.Cinematics cine;
+    hide Integer menuStateSeen;      // last ST_* the menu layer was told about
+    hide String lastDamagerName;
+    hide String bossName; hide Float bossFrac; hide Integer bossPhase;
     hide effects.Effects fx;
     hide postfx.PostFX postfxSys;
+    hide level_env.LevelEnv env;
+    hide sky.SkyFactory skyFactory;
+    hide lighting.LightRig lightRig;
+    hide textures.TextureLib texLib;
+    hide registry.AssetRegistry assetReg;
+    hide enemy_models.EnemyModels models;
+    hide Float clearR; hide Float clearG; hide Float clearB;
     hide mix.Mixer mixer;
     hide economy.Economy econ;
     hide difficulty.Difficulty diffSys;
@@ -136,15 +160,28 @@ class Game {
         ball = new ballistics.Ballistics();
         proj = new projectiles.Projectiles();
         weapons = new weapon_base.WeaponController();
+        weaponVis = new weapon_models.WeaponModels();
         playerHealth = new health.PlayerHealth();
         edefs = new enemy_defs.EnemyDefs();
         enemies = new ai_core.EnemyManager();
         pickupSys = new pickups.Pickups();
         levelMgr = new level_manager.LevelManager();
         hudSys = new hud.Hud();
+        menuSys = new menu.MenuSystem();
+        cine = new cinematics.Cinematics();
+        menuStateSeen = -1;
+        lastDamagerName = "";
+        bossName = ""; bossFrac = 0.0; bossPhase = 0;
         fx = new effects.Effects();
         postfxSys = new postfx.PostFX();
         mixer = new mix.Mixer();
+        env = new level_env.LevelEnv();
+        skyFactory = new sky.SkyFactory();
+        lightRig = new lighting.LightRig();
+        texLib = new textures.TextureLib();
+        assetReg = new registry.AssetRegistry();
+        models = new enemy_models.EnemyModels();
+        clearR = config.CLEAR_R; clearG = config.CLEAR_G; clearB = config.CLEAR_B;
         econ = new economy.Economy();
         diffSys = new difficulty.Difficulty();
         score = new scoring.Scoring();
@@ -284,46 +321,125 @@ class Game {
         ball.setup(phys, bus, targetReg, rngs.getSpread());
         proj.setup(phys, bus, ball, targetReg);
         weapons.setup(wdefs, ball, proj, camRig, vm, bus, rngs.getSpread());
+        weaponVis.setup(texLib, assetReg);
         projMesh = G3D.Mesh3D.Sphere(0.08, 6);
         projMat = G3D.Material3D.NewColor(1.0, 0.8, 0.3);
         giveStartingLoadout();
 
         // Combatants + world systems.
         edefs.setup();
-        enemies.setup(world, edefs, targetReg, ball, bus, rngs.getAi());
+        assetReg.setup();
+        assetReg.setEnabled(hl == false);
+        models.setup(world, texLib, assetReg, config.POOL_AI);
+        enemies.setup(world, edefs, targetReg, ball, bus, rngs.getAi(), models);
         pickupSys.setup(world, bus, playerHealth);
-        levelMgr.setup(world, canvas, phys, enemies, pickupSys, bus);
+        levelMgr.setup(world, canvas, phys, enemies, pickupSys, bus, texLib);
         playerHealth.reset();
+
+        // Environment systems (env table, sky, light rig, texture library).
+        env.setup();
+        skyFactory.setup(env, headless);
+        lightRig.setup(env, world, canvas, headless, rngs.getCosmetic());
+        texLib.setup(headless);
 
         // UI / FX / audio / meta.
         fx.setup();
         econ.setup();
         mixer.setup(headless);
         enemies.setHealthScale(diffSys.enemyHealthScale());
-        if headless == false { postfxSys.setup(canvas); }
+        if headless == false { postfxSys.setup(canvas, postfx.TIER_BALANCED); }
 
         if save.isReady() == false { save.setupDefault(); }
+        menuSys.setup(save);
+        applySettings();
         graphicsUp = true;
 
         // Build the initial scene: the standing arena (dev/probes) or a campaign level.
         if currentLevel == config.LV_ARENA {
-            arenaMap.setup(world);
+            prepareLevelMaterials(config.LV_ARENA);
+            arenaMap.setup(world, texLib);
             arenaMap.registerTargets(targetReg);
+            applyEnvironment(config.LV_ARENA);
             spawnIntoArena();
         } else {
             loadCampaignLevel(currentLevel);
         }
     }
 
+    // Push the persisted/edited options into the live subsystems.
+    hide func applySettings() {
+        camRig.setSensitivity(menuSys.sensValue());
+        camRig.setFovBase(menuSys.fovValue());
+        camRig.setInvertY(menuSys.invertYOn());
+        camRig.setShakeScale(menuSys.shakeValue());
+        mixer.setMasterVolume(M.roundi(menuSys.volumeValue() * 100.0));
+        if headless == false {
+            lightRig.applyShadowTier(menuSys.qualityTier());
+            var tier = postfx.TIER_BALANCED;
+            if menuSys.qualityTier() == 0 { tier = postfx.TIER_PERFORMANCE; }
+            if menuSys.qualityTier() == 2 { tier = postfx.TIER_CINEMATIC; }
+            postfxSys.setup(canvas, tier);
+        }
+    }
+
+    // Point the texture library at a level's accent hue + sky env map. Must run
+    // BEFORE the level builder so its materials resolve in the new context.
+    hide func prepareLevelMaterials(l: Integer) {
+        texLib.setLevelContext(env.accentR(l), env.accentG(l), env.accentB(l),
+                               skyFactory.build(l));
+    }
+
+    // Install a level's full environment: skybox, light rig, fog, clear color,
+    // ambient atmosphere. Runs AFTER the level builder (practicals at slots 8+).
+    hide func applyEnvironment(l: Integer) {
+        G3D.Canvas3D.SetSkybox(canvas, skyFactory.build(l));
+        lightRig.applyRig(l);
+        clearR = env.horizonR(l); clearG = env.horizonG(l); clearB = env.horizonB(l);
+        if headless == false {
+            var count = 128;
+            if menuSys.qualityTier() == 0 { count = 48; }
+            if menuSys.qualityTier() == 2 { count = 192; }
+            fx.ambientSetup(env.atmoKind(l), count);
+        }
+    }
+
     // Load a campaign level: build it, spawn the player at its start, reset combat.
     expose func loadCampaignLevel(id: Integer) {
         currentLevel = id;
+        prepareLevelMaterials(id);
         levelMgr.load(id);
+        applyEnvironment(id);
         player.spawn(levelMgr.startX(), levelMgr.startY(), levelMgr.startZ());
         camRig.setYaw(levelMgr.startYaw());
         playerHealth.reset();
         forceState(config.ST_PLAYING);
         applyPending();
+    }
+
+    // Interactive frontend entry (main.zia only; probes boot straight to PLAYING).
+    expose func enterTitle() {
+        // Vista backdrop: L1 built empty (no combatants) behind the logotype.
+        prepareLevelMaterials(config.LV_L1);
+        levelMgr.load(config.LV_L1);
+        applyEnvironment(config.LV_L1);
+        enemies.clearAll();
+        pickupSys.clear();
+        currentLevel = config.LV_L1;
+        menuSys.enterTitle(save.hasCheckpoint());
+        forceState(config.ST_TITLE);
+        applyPending();
+    }
+
+    // Menu-driven level start: load, then fly the intro in from the vantage.
+    hide func startLevelFromMenu(id: Integer) {
+        loadCampaignLevel(id);
+        score.beginLevel(180, 0);
+        var vx = levelMgr.startX() + env.vantageX(id);
+        var vy = levelMgr.startY() + env.vantageY(id);
+        var vz = levelMgr.startZ() + env.vantageZ(id);
+        cine.startIntro(vx, vy, vz,
+                        player.getX(), player.getFeetY() + 1.62, player.getZ(),
+                        levelMgr.startYaw(), levelMgr.levelName());
     }
 
     hide func giveStartingLoadout() {
@@ -354,6 +470,37 @@ class Game {
     }
     expose func devSetGod(v: Boolean) { playerHealth.setGod(v); }
     expose func devKillAllEnemies() { enemies.devKillAll(); }
+    // Force the downloaded-asset registry on (assets probe; headless boots
+    // default it off).
+    expose func devForceAssets(v: Boolean) { assetReg.devForceAssets(v); }
+    expose func devAssetsLoaded() -> Integer { return assetReg.getLoadedCount(); }
+    // Menu-probe hooks: drive the frontend headless (no key input source).
+    expose func devSetSaveDir(dir: String) { save.setup(dir); }
+    expose func devMenuNav(down: Boolean) {
+        var cmd = menuSys.update(0.016, down == false, down, false, false, false, false);
+        runMenuCommand(cmd);
+    }
+    expose func devMenuAdjust(right: Boolean) {
+        var cmd = menuSys.update(0.016, false, false, right == false, right, false, false);
+        runMenuCommand(cmd);
+    }
+    expose func devMenuConfirm() {
+        var cmd = menuSys.update(0.016, false, false, false, false, true, false);
+        runMenuCommand(cmd);
+    }
+    expose func devMenuBack() {
+        var cmd = menuSys.update(0.016, false, false, false, false, false, true);
+        runMenuCommand(cmd);
+    }
+    expose func devMenuCtx() -> Integer { return menuSys.currentCtx(); }
+    expose func devMenuSub() -> Integer { return menuSys.currentSub(); }
+    expose func devMenuFov() -> Float { return menuSys.fovValue(); }
+    expose func devCurrentLevel() -> Integer { return currentLevel; }
+    expose func devGiveWeapon(w: Integer) { weapons.give(w); }
+    expose func devSwitchWeapon(w: Integer) { weapons.switchTo(w); }
+    expose func devKillPlayer() {
+        bus.push(config.EV_DAMAGE, config.TGT_PLAYER, 0, config.REGION_BODY, 10000.0, 0.0, 0.0);
+    }
     expose func devInteract() { if currentLevel != config.LV_ARENA { levelMgr.onInteract(player.getX(), player.getZ()); } }
 
     expose func devDamagePlayer(amt: Float) { playerHealth.applyDamage(amt, 0.0); }
@@ -411,19 +558,56 @@ class Game {
         var i = 0;
         while i < n {
             var k = bus.kindAt(i);
-            if k == config.EV_GUNSHOT && bus.bAt(i) >= 18 {
-                fx.muzzle(bus.xAt(i), bus.yAt(i) + 1.2, bus.zAt(i));
+            if k == config.EV_GUNSHOT {
+                gunshotFeedback(bus.aAt(i), bus.bAt(i), bus.xAt(i), bus.yAt(i), bus.zAt(i));
             } else if k == config.EV_EXPLOSION {
                 fx.explosion(bus.xAt(i), bus.yAt(i), bus.zAt(i), bus.bAt(i) + 0.0);
+                lightRig.pulse(bus.xAt(i), bus.yAt(i) + 0.5, bus.zAt(i),
+                               1.6, 0.9, 0.35, (bus.bAt(i) + 0.0) * 2.0, 0.25);
             } else if k == config.EV_HITMARKER {
                 hudSys.pulseHitmarker();
             } else if k == config.EV_KILL {
                 score.addKill();
+                hudSys.pushKill(edefs.nameOf(bus.bAt(i)));
             } else if k == config.EV_DAMAGE && bus.aAt(i) == config.TGT_PLAYER {
                 hudSys.pulseDamage();
+                hudSys.pulseDamageDir(bus.yAt(i) - camRig.getYaw());
                 score.addDamage(M.roundi(bus.xAt(i)));
+                var slot = bus.bAt(i);
+                if slot >= 0 && slot < config.POOL_AI {
+                    var da = enemies.archOf(slot);
+                    if da >= 0 { lastDamagerName = "killed by " + edefs.nameOf(da); }
+                }
             }
             i = i + 1;
+        }
+    }
+
+    // A shot's visual feedback: colored muzzle flash + reserved light pulse at
+    // the muzzle, a tracer to the ray's real endpoint, and an impact + scorch on
+    // solid hits. (ox,oy,oz) is the eye; the muzzle sits forward-right-below.
+    hide func gunshotFeedback(w: Integer, loudness: Integer, ox: Float, oy: Float, oz: Float) {
+        var fxx = camRig.forwardX(); var fxy = camRig.forwardY(); var fxz = camRig.forwardZ();
+        var rx = 0.0 - fxz; var rz = fxx;
+        var mx = ox + fxx * 0.5 + rx * 0.13;
+        var my = oy + fxy * 0.5 - 0.12;
+        var mz = oz + fxz * 0.5 + rz * 0.13;
+        var cr = weapon_models.flashR(w);
+        var cg = weapon_models.flashG(w);
+        var cb = weapon_models.flashB(w);
+        fx.muzzleColored(mx, my, mz, cr, cg, cb);
+        if loudness >= 18 {
+            lightRig.pulse(mx, my, mz, cr * 1.6, cg * 1.6, cb * 1.6, 7.0, 0.08);
+        }
+        // Hitscan visuals: tracer to the traced endpoint + impact on solids.
+        if wdefs.isProjectile(w) == false {
+            fx.tracer(mx, my, mz, ball.lastEndX(), ball.lastEndY(), ball.lastEndZ(),
+                      cr, cg, cb, weapon_models.tracerTtl(w));
+            if ball.lastHitSolid() {
+                fx.impact(ball.lastEndX(), ball.lastEndY(), ball.lastEndZ());
+                fx.scorch(ball.lastEndX(), ball.lastEndY(), ball.lastEndZ(),
+                          ball.lastNormalX(), ball.lastNormalY(), ball.lastNormalZ());
+            }
         }
     }
 
@@ -451,7 +635,23 @@ class Game {
         tickCount = tickCount + 1;
         playTime = playTime + dt;
 
+        cine.update(dt);
+        if state != config.ST_PLAYING {
+            tickMenus(dt);
+        }
         if state == config.ST_PLAYING {
+            if cine.isIntroActive() && headless == false {
+                // Intro flight: the world simulates visuals only; input waits.
+                lightRig.update(dt);
+                levelMgr.updateProps(dt);
+                fx.update(dt);
+                hudSys.tick(dt);
+                if introSkipPressed() { cine.skipIntro(); }
+                updateDiag();
+                diag.checkBudgets();
+                bus.drain();
+                return;
+            }
             gatherInput();
             camRig.applyLook(inLookDX, inLookDY);
             player.update(dt, inMoveX, inMoveZ, inJump, inCrouch, inSprint, camRig.getYaw(), bus);
@@ -496,6 +696,11 @@ class Game {
             }
 
             // Feedback: fx / hitmarkers / audio / scoring from the frame's events.
+            lightRig.update(dt);
+            levelMgr.updateProps(dt);
+            fx.ambientTrack(player.getX(), player.getFeetY(), player.getZ());
+            scanBoss();
+            if currentLevel == config.LV_L9 { lightRig.setHelixPhase(bossPhase); }
             drainFeedbackEvents();
             mixer.update(dt, bus, false, enemies.aliveCount() > 0);
             score.tick(dt);
@@ -506,6 +711,145 @@ class Game {
         updateDiag();
         diag.checkBudgets();
         bus.drain();
+    }
+
+    // --- Frontend state handling ------------------------------------------------
+    hide func introSkipPressed() -> Boolean {
+        if headless { return false; }
+        return input.Pressed(Key.get_Enter()) || input.Pressed(Key.get_Space()) ||
+               input.MousePressed(0);
+    }
+
+    // Tell the menu layer about a state it hasn't seen, gather nav input, and
+    // execute whatever command the menu returns.
+    hide func tickMenus(dt: Float) {
+        if state != menuStateSeen {
+            menuStateSeen = state;
+            if state == config.ST_PAUSED { menuSys.enterPause(); }
+            else if state == config.ST_DEATH {
+                score.addDeath();
+                menuSys.enterDeath(lastDamagerName);
+            } else if state == config.ST_LEVEL_COMPLETE { enterCompleteMenu(); }
+            else if state == config.ST_CREDITS { menuSys.enterCredits(); }
+        }
+        // Title vista + world dressing keep animating behind the menus.
+        if state == config.ST_TITLE || state == config.ST_CREDITS {
+            lightRig.update(dt);
+            levelMgr.updateProps(dt);
+            fx.update(dt);
+        }
+        var up = false; var down = false; var left = false; var right = false;
+        var confirm = false; var back = false;
+        if headless == false {
+            up = input.Pressed(Key.get_W()) || input.Pressed(Key.get_Up());
+            down = input.Pressed(Key.get_S()) || input.Pressed(Key.get_Down());
+            left = input.Pressed(Key.get_A()) || input.Pressed(Key.get_Left());
+            right = input.Pressed(Key.get_D()) || input.Pressed(Key.get_Right());
+            confirm = input.Pressed(Key.get_Enter()) || input.Pressed(Key.get_Space());
+            back = input.Pressed(Key.get_Escape());
+        }
+        var cmd = menuSys.update(dt, up, down, left, right, confirm, back);
+        runMenuCommand(cmd);
+    }
+
+    hide func enterCompleteMenu() {
+        var lines: List[String] = [];
+        lines.Add("TIME      " + S.intStr(M.roundi(score.getLevelTime())) + "s");
+        lines.Add("KILLS     " + S.intStr(score.getKills()));
+        var shots = ball.getShotsFired();
+        var acc = 0;
+        if shots > 0 { acc = ball.getHitsLanded() * 100 / shots; }
+        lines.Add("ACCURACY  " + S.intStr(acc) + "%");
+        lines.Add("SALVAGE   " + S.intStr(econ.available()));
+        var medalTxt = "";
+        var md = score.medal();
+        if md >= 3 { medalTxt = "MEDAL: ASHBORN"; }
+        else if md == 2 { medalTxt = "MEDAL: GOLD"; }
+        else if md == 1 { medalTxt = "MEDAL: SILVER"; }
+        else { medalTxt = "MEDAL: BRONZE"; }
+        menuSys.enterComplete(lines, medalTxt);
+    }
+
+    hide func runMenuCommand(cmd: Integer) {
+        if cmd == menu.CMD_NONE { return; }
+        if cmd == menu.CMD_SETTINGS_CHANGED { applySettings(); return; }
+        if cmd == menu.CMD_NEW_GAME || cmd == menu.CMD_CONTINUE {
+            forceState(config.ST_LOADING);
+            applyPending();
+            startLevelFromMenu(config.LV_L1);
+            return;
+        }
+        if cmd == menu.CMD_LOAD_LEVEL {
+            var id = menuSys.selectedLevelId();
+            if id == config.LV_ARENA {
+                currentLevel = config.LV_ARENA;
+                arenaMap.setup(world, texLib);
+                arenaMap.registerTargets(targetReg);
+                applyEnvironment(config.LV_ARENA);
+                spawnIntoArena();
+                forceState(config.ST_PLAYING);
+                applyPending();
+                return;
+            }
+            forceState(config.ST_LOADING);
+            applyPending();
+            startLevelFromMenu(id);
+            return;
+        }
+        if cmd == menu.CMD_RESUME { forceState(config.ST_PLAYING); return; }
+        if cmd == menu.CMD_RESTART {
+            forceState(config.ST_LOADING);
+            applyPending();
+            startLevelFromMenu(currentLevel);
+            return;
+        }
+        if cmd == menu.CMD_REPLAY {
+            forceState(config.ST_LOADING);
+            applyPending();
+            startLevelFromMenu(currentLevel);
+            return;
+        }
+        if cmd == menu.CMD_NEXT_LEVEL {
+            var next = currentLevel + 1;
+            if currentLevel >= config.LV_L9 {
+                menuSys.enterCredits();
+                forceState(config.ST_CREDITS);
+                return;
+            }
+            forceState(config.ST_LOADING);
+            applyPending();
+            startLevelFromMenu(next);
+            return;
+        }
+        if cmd == menu.CMD_QUIT_TITLE {
+            enterTitle();
+            return;
+        }
+        if cmd == menu.CMD_CREDITS_DONE {
+            enterTitle();
+            return;
+        }
+        if cmd == menu.CMD_QUIT_APP { running = false; return; }
+    }
+
+    // Track the first live boss (HUD bar + L9 phase lighting read this).
+    hide func scanBoss() {
+        bossName = "";
+        bossFrac = 0.0;
+        var bi = 0;
+        while bi < config.POOL_AI {
+            if enemies.isAlive(bi) && edefs.isBoss(enemies.archOf(bi)) {
+                var ba = enemies.archOf(bi);
+                bossName = edefs.nameOf(ba);
+                var mx = edefs.hpOf(ba);
+                if mx > 0.5 { bossFrac = enemies.healthOf(bi) / mx; }
+                bossPhase = 0;
+                if bossFrac < 0.66 { bossPhase = 1; }
+                if bossFrac < 0.33 { bossPhase = 2; }
+                return;
+            }
+            bi = bi + 1;
+        }
     }
 
     // Step the physics world one fixed increment (called after tickSim).
@@ -520,15 +864,35 @@ class Game {
     // --- Render (manual scene + overlay) -------------------------------------
     hide func render(alpha: Float) {
         world.BeginFrame();
-        G3D.Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
-        camRig.applyToCamera(camera, alpha);
+        G3D.Canvas3D.Clear(canvas, clearR, clearG, clearB);
+        if state == config.ST_TITLE || state == config.ST_CREDITS {
+            cine.applyOrbit(camera, 0.0, 0.0, -6.0, 34.0, 13.0);
+        } else if cine.isIntroActive() {
+            cine.applyIntroCamera(camera);
+        } else {
+            camRig.applyToCamera(camera, alpha);
+        }
+        // Exterior terrain first (visual backdrop; playfield colliders are slabs).
+        if levelMgr.hasTerrain() {
+            G3D.Canvas3D.DrawTerrainAt(canvas, levelMgr.terrainObj(),
+                                       levelMgr.terrainOffX(), levelMgr.terrainOffY(),
+                                       levelMgr.terrainOffZ());
+        }
         world.DrawScene();
+        levelMgr.drawProps();
         if proj.activeProjectiles() > 0 {
             proj.draw(canvas, projMesh, projMat);
         }
         fx.draw(canvas, camera);
+        if levelMgr.hasWater() { G3D.Canvas3D.DrawWater(canvas, levelMgr.waterObj(), camera); }
         world.DrawEffects();
+        lightRig.drawFlare();
         world.EndScene();
+        // First-person weapon (independent-FOV pass; never clips the world).
+        if (state == config.ST_PLAYING || state == config.ST_PAUSED) &&
+           cine.isIntroActive() == false {
+            weaponVis.drawViewModel(canvas, camera, camRig, vm, weapons);
+        }
         G3D.Canvas3D.BeginOverlay(canvas);
         drawHud();
         G3D.Canvas3D.EndOverlay(canvas);
@@ -538,20 +902,45 @@ class Game {
         var w = config.WINDOW_WIDTH;
         var h = config.WINDOW_HEIGHT;
         var campaign = currentLevel != config.LV_ARENA;
-        if state == config.ST_PLAYING {
+        if state == config.ST_PLAYING && cine.isIntroActive() == false {
+            // Compass bearing toward the active positional objective.
+            var objBearing = 0.0;
+            var hasMarker = false;
+            if campaign {
+                var obj = levelMgr.getObjectives();
+                var oi = obj.activeIndex();
+                if oi >= 0 {
+                    var k = obj.kindOf(oi);
+                    if k == objectives.OBJ_REACH || k == objectives.OBJ_ACTIVATE {
+                        var dx = obj.txAt(oi) - player.getX();
+                        var dz = obj.tzAt(oi) - player.getZ();
+                        objBearing = M.toDeg(Math.Atan2(dx, 0.0 - dz));
+                        hasMarker = true;
+                    }
+                }
+            }
             hudSys.draw(canvas, w, h, playerHealth, weapons, levelMgr.getObjectives(),
-                        enemies.maxAwareness(), campaign);
+                        enemies.maxAwareness(), campaign, camRig.getYaw(),
+                        objBearing, hasMarker, bossName, bossFrac);
         }
         if diag.isEnabled() {
             G3D.Canvas3D.DrawText2D(canvas, 8, 8, diag.line1(), 0xFFFFFF);
             G3D.Canvas3D.DrawText2D(canvas, 8, 22, diag.line2(), 0xFFFFFF);
             G3D.Canvas3D.DrawText2D(canvas, 8, 36, diag.line3(), 0xFFFFFF);
         }
-        if state == config.ST_PAUSED { hudSys.banner(canvas, w, h, "PAUSED", 0xFFD060); }
-        else if state == config.ST_DEATH { hudSys.banner(canvas, w, h, "YOU DIED", 0xFF4040); }
-        else if state == config.ST_LEVEL_COMPLETE {
-            hudSys.banner(canvas, w, h, "LEVEL COMPLETE", 0x40FF80);
+        // Frontend screens.
+        if state == config.ST_TITLE || state == config.ST_PAUSED ||
+           state == config.ST_DEATH || state == config.ST_LEVEL_COMPLETE ||
+           state == config.ST_CREDITS {
+            menuSys.draw(canvas, w, h);
+        } else if state == config.ST_LOADING {
+            menuSys.drawLoading(canvas, w, h, currentLevel);
         }
+        // L6 lightning strobe: a brief full-screen sky flash.
+        var sa = lightRig.strobeOverlayAlpha();
+        if sa > 0.01 { G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, 0, w, h, 0xE8F0FF, sa); }
+        // Cinematic bars + fades sit on top of everything.
+        cine.drawOverlay(canvas, w, h);
     }
 
     expose func getEconomy() -> economy.Economy { return econ; }
@@ -598,7 +987,7 @@ class Game {
     // Probe helper: run one full render frame (scene + fx + HUD + present),
     // exercising the render pipeline headless. Optionally enable post-FX first.
     expose func devEnablePostfx() {
-        if graphicsUp { postfxSys.setup(canvas); }
+        if graphicsUp { postfxSys.setup(canvas, postfx.TIER_BALANCED); }
     }
     expose func devRenderFrame() {
         if graphicsUp == false { return; }

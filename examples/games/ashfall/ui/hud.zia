@@ -2,14 +2,18 @@
 // ui/hud.zia — the combat HUD (drawn in the overlay pass)
 // =============================================================================
 //
-// Draws health/shield/armor, ammo, the active weapon, crosshair + hitmarker,
-// the current objective, a detection indicator, and damage-direction/low-health
-// flashes. Takes its data as explicit subsystem refs so it never binds `game`
-// (which would be circular). All numbers are precomposed strings (no %f).
+// The full in-run readout: segmented shield/health/armor bars with damage-lag
+// ghosts, ammo + reload progress + low-ammo pulse, a compass strip with the
+// objective diamond, per-weapon crosshair pips that open with spread bloom,
+// hitmarkers, 8-way directional damage wedges, a detection eye, a boss bar
+// with plate ticks, and a kill feed. Takes subsystem refs explicitly so it
+// never binds `game` (which would be circular). AA text throughout; anchors
+// scale from the passed w/h (1600x900 reference).
 // =============================================================================
 module hud;
 
 bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../core/strings" as S;
@@ -17,7 +21,7 @@ bind "../player/health" as health;
 bind "../weapons/weapon_base" as weapon_base;
 bind "../world/objectives" as objectives;
 
-var COL_WHITE: Integer = 0xFFFFFF;
+var COL_WHITE: Integer = 0xE8E8F0;
 var COL_HEALTH: Integer = 0x40D060;
 var COL_SHIELD: Integer = 0x4090FF;
 var COL_ARMOR: Integer = 0xC0C0D0;
@@ -25,22 +29,99 @@ var COL_AMMO: Integer = 0xF0D040;
 var COL_OBJ: Integer = 0xFFD060;
 var COL_DETECT: Integer = 0xFF5030;
 var COL_BACK: Integer = 0x101018;
+var COL_GHOST: Integer = 0xB03030;
+var HUD_ACCENT: Integer = 0xFFA850;
+
+var COL_DIMTICK: Integer = 0x707888;
+var WEDGES: Integer = 8;
+var FEED: Integer = 4;
 
 class Hud {
     hide Float hitmarkerT;
     hide Float damageFlashT;
+    hide Float animT;
+    // Damage-lag ghost bars (display fraction chases the real one).
+    hide Float ghostHealth;
+    hide Float ghostShield;
+    // 8-way damage wedges (ttl per sector).
+    hide List[Float] wedgeT;
+    // Kill feed.
+    hide List[String] feedText;
+    hide List[Float] feedT;
+    // Objective toast (slides in on change).
+    hide String lastObjText;
+    hide Float toastT;
 
     expose func init() {
         hitmarkerT = 0.0;
         damageFlashT = 0.0;
+        animT = 0.0;
+        ghostHealth = 1.0;
+        ghostShield = 1.0;
+        wedgeT = [];
+        feedText = []; feedT = [];
+        var i = 0;
+        while i < WEDGES { wedgeT.Add(0.0); i = i + 1; }
+        i = 0;
+        while i < FEED { feedText.Add(""); feedT.Add(0.0); i = i + 1; }
+        lastObjText = "";
+        toastT = 0.0;
     }
 
     expose func pulseHitmarker() { hitmarkerT = 0.12; }
     expose func pulseDamage() { damageFlashT = 0.35; }
 
+    // Directional hit: `relDeg` is the attack bearing relative to the camera
+    // (0 = ahead, 90 = right).
+    expose func pulseDamageDir(relDeg: Float) {
+        var a = M.wrapDeg(relDeg) + 180.0;             // 0..360
+        var sector = M.roundi(a / 45.0) % WEDGES;
+        wedgeT[sector] = 0.4;
+    }
+
+    expose func pushKill(name: String) {
+        // Shift the feed up.
+        var i = FEED - 1;
+        while i > 0 {
+            feedText[i] = feedText[i - 1];
+            feedT[i] = feedT[i - 1];
+            i = i - 1;
+        }
+        feedText[0] = name + " destroyed";
+        feedT[0] = 3.0;
+    }
+
     expose func tick(dt: Float) {
+        animT = animT + dt;
         if hitmarkerT > 0.0 { hitmarkerT = hitmarkerT - dt; }
         if damageFlashT > 0.0 { damageFlashT = damageFlashT - dt; }
+        if toastT > 0.0 { toastT = toastT - dt; }
+        var i = 0;
+        while i < WEDGES {
+            if wedgeT[i] > 0.0 { wedgeT[i] = wedgeT[i] - dt; }
+            i = i + 1;
+        }
+        i = 0;
+        while i < FEED {
+            if feedT[i] > 0.0 { feedT[i] = feedT[i] - dt; }
+            i = i + 1;
+        }
+    }
+
+    // Bar with a damage-lag ghost: the red ghost segment shows what was just lost.
+    hide func ghostBar(canvas: G3D.Canvas3D, x: Integer, y: Integer, w: Integer, h: Integer,
+                       frac: Float, ghost: Float, col: Integer) {
+        G3D.Canvas3D.DrawRect2D(canvas, x, y, w, h, COL_BACK);
+        var gw = M.roundi((w + 0.0) * M.clampf(ghost, 0.0, 1.0));
+        if gw > 0 { G3D.Canvas3D.DrawRect2D(canvas, x, y, gw, h, COL_GHOST); }
+        var fw = M.roundi((w + 0.0) * M.clampf(frac, 0.0, 1.0));
+        if fw > 0 { G3D.Canvas3D.DrawRect2D(canvas, x, y, fw, h, col); }
+        // Segment ticks every quarter.
+        var t = 1;
+        while t < 4 {
+            G3D.Canvas3D.DrawRect2D(canvas, x + w * t / 4, y, 1, h, 0x000000);
+            t = t + 1;
+        }
     }
 
     hide func bar(canvas: G3D.Canvas3D, x: Integer, y: Integer, w: Integer, h: Integer,
@@ -50,68 +131,202 @@ class Hud {
         if fw > 0 { G3D.Canvas3D.DrawRect2D(canvas, x, y, fw, h, col); }
     }
 
-    // The full combat HUD. `w`/`h` are the overlay dimensions.
+    // The full combat HUD.
     expose func draw(canvas: G3D.Canvas3D, w: Integer, h: Integer,
                      ph: health.PlayerHealth, weapons: weapon_base.WeaponController,
-                     obj: objectives.Objectives, maxAwareness: Float, isCampaign: Boolean) {
-        // Damage / low-health flash (full-screen red).
+                     obj: objectives.Objectives, maxAwareness: Float, isCampaign: Boolean,
+                     yawDeg: Float, objBearingDeg: Float, hasObjMarker: Boolean,
+                     bossName: String, bossFrac: Float) {
+        // Ghost bars chase the real values (fast down, instant up).
+        var hf = ph.healthFrac();
+        var sf = ph.shieldFrac();
+        if hf > ghostHealth { ghostHealth = hf; }
+        else { ghostHealth = M.maxf(hf, ghostHealth - 0.6 * 0.016); }
+        if sf > ghostShield { ghostShield = sf; }
+        else { ghostShield = M.maxf(sf, ghostShield - 0.6 * 0.016); }
+
+        // Damage / low-health flash.
         var flash = 0.0;
         if damageFlashT > 0.0 { flash = damageFlashT / 0.35 * 0.4; }
-        if ph.healthFrac() < 0.3 { flash = M.maxf(flash, 0.18); }
+        if hf < 0.3 { flash = M.maxf(flash, 0.14 + M.absf(Math.Sin(animT * 3.0)) * 0.06); }
         if flash > 0.01 {
             G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, 0, w, h, 0xC01818, flash);
         }
 
-        // Crosshair + hitmarker.
-        G3D.Canvas3D.DrawCrosshair(canvas, w / 2, h / 2);
+        // Directional damage wedges (8-way ring around the crosshair).
+        var cx = w / 2;
+        var cy = h / 2;
+        var s = 0;
+        while s < WEDGES {
+            if wedgeT[s] > 0.0 {
+                var a = (s + 0.0) * 45.0 - 180.0;      // sector center, screen-relative
+                var rad = M.toRad(a - 90.0);
+                var wx = cx + M.roundi(Math.Cos(rad) * 70.0);
+                var wy = cy + M.roundi(Math.Sin(rad) * 70.0);
+                G3D.Canvas3D.DrawRect2DAlpha(canvas, wx - 10, wy - 10, 20, 20, 0xFF3020,
+                                             wedgeT[s] / 0.4 * 0.6);
+            }
+            s = s + 1;
+        }
+
+        // Crosshair: center dot + 4 pips that open with spread bloom.
+        var gap = 7 + M.roundi(weapons.currentBloom() * 2.5);
+        G3D.Canvas3D.DrawRect2D(canvas, cx - 1, cy - 1, 2, 2, COL_WHITE);
+        G3D.Canvas3D.DrawRect2D(canvas, cx - gap - 5, cy - 1, 5, 2, COL_WHITE);
+        G3D.Canvas3D.DrawRect2D(canvas, cx + gap, cy - 1, 5, 2, COL_WHITE);
+        G3D.Canvas3D.DrawRect2D(canvas, cx - 1, cy - gap - 5, 2, 5, COL_WHITE);
+        G3D.Canvas3D.DrawRect2D(canvas, cx - 1, cy + gap, 2, 5, COL_WHITE);
         if hitmarkerT > 0.0 {
-            var cx = w / 2;
-            var cy = h / 2;
-            G3D.Canvas3D.DrawLine2D(canvas, cx - 10, cy - 10, cx - 4, cy - 4, 0xFFFFFF, 1.0);
-            G3D.Canvas3D.DrawLine2D(canvas, cx + 10, cy - 10, cx + 4, cy - 4, 0xFFFFFF, 1.0);
-            G3D.Canvas3D.DrawLine2D(canvas, cx - 10, cy + 10, cx - 4, cy + 4, 0xFFFFFF, 1.0);
-            G3D.Canvas3D.DrawLine2D(canvas, cx + 10, cy + 10, cx + 4, cy + 4, 0xFFFFFF, 1.0);
+            G3D.Canvas3D.DrawLine2D(canvas, cx - 12, cy - 12, cx - 5, cy - 5, 0xFFFFFF, 1.5);
+            G3D.Canvas3D.DrawLine2D(canvas, cx + 12, cy - 12, cx + 5, cy - 5, 0xFFFFFF, 1.5);
+            G3D.Canvas3D.DrawLine2D(canvas, cx - 12, cy + 12, cx - 5, cy + 5, 0xFFFFFF, 1.5);
+            G3D.Canvas3D.DrawLine2D(canvas, cx + 12, cy + 12, cx + 5, cy + 5, 0xFFFFFF, 1.5);
         }
 
-        // Bottom-left: shield / health / armor bars.
+        // Bottom-left: vitals plate.
         var bx = 24;
-        var byy = h - 70;
-        bar(canvas, bx, byy, 240, 8, ph.shieldFrac(), COL_SHIELD);
-        bar(canvas, bx, byy + 12, 240, 14, ph.healthFrac(), COL_HEALTH);
-        bar(canvas, bx, byy + 30, 240, 6, ph.armorFrac(), COL_ARMOR);
-        G3D.Canvas3D.DrawText2D(canvas, bx, byy - 16, "HP " + S.intStr(M.roundi(ph.getHealth())), COL_WHITE);
+        var byy = h - 96;
+        G3D.Canvas3D.DrawRect2DAlpha(canvas, bx - 8, byy - 26, 300, 92, COL_BACK, 0.55);
+        G3D.Canvas3D.DrawRect2D(canvas, bx - 8, byy - 26, 22, 2, HUD_ACCENT);
+        G3D.Canvas3D.DrawRect2D(canvas, bx - 8, byy - 26, 2, 22, HUD_ACCENT);
+        G3D.Canvas3D.DrawText2DAA(canvas, bx, byy - 20, "HP " + S.intStr(M.roundi(ph.getHealth())),
+                                  COL_WHITE, 1.4);
+        ghostBar(canvas, bx, byy + 4, 260, 8, sf, ghostShield, COL_SHIELD);
+        ghostBar(canvas, bx, byy + 16, 260, 16, hf, ghostHealth, COL_HEALTH);
+        bar(canvas, bx, byy + 36, 260, 6, ph.armorFrac(), COL_ARMOR);
 
-        // Bottom-right: ammo + weapon.
-        var ax = w - 220;
-        G3D.Canvas3D.DrawText2D(canvas, ax, h - 54, weapons.weaponName(), COL_WHITE);
-        var ammo = S.intStr(weapons.getMag()) + " / " + S.intStr(weapons.getReserve());
-        G3D.Canvas3D.DrawText2D(canvas, ax, h - 36, ammo, COL_AMMO);
+        // Bottom-right: weapon plate.
+        var ax = w - 300;
+        G3D.Canvas3D.DrawRect2DAlpha(canvas, ax - 12, h - 110, 290, 96, COL_BACK, 0.55);
+        G3D.Canvas3D.DrawRect2D(canvas, ax + 276, h - 16, 22, 2, HUD_ACCENT);
+        G3D.Canvas3D.DrawRect2D(canvas, ax + 296 - 2, h - 36, 2, 22, HUD_ACCENT);
+        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 100, weapons.weaponName(), COL_WHITE, 1.5);
+        var ammoCol = COL_AMMO;
+        var magNow = weapons.getMag();
+        var magFrac = 1.0;
+        if magNow <= 0 { magFrac = 0.0; }
+        if magFrac < 1.1 {
+            // Low-ammo pulse when under 20% of the mag.
+            if (magNow + 0.0) <= 0.2 * 30.0 && M.absf(Math.Sin(animT * 6.0)) > 0.5 {
+                ammoCol = 0xFF6040;
+            }
+        }
+        var ammo = S.intStr(magNow) + " / " + S.intStr(weapons.getReserve());
+        G3D.Canvas3D.DrawText2DAA(canvas, ax, h - 72, ammo, ammoCol, 2.2);
         if weapons.isReloading() {
-            G3D.Canvas3D.DrawText2D(canvas, ax, h - 18, "RELOADING", COL_OBJ);
+            bar(canvas, ax, h - 34, 180, 6, weapons.reloadFrac(), COL_OBJ);
+            G3D.Canvas3D.DrawText2DAA(canvas, ax + 190, h - 38, "RELOADING", COL_OBJ, 1.0);
         }
 
-        // Top-center: current objective (campaign).
+        // Top-center: compass strip (N/E/S/W ticks slide with yaw).
+        drawCompass(canvas, w, yawDeg, objBearingDeg, hasObjMarker);
+
+        // Objective toast under the compass.
         if isCampaign {
             var oi = obj.activeIndex();
+            var txt = "ALL OBJECTIVES COMPLETE";
             if oi >= 0 {
-                var txt = obj.textOf(oi);
+                txt = obj.textOf(oi);
                 if obj.targetOf(oi) > 0 {
                     txt = txt + "  (" + S.intStr(obj.progressOf(oi)) + "/" + S.intStr(obj.targetOf(oi)) + ")";
                 }
-                G3D.Canvas3D.DrawText2D(canvas, w / 2 - 120, 24, txt, COL_OBJ);
-            } else {
-                G3D.Canvas3D.DrawText2D(canvas, w / 2 - 60, 24, "OBJECTIVE COMPLETE", COL_HEALTH);
+            }
+            if txt != lastObjText {
+                lastObjText = txt;
+                toastT = 6.0;
+            }
+            if toastT > 0.0 || oi >= 0 {
+                var a2 = 1.0;
+                if toastT < 1.0 && oi < 0 { a2 = toastT; }
+                var tw2 = G3D.Canvas3D.MeasureText2DAA(canvas, txt, 1.2);
+                G3D.Canvas3D.DrawRect2DAlpha(canvas, w / 2 - tw2 / 2 - 10, 46, tw2 + 20, 22,
+                                             COL_BACK, 0.5 * a2);
+                G3D.Canvas3D.DrawText2DAA(canvas, w / 2 - tw2 / 2, 50, txt, COL_OBJ, 1.2);
             }
         }
 
-        // Top-right: detection indicator.
+        // Boss bar (name + segmented health) under the compass block.
+        if bossFrac > 0.0 {
+            var bw = 420;
+            var bxx = w / 2 - bw / 2;
+            var tw3 = G3D.Canvas3D.MeasureText2DAA(canvas, bossName, 1.3);
+            G3D.Canvas3D.DrawText2DAA(canvas, w / 2 - tw3 / 2, 78, bossName, 0xFF7050, 1.3);
+            G3D.Canvas3D.DrawRect2D(canvas, bxx, 98, bw, 10, COL_BACK);
+            var fw3 = M.roundi((bw + 0.0) * M.clampf(bossFrac, 0.0, 1.0));
+            if fw3 > 0 { G3D.Canvas3D.DrawRect2D(canvas, bxx, 98, fw3, 10, 0xD03828); }
+            var tt = 1;
+            while tt < 6 {
+                G3D.Canvas3D.DrawRect2D(canvas, bxx + bw * tt / 6, 98, 1, 10, 0x000000);
+                tt = tt + 1;
+            }
+        }
+
+        // Top-right: detection eye.
         if maxAwareness > 1.0 {
-            bar(canvas, w - 180, 20, 150, 8, maxAwareness / 100.0, COL_DETECT);
-            G3D.Canvas3D.DrawText2D(canvas, w - 180, 4, "DETECTION", COL_DETECT);
+            var dcol = 0xFFB040;
+            if maxAwareness >= 99.0 { dcol = COL_DETECT; }
+            bar(canvas, w - 190, 24, 150, 8, maxAwareness / 100.0, dcol);
+            G3D.Canvas3D.DrawText2DAA(canvas, w - 190, 6, "DETECTION", dcol, 1.0);
+        }
+
+        // Kill feed above the weapon plate.
+        var fi = 0;
+        while fi < FEED {
+            if feedT[fi] > 0.0 {
+                var fa = M.clampf(feedT[fi], 0.0, 1.0);
+                G3D.Canvas3D.DrawText2DAA(canvas, w - 300, h - 136 - fi * 20, feedText[fi],
+                                          COL_WHITE, 1.0);
+                if fa < 1.0 {
+                    G3D.Canvas3D.DrawRect2DAlpha(canvas, w - 300, h - 136 - fi * 20, 260, 16,
+                                                 COL_BACK, (1.0 - fa) * 0.8);
+                }
+            }
+            fi = fi + 1;
         }
     }
 
-    // Simple centered banner (PAUSED / DEATH / LEVEL COMPLETE).
+    hide func drawCompass(canvas: G3D.Canvas3D, w: Integer, yawDeg: Float,
+                          objBearingDeg: Float, hasObjMarker: Boolean) {
+        var cw = 480;
+        var x0 = w / 2 - cw / 2;
+        G3D.Canvas3D.DrawRect2DAlpha(canvas, x0, 14, cw, 24, COL_BACK, 0.5);
+        G3D.Canvas3D.DrawRect2D(canvas, w / 2 - 1, 12, 2, 6, HUD_ACCENT);
+        // Ticks every 15 deg; cardinal letters at 90s. Screen x maps 120 deg span.
+        var span = 120.0;
+        var d = -180;
+        while d < 180 {
+            var rel = M.wrapDeg((d + 0.0) - yawDeg);
+            if M.absf(rel) < span * 0.5 {
+                var px = w / 2 + M.roundi(rel / span * (cw + 0.0));
+                var isCard = d % 90 == 0;
+                if isCard {
+                    var name = "N";
+                    if d == 90 || d == -270 { name = "E"; }
+                    else if d == 180 || d == -180 { name = "S"; }
+                    else if d == -90 || d == 270 { name = "W"; }
+                    G3D.Canvas3D.DrawText2DAA(canvas, px - 4, 18, name, COL_WHITE, 1.2);
+                } else if d % 45 == 0 {
+                    G3D.Canvas3D.DrawRect2D(canvas, px, 26, 1, 8, COL_DIMTICK);
+                }
+            }
+            d = d + 45;
+        }
+        // Objective diamond.
+        if hasObjMarker {
+            var relO = M.wrapDeg(objBearingDeg - yawDeg);
+            if M.absf(relO) < span * 0.5 {
+                var ox = w / 2 + M.roundi(relO / span * (cw + 0.0));
+                G3D.Canvas3D.DrawRect2D(canvas, ox - 4, 22, 8, 8, COL_OBJ);
+            } else {
+                // Clamp to the strip edge so the player knows which way to turn.
+                var edge = x0 + cw - 8;
+                if relO < 0.0 { edge = x0; }
+                G3D.Canvas3D.DrawRect2D(canvas, edge, 22, 8, 8, 0xB09030);
+            }
+        }
+    }
+
+    // Simple centered banner (kept for probes/dev paths).
     expose func banner(canvas: G3D.Canvas3D, w: Integer, h: Integer, text: String, col: Integer) {
         G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, h / 2 - 30, w, 60, 0x000000, 0.5);
         G3D.Canvas3D.DrawText2DScaled(canvas, w / 2 - text.Length * 8, h / 2 - 12, text, col, 2.0);

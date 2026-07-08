@@ -1193,6 +1193,23 @@ void rt_water3d_set_height(void *w, double y) {
     (void)y;
 }
 
+/// @brief Stub for `Water3D.SetPosition` — set the water plane's world XZ
+///        centre and base Y (aligns the origin-built grid over an off-origin
+///        area).
+///
+/// Silent no-op stub.
+///
+/// @param w Water3D handle (ignored).
+/// @param x World-space X centre (ignored).
+/// @param y World-space Y for the surface (ignored).
+/// @param z World-space Z centre (ignored).
+void rt_water3d_set_position(void *w, double x, double y, double z) {
+    (void)w;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
 /// @brief Stub for `Water3D.SetWaveParams` — legacy single-wave control.
 ///        Use `Water3D.AddWave` for the modern Gerstner multi-wave system.
 ///

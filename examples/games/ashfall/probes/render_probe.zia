@@ -56,7 +56,46 @@ func start() {
         j = j + 1;
     }
 
-    Terminal.Say("renderedFrames=48 pipeline=ok");
+    // --- Per-level render sweep: every builder + sky + props + terrain draw
+    // one real frame each (trap-net across the whole content set).
+    var lv = config.LV_L1;
+    while lv <= config.LV_HUB {
+        var s = new game.Game();
+        s.initCore(0xAA10 + lv);
+        s.setScripted(true);
+        s.setLevel(lv);
+        s.boot(true, false);
+        tick(s);
+        s.devRenderFrame();
+        lv = lv + 1;
+    }
+
+    // --- Title + menu frame (frontend overlay path). -------------------------
+    var t = new game.Game();
+    t.initCore(0xAA30);
+    t.setScripted(true);
+    t.boot(true, false);
+    t.enterTitle();
+    tick(t);
+    t.devRenderFrame();
+
+    // --- View-model frame per weapon class (composite fallback path). --------
+    var v = new game.Game();
+    v.initCore(0xAA31);
+    v.setScripted(true);
+    v.setLevel(config.LV_ARENA);
+    v.boot(true, false);
+    v.devSpawnPlayer(0.0, 0.2, 0.0);
+    var w = 0;
+    while w < config.WEAPON_COUNT {
+        v.devGiveWeapon(w);
+        v.devSwitchWeapon(w);
+        tick(v);
+        v.devRenderFrame();
+        w = w + 1;
+    }
+
+    Terminal.Say("renderedFrames=48 levelSweep=ok title=ok viewmodels=ok pipeline=ok");
     Terminal.Say("RESULT: ok");
     Terminal.Say("PASS");
 }

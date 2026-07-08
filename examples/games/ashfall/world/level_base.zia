@@ -15,6 +15,9 @@ bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D as G3D;
 bind Viper.Math as Math;
 bind "../config" as config;
+bind "../assets/textures" as textures;
+bind Viper.Graphics as Gfx;
+bind "../core/mathutil" as M;
 
 class LevelBuilder {
     // Geometry.
@@ -22,6 +25,22 @@ class LevelBuilder {
     hide List[Float] bhx; hide List[Float] bhy; hide List[Float] bhz;
     hide List[Float] br; hide List[Float] bg; hide List[Float] bb;
     hide List[Integer] bcollide;
+    hide List[Integer] bsurf;      // textures.SURF_* class per box
+    // Props (instantiated by the LevelManager's PropSet after build()).
+    hide List[Integer] pKind;
+    hide List[Float] pX; hide List[Float] pY; hide List[Float] pZ;
+    hide List[Float] pYaw; hide List[Float] pScale;
+    // Exterior terrain (visual-only; playfield stays flat, slab colliders
+    // authoritative). 0=none 1=canyon 2=ash sea 3=terrace mountainside.
+    hide Integer terrainKind;
+    hide G3D.Terrain3D terra;
+    hide Boolean hasTerra;
+    hide Float terraOffX; hide Float terraOffY; hide Float terraOffZ;
+    // Water pool (visual; L5 basin).
+    hide Boolean wantWater;
+    hide Float watX; hide Float watY; hide Float watZ; hide Float watW; hide Float watD;
+    hide G3D.Water3D water;
+    hide Boolean hasWat;
     // Lights (kind 0=directional, 1=point).
     hide List[Integer] lkind;
     hide List[Float] lx; hide List[Float] ly; hide List[Float] lz;
@@ -45,7 +64,14 @@ class LevelBuilder {
 
     expose func reset() {
         bx = []; by = []; bz = []; bhx = []; bhy = []; bhz = [];
-        br = []; bg = []; bb = []; bcollide = [];
+        br = []; bg = []; bb = []; bcollide = []; bsurf = [];
+        pKind = []; pX = []; pY = []; pZ = []; pYaw = []; pScale = [];
+        terrainKind = 0;
+        hasTerra = false;
+        terraOffX = 0.0; terraOffY = 0.0; terraOffZ = 0.0;
+        wantWater = false;
+        hasWat = false;
+        watX = 0.0; watY = 0.0; watZ = 0.0; watW = 4.0; watD = 4.0;
         lkind = []; lx = []; ly = []; lz = []; lr = []; lg = []; lb = []; lrange = [];
         ambR = 0.15; ambG = 0.15; ambB = 0.18;
         spArch = []; spX = []; spZ = []; spWave = [];
@@ -71,20 +97,61 @@ class LevelBuilder {
 
     expose func addBox(cx: Float, cy: Float, cz: Float, hx: Float, hy: Float, hz: Float,
                        r: Float, g: Float, b: Float, collide: Boolean) {
+        addBoxMat(cx, cy, cz, hx, hy, hz, textures.SURF_DEFAULT, r, g, b, collide);
+    }
+
+    // Surface-classed box: the build step resolves `surf` through the texture
+    // library into a shared textured material (albedo+normal+emissive floor).
+    expose func addBoxMat(cx: Float, cy: Float, cz: Float, hx: Float, hy: Float, hz: Float,
+                          surf: Integer, r: Float, g: Float, b: Float, collide: Boolean) {
         bx.Add(cx); by.Add(cy); bz.Add(cz); bhx.Add(hx); bhy.Add(hy); bhz.Add(hz);
-        br.Add(r); bg.Add(g); bb.Add(b);
+        br.Add(r); bg.Add(g); bb.Add(b); bsurf.Add(surf);
         if collide { bcollide.Add(1); } else { bcollide.Add(0); }
     }
 
     // Floor slab (top at y=0) + four perimeter walls of half-extent `half`.
     expose func addArenaShell(half: Float, wallH: Float, fr: Float, fg: Float, fb: Float,
                               wr: Float, wg: Float, wb: Float) {
-        addBox(0.0, -0.25, 0.0, half, 0.25, half, fr, fg, fb, true);
-        addBox(0.0, wallH * 0.5, 0.0 - half, half, wallH * 0.5, 0.4, wr, wg, wb, true);
-        addBox(0.0, wallH * 0.5, half, half, wallH * 0.5, 0.4, wr, wg, wb, true);
-        addBox(0.0 - half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wr, wg, wb, true);
-        addBox(half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wr, wg, wb, true);
+        addArenaShellMat(half, wallH, textures.SURF_DEFAULT, textures.SURF_DEFAULT,
+                         fr, fg, fb, wr, wg, wb);
     }
+
+    // Surface-classed shell: separate classes for the floor and the walls.
+    expose func addArenaShellMat(half: Float, wallH: Float, floorSurf: Integer, wallSurf: Integer,
+                                 fr: Float, fg: Float, fb: Float,
+                                 wr: Float, wg: Float, wb: Float) {
+        addBoxMat(0.0, -0.25, 0.0, half, 0.25, half, floorSurf, fr, fg, fb, true);
+        addBoxMat(0.0, wallH * 0.5, 0.0 - half, half, wallH * 0.5, 0.4, wallSurf, wr, wg, wb, true);
+        addBoxMat(0.0, wallH * 0.5, half, half, wallH * 0.5, 0.4, wallSurf, wr, wg, wb, true);
+        addBoxMat(0.0 - half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wallSurf, wr, wg, wb, true);
+        addBoxMat(half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wallSurf, wr, wg, wb, true);
+    }
+
+    expose func addProp(kind: Integer, x: Float, y: Float, z: Float, yaw: Float, scale: Float) {
+        pKind.Add(kind); pX.Add(x); pY.Add(y); pZ.Add(z); pYaw.Add(yaw); pScale.Add(scale);
+    }
+    expose func propCount() -> Integer { return pKind.Count; }
+    expose func propKindAt(i: Integer) -> Integer { return pKind[i]; }
+    expose func propXat(i: Integer) -> Float { return pX[i]; }
+    expose func propYat(i: Integer) -> Float { return pY[i]; }
+    expose func propZat(i: Integer) -> Float { return pZ[i]; }
+    expose func propYawAt(i: Integer) -> Float { return pYaw[i]; }
+    expose func propScaleAt(i: Integer) -> Float { return pScale[i]; }
+
+    expose func setWater(x: Float, y: Float, z: Float, halfW: Float, halfD: Float) {
+        wantWater = true;
+        watX = x; watY = y; watZ = z; watW = halfW; watD = halfD;
+    }
+    expose func hasWater() -> Boolean { return hasWat; }
+    expose func waterObj() -> G3D.Water3D { return water; }
+
+    expose func setTerrain(kind: Integer) { terrainKind = kind; }
+    expose func terrainKindOf() -> Integer { return terrainKind; }
+    expose func hasTerrain() -> Boolean { return hasTerra; }
+    expose func terrainObj() -> G3D.Terrain3D { return terra; }
+    expose func terrainOffXv() -> Float { return terraOffX; }
+    expose func terrainOffYv() -> Float { return terraOffY; }
+    expose func terrainOffZv() -> Float { return terraOffZ; }
 
     expose func addDirectional(dx: Float, dy: Float, dz: Float, r: Float, g: Float, b: Float) {
         lkind.Add(0); lx.Add(dx); ly.Add(dy); lz.Add(dz); lr.Add(r); lg.Add(g); lb.Add(b); lrange.Add(0.0);
@@ -129,6 +196,7 @@ class LevelBuilder {
     expose func boxGat(i: Integer) -> Float { return bg[i]; }
     expose func boxBat(i: Integer) -> Float { return bb[i]; }
     expose func boxCollideAt(i: Integer) -> Integer { return bcollide[i]; }
+    expose func boxSurfAt(i: Integer) -> Integer { return bsurf[i]; }
     expose func lightCount() -> Integer { return lkind.Count; }
     expose func lightKindAt(i: Integer) -> Integer { return lkind[i]; }
     expose func lightXat(i: Integer) -> Float { return lx[i]; }
@@ -140,14 +208,19 @@ class LevelBuilder {
     expose func lightRangeAt(i: Integer) -> Float { return lrange[i]; }
 
     // --- Build / unload ------------------------------------------------------
-    expose func build(world: Game3D.World3D, phys: G3D.Physics3DWorld, canvas: G3D.Canvas3D) {
-        G3D.Canvas3D.SetAmbient(canvas, ambR, ambG, ambB);
+    expose func build(world: Game3D.World3D, phys: G3D.Physics3DWorld, canvas: G3D.Canvas3D,
+                      texLib: textures.TextureLib) {
+        // The environment rig (fx/lighting) owns ambient + key/fill at slots 0-7;
+        // builder lights are practicals and live at slots 8+.
         G3D.Canvas3D.ClearLights(canvas);
         // Geometry.
         var i = 0;
         while i < bx.Count {
             var mesh = G3D.Mesh3D.Box(bhx[i] * 2.0, bhy[i] * 2.0, bhz[i] * 2.0);
             var mat = G3D.Material3D.NewPBR(br[i], bg[i], bb[i]);
+            if texLib != null {
+                mat = texLib.mat(bsurf[i], br[i], bg[i], bb[i]);
+            }
             var e = Game3D.Entity3D.New();
             e.Mesh = mesh;
             e.Material = mat;
@@ -163,9 +236,9 @@ class LevelBuilder {
             }
             i = i + 1;
         }
-        // Lights.
+        // Lights (practicals; slots 8+ — see fx/lighting slot partition).
         i = 0;
-        var slot = 0;
+        var slot = 8;
         while i < lkind.Count {
             if lkind[i] == 0 {
                 var d = Math.Vec3.New(lx[i], ly[i], lz[i]);
@@ -179,11 +252,126 @@ class LevelBuilder {
             slot = slot + 1;
             i = i + 1;
         }
+        if terrainKind > 0 && texLib != null { buildTerrain(texLib); }
+        if wantWater && texLib != null { buildWater(texLib); }
         built = true;
+    }
+
+    // Still pool: teal texture + gentle waves; env map picks up the sky.
+    hide func buildWater(texLib: textures.TextureLib) {
+        water = G3D.Water3D.New(watW * 2.0, watD * 2.0);
+        G3D.Water3D.SetPosition(water, watX, watY, watZ);
+        G3D.Water3D.SetTexture(water, texLib.waterTexture());
+        G3D.Water3D.SetNormalMap(water, texLib.rawNormal(textures.SURF_CONCRETE));
+        G3D.Water3D.AddWave(water, 1.0, 0.3, 0.05, 0.4, 1.2);
+        G3D.Water3D.AddWave(water, -0.4, 0.8, 0.035, 0.7, 0.8);
+        hasWat = true;
+    }
+
+    // --- Exterior terrain (visual-only) ---------------------------------------
+    // 128x128 grid, 2 m spacing, centered on the origin via DrawTerrainAt offset.
+    // The playfield stays flat (heights rise only outside the walls) and there
+    // is NO heightfield collider — the floor slabs remain authoritative.
+    hide func buildTerrain(texLib: textures.TextureLib) {
+        var grid = 128;
+        var sx = 2.0;
+        var sy = 16.0;                      // canyon rim height
+        var flatR = 46.0;
+        var farR = 105.0;
+        if terrainKind == 2 { sy = 3.5; flatR = 0.0; farR = 1.0; }     // ash sea dunes
+        if terrainKind == 3 { sy = 24.0; flatR = 34.0; farR = 110.0; } // terrace range
+        var hm = Gfx.Pixels.New(grid, grid);
+        var sp = Gfx.Pixels.New(grid, grid);
+        var noise = Math.PerlinNoise.New(4242);
+        var gz = 0;
+        while gz < grid {
+            var gx = 0;
+            while gx < grid {
+                var wx = (gx - 64.0) * sx;
+                var wz = (gz - 64.0) * sx;
+                var d = Math.Sqrt(wx * wx + wz * wz);
+                var ridge = (Math.PerlinNoise.Octave2D(noise, wx * 0.02, wz * 0.02, 3, 0.55) + 1.0) * 0.5;
+                var h01 = 0.0;
+                if terrainKind == 2 {
+                    // Rolling ash dunes everywhere (sits 22 m under the deck).
+                    h01 = 0.35 + 0.65 * ridge;
+                } else {
+                    var t = smooth01((d - flatR) / (farR - flatR));
+                    h01 = t * (0.45 + 0.55 * ridge);
+                }
+                hm.Set(gx, gz, packH16(h01));
+                // Splat weights: flats = ash sand, slopes = rock, peaks = dark
+                // rock (or snow on the terrace range).
+                var wRock = clamp01(h01 * 2.4);
+                var wHigh = clamp01((h01 - 0.55) * 2.5);
+                var wSand = clamp01(1.0 - wRock);
+                var w2 = wHigh;
+                var w3 = 0.0;
+                if terrainKind == 3 { w3 = wHigh; w2 = 0.0; }
+                sp.Set(gx, gz, packW(wSand + 0.0001, wRock - wHigh, w2, w3));
+                gx = gx + 1;
+            }
+            gz = gz + 1;
+        }
+        terra = G3D.Terrain3D.New(grid, grid);
+        G3D.Terrain3D.SetHeightmap(terra, hm);
+        G3D.Terrain3D.SetScale(terra, sx, sy, sx);
+        G3D.Terrain3D.SetMaterial(terra, texLib.terrainMat());
+        G3D.Terrain3D.SetLayerTexture(terra, 0, texLib.terrainLayer(1));
+        G3D.Terrain3D.SetLayerTexture(terra, 1, texLib.terrainLayer(0));
+        G3D.Terrain3D.SetLayerTexture(terra, 2, texLib.terrainLayer(2));
+        G3D.Terrain3D.SetLayerTexture(terra, 3, texLib.terrainLayer(3));
+        G3D.Terrain3D.SetLayerScale(terra, 0, 56.0);
+        G3D.Terrain3D.SetLayerScale(terra, 1, 44.0);
+        G3D.Terrain3D.SetLayerScale(terra, 2, 40.0);
+        G3D.Terrain3D.SetLayerScale(terra, 3, 48.0);
+        G3D.Terrain3D.SetSplatMap(terra, sp);
+        G3D.Terrain3D.SetLODDistances(terra, 45.0, 110.0);
+        G3D.Terrain3D.SetSkirtDepth(terra, 3.0);
+        terraOffX = 0.0 - 64.0 * sx;
+        terraOffZ = 0.0 - 64.0 * sx;
+        terraOffY = -0.35;                  // tuck the flat under the floor slab
+        if terrainKind == 2 { terraOffY = -22.0; }
+        hasTerra = true;
+    }
+
+    hide func smooth01(v: Float) -> Float {
+        var t = v;
+        if t < 0.0 { t = 0.0; }
+        if t > 1.0 { t = 1.0; }
+        return t * t * (3.0 - 2.0 * t);
+    }
+    hide func clamp01(v: Float) -> Float {
+        if v < 0.0 { return 0.0; }
+        if v > 1.0 { return 1.0; }
+        return v;
+    }
+    // 16-bit height in R(hi)+G(lo) of 0xRRGGBBAA.
+    hide func packH16(h01: Float) -> Integer {
+        var t = h01;
+        if t < 0.0 { t = 0.0; }
+        if t > 1.0 { t = 1.0; }
+        var v = M.roundi(t * 65535.0);
+        var hi = v / 256;
+        var lo = v % 256;
+        return ((hi * 256 + lo) * 256) * 256 + 255;
+    }
+    // Splat weights into RGBA bytes (renderer normalizes).
+    hide func packW(w0: Float, w1: Float, w2: Float, w3: Float) -> Integer {
+        var a = wByte(w0); var b = wByte(w1); var c = wByte(w2); var d = wByte(w3);
+        return ((a * 256 + b) * 256 + c) * 256 + d;
+    }
+    hide func wByte(w: Float) -> Integer {
+        var t = w;
+        if t < 0.0 { t = 0.0; }
+        if t > 1.0 { t = 1.0; }
+        return M.roundi(t * 255.0);
     }
 
     expose func unload(world: Game3D.World3D, phys: G3D.Physics3DWorld) {
         if built == false { return; }
+        hasTerra = false;
+        hasWat = false;
         var i = 0;
         while i < ownedNodes.Count {
             world.Despawn(ownedNodes[i]);

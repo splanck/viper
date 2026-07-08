@@ -25,6 +25,7 @@ bind "../core/rng" as rng;
 bind "./enemy_defs" as enemy_defs;
 bind "../weapons/ballistics" as ballistics;
 bind "../weapons/targets" as targets;
+bind "../assets/enemy_models" as enemy_models;
 
 // FSM states.
 var AI_IDLE: Integer = 0;
@@ -67,8 +68,7 @@ class EnemyManager {
     hide List[Float] orbitPhase;
     hide List[G3D.Physics3DBody] torso;
     hide List[G3D.Physics3DBody] head;
-    hide List[Game3D.Entity3D] node;
-    hide List[Game3D.Entity3D] headNode;
+    hide enemy_models.EnemyModels models;
     hide Integer cap;
     hide Integer killCount;
     hide Integer attacksLanded;
@@ -82,7 +82,7 @@ class EnemyManager {
         stateTimer = []; atkCd = []; telegraphT = []; telegraphKind = [];
         disabledT = []; staggerT = []; hasToken = []; alive = []; phase = [];
         lastKnownX = []; lastKnownZ = []; orbitPhase = [];
-        torso = []; head = []; node = []; headNode = [];
+        torso = []; head = [];
         cap = config.POOL_AI;
         killCount = 0;
         attacksLanded = 0;
@@ -90,8 +90,10 @@ class EnemyManager {
     }
 
     expose func setup(w: Game3D.World3D, defs0: enemy_defs.EnemyDefs, reg0: targets.TargetRegistry,
-                      ball0: ballistics.Ballistics, bus0: events.EventBus, rngAi0: rng.RngStream) {
+                      ball0: ballistics.Ballistics, bus0: events.EventBus, rngAi0: rng.RngStream,
+                      models0: enemy_models.EnemyModels) {
         world = w; phys = w.Physics; defs = defs0; reg = reg0; ball = ball0; bus = bus0; rngAi = rngAi0;
+        models = models0;
         var i = 0;
         while i < cap {
             arch.Add(-1); x.Add(0.0); y.Add(0.0); z.Add(0.0); yaw.Add(0.0); health.Add(0.0);
@@ -110,20 +112,7 @@ class EnemyManager {
             G3D.Physics3DBody.set_CollisionMask(hd, 0);
             G3D.Physics3DBody.SetPosition(hd, 0.0, -100.0, 0.0);
             G3D.Physics3DWorld.Add(phys, hd);
-            var bodyMesh = G3D.Mesh3D.Box(0.8, 1.8, 0.8);
-            var bodyMat = G3D.Material3D.NewColor(0.5, 0.5, 0.5);
-            var n = Game3D.Entity3D.New();
-            n.Mesh = bodyMesh;
-            n.Material = bodyMat;
-            n.SetPosition(0.0, -100.0, 0.0);
-            world.Spawn(n);
-            var headMesh = G3D.Mesh3D.Box(0.5, 0.5, 0.5);
-            var hn = Game3D.Entity3D.New();
-            hn.Mesh = headMesh;
-            hn.Material = bodyMat;
-            hn.SetPosition(0.0, -100.0, 0.0);
-            world.Spawn(hn);
-            torso.Add(t); head.Add(hd); node.Add(n); headNode.Add(hn);
+            torso.Add(t); head.Add(hd);
             i = i + 1;
         }
     }
@@ -162,10 +151,9 @@ class EnemyManager {
         phase[s] = 0;
         alive[s] = 1;
         orbitPhase[s] = rngAi.range(0.0, 6.28);
-        // Recolor the fallback body + size to the archetype silhouette.
-        var col = G3D.Material3D.NewColor(defs.colRof(archetype), defs.colGof(archetype), defs.colBof(archetype));
-        node[s].Material = col;
-        headNode[s].Material = col;
+        // Hand the slot's visuals to the model layer (GLB rig or composite).
+        models.onSpawn(s, archetype, defs.colRof(archetype), defs.colGof(archetype),
+                       defs.colBof(archetype));
         placeBodies(s);
         reg.register(torso[s], config.TGT_ENEMY, s, config.REGION_BODY);
         reg.register(head[s], config.TGT_ENEMY, s, config.REGION_HEAD);
@@ -179,12 +167,17 @@ class EnemyManager {
     }
 
     hide func placeBodies(s: Integer) {
+        // The slot may have been freed mid-update (kamikaze detonation).
+        if alive[s] == 0 { return; }
         var by = y[s] + 0.9;
         var hy = y[s] + 1.85;
         G3D.Physics3DBody.SetPosition(torso[s], x[s], by, z[s]);
         G3D.Physics3DBody.SetPosition(head[s], x[s], hy, z[s]);
-        node[s].SetPosition(x[s], by, z[s]);
-        headNode[s].SetPosition(x[s], hy, z[s]);
+        var hpFrac = 1.0;
+        var mx = defs.hpOf(arch[s]);
+        if mx > 0.5 { hpFrac = health[s] / mx; }
+        models.place(s, arch[s], x[s], y[s], z[s], yaw[s], state[s], telegraphKind[s],
+                     hpFrac, phase[s]);
     }
 
     hide func despawn(s: Integer) {
@@ -193,8 +186,7 @@ class EnemyManager {
         reg.unregisterEntity(config.TGT_ENEMY, s);
         G3D.Physics3DBody.SetPosition(torso[s], 0.0, -100.0, 0.0);
         G3D.Physics3DBody.SetPosition(head[s], 0.0, -100.0, 0.0);
-        node[s].SetPosition(0.0, -100.0, 0.0);
-        headNode[s].SetPosition(0.0, -100.0, 0.0);
+        models.onDespawn(s);
     }
 
     expose func clearAll() {
@@ -266,6 +258,7 @@ class EnemyManager {
             }
             i = i + 1;
         }
+        models.update(dt);
     }
 
     hide func updateOne(s: Integer, dt: Float, px: Float, py: Float, pz: Float, playerAlive: Boolean) {
@@ -649,6 +642,7 @@ class EnemyManager {
             }
         }
         health[s] = health[s] - remaining;
+        models.hitFlash(s);
         // Stagger on a big hit.
         if remaining > 40.0 && staggerT[s] <= 0.0 && defs.isBoss(arch[s]) == false {
             staggerT[s] = 0.6;
@@ -669,6 +663,8 @@ class EnemyManager {
 
     hide func killSelf(s: Integer) {
         killCount = killCount + 1;
+        models.startDeath(s, arch[s], x[s], y[s], z[s], yaw[s],
+                          defs.colRof(arch[s]), defs.colGof(arch[s]), defs.colBof(arch[s]));
         bus.pushKind(config.EV_KILL, config.TGT_ENEMY, arch[s]);
         bus.pushKind(config.EV_ENEMY_DIED, arch[s], s);
         // Salvage drop is posted for the economy to pick up.

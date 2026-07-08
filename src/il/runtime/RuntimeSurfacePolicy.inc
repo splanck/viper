@@ -94,6 +94,11 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/localization/rt_locale_platform.h")
 // Raw-relative-mouse plumbing (fps plan 01/E1): platform-native mode toggle
 // and the mock backend's deterministic delta injector, both driven through
 // Mouse.SetRelativeMode / Input3D rather than as script-facing symbols.
+// Shared degenerate-triangle predicate: the glTF importer and Mesh3D.AddTriangle
+// validate through one function so their epsilons can never diverge (BUG-E16).
+// C-internal helper, not a frontend API.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mesh3d_triangle_indices_valid")
+
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mouse_set_relative_native")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_mouse_force_delta_f")
 // NavMesh internals (fps plan 08/E28-E29): off-mesh-link segment classifier

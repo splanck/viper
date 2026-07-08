@@ -1533,6 +1533,24 @@ set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 240)
 
+add_test(NAME zia_smoke_ashfall_menu
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/menu_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_menu PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 120)
+
+add_test(NAME zia_smoke_ashfall_assets
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/assets_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_assets PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 240)
+
 add_test(NAME zia_smoke_3dbowling_aim
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")

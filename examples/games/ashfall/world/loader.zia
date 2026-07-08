@@ -29,6 +29,8 @@ func serialize(lb: level_base.LevelBuilder) -> String {
     Map.SetStr(m, "lights", encodeLights(lb));
     Map.SetStr(m, "spawns", encodeSpawns(lb));
     Map.SetStr(m, "picks", encodePicks(lb));
+    Map.SetStr(m, "props", encodeProps(lb));
+    Map.SetStr(m, "terrain", S.intStr(lb.terrainKindOf()));
     return Json.Format(m);
 }
 
@@ -42,7 +44,7 @@ hide func encodeBoxes(lb: level_base.LevelBuilder) -> String {
         out = out + f(lb.boxCXat(i)) + "," + f(lb.boxCYat(i)) + "," + f(lb.boxCZat(i)) + "," +
               f(lb.boxHXat(i)) + "," + f(lb.boxHYat(i)) + "," + f(lb.boxHZat(i)) + "," +
               f(lb.boxRat(i)) + "," + f(lb.boxGat(i)) + "," + f(lb.boxBat(i)) + "," +
-              S.intStr(lb.boxCollideAt(i));
+              S.intStr(lb.boxCollideAt(i)) + "," + S.intStr(lb.boxSurfAt(i));
         i = i + 1;
     }
     return out;
@@ -85,6 +87,18 @@ hide func encodePicks(lb: level_base.LevelBuilder) -> String {
     return out;
 }
 
+hide func encodeProps(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.propCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + S.intStr(lb.propKindAt(i)) + "," + f(lb.propXat(i)) + "," + f(lb.propYat(i)) + "," +
+              f(lb.propZat(i)) + "," + f(lb.propYawAt(i)) + "," + f(lb.propScaleAt(i));
+        i = i + 1;
+    }
+    return out;
+}
+
 // --- Load --------------------------------------------------------------------
 // Parse a manifest string and populate a fresh LevelBuilder. Returns false on
 // invalid JSON (the caller keeps its previous level).
@@ -101,6 +115,9 @@ func load(text: String, lb: level_base.LevelBuilder) -> Boolean {
     decodeLights(Map.GetStr(m, "lights"), lb);
     decodeSpawns(Map.GetStr(m, "spawns"), lb);
     decodePicks(Map.GetStr(m, "picks"), lb);
+    decodeProps(Map.GetStr(m, "props"), lb);
+    var terr = Map.GetStr(m, "terrain");
+    if Str.get_Length(terr) > 0 { lb.setTerrain(Convert.ToInt64(terr)); }
     return true;
 }
 
@@ -143,9 +160,25 @@ hide func decodeBoxes(s: String, lb: level_base.LevelBuilder) {
     var i = 0;
     while i < recs.Count {
         var fld = splitCsv(recs[i]);
-        if fld.Count >= 10 {
+        if fld.Count >= 11 {
+            lb.addBoxMat(num(fld, 0), num(fld, 1), num(fld, 2), num(fld, 3), num(fld, 4), num(fld, 5),
+                         inum(fld, 10), num(fld, 6), num(fld, 7), num(fld, 8), inum(fld, 9) == 1);
+        } else if fld.Count >= 10 {
+            // Legacy 10-field manifests (pre-surface-class).
             lb.addBox(num(fld, 0), num(fld, 1), num(fld, 2), num(fld, 3), num(fld, 4), num(fld, 5),
                       num(fld, 6), num(fld, 7), num(fld, 8), inum(fld, 9) == 1);
+        }
+        i = i + 1;
+    }
+}
+
+hide func decodeProps(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 6 {
+            lb.addProp(inum(fld, 0), num(fld, 1), num(fld, 2), num(fld, 3), num(fld, 4), num(fld, 5));
         }
         i = i + 1;
     }

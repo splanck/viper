@@ -282,6 +282,77 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     if (binI.op != Opcode::Call || retI.op != Opcode::Ret || !binI.result || retI.operands.empty())
         return std::nullopt;
 
+    // The fast path replaces the WHOLE function body with (param spills +) the
+    // final call + ret, re-materializing only the values that call consumes.
+    // That is sound only when every preceding instruction is part of the
+    // canonical entry sequence or a pure producer the marshaller can
+    // recompute: allocas, entry-param home stores, loads of those param homes,
+    // string-constant materializations, and side-effect-free arithmetic or
+    // compare producers. Anything else (nested calls, other stores, ...) has
+    // observable effects the replacement would silently drop — bail to the
+    // generic lowering. Checked-overflow producers additionally must feed the
+    // call itself so their trap semantics survive the re-materialization.
+    {
+        const auto paramHomes = buildParamHomeAllocaMap(bb);
+        std::unordered_set<unsigned> homeAllocas;
+        for (const auto &entry : paramHomes)
+            homeAllocas.insert(entry.second);
+        auto feedsCall = [&](const il::core::Instr &pre) {
+            if (!pre.result)
+                return false;
+            for (const auto &arg : binI.operands) {
+                if (arg.kind == il::core::Value::Kind::Temp && arg.id == *pre.result)
+                    return true;
+            }
+            return false;
+        };
+        for (std::size_t i = 0; i + 2 < bb.instructions.size(); ++i) {
+            const auto &pre = bb.instructions[i];
+            switch (pre.op) {
+                case Opcode::Alloca:
+                case Opcode::ConstStr:
+                    continue;
+                case Opcode::Store:
+                    if (pre.operands.size() == 2 &&
+                        pre.operands[0].kind == il::core::Value::Kind::Temp &&
+                        homeAllocas.contains(pre.operands[0].id) &&
+                        pre.operands[1].kind == il::core::Value::Kind::Temp &&
+                        indexOfParam(bb, pre.operands[1].id) >= 0)
+                        continue;
+                    return std::nullopt;
+                case Opcode::Load:
+                    if (!pre.operands.empty() &&
+                        pre.operands[0].kind == il::core::Value::Kind::Temp &&
+                        homeAllocas.contains(pre.operands[0].id))
+                        continue;
+                    return std::nullopt;
+                case Opcode::IAddOvf:
+                case Opcode::ISubOvf:
+                    if (feedsCall(pre))
+                        continue;
+                    return std::nullopt;
+                case Opcode::Add:
+                case Opcode::Sub:
+                case Opcode::Shl:
+                case Opcode::LShr:
+                case Opcode::AShr:
+                case Opcode::ICmpEq:
+                case Opcode::ICmpNe:
+                case Opcode::SCmpLT:
+                case Opcode::SCmpLE:
+                case Opcode::SCmpGT:
+                case Opcode::SCmpGE:
+                case Opcode::UCmpLT:
+                case Opcode::UCmpLE:
+                case Opcode::UCmpGT:
+                case Opcode::UCmpGE:
+                    continue;
+                default:
+                    return std::nullopt;
+            }
+        }
+    }
+
     const auto &retV = retI.operands[0];
     if (retV.kind != il::core::Value::Kind::Temp || retV.id != *binI.result || binI.callee.empty())
         return std::nullopt;

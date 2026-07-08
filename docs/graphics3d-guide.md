@@ -222,6 +222,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `DrawMeshBlended(mesh, transform, material, blender)` | `void(obj, obj, obj, obj)` | Draw with animation blend tree |
 | `DrawInstanced(batch)` | `void(obj)` | Draw InstanceBatch3D (hardware instancing) |
 | `DrawTerrain(terrain)` | `void(obj)` | Draw Terrain3D |
+| `DrawTerrainAt(terrain, x, y, z)` | `void(obj,f64,f64,f64)` | Draw Terrain3D translated to a world-space offset (grid origin lands at `(x, y, z)`; culling/LOD track the translation) |
 | `DrawDecal(decal)` | `void(obj)` | Draw Decal3D |
 | `DrawSprite3D(sprite, camera)` | `void(obj, obj)` | Draw billboard Sprite3D |
 | `DrawWater(water, camera)` | `void(obj, obj)` | Draw Water3D surface |
@@ -2687,7 +2688,7 @@ func start() {
 
 Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Invalid distances are sanitized so `farDist` stays greater than `nearDist`. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward and is included in chunk bounds, so visible skirts are not clipped by frustum culling. Invalid or negative skirt depths disable skirts. Edge chunks always include their far row/column endpoints at coarser LODs, so partial edge chunks still produce triangles.
 
-Draw via `Canvas3D.DrawTerrain(terrain)` during a normal 3D `Begin`/`End` pass. Terrain is not valid inside `Begin2D()`.
+Draw via `Canvas3D.DrawTerrain(terrain)` during a normal 3D `Begin`/`End` pass, or `Canvas3D.DrawTerrainAt(terrain, x, y, z)` to place the terrain's grid origin at a world-space offset (e.g. `-half, 0, -half` to center an origin-symmetric playfield). Terrain is not valid inside `Begin2D()`.
 
 See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_demo.zia` for complete examples.
 

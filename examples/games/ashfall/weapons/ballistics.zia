@@ -27,11 +27,27 @@ class Ballistics {
     hide rng.RngStream spreadRng;
     hide Integer shotsFired;
     hide Integer hitsLanded;
+    // Visual read-back for the most recent traced ray (first pellet of a shot):
+    // endpoint (hit point or max-range point) + surface normal when it hit.
+    hide Float endX; hide Float endY; hide Float endZ;
+    hide Float hitNX; hide Float hitNY; hide Float hitNZ;
+    hide Boolean hitSolid;
 
     expose func init() {
         shotsFired = 0;
         hitsLanded = 0;
+        endX = 0.0; endY = 0.0; endZ = 0.0;
+        hitNX = 0.0; hitNY = 1.0; hitNZ = 0.0;
+        hitSolid = false;
     }
+
+    expose func lastEndX() -> Float { return endX; }
+    expose func lastEndY() -> Float { return endY; }
+    expose func lastEndZ() -> Float { return endZ; }
+    expose func lastNormalX() -> Float { return hitNX; }
+    expose func lastNormalY() -> Float { return hitNY; }
+    expose func lastNormalZ() -> Float { return hitNZ; }
+    expose func lastHitSolid() -> Boolean { return hitSolid; }
 
     expose func setup(p: G3D.Physics3DWorld, b: events.EventBus,
                       r: targets.TargetRegistry, sr: rng.RngStream) {
@@ -65,6 +81,7 @@ class Ballistics {
         var landed = 0;
         var origin = Math.Vec3.New(ox, oy, oz);
         var spreadRad = M.toRad(spreadDeg);
+        hitSolid = false;
         var p = 0;
         while p < pellets {
             shotsFired = shotsFired + 1;
@@ -83,15 +100,39 @@ class Ballistics {
     hide func traceOne(origin: Math.Vec3, dir: Math.Vec3, damage: Float,
                        maxDist: Float, dmgKind: Integer) -> Boolean {
         var hit = phys.Raycast(origin, dir, maxDist, config.MASK_SHOOTABLE);
-        if hit == null { return false; }
+        if hit == null {
+            recordMiss(origin, dir, maxDist);
+            return false;
+        }
+        recordHit(hit);
         return resolveHit(hit, damage, dmgKind);
+    }
+
+    // --- Visual read-back capture ---------------------------------------------
+    hide func recordHit(hit: G3D.PhysicsHit3D) {
+        var pt = G3D.PhysicsHit3D.get_Point(hit);
+        endX = Math.Vec3.get_X(pt); endY = Math.Vec3.get_Y(pt); endZ = Math.Vec3.get_Z(pt);
+        var nm = G3D.PhysicsHit3D.get_Normal(hit);
+        hitNX = Math.Vec3.get_X(nm); hitNY = Math.Vec3.get_Y(nm); hitNZ = Math.Vec3.get_Z(nm);
+        hitSolid = true;
+    }
+    hide func recordMiss(origin: Math.Vec3, dir: Math.Vec3, maxDist: Float) {
+        if hitSolid { return; }     // keep the first pellet's real endpoint
+        endX = Math.Vec3.get_X(origin) + Math.Vec3.get_X(dir) * maxDist;
+        endY = Math.Vec3.get_Y(origin) + Math.Vec3.get_Y(dir) * maxDist;
+        endZ = Math.Vec3.get_Z(origin) + Math.Vec3.get_Z(dir) * maxDist;
     }
 
     hide func traceAll(origin: Math.Vec3, dir: Math.Vec3, damage: Float,
                        penetration: Integer, maxDist: Float, dmgKind: Integer) -> Integer {
         var list = phys.RaycastAll(origin, dir, maxDist, config.MASK_SHOOTABLE);
-        if list == null { return 0; }
+        if list == null {
+            recordMiss(origin, dir, maxDist);
+            return 0;
+        }
         var n = G3D.PhysicsHitList3D.get_Count(list);
+        if n > 0 { recordHit(G3D.PhysicsHitList3D.Get(list, 0)); }
+        else { recordMiss(origin, dir, maxDist); }
         var landed = 0;
         var i = 0;
         while i < n && i < penetration {

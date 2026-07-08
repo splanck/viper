@@ -17,6 +17,7 @@ bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../core/events" as events;
 bind "../weapons/targets" as targets;
+bind "../assets/textures" as textures;
 
 var HALF: Float = 20.0;         // arena half-extent
 var WALL_H: Float = 5.0;
@@ -53,10 +54,13 @@ class Arena {
         killCount = 0;
     }
 
-    expose func setup(w: Game3D.World3D) {
+    hide textures.TextureLib texLib;
+
+    expose func setup(w: Game3D.World3D, tex: textures.TextureLib) {
         world = w;
         canvas = w.Canvas;
         phys = w.Physics;
+        texLib = tex;
         buildMaterials();
         buildFloorAndWalls();
         buildProps();
@@ -71,6 +75,11 @@ class Arena {
         matWall.Roughness = 0.9;
         matCrate = G3D.Material3D.NewPBR(0.45, 0.38, 0.22);
         matCrate.Roughness = 0.7;
+        if texLib != null {
+            matFloor = texLib.mat(textures.SURF_METAL, 0.40, 0.42, 0.46);
+            matWall = texLib.mat(textures.SURF_METAL, 0.46, 0.48, 0.52);
+            matCrate = texLib.mat(textures.SURF_HULL, 0.5, 0.42, 0.3);
+        }
         matDummy = G3D.Material3D.NewColor(0.70, 0.24, 0.20);
         matDummyHit = G3D.Material3D.NewColor(1.0, 0.85, 0.2);
     }
@@ -121,7 +130,9 @@ class Arena {
         box(matCrate, 7.2, 0.9, 3.0, 1.0, 0.9, 1.0);
         box(matCrate, 9.4, 1.5, 3.0, 1.0, 1.5, 1.0);
         // A catwalk platform.
-        box(matWall, 0.0, 2.6, 8.0, 4.0, 0.2, 1.5);
+        var matWalk = matWall;
+        if texLib != null { matWalk = texLib.mat(textures.SURF_GRATE, 0.42, 0.44, 0.48); }
+        box(matWalk, 0.0, 2.6, 8.0, 4.0, 0.2, 1.5);
     }
 
     hide func buildDummies() {
@@ -138,6 +149,11 @@ class Arena {
             dummyFlash.Add(0.0);
             dummyHits.Add(0);
             dummyHealth.Add(100.0);
+            // Colored zone pad under each firing lane (alternating hues).
+            var padMat = G3D.Material3D.NewColor(0.2, 0.4, 0.6);
+            if i % 2 == 1 { padMat = G3D.Material3D.NewColor(0.55, 0.35, 0.2); }
+            padMat.EmissiveIntensity = 0.6;
+            visBox(padMat, dx, 0.015, dz, 1.1, 0.015, 1.1);
             // Visual body + head.
             var bodyNode = visBox(matDummy, dx, 0.9, dz, 0.35, 0.9, 0.25);
             visBox(matDummy, dx, 2.0, dz, 0.28, 0.28, 0.28);
@@ -238,30 +254,30 @@ class Arena {
     expose func getLightMode() -> Integer { return lightMode; }
 
     hide func applyLighting(mode: Integer) {
+        // The environment rig (fx/lighting) owns ambient + key/fill at slots 0-7.
+        // The dev lighting cycle only varies the arena's PRACTICALS at slots 8+.
         lightMode = mode;
-        G3D.Canvas3D.ClearLights(canvas);
-        if mode == 0 {
-            // Noon sun + CSM.
-            G3D.Canvas3D.SetAmbient(canvas, 0.28, 0.30, 0.34);
-            var sun = G3D.Light3D.NewDirectional(Math.Vec3.New(-0.4, -1.0, -0.3), 1.05, 1.0, 0.92);
-            G3D.Canvas3D.SetLight(canvas, 0, sun);
-        } else if mode == 1 {
-            // Dusk: low warm sun + cool fill.
-            G3D.Canvas3D.SetAmbient(canvas, 0.16, 0.15, 0.20);
-            var sun = G3D.Light3D.NewDirectional(Math.Vec3.New(-0.9, -0.25, -0.2), 1.1, 0.6, 0.35);
-            G3D.Canvas3D.SetLight(canvas, 0, sun);
-            var fill = G3D.Light3D.NewDirectional(Math.Vec3.New(0.4, -0.6, 0.5), 0.2, 0.25, 0.4);
-            G3D.Canvas3D.SetLight(canvas, 1, fill);
-        } else {
-            // Interior: dim ambient + a ring of point lights.
-            G3D.Canvas3D.SetAmbient(canvas, 0.10, 0.10, 0.12);
-            var k = 0;
+        var k = 0;
+        while k < 8 {
+            var dark = G3D.Light3D.NewPoint(Math.Vec3.New(0.0, -100.0, 0.0), 0.0, 0.0, 0.0, 8.0);
+            G3D.Canvas3D.SetLight(canvas, 8 + k, dark);
+            k = k + 1;
+        }
+        if mode == 1 {
+            // Dusk accents: two warm corner points.
+            var p0 = G3D.Light3D.NewPoint(Math.Vec3.New(-12.0, 3.0, -12.0), 1.0, 0.55, 0.3, 16.0);
+            G3D.Canvas3D.SetLight(canvas, 8, p0);
+            var p1 = G3D.Light3D.NewPoint(Math.Vec3.New(12.0, 3.0, 12.0), 1.0, 0.55, 0.3, 16.0);
+            G3D.Canvas3D.SetLight(canvas, 9, p1);
+        } else if mode == 2 {
+            // Interior ring of cool points.
+            k = 0;
             while k < 8 {
                 var ang = (k + 0.0) / 8.0 * 6.2831853;
                 var lx = Math.Cos(ang) * 10.0;
                 var lz = Math.Sin(ang) * 10.0;
                 var pl = G3D.Light3D.NewPoint(Math.Vec3.New(lx, 3.0, lz), 0.6, 0.7, 0.9, 14.0);
-                G3D.Canvas3D.SetLight(canvas, k, pl);
+                G3D.Canvas3D.SetLight(canvas, 8 + k, pl);
                 k = k + 1;
             }
         }

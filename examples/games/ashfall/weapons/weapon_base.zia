@@ -77,7 +77,15 @@ class WeaponController {
     expose func getReserve() -> Integer { return reserve[current]; }
     expose func getHeat() -> Float { return heat; }
     expose func isReloading() -> Boolean { return reloading; }
+    expose func currentBloom() -> Float { return bloom; }
     expose func adsFov() -> Float { return defs.adsFovOf(current); }
+    // Reload progress 0..1 (0 when idle) — drives the view-model reload curve.
+    expose func reloadFrac() -> Float {
+        if reloading == false { return 0.0; }
+        var total = defs.reloadOf(current);
+        if total < 0.01 { return 0.0; }
+        return M.clampf(1.0 - reloadTimer / total, 0.0, 1.0);
+    }
     expose func weaponName() -> String { return defs.nameOf(current); }
 
     expose func switchTo(w: Integer) {
@@ -177,6 +185,7 @@ class WeaponController {
             mag[w] = mag[w] - 1;
             if mag[w] < 0 { mag[w] = 0; }
             camRig.addShake(0.01);
+            bus.pushAt(config.EV_GUNSHOT, w, 6, ox, oy, oz);
             return;
         }
 
@@ -207,8 +216,8 @@ class WeaponController {
         vm.addKick(kick);
         bloom = M.minf(bloom + spread * 0.3, spread * 3.0 + 4.0);
 
-        // AI hearing: a loud gunshot at the muzzle.
-        bus.pushAt(config.EV_GUNSHOT, 0, 20, ox, oy, oz);
+        // AI hearing + visual feedback: a loud gunshot at the muzzle (a=weapon).
+        bus.pushAt(config.EV_GUNSHOT, w, 20, ox, oy, oz);
     }
 
     hide func finishReload() {

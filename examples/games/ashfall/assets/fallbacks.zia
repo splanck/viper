@@ -11,12 +11,20 @@
 module fallbacks;
 
 bind Viper.Graphics3D as G3D;
+bind "./textures" as textures;
 
 class Fallbacks {
+    hide textures.TextureLib texLib;
+
     expose func init() { }
+
+    // Route materials through the shared texture library (set at boot). When
+    // unset the factory degrades to flat PBR (asset-optional rule).
+    expose func use(t: textures.TextureLib) { texLib = t; }
 
     // Prototype-grid floor/wall look (matte PBR).
     expose func structural(r: Float, g: Float, b: Float) -> G3D.Material3D {
+        if texLib != null { return texLib.mat(textures.SURF_DEFAULT, r, g, b); }
         var m = G3D.Material3D.NewPBR(r, g, b);
         m.Roughness = 0.85;
         m.Metallic = 0.05;
@@ -25,6 +33,7 @@ class Fallbacks {
 
     // Machine chassis (semi-metallic, per-archetype tint).
     expose func chassis(r: Float, g: Float, b: Float) -> G3D.Material3D {
+        if texLib != null { return texLib.mat(textures.SURF_METAL, r, g, b); }
         var m = G3D.Material3D.NewPBR(r, g, b);
         m.Roughness = 0.5;
         m.Metallic = 0.6;

@@ -395,6 +395,12 @@ void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 /// @brief Append a triangle by referencing three previously-added vertex indices (CCW = front).
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2);
+
+/* Non-trapping validity probe for AddTriangle: returns 1 when (v0,v1,v2) are distinct,
+ * in-range indices whose positions form a non-degenerate face under the SAME
+ * scale-relative area epsilon AddTriangle enforces. Asset loaders use this to skip
+ * degenerate source triangles instead of trapping mid-import. */
+int rt_mesh3d_triangle_indices_valid(void *obj, int64_t v0, int64_t v1, int64_t v2);
 /// @brief Recompute smooth per-vertex normals from triangle face normals (overwrites existing).
 void rt_mesh3d_recalc_normals(void *obj);
 /// @brief Deep copy the mesh (independent storage; safe to mutate the clone).

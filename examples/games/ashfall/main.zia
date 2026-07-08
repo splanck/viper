@@ -66,6 +66,7 @@ func start() {
         Terminal.Say("PASS");
     } else {
         g.boot(false, windowed == false);
+        if hasArg("--level") == false { g.enterTitle(); }
         g.run();
     }
 }

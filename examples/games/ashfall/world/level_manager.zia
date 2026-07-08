@@ -19,6 +19,8 @@ bind "./objectives" as objectives;
 bind "./levels" as levels;
 bind "./pickups" as pickups;
 bind "../ai/ai_core" as ai_core;
+bind "../assets/textures" as textures;
+bind "./props" as props;
 
 class LevelManager {
     hide Game3D.World3D world;
@@ -29,6 +31,8 @@ class LevelManager {
     hide events.EventBus bus;
     hide level_base.LevelBuilder lb;
     hide objectives.Objectives obj;
+    hide textures.TextureLib texLib;
+    hide props.PropSet propSet;
     hide Integer currentLevel;
     hide Integer currentWave;
     hide Float waveDelay;
@@ -37,6 +41,7 @@ class LevelManager {
     expose func init() {
         lb = new level_base.LevelBuilder();
         obj = new objectives.Objectives();
+        propSet = new props.PropSet();
         currentLevel = config.LV_L1;
         currentWave = 0;
         waveDelay = 0.0;
@@ -44,8 +49,11 @@ class LevelManager {
     }
 
     expose func setup(w: Game3D.World3D, c: G3D.Canvas3D, p: G3D.Physics3DWorld,
-                      en: ai_core.EnemyManager, pk: pickups.Pickups, bus0: events.EventBus) {
+                      en: ai_core.EnemyManager, pk: pickups.Pickups, bus0: events.EventBus,
+                      tex: textures.TextureLib) {
         world = w; canvas = c; phys = p; enemies = en; pickupSys = pk; bus = bus0;
+        texLib = tex;
+        propSet.setup(w, tex, c);
     }
 
     expose func getObjectives() -> objectives.Objectives { return obj; }
@@ -60,11 +68,19 @@ class LevelManager {
 
     expose func load(levelId: Integer) {
         if loaded { lb.unload(world, phys); }
+        propSet.clear();
         enemies.clearAll();
         pickupSys.clear();
         currentLevel = levelId;
         levels.build(levelId, lb, obj);
-        lb.build(world, phys, canvas);
+        lb.build(world, phys, canvas, texLib);
+        // Instantiate the level's props (entities + instance batches).
+        var pi = 0;
+        while pi < lb.propCount() {
+            propSet.place(lb.propKindAt(pi), lb.propXat(pi), lb.propYat(pi), lb.propZat(pi),
+                          lb.propYawAt(pi), lb.propScaleAt(pi));
+            pi = pi + 1;
+        }
         // Wave 0 enemies + all pickups.
         spawnWave(0);
         var i = 0;
@@ -111,4 +127,15 @@ class LevelManager {
     expose func onInteract(px: Float, pz: Float) {
         obj.markInteract(px, pz);
     }
+
+    // --- Render/tick delegation for props + terrain ---------------------------
+    expose func updateProps(dt: Float) { propSet.update(dt); }
+    expose func drawProps() { propSet.drawBatches(); }
+    expose func hasTerrain() -> Boolean { return loaded && lb.hasTerrain(); }
+    expose func hasWater() -> Boolean { return loaded && lb.hasWater(); }
+    expose func waterObj() -> G3D.Water3D { return lb.waterObj(); }
+    expose func terrainObj() -> G3D.Terrain3D { return lb.terrainObj(); }
+    expose func terrainOffX() -> Float { return lb.terrainOffXv(); }
+    expose func terrainOffY() -> Float { return lb.terrainOffYv(); }
+    expose func terrainOffZ() -> Float { return lb.terrainOffZv(); }
 }

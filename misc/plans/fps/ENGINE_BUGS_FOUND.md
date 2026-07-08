@@ -239,7 +239,100 @@ coverage where applicable. BUG-E13/E14 were found while building the game on the
   0 races (previously intermittent), the ctest pair passes under `-j2`, and native_run (6/6) +
   codegen (145/145) regress cleanly. Also stops polluting source trees with stray `.o` files.
 
-## Resolved-as-already-fixed (stale bug notes updated)## Resolved-as-already-fixed (stale bug notes updated)
+### BUG-E16 — glTF importer trapped on real-world low-poly models (divergent degeneracy epsilons)
+- **Found:** 2026-07-08 (ASHFALL overhaul P0: loading Quaternius CC0 rigged characters —
+  `Mesh3D.AddTriangle: degenerate triangle` trap on the first file)
+- **Severity:** P1 loader robustness — CC0 packs from a mainstream source could not be imported
+- **Root cause:** two DIFFERENT degeneracy predicates. The glTF pre-filter
+  (`gltf_triangle_positions_form_triangle`, rt_gltf_accessor.inc) used a fixed
+  `area_sq > 1e-20` threshold, while `Mesh3D.AddTriangle` enforces a scale-relative epsilon
+  (`max_edge_sq^2 * 1e-12`, rt_mesh3d.c `mesh_triangle_area_epsilon_sq_f64`). Sliver triangles
+  common in low-poly character meshes passed the loader filter but failed the mesh check ->
+  trap mid-import, entire asset load aborted.
+- **Fix:** single source of truth — new public non-trapping probe
+  `rt_mesh3d_triangle_indices_valid(mesh, v0, v1, v2)` (rt_canvas3d.h + rt_mesh3d.c) wrapping the
+  exact `mesh_indices_form_triangle` criterion; `gltf_emit_triangle` delegates to it (skipping
+  exactly what AddTriangle would reject) and the divergent local predicate was deleted so the two
+  can never drift again.
+- **Tests:** gltf/mesh/asset-load suites green; the ASHFALL asset gate imports all 10 Quaternius
+  rigs (12-mesh skinned mechs, 18-20 clips each) + 10 Kenney GLBs cleanly.
+
+### BUG-E17 — `Terrain3D` could not be placed in world space from Zia (API gap)
+
+- **Found**: ASHFALL P3 — every campaign level centers its playfield on the
+  origin, but `Canvas3D.DrawTerrain` anchors the terrain grid at world (0,0)
+  extending into the positive quadrant only, with no way to offset it. Any
+  origin-symmetric game simply could not use Terrain3D.
+- **Root cause**: the engine already had a fully-implemented translated draw
+  (`rt_canvas3d_draw_terrain_at` — translated frustum culling, LOD selection,
+  camera-relative bounds; used internally by WorldStream3D tiles) but it was
+  never exposed through `runtime.def`.
+- **Fix (root)**: exposed it as `Canvas3D.DrawTerrainAt(terrain, x, y, z)` —
+  pure registry addition, no new C code (the graphics-disabled stub already
+  existed). Documented in `docs/graphics3d-guide.md`.
+- **Verify**: runtime completeness check green; `-L graphics3d` (109) green;
+  ASHFALL L1/L3/L6 draw origin-centered terrain via the new method.
+
+### BUG-E18 — AArch64 call fast path silently deleted whole function bodies (miscompile)
+
+- **Found**: ASHFALL P8 VM-vs-native parity — `loader.serialize` natively returned
+  the string "null"; every call before its final `Json.Format` vanished from the
+  binary. Minimal repro: any function whose last two instructions are
+  `call → ret` but that does real work first (e.g. `Map.New` + `SetStr` with a
+  method call as an argument).
+- **Root cause**: `tryCallFastPaths` (FastPaths_Call.cpp) replaced the WHOLE
+  function with param spills + the final call + ret whenever the last two
+  instructions matched, without checking that the preceding instructions were
+  droppable. The Str-returning "generic result semantics" branch made almost any
+  such function eligible.
+- **Fix (root)**: a soundness guard — the fast path now bails to generic
+  lowering unless every preceding instruction is an alloca, an entry-param home
+  store, a load of such a home, a string-constant materialization, or a pure
+  arithmetic/compare producer (checked-overflow producers must feed the call).
+- **Verify**: repro now correct; all four ASHFALL logic probes VM==native at
+  -O0 and -O2.
+
+### BUG-E19 — Parallel function passes left stale analyses in the persistent cache (intermittent compiler crash)
+
+- **Found**: `viper build -O2` segfaulted ~50% of runs inside GVN's
+  `visitBlock` walking dangling `BasicBlock*` from a cached DomTree.
+- **Root cause**: PipelineExecutor's parallel branch gives each worker a
+  throwaway `AnalysisManager`; per-function `PreservedAnalyses` were applied to
+  those and discarded. The persistent manager kept dominator trees/CFG info
+  computed before the parallel pass mutated (and reallocated) function block
+  vectors — later sequential passes (GVN) consumed dangling pointers.
+  Sequential mode (any dump/verify flag) masked it, which is why `il-opt` never
+  reproduced.
+- **Fix (root)**: after a parallel function pass that changed the module
+  fingerprint, conservatively invalidate every cached function analysis in the
+  persistent manager.
+- **Verify**: 0/10 failures after fix (3/6 before); full probe suite green.
+
+### BUG-E20 — Native links silently resolved against stale installed toolchains
+
+- **Found**: native builds of ASHFALL probes failed with 62 undefined `rt_*`
+  symbols despite fresh build-tree archives containing all of them.
+- **Root cause**: `findBuildDir()` (LinkerSupport.cpp) only probed the CWD and
+  its ancestors for `CMakeCache.txt`. Running `viper build` from a game
+  directory found no build tree, so archive resolution fell through to
+  installed layouts — a months-old `/usr/local/viper/lib` shadowed the fresh
+  runtime.
+- **Fix (root)**: `findBuildDir()` now also walks the running executable's own
+  ancestors — a dev-tree `viper` binary lives inside its build directory, so
+  in-tree native links always use in-tree archives regardless of CWD.
+  Installed binaries are unaffected (no cache file above them).
+- **Verify**: native probe builds from `examples/games/ashfall` link against
+  `build/src/runtime` archives.
+
+### BUG-E21 — `rt_water3d_set_position` missing from the graphics-disabled stub surface
+
+- **Found**: the graphics-disabled monolithic runtime stubbed every Water3D
+  entry point except `SetPosition`, breaking headless/native links of any
+  program using it.
+- **Fix (root)**: added the silent no-op stub alongside its siblings in
+  `rt_3d_world_stubs.c` (NULL-tolerant setter contract).
+
+## Resolved-as-already-fixed (stale bug notes updated)
 
 - **Aggregate-return miscompile (xenoscape)** — the codegen-side return-classification
   story no longer reproduces on any tested shape (HFA {f64×2}/{f64×4}, {i64,i64},

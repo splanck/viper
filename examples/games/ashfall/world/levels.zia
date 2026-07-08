@@ -14,6 +14,8 @@ bind Viper.Math as Math;
 bind "../config" as config;
 bind "./level_base" as level_base;
 bind "./objectives" as objectives;
+bind "./props" as props;
+bind "../assets/textures" as textures;
 
 // Dispatch: fill lb + obj for the given level id.
 func build(levelId: Integer, lb: level_base.LevelBuilder, obj: objectives.Objectives) {
@@ -32,28 +34,65 @@ func build(levelId: Integer, lb: level_base.LevelBuilder, obj: objectives.Object
     else { buildL1(lb, obj); }
 }
 
-// Scatter some cover blocks in a ring for readability.
+// Scatter cover in a ring: the colliding block keeps its frozen footprint, and
+// each position gains non-colliding dressing (offset caps/slabs) so cover reads
+// as belonging to the level instead of floating primitives.
 hide func scatterCover(lb: level_base.LevelBuilder, count: Integer, radius: Float, r: Float, g: Float, b: Float) {
+    scatterCoverMat(lb, count, radius, textures.SURF_DEFAULT, r, g, b);
+}
+
+hide func scatterCoverMat(lb: level_base.LevelBuilder, count: Integer, radius: Float,
+                          surf: Integer, r: Float, g: Float, b: Float) {
     var i = 0;
     while i < count {
         var ang = (i + 0.0) / (count + 0.0) * 6.2831853;
         var cx = Math.Cos(ang) * radius;
         var cz = Math.Sin(ang) * radius;
-        lb.addBox(cx, 0.8, cz, 0.8, 0.8, 0.8, r, g, b, true);
+        lb.addBoxMat(cx, 0.8, cz, 0.8, 0.8, 0.8, surf, r, g, b, true);
+        // Dressing: a smaller offset cap + a ground skirt (visual only).
+        var ox = Math.Cos(ang + 0.9) * 0.55;
+        var oz = Math.Sin(ang + 0.9) * 0.55;
+        lb.addBoxMat(cx + ox, 1.75, cz + oz, 0.45, 0.22, 0.4, surf,
+                     r * 0.92, g * 0.92, b * 0.92, false);
+        lb.addBoxMat(cx - ox, 0.22, cz - oz, 1.15, 0.22, 1.05, surf,
+                     r * 0.85, g * 0.85, b * 0.85, false);
         i = i + 1;
     }
 }
 
-// L1 — Crashsite Canyon: open canyon, dawn sun, Husk/Sapper intro.
+// L1 — Crashsite Canyon: dawn canyon under the wreck arch (terrain rim hero).
 hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Crashsite Canyon");
     lb.setAmbient(0.26, 0.22, 0.20);
     lb.setStart(0.0, 0.2, 34.0, 0.0);
-    lb.addArenaShell(40.0, 8.0, 0.30, 0.25, 0.22, 0.34, 0.28, 0.24);
-    lb.addDirectional(-0.6, -0.7, -0.3, 1.1, 0.85, 0.6);
-    scatterCover(lb, 8, 16.0, 0.35, 0.30, 0.26);
-    // Wreckage cluster.
-    lb.addBox(0.0, 1.2, -20.0, 4.0, 1.2, 2.0, 0.40, 0.30, 0.22, true);
+    lb.setTerrain(1);                      // canyon rim rises outside the walls
+    // Shell: ash-rock floor, canyon-wall berms.
+    lb.addArenaShellMat(40.0, 8.0, textures.SURF_ROCK, textures.SURF_ROCK,
+                        0.42, 0.36, 0.31, 0.40, 0.34, 0.30);
+    scatterCoverMat(lb, 8, 16.0, textures.SURF_ROCK, 0.42, 0.36, 0.30);
+    // Wreckage cluster under the arch (collider kept at its frozen footprint).
+    lb.addBoxMat(0.0, 1.2, -20.0, 4.0, 1.2, 2.0, textures.SURF_HULL, 0.44, 0.38, 0.32, true);
+    lb.addBoxMat(-3.2, 0.5, -17.5, 1.4, 0.5, 1.0, textures.SURF_HULL, 0.40, 0.34, 0.30, false);
+    lb.addBoxMat(3.6, 0.4, -22.4, 1.2, 0.4, 1.4, textures.SURF_HULL, 0.38, 0.33, 0.29, false);
+    // Hero: the 26 m hull arch spanning the canyon over the wreck site.
+    lb.addProp(props.PROP_WRECKHULL, 0.0, 0.0, -20.0, 0.0, 1.0);
+    // Debris field + supply dressing near the drop-in.
+    lb.addProp(props.PROP_DEBRIS, -10.0, 0.0, -26.0, 0.7, 1.1);
+    lb.addProp(props.PROP_DEBRIS, 12.0, 0.0, -24.0, 2.4, 0.9);
+    lb.addProp(props.PROP_DEBRIS, -14.0, 0.0, 6.0, 4.1, 1.0);
+    lb.addProp(props.PROP_DEBRIS, 18.0, 0.0, -6.0, 1.2, 1.2);
+    lb.addProp(props.PROP_CRATE, 5.6, 0.0, 22.0, 0.4, 1.0);
+    lb.addProp(props.PROP_CRATE, 6.9, 0.0, 22.6, 1.1, 0.8);
+    lb.addProp(props.PROP_BARREL, -5.5, 0.0, 21.4, 0.0, 1.0);
+    lb.addProp(props.PROP_BARREL, -6.4, 0.0, 22.3, 0.0, 1.0);
+    lb.addProp(props.PROP_STALAGMITE, -24.0, 0.0, -30.0, 0.8, 1.6);
+    lb.addProp(props.PROP_STALAGMITE, 27.0, 0.0, -14.0, 2.2, 1.3);
+    lb.addProp(props.PROP_STALAGMITE, -30.0, 0.0, 12.0, 3.9, 1.8);
+    lb.addProp(props.PROP_STALAGMITE, 25.0, 0.0, 24.0, 5.0, 1.2);
+    // Practicals: warm nav pools at the wreck + cool rim accent.
+    lb.addPoint(0.0, 6.0, -20.0, 0.9, 0.55, 0.3, 18.0);
+    lb.addPoint(-8.0, 2.5, -16.0, 0.8, 0.5, 0.25, 10.0);
+    lb.addPoint(6.0, 2.0, 24.0, 0.5, 0.55, 0.7, 9.0);
     lb.addSpawn(config.EN_HUSK, -8.0, 8.0, 0);
     lb.addSpawn(config.EN_HUSK, 8.0, 8.0, 0);
     lb.addSpawn(config.EN_HUSK, 0.0, -4.0, 0);
@@ -66,19 +105,54 @@ hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     obj.add(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Reach the relay path", false);
 }
 
-// L2 — Relay Outpost: interior rooms, spot/point lights, Rangers + a Turret.
+// L2 — Relay Outpost: night interior — real rooms, cyan coves, console glow.
 hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Relay Outpost");
     lb.setAmbient(0.10, 0.11, 0.14);
     lb.setStart(0.0, 0.2, 22.0, 0.0);
-    lb.addArenaShell(26.0, 6.0, 0.22, 0.23, 0.26, 0.28, 0.29, 0.33);
-    // Interior partitions.
-    lb.addBox(-8.0, 3.0, 4.0, 0.4, 3.0, 10.0, 0.30, 0.31, 0.35, true);
-    lb.addBox(8.0, 3.0, 4.0, 0.4, 3.0, 10.0, 0.30, 0.31, 0.35, true);
-    lb.addBox(0.0, 3.0, -8.0, 12.0, 3.0, 0.4, 0.30, 0.31, 0.35, true);
-    lb.addPoint(-8.0, 4.0, 10.0, 0.6, 0.7, 0.9, 12.0);
-    lb.addPoint(8.0, 4.0, 10.0, 0.6, 0.7, 0.9, 12.0);
+    lb.addArenaShellMat(26.0, 6.0, textures.SURF_CONCRETE, textures.SURF_METAL,
+                        0.30, 0.31, 0.34, 0.34, 0.35, 0.39);
+    // Ceiling slab with a skylight gap over the radar dish (visual only).
+    lb.addBoxMat(-4.0, 6.15, 0.0, 22.0, 0.2, 26.0, textures.SURF_METAL, 0.22, 0.23, 0.26, false);
+    lb.addBoxMat(22.0, 6.15, -13.0, 4.0, 0.2, 13.0, textures.SURF_METAL, 0.22, 0.23, 0.26, false);
+    lb.addBoxMat(22.0, 6.15, 17.0, 4.0, 0.2, 9.0, textures.SURF_METAL, 0.22, 0.23, 0.26, false);
+    // Interior partitions (frozen colliders, re-dressed).
+    lb.addBoxMat(-8.0, 3.0, 4.0, 0.4, 3.0, 10.0, textures.SURF_METAL, 0.34, 0.35, 0.39, true);
+    lb.addBoxMat(8.0, 3.0, 4.0, 0.4, 3.0, 10.0, textures.SURF_METAL, 0.34, 0.35, 0.39, true);
+    lb.addBoxMat(0.0, 3.0, -8.0, 12.0, 3.0, 0.4, textures.SURF_METAL, 0.34, 0.35, 0.39, true);
+    // Door frames on the passages past the back wall's ends.
+    lb.addProp(props.PROP_DOORFRAME, -13.6, 0.0, -8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 13.6, 0.0, -8.0, 0.0, 1.0);
+    // Consoles: the relay (ACTIVATE objective, frozen coord) + operations row.
+    lb.addProp(props.PROP_CONSOLE, 0.0, 0.0, -18.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_CONSOLE, -10.0, 0.0, -15.5, 2.6, 1.0);
+    lb.addProp(props.PROP_CONSOLE, 8.5, 0.0, -14.5, 3.6, 1.0);
+    lb.addProp(props.PROP_CONSOLE, -12.0, 0.0, 10.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_CONSOLE, 12.0, 0.0, 10.0, -1.5707963, 1.0);
+    // Cyan cove pylons along the walls.
+    lb.addProp(props.PROP_PYLON, -24.0, 0.0, 8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 24.0, 0.0, 8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -24.0, 0.0, -8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 24.0, 0.0, -8.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -10.0, 0.0, 24.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 10.0, 0.0, 24.0, 0.0, 1.0);
+    // Server racks + storage + the radar dish under the skylight.
+    lb.addProp(props.PROP_RACK, -10.0, 0.0, -22.5, 0.2, 1.0);
+    lb.addProp(props.PROP_RACK, 10.0, 0.0, -22.5, -0.15, 1.0);
+    lb.addProp(props.PROP_RACK, -22.0, 0.0, 18.0, 0.4, 1.0);
+    lb.addProp(props.PROP_RADAR, 18.0, 0.0, -20.0, 0.0, 1.5);
+    lb.addProp(props.PROP_PIPERUN, 25.0, 0.0, -2.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PIPERUN, 25.0, 0.0, 4.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_CRATE, -3.2, 0.0, 18.0, 0.5, 1.0);
+    lb.addProp(props.PROP_BARREL, 3.4, 0.0, 17.6, 0.0, 1.0);
+    lb.addProp(props.PROP_BARREL, 4.3, 0.0, 18.4, 0.0, 0.9);
+    // Practicals: cool room coves + relay amber pool + skylight spill.
+    lb.addPoint(-8.0, 4.0, 10.0, 0.5, 0.7, 0.95, 12.0);
+    lb.addPoint(8.0, 4.0, 10.0, 0.5, 0.7, 0.95, 12.0);
     lb.addPoint(0.0, 4.0, -14.0, 0.9, 0.6, 0.3, 14.0);
+    lb.addPoint(-24.0, 3.0, 0.0, 0.35, 0.65, 0.9, 9.0);
+    lb.addPoint(24.0, 3.0, 0.0, 0.35, 0.65, 0.9, 9.0);
+    lb.addPoint(18.0, 5.0, -20.0, 0.4, 0.5, 0.7, 11.0);
     lb.addSpawn(config.EN_RANGER, -6.0, 0.0, 0);
     lb.addSpawn(config.EN_RANGER, 6.0, 0.0, 0);
     lb.addSpawn(config.EN_TURRET, 0.0, -16.0, 0);
@@ -89,14 +163,52 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     obj.add(objectives.OBJ_KILL, 0.0, 0.0, 0.0, 2, "Neutralize the garrison (optional)", true);
 }
 
-// L3 — Ashveil Crossing: long crossing, drones + snipers, reach the far end.
+// L3 — Ashveil Crossing: a girder span over an ash sea, vanishing into fog.
 hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Ashveil Crossing");
     lb.setAmbient(0.18, 0.17, 0.20);
     lb.setStart(0.0, 0.2, 44.0, 0.0);
-    lb.addArenaShell(18.0, 7.0, 0.28, 0.26, 0.28, 0.30, 0.28, 0.30);
-    lb.addBox(0.0, -0.25, 0.0, 6.0, 0.25, 48.0, 0.30, 0.28, 0.30, true);   // long bridge deck
-    lb.addDirectional(-0.3, -0.8, -0.5, 0.7, 0.7, 0.9);
+    lb.setTerrain(2);                       // rolling ash sea 22 m below
+    // Deck (frozen span) + grated end platforms.
+    lb.addBoxMat(0.0, -0.25, 0.0, 6.0, 0.25, 48.0, textures.SURF_GRATE, 0.36, 0.34, 0.36, true);
+    lb.addBoxMat(0.0, -0.25, 46.0, 10.0, 0.25, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(0.0, -0.25, -48.0, 10.0, 0.25, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    // Containment: deck side rails + platform perimeter walls.
+    lb.addBoxMat(-6.1, 0.6, 0.0, 0.15, 0.6, 48.0, textures.SURF_METAL, 0.38, 0.36, 0.38, true);
+    lb.addBoxMat(6.1, 0.6, 0.0, 0.15, 0.6, 48.0, textures.SURF_METAL, 0.38, 0.36, 0.38, true);
+    lb.addBoxMat(0.0, 1.5, 52.2, 10.0, 1.5, 0.4, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(-10.2, 1.5, 46.0, 0.4, 1.5, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(10.2, 1.5, 46.0, 0.4, 1.5, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(0.0, 1.5, -54.2, 10.0, 1.5, 0.4, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(-10.2, 1.5, -48.0, 0.4, 1.5, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    lb.addBoxMat(10.2, 1.5, -48.0, 0.4, 1.5, 6.0, textures.SURF_METAL, 0.34, 0.32, 0.34, true);
+    // Under-deck keel girder (visual depth from the sides).
+    lb.addBoxMat(0.0, -1.6, 0.0, 1.2, 1.2, 48.0, textures.SURF_HULL, 0.30, 0.28, 0.30, false);
+    // Pylon towers flanking the span + overhead truss gantries every 12 m.
+    var tz = -36.0;
+    while tz < 37.0 {
+        lb.addProp(props.PROP_PYLON, -7.2, 0.0, tz, 0.0, 1.5);
+        lb.addProp(props.PROP_PYLON, 7.2, 0.0, tz, 0.0, 1.5);
+        var bx = -4.8;
+        while bx < 5.0 {
+            lb.addProp(props.PROP_IBEAM, bx, 3.4, tz, 0.0, 1.0);
+            bx = bx + 2.4;
+        }
+        tz = tz + 12.0;
+    }
+    // Cover on the span + supplies at the ends.
+    lb.addProp(props.PROP_BARRICADE, -2.5, 0.0, 24.0, 0.0, 1.0);
+    lb.addProp(props.PROP_BARRICADE, 2.5, 0.0, 4.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_BARRICADE, -2.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_CRATE, -7.5, 0.0, 45.0, 0.3, 1.0);
+    lb.addProp(props.PROP_BARREL, 7.8, 0.0, 44.2, 0.0, 1.0);
+    lb.addProp(props.PROP_CRATE, 6.8, 0.0, -47.0, 1.2, 1.0);
+    // Beacon practicals: warn-red pulses marching down the span.
+    lb.addPoint(-7.2, 3.8, -24.0, 0.9, 0.25, 0.2, 9.0);
+    lb.addPoint(7.2, 3.8, 0.0, 0.9, 0.25, 0.2, 9.0);
+    lb.addPoint(-7.2, 3.8, 24.0, 0.9, 0.25, 0.2, 9.0);
+    lb.addPoint(0.0, 3.0, 46.0, 0.55, 0.6, 0.75, 11.0);
+    lb.addPoint(0.0, 3.0, -48.0, 0.55, 0.6, 0.75, 11.0);
     var seg = 0;
     while seg < 4 {
         var z = 30.0 - seg * 20.0;
@@ -109,22 +221,56 @@ hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     obj.add(objectives.OBJ_REACH, 0.0, -46.0, 5.0, 0, "Cross to the far platform", false);
 }
 
-// L4 — Habitat Arcology: connected rooms, many point lights, Marauder miniboss.
+// L4 — Habitat Arcology: sterile atrium — column grid, mezzanines, HELIX wall.
 hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Habitat Arcology");
     lb.setAmbient(0.09, 0.10, 0.12);
     lb.setStart(0.0, 0.2, 30.0, 0.0);
-    lb.addArenaShell(34.0, 7.0, 0.24, 0.24, 0.28, 0.30, 0.30, 0.34);
-    // Room dividers.
-    lb.addBox(-14.0, 3.5, 0.0, 0.4, 3.5, 20.0, 0.30, 0.30, 0.36, true);
-    lb.addBox(14.0, 3.5, 0.0, 0.4, 3.5, 20.0, 0.30, 0.30, 0.36, true);
-    // A ring of point lights (60+ light stress showcase, scaled to budget).
+    lb.addArenaShellMat(34.0, 7.0, textures.SURF_CONCRETE, textures.SURF_CONCRETE,
+                        0.52, 0.53, 0.57, 0.48, 0.49, 0.54);
+    // Room dividers (frozen colliders, re-dressed).
+    lb.addBoxMat(-14.0, 3.5, 0.0, 0.4, 3.5, 20.0, textures.SURF_CONCRETE, 0.48, 0.49, 0.54, true);
+    lb.addBoxMat(14.0, 3.5, 0.0, 0.4, 3.5, 20.0, textures.SURF_CONCRETE, 0.48, 0.49, 0.54, true);
+    // Structural column grid (instanced) clear of the fight lanes.
+    lb.addProp(props.PROP_COLUMN, -10.0, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, 10.0, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, -10.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, 10.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, -22.0, 0.0, 6.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, 22.0, 0.0, 6.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, -22.0, 0.0, -6.0, 0.0, 1.0);
+    lb.addProp(props.PROP_COLUMN, 22.0, 0.0, -6.0, 0.0, 1.0);
+    // Mezzanine catwalk ring along the walls (visual, y=3.2).
+    var cw = -12.0;
+    while cw < 13.0 {
+        lb.addProp(props.PROP_CATWALK, cw, 3.2, -32.6, 0.0, 1.0);
+        lb.addProp(props.PROP_CATWALK, -32.6, 3.2, cw, 1.5707963, 1.0);
+        lb.addProp(props.PROP_CATWALK, 32.6, 3.2, cw, 1.5707963, 1.0);
+        cw = cw + 2.4;
+    }
+    // Hero: the HELIX eye-wall at the far end.
+    lb.addProp(props.PROP_EYESCREEN, 0.0, 0.0, -33.4, 0.0, 1.0);
+    // Habitat dressing: dead planters, info consoles, cove pylons.
+    lb.addProp(props.PROP_PLANTER, -5.0, 0.0, 12.0, 0.2, 1.0);
+    lb.addProp(props.PROP_PLANTER, 5.0, 0.0, 12.0, -0.3, 1.0);
+    lb.addProp(props.PROP_PLANTER, -5.0, 0.0, -2.0, 1.7, 1.0);
+    lb.addProp(props.PROP_PLANTER, 5.0, 0.0, -2.0, -1.4, 1.0);
+    lb.addProp(props.PROP_CONSOLE, -18.0, 0.0, -26.0, 2.6, 1.0);
+    lb.addProp(props.PROP_CONSOLE, 18.0, 0.0, -26.0, 3.7, 1.0);
+    lb.addProp(props.PROP_PYLON, -16.0, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 16.0, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -16.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 16.0, 0.0, -16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 0.0, 0.0, 16.0, 0.0, 1.0);
+    // Atrium light ring (frozen showcase coords).
     var k = 0;
     while k < 10 {
         var ang = (k + 0.0) / 10.0 * 6.2831853;
         lb.addPoint(Math.Cos(ang) * 20.0, 4.0, Math.Sin(ang) * 20.0, 0.5, 0.6, 0.8, 12.0);
         k = k + 1;
     }
+    // The eye-wall's cold glow.
+    lb.addPoint(0.0, 3.5, -30.0, 0.55, 0.7, 0.9, 14.0);
     lb.addSpawn(config.EN_MARAUDER, 0.0, -18.0, 0);
     lb.addSpawn(config.EN_VANGUARD, -8.0, -10.0, 0);
     lb.addSpawn(config.EN_VANGUARD, 8.0, -10.0, 0);
@@ -134,13 +280,47 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the Warden garrison", false);
 }
 
-// L5 — Hydroponics Caverns: bioluminescent points, Wraith + Stalker hunt.
+// L5 — Hydroponics Caverns: biolume grotto — moss walls, glowing pool, spires.
 hide func buildL5(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Hydroponics Caverns");
     lb.setAmbient(0.05, 0.08, 0.09);
     lb.setStart(0.0, 0.2, 28.0, 0.0);
-    lb.addArenaShell(30.0, 9.0, 0.10, 0.16, 0.14, 0.12, 0.18, 0.16);
-    scatterCover(lb, 10, 14.0, 0.10, 0.20, 0.16);
+    lb.addArenaShellMat(30.0, 9.0, textures.SURF_ROCK, textures.SURF_MOSS,
+                        0.30, 0.34, 0.32, 0.5, 0.62, 0.55);
+    // Cavern ceiling + hanging stalactites.
+    lb.addBoxMat(0.0, 9.2, 0.0, 30.0, 0.25, 30.0, textures.SURF_ROCK, 0.22, 0.26, 0.25, false);
+    lb.addProp(props.PROP_STALACTITE, -12.0, 9.0, -8.0, 0.4, 1.2);
+    lb.addProp(props.PROP_STALACTITE, 8.0, 9.0, -18.0, 1.3, 1.5);
+    lb.addProp(props.PROP_STALACTITE, 18.0, 9.0, 6.0, 2.8, 1.0);
+    lb.addProp(props.PROP_STALACTITE, -20.0, 9.0, 14.0, 0.9, 1.4);
+    lb.addProp(props.PROP_STALACTITE, 2.0, 9.0, 10.0, 4.4, 0.9);
+    lb.addProp(props.PROP_STALACTITE, -6.0, 9.0, -22.0, 3.1, 1.1);
+    scatterCoverMat(lb, 10, 14.0, textures.SURF_MOSS, 0.42, 0.55, 0.48);
+    // Stalagmite fields outside the fight ring.
+    lb.addProp(props.PROP_STALAGMITE, -24.0, 0.0, -18.0, 0.3, 1.5);
+    lb.addProp(props.PROP_STALAGMITE, -26.0, 0.0, -14.5, 1.1, 1.0);
+    lb.addProp(props.PROP_STALAGMITE, 23.0, 0.0, -20.0, 2.0, 1.7);
+    lb.addProp(props.PROP_STALAGMITE, 26.0, 0.0, 10.0, 0.7, 1.2);
+    lb.addProp(props.PROP_STALAGMITE, 24.5, 0.0, 13.5, 1.6, 0.9);
+    lb.addProp(props.PROP_STALAGMITE, -25.0, 0.0, 20.0, 2.9, 1.4);
+    lb.addProp(props.PROP_STALAGMITE, -21.0, 0.0, 24.0, 0.5, 1.0);
+    lb.addProp(props.PROP_STALAGMITE, 20.0, 0.0, 25.0, 1.9, 1.6);
+    // Hero: the glowing pool basin (visual water + rock rim + up-light).
+    lb.setWater(-12.0, 0.28, -14.0, 3.2, 3.2);
+    lb.addBoxMat(-12.0, 0.22, -17.5, 3.6, 0.22, 0.35, textures.SURF_ROCK, 0.30, 0.34, 0.32, false);
+    lb.addBoxMat(-12.0, 0.22, -10.5, 3.6, 0.22, 0.35, textures.SURF_ROCK, 0.30, 0.34, 0.32, false);
+    lb.addBoxMat(-15.5, 0.22, -14.0, 0.35, 0.22, 3.2, textures.SURF_ROCK, 0.30, 0.34, 0.32, false);
+    lb.addBoxMat(-8.5, 0.22, -14.0, 0.35, 0.22, 3.2, textures.SURF_ROCK, 0.30, 0.34, 0.32, false);
+    // Grow racks: the dead hydroponics rows.
+    lb.addProp(props.PROP_RACK, 10.0, 0.0, 12.0, 0.1, 1.0);
+    lb.addProp(props.PROP_RACK, 14.0, 0.0, 12.0, -0.05, 1.0);
+    lb.addProp(props.PROP_RACK, 10.0, 0.0, 16.0, 0.15, 1.0);
+    lb.addProp(props.PROP_RACK, 14.0, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -22.0, 0.0, 4.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 22.0, 0.0, -4.0, 0.0, 1.0);
+    // Pool up-light + grow-row glow.
+    lb.addPoint(-12.0, 1.0, -14.0, 0.2, 0.85, 0.7, 10.0);
+    lb.addPoint(12.0, 2.5, 14.0, 0.3, 0.7, 0.5, 9.0);
     // Glowing pools (emissive-ish point lights).
     var k = 0;
     while k < 8 {
@@ -163,9 +343,31 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Storm Terraces");
     lb.setAmbient(0.14, 0.14, 0.16);
     lb.setStart(0.0, 0.2, 0.0, 0.0);
-    lb.addArenaShell(28.0, 6.0, 0.26, 0.26, 0.28, 0.28, 0.28, 0.30);
-    scatterCover(lb, 6, 8.0, 0.28, 0.28, 0.30);
-    lb.addDirectional(-0.2, -0.9, -0.3, 0.5, 0.5, 0.6);
+    lb.setTerrain(3);                       // mountainside rises past the walls
+    lb.addArenaShellMat(28.0, 6.0, textures.SURF_CONCRETE, textures.SURF_ROCK,
+                        0.38, 0.38, 0.42, 0.36, 0.35, 0.38);
+    scatterCoverMat(lb, 6, 8.0, textures.SURF_CONCRETE, 0.40, 0.40, 0.44);
+    // Perimeter terrace steps (visual rise toward the storm wall).
+    lb.addBoxMat(0.0, 0.5, -27.0, 28.0, 0.5, 1.2, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
+    lb.addBoxMat(0.0, 1.1, -28.6, 28.0, 1.1, 0.6, textures.SURF_CONCRETE, 0.34, 0.34, 0.38, false);
+    lb.addBoxMat(-27.0, 0.5, 0.0, 1.2, 0.5, 28.0, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
+    lb.addBoxMat(27.0, 0.5, 0.0, 1.2, 0.5, 28.0, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
+    // Holdout hardware: barricade ring + storm lamps + supply drop.
+    lb.addProp(props.PROP_BARRICADE, -6.0, 0.0, 10.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_BARRICADE, 6.0, 0.0, 10.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_BARRICADE, -6.0, 0.0, -10.0, 0.0, 1.0);
+    lb.addProp(props.PROP_BARRICADE, 6.0, 0.0, -10.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -14.0, 0.0, 14.0, 0.8, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 14.0, 0.0, 14.0, -0.8, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -14.0, 0.0, -14.0, 2.4, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 14.0, 0.0, -14.0, -2.4, 1.0);
+    lb.addProp(props.PROP_CRATE, 2.2, 0.0, 6.4, 0.3, 1.0);
+    lb.addProp(props.PROP_BARREL, -2.4, 0.0, -6.5, 0.0, 1.0);
+    // Lamp practicals (cold storm pools).
+    lb.addPoint(-14.0, 2.8, 14.0, 0.5, 0.6, 0.85, 10.0);
+    lb.addPoint(14.0, 2.8, 14.0, 0.5, 0.6, 0.85, 10.0);
+    lb.addPoint(-14.0, 2.8, -14.0, 0.5, 0.6, 0.85, 10.0);
+    lb.addPoint(14.0, 2.8, -14.0, 0.5, 0.6, 0.85, 10.0);
     var w = 0;
     while w < 3 {
         var per = 3 + w;
@@ -190,9 +392,30 @@ hide func buildL7(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("The Foundry");
     lb.setAmbient(0.12, 0.09, 0.07);
     lb.setStart(0.0, 0.2, 26.0, 0.0);
-    lb.addArenaShell(30.0, 10.0, 0.20, 0.14, 0.10, 0.24, 0.16, 0.12);
+    lb.addArenaShellMat(30.0, 10.0, textures.SURF_METAL, textures.SURF_METAL,
+                        0.34, 0.26, 0.20, 0.36, 0.28, 0.22);
     lb.addPoint(0.0, 6.0, 0.0, 1.0, 0.5, 0.2, 30.0);
-    scatterCover(lb, 6, 12.0, 0.22, 0.16, 0.12);
+    scatterCoverMat(lb, 6, 12.0, textures.SURF_METAL, 0.36, 0.28, 0.22);
+    // Hero: the crucible + crane, offset from the boss lane; hidden collider
+    // inside the basin keeps combatants out.
+    lb.addProp(props.PROP_CRUCIBLE, 14.0, 0.0, 4.0, 0.0, 1.0);
+    lb.addProp(props.PROP_CRANE, 10.5, 0.0, 4.0, 0.0, 1.0);
+    lb.addBoxMat(14.0, 0.7, 4.0, 1.5, 0.7, 1.5, textures.SURF_METAL, 0.2, 0.15, 0.12, true);
+    // Hazard aprons at the crucible + wall pipe runs + furnace strips.
+    lb.addBoxMat(14.0, 0.02, 4.0, 3.4, 0.02, 3.4, textures.SURF_HAZARD, 0.8, 0.7, 0.2, false);
+    lb.addProp(props.PROP_PIPERUN, -29.0, 0.0, -8.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PIPERUN, -29.0, 0.0, 0.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PIPERUN, -29.0, 0.0, 8.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PIPERUN, 29.0, 0.0, -10.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PYLON, -20.0, 0.0, -20.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 20.0, 0.0, -20.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, -20.0, 0.0, 20.0, 0.0, 1.0);
+    lb.addProp(props.PROP_PYLON, 20.0, 0.0, 20.0, 0.0, 1.0);
+    lb.addProp(props.PROP_BARREL, -8.2, 0.0, 16.0, 0.0, 1.0);
+    lb.addProp(props.PROP_BARREL, -9.1, 0.0, 16.8, 0.0, 0.9);
+    lb.addProp(props.PROP_CRATE, 8.5, 0.0, 16.4, 0.6, 1.0);
+    // Crucible glow.
+    lb.addPoint(14.0, 2.5, 4.0, 1.0, 0.45, 0.15, 16.0);
     lb.addSpawn(config.BOSS_WARDEN, 0.0, -14.0, 0);
     lb.addSpawn(config.EN_HUSK, -8.0, -8.0, 1);
     lb.addSpawn(config.EN_HUSK, 8.0, -8.0, 1);
@@ -206,9 +429,25 @@ hide func buildL8(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Spire Ascent");
     lb.setAmbient(0.14, 0.15, 0.20);
     lb.setStart(0.0, 0.2, 0.0, 0.0);
-    lb.addArenaShell(34.0, 14.0, 0.22, 0.23, 0.28, 0.26, 0.27, 0.32);
-    lb.addDirectional(-0.4, -0.6, -0.5, 0.6, 0.7, 1.0);
-    scatterCover(lb, 8, 16.0, 0.24, 0.25, 0.30);
+    lb.addArenaShellMat(34.0, 14.0, textures.SURF_CONCRETE, textures.SURF_CONCRETE,
+                        0.50, 0.53, 0.60, 0.46, 0.49, 0.56);
+    scatterCoverMat(lb, 8, 16.0, textures.SURF_CONCRETE, 0.48, 0.51, 0.58);
+    // Hero: the spire antenna piercing the cloud band beyond the south wall.
+    lb.addProp(props.PROP_SPIRE, 0.0, 0.0, -44.0, 0.0, 1.3);
+    // Ring beacons around the platform.
+    lb.addProp(props.PROP_PYLON, 24.0, 0.0, 0.0, 0.0, 1.2);
+    lb.addProp(props.PROP_PYLON, 12.0, 0.0, 20.8, 0.0, 1.2);
+    lb.addProp(props.PROP_PYLON, -12.0, 0.0, 20.8, 0.0, 1.2);
+    lb.addProp(props.PROP_PYLON, -24.0, 0.0, 0.0, 0.0, 1.2);
+    lb.addProp(props.PROP_PYLON, -12.0, 0.0, -20.8, 0.0, 1.2);
+    lb.addProp(props.PROP_PYLON, 12.0, 0.0, -20.8, 0.0, 1.2);
+    lb.addProp(props.PROP_RADAR, 26.0, 0.0, 26.0, 0.0, 1.2);
+    lb.addProp(props.PROP_CRATE, -3.0, 0.0, 22.0, 0.4, 1.0);
+    lb.addProp(props.PROP_BARREL, 3.2, 0.0, 22.4, 0.0, 1.0);
+    // Beacon practicals.
+    lb.addPoint(24.0, 3.2, 0.0, 0.55, 0.75, 1.0, 10.0);
+    lb.addPoint(-24.0, 3.2, 0.0, 0.55, 0.75, 1.0, 10.0);
+    lb.addPoint(0.0, 3.2, 20.8, 0.55, 0.75, 1.0, 10.0);
     lb.addSpawn(config.BOSS_SHRIKE, 0.0, -20.0, 0);
     lb.addSpawn(config.EN_DRONE, -10.0, 6.0, 0);
     lb.addSpawn(config.EN_DRONE, 10.0, 6.0, 0);
@@ -221,13 +460,35 @@ hide func buildL9(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("Helix Core");
     lb.setAmbient(0.08, 0.14, 0.16);
     lb.setStart(0.0, 0.2, 30.0, 0.0);
-    lb.addArenaShell(36.0, 12.0, 0.10, 0.16, 0.18, 0.12, 0.20, 0.24);
+    lb.addArenaShellMat(36.0, 12.0, textures.SURF_METAL, textures.SURF_METAL,
+                        0.24, 0.30, 0.34, 0.26, 0.32, 0.38);
+    // Hero: the rotating helix column at the chamber's heart (thin hidden
+    // collider stops walk-throughs; the slats orbit overhead).
+    lb.addProp(props.PROP_HELIX, 0.0, 0.0, 0.0, 0.0, 1.0);
+    lb.addBoxMat(0.0, 2.4, 0.0, 0.34, 2.4, 0.34, textures.SURF_METAL, 0.2, 0.25, 0.28, true);
+    // Concentric console ring facing the core.
+    var kc = 0;
+    while kc < 6 {
+        var ca = (kc + 0.0) / 6.0 * 6.2831853 + 0.5236;
+        lb.addProp(props.PROP_CONSOLE, Math.Cos(ca) * 14.0, 0.0, Math.Sin(ca) * 14.0,
+                   1.5707963 - ca, 1.0);
+        kc = kc + 1;
+    }
+    lb.addProp(props.PROP_DOORFRAME, -4.0, 0.0, 26.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_DOORFRAME, 4.0, 0.0, 26.0, 1.5707963, 1.0);
+    lb.addProp(props.PROP_PYLON, -28.0, 0.0, -12.0, 0.0, 1.1);
+    lb.addProp(props.PROP_PYLON, 28.0, 0.0, -12.0, 0.0, 1.1);
+    lb.addProp(props.PROP_PYLON, -28.0, 0.0, 12.0, 0.0, 1.1);
+    lb.addProp(props.PROP_PYLON, 28.0, 0.0, 12.0, 0.0, 1.1);
+    // Phase ring lights (frozen showcase coords; hue-shifted by boss phases).
     var k = 0;
     while k < 6 {
         var ang = (k + 0.0) / 6.0 * 6.2831853;
         lb.addPoint(Math.Cos(ang) * 22.0, 5.0, Math.Sin(ang) * 22.0, 0.3, 0.8, 0.9, 16.0);
         k = k + 1;
     }
+    // Core up-light.
+    lb.addPoint(0.0, 1.5, 0.0, 0.3, 0.85, 0.9, 12.0);
     lb.addSpawn(config.BOSS_HELIX, 0.0, -18.0, 0);
     lb.addPickup(config.PK_AMMO, 10.0, 0.0, 24.0, 120.0);
     lb.addPickup(config.PK_HEALTH, -10.0, 0.0, 24.0, 60.0);
@@ -239,11 +500,26 @@ hide func buildHub(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.setName("The Redoubt");
     lb.setAmbient(0.20, 0.20, 0.24);
     lb.setStart(0.0, 0.2, 8.0, 0.0);
-    lb.addArenaShell(16.0, 5.0, 0.28, 0.28, 0.30, 0.32, 0.32, 0.36);
+    lb.addArenaShellMat(16.0, 5.0, textures.SURF_METAL, textures.SURF_METAL,
+                        0.40, 0.37, 0.33, 0.42, 0.39, 0.35);
+    lb.addBoxMat(0.0, 5.15, 0.0, 16.0, 0.2, 16.0, textures.SURF_METAL, 0.30, 0.28, 0.26, false);
     lb.addPoint(0.0, 4.0, 0.0, 0.9, 0.85, 0.7, 20.0);
     lb.addPoint(-6.0, 3.0, -6.0, 0.5, 0.6, 0.9, 10.0);
     lb.addPoint(6.0, 3.0, -6.0, 0.5, 0.6, 0.9, 10.0);
-    // Workbench block.
-    lb.addBox(0.0, 0.6, -8.0, 2.0, 0.6, 1.0, 0.40, 0.42, 0.48, true);
+    // Hero: the workbench wall (hidden collider under the bench top keeps the
+    // frozen REACH objective footprint).
+    lb.addProp(props.PROP_WORKBENCH, 0.0, 0.0, -8.0, 0.0, 1.4);
+    lb.addBoxMat(0.0, 0.42, -8.0, 1.4, 0.42, 0.6, textures.SURF_METAL, 0.3, 0.28, 0.26, true);
+    // Haven clutter: mission consoles, storage, the salvaged radar.
+    lb.addProp(props.PROP_CONSOLE, -4.0, 0.0, -13.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_CONSOLE, 4.0, 0.0, -13.0, 3.1415927, 1.0);
+    lb.addProp(props.PROP_RADAR, 10.0, 0.0, -10.0, 0.0, 1.0);
+    lb.addProp(props.PROP_RACK, -10.0, 0.0, -10.0, 0.3, 1.0);
+    lb.addProp(props.PROP_CRATE, -12.0, 0.0, 4.0, 0.4, 1.0);
+    lb.addProp(props.PROP_CRATE, -11.0, 0.0, 5.2, 1.1, 0.8);
+    lb.addProp(props.PROP_BARREL, 12.0, 0.0, 6.0, 0.0, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, -8.0, 0.0, 2.0, 0.5, 1.0);
+    lb.addProp(props.PROP_LAMPPOST, 8.0, 0.0, 2.0, -0.5, 1.0);
+    lb.addProp(props.PROP_PLANTER, 13.0, 0.0, -2.0, 0.2, 1.0);
     obj.add(objectives.OBJ_REACH, 0.0, -8.0, 3.0, 0, "Visit the workbench", true);
 }

@@ -647,6 +647,23 @@ std::optional<std::filesystem::path> findBuildDir() {
             return candidate;
     }
 
+    // A dev-tree viper executable lives inside its own CMake build directory
+    // (e.g. <root>/build/src/tools/viper/viper). Walking the executable's
+    // ancestors finds that build tree regardless of the caller's working
+    // directory — otherwise a stale installed toolchain layout can shadow the
+    // freshly-built runtime archives. Installed binaries have no CMakeCache.txt
+    // above them and fall through to the installed-layout discovery unchanged.
+    if (const auto exePath = currentExecutablePath()) {
+        std::filesystem::path cur = exePath->parent_path();
+        for (int depth = 0; depth < 8 && !cur.empty(); ++depth) {
+            if (fileExists(cur / "CMakeCache.txt"))
+                return cur;
+            if (!cur.has_parent_path())
+                break;
+            cur = cur.parent_path();
+        }
+    }
+
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
     if (!ec) {

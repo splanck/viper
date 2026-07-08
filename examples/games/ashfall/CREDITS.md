@@ -9,15 +9,27 @@ from scratch on the Viper runtime.
 
 ## Art & audio
 
-This build ships with **procedural graybox** art only: all meshes are engine
-primitives (boxes, spheres, cylinders) and all materials are built in
-`assets/fallbacks.zia`. There are no bundled third-party assets, so there is
-nothing to attribute yet.
+The game follows an **asset-optional contract**: it is fully playable with the
+procedural fallbacks (skybox, textures, composite-primitive models built in
+`assets/`), and the downloaded models below swap in over the same registry when
+present under `assets_src/`.
 
-The engine honors an **asset-optional contract**: the game is fully playable with
-the procedural fallbacks. When CC0 model/texture/audio packs are added, their
-sources and licenses will be listed here per pack, and the asset registry will
-swap them in over the same material/mesh factory used by the fallbacks.
+### Downloaded CC0 packs (`assets_src/`)
+
+| Pack | Author | Used for | License | Source |
+|------|--------|----------|---------|--------|
+| Animated Mech Pack | Quaternius | Husk, Ranger, Marauder, Vanguard, WARDEN enemy rigs | CC0 1.0 | https://quaternius.com/packs/animatedmech.html |
+| Ultimate Monsters | Quaternius | Sapper, Mite, Drone, Stalker, Wraith, Shrike, SHRIKE Prime rigs | CC0 1.0 | https://quaternius.com/packs/ultimatemonsters.html |
+| Blaster Kit | Kenney | All 10 weapon viewmodels | CC0 1.0 | https://kenney.nl/assets/blaster-kit |
+
+Per-pack license texts are kept alongside the files
+(`assets_src/enemies/LICENSE_quaternius_*.txt`, `assets_src/weapons/LICENSE_kenney.txt`).
+All three packs are Creative Commons Zero (public domain) — attribution is
+appreciated but not required; we credit them gladly.
+
+The Turret and HELIX Avatar remain fully procedural by design (pivot-head and
+monolith constructions), and every downloaded model has a procedural composite
+fallback so a checkout without `assets_src/` runs and tests identically.
 
 ## Engine
 

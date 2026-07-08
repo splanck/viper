@@ -15,6 +15,7 @@
 module savegame;
 
 bind Viper.IO.File as File;
+bind Viper.IO.Dir as Dir;
 bind Viper.IO.Path as Path;
 bind Viper.Text.Json as Json;
 bind Viper.Collections.Map as Map;
@@ -32,6 +33,7 @@ class SaveManager {
     // Real game: pass Path.DataDir("ashfall"). Probes: pass a temp directory.
     expose func setup(dir: String) {
         baseDir = dir;
+        if Dir.Exists(baseDir) == false { Dir.MakeAll(baseDir); }
         ready = true;
     }
 
