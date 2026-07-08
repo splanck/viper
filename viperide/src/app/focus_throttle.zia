@@ -12,8 +12,8 @@
 //          regains focus. Process streams (build/debug/terminal) and input are
 //          never gated — those callers do not consult this class.
 // Key invariants:
-//   - Before the window has ever been focused (headless probes, cold start),
-//     background work runs at full cadence so tests behave normally.
+//   - Hidden/no-activate probes run background work at full cadence even though
+//     no native window focus is expected.
 //   - AllowBackgroundWork() is true every frame while focused, and ~10Hz while
 //     unfocused.
 // Links: viperide/src/main.zia
@@ -23,6 +23,8 @@
 module focus_throttle;
 
 bind Viper.GUI as GUI;
+bind Env = Viper.System.Environment;
+bind Str = Viper.String;
 bind Time = Viper.Time;
 
 // Minimum spacing (ms) between background passes while the window is unfocused.
@@ -33,11 +35,13 @@ class FocusThrottle {
     expose Boolean focused;      // Current focus state.
     expose Boolean everFocused;  // True once the window has been focused at least once.
     hide Integer lastAllowTick;  // Tick of the last allowed background pass while unfocused.
+    hide Boolean headlessMode;   // True when probes intentionally suppress activation.
 
     expose func init() {
         focused = true;
         everFocused = false;
         lastAllowTick = 0;
+        headlessMode = false;
     }
 
     /// @brief Sample the window focus state for this frame.
@@ -46,20 +50,36 @@ class FocusThrottle {
         if app == null { return; }
         var f = app.IsFocused();
         if f { everFocused = true; }
+        headlessMode = HeadlessGraphics();
+        if f == false and everFocused == false and headlessMode {
+            focused = true;
+            return;
+        }
         focused = f;
     }
 
     /// @brief Whether non-essential background work should run this frame.
     /// @return True every frame while focused; ~10Hz while unfocused; always
-    ///         true before the window has ever been focused (headless/cold start).
+    ///         true for hidden/no-activate probes.
     expose func AllowBackgroundWork() -> Boolean {
         if focused { return true; }
-        if everFocused == false { return true; }
+        if headlessMode { return true; }
         var now = Time.Clock.Ticks();
         if now - lastAllowTick >= UNFOCUSED_INTERVAL_MS {
             lastAllowTick = now;
             return true;
         }
         return false;
+    }
+
+    /// @brief True when probes intentionally run without a real foreground window.
+    hide func HeadlessGraphics() -> Boolean {
+        return EnvFlag("VIPER_GFX_HIDE_WINDOWS") or EnvFlag("VIPER_GFX_NO_ACTIVATE");
+    }
+
+    hide func EnvFlag(name: String) -> Boolean {
+        if Env.HasVariable(name) == false { return false; }
+        var v = Str.ToLower(Env.GetVariable(name));
+        return v == "1" or v == "true" or v == "yes" or v == "on";
     }
 }

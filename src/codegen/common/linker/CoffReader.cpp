@@ -714,6 +714,18 @@ bool readCoffObj(
             ObjReloc rel;
             rel.offset = cr->VirtualAddress;
             rel.type = cr->Type;
+            // Reject an out-of-section fixup offset up front, for every relocation
+            // type. extractCoffAddend range-checks only the types whose addend it
+            // decodes; SECTION and any type it passes through would otherwise carry an
+            // unvalidated offset into a section that may be stripped before the applier
+            // (which independently guards placed sections) ever sees it. Mirror the
+            // unconditional bounds check MachOReader performs on r_address.
+            if (rel.offset >= sec.data.size()) {
+                err << "error: " << name << ": COFF relocation at offset " << rel.offset
+                    << " is outside section '" << sec.name << "' (size=" << sec.data.size()
+                    << ")\n";
+                return false;
+            }
             if (cr->SymbolTableIndex >= numberOfSymbols) {
                 err << "error: " << name << ": COFF relocation references invalid symbol index "
                     << cr->SymbolTableIndex << "\n";

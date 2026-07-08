@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/main.zia
+// Purpose: ViperIDE entry point, component construction, command routing, and
+//          frame-loop orchestration.
+// Key invariants:
+//   - Input/render/process streams stay foreground responsive.
+//   - Non-essential background work is throttled while the window is unfocused.
+//   - App-level activation is requested after startup paints so native menu
+//     ownership is available on macOS.
+//
+//===----------------------------------------------------------------------===//
+
 module viperide;
 
 bind "ui/app_shell";
@@ -62,6 +80,7 @@ bind "commands/search_commands";
 bind Viper.GUI;
 bind Env = Viper.System.Environment;
 bind IO = Viper.IO;
+bind Machine = Viper.System.Machine;
 bind Terminal = Viper.Terminal;
 bind Str = Viper.String;
 bind Threads = Viper.Threads;
@@ -112,6 +131,9 @@ final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
 final VIPERIDE_VERSION = "0.1.0";
+final POLL_WAIT_BACKGROUND_MS = 8;
+final POLL_WAIT_IDLE_FOCUSED_MS = 50;
+final POLL_WAIT_IDLE_UNFOCUSED_MS = 150;
 
 /// @brief Re-point the focused-pane controllers at engine.editor after a split
 ///        or focus change. Minimap and find bar bind the widget directly; the
@@ -148,6 +170,45 @@ func handleCommandLine() -> Boolean {
     return false;
 }
 
+func envFlagEnabled(name: String) -> Boolean {
+    if Env.HasVariable(name) == false { return false; }
+    var v = Str.ToLower(Env.GetVariable(name));
+    return v == "1" or v == "true" or v == "yes" or v == "on";
+}
+
+/// @brief Compute how long the next PollWait may sleep without delaying live work.
+func computePollWaitMs(shell: app_shell.AppShell,
+                       focusThrottle: focus_throttle.FocusThrottle,
+                       buildSys: build_system.BuildSystem,
+                       dbgSession: debug_session.DebugSession,
+                       terminalCtrl: terminal_controller.TerminalController,
+                       editorScheduler: scheduler.EditorScheduler,
+                       indexer: project_index.ProjectIndexer,
+                       projMgr: project_manager.ProjectManager,
+                       overlays: ide_overlays.IdeOverlays) -> Integer {
+    if shell == null { return 0; }
+    if buildSys != null and buildSys.IsActive() { return 0; }
+    if dbgSession != null and dbgSession.IsActive() { return 0; }
+    if terminalCtrl != null and terminalCtrl.HasActiveSession() { return 0; }
+    if shell.commandPalette != null and shell.commandPalette.IsVisible() { return 0; }
+    if overlays != null and (overlays.settingsVisible or overlays.aboutVisible) { return 0; }
+
+    if editorScheduler != null and editorScheduler.QueuedCount() > 0 {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+    if indexer != null and indexer.indexing {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+    if projMgr != null and projMgr.fileCacheRefreshing {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+
+    if focusThrottle != null and focusThrottle.focused == false {
+        return POLL_WAIT_IDLE_UNFOCUSED_MS;
+    }
+    return POLL_WAIT_IDLE_FOCUSED_MS;
+}
+
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
     if handleCommandLine() { return; }
@@ -182,6 +243,12 @@ func main() {
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
     view_commands.applyShellFont(shell);
     shell.CenterAndSize(WINDOW_SIZE_PERCENT);
+    shell.SetStatusLeft("Starting...");
+    shell.SetStatusCenter("");
+    shell.SetStatusRight("");
+    shell.Activate();
+    shell.Render();
+    shell.Activate();
 
     var overlays = new ide_overlays.IdeOverlays();
     overlays.Setup(shell);
@@ -370,6 +437,7 @@ func main() {
     var prevStatusRevision = engine.GetRevision();
     var prevStatusLineCount = engine.GetLineCount();
     var prevStatusCursorCount = engine.editor.GetCursorCount();
+    var didPostFirstFrameActivate = false;
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
     var recoveryRevision = engine.GetRevision();
@@ -384,7 +452,9 @@ func main() {
     // ========================================================================
     while shell != null and shell.ShouldClose() == false {
         perfMon.BeginFrame();
-        shell.Poll();
+        shell.PollWait(computePollWaitMs(shell, focusThrottle, buildSys,
+                                         dbgSession, terminalCtrl, editorScheduler,
+                                         indexer, projMgr, overlays));
 
         // Ration background work (indexing, budgeted tools, workspace watching)
         // when the window is unfocused. Input, rendering, process streams
@@ -767,14 +837,16 @@ func main() {
         // ====================================================================
         // File change detection
         // ====================================================================
-        fileWatchCtrl.Pump(shell, docMgr, OPEN_DOC_EXTERNAL_POLL_MS);
+        if allowBackground {
+            fileWatchCtrl.Pump(shell, docMgr, OPEN_DOC_EXTERNAL_POLL_MS);
+        }
 
         if allowBackground {
             workspace_watcher.PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
                                  workspaceWatcherState);
         }
 
-	        // ====================================================================
+        // ====================================================================
         // Update status bar (only when cursor moves)
         // ====================================================================
         var statusRevision = engine.GetRevision();
@@ -798,6 +870,16 @@ func main() {
 
         var perfSpan = perfMon.StartSpan();
         shell.Render();
+        if didPostFirstFrameActivate == false {
+            shell.Activate();
+            if Machine.Os == "macos" and shell.app.IsFocused() == false
+               and envFlagEnabled("VIPER_GFX_NO_ACTIVATE") == false
+               and envFlagEnabled("VIPER_GFX_HIDE_WINDOWS") == false {
+                shell.SetStatusLeft("Window activation is blocked by macOS");
+                GUI.Toast.Info("ViperIDE is visible but macOS did not make it active");
+            }
+            didPostFirstFrameActivate = true;
+        }
         perfMon.AddRender(perfSpan);
         perfMon.EndFrame(engine.editor, indexer);
     }

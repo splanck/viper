@@ -111,6 +111,11 @@ class AppShell {
         return app.PollWait(timeoutMs);
     }
 
+    /// @brief Ask the OS to make this app/window foreground-active.
+    expose func Activate() {
+        app.Activate();
+    }
+
     /// @brief Paint the current frame.
     expose func Render() {
         app.Render();

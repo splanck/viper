@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ui/widgets.zia
+// Purpose: Reusable Canvas widget primitives for the Chess demo.
+// Key invariants:
+//   - Widget drawing is stateless and consumes layout.Rect values.
+//   - Disabled widgets draw inert, muted states and ignore hover/press styling.
+// Ownership/Lifetime:
+//   - Pure helper module; callers own Canvas and Rect values.
+// Links: examples/games/chess/ui/theme.zia, examples/games/chess/ui/renderer.zia
+//
+//===----------------------------------------------------------------------===//
+
 module widgets;
 
 bind Viper.Graphics;
@@ -57,33 +75,74 @@ func drawButton(canvas: Canvas,
                 active: Boolean,
                 primary: Boolean,
                 danger: Boolean) {
+    drawButtonEnabled(canvas, r, label, hovered, pressed, active, primary, danger, true);
+}
+
+/// @brief Generic button with an explicit enabled state.
+/// @details Disabled buttons are still drawn at their normal geometry so the
+///          layout remains stable, but hover, press, active, primary, and danger
+///          styling are muted to make the control visibly inert.
+/// @param canvas Canvas receiving the widget drawing commands.
+/// @param r Rectangle that defines the button visual and hit-test region.
+/// @param label Button label to center inside @p r.
+/// @param hovered True when the mouse is over @p r.
+/// @param pressed True when the mouse is actively pressing @p r.
+/// @param active True for selected segmented buttons.
+/// @param primary True for emphasized commands.
+/// @param danger True for destructive commands.
+/// @param enabled False to draw an inert disabled control.
+func drawButtonEnabled(canvas: Canvas,
+                       r: Rect,
+                       label: String,
+                       hovered: Boolean,
+                       pressed: Boolean,
+                       active: Boolean,
+                       primary: Boolean,
+                       danger: Boolean,
+                       enabled: Boolean) {
     var base = theme.CARD_BG_ALT;
     var border = theme.CARD_BORDER;
     var textCol = theme.TEXT_SECONDARY;
+    var isHovered = hovered;
+    var isPressed = pressed;
+    var isActive = active;
+    var isPrimary = primary;
+    var isDanger = danger;
 
-    if primary {
+    if !enabled {
+        base = theme.darken(theme.CARD_BG_ALT, 18);
+        border = theme.CARD_BORDER_SOFT;
+        textCol = theme.TEXT_MUTED;
+        isHovered = false;
+        isPressed = false;
+        isActive = false;
+        isPrimary = false;
+        isDanger = false;
+    }
+
+    if isPrimary {
         base = theme.ACCENT_GOLD_SOFT;
         border = theme.ACCENT_GOLD;
         textCol = theme.ACCENT_CREAM;
     }
-    if danger {
+    if isDanger {
         base = theme.ACCENT_RED;
         border = theme.brighten(theme.ACCENT_RED, 18);
         textCol = theme.ACCENT_CREAM;
     }
-    if active {
+    if isActive {
         border = theme.ACCENT_GOLD;
         textCol = theme.TEXT_PRIMARY;
-        if !primary && !danger {
+        if !isPrimary && !isDanger {
             base = theme.darken(theme.ACCENT_GOLD_SOFT, 8);
         }
     }
-    if hovered {
+    if isHovered {
         base = theme.brighten(base, 18);
         border = theme.brighten(border, 20);
         textCol = theme.TEXT_PRIMARY;
     }
-    if pressed {
+    if isPressed {
         base = theme.darken(base, 20);
     }
 

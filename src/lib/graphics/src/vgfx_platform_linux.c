@@ -2388,6 +2388,19 @@ void vgfx_platform_focus(struct vgfx_window *win) {
     }
 }
 
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->hidden)
+        return;
+    if (x11->display && x11->window) {
+        XRaiseWindow(x11->display, x11->window);
+        XSetInputFocus(x11->display, x11->window, RevertToParent, CurrentTime);
+        XFlush(x11->display);
+    }
+}
+
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
     if (!win)
         return 0;
@@ -2732,11 +2745,13 @@ typedef struct {
     int sourceid;
     int detail;
     int flags;
+
     struct {
         int mask_len;
         unsigned char *mask;
         double *values;
     } valuators;
+
     double *raw_values;
 } vgfx_xi_raw_event_t;
 

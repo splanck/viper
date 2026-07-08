@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ui/theme.zia
+// Purpose: Visual constants, bitmap fonts, and text helpers for Chess.
+// Key invariants:
+//   - Text measurement and drawing use the same effective scale.
+//   - Large-text mode only boosts body-scale text, preserving title geometry.
+// Ownership/Lifetime:
+//   - Owns process-local font cache and current text accessibility mode.
+// Links: examples/games/chess/ui/widgets.zia, examples/games/chess/ui/renderer.zia
+//
+//===----------------------------------------------------------------------===//
+
 module theme;
 
 bind Viper.Graphics;
@@ -34,6 +52,7 @@ bind Color = Viper.Graphics.Color;
 var bodyFont_: BitmapFont = null;
 var titleFont_: BitmapFont = null;
 var assetsReady_: Boolean = false;
+var largeTextMode_: Boolean = false;
 
 final BG_TOP           = 0x101820;
 final BG_BOTTOM        = 0x19252C;
@@ -71,6 +90,25 @@ final FONT_BODY_SCALE  = 1;
 final FONT_TITLE_SCALE = 4;
 final FONT_LABEL_SCALE = 2;
 
+/// @brief Configure whether body text should render at the accessible scale.
+/// @details The Chess UI passes scale `1` for dense labels, button captions,
+///          footer text, and move-log rows. Large-text mode promotes only that
+///          body scale to `2`; existing title and header scales are left alone
+///          so card geometry remains stable.
+/// @param enabled True to boost body-scale text, false for normal text.
+func setLargeText(enabled: Boolean) {
+    largeTextMode_ = enabled;
+}
+
+/// @brief Return the render scale after applying current accessibility mode.
+/// @param scale Caller-requested integer bitmap-font scale.
+/// @return Effective scale used for both measurement and drawing.
+func effectiveScale(scale: Integer) -> Integer {
+    if scale <= 0 { return 1; }
+    if largeTextMode_ && scale == 1 { return 2; }
+    return scale;
+}
+
 /// @brief Lazy-load the bitmap font. Idempotent — safe to call from any
 ///        text helper as a precondition guard.
 func initAssets() {
@@ -100,19 +138,21 @@ func titleFont() -> BitmapFont {
 /// @brief Pixel width of `text` rendered at `scale` (in body-font cells).
 func textWidth(text: String, scale: Integer) -> Integer {
     initAssets();
+    var eff = effectiveScale(scale);
     if bodyFont_ != null {
-        return bodyFont_!.TextWidth(text) * scale;
+        return bodyFont_!.TextWidth(text) * eff;
     }
-    return Canvas.TextScaledWidth(text, scale);
+    return Canvas.TextScaledWidth(text, eff);
 }
 
 /// @brief Pixel height of one line of body-font text at `scale`.
 func lineHeight(scale: Integer) -> Integer {
     initAssets();
+    var eff = effectiveScale(scale);
     if bodyFont_ != null {
-        return bodyFont_!.TextHeight * scale;
+        return bodyFont_!.TextHeight * eff;
     }
-    return Canvas.TextHeight() * scale;
+    return Canvas.TextHeight() * eff;
 }
 
 /// @brief Vertically centre a single line of text in a `h`-tall rect at `y`.
@@ -134,11 +174,12 @@ func drawText(canvas: Canvas, x: Integer, y: Integer, text: String, color: Integ
 /// @brief Draw text with integer scaling (1 = native, 2 = 2×, etc.).
 func drawTextScaled(canvas: Canvas, x: Integer, y: Integer, text: String, scale: Integer, color: Integer) {
     initAssets();
+    var eff = effectiveScale(scale);
     if bodyFont_ != null {
-        canvas.TextFontScaled(x, y, text, bodyFont_!, scale, color);
+        canvas.TextFontScaled(x, y, text, bodyFont_!, eff, color);
         return;
     }
-    canvas.TextScaled(x, y, text, scale, color);
+    canvas.TextScaled(x, y, text, eff, color);
 }
 
 /// @brief Draw `text` horizontally centred in the (x, w) span.

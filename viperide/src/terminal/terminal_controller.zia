@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/terminal/terminal_controller.zia
+// Purpose: Manage ViperIDE terminal sessions, panel visibility, shell startup,
+//          PTY pumping, and terminal focus state.
+// Key invariants:
+//   - Terminal child process streams are never throttled by editor background
+//     work budgeting.
+//   - Hidden terminal startup preserves output until the panel is shown.
+//
+//===----------------------------------------------------------------------===//
+
 module terminal_controller;
 
 bind "terminal_session";
@@ -115,6 +132,18 @@ class TerminalController {
     /// @brief Return true after any PTY start attempt has been made.
     expose func HasAttemptedStart() -> Boolean {
         return sess.started;
+    }
+
+    /// @brief Return true if any terminal session currently has a live child.
+    expose func HasActiveSession() -> Boolean {
+        var n = sessions.count();
+        var i = 0;
+        while i < n {
+            var s = sessions.get(i) as terminal_session.TerminalSession;
+            if s != null and s.IsActive() { return true; }
+            i = i + 1;
+        }
+        return false;
     }
 
     /// @brief Resolve the best platform shell executable.

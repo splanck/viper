@@ -736,7 +736,15 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
 }
 
 void vgfx_platform_focus(struct vgfx_window *win) {
-    (void)win;
+    vgfx_platform_request_foreground(win);
+}
+
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    platform->focused = 1;
+    vgfx_internal_set_focus_state(win, 1);
 }
 
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {

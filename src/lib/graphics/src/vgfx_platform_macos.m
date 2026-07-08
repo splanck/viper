@@ -1442,9 +1442,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         if (cs <= 0.0)
                             cs = 1.0;
                         double k = sf / cs;
-                        vgfx_internal_add_relative_delta(win,
-                                                         (double)[event deltaX] * k,
-                                                         (double)[event deltaY] * k);
+                        vgfx_internal_add_relative_delta(
+                            win, (double)[event deltaX] * k, (double)[event deltaY] * k);
                     }
 
                     vgfx_internal_set_mouse_position(win, x, y);
@@ -1899,6 +1898,12 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
 void vgfx_platform_focus(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
+    vgfx_platform_request_foreground(win);
+}
+
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
     @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window) {
@@ -1912,7 +1917,17 @@ void vgfx_platform_focus(struct vgfx_window *win) {
                 vgfx_internal_set_focus_state(win, 0);
                 return;
             }
+            [NSApplication sharedApplication];
+            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+            vgfx_platform_macos_finish_launching_if_needed();
+            NSString *window_title = [platform->window title];
+            const char *preferred_title =
+                window_title && [window_title length] > 0 ? [window_title UTF8String] : NULL;
+            vgfx_platform_macos_ensure_default_main_menu(preferred_title);
             [platform->window makeKeyAndOrderFront:nil];
+            [platform->window makeMainWindow];
+            [platform->window orderFrontRegardless];
+            [NSApp activateIgnoringOtherApps:YES];
         }
     }
 }

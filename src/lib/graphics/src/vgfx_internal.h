@@ -535,6 +535,9 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y);
 /// @brief Give keyboard focus to the native window.
 void vgfx_platform_focus(struct vgfx_window *win);
 
+/// @brief Request foreground activation for the native application/window.
+void vgfx_platform_request_foreground(struct vgfx_window *win);
+
 /// @brief Check if the native window has keyboard focus.
 /// @return 1 if focused, 0 otherwise
 int32_t vgfx_platform_is_focused(struct vgfx_window *win);

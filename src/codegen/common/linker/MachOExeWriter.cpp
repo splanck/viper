@@ -392,8 +392,10 @@ bool writeMachOExe(const std::string &path,
     if (!appendLoadCommand(ncmds, sizeofcmds, 24, "LC_BUILD_VERSION load command size", err))
         return false;
 
-    // LC_CODE_SIGNATURE (arm64 macOS requires ad-hoc code signing).
-    const bool needsCodeSign = isArm64;
+    // LC_CODE_SIGNATURE. arm64 macOS requires an ad-hoc signature to exec; x86_64
+    // images also need one to run under Rosetta 2 on Apple Silicon (the translator
+    // rejects unsigned binaries). Sign both — the SuperBlob layout is identical.
+    const bool needsCodeSign = true;
     if (needsCodeSign) {
         if (!appendLoadCommand(ncmds, sizeofcmds, 16, "LC_CODE_SIGNATURE load command size", err))
             return false;

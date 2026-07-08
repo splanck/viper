@@ -1004,7 +1004,12 @@ void rt_app_focus(void *app) {
     if (!gui_app)
         return;
     if (gui_app->window)
-        vgfx_focus(gui_app->window);
+        vgfx_request_foreground(gui_app->window);
+}
+
+/// @brief Activate the app as the foreground OS application/window.
+void rt_app_activate(void *app) {
+    rt_app_focus(app);
 }
 
 /// @brief Check whether the app window currently has OS-level focus.
@@ -1403,6 +1408,11 @@ int64_t rt_app_is_fullscreen(void *app) {
 
 /// @brief Focus the app.
 void rt_app_focus(void *app) {
+    (void)app;
+}
+
+/// @brief Stub: graphics disabled — no-op; no window to activate.
+void rt_app_activate(void *app) {
     (void)app;
 }
 

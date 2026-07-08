@@ -929,6 +929,11 @@ void vgfx_focus(vgfx_window_t window) {
         vgfx_platform_focus(window);
 }
 
+void vgfx_request_foreground(vgfx_window_t window) {
+    if (window)
+        vgfx_platform_request_foreground(window);
+}
+
 int32_t vgfx_is_focused(vgfx_window_t window) {
     if (!window)
         return 0;

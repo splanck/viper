@@ -516,6 +516,28 @@ void test_focus_state_sync(void) {
     TEST_END();
 }
 
+/* T25b: Foreground Request Restores Focus */
+void test_request_foreground_restores_focus(void) {
+    TEST_BEGIN("T25b: Foreground Request Restores Focus");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    ASSERT_EQ(vgfx_is_focused(win), 1);
+
+    vgfx_mock_inject_focus(win, 0);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_is_focused(win), 0);
+
+    vgfx_request_foreground(win);
+    ASSERT_EQ(vgfx_is_focused(win), 1);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 void test_invalid_negative_input_queries_are_safe(void) {
     TEST_BEGIN("T26: Invalid Negative Input Queries Are Safe");
 
@@ -655,6 +677,7 @@ int main(void) {
     test_scroll_event();
     test_scroll_updates_mouse_position();
     test_focus_state_sync();
+    test_request_foreground_restores_focus();
     test_mock_fullscreen_per_window();
     test_invalid_negative_input_queries_are_safe();
     test_prevent_close_still_emits_close_event();

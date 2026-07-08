@@ -199,6 +199,43 @@ static std::vector<uint8_t> makeCoffRelocTargetsAux() {
     return obj;
 }
 
+// COFF object whose single relocation has a VirtualAddress past the end of its
+// 4-byte section. The reader must reject the out-of-section offset up front.
+static std::vector<uint8_t> makeCoffRelocBadOffset() {
+    constexpr uint32_t kTextFlags = 0x00000020 | 0x20000000 | 0x40000000;
+    std::vector<uint8_t> obj;
+    appendLE16(obj, 0x8664);
+    appendLE16(obj, 1);
+    appendLE32(obj, 0);
+    appendLE32(obj, 20 + 40 + 4 + 10);
+    appendLE32(obj, 2);
+    appendLE16(obj, 0);
+    appendLE16(obj, 0);
+    obj.insert(obj.end(), {'.', 't', 'e', 'x', 't', 0, 0, 0});
+    appendLE32(obj, 4);
+    appendLE32(obj, 0);
+    appendLE32(obj, 4);
+    appendLE32(obj, 20 + 40);
+    appendLE32(obj, 20 + 40 + 4);
+    appendLE32(obj, 0);
+    appendLE16(obj, 1);
+    appendLE16(obj, 0);
+    appendLE32(obj, kTextFlags);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0x1000); // relocation VirtualAddress — far past the 4-byte section
+    appendLE32(obj, 0);      // symbol index 0
+    appendLE16(obj, coff_x64::kRel32);
+    obj.insert(obj.end(), {'f', 'u', 'n', 'c', 0, 0, 0, 0});
+    appendLE32(obj, 0);
+    appendLE16(obj, 1);
+    appendLE16(obj, 0x20);
+    obj.push_back(2);
+    obj.push_back(1);
+    obj.resize(obj.size() + 18, 0);
+    appendLE32(obj, 4);
+    return obj;
+}
+
 static std::vector<uint8_t> makeCoffWeakMissingAux() {
     std::vector<uint8_t> obj;
     appendLE16(obj, 0x8664);
@@ -368,6 +405,77 @@ static std::vector<uint8_t> makeMachOLocalSubsections() {
     return obj;
 }
 
+// Mach-O arm64 object whose single relocation is ARM64_RELOC_SUBTRACTOR (type 1).
+// Cloned from makeMachOArm64UnsignedReloc with the relocation type changed so the
+// reader must reject the symbol-difference fixup instead of misreading it.
+static std::vector<uint8_t> makeMachOArm64Subtractor() {
+    constexpr uint32_t segmentSize = 72 + 80;
+    constexpr uint32_t sizeofcmds = segmentSize + 24;
+    constexpr uint32_t dataOff = 32 + sizeofcmds;
+    constexpr uint32_t relocOff = dataOff + 8;
+    constexpr uint32_t symOff = relocOff + 8;
+    constexpr uint32_t strOff = symOff + 16;
+
+    std::vector<uint8_t> obj;
+    appendMachHeader(obj, 0x0100000C, 2, sizeofcmds, 0);
+    appendLE32(obj, 0x19);
+    appendLE32(obj, segmentSize);
+    appendName16(obj, "");
+    appendLE64(obj, 0);
+    appendLE64(obj, 8);
+    appendLE64(obj, dataOff);
+    appendLE64(obj, 8);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0);
+    appendLE32(obj, 1);
+    appendLE32(obj, 0);
+    appendName16(obj, "__data");
+    appendName16(obj, "__DATA");
+    appendLE64(obj, 0);
+    appendLE64(obj, 8);
+    appendLE32(obj, dataOff);
+    appendLE32(obj, 3);
+    appendLE32(obj, relocOff);
+    appendLE32(obj, 1);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0);
+    appendLE32(obj, 0);
+    appendMachSymtab(obj, symOff, 1, strOff, 9);
+    appendLE64(obj, 0x8877665544332211ULL);
+    appendLE32(obj, 0);
+    // extern, length=quad, ARM64_RELOC_SUBTRACTOR (type 1 in bits 28-31).
+    appendLE32(obj, (3u << 25) | (1u << 27) | (1u << 28));
+    appendLE32(obj, 1);
+    obj.push_back(0x01);
+    obj.push_back(0);
+    appendLE16(obj, 0);
+    appendLE64(obj, 0);
+    obj.insert(obj.end(), {'\0', '_', 't', 'a', 'r', 'g', 'e', 't', '\0'});
+    return obj;
+}
+
+// Minimal Mach-O arm64 object with a single external common (tentative) symbol:
+// N_UNDF | N_EXT with a non-zero n_value (size) and GET_COMM_ALIGN in n_desc.
+static std::vector<uint8_t> makeMachOArm64Common() {
+    constexpr uint32_t sizeofcmds = 24; // one LC_SYMTAB
+    constexpr uint32_t symOff = 32 + sizeofcmds;
+    constexpr uint32_t strOff = symOff + 16;
+
+    std::vector<uint8_t> obj;
+    appendMachHeader(obj, 0x0100000C, 1, sizeofcmds, 0);
+    appendMachSymtab(obj, symOff, 1, strOff, 8);
+    // nlist_64: n_strx=1, n_type=N_EXT|N_UNDF(0x01), n_sect=0,
+    // n_desc=align_log2(4)<<8, n_value=size(32).
+    appendLE32(obj, 1);
+    obj.push_back(0x01);
+    obj.push_back(0);
+    appendLE16(obj, static_cast<uint16_t>(4u << 8));
+    appendLE64(obj, 32);
+    obj.insert(obj.end(), {'\0', '_', 'c', 'o', 'm', 'm', 'n', '\0'});
+    return obj;
+}
+
 int main() {
     {
         ObjFile obj;
@@ -403,6 +511,15 @@ int main() {
         CHECK(err.str().find("missing auxiliary") != std::string::npos);
     }
 
+    // F7: a relocation whose VirtualAddress is past the section end is rejected.
+    {
+        ObjFile obj;
+        std::ostringstream err;
+        auto bytes = makeCoffRelocBadOffset();
+        CHECK(!readObjFile(bytes.data(), bytes.size(), "bad-reloc-off.obj", obj, err));
+        CHECK(err.str().find("outside section") != std::string::npos);
+    }
+
     {
         ObjFile obj;
         std::ostringstream err;
@@ -429,6 +546,32 @@ int main() {
         CHECK(obj.sections.size() == 3);
         CHECK(obj.sections[1].data.size() == 4);
         CHECK(obj.sections[2].data.size() == 4);
+    }
+
+    // F2: ARM64_RELOC_SUBTRACTOR must be rejected with a clear diagnostic, not
+    // misread as an ordinary relocation.
+    {
+        ObjFile obj;
+        std::ostringstream err;
+        auto bytes = makeMachOArm64Subtractor();
+        CHECK(!readObjFile(bytes.data(), bytes.size(), "subtractor.o", obj, err));
+        CHECK(err.str().find("SUBTRACTOR") != std::string::npos);
+    }
+
+    // F8: N_UNDF with a non-zero n_value is a common (tentative) symbol; the reader
+    // must record it as common with the correct size and n_desc alignment.
+    {
+        ObjFile obj;
+        std::ostringstream err;
+        auto bytes = makeMachOArm64Common();
+        CHECK(readObjFile(bytes.data(), bytes.size(), "common.o", obj, err));
+        CHECK(obj.symbols.size() == 2);
+        CHECK(obj.symbols[1].name == "commn");
+        CHECK(obj.symbols[1].common);
+        CHECK(obj.symbols[1].binding == ObjSymbol::Global);
+        CHECK(obj.symbols[1].size == 32);
+        CHECK(obj.symbols[1].commonAlignment == 16);
+        CHECK(obj.symbols[1].offset == 0);
     }
 
     if (gFail == 0) {

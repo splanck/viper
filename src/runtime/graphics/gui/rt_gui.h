@@ -1396,6 +1396,10 @@ int64_t rt_app_is_fullscreen(void *app);
 /// @param app GUI application handle.
 void rt_app_focus(void *app);
 
+/// @brief Activate the app as the foreground OS application/window.
+/// @param app GUI application handle.
+void rt_app_activate(void *app);
+
 /// @brief Check if the window has keyboard focus.
 /// @param app GUI application handle.
 /// @return 1 if focused, 0 otherwise.

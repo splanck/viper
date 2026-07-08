@@ -717,9 +717,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 double cs = (double)vgfx_internal_coord_scale(win);
                 if (cs <= 0.0)
                     cs = 1.0;
-                vgfx_internal_add_relative_delta(win,
-                                                 (double)raw.data.mouse.lLastX / cs,
-                                                 (double)raw.data.mouse.lLastY / cs);
+                vgfx_internal_add_relative_delta(
+                    win, (double)raw.data.mouse.lLastX / cs, (double)raw.data.mouse.lLastY / cs);
             }
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
@@ -1278,8 +1277,8 @@ int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
         return 1;
     /* Block until input arrives on this thread's queue or the timeout elapses.
        Messages are left queued for vgfx_platform_process_events. */
-    DWORD result = MsgWaitForMultipleObjectsEx(
-        0, NULL, (DWORD)timeout_ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+    DWORD result =
+        MsgWaitForMultipleObjectsEx(0, NULL, (DWORD)timeout_ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
     return result != WAIT_TIMEOUT ? 1 : 0;
 }
 
@@ -1736,6 +1735,19 @@ void vgfx_platform_focus(struct vgfx_window *win) {
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     if (w32->hwnd)
         SetForegroundWindow(w32->hwnd);
+}
+
+/// @brief Request foreground activation for the application window.
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (w32->hwnd) {
+        ShowWindow(w32->hwnd, SW_SHOWNORMAL);
+        BringWindowToTop(w32->hwnd);
+        SetForegroundWindow(w32->hwnd);
+        SetFocus(w32->hwnd);
+    }
 }
 
 /// @brief Return 1 if the window currently has keyboard focus.

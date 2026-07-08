@@ -653,6 +653,22 @@ bool readMachOObj(
                         continue;
                     }
 
+                    // SUBTRACTOR relocations (paired with a following UNSIGNED) encode a
+                    // symbol difference B - A. Compilers emit them for label-difference
+                    // expressions such as C++ exception/typeinfo tables and jump tables.
+                    // The applier has no lowering for symbol differences yet, so reject
+                    // the pair explicitly here instead of misreading the SUBTRACTOR record
+                    // as an ordinary relocation and silently corrupting the fixup.
+                    if ((isArm64 && relType == macho_a64::kSubtractor) ||
+                        (!isArm64 && relType == macho_x64::kSubtractor)) {
+                        err << "error: " << name
+                            << ": Mach-O SUBTRACTOR relocations (symbol-difference fixups, e.g. "
+                               "C++ exception tables or jump tables) are not yet supported in "
+                               "section "
+                            << os.name << "\n";
+                        return false;
+                    }
+
                     if ((relType == macho_a64::kUnsigned || relType == macho_x64::kUnsigned) &&
                         relLength != 2 && relLength != 3) {
                         err << "error: " << name
@@ -796,10 +812,25 @@ bool readMachOObj(
 
             if (nType == 0x00) // N_UNDF
             {
-                os.binding = ObjSymbol::Undefined;
-                // Check for weak imports.
-                if (nl->n_desc & 0x0040) // N_WEAK_REF
-                    os.weakExternal = true;
+                if (isExtern && nl->n_value != 0) {
+                    // Common (tentative) symbol: N_UNDF with a non-zero n_value.
+                    // n_value is the required byte size and GET_COMM_ALIGN(n_desc) =
+                    // (n_desc >> 8) & 0x0F is the log2 alignment. The linker coalesces
+                    // these like ELF SHN_COMMON / COFF common symbols. Without this,
+                    // gcc -fcommon tentative definitions would masquerade as ordinary
+                    // undefined imports and never coalesce.
+                    os.binding = ObjSymbol::Global;
+                    os.common = true;
+                    os.size = static_cast<size_t>(nl->n_value);
+                    const uint32_t alignLog2 = (nl->n_desc >> 8) & 0x0F;
+                    os.commonAlignment = size_t{1} << alignLog2;
+                    os.sectionIndex = 0;
+                } else {
+                    os.binding = ObjSymbol::Undefined;
+                    // Check for weak imports.
+                    if (nl->n_desc & 0x0040) // N_WEAK_REF
+                        os.weakExternal = true;
+                }
             } else if (nType == 0x02) // N_ABS
             {
                 os.binding = isExtern ? ObjSymbol::Global : ObjSymbol::Local;
@@ -861,7 +892,9 @@ bool readMachOObj(
                     return false;
                 }
                 os.offset = static_cast<size_t>(relValue);
-            } else
+            } else if (!os.common)
+                // Common symbols keep offset 0; their n_value is the size, not an
+                // in-section offset (handled above).
                 os.offset = static_cast<size_t>(nl->n_value);
 
             symMap[i] = static_cast<uint32_t>(obj.symbols.size());

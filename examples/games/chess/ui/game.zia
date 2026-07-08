@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ui/game.zia
+// Purpose: Main controller, input dispatcher, and game loop for Viper Chess.
+// Key invariants:
+//   - StateMachine state owns the active screen flow.
+//   - UI save/export actions never mutate board state while AI is applying a move.
+// Ownership/Lifetime:
+//   - ChessGame owns Canvas, board, renderer, persistence, stats, and audio.
+//   - Module-level AI worker state is joined before process shutdown.
+// Links: examples/games/chess/ui/renderer.zia, examples/games/chess/core/board.zia
+//
+//===----------------------------------------------------------------------===//
+
 module game;
 
 bind Viper.Graphics;
@@ -16,6 +35,7 @@ bind Fmt = Viper.Text.Fmt;
 bind Seq = Viper.Collections.Seq;
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;
+bind Clipboard = Viper.System.Clipboard;
 bind "../core/config";
 bind "../core/board";
 bind "../core/moves";
@@ -29,6 +49,7 @@ bind "../notation";
 bind "./renderer";
 bind "./pieces";
 bind "./layout";
+bind "./theme";
 bind "../engine/ai";
 
 // ============================================================================
@@ -100,6 +121,7 @@ var aiMoveCastleKing: Boolean = false;
 var aiMoveCastleQueen: Boolean = false;
 var aiMovePromotion: Boolean = false;
 var aiMovePromotePiece: Integer = 0;
+var aiWorkerAbandoned: Boolean = false;
 
 /// @brief Sentinel "no move" used when the AI returns nothing.
 func nullMove() -> Move {
@@ -178,6 +200,8 @@ class ChessGame {
     hide Boolean puzzleSolved;
     hide Integer settingsReturnState;
     hide Boolean gameStatsRecorded;
+    hide Boolean hasActiveGame;
+    hide String lastExportMessage;
 
     // --- Input state ---
     hide Integer selectedSq;          // square clicked/selected (-1 = none)
@@ -311,6 +335,8 @@ class ChessGame {
         puzzleSolved = false;
         settingsReturnState = STATE_MENU;
         gameStatsRecorded = false;
+        hasActiveGame = false;
+        lastExportMessage = "";
 
         aiThinkStartMs = 0;
 
@@ -482,17 +508,19 @@ class ChessGame {
             flow.ClearFlags();
 
             handleInput();
+            drainAbandonedAIWorker();
             updateClocks();
             profile.update(canvas.DeltaTime);
 
             if isState(STATE_AI_THINK) {
                 pollAITurn();
             }
+            maybeStartDeferredAITurn();
 
             render();
         }
 
-        cleanupAIWorker();
+        shutdownAIWorker();
         audio.shutdown();
         Action.Clear();
     }
@@ -697,8 +725,19 @@ class ChessGame {
             startNewGame();
         }
 
-        if layout.contains(layout.continueButtonRect(), mx, my) {
+        if layout.contains(layout.continueButtonRect(), mx, my) && saveManager.hasSlot(0) {
             loadSavedGame(0);
+        }
+
+        for slot in 0..3 {
+            if layout.contains(layout.slotLoadButtonRect(slot), mx, my) && saveManager.hasSlot(slot) {
+                loadSavedGame(slot);
+                return;
+            }
+            if layout.contains(layout.slotSaveButtonRect(slot), mx, my) && canSaveCurrentGame() {
+                saveCurrentGame(slot);
+                return;
+            }
         }
 
         if layout.contains(layout.puzzleButtonRect(), mx, my) {
@@ -714,7 +753,7 @@ class ChessGame {
             setGameState(STATE_SETTINGS);
         }
 
-        if layout.contains(layout.menuSaveButtonRect(), mx, my) {
+        if layout.contains(layout.menuSaveButtonRect(), mx, my) && canSaveCurrentGame() {
             saveCurrentGame(0);
         }
     }
@@ -766,20 +805,36 @@ class ChessGame {
             return;
         }
         if layout.contains(layout.pauseButtonRect(2), mx, my) {
+            saveCurrentGame(1);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(3), mx, my) {
+            saveCurrentGame(2);
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(4), mx, my) {
+            copyFENToClipboard();
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(5), mx, my) {
+            copyPGNToClipboard();
+            return;
+        }
+        if layout.contains(layout.pauseButtonRect(6), mx, my) {
             settingsReturnState = STATE_PAUSED;
             setGameState(STATE_SETTINGS);
             return;
         }
-        if layout.contains(layout.pauseButtonRect(3), mx, my) {
+        if layout.contains(layout.pauseButtonRect(7), mx, my) {
             startNewGame();
             return;
         }
-        if layout.contains(layout.pauseButtonRect(4), mx, my) {
+        if layout.contains(layout.pauseButtonRect(8), mx, my) {
             cleanupAIWorker();
             setGameState(STATE_MENU);
             return;
         }
-        if layout.contains(layout.pauseButtonRect(5), mx, my) {
+        if layout.contains(layout.pauseButtonRect(9), mx, my) {
             resignCurrentSide();
         }
     }
@@ -791,10 +846,7 @@ class ChessGame {
         if idx == 3 { userSettings.toggleLegalMoves(); }
         if idx == 4 { userSettings.toggleCoordinates(); }
         if idx == 5 { userSettings.toggleAttackMap(); }
-        if idx == 6 {
-            userSettings.toggleHighContrast();
-            if userSettings.highContrast { userSettings.boardTheme = BOARD_HIGH_CONTRAST; }
-        }
+        if idx == 6 { userSettings.toggleHighContrast(); }
         if idx == 7 { userSettings.toggleReducedMotion(); }
         if idx == 8 { userSettings.toggleLargeText(); }
         if idx == 9 { userSettings.adjustMaster(10); if userSettings.masterVolume == 100 { userSettings.masterVolume = 0; } }
@@ -817,7 +869,10 @@ class ChessGame {
     }
 
     hide func saveCurrentGame(slot: Integer) {
-        if isState(STATE_AI_THINK) { return; }
+        if !canSaveCurrentGame() {
+            audio.playInvalid();
+            return;
+        }
         if saveManager.saveSlot(slot, board, sanHistory, whiteCaptured, blackCaptured,
                                 gameMode, aiDepth, playerIsWhite,
                                 userSettings.timeControl,
@@ -826,6 +881,37 @@ class ChessGame {
             profile.noteSave();
             audio.playMenu();
         }
+    }
+
+    /// @brief True when the current board is meaningful to write to a save slot.
+    /// @details The title screen constructs a starting Board during init, but
+    ///          saving that implicit board produces confusing "phantom" saves.
+    ///          A board becomes saveable only after the user starts, loads, or
+    ///          enters a puzzle/analysis board, and never while an AI move is
+    ///          being applied.
+    hide func canSaveCurrentGame() -> Boolean {
+        if !hasActiveGame { return false; }
+        if isState(STATE_AI_THINK) { return false; }
+        return true;
+    }
+
+    /// @brief Copy the current FEN string to the system clipboard.
+    /// @details This exposes the existing FEN exporter without adding a text
+    ///          input dialog. The footer reports the action until the next move
+    ///          or game transition updates the status text.
+    hide func copyFENToClipboard() {
+        Clipboard.Set(notation.boardToFEN(board));
+        lastExportMessage = "FEN copied to clipboard";
+        audio.playMenu();
+    }
+
+    /// @brief Copy the current PGN move list to the system clipboard.
+    /// @details Empty games copy an empty PGN string, which is still useful for
+    ///          confirming that the export path is available before moves exist.
+    hide func copyPGNToClipboard() {
+        Clipboard.Set(notation.historyToPGN(sanHistory));
+        lastExportMessage = "PGN copied to clipboard";
+        audio.playMenu();
     }
 
     hide func loadSavedGame(slot: Integer) {
@@ -867,11 +953,13 @@ class ChessGame {
         analysisMode = false;
         puzzleMode = false;
         puzzleSolved = false;
+        hasActiveGame = true;
+        lastExportMessage = "";
         gameStatsRecorded = false;
         stopAnimation();
         setGameState(STATE_PLAYING);
         audio.playStart();
-        if isAITurn() { startAITurn(); }
+        if isAITurn() { requestAITurnIfReady(); }
     }
 
     hide func startPuzzle(idx: Integer) {
@@ -903,6 +991,8 @@ class ChessGame {
         puzzleMode = true;
         puzzleSolved = false;
         analysisMode = false;
+        hasActiveGame = true;
+        lastExportMessage = "";
         gameStatsRecorded = false;
         whiteTimeSec = 0;
         blackTimeSec = 0;
@@ -936,6 +1026,8 @@ class ChessGame {
         puzzleMode = false;
         puzzleSolved = false;
         analysisMode = true;
+        hasActiveGame = true;
+        lastExportMessage = "";
         gameStatsRecorded = false;
         whiteTimeSec = 0;
         blackTimeSec = 0;
@@ -1175,9 +1267,11 @@ class ChessGame {
         if promotion {
             movingType = promotePiece;
         }
+        lastExportMessage = "";
 
         var m = new Move(fromSq, toSq, captured, enPassant, castleKing,
                          castleQueen, promotion, promotePiece);
+        var sanBase = buildSANBase(m, movingPiece);
 
         // --- Push undo state BEFORE modifying anything ---
         undoPrevFromStack.add(lastFrom);
@@ -1214,9 +1308,9 @@ class ChessGame {
         undoMoveStack.add(m);
         undoInfoStack.add(undo);
 
-        // SAN notation (board now reflects the post-move state)
-        var san = buildSANFields(fromSq, toSq, captured, enPassant, castleKing,
-                                 castleQueen, promotion, promotePiece);
+        // SAN notation: base was built pre-move for disambiguation; suffix
+        // is built post-move so check/checkmate status is accurate.
+        var san = sanBase + sanCheckSuffix();
         sanHistory.add(san);
 
         moveCount = moveCount + 1;
@@ -1269,7 +1363,7 @@ class ChessGame {
         // Schedule AI move if it is now the AI's turn
         if isState(STATE_PLAYING) {
             if isAITurn() {
-                startAITurn();
+                requestAITurnIfReady();
             }
         }
     }
@@ -1285,9 +1379,22 @@ class ChessGame {
         return false;
     }
 
+    /// @brief Start an AI worker only when no previous worker is still draining.
+    /// @details Menu, pause, load, and restart actions abandon in-flight search
+    ///          without blocking the frame loop. This helper lets the active
+    ///          position request an AI move while preserving that nonblocking
+    ///          drain contract.
+    hide func requestAITurnIfReady() {
+        if aiWorkerThread != null { return; }
+        startAITurn();
+    }
+
     /// @brief Spawn the AI worker thread on a copy of the current board.
     hide func startAITurn() {
         cleanupAIWorker();
+        if aiWorkerThread != null {
+            return;
+        }
 
         aiWorkerBoard = board.copy();
         aiWorkerDepth = aiDepth;
@@ -1295,6 +1402,7 @@ class ChessGame {
         Monitor.Enter(aiWorkerLock);
         clearAIWorkerResult();
         aiWorkerHasResult = false;
+        aiWorkerAbandoned = false;
         Monitor.Exit(aiWorkerLock);
 
         aiWorkerThread = Thread.StartSafe(&aiSearchWorker, 0);
@@ -1309,6 +1417,13 @@ class ChessGame {
     hide func pollAITurn() {
         if aiWorkerThread == null { return; }
         if aiWorkerThread!.SafeIsAlive() { return; }
+
+        if gameMode == MODE_CVC {
+            var elapsed = Clock.Ticks() - aiThinkStartMs;
+            if elapsed < CVC_DELAY_MS {
+                return;
+            }
+        }
 
         aiWorkerThread!.SafeJoin();
         var thread = aiWorkerThread!;
@@ -1361,14 +1476,6 @@ class ChessGame {
             return;
         }
 
-        // For CvC: enforce a minimum delay between AI moves so the game is watchable
-        if gameMode == MODE_CVC {
-            var elapsed = Clock.Ticks() - aiThinkStartMs;
-            if elapsed < CVC_DELAY_MS {
-                Clock.Sleep(CVC_DELAY_MS - elapsed);
-            }
-        }
-
         if !moveIsLegalFields(moveFrom, moveTo, moveCaptured, moveEnPassant,
                               moveCastleKing, moveCastleQueen, movePromotion,
                               movePromotePiece) {
@@ -1393,8 +1500,73 @@ class ChessGame {
                         movePromotePiece);
     }
 
-    /// @brief Join any in-flight AI thread + clear its result. Idempotent.
+    /// @brief Request cleanup of the current AI worker without blocking the UI.
+    /// @details If the worker is already finished, it is joined and cleared
+    ///          immediately. If it is still searching, the worker is marked
+    ///          abandoned and later drained by drainAbandonedAIWorker().
     hide func cleanupAIWorker() {
+        if aiWorkerThread == null {
+            aiWorkerBoard = null;
+            Monitor.Enter(aiWorkerLock);
+            clearAIWorkerResult();
+            aiWorkerHasResult = false;
+            aiWorkerAbandoned = false;
+            Monitor.Exit(aiWorkerLock);
+            return;
+        }
+
+        if aiWorkerThread != null {
+            if aiWorkerThread!.SafeIsAlive() {
+                Monitor.Enter(aiWorkerLock);
+                aiWorkerAbandoned = true;
+                aiWorkerHasResult = false;
+                Monitor.Exit(aiWorkerLock);
+                return;
+            }
+            aiWorkerThread!.SafeJoin();
+            aiWorkerThread = null;
+        }
+        aiWorkerBoard = null;
+        Monitor.Enter(aiWorkerLock);
+        clearAIWorkerResult();
+        aiWorkerHasResult = false;
+        aiWorkerAbandoned = false;
+        Monitor.Exit(aiWorkerLock);
+    }
+
+    /// @brief Join and clear an abandoned AI worker once it has finished.
+    /// @details This runs from the frame loop, so it never waits on active
+    ///          search. Stale abandoned results are discarded rather than
+    ///          applied to the current board.
+    hide func drainAbandonedAIWorker() {
+        if aiWorkerThread == null { return; }
+        if !aiWorkerAbandoned { return; }
+        if aiWorkerThread!.SafeIsAlive() { return; }
+        aiWorkerThread!.SafeJoin();
+        aiWorkerThread = null;
+        aiWorkerBoard = null;
+        Monitor.Enter(aiWorkerLock);
+        clearAIWorkerResult();
+        aiWorkerHasResult = false;
+        aiWorkerAbandoned = false;
+        Monitor.Exit(aiWorkerLock);
+    }
+
+    /// @brief Start a deferred AI turn once an abandoned worker has drained.
+    /// @details If the current board still belongs to an AI side after a pause
+    ///          or menu transition, this restores automatic AI play without
+    ///          blocking on the previous worker.
+    hide func maybeStartDeferredAITurn() {
+        if aiWorkerThread != null { return; }
+        if !isState(STATE_PLAYING) { return; }
+        if animActive { return; }
+        if isAITurn() { requestAITurnIfReady(); }
+    }
+
+    /// @brief Synchronously join the worker during application shutdown.
+    /// @details Unlike cleanupAIWorker(), this is allowed to block because the
+    ///          render loop has ended and no more UI responsiveness is required.
+    hide func shutdownAIWorker() {
         if aiWorkerThread != null {
             aiWorkerThread!.SafeJoin();
             aiWorkerThread = null;
@@ -1403,6 +1575,7 @@ class ChessGame {
         Monitor.Enter(aiWorkerLock);
         clearAIWorkerResult();
         aiWorkerHasResult = false;
+        aiWorkerAbandoned = false;
         Monitor.Exit(aiWorkerLock);
     }
 
@@ -1534,6 +1707,8 @@ class ChessGame {
         analysisMode     = false;
         puzzleMode       = false;
         puzzleSolved     = false;
+        hasActiveGame    = true;
+        lastExportMessage = "";
         gameStatsRecorded = false;
 
         // Casual clocks count up from 0; timed clocks count down from base.
@@ -1560,7 +1735,7 @@ class ChessGame {
 
         // In PvC with AI as white, trigger AI immediately
         if isAITurn() {
-            startAITurn();
+            requestAITurnIfReady();
         }
     }
 
@@ -1622,6 +1797,7 @@ class ChessGame {
         var mouseDown = Mouse.Left();
         var animProgress = animationProgressPermille();
         var hoverSq = renderer.squareAt(mx, my);
+        theme.setLargeText(userSettings.largeText);
         if dragFrom >= 0 || animProgress >= 0 {
             hoverSq = -1;
         }
@@ -1629,8 +1805,12 @@ class ChessGame {
         if isState(STATE_MENU) {
             renderer.drawMainMenu(gameMode, aiDepth, playerIsWhite,
                                   saveManager.hasSlot(0),
+                                  saveManager.hasSlot(1),
+                                  saveManager.hasSlot(2),
+                                  canSaveCurrentGame(),
                                   userSettings.timeControl,
                                   userSettings.boardTheme,
+                                  userSettings.highContrast,
                                   mx, my, mouseDown);
             profile.draw(canvas);
             canvas.Flip();
@@ -1662,6 +1842,7 @@ class ChessGame {
         // Draw board and pieces
         renderer.drawBoard(lastFrom, lastTo, hoverSq,
                            userSettings.boardTheme,
+                           userSettings.highContrast,
                            userSettings.showCoordinates);
         renderer.drawCheckHighlight(checkedKingSq);
         if userSettings.showAttackMap {
@@ -1752,6 +1933,7 @@ class ChessGame {
         var prefix = "";
         if analysisMode { prefix = "Analysis  "; }
         if puzzleMode { prefix = "Puzzle: " + puzzles.title(activePuzzle) + "  "; }
+        if lastExportMessage != "" { prefix = prefix + lastExportMessage + "  "; }
         var clockMode = settings.timeControlName(userSettings.timeControl);
         return prefix + "Move " + Fmt.Int(board.fullMoveNumber) +
                "  Halfmove " + Fmt.Int(board.halfMoveClock) +
@@ -1834,6 +2016,109 @@ class ChessGame {
             if m.from == sq { result.add(m); }
         }
         return result;
+    }
+
+    /// @brief Build SAN for a legal move before the board is mutated.
+    /// @details Disambiguation requires the pre-move legal-move set because it
+    ///          asks whether another same-type piece could also move to the
+    ///          destination. Check and mate suffixes are appended separately
+    ///          after the move has been made.
+    /// @param m Legal move to encode.
+    /// @param movingPiece Signed piece value currently on m.from.
+    /// @return SAN base without `+` or `#`.
+    hide func buildSANBase(m: Move, movingPiece: Integer) -> String {
+        if movingPiece == 0 { return "?"; }
+        if m.castleKing { return "O-O"; }
+        if m.castleQueen { return "O-O-O"; }
+
+        var movingType = board.pieceType(movingPiece);
+        var capture = m.captured != 0 || m.enPassant;
+        var san = "";
+
+        if movingType == PAWN {
+            if capture { san = san + fileName(m.from % 8) + "x"; }
+            san = san + notation.squareName(m.to);
+        } else {
+            san = pieceSANLetter(movingType) + sanDisambiguation(m, movingPiece);
+            if capture { san = san + "x"; }
+            san = san + notation.squareName(m.to);
+        }
+
+        if m.promotion {
+            san = san + "=" + pieceSANLetter(m.promotePiece);
+        }
+        return san;
+    }
+
+    /// @brief Compute SAN check or checkmate suffix for the current post-move board.
+    /// @details Called after board.makeMove and legal-move-cache invalidation.
+    ///          It reuses getLegalMoves(), so the following checkGameOver call
+    ///          does not pay an extra generation cost.
+    /// @return `#` for mate, `+` for check, or an empty string.
+    hide func sanCheckSuffix() -> String {
+        if !moveGen.isInCheck(board, board.whiteToMove) { return ""; }
+        if getLegalMoves().length() == 0 { return "#"; }
+        return "+";
+    }
+
+    /// @brief SAN piece letter for a non-pawn piece type.
+    /// @param pieceType Positive piece id from config.zia.
+    /// @return `N`, `B`, `R`, `Q`, `K`, or empty for pawns/invalid ids.
+    hide func pieceSANLetter(pieceType: Integer) -> String {
+        if pieceType == KNIGHT { return "N"; }
+        if pieceType == BISHOP { return "B"; }
+        if pieceType == ROOK   { return "R"; }
+        if pieceType == QUEEN  { return "Q"; }
+        if pieceType == KING   { return "K"; }
+        return "";
+    }
+
+    /// @brief SAN disambiguation for non-pawn moves.
+    /// @details Follows the standard file/rank/both rule by inspecting other
+    ///          legal moves by same-type same-color pieces that reach the same
+    ///          destination.
+    /// @param m Move being encoded.
+    /// @param movingPiece Signed piece value on m.from.
+    /// @return Empty, source file, source rank, or full source square.
+    hide func sanDisambiguation(m: Move, movingPiece: Integer) -> String {
+        var movingType = board.pieceType(movingPiece);
+        var movingWhite = board.isWhitePiece(movingPiece);
+        var fromFile = m.from % 8;
+        var fromRank = m.from / 8;
+        var needs = false;
+        var sameFile = false;
+        var sameRank = false;
+        var legal = getLegalMoves();
+        for i in 0..legal.length() {
+            var other = legal.get(i);
+            if other.from == m.from { continue; }
+            if other.to != m.to { continue; }
+            var otherPiece = board.get(other.from);
+            if otherPiece == 0 { continue; }
+            if board.isWhitePiece(otherPiece) != movingWhite { continue; }
+            if board.pieceType(otherPiece) != movingType { continue; }
+            needs = true;
+            if other.from % 8 == fromFile { sameFile = true; }
+            if other.from / 8 == fromRank { sameRank = true; }
+        }
+        if !needs { return ""; }
+        if !sameFile { return fileName(fromFile); }
+        if !sameRank { return Fmt.Int(8 - fromRank); }
+        return notation.squareName(m.from);
+    }
+
+    /// @brief Algebraic file letter for a 0-based file.
+    /// @param file File index where 0 is `a` and 7 is `h`.
+    /// @return File letter, clamped to `h` for out-of-range high values.
+    hide func fileName(file: Integer) -> String {
+        if file == 0 { return "a"; }
+        if file == 1 { return "b"; }
+        if file == 2 { return "c"; }
+        if file == 3 { return "d"; }
+        if file == 4 { return "e"; }
+        if file == 5 { return "f"; }
+        if file == 6 { return "g"; }
+        return "h";
     }
 
     /// @brief Build simplified Standard Algebraic Notation for move `m`.

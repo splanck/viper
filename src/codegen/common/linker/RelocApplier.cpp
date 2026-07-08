@@ -770,7 +770,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     return false;
                 uint8_t *patch = outSec.data.data() + patchOff;
                 auto requirePatchBytes = [&](size_t width, const char *kind) -> bool {
-                    if (width <= outSec.data.size() - patchOff)
+                    // The fixup must fit within the *input chunk*, not merely within the
+                    // merged output section. Input sections are concatenated (with
+                    // alignment padding) into one output section, so a fixup near a chunk
+                    // boundary that only satisfies the output-section bound would patch
+                    // bytes belonging to the adjacent chunk. rel.offset < chunkSize is
+                    // guaranteed by the section-size check above, so the subtraction is
+                    // safe.
+                    const size_t chunkSize = objSectionMemSize(sec);
+                    if (width <= chunkSize - rel.offset && width <= outSec.data.size() - patchOff)
                         return true;
                     err << "error: " << kind << " relocation at offset " << patchOff
                         << " out of bounds in '" << outSec.name << "' (size=" << outSec.data.size()

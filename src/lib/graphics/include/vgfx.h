@@ -507,6 +507,14 @@ void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y);
 /// @brief Bring the window to the front and give it keyboard focus.
 void vgfx_focus(vgfx_window_t window);
 
+/// @brief Request foreground application activation for the window.
+/// @details Stronger than vgfx_focus on platforms with app/window separation:
+///          macOS makes the process a regular foreground app, installs its
+///          menu bar, makes the window key/main, and activates NSApp. Other
+///          platforms map this to their best foreground/focus request.
+/// @param window Window handle.
+void vgfx_request_foreground(vgfx_window_t window);
+
 /// @brief Check if the window currently has keyboard focus.
 /// @return 1 if focused, 0 otherwise
 int32_t vgfx_is_focused(vgfx_window_t window);
