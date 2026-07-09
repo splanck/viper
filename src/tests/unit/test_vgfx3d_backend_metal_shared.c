@@ -426,17 +426,57 @@ static char *read_text_file(const char *path) {
     return text;
 }
 
-static void test_metal_shader_source_uses_safe_normalization(void) {
+/// @brief Read and concatenate the Metal backend's translation unit and its .inc chunks.
+/// @details The backend is one TU split into sequential textual chunks; shader-source
+///   regression checks must scan the whole set (the MSL library lives in the shaders
+///   chunk, the skybox/post-FX sources in the context chunk).
+static char *read_metal_backend_sources(void) {
+    static const char *k_parts[] = {
+        "vgfx3d_backend_metal.m",
+        "vgfx3d_backend_metal_shaders.inc",
+        "vgfx3d_backend_metal_targets.inc",
+        "vgfx3d_backend_metal_present.inc",
+        "vgfx3d_backend_metal_context.inc",
+        "vgfx3d_backend_metal_texture.inc",
+        "vgfx3d_backend_metal_draw.inc",
+    };
     char path[1024];
-    char *source;
+    char *combined = NULL;
+    size_t combined_len = 0;
 
-    snprintf(path,
-             sizeof(path),
-             "%s/src/runtime/graphics/3d/backend/vgfx3d_backend_metal.m",
-             VIPER_SOURCE_DIR);
-    source = read_text_file(path);
+    for (size_t i = 0; i < sizeof(k_parts) / sizeof(k_parts[0]); i++) {
+        char *part;
+        size_t part_len;
+        char *grown;
+        snprintf(path,
+                 sizeof(path),
+                 "%s/src/runtime/graphics/3d/backend/%s",
+                 VIPER_SOURCE_DIR,
+                 k_parts[i]);
+        part = read_text_file(path);
+        if (!part) {
+            free(combined);
+            return NULL;
+        }
+        part_len = strlen(part);
+        grown = (char *)realloc(combined, combined_len + part_len + 1u);
+        if (!grown) {
+            free(part);
+            free(combined);
+            return NULL;
+        }
+        combined = grown;
+        memcpy(combined + combined_len, part, part_len + 1u);
+        combined_len += part_len;
+        free(part);
+    }
+    return combined;
+}
+
+static void test_metal_shader_source_uses_safe_normalization(void) {
+    char *source = read_metal_backend_sources();
     EXPECT_TRUE(source != NULL,
-                "Metal backend source is readable for shader-source regression checks");
+                "Metal backend source chunks are readable for shader-source regression checks");
     if (!source)
         return;
 

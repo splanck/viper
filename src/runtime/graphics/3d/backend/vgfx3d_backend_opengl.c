@@ -169,6 +169,12 @@ typedef unsigned int GLbitfield;
 #define GL_LINEAR_MIPMAP_LINEAR 0x2703
 #define GL_NEAREST 0x2600
 #define GL_CLAMP_TO_EDGE 0x812F
+#define GL_TEXTURE_COMPARE_MODE 0x884C
+#define GL_TEXTURE_COMPARE_FUNC 0x884D
+#define GL_COMPARE_REF_TO_TEXTURE 0x884E
+#define GL_PIXEL_PACK_BUFFER 0x88EB
+#define GL_STREAM_READ 0x88E1
+#define GL_MAP_READ_BIT 0x0001
 #define GL_ONE 1
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
@@ -283,6 +289,8 @@ typedef void (*PFNGLBINDRENDERBUFFERPROC)(GLenum, GLuint);
 typedef void (*PFNGLRENDERBUFFERSTORAGEPROC)(GLenum, GLenum, GLsizei, GLsizei);
 typedef void (*PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum, GLenum, GLenum, GLuint);
 typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *);
+typedef void *(*PFNGLMAPBUFFERRANGEPROC)(GLenum, GLintptr, GLsizeiptr, GLbitfield);
+typedef GLboolean (*PFNGLUNMAPBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
@@ -387,6 +395,8 @@ static struct {
     PFNGLRENDERBUFFERSTORAGEPROC RenderbufferStorage;
     PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
     PFNGLREADPIXELSPROC ReadPixels;
+    PFNGLMAPBUFFERRANGEPROC MapBufferRange;
+    PFNGLUNMAPBUFFERPROC UnmapBuffer;
     PFNGLDRAWBUFFERPROC DrawBuffer;
     PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
@@ -488,6 +498,8 @@ typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(
     Display *, GLXFBConfig, GLXContext, int, const int *);
 typedef XVisualInfo *(*PFNGLXGETVISUALFROMFBCONFIGPROC)(Display *, GLXFBConfig);
 
+typedef void (*PFNGLXSWAPINTERVALEXTPROC)(Display *, GLXDrawable, int);
+
 static struct {
     PFNGLXCHOOSEFBCONFIGPROC ChooseFBConfig;
     PFNGLXCREATENEWCONTEXTPROC CreateNewContext;
@@ -497,6 +509,8 @@ static struct {
     PFNGLXMAKECURRENTPROC MakeCurrent;
     PFNGLXDESTROYCONTEXTPROC DestroyContext;
     PFNGLXGETPROCADDRESSPROC GetProcAddress;
+    /* Optional (EXT_swap_control); NULL when the driver lacks it. */
+    PFNGLXSWAPINTERVALEXTPROC SwapIntervalEXT;
 } glx;
 
 static int gl_loaded = 0;
@@ -869,6 +883,15 @@ typedef struct {
     GLint ssr_uSceneTex, ssr_uDepthTex, ssr_uMotionTex;
     GLint ssr_uInvResolution, ssr_uParams0, ssr_uCamPos;
     GLint ssr_uInvViewProjection, ssr_uViewProjection;
+    /* Scene-depth probes (lens flares): requests queued during the frame are read
+     * into a PBO at end_frame; the previous frame's PBO contents are harvested first,
+     * so reads carry one frame of latency and never force a pipeline sync. */
+    float depth_probe_requests[VGFX3D_DEPTH_PROBE_MAX][2];
+    int32_t depth_probe_request_count;
+    GLuint depth_probe_pbo;
+    int32_t depth_probe_pending_count;
+    float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
+    int32_t depth_probe_result_count;
 } gl_context_t;
 
 static void query_main_uniforms(gl_context_t *ctx);
@@ -1213,6 +1236,9 @@ static int load_gl(void) {
     LOADX(GetProcAddress);
     glx.CreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
         (const unsigned char *)"glXCreateContextAttribsARB");
+    /* Optional swap-interval extension; set_vsync no-ops when absent. */
+    glx.SwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)glx.GetProcAddress(
+        (const unsigned char *)"glXSwapIntervalEXT");
 
     LOADP(PolygonMode);
     LOADP(PolygonOffset);
@@ -1292,6 +1318,8 @@ static int load_gl(void) {
     LOADP(RenderbufferStorage);
     LOADP(FramebufferRenderbuffer);
     LOADP(ReadPixels);
+    LOADP(MapBufferRange);
+    LOADP(UnmapBuffer);
     LOADP(DrawBuffer);
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);
@@ -1699,6 +1727,9 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .get_native_texture_caps = gl_get_native_texture_caps,
     .get_feature_caps = gl_get_feature_caps,
     .get_backend_stats = gl_get_backend_stats,
+    .set_vsync = gl_set_vsync,
+    .queue_depth_probe = gl_queue_depth_probe,
+    .read_depth_probe = gl_read_depth_probe,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */

@@ -114,6 +114,10 @@ typedef struct {
     uint32_t physics_bvh_revision;
     int32_t physics_bvh_node_count;
     int32_t physics_bvh_tri_count;
+    /* Allocation generation (rt_g3d_next_identity_serial): pointer-keyed history tables
+     * (motion vectors, occlusion streaks) salt their keys with this so a freed object
+     * and its same-address successor never inherit each other's temporal state. */
+    uint32_t identity_serial;
 } rt_mesh3d;
 
 /// @brief Allocate a Mesh3D object with all runtime bookkeeping initialized but no default
@@ -451,7 +455,12 @@ typedef struct {
     double slope_scaled_depth_bias; /* additional slope-scaled depth offset for decals/overlays */
     double soft_fade;               /* soft-particle fade distance in world units (0 = off) */
     int8_t ssr_enabled;             /* screen-space reflections opt-in (Plan 10) */
+    uint32_t identity_serial;       /* allocation generation (see rt_mesh3d.identity_serial) */
 } rt_material3d;
+
+/// @brief Monotonic allocation generation for pointer-keyed history salting
+///   (rt_canvas3d_motion.c). Never returns 0; main-thread only, like object creation.
+uint32_t rt_g3d_next_identity_serial(void);
 
 /// @brief Resolve a Material3D texture slot source to the currently resident Pixels fallback.
 void *rt_material3d_resolve_texture_pixels(void *texture_ref);
@@ -924,8 +933,30 @@ typedef struct {
     int32_t frame_light_snapshot_count;
     int32_t frame_light_snapshot_capacity;
 
+    /* Over-budget light selection hysteresis: identities of the local lights chosen
+     * by the previous flatten. Incumbents get a score boost so near-ties do not swap
+     * membership frame-to-frame (which would pop lighting across the whole scene). */
+    uintptr_t selected_light_ids[VGFX3D_MAX_LIGHTS];
+    int32_t selected_light_id_count;
+
+    /* Per-frame flattened-light cache: draws sharing one light generation reuse a
+     * single snapshot slice, revision stamp, and froxel table instead of paying
+     * build_light_params + a full snapshot memcmp per queued draw. Invalidated at
+     * frame begin, on slot/ambient/scene-light changes, and whenever the global
+     * Light3D mutation generation advances (rt_light3d_mutation_revision). */
+    int8_t frame_light_cache_valid;
+    uint64_t frame_light_cache_revision; /* Light3D mutation generation at flatten */
+    int32_t frame_light_cache_limit;     /* active light limit at flatten */
+    int32_t frame_light_cache_count;
+    int32_t frame_light_cache_offset; /* arena element offset, -1 = no lights */
+    uint32_t frame_light_cache_stamp; /* lights_revision stamp for the slice */
+
     /* Skybox */
-    rt_cubemap3d *skybox;      /* CubeMap3D for background (or NULL) */
+    rt_cubemap3d *skybox; /* CubeMap3D for background (or NULL) */
+    /* Once-per-End latch: GPU-backend skybox is drawn inside the main pass after
+     * opaques (early-Z rejects covered sky pixels); End() keeps a catch-all call for
+     * frames whose main pass ran empty. */
+    int8_t skybox_pass_done;
     uint8_t *skybox_cpu_cache; /* tightly packed RGBA8 fallback skybox */
     int32_t skybox_cpu_cache_w;
     int32_t skybox_cpu_cache_h;
@@ -987,6 +1018,14 @@ typedef struct {
     float fog_far;
     float fog_color[3];
 
+    /* Present pacing: requested vsync state (default on); applied through the
+     * backend set_vsync hook when available. */
+    int8_t vsync_enabled;
+
+    /* Requested scene render scale (1 = native); applied through the backend
+     * set_render_scale hook when supported. */
+    float render_scale;
+
     /* Shadow mapping */
     int8_t shadows_enabled;
     int32_t shadow_resolution;
@@ -994,6 +1033,18 @@ typedef struct {
     int32_t shadow_count;
     int32_t shadow_cascade_count;
     float shadow_slope_bias;
+    /* Maximum camera distance covered by directional shadow fitting. 0 = auto
+     * (min(camera far, 300)). Capping the cascade range instead of spanning the whole
+     * clip range concentrates shadow-map texels near the camera; without it a 5000-unit
+     * far plane collapses near-shadow resolution into blocky, shimmering blobs. */
+    float shadow_distance;
+    /* Shadow-caster sweep: the primary shadow-casting directional light's travel
+     * direction scaled by the effective shadow distance. Scene traversal extends node
+     * AABBs by this vector before frustum tests so casters just outside the view
+     * frustum still enqueue — without it their shadows pop in/out at the screen edge
+     * as the camera turns. Zero/inactive when shadows are off or no caster exists. */
+    float shadow_caster_sweep[3];
+    int8_t shadow_caster_sweep_active;
     /* Plan 06: occlusion darkening (0..1; 0.85 reproduces the legacy 0.15 lit floor)
      * and PCF tier (0 = 4 taps, 1 = 8, 2 = 16 rotated-Poisson taps). */
     float shadow_strength;
@@ -1436,6 +1487,31 @@ float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fall
 
 // Light flattening (rt_canvas3d_lighting.c).
 int32_t canvas3d_active_light_limit(rt_canvas3d *c);
+
+/// @brief Effective directional-shadow coverage distance for this canvas (rt_canvas3d.c).
+/// @details Resolves the auto default (min(camera far, 300)) when shadow_distance is 0 and
+///   clamps explicit values to the camera far plane. Always returns a positive finite
+///   distance usable for cascade-split capping and shadow-caster sweep extrusion.
+float canvas3d_effective_shadow_distance(const rt_canvas3d *c);
+
+/// @brief Refresh the shadow-caster sweep vector from the canvas + scene light slots
+///   (rt_canvas3d.c). Call after scene lights are collected, before draw traversal.
+void canvas3d_update_shadow_caster_sweep(rt_canvas3d *c);
+
+/// @brief Monotonic Light3D mutation generation (rt_light3d.c); never returns 0.
+/// @details The per-frame flattened-light cache compares this against the generation it
+///   flattened at, so any Light3D property change forces one re-flatten instead of
+///   per-draw rebuilds.
+uint64_t rt_light3d_mutation_revision(void);
+
+/// @brief Drop the canvas's per-frame flattened-light cache.
+/// @details Call after any change build_light_params reads that the Light3D mutation
+///   generation cannot observe: canvas light-slot assignment, ambient color, scene-light
+///   swaps, and camera-relative-origin changes at frame begin.
+static inline void canvas3d_invalidate_light_flatten_cache(rt_canvas3d *c) {
+    if (c)
+        c->frame_light_cache_valid = 0;
+}
 
 // Per-frame transient-resource tracking (rt_canvas3d_tempmgr.c): temp buffers,
 // final-overlay temp buffers, and the GC-managed transient-object hash set.

@@ -120,9 +120,42 @@ static int canvas3d_render_shadow_light_slot(
     shadow_resolution = canvas3d_shadow_slot_resolution(c, slot);
     if (shadow_resolution <= 0)
         return 0;
-    if (!canvas3d_build_shadow_light_vp(
-            shadow_world_min, shadow_world_max, &light, shadow_resolution, light_vp))
-        return 0;
+    {
+        /* Directional fit: clamp the caster content box to the shadow-distance window
+         * around the camera so one far-away caster cannot stretch the orthographic fit
+         * (and collapse near-shadow texel density). Skipped when the clamp would empty
+         * the box; spot/point fits are local to the light and never clamped. */
+        float fit_min[3];
+        float fit_max[3];
+        memcpy(fit_min, shadow_world_min, sizeof(fit_min));
+        memcpy(fit_max, shadow_world_max, sizeof(fit_max));
+        if (light.type == 0) {
+            float reach = canvas3d_effective_shadow_distance(c);
+            int clamped_valid = 1;
+            for (int axis = 0; axis < 3; axis++) {
+                float lo = c->cached_cam_pos[axis] - reach;
+                float hi = c->cached_cam_pos[axis] + reach;
+                if (!isfinite(lo) || !isfinite(hi)) {
+                    clamped_valid = 0;
+                    break;
+                }
+                if (fit_min[axis] < lo)
+                    fit_min[axis] = lo;
+                if (fit_max[axis] > hi)
+                    fit_max[axis] = hi;
+                if (fit_min[axis] > fit_max[axis]) {
+                    clamped_valid = 0;
+                    break;
+                }
+            }
+            if (!clamped_valid) {
+                memcpy(fit_min, shadow_world_min, sizeof(fit_min));
+                memcpy(fit_max, shadow_world_max, sizeof(fit_max));
+            }
+        }
+        if (!canvas3d_build_shadow_light_vp(fit_min, fit_max, &light, shadow_resolution, light_vp))
+            return 0;
+    }
 
     memcpy(c->shadow_light_vps[slot], light_vp, sizeof(light_vp));
     shadow_lights[slot] = light;
@@ -401,6 +434,10 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
         uint32_t remap_from = 0;
         uint32_t remap_to = 0;
         c->last_light_snapshot_valid = 0;
+        /* Shadow patching mutated the shared flattened slice and the remap below issues
+         * fresh stamps; draws queued after this point (overlay replay) must re-flatten
+         * rather than reuse the pre-patch cached stamp. */
+        canvas3d_invalidate_light_flatten_cache(c);
         for (int32_t i = 0; i < c->draw_count; i++) {
             if (cmds[i].light_count <= 0 || cmds[i].cmd.lights_revision == 0)
                 continue;
@@ -416,6 +453,19 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
             cmds[i].cmd.lights_revision = remap_to;
         }
     }
+}
+
+/// @brief Draw the canvas skybox through the GPU backend, at most once per End().
+/// @details Every GPU backend renders the skybox as a full-screen triangle at far depth
+///   with a read-only LessEqual depth state, so after the opaque pass it shades only
+///   pixels no opaque draw covered. The software path has no draw_skybox hook and keeps
+///   its CPU pre-pass composite in rt_canvas3d_end.
+static void canvas3d_draw_backend_skybox_after_opaque(rt_canvas3d *c) {
+    if (!c || c->skybox_pass_done || c->frame_is_2d || c->frame_is_view_model || !c->skybox ||
+        !c->backend || !c->backend->draw_skybox)
+        return;
+    c->skybox_pass_done = 1;
+    c->backend->draw_skybox(c->backend_ctx, c->skybox);
 }
 
 /// @brief Render the main 3D pass: frustum/occlusion culling then opaque+blended draws.
@@ -470,6 +520,7 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                     !cmds[i].requires_blend)
                     canvas3d_submit_deferred(c, &cmds[i]);
             }
+            canvas3d_draw_backend_skybox_after_opaque(c);
             if (trans_count > 0 && c->backend->resolve_opaque_targets)
                 c->backend->resolve_opaque_targets(c->backend_ctx);
             if (trans_count == 1) {
@@ -516,22 +567,40 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 else
                     opaque[oi++] = cmds[i];
             }
+            /* Depth-first sort first so the progressive occlusion grid tests draws
+             * front-to-back — occluders write coverage before the draws they hide are
+             * tested. The backend-state grouping re-sort runs afterward over the
+             * surviving draws only; running it before occlusion made the cull rate
+             * depend on arbitrary state-hash group order. */
+            int32_t opaque_kept = opaque_count;
             if (sort_opaque && opaque_count > 1 &&
-                !(state_sort_opaque
-                      ? canvas3d_sort_opaque_draws_state_first(c, opaque, opaque_count)
-                      : canvas3d_sort_opaque_draws_depth_first(c, opaque, opaque_count))) {
+                !canvas3d_sort_opaque_draws_depth_first(c, opaque, opaque_count)) {
                 rt_trap("Canvas3D.End: deferred opaque sort scratch allocation failed");
                 return;
             }
-            for (int32_t i = 0; i < opaque_count; i++) {
-                if (use_occlusion_grid &&
-                    canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
-                    c->last_occluded_draw_count++;
-                    c->last_cpu_occluded_draw_count++;
-                    continue;
+            if (use_occlusion_grid) {
+                int32_t kept = 0;
+                for (int32_t i = 0; i < opaque_count; i++) {
+                    if (canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
+                        c->last_occluded_draw_count++;
+                        c->last_cpu_occluded_draw_count++;
+                        continue;
+                    }
+                    if (kept != i)
+                        opaque[kept] = opaque[i];
+                    kept++;
                 }
-                canvas3d_submit_deferred(c, &opaque[i]);
+                opaque_kept = kept;
             }
+            if (state_sort_opaque && opaque_kept > 1 &&
+                !canvas3d_stable_radix_sort_u64(
+                    c, opaque, opaque_kept, canvas3d_sort_key_backend_state, NULL)) {
+                rt_trap("Canvas3D.End: deferred opaque sort scratch allocation failed");
+                return;
+            }
+            for (int32_t i = 0; i < opaque_kept; i++)
+                canvas3d_submit_deferred(c, &opaque[i]);
+            canvas3d_draw_backend_skybox_after_opaque(c);
             /* Plan 10: snapshot opaque depth for soft particles/SSR before any
              * blend draw samples it. Skipped when nothing transparent follows. */
             if (trans_count > 0 && c->backend->resolve_opaque_targets)
@@ -609,6 +678,7 @@ void rt_canvas3d_end(void *obj) {
         }
     }
 
+    c->skybox_pass_done = 0;
     if (!c->frame_is_2d && !c->frame_is_view_model && c->skybox) {
         uint8_t *out_pixels = NULL;
         int32_t out_w = 0;
@@ -616,7 +686,11 @@ void rt_canvas3d_end(void *obj) {
         int32_t out_stride = 0;
 
         if (c->backend->draw_skybox) {
-            c->backend->draw_skybox(c->backend_ctx, c->skybox);
+            /* GPU backends emit the skybox at far depth with a read-only LessEqual
+             * depth state, so it is drawn inside the main pass after opaque draws —
+             * early-Z then rejects every covered sky pixel instead of shading the
+             * whole screen first and overdrawing it. See
+             * canvas3d_draw_backend_skybox_after_opaque. */
         } else {
             if (c->render_target) {
                 if (vgfx3d_rendertarget_ensure_color(c->render_target)) {
@@ -655,6 +729,7 @@ void rt_canvas3d_end(void *obj) {
     c->last_draw_count = main_count;
 
     if (main_count == 0 && overlay_count == 0) {
+        canvas3d_draw_backend_skybox_after_opaque(c);
         c->backend->end_frame(c->backend_ctx);
         canvas3d_refresh_texture_upload_bytes(c);
         canvas3d_refresh_frame_gpu_time(c);
@@ -679,6 +754,9 @@ void rt_canvas3d_end(void *obj) {
     if (main_count > 0) {
         canvas3d_render_main_pass(c, cmds);
     }
+    /* Catch-all: frames whose main pass culled everything (or had only overlay draws)
+     * still need their sky; the latch makes this a no-op when the pass drew it. */
+    canvas3d_draw_backend_skybox_after_opaque(c);
 
     c->backend->end_frame(c->backend_ctx);
     canvas3d_refresh_texture_upload_bytes(c);

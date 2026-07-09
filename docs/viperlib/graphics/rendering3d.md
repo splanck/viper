@@ -315,7 +315,9 @@ lights.
 | `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
 | `IblEnabled` | `Boolean` (read/write) | Light PBR ambient from the skybox environment via image-based lighting |
 | `IblIntensity` | `Double` (read/write) | Scale the environment-lighting contribution (default `1.0`, clamped to `[0, 8]`) |
-| `SetShadowCascades(count)` | `Void(Integer)` | Request cascaded shadow maps; counts above `1` require backend CSM support |
+| `SetShadowCascades(count)` | `Void(Integer)` | Request cascaded shadow maps; counts above `1` require backend CSM support (default `2` on CSM-capable backends, `1` elsewhere) |
+| `SetShadowDistance(d)` | `Void(Double)` | Cap the camera distance covered by directional shadow fitting; `<= 0` restores the automatic `min(camera far, 300)` default |
+| `ShadowDistance` | `Double` | Configured shadow distance (`0` = automatic) |
 | `SetShadowStrength(s)` | `Void(Double)` | How dark fully-occluded texels get (`0` = shadows off, `1` = black; default `0.85`) |
 | `SetShadowQuality(tier)` | `Void(Integer)` | Shadow PCF tier: `0` = 4 taps, `1` = 8 (default), `2` = 16 rotated-Poisson taps |
 | `SetShadowBudget(n)` | `Void(Integer)` | Cap the shadow slots a frame may use (1..12, default all) |
@@ -352,6 +354,25 @@ metadata in the backend light payload, and keep unsupported/fake backends
 trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
 fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
 
+Directional shadow coverage is bounded by `SetShadowDistance` instead of
+spanning the whole clip range: cascade splits (a lambda-0.75 practical split
+series) and the single-map orthographic fit both clamp to it, concentrating
+shadow-map texels near the camera — an unbounded 5000-unit far plane would
+otherwise collapse near-shadow resolution into blocky shimmer. Every backend
+cross-fades the last ~12% of each cascade into the next (no visible line or
+pop at the split plane) and fades directional shadows out approaching the
+distance cap instead of ending on a hard edge. Scene traversal additionally
+sweeps node bounds along the shadow-casting sun's travel direction before
+frustum-culling, so an off-screen caster keeps its on-screen shadow instead of
+popping when it leaves the view frustum; nodes admitted only by the sweep are
+still frustum-culled from the main color pass.
+
+When more point/spot lights are enabled than the active light budget allows,
+the flattener keeps the most relevant ones — scored by intensity over the
+shader's distance falloff from the camera, with a 10% incumbent boost so
+near-ties never swap membership frame-to-frame — instead of truncating by slot
+order. `DroppedLightCount` still reports the overflow.
+
 Shadow storage is twelve slots: the first four are classic per-texture slots and
 the remaining eight are tiles of a shared depth atlas on the GPU backends
 (software keeps per-slot buffers; OpenGL 3.3's 16-sampler budget is fully
@@ -373,6 +394,9 @@ overflow is never silent.
 
 Shadow filtering uses a 16-point Poisson-disk PCF rotated per pixel, with the
 tap count selected by `SetShadowQuality` (the software backend caps at 8 taps).
+On the GPU backends every tap goes through a hardware comparison sampler
+(`sample_compare` / `SampleCmpLevelZero` / `sampler2DShadow`), so each tap is a
+filtered 2x2 depth compare rather than a point fetch.
 Receivers are offset along the surface normal by about 1.5 shadow texels before
 projecting into light space, and the depth compare adds a slope-proportional
 per-texel bias — so `SetShadowBias` stays small (it is the constant base term)
@@ -490,8 +514,12 @@ paths are not GPU occlusion queries or Hi-Z culling.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetFrustumCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection only |
-| `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
+| `SetFrustumCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection (default on) |
+| `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle conservative CPU occlusion skips (independent of frustum culling) |
+| `SetVSync(enabled)` | `Void(Boolean)` | Present pacing: vsync defaults on; disabling presents immediately for lowest latency where `BackendSupports("vsync-control")` |
+| `VSync` | `Boolean` | Requested vsync state |
+| `TrySetRenderScale(scale)` | `Boolean(Double)` | Render the 3D scene at `scale` x output size (`[0.25, 1]`) and upscale at presentation; `>= 1` restores native rendering and always succeeds, reduced scales require `BackendSupports("render-scale")` |
+| `RenderScale` | `Double` | Currently requested render scale (`1` = native) |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
 | `InstancedFallbackCount` | `Integer` | Instances routed through the per-draw fallback (blended/rebased batches) this frame; opaque batches use the backend instanced hook on every backend — including software — and report `0` |
@@ -501,9 +529,17 @@ paths are not GPU occlusion queries or Hi-Z culling.
 | `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
 | `FrameGpuTimeUs` | `Integer` | Latest completed backend GPU frame time in microseconds, or `0` when unsupported |
 
-Use `SetFrustumCulling` when you only want off-frustum rejection. Use
-`SetOcclusionCulling` for the stronger CPU visibility path; transparent draws
-are never used as occluders and are not rejected by the coarse coverage grid.
+Frustum rejection defaults on (the per-draw test is cheap; bounds are cached
+per queued draw) and the two toggles are independent — disabling one leaves
+the other alone. With occlusion enabled, opaque draws are tested front-to-back
+against the coverage grid first and only the survivors are regrouped by
+backend state, so state batching never weakens the occlusion pass. Transparent
+draws are never used as occluders and are not rejected by the coarse coverage
+grid. The lens-flare occlusion probes share the same scene depth: the software
+backend answers from its z-buffer, and the GPU backends read a handful of
+depth texels back asynchronously (one frame of latency, never a pipeline
+stall), with per-flare temporal smoothing hiding both the latency and the
+probe quantization.
 `BackendSupports("hlod")` reports support for runtime-authored LOD/impostor
 proxies. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
 query/Hi-Z/portal acceleration can advertise the same capability once added.

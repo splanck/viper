@@ -703,6 +703,29 @@ double rt_game3d_world_get_fixed_interpolation_alpha(void *obj) {
     return world->fixed_interpolation_alpha;
 }
 
+/// @brief Enable or disable built-in fixed-step render interpolation.
+/// @details When enabled under `runFixed`/`runFixedWithOverlay`, entity scene-node poses
+///   are blended between the previous and current fixed simulation steps by the frame's
+///   interpolation alpha during rendering, then restored — 60 Hz physics renders smoothly
+///   on faster displays without per-entity manual blending. Simulation state is never
+///   modified; variable-timestep loops are unaffected (alpha stays 0).
+void rt_game3d_world_set_render_interpolation(void *obj, int8_t enabled) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.set_renderInterpolation: invalid world");
+    if (!world)
+        return;
+    world->render_interpolation = enabled ? 1 : 0;
+    if (!world->render_interpolation)
+        game3d_world_invalidate_interpolation_poses(world);
+}
+
+/// @brief Whether built-in fixed-step render interpolation is enabled.
+int8_t rt_game3d_world_get_render_interpolation(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_renderInterpolation: invalid world");
+    return (world && world->render_interpolation) ? 1 : 0;
+}
+
 /// @brief Count spawned Entity3D objects currently owned by the world.
 int64_t rt_game3d_world_get_entity_count(void *obj) {
     rt_game3d_world *world =

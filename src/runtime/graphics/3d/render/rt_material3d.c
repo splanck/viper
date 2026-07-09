@@ -374,6 +374,7 @@ static void material_init_defaults(rt_material3d *mat) {
     if (!mat)
         return;
     mat->vptr = NULL;
+    mat->identity_serial = rt_g3d_next_identity_serial();
     mat->diffuse[0] = 1.0;
     mat->diffuse[1] = 1.0;
     mat->diffuse[2] = 1.0;

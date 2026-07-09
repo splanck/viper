@@ -1214,6 +1214,10 @@ int64_t rt_game3d_world_get_frame(void *world);
 int64_t rt_game3d_world_get_dropped_fixed_steps(void *world);
 /// @brief Get the render interpolation fraction left in the fixed-timestep accumulator.
 double rt_game3d_world_get_fixed_interpolation_alpha(void *world);
+/// @brief Enable/disable built-in fixed-step render interpolation of entity poses.
+void rt_game3d_world_set_render_interpolation(void *world, int8_t enabled);
+/// @brief Whether built-in fixed-step render interpolation is enabled.
+int8_t rt_game3d_world_get_render_interpolation(void *world);
 /// @brief Count spawned Entity3D objects currently owned by the world.
 int64_t rt_game3d_world_get_entity_count(void *world);
 /// @brief Count physics bodies currently registered through spawned entities.

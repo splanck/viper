@@ -24,6 +24,7 @@
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 
+#include <math.h>
 #include <string.h>
 
 /// @brief Clamp a Light3D type id to a backend-supported value.
@@ -76,46 +77,153 @@ int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
     return VGFX3D_FORWARD_LIGHT_LIMIT;
 }
 
+/// @brief Relevance score for a local (point/spot) light as seen from the camera.
+/// @details Uses the shader's own distance-falloff form so the score approximates the
+///   light's strongest possible contribution to visible geometry. Incumbents from the
+///   previous flatten receive a small boost so near-ties never swap membership
+///   frame-to-frame (whole-scene light popping).
+static double canvas3d_local_light_score(const rt_canvas3d *c, const rt_light3d *l) {
+    double dx = l->position[0] - (double)c->cached_world_cam_pos[0];
+    double dy = l->position[1] - (double)c->cached_world_cam_pos[1];
+    double dz = l->position[2] - (double)c->cached_world_cam_pos[2];
+    double dist2 = dx * dx + dy * dy + dz * dz;
+    double attenuation = isfinite(l->attenuation) && l->attenuation > 0.0 ? l->attenuation : 1.0;
+    double intensity = isfinite(l->intensity) && l->intensity > 0.0 ? l->intensity : 0.0;
+    double score;
+    if (!isfinite(dist2) || dist2 < 0.0)
+        dist2 = 0.0;
+    score = intensity / (1.0 + attenuation * dist2);
+    return isfinite(score) ? score : 0.0;
+}
+
+/// @brief True when @p l was selected by the previous over-budget flatten.
+static int canvas3d_light_was_selected(const rt_canvas3d *c, const rt_light3d *l) {
+    for (int32_t i = 0; i < c->selected_light_id_count && i < VGFX3D_MAX_LIGHTS; i++) {
+        if (c->selected_light_ids[i] == (uintptr_t)l)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Candidate record for over-budget local-light selection.
+typedef struct {
+    const rt_light3d *light;
+    double score;
+    int32_t order; /* original slot order, preserved among the selected set */
+} canvas3d_light_candidate_t;
+
 /// @brief Flatten the canvas's sparse light array into a dense backend buffer.
 /// @details The canvas stores lights in fixed slots (`lights[0..VGFX3D_MAX_LIGHTS]`)
 ///   so that dropped-and-readded lights keep stable slot identities, but the
-///   GPU backends expect a packed array — this routine bridges the two. Stops
-///   when either every slot has been visited or `max` entries have been
-///   written, whichever comes first.
+///   GPU backends expect a packed array — this routine bridges the two.
 ///   Plan 07: the output is ordered with directional/ambient lights first (the
 ///   "global" prefix the clustered shader loops flatly) followed by point/spot
 ///   lights (looped via per-cluster index lists). Shading is an order-independent
 ///   sum, so the flat path's output is unchanged by the reorder; within each
 ///   group the original slot order is preserved so revision stamps stay stable.
+///   When enabled local lights exceed the remaining budget, they are chosen by
+///   camera-relative relevance (intensity over the shader's distance falloff) with
+///   incumbent hysteresis, instead of arbitrary slot order — slot-order truncation
+///   made "which lights render" depend on assignment history and pop scene-wide when
+///   counts fluctuated around the cap.
 /// @return The number of lights actually copied into `out`.
 int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
+    canvas3d_light_candidate_t locals[VGFX3D_MAX_LIGHTS * 2];
+    int32_t local_count = 0;
     int32_t count = 0;
+    int32_t order = 0;
     if (!c || !out || max <= 0)
         return 0;
-    for (int pass = 0; pass < 2 && count < max; pass++) {
-        const int want_global = (pass == 0);
-        for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-            const rt_light3d *l = c->lights[i];
-            int32_t type;
-            if (!l || !l->enabled)
-                continue;
-            type = canvas3d_sanitize_light_type(l->type);
-            if ((type == 0 || type == 2) != want_global)
-                continue;
-            canvas3d_copy_light_params(c, l, &out[count]);
-            count++;
+    /* Globals (directional/ambient) first, in slot order. */
+    for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
+        const rt_light3d *l = c->lights[i];
+        if (!l || !l->enabled)
+            continue;
+        if (canvas3d_sanitize_light_type(l->type) == 1 ||
+            canvas3d_sanitize_light_type(l->type) == 3)
+            continue;
+        canvas3d_copy_light_params(c, l, &out[count]);
+        count++;
+    }
+    for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
+        const rt_light3d *l = c->scene_lights[i];
+        if (!l || !l->enabled)
+            continue;
+        if (canvas3d_sanitize_light_type(l->type) == 1 ||
+            canvas3d_sanitize_light_type(l->type) == 3)
+            continue;
+        canvas3d_copy_light_params(c, l, &out[count]);
+        count++;
+    }
+    /* Gather local (point/spot) candidates in slot order. */
+    for (int i = 0; i < VGFX3D_MAX_LIGHTS && local_count < VGFX3D_MAX_LIGHTS * 2; i++) {
+        const rt_light3d *l = c->lights[i];
+        int32_t type;
+        if (!l || !l->enabled)
+            continue;
+        type = canvas3d_sanitize_light_type(l->type);
+        if (type != 1 && type != 3)
+            continue;
+        locals[local_count].light = l;
+        locals[local_count].order = order++;
+        local_count++;
+    }
+    for (int i = 0;
+         i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && local_count < VGFX3D_MAX_LIGHTS * 2;
+         i++) {
+        const rt_light3d *l = c->scene_lights[i];
+        int32_t type;
+        if (!l || !l->enabled)
+            continue;
+        type = canvas3d_sanitize_light_type(l->type);
+        if (type != 1 && type != 3)
+            continue;
+        locals[local_count].light = l;
+        locals[local_count].order = order++;
+        local_count++;
+    }
+    if (local_count > max - count) {
+        /* Over budget: score every candidate, boost incumbents 10%, then keep the top
+         * (max - count) by repeated selection (candidate counts are tiny). Selected
+         * lights are emitted in original slot order so the snapshot stays byte-stable
+         * whenever the same set wins. */
+        int32_t budget = max - count;
+        for (int32_t i = 0; i < local_count; i++) {
+            locals[i].score = canvas3d_local_light_score(c, locals[i].light);
+            if (canvas3d_light_was_selected(c, locals[i].light))
+                locals[i].score *= 1.10;
         }
-        for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-            const rt_light3d *l = c->scene_lights[i];
-            int32_t type;
-            if (!l || !l->enabled)
-                continue;
-            type = canvas3d_sanitize_light_type(l->type);
-            if ((type == 0 || type == 2) != want_global)
-                continue;
-            canvas3d_copy_light_params(c, l, &out[count]);
-            count++;
+        for (int32_t keep = 0; keep < budget && keep < local_count; keep++) {
+            int32_t best = keep;
+            for (int32_t j = keep + 1; j < local_count; j++) {
+                if (locals[j].score > locals[best].score)
+                    best = j;
+            }
+            if (best != keep) {
+                canvas3d_light_candidate_t tmp = locals[keep];
+                locals[keep] = locals[best];
+                locals[best] = tmp;
+            }
         }
+        if (budget < local_count)
+            local_count = budget > 0 ? budget : 0;
+        /* Restore slot order among the survivors. */
+        for (int32_t i = 1; i < local_count; i++) {
+            canvas3d_light_candidate_t value = locals[i];
+            int32_t j = i;
+            while (j > 0 && locals[j - 1].order > value.order) {
+                locals[j] = locals[j - 1];
+                j--;
+            }
+            locals[j] = value;
+        }
+    }
+    c->selected_light_id_count = 0;
+    for (int32_t i = 0; i < local_count && count < max; i++) {
+        canvas3d_copy_light_params(c, locals[i].light, &out[count]);
+        count++;
+        if (c->selected_light_id_count < VGFX3D_MAX_LIGHTS)
+            c->selected_light_ids[c->selected_light_id_count++] = (uintptr_t)locals[i].light;
     }
     /* Telemetry: record how many enabled lights the active limit truncated
      * this pass — lights silently exceeding the forward cap were previously

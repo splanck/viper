@@ -210,13 +210,29 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
 /// @brief Allocate a canvas-tracked temp buffer and copy @p instance_count 4×4 instance
 ///   matrices into it (overflow-checked), used when deferring an instanced draw. Traps with
 ///   @p trap_message on allocation failure.
+/// @details When @p union_local_min / @p union_local_max are provided, the copy loop also
+///   accumulates the union of every instance's transformed AABB into
+///   @p out_world_min / @p out_world_max (mirroring the skip-invalid-transform contract of
+///   canvas3d_compute_deferred_world_bounds_uncached), so append never has to rescan the
+///   matrices for world bounds. @p out_has_world_bounds is set when at least one instance
+///   contributed a finite bound.
 /// @return The snapshot buffer, or NULL for invalid arguments.
 static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
                                                       const float *matrices,
                                                       int32_t instance_count,
-                                                      const char *trap_message) {
+                                                      const char *trap_message,
+                                                      const float *union_local_min,
+                                                      const float *union_local_max,
+                                                      float out_world_min[3],
+                                                      float out_world_max[3],
+                                                      int8_t *out_has_world_bounds) {
     size_t matrix_float_count;
     float *snapshot;
+    int accumulate_bounds = union_local_min && union_local_max && out_world_min &&
+                            out_world_max && out_has_world_bounds &&
+                            canvas3d_bounds_are_valid(union_local_min, union_local_max);
+    if (out_has_world_bounds)
+        *out_has_world_bounds = 0;
     if (!c || !matrices || instance_count <= 0)
         return NULL;
     if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float))) {
@@ -239,6 +255,25 @@ static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
                         ? trap_message
                         : "Canvas3D.DrawMeshInstanced: rebased matrix is out of float range");
             return NULL;
+        }
+        if (accumulate_bounds) {
+            double world_matrix[16];
+            float instance_min[3];
+            float instance_max[3];
+            for (int j = 0; j < 16; j++)
+                world_matrix[j] = (double)snapshot[(size_t)i * 16u + (size_t)j];
+            if (c)
+                c->frame_aabb_transforms++;
+            if (!vgfx3d_transform_aabb_checked(
+                    union_local_min, union_local_max, world_matrix, instance_min, instance_max))
+                continue;
+            if (!*out_has_world_bounds) {
+                memcpy(out_world_min, instance_min, sizeof(float) * 3);
+                memcpy(out_world_max, instance_max, sizeof(float) * 3);
+                *out_has_world_bounds = 1;
+            } else {
+                canvas3d_expand_bounds(out_world_min, out_world_max, instance_min, instance_max);
+            }
         }
     }
     return snapshot;
@@ -268,13 +303,30 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
     rt_mesh3d *mesh = b->mesh;
     float local_bounds_min[3];
     float local_bounds_max[3];
+    float world_bounds_min[3] = {0.0f, 0.0f, 0.0f};
+    float world_bounds_max[3] = {0.0f, 0.0f, 0.0f};
+    int8_t has_world_bounds = 0;
+
+    /* Select local bounds before the matrix snapshot so the copy loop can accumulate the
+     * per-instance world-AABB union in the same pass. */
+    canvas3d_select_instanced_local_bounds(mesh,
+                                           base_cmd->vertices,
+                                           explicit_local_bounds_min,
+                                           explicit_local_bounds_max,
+                                           local_bounds_min,
+                                           local_bounds_max);
 
     size_t matrix_float_count = (size_t)instance_count * 16u;
     float *queued_instance_matrices = canvas3d_alloc_instance_matrix_snapshot(
         c,
         instance_matrices,
         instance_count,
-        "Canvas3D.DrawMeshInstanced: instance matrix allocation failed");
+        "Canvas3D.DrawMeshInstanced: instance matrix allocation failed",
+        local_bounds_min,
+        local_bounds_max,
+        world_bounds_min,
+        world_bounds_max,
+        &has_world_bounds);
     if (!queued_instance_matrices) {
         canvas3d_instanced_release_refs(b);
         return;
@@ -293,7 +345,12 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
                 c,
                 prev_instance_matrices,
                 instance_count,
-                "Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
+                "Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed",
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL);
         } else {
             queued_prev_instance_matrices =
                 (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
@@ -334,13 +391,7 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
 
     base_cmd->prev_instance_matrices = queued_prev_instance_matrices;
     base_cmd->has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
-    canvas3d_select_instanced_local_bounds(mesh,
-                                           base_cmd->vertices,
-                                           explicit_local_bounds_min,
-                                           explicit_local_bounds_max,
-                                           local_bounds_min,
-                                           local_bounds_max);
-    if (!canvas3d_enqueue_draw(
+    if (!canvas3d_enqueue_draw_world_bounds(
             c,
             base_cmd,
             DEFERRED_DRAW_INSTANCED,
@@ -353,7 +404,9 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
             canvas3d_compute_instanced_batch_sort_key(
                 c, queued_instance_matrices, instance_count, local_bounds_min, local_bounds_max),
             local_bounds_min,
-            local_bounds_max)) {
+            local_bounds_max,
+            has_world_bounds ? world_bounds_min : NULL,
+            has_world_bounds ? world_bounds_max : NULL)) {
         rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
         canvas3d_release_tracked_temp_buffer(c, queued_prev_instance_matrices);
         canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);

@@ -200,18 +200,26 @@ static int canvas3d_append_prepared_deferred_draw(
 /// The queue is dispatched at end-of-frame in sorted order. Allocation failure
 /// traps instead of submitting immediately, because bypassing the queue breaks
 /// transparent ordering and can render a visibly incorrect frame.
-static int canvas3d_enqueue_draw(rt_canvas3d *c,
-                                 const vgfx3d_draw_cmd_t *cmd,
-                                 deferred_draw_kind_t kind,
-                                 deferred_pass_t pass_kind,
-                                 const float *instance_matrices,
-                                 int32_t instance_count,
-                                 int include_lights,
-                                 int8_t wireframe,
-                                 int8_t backface_cull,
-                                 float sort_key,
-                                 const float *local_bounds_min,
-                                 const float *local_bounds_max) {
+/// @brief Append a draw with caller-provided render-space world bounds.
+/// @details Instanced submissions already touch every instance matrix while snapshotting;
+///   accumulating the world-AABB union in that loop lets append skip its own
+///   O(instance) rescan. Provided bounds must cover every submitted instance
+///   (conservative supersets are safe — instanced draws never occlusion-test/-write).
+///   Pass NULL bounds to fall back to the append-time computation.
+static int canvas3d_enqueue_draw_world_bounds(rt_canvas3d *c,
+                                              const vgfx3d_draw_cmd_t *cmd,
+                                              deferred_draw_kind_t kind,
+                                              deferred_pass_t pass_kind,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              int include_lights,
+                                              int8_t wireframe,
+                                              int8_t backface_cull,
+                                              float sort_key,
+                                              const float *local_bounds_min,
+                                              const float *local_bounds_max,
+                                              const float *world_bounds_min,
+                                              const float *world_bounds_max) {
     deferred_draw_t dd;
 
     if (!c || !cmd)
@@ -229,11 +237,45 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                 sort_key,
                                 local_bounds_min,
                                 local_bounds_max);
+    if (world_bounds_min && world_bounds_max &&
+        canvas3d_bounds_are_valid(world_bounds_min, world_bounds_max)) {
+        memcpy(dd.world_bounds_min, world_bounds_min, sizeof(dd.world_bounds_min));
+        memcpy(dd.world_bounds_max, world_bounds_max, sizeof(dd.world_bounds_max));
+        dd.has_world_bounds = 1;
+    }
     if (!canvas3d_append_prepared_deferred_draw(c, &dd, NULL)) {
         rt_trap("Canvas3D: deferred draw queue allocation failed");
         return 0;
     }
     return 1;
+}
+
+static int canvas3d_enqueue_draw(rt_canvas3d *c,
+                                 const vgfx3d_draw_cmd_t *cmd,
+                                 deferred_draw_kind_t kind,
+                                 deferred_pass_t pass_kind,
+                                 const float *instance_matrices,
+                                 int32_t instance_count,
+                                 int include_lights,
+                                 int8_t wireframe,
+                                 int8_t backface_cull,
+                                 float sort_key,
+                                 const float *local_bounds_min,
+                                 const float *local_bounds_max) {
+    return canvas3d_enqueue_draw_world_bounds(c,
+                                              cmd,
+                                              kind,
+                                              pass_kind,
+                                              instance_matrices,
+                                              instance_count,
+                                              include_lights,
+                                              wireframe,
+                                              backface_cull,
+                                              sort_key,
+                                              local_bounds_min,
+                                              local_bounds_max,
+                                              NULL,
+                                              NULL);
 }
 
 /// @brief Append a draw to the final-overlay queue for replay after post-FX.
@@ -405,6 +447,11 @@ static void canvas3d_cache_deferred_world_bounds(
 
     if (!dd)
         return;
+    /* Instanced submissions accumulate their union while snapshotting matrices and
+     * arrive with bounds already attached; recomputing here would rescan every
+     * instance matrix a second time per frame. */
+    if (dd->has_world_bounds)
+        return;
     if (c && dd->kind == DEFERRED_DRAW_MESH && cache_key && cache_key->valid &&
         cache_key->mesh_key && cache_key->matrix_hash) {
         slot = (uint32_t)(cache_key->matrix_hash &
@@ -564,6 +611,15 @@ static int canvas3d_compute_shadow_cascade_splits(const rt_canvas3d *c,
         near_depth = far_depth;
         far_depth = tmp;
     }
+    /* Cap cascade coverage at the configured shadow distance: spanning the whole clip
+     * range spreads the shadow texel budget over kilometers and collapses near-camera
+     * resolution into blocky shimmer. Receivers beyond the cap sample outside the last
+     * cascade and render unshadowed (the shader fades them out approaching the cap). */
+    if (c) {
+        float shadow_far = canvas3d_effective_shadow_distance(c);
+        if (isfinite(shadow_far) && shadow_far > near_depth && shadow_far < far_depth)
+            far_depth = shadow_far;
+    }
     if (far_depth - near_depth < 1e-3f)
         far_depth = near_depth + 1.0f;
     span = far_depth - near_depth;
@@ -572,9 +628,12 @@ static int canvas3d_compute_shadow_cascade_splits(const rt_canvas3d *c,
         const float uniform_split = near_depth + span * p;
         float practical_split = uniform_split;
         if (near_depth > 1e-4f && far_depth > near_depth) {
+            /* Practical split scheme, lambda = 0.75: weighting the logarithmic series
+             * this heavily keeps cascade 0 tight around the camera at large far/near
+             * ratios; the residual uniform term stops the last cascade from collapsing. */
             const float log_split = near_depth * powf(far_depth / near_depth, p);
             if (isfinite(log_split))
-                practical_split = 0.5f * uniform_split + 0.5f * log_split;
+                practical_split = 0.25f * uniform_split + 0.75f * log_split;
         }
         if (i > 0 && practical_split <= out_splits[i - 1] + 1e-3f)
             practical_split = out_splits[i - 1] + 1e-3f;
@@ -1116,9 +1175,11 @@ static int canvas3d_deferred_occlusion_rect(rt_canvas3d *c,
     }
     if (*out_max_x < *out_min_x || *out_max_y < *out_min_y)
         return 0;
-    if (((*out_max_x - *out_min_x + 1) * (*out_max_y - *out_min_y + 1)) >
-        (CANVAS3D_OCCLUSION_GRID_W * CANVAS3D_OCCLUSION_GRID_H) / 3)
-        return 0;
+    /* Large rects are allowed: the most effective occluders — near walls, buildings,
+     * terrain ridges — legitimately cover most of the screen, and rejecting them made
+     * corridor/urban scenes cull almost nothing. Write safety for deep boxes is handled
+     * by canvas3d_occlusion_depth_span_can_write; the coarse grid is small enough that
+     * a full-grid scan per candidate stays cheap. */
     *out_test_depth = near_depth;
     *out_write_depth = far_depth;
     return 1;

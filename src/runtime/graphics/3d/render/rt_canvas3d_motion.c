@@ -173,7 +173,8 @@ void canvas3d_prune_motion_history(rt_canvas3d *c) {
 
     canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
     int32_t dst = 0;
-    int64_t retention = c->motion_history_retention_frames > 0 ? c->motion_history_retention_frames : 1;
+    int64_t retention =
+        c->motion_history_retention_frames > 0 ? c->motion_history_retention_frames : 1;
     for (int32_t i = 0; i < c->motion_history_count; i++) {
         if (c->frame_serial - hist[i].last_frame_seen > retention)
             continue;
@@ -275,13 +276,41 @@ int32_t canvas3d_next_power_of_two_i32(int32_t value) {
     return cap;
 }
 
+/// @brief Monotonic allocation generation for pointer-keyed history salting.
+uint32_t rt_g3d_next_identity_serial(void) {
+    static uint32_t serial = 0;
+    serial++;
+    if (serial == 0)
+        serial = 1;
+    return serial;
+}
+
+/// @brief Allocation-generation salt for a mesh or material handle (0 for other types).
+/// @details Motion (and occlusion) history outlives object frees by a few frames; a new
+///   object recycled onto the same address would otherwise inherit the dead object's
+///   previous transform and flash a bogus motion vector on its first frame.
+static uintptr_t canvas3d_object_identity_salt(const void *obj) {
+    void *handle = (void *)(uintptr_t)obj;
+    const rt_mesh3d *mesh =
+        (const rt_mesh3d *)rt_g3d_checked_or_null(handle, RT_G3D_MESH3D_CLASS_ID);
+    if (mesh)
+        return (uintptr_t)mesh->identity_serial;
+    const rt_material3d *mat =
+        (const rt_material3d *)rt_g3d_checked_or_null(handle, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (mat)
+        return (uintptr_t)mat->identity_serial;
+    return 0;
+}
+
 /// @brief Derive a stable object draw key for transform-handle draw calls.
 uintptr_t canvas3d_mesh_transform_motion_key(const void *mesh_obj,
                                              const void *material_obj,
                                              const void *transform_obj) {
     uintptr_t key = (uintptr_t)transform_obj;
     key = canvas3d_mix_motion_key(key, (uintptr_t)mesh_obj);
+    key = canvas3d_mix_motion_key(key, canvas3d_object_identity_salt(mesh_obj));
     key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
+    key = canvas3d_mix_motion_key(key, canvas3d_object_identity_salt(material_obj));
     return key ? key : (uintptr_t)1u;
 }
 
@@ -297,7 +326,9 @@ uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
                                        int32_t index) {
     uintptr_t key = (uintptr_t)mesh_obj;
     uintptr_t instance_key = (uintptr_t)((uint32_t)index + 1u);
+    key = canvas3d_mix_motion_key(key, canvas3d_object_identity_salt(mesh_obj));
     key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
+    key = canvas3d_mix_motion_key(key, canvas3d_object_identity_salt(material_obj));
     key = canvas3d_mix_motion_key(key, (uintptr_t)batch_obj);
     key = canvas3d_mix_motion_key(key, (uintptr_t)((uint32_t)instance_count + 1u));
     key ^= instance_key * (uintptr_t)0xc2b2ae35u;

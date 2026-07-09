@@ -126,6 +126,10 @@ static void canvas3d_reset_frame_light_snapshots(rt_canvas3d *c) {
     if (!c)
         return;
     c->frame_light_snapshot_count = 0;
+    /* The flattened-light cache stores an offset into this arena; resetting the arena
+     * makes any cached offset stale. It also re-arms the once-per-frame flatten against
+     * camera-relative-origin changes applied at frame begin. */
+    canvas3d_invalidate_light_flatten_cache(c);
     if (c->frame_light_snapshot_capacity > VGFX3D_MAX_LIGHTS * 4096) {
         free(c->frame_light_snapshots);
         c->frame_light_snapshots = NULL;
@@ -220,6 +224,55 @@ static vgfx3d_light_params_t *canvas3d_store_frame_light_snapshot(
            (size_t)light_count * sizeof(vgfx3d_light_params_t));
     c->frame_light_snapshot_count += light_count;
     return &base[c->frame_light_snapshot_count - light_count];
+}
+
+/// @brief Assign the frame's flattened lights to a queued draw, flattening at most once
+///        per light-state generation.
+/// @details Previously every queued draw ran build_light_params (two passes over all 64
+///   slots) plus a full snapshot memcmp — O(draws x lights) per frame. Draws that share
+///   one Light3D mutation generation now share a single snapshot slice, revision stamp,
+///   and froxel table. The cache is invalidated at frame begin, on slot/ambient/scene-
+///   light changes, and by any Light3D property mutation (global generation counter).
+///   Shadow patching in End() mutates the shared slice in place, which is safe because
+///   canvas3d_apply_shadow_light_params is idempotent per slice.
+/// @return 1 on success, 0 when the snapshot arena allocation failed (caller traps).
+static int canvas3d_assign_frame_lights(rt_canvas3d *c, deferred_draw_t *dd) {
+    uint64_t light_revision;
+    int32_t limit;
+
+    if (!c || !dd)
+        return 0;
+    light_revision = rt_light3d_mutation_revision();
+    limit = canvas3d_active_light_limit(c);
+    if (!c->frame_light_cache_valid || c->frame_light_cache_revision != light_revision ||
+        c->frame_light_cache_limit != limit) {
+        vgfx3d_light_params_t light_scratch[VGFX3D_MAX_LIGHTS];
+        int32_t count = build_light_params(c, light_scratch, limit);
+        int32_t offset = -1;
+        vgfx3d_light_params_t *stored =
+            canvas3d_store_frame_light_snapshot(c, light_scratch, count, &offset);
+        if (count > 0 && !stored)
+            return 0;
+        c->frame_light_cache_stamp = canvas3d_stamp_light_snapshot(c, stored, count);
+        c->frame_light_cache_count = count;
+        c->frame_light_cache_offset = stored ? offset : -1;
+        c->frame_light_cache_revision = light_revision;
+        c->frame_light_cache_limit = limit;
+        c->frame_light_cache_valid = 1;
+    }
+    dd->light_count = c->frame_light_cache_count;
+    /* Re-derive the pointer from the offset each time: the arena base can move when a
+     * later store grows it (queued draws are remapped, this cache is not). */
+    dd->lights = (c->frame_light_cache_offset >= 0 && c->frame_light_snapshots)
+                     ? (vgfx3d_light_params_t *)c->frame_light_snapshots +
+                           c->frame_light_cache_offset
+                     : NULL;
+    dd->light_offset = c->frame_light_cache_offset;
+    dd->cmd.lights_revision = c->frame_light_cache_stamp;
+    /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
+    dd->cmd.cluster_table =
+        canvas3d_cluster_table_for_revision(c, dd->lights, dd->light_count, dd->cmd.lights_revision);
+    return 1;
 }
 
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd);
@@ -735,14 +788,6 @@ static int canvas3d_sort_opaque_draws_depth_first(rt_canvas3d *c,
     if (!canvas3d_stable_radix_sort_u64(c, items, count, canvas3d_sort_key_stable_id, NULL))
         return 0;
     return canvas3d_stable_bucket_sort_depth(c, items, count, 0, 0);
-}
-
-static int canvas3d_sort_opaque_draws_state_first(rt_canvas3d *c,
-                                                  deferred_draw_t *items,
-                                                  int32_t count) {
-    if (!canvas3d_sort_opaque_draws_depth_first(c, items, count))
-        return 0;
-    return canvas3d_stable_radix_sort_u64(c, items, count, canvas3d_sort_key_backend_state, NULL);
 }
 
 static int canvas3d_backend_uses_software_raster(const rt_canvas3d *c) {
@@ -2022,22 +2067,14 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];
     if (include_lights) {
-        vgfx3d_light_params_t light_scratch[VGFX3D_MAX_LIGHTS];
-        dd->light_count = build_light_params(c, light_scratch, canvas3d_active_light_limit(c));
-        dd->lights = canvas3d_store_frame_light_snapshot(
-            c, light_scratch, dd->light_count, &dd->light_offset);
-        if (dd->light_count > 0 && !dd->lights) {
+        if (!canvas3d_assign_frame_lights(c, dd)) {
             rt_trap("Canvas3D.Draw: light snapshot allocation failed");
             dd->light_count = 0;
         }
+    } else {
+        dd->cmd.lights_revision = 0;
+        dd->cmd.cluster_table = NULL;
     }
-    dd->cmd.lights_revision =
-        include_lights ? canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count) : 0;
-    /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
-    dd->cmd.cluster_table = include_lights
-                                ? canvas3d_cluster_table_for_revision(
-                                      c, dd->lights, dd->light_count, dd->cmd.lights_revision)
-                                : NULL;
     dd->sort_key = canvas3d_sanitize_sort_key(sort_key, dd->requires_blend);
     dd->stable_sort_id = (uintptr_t)cmd->geometry_key ^ (uintptr_t)cmd->texture ^
                          ((uintptr_t)cmd->texture_asset << 1) ^ ((uintptr_t)instance_matrices << 2);

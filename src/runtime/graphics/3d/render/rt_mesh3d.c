@@ -869,6 +869,7 @@ static rt_mesh3d *mesh3d_new_initialized(int allocate_default_storage) {
         return NULL;
     }
     m->vptr = NULL;
+    m->identity_serial = rt_g3d_next_identity_serial();
     m->vertices = allocate_default_storage
                       ? (vgfx3d_vertex_t *)calloc(MESH_INIT_VERTS, sizeof(vgfx3d_vertex_t))
                       : NULL;

@@ -486,6 +486,12 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     memcpy(canvas->scene_lights,
            scene_light_ptrs,
            (size_t)scene_light_count * sizeof(scene_light_ptrs[0]));
+    /* Scene lights are flattened alongside slot lights; the swap (and per-draw refresh
+     * of node-light values above) is invisible to the Light3D mutation generation. */
+    canvas3d_invalidate_light_flatten_cache(canvas);
+    /* Refresh the shadow-caster sweep with scene lights in place so traversal keeps
+     * off-screen casters whose shadows reach the frustum. */
+    canvas3d_update_shadow_caster_sweep(canvas);
     if (!draw_node_spatial(
             s, canvas3d, canvas, cam, &frustum, &pvs, vp, &culled, &visible_nodes, cam_pos)) {
         draw_node(
@@ -496,6 +502,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     canvas->scene_light_count = prev_scene_light_count;
     memcpy(canvas->scene_lights, prev_scene_lights, sizeof(prev_scene_lights));
     memcpy(canvas->scene_light_storage, prev_scene_light_storage, sizeof(prev_scene_light_storage));
+    canvas3d_invalidate_light_flatten_cache(canvas);
     s->last_culled_count = culled;
     s->last_visible_node_count = visible_nodes;
     s->last_pvs_culled_count = pvs_culled;

@@ -451,6 +451,21 @@ typedef struct {
     int32_t readback_staging_height;
     DXGI_FORMAT readback_staging_format;
 
+    /* Present pacing: IDXGISwapChain::Present sync interval (1 = vsync, 0 = immediate).
+     * Initialized to 1 at context creation; driven by the set_vsync backend hook. */
+    int32_t present_sync_interval;
+
+    /* Scene-depth probes (lens flares): requests queued during the frame are copied
+     * from scene_depth_tex into a small staging strip at end_frame; the previous
+     * frame's strip is harvested at begin_frame with a non-blocking Map, so reads
+     * carry one frame of latency and never sync the pipeline. */
+    float depth_probe_requests[VGFX3D_DEPTH_PROBE_MAX][2];
+    int32_t depth_probe_request_count;
+    ID3D11Texture2D *depth_probe_staging;
+    int32_t depth_probe_pending_count;
+    float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
+    int32_t depth_probe_result_count;
+
     ID3D11Texture2D *rtt_color_tex;
     ID3D11RenderTargetView *rtt_rtv;
     ID3D11Texture2D *rtt_depth_tex;
@@ -868,7 +883,7 @@ static void d3d11_present_swapchain(d3d11_context_t *ctx) {
     if (!ctx || !ctx->swap_chain)
         return;
     snapshot_ok = d3d11_snapshot_backbuffer_for_readback(ctx);
-    hr = IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
+    hr = IDXGISwapChain_Present(ctx->swap_chain, ctx->present_sync_interval, 0);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::Present", hr);
         d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::Present", hr);
@@ -1801,6 +1816,9 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .get_native_texture_caps = d3d11_get_native_texture_caps,
     .get_feature_caps = d3d11_get_feature_caps,
     .get_backend_stats = d3d11_get_backend_stats,
+    .set_vsync = d3d11_set_vsync,
+    .queue_depth_probe = d3d11_queue_depth_probe,
+    .read_depth_probe = d3d11_read_depth_probe,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

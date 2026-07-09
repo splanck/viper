@@ -1272,6 +1272,14 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
         strcmp(name, "backend-fallback") == 0 || strcmp(name, "backend_fallback") == 0 ||
         strcmp(name, "software-fallback") == 0 || strcmp(name, "software_fallback") == 0)
         return rt_canvas3d_get_backend_fallback(obj);
+    if (strcmp(name, "vsync-control") == 0 || strcmp(name, "vsync_control") == 0) {
+        rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+        return (c && c->backend && c->backend->set_vsync) ? 1 : 0;
+    }
+    if (strcmp(name, "render-scale") == 0 || strcmp(name, "render_scale") == 0) {
+        rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+        return (c && c->backend && c->backend->set_render_scale) ? 1 : 0;
+    }
     native_texture_flag = canvas3d_native_texture_capability_from_name(name);
     if (native_texture_flag)
         return (rt_canvas3d_get_backend_capabilities(obj) & native_texture_flag) ? 1 : 0;

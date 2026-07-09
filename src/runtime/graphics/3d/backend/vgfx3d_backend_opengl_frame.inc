@@ -98,6 +98,26 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
         ctx->scene_postfx_pending = 0;
+        /* Harvest last frame's depth-probe PBO (a frame boundary has passed, so the
+         * map does not stall) and restart probe slot ids for the new frame. */
+        if (ctx->depth_probe_pending_count > 0 && ctx->depth_probe_pbo) {
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
+            const float *mapped = (const float *)gl.MapBufferRange(
+                GL_PIXEL_PACK_BUFFER,
+                0,
+                (GLsizeiptr)((size_t)ctx->depth_probe_pending_count * sizeof(float)),
+                GL_MAP_READ_BIT);
+            if (mapped) {
+                memcpy(ctx->depth_probe_results,
+                       mapped,
+                       (size_t)ctx->depth_probe_pending_count * sizeof(float));
+                ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
+                gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            }
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            ctx->depth_probe_pending_count = 0;
+        }
+        ctx->depth_probe_request_count = 0;
     }
     texture_cache_prune(ctx);
     cubemap_cache_prune(ctx);
@@ -367,16 +387,102 @@ static void gl_submit_draw(void *ctx_ptr,
 /// Doesn't immediately read pixels back to the host RT buffer — that
 /// happens lazily in `gl_sync_render_target_color` when the user
 /// queries pixels. Keeps the GL pipeline async for RTT-heavy workloads.
+/// @brief Issue this frame's queued scene-depth probe reads into the probe PBO.
+/// @details Reads the scene FBO's depth attachment at each probe pixel; results are
+///   harvested at the next frame's begin so the readback never syncs the pipeline.
+static void gl_issue_depth_probes(gl_context_t *ctx) {
+    if (!ctx || ctx->depth_probe_request_count <= 0)
+        return;
+    if (!ctx->scene_fbo || !ctx->scene_depth_tex || ctx->scene_width <= 0 ||
+        ctx->scene_height <= 0) {
+        ctx->depth_probe_request_count = 0;
+        return;
+    }
+    if (!ctx->depth_probe_pbo) {
+        gl.GenBuffers(1, &ctx->depth_probe_pbo);
+        if (!ctx->depth_probe_pbo) {
+            ctx->depth_probe_request_count = 0;
+            return;
+        }
+        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
+        gl.BufferData(GL_PIXEL_PACK_BUFFER,
+                      (GLsizeiptr)(VGFX3D_DEPTH_PROBE_MAX * sizeof(float)),
+                      NULL,
+                      GL_STREAM_READ);
+    } else {
+        gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
+    }
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, ctx->scene_fbo);
+    for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
+        float ndc_x = ctx->depth_probe_requests[i][0];
+        float ndc_y = ctx->depth_probe_requests[i][1];
+        /* GL window origin is bottom-left, matching NDC y-up: no flip. */
+        GLint px = (GLint)((ndc_x * 0.5f + 0.5f) * (float)ctx->scene_width);
+        GLint py = (GLint)((ndc_y * 0.5f + 0.5f) * (float)ctx->scene_height);
+        if (px < 0)
+            px = 0;
+        if (py < 0)
+            py = 0;
+        if (px >= ctx->scene_width)
+            px = ctx->scene_width - 1;
+        if (py >= ctx->scene_height)
+            py = ctx->scene_height - 1;
+        gl.ReadPixels(px,
+                      py,
+                      1,
+                      1,
+                      GL_DEPTH_COMPONENT,
+                      GL_FLOAT,
+                      (void *)((size_t)i * sizeof(float)));
+    }
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
+    ctx->depth_probe_request_count = 0;
+}
+
 static void gl_end_frame(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
 
+    gl_issue_depth_probes(ctx);
     if (ctx->rtt_active && ctx->rtt_target && ctx->rtt_color_tex) {
         ctx->rtt_color_dirty = 1;
         ctx->rtt_target->color_dirty = 1;
         ctx->rtt_target->hdr_color_valid = 0;
     }
+}
+
+/// @brief Backend hook: toggle GLX swap-interval vsync (no-op without EXT_swap_control).
+static void gl_set_vsync(void *ctx_ptr, int8_t enabled) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx || !glx.SwapIntervalEXT)
+        return;
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
+    glx.SwapIntervalEXT(ctx->display, ctx->window, enabled ? 1 : 0);
+}
+
+/// @brief Backend hook: register one NDC scene-depth probe for this frame.
+static int32_t gl_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int32_t slot;
+    if (!ctx || ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
+        !isfinite(ndc_y))
+        return -1;
+    slot = ctx->depth_probe_request_count++;
+    ctx->depth_probe_requests[slot][0] = ndc_x;
+    ctx->depth_probe_requests[slot][1] = ndc_y;
+    return slot;
+}
+
+/// @brief Backend hook: read a probe result captured on the previous frame.
+static float gl_read_depth_probe(void *ctx_ptr, int32_t slot) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx || slot < 0 || slot >= ctx->depth_probe_result_count)
+        return -1.0f;
+    return ctx->depth_probe_results[slot];
 }
 
 /// @brief Read the total bytes uploaded to GL textures so far this frame (diagnostics counter).

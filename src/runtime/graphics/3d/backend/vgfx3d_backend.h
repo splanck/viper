@@ -515,7 +515,33 @@ typedef struct vgfx3d_backend {
     /// @details Copies a point-in-time telemetry snapshot into @p out_stats. NULL means the
     ///          backend has no private telemetry beyond Canvas3D's existing frame counters.
     void (*get_backend_stats)(void *ctx, vgfx3d_backend_stats_t *out_stats);
+
+    /* Optional present pacing control. Non-zero synchronizes presentation to the
+     * display's vertical blank (the default on every backend); zero presents
+     * immediately for lowest latency. NULL = the platform default is fixed. */
+    void (*set_vsync)(void *ctx, int8_t enabled);
+
+    /* Optional render-scale control: window-backed scene rendering happens at
+     * `scale` times the output size ([0.25, 1]) and is upscaled at presentation.
+     * Returns non-zero when the scale was applied. NULL = fixed 1:1 rendering
+     * (Canvas3D.TrySetRenderScale reports unsupported). */
+    int8_t (*set_render_scale)(void *ctx, float scale);
+
+    /* Optional scene-depth probes for occlusion-aware effects (lens flares).
+     * queue_depth_probe registers one NDC point (x, y in [-1, 1]) during frame
+     * building and returns its slot id, or -1 when unsupported/full. Slot ids
+     * restart at 0 each frame, so a stable per-frame request order yields stable
+     * slots. read_depth_probe returns the scene window depth ([0, 1], larger =
+     * farther) captured for that slot on a PREVIOUS completed frame, or a
+     * negative value while no result is available. GPU backends read the depth
+     * back asynchronously (typically one frame of latency, never a pipeline
+     * stall); the software backend answers from its CPU z-buffer. */
+    int32_t (*queue_depth_probe)(void *ctx, float ndc_x, float ndc_y);
+    float (*read_depth_probe)(void *ctx, int32_t slot);
 } vgfx3d_backend_t;
+
+/// @brief Maximum scene-depth probes per frame across all users of the hook.
+#define VGFX3D_DEPTH_PROBE_MAX 64
 
 /*==========================================================================
  * Backend registry

@@ -5158,6 +5158,11 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
 
     rt_camera3d_look_at(camera, eye, target, up);
     rt_canvas3d_set_occlusion_culling(&canvas, 1);
+    /* Occlusion and frustum culling are independent toggles: enabling occlusion must
+     * not overwrite the frustum flag (zeroed by the stack fixture memset). */
+    EXPECT_EQ(canvas.frustum_culling, 0);
+    EXPECT_EQ(canvas.occlusion_culling, 1);
+    rt_canvas3d_set_frustum_culling(&canvas, 1);
     EXPECT_EQ(canvas.frustum_culling, 1);
     EXPECT_EQ(canvas.occlusion_culling, 1);
 
@@ -5175,6 +5180,141 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
     EXPECT_EQ(rt_canvas3d_get_occluded_draw_count(&canvas), covered_draws);
     EXPECT_EQ(rt_canvas3d_get_occlusion_candidate_count(&canvas), covered_draws + 1);
+    PASS();
+}
+
+static void test_frame_light_flatten_cache_shares_snapshot_across_draws() {
+    TEST("Canvas3D flattens lights once per generation, not once per draw");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new();
+    void *xf =
+        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    void *light_dir = rt_vec3_new(0.0, -1.0, 0.0);
+    void *light = rt_light3d_new_directional(light_dir, 1.0, 1.0, 1.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_set_light(&canvas, 0, light);
+
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    int32_t after_first = canvas.frame_light_snapshot_count;
+    uint32_t first_stamp = canvas.frame_light_cache_stamp;
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    /* Identical light state: all draws must share one snapshot slice and stamp. */
+    EXPECT_TRUE(after_first > 0, "first draw must store a flattened light slice");
+    EXPECT_EQ(canvas.frame_light_snapshot_count, after_first);
+    EXPECT_EQ(canvas.frame_light_cache_stamp, first_stamp);
+
+    /* A Light3D mutation advances the generation and forces one re-flatten. */
+    rt_light3d_set_intensity(light, 0.5);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    EXPECT_EQ(canvas.frame_light_snapshot_count, after_first * 2);
+    EXPECT_TRUE(canvas.frame_light_cache_stamp != first_stamp,
+                "light mutation must produce a fresh revision stamp");
+
+    /* Canvas slot changes invalidate the cache the same way. */
+    int32_t before_slot_change = canvas.frame_light_snapshot_count;
+    rt_canvas3d_set_light(&canvas, 1, nullptr);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, material);
+    EXPECT_EQ(canvas.frame_light_snapshot_count, before_slot_change + after_first);
+    rt_canvas3d_end(&canvas);
+    PASS();
+}
+
+static void test_shadow_distance_setter_and_effective_range() {
+    TEST("Canvas3D.SetShadowDistance caps cascade coverage with an auto default");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.cached_cam_far = 1000.0f;
+
+    /* Auto default: min(camera far, 300). */
+    EXPECT_EQ(rt_canvas3d_get_shadow_distance(&canvas), 0.0);
+    EXPECT_NEAR(canvas3d_effective_shadow_distance(&canvas), 300.0f, 1e-3);
+
+    /* Short far planes clamp the auto default. */
+    canvas.cached_cam_far = 120.0f;
+    EXPECT_NEAR(canvas3d_effective_shadow_distance(&canvas), 120.0f, 1e-3);
+
+    /* Explicit values are honored, clamped to the far plane at use time. */
+    rt_canvas3d_set_shadow_distance(&canvas, 80.0);
+    EXPECT_EQ(rt_canvas3d_get_shadow_distance(&canvas), 80.0);
+    EXPECT_NEAR(canvas3d_effective_shadow_distance(&canvas), 80.0f, 1e-3);
+    rt_canvas3d_set_shadow_distance(&canvas, 5000.0);
+    EXPECT_NEAR(canvas3d_effective_shadow_distance(&canvas), 120.0f, 1e-3);
+
+    /* Non-positive / non-finite restore the automatic default. */
+    rt_canvas3d_set_shadow_distance(&canvas, 0.0);
+    EXPECT_EQ(rt_canvas3d_get_shadow_distance(&canvas), 0.0);
+    rt_canvas3d_set_shadow_distance(&canvas, -25.0);
+    EXPECT_EQ(rt_canvas3d_get_shadow_distance(&canvas), 0.0);
+    PASS();
+}
+
+static void test_instanced_draw_precomputes_world_bounds_in_snapshot_pass() {
+    TEST("Canvas3D instanced draws union world bounds once during matrix snapshot");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new();
+
+    enum { kInstanceCount = 8 };
+
+    float matrices[kInstanceCount * 16];
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    for (int32_t i = 0; i < kInstanceCount; i++) {
+        float *m = &matrices[(size_t)i * 16u];
+        memset(m, 0, sizeof(float) * 16);
+        m[0] = m[5] = m[10] = m[15] = 1.0f;
+        m[3] = (float)i; /* spread along +X, all inside the frustum */
+        m[11] = -3.0f;
+    }
+
+    g_canvas_submit_draw_calls = 0;
+    g_canvas_submit_draw_instanced_calls = 0;
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, material, matrices, kInstanceCount, NULL, 0);
+    /* The union is accumulated inside the snapshot copy loop: exactly one AABB
+     * transform per instance. A second scan at append (the old path) would double
+     * this counter. */
+    EXPECT_EQ(canvas.frame_aabb_transforms, kInstanceCount);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_canvas_submit_draw_instanced_calls > 0 || g_canvas_submit_draw_calls > 0,
+                "instanced batch must reach the backend");
     PASS();
 }
 
@@ -8792,6 +8932,9 @@ int main() {
     test_canvas_texture_backend_support_queries();
     test_canvas_light_revision_stamps();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
+    test_frame_light_flatten_cache_shares_snapshot_across_draws();
+    test_shadow_distance_setter_and_effective_range();
+    test_instanced_draw_precomputes_world_bounds_in_snapshot_pass();
     test_canvas_texture_upload_bytes_telemetry();
     test_canvas_frame_gpu_time_telemetry();
     test_canvas_texture_upload_budget_controls_backend();

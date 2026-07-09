@@ -1720,6 +1720,11 @@ static void apply_sun_shafts_cpu(float *fbuf,
 }
 
 /// @brief TAA: reprojected history blend with 3x3 neighborhood clamp.
+/// @details Deliberately unjittered: the software path is the deterministic reference
+///   for golden-frame tests and VM/native parity, and sub-pixel projection jitter would
+///   perturb every rasterized sample. On this path TAA therefore acts as reprojected
+///   temporal smoothing (stabilizing motion, not resolving new edge coverage); the GPU
+///   backends run the full Halton-jittered TAA resolve.
 static void apply_taa_cpu(
     rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h, const postfx_scene_in_t *sc, float blend) {
     size_t count = (size_t)w * (size_t)h;

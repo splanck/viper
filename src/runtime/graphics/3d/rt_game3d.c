@@ -804,6 +804,8 @@ static void game3d_world_require_rebase_boundary(rt_game3d_world *world) {
 /// @brief Apply a floating-origin shift of @p delta across all of the world's subsystems.
 /// @details Translates bodies, scene nodes, effects, the camera, and cached origins together so the
 ///          recenter is invisible to gameplay while restoring float precision near the camera.
+static void game3d_world_invalidate_interpolation_poses(rt_game3d_world *world);
+
 static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const double delta[3]) {
     if (!world || !delta)
         return;
@@ -815,6 +817,9 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
     if (clean_delta[0] == 0.0 && clean_delta[1] == 0.0 && clean_delta[2] == 0.0)
         return;
     game3d_world_require_rebase_boundary(world);
+    /* Interpolation endpoints captured before the rebase are in the old origin; lerping
+     * from them would sweep entities across the rebase delta for one frame. */
+    game3d_world_invalidate_interpolation_poses(world);
     void *scene = rt_g3d_checked_or_null(world->scene, RT_G3D_SCENE3D_CLASS_ID);
     void *physics = rt_g3d_checked_or_null(world->physics, RT_G3D_WORLD3D_CLASS_ID);
     void *camera = rt_g3d_checked_or_null(world->camera, RT_G3D_CAMERA3D_CLASS_ID);
@@ -1583,12 +1588,133 @@ static void game3d_world_update_behaviors(rt_game3d_world *world, double dt) {
     }
 }
 
+/// @brief Capture every spawned entity's node pose before a simulation step.
+/// @details The captured pose becomes the interpolation "from" endpoint; the post-step
+///   node pose is the "to" endpoint. Skipped entirely unless render interpolation is on.
+static void game3d_world_capture_interpolation_poses(rt_game3d_world *world) {
+    int32_t count;
+    if (!world || !world->render_interpolation)
+        return;
+    count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < count; i++) {
+        rt_game3d_entity *entity = world->entities[i];
+        rt_scene_node3d *node;
+        if (!entity || !entity->alive || !entity->spawned)
+            continue;
+        node = (rt_scene_node3d *)game3d_entity_node_ref(entity);
+        if (!node) {
+            entity->interp_has_prev = 0;
+            continue;
+        }
+        memcpy(entity->interp_prev_position, node->position, sizeof(entity->interp_prev_position));
+        memcpy(entity->interp_prev_rotation, node->rotation, sizeof(entity->interp_prev_rotation));
+        entity->interp_has_prev = 1;
+    }
+}
+
+/// @brief Drop all captured interpolation endpoints (call after floating-origin rebases).
+/// @details A rebase shifts every node by the new origin; lerping from a pre-rebase pose
+///   would sweep entities across the whole rebase delta for one frame.
+static void game3d_world_invalidate_interpolation_poses(rt_game3d_world *world) {
+    int32_t count;
+    if (!world)
+        return;
+    count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < count; i++) {
+        if (world->entities[i])
+            world->entities[i]->interp_has_prev = 0;
+    }
+}
+
+/// @brief Blend spawned entity node poses between fixed steps for this render.
+/// @return 1 when at least one pose was blended (caller must restore after drawing).
+static int game3d_world_apply_render_interpolation(rt_game3d_world *world) {
+    double alpha;
+    double t;
+    int blended = 0;
+    int32_t count;
+    if (!world || !world->render_interpolation)
+        return 0;
+    alpha = world->fixed_interpolation_alpha;
+    if (!isfinite(alpha) || alpha <= 0.0 || alpha >= 1.0)
+        return 0;
+    t = alpha;
+    count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < count; i++) {
+        rt_game3d_entity *entity = world->entities[i];
+        rt_scene_node3d *node;
+        double dot;
+        double blend_sign;
+        double len2;
+        if (!entity || !entity->alive || !entity->spawned || !entity->interp_has_prev)
+            continue;
+        node = (rt_scene_node3d *)game3d_entity_node_ref(entity);
+        if (!node)
+            continue;
+        memcpy(
+            entity->interp_saved_position, node->position, sizeof(entity->interp_saved_position));
+        memcpy(
+            entity->interp_saved_rotation, node->rotation, sizeof(entity->interp_saved_rotation));
+        for (int axis = 0; axis < 3; axis++) {
+            node->position[axis] =
+                entity->interp_prev_position[axis] +
+                (entity->interp_saved_position[axis] - entity->interp_prev_position[axis]) * t;
+        }
+        /* Normalized-lerp with hemisphere correction: fixed-step rotation deltas are
+         * small, so nlerp is indistinguishable from slerp here and much cheaper. */
+        dot = entity->interp_prev_rotation[0] * entity->interp_saved_rotation[0] +
+              entity->interp_prev_rotation[1] * entity->interp_saved_rotation[1] +
+              entity->interp_prev_rotation[2] * entity->interp_saved_rotation[2] +
+              entity->interp_prev_rotation[3] * entity->interp_saved_rotation[3];
+        blend_sign = dot < 0.0 ? -1.0 : 1.0;
+        len2 = 0.0;
+        for (int comp = 0; comp < 4; comp++) {
+            node->rotation[comp] = entity->interp_prev_rotation[comp] * (1.0 - t) +
+                                   entity->interp_saved_rotation[comp] * blend_sign * t;
+            len2 += node->rotation[comp] * node->rotation[comp];
+        }
+        if (isfinite(len2) && len2 > 1e-12) {
+            double inv_len = 1.0 / sqrt(len2);
+            for (int comp = 0; comp < 4; comp++)
+                node->rotation[comp] *= inv_len;
+        } else {
+            memcpy(node->rotation, entity->interp_saved_rotation, sizeof(node->rotation));
+        }
+        node->world_dirty = 1;
+        entity->interp_pose_blended = 1;
+        blended = 1;
+    }
+    return blended;
+}
+
+/// @brief Restore authoritative sim poses after an interpolated render.
+static void game3d_world_restore_render_interpolation(rt_game3d_world *world) {
+    int32_t count;
+    if (!world)
+        return;
+    count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < count; i++) {
+        rt_game3d_entity *entity = world->entities[i];
+        rt_scene_node3d *node;
+        if (!entity || !entity->interp_pose_blended)
+            continue;
+        entity->interp_pose_blended = 0;
+        node = (rt_scene_node3d *)game3d_entity_node_ref(entity);
+        if (!node)
+            continue;
+        memcpy(node->position, entity->interp_saved_position, sizeof(node->position));
+        memcpy(node->rotation, entity->interp_saved_rotation, sizeof(node->rotation));
+        node->world_dirty = 1;
+    }
+}
+
 static void game3d_world_step_simulation_impl(rt_game3d_world *world,
                                               double step_sec,
                                               int8_t advance_time_counters) {
     if (!world)
         return;
     game3d_asset_async_drain_commits();
+    game3d_world_capture_interpolation_poses(world);
     double dt = game3d_clamp_dt(step_sec);
     world->dt = dt;
     if (advance_time_counters) {
@@ -2036,13 +2162,19 @@ static void game3d_world_draw_overlay_fn(rt_game3d_world *world, rt_game3d_overl
 /// @brief Render one complete frame: begin → draw scene → draw effects → end scene →
 ///   optional overlay → present. Shared by all run-loop variants.
 static void game3d_world_render_once(rt_game3d_world *world, rt_game3d_overlay_fn overlay_fn) {
+    int interpolated;
     if (!world || world->destroyed || !world->canvas)
         return;
     if (!game3d_world_begin_frame_impl(world))
         return;
+    /* Fixed-step render interpolation: draw blended poses, then restore the
+     * authoritative sim poses before the next update/step observes them. */
+    interpolated = game3d_world_apply_render_interpolation(world);
     rt_game3d_world_draw_scene(world);
     rt_game3d_world_draw_effects(world);
     rt_game3d_world_end_scene(world);
+    if (interpolated)
+        game3d_world_restore_render_interpolation(world);
     if (overlay_fn)
         game3d_world_draw_overlay_fn(world, overlay_fn);
     rt_game3d_world_present(world);

@@ -142,6 +142,16 @@ frame. If a long frame would require more work than the cap, the dropped step
 count is exposed through `World3D.droppedFixedSteps` for telemetry and tuning.
 The `runFixed` update argument accepts a native-compiled function reference or
 an interpreted Zia function reference with signature `(Float) -> Unit`.
+
+`World3D.RenderInterpolation` (default off) makes fixed-step motion render
+smoothly on displays faster than the simulation rate: during each rendered
+frame, entity scene-node poses are blended between the previous and current
+fixed steps by `FixedInterpolationAlpha` (position lerp, rotation
+normalized-lerp) and restored immediately after drawing, so simulation state —
+and determinism — are never touched. Poses captured before a floating-origin
+rebase are discarded rather than lerped across the rebase delta.
+`FixedInterpolationAlpha` remains available for games that blend visual-only
+state manually.
 Raw `Viper.Graphics3D.Physics3DWorld` users can use the same fixed-step pattern
 without the Game3D facade through `Physics3DWorld.StepFixed(dt, fixedDt,
 maxSteps)`, `FixedStepAlpha`, and `DroppedFixedSteps`. `fixedDt` should be

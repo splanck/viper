@@ -494,6 +494,8 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->depth_probe_pbo)
+        gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
     if (ctx->default_white_cubemap)

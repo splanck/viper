@@ -771,8 +771,7 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
 
         if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
             la > 0.0f) {
-            int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
+            la *= sw_sample_shadow_light(fog_ctx, lt, wx, wy, wz, pnx, pny, pnz);
         }
 
         float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
@@ -920,8 +919,7 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
 
         if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
             la > 0.0f) {
-            int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-            la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz, pnx, pny, pnz);
+            la *= sw_sample_shadow_light(fog_ctx, lt, wx, wy, wz, pnx, pny, pnz);
         }
 
         float ndl = pnx * llx + pny * lly + pnz * llz;

@@ -169,6 +169,15 @@ typedef struct rt_game3d_entity {
     int8_t alive;
     int8_t spawned;
     int8_t destroyed;
+    /* Fixed-step render interpolation (world->render_interpolation): node pose captured
+     * before the latest fixed simulation step, plus scratch to restore the authoritative
+     * sim pose after an interpolated render. */
+    double interp_prev_position[3];
+    double interp_prev_rotation[4];
+    double interp_saved_position[3];
+    double interp_saved_rotation[4];
+    int8_t interp_has_prev;
+    int8_t interp_pose_blended;
 } rt_game3d_entity;
 
 /// @brief Return the entity's SceneNode3D slot only when it still has the expected class.
@@ -351,8 +360,8 @@ typedef struct rt_game3d_stream_cell {
     void *scene;
     void *entity;
     int8_t resident;
-    void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
-    int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
+    void *sidecar_data;      /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes;   /* size in bytes of the loaded binary sidecar payload */
     int32_t reload_cooldown; /* recompute passes to wait before reloading after a
                                 budget eviction (prevents load/unload thrash) */
 } rt_game3d_stream_cell;
@@ -393,8 +402,8 @@ typedef struct rt_game3d_stream_terrain_tile {
     void *collider_entity;
     void *nav_entity;
     int8_t resident;
-    void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
-    int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
+    void *sidecar_data;      /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes;   /* size in bytes of the loaded binary sidecar payload */
     int32_t reload_cooldown; /* recompute passes to wait before reloading after a
                                 budget eviction (prevents load/unload thrash) */
 } rt_game3d_stream_terrain_tile;
@@ -562,6 +571,10 @@ typedef struct rt_game3d_world {
     int8_t stream_camera_far_active;
     int8_t destroyed;
     double fixed_interpolation_alpha;
+    /* Opt-in fixed-step render interpolation: entity node poses are blended between
+     * the previous and current fixed steps by fixed_interpolation_alpha during render,
+     * then restored — 60 Hz physics stays smooth on 120/144 Hz displays. */
+    int8_t render_interpolation;
 } rt_game3d_world;
 
 #if defined(_MSC_VER)

@@ -51,6 +51,9 @@ func start() {
     var mat = Material3D.NewColor(0.7, 0.7, 0.7);
 
     Canvas3D.EnableShadows(canvas, 256);
+    // Pin one sun cascade: this probe counts cube-face slots, and the CSM-capable
+    // default of two cascades would move the sun to two slots.
+    Canvas3D.SetShadowCascades(canvas, 1);
     Canvas3D.SetAmbient(canvas, 0.05, 0.05, 0.05);
 
     // Path-keeper: a dim shadowed sun keeps per-pixel shading in both frames.

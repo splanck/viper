@@ -217,6 +217,27 @@ static int scene3d_aabb_to_canvas_render_space(rt_canvas3d *canvas,
     return 1;
 }
 
+/// @brief Extend a render-space AABB by the canvas's shadow-caster sweep vector.
+/// @details A caster at P shadows points along the light's travel direction, so its
+///   swept box (AABB ∪ AABB+sweep) is what must intersect the view frustum for its
+///   shadow to remain correct. Applied only to frustum tests — PVS stays exact — and
+///   only while a shadow-casting directional light is active. Nodes admitted solely by
+///   the sweep are frustum-culled from the main pass at the deferred layer, so they
+///   cost shadow-pass work only.
+static void scene3d_apply_shadow_caster_sweep(const rt_canvas3d *canvas,
+                                              float world_min[3],
+                                              float world_max[3]) {
+    if (!canvas || !canvas->shadow_caster_sweep_active || !world_min || !world_max)
+        return;
+    for (int i = 0; i < 3; i++) {
+        float sweep = canvas->shadow_caster_sweep[i];
+        if (sweep < 0.0f)
+            world_min[i] += sweep;
+        else
+            world_max[i] += sweep;
+    }
+}
+
 /// @brief Push (node, inherited animator) onto a growable draw-traversal stack.
 /// @details Same iterative-traversal rationale and growth/return contract as
 ///          scene_bounds_stack_push: capacity doubles from 64; returns 1 on
@@ -409,6 +430,7 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
         } else if (frustum) {
             if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
                 return 1;
+            scene3d_apply_shadow_caster_sweep(canvas, world_min, world_max);
             if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
                 if (culled)
                     (*culled)++;
@@ -452,6 +474,7 @@ static int scene3d_cached_world_bounds_cull_test(rt_scene_node3d *current,
     }
     if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
         return 1;
+    scene3d_apply_shadow_caster_sweep(canvas, world_min, world_max);
     if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
         if (culled)
             (*culled)++;
@@ -476,6 +499,12 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
         return;
     if (visible_nodes)
         (*visible_nodes)++;
+    /* Motion/occlusion history keys are pointer-based; salting with the node's
+     * allocation generation keeps a destroyed node's same-address successor from
+     * inheriting its previous transform (one-frame motion-vector flash). */
+    const void *motion_key =
+        (const void *)((uintptr_t)current ^
+                       ((uintptr_t)current->identity_serial * (uintptr_t)0x9E3779B9u));
     const float *anim_palette = NULL;
     const float *anim_prev_palette = NULL;
     int32_t anim_bone_count = 0;
@@ -523,7 +552,7 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                 draw_mesh,
                 current->world_matrix,
                 draw_material,
-                current,
+                motion_key,
                 anim_palette,
                 anim_prev_palette,
                 draw_bone_count,
@@ -537,7 +566,7 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                                                   draw_mesh,
                                                   current->world_matrix,
                                                   draw_material,
-                                                  current,
+                                                  motion_key,
                                                   NULL,
                                                   NULL,
                                                   use_explicit_bounds ? submit_min : NULL,
@@ -732,6 +761,7 @@ static int scene3d_spatial_entry_frustum_prefilter(rt_scene3d_spatial_entry *ent
     }
     if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
         return 1;
+    scene3d_apply_shadow_caster_sweep(canvas, world_min, world_max);
     return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
 }
 
@@ -756,10 +786,22 @@ static int draw_node_spatial(rt_scene3d *scene,
     int ok;
     if (!scene || !scene->use_spatial_index)
         return 0;
-    if (scene3d_frustum_bounds_from_vp(vp, frustum_min, frustum_max))
+    if (scene3d_frustum_bounds_from_vp(vp, frustum_min, frustum_max)) {
+        /* Shadow-caster sweep: gather BVH candidates "upstream" of the frustum along
+         * the light so off-screen casters reach the per-node swept-AABB test. */
+        if (canvas && canvas->shadow_caster_sweep_active) {
+            for (int i = 0; i < 3; i++) {
+                double sweep = (double)canvas->shadow_caster_sweep[i];
+                if (sweep > 0.0)
+                    frustum_min[i] -= sweep;
+                else
+                    frustum_max[i] -= sweep;
+            }
+        }
         ok = scene3d_spatial_collect_aabb(scene, frustum_min, frustum_max, &candidates, 1);
-    else
+    } else {
         ok = scene3d_spatial_collect_all(scene, &candidates);
+    }
     if (!ok) {
         free(candidates.items);
         return 0;

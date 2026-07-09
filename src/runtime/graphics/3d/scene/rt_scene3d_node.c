@@ -198,6 +198,7 @@ void *rt_scene_node3d_new(void) {
     }
     memset(node, 0, sizeof(*node));
     node->vptr = NULL;
+    node->identity_serial = rt_g3d_next_identity_serial();
     node->position[0] = node->position[1] = node->position[2] = 0.0;
     node->rotation[0] = node->rotation[1] = node->rotation[2] = 0.0;
     node->rotation[3] = 1.0; /* identity quaternion (0,0,0,1) */
@@ -448,8 +449,8 @@ int8_t rt_scene_node3d_get_position_components(void *obj, double *x, double *y, 
 
 /// @brief Read the local rotation quaternion into out params without allocating.
 /// @return 1 on success, 0 (no writes) for an invalid handle.
-int8_t
-rt_scene_node3d_get_rotation_components(void *obj, double *x, double *y, double *z, double *w) {
+int8_t rt_scene_node3d_get_rotation_components(
+    void *obj, double *x, double *y, double *z, double *w) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!n || !x || !y || !z || !w)
         return 0;

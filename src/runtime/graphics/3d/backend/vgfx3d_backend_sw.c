@@ -117,6 +117,21 @@ typedef struct {
     int64_t worker_count;
     int32_t debug_draw_count;
     int32_t debug_tri_count;
+    /* Scene-depth probes (lens flares): answered synchronously from the CPU
+     * z-buffer at queue time; slots reset every begin_frame. */
+    float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
+    int32_t depth_probe_count;
+    /* Render scale: window-backed frames rasterize into an internal buffer at
+     * render_scale times the framebuffer size, then end_frame upscales
+     * (nearest-neighbor) into the framebuffer. The dominant software cost is
+     * per-pixel shading, so 0.5x scale is roughly a 4x rasterization speedup.
+     * RTT frames always render at the target's exact size. */
+    vgfx_window_t win;
+    float render_scale;
+    uint32_t *scaled_color;
+    size_t scaled_color_capacity; /* in pixels */
+    int32_t scaled_w, scaled_h;
+    int8_t scaled_frame_active;
 } sw_context_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
@@ -432,6 +447,126 @@ static int32_t sw_resolve_shadow_slot(
     return base_slot + cascade_count - 1;
 }
 
+/// @brief Effective cascade count for a light after slot/base clamping (mirrors
+///        sw_resolve_shadow_slot's bounds).
+static int32_t sw_effective_cascade_count(const sw_context_t *ctx,
+                                          const vgfx3d_light_params_t *light) {
+    int32_t base_slot;
+    int32_t cascade_count;
+
+    if (!ctx || !light || light->shadow_index < 0)
+        return 0;
+    base_slot = light->shadow_index;
+    cascade_count = light->shadow_cascade_count;
+    if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS - base_slot)
+        cascade_count = VGFX3D_MAX_SHADOW_LIGHTS - base_slot;
+    if (cascade_count > ctx->shadow_count - base_slot)
+        cascade_count = ctx->shadow_count - base_slot;
+    return cascade_count;
+}
+
+/// @brief Sample a light's shadow visibility with cascade blending and distance fade.
+/// @details Mirrors the GPU shader twins: the last ~12% of each cascade cross-fades
+///   into the next so the cascade handoff cannot pop as the camera moves, and the last
+///   cascade fades to fully lit approaching the capped shadow distance instead of
+///   ending on a hard line. Cube/spot projections resolve exactly as before.
+static float sw_sample_shadow_light(const sw_context_t *ctx,
+                                    const vgfx3d_light_params_t *light,
+                                    float wx,
+                                    float wy,
+                                    float wz,
+                                    float nx,
+                                    float ny,
+                                    float nz) {
+    int32_t slot = sw_resolve_shadow_slot(ctx, light, wx, wy, wz);
+    float vis;
+    int32_t base_slot;
+    int32_t cascade_count;
+    int32_t cascade;
+    float view_depth;
+    float split_far;
+    float split_near;
+    float band;
+
+    if (slot < 0)
+        return 1.0f;
+    vis = sw_sample_shadow_visibility(ctx, slot, wx, wy, wz, nx, ny, nz);
+    if (!light || light->shadow_projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC)
+        return vis;
+    base_slot = light->shadow_index;
+    cascade_count = sw_effective_cascade_count(ctx, light);
+    if (cascade_count <= 1 || slot < base_slot)
+        return vis;
+    cascade = slot - base_slot;
+    if (cascade >= cascade_count)
+        return vis;
+    view_depth = (wx - ctx->cam_pos[0]) * ctx->cam_forward[0] +
+                 (wy - ctx->cam_pos[1]) * ctx->cam_forward[1] +
+                 (wz - ctx->cam_pos[2]) * ctx->cam_forward[2];
+    split_far = light->shadow_cascade_splits[cascade];
+    split_near = cascade > 0 ? light->shadow_cascade_splits[cascade - 1] : 0.0f;
+    band = fmaxf(0.5f, 0.12f * (split_far - split_near));
+    if (cascade < cascade_count - 1) {
+        float blend = (view_depth - (split_far - band)) / band;
+        if (blend > 0.0f) {
+            float next_vis;
+            if (blend > 1.0f)
+                blend = 1.0f;
+            next_vis = sw_sample_shadow_visibility(ctx, slot + 1, wx, wy, wz, nx, ny, nz);
+            vis += (next_vis - vis) * blend;
+        }
+    } else {
+        float shadow_far = light->shadow_cascade_splits[cascade_count - 1];
+        float fade_band = fmaxf(2.0f, 0.10f * shadow_far);
+        float fade = (shadow_far - view_depth) / fade_band;
+        if (fade < 0.0f)
+            fade = 0.0f;
+        if (fade > 1.0f)
+            fade = 1.0f;
+        vis = 1.0f + (vis - 1.0f) * fade;
+    }
+    return vis;
+}
+
+/// @brief Queue (and immediately answer) one scene-depth probe from the CPU z-buffer.
+/// @details Software depth is available synchronously, so the probe result is captured
+///   at queue time: NDC z converted to the hook's window-depth convention
+///   ([0, 1], cleared/empty depth reported as 1.0). Returns the slot id or -1.
+static int32_t sw_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    int32_t slot;
+    float result = -1.0f;
+
+    if (!ctx || ctx->depth_probe_count >= VGFX3D_DEPTH_PROBE_MAX)
+        return -1;
+    slot = ctx->depth_probe_count++;
+    if (ctx->zbuf && ctx->width > 0 && ctx->height > 0 && isfinite(ndc_x) && isfinite(ndc_y)) {
+        int32_t px = (int32_t)((ndc_x * 0.5f + 0.5f) * (float)ctx->width);
+        int32_t py = (int32_t)((0.5f - ndc_y * 0.5f) * (float)ctx->height);
+        if (px >= 0 && px < ctx->width && py >= 0 && py < ctx->height) {
+            float ndc_z = ctx->zbuf[(size_t)py * (size_t)ctx->width + (size_t)px];
+            if (!isfinite(ndc_z) || ndc_z > 1.0f)
+                result = 1.0f; /* cleared: nothing occludes here */
+            else
+                result = ndc_z * 0.5f + 0.5f;
+            if (result < 0.0f)
+                result = 0.0f;
+            if (result > 1.0f)
+                result = 1.0f;
+        }
+    }
+    ctx->depth_probe_results[slot] = result;
+    return slot;
+}
+
+/// @brief Read a probe captured this frame (software answers synchronously).
+static float sw_read_depth_probe(void *ctx_ptr, int32_t slot) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || slot < 0 || slot >= ctx->depth_probe_count)
+        return -1.0f;
+    return ctx->depth_probe_results[slot];
+}
+
 /// @brief Resize the depth buffer if dimensions changed; idempotent on match.
 ///
 /// Reallocates `width × height` floats. Used during resize and on
@@ -605,6 +740,9 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .show_gpu_layer = NULL,
     .hide_gpu_layer = NULL,
     .resolve_opaque_targets = sw_resolve_opaque_targets,
+    .queue_depth_probe = sw_queue_depth_probe,
+    .read_depth_probe = sw_read_depth_probe,
+    .set_render_scale = sw_set_render_scale,
 };
 
 static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {

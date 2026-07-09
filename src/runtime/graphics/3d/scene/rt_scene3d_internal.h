@@ -220,6 +220,10 @@ typedef struct rt_scene_node3d {
     void *impostor_pixels;
     void *impostor_mesh;
     void *impostor_material;
+    /* Allocation generation: draw submission salts the node's motion-history key with
+     * this so a destroyed node's same-address successor never inherits its previous
+     * transform (which would flash a bogus motion vector on its first frame). */
+    uint32_t identity_serial;
 } rt_scene_node3d;
 
 /// @brief Scene3D payload: the implicit root node, total node count, and the

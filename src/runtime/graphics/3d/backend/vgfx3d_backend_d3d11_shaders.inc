@@ -585,10 +585,8 @@ static const char *const d3d11_shader_source_chunks[] = {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   * compare bias, and filter with a rotated-Poisson PCF over the hardware
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   * comparison sampler. shadowFilter carries the knobs (x = slope-bias
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   * factor, y = strength, z = tap count). */
-    "float sampleShadow(Light light, float3 worldPos, float3 N, float3 L, float2 fragXY) {\n"
-    "    int shadowIndex = resolveShadowCascade(light, worldPos);\n"
-    "    if (shadowIndex < 0 || shadowIndex >= shadowCount)\n"
-    "        return 1.0;\n"
+    "float sampleShadowCascade(Light light, int shadowIndex, float3 worldPos,\n"
+    "                          float3 N, float3 L, float2 fragXY) {\n"
     "    row_major float4x4 shadowMatrix = shadowVP[shadowIndex];\n"
     "    float2 mapSize;\n"
     "    if (shadowIndex >= 4) {\n"
@@ -635,6 +633,43 @@ static const char *const d3d11_shader_source_chunks[] = {
     "        lit += (s == s) ? saturate(s) : 1.0;\n"
     "    }\n"
     "    return lit / (float)taps;\n"
+    "}\n"
+    "\n"
+    /* Cascade blend band + distance fade: hard cascade cuts pop visibly as the
+     * camera moves, so the last ~12% of each cascade cross-fades into the next,
+     * and directional shadows fade out approaching the capped shadow distance
+     * instead of ending on a hard line. Mirrors the MSL/GLSL twins. */
+    "float sampleShadow(Light light, float3 worldPos, float3 N, float3 L, float2 fragXY) {\n"
+    "    int shadowIndex = resolveShadowCascade(light, worldPos);\n"
+    "    if (shadowIndex < 0 || shadowIndex >= shadowCount)\n"
+    "        return 1.0;\n"
+    "    float lit = sampleShadowCascade(light, shadowIndex, worldPos, N, L, fragXY);\n"
+    "    int cascadeCount = clamp(light.shadowCascadeCount, 1, ",
+    VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS)
+    ");\n"
+    "    cascadeCount = min(cascadeCount, shadowCount - light.shadowIndex);\n"
+    "    if (light.shadowProjectionType == 0 && cascadeCount > 1 &&\n"
+    "        shadowIndex >= light.shadowIndex) {\n"
+    "        int cascade = shadowIndex - light.shadowIndex;\n"
+    "        float viewDepth = dot(worldPos - cameraPosition.xyz, cameraForward.xyz);\n"
+    "        float splitFar = light.shadowCascadeSplits[cascade];\n"
+    "        float splitNear = cascade > 0 ? light.shadowCascadeSplits[cascade - 1] : 0.0;\n"
+    "        float band = max(0.5, 0.12 * (splitFar - splitNear));\n"
+    "        if (cascade < cascadeCount - 1) {\n"
+    "            float blend = saturate((viewDepth - (splitFar - band)) / band);\n"
+    "            if (blend > 0.0) {\n"
+    "                float litNext = sampleShadowCascade(light, shadowIndex + 1,\n"
+    "                                                    worldPos, N, L, fragXY);\n"
+    "                lit = lerp(lit, litNext, blend);\n"
+    "            }\n"
+    "        } else {\n"
+    "            float shadowFar = light.shadowCascadeSplits[cascadeCount - 1];\n"
+    "            float fadeBand = max(2.0, 0.10 * shadowFar);\n"
+    "            float fade = saturate((shadowFar - viewDepth) / fadeBand);\n"
+    "            lit = lerp(1.0, lit, fade);\n"
+    "        }\n"
+    "    }\n"
+    "    return lit;\n"
     "}\n"
     "\n"
     "float distributionGGX(float NdotH, float roughness) {\n"

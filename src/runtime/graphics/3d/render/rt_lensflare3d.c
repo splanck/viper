@@ -13,10 +13,12 @@
 // Key invariants:
 //   - Element ghost sprites are generated once at AddElement time (32x32
 //     radial-alpha discs tinted by the element color) and retained.
-//   - Occlusion probes the CPU depth buffer (software zbuf or the bound render
-//     target's depth) in a 3x3 around the light's pixel: visibility is the
-//     fraction of unoccluded probes. Backends without CPU depth draw
-//     unoccluded (documented divergence until GPU readback occlusion lands).
+//   - Occlusion probes depth in a 3x3 around the light's pixel: CPU depth
+//     (software zbuf or the bound render target's depth) is read directly, and
+//     GPU backends answer through the async scene-depth-probe hooks (previous
+//     completed frame, no pipeline stall). Visibility is the unoccluded probe
+//     fraction, temporally smoothed per flare so occlusion transitions fade
+//     instead of popping in visibility-ninth steps.
 //   - Lights behind the camera or projecting far off-screen draw nothing.
 //
 // Ownership/Lifetime:
@@ -63,6 +65,11 @@ typedef struct {
     void *light; /* retained Light3D */
     lensflare3d_element_t elements[LENSFLARE3D_MAX_ELEMENTS];
     int32_t element_count;
+    /* Temporally smoothed visibility: raw probe visibility is quantized (ninths) and
+     * the GPU readback carries one frame of latency, so blending toward the raw value
+     * hides both instead of letting the flare pop at occluder edges. Negative = unset. */
+    float smoothed_visibility;
+    int64_t smoothed_frame_serial;
 } rt_lensflare3d;
 
 static rt_lensflare3d *lensflare3d_checked(void *obj) {
@@ -104,6 +111,8 @@ void *rt_lensflare3d_new(void *light) {
     lf->light = light;
     rt_obj_retain_maybe(light);
     lf->element_count = 0;
+    lf->smoothed_visibility = -1.0f;
+    lf->smoothed_frame_serial = 0;
     rt_obj_set_finalizer(lf, lensflare3d_finalize);
     return lf;
 }
@@ -169,7 +178,12 @@ void rt_lensflare3d_add_element(
 }
 
 /// @brief Fraction of 3x3 depth probes around (px,py) that see past the light.
-static float lensflare3d_visibility(rt_canvas3d *c, float px, float py, float light_ndc_z) {
+/// @details CPU depth (software z-buffer or a bound render target) is sampled directly.
+///   GPU backends answer through the async scene-depth-probe hooks: probes queued this
+///   frame are read back by the backend without stalling, and reads return the previous
+///   completed frame's depth — the caller's temporal smoothing absorbs that latency.
+static float lensflare3d_visibility(
+    rt_canvas3d *c, float px, float py, float light_ndc_z, int32_t w, int32_t h) {
     const float *depth = NULL;
     int32_t dw = 0;
     int32_t dh = 0;
@@ -180,8 +194,38 @@ static float lensflare3d_visibility(rt_canvas3d *c, float px, float py, float li
     } else if (c->backend == &vgfx3d_software_backend) {
         depth = vgfx3d_sw_get_zbuf(c->backend_ctx, &dw, &dh);
     }
-    if (!depth || dw <= 0 || dh <= 0)
-        return 1.0f; /* no CPU depth: draw unoccluded (documented) */
+    if (!depth || dw <= 0 || dh <= 0) {
+        /* GPU backends: previous-frame async depth probes (window depth in [0,1]). */
+        if (c->backend && c->backend->queue_depth_probe && c->backend->read_depth_probe &&
+            c->backend_ctx && w > 0 && h > 0) {
+            float ref = light_ndc_z * 0.5f + 0.5f;
+            int visible = 0;
+            int total = 0;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    float sx = px + (float)dx;
+                    float sy = py + (float)dy;
+                    float ndc_x = (sx + 0.5f) / (float)w * 2.0f - 1.0f;
+                    float ndc_y = 1.0f - (sy + 0.5f) / (float)h * 2.0f;
+                    int32_t slot;
+                    float d;
+                    if (ndc_x < -1.0f || ndc_x > 1.0f || ndc_y < -1.0f || ndc_y > 1.0f)
+                        continue;
+                    slot = c->backend->queue_depth_probe(c->backend_ctx, ndc_x, ndc_y);
+                    if (slot < 0)
+                        continue;
+                    total++;
+                    d = c->backend->read_depth_probe(c->backend_ctx, slot);
+                    /* No result yet (first frames): count as visible; smoothing hides
+                     * the transient. */
+                    if (d < 0.0f || d >= ref - 1e-4f)
+                        visible++;
+                }
+            }
+            return total > 0 ? (float)visible / (float)total : 1.0f;
+        }
+        return 1.0f; /* no depth source at all: draw unoccluded */
+    }
     int visible = 0;
     int total = 0;
     for (int dy = -1; dy <= 1; dy++) {
@@ -211,8 +255,8 @@ void rt_canvas3d_draw_lens_flare(void *canvas, void *flare) {
 
     if (!c || !lf || !lf->light || lf->element_count <= 0)
         return;
-    const rt_light3d *l = (const rt_light3d *)rt_g3d_checked_or_null(lf->light,
-                                                                     RT_G3D_LIGHT3D_CLASS_ID);
+    const rt_light3d *l =
+        (const rt_light3d *)rt_g3d_checked_or_null(lf->light, RT_G3D_LIGHT3D_CLASS_ID);
     if (!l || !l->enabled)
         return;
     vp = canvas3d_active_scene_vp(c);
@@ -224,9 +268,9 @@ void rt_canvas3d_draw_lens_flare(void *canvas, void *flare) {
         return;
     if (l->type == 0) {
         /* Directional: place the "sun" far along the reverse light direction. */
-        float len = (float)sqrt(l->direction[0] * l->direction[0] +
-                                l->direction[1] * l->direction[1] +
-                                l->direction[2] * l->direction[2]);
+        float len =
+            (float)sqrt(l->direction[0] * l->direction[0] + l->direction[1] * l->direction[1] +
+                        l->direction[2] * l->direction[2]);
         if (!isfinite(len) || len < 1e-6f)
             return;
         light_world[0] = c->cached_render_cam_pos[0] - (float)(l->direction[0] / len) * 10000.0f;
@@ -238,14 +282,12 @@ void rt_canvas3d_draw_lens_flare(void *canvas, void *flare) {
         light_world[2] = (float)l->position[2];
     }
     {
-        float cx = vp[0] * light_world[0] + vp[1] * light_world[1] + vp[2] * light_world[2] +
-                   vp[3];
-        float cy = vp[4] * light_world[0] + vp[5] * light_world[1] + vp[6] * light_world[2] +
-                   vp[7];
-        float cz = vp[8] * light_world[0] + vp[9] * light_world[1] + vp[10] * light_world[2] +
-                   vp[11];
-        float cw = vp[12] * light_world[0] + vp[13] * light_world[1] + vp[14] * light_world[2] +
-                   vp[15];
+        float cx = vp[0] * light_world[0] + vp[1] * light_world[1] + vp[2] * light_world[2] + vp[3];
+        float cy = vp[4] * light_world[0] + vp[5] * light_world[1] + vp[6] * light_world[2] + vp[7];
+        float cz =
+            vp[8] * light_world[0] + vp[9] * light_world[1] + vp[10] * light_world[2] + vp[11];
+        float cw =
+            vp[12] * light_world[0] + vp[13] * light_world[1] + vp[14] * light_world[2] + vp[15];
         if (!isfinite(cw) || cw <= 1e-6f)
             return; /* behind the camera */
         light_screen[0] = (cx / cw * 0.5f + 0.5f) * (float)w;
@@ -256,8 +298,22 @@ void rt_canvas3d_draw_lens_flare(void *canvas, void *flare) {
             light_screen[1] < -(float)h || light_screen[1] > 2.0f * (float)h)
             return;
     }
-    float visibility = lensflare3d_visibility(c, light_screen[0], light_screen[1],
-                                              light_screen[2]);
+    float visibility =
+        lensflare3d_visibility(c, light_screen[0], light_screen[1], light_screen[2], w, h);
+    {
+        /* Temporal smoothing: raw visibility quantizes to ninths and the GPU probe
+         * readback is a frame late, so blend toward the raw value instead of snapping.
+         * A gap in draws (light off-screen, flare disabled) resets to the raw value. */
+        int64_t serial = (int64_t)c->frame_serial;
+        if (lf->smoothed_visibility < 0.0f || serial < lf->smoothed_frame_serial ||
+            serial - lf->smoothed_frame_serial > 4) {
+            lf->smoothed_visibility = visibility;
+        } else if (serial != lf->smoothed_frame_serial) {
+            lf->smoothed_visibility += (visibility - lf->smoothed_visibility) * 0.2f;
+        }
+        lf->smoothed_frame_serial = serial;
+        visibility = lf->smoothed_visibility;
+    }
     if (visibility <= 0.01f)
         return;
     {

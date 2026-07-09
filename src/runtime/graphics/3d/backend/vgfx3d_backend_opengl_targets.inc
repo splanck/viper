@@ -828,6 +828,10 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    /* Shadow maps are sampled through sampler2DShadow: the comparison mode makes each
+     * texture() tap a hardware-filtered depth compare (free 2x2 PCF per tap). */
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     gl.FramebufferTexture2D(
         GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->shadow_depth_tex[slot], 0);
     gl.DrawBuffer(GL_NONE);

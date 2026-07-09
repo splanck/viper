@@ -602,17 +602,21 @@ static void test_frustum_culling_aliases_share_state() {
     EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetFrustumCulling does not enable occlusion");
 
     rt_canvas3d_set_occlusion_culling(&canvas, 0);
-    EXPECT_EQ_I64(canvas.frustum_culling, 0, "SetOcclusionCulling(false) disables frustum culling");
+    EXPECT_EQ_I64(
+        canvas.frustum_culling, 1, "SetOcclusionCulling(false) leaves frustum culling alone");
     EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetOcclusionCulling(false) disables occlusion");
 
     rt_canvas3d_set_occlusion_culling(&canvas, -1);
-    EXPECT_EQ_I64(canvas.frustum_culling, 1, "SetOcclusionCulling enables frustum rejection");
+    EXPECT_EQ_I64(canvas.frustum_culling, 1, "SetOcclusionCulling leaves frustum culling alone");
     EXPECT_EQ_I64(canvas.occlusion_culling, 1, "SetOcclusionCulling enables occlusion");
 
     rt_canvas3d_set_frustum_culling(&canvas, 0);
     EXPECT_EQ_I64(canvas.frustum_culling, 0, "SetFrustumCulling(false) disables frustum state");
     EXPECT_EQ_I64(
-        canvas.occlusion_culling, 0, "SetFrustumCulling(false) disables dependent occlusion");
+        canvas.occlusion_culling, 1, "SetFrustumCulling(false) leaves occlusion culling alone");
+
+    rt_canvas3d_set_occlusion_culling(&canvas, 0);
+    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetOcclusionCulling(false) disables occlusion");
 
     rt_canvas3d_set_frustum_culling(nullptr, 1);
     rt_canvas3d_set_occlusion_culling(nullptr, 1);

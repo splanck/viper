@@ -60,13 +60,15 @@ extern rt_string rt_const_cstr(const char *s);
 extern void *rt_quat_new(double x, double y, double z, double w);
 extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
 extern int8_t rt_scene_node3d_get_position_components(void *node, double *x, double *y, double *z);
-extern int8_t
-rt_scene_node3d_get_rotation_components(void *node, double *x, double *y, double *z, double *w);
+extern int8_t rt_scene_node3d_get_rotation_components(
+    void *node, double *x, double *y, double *z, double *w);
 extern int8_t rt_scene_node3d_get_world_rotation_components(
     void *node, double *x, double *y, double *z, double *w);
 extern int8_t rt_scene_node3d_get_scale_components(void *node, double *x, double *y, double *z);
-extern int8_t
-rt_scene_node3d_get_world_scale_components(void *node, double *x, double *y, double *z);
+extern int8_t rt_scene_node3d_get_world_scale_components(void *node,
+                                                         double *x,
+                                                         double *y,
+                                                         double *z);
 extern int8_t rt_scene_node3d_get_world_matrix_components(void *node, double out[16]);
 extern void rt_scene_node3d_set_transform(void *node,
                                           double px,
@@ -372,8 +374,8 @@ static void test_transform_components_and_batch() {
     double m[16];
 
     /* Combined setter: one call sets TRS without intermediate Vec3/Quat allocations. */
-    rt_scene_node3d_set_transform(node, 1.0, 2.0, 3.0, 0.0, 0.7071067812, 0.0, 0.7071067812, 2.0,
-                                  2.0, 2.0);
+    rt_scene_node3d_set_transform(
+        node, 1.0, 2.0, 3.0, 0.0, 0.7071067812, 0.0, 0.7071067812, 2.0, 2.0, 2.0);
     EXPECT_TRUE(rt_scene_node3d_get_position_components(node, &x, &y, &z) == 1,
                 "position components read succeeds");
     EXPECT_NEAR(x, 1.0, 1e-9, "SetTransform stores position X");
@@ -404,8 +406,9 @@ static void test_transform_components_and_batch() {
     void *values = rt_seq_new();
     rt_seq_push(nodes, a);
     rt_seq_push(nodes, b);
-    const double packed[20] = {/* node a */ 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0,
-                               /* node b */ 0.0,  5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 3.0, 3.0};
+    const double packed[20] = {
+        /* node a */ 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+        /* node b */ 0.0,  5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 3.0, 3.0};
     for (int i = 0; i < 20; i++)
         rt_seq_push(values, rt_box_f64(packed[i]));
     rt_scene_node3d_set_transform_batch(nodes, values);
@@ -1483,6 +1486,62 @@ static void test_scene_occlusion_grid_uses_spatial_candidates() {
                 "Canvas3D visibility telemetry includes spatial prefilter and occlusion skips");
     EXPECT_TRUE(g_scene_submit_count == 1,
                 "SceneGraph indexed occlusion submits only the unoccluded front draw");
+}
+
+static void test_scene_shadow_caster_sweep_keeps_offscreen_casters() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+
+    void *scene = rt_scene3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(0.0, 0.0, 5.0), rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(0.0, 1.0, 0.0));
+
+    void *visible = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(visible, 0.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(visible, mesh);
+    rt_scene_node3d_set_material(visible, material);
+    rt_scene3d_add(scene, visible);
+
+    /* Far above the view cone: its shadow (sun pointing straight down) falls into the
+     * frustum, so shadow-aware traversal must keep it while plain culling drops it. */
+    void *caster = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(caster, 0.0, 60.0, -2.0);
+    rt_scene_node3d_set_mesh(caster, mesh);
+    rt_scene_node3d_set_material(caster, material);
+    rt_scene3d_add(scene, caster);
+
+    /* Without shadows: the off-screen caster is frustum-culled at traversal. */
+    rt_canvas3d_begin(&canvas, camera);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(canvas.draw_count == 1, "plain traversal culls the off-screen node");
+    EXPECT_TRUE(canvas.shadow_caster_sweep_active == 0,
+                "no sweep is active while shadows are disabled");
+    rt_canvas3d_end(&canvas);
+
+    void *sun_dir = rt_vec3_new(0.0, -1.0, 0.0);
+    void *sun = rt_light3d_new_directional(sun_dir, 1.0, 1.0, 1.0);
+    rt_light3d_set_casts_shadows(sun, 1);
+    rt_canvas3d_set_light(&canvas, 0, sun);
+    rt_canvas3d_enable_shadows(&canvas, 256);
+
+    rt_canvas3d_begin(&canvas, camera);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(canvas.shadow_caster_sweep_active == 1,
+                "a shadow-casting directional light activates the caster sweep");
+    EXPECT_TRUE(canvas.shadow_caster_sweep[1] < -50.0f,
+                "the sweep extends along the sun's travel direction");
+    EXPECT_TRUE(canvas.draw_count == 2,
+                "shadow-aware traversal keeps the off-screen caster enqueued");
+    rt_canvas3d_end(&canvas);
 }
 
 static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
@@ -3680,6 +3739,7 @@ int main() {
     test_scene_extreme_finite_transforms_and_queries_remain_bounded();
     test_scene_spatial_index_10k_scaling_fixture();
     test_scene_occlusion_grid_uses_spatial_candidates();
+    test_scene_shadow_caster_sweep_keeps_offscreen_casters();
     test_scene_portal_pvs_culls_unlinked_interior_zones();
     test_scene_spatial_index_preserves_far_origin_precision();
     test_scene_draw_reuses_active_frame();

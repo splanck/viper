@@ -51,6 +51,25 @@ static rt_light3d *light3d_checked(void *obj) {
     return (rt_light3d *)rt_g3d_checked_or_null(obj, RT_G3D_LIGHT3D_CLASS_ID);
 }
 
+/// @brief Monotonic generation stamp covering every Light3D mutation in the process.
+/// @details Canvas3D flattens its slotted lights into the dense backend array at most once
+///   per generation per frame instead of once per queued draw. Starts at 1 so a zeroed
+///   canvas cache field can never alias a real generation. Main-thread only, like all
+///   Light3D mutation entry points.
+static uint64_t g_light3d_mutation_revision = 1;
+
+/// @brief Current Light3D mutation generation (see g_light3d_mutation_revision).
+uint64_t rt_light3d_mutation_revision(void) {
+    return g_light3d_mutation_revision;
+}
+
+/// @brief Advance the Light3D mutation generation after any observable light change.
+static void light3d_note_mutation(void) {
+    g_light3d_mutation_revision++;
+    if (g_light3d_mutation_revision == 0)
+        g_light3d_mutation_revision = 1;
+}
+
 /// @brief Clamp a value at zero from below — negatives collapse to zero.
 /// @details Used for physical quantities like intensity, radius, and
 ///   attenuation where negative values are nonsensical. Chosen over a
@@ -360,6 +379,7 @@ void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!light)
         return;
     light->intensity = clamp_param_min0(intensity);
+    light3d_note_mutation();
 }
 
 /// @brief Change the RGB color of a light after creation.
@@ -374,6 +394,7 @@ void rt_light3d_set_color(void *obj, double r, double g, double b) {
     l->color[0] = clamp01(r);
     l->color[1] = clamp01(g);
     l->color[2] = clamp01(b);
+    light3d_note_mutation();
 }
 
 /// @brief Read the light type enum value.
@@ -409,6 +430,7 @@ void rt_light3d_set_enabled(void *obj, int8_t enabled) {
     if (!light)
         return;
     light->enabled = enabled ? 1 : 0;
+    light3d_note_mutation();
 }
 
 /// @brief Return whether this light currently contributes to rendering.
@@ -425,6 +447,7 @@ void rt_light3d_set_casts_shadows(void *obj, int8_t enabled) {
     if (!light)
         return;
     light->casts_shadows = enabled ? 1 : 0;
+    light3d_note_mutation();
 }
 
 /// @brief Return whether this light is eligible for shadow-map slots.
@@ -469,6 +492,7 @@ void rt_light3d_set_position(void *obj, void *position) {
     light->position[0] = light_coord_or_zero(rt_vec3_x(position));
     light->position[1] = light_coord_or_zero(rt_vec3_y(position));
     light->position[2] = light_coord_or_zero(rt_vec3_z(position));
+    light3d_note_mutation();
 }
 
 /// @brief Re-aim the light. The direction is normalized.
@@ -484,6 +508,7 @@ void rt_light3d_set_direction(void *obj, void *direction) {
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
+    light3d_note_mutation();
 }
 
 #else

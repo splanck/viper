@@ -779,14 +779,26 @@ void rt_canvas3d_disable_shadows(void *canvas);
 void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 /// @brief Request cascaded shadow maps; counts > 1 require backend support.
 void rt_canvas3d_set_shadow_cascades(void *canvas, int64_t count);
+/// @brief Cap the camera distance covered by directional shadow maps (<= 0 restores auto).
+void rt_canvas3d_set_shadow_distance(void *canvas, double distance);
+/// @brief Configured directional shadow distance (0 = automatic min(camera far, 300)).
+double rt_canvas3d_get_shadow_distance(void *canvas);
 
 /* Coarse CPU visibility: frustum rejection plus optional low-resolution
- * screen-space occlusion. Occlusion-enabled frames sort opaque draws front-to-back so
- * the coarse depth grid receives near occluders first; plain frustum culling preserves
- * caller order. */
-/// @brief Toggle coarse CPU frustum rejection.
+ * screen-space occlusion. The two toggles are independent; frustum rejection defaults
+ * on. Occlusion-enabled frames test opaque draws front-to-back so the coarse depth grid
+ * receives near occluders first, then regroup survivors by backend state. */
+/// @brief Enable/disable vsync presentation pacing (default on; see "vsync-control" cap).
+void rt_canvas3d_set_vsync(void *canvas, int8_t enabled);
+/// @brief Requested vsync state (defaults to on).
+int8_t rt_canvas3d_get_vsync(void *canvas);
+/// @brief Try to render the scene at a reduced scale ([0.25, 1]); see "render-scale" cap.
+int8_t rt_canvas3d_try_set_render_scale(void *canvas, double scale);
+/// @brief Currently requested render scale (1 = native resolution).
+double rt_canvas3d_get_render_scale(void *canvas);
+/// @brief Toggle coarse CPU frustum rejection (default on).
 void rt_canvas3d_set_frustum_culling(void *canvas, int8_t enabled);
-/// @brief Toggle frustum rejection plus conservative CPU occlusion skips.
+/// @brief Toggle conservative CPU occlusion skips (independent of frustum culling).
 void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);
 
 /* Instanced rendering + Terrain */

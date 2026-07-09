@@ -27,6 +27,8 @@ static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx->width = w;
         ctx->height = h;
     }
+    ctx->win = win;
+    ctx->render_scale = 1.0f;
 
     if (!sw_ensure_zbuf_capacity(ctx, ctx->width, ctx->height)) {
         free(ctx);
@@ -45,7 +47,85 @@ static void sw_destroy_ctx(void *ctx_ptr) {
     free(ctx->zbuf);
     free(ctx->opaque_zbuf);
     free(ctx->vertex_scratch);
+    free(ctx->scaled_color);
     free(ctx);
+}
+
+/// @brief True when window-backed frames should rasterize at reduced resolution.
+static int sw_render_scale_active(const sw_context_t *ctx) {
+    return ctx && !ctx->render_target && isfinite(ctx->render_scale) &&
+           ctx->render_scale < 0.999f;
+}
+
+/// @brief Compute the scaled rasterization dimensions for a framebuffer size.
+static void sw_scaled_dims(const sw_context_t *ctx, int32_t fb_w, int32_t fb_h,
+                           int32_t *out_w, int32_t *out_h) {
+    int32_t w = (int32_t)((float)fb_w * ctx->render_scale);
+    int32_t h = (int32_t)((float)fb_h * ctx->render_scale);
+    *out_w = w > 0 ? w : 1;
+    *out_h = h > 0 ? h : 1;
+}
+
+/// @brief Ensure the internal scaled color buffer holds at least w*h pixels.
+static int sw_ensure_scaled_color(sw_context_t *ctx, int32_t w, int32_t h) {
+    size_t pixel_count;
+    if (!ctx || w <= 0 || h <= 0)
+        return 0;
+    if ((size_t)w > SIZE_MAX / (size_t)h)
+        return 0;
+    pixel_count = (size_t)w * (size_t)h;
+    if (pixel_count > SIZE_MAX / sizeof(uint32_t))
+        return 0;
+    if (ctx->scaled_color && ctx->scaled_color_capacity >= pixel_count) {
+        ctx->scaled_w = w;
+        ctx->scaled_h = h;
+        return 1;
+    }
+    uint32_t *grown = (uint32_t *)realloc(ctx->scaled_color, pixel_count * sizeof(uint32_t));
+    if (!grown)
+        return 0;
+    ctx->scaled_color = grown;
+    ctx->scaled_color_capacity = pixel_count;
+    ctx->scaled_w = w;
+    ctx->scaled_h = h;
+    return 1;
+}
+
+/// @brief Nearest-neighbor upscale of the internal scaled buffer into the framebuffer.
+/// @details Row-index mapping precomputes nothing; the per-row source index uses a
+///   fixed-point step to avoid per-pixel divides. Covers every framebuffer pixel, so
+///   no pre-clear of the framebuffer is required.
+static void sw_upscale_to_framebuffer(const sw_context_t *ctx, const vgfx_framebuffer_t *fb) {
+    if (!ctx || !fb || !ctx->scaled_color || ctx->scaled_w <= 0 || ctx->scaled_h <= 0 ||
+        fb->width <= 0 || fb->height <= 0 || !fb->pixels)
+        return;
+    uint64_t x_step = ((uint64_t)ctx->scaled_w << 16) / (uint64_t)fb->width;
+    uint64_t y_step = ((uint64_t)ctx->scaled_h << 16) / (uint64_t)fb->height;
+    uint64_t sy_fx = 0;
+    for (int32_t y = 0; y < fb->height; y++, sy_fx += y_step) {
+        int32_t sy = (int32_t)(sy_fx >> 16);
+        if (sy >= ctx->scaled_h)
+            sy = ctx->scaled_h - 1;
+        const uint32_t *src_row = &ctx->scaled_color[(size_t)sy * (size_t)ctx->scaled_w];
+        uint32_t *dst_row = (uint32_t *)(fb->pixels + (size_t)y * (size_t)fb->stride);
+        uint64_t sx_fx = 0;
+        if (((uintptr_t)dst_row & 3u) == 0u) {
+            for (int32_t x = 0; x < fb->width; x++, sx_fx += x_step) {
+                int32_t sx = (int32_t)(sx_fx >> 16);
+                if (sx >= ctx->scaled_w)
+                    sx = ctx->scaled_w - 1;
+                dst_row[x] = src_row[sx];
+            }
+        } else {
+            uint8_t *dst_bytes = (uint8_t *)dst_row;
+            for (int32_t x = 0; x < fb->width; x++, sx_fx += x_step) {
+                int32_t sx = (int32_t)(sx_fx >> 16);
+                if (sx >= ctx->scaled_w)
+                    sx = ctx->scaled_w - 1;
+                memcpy(&dst_bytes[(size_t)x * 4u], &src_row[sx], 4u);
+            }
+        }
+    }
 }
 
 /// @brief Fill an RGBA byte framebuffer with a solid opaque color.
@@ -107,9 +187,26 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     } else {
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(win, &fb)) {
-            if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
-                return;
-            sw_fill_rgba_rows(fb.pixels, fb.width, fb.height, fb.stride, cr, cg, cb);
+            if (sw_render_scale_active(ctx)) {
+                int32_t sw_w;
+                int32_t sw_h;
+                sw_scaled_dims(ctx, fb.width, fb.height, &sw_w, &sw_h);
+                if (!sw_ensure_scaled_color(ctx, sw_w, sw_h) ||
+                    !sw_ensure_zbuf_capacity(ctx, sw_w, sw_h))
+                    return;
+                sw_fill_rgba_rows((uint8_t *)ctx->scaled_color,
+                                  sw_w,
+                                  sw_h,
+                                  sw_w * 4,
+                                  cr,
+                                  cg,
+                                  cb);
+                ctx->scaled_frame_active = 1;
+            } else {
+                if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
+                    return;
+                sw_fill_rgba_rows(fb.pixels, fb.width, fb.height, fb.stride, cr, cg, cb);
+            }
         }
         size_t total = 0;
         if (sw_pixel_count_checked(ctx->width, ctx->height, &total))
@@ -125,6 +222,7 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || !cam)
         return;
+    ctx->depth_probe_count = 0;
     /* VP = projection * view */
     mat4f_mul(cam->projection, cam->view, ctx->vp);
     ctx->cam_pos[0] = cam->position[0];
@@ -313,6 +411,21 @@ static int sw_resolve_output_target(sw_context_t *ctx,
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(win, &fb))
             return 0;
+        if (sw_render_scale_active(ctx)) {
+            int32_t sw_w;
+            int32_t sw_h;
+            sw_scaled_dims(ctx, fb.width, fb.height, &sw_w, &sw_h);
+            if (!sw_ensure_scaled_color(ctx, sw_w, sw_h) ||
+                !sw_ensure_zbuf_capacity(ctx, sw_w, sw_h))
+                return 0;
+            ctx->scaled_frame_active = 1;
+            *out_pixels = (uint8_t *)ctx->scaled_color;
+            *out_zbuf = ctx->zbuf;
+            *out_w = sw_w;
+            *out_h = sw_h;
+            *out_stride = sw_w * 4;
+            return 1;
+        }
         if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
             return 0;
         *out_pixels = fb.pixels;
@@ -1423,9 +1536,32 @@ static void sw_submit_draw_instanced(void *ctx_ptr,
     }
 }
 
-/// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).
+/// @brief Backend `end_frame` op — upscale scaled frames; otherwise a no-op
+///   (frames write directly to fb).
 static void sw_end_frame(void *ctx_ptr) {
-    (void)ctx_ptr;
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || !ctx->scaled_frame_active)
+        return;
+    ctx->scaled_frame_active = 0;
+    if (ctx->render_target)
+        return;
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(ctx->win, &fb))
+        return;
+    sw_upscale_to_framebuffer(ctx, &fb);
+}
+
+/// @brief Backend hook: set the window-backed rasterization scale ([0.25, 1]).
+static int8_t sw_set_render_scale(void *ctx_ptr, float scale) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx)
+        return 0;
+    if (!isfinite(scale) || scale > 1.0f)
+        scale = 1.0f;
+    if (scale < 0.25f)
+        scale = 0.25f;
+    ctx->render_scale = scale;
+    return 1;
 }
 
 /// @brief Backend `resize` op — re-allocate the depth buffer to the new size.

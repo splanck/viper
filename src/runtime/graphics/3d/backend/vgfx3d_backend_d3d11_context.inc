@@ -54,6 +54,7 @@ static void d3d11_init_context_defaults(d3d11_context_t *ctx, int32_t width, int
     ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
     ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
     ctx->texture_upload_budget_bytes = UINT64_MAX;
+    ctx->present_sync_interval = 1; /* vsync on by default */
 }
 
 /// @brief Fill the swap-chain descriptor for the current window/backbuffer size.
@@ -824,6 +825,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->frame_time_end_query);
     SAFE_RELEASE(ctx->frame_time_start_query);
     SAFE_RELEASE(ctx->frame_time_disjoint_query);
+    SAFE_RELEASE(ctx->depth_probe_staging);
     SAFE_RELEASE(ctx->morph_normal_srv);
     SAFE_RELEASE(ctx->morph_normal_buffer);
     SAFE_RELEASE(ctx->morph_srv);

@@ -1670,21 +1670,11 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
 
     canvas3d_bind_morph_cmd(c, &dd->cmd, mesh, prev_morph_weights);
 
-    /* Build light params */
-    {
-        vgfx3d_light_params_t light_scratch[VGFX3D_MAX_LIGHTS];
-        dd->light_count = build_light_params(c, light_scratch, canvas3d_active_light_limit(c));
-        dd->lights = canvas3d_store_frame_light_snapshot(
-            c, light_scratch, dd->light_count, &dd->light_offset);
-        if (dd->light_count > 0 && !dd->lights) {
-            rt_trap("Canvas3D.DrawMesh: light snapshot allocation failed");
-            goto fail_after_refs;
-        }
+    /* Build light params (flattened at most once per light generation per frame) */
+    if (!canvas3d_assign_frame_lights(c, dd)) {
+        rt_trap("Canvas3D.DrawMesh: light snapshot allocation failed");
+        goto fail_after_refs;
     }
-    dd->cmd.lights_revision = canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count);
-    /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
-    dd->cmd.cluster_table = canvas3d_cluster_table_for_revision(
-        c, dd->lights, dd->light_count, dd->cmd.lights_revision);
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];

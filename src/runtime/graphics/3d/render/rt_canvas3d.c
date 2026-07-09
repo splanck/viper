@@ -1780,7 +1780,10 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->shadow_strength = 0.85f; /* reproduces the legacy mix(0.15, 1.0, vis) look */
     c->shadow_quality = 1;      /* 8-tap rotated-Poisson PCF */
     c->shadow_count = 0;
-    c->shadow_cascade_count = 1;
+    c->shadow_distance = 0.0f; /* auto: min(camera far, 300) */
+    /* Two cascades by default on CSM-capable backends: one map spanning the whole
+     * shadow range wastes most of its texels far from the camera. */
+    c->shadow_cascade_count = rt_canvas3d_backend_supports(c, rt_const_cstr("shadow-csm")) ? 2 : 1;
     c->cluster_light_budget = 64;
     c->last_dropped_light_count = 0;
     c->shadow_budget = VGFX3D_MAX_SHADOW_LIGHTS;
@@ -1791,6 +1794,13 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->frame_serial = 0;
     c->timing_serial = 0;
     c->opaque_depth_sorting = 1;
+    /* Frustum culling defaults on: the deferred test is cheap (bounds are cached per
+     * draw) and direct DrawMesh callers otherwise get zero submission culling. CPU
+     * occlusion culling stays opt-in. */
+    c->frustum_culling = 1;
+    c->occlusion_culling = 0;
+    c->vsync_enabled = 1;
+    c->render_scale = 1.0f;
     c->frame_draws_submitted = 0;
     c->frame_aabb_transforms = 0;
     c->frame_sort_passes = 0;
@@ -2440,6 +2450,7 @@ void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
         return;
     }
     canvas3d_assign_owned_ref((void **)&c->lights[index], light);
+    canvas3d_invalidate_light_flatten_cache(c);
 }
 
 /// @brief Clear every retained per-canvas light slot.
@@ -2449,6 +2460,7 @@ void rt_canvas3d_clear_lights(void *obj) {
         return;
     for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++)
         canvas3d_release_owned_ref((void **)&c->lights[i]);
+    canvas3d_invalidate_light_flatten_cache(c);
 }
 
 /// @brief Count active per-canvas light slots.
@@ -2568,6 +2580,9 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
     c->ambient[0] = canvas3d_clamp01_f64(r);
     c->ambient[1] = canvas3d_clamp01_f64(g);
     c->ambient[2] = canvas3d_clamp01_f64(b);
+    /* Ambient participates in the light revision stamp; drop the flatten cache so the
+     * next queued draw re-stamps instead of reusing a stale shared revision. */
+    canvas3d_invalidate_light_flatten_cache(c);
 }
 
 /// @brief Enable or disable image-based lighting from the canvas skybox.
@@ -2772,7 +2787,167 @@ void rt_canvas3d_set_shadow_cascades(void *obj, int64_t count) {
     c->shadow_cascade_count = (int32_t)count;
 }
 
+/// @brief Default auto shadow-coverage distance in world units (see shadow_distance).
+#define CANVAS3D_SHADOW_DISTANCE_AUTO_MAX 300.0f
+
+/// @brief Set the maximum camera distance covered by directional shadows.
+/// @details Values <= 0 (and non-finite values) restore the automatic default of
+///   min(camera far, 300). Explicit values are clamped to the camera far plane at use
+///   time, so a distance larger than the clip range never degrades cascade fitting.
+void rt_canvas3d_set_shadow_distance(void *obj, double distance) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!isfinite(distance) || distance <= 0.0) {
+        c->shadow_distance = 0.0f;
+        return;
+    }
+    if (distance > 1.0e9)
+        distance = 1.0e9;
+    c->shadow_distance = (float)distance;
+}
+
+/// @brief Read back the configured shadow distance (0 = automatic).
+double rt_canvas3d_get_shadow_distance(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !isfinite(c->shadow_distance) || c->shadow_distance < 0.0f)
+        return 0.0;
+    return (double)c->shadow_distance;
+}
+
+/// @brief Enable or disable vertical-sync presentation pacing.
+/// @details Every backend defaults to vsync on. Disabling presents frames immediately
+///   for lowest latency (with possible tearing). No-op on backends without present
+///   pacing control (BackendSupports("vsync-control") reports availability); the
+///   requested state is retained either way so the getter reflects intent.
+void rt_canvas3d_set_vsync(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->vsync_enabled = enabled ? 1 : 0;
+    if (c->backend && c->backend->set_vsync && c->backend_ctx)
+        c->backend->set_vsync(c->backend_ctx, c->vsync_enabled);
+}
+
+/// @brief Requested vsync state (defaults to on).
+int8_t rt_canvas3d_get_vsync(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->vsync_enabled : 1;
+}
+
+/// @brief Attempt to set the scene render scale without trapping.
+/// @details Scale is clamped to [0.25, 1]; values >= 1 restore native-resolution
+///   rendering and always succeed. Reduced scales require backend support
+///   (BackendSupports("render-scale")); rendering happens at scale x output size and is
+///   upscaled at presentation — the single most effective performance lever on
+///   fill-rate/CPU-bound scenes.
+/// @return 1 when the requested scale is now active, 0 when unsupported/invalid.
+int8_t rt_canvas3d_try_set_render_scale(void *obj, double scale) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    float clamped;
+    if (!c)
+        return 0;
+    if (!isfinite(scale) || scale >= 1.0)
+        clamped = 1.0f;
+    else if (scale < 0.25)
+        clamped = 0.25f;
+    else
+        clamped = (float)scale;
+    if (clamped >= 0.999f) {
+        c->render_scale = 1.0f;
+        if (c->backend && c->backend->set_render_scale && c->backend_ctx)
+            c->backend->set_render_scale(c->backend_ctx, 1.0f);
+        return 1;
+    }
+    if (!c->backend || !c->backend->set_render_scale || !c->backend_ctx)
+        return 0;
+    if (!c->backend->set_render_scale(c->backend_ctx, clamped))
+        return 0;
+    c->render_scale = clamped;
+    return 1;
+}
+
+/// @brief Currently requested render scale (1 = native resolution).
+double rt_canvas3d_get_render_scale(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !isfinite(c->render_scale) || c->render_scale <= 0.0f || c->render_scale > 1.0f)
+        return 1.0;
+    return (double)c->render_scale;
+}
+
+/// @brief Refresh the shadow-caster sweep vector from the canvas + scene light slots.
+/// @details Finds the first enabled shadow-casting directional light (mirroring the
+///   shadow pass's primary-light preference) and stores its normalized travel direction
+///   scaled by the effective shadow distance. Scene culling extends node bounds by this
+///   vector so off-screen casters keep contributing shadows instead of popping at the
+///   frustum edge.
+void canvas3d_update_shadow_caster_sweep(rt_canvas3d *c) {
+    const rt_light3d *dir_light = NULL;
+    double dx;
+    double dy;
+    double dz;
+    double len;
+    float reach;
+
+    if (!c)
+        return;
+    c->shadow_caster_sweep_active = 0;
+    c->shadow_caster_sweep[0] = 0.0f;
+    c->shadow_caster_sweep[1] = 0.0f;
+    c->shadow_caster_sweep[2] = 0.0f;
+    if (!c->shadows_enabled)
+        return;
+    for (int i = 0; i < VGFX3D_MAX_LIGHTS && !dir_light; i++) {
+        const rt_light3d *l = c->lights[i];
+        if (l && l->enabled && l->casts_shadows && l->type == 0)
+            dir_light = l;
+    }
+    for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && !dir_light; i++) {
+        const rt_light3d *l = c->scene_lights[i];
+        if (l && l->enabled && l->casts_shadows && l->type == 0)
+            dir_light = l;
+    }
+    if (!dir_light)
+        return;
+    dx = dir_light->direction[0];
+    dy = dir_light->direction[1];
+    dz = dir_light->direction[2];
+    len = sqrt(dx * dx + dy * dy + dz * dz);
+    if (!isfinite(len) || len < 1e-7) {
+        dx = 0.0;
+        dy = -1.0;
+        dz = 0.0;
+        len = 1.0;
+    }
+    reach = canvas3d_effective_shadow_distance(c);
+    c->shadow_caster_sweep[0] = (float)(dx / len) * reach;
+    c->shadow_caster_sweep[1] = (float)(dy / len) * reach;
+    c->shadow_caster_sweep[2] = (float)(dz / len) * reach;
+    c->shadow_caster_sweep_active = 1;
+}
+
+/// @brief Effective directional-shadow coverage distance for this canvas.
+float canvas3d_effective_shadow_distance(const rt_canvas3d *c) {
+    float far_plane = 1000.0f;
+    float distance;
+
+    if (c && isfinite(c->cached_cam_far) && c->cached_cam_far > 0.0f)
+        far_plane = c->cached_cam_far;
+    if (c && isfinite(c->shadow_distance) && c->shadow_distance > 0.0f)
+        distance = c->shadow_distance;
+    else
+        distance = CANVAS3D_SHADOW_DISTANCE_AUTO_MAX;
+    if (distance > far_plane)
+        distance = far_plane;
+    if (distance < 1.0f)
+        distance = 1.0f;
+    return distance;
+}
+
 /// @brief Enable or disable coarse CPU frustum culling for draw submission.
+/// @details Independent of occlusion culling: the CPU occlusion grid derives its own
+///   projected coverage from the cached view-projection, so disabling frustum culling
+///   no longer force-disables occlusion culling.
 void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
@@ -2781,22 +2956,19 @@ void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
     if (c->frustum_culling != enabled)
         canvas3d_clear_occlusion_history(c);
     c->frustum_culling = enabled;
-    if (!enabled) {
-        if (c->occlusion_culling)
-            canvas3d_clear_occlusion_history(c);
-        c->occlusion_culling = 0;
-    }
 }
 
-/// @brief Enable coarse CPU occlusion culling; includes frustum rejection.
+/// @brief Enable or disable coarse CPU occlusion culling for draw submission.
+/// @details Independent of frustum culling: toggling occlusion no longer overwrites the
+///   frustum-culling flag (frustum culling defaults on; games may configure each
+///   independently).
 void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
     enabled = enabled ? 1 : 0;
-    if (c->occlusion_culling != enabled || c->frustum_culling != enabled)
+    if (c->occlusion_culling != enabled)
         canvas3d_clear_occlusion_history(c);
-    c->frustum_culling = enabled;
     c->occlusion_culling = enabled;
 }
 

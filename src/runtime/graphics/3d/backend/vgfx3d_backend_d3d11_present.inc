@@ -45,6 +45,8 @@ static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t ty
     return vgfx3d_d3d11_postfx_chain_has_active_effect(chain, type_value);
 }
 
+static void d3d11_harvest_depth_probes(d3d11_context_t *ctx);
+
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
@@ -57,6 +59,11 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->shadow_pass_slot = -1;
     /* Shadow atlas re-clears on its first tile pass each frame. */
     ctx->shadow_atlas_cleared = 0;
+    /* Depth-probe slot ids restart each frame; harvest last frame's strip first. */
+    if (!cam->load_existing_color) {
+        d3d11_harvest_depth_probes(ctx);
+        ctx->depth_probe_request_count = 0;
+    }
 
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->view, cam->view);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->projection, cam->projection);
@@ -192,6 +199,115 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
 }
 
+/// @brief Copy this frame's queued scene-depth probes into the staging strip.
+/// @details One 1x1 CopySubresourceRegion per probe from the R32_TYPELESS scene depth
+///   texture; the next frame's begin harvests the strip with a non-blocking Map.
+static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
+    if (!ctx || ctx->depth_probe_request_count <= 0)
+        return;
+    if (!ctx->ctx || !ctx->scene_depth_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0) {
+        ctx->depth_probe_request_count = 0;
+        return;
+    }
+    if (!ctx->depth_probe_staging) {
+        if (FAILED(d3d11_create_staging_texture(ctx,
+                                                VGFX3D_DEPTH_PROBE_MAX,
+                                                1,
+                                                DXGI_FORMAT_R32_TYPELESS,
+                                                &ctx->depth_probe_staging)) ||
+            !ctx->depth_probe_staging) {
+            ctx->depth_probe_request_count = 0;
+            return;
+        }
+    }
+    for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
+        float ndc_x = ctx->depth_probe_requests[i][0];
+        float ndc_y = ctx->depth_probe_requests[i][1];
+        D3D11_BOX box;
+        int32_t px = (int32_t)((ndc_x * 0.5f + 0.5f) * (float)ctx->scene_width);
+        int32_t py = (int32_t)((0.5f - ndc_y * 0.5f) * (float)ctx->scene_height);
+        if (px < 0)
+            px = 0;
+        if (py < 0)
+            py = 0;
+        if (px >= ctx->scene_width)
+            px = ctx->scene_width - 1;
+        if (py >= ctx->scene_height)
+            py = ctx->scene_height - 1;
+        box.left = (UINT)px;
+        box.top = (UINT)py;
+        box.front = 0;
+        box.right = (UINT)px + 1;
+        box.bottom = (UINT)py + 1;
+        box.back = 1;
+        ID3D11DeviceContext_CopySubresourceRegion(ctx->ctx,
+                                                  (ID3D11Resource *)ctx->depth_probe_staging,
+                                                  0,
+                                                  (UINT)i,
+                                                  0,
+                                                  0,
+                                                  (ID3D11Resource *)ctx->scene_depth_tex,
+                                                  0,
+                                                  &box);
+    }
+    ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
+    ctx->depth_probe_request_count = 0;
+}
+
+/// @brief Harvest the previous frame's probe strip without blocking the pipeline.
+static void d3d11_harvest_depth_probes(d3d11_context_t *ctx) {
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    HRESULT hr;
+
+    if (!ctx || ctx->depth_probe_pending_count <= 0 || !ctx->depth_probe_staging || !ctx->ctx)
+        return;
+    hr = ID3D11DeviceContext_Map(ctx->ctx,
+                                 (ID3D11Resource *)ctx->depth_probe_staging,
+                                 0,
+                                 D3D11_MAP_READ,
+                                 D3D11_MAP_FLAG_DO_NOT_WAIT,
+                                 &mapped);
+    if (FAILED(hr))
+        return; /* still drawing: keep pending and retry next frame */
+    if (mapped.pData) {
+        memcpy(ctx->depth_probe_results,
+               mapped.pData,
+               (size_t)ctx->depth_probe_pending_count * sizeof(float));
+        ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
+    }
+    ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
+    ctx->depth_probe_pending_count = 0;
+}
+
+/// @brief Backend hook: choose the swapchain present sync interval (1 = vsync, 0 = off).
+static void d3d11_set_vsync(void *ctx_ptr, int8_t enabled) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    ctx->present_sync_interval = enabled ? 1 : 0;
+}
+
+/// @brief Backend hook: register one NDC scene-depth probe for this frame.
+static int32_t d3d11_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    int32_t slot;
+    if (!ctx || ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
+        !isfinite(ndc_y))
+        return -1;
+    slot = ctx->depth_probe_request_count++;
+    ctx->depth_probe_requests[slot][0] = ndc_x;
+    ctx->depth_probe_requests[slot][1] = ndc_y;
+    return slot;
+}
+
+/// @brief Backend hook: read a probe result captured on a previous frame.
+static float d3d11_read_depth_probe(void *ctx_ptr, int32_t slot) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx || slot < 0 || slot >= ctx->depth_probe_result_count)
+        return -1.0f;
+    return ctx->depth_probe_results[slot];
+}
+
 /// @brief Backend `end_frame` — mark RTT pixels dirty for lazy host readback.
 ///
 /// CPU readback is deferred until a caller explicitly asks for pixels.
@@ -202,6 +318,7 @@ static void d3d11_end_frame(void *ctx_ptr) {
 
     if (!ctx)
         return;
+    d3d11_issue_depth_probes(ctx);
     d3d11_end_frame_timing(ctx);
     if (!vgfx3d_d3d11_should_mark_rtt_dirty(ctx->rtt_active,
                                             ctx->rtt_target != NULL,
