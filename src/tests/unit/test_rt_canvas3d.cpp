@@ -8071,11 +8071,12 @@ static void test_canvas_instanced_fallback_caps_instance_count() {
         m[0] = m[5] = m[10] = m[15] = 1.0f;
     }
 
-    /* The old hard trap is gone: overflow clamps to the fallback cap and the
-     * clamped count is observable through get_InstancedFallbackCount. */
-    rt_canvas3d_queue_instanced_batch(
-        &canvas, mesh, mat, instances.data(), requested, NULL, 0);
+    /* The old hard trap is gone: overflow clamps to the fallback cap, the
+     * queued count remains observable, and skipped instances have explicit
+     * dropped-instance telemetry. */
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances.data(), requested, NULL, 0);
     EXPECT_EQ(rt_canvas3d_get_instanced_fallback_count(&canvas), 65536);
+    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_dropped_count(&canvas), 1);
     PASS();
 }
 

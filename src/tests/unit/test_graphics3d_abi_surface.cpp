@@ -1357,6 +1357,20 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallback\""),
                  "Canvas3D.BackendFallback getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallbackReason\""),
+                 "Canvas3D.BackendFallbackReason getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def,
+                          "\"Viper.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount\""),
+                 "Canvas3D.InstancedFallbackDroppedCount getter must use Graphics3D PascalCase "
+                 "naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_EventDropCount\""),
+                 "Canvas3D.EventDropCount getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MeshSnapshotDropCount\""),
+                 "Canvas3D.MeshSnapshotDropCount getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
          ok;

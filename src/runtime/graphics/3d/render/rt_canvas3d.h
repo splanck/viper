@@ -38,6 +38,10 @@ extern "C" {
 // Canvas3D — 3D rendering surface
 //=========================================================================
 
+/// @brief Report whether the Canvas3D runtime is usable in this build.
+/// @details Graphics-enabled builds return 1. Graphics-disabled stub builds return 0 so
+///          programs can branch before calling stateful 3D APIs that would trap or no-op.
+int8_t rt_canvas3d_is_available(void);
 /// @brief Create a new 3D canvas window with the given title and pixel dimensions.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h);
 /// @brief Create a fullscreen 3D canvas at desktop resolution (no windowed flash).
@@ -180,6 +184,8 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
 rt_string rt_canvas3d_get_backend(void *obj);
 /// @brief Return true when Canvas3D fell back from the selected GPU backend to software.
 int8_t rt_canvas3d_get_backend_fallback(void *obj);
+/// @brief Human-readable reason for BackendFallback, or an empty string when no fallback happened.
+rt_string rt_canvas3d_get_backend_fallback_reason(void *obj);
 
 #define RT_CANVAS3D_BACKEND_CAP_SOFTWARE 0x0001LL
 #define RT_CANVAS3D_BACKEND_CAP_GPU 0x0002LL
@@ -254,6 +260,18 @@ void rt_canvas3d_draw_image2d_nine_slice(void *obj,
                                          int64_t inset_b);
 /// @brief Instances drawn via the per-draw instanced fallback this frame.
 int64_t rt_canvas3d_get_instanced_fallback_count(void *obj);
+/// @brief Instances skipped because the bounded per-draw instanced fallback queue overflowed.
+int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *obj);
+/// @brief Window/input events dropped from Canvas3D's public PollEvent ring since creation.
+int64_t rt_canvas3d_get_event_drop_count(void *obj);
+/// @brief Mesh snapshot bytes copied by the current/latest frame.
+int64_t rt_canvas3d_get_mesh_snapshot_bytes(void *obj);
+/// @brief Mesh snapshot allocation or budget denials in the current/latest frame.
+int64_t rt_canvas3d_get_mesh_snapshot_drop_count(void *obj);
+/// @brief Requested mesh snapshot bytes denied in the current/latest frame.
+int64_t rt_canvas3d_get_mesh_snapshot_dropped_bytes(void *obj);
+/// @brief Per-frame mesh snapshot byte budget used by deferred geometry copies.
+int64_t rt_canvas3d_get_mesh_snapshot_budget_bytes(void *obj);
 /// @brief Set the shadow-light slot budget (1..max slots).
 void rt_canvas3d_set_shadow_budget(void *obj, int64_t budget);
 /// @brief Shadow slots rendered in the latest frame (cascades included).

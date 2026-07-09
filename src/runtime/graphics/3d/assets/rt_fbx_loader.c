@@ -65,7 +65,7 @@
 #include <string.h>
 
 #define RT_FBX_HARD_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
-#define RT_FBX_DEFAULT_MAX_FILE_BYTES RT_FBX_HARD_MAX_FILE_BYTES
+#define RT_FBX_DEFAULT_MAX_FILE_BYTES (256ull * 1024ull * 1024ull)
 #define RT_FBX_MAX_TEXTURE_PATH_BYTES (1024u * 1024u)
 
 #if defined(_MSC_VER)

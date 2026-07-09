@@ -394,6 +394,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     int use_fallback_instances;
     int rebase_positions64_instances;
     int suppress_normal_map = 0;
+    int32_t requested_instance_count;
 
     if (!instance_matrices || instance_count <= 0)
         return;
@@ -418,6 +419,13 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
         return;
     }
+    requested_instance_count = instance_count;
+    if (!canvas3d_matrices_f32_are_finite(instance_matrices, requested_instance_count) ||
+        (has_prev_instance_matrices && prev_instance_matrices &&
+         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, requested_instance_count))) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
+        return;
+    }
 
     rebase_positions64_instances = canvas3d_uses_camera_relative_upload(c) &&
                                    canvas3d_mesh_positions64_needs_vertex_rebase(mesh);
@@ -430,18 +438,15 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                              !c->backend->submit_draw_instanced;
     if (use_fallback_instances) {
         /* Per-instance queueing is bounded to keep the deferred queue sane;
-         * overflow clamps (observable via get_InstancedFallbackCount) instead
-         * of trapping. Opaque batches take the backend instanced hook on every
-         * backend, including software, and never hit this path. */
-        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES)
+         * overflow clamps but is now observable via get_InstancedFallbackDroppedCount
+         * in addition to the queued fallback count. Opaque batches take the backend
+         * instanced hook on every backend, including software, and never hit this path. */
+        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
+            c->last_instanced_fallback_dropped_count +=
+                (int64_t)instance_count - (int64_t)CANVAS3D_MAX_FALLBACK_INSTANCES;
             instance_count = CANVAS3D_MAX_FALLBACK_INSTANCES;
+        }
         c->last_instanced_fallback_count += instance_count;
-    }
-    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
-        (has_prev_instance_matrices && prev_instance_matrices &&
-         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
-        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
-        return;
     }
 
     batch.c = c;

@@ -66,6 +66,8 @@ Warnings are per outer load, append-only, and capped. Use
 | `SceneGraph.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
 
+FBX files are limited to 256 MiB by default. Set `VIPER_FBX_MAX_FILE_BYTES` to opt into a larger host-specific ceiling; values above the runtime's 1 GiB hard cap are clamped.
+
 ASCII FBX files (the standard `; FBX` comment header, or bare node text)
 load through a geometry-subset parser: mesh positions, polygon
 triangulation, normals, UVs, and vertex colors are imported as one mesh per
@@ -491,7 +493,8 @@ paths are not GPU occlusion queries or Hi-Z culling.
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
-| `InstancedFallbackCount` | `Integer` | Instances routed through the per-draw fallback (blended/rebased batches) this frame; opaque batches use the backend instanced hook on every backend — including software — and report `0`. The fallback clamps at 65,536 instances per call instead of trapping |
+| `InstancedFallbackCount` | `Integer` | Instances routed through the per-draw fallback (blended/rebased batches) this frame; opaque batches use the backend instanced hook on every backend — including software — and report `0` |
+| `InstancedFallbackDroppedCount` | `Integer` | Instances skipped when the bounded per-draw fallback would exceed 65,536 instances in one call |
 | `OcclusionCandidateCount` | `Integer` | Opaque draw candidates tested by the CPU occlusion grid in the latest frame |
 | `TextureUploadBytes` | `Integer` | Backend texture upload bytes in the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
@@ -1839,7 +1842,8 @@ opaque batches, so large batches (up to 1,048,576 instances) never fall back to
 per-instance queueing or trap. `BackendSupports("instancing")` reports the hook;
 `BackendSupports("hardware_instancing")` additionally requires a GPU backend.
 Blended-material and floating-origin-rebased batches still route per instance
-(clamped at 65,536, observable via `Canvas3D.InstancedFallbackCount`).
+(clamped at 65,536 queued instances, with overflow visible through
+`Canvas3D.InstancedFallbackDroppedCount`).
 
 ---
 

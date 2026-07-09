@@ -200,10 +200,11 @@ static inline int32_t vgfx3d_depth_bias_d3d11_units(float bias) {
     return (int32_t)lrintf(scaled);
 }
 
-/// @brief True if the command needs standard (non-additive) alpha blending. Honors an
-///   explicit alpha_mode (BLEND/MASK) first, treats alpha-bearing texture content as masked
-///   unless the caller explicitly requested blending, and otherwise infers transparency from a
-///   sub-1.0 alpha or diffuse alpha.
+/// @brief True if the command needs standard (non-additive) alpha blending.
+/// @details Honors the draw command's resolved alpha mode first. Material classification promotes
+///   decoded fractional-alpha textures to BLEND and binary cutouts to MASK before commands reach
+///   this backend helper; a remaining `has_alpha_texture` with OPAQUE mode is treated as masked for
+///   conservative depth/shadow behavior. Scalar material alpha still infers blending.
 static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;

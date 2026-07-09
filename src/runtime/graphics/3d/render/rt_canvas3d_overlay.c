@@ -34,8 +34,8 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_object.h"
 #include "rt_font.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
 #include "rt_textureasset3d.h"
@@ -800,14 +800,10 @@ void rt_canvas3d_draw_image2d_nine_slice(void *obj,
         started_temp_frame = 1;
     }
     {
-        const float su[4] = {0.0f,
-                             (float)inset_l / (float)pw,
-                             (float)(pw - inset_r) / (float)pw,
-                             1.0f};
-        const float sv[4] = {0.0f,
-                             (float)inset_t / (float)ph,
-                             (float)(ph - inset_b) / (float)ph,
-                             1.0f};
+        const float su[4] = {
+            0.0f, (float)inset_l / (float)pw, (float)(pw - inset_r) / (float)pw, 1.0f};
+        const float sv[4] = {
+            0.0f, (float)inset_t / (float)ph, (float)(ph - inset_b) / (float)ph, 1.0f};
         const float dx[4] = {(float)x, (float)(x + dl), (float)(x + w - dr), (float)(x + w)};
         const float dy[4] = {(float)y, (float)(y + dt), (float)(y + h - db), (float)(y + h)};
         for (int row = 0; row < 3; row++) {
@@ -944,6 +940,17 @@ rt_string rt_canvas3d_get_backend(void *obj) {
 int8_t rt_canvas3d_get_backend_fallback(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return (c && c->backend_fallback) ? 1 : 0;
+}
+
+/// @brief Return the reason Canvas3D fell back to software, or an empty string.
+/// @details The returned string is a static runtime constant, not per-call heap storage. It lets
+///          tools distinguish an unavailable selected backend from one that failed to initialize
+///          without scraping stderr.
+rt_string rt_canvas3d_get_backend_fallback_reason(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !c->backend_fallback || !c->backend_fallback_reason)
+        return rt_const_cstr("");
+    return rt_const_cstr(c->backend_fallback_reason);
 }
 
 /// @brief True when the active backend has the GPU many-light shader/upload path.
@@ -1307,6 +1314,49 @@ int64_t rt_canvas3d_get_dropped_light_count(void *obj) {
 int64_t rt_canvas3d_get_instanced_fallback_count(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_instanced_fallback_count : 0;
+}
+
+/// @brief Instances skipped because the bounded fallback instancing path overflowed.
+int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_instanced_fallback_dropped_count : 0;
+}
+
+/// @brief Lifetime count of window/input events dropped from the public PollEvent ring.
+int64_t rt_canvas3d_get_event_drop_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->event_type_dropped_count : 0;
+}
+
+/// @brief Mesh snapshot bytes copied by the current frame, or latest ended frame.
+int64_t rt_canvas3d_get_mesh_snapshot_bytes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return 0;
+    if (c->in_frame) {
+        if (c->mesh_snapshot_bytes > (size_t)INT64_MAX)
+            return INT64_MAX;
+        return (int64_t)c->mesh_snapshot_bytes;
+    }
+    return c->last_mesh_snapshot_bytes;
+}
+
+/// @brief Mesh snapshot allocation/budget denials in the current/latest frame.
+int64_t rt_canvas3d_get_mesh_snapshot_drop_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_mesh_snapshot_drop_count : 0;
+}
+
+/// @brief Requested mesh snapshot bytes denied in the current/latest frame.
+int64_t rt_canvas3d_get_mesh_snapshot_dropped_bytes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_mesh_snapshot_dropped_bytes : 0;
+}
+
+/// @brief Per-frame mesh snapshot byte budget used by deferred geometry snapshots.
+int64_t rt_canvas3d_get_mesh_snapshot_budget_bytes(void *obj) {
+    (void)obj;
+    return (int64_t)RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET;
 }
 
 /// @brief Number of latest draw submissions rejected by CPU frustum culling.

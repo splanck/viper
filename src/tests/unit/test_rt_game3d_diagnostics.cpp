@@ -230,13 +230,14 @@ static void test_audio_voice_eviction_counter() {
     rt_game3d_diagnostics_reset();
 
     rt_sound3d_test_set_all_voices_playing(1);
-    for (int64_t voice = 1; voice <= 65; voice++)
+    const int64_t voice_table_pressure_count = 4097; // SOUND3D_MAX_VOICE_CAPACITY + 1.
+    for (int64_t voice = 1; voice <= voice_table_pressure_count; voice++)
         rt_sound3d_register_voice_ex(voice, 1.0, 10.0, 100);
     rt_sound3d_test_set_all_voices_playing(0);
 
     EXPECT_EQ_I64(rt_game3d_diagnostics_get_audio_voices_evicted(),
                   1,
-                  "Diagnostics records one Sound3D voice-table eviction");
+                  "Diagnostics records one Sound3D bounded voice-table eviction");
 }
 
 static void test_nav_grid_fallback_counter() {

@@ -962,7 +962,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
 /// @details The view-model variant renders over the finished scene color while
 ///   clearing depth (`load_existing_color=1`, fresh depth), so camera-space
 ///   weapon geometry never depth-clips against world walls yet self-occludes
-///   correctly. A positive @p fov_override_deg replaces the camera's horizontal
+///   correctly. A positive @p fov_override_deg replaces the camera's vertical
 ///   FOV terms in the perspective projection (world FOV stays independent).
 static void canvas3d_begin_camera_pass(void *obj,
                                        void *camera,
@@ -1116,12 +1116,16 @@ static void canvas3d_begin_camera_pass(void *obj,
     c->frame_is_2d = 0;
     c->frame_is_view_model = view_model_pass ? 1 : 0;
     c->last_instanced_fallback_count = 0;
+    c->last_instanced_fallback_dropped_count = 0;
     c->last_draw_count = 0;
     c->last_occluded_draw_count = 0;
     c->last_frustum_culled_draw_count = 0;
     c->last_cpu_occluded_draw_count = 0;
     c->last_occlusion_candidate_count = 0;
     c->last_texture_upload_bytes = 0;
+    c->last_mesh_snapshot_bytes = 0;
+    c->last_mesh_snapshot_drop_count = 0;
+    c->last_mesh_snapshot_dropped_bytes = 0;
 
     /* Cache VP matrix for debug drawing (backend-agnostic) */
     {

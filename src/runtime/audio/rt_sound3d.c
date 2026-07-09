@@ -22,8 +22,8 @@
 // Ownership/Lifetime:
 //   - Listener-state structs are caller-owned; this file keeps process-global
 //     copies of the active and fallback listeners.
-//   - Per-voice max-distance entries live in a fixed-size 64-slot table that
-//     overwrites the oldest entry when full.
+//   - Per-voice max-distance entries live in a bounded growable table; eviction
+//     is a last resort after completed voices cannot be reclaimed.
 //
 // Links: src/runtime/audio/rt_sound3d.h (public API),
 //        src/runtime/audio/rt_audio.h (underlying 2D playback),
@@ -39,6 +39,8 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
@@ -69,19 +71,22 @@ static int8_t s_has_active_listener = 0;
 
 /* Per-voice max_distance tracking — avoids global state pollution
  * when multiple sounds have different falloff ranges. */
-#define MAX_3D_VOICES 64
+#define SOUND3D_INITIAL_VOICE_CAPACITY 64
+#define SOUND3D_MAX_VOICE_CAPACITY 4096
 #define SOUND3D_COORD_ABS_MAX 1000000000000.0
 #define SOUND3D_VELOCITY_ABS_MAX 1000000.0
 #define SOUND3D_DISTANCE_MAX 1000000000.0
 
-static struct {
+typedef struct {
     int64_t voice_id;
     double ref_distance;
     double max_distance;
     int64_t base_volume;
-} s_voice_dist[MAX_3D_VOICES];
+} sound3d_voice_dist_entry_t;
 
+static sound3d_voice_dist_entry_t *s_voice_dist = NULL;
 static int32_t s_voice_dist_count = 0;
+static int32_t s_voice_dist_capacity = 0;
 static int32_t s_voice_dist_next = 0;
 static int8_t s_voice_dist_test_force_all_playing = 0;
 
@@ -298,6 +303,7 @@ void rt_sound3d_listener_state_set_pose(rt_sound3d_listener_state *state,
 /// Returns the active SoundListener3D's state if one is bound; otherwise the
 /// fallback listener configured via `rt_sound3d_set_listener`.
 void rt_sound3d_get_effective_listener_state(rt_sound3d_listener_state *out_state) {
+    RT_ASSERT_MAIN_THREAD();
     if (!out_state)
         return;
     if (s_has_active_listener && s_active_listener.valid) {
@@ -327,14 +333,76 @@ void rt_sound3d_clear_active_listener_state(void) {
     s_has_active_listener = 0;
 }
 
+/// @brief Ensure the spatial-voice metadata table can hold at least @p needed entries.
+/// @details The table starts at the legacy 64-entry size, then doubles up to a conservative hard
+///   cap. This removes the old 64-live-voice metadata loss while still bounding memory in long
+///   sessions or pathological content.
+/// @param needed Minimum entry count required by the caller.
+/// @return Non-zero when the backing table can hold @p needed entries.
+static int sound3d_ensure_voice_capacity(int32_t needed) {
+    int32_t new_cap;
+    sound3d_voice_dist_entry_t *grown;
+    if (needed <= 0)
+        return 1;
+    if (needed > SOUND3D_MAX_VOICE_CAPACITY)
+        return 0;
+    if (s_voice_dist_capacity >= needed)
+        return 1;
+    new_cap = s_voice_dist_capacity > 0 ? s_voice_dist_capacity : SOUND3D_INITIAL_VOICE_CAPACITY;
+    while (new_cap < needed) {
+        if (new_cap > SOUND3D_MAX_VOICE_CAPACITY / 2) {
+            new_cap = SOUND3D_MAX_VOICE_CAPACITY;
+            break;
+        }
+        new_cap *= 2;
+    }
+    grown = (sound3d_voice_dist_entry_t *)realloc(s_voice_dist,
+                                                  (size_t)new_cap * sizeof(*s_voice_dist));
+    if (!grown)
+        return 0;
+    if (new_cap > s_voice_dist_capacity) {
+        memset(grown + s_voice_dist_capacity,
+               0,
+               (size_t)(new_cap - s_voice_dist_capacity) * sizeof(*grown));
+    }
+    s_voice_dist = grown;
+    s_voice_dist_capacity = new_cap;
+    return 1;
+}
+
+/// @brief Find a reusable slot whose tracked voice has ended.
+/// @details Avoids growing or evicting when one-shot audio has already completed. Tests can force
+///   all voices to appear live to exercise overflow/eviction behavior deterministically.
+/// @return Slot index, or -1 when no tracked entry is reusable.
+static int32_t sound3d_find_reclaimable_voice_slot(void) {
+    if (!s_voice_dist)
+        return -1;
+    for (int32_t i = 0; i < s_voice_dist_count; i++) {
+        if (s_voice_dist[i].voice_id <= 0 || (!s_voice_dist_test_force_all_playing &&
+                                              !rt_voice_is_playing(s_voice_dist[i].voice_id)))
+            return i;
+    }
+    return -1;
+}
+
+/// @brief Store one voice metadata record into an existing table slot.
+static void sound3d_store_voice_slot(
+    int32_t slot, int64_t voice, double ref_dist, double max_dist, int64_t base_volume) {
+    if (!s_voice_dist || slot < 0 || slot >= s_voice_dist_capacity)
+        return;
+    s_voice_dist[slot].voice_id = voice;
+    s_voice_dist[slot].ref_distance = ref_dist;
+    s_voice_dist[slot].max_distance = max_dist;
+    s_voice_dist[slot].base_volume = base_volume;
+}
+
 /// @brief Record per-voice 3D parameters (max distance + base volume) for later updates.
 /// @details `rt_sound3d_update_voice` needs to recompute attenuation against
 ///          the same `max_distance` the voice was launched with, but the
 ///          underlying 2D audio API doesn't carry per-voice 3D state.
-///          This table holds it. New voices append until the table fills,
-///          then the oldest entry (slot 0) is overwritten — sufficient for
-///          typical workloads (≤ 64 simultaneously moving 3D sounds) and
-///          much cheaper than a heap-managed map.
+///          This table holds it. New voices append to a growable table; only if
+///          the bounded table cannot grow and every tracked voice is still live
+///          do we fall back to the legacy round-robin eviction path.
 void rt_sound3d_register_voice_ex(int64_t voice,
                                   double ref_dist,
                                   double max_dist,
@@ -351,44 +419,31 @@ void rt_sound3d_register_voice_ex(int64_t voice,
     /* Update existing entry */
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
         if (s_voice_dist[i].voice_id == voice) {
-            s_voice_dist[i].ref_distance = ref_dist;
-            s_voice_dist[i].max_distance = max_dist;
-            s_voice_dist[i].base_volume = base_volume;
+            sound3d_store_voice_slot(i, voice, ref_dist, max_dist, base_volume);
             return;
         }
     }
-    /* Add new entry (overwrite oldest if full) */
-    if (s_voice_dist_count < MAX_3D_VOICES) {
-        s_voice_dist[s_voice_dist_count].voice_id = voice;
-        s_voice_dist[s_voice_dist_count].ref_distance = ref_dist;
-        s_voice_dist[s_voice_dist_count].max_distance = max_dist;
-        s_voice_dist[s_voice_dist_count].base_volume = base_volume;
-        s_voice_dist_count++;
-    } else {
-        /* Table full: first reclaim a slot whose voice has already finished
-         * (one-shot ended or mixer-culled) so we never silently evict a
-         * still-playing source's falloff params. Only if every tracked voice is
-         * still live do we fall back to round-robin eviction. */
-        int32_t slot = -1;
-        for (int32_t i = 0; i < MAX_3D_VOICES; i++) {
-            if (s_voice_dist[i].voice_id <= 0 || (!s_voice_dist_test_force_all_playing &&
-                                                  !rt_voice_is_playing(s_voice_dist[i].voice_id))) {
-                slot = i;
-                break;
-            }
-        }
-        if (slot < 0) {
-            rt_audio_diag_record_spatial_voice_evicted();
-            slot = s_voice_dist_next;
-            if (slot < 0 || slot >= MAX_3D_VOICES)
-                slot = 0;
-            s_voice_dist_next = (slot + 1) % MAX_3D_VOICES;
-        }
-        s_voice_dist[slot].voice_id = voice;
-        s_voice_dist[slot].ref_distance = ref_dist;
-        s_voice_dist[slot].max_distance = max_dist;
-        s_voice_dist[slot].base_volume = base_volume;
+    /* Prefer reusing completed voices so short one-shots do not grow the table forever. */
+    int32_t slot = sound3d_find_reclaimable_voice_slot();
+    if (slot >= 0) {
+        sound3d_store_voice_slot(slot, voice, ref_dist, max_dist, base_volume);
+        return;
     }
+    /* Add new entry, growing past the old 64-entry limit while live voices justify it. */
+    if (sound3d_ensure_voice_capacity(s_voice_dist_count + 1)) {
+        sound3d_store_voice_slot(s_voice_dist_count, voice, ref_dist, max_dist, base_volume);
+        s_voice_dist_count++;
+        return;
+    }
+    /* Last resort: bounded table cannot grow and every tracked voice is still live. */
+    rt_audio_diag_record_spatial_voice_evicted();
+    if (s_voice_dist_capacity <= 0 || !s_voice_dist)
+        return;
+    slot = s_voice_dist_next;
+    if (slot < 0 || slot >= s_voice_dist_capacity)
+        slot = 0;
+    s_voice_dist_next = (slot + 1) % s_voice_dist_capacity;
+    sound3d_store_voice_slot(slot, voice, ref_dist, max_dist, base_volume);
 }
 
 /// @brief Register a voice's 3D attenuation params with a default reference distance of 0.
@@ -397,17 +452,18 @@ void rt_sound3d_register_voice(int64_t voice, double max_dist, int64_t base_volu
     rt_sound3d_register_voice_ex(voice, 0.0, max_dist, base_volume);
 }
 
-/// @brief Return the number of active entries in the fixed 3D voice metadata table.
-/// @return Tracked voice-entry count in [0, MAX_3D_VOICES].
+/// @brief Return the number of occupied entries in the growable 3D voice metadata table.
+/// @return Tracked voice-entry count in [0, SOUND3D_MAX_VOICE_CAPACITY].
 int64_t rt_sound3d_tracked_voice_count(void) {
     RT_ASSERT_MAIN_THREAD();
     return s_voice_dist_count >= 0 ? s_voice_dist_count : 0;
 }
 
-/// @brief Return the capacity of the fixed 3D voice metadata table.
-/// @return Maximum simultaneous tracked 3D voice entries.
+/// @brief Return the current capacity of the growable 3D voice metadata table.
+/// @return Current allocated capacity, or the legacy initial capacity before the first voice.
 int64_t rt_sound3d_tracked_voice_capacity(void) {
-    return MAX_3D_VOICES;
+    RT_ASSERT_MAIN_THREAD();
+    return s_voice_dist_capacity > 0 ? s_voice_dist_capacity : SOUND3D_INITIAL_VOICE_CAPACITY;
 }
 
 /// @brief Look up a voice's recorded 3D params in a single table scan.

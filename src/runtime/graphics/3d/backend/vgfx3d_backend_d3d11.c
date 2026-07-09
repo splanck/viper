@@ -252,7 +252,7 @@ typedef struct {
 
 typedef vgfx3d_d3d11_instance_data_t d3d_instance_data_t;
 
-#define D3D11_MESH_CACHE_CAPACITY 128
+#define D3D11_MESH_CACHE_CAPACITY 256
 
 typedef struct {
     const void *key;

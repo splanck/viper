@@ -74,9 +74,9 @@ void rt_sound3d_register_voice_ex(int64_t voice,
                                   double ref_distance,
                                   double max_distance,
                                   int64_t base_volume);
-/// @brief Return the number of occupied entries in Sound3D's fixed voice metadata table.
+/// @brief Return the number of occupied entries in Sound3D's growable voice metadata table.
 int64_t rt_sound3d_tracked_voice_count(void);
-/// @brief Return the maximum number of Sound3D voices whose metadata can be tracked.
+/// @brief Return the current Sound3D voice metadata capacity.
 int64_t rt_sound3d_tracked_voice_capacity(void);
 
 /// @brief Set the fallback listener position and orientation (Vec3 handles).

@@ -48,7 +48,7 @@
 #include <string.h>
 
 #define SW_TILE_SIZE 64
-#define SW_MAX_WORKERS 8
+#define SW_MAX_WORKERS 16
 #define SW_MAX_TASKS (SW_MAX_WORKERS + 1)
 #define SW_PARALLEL_MIN_INDICES 192u
 
@@ -155,24 +155,26 @@ static float sw_length3(float x, float y, float z) {
 }
 
 /// @brief Fill a software depth buffer with a constant depth value.
-/// @details Uses a small unrolled loop for the hot clear paths shared by the
-///          main framebuffer, render targets, and shadow maps. Keeping this in
-///          one helper also makes future platform-specific vectorization local.
+/// @details Writes the first value once, then doubles the initialized prefix with
+///          `memcpy`. Large clears avoid one scalar store per pixel, while small
+///          buffers still pay only a tiny constant setup cost. Keeping this in one
+///          helper also makes future platform-specific vectorization local.
 /// @param depth Depth-buffer pointer; NULL is ignored.
 /// @param count Number of float entries to write.
 /// @param value Depth value to store in every entry.
 static void sw_fill_depth_buffer(float *depth, size_t count, float value) {
-    if (!depth)
+    size_t filled;
+    if (!depth || count == 0)
         return;
-    size_t i = 0;
-    for (; i + 4u <= count; i += 4u) {
-        depth[i + 0u] = value;
-        depth[i + 1u] = value;
-        depth[i + 2u] = value;
-        depth[i + 3u] = value;
+    depth[0] = value;
+    filled = 1u;
+    while (filled < count) {
+        size_t copy_count = filled;
+        if (copy_count > count - filled)
+            copy_count = count - filled;
+        memcpy(depth + filled, depth, copy_count * sizeof(*depth));
+        filled += copy_count;
     }
-    for (; i < count; i++)
-        depth[i] = value;
 }
 
 /// @brief Normalize the vector (*x,*y,*z) in place; on non-finite or near-zero length,
@@ -465,7 +467,7 @@ static int64_t sw_clamp_worker_count(int64_t count) {
     return count;
 }
 
-/// @brief Default software-rasterizer worker count: hardware parallelism capped to 8.
+/// @brief Default software-rasterizer worker count: hardware parallelism capped to SW_MAX_WORKERS.
 static int64_t sw_default_worker_count(void) {
     return sw_clamp_worker_count(rt_parallel_default_workers());
 }
@@ -558,6 +560,7 @@ static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_cou
 #include "vgfx3d_backend_sw_shadow.inc"
 #include "vgfx3d_backend_sw_vtable.inc"
 // clang-format on
+
 /*==========================================================================
  * Exported backend + selection
  *=========================================================================*/

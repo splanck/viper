@@ -179,7 +179,15 @@ The rendering surface. Creates a window and manages the render loop.
 | `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendFallback` | Boolean | read | True when Canvas3D fell back from the selected GPU backend to software at creation |
+| `BackendFallbackReason` | String | read | Human-readable reason for `BackendFallback`, or empty string |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
+| `InstancedFallbackCount` | Integer | read | Instances routed through the bounded per-instance fallback in the current/latest frame |
+| `InstancedFallbackDroppedCount` | Integer | read | Instances skipped because that bounded fallback queue overflowed |
+| `EventDropCount` | Integer | read | Window/input events dropped from the public `PollEvent()` ring since canvas creation |
+| `MeshSnapshotBytes` | Integer | read | Deferred mesh snapshot bytes copied by the current/latest frame |
+| `MeshSnapshotDropCount` | Integer | read | Mesh snapshot allocation or budget denials in the current/latest frame |
+| `MeshSnapshotDroppedBytes` | Integer | read | Requested mesh snapshot bytes denied in the current/latest frame |
+| `MeshSnapshotBudgetBytes` | Integer | read | Per-frame mesh snapshot byte budget |
 | `QualityRequested` | Integer | read | Last requested quality profile (`0` performance, `1` balanced, `2` cinematic) |
 | `QualityActive` | Integer | read | Active quality profile after backend fallback |
 | `QualityFallback` | Boolean | read | True when quality setup degraded to stay backend-safe |
@@ -191,6 +199,7 @@ The rendering surface. Creates a window and manages the render loop.
 
 | Constructor | Description |
 |-------------|-------------|
+| `IsAvailable()` | Return `true` when the Graphics3D Canvas runtime is compiled in |
 | `New(title, w, h)` | Create canvas window (1-8192 pixels per dimension) |
 
 ### Core Methods
@@ -676,6 +685,8 @@ aliases for these factories.
   - `2`: blended. Texture/material alpha participates in transparency and transparent sorting.
 - Explicit `SetAlphaMode` calls take precedence over alpha auto-promotion. For example, a material
   explicitly set to `Blend` remains blended even if `Alpha` is later set back to `1.0`.
+- When `AlphaMode` is left opaque, decoded textures with binary alpha auto-route to `Mask`, while
+  decoded textures with fractional alpha auto-route to `Blend` so soft edges are preserved.
 - `SetShadingModel` and `SetCustomParam` remain available as advanced escape hatches. They are not the main PBR API.
 
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
@@ -1478,6 +1489,8 @@ func start() {
 ## FBX Loader
 
 Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `SceneAsset.LoadResult("asset.fbx")`.
+
+FBX reads are capped at 256 MiB by default to avoid accidental whole-file allocations on oversized content. Hosts that intentionally process larger files can set `VIPER_FBX_MAX_FILE_BYTES`; the runtime still clamps that value to the 1 GiB hard cap.
 
 ### Constructor
 
@@ -3458,7 +3471,7 @@ The GPU backend is selected automatically at startup:
 | Windows | Direct3D 11 | Software |
 | Linux | OpenGL 3.3 | Software |
 
-If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
+If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback`, `canvas.BackendFallbackReason`, or `canvas.BackendSupports("runtime-fallback")` to detect and explain a runtime software fallback.
 
 For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `occlusion`, `hlod`, `bc1`, `bc3`, `bc4`, `bc5`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
 

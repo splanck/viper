@@ -35,6 +35,19 @@
 // Graphics 3D stubs — Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
 //=============================================================================
 
+/// @brief Report whether the Canvas3D runtime is usable in this build.
+///
+/// Graphics-disabled builds return 0 so programs can use the same
+/// `if (Canvas3D.IsAvailable()) { ... }` guard as the 2D Canvas runtime before
+/// calling constructors or stateful rendering methods.
+///
+/// Silent stub returning 0 (Canvas3D is unavailable).
+///
+/// @return 0 because this translation unit is compiled only when Graphics3D is unavailable.
+int8_t rt_canvas3d_is_available(void) {
+    return 0;
+}
+
 /// @brief Stub for `CubeMap3D.New` — would normally allocate a six-
 ///        face cubemap from the given Pixels surfaces. Used for skyboxes
 ///        and environment-map reflections; all six faces should share
@@ -644,6 +657,19 @@ int8_t rt_canvas3d_get_backend_fallback(void *o) {
     return 0;
 }
 
+/// @brief Stub for `Canvas3D.BackendFallbackReason`.
+///
+/// Graphics-disabled builds have no selected 3D backend, so there is no runtime
+/// fallback reason to report. Returning an empty string preserves the real
+/// implementation's "no fallback" contract for diagnostic code.
+///
+/// @param o Canvas3D handle (ignored).
+/// @return Empty string.
+rt_string rt_canvas3d_get_backend_fallback_reason(void *o) {
+    (void)o;
+    return rt_const_cstr("");
+}
+
 /// @brief Stub for `Canvas3D.BackendCapabilities` — would normally return
 ///        a bitmask describing backend feature hooks.
 ///
@@ -716,6 +742,59 @@ int64_t rt_canvas3d_get_backend_mesh_stream_uploads(void *o) {
 ///
 /// Silent stub returning 0 because there is no backend in graphics-disabled builds.
 int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.InstancedFallbackDroppedCount`.
+///
+/// No instanced drawing occurs in graphics-disabled builds, so no instances can
+/// be dropped by the bounded fallback queue.
+int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.EventDropCount`.
+///
+/// Graphics-disabled builds do not pump a Canvas3D event ring.
+int64_t rt_canvas3d_get_event_drop_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.MeshSnapshotBytes`.
+///
+/// Deferred mesh snapshots are unavailable without the 3D renderer.
+/// Silent stub returning 0 (no mesh snapshot memory is allocated).
+int64_t rt_canvas3d_get_mesh_snapshot_bytes(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.MeshSnapshotDropCount`.
+///
+/// No renderer-owned mesh snapshots are attempted in graphics-disabled builds.
+/// Silent stub returning 0 (no mesh snapshot drops can occur).
+int64_t rt_canvas3d_get_mesh_snapshot_drop_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.MeshSnapshotDroppedBytes`.
+///
+/// No renderer-owned mesh snapshots are attempted in graphics-disabled builds.
+/// Silent stub returning 0 (no mesh snapshot bytes can be denied).
+int64_t rt_canvas3d_get_mesh_snapshot_dropped_bytes(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.MeshSnapshotBudgetBytes`.
+///
+/// The disabled renderer has no active per-frame mesh snapshot budget.
+/// Silent stub returning 0 (no mesh snapshot budget is active).
+int64_t rt_canvas3d_get_mesh_snapshot_budget_bytes(void *o) {
     (void)o;
     return 0;
 }

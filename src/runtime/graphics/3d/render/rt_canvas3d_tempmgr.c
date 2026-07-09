@@ -196,6 +196,34 @@ void canvas3d_release_tracked_temp_buffer(rt_canvas3d *c, void *buffer) {
         free(buffer);
 }
 
+/// @brief Release a tracked mesh-geometry snapshot and refund its frame byte budget.
+/// @details Mesh snapshots are ordinary frame-temp buffers, but snapshot byte accounting is
+///   maintained separately so large dynamic meshes cannot consume unbounded memory. Callers use
+///   this helper when a later rebase, tangent-generation, or validation step fails after the
+///   buffers were successfully tracked. The byte refund is saturating: stale or duplicate rollback
+///   calls cannot underflow the frame counter.
+/// @param c Canvas that owns the per-frame snapshot budget.
+/// @param vertices Tracked vertex snapshot buffer, or NULL.
+/// @param vertex_bytes Number of bytes charged for @p vertices.
+/// @param indices Tracked index snapshot buffer, or NULL.
+/// @param index_bytes Number of bytes charged for @p indices.
+void canvas3d_release_tracked_mesh_snapshot(
+    rt_canvas3d *c, void *vertices, size_t vertex_bytes, void *indices, size_t index_bytes) {
+    size_t total_bytes;
+    if (!c)
+        return;
+    if (vertex_bytes > SIZE_MAX - index_bytes)
+        total_bytes = SIZE_MAX;
+    else
+        total_bytes = vertex_bytes + index_bytes;
+    if (total_bytes >= c->mesh_snapshot_bytes)
+        c->mesh_snapshot_bytes = 0u;
+    else
+        c->mesh_snapshot_bytes -= total_bytes;
+    canvas3d_release_tracked_temp_buffer(c, vertices);
+    canvas3d_release_tracked_temp_buffer(c, indices);
+}
+
 /// @brief Track a malloc'd buffer used by deferred final-overlay commands.
 ///
 /// Final overlays are recorded before frame finalization and replayed after
@@ -408,6 +436,10 @@ void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj) {
 void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     if (!c)
         return;
+    if (c->mesh_snapshot_bytes > (size_t)INT64_MAX)
+        c->last_mesh_snapshot_bytes = INT64_MAX;
+    else
+        c->last_mesh_snapshot_bytes = (int64_t)c->mesh_snapshot_bytes;
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;

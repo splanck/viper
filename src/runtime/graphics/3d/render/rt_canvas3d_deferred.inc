@@ -867,6 +867,27 @@ static int canvas3d_pixels_has_alpha_texels(void *pixels_ref) {
     return rt_pixels_has_alpha_texels_cached(pixels);
 }
 
+/// @brief Return non-zero when a live Pixels object contains soft alpha.
+/// @details Binary cutout textures should keep the alpha-mask path for depth writes and shadows,
+///          but textures with alpha values strictly between 0 and 255 need real blending to avoid
+///          visibly jagged edges. The existing cached alpha scan only records "any alpha", so this
+///          precise fractional test is kept local to material classification.
+static int canvas3d_pixels_has_fractional_alpha_texels(void *pixels_ref) {
+    rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(pixels_ref);
+    uint64_t count;
+    if (!pixels || pixels->width <= 0 || pixels->height <= 0 || !pixels->data)
+        return 0;
+    if ((uint64_t)pixels->width > UINT64_MAX / (uint64_t)pixels->height)
+        return 1;
+    count = (uint64_t)pixels->width * (uint64_t)pixels->height;
+    for (uint64_t i = 0; i < count; i++) {
+        uint32_t alpha = pixels->data[i] & 0xFFu;
+        if (alpha > 0u && alpha < 0xFFu)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Return non-zero when a material texture source should be treated as alpha-bearing.
 /// @details Checks raw Pixels first, then TextureAsset3D's currently resident decoded fallback,
 ///          and finally exact TextureAsset3D alpha metadata computed at load time. Native-only
@@ -887,6 +908,23 @@ static int canvas3d_texture_source_has_alpha(void *texture_ref) {
     if (rt_textureasset3d_alpha_metadata_known(texture_ref))
         return rt_textureasset3d_has_alpha_texels(texture_ref) ? 1 : 0;
     return 1;
+}
+
+/// @brief Return non-zero when a material texture source has decoded fractional alpha.
+/// @details Unknown native-only compressed assets return 0 here and continue down the alpha-mask
+///          path until decoded fallback metadata exists. That preserves foliage/cutout defaults
+///          while allowing PNG/UI/card textures with soft edges to blend automatically.
+static int canvas3d_texture_source_has_fractional_alpha(void *texture_ref) {
+    void *pixels;
+
+    if (!texture_ref)
+        return 0;
+    if (canvas3d_pixels_has_fractional_alpha_texels(texture_ref))
+        return 1;
+    if (!rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID))
+        return 0;
+    pixels = rt_textureasset3d_get_pixels(texture_ref);
+    return canvas3d_pixels_has_fractional_alpha_texels(pixels) ? 1 : 0;
 }
 
 /// @brief Capture a TextureAsset3D native cache key and mip window into a draw command slot.
@@ -967,8 +1005,11 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->workflow = (mat->workflow == 1) ? 1 : 0;
     cmd->alpha_mode = (mat->alpha_mode >= 0 && mat->alpha_mode <= 2) ? mat->alpha_mode : 0;
     cmd->has_alpha_texture = canvas3d_texture_source_has_alpha(mat->texture) ? 1 : 0;
-    if (cmd->has_alpha_texture && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE)
-        cmd->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
+    if (cmd->has_alpha_texture && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
+        cmd->alpha_mode = canvas3d_texture_source_has_fractional_alpha(mat->texture)
+                              ? RT_MATERIAL3D_ALPHA_MODE_BLEND
+                              : RT_MATERIAL3D_ALPHA_MODE_MASK;
+    }
     if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR && cmd->alpha < 0.999f &&
         cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE)
         cmd->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
@@ -1140,8 +1181,7 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
         return 0;
-    if ((a->type != 0 && a->type != 1 && a->type != 3) || !a->casts_shadows ||
-        !b->casts_shadows)
+    if ((a->type != 0 && a->type != 1 && a->type != 3) || !a->casts_shadows || !b->casts_shadows)
         return 0;
     if (a->identity || b->identity)
         return a->identity == b->identity;
@@ -1295,7 +1335,8 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
             float score =
                 canvas3d_shadow_spot_light_param_score(light, c ? c->cached_cam_pos : NULL);
             if (light->type == 1)
-                score = canvas3d_shadow_point_light_param_score(light, c ? c->cached_cam_pos : NULL);
+                score =
+                    canvas3d_shadow_point_light_param_score(light, c ? c->cached_cam_pos : NULL);
 
             canvas3d_note_shadow_request(requests, &request_count, light, score);
             canvas3d_insert_shadow_light_candidate(

@@ -822,8 +822,8 @@ static void test_software_tiled_raster_threads_are_deterministic() {
                 "Default software raster render completes");
     if (automatic.hash == 0)
         return;
-    EXPECT_TRUE(automatic.worker_count >= 1 && automatic.worker_count <= 8,
-                "Default software raster worker count is clamped to 1..8");
+    EXPECT_TRUE(automatic.worker_count >= 1 && automatic.worker_count <= 16,
+                "Default software raster worker count is clamped to 1..16");
     EXPECT_EQ_U64(automatic.hash, one.hash, "Default software raster hash matches serial");
     EXPECT_TRUE(rgba_equal(one, automatic), "Default software raster pixels match serial");
 }

@@ -61,6 +61,12 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
 
 static int g_canvas3d_backend_fallback_notice_emitted = 0;
 
+static const char CANVAS3D_FALLBACK_REASON_NONE[] = "";
+static const char CANVAS3D_FALLBACK_REASON_UNAVAILABLE[] =
+    "selected backend unavailable; using software";
+static const char CANVAS3D_FALLBACK_REASON_INIT_FAILED[] =
+    "selected backend failed to initialize; using software";
+
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
@@ -93,6 +99,15 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
 uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
                                        const vgfx3d_light_params_t *lights,
                                        int32_t light_count);
+
+/// @brief Report whether the graphics-enabled Canvas3D implementation is compiled in.
+/// @details This mirrors `Canvas.IsAvailable()` for 2D graphics. It is intentionally cheap and
+///          state-free so applications can guard optional 3D paths before constructing a window.
+/// @return 1 in this translation unit because it is compiled only when `VIPER_ENABLE_GRAPHICS`
+///         selects the real Graphics3D runtime.
+int8_t rt_canvas3d_is_available(void) {
+    return 1;
+}
 
 static void canvas3d_emit_backend_fallback_notice_once(const char *requested, const char *active) {
     int expected = 0;
@@ -1099,6 +1114,8 @@ static void canvas3d_record_event_type(rt_canvas3d *c, int64_t type) {
     if (c->event_type_count >= RT_CANVAS3D_EVENT_QUEUE_CAPACITY) {
         c->event_type_head = (c->event_type_head + 1) % RT_CANVAS3D_EVENT_QUEUE_CAPACITY;
         c->event_type_count--;
+        if (c->event_type_dropped_count < INT64_MAX)
+            c->event_type_dropped_count++;
     }
     int32_t tail = (c->event_type_head + c->event_type_count) % RT_CANVAS3D_EVENT_QUEUE_CAPACITY;
     c->event_type_queue[tail] = type;
@@ -1532,8 +1549,16 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->backend = vgfx3d_select_backend();
     c->backend_requested_name = (c->backend && c->backend->name) ? c->backend->name : "unknown";
     c->backend_fallback = 0;
-    if (!c->backend || !c->backend->create_ctx)
+    c->backend_fallback_reason = CANVAS3D_FALLBACK_REASON_NONE;
+    if (!c->backend || !c->backend->create_ctx) {
+        const char *failed_backend_name = c->backend_requested_name;
         c->backend = &vgfx3d_software_backend;
+        if (strcmp(failed_backend_name, "software") != 0) {
+            c->backend_fallback = 1;
+            c->backend_fallback_reason = CANVAS3D_FALLBACK_REASON_UNAVAILABLE;
+            canvas3d_emit_backend_fallback_notice_once(failed_backend_name, c->backend->name);
+        }
+    }
     if (!c->backend || !c->backend->create_ctx) {
         if (rt_obj_release_check0(c))
             rt_obj_free(c);
@@ -1560,6 +1585,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
             strcmp(failed_backend_name, "software") != 0) {
             c->backend_requested_name = failed_backend_name;
             c->backend_fallback = 1;
+            c->backend_fallback_reason = CANVAS3D_FALLBACK_REASON_INIT_FAILED;
             canvas3d_emit_backend_fallback_notice_once(failed_backend_name, c->backend->name);
         }
     }
@@ -2464,8 +2490,7 @@ void rt_canvas3d_set_height_fog(
         return;
     c->height_fog_enabled = 1;
     c->height_fog_base = canvas3d_sanitize_f64_to_float(base_height, 0.0f);
-    c->height_fog_falloff =
-        canvas3d_sanitize_nonnegative_f64(falloff, 0.1f);
+    c->height_fog_falloff = canvas3d_sanitize_nonnegative_f64(falloff, 0.1f);
     c->height_fog_density = canvas3d_sanitize_nonnegative_f64(density, 0.02f);
     float b = (float)(isfinite(blend) ? blend : 1.0);
     if (b < 0.0f)

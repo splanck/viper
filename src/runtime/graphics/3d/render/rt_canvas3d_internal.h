@@ -809,18 +809,21 @@ typedef struct {
     int32_t framebuffer_height; /* physical backing-pixel height */
 
     /* Backend dispatch */
-    const vgfx3d_backend_t *backend;    /* vtable (software, metal, d3d11, opengl) */
-    void *backend_ctx;                  /* opaque backend state */
-    const char *backend_requested_name; /* backend selected before runtime fallback */
-    int8_t backend_fallback;            /* 1 when Canvas3D fell back to software at creation */
+    const vgfx3d_backend_t *backend;     /* vtable (software, metal, d3d11, opengl) */
+    void *backend_ctx;                   /* opaque backend state */
+    const char *backend_requested_name;  /* backend selected before runtime fallback */
+    int8_t backend_fallback;             /* 1 when Canvas3D fell back to software at creation */
+    const char *backend_fallback_reason; /* empty unless backend_fallback is true */
 
     /* Frame state */
-    int8_t in_frame;                /* 1 = between Begin/End */
-    int8_t frame_is_2d;             /* 1 = active frame uses orthographic 2D projection */
-    int8_t frame_is_view_model;     /* 1 = secondary camera-space pass over a fresh depth
-                                       buffer (weapon view models); skips skybox + shadows */
+    int8_t in_frame;                       /* 1 = between Begin/End */
+    int8_t frame_is_2d;                    /* 1 = active frame uses orthographic 2D projection */
+    int8_t frame_is_view_model;            /* 1 = secondary camera-space pass over a fresh depth
+                                              buffer (weapon view models); skips skybox + shadows */
     int64_t last_instanced_fallback_count; /* instances routed through the per-draw
                                               fallback (blend/rebase) this frame */
+    int64_t last_instanced_fallback_dropped_count; /* instances skipped because the bounded
+                                                      fallback queue could not accept them */
     /* Exponential height fog (shares fog_color with distance fog). */
     int8_t height_fog_enabled;
     float height_fog_base;
@@ -926,6 +929,9 @@ typedef struct {
      * hash rebuild fails (OOM) so lookups fall back to the linear scan for safety. */
     int8_t mesh_snapshot_hash_dirty;
     size_t mesh_snapshot_bytes;
+    int64_t last_mesh_snapshot_bytes;         /* snapshot bytes copied by the latest ended frame */
+    int64_t last_mesh_snapshot_drop_count;    /* snapshot allocations/budget denials this frame */
+    int64_t last_mesh_snapshot_dropped_bytes; /* requested snapshot bytes denied this frame */
     vgfx3d_skinning_scratch_t skinning_scratch;
 
     /* Temporary runtime objects retained until end of frame */
@@ -991,11 +997,11 @@ typedef struct {
     void *cluster_tables;
     int32_t cluster_table_count;
     int32_t cluster_table_cursor;
-    int64_t cluster_overflow_total; /* lifetime truncated cluster entries (diagnostics) */
-    int32_t cluster_light_budget;   /* per-cluster light-index capacity (8..64) */
+    int64_t cluster_overflow_total;   /* lifetime truncated cluster entries (diagnostics) */
+    int32_t cluster_light_budget;     /* per-cluster light-index capacity (8..64) */
     int32_t last_dropped_light_count; /* forward-path lights truncated by the active limit */
     int32_t shadow_budget;            /* general shadow-light slots (1..VGFX3D_MAX_SHADOW_LIGHTS) */
-    int32_t last_shadow_slots_used;   /* shadow slots rendered in the latest frame (incl. cascades) */
+    int32_t last_shadow_slots_used; /* shadow slots rendered in the latest frame (incl. cascades) */
     int32_t last_shadow_requests_dropped; /* shadow-requesting lights denied a slot this frame */
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
@@ -1042,6 +1048,7 @@ typedef struct {
     int64_t event_type_queue[RT_CANVAS3D_EVENT_QUEUE_CAPACITY];
     int32_t event_type_head;
     int32_t event_type_count;
+    int64_t event_type_dropped_count; /* lifetime window/input events dropped from the ring */
 
     /* Previous-frame transform history for motion blur */
     void *motion_history;
@@ -1382,6 +1389,8 @@ int32_t canvas3d_active_light_limit(rt_canvas3d *c);
 int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer);
 int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer);
 void canvas3d_release_tracked_temp_buffer(rt_canvas3d *c, void *buffer);
+void canvas3d_release_tracked_mesh_snapshot(
+    rt_canvas3d *c, void *vertices, size_t vertex_bytes, void *indices, size_t index_bytes);
 int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
 int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
 void canvas3d_release_tracked_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);

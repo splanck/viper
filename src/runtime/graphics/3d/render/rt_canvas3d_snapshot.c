@@ -61,14 +61,15 @@ void canvas3d_mesh_snapshot_hash_clear(rt_canvas3d *c) {
 
 /// @brief Insert an existing snapshot entry index into the hash table.
 /// @details Open addressing keeps the table allocation-free during lookups. Returns 0 only when
-///   the table is unavailable or saturated; callers can still fall back to the linear snapshot list.
+///   the table is unavailable or saturated; callers can still fall back to the linear snapshot
+///   list.
 static int canvas3d_mesh_snapshot_hash_insert(rt_canvas3d *c, int32_t entry_index) {
     rt_canvas3d_mesh_snapshot_entry *entry;
     uint64_t key;
     int32_t mask;
     int32_t slot;
-    if (!c || !c->mesh_snapshot_hash || c->mesh_snapshot_hash_capacity <= 0 ||
-        entry_index < 0 || entry_index >= c->mesh_snapshot_count)
+    if (!c || !c->mesh_snapshot_hash || c->mesh_snapshot_hash_capacity <= 0 || entry_index < 0 ||
+        entry_index >= c->mesh_snapshot_count)
         return 0;
     entry = &c->mesh_snapshots[entry_index];
     if (!entry->source)
@@ -132,8 +133,8 @@ static int32_t canvas3d_find_mesh_snapshot(rt_canvas3d *c,
     if (!c || !source)
         return -1;
     if (c->mesh_snapshot_hash && c->mesh_snapshot_hash_capacity > 0) {
-        uint64_t key = canvas3d_mesh_snapshot_key(
-            source, geometry_revision, vertex_count, index_count);
+        uint64_t key =
+            canvas3d_mesh_snapshot_key(source, geometry_revision, vertex_count, index_count);
         int32_t mask = c->mesh_snapshot_hash_capacity - 1;
         int32_t slot = (int32_t)(key & (uint32_t)mask);
         for (int32_t probe = 0; probe < c->mesh_snapshot_hash_capacity; ++probe) {
@@ -156,14 +157,29 @@ static int32_t canvas3d_find_mesh_snapshot(rt_canvas3d *c,
             return -1;
     }
     for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
-        if (canvas3d_mesh_snapshot_entry_matches(&c->mesh_snapshots[i],
-                                                 source,
-                                                 geometry_revision,
-                                                 vertex_count,
-                                                 index_count))
+        if (canvas3d_mesh_snapshot_entry_matches(
+                &c->mesh_snapshots[i], source, geometry_revision, vertex_count, index_count))
             return i;
     }
     return -1;
+}
+
+/// @brief Record a failed mesh-snapshot allocation/budget attempt for public diagnostics.
+/// @details Snapshot failure is not always fatal: caller-owned stack meshes can fall back to
+///   borrowed geometry, and missing generated tangents can degrade to a base normal-map-free draw.
+///   The counters let applications detect those visual/performance fallbacks without changing the
+///   legacy void draw API.
+/// @param c Canvas that attempted the snapshot.
+/// @param requested_bytes Total bytes the snapshot wanted to reserve.
+static void canvas3d_record_mesh_snapshot_drop(rt_canvas3d *c, size_t requested_bytes) {
+    if (!c)
+        return;
+    if (c->last_mesh_snapshot_drop_count < INT64_MAX)
+        c->last_mesh_snapshot_drop_count++;
+    if (requested_bytes > (size_t)(INT64_MAX - c->last_mesh_snapshot_dropped_bytes))
+        c->last_mesh_snapshot_dropped_bytes = INT64_MAX;
+    else
+        c->last_mesh_snapshot_dropped_bytes += (int64_t)requested_bytes;
 }
 
 /// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
@@ -195,24 +211,31 @@ int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
         return 0;
     size_t total_bytes = vertex_bytes + index_bytes;
     size_t snapshot_budget = (size_t)RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET;
-    if (total_bytes > snapshot_budget || c->mesh_snapshot_bytes > snapshot_budget - total_bytes)
+    if (total_bytes > snapshot_budget || c->mesh_snapshot_bytes > snapshot_budget - total_bytes) {
+        canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         return 0;
+    }
     vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
-    if (!vertices)
+    if (!vertices) {
+        canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         return 0;
+    }
     indices = (uint32_t *)malloc(index_bytes);
     if (!indices) {
+        canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         free(vertices);
         return 0;
     }
     memcpy(vertices, mesh->vertices, vertex_bytes);
     memcpy(indices, mesh->indices, index_bytes);
     if (!canvas3d_track_temp_buffer(c, vertices)) {
+        canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         free(vertices);
         free(indices);
         return 0;
     }
     if (!canvas3d_track_temp_buffer(c, indices)) {
+        canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         canvas3d_release_tracked_temp_buffer(c, vertices);
         free(indices);
         return 0;
@@ -241,14 +264,17 @@ void canvas3d_compute_vertices_aabb(const vgfx3d_vertex_t *vertices,
 /// @brief Snapshot a mesh while subtracting a local-space rebase vector before float upload.
 /// @details Camera-relative rendering can move the frame origin into vertex data when the model
 ///          matrix would otherwise multiply very large positions. `Mesh3D.AddVertex` preserves
-///          authored double positions in `positions64`; importer buffers without a sidecar fall back
-///          to their existing float positions.
+///          authored double positions in `positions64`; importer buffers without a sidecar fall
+///          back to their existing float positions.
 int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
                                             const rt_mesh3d *mesh,
                                             const double origin[3],
                                             vgfx3d_vertex_t **out_vertices,
                                             uint32_t **out_indices) {
     uint32_t vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    uint32_t index_count = rt_mesh3d_safe_index_count(mesh);
+    size_t vertex_bytes = (size_t)vertex_count * sizeof(**out_vertices);
+    size_t index_bytes = (size_t)index_count * sizeof(**out_indices);
     if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
         return 0;
     for (uint32_t i = 0; i < vertex_count; i++) {
@@ -263,8 +289,8 @@ int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
         z -= origin[2];
         if (!canvas3d_double_fits_float(x) || !canvas3d_double_fits_float(y) ||
             !canvas3d_double_fits_float(z)) {
-            canvas3d_release_tracked_temp_buffer(c, *out_vertices);
-            canvas3d_release_tracked_temp_buffer(c, *out_indices);
+            canvas3d_release_tracked_mesh_snapshot(
+                c, *out_vertices, vertex_bytes, *out_indices, index_bytes);
             *out_vertices = NULL;
             *out_indices = NULL;
             return 0;
@@ -409,8 +435,10 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
     if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
         return 0;
     if (!canvas3d_generate_cached_snapshot_tangents(mesh, *out_vertices, *out_indices)) {
-        canvas3d_release_tracked_temp_buffer(c, *out_vertices);
-        canvas3d_release_tracked_temp_buffer(c, *out_indices);
+        size_t vertex_bytes = (size_t)vertex_count * sizeof(**out_vertices);
+        size_t index_bytes = (size_t)index_count * sizeof(**out_indices);
+        canvas3d_release_tracked_mesh_snapshot(
+            c, *out_vertices, vertex_bytes, *out_indices, index_bytes);
         *out_vertices = NULL;
         *out_indices = NULL;
         return 0;
