@@ -106,7 +106,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             PROPERTIES COMPILE_FLAGS "-fconstexpr-ops-limit=100000000")
 elseif (MSVC)
     set_source_files_properties(il/runtime/RuntimeSignatures.cpp
-            PROPERTIES COMPILE_FLAGS "/constexpr:steps100000000")
+            PROPERTIES COMPILE_FLAGS "/constexpr:steps100000000 /bigobj")
 endif ()
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)

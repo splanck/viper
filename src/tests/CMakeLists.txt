@@ -1551,6 +1551,30 @@ set_tests_properties(zia_smoke_ashfall_assets PROPERTIES
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 240)
 
+if (WIN32)
+    # Windows Debug builds spend several minutes in the heavier Ashfall
+    # software-rendered probes. Keep them isolated under the default ctest -j
+    # run so timeout budgets measure the probe, not parallel display/CPU load.
+    set(_VIPER_ASHFALL_HEAVY_WINDOWS_PROBES
+            zia_smoke_ashfall_combat
+            zia_smoke_ashfall_enemy
+            zia_smoke_ashfall_level
+            zia_smoke_ashfall_render
+            zia_smoke_ashfall_campaign
+            zia_smoke_ashfall_menu)
+    foreach (_test IN LISTS _VIPER_ASHFALL_HEAVY_WINDOWS_PROBES)
+        set_tests_properties(${_test} PROPERTIES
+                RESOURCE_LOCK viper_display
+                PROCESSORS 8)
+    endforeach ()
+    set_tests_properties(zia_smoke_ashfall_combat PROPERTIES TIMEOUT 300)
+    set_tests_properties(zia_smoke_ashfall_enemy PROPERTIES TIMEOUT 360)
+    set_tests_properties(zia_smoke_ashfall_level PROPERTIES TIMEOUT 600)
+    set_tests_properties(zia_smoke_ashfall_render PROPERTIES TIMEOUT 600)
+    set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES TIMEOUT 600)
+    set_tests_properties(zia_smoke_ashfall_menu PROPERTIES TIMEOUT 300)
+endif ()
+
 add_test(NAME zia_smoke_3dbowling_aim
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")

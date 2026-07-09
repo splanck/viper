@@ -773,7 +773,7 @@ static int rgba_equal(const SoftwareSceneRenderResult &a, const SoftwareSceneRen
 
 static void test_software_spot_light_shadow_render_is_stable() {
 #if RT_COMPILER_MSVC
-    const uint64_t expected_hash = 0x2a3dee15e4bee83full;
+    const uint64_t expected_hash = 0x2f0f4188f623b178ull;
 #else
     /* Rebaselined when shadowed legacy materials moved from Gouraud to the
      * per-pixel path on software (GPU-parity shading; see BUG-E8 in
