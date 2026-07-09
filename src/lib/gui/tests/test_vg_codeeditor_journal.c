@@ -55,9 +55,18 @@ static char *splice(const char *s, size_t start_off, size_t end_off, const char 
     return out;
 }
 
+/// @brief Portable C99 replacement for POSIX strdup.
+static char *dup_cstr(const char *s) {
+    size_t len = strlen(s);
+    char *out = malloc(len + 1);
+    assert(out);
+    memcpy(out, s, len + 1);
+    return out;
+}
+
 /// @brief Replay the editor's retained journal deltas over @p baseline.
 static char *replay_journal(vg_codeeditor_t *e, const char *baseline) {
-    char *work = strdup(baseline);
+    char *work = dup_cstr(baseline);
     for (int i = 0; i < e->journal_count; i++) {
         int idx = (e->journal_head + i) % VG_EDIT_JOURNAL_CAP;
         const vg_edit_delta_t *d = &e->journal[idx];

@@ -497,6 +497,7 @@ static const char *const glsl_fragment_src[] = {
     "? -1.0 : 1.0);\n"
     "        N = safeNormalize3(mat3(T, B, N) * mapN, N);\n"
     "    }\n"
+    ,
     "    vec3 emissive = uEmissiveColor * uPbrScalars0.w;\n"
     "    if (uHasEmissiveMap != 0) {\n"
     "        vec3 emissiveSample = texture(uEmissiveTex, materialUv(3)).rgb;\n"
