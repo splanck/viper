@@ -174,7 +174,8 @@ int compileToNative(const std::string &ilPath,
                     bool skipIlOptimization,
                     bool timePasses,
                     bool fastLink,
-                    std::optional<bool> windowsDebugRuntime) {
+                    std::optional<bool> windowsDebugRuntime,
+                    std::size_t stackSize) {
     if (arch == TargetArch::ARM64) {
         viper::codegen::aarch64::CodegenPipeline::Options opts;
         opts.input_il_path = ilPath;
@@ -185,6 +186,7 @@ int compileToNative(const std::string &ilPath,
         opts.time_passes = timePasses;
         opts.fast_link = fastLink;
         opts.windows_debug_runtime = windowsDebugRuntime;
+        opts.stack_size = stackSize;
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
@@ -212,6 +214,7 @@ int compileToNative(const std::string &ilPath,
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
+    opts.stack_size = stackSize;
 #if VIPER_HOST_WINDOWS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
@@ -260,7 +263,8 @@ int compileModuleToNative(il::core::Module module,
                           bool moduleAlreadyVerified,
                           bool timePasses,
                           bool fastLink,
-                          std::optional<bool> windowsDebugRuntime) {
+                          std::optional<bool> windowsDebugRuntime,
+                          std::size_t stackSize) {
     const std::string syntheticInputPath =
         debugSourcePath.empty() ? std::string{"<in-memory>"} : debugSourcePath;
 
@@ -274,6 +278,7 @@ int compileModuleToNative(il::core::Module module,
         opts.time_passes = timePasses;
         opts.fast_link = fastLink;
         opts.windows_debug_runtime = windowsDebugRuntime;
+        opts.stack_size = stackSize;
         if (!assetObjPath.empty())
             opts.extra_objects.push_back(assetObjPath);
 
@@ -301,6 +306,7 @@ int compileModuleToNative(il::core::Module module,
     opts.time_passes = timePasses;
     opts.fast_link = fastLink;
     opts.windows_debug_runtime = windowsDebugRuntime;
+    opts.stack_size = stackSize;
 #if VIPER_HOST_WINDOWS
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
     opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;

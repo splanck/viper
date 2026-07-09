@@ -674,12 +674,18 @@ TlsLayout buildTlsDirectory(uint64_t imageBase,
     return tls;
 }
 
-ExceptionLayout findExceptionDirectory(const std::vector<PeSection> &sections) {
+ExceptionLayout findExceptionDirectory(const std::vector<PeSection> &sections, LinkArch arch) {
+    // RUNTIME_FUNCTION is 12 bytes on x64 (begin/end/unwind RVAs) and 8 bytes on
+    // ARM64 (function RVA + xdata/packed word). RtlLookupFunctionEntry divides the
+    // directory size by this record size, so the published size must be an exact
+    // multiple — trim any section alignment padding tail instead of exposing a
+    // partial, garbage trailing entry.
+    const uint32_t recordSize = (arch == LinkArch::AArch64) ? 8u : 12u;
     ExceptionLayout result{};
     for (const auto &sec : sections) {
         if (sec.alloc && sec.name == ".pdata") {
             result.directoryRva = sec.virtualAddress;
-            result.directorySize = sec.virtualSize;
+            result.directorySize = (sec.virtualSize / recordSize) * recordSize;
             break;
         }
     }
@@ -1035,8 +1041,12 @@ bool writePeExe(const std::string &path,
         baseRelocRvas.push_back(tlsLayout.directoryRva + 24);
     }
 
-    generatedBaseRelocData =
-        buildBaseRelocationBlocks(std::move(baseRelocRvas), arch == LinkArch::AArch64);
+    // Always emit a .reloc section (empty when there are no fixups) so the image
+    // can advertise DYNAMICBASE/HIGH_ENTROPY_VA and get ASLR on both x64 and
+    // ARM64. Every absolute pointer is recorded in rebaseEntries by the applier,
+    // so an empty .reloc means there is genuinely nothing to fix up under slide.
+    generatedBaseRelocData = buildBaseRelocationBlocks(std::move(baseRelocRvas), /*forceNonEmpty=*/
+                                                       true);
     if (!generatedBaseRelocData.empty()) {
         uint32_t relocRva = 0;
         if (!checkedAlignUpU32(
@@ -1113,7 +1123,7 @@ bool writePeExe(const std::string &path,
         return a.virtualAddress < b.virtualAddress;
     });
 
-    const ExceptionLayout exceptionLayout = findExceptionDirectory(sections);
+    const ExceptionLayout exceptionLayout = findExceptionDirectory(sections, arch);
 
     if (sections.size() > std::numeric_limits<uint16_t>::max()) {
         err << "error: PE section count exceeds 16-bit file format limit\n";

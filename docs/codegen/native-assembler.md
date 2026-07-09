@@ -74,11 +74,12 @@ The native assembler has three layers:
 | x86_64 | COFF | Windows | Complete |
 | AArch64 | ELF | Linux | Complete |
 | AArch64 | Mach-O | macOS | Complete |
-| AArch64 | COFF | Windows | Object emission only |
+| AArch64 | COFF | Windows | Complete |
 
-All 6 object-file combinations ({x86_64, AArch64} × {ELF, Mach-O, COFF}) are implemented.
-End-to-end native executable linking remains incomplete on Windows ARM64 because the PE startup,
-import, and unwind path is still x86_64-specific.
+All 6 object-file combinations ({x86_64, AArch64} × {ELF, Mach-O, COFF}) are implemented, and the
+native linker produces end-to-end PE executables for Windows AArch64 as well as x86_64 (ARM64 startup
+helpers, import thunks, and packed `.pdata`/`.xdata` unwind are all emitted). See
+`docs/codegen/native-linker.md` for the authoritative supported-target matrix.
 
 ---
 

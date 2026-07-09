@@ -28,6 +28,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 
 #include <string>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -62,6 +63,90 @@ inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *p
             return true;
     }
     return false;
+}
+
+/// @brief Test whether @p name (or its de-underscored form) exactly matches any
+///        entry in @p arr (length @p count), mirroring the exact-list comparison.
+inline bool
+matchesExactName(const std::string &name, const std::string &stripped, const char *const *arr,
+                 size_t count) {
+    for (size_t i = 0; i < count; ++i)
+        if (name == arr[i] || stripped == arr[i])
+            return true;
+    return false;
+}
+
+/// @brief Symbols that are exclusive to one platform's system libraries.
+/// @details These are consulted as a negative filter: an unresolved symbol that
+///          belongs to a platform OTHER than the one being linked is rejected
+///          (not treated as a dynamic import), so a typo'd or mis-targeted
+///          foreign API — GetProcAddress on Linux, __errno_location on Windows,
+///          mach_absolute_time on Linux — fails at link time instead of being
+///          emitted as a dynamic import that can never resolve at load time.
+///          Only unambiguously OS-exclusive names appear here; anything that can
+///          legitimately be a cross-platform libc/libm/POSIX reference is left in
+///          the shared exact list. Missing an entry is safe (stays permissive as
+///          before); it can never wrongly reject a real cross-platform symbol.
+inline const std::vector<const char *> &windowsExclusiveDynamicSymbols() {
+    static const std::vector<const char *> kSyms = {
+        "ExitProcess", "GetModuleHandleA", "GetProcAddress", "VirtualAlloc", "VirtualFree",
+        "GetLastError", "GetFullPathNameA", "GetComputerNameA", "GetComputerNameW", "GetUserNameA",
+        "GetUserNameW", "GetFileSizeEx", "GetClientRect", "GlobalMemoryStatusEx",
+        "GetAdaptersAddresses", "ResetEvent", "SetEvent", "D3D11CreateDevice",
+        "D3D11CreateDeviceAndSwapChain", "D3DCompile", "D3DCompile2", "D3DCompileFromFile",
+        "D3DReflect", "CertAddEncodedCertificateToStore", "CertCloseStore",
+        "CertCreateCertificateContext", "CertCreateCertificateChainEngine",
+        "CertFreeCertificateChain", "CertFreeCertificateChainEngine", "CertFreeCertificateContext",
+        "CertGetCertificateChain", "CertOpenStore", "CertVerifyCertificateChainPolicy",
+        "CryptAcquireCertificatePrivateKey", "CryptStringToBinaryA", "BCryptGenRandom",
+        "BCryptDestroyKey", "BCryptVerifySignature", "XInputGetState", "XInputSetState",
+        "WSAStartup", "WSACleanup", "WSAGetLastError", "closesocket", "ioctlsocket",
+        "__acrt_iob_func", "__local_stdio_printf_options", "__local_stdio_scanf_options",
+        "__stdio_common_vfprintf", "__stdio_common_vsprintf", "__stdio_common_vsprintf_s",
+        "_calloc_dbg", "_free_dbg", "_malloc_dbg", "_realloc_dbg", "_vfprintf_l", "_vsscanf_l",
+        "__C_specific_handler", "__C_specific_handler_noexcept", "__current_exception",
+        "__current_exception_context", "_CxxThrowException", "__CxxFrameHandler3",
+        "__CxxFrameHandler4", "__RTDynamicCast", "__intrinsic_setjmp", "__intrinsic_setjmpex",
+        "__std_exception_copy", "__std_exception_destroy", "__std_type_info_compare",
+        "__security_check_cookie", "__security_init_cookie", "__security_pop_cookie",
+        "__security_push_cookie", "__GSHandlerCheck", "__GSHandlerCheck_EH4", "__chkstk",
+        "_Avx2WmemEnabled", "_callnewh", "callnewh", "_purecall", "__RTC_memset", "_setjmpex",
+        "_byteswap_uint64", "_rotl", "_rotl64", "_rotr", "_rotr64", "_InterlockedCompareExchange",
+        "_InterlockedCompareExchange64", "_InterlockedCompareExchangePointer",
+        "_InterlockedDecrement", "_InterlockedExchange", "_InterlockedExchange64",
+        "_InterlockedExchange8", "_InterlockedExchangeAdd", "_InterlockedExchangeAdd64",
+        "_InterlockedIncrement64", "_InterlockedOr", "TryEnterCriticalSection",
+        "CommandLineToArgvW", "CoCreateInstance", "CoInitializeEx", "CoUninitialize",
+        "CoTaskMemFree", "DragQueryFileW", "_open_osfhandle", "_cexit",
+        "_configure_narrow_argv", "_crt_at_quick_exit", "_crt_atexit", "_execute_onexit_table",
+        "_initialize_narrow_environment", "_initialize_onexit_table", "_register_onexit_function",
+        "_seh_filter_dll", "_CrtDbgReport", "_CrtDbgReportW", "rand_s", "strcpy_s", "strcat_s",
+        "wcscpy_s", "_wcsnicmp", "_wchmod", "_wsplitpath_s", "_wmakepath_s",
+        "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
+        "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9"};
+    return kSyms;
+}
+
+inline const std::vector<const char *> &macExclusiveDynamicSymbols() {
+    static const std::vector<const char *> kSyms = {
+        "sincosf_stret", "_NSGetExecutablePath", "_NSGetArgc", "_NSGetArgv",
+        "_NSConcreteStackBlock", "_NSConcreteGlobalBlock", "_NSConcreteMallocBlock", "_Block_copy",
+        "_Block_release", "_Block_object_assign", "_Block_object_dispose", "dyld_stub_binder",
+        "_tlv_atexit", "_tlv_bootstrap", "__assert_rtn", "__chkstk_darwin", "__stderrp", "__stdinp",
+        "__stdoutp", "__darwin_check_fd_set_overflow", "select$DARWIN_EXTSN", "mach_timebase_info",
+        "mach_absolute_time", "mach_task_self_", "mach_host_self", "sysctlbyname", "task_info",
+        "host_page_size", "_os_unfair_lock_lock", "_os_unfair_lock_unlock", "os_unfair_lock_lock",
+        "os_unfair_lock_unlock", "sel_registerName", "sel_getName", "_objc_empty_cache",
+        "_objc_empty_vtable"};
+    return kSyms;
+}
+
+inline const std::vector<const char *> &linuxExclusiveDynamicSymbols() {
+    static const std::vector<const char *> kSyms = {
+        "__errno_location", "__assert_fail", "__ctype_b_loc", "__isoc23_strtol",
+        "__isoc23_strtoll", "__isoc99_sscanf", "fopen64", "fseeko64", "ftello64", "getrandom",
+        "sysinfo"};
+    return kSyms;
 }
 
 /// @brief Recognise Itanium-mangled C++ runtime/library symbols (`std::*`, RTTI, etc.).
@@ -165,6 +250,25 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
 
     if (isKnownCompilerRuntimeDynamicSymbol(name, platform))
         return true;
+
+    // Reject exact-match symbols exclusive to a DIFFERENT platform's system
+    // libraries so a mis-targeted or typo'd foreign API becomes a link error
+    // instead of a dynamic import that cannot resolve at load time. The shared
+    // exact list below still accepts these on their own platform.
+    {
+        const auto &win = windowsExclusiveDynamicSymbols();
+        const auto &mac = macExclusiveDynamicSymbols();
+        const auto &lin = linuxExclusiveDynamicSymbols();
+        if (platform != LinkPlatform::Windows &&
+            matchesExactName(name, stripped, win.data(), win.size()))
+            return false;
+        if (platform != LinkPlatform::macOS &&
+            matchesExactName(name, stripped, mac.data(), mac.size()))
+            return false;
+        if (platform != LinkPlatform::Linux &&
+            matchesExactName(name, stripped, lin.data(), lin.size()))
+            return false;
+    }
 
     if ((platform == LinkPlatform::macOS || platform == LinkPlatform::Linux) && stripped == "exp10")
         return true;
@@ -283,6 +387,19 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "strtol",
         "strtod",
         "strtoul",
+        "strtoull",
+        "strspn",
+        "strcspn",
+        "strpbrk",
+        "strsep",
+        "getline",
+        "getdelim",
+        "mbstowcs",
+        "wcstombs",
+        "vprintf",
+        "vsprintf",
+        "vscanf",
+        "vsscanf",
         "exit",
         "_exit",
         "abort",
@@ -742,6 +859,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "_InterlockedOr",
         "TryEnterCriticalSection",
         "CommandLineToArgvW",
+        "CoCreateInstance",
+        "CoInitializeEx",
+        "CoUninitialize",
         "CoTaskMemFree",
         "DragQueryFileW",
         "_open_osfhandle",
@@ -816,7 +936,6 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     };
     static const char *const kLinuxDynPrefixes[] = {
         "Unwind_",
-        "X",
         "__isoc23_",
         "__isoc99_",
         "inotify_",
@@ -878,6 +997,21 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     if ((platform == LinkPlatform::macOS || platform == LinkPlatform::Linux) &&
         isKnownCppRuntimeDynamicSymbol(name))
         return true;
+
+    if (platform == LinkPlatform::Linux) {
+        // X11 (X + CamelCase, plus the Xutf8/Xkb/Xrm families) and OpenGL (gl +
+        // CamelCase, including glX) come from libX11/libGL. Match them precisely
+        // so a stray uppercase-X symbol or a gl-lowercase libc name (e.g. glob)
+        // stays a hard link error rather than an unresolvable dynamic import.
+        if ((stripped.size() >= 2 && stripped[0] == 'X' && stripped[1] >= 'A' &&
+             stripped[1] <= 'Z') ||
+            stripped.rfind("Xutf8", 0) == 0 || stripped.rfind("Xkb", 0) == 0 ||
+            stripped.rfind("Xrm", 0) == 0)
+            return true;
+        if (stripped.size() > 2 && stripped[0] == 'g' && stripped[1] == 'l' &&
+            stripped[2] >= 'A' && stripped[2] <= 'Z')
+            return true;
+    }
 
     if (platform == LinkPlatform::Windows) {
         if (isMsvcThreadSafeStaticGuardSymbol(name) || isMsvcThreadSafeStaticGuardSymbol(stripped))

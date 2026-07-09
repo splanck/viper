@@ -67,6 +67,8 @@ struct ObjSymbol {
     uint32_t weakExternalCharacteristics = 0; ///< COFF IMAGE_WEAK_EXTERN_SEARCH_* value.
     bool common = false;                      ///< Tentative/common symbol, coalesced by linker.
     size_t commonAlignment = 1;               ///< Required alignment for common storage.
+    bool altEntry = false; ///< Mach-O N_ALT_ENTRY: alternate entry inside an atom.
+    bool noDeadStrip = false; ///< Mach-O N_NO_DEAD_STRIP / __attribute__((used)); keep its section.
 };
 
 /// Section in a parsed object file.
@@ -87,6 +89,7 @@ struct ObjSection {
     ComdatSelection comdatSelection = ComdatSelection::None; ///< Duplicate-selection policy.
     std::string comdatKey; ///< COFF/ELF COMDAT group key/signature.
     bool stripped = false; ///< Dead-strip removed this section explicitly.
+    bool noDeadStrip = false; ///< ELF SHF_GNU_RETAIN / Mach-O S_ATTR_NO_DEAD_STRIP: keep alive.
 };
 
 inline size_t objSectionMemSize(const ObjSection &sec) {

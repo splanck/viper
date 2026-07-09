@@ -167,48 +167,6 @@ int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols
                                   std::ostream &out,
                                   std::ostream &err);
 
-/// @brief Append required archive paths to a linker command in reverse dependency order.
-/// @param ctx The link context containing resolved archive paths.
-/// @param cmd The command-line vector to append archive paths to.
-void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd);
-
-/// @brief Append graphics library flags and platform frameworks to the link command.
-/// @details Only appends if the link context requires the graphics runtime component.
-/// @param ctx The link context to check for graphics dependency.
-/// @param cmd The command-line vector to append flags to.
-/// @param frameworks Platform-specific framework names (e.g., "-framework Cocoa").
-void appendGraphicsLibs(const LinkContext &ctx,
-                        std::vector<std::string> &cmd,
-                        const std::vector<std::string> &frameworks);
-
-/// @brief Append audio backend library and platform frameworks to the link command.
-/// @details Only appends if the link context requires the audio runtime component.
-///          Adds libviperaud and platform-specific audio frameworks (AudioToolbox on macOS).
-/// @param ctx The link context to check for audio dependency.
-/// @param cmd The command-line vector to append flags to.
-void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd);
-
-/// @brief Return the default Apple framework list used by Viper graphics builds.
-/// @details Returns an empty list on non-Apple platforms.
-std::vector<std::string> defaultGraphicsFrameworks();
-
-/// @brief Append runtime archives, optional gfx/audio libs, and C++ runtime flags.
-/// @param ctx The resolved link context.
-/// @param cmd The command-line vector to append to.
-[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd);
-
-/// @brief Append platform-specific system-linker flags shared by native backends.
-/// @param ctx The resolved link context.
-/// @param cmd The command-line vector to append to.
-/// @param stackSize Requested stack size in bytes; 0 omits explicit stack flags.
-/// @param useElfPie Whether to force PIE on ELF targets.
-/// @param useElfMath Whether to link libm on ELF targets.
-[[maybe_unused]] void appendSystemLinkFlags(const LinkContext &ctx,
-                                            std::vector<std::string> &cmd,
-                                            std::size_t stackSize,
-                                            bool useElfPie,
-                                            bool useElfMath);
-
 // =========================================================================
 // Tool invocation
 // =========================================================================

@@ -357,7 +357,7 @@ static std::vector<uint8_t> makeMachOArm64UnsignedReloc() {
     return obj;
 }
 
-static std::vector<uint8_t> makeMachOLocalSubsections() {
+static std::vector<uint8_t> makeMachOLocalSubsections(bool secondIsAltEntry = false) {
     constexpr uint32_t segmentSize = 72 + 80;
     constexpr uint32_t sizeofcmds = segmentSize + 24;
     constexpr uint32_t dataOff = 32 + sizeofcmds;
@@ -399,7 +399,7 @@ static std::vector<uint8_t> makeMachOLocalSubsections() {
     appendLE32(obj, 8);
     obj.push_back(0x0E);
     obj.push_back(1);
-    appendLE16(obj, 0);
+    appendLE16(obj, secondIsAltEntry ? 0x0008 : 0); // n_desc: N_ALT_ENTRY when requested
     appendLE64(obj, 4);
     obj.insert(obj.end(), {'\0', 'L', 'f', 'i', 'r', 's', 't', '\0', 'L', 's', 'e', 'c', '\0'});
     return obj;
@@ -546,6 +546,17 @@ int main() {
         CHECK(obj.sections.size() == 3);
         CHECK(obj.sections[1].data.size() == 4);
         CHECK(obj.sections[2].data.size() == 4);
+    }
+
+    // F11: an N_ALT_ENTRY symbol is an alternate entry inside an atom and must NOT
+    // start a new subsection, so the __text stays a single 8-byte atom.
+    {
+        ObjFile obj;
+        std::ostringstream err;
+        auto bytes = makeMachOLocalSubsections(/*secondIsAltEntry=*/true);
+        CHECK(readObjFile(bytes.data(), bytes.size(), "altentry.o", obj, err));
+        CHECK(obj.sections.size() == 2);
+        CHECK(obj.sections[1].data.size() == 8);
     }
 
     // F2: ARM64_RELOC_SUBTRACTOR must be rejected with a clear diagnostic, not

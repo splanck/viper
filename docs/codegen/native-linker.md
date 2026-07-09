@@ -605,10 +605,11 @@ Section Data (file-aligned to 0x200)
 
 ### macOS: Code Signing
 
-macOS Ventura+ requires ad-hoc code signing for arm64 executables. The native linker includes
-`MachOCodeSign.hpp/.cpp` which produces ad-hoc signed binaries (`LC_CODE_SIGNATURE` load command with
-a `CodeDirectory` hash). The system `codesign` tool is used as a fallback when the built-in signer is
-insufficient.
+macOS Ventura+ requires ad-hoc code signing for arm64 executables to launch, and Rosetta 2 requires
+it for translated x86_64 binaries, so the linker signs both. `MachOCodeSign.hpp/.cpp` produces the
+ad-hoc signature (`LC_CODE_SIGNATURE` load command with a `CodeDirectory` of SHA-256 page hashes)
+entirely in-process, using a self-contained SHA-256 with no external tools — consistent with the
+zero-dependency policy, so signing works identically even when cross-building off a non-Apple host.
 
 ### Linux: CRT Startup
 
@@ -646,9 +647,28 @@ truncating the count would leave a trailing thunk field uninitialized and dyld t
 | `--system-link` | Deprecated alias for native linking |
 | `--native-asm` | Use native assembler (this is the default) |
 | `--system-asm` | Override: use system assembler (`cc -c`) instead |
+| `--arch arm64\|x64` | Override native target architecture (`viper build`) |
+| `--fast-link \| --no-fast-link` | Toggle the fast link path; skips string dedup + ICF |
+| `--stack-size BYTES` | Set the executable stack size (decimal or `0x` hex; `viper build`) |
 
 Default behavior: the native assembler and native linker are used by default. `--system-asm` still requests
 the host assembler for `.s -> .o`, but `--system-link` no longer routes the final executable through `cc`.
+`--fast-link` (implied by `-O0`) skips cross-module string deduplication and Identical Code Folding.
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `VIPER_LINKER_STATS` | When set, prints per-stage link timings to stderr (`[link-time] <stage> <ms>`) |
+| `VIPER_LIB_PATH` | Additional directory searched for runtime/support archives |
+| `VIPER_BUILD_DIR` / `VIPER_BUILD_TYPE` | Override the discovered CMake build directory / configuration |
+
+### Known limitations
+
+- **Conditional branches are not trampolined.** Only unconditional `B`/`BL` (`Branch26`) get veneers;
+  an out-of-range AArch64 `B.cond`/`CBZ`/`CBNZ` (±1MB) is a hard link error rather than islanded.
+- A link may transparently run `cmake --build <dir> --target <lib>` to produce runtime archives that
+  are referenced but not yet built.
 
 ---
 

@@ -37,6 +37,7 @@ enum class LinuxNeededLib : uint8_t {
     LibPthread,
     LibStdCpp,
     LibGccS,
+    LibGL,
     LibX11,
     LibASound,
 };
@@ -55,6 +56,8 @@ const char *linuxNeededLibName(LinuxNeededLib lib) {
             return "libstdc++.so.6";
         case LinuxNeededLib::LibGccS:
             return "libgcc_s.so.1";
+        case LinuxNeededLib::LibGL:
+            return "libGL.so.1";
         case LinuxNeededLib::LibX11:
             return "libX11.so.6";
         case LinuxNeededLib::LibASound:
@@ -127,10 +130,30 @@ bool isLinuxCompilerRuntimeSymbol(const std::string &name) {
     return kExact.count(name) != 0;
 }
 
+// OpenGL uses `gl` + CamelCase (glClear, glGenTextures) and GLX uses `glX`;
+// exclude libc `glob`/`globfree` (gl + lowercase) which are NOT OpenGL.
+bool isLinuxGlSymbol(const std::string &name) {
+    return name.size() > 2 && name[0] == 'g' && name[1] == 'l' && name[2] >= 'A' && name[2] <= 'Z';
+}
+
+// X11 uses `X` + CamelCase (XOpenDisplay) plus the Xutf8/Xkb/Xrm families. Match
+// those precisely instead of any `X*` so a stray uppercase-X libc/user symbol is
+// not silently routed to libX11 (which also drags libX11 into non-GUI programs).
+bool isLinuxX11Symbol(const std::string &name) {
+    if (name.size() < 2 || name[0] != 'X')
+        return false;
+    if (name[1] >= 'A' && name[1] <= 'Z')
+        return true;
+    return name.rfind("Xutf8", 0) == 0 || name.rfind("Xkb", 0) == 0 ||
+           name.rfind("Xrm", 0) == 0;
+}
+
 LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
     if (name.rfind("snd_", 0) == 0)
         return LinuxNeededLib::LibASound;
-    if (name.rfind("X", 0) == 0)
+    if (isLinuxGlSymbol(name))
+        return LinuxNeededLib::LibGL;
+    if (isLinuxX11Symbol(name))
         return LinuxNeededLib::LibX11;
     if (isLinuxDlSymbol(name))
         return LinuxNeededLib::LibDL;
@@ -165,6 +188,7 @@ bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
         LinuxNeededLib::LibPthread,
         LinuxNeededLib::LibStdCpp,
         LinuxNeededLib::LibGccS,
+        LinuxNeededLib::LibGL,
         LinuxNeededLib::LibX11,
         LinuxNeededLib::LibASound,
     };

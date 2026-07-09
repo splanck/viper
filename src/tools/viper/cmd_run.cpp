@@ -157,6 +157,7 @@ struct RunBuildConfig {
     std::optional<viper::tools::TargetArch> archOverride; ///< --arch override.
     std::optional<bool> fastLinkOverride;                 ///< --fast-link/--no-fast-link.
     std::optional<bool> windowsDebugRuntimeOverride;      ///< Windows debug/release runtime.
+    std::optional<std::size_t> stackSizeOverride;         ///< --stack-size (bytes) for the exe.
 };
 
 /// @brief Print usage for the `viper run`, `viper build`, or `viper check` subcommand.
@@ -220,6 +221,8 @@ void printRunBuildUsage(RunMode mode, std::ostream &out = std::cerr) {
         << "  -o PATH                       Output .il or native binary path\n"
         << "  --arch arm64|x64              Override native target architecture\n"
         << "  --fast-link | --no-fast-link  Override linker mode\n"
+        << "  --stack-size BYTES            Set the native executable stack size "
+           "(decimal or 0x hex)\n"
         << "  --windows-debug-runtime       Link Windows debug runtime\n"
         << "  --windows-release-runtime     Link Windows release runtime\n"
         << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
@@ -473,6 +476,32 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                                             {}});
             }
             config.fastLinkOverride = false;
+        } else if (arg == "--stack-size") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--stack-size is only valid with 'build'",
+                                            {},
+                                            {}});
+            }
+            if (i + 1 >= argc) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--stack-size requires a byte count",
+                                            {},
+                                            {}});
+            }
+            const std::string val = argv[++i];
+            char *end = nullptr;
+            const unsigned long long parsed = std::strtoull(val.c_str(), &end, 0);
+            if (end == val.c_str() || (end != nullptr && *end != '\0')) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--stack-size must be a decimal or 0x-hex byte count",
+                                            {},
+                                            {}});
+            }
+            config.stackSizeOverride = static_cast<std::size_t>(parsed);
         } else if (arg == "--windows-debug-runtime") {
             if (mode != RunMode::Build) {
                 return il::support::Expected<RunBuildConfig>(
@@ -1123,7 +1152,8 @@ int executeRunBuildConfig(RunBuildConfig config) {
                                                      moduleVerified,
                                                      config.shared.timeCompile,
                                                      fastLink,
-                                                     config.windowsDebugRuntimeOverride);
+                                                     config.windowsDebugRuntimeOverride,
+                                                     config.stackSizeOverride.value_or(0));
         printCompileTime(config.shared, "native-codegen-link", nativeStart);
         return rc;
     }

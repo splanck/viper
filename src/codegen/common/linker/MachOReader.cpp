@@ -26,6 +26,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::linker {
@@ -60,6 +61,7 @@ static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
 static constexpr uint32_t S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
 static constexpr uint32_t S_ATTR_SOME_INSTRUCTIONS = 0x00000400;
 static constexpr uint32_t S_ATTR_DEBUG = 0x02000000;
+static constexpr uint32_t S_ATTR_NO_DEAD_STRIP = 0x10000000;
 
 struct mach_header_64 {
     uint32_t magic;
@@ -169,21 +171,38 @@ static void splitMachOTextSubsections(ObjFile &obj) {
     std::vector<uint32_t> directMap(obj.sections.size(), 0);
     std::vector<Range> ranges;
 
+    // Bucket symbol indices by their defining section ONCE. Previously the split
+    // and part-naming loops rescanned every symbol per section, which is O(sections
+    // x symbols) — quadratic for a single large __text with many symbols.
+    std::vector<std::vector<uint32_t>> symbolsBySection(obj.sections.size());
+    for (uint32_t i = 0; i < obj.symbols.size(); ++i) {
+        const auto &sym = obj.symbols[i];
+        if (sym.sectionIndex > 0 && sym.sectionIndex < symbolsBySection.size())
+            symbolsBySection[sym.sectionIndex].push_back(i);
+    }
+
     for (uint32_t si = 1; si < obj.sections.size(); ++si) {
         const auto &sec = obj.sections[si];
         const bool splitCandidate =
             sec.executable && sec.name == "__TEXT,__text" && sec.data.size() > 1;
 
         std::vector<size_t> cuts;
+        std::unordered_map<size_t, std::string> nameAtOffset;
         if (splitCandidate) {
             cuts.push_back(0);
-            for (const auto &sym : obj.symbols) {
-                if (sym.sectionIndex != si || sym.name.empty())
+            for (uint32_t symIdx : symbolsBySection[si]) {
+                const auto &sym = obj.symbols[symIdx];
+                if (sym.name.empty() || sym.name.rfind("$sect.", 0) == 0)
                     continue;
-                if (sym.name.rfind("$sect.", 0) == 0)
+                if (sym.offset >= sec.data.size())
                     continue;
-                if (sym.offset < sec.data.size())
-                    cuts.push_back(sym.offset);
+                // N_ALT_ENTRY marks an alternate entry point inside an atom; it
+                // must NOT start a new subsection (splitting there would fracture
+                // the atom and misdistribute its relocations/data).
+                if (sym.altEntry)
+                    continue;
+                cuts.push_back(sym.offset);
+                nameAtOffset.emplace(sym.offset, sym.name); // first symbol names it
             }
             std::sort(cuts.begin(), cuts.end());
             cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
@@ -215,13 +234,9 @@ static void splitMachOTextSubsections(ObjFile &obj) {
             part.comdatSelection = sec.comdatSelection;
             part.comdatKey = sec.comdatKey;
             part.stripped = sec.stripped;
-            for (const auto &sym : obj.symbols) {
-                if (sym.sectionIndex == si && sym.offset == start && !sym.name.empty() &&
-                    sym.name.rfind("$sect.", 0) != 0) {
-                    part.name = "__TEXT,__text." + sym.name;
-                    break;
-                }
-            }
+            auto nameIt = nameAtOffset.find(start);
+            if (nameIt != nameAtOffset.end())
+                part.name = "__TEXT,__text." + nameIt->second;
             part.data.assign(sec.data.begin() + static_cast<std::ptrdiff_t>(start),
                              sec.data.begin() + static_cast<std::ptrdiff_t>(end));
             part.memSize = part.data.size();
@@ -567,6 +582,10 @@ bool readMachOObj(
                     (secType == macho::S_ZEROFILL) || (secType == macho::S_THREAD_LOCAL_ZEROFILL);
                 os.zeroFill = isZerofill;
 
+                // S_ATTR_NO_DEAD_STRIP keeps the section alive regardless of
+                // reachability (the section-level form of __attribute__((used))).
+                os.noDeadStrip = (sec->flags & macho::S_ATTR_NO_DEAD_STRIP) != 0;
+
                 if (sec->size > static_cast<uint64_t>(SIZE_MAX) ||
                     sec->size > kMaxObjSectionBytes) {
                     err << "error: " << name << ": Mach-O section is too large\n";
@@ -847,6 +866,13 @@ bool readMachOObj(
             } else {
                 os.binding = ObjSymbol::Local;
             }
+
+            // N_ALT_ENTRY (0x0008): an alternate entry point inside an existing
+            // atom. Recorded so subsection splitting does not cut the atom here.
+            os.altEntry = (nl->n_desc & 0x0008) != 0;
+            // N_NO_DEAD_STRIP (0x0020): __attribute__((used)); its section must be
+            // kept alive by dead-strip even if nothing references it.
+            os.noDeadStrip = (nl->n_desc & 0x0020) != 0;
 
             // Map Mach-O 1-based section number to our section index.
             // machoSecMap translates Mach-O indices (which include skipped debug

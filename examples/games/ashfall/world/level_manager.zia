@@ -75,9 +75,15 @@ class LevelManager {
         levels.build(levelId, lb, obj);
         lb.build(world, phys, canvas, texLib);
         enemies.clearCovers();
+        enemies.clearFlanks();
         var ci = 0;
         while ci < lb.coverCount() {
             enemies.addCover(lb.coverXat(ci), lb.coverZat(ci), lb.coverFaceXat(ci), lb.coverFaceZat(ci));
+            ci = ci + 1;
+        }
+        ci = 0;
+        while ci < lb.flankCount() {
+            enemies.addFlank(lb.flankXat(ci), lb.flankZat(ci));
             ci = ci + 1;
         }
         // Instantiate the level's props (entities + instance batches).

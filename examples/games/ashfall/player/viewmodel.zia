@@ -63,21 +63,23 @@ class ViewModel {
         // Bob: Lissajous from move speed (suppressed while airborne / ADS).
         var speedN = M.clampf(moveSpeed / config.SPEED_SPRINT, 0.0, 1.0);
         if grounded == false { speedN = 0.0; }
-        bobAmt = M.approach(bobAmt, speedN, 0.3, dt);
-        bobPhase = bobPhase + moveSpeed * dt * 2.4;
-        var bobX = Math.Sin(bobPhase) * 0.006 * bobAmt * (1.0 - adsT);
-        var bobY = M.absf(Math.Cos(bobPhase)) * 0.004 * bobAmt * (1.0 - adsT);
+        bobAmt = M.approach(bobAmt, speedN, 0.45, dt);
+        bobPhase = bobPhase + moveSpeed * dt * 3.2;
+        var adsDamp = 1.0 - adsT * 0.82;
+        var bobX = Math.Sin(bobPhase) * 0.028 * bobAmt * adsDamp;
+        var bobY = Math.Sin(bobPhase * 2.0 + 0.4) * 0.018 * bobAmt * adsDamp;
+        var bobZ = Math.Cos(bobPhase) * 0.010 * bobAmt * adsDamp;
 
         // Recoil kick spring back to 0.
         kickVel = kickVel + (0.0 - kick) * 120.0 * dt - kickVel * 16.0 * dt;
         kick = kick + kickVel * dt;
 
         // Compose the socket offset (ADS pulls toward center + slightly forward).
-        var hipX = 0.14; var hipY = -0.16; var hipZ = -0.30;
+        var hipX = 0.15; var hipY = -0.17 - speedN * 0.018; var hipZ = -0.31;
         var adsX = 0.0;  var adsY = -0.05; var adsZ = -0.22;
         offX = M.lerpf(hipX, adsX, adsT) + swayX + bobX;
         offY = M.lerpf(hipY, adsY, adsT) + swayY + bobY;
-        offZ = M.lerpf(hipZ, adsZ, adsT) - kick * 0.06;
+        offZ = M.lerpf(hipZ, adsZ, adsT) + bobZ - kick * 0.06;
     }
 
     expose func getOffX() -> Float { return offX; }

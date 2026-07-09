@@ -188,14 +188,20 @@ void deadStrip(std::vector<ObjFile> &allObjects,
             markLive(it->second.objIndex, it->second.secIndex);
     }
 
-    // Always-live sections (ObjC, TLS, init/fini) across all input objects.
+    // Always-live sections (ObjC, TLS, init/fini) across all input objects, plus
+    // sections explicitly retained via SHF_GNU_RETAIN / S_ATTR_NO_DEAD_STRIP and
+    // sections owning an N_NO_DEAD_STRIP (__attribute__((used))) symbol.
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
-            if (sec.tls || (preserveDebugSections && isDebugSection(sec)) ||
+            if (sec.tls || sec.noDeadStrip || (preserveDebugSections && isDebugSection(sec)) ||
                 isAlwaysLiveSection(sec.name))
                 markLive(oi, si);
+        }
+        for (const auto &sym : obj.symbols) {
+            if (sym.noDeadStrip && sym.sectionIndex > 0 && sym.sectionIndex < obj.sections.size())
+                markLive(oi, sym.sectionIndex);
         }
         if (platform == LinkPlatform::Windows && obj.format == ObjFileFormat::COFF) {
             for (const auto &sym : obj.symbols) {

@@ -95,6 +95,14 @@ func start() {
     var t4 = 0;
     while t4 < 120 { tick(g4); t4 = t4 + 1; }   // must not trap
 
+    // Campaign levels feed authored flank pockets into the AI manager.
+    var gt = new game.Game();
+    gt.initCore(0x4445);
+    gt.setScripted(true);
+    gt.setLevel(config.LV_L2);
+    gt.boot(true, false);
+    if gt.getEnemies().flankCount() < 2 { fail("campaign flank hints did not reach AI"); return; }
+
     // --- 5. Attack-token cap holds across a brawl ---------------------------
     var g5 = newGame(0x5555);
     g5.devSetGod(true);

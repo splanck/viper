@@ -93,6 +93,12 @@ class Game {
     hide weapon_models.WeaponModels weaponVis;
     hide G3D.Mesh3D projMesh;
     hide G3D.Material3D projMat;
+    hide G3D.Mesh3D objBeaconMesh;
+    hide G3D.Mesh3D objBeaconTopMesh;
+    hide G3D.Material3D objBeaconMat;
+    hide G3D.Material3D objReadyMat;
+    hide G3D.Material3D objEnemyMat;
+    hide Boolean objBeaconReady;
 
     // --- Combatants ----------------------------------------------------------
     hide health.PlayerHealth playerHealth;
@@ -193,6 +199,7 @@ class Game {
         diffSys = new difficulty.Difficulty();
         score = new scoring.Scoring();
         graphicsUp = false;
+        objBeaconReady = false;
         fullscreenWanted = true;
         scripted = false;
         inMoveX = 0.0; inMoveZ = 0.0; inLookDX = 0.0; inLookDY = 0.0;
@@ -347,6 +354,7 @@ class Game {
         weaponVis.setup(texLib, assetReg);
         projMesh = G3D.Mesh3D.Sphere(0.08, 6);
         projMat = G3D.Material3D.NewColor(1.0, 0.8, 0.3);
+        setupObjectiveBeacon();
         giveStartingLoadout();
 
         // Combatants + world systems.
@@ -403,6 +411,21 @@ class Game {
             if menuSys.qualityTier() == 2 { tier = postfx.TIER_CINEMATIC; }
             postfxSys.setup(canvas, tier);
         }
+    }
+
+    hide func setupObjectiveBeacon() {
+        objBeaconMesh = G3D.Mesh3D.Box(0.16, 2.2, 0.16);
+        objBeaconTopMesh = G3D.Mesh3D.Sphere(0.34, 12);
+        objBeaconMat = G3D.Material3D.NewColor(1.0, 0.68, 0.24);
+        G3D.Material3D.SetEmissiveColor(objBeaconMat, 1.0, 0.62, 0.18);
+        objBeaconMat.EmissiveIntensity = 2.4;
+        objReadyMat = G3D.Material3D.NewColor(0.55, 1.0, 0.72);
+        G3D.Material3D.SetEmissiveColor(objReadyMat, 0.55, 1.0, 0.72);
+        objReadyMat.EmissiveIntensity = 3.0;
+        objEnemyMat = G3D.Material3D.NewColor(1.0, 0.25, 0.18);
+        G3D.Material3D.SetEmissiveColor(objEnemyMat, 1.0, 0.25, 0.18);
+        objEnemyMat.EmissiveIntensity = 2.8;
+        objBeaconReady = true;
     }
 
     // Point the texture library at a level's accent hue + sky env map. Must run
@@ -562,6 +585,9 @@ class Game {
     expose func getTargetReg() -> targets.TargetRegistry { return targetReg; }
     expose func getPlayerHealth() -> health.PlayerHealth { return playerHealth; }
     expose func getEnemies() -> ai_core.EnemyManager { return enemies; }
+    expose func devViewOffX() -> Float { return vm.getOffX(); }
+    expose func devViewOffY() -> Float { return vm.getOffY(); }
+    expose func devViewOffZ() -> Float { return vm.getOffZ(); }
 
     // Probe helper: spawn an enemy of `archetype` at (x, z).
     expose func devSpawnEnemy(archetype: Integer, ex: Float, ez: Float) -> Integer {
@@ -1052,6 +1078,43 @@ class Game {
         diag.setCounts(reg.countOf(config.ARCH_ENEMY), reg.countOf(config.ARCH_PROJECTILE), 0, 0);
     }
 
+    hide func drawObjectiveBeacon() {
+        if objBeaconReady == false { return; }
+        if currentLevel == config.LV_ARENA { return; }
+        if state != config.ST_PLAYING && state != config.ST_PAUSED { return; }
+        var obj = levelMgr.getObjectives();
+        var oi = obj.activeIndex();
+        if oi < 0 { return; }
+        var k = obj.kindOf(oi);
+        var mx = obj.txAt(oi);
+        var mz = obj.tzAt(oi);
+        var hasMarker = false;
+        var ready = false;
+        var enemyMarker = false;
+        if k == objectives.OBJ_REACH || k == objectives.OBJ_ACTIVATE ||
+           k == objectives.OBJ_SURVIVE || k == objectives.OBJ_COLLECT {
+            hasMarker = true;
+            if k == objectives.OBJ_ACTIVATE {
+                ready = M.distXZ(player.getX(), player.getZ(), mx, mz) <= obj.radiusOf(oi);
+            }
+        } else if k == objectives.OBJ_CLEAR || k == objectives.OBJ_KILL {
+            var target = enemies.nearestAliveTo(player.getX(), player.getZ());
+            if target >= 0 {
+                mx = enemies.posX(target);
+                mz = enemies.posZ(target);
+                hasMarker = true;
+                enemyMarker = true;
+            }
+        }
+        if hasMarker == false { return; }
+        var mat = objBeaconMat;
+        if ready { mat = objReadyMat; }
+        if enemyMarker { mat = objEnemyMat; }
+        var bob = Math.Sin(playTime * 4.0) * 0.18;
+        G3D.Canvas3D.DrawMesh(canvas, objBeaconMesh, Math.Mat4.Translate(mx, 1.10, mz), mat);
+        G3D.Canvas3D.DrawMesh(canvas, objBeaconTopMesh, Math.Mat4.Translate(mx, 2.55 + bob, mz), mat);
+    }
+
     // --- Render (manual scene + overlay) -------------------------------------
     hide func render(alpha: Float) {
         world.BeginFrame();
@@ -1071,6 +1134,7 @@ class Game {
         }
         world.DrawScene();
         levelMgr.drawProps();
+        drawObjectiveBeacon();
         if proj.activeProjectiles() > 0 {
             proj.draw(canvas, projMesh, projMat);
         }
@@ -1106,7 +1170,8 @@ class Game {
                 if oi >= 0 {
                     var k = obj.kindOf(oi);
                     objPrompt = obj.promptOf(oi);
-                    if k == objectives.OBJ_REACH || k == objectives.OBJ_ACTIVATE {
+                    if k == objectives.OBJ_REACH || k == objectives.OBJ_ACTIVATE ||
+                       k == objectives.OBJ_SURVIVE || k == objectives.OBJ_COLLECT {
                         var dx = obj.txAt(oi) - player.getX();
                         var dz = obj.tzAt(oi) - player.getZ();
                         objBearing = M.toDeg(Math.Atan2(dx, 0.0 - dz));
@@ -1117,6 +1182,16 @@ class Game {
                                 objPrompt = "PRESS E TO ACTIVATE";
                                 objReady = true;
                             }
+                        }
+                    } else if k == objectives.OBJ_CLEAR || k == objectives.OBJ_KILL {
+                        var target = enemies.nearestAliveTo(player.getX(), player.getZ());
+                        if target >= 0 {
+                            var edx = enemies.posX(target) - player.getX();
+                            var edz = enemies.posZ(target) - player.getZ();
+                            objBearing = M.toDeg(Math.Atan2(edx, 0.0 - edz));
+                            objDistance = Math.Sqrt(edx * edx + edz * edz);
+                            hasMarker = true;
+                            objPrompt = "ELIMINATE HOSTILES: " + S.intStr(enemies.aliveCount()) + " REMAIN";
                         }
                     }
                 }

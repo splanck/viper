@@ -1005,6 +1005,10 @@ int main() {
     {
         CodeSection text;
         CodeSection rodata;
+        // F10: a Darwin-exclusive symbol referenced from a Windows link must be a
+        // hard undefined-symbol error, not accepted as a dynamic import. (The
+        // planner's own "no DLL mapping" path is covered directly in
+        // test_platform_import_planners.)
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("mach_timebase_info");
         text.emit32LE(0xD2800000U); // mov x0, #0
@@ -1030,7 +1034,7 @@ int main() {
         std::ostringstream err;
         const int rc = nativeLink(opts, out, err);
         CHECK(rc != 0);
-        CHECK(err.str().find("no DLL mapping") != std::string::npos);
+        CHECK(err.str().find("undefined symbol") != std::string::npos);
         CHECK(err.str().find("mach_timebase_info") != std::string::npos);
     }
 

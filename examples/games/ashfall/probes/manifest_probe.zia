@@ -37,6 +37,10 @@ func start() {
         if a.spawnCount() != b.spawnCount() { fail("spawn count L" + toString(lv)); return; }
         if a.pickupCount() != b.pickupCount() { fail("pickup count L" + toString(lv)); return; }
         if a.coverCount() != b.coverCount() { fail("cover count L" + toString(lv)); return; }
+        if a.flankCount() != b.flankCount() { fail("flank count L" + toString(lv)); return; }
+        if a.routeMarkerCount() != b.routeMarkerCount() { fail("route count L" + toString(lv)); return; }
+        if a.landmarkCount() != b.landmarkCount() { fail("landmark count L" + toString(lv)); return; }
+        if a.encounterBeatCount() != b.encounterBeatCount() { fail("beat count L" + toString(lv)); return; }
         if a.gateCount() != b.gateCount() { fail("gate count L" + toString(lv)); return; }
         if M.absf(a.startZv() - b.startZv()) > 0.01 { fail("start Z mismatch L" + toString(lv)); return; }
         if a.boxCount() > 0 {
@@ -47,6 +51,18 @@ func start() {
         }
         if a.coverCount() > 0 {
             if M.absf(a.coverXat(0) - b.coverXat(0)) > 0.01 { fail("cover[0] x mismatch L" + toString(lv)); return; }
+        }
+        if a.flankCount() > 0 {
+            if M.absf(a.flankXat(0) - b.flankXat(0)) > 0.01 { fail("flank[0] x mismatch L" + toString(lv)); return; }
+        }
+        if a.routeMarkerCount() > 0 {
+            if a.routeMarkerKindAt(0) != b.routeMarkerKindAt(0) { fail("route[0] kind mismatch L" + toString(lv)); return; }
+        }
+        if a.landmarkCount() > 0 {
+            if a.landmarkKindAt(0) != b.landmarkKindAt(0) { fail("landmark[0] kind mismatch L" + toString(lv)); return; }
+        }
+        if a.encounterBeatCount() > 0 {
+            if a.encounterBeatWaveAt(0) != b.encounterBeatWaveAt(0) { fail("beat[0] wave mismatch L" + toString(lv)); return; }
         }
         if a.gateCount() > 0 {
             if a.gateUnlockAt(0) != b.gateUnlockAt(0) { fail("gate[0] unlock mismatch L" + toString(lv)); return; }

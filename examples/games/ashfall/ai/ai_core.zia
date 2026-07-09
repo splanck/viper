@@ -69,10 +69,13 @@ class EnemyManager {
     hide List[Float] bossPulseT;
     hide List[Float] lastKnownX; hide List[Float] lastKnownZ;
     hide List[Float] orbitPhase;
+    hide List[Float] repositionT;
+    hide List[Integer] flankChoice;
     hide List[G3D.Physics3DBody] torso;
     hide List[G3D.Physics3DBody] head;
     hide List[G3D.Physics3DBody] weakBody;
     hide List[Float] coverX; hide List[Float] coverZ; hide List[Float] coverFaceX; hide List[Float] coverFaceZ;
+    hide List[Float] flankX; hide List[Float] flankZ;
     hide enemy_models.EnemyModels models;
     hide Integer cap;
     hide Integer killCount;
@@ -88,8 +91,10 @@ class EnemyManager {
         disabledT = []; staggerT = []; hasToken = []; alive = []; phase = [];
         routeOn = []; routeX = []; routeZ = []; bossPulseT = [];
         lastKnownX = []; lastKnownZ = []; orbitPhase = [];
+        repositionT = []; flankChoice = [];
         torso = []; head = []; weakBody = [];
         coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
+        flankX = []; flankZ = [];
         cap = config.POOL_AI;
         killCount = 0;
         attacksLanded = 0;
@@ -109,6 +114,7 @@ class EnemyManager {
             telegraphKind.Add(0); disabledT.Add(0.0); staggerT.Add(0.0); hasToken.Add(0);
             alive.Add(0); phase.Add(0); routeOn.Add(0); routeX.Add(0.0); routeZ.Add(0.0);
             bossPulseT.Add(0.0); lastKnownX.Add(0.0); lastKnownZ.Add(0.0); orbitPhase.Add(0.0);
+            repositionT.Add(0.0); flankChoice.Add(-1);
             // Persistent colliders + nodes, reused across the pool.
             var t = G3D.Physics3DBody.NewAABB(0.4, 0.9, 0.4, 0.0);
             G3D.Physics3DBody.set_CollisionLayer(t, config.LAYER_ENEMY);
@@ -139,6 +145,10 @@ class EnemyManager {
         coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
     }
 
+    expose func clearFlanks() {
+        flankX = []; flankZ = [];
+    }
+
     /// Register a level-authored cover hint for ranged AI.
     ///
     /// The facing vector is stored for future animation/lean work; the current
@@ -146,6 +156,12 @@ class EnemyManager {
     expose func addCover(x0: Float, z0: Float, faceX0: Float, faceZ0: Float) {
         coverX.Add(x0); coverZ.Add(z0); coverFaceX.Add(faceX0); coverFaceZ.Add(faceZ0);
     }
+
+    expose func addFlank(x0: Float, z0: Float) {
+        flankX.Add(x0); flankZ.Add(z0);
+    }
+
+    expose func flankCount() -> Integer { return flankX.Count; }
 
     // --- Spawn / despawn -----------------------------------------------------
     hide func freeSlot() -> Integer {
@@ -183,6 +199,8 @@ class EnemyManager {
         routeOn[s] = 0;
         routeX[s] = sx;
         routeZ[s] = sz;
+        repositionT[s] = 0.0;
+        flankChoice[s] = -1;
         alive[s] = 1;
         orbitPhase[s] = rngAi.range(0.0, 6.28);
         // Hand the slot's visuals to the model layer (GLB rig or composite).
@@ -259,6 +277,19 @@ class EnemyManager {
         while i < cap { n = n + alive[i]; i = i + 1; }
         return n;
     }
+    expose func nearestAliveTo(px: Float, pz: Float) -> Integer {
+        var best = -1;
+        var bestD = 1000000.0;
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 {
+                var d = M.distXZ(x[i], z[i], px, pz);
+                if d < bestD { bestD = d; best = i; }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
     expose func setHealthScale(sc: Float) { if sc > 0.1 { healthScale = sc; } }
     expose func killCountTotal() -> Integer { return killCount; }
     expose func attacksLandedTotal() -> Integer { return attacksLanded; }
@@ -317,6 +348,10 @@ class EnemyManager {
     hide func updateOne(s: Integer, dt: Float, px: Float, py: Float, pz: Float, playerAlive: Boolean) {
         // Timers.
         if atkCd[s] > 0.0 { atkCd[s] = atkCd[s] - dt; }
+        if repositionT[s] > 0.0 {
+            repositionT[s] = repositionT[s] - dt;
+            if repositionT[s] <= 0.0 { flankChoice[s] = -1; }
+        }
         if staggerT[s] > 0.0 {
             staggerT[s] = staggerT[s] - dt;
             if staggerT[s] <= 0.0 && state[s] == AI_STAGGER { state[s] = AI_COMBAT; }
@@ -564,12 +599,27 @@ class EnemyManager {
         var a = arch[s];
         var band = defs.atkRangeOf(a);
         var cover = bestCoverFor(s, px, pz, band);
+        var flank = bestFlankFor(s, px, pz, band);
         // Hold a firing band: approach if too far, back off if too close.
         if dist > band { moveToward(s, dt, px, pz, defs.speedOf(a)); }
         else if cover >= 0 && dist < band * 0.9 {
             moveToward(s, dt, coverX[cover], coverZ[cover], defs.speedOf(a) * 0.78);
         } else if dist < band * 0.4 {
             moveToward(s, dt, x[s] * 2.0 - px, z[s] * 2.0 - pz, defs.speedOf(a) * 0.6);
+        } else {
+            if flankChoice[s] < 0 && flank >= 0 && repositionT[s] <= 0.0 {
+                flankChoice[s] = flank;
+                repositionT[s] = 2.2;
+            }
+            if flankChoice[s] >= 0 {
+                var fc = flankChoice[s];
+                if M.distXZ(x[s], z[s], flankX[fc], flankZ[fc]) > 1.3 {
+                    moveToward(s, dt, flankX[fc], flankZ[fc], defs.speedOf(a) * 0.55);
+                } else {
+                    flankChoice[s] = -1;
+                    repositionT[s] = 1.5;
+                }
+            }
         }
         if playerAlive && seen {
             tryAttack(s, dt, px, pz, dist <= band, config.DMG_HITSCAN);
@@ -591,6 +641,26 @@ class EnemyManager {
                 var ed = M.distXZ(coverX[i], coverZ[i], x[s], z[s]);
                 var prefer = M.absf(pd - band * 0.72);
                 var score = ed + prefer * 0.55;
+                if score < bestScore {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    hide func bestFlankFor(s: Integer, px: Float, pz: Float, band: Float) -> Integer {
+        var best = -1;
+        var bestScore = 1000000.0;
+        var i = 0;
+        while i < flankX.Count {
+            var pd = M.distXZ(flankX[i], flankZ[i], px, pz);
+            if pd > band * 0.45 && pd < band * 1.15 {
+                var ed = M.distXZ(flankX[i], flankZ[i], x[s], z[s]);
+                var prefer = M.absf(pd - band * 0.75);
+                var score = ed + prefer * 0.4;
                 if score < bestScore {
                     bestScore = score;
                     best = i;

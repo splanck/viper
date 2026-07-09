@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/PlatformImportPlanner.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -324,6 +325,65 @@ TEST(PlatformImportPlanners, WindowsPlannerRejectsStaticOnlyMsvcStdHelperImports
         generateWindowsImports(LinkArch::X86_64, {"__std_find_trivial_1"}, false, plan, err));
     EXPECT_NE(std::string::npos, err.str().find("__std_find_trivial_1"));
     EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
+}
+
+// F10: the dynamic-symbol allow-list is platform-scoped for names exclusive to
+// one platform's system libraries, so a foreign/typo'd API is a link error
+// elsewhere instead of a dynamic import that never resolves at load time.
+TEST(DynamicSymbolPolicy, ForeignPlatformSymbolsRejectedNativeAccepted) {
+    // Win32 API: accepted on Windows, rejected on Linux/macOS.
+    EXPECT_TRUE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::Windows));
+    EXPECT_FALSE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::macOS));
+
+    // Darwin/Mach: accepted on macOS, rejected on Linux/Windows.
+    EXPECT_TRUE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::macOS));
+    EXPECT_FALSE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::Windows));
+
+    // glibc-internal: accepted on Linux, rejected on macOS/Windows.
+    EXPECT_TRUE(isKnownDynamicSymbol("__errno_location", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("__errno_location", LinkPlatform::macOS));
+    EXPECT_FALSE(isKnownDynamicSymbol("__errno_location", LinkPlatform::Windows));
+
+    // Genuinely cross-platform libc stays accepted on every platform.
+    EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::Windows));
+    EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::Linux));
+    EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::macOS));
+}
+
+// F24/F25: OpenGL (gl + CamelCase, incl. glX) resolves to libGL and X11 (X +
+// CamelCase) to libX11, while libc glob / stray uppercase-X names are NOT treated
+// as GL/X11 dynamic imports.
+TEST(PlatformImportPlanners, LinuxClassifiesGlAndX11Precisely) {
+    std::unordered_set<std::string> syms = {"glClear", "glXCreateContext", "XOpenDisplay"};
+    LinuxImportPlan plan;
+    std::ostringstream err;
+    EXPECT_TRUE(planLinuxImports(syms, plan, err));
+    EXPECT_TRUE(contains(plan.neededLibs, std::string("libGL.so.1")));
+    EXPECT_TRUE(contains(plan.neededLibs, std::string("libX11.so.6")));
+
+    EXPECT_TRUE(isKnownDynamicSymbol("glClear", LinkPlatform::Linux));
+    EXPECT_TRUE(isKnownDynamicSymbol("glXCreateContext", LinkPlatform::Linux));
+    EXPECT_TRUE(isKnownDynamicSymbol("XOpenDisplay", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("Xtypo", LinkPlatform::Linux));      // X + lowercase
+    EXPECT_FALSE(isKnownDynamicSymbol("globmatch", LinkPlatform::Linux));  // gl + lowercase
+}
+
+// F22: the WASAPI/COM entry points used by the Windows audio backend are both
+// accepted as dynamic imports and mapped to ole32.dll (previously the planner
+// listed them but isKnownDynamicSymbol rejected them, so audio failed to link).
+TEST(PlatformImportPlanners, WindowsComAudioSymbolsResolveToOle32) {
+    for (const char *sym : {"CoCreateInstance", "CoInitializeEx", "CoUninitialize"})
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+
+    std::unordered_set<std::string> syms = {"CoCreateInstance", "CoInitializeEx", "CoUninitialize"};
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    EXPECT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    EXPECT_TRUE(importPlanHasDll(plan, "ole32.dll"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ole32.dll", "CoCreateInstance"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ole32.dll", "CoUninitialize"));
 }
 
 int main(int argc, char **argv) {

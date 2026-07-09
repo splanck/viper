@@ -31,6 +31,10 @@ func serialize(lb: level_base.LevelBuilder) -> String {
     Map.SetStr(m, "picks", encodePicks(lb));
     Map.SetStr(m, "props", encodeProps(lb));
     Map.SetStr(m, "covers", encodeCovers(lb));
+    Map.SetStr(m, "flanks", encodeFlanks(lb));
+    Map.SetStr(m, "routes", encodeRoutes(lb));
+    Map.SetStr(m, "landmarks", encodeLandmarks(lb));
+    Map.SetStr(m, "beats", encodeBeats(lb));
     Map.SetStr(m, "gates", encodeGates(lb));
     Map.SetStr(m, "terrain", S.intStr(lb.terrainKindOf()));
     return Json.Format(m);
@@ -114,6 +118,53 @@ hide func encodeCovers(lb: level_base.LevelBuilder) -> String {
     return out;
 }
 
+hide func encodeFlanks(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.flankCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.flankXat(i)) + "," + f(lb.flankZat(i));
+        i = i + 1;
+    }
+    return out;
+}
+
+hide func encodeRoutes(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.routeMarkerCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.routeMarkerXat(i)) + "," + f(lb.routeMarkerZat(i)) + "," +
+              S.intStr(lb.routeMarkerKindAt(i));
+        i = i + 1;
+    }
+    return out;
+}
+
+hide func encodeLandmarks(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.landmarkCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.landmarkXat(i)) + "," + f(lb.landmarkZat(i)) + "," +
+              S.intStr(lb.landmarkKindAt(i));
+        i = i + 1;
+    }
+    return out;
+}
+
+hide func encodeBeats(lb: level_base.LevelBuilder) -> String {
+    var out = "";
+    var i = 0;
+    while i < lb.encounterBeatCount() {
+        if i > 0 { out = out + ";"; }
+        out = out + f(lb.encounterBeatXat(i)) + "," + f(lb.encounterBeatZat(i)) + "," +
+              S.intStr(lb.encounterBeatKindAt(i)) + "," + S.intStr(lb.encounterBeatWaveAt(i));
+        i = i + 1;
+    }
+    return out;
+}
+
 /// Encode objective gates as compact CSV records.
 hide func encodeGates(lb: level_base.LevelBuilder) -> String {
     var out = "";
@@ -146,6 +197,10 @@ func load(text: String, lb: level_base.LevelBuilder) -> Boolean {
     decodePicks(Map.GetStr(m, "picks"), lb);
     decodeProps(Map.GetStr(m, "props"), lb);
     decodeCovers(Map.GetStr(m, "covers"), lb);
+    decodeFlanks(Map.GetStr(m, "flanks"), lb);
+    decodeRoutes(Map.GetStr(m, "routes"), lb);
+    decodeLandmarks(Map.GetStr(m, "landmarks"), lb);
+    decodeBeats(Map.GetStr(m, "beats"), lb);
     decodeGates(Map.GetStr(m, "gates"), lb);
     var terr = Map.GetStr(m, "terrain");
     if Str.get_Length(terr) > 0 { lb.setTerrain(Convert.ToInt64(terr)); }
@@ -223,6 +278,48 @@ hide func decodeCovers(s: String, lb: level_base.LevelBuilder) {
         var fld = splitCsv(recs[i]);
         if fld.Count >= 4 {
             lb.addCover(num(fld, 0), num(fld, 1), num(fld, 2), num(fld, 3));
+        }
+        i = i + 1;
+    }
+}
+
+hide func decodeFlanks(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 2 { lb.addFlank(num(fld, 0), num(fld, 1)); }
+        i = i + 1;
+    }
+}
+
+hide func decodeRoutes(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 3 { lb.addRouteMarker(num(fld, 0), num(fld, 1), inum(fld, 2)); }
+        i = i + 1;
+    }
+}
+
+hide func decodeLandmarks(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 3 { lb.addLandmark(num(fld, 0), num(fld, 1), inum(fld, 2)); }
+        i = i + 1;
+    }
+}
+
+hide func decodeBeats(s: String, lb: level_base.LevelBuilder) {
+    var recs = splitRecords(s);
+    var i = 0;
+    while i < recs.Count {
+        var fld = splitCsv(recs[i]);
+        if fld.Count >= 4 {
+            lb.addEncounterBeat(num(fld, 0), num(fld, 1), inum(fld, 2), inum(fld, 3));
         }
         i = i + 1;
     }
