@@ -147,8 +147,9 @@ typedef struct {
     int32_t light_count;
     int32_t shadow_count;
     float camera_forward[3];
-    float ibl_intensity; /* packs into cameraForward's cbuffer register */
-    float sh[9][4];      /* SH-9 RGB irradiance, one coefficient per float4 */
+    float ibl_intensity;
+    float _ibl_pad[3];
+    float sh[9][4]; /* SH-9 RGB irradiance, one coefficient per float4 */
     /* Plan 06 shadow knobs: x = slope-bias factor, y = strength, z = tap count. */
     float shadow_filter[4];
     /* Track E doc 07: exponential height fog (x = base, y = falloff,
@@ -160,6 +161,13 @@ typedef struct {
     int32_t cluster_global_count;
     float _cluster_pad1[3];
 } d3d_per_scene_t;
+
+_Static_assert(offsetof(d3d_per_scene_t, sh) == offsetof(d3d_per_scene_t, ibl_intensity) + 16,
+               "D3D11 PerScene cbuffer must pad after iblIntensity before float4 arrays");
+_Static_assert(offsetof(d3d_per_scene_t, height_fog) % 16 == 0,
+               "D3D11 PerScene float4 fields must stay 16-byte aligned");
+_Static_assert(sizeof(d3d_per_scene_t) % 16 == 0,
+               "D3D11 PerScene cbuffer size must be a 16-byte multiple");
 
 typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
 
@@ -632,6 +640,7 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
                                            int32_t slot,
                                            int32_t width,
                                            int32_t height);
+static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, int32_t tile_h);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///

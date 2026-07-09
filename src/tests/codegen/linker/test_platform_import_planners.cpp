@@ -223,8 +223,10 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
                                        {"ExitProcess",
                                         "InitializeCriticalSectionAndSpinCount",
+                                        "BringWindowToTop",
                                         "CreateWindowExW",
                                         "CreateWaitableTimerExW",
+                                        "ClipCursor",
                                         "SetWaitableTimer",
                                         "GetDiskFreeSpaceExW",
                                         "CopyFile2",
@@ -239,16 +241,21 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "SetFileAttributesW",
                                         "FindFirstFileExW",
                                         "GetFinalPathNameByHandleW",
+                                        "GetRawInputData",
                                         "SetFileTime",
                                         "CreateFile2",
                                         "GetFileInformationByHandleEx",
                                         "CreateSymbolicLinkW",
                                         "SleepConditionVariableSRW",
                                         "TryAcquireSRWLockExclusive",
+                                        "SetFocus",
+                                        "MsgWaitForMultipleObjectsEx",
+                                        "RegisterRawInputDevices",
                                         "D3D11CreateDevice",
                                         "cbrtf",
                                         "cos",
                                         "exp2f",
+                                        "log2f",
                                         "__RTDynamicCast",
                                         "_Init_thread_header",
                                         "_Smtx_lock_exclusive",
@@ -286,6 +293,13 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140_2.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "MSVCP140_ATOMIC_WAIT.dll"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "RegisterRawInputDevices"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "MsgWaitForMultipleObjectsEx"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "BringWindowToTop"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "ClipCursor"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "GetRawInputData"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "SetFocus"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
     EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));

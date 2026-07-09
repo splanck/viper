@@ -710,7 +710,7 @@ class ProjectManager {
         if sourcePath == "" or targetDir == "" { return ""; }
         if Dir.Exists(targetDir) == false { return ""; }
         // Reject moving a folder into itself or one of its descendants.
-        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + "/") {
+        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + Path.Sep()) {
             return "";
         }
         var baseName = Path.Name(sourcePath);
