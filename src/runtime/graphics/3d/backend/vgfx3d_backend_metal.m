@@ -340,6 +340,9 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas
      * (texture index 17); the shader remaps their UVs by static tile rects. */
     .shadow_atlas_slots = 1,
+    /* Scene passes render reversed-Z (Canvas3D negates the projection z row;
+     * clears are 0 with Greater compares). Shadow maps stay standard. */
+    .reversed_z = 1,
     .create_ctx = metal_create_ctx,
     .destroy_ctx = metal_destroy_ctx,
     .clear = metal_clear,

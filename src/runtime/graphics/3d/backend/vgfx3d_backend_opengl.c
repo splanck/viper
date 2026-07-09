@@ -94,6 +94,8 @@ typedef unsigned int GLbitfield;
 #define GL_CCW 0x0901
 #define GL_LESS 0x0201
 #define GL_LEQUAL 0x0203
+#define GL_GREATER 0x0204
+#define GL_GEQUAL 0x0206
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_INT 0x1405
 #define GL_UNSIGNED_BYTE 0x1401
@@ -1057,7 +1059,8 @@ static void gl_restore_main_draw_state(gl_context_t *ctx) {
     gl.Disable(GL_BLEND);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.Enable(GL_DEPTH_TEST);
-    gl.DepthFunc(GL_LEQUAL);
+    /* Reversed-Z initial state; scene draws pin GL_GREATER per draw. */
+    gl.DepthFunc(GL_GEQUAL);
     gl.DepthMask(GL_TRUE);
     gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     gl.Enable(GL_CULL_FACE);
@@ -1237,8 +1240,8 @@ static int load_gl(void) {
     glx.CreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
         (const unsigned char *)"glXCreateContextAttribsARB");
     /* Optional swap-interval extension; set_vsync no-ops when absent. */
-    glx.SwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)glx.GetProcAddress(
-        (const unsigned char *)"glXSwapIntervalEXT");
+    glx.SwapIntervalEXT =
+        (PFNGLXSWAPINTERVALEXTPROC)glx.GetProcAddress((const unsigned char *)"glXSwapIntervalEXT");
 
     LOADP(PolygonMode);
     LOADP(PolygonOffset);
@@ -1700,6 +1703,11 @@ static int64_t gl_get_feature_caps(void *ctx_ptr) {
 }
 
 const vgfx3d_backend_t vgfx3d_opengl_backend = {
+    /* Scene passes render reversed-Z (Canvas3D negates the projection z row; clears
+     * are 0 with Greater compares); the fixed [-1,1]->[0,1] window remap then stores
+     * near = 1 / far = 0, giving the reversed float-depth distribution. Shadow maps
+     * stay standard (Less, clear 1, pinned in gl_shadow_begin). */
+    .reversed_z = 1,
     .name = "opengl",
     .create_ctx = gl_create_ctx,
     .destroy_ctx = gl_destroy_ctx,

@@ -160,6 +160,8 @@ static int32_t metal_encode_depth_probes(VGFXMetalContext *ctx, id<MTLCommandBuf
 }
 
 /// @brief Publish completed depth-probe values from the shared buffer into the context.
+/// @details The probe hook contract is canonical window depth (larger = farther); the
+///   scene depth buffer is reversed-Z, so values are flipped on publish.
 static void metal_publish_depth_probes(VGFXMetalContext *ctx, int32_t count) {
     if (!ctx || count <= 0 || !ctx.depthProbeBuffer)
         return;
@@ -169,7 +171,8 @@ static void metal_publish_depth_probes(VGFXMetalContext *ctx, int32_t count) {
             return;
         if (count > VGFX3D_DEPTH_PROBE_MAX)
             count = VGFX3D_DEPTH_PROBE_MAX;
-        memcpy(ctx->_depthProbeResults, src, (size_t)count * sizeof(float));
+        for (int32_t i = 0; i < count; i++)
+            ctx->_depthProbeResults[i] = 1.0f - src[i];
         ctx->_depthProbeResultCount = count;
     }
 }

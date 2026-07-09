@@ -1026,6 +1026,16 @@ typedef struct {
      * set_render_scale hook when supported. */
     float render_scale;
 
+    /* CPU occlusion Hi-Z: fine per-texel view-depth buffer written by the software
+     * occluder rasterizer (lazily allocated while occlusion culling is enabled). The
+     * coarse grid keeps the conservative max over each fine block, so the coverage
+     * test is unchanged while writes gain true triangle silhouettes instead of AABB
+     * rectangles. The vertex scratch holds one frame draw's projected vertices. */
+    float *hiz_depth; /* CANVAS3D_HIZ_W * CANVAS3D_HIZ_H floats */
+    float *hiz_vertex_scratch;
+    int32_t hiz_vertex_scratch_capacity; /* in vertices (4 floats each) */
+    int32_t hiz_frame_triangles;         /* rasterized this frame, budget-capped */
+
     /* Shadow mapping */
     int8_t shadows_enabled;
     int32_t shadow_resolution;

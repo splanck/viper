@@ -516,6 +516,15 @@ typedef struct vgfx3d_backend {
     ///          backend has no private telemetry beyond Canvas3D's existing frame counters.
     void (*get_backend_stats)(void *ctx, vgfx3d_backend_stats_t *out_stats);
 
+    /* Reversed-Z depth: when non-zero, Canvas3D negates the projection's z row for
+     * every pass it sends this backend (scene, view-model, 2D/overlay ortho), and the
+     * backend clears depth to 0 with Greater-style compares. Float depth precision then
+     * concentrates where standard-Z starves it, eliminating distant z-fighting shimmer.
+     * Shadow-map rendering keeps the standard convention on every backend (light VPs are
+     * CPU-built and sampled with LessEqual compares). The software backend stays
+     * standard as the deterministic golden reference. */
+    int8_t reversed_z;
+
     /* Optional present pacing control. Non-zero synchronizes presentation to the
      * display's vertical blank (the default on every backend); zero presents
      * immediately for lowest latency. NULL = the platform default is fixed. */

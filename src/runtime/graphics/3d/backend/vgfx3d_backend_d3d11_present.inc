@@ -270,9 +270,11 @@ static void d3d11_harvest_depth_probes(d3d11_context_t *ctx) {
     if (FAILED(hr))
         return; /* still drawing: keep pending and retry next frame */
     if (mapped.pData) {
-        memcpy(ctx->depth_probe_results,
-               mapped.pData,
-               (size_t)ctx->depth_probe_pending_count * sizeof(float));
+        /* Probe contract is canonical window depth (larger = farther); the scene depth
+         * buffer is reversed-Z, so flip on publish. */
+        const float *src = (const float *)mapped.pData;
+        for (int32_t i = 0; i < ctx->depth_probe_pending_count; i++)
+            ctx->depth_probe_results[i] = 1.0f - src[i];
         ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
     }
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
@@ -1394,7 +1396,8 @@ static void d3d11_shadow_begin(void *ctx_ptr,
         viewport.MaxDepth = 1.0f;
         ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
         ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
-        ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state, 0);
+        /* Shadow maps keep the standard depth convention (Less, clear 1). */
+        ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state_shadow, 0);
         ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
         ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_shadow, NULL, 0);
@@ -1423,7 +1426,8 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     viewport.MaxDepth = 1.0f;
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
     ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
-    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state, 0);
+    /* Shadow maps keep the standard depth convention (Less, clear 1). */
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state_shadow, 0);
     ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_shadow, NULL, 0);

@@ -546,8 +546,10 @@ static const char *const glsl_fragment_src[] = {
     "               uClusterParams.w > uClusterParams.z) {\n"
     "        float zn = uClusterParams.z;\n"
     "        float zf = uClusterParams.w;\n"
-    "        float sceneD = texelFetch(uOpaqueDepthTex, ivec2(gl_FragCoord.xy), 0).r;\n"
-    "        float fragD = gl_FragCoord.z;\n"
+    /* Reversed-Z: the analytic linearization below expects standard window depth,
+     * so flip the reversed buffer/fragment values (d_std = 1 - d_rev) first. */
+    "        float sceneD = 1.0 - texelFetch(uOpaqueDepthTex, ivec2(gl_FragCoord.xy), 0).r;\n"
+    "        float fragD = 1.0 - gl_FragCoord.z;\n"
     "        float linScene;\n"
     "        float linFrag;\n"
     "        if (uCameraIsOrtho != 0) {\n"
@@ -1031,7 +1033,8 @@ static const char *const glsl_postfx_fragment_src[] = {
      * noise replaces the fixed 8-tap ring; the smoothstep range check kills the
      * depth-only halo around silhouettes. */
     "float computeSsao(vec2 uv, float centerDepth) {\n"
-    "    if (centerDepth >= 0.9999) return 1.0;\n"
+    /* Reversed-Z: cleared/far depth is 0, so the sky guard tests the low end. */
+    "    if (centerDepth <= 0.0001) return 1.0;\n"
     "    vec3 P = reconstructWorld(uv, centerDepth);\n"
     "    vec3 N = cross(dFdx(P), dFdy(P));\n"
     "    float nlen = length(N);\n"
@@ -1335,7 +1338,9 @@ static const char *glsl_ssr_fragment_src =
     "    vec3 base = texture(uSceneTex, vUV).rgb;\n"
     "    float mask = texture(uMotionTex, vUV).a;\n"
     "    float depth = texture(uDepthTex, vUV).r;\n"
-    "    if (mask <= 0.004 || depth >= 0.9999) {\n"
+    /* Reversed-Z: cleared/far depth is 0 and nearer is larger, so the sky guard and
+     * every ray-vs-scene comparison below flip direction. */
+    "    if (mask <= 0.004 || depth <= 0.0001) {\n"
     "        FragColor = vec4(base, 1.0);\n"
     "        return;\n"
     "    }\n"
@@ -1364,7 +1369,7 @@ static const char *glsl_ssr_fragment_src =
     "        if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0) break;\n"
     "        float rayD = ndc.z * 0.5 + 0.5;\n"
     "        float sceneD = texture(uDepthTex, uv2).r;\n"
-    "        if (rayD > sceneD + 0.0002) {\n"
+    "        if (rayD < sceneD - 0.0002) {\n"
     "            float lo = prevT;\n"
     "            float hi = t;\n"
     "            for (int r = 0; r < 4; r++) {\n"
@@ -1372,7 +1377,7 @@ static const char *glsl_ssr_fragment_src =
     "                vec4 mc = uViewProjection * vec4(world + R * mid, 1.0);\n"
     "                vec3 mndc = mc.xyz / max(mc.w, 0.0001);\n"
     "                vec2 muv = mndc.xy * 0.5 + 0.5;\n"
-    "                if (mndc.z * 0.5 + 0.5 > texture(uDepthTex, muv).r + 0.0002) hi = mid;\n"
+    "                if (mndc.z * 0.5 + 0.5 < texture(uDepthTex, muv).r - 0.0002) hi = mid;\n"
     "                else lo = mid;\n"
     "            }\n"
     "            vec4 hc = uViewProjection * vec4(world + R * hi, 1.0);\n"
@@ -1380,7 +1385,7 @@ static const char *glsl_ssr_fragment_src =
     "            hitUv = hndc.xy * 0.5 + 0.5;\n"
     "            float hitRayD = hndc.z * 0.5 + 0.5;\n"
     "            float hitSceneD = texture(uDepthTex, hitUv).r;\n"
-    "            hit = (hitRayD - hitSceneD) < 0.02;\n"
+    "            hit = (hitSceneD - hitRayD) < 0.02;\n"
     "            break;\n"
     "        }\n"
     "        prevT = t;\n"

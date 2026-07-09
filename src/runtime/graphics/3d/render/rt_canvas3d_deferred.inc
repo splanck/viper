@@ -1850,6 +1850,20 @@ static void canvas3d_extract_view_forward(const double *view, float *out_forward
 /// Used by `BeginOverlayFrame` so the 2D HUD layer can draw with
 /// pixel coordinates (top-left origin, Y-down). The +2 padding on
 /// each axis avoids edge-clipping at half-pixel coordinates.
+/// @brief Negate a projection's z row when the backend renders reversed-Z.
+/// @details A reversed GL-convention projection is exactly the standard one with the z
+///   row negated: near maps to NDC +1 and far to -1, which the backends' existing
+///   GL-to-[0,1] window remaps turn into 1-at-near/0-at-far float depth — dense float
+///   precision lands at the far field where standard-Z starves it. Every consumer of
+///   the resulting VP (frustum extraction, unprojection via the inverse, the occlusion
+///   projections) is self-consistent, so only the backend's clears/compares differ.
+static void canvas3d_apply_backend_depth_convention(const rt_canvas3d *c, float *projection) {
+    if (!c || !projection || !c->backend || !c->backend->reversed_z)
+        return;
+    for (int i = 8; i < 12; i++)
+        projection[i] = -projection[i];
+}
+
 static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_params_t *params) {
     float w;
     float h;
@@ -1872,6 +1886,7 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
     params->projection[3] = -1.0f + 2.0f / w;
     params->projection[7] = 1.0f - 2.0f / h;
     params->projection[15] = 1.0f;
+    canvas3d_apply_backend_depth_convention(c, params->projection);
     params->view[0] = params->view[5] = params->view[10] = params->view[15] = 1.0f;
     params->position[2] = 1.0f;
     params->forward[2] = -1.0f;

@@ -480,6 +480,7 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
     if (use_occlusion_grid) {
         canvas3d_occlusion_history_prune(c);
         canvas3d_occlusion_grid_clear(&occlusion_grid);
+        canvas3d_hiz_frame_reset(c);
     }
 
     if (c->frustum_culling || c->occlusion_culling) {

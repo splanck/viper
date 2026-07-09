@@ -1,5 +1,37 @@
 # Depth Precision (Reversed-Z) and Rasterized CPU Occlusion
 
+**STATUS: BOTH IMPLEMENTED (2026-07-09).** The sections below preserve the
+original designs with landing notes.
+
+The as-landed reversed-Z design improved on the plan below: instead of new
+projection builders and shader remap rewrites, Canvas3D negates the
+projection's z row when the backend advertises `reversed_z` (a reversed
+GL-convention projection is exactly the standard one with the z row negated).
+Every (VP, inverse-VP) consumer — frustum extraction, occlusion projection,
+unprojection, TAA reprojection — is self-consistent automatically, so the
+per-backend surface reduced to: depth clears (0), compares (Greater family),
+skybox at far = 0, sky-guard/SSR-march direction flips, soft-particle
+linearization input flips, canonical depth-probe publishing, and a dedicated
+standard-Less shadow state (D3D11 previously shared the scene state; GL's
+shadow pass previously inherited whatever DepthFunc ran last — both fixed).
+Shadow maps keep the standard convention everywhere; the software backend
+stays standard as the deterministic golden reference. Verified live on Metal
+(depth ordering + full shadowed frame) and by the projection unit fixture.
+
+The as-landed Hi-Z rasterizer follows the plan's shape without the authored
+occluder-mesh API: eligible opaque draws (already excluding alpha/masked/
+double-sided/deforming/instanced) rasterize their actual triangles into a
+256x256 fine view-depth buffer (perspective-correct 1/w interpolation,
+1024-triangle-per-draw and 8192-per-frame budgets); fully-written 4x4 blocks
+fold into the coarse 64x64 grid as their conservative max depth, so the
+coverage TEST — margins and covered-streak hysteresis included — is unchanged.
+The AABB-rectangle write survives only as the over-budget fallback. Proven by
+a unit fixture whose 45-degree-rotated occluder (deep AABB, rejected by the
+span guard) culls the draws behind it. Authored occluder-proxy meshes remain
+a possible future refinement for very high-poly walls.
+
+---
+
 Two structural renderer upgrades scoped during the 2026-07 engine-improvement
 pass. Both were deliberately split out from that pass: each sweeps a
 convention that every backend, the culling math, and the golden baselines

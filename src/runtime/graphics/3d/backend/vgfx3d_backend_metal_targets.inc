@@ -542,7 +542,8 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
     rp.depthAttachment.texture = depth;
     rp.depthAttachment.loadAction = loadExistingDepth ? MTLLoadActionLoad : MTLLoadActionClear;
     rp.depthAttachment.storeAction = MTLStoreActionStore;
-    rp.depthAttachment.clearDepth = 1.0;
+    /* Reversed-Z: 0 is the far plane; scene depth states compare Greater. */
+    rp.depthAttachment.clearDepth = 0.0;
     return rp;
 }
 

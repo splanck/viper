@@ -1289,6 +1289,7 @@ static void canvas3d_begin_camera_pass(void *obj,
         params.projection[0] = (float)(f / aspect);
         params.projection[5] = (float)f;
     }
+    canvas3d_apply_backend_depth_convention(c, params.projection);
     if (!canvas3d_matrices_f32_are_finite(params.projection, 1)) {
         rt_trap("Canvas3D.Begin: camera projection matrix must contain finite values");
         return;

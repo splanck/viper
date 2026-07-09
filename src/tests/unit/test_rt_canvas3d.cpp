@@ -5183,6 +5183,102 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     PASS();
 }
 
+static void test_backend_reversed_z_negates_projection_z_row() {
+    TEST("Canvas3D negates the projection z row for reversed-Z backends");
+    vgfx3d_backend_t standard_backend = {};
+    vgfx3d_backend_t reversed_backend = {};
+    rt_canvas3d standard_canvas;
+    rt_canvas3d reversed_canvas;
+    float standard_proj[16];
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    standard_backend.name = "opengl";
+    standard_backend.begin_frame = tracked_begin_frame;
+    standard_backend.end_frame = tracked_end_frame;
+    reversed_backend = standard_backend;
+    reversed_backend.reversed_z = 1;
+
+    memset(&standard_canvas, 0, sizeof(standard_canvas));
+    standard_canvas.backend = &standard_backend;
+    standard_canvas.gfx_win = (vgfx_window_t)1;
+    standard_canvas.width = 64;
+    standard_canvas.height = 64;
+    memset(&reversed_canvas, 0, sizeof(reversed_canvas));
+    reversed_canvas.backend = &reversed_backend;
+    reversed_canvas.gfx_win = (vgfx_window_t)1;
+    reversed_canvas.width = 64;
+    reversed_canvas.height = 64;
+
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_begin(&standard_canvas, camera);
+    memcpy(standard_proj, g_canvas_begin_frame_params.projection, sizeof(standard_proj));
+    rt_canvas3d_end(&standard_canvas);
+
+    rt_canvas3d_begin(&reversed_canvas, camera);
+    /* Reversed backends receive the same projection with the z row negated; the x/y/w
+     * rows (and therefore culling, unprojection, and screen mapping) are untouched. */
+    for (int i = 0; i < 16; i++) {
+        float expected = (i >= 8 && i < 12) ? -standard_proj[i] : standard_proj[i];
+        EXPECT_NEAR(g_canvas_begin_frame_params.projection[i], expected, 1e-6);
+    }
+    rt_canvas3d_end(&reversed_canvas);
+    PASS();
+}
+
+static void test_canvas_hiz_rasterizer_culls_behind_rotated_occluder() {
+    TEST("Canvas3D Hi-Z rasterizes deep-AABB occluders that rect writes cannot");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    const int64_t hidden_draws = 8;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *occluder_mesh = rt_mesh3d_new_box(4.0, 4.0, 4.0);
+    void *hidden_mesh = rt_mesh3d_new_box(1.0, 1.0, 0.2);
+    void *material = rt_material3d_new();
+    /* 45-degree Y rotation: the box's world AABB spans ~5.66 units of view depth, so
+     * the conservative rect write is rejected by the depth-span guard — only the
+     * triangle rasterizer can register this occluder. */
+    const double c45 = 0.70710678118654752;
+    void *rot_xf = rt_mat4_new(
+        c45, 0.0, c45, 0.0, 0.0, 1.0, 0.0, 0.0, -c45, 0.0, c45, 0.0, 0.0, 0.0, 0.0, 1.0);
+    void *behind_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -3.0, 0.0, 0.0, 0.0, 1.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_set_occlusion_culling(&canvas, 1);
+
+    for (int frame = 0; frame < 3; ++frame) {
+        if (frame == 2)
+            g_canvas_submit_draw_calls = 0;
+        rt_canvas3d_begin(&canvas, camera);
+        rt_canvas3d_draw_mesh(&canvas, occluder_mesh, rot_xf, material);
+        for (int64_t i = 0; i < hidden_draws; i++)
+            rt_canvas3d_draw_mesh(&canvas, hidden_mesh, behind_xf, material);
+        rt_canvas3d_end(&canvas);
+    }
+
+    EXPECT_EQ(rt_canvas3d_get_draw_count(&canvas), hidden_draws + 1);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(rt_canvas3d_get_occluded_draw_count(&canvas), hidden_draws);
+    PASS();
+}
+
 static void test_frame_light_flatten_cache_shares_snapshot_across_draws() {
     TEST("Canvas3D flattens lights once per generation, not once per draw");
     vgfx3d_backend_t backend = {};
@@ -8932,6 +9028,8 @@ int main() {
     test_canvas_texture_backend_support_queries();
     test_canvas_light_revision_stamps();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
+    test_backend_reversed_z_negates_projection_z_row();
+    test_canvas_hiz_rasterizer_culls_behind_rotated_occluder();
     test_frame_light_flatten_cache_shares_snapshot_across_draws();
     test_shadow_distance_setter_and_effective_range();
     test_instanced_draw_precomputes_world_bounds_in_snapshot_pass();

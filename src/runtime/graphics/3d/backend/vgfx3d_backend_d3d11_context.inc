@@ -99,14 +99,17 @@ static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx, int32_t widt
     return hr;
 }
 
-/// @brief Create opaque, transparent, disabled, and skybox depth-stencil states.
+/// @brief Create opaque, transparent, disabled, skybox, and shadow depth-stencil states.
+/// @details Reversed-Z: scene passes clear depth to 0 and compare Greater. The shadow
+///   pass keeps a dedicated standard Less state because light view-projections stay in
+///   the standard convention (their maps are sampled with LessEqual comparisons).
 static HRESULT d3d11_create_context_depth_states(d3d11_context_t *ctx) {
     D3D11_DEPTH_STENCIL_DESC depth_desc;
     HRESULT hr;
     memset(&depth_desc, 0, sizeof(depth_desc));
     depth_desc.DepthEnable = TRUE;
     depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    depth_desc.DepthFunc = D3D11_COMPARISON_LESS;
+    depth_desc.DepthFunc = D3D11_COMPARISON_GREATER;
     hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateDepthStencilState(opaque)", hr);
@@ -126,11 +129,18 @@ static HRESULT d3d11_create_context_depth_states(d3d11_context_t *ctx) {
         return hr;
     }
     depth_desc.DepthEnable = TRUE;
-    depth_desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    depth_desc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
     hr = ID3D11Device_CreateDepthStencilState(
         ctx->device, &depth_desc, &ctx->depth_state_readonly_lequal);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         d3d11_log_hresult("CreateDepthStencilState(skybox)", hr);
+        return hr;
+    }
+    depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depth_desc.DepthFunc = D3D11_COMPARISON_LESS;
+    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state_shadow);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateDepthStencilState(shadow)", hr);
     return hr;
 }
 
@@ -888,6 +898,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->rs_depth_biased_cached);
     ctx->rs_depth_biased_valid = 0;
     SAFE_RELEASE(ctx->depth_state_readonly_lequal);
+    SAFE_RELEASE(ctx->depth_state_shadow);
     SAFE_RELEASE(ctx->depth_state_disabled);
     SAFE_RELEASE(ctx->depth_state_no_write);
     SAFE_RELEASE(ctx->depth_state);

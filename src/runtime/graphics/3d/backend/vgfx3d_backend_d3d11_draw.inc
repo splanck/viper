@@ -144,8 +144,9 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
         ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
     if (!load_existing_depth && ctx->current_dsv)
+        /* Reversed-Z: 0 is the far plane; scene depth states compare Greater. */
         ID3D11DeviceContext_ClearDepthStencilView(
-            ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+            ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 0.0f, 0);
 }
 
 /// @brief Bind the three sampler states the pixel shader expects.

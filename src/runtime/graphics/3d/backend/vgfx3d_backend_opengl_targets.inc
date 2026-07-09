@@ -918,11 +918,10 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
         gl.DepthMask(GL_FALSE);
     } else {
         gl.Enable(GL_DEPTH_TEST);
-        /* GL_LESS matches Metal/D3D11/software: coplanar geometry must resolve
-         * first-writer-wins on every backend (LEQUAL made GL the last-writer-wins
-         * outlier, so coplanar surfaces z-fought differently per platform). The
-         * skybox pass alone uses LEQUAL to pass at cleared far depth. */
-        gl.DepthFunc(GL_LESS);
+        /* Reversed-Z: GL_GREATER mirrors Metal/D3D11 — first-writer-wins on coplanar
+         * geometry under the reversed convention (near = 1, far = 0). The skybox pass
+         * alone uses GEQUAL to pass at the cleared far depth of 0. */
+        gl.DepthFunc(GL_GREATER);
         gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_OPAQUE ? GL_TRUE : GL_FALSE);
     }
 

@@ -104,6 +104,20 @@ accessors and language-level property assignment where supported, such as
 
 ## Camera And Rendering
 
+### Depth Precision (Reversed-Z)
+
+The GPU backends (Metal, D3D11, OpenGL) render scene passes with reversed-Z
+float depth: Canvas3D negates the projection's z row per backend, depth clears
+to 0 with Greater-family compares, and the skybox sits at the far plane of 0.
+Float precision then concentrates in the distance — where standard-Z starves
+it — eliminating distant z-fighting shimmer at open-world clip ranges (near
+0.1, far 5000+). This is entirely internal: `Camera3D`, `Mat4.Perspective`,
+and every public math API keep the standard GL convention, shadow maps keep
+the standard convention on every backend, and the software backend stays
+standard as the deterministic golden reference. Depth-consuming effects (soft
+particles, SSAO, SSR, TAA) and the scene-depth probes account for the
+convention internally.
+
 ### Canvas3D View-Model Pass
 
 `Canvas3D.BeginViewModel(camera, fovYDegrees)` opens a secondary 3D pass over the
@@ -533,9 +547,15 @@ Frustum rejection defaults on (the per-draw test is cheap; bounds are cached
 per queued draw) and the two toggles are independent — disabling one leaves
 the other alone. With occlusion enabled, opaque draws are tested front-to-back
 against the coverage grid first and only the survivors are regrouped by
-backend state, so state batching never weakens the occlusion pass. Transparent
-draws are never used as occluders and are not rejected by the coarse coverage
-grid. The lens-flare occlusion probes share the same scene depth: the software
+backend state, so state batching never weakens the occlusion pass. Occluders
+register their actual triangles: a software Hi-Z rasterizer projects each
+eligible opaque draw's geometry into a fine per-texel view-depth buffer
+(perspective-correct, budget-capped per frame) and folds fully-written blocks
+into the coarse grid, so near walls, rotated geometry, and other deep-AABB
+occluders contribute their true silhouettes — the conservative AABB-rectangle
+write survives only as the fallback for draws past the triangle budget.
+Transparent draws are never used as occluders and are not rejected by the
+coarse coverage grid. The lens-flare occlusion probes share the same scene depth: the software
 backend answers from its z-buffer, and the GPU backends read a handful of
 depth texels back asynchronously (one frame of latency, never a pipeline
 stall), with per-flare temporal smoothing hiding both the latency and the

@@ -1234,6 +1234,257 @@ static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
     }
 }
 
+/*==========================================================================
+ * CPU occlusion Hi-Z rasterizer
+ *
+ * The coarse grid's coverage TEST is unchanged (all cells covered and nearer
+ * than the candidate, with margins and covered-streak hysteresis). WRITES now
+ * rasterize the occluder's actual triangles into a fine per-texel view-depth
+ * buffer and fold each fully-written 4x4 block into the coarse grid as its
+ * conservative max depth. AABB rectangles remain only as the fallback for
+ * draws past the triangle budget — so near walls, rotated geometry, and other
+ * deep-AABB occluders finally contribute their true silhouettes.
+ *=========================================================================*/
+
+#define CANVAS3D_HIZ_BLOCK 4
+#define CANVAS3D_HIZ_W (CANVAS3D_OCCLUSION_GRID_W * CANVAS3D_HIZ_BLOCK)
+#define CANVAS3D_HIZ_H (CANVAS3D_OCCLUSION_GRID_H * CANVAS3D_HIZ_BLOCK)
+#define CANVAS3D_HIZ_CELLS (CANVAS3D_HIZ_W * CANVAS3D_HIZ_H)
+#define CANVAS3D_HIZ_MAX_TRIS_PER_DRAW 1024
+#define CANVAS3D_HIZ_MAX_TRIS_PER_FRAME 8192
+#define CANVAS3D_HIZ_MAX_VERTS_PER_DRAW 4096
+
+/// @brief Reset the fine Hi-Z buffer and the per-frame triangle budget.
+static void canvas3d_hiz_frame_reset(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->hiz_frame_triangles = 0;
+    if (c->hiz_depth) {
+        for (int32_t i = 0; i < CANVAS3D_HIZ_CELLS; i++)
+            c->hiz_depth[i] = FLT_MAX;
+    }
+}
+
+/// @brief Lazily allocate the fine Hi-Z buffer (initialized to "far").
+static int canvas3d_hiz_ensure_buffer(rt_canvas3d *c) {
+    if (!c)
+        return 0;
+    if (c->hiz_depth)
+        return 1;
+    c->hiz_depth = (float *)malloc((size_t)CANVAS3D_HIZ_CELLS * sizeof(float));
+    if (!c->hiz_depth)
+        return 0;
+    for (int32_t i = 0; i < CANVAS3D_HIZ_CELLS; i++)
+        c->hiz_depth[i] = FLT_MAX;
+    return 1;
+}
+
+/// @brief Ensure the projected-vertex scratch can hold @p needed vertices (4 floats each).
+static int canvas3d_hiz_ensure_scratch(rt_canvas3d *c, int32_t needed) {
+    float *grown;
+    if (!c || needed <= 0 || needed > CANVAS3D_HIZ_MAX_VERTS_PER_DRAW)
+        return 0;
+    if (c->hiz_vertex_scratch && c->hiz_vertex_scratch_capacity >= needed)
+        return 1;
+    grown = (float *)realloc(c->hiz_vertex_scratch, (size_t)needed * 4u * sizeof(float));
+    if (!grown)
+        return 0;
+    c->hiz_vertex_scratch = grown;
+    c->hiz_vertex_scratch_capacity = needed;
+    return 1;
+}
+
+/// @brief Fold every coarse cell overlapping the fine-texel bbox into the grid.
+/// @details A cell becomes covered only when all 16 of its fine texels were written;
+///   its contribution is the block's MAX (farthest) depth, so a candidate passes the
+///   coverage test only when it is farther than every rasterized sample in the cell.
+static void canvas3d_hiz_flush_blocks(const rt_canvas3d *c,
+                                      canvas3d_occlusion_grid_t *grid,
+                                      int32_t fine_min_x,
+                                      int32_t fine_min_y,
+                                      int32_t fine_max_x,
+                                      int32_t fine_max_y) {
+    int32_t cell_min_x = fine_min_x / CANVAS3D_HIZ_BLOCK;
+    int32_t cell_min_y = fine_min_y / CANVAS3D_HIZ_BLOCK;
+    int32_t cell_max_x = fine_max_x / CANVAS3D_HIZ_BLOCK;
+    int32_t cell_max_y = fine_max_y / CANVAS3D_HIZ_BLOCK;
+
+    if (!c || !c->hiz_depth || !grid)
+        return;
+    if (cell_min_x < 0)
+        cell_min_x = 0;
+    if (cell_min_y < 0)
+        cell_min_y = 0;
+    if (cell_max_x >= CANVAS3D_OCCLUSION_GRID_W)
+        cell_max_x = CANVAS3D_OCCLUSION_GRID_W - 1;
+    if (cell_max_y >= CANVAS3D_OCCLUSION_GRID_H)
+        cell_max_y = CANVAS3D_OCCLUSION_GRID_H - 1;
+    for (int32_t cy = cell_min_y; cy <= cell_max_y; cy++) {
+        for (int32_t cx = cell_min_x; cx <= cell_max_x; cx++) {
+            float block_max = 0.0f;
+            int complete = 1;
+            for (int32_t by = 0; by < CANVAS3D_HIZ_BLOCK && complete; by++) {
+                const float *row = &c->hiz_depth[(size_t)(cy * CANVAS3D_HIZ_BLOCK + by) *
+                                                     (size_t)CANVAS3D_HIZ_W +
+                                                 (size_t)(cx * CANVAS3D_HIZ_BLOCK)];
+                for (int32_t bx = 0; bx < CANVAS3D_HIZ_BLOCK; bx++) {
+                    float d = row[bx];
+                    if (d >= FLT_MAX * 0.5f) {
+                        complete = 0;
+                        break;
+                    }
+                    if (d > block_max)
+                        block_max = d;
+                }
+            }
+            if (!complete)
+                continue;
+            {
+                int32_t index = cy * CANVAS3D_OCCLUSION_GRID_W + cx;
+                if (!grid->covered[index] || block_max < grid->depth[index])
+                    grid->depth[index] = block_max;
+                grid->covered[index] = 1;
+            }
+        }
+    }
+}
+
+/// @brief Rasterize one draw's triangles into the fine Hi-Z buffer.
+/// @return 1 when the draw was rasterized (no fallback rect write needed), 0 when it
+///   was rejected (ortho camera, deforming/instanced draw, over budget, allocation
+///   failure) and the caller should use the conservative AABB path instead.
+static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
+                                       canvas3d_occlusion_grid_t *grid,
+                                       const deferred_draw_t *dd) {
+    const vgfx3d_draw_cmd_t *cmd;
+    float mvp[16];
+    float *verts;
+    int32_t tri_count;
+    int32_t fine_min_x = CANVAS3D_HIZ_W;
+    int32_t fine_min_y = CANVAS3D_HIZ_H;
+    int32_t fine_max_x = -1;
+    int32_t fine_max_y = -1;
+    int rasterized_any = 0;
+
+    if (!c || !grid || !dd || c->cached_cam_is_ortho)
+        return 0;
+    cmd = &dd->cmd;
+    if (dd->kind != DEFERRED_DRAW_MESH || dd->instance_count > 0)
+        return 0;
+    if (!cmd->vertices || !cmd->indices || cmd->index_count < 3u || cmd->vertex_count == 0)
+        return 0;
+    tri_count = (int32_t)(cmd->index_count / 3u);
+    if (tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_DRAW ||
+        cmd->vertex_count > (uint32_t)CANVAS3D_HIZ_MAX_VERTS_PER_DRAW)
+        return 0;
+    if (c->hiz_frame_triangles + tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_FRAME)
+        return 0;
+    if (!canvas3d_hiz_ensure_buffer(c) ||
+        !canvas3d_hiz_ensure_scratch(c, (int32_t)cmd->vertex_count))
+        return 0;
+
+    canvas3d_mul_mat4(c->cached_vp, cmd->model_matrix, mvp);
+    verts = c->hiz_vertex_scratch;
+    for (uint32_t i = 0; i < cmd->vertex_count; i++) {
+        const float *p = cmd->vertices[i].pos;
+        float cx = mvp[0] * p[0] + mvp[1] * p[1] + mvp[2] * p[2] + mvp[3];
+        float cy = mvp[4] * p[0] + mvp[5] * p[1] + mvp[6] * p[2] + mvp[7];
+        float cz = mvp[8] * p[0] + mvp[9] * p[1] + mvp[10] * p[2] + mvp[11];
+        float cw = mvp[12] * p[0] + mvp[13] * p[1] + mvp[14] * p[2] + mvp[15];
+        float *out = &verts[(size_t)i * 4u];
+        if (!isfinite(cx) || !isfinite(cy) || !isfinite(cz) || !isfinite(cw) || cw <= 1e-6f ||
+            fabsf(cz) > cw * 1.05f) {
+            out[3] = 0.0f; /* invalid: triangle touching it is skipped (conservative) */
+            continue;
+        }
+        out[0] = (cx / cw * 0.5f + 0.5f) * (float)CANVAS3D_HIZ_W;
+        out[1] = (0.5f - cy / cw * 0.5f) * (float)CANVAS3D_HIZ_H;
+        out[2] = 1.0f / cw; /* perspective-correct view-depth interpolant */
+        out[3] = 1.0f;
+    }
+
+    for (int32_t t = 0; t < tri_count; t++) {
+        uint32_t i0 = cmd->indices[(size_t)t * 3u];
+        uint32_t i1 = cmd->indices[(size_t)t * 3u + 1u];
+        uint32_t i2 = cmd->indices[(size_t)t * 3u + 2u];
+        const float *v0;
+        const float *v1;
+        const float *v2;
+        float area;
+        int32_t bb_min_x;
+        int32_t bb_min_y;
+        int32_t bb_max_x;
+        int32_t bb_max_y;
+        if (i0 >= cmd->vertex_count || i1 >= cmd->vertex_count || i2 >= cmd->vertex_count)
+            continue;
+        v0 = &verts[(size_t)i0 * 4u];
+        v1 = &verts[(size_t)i1 * 4u];
+        v2 = &verts[(size_t)i2 * 4u];
+        if (v0[3] == 0.0f || v1[3] == 0.0f || v2[3] == 0.0f)
+            continue;
+        area = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v1[1] - v0[1]) * (v2[0] - v0[0]);
+        if (!isfinite(area) || fabsf(area) < 1e-6f)
+            continue;
+        if (area < 0.0f) {
+            const float *tmp = v1;
+            v1 = v2;
+            v2 = tmp;
+            area = -area;
+        }
+        bb_min_x = (int32_t)floorf(fminf(v0[0], fminf(v1[0], v2[0])));
+        bb_min_y = (int32_t)floorf(fminf(v0[1], fminf(v1[1], v2[1])));
+        bb_max_x = (int32_t)ceilf(fmaxf(v0[0], fmaxf(v1[0], v2[0])));
+        bb_max_y = (int32_t)ceilf(fmaxf(v0[1], fmaxf(v1[1], v2[1])));
+        if (bb_min_x < 0)
+            bb_min_x = 0;
+        if (bb_min_y < 0)
+            bb_min_y = 0;
+        if (bb_max_x > CANVAS3D_HIZ_W - 1)
+            bb_max_x = CANVAS3D_HIZ_W - 1;
+        if (bb_max_y > CANVAS3D_HIZ_H - 1)
+            bb_max_y = CANVAS3D_HIZ_H - 1;
+        if (bb_min_x > bb_max_x || bb_min_y > bb_max_y)
+            continue;
+        for (int32_t py = bb_min_y; py <= bb_max_y; py++) {
+            float sy = (float)py + 0.5f;
+            for (int32_t px = bb_min_x; px <= bb_max_x; px++) {
+                float sx = (float)px + 0.5f;
+                float e0 = (v1[0] - v0[0]) * (sy - v0[1]) - (v1[1] - v0[1]) * (sx - v0[0]);
+                float e1 = (v2[0] - v1[0]) * (sy - v1[1]) - (v2[1] - v1[1]) * (sx - v1[0]);
+                float e2 = (v0[0] - v2[0]) * (sy - v2[1]) - (v0[1] - v2[1]) * (sx - v2[0]);
+                float inv_w;
+                float depth;
+                size_t index;
+                if (e0 < 0.0f || e1 < 0.0f || e2 < 0.0f)
+                    continue;
+                /* Perspective-correct view depth: 1/w interpolates linearly on screen. */
+                inv_w = (e1 * v0[2] + e2 * v1[2] + e0 * v2[2]) / area;
+                if (!isfinite(inv_w) || inv_w <= 1e-9f)
+                    continue;
+                depth = 1.0f / inv_w;
+                index = (size_t)py * (size_t)CANVAS3D_HIZ_W + (size_t)px;
+                if (depth < c->hiz_depth[index])
+                    c->hiz_depth[index] = depth;
+            }
+        }
+        if (bb_min_x < fine_min_x)
+            fine_min_x = bb_min_x;
+        if (bb_min_y < fine_min_y)
+            fine_min_y = bb_min_y;
+        if (bb_max_x > fine_max_x)
+            fine_max_x = bb_max_x;
+        if (bb_max_y > fine_max_y)
+            fine_max_y = bb_max_y;
+        rasterized_any = 1;
+    }
+    c->hiz_frame_triangles += tri_count;
+    if (rasterized_any)
+        canvas3d_hiz_flush_blocks(c, grid, fine_min_x, fine_min_y, fine_max_x, fine_max_y);
+    /* The draw was consumed by the rasterizer even if every triangle was clipped;
+     * the AABB fallback would only reintroduce proxy coverage the geometry lacks. */
+    return 1;
+}
+
 /// @brief Return whether an AABB depth span is safe to write into the coarse occlusion grid.
 /// @details The grid stores one conservative depth per 64x64 cell, so a deep AABB proxy can behave
 ///   like a wall and incorrectly hide visible triangles behind its nearest face. Testing remains
@@ -1268,23 +1519,28 @@ static int canvas3d_occlusion_test_and_write(rt_canvas3d *c,
     float test_depth;
     float write_depth;
     int covered = 0;
+    int have_rect;
     if (!c || !grid || !dd)
         return 0;
     if (dd->occlusion_test_disabled && dd->occlusion_write_disabled)
         return 0;
-    if (!canvas3d_deferred_occlusion_rect(
-            c, dd, &min_x, &min_y, &max_x, &max_y, &test_depth, &write_depth))
-        return 0;
-    c->last_occlusion_candidate_count++;
-    if (!dd->occlusion_test_disabled &&
-        canvas3d_occlusion_grid_covers(c, grid, min_x, min_y, max_x, max_y, test_depth)) {
-        covered = 1;
-        if (canvas3d_occlusion_history_allows_cull(c, dd))
-            return 1;
+    /* Testing needs the candidate's projected AABB rect; writing no longer does — the
+     * Hi-Z rasterizer consumes actual triangles, so a deep-AABB occluder (rotated wall,
+     * long ramp) still contributes coverage even when its rect is untestable. */
+    have_rect = canvas3d_deferred_occlusion_rect(
+        c, dd, &min_x, &min_y, &max_x, &max_y, &test_depth, &write_depth);
+    if (have_rect) {
+        c->last_occlusion_candidate_count++;
+        if (!dd->occlusion_test_disabled &&
+            canvas3d_occlusion_grid_covers(c, grid, min_x, min_y, max_x, max_y, test_depth)) {
+            covered = 1;
+            if (canvas3d_occlusion_history_allows_cull(c, dd))
+                return 1;
+        }
+        if (!covered)
+            canvas3d_occlusion_history_note_visible(c, dd);
     }
-    if (!covered)
-        canvas3d_occlusion_history_note_visible(c, dd);
-    if (!dd->occlusion_write_disabled &&
+    if (!dd->occlusion_write_disabled && !canvas3d_hiz_rasterize_draw(c, grid, dd) && have_rect &&
         canvas3d_occlusion_depth_span_can_write(test_depth, write_depth))
         canvas3d_occlusion_grid_write(grid, min_x, min_y, max_x, max_y, write_depth);
     return 0;

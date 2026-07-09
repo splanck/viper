@@ -309,6 +309,7 @@ typedef struct {
     ID3D11DepthStencilState *depth_state_no_write;
     ID3D11DepthStencilState *depth_state_disabled;
     ID3D11DepthStencilState *depth_state_readonly_lequal;
+    ID3D11DepthStencilState *depth_state_shadow; /* standard Less for the shadow pass */
     ID3D11RasterizerState *rs_solid_cull;
     ID3D11RasterizerState *rs_solid_no_cull;
     ID3D11RasterizerState *rs_wire_cull;
@@ -1786,6 +1787,9 @@ static int64_t d3d11_get_feature_caps(void *ctx_ptr) {
 }
 
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {
+    /* Scene passes render reversed-Z (Canvas3D negates the projection z row;
+     * clears are 0 with Greater compares). Shadow maps stay standard. */
+    .reversed_z = 1,
     .name = "d3d11",
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas (t17). */
     .shadow_atlas_slots = 1,

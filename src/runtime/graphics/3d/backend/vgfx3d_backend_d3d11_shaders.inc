@@ -782,8 +782,10 @@ static const char *const d3d11_shader_source_chunks[] = {
     "        clusterParams.z > 0.0 && clusterParams.w > clusterParams.z) {\n"
     "        float zn = clusterParams.z;\n"
     "        float zf = clusterParams.w;\n"
-    "        float sceneD = opaqueDepthTex.Load(int3(int2(input.pos.xy), 0));\n"
-    "        float fragD = input.pos.z;\n"
+    /* Reversed-Z: the analytic linearization below expects standard window depth,
+     * so flip the reversed buffer/fragment values (d_std = 1 - d_rev) first. */
+    "        float sceneD = 1.0 - opaqueDepthTex.Load(int3(int2(input.pos.xy), 0));\n"
+    "        float fragD = 1.0 - input.pos.z;\n"
     "        float linScene;\n"
     "        float linFrag;\n"
     "        if (cameraPosition.w > 0.5) {\n"
@@ -1064,7 +1066,9 @@ static const char *const d3d11_skybox_shader_source_chunks[] = {
     "};\n"
     "VS_OUTPUT VSSkybox(VS_INPUT input) {\n"
     "    VS_OUTPUT output;\n"
-    "    output.pos = float4(input.pos.xy, 1.0, 1.0);\n"
+    /* Reversed-Z: the far plane is window depth 0; drawn after opaques with a
+     * GreaterEqual read-only depth state so only uncovered pixels shade. */
+    "    output.pos = float4(input.pos.xy, 0.0, 1.0);\n"
     "    output.ndc = input.pos.xy;\n"
     "    return output;\n"
     "}\n"
@@ -1167,7 +1171,8 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "float computeSSAO(float2 uv, float depth) {\n"
     "    if (ssaoEnabled == 0)\n"
     "        return 1.0;\n"
-    "    if (depth >= 0.9999)\n"
+    /* Reversed-Z: cleared/far depth is 0, so the sky guard tests the low end. */
+    "    if (depth <= 0.0001)\n"
     "        return 1.0;\n"
     "    float3 P = reconstructWorld(uv, depth);\n"
     "    float3 N = cross(ddx(P), ddy(P));\n"
@@ -1527,7 +1532,9 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "    float3 base = sceneTex.Sample(postSampler, input.uv).rgb;\n"
     "    float mask = motionTex.Sample(postSampler, input.uv).a;\n"
     "    float depth = depthTex.Sample(postSampler, input.uv).r;\n"
-    "    if (mask <= 0.004 || depth >= 0.9999)\n"
+    /* Reversed-Z: cleared/far depth is 0 and nearer is larger, so the sky guard and
+     * every ray-vs-scene comparison below flip direction. */
+    "    if (mask <= 0.004 || depth <= 0.0001)\n"
     "        return float4(base, 1.0);\n"
     "    float3 world = ssrWorldAt(input.uv, depth);\n"
     "    float2 du = float2(invResolution.x, 0.0);\n"
@@ -1558,7 +1565,7 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "            break;\n"
     "        float rayD = ndc.z * 0.5 + 0.5;\n"
     "        float sceneD = depthTex.Sample(postSampler, uv2).r;\n"
-    "        if (rayD > sceneD + 0.0002) {\n"
+    "        if (rayD < sceneD - 0.0002) {\n"
     "            float lo = prevT;\n"
     "            float hi = t;\n"
     "            bool refineValid = true;\n"
@@ -1576,7 +1583,7 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "                    refineValid = false;\n"
     "                    break;\n"
     "                }\n"
-    "                if (mndc.z * 0.5 + 0.5 > depthTex.Sample(postSampler, muv).r + 0.0002)\n"
+    "                if (mndc.z * 0.5 + 0.5 < depthTex.Sample(postSampler, muv).r - 0.0002)\n"
     "                    hi = mid;\n"
     "                else\n"
     "                    lo = mid;\n"
@@ -1592,7 +1599,7 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "                break;\n"
     "            float hitRayD = hndc.z * 0.5 + 0.5;\n"
     "            float hitSceneD = depthTex.Sample(postSampler, hitUv).r;\n"
-    "            hit = (hitRayD - hitSceneD) < 0.02;\n"
+    "            hit = (hitSceneD - hitRayD) < 0.02;\n"
     "            break;\n"
     "        }\n"
     "        prevT = t;\n"

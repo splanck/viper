@@ -1518,6 +1518,11 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->occlusion_duplicate_counts);
     c->occlusion_duplicate_counts = NULL;
     c->occlusion_duplicate_count_capacity = 0;
+    free(c->hiz_depth);
+    c->hiz_depth = NULL;
+    free(c->hiz_vertex_scratch);
+    c->hiz_vertex_scratch = NULL;
+    c->hiz_vertex_scratch_capacity = 0;
     free(c->shadow_draw_indices);
     c->shadow_draw_indices = NULL;
     c->shadow_draw_index_capacity = 0;

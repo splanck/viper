@@ -195,10 +195,13 @@ static float lensflare3d_visibility(
         depth = vgfx3d_sw_get_zbuf(c->backend_ctx, &dw, &dh);
     }
     if (!depth || dw <= 0 || dh <= 0) {
-        /* GPU backends: previous-frame async depth probes (window depth in [0,1]). */
+        /* GPU backends: previous-frame async depth probes. Probes always report
+         * canonical window depth (larger = farther); under a reversed-Z projection the
+         * light's NDC z maps to canonical depth with the opposite sign. */
         if (c->backend && c->backend->queue_depth_probe && c->backend->read_depth_probe &&
             c->backend_ctx && w > 0 && h > 0) {
-            float ref = light_ndc_z * 0.5f + 0.5f;
+            float ref =
+                c->backend->reversed_z ? 0.5f - light_ndc_z * 0.5f : light_ndc_z * 0.5f + 0.5f;
             int visible = 0;
             int total = 0;
             for (int dy = -1; dy <= 1; dy++) {

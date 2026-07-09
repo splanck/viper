@@ -420,16 +420,20 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
 
 /// @brief Create depth-stencil state variants used by opaque, transparent, disabled, and skybox
 /// draws.
+/// @details Reversed-Z: scene passes clear depth to 0 and compare Greater (near = 1,
+///   far = 0), which concentrates float-depth precision in the distance. The shadow
+///   pass keeps its own standard Less state (metal_create_shadow_resources) because
+///   light view-projections stay in the standard convention.
 static void metal_create_depth_state_variants(VGFXMetalContext *ctx, id<MTLDevice> device) {
     MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor alloc] init];
-    dd.depthCompareFunction = MTLCompareFunctionLess;
+    dd.depthCompareFunction = MTLCompareFunctionGreater;
     dd.depthWriteEnabled = YES;
     ctx.depthState = [device newDepthStencilStateWithDescriptor:dd];
     dd.depthWriteEnabled = NO;
     ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
     dd.depthCompareFunction = MTLCompareFunctionAlways;
     ctx.depthStateDisabled = [device newDepthStencilStateWithDescriptor:dd];
-    dd.depthCompareFunction = MTLCompareFunctionLessEqual;
+    dd.depthCompareFunction = MTLCompareFunctionGreaterEqual;
     ctx.skyboxDepthState = [device newDepthStencilStateWithDescriptor:dd];
 }
 
@@ -626,8 +630,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                          * derivatives of that position (no G-buffer). A golden-angle spiral
                          * rotated per-pixel by interleaved-gradient noise replaces the fixed
                          * 8-tap ring, and the smoothstep range check kills the classic
-                         * depth-only halo around silhouettes. */
-                        "    if (centerDepth >= 0.9999) return 1.0;\n"
+                         * depth-only halo around silhouettes. Reversed-Z: cleared/far depth
+                         * is 0, so the sky guard tests the low end. */
+                        "    if (centerDepth <= 0.0001) return 1.0;\n"
                         "    float3 P = reconstructWorld(p, uv, centerDepth);\n"
                         "    float3 N = cross(dfdx(P), dfdy(P));\n"
                         "    float nlen = length(N);\n"
@@ -984,7 +989,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "    float3 base = sceneTex.sample(s, in.uv).rgb;\n"
                         "    float mask = motionTex.sample(s, in.uv).a;\n"
                         "    float depth = depthTex.sample(s, in.uv);\n"
-                        "    if (mask <= 0.004 || depth >= 0.9999)\n"
+                        /* Reversed-Z: cleared/far depth is 0 and nearer is larger, so the sky
+                         * guard and every ray-vs-scene comparison below flip direction. */
+                        "    if (mask <= 0.004 || depth <= 0.0001)\n"
                         "        return float4(base, 1.0);\n"
                         "    float3 world = ssr_world_at(in.uv, depth, p);\n"
                         "    float2 du = float2(p.invResolution.x, 0.0);\n"
@@ -1019,7 +1026,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "            break;\n"
                         "        float rayD = ndc.z * 0.5 + 0.5;\n"
                         "        float sceneD = depthTex.sample(s, uv2);\n"
-                        "        if (rayD > sceneD + 0.0002) {\n"
+                        "        if (rayD < sceneD - 0.0002) {\n"
                         "            float lo = prevT;\n"
                         "            float hi = t;\n"
                         "            for (int r = 0; r < 4; r++) {\n"
@@ -1028,7 +1035,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "1.0);\n"
                         "                float3 mndc = mc.xyz / max(mc.w, 0.0001);\n"
                         "                float2 muv = mndc.xy * 0.5 + 0.5;\n"
-                        "                if (mndc.z * 0.5 + 0.5 > depthTex.sample(s, muv) + "
+                        "                if (mndc.z * 0.5 + 0.5 < depthTex.sample(s, muv) - "
                         "0.0002)\n"
                         "                    hi = mid;\n"
                         "                else\n"
@@ -1039,7 +1046,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "            hitUv = hndc.xy * 0.5 + 0.5;\n"
                         "            float hitRayD = hndc.z * 0.5 + 0.5;\n"
                         "            float hitSceneD = depthTex.sample(s, hitUv);\n"
-                        "            hit = (hitRayD - hitSceneD) < 0.02;\n"
+                        "            hit = (hitSceneD - hitRayD) < 0.02;\n"
                         "            break;\n"
                         "        }\n"
                         "        prevT = t;\n"
@@ -1151,7 +1158,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                  "    if (vid == 0) clip = float2(-1.0, -1.0);\n"
                  "    else if (vid == 1) clip = float2(3.0, -1.0);\n"
                  "    else clip = float2(-1.0, 3.0);\n"
-                 "    out.position = float4(clip, 1.0, 1.0);\n"
+                 /* Reversed-Z: the far plane is window depth 0; drawn after opaques with a
+                  * GreaterEqual read-only depth state so only uncovered pixels shade. */
+                 "    out.position = float4(clip, 0.0, 1.0);\n"
                  "    out.ndc = clip;\n"
                  "    return out;\n"
                  "}\n"

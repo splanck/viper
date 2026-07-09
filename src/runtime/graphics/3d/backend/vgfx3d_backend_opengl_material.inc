@@ -658,7 +658,8 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     }
 
     gl.DepthMask(GL_FALSE);
-    gl.DepthFunc(GL_LEQUAL);
+    /* Reversed-Z: the skybox triangle sits at the cleared far depth. */
+    gl.DepthFunc(GL_GEQUAL);
     gl.Disable(GL_CULL_FACE);
     gl.UseProgram(ctx->skybox_program);
     gl.BindVertexArray(ctx->skybox_vao);
@@ -671,7 +672,7 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
 
     gl.ActiveTexture(GL_TEXTURE0);
-    gl.DepthFunc(GL_LESS);
+    gl.DepthFunc(GL_GREATER);
     gl.DepthMask(GL_TRUE);
     gl.Enable(GL_CULL_FACE);
     gl.UseProgram(ctx->program);

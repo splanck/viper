@@ -108,9 +108,10 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
                 (GLsizeiptr)((size_t)ctx->depth_probe_pending_count * sizeof(float)),
                 GL_MAP_READ_BIT);
             if (mapped) {
-                memcpy(ctx->depth_probe_results,
-                       mapped,
-                       (size_t)ctx->depth_probe_pending_count * sizeof(float));
+                /* Probe contract is canonical window depth (larger = farther); the
+                 * scene depth buffer is reversed-Z, so flip on publish. */
+                for (int32_t i = 0; i < ctx->depth_probe_pending_count; i++)
+                    ctx->depth_probe_results[i] = 1.0f - mapped[i];
                 ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
                 gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
             }
@@ -227,7 +228,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             clear_mask |= GL_COLOR_BUFFER_BIT;
         }
         if (!cam->load_existing_depth) {
-            gl.ClearDepth(1.0);
+            /* Reversed-Z: 0 is the far plane; scene draws compare Greater. */
+            gl.ClearDepth(0.0);
             clear_mask |= GL_DEPTH_BUFFER_BIT;
         }
         if (clear_mask)
@@ -243,7 +245,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         }
         if (!cam->load_existing_depth) {
             gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
-            gl.ClearDepth(1.0);
+            /* Reversed-Z: 0 is the far plane; scene draws compare Greater. */
+            gl.ClearDepth(0.0);
             gl.Clear(GL_DEPTH_BUFFER_BIT);
         }
         {
@@ -257,7 +260,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             clear_mask |= GL_COLOR_BUFFER_BIT;
         }
         if (!cam->load_existing_depth) {
-            gl.ClearDepth(1.0);
+            /* Reversed-Z: 0 is the far plane; scene draws compare Greater. */
+            gl.ClearDepth(0.0);
             clear_mask |= GL_DEPTH_BUFFER_BIT;
         }
         if (clear_mask)
@@ -941,9 +945,12 @@ static void gl_shadow_begin(
     memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
     gl.Viewport(0, 0, w, h);
+    /* Shadow maps keep the standard depth convention: clear 1, compare Less. The
+     * func is pinned here because scene draws leave Greater (reversed-Z) behind. */
     gl.ClearDepth(1.0);
     gl.Clear(GL_DEPTH_BUFFER_BIT);
     gl.Enable(GL_DEPTH_TEST);
+    gl.DepthFunc(GL_LESS);
     gl.DepthMask(GL_TRUE);
     gl.ColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     gl.Enable(GL_CULL_FACE);
