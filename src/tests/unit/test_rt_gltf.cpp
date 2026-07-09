@@ -4005,22 +4005,21 @@ void *rt_model3d_get_mesh(void *obj, int64_t index);
 
 static void test_gltf_converts_spec_glossiness_materials() {
     const char *gltf_path = "/tmp/viper_gltf_spec_gloss.gltf";
-    std::string gltf_json =
-        "{"
-        "\"asset\":{\"version\":\"2.0\"},"
-        "\"extensionsRequired\":[\"KHR_materials_pbrSpecularGlossiness\"],"
-        "\"extensionsUsed\":[\"KHR_materials_pbrSpecularGlossiness\"],"
-        "\"materials\":["
-        "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
-        "\"diffuseFactor\":[0.8,0.4,0.2,1.0],"
-        "\"specularFactor\":[0.04,0.04,0.04],"
-        "\"glossinessFactor\":0.7}}},"
-        "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
-        "\"diffuseFactor\":[0.1,0.1,0.1,1.0],"
-        "\"specularFactor\":[1.0,1.0,1.0],"
-        "\"glossinessFactor\":1.0}}}"
-        "]"
-        "}";
+    std::string gltf_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"extensionsRequired\":[\"KHR_materials_pbrSpecularGlossiness\"],"
+                            "\"extensionsUsed\":[\"KHR_materials_pbrSpecularGlossiness\"],"
+                            "\"materials\":["
+                            "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
+                            "\"diffuseFactor\":[0.8,0.4,0.2,1.0],"
+                            "\"specularFactor\":[0.04,0.04,0.04],"
+                            "\"glossinessFactor\":0.7}}},"
+                            "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
+                            "\"diffuseFactor\":[0.1,0.1,0.1,1.0],"
+                            "\"specularFactor\":[1.0,1.0,1.0],"
+                            "\"glossinessFactor\":1.0}}}"
+                            "]"
+                            "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Spec-gloss glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr,
@@ -4036,10 +4035,8 @@ static void test_gltf_converts_spec_glossiness_materials() {
     EXPECT_NEAR(
         dielectric->diffuse[0], 0.8, 0.001, "Spec-gloss diffuseFactor becomes the base color");
     EXPECT_NEAR(dielectric->roughness, 0.3, 0.001, "roughness = 1 - glossinessFactor");
-    EXPECT_NEAR(dielectric->metallic,
-                0.0,
-                0.001,
-                "Dielectric specular (0.04) converts to metallic 0");
+    EXPECT_NEAR(
+        dielectric->metallic, 0.0, 0.001, "Dielectric specular (0.04) converts to metallic 0");
     EXPECT_NEAR(metal->metallic, 1.0, 0.001, "Full specular converts to metallic 1");
     EXPECT_NEAR(metal->roughness, 0.0, 0.001, "Full glossiness converts to roughness 0");
 }
@@ -4345,10 +4342,12 @@ static void test_gltf_imports_required_punctual_lights() {
                             "    \"intensity\": 7.5,\n"
                             "    \"range\": 5.0,\n"
                             "    \"spot\": {\"innerConeAngle\": 0.1, \"outerConeAngle\": 0.5}\n"
-                            "  }]}},\n"
+                            "  }, {\"type\": \"point\"}]}},\n"
                             "  \"nodes\": [{\"name\": \"lamp\", \"translation\": [1.0, 2.0, 3.0], "
-                            "\"extensions\": {\"KHR_lights_punctual\": {\"light\": 0}}}],\n"
-                            "  \"scenes\": [{\"nodes\": [0]}],\n"
+                            "\"extensions\": {\"KHR_lights_punctual\": {\"light\": 0}}},\n"
+                            "  {\"name\": \"point\", \"extensions\": {\"KHR_lights_punctual\": "
+                            "{\"light\": 1}}}],\n"
+                            "  \"scenes\": [{\"nodes\": [0, 1]}],\n"
                             "  \"scene\": 0\n"
                             "}\n";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
@@ -4359,9 +4358,9 @@ static void test_gltf_imports_required_punctual_lights() {
     if (!asset)
         return;
     void *root = rt_gltf_get_scene_root(asset);
-    EXPECT_TRUE(root != nullptr && rt_scene_node3d_child_count(root) == 1,
+    EXPECT_TRUE(root != nullptr && rt_scene_node3d_child_count(root) == 2,
                 "GLTF.Load builds scene nodes for punctual-light fixtures");
-    if (!root || rt_scene_node3d_child_count(root) != 1)
+    if (!root || rt_scene_node3d_child_count(root) != 2)
         return;
     void *node = rt_scene_node3d_get_child(root, 0);
     rt_light3d *light = (rt_light3d *)rt_scene_node3d_get_light(node);
@@ -4372,8 +4371,17 @@ static void test_gltf_imports_required_punctual_lights() {
     EXPECT_NEAR(light->color[1], 0.4, 0.001, "GLTF.Load preserves light color");
     EXPECT_NEAR(light->intensity, 7.5, 0.001, "GLTF.Load preserves light intensity");
     EXPECT_NEAR(light->attenuation, 0.04, 0.001, "GLTF.Load maps range to attenuation");
+    EXPECT_TRUE(light->casts_shadows == 0, "GLTF.Load imports spot lights with shadows disabled");
     EXPECT_TRUE(light->inner_cos > light->outer_cos,
                 "GLTF.Load stores valid spot inner/outer cone cosines");
+    void *point_node = rt_scene_node3d_get_child(root, 1);
+    rt_light3d *point = (rt_light3d *)rt_scene_node3d_get_light(point_node);
+    EXPECT_TRUE(point != nullptr, "GLTF.Load attaches point lights to their nodes");
+    if (!point)
+        return;
+    EXPECT_TRUE(point->type == 1, "GLTF.Load preserves point-light type");
+    EXPECT_NEAR(point->attenuation, 0.001, 0.0001, "GLTF.Load floors omitted point-light range");
+    EXPECT_TRUE(point->casts_shadows == 0, "GLTF.Load imports point lights with shadows disabled");
 }
 
 static void test_gltf_preserves_primary_texture_sampler_state() {

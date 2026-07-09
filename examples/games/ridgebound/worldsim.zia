@@ -196,8 +196,8 @@ class RidgeboundWorldSim {
 
         // Cool directional fill opposite the warm sun models the terrain (raised
         // well above the old near-zero values); sky-fill stays a gentle flat lift.
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.05 + 0.22 * day) * directLightingScale * cloudDim); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.03 + 0.06 * day) * directLightingScale); }
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.03 + 0.11 * day) * directLightingScale * cloudDim); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.02 + 0.03 * day) * directLightingScale); }
 
         var ambientScale = directLightingScale;
         if (iblActive) { ambientScale = ambientScale * config.IBL_AMBIENT_SCALE; }

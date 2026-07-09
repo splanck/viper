@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc  (#included from rt_scene3d.c; not a standalone translation unit)
-// Purpose: Scene3D transform/world-matrix, node lifecycle, light, and bounds helpers
+// File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc  (#included from rt_scene3d.c; not a
+// standalone translation unit) Purpose: Scene3D transform/world-matrix, node lifecycle, light, and
+// bounds helpers
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Helpers
@@ -571,14 +572,35 @@ static void recompute_world_matrix_single(rt_scene_node3d *node) {
 }
 
 /// @brief Recompute the world matrix if local or parent state changed.
-/// @details Walks the parent chain into a temporary stack, then refreshes from the
+/// @details Walks the parent chain into a scene-owned reusable stack, then refreshes from the
 ///          highest ancestor down to @p node. This preserves lazy parent revision
-///          tracking while avoiding recursive calls on deep hierarchies.
+///          tracking while avoiding recursive calls and per-call heap allocation on normal
+///          scene-owned nodes.
 void recompute_world_matrix(rt_scene_node3d *node) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
     rt_scene_node3d *current = scene_node3d_checked(node);
+    rt_scene3d *owner_scene = current ? scene3d_checked(current->owner_scene) : NULL;
+    if (owner_scene) {
+        while (current) {
+            rt_scene_node3d *parent;
+            if (!scene_node_stack_push(&owner_scene->world_matrix_stack,
+                                       &count,
+                                       &owner_scene->world_matrix_stack_capacity,
+                                       current)) {
+                rt_trap("Scene3D: world-matrix traversal stack allocation failed");
+                return;
+            }
+            parent = scene_node3d_checked(current->parent);
+            if (!parent)
+                break;
+            current = parent;
+        }
+        while (count > 0)
+            recompute_world_matrix_single(owner_scene->world_matrix_stack[--count]);
+        return;
+    }
     while (current) {
         rt_scene_node3d *parent;
         if (!scene_node_stack_push(&stack, &count, &capacity, current)) {
@@ -761,8 +783,7 @@ static void scene_node_apply_bone_socket(rt_scene_node3d *node) {
     /* Model space -> world space through the parent (skinned model) node. */
     quat_identity(parent_quat);
     if (node->parent) {
-        scene_node_get_world_position(
-            node->parent, &parent_pos[0], &parent_pos[1], &parent_pos[2]);
+        scene_node_get_world_position(node->parent, &parent_pos[0], &parent_pos[1], &parent_pos[2]);
         scene_node_get_world_rotation(node->parent, parent_quat);
     }
     scene_node_quat_rotate_vec(parent_quat, model_pos, rotated);
@@ -1982,15 +2003,8 @@ static int scene3d_build_pvs_context(rt_scene3d *scene,
         double *zone_rects = (double *)malloc((size_t)zone_count * 4u * sizeof(double));
         uint8_t *in_queue = (uint8_t *)calloc((size_t)zone_count, 1);
         if (zone_rects && in_queue) {
-            scene3d_pvs_portal_clip(scene,
-                                    out,
-                                    vp,
-                                    camera_zone,
-                                    zone_count,
-                                    portal_count,
-                                    queue,
-                                    zone_rects,
-                                    in_queue);
+            scene3d_pvs_portal_clip(
+                scene, out, vp, camera_zone, zone_count, portal_count, queue, zone_rects, in_queue);
             free(zone_rects);
             free(in_queue);
             free(queue);

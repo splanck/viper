@@ -627,6 +627,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_ResidentBytes\""),
                  "Mesh3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_RetainedBytes\""),
+                 "Mesh3D.RetainedBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode.SetLodResident\""),
                  "SceneNode.SetLodResident must use Graphics3D PascalCase naming") &&
          ok;
@@ -641,6 +644,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ResidentBytes\""),
                  "Mesh3D.ResidentBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"RetainedBytes\""),
+                 "Mesh3D.RetainedBytes property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetLodResident\""),
                  "SceneNode.SetLodResident method missing") &&
@@ -1318,6 +1324,9 @@ bool check_runtime_surface_names() {
              contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.set_ClusteredLighting\""),
              "Canvas3D.ClusteredLighting property setter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.TrySetClusteredLighting\""),
+                 "Canvas3D.TrySetClusteredLighting must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_MaxActiveLights\""),
                  "Canvas3D.MaxActiveLights getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -1395,6 +1404,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ClusteredLighting\""),
                  "Canvas3D.ClusteredLighting property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"TrySetClusteredLighting\""),
+                 "Canvas3D.TrySetClusteredLighting method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetShadowCascades\""),
                  "Canvas3D.SetShadowCascades method missing") &&
@@ -1578,6 +1590,8 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.SceneGraph.QueryAabb",
         "Viper.Graphics3D.SceneGraph.Raycastnodes",
         "Viper.Graphics3D.SceneGraph.get_visibleNodeCount",
+        "Viper.Graphics3D.Mesh3D.get_retainedBytes",
+        "Viper.Graphics3D.Mesh3D.get_retained_bytes",
         "Viper.Graphics3D.Light3D.get_castsShadows",
         "Viper.Graphics3D.Light3D.set_castsShadows",
         "Viper.Graphics3D.Light3D.SetCastShadows",
@@ -1643,6 +1657,7 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.NavAgent3D.setAvoidanceEnabled",
         "Viper.Graphics3D.NavAgent3D.setAvoidanceRadius",
         "Viper.Graphics3D.Canvas3D.setClusteredLighting",
+        "Viper.Graphics3D.Canvas3D.trySetClusteredLighting",
         "Viper.Graphics3D.Canvas3D.get_maxActiveLights",
         "Viper.Graphics3D.Canvas3D.setShadowCascades",
         "Viper.Graphics3D.Canvas3D.get_occludedDrawCount",

@@ -293,6 +293,75 @@ static void game3d_update_animator_list_serial(void **animators, int32_t count, 
     }
 }
 
+/// @brief Ensure the world's reusable animation animator list can hold @p needed entries.
+///
+/// @details The animation phase runs every fixed step, so retaining this pointer array avoids
+///          allocating one `entity_count`-sized block per tick.
+static int game3d_world_ensure_animation_animators(rt_game3d_world *world, int32_t needed) {
+    void **grown;
+    int32_t new_capacity;
+    if (!world || needed < 0)
+        return 0;
+    if (world->animation_animator_capacity >= needed)
+        return 1;
+    if (!game3d_compute_capacity(
+            world->animation_animator_capacity, needed, 16, sizeof(void *), &new_capacity))
+        return 0;
+    grown = (void **)realloc(world->animation_animators, (size_t)new_capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    world->animation_animators = grown;
+    world->animation_animator_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Ensure and clear the world's reusable animation dedupe pointer set.
+///
+/// @details The set uses open addressing and is cleared with memset every tick. Retaining the
+///          allocation avoids calloc/free churn while preserving O(n) duplicate detection.
+static void **game3d_world_prepare_animation_seen_set(rt_game3d_world *world, size_t capacity) {
+    void **grown;
+    if (!world || capacity == 0 || capacity > SIZE_MAX / sizeof(void *))
+        return NULL;
+    if (world->animation_seen_capacity < capacity) {
+        grown = (void **)realloc(world->animation_seen_set, capacity * sizeof(*grown));
+        if (!grown)
+            return NULL;
+        world->animation_seen_set = grown;
+        world->animation_seen_capacity = capacity;
+    }
+    memset(world->animation_seen_set, 0, capacity * sizeof(void *));
+    return world->animation_seen_set;
+}
+
+/// @brief Ensure the reusable parallel-animation task descriptor array has @p needed slots.
+///
+/// @details Task descriptors are small but allocated from the fixed-step hot path; reusing them
+///          keeps parallel animator updates allocation-free after the first growth.
+static rt_game3d_animation_job *game3d_world_prepare_animation_jobs(rt_game3d_world *world,
+                                                                    int32_t needed) {
+    rt_game3d_animation_job *grown;
+    int32_t new_capacity;
+    if (!world || needed <= 0)
+        return NULL;
+    if (world->animation_job_capacity < needed) {
+        if (!game3d_compute_capacity(world->animation_job_capacity,
+                                     needed,
+                                     4,
+                                     sizeof(rt_game3d_animation_job),
+                                     &new_capacity))
+            return NULL;
+        grown = (rt_game3d_animation_job *)realloc(world->animation_jobs,
+                                                   (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return NULL;
+        world->animation_jobs = grown;
+        world->animation_job_capacity = new_capacity;
+    }
+    memset(world->animation_jobs, 0, (size_t)needed * sizeof(rt_game3d_animation_job));
+    return (rt_game3d_animation_job *)world->animation_jobs;
+}
+
 /// @brief Advance all of the world's animators by @p dt, parallelizing across workers when
 /// worthwhile.
 static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
@@ -300,12 +369,12 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
         return;
     int32_t entity_count = game3d_world_safe_entity_count(world);
     int32_t animator_count = 0;
-    void **animators = NULL;
+    void **animators;
     if (entity_count <= 0)
         return;
-    animators = (void **)malloc((size_t)entity_count * sizeof(*animators));
-    if (!animators)
+    if (!game3d_world_ensure_animation_animators(world, entity_count))
         return;
+    animators = world->animation_animators;
     /* Dedup animators in O(n) via a local open-addressing pointer set rather than the
      * prior O(n^2) inner scan. Dedup is mandatory: the parallel path below partitions
      * `animators` across workers, so a duplicate would let two threads update the same
@@ -315,7 +384,7 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
     void **seen;
     while (seen_cap < (size_t)entity_count * 2u && seen_cap < SIZE_MAX / 2u)
         seen_cap <<= 1;
-    seen = (void **)calloc(seen_cap, sizeof(*seen));
+    seen = game3d_world_prepare_animation_seen_set(world, seen_cap);
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         void *anim = game3d_entity_anim_ref(entity);
@@ -346,25 +415,18 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
         if (!duplicate)
             animators[animator_count++] = anim;
     }
-    free(seen);
-    if (animator_count <= 0) {
-        free(animators);
+    if (animator_count <= 0)
         return;
-    }
     if (!RT_GAME3D_PARALLEL_ANIMATOR_UPDATES || !world->jobs_enabled || world->worker_count <= 1 ||
         animator_count <= 1 || !game3d_world_ensure_job_pool(world)) {
         game3d_update_animator_list_serial(animators, animator_count, dt);
-        free(animators);
         return;
     }
 
     int32_t task_count = game3d_animation_job_count(world->worker_count, animator_count);
-    rt_game3d_animation_job *tasks =
-        (rt_game3d_animation_job *)calloc((size_t)task_count, sizeof(*tasks));
+    rt_game3d_animation_job *tasks = game3d_world_prepare_animation_jobs(world, task_count);
     if (!tasks || task_count <= 1) {
         game3d_update_animator_list_serial(animators, animator_count, dt);
-        free(tasks);
-        free(animators);
         return;
     }
 
@@ -385,8 +447,6 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
     rt_threadpool_wait(world->job_pool);
     if (submit_failed)
         world->jobs_enabled = 0;
-    free(tasks);
-    free(animators);
 }
 
 /// @brief Dispatch the post-physics late update to the world's camera controller by
@@ -435,12 +495,18 @@ static int game3d_world_grow_entities(rt_game3d_world *world, int32_t need) {
 
 /// @brief Linear-search the registry for `entity`; returns its index or -1.
 static int32_t game3d_world_find_entity_index(rt_game3d_world *world, rt_game3d_entity *entity) {
+    int32_t indexed_slot;
     if (!world || !entity)
         return -1;
     int32_t entity_count = game3d_world_safe_entity_count(world);
+    indexed_slot = entity->registry_index;
+    if (indexed_slot >= 0 && indexed_slot < entity_count && world->entities[indexed_slot] == entity)
+        return indexed_slot;
     for (int32_t i = 0; i < entity_count; ++i) {
-        if (world->entities[i] == entity)
+        if (world->entities[i] == entity) {
+            entity->registry_index = i;
             return i;
+        }
     }
     return -1;
 }
@@ -486,10 +552,17 @@ static void game3d_world_registry_remove_no_rebuild(rt_game3d_world *world,
     if (body && game3d_world_find_entity_by_body(world, body) == entity)
         game3d_world_body_index_remove(world, body);
     rt_game3d_entity *owned = world->entities[index];
-    for (int32_t i = index; i < entity_count - 1; ++i)
-        world->entities[i] = world->entities[i + 1];
-    world->entity_count = entity_count - 1;
-    world->entities[world->entity_count] = NULL;
+    int32_t last_index = entity_count - 1;
+    rt_game3d_entity *moved = world->entities[last_index];
+    if (index != last_index) {
+        world->entities[index] = moved;
+        if (moved)
+            moved->registry_index = index;
+    }
+    world->entity_count = last_index;
+    world->entities[last_index] = NULL;
+    if (owned)
+        owned->registry_index = -1;
     game3d_release_ref((void **)&owned);
     world->name_index_valid = 0;
 }
@@ -708,6 +781,7 @@ static int game3d_world_spawn_entity_one(rt_game3d_world *world,
     entity->spawned = 1;
     entity->world = world;
     rt_obj_retain_maybe(entity);
+    entity->registry_index = world->entity_count;
     world->entities[world->entity_count++] = entity;
     if (!game3d_world_name_index_add_entity(world, entity)) {
         entity->spawned = 0;
@@ -876,10 +950,16 @@ static void game3d_world_free_registries(rt_game3d_world *world) {
     free(world->body_index_entries);
     free(world->name_index_hashes);
     free(world->name_index_entities);
+    free(world->animation_animators);
+    free(world->animation_seen_set);
+    free(world->animation_jobs);
     world->entities = NULL;
     world->body_index_entries = NULL;
     world->name_index_hashes = NULL;
     world->name_index_entities = NULL;
+    world->animation_animators = NULL;
+    world->animation_seen_set = NULL;
+    world->animation_jobs = NULL;
     world->entity_count = 0;
     world->entity_capacity = 0;
     world->body_index_count = 0;
@@ -887,6 +967,9 @@ static void game3d_world_free_registries(rt_game3d_world *world) {
     world->name_index_count = 0;
     world->name_index_capacity = 0;
     world->name_index_valid = 0;
+    world->animation_animator_capacity = 0;
+    world->animation_seen_capacity = 0;
+    world->animation_job_capacity = 0;
 }
 
 /// @brief GC finalizer for a world: release all runtime state and free the entity array.

@@ -74,8 +74,10 @@ typedef struct rt_navagent3d {
     double repath_interval;
     double repath_accum;
     double *path_points_xyz;
+    struct rt_navagent3d **avoidance_neighbors;
     int32_t path_point_count;
     int32_t path_index;
+    int32_t avoidance_neighbor_capacity;
     int8_t has_target;
     int8_t has_path;
     int8_t auto_repath;
@@ -565,7 +567,9 @@ static int navagent_build_velocity_candidates(double pref_x,
 
 /// @brief Penalty for choosing candidate velocity (`cand_x`,`cand_z`) against one peer.
 /// @details This is a reciprocal velocity-obstacle test: it predicts relative motion over the
-///   bounded time horizon and penalizes candidates that enter the combined avoidance disk.
+///   bounded time horizon and penalizes candidates that enter the combined avoidance disk. The
+///   score uses sqrt-free squared-overlap ratios so the candidate x neighbor loop avoids a square
+///   root on every near miss while still pushing strongly for real penetration.
 static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
                                         rt_navagent3d *other,
                                         double agent_radius,
@@ -604,15 +608,11 @@ static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
     rel_speed_sq = rel_vx * rel_vx + rel_vz * rel_vz;
 
     if (dist_sq < combined_sq) {
-        double dist = dist_sq > 1e-12 ? sqrt(dist_sq) : 0.0;
-        double penetration = (combined - dist) / combined;
-        double sep_rate = 0.0;
-        if (dist > 1e-9)
-            sep_rate = (rel_px * rel_vx + rel_pz * rel_vz) / dist;
-        else
-            sep_rate = -sqrt(cand_x * cand_x + cand_z * cand_z);
-        return 2500.0 * penetration * penetration +
-               50.0 * fmax(0.0, (combined / horizon) - sep_rate);
+        double penetration = (combined_sq - dist_sq) / combined_sq;
+        double closing = rel_px * rel_vx + rel_pz * rel_vz;
+        double closing_penalty =
+            closing < 0.0 ? (-closing / fmax(combined * combined / horizon, 1e-9)) : 0.0;
+        return 3500.0 * penetration * penetration + 50.0 * closing_penalty;
     }
     if (rel_speed_sq <= 1e-10)
         return 0.0;
@@ -626,44 +626,62 @@ static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
     if (closest_sq >= combined_sq)
         return 0.0;
     {
-        double closest = closest_sq > 1e-12 ? sqrt(closest_sq) : 0.0;
-        double risk = (combined - closest) / combined;
+        double risk = (combined_sq - closest_sq) / combined_sq;
         double time_weight = 1.0 + (horizon - t) / horizon;
-        return 1000.0 * risk * risk * time_weight;
+        return 1600.0 * risk * risk * time_weight;
     }
 }
 
-/// @brief Append one avoidance neighbor pointer to a growable temporary list.
+/// @brief Ensure the agent-owned avoidance-neighbor scratch list has at least @p needed slots.
+/// @details The RVO solver reuses the same peer set for every sampled candidate velocity. Keeping
+///   the pointer array on the agent removes per-step heap allocation while still allowing dense
+///   crowds to grow beyond the default capacity.
+/// @param agent Agent whose reusable neighbor storage is being grown.
+/// @param needed Minimum required pointer capacity.
+/// @return 1 if the buffer is ready, 0 on invalid input, overflow, or allocation failure.
+static int navagent_ensure_neighbor_capacity(rt_navagent3d *agent, int32_t needed) {
+    rt_navagent3d **grown;
+    int32_t new_capacity;
+    if (!agent || needed < 0 || agent->avoidance_neighbor_capacity < 0)
+        return 0;
+    if (needed <= agent->avoidance_neighbor_capacity)
+        return 1;
+    new_capacity = agent->avoidance_neighbor_capacity > 0 ? agent->avoidance_neighbor_capacity : 32;
+    while (new_capacity < needed) {
+        int32_t next = new_capacity * 2;
+        if (next <= new_capacity)
+            return 0;
+        new_capacity = next;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*grown))
+        return 0;
+    grown = (rt_navagent3d **)realloc(agent->avoidance_neighbors,
+                                      (size_t)new_capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    agent->avoidance_neighbors = grown;
+    agent->avoidance_neighbor_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Append one avoidance neighbor pointer to an agent-owned reusable list.
 ///
 /// The RVO solver evaluates many candidate velocities against the same peer set.
-/// Keeping that set in a list avoids rescanning the spatial grid or registry for
-/// every candidate. The list is caller-owned and freed after the solver pass.
-/// @param items In/out pointer to the heap-allocated neighbor pointer array.
-/// @param count In/out number of valid entries in @p items.
-/// @param capacity In/out allocated entry capacity for @p items.
+/// Keeping that set in an agent-owned list avoids rescanning the spatial grid or registry for
+/// every candidate and avoids allocating/freeing a temporary list on every tick.
+/// @param owner Agent that owns the reusable neighbor pointer array.
+/// @param count In/out number of valid entries in the owner list.
 /// @param other Neighbor agent to append.
 /// @return 1 on success, 0 when inputs are invalid, capacity overflows, or
 ///         allocation fails; existing list contents remain valid on failure.
-static int navagent_neighbor_list_append(rt_navagent3d ***items,
+static int navagent_neighbor_list_append(rt_navagent3d *owner,
                                          int32_t *count,
-                                         int32_t *capacity,
                                          rt_navagent3d *other) {
-    rt_navagent3d **grown;
-    int32_t new_capacity;
-
-    if (!items || !count || !capacity || !other || *count < 0 || *capacity < 0)
+    if (!owner || !count || !other || *count < 0)
         return 0;
-    if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2 : 32;
-        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(*grown))
-            return 0;
-        grown = (rt_navagent3d **)realloc(*items, (size_t)new_capacity * sizeof(*grown));
-        if (!grown)
-            return 0;
-        *items = grown;
-        *capacity = new_capacity;
-    }
-    (*items)[*count] = other;
+    if (!navagent_ensure_neighbor_capacity(owner, *count + 1))
+        return 0;
+    owner->avoidance_neighbors[*count] = other;
     (*count)++;
     return 1;
 }
@@ -676,8 +694,8 @@ static int navagent_neighbor_list_append(rt_navagent3d ***items,
 /// avoidance enabled and a positive avoidance radius.
 /// @param agent Agent whose avoidance solve is being prepared.
 /// @param use_grid Non-zero to try the spatial-grid neighborhood first.
-/// @param out_neighbors Receives a heap-allocated array of candidate agents;
-///                      caller frees it with `free`.
+/// @param out_neighbors Receives the agent-owned reusable array of candidate agents. The pointer
+///                      remains owned by @p agent and is valid until the next collection/finalize.
 /// @param out_count Receives the number of entries in @p out_neighbors.
 /// @return 1 when collection succeeds, 0 for invalid inputs or allocation
 ///         failure.
@@ -685,9 +703,7 @@ static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
                                                 int use_grid,
                                                 rt_navagent3d ***out_neighbors,
                                                 int32_t *out_count) {
-    rt_navagent3d **neighbors = NULL;
     int32_t count = 0;
-    int32_t capacity = 0;
 
     if (out_neighbors)
         *out_neighbors = NULL;
@@ -702,8 +718,7 @@ static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
         if (candidate_agent__ != agent && candidate_agent__->avoidance_enabled &&                  \
             candidate_agent__->navmesh == agent->navmesh &&                                        \
             navagent_effective_avoidance_radius(candidate_agent__) > 0.0 &&                        \
-            !navagent_neighbor_list_append(&neighbors, &count, &capacity, candidate_agent__)) {    \
-            free(neighbors);                                                                       \
+            !navagent_neighbor_list_append(agent, &count, candidate_agent__)) {                    \
             return 0;                                                                              \
         }                                                                                          \
     } while (0)
@@ -734,7 +749,7 @@ static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
                     }
                 }
             }
-            *out_neighbors = neighbors;
+            *out_neighbors = agent->avoidance_neighbors;
             *out_count = count;
             return 1;
         }
@@ -743,7 +758,7 @@ static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
 
     for (rt_navagent3d *other = g_navagent3d_registry; other; other = other->registry_next)
         NAVAGENT_APPEND_IF_PEER(other);
-    *out_neighbors = neighbors;
+    *out_neighbors = agent->avoidance_neighbors;
     *out_count = count;
 #undef NAVAGENT_APPEND_IF_PEER
     return 1;
@@ -889,7 +904,6 @@ static int navagent_compute_avoidance_adjust(
             best_z = cand_z;
         }
     }
-    free(neighbors);
     *out_ax = best_x - pref_x;
     *out_az = best_z - pref_z;
     return 1;
@@ -1197,6 +1211,9 @@ static void navagent_finalize(void *obj) {
     navagent_unregister(agent);
     free(agent->path_points_xyz);
     agent->path_points_xyz = NULL;
+    free(agent->avoidance_neighbors);
+    agent->avoidance_neighbors = NULL;
+    agent->avoidance_neighbor_capacity = 0;
     navagent_release_class_ref(&agent->navmesh, RT_G3D_NAVMESH3D_CLASS_ID);
     navagent_release_class_ref(&agent->bound_character, RT_G3D_CHARACTER3D_CLASS_ID);
     navagent_release_class_ref(&agent->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
@@ -1567,7 +1584,6 @@ void rt_navagent3d_bind_node(void *obj, void *node) {
         navagent_sync_position_from_bindings(agent);
     }
 }
-
 
 /// @brief True while the agent's current path segment traverses a registered
 ///        off-mesh link (jump/drop/vent). Lets gameplay trigger the matching

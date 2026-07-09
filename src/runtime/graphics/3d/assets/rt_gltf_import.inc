@@ -799,10 +799,27 @@ static int gltf_install_active_scene_compat(rt_gltf_asset *asset) {
     return 1;
 }
 
+/// @brief Convert a glTF punctual-light range into the runtime local-light attenuation floor.
+/// @details glTF omits `range` or sets it to zero for unbounded local lights. Viper intentionally
+/// avoids no-falloff point/spot lights because they are visually surprising and expensive, so this
+/// helper maps omitted, invalid, overflowing, or too-small attenuation values to the same floor
+/// used by `Light3D.NewPoint` and `Light3D.NewSpot`.
+/// @param range glTF light range in scene units.
+/// @return Runtime attenuation coefficient for point and spot lights.
+static double gltf_local_light_attenuation(double range) {
+    double attenuation;
+    if (!isfinite(range) || range <= 1e-6)
+        return RT_LIGHT3D_DEFAULT_ATTENUATION;
+    attenuation = 1.0 / (range * range);
+    if (!isfinite(attenuation) || attenuation < RT_LIGHT3D_DEFAULT_ATTENUATION)
+        return RT_LIGHT3D_DEFAULT_ATTENUATION;
+    return attenuation;
+}
+
 /// @brief Construct a `rt_light3d` from a `KHR_lights_punctual` extension light JSON object.
 /// @details Reads `type` (directional/point/spot), `color`, `intensity`, and `range` from
 ///   the light JSON. Intensity is stored directly; range is converted to an inverse-square
-///   attenuation factor (`1 / range²`), or 0 for unbounded lights (range = 0 per spec).
+///   attenuation factor (`1 / range²`) for point/spot lights with the runtime local-light floor.
 ///   For spot lights, `innerConeAngle` and `outerConeAngle` are read from the nested `"spot"`
 ///   object, clamped to `(0, π/2]`, and stored as their cosines — the convention expected by
 ///   the shader. A minimum angular gap (`spot_eps`) is enforced between inner and outer angles
@@ -830,25 +847,28 @@ static void *gltf_new_punctual_light(void *light_json) {
     light->color[1] = gltf_clamp_double(gltf_arr_num(color_arr, 1, 1.0), 0.0, 1.0, 1.0);
     light->color[2] = gltf_clamp_double(gltf_arr_num(color_arr, 2, 1.0), 0.0, 1.0, 1.0);
     light->intensity = gltf_clamp_double(jnum(light_json, "intensity", 1.0), 0.0, DBL_MAX, 1.0);
-    light->attenuation = range > 1e-6 && isfinite(range) ? 1.0 / (range * range) : 0.0;
+    light->attenuation = 0.0;
     light->direction[0] = 0.0;
     light->direction[1] = 0.0;
     light->direction[2] = -1.0;
     light->enabled = 1;
-    light->casts_shadows = 1;
+    light->casts_shadows = 0;
 
     if (strcmp(type, "directional") == 0) {
         light->type = 0;
+        light->casts_shadows = 1;
         return light;
     }
     if (strcmp(type, "point") == 0) {
         light->type = 1;
+        light->attenuation = gltf_local_light_attenuation(range);
         return light;
     }
     if (strcmp(type, "spot") == 0) {
         const double max_spot_angle = pi * 0.5;
         const double spot_eps = 1e-4;
         light->type = 3;
+        light->attenuation = gltf_local_light_attenuation(range);
         inner_angle = gltf_clamp_double(inner_angle, 0.0, max_spot_angle - spot_eps, 0.0);
         outer_angle = gltf_clamp_double(outer_angle, 0.0, max_spot_angle, pi / 4.0);
         if (outer_angle <= inner_angle + spot_eps) {

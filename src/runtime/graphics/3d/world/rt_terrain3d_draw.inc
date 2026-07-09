@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/world/rt_terrain3d_draw.inc  (#included from rt_terrain3d.c; not a standalone translation unit)
-// Purpose: Terrain3D culling, prewarm, draw, nav-mesh build, and public LOD/stat API
+// File: src/runtime/graphics/3d/world/rt_terrain3d_draw.inc  (#included from rt_terrain3d.c; not a
+// standalone translation unit) Purpose: Terrain3D culling, prewarm, draw, nav-mesh build, and
+// public LOD/stat API
 //===----------------------------------------------------------------------===//
 /// @brief Return the terrain-specific CPU frustum padding in render/world units.
 /// @details The union AABB is already conservative for LOD geometry; this extra half-cell guard
@@ -17,45 +18,89 @@ static float terrain_chunk_culling_pad(const rt_terrain3d *t) {
     return (float)pad;
 }
 
-/// @brief Prebuild every missing terrain chunk LOD mesh.
-/// @details The draw loop only selects between resident chunk meshes. Building LOD meshes before
-///   visibility/selection avoids an individual chunk allocating geometry the first frame it crosses
-///   an LOD threshold, which can otherwise produce visible stalls or inconsistent terrain edges.
-static void terrain_prewarm_chunk_lods(rt_terrain3d *t) {
-    int all_ready = 1;
-    if (!t || !terrain_has_valid_chunk_grid(t))
-        return;
-    for (int32_t cz = 0; cz < t->chunks_z; cz++) {
-        for (int32_t cx = 0; cx < t->chunks_x; cx++) {
-            int32_t idx = cz * t->chunks_x + cx;
-            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 0))
-                all_ready = 0;
-            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 1))
-                all_ready = 0;
-            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 2))
-                all_ready = 0;
-            if (!terrain_rebuild_chunk_union_aabb(t, idx))
-                all_ready = 0;
+/// @brief Compute a conservative chunk AABB directly from height samples without building a mesh.
+///
+/// @details Frustum culling can reject a chunk before any LOD mesh exists. This helper mirrors the
+///          generated mesh bounds, including adaptive skirt depth, using only the heightfield and
+///          scale. The result is stored by the caller in a regular chunk AABB slot.
+static int terrain_compute_chunk_culling_aabb(rt_terrain3d *t,
+                                              int32_t cx,
+                                              int32_t cz,
+                                              float out_aabb[6]) {
+    int32_t x0;
+    int32_t z0;
+    int32_t cols;
+    int32_t rows;
+    double sx;
+    double sy;
+    double sz;
+    float min_y = FLT_MAX;
+    float max_y = -FLT_MAX;
+    if (!terrain_has_valid_grid(t) || !out_aabb || cx < 0 || cz < 0 || cx >= t->chunks_x ||
+        cz >= t->chunks_z)
+        return 0;
+    x0 = cx * TERRAIN_CHUNK_SIZE;
+    z0 = cz * TERRAIN_CHUNK_SIZE;
+    cols = TERRAIN_CHUNK_SIZE + 1;
+    rows = TERRAIN_CHUNK_SIZE + 1;
+    if (x0 + cols > t->width)
+        cols = t->width - x0;
+    if (z0 + rows > t->depth)
+        rows = t->depth - z0;
+    if (cols <= 0 || rows <= 0)
+        return 0;
+    sx = terrain_scale_axis_or(t, 0, 1.0);
+    sy = terrain_scale_axis_or(t, 1, 1.0);
+    sz = terrain_scale_axis_or(t, 2, 1.0);
+    for (int32_t z = 0; z < rows; ++z) {
+        for (int32_t x = 0; x < cols; ++x) {
+            float y =
+                canvas3d_sanitize_f64_to_float((double)sample_height(t, x0 + x, z0 + z) * sy, 0.0f);
+            if (y < min_y)
+                min_y = y;
+            if (y > max_y)
+                max_y = y;
         }
     }
-    t->lod_prewarm_dirty = all_ready ? 0 : 1;
+    if (!isfinite(min_y) || !isfinite(max_y))
+        return 0;
+    if (t->skirt_depth > 0.0f) {
+        float relief = max_y - min_y;
+        float eff_skirt = t->skirt_depth;
+        if (isfinite(relief) && relief > eff_skirt * 4.0f)
+            eff_skirt = relief * 0.25f;
+        min_y -= eff_skirt;
+    }
+    out_aabb[0] = canvas3d_sanitize_f64_to_float((double)x0 * sx, 0.0f);
+    out_aabb[1] = min_y;
+    out_aabb[2] = canvas3d_sanitize_f64_to_float((double)z0 * sz, 0.0f);
+    out_aabb[3] = canvas3d_sanitize_f64_to_float((double)(x0 + cols - 1) * sx, out_aabb[0]);
+    out_aabb[4] = max_y;
+    out_aabb[5] = canvas3d_sanitize_f64_to_float((double)(z0 + rows - 1) * sz, out_aabb[2]);
+    return terrain_aabb_is_valid(out_aabb);
 }
 
-/// @brief Return true when any terrain chunk LOD mesh is missing.
-/// @details Used to keep prewarming out of the steady-state draw path while still recovering
-///   from partial allocation failures or explicit terrain invalidation.
-static int terrain_needs_lod_prewarm(const rt_terrain3d *t) {
-    if (!t || !terrain_has_valid_chunk_grid(t))
-        return 0;
-    if (t->lod_prewarm_dirty)
-        return 1;
-    for (int32_t i = 0; i < terrain_safe_chunk_count(t); i++) {
-        if (!terrain_lod_mesh_or_null(t, i, 0) || !terrain_lod_mesh_or_null(t, i, 1) ||
-            !terrain_lod_mesh_or_null(t, i, 2) ||
-            !terrain_aabb_is_valid(&t->chunk_aabbs_union[i * 6]))
-            return 1;
+/// @brief Return a conservative culling AABB for a chunk, computing it lazily when no LOD exists.
+///
+/// @details If resident LOD AABBs are available, their union remains preferred because it exactly
+///          tracks generated skirt geometry. Otherwise a heightfield-only AABB is cached in the
+///          union slot so culled chunks do not allocate LOD0 just to get bounds.
+static const float *terrain_chunk_culling_aabb(rt_terrain3d *t,
+                                               int32_t cx,
+                                               int32_t cz,
+                                               int32_t idx) {
+    float *slot;
+    const float *resident_union = terrain_chunk_union_aabb(t, idx);
+    if (resident_union)
+        return resident_union;
+    if (!terrain_has_valid_chunk_grid(t) || idx < 0 || idx >= terrain_safe_chunk_count(t))
+        return NULL;
+    slot = &t->chunk_aabbs_union[idx * 6];
+    if (!terrain_compute_chunk_culling_aabb(t, cx, cz, slot)) {
+        terrain_aabb_clear(slot);
+        return NULL;
     }
-    return 0;
+    return slot;
 }
 
 /// @brief Set chunk LOD switch distances. Within `near_dist` chunks render at full resolution;
@@ -336,9 +381,6 @@ void rt_canvas3d_draw_terrain_at(
         if (t->splat_dirty || any_invalid)
             bake_splat_texture(t);
     }
-    if (terrain_needs_lod_prewarm(t))
-        terrain_prewarm_chunk_lods(t);
-
     vgfx3d_frustum_t frustum;
     int use_visibility_culling = (c->frustum_culling || c->occlusion_culling) ? 1 : 0;
     if (use_visibility_culling)
@@ -380,13 +422,7 @@ void rt_canvas3d_draw_terrain_at(
         for (int32_t cx = 0; cx < t->chunks_x; cx++) {
             int32_t idx = cz * t->chunks_x + cx;
 
-            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 0)) {
-                t->last_missing_lod_count++;
-                continue;
-            }
-            terrain_rebuild_chunk_union_aabb(t, idx);
-
-            const float *cull_aabb = terrain_chunk_union_aabb(t, idx);
+            const float *cull_aabb = terrain_chunk_culling_aabb(t, cx, cz, idx);
             if (!cull_aabb) {
                 t->last_missing_lod_count++;
                 continue;
@@ -421,6 +457,9 @@ void rt_canvas3d_draw_terrain_at(
 
             int32_t lod = terrain_select_lod(t, idx, dist, lod_dist1, lod_dist2);
             lod = terrain_clamp_lod_to_neighbors(t, idx, lod);
+            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, lod))
+                t->last_missing_lod_count++;
+            (void)terrain_rebuild_chunk_union_aabb(t, idx);
 
             const float *selected_aabb = NULL;
             void *draw_mesh =

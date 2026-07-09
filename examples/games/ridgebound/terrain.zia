@@ -241,13 +241,15 @@ class RidgeboundTerrain {
 
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
-                // Bright cool white with gentle wind-drift noise and rare sparkle.
+                // Cool blue-grey snow with wind-drift noise. Keep the albedo below
+                // pure white so daylight/IBL can brighten the field without
+                // blowing out the smoke-probe foreground.
                 var noise = ((px * 5 + py * 3 + px * py) % 16) - 8;
                 var sparkle = 0;
-                if (((px * 7 + py * 13) % 37) == 0) { sparkle = 20; }
-                var r = mathutil.clampByte(236 + noise / 2 + sparkle);
-                var g = mathutil.clampByte(240 + noise / 2 + sparkle);
-                var b = mathutil.clampByte(248 + noise / 3 + sparkle);
+                if (((px * 7 + py * 13) % 37) == 0) { sparkle = 12; }
+                var r = mathutil.clampByte(144 + noise / 2 + sparkle);
+                var g = mathutil.clampByte(160 + noise / 2 + sparkle);
+                var b = mathutil.clampByte(184 + noise / 3 + sparkle);
                 tex.Set(px, py, mathutil.packPixel(r, g, b, 255));
             }
         }

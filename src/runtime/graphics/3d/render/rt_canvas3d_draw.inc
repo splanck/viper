@@ -9,6 +9,17 @@
  * Rendering — dispatches through backend vtable
  *=========================================================================*/
 
+/// @brief Return whether a GPU clear also needs the legacy CPU window mirror cleared.
+///
+/// @details Native backends with `readback_rgba` own screenshot/capture data, so repainting
+///          the window's CPU framebuffer on every `Clear` only burns memory bandwidth. Custom
+///          non-software backends without readback still get the mirror for compatibility with
+///          `Screenshot` fallback behavior.
+static int canvas3d_clear_needs_cpu_window_mirror(const rt_canvas3d *c) {
+    return c && c->backend && c->backend != &vgfx3d_software_backend && !c->render_target &&
+           !c->backend->readback_rgba;
+}
+
 /// @brief Clear the framebuffer and depth buffer with the given background color.
 /// @details Must be called at the start of each frame before Begin. Fog and
 ///          ambient light persist until explicitly changed.
@@ -23,13 +34,11 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     float cr = canvas3d_clamp01_f64(r);
     float cg = canvas3d_clamp01_f64(g);
     float cb = canvas3d_clamp01_f64(b);
-    c->backend->clear(c->backend_ctx, c->gfx_win, cr, cg, cb);
+    if (c->backend->clear)
+        c->backend->clear(c->backend_ctx, c->gfx_win, cr, cg, cb);
 
-    /* Also clear the software framebuffer so 2D overlay functions
-     * (DrawText2D, DrawRect2D, DrawCrosshair, Screenshot) have correct
-     * background content regardless of active backend. Uses memset for
-     * stride-aligned rows instead of per-pixel loop (4x faster at 1080p). */
-    if (c->backend != &vgfx3d_software_backend && !c->render_target) {
+    /* Only maintain the legacy CPU mirror when there is no backend readback hook. */
+    if (canvas3d_clear_needs_cpu_window_mirror(c)) {
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels &&
             canvas3d_rgba8_stride_valid(fb.width, fb.height, fb.stride)) {
@@ -98,6 +107,37 @@ static vgfx3d_draw_cmd_t canvas3d_make_final_overlay_screen_cmd(const vgfx3d_dra
     return overlay_cmd;
 }
 
+/// @brief Allocate transient screen-geometry storage for overlay draw commands.
+/// @details Final-overlay draws first try the retained arena so common HUD primitives avoid one
+/// malloc/free pair per command while still keeping pointers stable through post-FX replay. If the
+/// retained arena cannot satisfy the request without moving prior commands, this falls back to the
+/// existing malloc-backed temp-buffer path. Normal overlay draws always use malloc so their
+/// lifetime remains tied to the regular per-frame temp cleanup.
+/// @param c Canvas that owns the overlay lifetime state.
+/// @param bytes Combined vertex and index byte count to allocate.
+/// @param final_overlay Non-zero when the command is being recorded for final-overlay replay.
+/// @param out_from_final_overlay_arena Receives non-zero when the returned pointer is arena-owned.
+/// @return Writable storage for the draw command, or NULL on allocation failure.
+static uint8_t *canvas3d_alloc_screen_geometry_block(rt_canvas3d *c,
+                                                     size_t bytes,
+                                                     int final_overlay,
+                                                     int *out_from_final_overlay_arena) {
+    uint8_t *block;
+    if (out_from_final_overlay_arena)
+        *out_from_final_overlay_arena = 0;
+    if (bytes == 0u)
+        return NULL;
+    if (final_overlay) {
+        block = (uint8_t *)canvas3d_alloc_final_overlay_arena(c, bytes, sizeof(void *));
+        if (block) {
+            if (out_from_final_overlay_arena)
+                *out_from_final_overlay_arena = 1;
+            return block;
+        }
+    }
+    return (uint8_t *)malloc(bytes);
+}
+
 /// @brief Append a 2D triangle list (positions + UVs + color) to the deferred queue.
 ///
 /// Used as the underlying primitive for `canvas3d_queue_screen_rect`
@@ -115,10 +155,12 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
                                           float a) {
     size_t vertex_bytes;
     size_t index_bytes;
+    size_t total_bytes;
     uint8_t *block;
     vgfx3d_vertex_t *verts_copy;
     uint32_t *indices_copy;
     vgfx3d_draw_cmd_t cmd;
+    int block_from_final_overlay_arena = 0;
 
     if (!c || !c->in_frame || !vertices || vertex_count <= 0 || !indices || index_count <= 0)
         return 0;
@@ -129,7 +171,9 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     index_bytes = (size_t)index_count * sizeof(uint32_t);
     if (vertex_bytes > SIZE_MAX - index_bytes)
         return 0;
-    block = (uint8_t *)malloc(vertex_bytes + index_bytes);
+    total_bytes = vertex_bytes + index_bytes;
+    block = canvas3d_alloc_screen_geometry_block(
+        c, total_bytes, c->final_overlay_recording, &block_from_final_overlay_arena);
     if (!block)
         return 0;
     verts_copy = (vgfx3d_vertex_t *)block;
@@ -154,12 +198,14 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
 
     if (c->final_overlay_recording) {
         vgfx3d_draw_cmd_t overlay_cmd = canvas3d_make_final_overlay_screen_cmd(&cmd);
-        if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
+        if (!block_from_final_overlay_arena &&
+            !canvas3d_track_final_overlay_temp_buffer(c, block)) {
             free(block);
             return 0;
         }
         if (!canvas3d_enqueue_final_overlay_draw(c, &overlay_cmd, NULL, NULL)) {
-            canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
+            if (!block_from_final_overlay_arena)
+                canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
             return 0;
         }
         return 1;
@@ -215,6 +261,202 @@ static int canvas3d_overlay_clip_rect(
     return 1;
 }
 
+/// @brief Linearly interpolate every attribute in a screen-space overlay vertex.
+/// @details Rounded-rectangle clipping intersects generated fan triangles against the active
+/// overlay clip rectangle. Interpolating the complete vertex keeps future per-vertex overlay
+/// attributes correct even though current rounded rectangles use only position, normal, and color.
+/// @param a First endpoint.
+/// @param b Second endpoint.
+/// @param t Interpolation factor in the closed range [0, 1].
+/// @return The interpolated vertex.
+static vgfx3d_vertex_t canvas3d_lerp_screen_vertex(const vgfx3d_vertex_t *a,
+                                                   const vgfx3d_vertex_t *b,
+                                                   float t) {
+    vgfx3d_vertex_t out = *a;
+    float inv_t = 1.0f - t;
+    for (int i = 0; i < 3; ++i) {
+        out.pos[i] = a->pos[i] * inv_t + b->pos[i] * t;
+        out.normal[i] = a->normal[i] * inv_t + b->normal[i] * t;
+    }
+    for (int i = 0; i < 2; ++i) {
+        out.uv[i] = a->uv[i] * inv_t + b->uv[i] * t;
+        out.uv1[i] = a->uv1[i] * inv_t + b->uv1[i] * t;
+    }
+    for (int i = 0; i < 4; ++i) {
+        out.color[i] = a->color[i] * inv_t + b->color[i] * t;
+        out.tangent[i] = a->tangent[i] * inv_t + b->tangent[i] * t;
+        out.bone_weights[i] = a->bone_weights[i] * inv_t + b->bone_weights[i] * t;
+    }
+    return out;
+}
+
+/// @brief Test whether a screen-space vertex is inside one clip-rect edge.
+/// @param v Vertex to test.
+/// @param edge Edge selector: 0 left, 1 right, 2 top, 3 bottom.
+/// @param value Coordinate of the clip edge.
+/// @return Non-zero when @p v is on the drawable side of the edge.
+static int canvas3d_screen_vertex_inside_clip_edge(const vgfx3d_vertex_t *v,
+                                                   int edge,
+                                                   float value) {
+    switch (edge) {
+        case 0:
+            return v->pos[0] >= value;
+        case 1:
+            return v->pos[0] <= value;
+        case 2:
+            return v->pos[1] >= value;
+        default:
+            return v->pos[1] <= value;
+    }
+}
+
+/// @brief Intersect a segment against one axis-aligned clip edge.
+/// @details The returned vertex lies on the edge and carries linearly interpolated attributes from
+/// the two original vertices. Degenerate segments fall back to @p a, which is safe because the
+/// caller only asks for intersections on crossing edges.
+/// @param a First segment endpoint.
+/// @param b Second segment endpoint.
+/// @param edge Edge selector: 0 left, 1 right, 2 top, 3 bottom.
+/// @param value Coordinate of the clip edge.
+/// @return Interpolated vertex on the requested edge.
+static vgfx3d_vertex_t canvas3d_intersect_screen_clip_edge(const vgfx3d_vertex_t *a,
+                                                           const vgfx3d_vertex_t *b,
+                                                           int edge,
+                                                           float value) {
+    const int axis = edge < 2 ? 0 : 1;
+    float denom = b->pos[axis] - a->pos[axis];
+    float t = 0.0f;
+    if (fabsf(denom) > 1.0e-8f)
+        t = (value - a->pos[axis]) / denom;
+    if (t < 0.0f)
+        t = 0.0f;
+    else if (t > 1.0f)
+        t = 1.0f;
+    return canvas3d_lerp_screen_vertex(a, b, t);
+}
+
+/// @brief Clip a convex screen-space polygon against one axis-aligned clip edge.
+/// @details Implements one Sutherland-Hodgman pass. The output capacity is explicit so rounded-rect
+/// clipping cannot overflow its fixed stack buffers if future tessellation settings change.
+/// @param in_vertices Input polygon vertices in winding order.
+/// @param in_count Number of input vertices.
+/// @param out_vertices Destination for the clipped polygon.
+/// @param out_capacity Maximum number of destination vertices.
+/// @param edge Edge selector: 0 left, 1 right, 2 top, 3 bottom.
+/// @param value Coordinate of the clip edge.
+/// @return Clipped vertex count, or -1 if @p out_capacity is insufficient.
+static int canvas3d_clip_screen_polygon_edge(const vgfx3d_vertex_t *in_vertices,
+                                             int in_count,
+                                             vgfx3d_vertex_t *out_vertices,
+                                             int out_capacity,
+                                             int edge,
+                                             float value) {
+    int out_count = 0;
+    if (!in_vertices || !out_vertices || in_count <= 0 || out_capacity <= 0)
+        return 0;
+    for (int i = 0; i < in_count; ++i) {
+        const vgfx3d_vertex_t *current = &in_vertices[i];
+        const vgfx3d_vertex_t *previous = &in_vertices[(i + in_count - 1) % in_count];
+        int current_inside = canvas3d_screen_vertex_inside_clip_edge(current, edge, value);
+        int previous_inside = canvas3d_screen_vertex_inside_clip_edge(previous, edge, value);
+        if (current_inside != previous_inside) {
+            if (out_count >= out_capacity)
+                return -1;
+            out_vertices[out_count++] =
+                canvas3d_intersect_screen_clip_edge(previous, current, edge, value);
+        }
+        if (current_inside) {
+            if (out_count >= out_capacity)
+                return -1;
+            out_vertices[out_count++] = *current;
+        }
+    }
+    return out_count;
+}
+
+/// @brief Queue rounded-rectangle fan triangles after exact clipping to the overlay clip rect.
+/// @details Each source triangle is clipped independently against the active clip rectangle and
+/// then re-triangulated. This prevents partially clipped rounded rectangles from leaking pixels
+/// outside the clip region without requiring backend-specific scissor state.
+/// @param c Canvas with an active overlay clip rectangle.
+/// @param vertices Source rounded-rectangle fan vertices.
+/// @param indices Source triangle-list indices.
+/// @param index_count Number of source indices.
+/// @param r Red color component.
+/// @param g Green color component.
+/// @param b Blue color component.
+/// @param a Alpha component.
+/// @return Non-zero on success. A fully clipped rounded rectangle is treated as success.
+static int canvas3d_queue_clipped_round_rect_geometry(rt_canvas3d *c,
+                                                      const vgfx3d_vertex_t *vertices,
+                                                      const uint32_t *indices,
+                                                      int32_t index_count,
+                                                      float r,
+                                                      float g,
+                                                      float b,
+                                                      float a) {
+    enum {
+        RR_CLIP_POLY_CAP = 16,
+        RR_CLIP_MAX_VERTS = 4 * (6 + 1) * RR_CLIP_POLY_CAP,
+        RR_CLIP_MAX_INDICES = 4 * (6 + 1) * (RR_CLIP_POLY_CAP - 2) * 3
+    };
+
+    vgfx3d_vertex_t out_vertices[RR_CLIP_MAX_VERTS];
+    uint32_t out_indices[RR_CLIP_MAX_INDICES];
+    int32_t out_vertex_count = 0;
+    int32_t out_index_count = 0;
+    const float edge_value[4] = {c->overlay_clip_x,
+                                 c->overlay_clip_x + c->overlay_clip_w,
+                                 c->overlay_clip_y,
+                                 c->overlay_clip_y + c->overlay_clip_h};
+
+    if (!c || !vertices || !indices || index_count <= 0)
+        return 0;
+    for (int32_t tri = 0; tri + 2 < index_count; tri += 3) {
+        vgfx3d_vertex_t poly_a[RR_CLIP_POLY_CAP];
+        vgfx3d_vertex_t poly_b[RR_CLIP_POLY_CAP];
+        const vgfx3d_vertex_t *current = poly_a;
+        vgfx3d_vertex_t *next = poly_b;
+        int current_count = 3;
+        poly_a[0] = vertices[indices[tri + 0]];
+        poly_a[1] = vertices[indices[tri + 1]];
+        poly_a[2] = vertices[indices[tri + 2]];
+        for (int edge = 0; edge < 4; ++edge) {
+            int clipped_count = canvas3d_clip_screen_polygon_edge(
+                current, current_count, next, RR_CLIP_POLY_CAP, edge, edge_value[edge]);
+            if (clipped_count < 0)
+                return 0;
+            if (clipped_count == 0) {
+                current_count = 0;
+                break;
+            }
+            current_count = clipped_count;
+            current = next;
+            next = next == poly_a ? poly_b : poly_a;
+        }
+        if (current_count < 3)
+            continue;
+        if (out_vertex_count > RR_CLIP_MAX_VERTS - current_count)
+            return 0;
+        if (out_index_count > RR_CLIP_MAX_INDICES - (current_count - 2) * 3)
+            return 0;
+        {
+            uint32_t base = (uint32_t)out_vertex_count;
+            for (int i = 0; i < current_count; ++i)
+                out_vertices[out_vertex_count++] = current[i];
+            for (int i = 1; i + 1 < current_count; ++i) {
+                out_indices[out_index_count++] = base;
+                out_indices[out_index_count++] = base + (uint32_t)i;
+                out_indices[out_index_count++] = base + (uint32_t)(i + 1);
+            }
+        }
+    }
+    if (out_vertex_count == 0 || out_index_count == 0)
+        return 1;
+    return canvas3d_queue_screen_geometry(
+        c, out_vertices, out_vertex_count, out_indices, out_index_count, r, g, b, a);
+}
+
 /// @brief Convenience wrapper: queue a screen-space rectangle as two triangles.
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a) {
@@ -246,9 +488,8 @@ int canvas3d_queue_screen_rect(
 /// @brief Queue a screen-space rounded rectangle as a triangle fan (Plan 08).
 /// @details The perimeter walks four quarter-arcs (6 segments each) between the straight
 ///          edges and fans around the rect center — convex, so the fan is exact. The
-///          radius clamps to half the smaller dimension. Fully-outside shapes are culled
-///          against the overlay clip rect by bounding box (partial overlap draws
-///          unclipped; the fan is not trimmed edge-exactly).
+///          radius clamps to half the smaller dimension. When an overlay clip rect is active,
+///          generated triangles are clipped edge-exactly before queueing.
 int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
                                      float x,
                                      float y,
@@ -274,15 +515,6 @@ int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
         radius = half_min;
     if (radius < 0.5f)
         return canvas3d_queue_screen_rect(c, x, y, w, h, r, g, b, a);
-
-    if (c->overlay_clip_active) {
-        float bx = x;
-        float by = y;
-        float bw = w;
-        float bh = h;
-        if (!canvas3d_overlay_clip_rect(c, &bx, &by, &bw, &bh))
-            return 1; /* fully outside the clip rect */
-    }
 
     /* Corner centers in draw order: TL, TR, BR, BL; each quarter-arc spans 90 deg. */
     {
@@ -314,6 +546,15 @@ int canvas3d_queue_screen_round_rect(rt_canvas3d *c,
             indices[i * 3 + 1] = (uint32_t)(1 + i);
             indices[i * 3 + 2] = (uint32_t)(1 + ((i + 1) % perim));
         }
+    }
+    if (c->overlay_clip_active) {
+        float bx = x;
+        float by = y;
+        float bw = w;
+        float bh = h;
+        if (!canvas3d_overlay_clip_rect(c, &bx, &by, &bw, &bh))
+            return 1; /* fully outside the clip rect */
+        return canvas3d_queue_clipped_round_rect_geometry(c, verts, indices, perim * 3, r, g, b, a);
     }
     return canvas3d_queue_screen_geometry(c, verts, 1 + perim, indices, perim * 3, r, g, b, a);
 }
@@ -389,11 +630,13 @@ int canvas3d_queue_screen_image_uv(rt_canvas3d *c,
     static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
     size_t vertex_bytes;
     size_t index_bytes;
+    size_t total_bytes;
     uint8_t *block;
     vgfx3d_vertex_t *verts_copy;
     uint32_t *indices_copy;
     vgfx3d_draw_cmd_t cmd;
     void *mat;
+    int block_from_final_overlay_arena = 0;
 
     if (!c || !c->in_frame || !pixels || w <= 0.0f || h <= 0.0f)
         return 0;
@@ -452,20 +695,24 @@ int canvas3d_queue_screen_image_uv(rt_canvas3d *c,
 
     vertex_bytes = sizeof(verts);
     index_bytes = sizeof(indices);
-    block = (uint8_t *)malloc(vertex_bytes + index_bytes);
-    if (!block)
+    total_bytes = vertex_bytes + index_bytes;
+
+    mat = rt_material3d_new_textured(pixels);
+    if (!mat)
         return 0;
+    rt_material3d_set_unlit(mat, 1);
+
+    block = canvas3d_alloc_screen_geometry_block(
+        c, total_bytes, c->final_overlay_recording, &block_from_final_overlay_arena);
+    if (!block) {
+        if (rt_obj_release_check0(mat))
+            rt_obj_free(mat);
+        return 0;
+    }
     verts_copy = (vgfx3d_vertex_t *)block;
     indices_copy = (uint32_t *)(block + vertex_bytes);
     memcpy(verts_copy, verts, vertex_bytes);
     memcpy(indices_copy, indices, index_bytes);
-
-    mat = rt_material3d_new_textured(pixels);
-    if (!mat) {
-        free(block);
-        return 0;
-    }
-    rt_material3d_set_unlit(mat, 1);
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.vertices = verts_copy;
@@ -483,18 +730,21 @@ int canvas3d_queue_screen_image_uv(rt_canvas3d *c,
         if (!canvas3d_track_final_overlay_temp_object(c, mat)) {
             if (rt_obj_release_check0(mat))
                 rt_obj_free(mat);
-            free(block);
+            if (!block_from_final_overlay_arena)
+                free(block);
             return 0;
         }
         if (rt_obj_release_check0(mat)) /* canvas now owns the frame reference */
             rt_obj_free(mat);
-        if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
+        if (!block_from_final_overlay_arena &&
+            !canvas3d_track_final_overlay_temp_buffer(c, block)) {
             canvas3d_release_tracked_final_overlay_temp_object(c, mat);
             free(block);
             return 0;
         }
         if (!canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL)) {
-            canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
+            if (!block_from_final_overlay_arena)
+                canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
             canvas3d_release_tracked_final_overlay_temp_object(c, mat);
             return 0;
         }
@@ -1072,6 +1322,8 @@ static void canvas3d_begin_camera_pass(void *obj,
     params.height_fog_blend = c->height_fog_blend;
     params.load_existing_color = view_model_pass ? 1 : 0;
     params.load_existing_depth = 0;
+    if (c->ibl_enabled && c->skybox && !c->skybox->ibl_ready)
+        (void)rt_cubemap3d_ensure_ibl(c->skybox);
     if (c->ibl_enabled && c->skybox && c->skybox->ibl_ready) {
         params.ibl_enabled = 1;
         params.ibl_intensity = c->ibl_intensity;

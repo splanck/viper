@@ -311,6 +311,7 @@ lights.
 | `LightCount` | `Integer` | Count active enabled canvas-slot lights |
 | `MaxActiveLights` | `Integer` | Current active-light budget for the selected lighting path |
 | `ClusteredLighting` | `Boolean` property | Clustered forward+ lighting; defaults on for GPU backends, enabling it on an unsupported backend traps |
+| `TrySetClusteredLighting(enabled)` | `Boolean` method | Attempts to toggle clustered forward+ lighting and returns `False` instead of trapping when unsupported |
 | `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
 | `IblEnabled` | `Boolean` (read/write) | Light PBR ambient from the skybox environment via image-based lighting |
 | `IblIntensity` | `Double` (read/write) | Scale the environment-lighting contribution (default `1.0`, clamped to `[0, 8]`) |
@@ -328,8 +329,8 @@ Image-based lighting (`IblEnabled`) replaces the flat ambient term on PBR
 materials with real environment lighting derived from the canvas skybox:
 diffuse comes from an SH-9 irradiance projection and specular from a
 GGX-prefiltered mip chain sampled by roughness (split-sum approximation).
-Enabling IBL (or setting a skybox while enabled) computes the environment
-payload once at load time — the render loop pays nothing extra per frame.
+Enabling IBL and setting a skybox are cheap state changes. The environment
+payload is computed lazily by the first eligible PBR draw and then reused.
 Materials with an explicit `SetEnvMap` keep the legacy reflectivity-mix
 behavior; unlit and Blinn-Phong materials are unaffected. All four backends
 (Metal, D3D11, OpenGL, software) implement the same math.
@@ -381,12 +382,12 @@ automatically receive proportionally larger bias. If shadows detach from their
 casters ("peter-panning"), lower `SetShadowSlopeBias`; if surfaces show striping
 ("acne") at grazing sun angles, raise it.
 
-`BackendSupports("bc1")`, `BackendSupports("bc3")`, `BackendSupports("bc4")`,
-`BackendSupports("bc5")`, `BackendSupports("bc7")`, `BackendSupports("astc")`,
-and `BackendSupports("etc2")` report native compressed texture upload support
-for the active backend/device. `BackendSupports("texture:bc1")` through
-`BackendSupports("texture:bc7")`, `texture:etc2`, `texture:astc`, and
-`texture:ktx2-cpu` report runtime CPU fallback coverage.
+`BackendSupports("native-texture:bc1")` through
+`BackendSupports("native-texture:bc7")`, `native-texture:etc2`, and
+`native-texture:astc` report native compressed texture upload support for the
+active backend/device. Bare `bc1`/`bc3`/`bc4`/`bc5`/`bc7`/`astc`/`etc2` names
+remain accepted as legacy native-upload aliases. The older `texture:*` names
+report runtime CPU fallback coverage.
 KTX2 supercompression schemes 2 (Zstandard) and 3 (ZLIB) — the default output
 of `toktx --zcmp` and similar tools — are decompressed per level by the
 runtime's from-scratch decoders before decode/native retention; scheme 1
@@ -401,12 +402,12 @@ it and reports false.
 | Texture format | Software / RenderTarget3D CPU path | Native GPU upload path | Undecodable CPU blocks |
 |----------------|-------------------------------------|------------------------|------------------------|
 | RGBA8 KTX2 | Full decode to `Pixels` | Uploaded as ordinary RGBA texture | Load fails on malformed bytes |
-| BC1 KTX2 | Full DXT1 decode (opaque + punch-through) to `Pixels` | Device-dependent `bc1` key | Load fails on malformed bytes |
-| BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | Device-dependent `bc3` key | Load fails on malformed bytes |
-| BC4/BC5 KTX2 | Single/two-channel decode to `Pixels` (R replicated / RG) | Device-dependent `bc4`/`bc5` keys | Load fails on malformed bytes |
-| BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `bc7` key | 8x8 magenta/black checker + load warning |
-| ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `etc2` key | 8x8 magenta/black checker + load warning |
-| ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `astc` key | 8x8 magenta/black checker + load warning |
+| BC1 KTX2 | Full DXT1 decode (opaque + punch-through) to `Pixels` | Device-dependent `native-texture:bc1` key | Load fails on malformed bytes |
+| BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | Device-dependent `native-texture:bc3` key | Load fails on malformed bytes |
+| BC4/BC5 KTX2 | Single/two-channel decode to `Pixels` (R replicated / RG) | Device-dependent `native-texture:bc4`/`native-texture:bc5` keys | Load fails on malformed bytes |
+| BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `native-texture:bc7` key | 8x8 magenta/black checker + load warning |
+| ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `native-texture:etc2` key | 8x8 magenta/black checker + load warning |
+| ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `native-texture:astc` key | 8x8 magenta/black checker + load warning |
 
 All native block-compressed mip payloads are still retained internally for
 capability-gated backend upload. On the software backend, the native upload keys
@@ -596,9 +597,11 @@ space; physics bodies, cameras, and audio listeners should be rebased through
 their owning world systems as well. Query results returned before a rebase are
 snapshots; run spatial queries again after the between-frame rebase boundary.
 
-`Mesh3D.Resident` and read-only `ResidentBytes` expose mesh-payload residency
-for streaming systems. Nonresident meshes keep their handles and authored data
-but report zero resident bytes and are skipped by Canvas3D/SceneGraph draw paths.
+`Mesh3D.Resident`, read-only `ResidentBytes`, and read-only `RetainedBytes`
+expose mesh-payload residency for streaming systems. Nonresident meshes keep
+their handles and authored data, report zero resident bytes, continue to report
+their retained CPU payload through `RetainedBytes`, and are skipped by
+Canvas3D/SceneGraph draw paths.
 SceneGraph `.vscn` save/load persists each mesh's resident flag, so authored
 streaming state survives scene round trips while older files default to
 resident meshes.
@@ -834,7 +837,7 @@ Scene light with configurable color, intensity, and enabled state.
 | `Color` | Object | Read | RGB `Vec3` |
 | `Intensity` | Double | Read | Brightness multiplier |
 | `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
-| `CastsShadows` | Boolean | Read/Write | Enabled directional lights are selected first for shadow passes; spot and point lights use remaining budget (a point light claims six slots for its cube faces); ambient lights default to false |
+| `CastsShadows` | Boolean | Read/Write | Directional lights default to true; point, spot, and ambient lights default to false. Spot and point lights can opt in and use remaining budget (a point light claims six slots for its cube faces). |
 | `Direction` | Object | Read | Direction `Vec3` |
 | `Position` | Object | Read | Position `Vec3` |
 

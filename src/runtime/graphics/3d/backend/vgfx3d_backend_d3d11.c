@@ -436,6 +436,7 @@ typedef struct {
     float taa_prev_jitter_clip[2];
     uint32_t taa_frame_index;
     ID3D11Texture2D *presented_color_tex;
+    ID3D11Texture2D *readback_staging;
     int32_t scene_width;
     int32_t scene_height;
     int32_t overlay_width;
@@ -446,6 +447,9 @@ typedef struct {
     int32_t postfx_scratch_height;
     int32_t presented_width;
     int32_t presented_height;
+    int32_t readback_staging_width;
+    int32_t readback_staging_height;
+    DXGI_FORMAT readback_staging_format;
 
     ID3D11Texture2D *rtt_color_tex;
     ID3D11RenderTargetView *rtt_rtv;
@@ -1755,6 +1759,17 @@ static void d3d11_get_backend_stats(void *ctx_ptr, vgfx3d_backend_stats_t *out_s
     *out_stats = ctx->stats;
 }
 
+/// @brief Return D3D11 feature bits that depend on the concrete backend.
+/// @details The D3D11 backend builds the scene, bloom, and TAA history targets as RGBA16F
+/// resources, so HDR scene color and temporal anti-aliasing are native capabilities whenever the
+/// backend initializes successfully.
+/// @param ctx_ptr D3D11 backend context, currently unused.
+/// @return RT_CANVAS3D_BACKEND_CAP_* feature bits supported by D3D11.
+static int64_t d3d11_get_feature_caps(void *ctx_ptr) {
+    (void)ctx_ptr;
+    return RT_CANVAS3D_BACKEND_CAP_HDR_SCENE | RT_CANVAS3D_BACKEND_CAP_TAA;
+}
+
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .name = "d3d11",
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas (t17). */
@@ -1784,6 +1799,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .get_texture_upload_bytes = d3d11_get_texture_upload_bytes,
     .get_frame_gpu_time_us = d3d11_get_frame_gpu_time_us,
     .get_native_texture_caps = d3d11_get_native_texture_caps,
+    .get_feature_caps = d3d11_get_feature_caps,
     .get_backend_stats = d3d11_get_backend_stats,
 };
 

@@ -152,7 +152,7 @@ static double sanitize_aspect(double aspect) {
 static void sanitize_clip_planes(double *near_val, double *far_val) {
     if (!near_val || !far_val)
         return;
-    if (!isfinite(*near_val) || *near_val <= 1e-4)
+    if (!isfinite(*near_val) || *near_val < 0.1)
         *near_val = 0.1;
     if (*near_val > CAMERA3D_CLIP_MAX)
         *near_val = 0.1;

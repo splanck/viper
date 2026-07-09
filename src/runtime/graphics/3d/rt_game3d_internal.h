@@ -164,6 +164,7 @@ typedef struct rt_game3d_entity {
     struct rt_game3d_entity **children;
     int32_t child_count;
     int32_t child_capacity;
+    int32_t registry_index; /* slot in owning world's dense entity array, -1 when unspawned */
     int8_t group;
     int8_t alive;
     int8_t spawned;
@@ -523,6 +524,12 @@ typedef struct rt_game3d_world {
     int32_t name_index_count;
     int32_t name_index_capacity;
     int8_t name_index_valid;
+    void **animation_animators;
+    int32_t animation_animator_capacity;
+    void **animation_seen_set;
+    size_t animation_seen_capacity;
+    void *animation_jobs;
+    int32_t animation_job_capacity;
     int64_t next_entity_id;
     double dt;
     double elapsed;
@@ -632,6 +639,7 @@ static inline void game3d_entity_mark_dead(rt_game3d_entity *entity) {
     entity->spawned = 0;
     entity->destroyed = 1;
     entity->world = NULL;
+    entity->registry_index = -1;
 }
 
 /// @brief Validate `obj` as a live Entity3D handle; stale handles record diagnostics

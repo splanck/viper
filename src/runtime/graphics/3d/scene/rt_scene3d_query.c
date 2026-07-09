@@ -65,9 +65,7 @@ static void scene3d_query_return_candidates(rt_scene3d *scene,
 void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
     rt_scene3d *s = scene3d_checked(obj);
     void *result;
-    rt_scene_node3d **stack = NULL;
     size_t count = 0;
-    size_t capacity = 0;
     double a[3];
     double b[3];
     double query_min[3];
@@ -101,12 +99,13 @@ void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
         }
         scene3d_query_return_candidates(s, &candidates);
     }
-    if (!scene_node_stack_push(&stack, &count, &capacity, s->root)) {
+    if (!scene_node_stack_push(
+            &s->query_traversal_stack, &count, &s->query_traversal_stack_capacity, s->root)) {
         rt_trap("Scene3D.QueryAABB: traversal stack allocation failed");
         return result;
     }
     while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
+        rt_scene_node3d *current = s->query_traversal_stack[--count];
         double world_min[3];
         double world_max[3];
         if (!current->visible)
@@ -115,14 +114,15 @@ void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
             scene3d_aabb_intersects_aabb(world_min, world_max, query_min, query_max))
             rt_seq_push(result, current);
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; --i) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            if (!scene_node_stack_push(&s->query_traversal_stack,
+                                       &count,
+                                       &s->query_traversal_stack_capacity,
+                                       current->children[i])) {
                 rt_trap("Scene3D.QueryAABB: traversal stack allocation failed");
-                free(stack);
                 return result;
             }
         }
     }
-    free(stack);
     return result;
 }
 
@@ -130,9 +130,7 @@ void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
 void *rt_scene3d_query_sphere(void *obj, void *center_obj, double radius) {
     rt_scene3d *s = scene3d_checked(obj);
     void *result;
-    rt_scene_node3d **stack = NULL;
     size_t count = 0;
-    size_t capacity = 0;
     double center[3];
     double r;
     if (!s || !s->root)
@@ -166,12 +164,13 @@ void *rt_scene3d_query_sphere(void *obj, void *center_obj, double radius) {
         }
         scene3d_query_return_candidates(s, &candidates);
     }
-    if (!scene_node_stack_push(&stack, &count, &capacity, s->root)) {
+    if (!scene_node_stack_push(
+            &s->query_traversal_stack, &count, &s->query_traversal_stack_capacity, s->root)) {
         rt_trap("Scene3D.QuerySphere: traversal stack allocation failed");
         return result;
     }
     while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
+        rt_scene_node3d *current = s->query_traversal_stack[--count];
         double world_min[3];
         double world_max[3];
         if (!current->visible)
@@ -180,14 +179,15 @@ void *rt_scene3d_query_sphere(void *obj, void *center_obj, double radius) {
             scene3d_aabb_intersects_sphere(world_min, world_max, center, r))
             rt_seq_push(result, current);
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; --i) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            if (!scene_node_stack_push(&s->query_traversal_stack,
+                                       &count,
+                                       &s->query_traversal_stack_capacity,
+                                       current->children[i])) {
                 rt_trap("Scene3D.QuerySphere: traversal stack allocation failed");
-                free(stack);
                 return result;
             }
         }
     }
-    free(stack);
     return result;
 }
 
@@ -197,9 +197,7 @@ void *rt_scene3d_raycast_nodes(void *obj,
                                void *direction_obj,
                                double max_distance) {
     rt_scene3d *s = scene3d_checked(obj);
-    rt_scene_node3d **stack = NULL;
     size_t count = 0;
-    size_t capacity = 0;
     double origin[3];
     double direction[3];
     double best_t;
@@ -247,12 +245,13 @@ void *rt_scene3d_raycast_nodes(void *obj,
         }
         scene3d_query_return_candidates(s, &candidates);
     }
-    if (!scene_node_stack_push(&stack, &count, &capacity, s->root)) {
+    if (!scene_node_stack_push(
+            &s->query_traversal_stack, &count, &s->query_traversal_stack_capacity, s->root)) {
         rt_trap("Scene3D.RaycastNodes: traversal stack allocation failed");
         return NULL;
     }
     while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
+        rt_scene_node3d *current = s->query_traversal_stack[--count];
         double world_min[3];
         double world_max[3];
         double t;
@@ -266,14 +265,15 @@ void *rt_scene3d_raycast_nodes(void *obj,
             }
         }
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; --i) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            if (!scene_node_stack_push(&s->query_traversal_stack,
+                                       &count,
+                                       &s->query_traversal_stack_capacity,
+                                       current->children[i])) {
                 rt_trap("Scene3D.RaycastNodes: traversal stack allocation failed");
-                free(stack);
                 return best;
             }
         }
     }
-    free(stack);
     return best;
 }
 

@@ -627,29 +627,30 @@ void *rt_scene_node3d_get_material(void *n) {
     return NULL;
 }
 
-/// @brief Stub for `SceneNode3D.SetVisible` — when disabled, the node and
-///        all descendants are skipped during `Scene3D.Draw`.
+/// @brief Stub for `SceneNode3D.SetVisible`.
 ///
-/// Silent no-op stub.
+/// Silent no-op by default, or an unavailable-graphics trap when
+/// `VIPER_GRAPHICS_STUBS_STRICT` is enabled.
 ///
 /// @param n SceneNode3D handle (ignored).
 /// @param v Non-zero to make visible (ignored).
 void rt_scene_node3d_set_visible(void *n, int8_t v) {
     (void)n;
     (void)v;
+    RT_GRAPHICS_OPTIONAL_TRAP_VOID("SceneNode3D.SetVisible: graphics support not compiled in");
 }
 
 /// @brief Stub for `SceneNode3D.Visible` — get the visibility flag.
 ///
-/// Silent stub returning `0` (hidden) — opposite of the real
-/// implementation default, but reachability is moot here.
+/// Silent stub returning `1`, matching the real implementation default, or an
+/// unavailable-graphics trap when `VIPER_GRAPHICS_STUBS_STRICT` is enabled.
 ///
 /// @param n SceneNode3D handle (ignored).
 ///
-/// @return `0`.
+/// @return `1`.
 int8_t rt_scene_node3d_get_visible(void *n) {
     (void)n;
-    return 0;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneNode3D.Visible: graphics support not compiled in", 1);
 }
 
 /// @brief Stub for `SceneNode3D.SetName` — assign a name to the node so

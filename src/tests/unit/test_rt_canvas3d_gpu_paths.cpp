@@ -3284,8 +3284,10 @@ static void test_final_overlay_replays_after_finalize(void) {
                 "Final overlay draws do not enter the normal scene draw queue");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Final overlay geometry does not use the normal end-of-frame temp list");
-    EXPECT_TRUE(canvas.final_overlay_temp_buf_count == 1,
-                "Final overlay geometry survives normal End cleanup");
+    EXPECT_TRUE(canvas.final_overlay_temp_buf_count == 0,
+                "Final overlay arena avoids the legacy per-draw temp buffer list");
+    EXPECT_TRUE(canvas.final_overlay_arena_used > 0,
+                "Final overlay arena retains geometry through normal End cleanup");
 
     rt_canvas3d_end_overlay(&canvas);
     EXPECT_TRUE(canvas.final_overlay_recording == 0,
@@ -3295,8 +3297,8 @@ static void test_final_overlay_replays_after_finalize(void) {
     rt_canvas3d_clear_overlay(&canvas);
     EXPECT_TRUE(canvas.final_overlay_count == 0,
                 "Canvas3D.ClearOverlay discards recorded final overlay draws");
-    EXPECT_TRUE(canvas.final_overlay_temp_buf_count == 0,
-                "Canvas3D.ClearOverlay frees recorded final overlay geometry");
+    EXPECT_TRUE(canvas.final_overlay_arena_used == 0,
+                "Canvas3D.ClearOverlay resets recorded final overlay geometry");
 
     rt_canvas3d_begin_overlay(&canvas);
     rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0x62D2FF);

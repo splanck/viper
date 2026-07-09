@@ -29,3 +29,28 @@
 *.wav   binary
 *.ttf   binary
 *.otf   binary
+
+# ---------------------------------------------------------------------------
+# GitHub Linguist language classification.
+#
+# The `.inc` extension is claimed by PHP/Assembly/POV-Ray/SourcePawn in
+# Linguist's database, never by C/C++. Our `.inc` files are all C or C++
+# include fragments (function bodies split out of a host TU, or X-macro
+# tables), so without an override GitHub miscounts them and skews the repo
+# language bar. Force the correct language; later matches win, so the C++
+# subsystems and generated outputs below override the C default.
+# ---------------------------------------------------------------------------
+*.inc                    linguist-language=C
+src/codegen/**/*.inc     linguist-language=C++
+src/frontends/**/*.inc   linguist-language=C++
+src/vm/**/*.inc          linguist-language=C++
+src/il/**/*.inc          linguist-language=C++
+
+# `.def` files are all C++ X-macro tables (Opcode/TokenKinds/runtime/etc.),
+# not Windows module-definition files. Linguist would otherwise mislabel them.
+*.def                    linguist-language=C++
+
+# Machine-generated tables are build outputs, not authored code — exclude
+# them from language stats and collapse them in diffs/PRs.
+src/**/generated/**                                linguist-generated=true
+src/runtime/localization/rt_tzdata_generated.inc   linguist-generated=true

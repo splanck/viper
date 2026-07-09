@@ -190,26 +190,13 @@ int query_hit_insert_sorted_bounded(rt_query_hit3d *hits,
     return capacity;
 }
 
-/// @brief Rebuild the world's broadphase scratch entries for one query.
-/// @return Entry count on success, -1 on allocation failure.
+/// @brief Return the O(1) revision key for the world's query broadphase cache.
+/// @details Body transforms/colliders and body add/remove paths bump the world revision as they
+///   mutate bounds. Spatial queries can therefore validate the cache without hashing every body.
 static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
-    uint64_t hash = UINT64_C(1469598103934665603);
     if (!w)
         return 0;
-    hash ^= (uint64_t)(uint32_t)w->body_count;
-    hash *= UINT64_C(1099511628211);
-    for (int32_t i = 0; i < w->body_count; ++i) {
-        rt_body3d *body = w->bodies[i];
-        uint64_t collider_revision =
-            body && body->collider ? rt_collider3d_get_bounds_revision_raw(body->collider) : 0;
-        hash ^= (uint64_t)(uintptr_t)body;
-        hash *= UINT64_C(1099511628211);
-        hash ^= body ? body->broadphase_revision : 0;
-        hash *= UINT64_C(1099511628211);
-        hash ^= collider_revision;
-        hash *= UINT64_C(1099511628211);
-    }
-    return hash ? hash : 1;
+    return w->broadphase_world_revision ? w->broadphase_world_revision : 1;
 }
 
 /// @brief Build (or reuse) the cached broadphase entry list used to accelerate spatial queries.
@@ -219,13 +206,18 @@ static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
 /// @return The number of broadphase entries.
 int32_t world3d_build_query_broadphase(rt_world3d *w) {
     int32_t entry_count = 0;
+    int32_t geometry_count = 0;
     uint64_t signature;
     if (!w)
         return -1;
     signature = world3d_query_broadphase_signature(w);
     if (w->query_broadphase_valid && w->query_broadphase_signature == signature)
         return w->query_broadphase_count;
-    if (!world3d_reserve_broadphase_capacity(w, w->body_count))
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        if (body3d_has_collision_geometry(w->bodies[i]))
+            geometry_count++;
+    }
+    if (!world3d_reserve_broadphase_capacity(w, geometry_count))
         return -1;
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
@@ -235,10 +227,9 @@ int32_t world3d_build_query_broadphase(rt_world3d *w) {
         entry->body = body;
         body_aabb(body, entry->min, entry->max);
     }
-    qsort(w->broadphase_entries,
-          (size_t)entry_count,
-          sizeof(*w->broadphase_entries),
-          ph3d_broadphase_compare_min_x);
+    if (!world3d_reserve_broadphase_sort_scratch(w, entry_count))
+        return -1;
+    ph3d_broadphase_sort_entries(w->broadphase_entries, w->broadphase_sort_scratch, entry_count, 0);
     w->query_broadphase_count = entry_count;
     w->query_broadphase_signature = signature;
     w->query_broadphase_valid = 1;

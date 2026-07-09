@@ -56,6 +56,7 @@ static void world3d_finalizer(void *obj) {
     free(w->joints);
     free(w->joint_types);
     free(w->broadphase_entries);
+    free(w->broadphase_sort_scratch);
     free(w->query_hits_scratch);
     w->query_hits_scratch = NULL;
     if (w->query_sphere_collider && rt_obj_release_check0(w->query_sphere_collider))
@@ -76,6 +77,7 @@ static void world3d_finalizer(void *obj) {
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
+    w->broadphase_sort_scratch = NULL;
     w->query_sphere_collider = NULL;
     w->query_box_collider = NULL;
     w->query_hits_scratch = NULL;
@@ -103,6 +105,8 @@ static void world3d_finalizer(void *obj) {
     w->exit_event_object_capacity = 0;
     w->joint_capacity = 0;
     w->broadphase_capacity = 0;
+    w->broadphase_sort_scratch_capacity = 0;
+    w->broadphase_world_revision = 1;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;
@@ -148,6 +152,8 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->exit_event_capacity = 0;
     w->joint_capacity = 0;
     w->broadphase_capacity = 0;
+    w->broadphase_sort_scratch_capacity = 0;
+    w->broadphase_world_revision = 1;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;
@@ -166,6 +172,8 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
+    w->broadphase_sort_scratch = NULL;
+    w->broadphase_world_revision = 1;
     w->solver_iterations = PH3D_DEFAULT_SOLVER_ITERATIONS;
     w->position_iterations = PH3D_DEFAULT_POSITION_ITERATIONS;
     w->contact_beta = PH3D_DEFAULT_CONTACT_BETA;
@@ -181,7 +189,8 @@ void *rt_world3d_new(double gx, double gy, double gz) {
         !world3d_reserve_stay_events(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_exit_events(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_joint_capacity(w, PH3D_INITIAL_JOINTS) ||
-        !world3d_reserve_broadphase_capacity(w, PH3D_INITIAL_BODIES)) {
+        !world3d_reserve_broadphase_capacity(w, PH3D_INITIAL_BODIES) ||
+        !world3d_reserve_broadphase_sort_scratch(w, PH3D_INITIAL_BODIES)) {
         world3d_finalizer(w);
         if (rt_obj_release_check0(w))
             rt_obj_free(w);
@@ -384,8 +393,8 @@ void rt_world3d_step(void *obj, double dt) {
                     double bmin[3];
                     double bmax[3];
                     body_aabb(b, bmin, bmax);
-                    double radius = 0.5 * fmax(bmax[0] - bmin[0],
-                                               fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
+                    double radius =
+                        0.5 * fmax(bmax[0] - bmin[0], fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
                     double toi = 1.0;
                     double normal[3] = {0.0, 1.0, 0.0};
                     if (radius > 1e-6 &&
@@ -401,8 +410,8 @@ void rt_world3d_step(void *obj, double dt) {
                          * bowling-ball-stalls-on-the-lane failure). Head-on
                          * impacts have no tangential part, so the thin-wall
                          * anti-tunneling guarantee is unchanged. */
-                        double dn = delta[0] * normal[0] + delta[1] * normal[1] +
-                                    delta[2] * normal[2];
+                        double dn =
+                            delta[0] * normal[0] + delta[1] * normal[1] + delta[2] * normal[2];
                         double clipped_n = dn * toi;
                         if (dn < 0.0) {
                             /* Small skin keeps the narrowphase from starting
@@ -411,13 +420,11 @@ void rt_world3d_step(void *obj, double dt) {
                             if (clipped_n > 0.0)
                                 clipped_n = 0.0;
                         }
-                        ph3d_vec3_accumulate_state(b->position,
-                                                   (delta[0] - dn * normal[0]) +
-                                                       normal[0] * clipped_n,
-                                                   (delta[1] - dn * normal[1]) +
-                                                       normal[1] * clipped_n,
-                                                   (delta[2] - dn * normal[2]) +
-                                                       normal[2] * clipped_n);
+                        ph3d_vec3_accumulate_state(
+                            b->position,
+                            (delta[0] - dn * normal[0]) + normal[0] * clipped_n,
+                            (delta[1] - dn * normal[1]) + normal[1] * clipped_n,
+                            (delta[2] - dn * normal[2]) + normal[2] * clipped_n);
                         /* Reflect the approaching normal component by the
                          * body's restitution (matches what the solver would
                          * do); the tangential component is preserved so the

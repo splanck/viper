@@ -19,7 +19,8 @@
 // Ownership/Lifetime:
 //   - Canvas3D owns the 3D rendering context; GC finalizer cleans up.
 //   - Mesh3D owns vertex/index arrays; GC finalizer frees them.
-//   - Camera3D, Material3D, Light3D contain only scalar fields (no finalizer).
+//   - Camera3D and Light3D contain scalar fields; Material3D retains texture/env references and
+//     releases them from its GC finalizer.
 //
 // Links: plans/3d/01-software-renderer.md, src/runtime/graphics/common/rt_graphics.h
 //
@@ -116,11 +117,11 @@ void rt_canvas3d_toggle_fullscreen(void *obj);
 int64_t rt_canvas3d_get_active_output_width(void *obj);
 /// @brief Get the active output height (window, or current render target when bound).
 int64_t rt_canvas3d_get_active_output_height(void *obj);
-/// @brief Get the rolling-average FPS measured over recent frames.
+/// @brief Get the rolling-average FPS measured over recent Poll/Flip/synthetic timing samples.
 int64_t rt_canvas3d_get_fps(void *obj);
-/// @brief Get the wall-clock milliseconds since the previous Flip (first frame returns 0).
+/// @brief Get milliseconds since the latest timing sample; Poll normally samples live clocks.
 int64_t rt_canvas3d_get_delta_time(void *obj);
-/// @brief Get the wall-clock seconds since the previous Flip (first frame returns 0.0).
+/// @brief Get seconds since the latest timing sample; Poll normally samples live clocks.
 double rt_canvas3d_get_delta_time_sec(void *obj);
 /// @brief Cap the per-frame delta time (smooths spikes after pause/breakpoint).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms);
@@ -157,8 +158,17 @@ void rt_canvas3d_clear_lights(void *obj);
 void rt_canvas3d_set_default_lighting(void *obj);
 /// @brief Count currently assigned canvas light slots.
 int64_t rt_canvas3d_get_light_count(void *obj);
+/// @brief Try to set clustered/forward+ lighting without trapping.
+///
+/// @return 1 when the requested state is applied, or 0 when enabling is blocked
+///         by the active backend, an environment kill switch, or an invalid canvas.
+int8_t rt_canvas3d_try_set_clustered_lighting(void *obj, int8_t enabled);
 /// @brief Enable clustered/forward+ lighting when the backend advertises support.
+///
+/// Unlike rt_canvas3d_try_set_clustered_lighting(), this strict property setter
+/// traps when enabling is requested on an unsupported backend.
 void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled);
+/// @brief Report whether clustered/forward+ lighting is currently enabled.
 int8_t rt_canvas3d_get_clustered_lighting(void *obj);
 /// @brief Current maximum active light count for the selected lighting path.
 int64_t rt_canvas3d_get_max_active_lights(void *obj);
@@ -231,7 +241,7 @@ rt_string rt_canvas3d_get_backend_fallback_reason(void *obj);
  * backend — GPU-accelerated or via the CPU parity implementations. */
 #define RT_CANVAS3D_BACKEND_CAP_POSTFX_FULL 0x1000000000LL
 
-/// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
+/// @brief Return a 64-bit RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
@@ -408,6 +418,8 @@ int8_t rt_mesh3d_get_resident(void *obj);
 void rt_mesh3d_set_resident(void *obj, int8_t resident);
 /// @brief Estimated bytes for the currently resident vertex/index payload.
 int64_t rt_mesh3d_get_resident_bytes(void *obj);
+/// @brief Estimated retained CPU vertex/index bytes regardless of resident draw state.
+int64_t rt_mesh3d_get_retained_bytes(void *obj);
 /// @brief Append a vertex with position, normal, and UV.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
@@ -510,7 +522,7 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
 void *rt_material3d_new(void);
 /// @brief Create a flat-color legacy material with the given diffuse color.
 void *rt_material3d_new_color(double r, double g, double b);
-/// @brief Create a textured legacy material from Pixels or TextureAsset3D.
+/// @brief Create a textured legacy material from Pixels, TextureAsset3D, or RenderTarget3D.
 void *rt_material3d_new_textured(void *pixels);
 /// @brief Create a PBR-workflow material with the given base color (default metallic=0,
 /// roughness=0.5).

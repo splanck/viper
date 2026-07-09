@@ -102,6 +102,39 @@ static void mesh3d_shrink_empty_storage_if_oversized(rt_mesh3d *m) {
         m->indices = NULL;
         m->index_capacity = 0;
     }
+    free(m->normal_accum_scratch);
+    m->normal_accum_scratch = NULL;
+    m->normal_accum_scratch_values = 0u;
+}
+
+/// @brief Return zero-filled scratch for per-vertex normal accumulation.
+///
+/// @details Small meshes use caller-provided stack storage. Larger meshes reuse a buffer owned by
+///          the mesh so repeated `RecalcNormals` calls and importer normal repairs do not allocate
+///          and free a large accumulator each time.
+/// @return Pointer to @p accum_values zeroed doubles, or NULL when allocation fails.
+static double *mesh3d_prepare_normal_accumulator(rt_mesh3d *m,
+                                                 double *stack_accum,
+                                                 size_t stack_values,
+                                                 size_t accum_values) {
+    double *next;
+    if (accum_values <= stack_values) {
+        memset(stack_accum, 0, accum_values * sizeof(double));
+        return stack_accum;
+    }
+    if (!m)
+        return NULL;
+    if (m->normal_accum_scratch_values < accum_values) {
+        if (accum_values > SIZE_MAX / sizeof(double))
+            return NULL;
+        next = (double *)realloc(m->normal_accum_scratch, accum_values * sizeof(double));
+        if (!next)
+            return NULL;
+        m->normal_accum_scratch = next;
+        m->normal_accum_scratch_values = accum_values;
+    }
+    memset(m->normal_accum_scratch, 0, accum_values * sizeof(double));
+    return m->normal_accum_scratch;
 }
 
 /// @brief Bump the mesh's geometry-revision counter to invalidate cached GPU/derived data
@@ -212,6 +245,31 @@ too_large:
     return 0;
 }
 
+/// @brief Return 10 raised to an integer exponent without calling libm `pow`.
+/// @details OBJ and ASCII STL loaders parse many coordinates in tight loops. Exponentiation by
+/// squaring keeps decimal exponent scaling logarithmic in the exponent magnitude and avoids the
+/// comparatively expensive general-purpose `pow(10.0, n)` path for every numeric token. Overflow or
+/// underflow is left to IEEE-754 multiplication and rejected by the caller's `isfinite` check.
+/// @param exponent Signed base-10 exponent to evaluate.
+/// @return A double scale factor approximately equal to `10^exponent`.
+static double mesh_pow10_i64(int64_t exponent) {
+    uint64_t remaining;
+    double base = exponent < 0 ? 0.1 : 10.0;
+    double scale = 1.0;
+    if (exponent < 0)
+        remaining = (uint64_t)(-exponent);
+    else
+        remaining = (uint64_t)exponent;
+    while (remaining != 0u) {
+        if ((remaining & 1u) != 0u)
+            scale *= base;
+        remaining >>= 1u;
+        if (remaining != 0u)
+            base *= base;
+    }
+    return scale;
+}
+
 /// @brief Parse an OBJ/STL ASCII float with '.' decimal semantics, independent of locale.
 static int mesh_parse_ascii_double_span(const char *p,
                                         const char *limit,
@@ -269,7 +327,8 @@ static int mesh_parse_ascii_double_span(const char *p,
         if (exp_digits == 0)
             s = exp_start;
     }
-    result = (double)sign * value * pow(10.0, (double)(exp_sign * exp_value - frac_digits));
+    result = (double)sign * value *
+             mesh_pow10_i64((int64_t)exp_sign * (int64_t)exp_value - (int64_t)frac_digits);
     if (!isfinite(result))
         return 0;
     *out_end = s;
@@ -788,6 +847,9 @@ static void rt_mesh3d_finalize(void *obj) {
     m->positions64 = NULL;
     free(m->indices);
     m->indices = NULL;
+    free(m->normal_accum_scratch);
+    m->normal_accum_scratch = NULL;
+    m->normal_accum_scratch_values = 0u;
     free(m->physics_bvh_nodes);
     m->physics_bvh_nodes = NULL;
     free(m->physics_bvh_tri_indices);
@@ -819,6 +881,8 @@ static rt_mesh3d *mesh3d_new_initialized(int allocate_default_storage) {
         allocate_default_storage ? (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t)) : NULL;
     m->index_count = 0;
     m->index_capacity = allocate_default_storage ? MESH_INIT_IDXS : 0;
+    m->normal_accum_scratch = NULL;
+    m->normal_accum_scratch_values = 0u;
     m->bone_palette = NULL;
     m->prev_bone_palette = NULL;
     m->bone_count = 0;
@@ -1114,13 +1178,23 @@ int64_t rt_mesh3d_get_resident_bytes(void *obj) {
     return mesh3d_estimate_payload_bytes(m);
 }
 
+/// @brief Retained vertex/index byte estimate, independent of draw residency.
+/// @details `Mesh3D.Resident = false` prevents draw/upload submission but does not release
+///          procedural or imported CPU payloads. This accessor reports the retained payload
+///          size so streaming systems can distinguish hidden resident bytes from actual RAM use.
+int64_t rt_mesh3d_get_retained_bytes(void *obj) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
+        return 0;
+    return mesh3d_estimate_payload_bytes(m);
+}
+
 /// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     uint32_t vertex_count;
     uint32_t index_count;
     double stack_accum[MESH3D_NORMAL_STACK_VERTS * 3u];
-    double *heap_accum = NULL;
     double *accum;
     size_t accum_values;
     if (!m)
@@ -1142,16 +1216,11 @@ void rt_mesh3d_recalc_normals(void *obj) {
         return;
     }
     accum_values = (size_t)vertex_count * 3u;
-    if (accum_values <= (size_t)MESH3D_NORMAL_STACK_VERTS * 3u) {
-        memset(stack_accum, 0, accum_values * sizeof(double));
-        accum = stack_accum;
-    } else {
-        heap_accum = (double *)calloc(accum_values, sizeof(double));
-        if (!heap_accum) {
-            rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
-            return;
-        }
-        accum = heap_accum;
+    accum = mesh3d_prepare_normal_accumulator(
+        m, stack_accum, (size_t)MESH3D_NORMAL_STACK_VERTS * 3u, accum_values);
+    if (!accum) {
+        rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
+        return;
     }
 
     /* Zero all normals */
@@ -1210,7 +1279,6 @@ void rt_mesh3d_recalc_normals(void *obj) {
             n[2] = 0.0f;
         }
     }
-    free(heap_accum);
     mesh3d_bump_vertex_revision(m, 1);
 }
 
@@ -1219,7 +1287,6 @@ void rt_mesh3d_recalc_normals(void *obj) {
 ///   allocation overflow.
 static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
     double stack_accum[MESH3D_NORMAL_STACK_VERTS * 3u];
-    double *heap_accum = NULL;
     double *accum;
     size_t accum_values;
 
@@ -1231,15 +1298,10 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
         return 0;
     }
     accum_values = (size_t)m->vertex_count * 3u;
-    if (accum_values <= (size_t)MESH3D_NORMAL_STACK_VERTS * 3u) {
-        memset(stack_accum, 0, accum_values * sizeof(double));
-        accum = stack_accum;
-    } else {
-        heap_accum = (double *)calloc(accum_values, sizeof(double));
-        if (!heap_accum)
-            return 0;
-        accum = heap_accum;
-    }
+    accum = mesh3d_prepare_normal_accumulator(
+        m, stack_accum, (size_t)MESH3D_NORMAL_STACK_VERTS * 3u, accum_values);
+    if (!accum)
+        return 0;
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
         if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
@@ -1292,7 +1354,6 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
             n[2] = 0.0f;
         }
     }
-    free(heap_accum);
     mesh3d_bump_vertex_revision(m, 1);
     return 1;
 }

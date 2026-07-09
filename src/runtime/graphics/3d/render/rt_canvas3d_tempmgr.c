@@ -29,6 +29,87 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define CANVAS3D_FINAL_OVERLAY_ARENA_DEFAULT_BYTES (256u * 1024u)
+#define CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES (4u * 1024u * 1024u)
+
+/// @brief Round @p value up to the next power-of-two size, saturating on overflow.
+/// @details Final-overlay arena growth only happens when no recorded command points into the
+/// arena, so rounding up amortizes future HUD allocations without risking pointer invalidation.
+/// @param value Minimum capacity requested by the caller.
+/// @return A power-of-two capacity at least @p value, or @p value when rounding would overflow.
+static size_t canvas3d_next_power_of_two_size(size_t value) {
+    size_t result = 1u;
+    if (value <= 1u)
+        return 1u;
+    while (result < value) {
+        if (result > SIZE_MAX / 2u)
+            return value;
+        result *= 2u;
+    }
+    return result;
+}
+
+/// @brief Return whether @p alignment is a valid non-zero power-of-two.
+/// @param alignment Alignment value to validate.
+/// @return Non-zero when @p alignment can be used for arena pointer rounding.
+static int canvas3d_valid_power_of_two_alignment(size_t alignment) {
+    return alignment != 0u && (alignment & (alignment - 1u)) == 0u;
+}
+
+/// @brief Allocate stable storage from the retained final-overlay vertex/index arena.
+void *canvas3d_alloc_final_overlay_arena(rt_canvas3d *c, size_t bytes, size_t alignment) {
+    size_t mask;
+    size_t aligned_offset;
+    size_t end_offset;
+    size_t requested_capacity;
+    uint8_t *grown;
+
+    if (!c || bytes == 0u)
+        return NULL;
+    if (!canvas3d_valid_power_of_two_alignment(alignment))
+        alignment = sizeof(void *);
+    if (alignment < sizeof(void *))
+        alignment = sizeof(void *);
+    mask = alignment - 1u;
+    if (c->final_overlay_arena_used > SIZE_MAX - mask)
+        return NULL;
+    aligned_offset = (c->final_overlay_arena_used + mask) & ~mask;
+    if (aligned_offset > SIZE_MAX - bytes)
+        return NULL;
+    end_offset = aligned_offset + bytes;
+    if (end_offset > c->final_overlay_arena_peak)
+        c->final_overlay_arena_peak = end_offset;
+    if (end_offset > c->final_overlay_arena_capacity) {
+        if (c->final_overlay_arena_used != 0u)
+            return NULL;
+        requested_capacity = end_offset;
+        if (requested_capacity < CANVAS3D_FINAL_OVERLAY_ARENA_DEFAULT_BYTES)
+            requested_capacity = CANVAS3D_FINAL_OVERLAY_ARENA_DEFAULT_BYTES;
+        requested_capacity = canvas3d_next_power_of_two_size(requested_capacity);
+        grown = (uint8_t *)malloc(requested_capacity);
+        if (!grown)
+            return NULL;
+        free(c->final_overlay_arena);
+        c->final_overlay_arena = grown;
+        c->final_overlay_arena_capacity = requested_capacity;
+    }
+    c->final_overlay_arena_used = end_offset;
+    return c->final_overlay_arena + aligned_offset;
+}
+
+/// @brief Reset retained final-overlay arena state after overlay replay.
+void canvas3d_reset_final_overlay_arena(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->final_overlay_arena_used = 0u;
+    c->final_overlay_arena_peak = 0u;
+    if (c->final_overlay_arena_capacity > CANVAS3D_FINAL_OVERLAY_ARENA_RETAIN_BYTES) {
+        free(c->final_overlay_arena);
+        c->final_overlay_arena = NULL;
+        c->final_overlay_arena_capacity = 0u;
+    }
+}
+
 /// @brief Clear the per-frame transient-buffer tracking set (all slots empty).
 static void canvas3d_temp_buffer_set_clear(rt_canvas3d *c) {
     if (!c || !c->temp_buffer_set || c->temp_buffer_set_capacity <= 0)
@@ -444,6 +525,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
     canvas3d_temp_buffer_set_clear(c);
+    c->float_snapshot_count = 0;
     c->mesh_snapshot_count = 0;
     canvas3d_mesh_snapshot_hash_clear(c);
     c->mesh_snapshot_bytes = 0u;

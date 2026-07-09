@@ -498,6 +498,13 @@ typedef struct vgfx3d_backend {
      * supported. */
     int64_t (*get_native_texture_caps)(void *ctx);
 
+    /* Optional backend feature capability bits. Return a mask using
+     * RT_CANVAS3D_BACKEND_CAP_* values for features that depend on the concrete
+     * device/context rather than only vtable hooks. Canvas3D ORs these bits into
+     * BackendCapabilities after checking its generic software and hook-based
+     * fallbacks. */
+    int64_t (*get_feature_caps)(void *ctx);
+
     /// @brief Optional backend diagnostics hook.
     /// @details Copies a point-in-time telemetry snapshot into @p out_stats. NULL means the
     ///          backend has no private telemetry beyond Canvas3D's existing frame counters.

@@ -216,6 +216,14 @@ int64_t rt_mesh3d_get_resident_bytes(void *o) {
     return 0;
 }
 
+/// @brief Stub for `Mesh3D.RetainedBytes`.
+///
+/// Disabled Graphics3D builds retain no mesh payload, so the neutral value is `0`.
+int64_t rt_mesh3d_get_retained_bytes(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Mesh3D.AddVertex` — append a vertex with position
 ///        `(x, y, z)`, normal `(nx, ny, nz)`, and UV `(u, v)` to the mesh.
 ///        Returns the new vertex index implicitly via insertion order.

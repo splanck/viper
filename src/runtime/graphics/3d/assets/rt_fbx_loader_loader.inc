@@ -67,6 +67,30 @@ static int fbx_ascii_grow_i32_array(int32_t **values, size_t *capacity, size_t n
     return 1;
 }
 
+/// @brief Return 10 raised to an integer exponent without calling libm `pow`.
+/// @details ASCII FBX imports parse dense numeric arrays. This integer-only exponent scaler avoids
+/// dispatching to the general-purpose `pow` implementation for each token while preserving the
+/// caller's existing finite-result validation.
+/// @param exponent Signed base-10 exponent to evaluate.
+/// @return A double scale factor approximately equal to `10^exponent`.
+static double fbx_ascii_pow10_i64(int64_t exponent) {
+    uint64_t remaining;
+    double base = exponent < 0 ? 0.1 : 10.0;
+    double scale = 1.0;
+    if (exponent < 0)
+        remaining = (uint64_t)(-exponent);
+    else
+        remaining = (uint64_t)exponent;
+    while (remaining != 0u) {
+        if ((remaining & 1u) != 0u)
+            scale *= base;
+        remaining >>= 1u;
+        if (remaining != 0u)
+            base *= base;
+    }
+    return scale;
+}
+
 /// @brief Parse one finite ASCII-FBX double with '.' decimal semantics, independent of locale.
 /// @details FBX text files are ASCII interchange data and always use `.` for fractional values.
 ///          Calling `strtod` directly makes parsing depend on the process locale, so this helper
@@ -135,7 +159,8 @@ static int fbx_ascii_parse_double_span(const char *p,
         if (exp_digits == 0)
             s = exp_start;
     }
-    result = (double)sign * value * pow(10.0, (double)(exp_sign * exp_value - frac_digits));
+    result = (double)sign * value *
+             fbx_ascii_pow10_i64((int64_t)exp_sign * (int64_t)exp_value - (int64_t)frac_digits);
     if (!isfinite(result))
         return 0;
     *out_end = s;

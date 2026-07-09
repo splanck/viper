@@ -565,6 +565,22 @@ void rt_canvas3d_set_clustered_lighting(void *o, int8_t enabled) {
     RT_GRAPHICS_TRAP_VOID("Canvas3D.SetClusteredLighting: graphics support not compiled in");
 }
 
+/// @brief Disabled-build stub for `Canvas3D.TrySetClusteredLighting`.
+///
+/// Fallback probe: returns failure when Graphics3D is not compiled in so callers can
+/// choose a non-clustered path without relying on a runtime trap.
+int8_t rt_canvas3d_try_set_clustered_lighting(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+    return 0;
+}
+
+/// @brief Disabled-build fallback stub for `Canvas3D.ClusteredLighting`.
+int8_t rt_canvas3d_get_clustered_lighting(void *o) {
+    (void)o;
+    return 0;
+}
+
 int64_t rt_canvas3d_get_max_active_lights(void *o) {
     (void)o;
     return 0;

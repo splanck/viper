@@ -51,9 +51,9 @@
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
-#include "rt_skeleton3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
+#include "rt_skeleton3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
@@ -149,6 +149,7 @@ void *rt_game3d_entity_new(void) {
     }
     entity->layer = RT_GAME3D_LAYER_DYNAMIC;
     entity->collision_mask_bits = ~(int64_t)0;
+    entity->registry_index = -1;
     entity->name = rt_const_cstr("");
     rt_obj_retain_maybe(entity->name);
     entity->alive = 1;
@@ -183,6 +184,7 @@ void *rt_game3d_entity_from_node(void *root) {
     game3d_assign_typed_ref(&entity->node, root, RT_G3D_SCENENODE3D_CLASS_ID);
     entity->layer = RT_GAME3D_LAYER_DYNAMIC;
     entity->collision_mask_bits = ~(int64_t)0;
+    entity->registry_index = -1;
     entity->name = rt_const_cstr("");
     rt_obj_retain_maybe(entity->name);
     entity->alive = 1;

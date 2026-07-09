@@ -10,25 +10,46 @@ bind "./config";
 bind "./terrain";
 bind "./mathutil";
 
+/// @brief Build the default cinematic Ridgebound post-FX chain.
 func buildPostFX(canvas: Canvas3D) {
+    buildPostFXForQuality(canvas, 2);
+}
+
+/// @brief Build the authored Ridgebound post-FX chain for a menu quality preset.
+func buildPostFXForQuality(canvas: Canvas3D, quality: Integer) {
     var fx = PostFX3D.New();
+    var q = quality;
+    if (q < 0) { q = 0; }
+    if (q > 2) { q = 2; }
     // GPU-only screen-space ambient occlusion — the biggest single depth cue here,
     // grounding trees/props/creases with contact darkening. Gated on the valid
     // "gpu_postfx" capability (the old "ssao" string was never recognized, so SSAO
     // never actually ran). DOF + motion blur are intentionally omitted: they soften
     // the distant snow-capped peaks and read poorly under constant mouse-look.
-    if (Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
+    if (q >= 1 && Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
         PostFX3D.AddSSAO(fx, 0.70, 0.90, 16);
     }
     // Screen-space reflections: the lake (material flagged SsrEnabled, see
     // water_sky) mirrors the shoreline/trees/sky in screen space, falling back to
     // its environment cubemap where a ray leaves the screen. GPU window backends only.
-    if (Canvas3D.BackendSupports(canvas, "ssr")) {
+    if (q >= 2 && Canvas3D.BackendSupports(canvas, "ssr")) {
         PostFX3D.AddSSR(fx, 0.55, 0.35);
     }
     // CPU-safe chain — runs on every backend, software included.
-    PostFX3D.AddTonemap(fx, 2, 1.0);
-    PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 4);
+    var exposure = config.POSTFX_EXPOSURE;
+    var bloomIntensity = config.POSTFX_BLOOM_INTENSITY;
+    var bloomPasses = 4;
+    if (q == 0) {
+        exposure = exposure * 0.94;
+        bloomIntensity = bloomIntensity * 0.45;
+        bloomPasses = 1;
+    } else if (q == 1) {
+        exposure = exposure * 0.98;
+        bloomIntensity = bloomIntensity * 0.70;
+        bloomPasses = 2;
+    }
+    PostFX3D.AddTonemap(fx, 2, exposure);
+    PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, bloomIntensity, bloomPasses);
     PostFX3D.AddColorGrade(
         fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
         config.POSTFX_COLORGRADE_SAT);

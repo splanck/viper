@@ -203,7 +203,10 @@ struct rt_world3d {
     int32_t joint_count;
     int32_t joint_capacity;
     ph3d_broadphase_entry *broadphase_entries;
+    ph3d_broadphase_entry *broadphase_sort_scratch;
     int32_t broadphase_capacity;
+    int32_t broadphase_sort_scratch_capacity;
+    uint64_t broadphase_world_revision;
     int32_t query_broadphase_count;
     uint64_t query_broadphase_signature;
     int8_t query_broadphase_valid;
@@ -465,6 +468,14 @@ int test_collision(const rt_body3d *a,
 
 // --- Solver + broad phase (defined in rt_physics3d_solver.c) ---
 int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs);
+int ph3d_broadphase_compare_entries_axis(const ph3d_broadphase_entry *a,
+                                         const ph3d_broadphase_entry *b,
+                                         int primary);
+int world3d_reserve_broadphase_sort_scratch(rt_world3d *w, int32_t needed);
+void ph3d_broadphase_sort_entries(ph3d_broadphase_entry *entries,
+                                  ph3d_broadphase_entry *scratch,
+                                  int32_t count,
+                                  int axis);
 int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int32_t value);
 void ph3d_solver_island_batch_free(ph3d_solver_island_batch *batch);
 int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *batch);

@@ -71,8 +71,8 @@ typedef enum {
     POSTFX_SSAO,
     POSTFX_DOF,
     POSTFX_MOTION_BLUR,
-    POSTFX_TAA, /* appended: value mirrors VGFX3D_POSTFX_EFFECT_TAA */
-    POSTFX_SSR, /* Plan 10: value mirrors VGFX3D_POSTFX_EFFECT_SSR */
+    POSTFX_TAA,           /* appended: value mirrors VGFX3D_POSTFX_EFFECT_TAA */
+    POSTFX_SSR,           /* Plan 10: value mirrors VGFX3D_POSTFX_EFFECT_SSR */
     POSTFX_AUTO_EXPOSURE, /* mirrors VGFX3D_POSTFX_EFFECT_AUTO_EXPOSURE */
     POSTFX_COLOR_LUT,     /* mirrors VGFX3D_POSTFX_EFFECT_COLOR_LUT */
     POSTFX_SUN_SHAFTS,    /* mirrors VGFX3D_POSTFX_EFFECT_SUN_SHAFTS */
@@ -1014,7 +1014,6 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx, int hdr_active) {
     return 0;
 }
 
-
 /*==========================================================================
  * CPU scene effects (software post-FX parity)
  * Depth-aware effects (SSAO/DOF/MotionBlur/SSR/TAA) run on the CPU using the
@@ -1077,8 +1076,8 @@ static int postfx_mat4_invert(const float *m, float *out) {
              m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
     inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
               m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
-             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
     inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
              m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
     inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
@@ -1087,12 +1086,12 @@ static int postfx_mat4_invert(const float *m, float *out) {
               m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
     inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
              m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
-             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
-              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
-              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
     float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
     if (!isfinite(det) || fabsf(det) < 1e-20f)
         return 0;
@@ -1121,8 +1120,13 @@ static inline float postfx_linear_depth(const postfx_scene_in_t *sc, float ndc_z
 }
 
 /// @brief Reconstruct the render-space world position of pixel (x,y) at @p ndc_z.
-static inline int postfx_world_at(
-    const postfx_scene_in_t *sc, int32_t w, int32_t h, float x, float y, float ndc_z, float out[3]) {
+static inline int postfx_world_at(const postfx_scene_in_t *sc,
+                                  int32_t w,
+                                  int32_t h,
+                                  float x,
+                                  float y,
+                                  float ndc_z,
+                                  float out[3]) {
     if (!sc->has_inv || w <= 0 || h <= 0)
         return 0;
     float nx = (x + 0.5f) / (float)w * 2.0f - 1.0f;
@@ -1156,10 +1160,18 @@ static inline int postfx_project(
 }
 
 /* Deterministic 12-point rotated-Poisson table (shares the shadow PCF family). */
-static const float postfx_poisson12[12][2] = {
-    {0.4824f, 0.3453f},  {0.0799f, 0.6412f},   {-0.2113f, -0.3051f}, {0.4856f, -0.6382f},
-    {-0.1973f, 0.2523f}, {-0.8238f, 0.5511f},  {-0.3336f, 0.8860f},  {0.8357f, 0.0281f},
-    {-0.9217f, -0.2893f}, {-0.1843f, -0.7691f}, {0.4499f, -0.1952f},  {0.5347f, 0.7958f}};
+static const float postfx_poisson12[12][2] = {{0.4824f, 0.3453f},
+                                              {0.0799f, 0.6412f},
+                                              {-0.2113f, -0.3051f},
+                                              {0.4856f, -0.6382f},
+                                              {-0.1973f, 0.2523f},
+                                              {-0.8238f, 0.5511f},
+                                              {-0.3336f, 0.8860f},
+                                              {0.8357f, 0.0281f},
+                                              {-0.9217f, -0.2893f},
+                                              {-0.1843f, -0.7691f},
+                                              {0.4499f, -0.1952f},
+                                              {0.5347f, 0.7958f}};
 
 /// @brief SSAO: hemisphere-style AO from depth comparisons, 3x3 blurred, multiplied in.
 static void apply_ssao_cpu(float *fbuf,
@@ -1435,8 +1447,8 @@ static void apply_ssr_cpu(float *fbuf,
             nrm[0] /= nl;
             nrm[1] /= nl;
             nrm[2] /= nl;
-            float vdir[3] = {pw[0] - sc->cam_pos[0], pw[1] - sc->cam_pos[1],
-                             pw[2] - sc->cam_pos[2]};
+            float vdir[3] = {
+                pw[0] - sc->cam_pos[0], pw[1] - sc->cam_pos[1], pw[2] - sc->cam_pos[2]};
             float vl = sqrtf(vdir[0] * vdir[0] + vdir[1] * vdir[1] + vdir[2] * vdir[2]);
             if (!isfinite(vl) || vl < 1e-6f)
                 continue;
@@ -1449,7 +1461,8 @@ static void apply_ssr_cpu(float *fbuf,
                 nrm[2] = -nrm[2];
             }
             float vdn = vdir[0] * nrm[0] + vdir[1] * nrm[1] + vdir[2] * nrm[2];
-            float rdir[3] = {vdir[0] - 2.0f * vdn * nrm[0], vdir[1] - 2.0f * vdn * nrm[1],
+            float rdir[3] = {vdir[0] - 2.0f * vdn * nrm[0],
+                             vdir[1] - 2.0f * vdn * nrm[1],
                              vdir[2] - 2.0f * vdn * nrm[2]};
             /* Only strongly reflective grazing setups matter at this quality tier;
              * skip rays pointing back at the camera. */
@@ -1737,23 +1750,35 @@ static void apply_taa_cpu(
                         float cr = fbuf[sidx];
                         float cg = fbuf[count + sidx];
                         float cb = fbuf[count * 2u + sidx];
-                        if (cr < mn[0]) mn[0] = cr;
-                        if (cg < mn[1]) mn[1] = cg;
-                        if (cb < mn[2]) mn[2] = cb;
-                        if (cr > mx[0]) mx[0] = cr;
-                        if (cg > mx[1]) mx[1] = cg;
-                        if (cb > mx[2]) mx[2] = cb;
+                        if (cr < mn[0])
+                            mn[0] = cr;
+                        if (cg < mn[1])
+                            mn[1] = cg;
+                        if (cb < mn[2])
+                            mn[2] = cb;
+                        if (cr > mx[0])
+                            mx[0] = cr;
+                        if (cg > mx[1])
+                            mx[1] = cg;
+                        if (cb > mx[2])
+                            mx[2] = cb;
                     }
                 }
                 float histr = hr[hidx];
                 float histg = hg[hidx];
                 float histb = hb[hidx];
-                if (histr < mn[0]) histr = mn[0];
-                if (histg < mn[1]) histg = mn[1];
-                if (histb < mn[2]) histb = mn[2];
-                if (histr > mx[0]) histr = mx[0];
-                if (histg > mx[1]) histg = mx[1];
-                if (histb > mx[2]) histb = mx[2];
+                if (histr < mn[0])
+                    histr = mn[0];
+                if (histg < mn[1])
+                    histg = mn[1];
+                if (histb < mn[2])
+                    histb = mn[2];
+                if (histr > mx[0])
+                    histr = mx[0];
+                if (histg > mx[1])
+                    histg = mx[1];
+                if (histb > mx[2])
+                    histb = mx[2];
                 fbuf[idx] = fbuf[idx] * (1.0f - blend) + histr * blend;
                 fbuf[count + idx] = fbuf[count + idx] * (1.0f - blend) + histg * blend;
                 fbuf[count * 2u + idx] = fbuf[count * 2u + idx] * (1.0f - blend) + histb * blend;
@@ -1774,11 +1799,11 @@ static void apply_taa_cpu(
 ///          integer framebuffer. @p hdr_active selects the linear-HDR source behavior
 ///          for explicit mode-0 tonemap entries (gamma-out; see `apply_tonemap`).
 static void postfx_apply_float_effects(rt_postfx3d *fx,
-                                        float *fbuf,
-                                        int32_t w,
-                                        int32_t h,
-                                        int hdr_active,
-                                        const postfx_scene_in_t *scene) {
+                                       float *fbuf,
+                                       int32_t w,
+                                       int32_t h,
+                                       int hdr_active,
+                                       const postfx_scene_in_t *scene) {
     int32_t effect_count = postfx3d_safe_effect_count(fx);
     postfx_scratch_t scratch;
     if (!fx || !fx->enabled || effect_count == 0 || !fbuf)
@@ -1855,13 +1880,7 @@ static void postfx_apply_float_effects(rt_postfx3d *fx,
                 break;
             case POSTFX_SSR:
                 if (scene)
-                    apply_ssr_cpu(fbuf,
-                                  w,
-                                  h,
-                                  scene,
-                                  e->p.ssr.intensity,
-                                  e->p.ssr.steps,
-                                  &scratch);
+                    apply_ssr_cpu(fbuf, w, h, scene, e->p.ssr.intensity, e->p.ssr.steps, &scratch);
                 break;
             case POSTFX_AUTO_EXPOSURE:
                 apply_auto_exposure_cpu(fx,
@@ -2369,7 +2388,8 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
         }
     } else {
         vgfx_framebuffer_t fb;
-        if (c->backend && c->backend != &vgfx3d_software_backend)
+        if (c->backend && c->backend != &vgfx3d_software_backend &&
+            (!c->backend->name || strcmp(c->backend->name, "software") != 0))
             return;
         if (!c->gfx_win)
             return;
@@ -2409,8 +2429,7 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
             const rt_light3d *l = c->lights[li];
             if (!l || !l->enabled || l->type != 0)
                 continue;
-            float dir[3] = {(float)l->direction[0], (float)l->direction[1],
-                            (float)l->direction[2]};
+            float dir[3] = {(float)l->direction[0], (float)l->direction[1], (float)l->direction[2]};
             float len = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
             if (!isfinite(len) || len < 1e-6f)
                 break;
@@ -2496,8 +2515,7 @@ void rt_postfx3d_add_sun_shafts(void *obj, double intensity, double decay, int64
     e->type = POSTFX_SUN_SHAFTS;
     e->enabled = 1;
     e->p.sun_shafts.intensity = (float)(isfinite(intensity) && intensity > 0.0 ? intensity : 0.6);
-    e->p.sun_shafts.decay =
-        (float)(isfinite(decay) && decay > 0.0 && decay < 1.0 ? decay : 0.92);
+    e->p.sun_shafts.decay = (float)(isfinite(decay) && decay > 0.0 && decay < 1.0 ? decay : 0.92);
     if (samples < 8)
         samples = 8;
     if (samples > 48)

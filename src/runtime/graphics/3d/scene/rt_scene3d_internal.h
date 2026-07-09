@@ -14,6 +14,7 @@
 #pragma once
 
 #include "rt_scene3d.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef VIPER_ENABLE_GRAPHICS
@@ -238,10 +239,14 @@ typedef struct rt_scene3d {
     rt_scene3d_visibility_portal *visibility_portals;
     int32_t visibility_portal_count;
     int32_t visibility_portal_capacity;
-    int8_t portal_clipping_disabled;       /* 1 = legacy reachability flood-fill */
-    int32_t last_portal_traversal_count;   /* portal expansions in the last PVS build */
+    int8_t portal_clipping_disabled;     /* 1 = legacy reachability flood-fill */
+    int32_t last_portal_traversal_count; /* portal expansions in the last PVS build */
     rt_scene3d_spatial_entry **query_candidates;
+    rt_scene_node3d **query_traversal_stack;
+    rt_scene_node3d **world_matrix_stack;
     int32_t query_candidate_capacity;
+    size_t query_traversal_stack_capacity;
+    size_t world_matrix_stack_capacity;
 } rt_scene3d;
 
 /// @brief Bound a private dynamic-array count by the pointer and recorded capacity.
@@ -255,9 +260,8 @@ static inline int32_t scene3d_clamped_array_count(const void *array,
 
 /// @brief Safe number of children that may be read directly from a SceneNode3D.
 static inline int32_t scene3d_node_child_count(const rt_scene_node3d *node) {
-    return node ? scene3d_clamped_array_count(node->children,
-                                              node->child_count,
-                                              node->child_capacity)
+    return node ? scene3d_clamped_array_count(
+                      node->children, node->child_count, node->child_capacity)
                 : 0;
 }
 
@@ -386,9 +390,7 @@ int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
                                  void *inherited_animator);
 rt_scene3d *scene3d_checked(void *obj);
 int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message);
-int scene3d_node_world_mesh_aabb(rt_scene_node3d *node,
-                                 double world_min[3],
-                                 double world_max[3]);
+int scene3d_node_world_mesh_aabb(rt_scene_node3d *node, double world_min[3], double world_max[3]);
 int scene3d_aabb_intersects_aabb(const double a_min[3],
                                  const double a_max[3],
                                  const double b_min[3],

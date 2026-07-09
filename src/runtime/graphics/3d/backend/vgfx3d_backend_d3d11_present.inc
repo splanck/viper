@@ -98,10 +98,10 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->fog_enabled = cam->fog_enabled;
     ctx->height_fog[0] = vgfx3d_d3d11_finite_or(cam->height_fog_base, 0.0f);
     ctx->height_fog[1] = vgfx3d_d3d11_finite_or(cam->height_fog_falloff, 0.1f);
-    ctx->height_fog[2] = cam->height_fog_enabled
-                             ? vgfx3d_d3d11_finite_or(
-                                   cam->height_fog_density * cam->height_fog_blend, 0.0f)
-                             : 0.0f;
+    ctx->height_fog[2] =
+        cam->height_fog_enabled
+            ? vgfx3d_d3d11_finite_or(cam->height_fog_density * cam->height_fog_blend, 0.0f)
+            : 0.0f;
     ctx->height_fog[3] = 0.0f;
     vgfx3d_d3d11_sanitize_fog_range(cam->fog_near, cam->fog_far, &ctx->fog_near, &ctx->fog_far);
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
@@ -369,17 +369,16 @@ static int d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
 
 /// @brief Read back a Texture2D into a host RGBA8 buffer.
 ///
-/// Allocates a transient staging texture matching the source's format
-/// + size, CopyResource into it, Map(READ), copy rows. Caller's
-/// destination doesn't have to match the source size — clipping is
-/// applied. Returns 0 on any failure.
+/// Reuses a staging texture matching the source's format + size, CopyResource into it,
+/// Map(READ), copy rows. Caller's destination doesn't have to match the source size —
+/// clipping is applied. Returns 0 on any failure.
 static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
                                        ID3D11Texture2D *source_tex,
                                        uint8_t *dst_rgba,
                                        int32_t w,
                                        int32_t h,
                                        int32_t stride) {
-    ID3D11Texture2D *staging = NULL;
+    ID3D11Texture2D *staging;
     D3D11_TEXTURE2D_DESC desc;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
@@ -399,12 +398,15 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
         return 0;
     }
-    hr = d3d11_create_staging_texture(
-        ctx, (int32_t)desc.Width, (int32_t)desc.Height, desc.Format, &staging);
+    hr = d3d11_ensure_readback_staging_texture(
+        ctx, (int32_t)desc.Width, (int32_t)desc.Height, desc.Format);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(sceneStaging)", hr);
         return 0;
     }
+    staging = ctx->readback_staging;
+    if (!staging)
+        return 0;
 
     memset(dst_rgba, 0, clear_bytes);
     restore_target = (ctx->current_rtv_count > 0 || ctx->current_dsv) ? 1 : 0;
@@ -429,7 +431,6 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
 cleanup:
     if (mapped_ok)
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
-    SAFE_RELEASE(staging);
     if (restore_target)
         d3d11_restore_current_target_bindings(ctx);
     return ok;
@@ -1278,8 +1279,7 @@ static void d3d11_shadow_begin(void *ctx_ptr,
         ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
         ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state, 0);
         ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
-        ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx,
-                                                   D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_shadow, NULL, 0);
         ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
         return;

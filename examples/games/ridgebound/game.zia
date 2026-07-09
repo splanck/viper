@@ -319,7 +319,7 @@ class RidgeboundGame {
             qualityLevel = qualityLevel + 1;
             if (qualityLevel > 2) { qualityLevel = 0; }
             menuSys.setQualityPreset(qualityLevel);
-            Canvas3D.SetQuality(canvas, qualityLevel);
+            applyQualityPreset();
         }
         if (input.Pressed(Key.LeftControl)) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
@@ -464,8 +464,14 @@ class RidgeboundGame {
         input.LookSensitivity = config.CAMERA_MOUSE_SENS;
 
         qualityLevel = menuSys.getQualityPreset();
-        Canvas3D.SetQuality(canvas, qualityLevel);
+        applyQualityPreset();
         if (screenState == STATE_PLAYING) { camCtl.applyFovNow(); }
+    }
+
+    /// @brief Apply the current quality preset while preserving Ridgebound's authored post-FX.
+    hide func applyQualityPreset() {
+        Canvas3D.SetQuality(canvas, qualityLevel);
+        postfx.buildPostFXForQuality(canvas, qualityLevel);
     }
 
     // Swap between the day and starfield night skyboxes when the sun crosses the

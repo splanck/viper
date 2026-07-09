@@ -14,7 +14,7 @@
 //   - PBR defaults: metallic=0.0, roughness=0.5, ao=1.0,
 //     emissive_intensity=1.0, normal_scale=1.0, alpha_mode=opaque.
 //   - Texture/normal_map/specular_map/emissive_map/metallic_roughness_map/
-//     ao_map slots retain GC-managed Pixels or TextureAsset3D source objects;
+//     ao_map slots retain GC-managed Pixels, TextureAsset3D, or RenderTarget3D source objects;
 //     draw submission resolves TextureAsset3D to the currently resident Pixels
 //     fallback and forwards native compressed blocks to capable backends.
 //     env_map retains a CubeMap3D object.
@@ -240,7 +240,8 @@ static int material_texture_ref_valid_or_trap(void *texture, const char *method)
         return 1;
     if (rt_material3d_resolve_texture_native_asset(texture))
         return 1;
-    rt_trap(method ? method : "Material3D: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
+    rt_trap(method ? method
+                   : "Material3D: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
     return 0;
 }
 
@@ -604,8 +605,9 @@ void *rt_material3d_new_color(double r, double g, double b) {
 }
 
 /// @brief Create a material with a diffuse texture map.
-/// @details Pixels or TextureAsset3D is retained through the material's source slot.
-/// @param pixels Pixels or TextureAsset3D handle for the diffuse texture.
+/// @details Pixels, TextureAsset3D, or RenderTarget3D is retained through the material's source
+/// slot.
+/// @param pixels Pixels, TextureAsset3D, or RenderTarget3D handle for the diffuse texture.
 /// @return Opaque material handle, or NULL on failure.
 void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
@@ -614,7 +616,7 @@ void *rt_material3d_new_textured(void *pixels) {
     if (!material_assign_texture_ref_checked(
             &mat->texture,
             pixels,
-            "Material3D.SetTexture: texture must be Pixels or TextureAsset3D")) {
+            "Material3D.SetTexture: texture must be Pixels, TextureAsset3D, or RenderTarget3D")) {
         if (rt_obj_release_check0(mat))
             rt_obj_free(mat);
         return NULL;
@@ -675,7 +677,9 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!mat)
         return;
     (void)material_assign_texture_ref_checked(
-        &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels or TextureAsset3D");
+        &mat->texture,
+        pixels,
+        "Material3D.SetTexture: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Bind a RenderTarget3D's live contents as the albedo texture.
@@ -1009,7 +1013,7 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
     (void)material_assign_texture_ref_checked(
         &mat->normal_map,
         pixels,
-        "Material3D.SetNormalMap: texture must be Pixels or TextureAsset3D");
+        "Material3D.SetNormalMap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Return whether the base-color/albedo texture slot is populated.
@@ -1031,10 +1035,10 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
     if (!mat)
         return;
     material_promote_to_pbr(mat);
-    (void)material_assign_texture_ref_checked(
-        &mat->metallic_roughness_map,
-        pixels,
-        "Material3D.SetMetallicRoughnessMap: texture must be Pixels or TextureAsset3D");
+    (void)material_assign_texture_ref_checked(&mat->metallic_roughness_map,
+                                              pixels,
+                                              "Material3D.SetMetallicRoughnessMap: texture must be "
+                                              "Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Return whether the metallic-roughness texture slot is populated.
@@ -1051,7 +1055,9 @@ void rt_material3d_set_ao_map(void *obj, void *pixels) {
         return;
     material_promote_to_pbr(mat);
     (void)material_assign_texture_ref_checked(
-        &mat->ao_map, pixels, "Material3D.SetAOMap: texture must be Pixels or TextureAsset3D");
+        &mat->ao_map,
+        pixels,
+        "Material3D.SetAOMap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Return whether the ambient-occlusion texture slot is populated.
@@ -1068,7 +1074,7 @@ void rt_material3d_set_specular_map(void *obj, void *pixels) {
     (void)material_assign_texture_ref_checked(
         &mat->specular_map,
         pixels,
-        "Material3D.SetSpecularMap: texture must be Pixels or TextureAsset3D");
+        "Material3D.SetSpecularMap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Return whether the specular texture slot is populated.
@@ -1085,7 +1091,7 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     (void)material_assign_texture_ref_checked(
         &mat->emissive_map,
         pixels,
-        "Material3D.SetEmissiveMap: texture must be Pixels or TextureAsset3D");
+        "Material3D.SetEmissiveMap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
 }
 
 /// @brief Return whether the emissive texture slot is populated.

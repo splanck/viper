@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/scene/rt_scene3d_api.inc  (#included from rt_scene3d.c; not a standalone translation unit)
-// Purpose: Scene3D public class: load, lifecycle, getters, and visibility queries
+// File: src/runtime/graphics/3d/scene/rt_scene3d_api.inc  (#included from rt_scene3d.c; not a
+// standalone translation unit) Purpose: Scene3D public class: load, lifecycle, getters, and
+// visibility queries
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Scene3D
@@ -38,14 +39,20 @@ static void rt_scene3d_finalize(void *obj) {
     free(scene->visibility_zones);
     free(scene->visibility_portals);
     free(scene->query_candidates);
+    free(scene->query_traversal_stack);
+    free(scene->world_matrix_stack);
     scene->visibility_zones = NULL;
     scene->visibility_portals = NULL;
     scene->query_candidates = NULL;
+    scene->query_traversal_stack = NULL;
+    scene->world_matrix_stack = NULL;
     scene->visibility_zone_count = 0;
     scene->visibility_zone_capacity = 0;
     scene->visibility_portal_count = 0;
     scene->visibility_portal_capacity = 0;
     scene->query_candidate_capacity = 0;
+    scene->query_traversal_stack_capacity = 0;
+    scene->world_matrix_stack_capacity = 0;
 }
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
@@ -74,6 +81,12 @@ void *rt_scene3d_new(void) {
     s->spatial_index.root_node = -1;
     s->spatial_index.dirty = 1;
     s->spatial_index.topology_dirty = 1;
+    s->query_candidates = NULL;
+    s->query_traversal_stack = NULL;
+    s->world_matrix_stack = NULL;
+    s->query_candidate_capacity = 0;
+    s->query_traversal_stack_capacity = 0;
+    s->world_matrix_stack_capacity = 0;
     rt_obj_set_finalizer(s, rt_scene3d_finalize);
     return s;
 }

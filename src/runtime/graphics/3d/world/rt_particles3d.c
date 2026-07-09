@@ -98,13 +98,13 @@ typedef struct {
     double stretch_k;
     /* Ribbon trails: per-particle ring of recent positions (parallel arrays,
      * swapped alongside the particle pool's swap-remove kills). */
-    float trail_lifetime;  /* seconds of retained history (0 = trails off) */
+    float trail_lifetime;   /* seconds of retained history (0 = trails off) */
     int32_t trail_segments; /* control points per particle (2..16) */
-    float *trail_pos;      /* max_particles * trail_segments * 3 */
-    float *trail_age;      /* seconds since last control-point push */
-    int16_t *trail_len;    /* control points currently stored */
-    int16_t *trail_head;   /* ring head index */
-    double softness; /* Plan 10: soft-particle fade distance in world units (0 = off) */
+    float *trail_pos;       /* max_particles * trail_segments * 3 */
+    float *trail_age;       /* seconds since last control-point push */
+    int16_t *trail_len;     /* control points currently stored */
+    int16_t *trail_head;    /* ring head index */
+    double softness;        /* Plan 10: soft-particle fade distance in world units (0 = off) */
     void *texture;
     int32_t emitter_shape; /* 0=point, 1=sphere, 2=box */
     double emitter_size[3];
@@ -115,7 +115,14 @@ typedef struct {
     uint32_t draw_vertex_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
     uint32_t draw_index_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
     void *draw_materials[PARTICLES3D_DRAW_SLOT_COUNT];
+    vgfx3d_vertex_t **overflow_draw_vertices;
+    uint32_t **overflow_draw_indices;
+    uint32_t *overflow_draw_vertex_capacity;
+    uint32_t *overflow_draw_index_capacity;
+    void **overflow_draw_materials;
+    int32_t overflow_draw_slot_capacity;
     void *sort_keys;
+    void *sort_scratch;
     int32_t sort_key_capacity;
     uint64_t sort_key_grow_count;
     int64_t draw_frame_serial;
@@ -197,6 +204,11 @@ static void particles3d_repair_refs(rt_particles3d *ps) {
         if (ps->draw_materials[i] &&
             !rt_g3d_has_class(ps->draw_materials[i], RT_G3D_MATERIAL3D_CLASS_ID))
             particles3d_release_material_slot(&ps->draw_materials[i]);
+    }
+    for (int32_t i = 0; i < ps->overflow_draw_slot_capacity; ++i) {
+        if (ps->overflow_draw_materials && ps->overflow_draw_materials[i] &&
+            !rt_g3d_has_class(ps->overflow_draw_materials[i], RT_G3D_MATERIAL3D_CLASS_ID))
+            particles3d_release_material_slot(&ps->overflow_draw_materials[i]);
     }
 }
 
@@ -450,8 +462,29 @@ static void rt_particles3d_finalize(void *obj) {
         ps->draw_indices[i] = NULL;
         particles3d_release_material_slot(&ps->draw_materials[i]);
     }
+    for (int32_t i = 0; i < ps->overflow_draw_slot_capacity; ++i) {
+        if (ps->overflow_draw_vertices)
+            free(ps->overflow_draw_vertices[i]);
+        if (ps->overflow_draw_indices)
+            free(ps->overflow_draw_indices[i]);
+        if (ps->overflow_draw_materials)
+            particles3d_release_material_slot(&ps->overflow_draw_materials[i]);
+    }
+    free(ps->overflow_draw_vertices);
+    free(ps->overflow_draw_indices);
+    free(ps->overflow_draw_vertex_capacity);
+    free(ps->overflow_draw_index_capacity);
+    free(ps->overflow_draw_materials);
+    ps->overflow_draw_vertices = NULL;
+    ps->overflow_draw_indices = NULL;
+    ps->overflow_draw_vertex_capacity = NULL;
+    ps->overflow_draw_index_capacity = NULL;
+    ps->overflow_draw_materials = NULL;
+    ps->overflow_draw_slot_capacity = 0;
     free(ps->sort_keys);
     ps->sort_keys = NULL;
+    free(ps->sort_scratch);
+    ps->sort_scratch = NULL;
     ps->sort_key_capacity = 0;
     ps->sort_key_grow_count = 0;
     particles3d_release_texture_slot(&ps->texture);
@@ -528,6 +561,25 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->emitter_size[0] = ps->emitter_size[1] = ps->emitter_size[2] = 1.0;
     ps->prng_state = particles3d_next_seed();
     ps->cached_material = NULL;
+    for (int i = 0; i < PARTICLES3D_DRAW_SLOT_COUNT; ++i) {
+        ps->draw_vertices[i] = NULL;
+        ps->draw_indices[i] = NULL;
+        ps->draw_vertex_capacity[i] = 0;
+        ps->draw_index_capacity[i] = 0;
+        ps->draw_materials[i] = NULL;
+    }
+    ps->overflow_draw_vertices = NULL;
+    ps->overflow_draw_indices = NULL;
+    ps->overflow_draw_vertex_capacity = NULL;
+    ps->overflow_draw_index_capacity = NULL;
+    ps->overflow_draw_materials = NULL;
+    ps->overflow_draw_slot_capacity = 0;
+    ps->sort_keys = NULL;
+    ps->sort_scratch = NULL;
+    ps->sort_key_capacity = 0;
+    ps->sort_key_grow_count = 0;
+    ps->draw_frame_serial = -1;
+    ps->draw_slots_used = 0;
 
     rt_obj_set_finalizer(ps, rt_particles3d_finalize);
     return ps;
@@ -1154,11 +1206,13 @@ typedef struct particle3d_sort_key {
     double view_depth;
 } particle3d_sort_key;
 
-/// @brief qsort comparator ordering keys by descending camera-space depth (farthest first);
-///   ties break on index so the sort is stable and deterministic.
-static int particle3d_sort_key_desc(const void *a, const void *b) {
-    const particle3d_sort_key *ka = (const particle3d_sort_key *)a;
-    const particle3d_sort_key *kb = (const particle3d_sort_key *)b;
+/// @brief Compare two particle sort keys for back-to-front order.
+/// @details Higher camera-space depth sorts first. Equal-depth ties use the stable particle index
+///   so alpha ordering remains deterministic across platforms and frames.
+static int particle3d_sort_key_compare_desc(const particle3d_sort_key *ka,
+                                            const particle3d_sort_key *kb) {
+    if (!ka || !kb)
+        return 0;
     if (ka->view_depth < kb->view_depth)
         return 1;
     if (ka->view_depth > kb->view_depth)
@@ -1173,7 +1227,7 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
 /// @brief Return true when sort keys are already in back-to-front draw order.
 /// @details Particle systems often move coherently frame-to-frame, so the previous draw order
 ///          remains sorted for small camera/particle deltas. Detecting that case avoids a full
-///          `qsort` call and keeps deterministic tie ordering by comparing index values too.
+///          merge pass and keeps deterministic tie ordering by comparing index values too.
 /// @param keys Sort-key array to inspect.
 /// @param count Number of keys in @p keys.
 /// @return 1 when the array is already descending by depth with ascending index ties.
@@ -1194,7 +1248,7 @@ static int particles3d_sort_keys_already_descending(const particle3d_sort_key *k
 
 /// @brief Sort a small particle key array with insertion sort.
 /// @details For the common case of a few dozen transparent particles, insertion sort avoids the
-///          indirect comparator overhead of `qsort` and performs well on nearly sorted input.
+///          merge pass overhead and performs well on nearly sorted input.
 /// @param keys Sort-key array to reorder in place.
 /// @param count Number of keys in @p keys.
 static void particles3d_insertion_sort_keys_desc(particle3d_sort_key *keys, int32_t count) {
@@ -1204,9 +1258,7 @@ static void particles3d_insertion_sort_keys_desc(particle3d_sort_key *keys, int3
         particle3d_sort_key key = keys[i];
         int32_t j = i - 1;
         while (j >= 0) {
-            int after = keys[j].view_depth < key.view_depth ||
-                        (keys[j].view_depth == key.view_depth && keys[j].index > key.index);
-            if (!after)
+            if (particle3d_sort_key_compare_desc(&keys[j], &key) <= 0)
                 break;
             keys[j + 1] = keys[j];
             j--;
@@ -1215,19 +1267,66 @@ static void particles3d_insertion_sort_keys_desc(particle3d_sort_key *keys, int3
     }
 }
 
-/// @brief Sort particle keys back-to-front using the cheapest appropriate strategy.
+/// @brief Merge two sorted particle-key runs from @p src into @p dst.
+/// @details Stable merge preserves index tie ordering and avoids libc qsort's indirect comparator
+///   overhead for large alpha-blended emitters.
+static void particles3d_merge_sort_run(const particle3d_sort_key *src,
+                                       particle3d_sort_key *dst,
+                                       int32_t left,
+                                       int32_t mid,
+                                       int32_t right) {
+    int32_t i = left;
+    int32_t j = mid;
+    int32_t out = left;
+    while (i < mid && j < right) {
+        if (particle3d_sort_key_compare_desc(&src[i], &src[j]) <= 0)
+            dst[out++] = src[i++];
+        else
+            dst[out++] = src[j++];
+    }
+    while (i < mid)
+        dst[out++] = src[i++];
+    while (j < right)
+        dst[out++] = src[j++];
+}
+
+/// @brief Sort particle keys back-to-front using persistent scratch storage.
 /// @details Skips work when keys are already ordered, uses insertion sort for small batches, and
-///          falls back to `qsort` for larger unordered alpha-blended emitters.
+///          uses a stable bottom-up merge sort for larger unordered alpha-blended emitters.
 /// @param keys Sort-key array to reorder in place.
+/// @param scratch Temporary array with at least @p count keys for the merge path.
 /// @param count Number of keys in @p keys.
-static void particles3d_sort_keys_back_to_front(particle3d_sort_key *keys, int32_t count) {
+static void particles3d_sort_keys_back_to_front(particle3d_sort_key *keys,
+                                                particle3d_sort_key *scratch,
+                                                int32_t count) {
     if (!keys || count <= 1 || particles3d_sort_keys_already_descending(keys, count))
         return;
-    if (count <= 32) {
+    if (count <= 32 || !scratch) {
         particles3d_insertion_sort_keys_desc(keys, count);
         return;
     }
-    qsort(keys, (size_t)count, sizeof(*keys), particle3d_sort_key_desc);
+    particle3d_sort_key *src = keys;
+    particle3d_sort_key *dst = scratch;
+    int32_t width = 1;
+    while (width < count) {
+        for (int32_t left = 0; left < count; left += width * 2) {
+            int32_t mid = left + width;
+            int32_t right = left + width * 2;
+            if (mid > count)
+                mid = count;
+            if (right > count)
+                right = count;
+            particles3d_merge_sort_run(src, dst, left, mid, right);
+        }
+        particle3d_sort_key *tmp = src;
+        src = dst;
+        dst = tmp;
+        if (width > count / 2)
+            break;
+        width *= 2;
+    }
+    if (src != keys)
+        memcpy(keys, src, (size_t)count * sizeof(*keys));
 }
 
 /// @brief Ensure the persistent particle-sort scratch buffer holds @p count keys.
@@ -1235,24 +1334,32 @@ static void particles3d_sort_keys_back_to_front(particle3d_sort_key *keys, int32
 ///   falling back to unsorted transparent quads, because that fallback causes obvious flicker.
 static int particles3d_ensure_sort_keys(rt_particles3d *ps, int32_t count) {
     void *grown;
+    void *scratch_grown;
     int32_t target_capacity;
     if (!ps || count <= 0)
         return 0;
     target_capacity = ps->max_particles > count ? ps->max_particles : count;
     if (target_capacity <= 0)
         return 0;
-    if (ps->sort_key_capacity >= target_capacity && ps->sort_keys)
+    if (ps->sort_key_capacity >= target_capacity && ps->sort_keys && ps->sort_scratch)
         return 1;
     if ((size_t)target_capacity > SIZE_MAX / sizeof(particle3d_sort_key)) {
         rt_trap("Particles3D.Draw: sort key allocation overflow");
         return 0;
     }
     grown = realloc(ps->sort_keys, (size_t)target_capacity * sizeof(particle3d_sort_key));
-    if (!grown) {
+    scratch_grown =
+        realloc(ps->sort_scratch, (size_t)target_capacity * sizeof(particle3d_sort_key));
+    if (!grown || !scratch_grown) {
+        if (grown)
+            ps->sort_keys = grown;
+        if (scratch_grown)
+            ps->sort_scratch = scratch_grown;
         rt_trap("Particles3D.Draw: sort key allocation failed");
         return 0;
     }
     ps->sort_keys = grown;
+    ps->sort_scratch = scratch_grown;
     ps->sort_key_capacity = target_capacity;
     ps->sort_key_grow_count++;
     return 1;
@@ -1287,10 +1394,124 @@ static int particles3d_ensure_material(void **slot) {
     return 1;
 }
 
+/// @brief Ensure the growable overflow draw-slot arrays can address @p needed slots.
+/// @details Fixed draw slots cover the common one/few camera draws per frame. When a caller draws
+///   the same emitter more often in a frame, overflow slots grow once and are reused on later
+///   frames instead of allocating canvas-owned transient buffers every draw.
+/// @return 1 when the overflow slot table is large enough, 0 on overflow/allocation failure.
+static int particles3d_ensure_overflow_draw_slots(rt_particles3d *ps, int32_t needed) {
+    int32_t old_capacity;
+    int32_t new_capacity;
+    if (!ps || needed < 0 || ps->overflow_draw_slot_capacity < 0)
+        return 0;
+    if (needed <= ps->overflow_draw_slot_capacity)
+        return 1;
+    old_capacity = ps->overflow_draw_slot_capacity;
+    new_capacity = old_capacity > 0 ? old_capacity : 4;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*ps->overflow_draw_vertices) ||
+        (size_t)new_capacity > SIZE_MAX / sizeof(*ps->overflow_draw_indices) ||
+        (size_t)new_capacity > SIZE_MAX / sizeof(*ps->overflow_draw_vertex_capacity) ||
+        (size_t)new_capacity > SIZE_MAX / sizeof(*ps->overflow_draw_index_capacity) ||
+        (size_t)new_capacity > SIZE_MAX / sizeof(*ps->overflow_draw_materials))
+        return 0;
+
+    vgfx3d_vertex_t **vertices = (vgfx3d_vertex_t **)realloc(
+        ps->overflow_draw_vertices, (size_t)new_capacity * sizeof(*vertices));
+    if (!vertices)
+        return 0;
+    ps->overflow_draw_vertices = vertices;
+    uint32_t **indices =
+        (uint32_t **)realloc(ps->overflow_draw_indices, (size_t)new_capacity * sizeof(*indices));
+    if (!indices)
+        return 0;
+    ps->overflow_draw_indices = indices;
+    uint32_t *vertex_caps = (uint32_t *)realloc(ps->overflow_draw_vertex_capacity,
+                                                (size_t)new_capacity * sizeof(*vertex_caps));
+    if (!vertex_caps)
+        return 0;
+    ps->overflow_draw_vertex_capacity = vertex_caps;
+    uint32_t *index_caps = (uint32_t *)realloc(ps->overflow_draw_index_capacity,
+                                               (size_t)new_capacity * sizeof(*index_caps));
+    if (!index_caps)
+        return 0;
+    ps->overflow_draw_index_capacity = index_caps;
+    void **materials =
+        (void **)realloc(ps->overflow_draw_materials, (size_t)new_capacity * sizeof(*materials));
+    if (!materials)
+        return 0;
+    ps->overflow_draw_materials = materials;
+
+    if (new_capacity > old_capacity) {
+        size_t added = (size_t)(new_capacity - old_capacity);
+        memset(ps->overflow_draw_vertices + old_capacity, 0, added * sizeof(*vertices));
+        memset(ps->overflow_draw_indices + old_capacity, 0, added * sizeof(*indices));
+        memset(ps->overflow_draw_vertex_capacity + old_capacity, 0, added * sizeof(*vertex_caps));
+        memset(ps->overflow_draw_index_capacity + old_capacity, 0, added * sizeof(*index_caps));
+        memset(ps->overflow_draw_materials + old_capacity, 0, added * sizeof(*materials));
+    }
+    ps->overflow_draw_slot_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Prepare one reusable draw slot's vertex/index buffers and material.
+/// @details Used by both fixed and overflow slot arrays. The vertex buffer is zero-filled because
+///   later trail emission may leave degenerate quads for culled trail segments.
+/// @return 1 with output pointers assigned, 0 on allocation/material failure.
+static int particles3d_prepare_draw_slot(vgfx3d_vertex_t **draw_vertices,
+                                         uint32_t **draw_indices,
+                                         uint32_t *vertex_capacity,
+                                         uint32_t *index_capacity,
+                                         void **draw_materials,
+                                         int32_t slot,
+                                         uint32_t vert_count,
+                                         uint32_t idx_count,
+                                         vgfx3d_vertex_t **out_vertices,
+                                         uint32_t **out_indices,
+                                         void **out_material) {
+    if (!draw_vertices || !draw_indices || !vertex_capacity || !index_capacity || !draw_materials ||
+        slot < 0 || !out_vertices || !out_indices || !out_material)
+        return 0;
+    if (vert_count > vertex_capacity[slot]) {
+        vgfx3d_vertex_t *grown;
+        if ((size_t)vert_count > SIZE_MAX / sizeof(*grown))
+            return 0;
+        grown =
+            (vgfx3d_vertex_t *)realloc(draw_vertices[slot], (size_t)vert_count * sizeof(*grown));
+        if (!grown)
+            return 0;
+        draw_vertices[slot] = grown;
+        vertex_capacity[slot] = vert_count;
+    }
+    if (idx_count > index_capacity[slot]) {
+        uint32_t *grown;
+        if ((size_t)idx_count > SIZE_MAX / sizeof(*grown))
+            return 0;
+        grown = (uint32_t *)realloc(draw_indices[slot], (size_t)idx_count * sizeof(*grown));
+        if (!grown)
+            return 0;
+        draw_indices[slot] = grown;
+        index_capacity[slot] = idx_count;
+    }
+    if (!particles3d_ensure_material(&draw_materials[slot]))
+        return 0;
+    memset(draw_vertices[slot], 0, (size_t)vert_count * sizeof(*draw_vertices[slot]));
+    *out_vertices = draw_vertices[slot];
+    *out_indices = draw_indices[slot];
+    *out_material = draw_materials[slot];
+    return 1;
+}
+
 /// @brief Acquire transient vertex/index/material storage for this frame's particle batch.
-/// @details Prefers canvas-owned scratch buffers (flagged via @p out_canvas_owned) to avoid
-///          per-frame allocation, falling back to the system's own storage. Also ensures the
-///          shared particle material exists.
+/// @details Uses fixed reusable slots first, then grows reusable overflow slots for additional
+///          same-frame draws. @p out_canvas_owned is retained for the old cleanup contract and is
+///          always false on success.
 /// @return 1 with the out-params set, 0 on invalid args or allocation failure.
 static int particles3d_acquire_draw_storage(rt_particles3d *ps,
                                             rt_canvas3d *canvas,
@@ -1313,55 +1534,36 @@ static int particles3d_acquire_draw_storage(rt_particles3d *ps,
         ps->draw_frame_serial = frame_serial;
         ps->draw_slots_used = 0;
     }
-    if (ps->draw_slots_used >= 0 && ps->draw_slots_used < PARTICLES3D_DRAW_SLOT_COUNT) {
-        slot = ps->draw_slots_used++;
-        if (vert_count > ps->draw_vertex_capacity[slot]) {
-            vgfx3d_vertex_t *grown;
-            if ((size_t)vert_count > SIZE_MAX / sizeof(*grown))
-                return 0;
-            grown = (vgfx3d_vertex_t *)realloc(ps->draw_vertices[slot],
-                                               (size_t)vert_count * sizeof(*grown));
-            if (!grown)
-                return 0;
-            ps->draw_vertices[slot] = grown;
-            ps->draw_vertex_capacity[slot] = vert_count;
-        }
-        if (idx_count > ps->draw_index_capacity[slot]) {
-            uint32_t *grown;
-            if ((size_t)idx_count > SIZE_MAX / sizeof(*grown))
-                return 0;
-            grown = (uint32_t *)realloc(ps->draw_indices[slot], (size_t)idx_count * sizeof(*grown));
-            if (!grown)
-                return 0;
-            ps->draw_indices[slot] = grown;
-            ps->draw_index_capacity[slot] = idx_count;
-        }
-        if (!particles3d_ensure_material(&ps->draw_materials[slot]))
-            return 0;
-        memset(ps->draw_vertices[slot], 0, (size_t)vert_count * sizeof(*ps->draw_vertices[slot]));
-        *out_vertices = ps->draw_vertices[slot];
-        *out_indices = ps->draw_indices[slot];
-        *out_material = ps->draw_materials[slot];
-        return 1;
-    }
-
-    *out_vertices = (vgfx3d_vertex_t *)calloc((size_t)vert_count, sizeof(**out_vertices));
-    *out_indices = (uint32_t *)malloc((size_t)idx_count * sizeof(**out_indices));
-    *out_material = rt_material3d_new();
-    if (!*out_vertices || !*out_indices || !*out_material) {
-        free(*out_vertices);
-        free(*out_indices);
-        if (*out_material && rt_obj_release_check0(*out_material))
-            rt_obj_free(*out_material);
-        *out_vertices = NULL;
-        *out_indices = NULL;
-        *out_material = NULL;
+    if (ps->draw_slots_used < 0 || ps->draw_slots_used == INT32_MAX)
         return 0;
-    }
-    rt_material3d_set_color(*out_material, 1.0, 1.0, 1.0);
-    rt_material3d_set_unlit(*out_material, 1);
-    *out_canvas_owned = 1;
-    return 1;
+    slot = ps->draw_slots_used++;
+    if (slot < PARTICLES3D_DRAW_SLOT_COUNT)
+        return particles3d_prepare_draw_slot(ps->draw_vertices,
+                                             ps->draw_indices,
+                                             ps->draw_vertex_capacity,
+                                             ps->draw_index_capacity,
+                                             ps->draw_materials,
+                                             slot,
+                                             vert_count,
+                                             idx_count,
+                                             out_vertices,
+                                             out_indices,
+                                             out_material);
+
+    slot -= PARTICLES3D_DRAW_SLOT_COUNT;
+    if (!particles3d_ensure_overflow_draw_slots(ps, slot + 1))
+        return 0;
+    return particles3d_prepare_draw_slot(ps->overflow_draw_vertices,
+                                         ps->overflow_draw_indices,
+                                         ps->overflow_draw_vertex_capacity,
+                                         ps->overflow_draw_index_capacity,
+                                         ps->overflow_draw_materials,
+                                         slot,
+                                         vert_count,
+                                         idx_count,
+                                         out_vertices,
+                                         out_indices,
+                                         out_material);
 }
 
 /// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
@@ -1492,7 +1694,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 if (!isfinite(sort_keys[i].view_depth))
                     sort_keys[i].view_depth = 0.0;
             }
-            particles3d_sort_keys_back_to_front(sort_keys, ps->count);
+            particles3d_sort_keys_back_to_front(
+                sort_keys, (particle3d_sort_key *)ps->sort_scratch, ps->count);
         }
     }
 
@@ -1623,10 +1826,10 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             int16_t head = ps->trail_head[i];
             /* Walk newest -> oldest: k = 0 is the most recent control point. */
             for (int16_t k = 0; k + 1 < len && cursor < (uint32_t)ps->count + trail_quads; k++) {
-                int16_t i0 = (int16_t)((head - 1 - k + 2 * ps->trail_segments) %
-                                       ps->trail_segments);
-                int16_t i1 = (int16_t)((head - 2 - k + 2 * ps->trail_segments) %
-                                       ps->trail_segments);
+                int16_t i0 =
+                    (int16_t)((head - 1 - k + 2 * ps->trail_segments) % ps->trail_segments);
+                int16_t i1 =
+                    (int16_t)((head - 2 - k + 2 * ps->trail_segments) % ps->trail_segments);
                 const float *p0 = &ring[(size_t)i0 * 3u];
                 const float *p1 = &ring[(size_t)i1 * 3u];
                 float dirx = p1[0] - p0[0];

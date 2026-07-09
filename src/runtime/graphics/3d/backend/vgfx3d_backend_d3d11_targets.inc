@@ -173,6 +173,44 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
     return ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
 }
 
+/// @brief Release the reusable window/post-FX readback staging texture.
+///
+/// @details The RTT path owns its own staging texture because its lifetime is tied to the active
+///          RenderTarget3D. This helper handles the generic screenshot/readback staging surface.
+static void d3d11_release_readback_staging_texture(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    SAFE_RELEASE(ctx->readback_staging);
+    ctx->readback_staging_width = 0;
+    ctx->readback_staging_height = 0;
+    ctx->readback_staging_format = DXGI_FORMAT_UNKNOWN;
+}
+
+/// @brief Ensure a reusable CPU-readable staging texture for window/post-FX readback.
+///
+/// @details Reuses the existing staging texture when dimensions and format match, avoiding a
+///          CreateTexture2D/Release pair for every screenshot or readback. Size/format changes
+///          release the old staging surface and allocate a new one.
+static HRESULT d3d11_ensure_readback_staging_texture(d3d11_context_t *ctx,
+                                                     int32_t width,
+                                                     int32_t height,
+                                                     DXGI_FORMAT format) {
+    HRESULT hr;
+    if (!ctx)
+        return E_INVALIDARG;
+    if (ctx->readback_staging && ctx->readback_staging_width == width &&
+        ctx->readback_staging_height == height && ctx->readback_staging_format == format)
+        return S_OK;
+    d3d11_release_readback_staging_texture(ctx);
+    hr = d3d11_create_staging_texture(ctx, width, height, format, &ctx->readback_staging);
+    if (SUCCEEDED(hr)) {
+        ctx->readback_staging_width = width;
+        ctx->readback_staging_height = height;
+        ctx->readback_staging_format = format;
+    }
+    return hr;
+}
+
 /// @brief Allocate/reuse the default-usage texture that snapshots the final swapchain image.
 static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
                                                        int32_t width,
@@ -270,6 +308,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     d3d11_destroy_bloom_targets(ctx);
     d3d11_destroy_taa_targets(ctx);
     d3d11_destroy_ssr_target(ctx);
+    d3d11_release_readback_staging_texture(ctx);
     SAFE_RELEASE(ctx->presented_color_tex);
     SAFE_RELEASE(ctx->overlay_color_srv);
     SAFE_RELEASE(ctx->overlay_color_rtv);

@@ -16,8 +16,8 @@
 //   - Contacts are detected once per substep, then solved iteratively.
 //   - Per-manifold-point impulses are accumulated and clamped non-negative;
 //     warm starts seed them from the matching previous-frame contact.
-//   - Broad phase sorts entries by min-X (ph3d_broadphase_compare_min_x) so the
-//     inner loop can break early once spans no longer overlap.
+//   - Broad phase sorts entries by the widest axis with deterministic reusable-buffer sorting so
+//     the inner loop can break early once spans no longer overlap.
 //
 // Links: rt_physics3d_internal.h, rt_physics3d.c
 //
@@ -38,6 +38,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define PH3D_BROADPHASE_STACK_FALLBACK 128
 
 /* ====================================================================== *
  * Warm-started sequential-impulse contact solver (Phase 8).
@@ -705,12 +707,12 @@ void world3d_update_sleep(rt_world3d *w, double sub_dt) {
 ///   than the body's heap pointer keeps sweep-and-prune order deterministic. Pointer
 ///   values vary with allocation order / ASLR and would otherwise desynchronise the
 ///   order-sensitive warm-started sequential-impulse solve between runs and backends.
-/// @param a,b     Entries to compare (already cast from the qsort void* operands).
+/// @param a,b     Entries to compare.
 /// @param primary Axis (0/1/2) used as the primary sort key.
-/// @return -1, 0, or +1 per the qsort comparator contract.
-static int ph3d_broadphase_compare_axis(const ph3d_broadphase_entry *a,
-                                        const ph3d_broadphase_entry *b,
-                                        int primary) {
+/// @return -1, 0, or +1 for sort-order comparisons.
+int ph3d_broadphase_compare_entries_axis(const ph3d_broadphase_entry *a,
+                                         const ph3d_broadphase_entry *b,
+                                         int primary) {
     const int a1 = (primary + 1) % 3;
     const int a2 = (primary + 2) % 3;
     if (a->min[primary] < b->min[primary])
@@ -736,25 +738,114 @@ static int ph3d_broadphase_compare_axis(const ph3d_broadphase_entry *a,
     return 0;
 }
 
-/// @brief qsort comparator for sweep-and-prune broad-phase — sorts entries by min-X.
+/// @brief Legacy comparator adapter for sweep-and-prune broad-phase entries by min-X.
 /// @details After sorting, the inner collision loop can break early as soon as
 ///   entry[j].min[0] > entry[i].max[0], reducing the O(n²) pair count in practice.
-///   Non-static: also reused by the spatial query path (rt_physics3d_query.c).
+///   Non-static for tests and internal code that still wants a C comparator adapter.
 int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
-    return ph3d_broadphase_compare_axis(
+    return ph3d_broadphase_compare_entries_axis(
         (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 0);
 }
 
-/// @brief Sweep-and-prune comparator variant that sorts by min-Y (see compare_min_x).
-static int ph3d_broadphase_compare_min_y(const void *lhs, const void *rhs) {
-    return ph3d_broadphase_compare_axis(
-        (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 1);
+/// @brief Sort a small or nearly sorted broadphase entry array with insertion sort.
+/// @details Motion between physics steps is usually coherent, so insertion sort is faster than a
+///   general-purpose indirect-comparator sort when the previous order is mostly preserved.
+static void ph3d_broadphase_insertion_sort(ph3d_broadphase_entry *entries,
+                                           int32_t count,
+                                           int axis) {
+    if (!entries || count <= 1)
+        return;
+    for (int32_t i = 1; i < count; i++) {
+        ph3d_broadphase_entry key = entries[i];
+        int32_t j = i - 1;
+        while (j >= 0 && ph3d_broadphase_compare_entries_axis(&entries[j], &key, axis) > 0) {
+            entries[j + 1] = entries[j];
+            j--;
+        }
+        entries[j + 1] = key;
+    }
 }
 
-/// @brief Sweep-and-prune comparator variant that sorts by min-Z (see compare_min_x).
-static int ph3d_broadphase_compare_min_z(const void *lhs, const void *rhs) {
-    return ph3d_broadphase_compare_axis(
-        (const ph3d_broadphase_entry *)lhs, (const ph3d_broadphase_entry *)rhs, 2);
+/// @brief Count adjacent inversions up to @p limit to decide whether insertion sort is cheap.
+/// @details The scan short-circuits once the data is clearly unordered; it is a small O(n) probe
+///   that avoids running insertion sort on fully scrambled broadphase arrays.
+static int32_t ph3d_broadphase_adjacent_inversions(const ph3d_broadphase_entry *entries,
+                                                   int32_t count,
+                                                   int axis,
+                                                   int32_t limit) {
+    int32_t inversions = 0;
+    if (!entries || count <= 1 || limit <= 0)
+        return 0;
+    for (int32_t i = 1; i < count; i++) {
+        if (ph3d_broadphase_compare_entries_axis(&entries[i - 1], &entries[i], axis) > 0 &&
+            ++inversions >= limit)
+            break;
+    }
+    return inversions;
+}
+
+/// @brief Merge two sorted broadphase runs from @p src into @p dst.
+/// @details Used by the bottom-up stable merge sort fallback. Stable ordering preserves the
+///   owner-index tie break and keeps solver warm-start behavior deterministic.
+static void ph3d_broadphase_merge_run(const ph3d_broadphase_entry *src,
+                                      ph3d_broadphase_entry *dst,
+                                      int32_t left,
+                                      int32_t mid,
+                                      int32_t right,
+                                      int axis) {
+    int32_t i = left;
+    int32_t j = mid;
+    int32_t out = left;
+    while (i < mid && j < right) {
+        if (ph3d_broadphase_compare_entries_axis(&src[i], &src[j], axis) <= 0)
+            dst[out++] = src[i++];
+        else
+            dst[out++] = src[j++];
+    }
+    while (i < mid)
+        dst[out++] = src[i++];
+    while (j < right)
+        dst[out++] = src[j++];
+}
+
+/// @brief Deterministically sort broadphase entries along @p axis without calling libc qsort.
+/// @details Uses insertion sort for small/nearly-sorted arrays and a bottom-up stable merge sort
+///   for larger unordered arrays. @p scratch must hold @p count entries for the merge path; if it
+///   is unavailable the function falls back to insertion sort to preserve correctness.
+void ph3d_broadphase_sort_entries(ph3d_broadphase_entry *entries,
+                                  ph3d_broadphase_entry *scratch,
+                                  int32_t count,
+                                  int axis) {
+    const int32_t insertion_limit = 64;
+    const int32_t inversion_limit = 8;
+    if (!entries || count <= 1)
+        return;
+    if (count <= insertion_limit ||
+        ph3d_broadphase_adjacent_inversions(entries, count, axis, inversion_limit) <
+            inversion_limit ||
+        !scratch) {
+        ph3d_broadphase_insertion_sort(entries, count, axis);
+        return;
+    }
+
+    ph3d_broadphase_entry *src = entries;
+    ph3d_broadphase_entry *dst = scratch;
+    for (int32_t width = 1; width < count; width *= 2) {
+        for (int32_t left = 0; left < count; left += width * 2) {
+            int32_t mid = left + width;
+            int32_t right = left + width * 2;
+            if (mid > count)
+                mid = count;
+            if (right > count)
+                right = count;
+            ph3d_broadphase_merge_run(src, dst, left, mid, right, axis);
+        }
+        ph3d_broadphase_entry *tmp = src;
+        src = dst;
+        dst = tmp;
+    }
+    if (src != entries)
+        memcpy(entries, src, (size_t)count * sizeof(*entries));
 }
 
 /// @brief Return 1 if two 3D AABBs overlap, 0 if separated on any axis.
@@ -870,13 +961,46 @@ static int world3d_pair_can_collide_cheap(const rt_body3d *a, const rt_body3d *b
     return 1;
 }
 
+/// @brief Count bodies that actually contribute a broadphase AABB this step.
+/// @details Capacity reservations use this count instead of the raw body array size so worlds with
+///   many placeholder bodies do not over-reserve broadphase scratch.
+static int32_t world3d_count_broadphase_bodies(const rt_world3d *w) {
+    int32_t count = 0;
+    if (!w)
+        return 0;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        if (body3d_has_collision_geometry(w->bodies[i]))
+            count++;
+    }
+    return count;
+}
+
+/// @brief Fill @p entries with current body AABBs for every collision-capable body in @p w.
+/// @details The caller guarantees enough capacity. Separating this from allocation lets the step
+///   path use persistent world scratch or a bounded stack fallback without duplicating AABB logic.
+static int32_t world3d_fill_broadphase_entries(rt_world3d *w, ph3d_broadphase_entry *entries) {
+    int32_t entry_count = 0;
+    if (!w || !entries)
+        return 0;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        rt_body3d *body = w->bodies[i];
+        if (!body3d_has_collision_geometry(body))
+            continue;
+        entries[entry_count].body = body;
+        body_aabb(body, entries[entry_count].min, entries[entry_count].max);
+        entry_count++;
+    }
+    return entry_count;
+}
+
 /// @brief Run the full broad-phase + narrow-phase collision pass for one world step.
 /// @details Clears the contact list from the previous step, then:
-///   1. Attempts to allocate a broadphase_entries scratch array for sweep-and-prune.
-///   2. If allocation fails, falls back to brute-force O(n²) pair testing.
-///   3. On success: computes each body's AABB, sorts entries by min-X (SAP), and
-///      only tests pairs whose X intervals overlap, short-circuiting the inner loop
-///      when the X-axis gap guarantees no overlap.
+///   1. Attempts to allocate/reuse broadphase_entries and sort scratch for sweep-and-prune.
+///   2. If allocation fails for a small world, uses bounded stack scratch; large worlds fail
+///      cleanly instead of silently entering an O(n²) collision crawl.
+///   3. On success: computes each body's AABB, sorts entries by the widest axis (SAP), and
+///      only tests pairs whose sweep-axis intervals overlap, short-circuiting the inner loop
+///      when the selected-axis gap guarantees no overlap.
 ///   Each surviving pair is processed by world3d_process_collision_pair, which
 ///   records the contact and its manifold. Resolution happens afterwards in the
 ///   warm-started sequential-impulse solve, not here.
@@ -889,30 +1013,29 @@ int world3d_detect_contacts(rt_world3d *w) {
     if (w->body_count <= 1)
         return 1;
 
-    if (!world3d_reserve_broadphase_capacity(w, w->body_count)) {
+    ph3d_broadphase_entry stack_entries[PH3D_BROADPHASE_STACK_FALLBACK];
+    ph3d_broadphase_entry stack_scratch[PH3D_BROADPHASE_STACK_FALLBACK];
+    int32_t geometry_count = world3d_count_broadphase_bodies(w);
+    ph3d_broadphase_entry *entries = NULL;
+    ph3d_broadphase_entry *sort_scratch = NULL;
+    if (geometry_count <= 1)
+        return 1;
+    if (!world3d_reserve_broadphase_capacity(w, geometry_count) ||
+        !world3d_reserve_broadphase_sort_scratch(w, geometry_count)) {
         w->broadphase_fallback_count++;
         rt_game3d_diag_record_broadphase_fallback();
-        for (int32_t i = 0; i < w->body_count; i++) {
-            for (int32_t j = i + 1; j < w->body_count; j++) {
-                if (!world3d_pair_can_collide_cheap(w->bodies[i], w->bodies[j]))
-                    continue;
-                if (!world3d_process_collision_pair(w, w->bodies[i], w->bodies[j]))
-                    return 0;
-            }
+        if (geometry_count > PH3D_BROADPHASE_STACK_FALLBACK) {
+            rt_trap("Physics3D.World.Step: broadphase allocation failed");
+            return 0;
         }
-        return 1;
+        entries = stack_entries;
+        sort_scratch = stack_scratch;
+    } else {
+        entries = w->broadphase_entries;
+        sort_scratch = w->broadphase_sort_scratch;
     }
 
-    ph3d_broadphase_entry *entries = w->broadphase_entries;
-    int32_t entry_count = 0;
-    for (int32_t i = 0; i < w->body_count; i++) {
-        rt_body3d *body = w->bodies[i];
-        if (!body3d_has_collision_geometry(body))
-            continue;
-        entries[entry_count].body = body;
-        body_aabb(body, entries[entry_count].min, entries[entry_count].max);
-        entry_count++;
-    }
+    int32_t entry_count = world3d_fill_broadphase_entries(w, entries);
     /* Sweep on the axis with the greatest spread of entry centres so the interval
      * early-out (the inner `break`) prunes the most pairs. A fixed X sweep degrades
      * toward O(n²) when many bodies share an X-span (e.g. a wide flat floor of stacked
@@ -945,12 +1068,7 @@ int world3d_detect_contacts(rt_world3d *w) {
             sweep_axis = 2;
         }
     }
-    qsort(entries,
-          (size_t)entry_count,
-          sizeof(*entries),
-          sweep_axis == 0   ? ph3d_broadphase_compare_min_x
-          : sweep_axis == 1 ? ph3d_broadphase_compare_min_y
-                            : ph3d_broadphase_compare_min_z);
+    ph3d_broadphase_sort_entries(entries, sort_scratch, entry_count, sweep_axis);
 
     for (int32_t i = 0; i < entry_count; i++) {
         for (int32_t j = i + 1; j < entry_count; j++) {

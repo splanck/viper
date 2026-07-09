@@ -69,6 +69,8 @@ static const char CANVAS3D_FALLBACK_REASON_INIT_FAILED[] =
 
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
+#define CANVAS3D_MAX_DIMENSION 8192
+#define CANVAS3D_FPS_SAMPLE_COUNT 32
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX 64
 #define CANVAS3D_SYNTHETIC_DT_DEFAULT_US 16667LL
@@ -184,6 +186,36 @@ static int64_t canvas3d_synthetic_seconds_to_us(double dt) {
     return (int64_t)(dt * 1000000.0 + 0.5);
 }
 
+/// @brief Add a positive frame-time sample to the canvas's fixed-size rolling FPS window.
+/// @details The sample ring is embedded in `rt_canvas3d` so normal frame timing never allocates.
+///          Zero or negative deltas are ignored, preserving the first-frame `Fps == 0` behavior for
+///          live windows and avoiding divide-by-zero if a deterministic test intentionally advances
+///          with a zero synthetic timestep. The rolling window is maintained as both per-slot
+///          values and a running total so `rt_canvas3d_get_fps` stays O(1).
+static void canvas3d_record_frame_time_sample(rt_canvas3d *c, int64_t delta_us) {
+    if (!c || delta_us <= 0)
+        return;
+    if (c->fps_sample_count < CANVAS3D_FPS_SAMPLE_COUNT) {
+        int32_t idx = c->fps_sample_index++;
+        c->fps_sample_us[idx] = delta_us;
+        c->fps_sample_total_us += delta_us;
+        c->fps_sample_count++;
+        if (c->fps_sample_index >= CANVAS3D_FPS_SAMPLE_COUNT)
+            c->fps_sample_index = 0;
+        return;
+    }
+    if (c->fps_sample_index < 0 || c->fps_sample_index >= CANVAS3D_FPS_SAMPLE_COUNT)
+        c->fps_sample_index = 0;
+    c->fps_sample_total_us -= c->fps_sample_us[c->fps_sample_index];
+    c->fps_sample_us[c->fps_sample_index] = delta_us;
+    c->fps_sample_total_us += delta_us;
+    c->fps_sample_index++;
+    if (c->fps_sample_index >= CANVAS3D_FPS_SAMPLE_COUNT)
+        c->fps_sample_index = 0;
+    if (c->fps_sample_total_us < 0)
+        c->fps_sample_total_us = 0;
+}
+
 /// @brief Round a synthetic mouse delta to an integer (half-away-from-zero), clamped to
 ///   ±CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX; non-finite → 0.
 static int64_t canvas3d_round_synthetic_mouse_delta(double value) {
@@ -228,13 +260,15 @@ static int64_t canvas3d_synthetic_mouse_button_mask(void) {
 
 /// @brief Drive the canvas's delta-time fields from the latched synthetic timestep
 ///   (used when the clock source is synthetic for deterministic frames).
-static void canvas3d_apply_synthetic_clock(rt_canvas3d *c) {
+static void canvas3d_apply_synthetic_clock(rt_canvas3d *c, int record_fps_sample) {
     if (!c)
         return;
     if (c->synthetic_dt_us < 0)
         c->synthetic_dt_us = 0;
     c->delta_time_us = c->synthetic_dt_us;
     c->delta_time_ms = c->synthetic_dt_us > 0 ? c->synthetic_dt_us / 1000 : 0;
+    if (record_fps_sample)
+        canvas3d_record_frame_time_sample(c, c->delta_time_us);
     c->timing_serial++;
 }
 
@@ -249,6 +283,7 @@ static void canvas3d_update_live_clock(rt_canvas3d *c) {
         int64_t delta_us = now_us - c->last_flip_us;
         c->delta_time_us = delta_us > 0 ? delta_us : 0;
         c->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
+        canvas3d_record_frame_time_sample(c, c->delta_time_us);
     } else {
         c->delta_time_us = 0;
         c->delta_time_ms = 0;
@@ -872,34 +907,133 @@ static int canvas3d_float_array_finite(const float *values, size_t count) {
     return 1;
 }
 
+/// @brief Hash a finite float payload using its exact IEEE-754 bit pattern.
+/// @details The hash is used only as a fast lookup key for same-frame snapshot reuse; callers still
+/// verify matching cached entries with `memcmp`, so hash collisions cannot alias different
+/// payloads. Non-finite lanes mark the payload invalid and stop hashing.
+/// @param values Float payload to validate and hash.
+/// @param count Number of float lanes in @p values.
+/// @param out_finite Receives non-zero when every lane is finite.
+/// @return FNV-1a hash of the finite payload bits, or a partial hash for invalid payloads.
+static uint64_t canvas3d_hash_finite_float_payload(const float *values,
+                                                   size_t count,
+                                                   int *out_finite) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    if (out_finite)
+        *out_finite = 0;
+    if (!values || count == 0)
+        return hash;
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t bits = 0u;
+        if (!isfinite(values[i]))
+            return hash;
+        memcpy(&bits, &values[i], sizeof(bits));
+        hash ^= (uint64_t)bits;
+        hash *= UINT64_C(1099511628211);
+    }
+    if (out_finite)
+        *out_finite = 1;
+    return hash;
+}
+
+/// @brief Find a same-frame float snapshot matching source pointer, size, hash, and contents.
+/// @details Source pointer and content hash narrow the search, while the final byte comparison
+/// keeps the cache correct if a mutable source array changes and later reuses the same memory
+/// address.
+/// @param c Canvas that owns the per-frame snapshot metadata.
+/// @param values Current source payload.
+/// @param count Float lane count.
+/// @param content_hash Exact-bit payload hash computed from @p values.
+/// @param byte_count Payload size in bytes.
+/// @return Existing frame-owned snapshot, or NULL when no matching cache entry exists.
+static float *canvas3d_find_float_snapshot(
+    rt_canvas3d *c, const float *values, size_t count, uint64_t content_hash, size_t byte_count) {
+    if (!c || !values || byte_count == 0u)
+        return NULL;
+    for (int32_t i = 0; i < c->float_snapshot_count; ++i) {
+        rt_canvas3d_float_snapshot_entry *entry = &c->float_snapshots[i];
+        if (entry->source == values && entry->count == count &&
+            entry->content_hash == content_hash && entry->snapshot &&
+            memcmp(entry->snapshot, values, byte_count) == 0)
+            return entry->snapshot;
+    }
+    return NULL;
+}
+
+/// @brief Remember a newly copied float snapshot for reuse later in the same frame.
+/// @details Failure to grow the metadata array is non-fatal because the snapshot itself is already
+/// tracked by the normal temp-buffer list and will still be released at frame cleanup.
+/// @param c Canvas that owns the per-frame snapshot metadata.
+/// @param values Source payload pointer used as part of the reuse key.
+/// @param count Float lane count.
+/// @param content_hash Exact-bit payload hash.
+/// @param snapshot Frame-owned copy to reuse.
+static void canvas3d_record_float_snapshot(
+    rt_canvas3d *c, const float *values, size_t count, uint64_t content_hash, float *snapshot) {
+    rt_canvas3d_float_snapshot_entry *grown;
+    int32_t new_cap;
+    if (!c || !values || !snapshot)
+        return;
+    if (c->float_snapshot_count >= c->float_snapshot_capacity) {
+        if (c->float_snapshot_capacity < 0 || c->float_snapshot_capacity > INT32_MAX / 2)
+            return;
+        new_cap = c->float_snapshot_capacity == 0 ? 16 : c->float_snapshot_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(*c->float_snapshots))
+            return;
+        grown = (rt_canvas3d_float_snapshot_entry *)realloc(c->float_snapshots,
+                                                            (size_t)new_cap * sizeof(*grown));
+        if (!grown)
+            return;
+        c->float_snapshots = grown;
+        c->float_snapshot_capacity = new_cap;
+    }
+    c->float_snapshots[c->float_snapshot_count].source = values;
+    c->float_snapshots[c->float_snapshot_count].count = count;
+    c->float_snapshots[c->float_snapshot_count].content_hash = content_hash;
+    c->float_snapshots[c->float_snapshot_count].snapshot = snapshot;
+    c->float_snapshot_count++;
+}
+
 /// @brief Snapshot a finite float payload into a frame-owned temp buffer.
 /// @details Deferred draws must not borrow mutable caller arrays for morph weights or raw morph
 ///   deltas. This helper copies the payload, registers it with the Canvas3D temp-buffer manager,
-///   and returns the stable pointer used by the draw command. Allocation or tracking failure leaves
-///   the caller with NULL so it can disable the optional feature safely.
+///   and returns the stable pointer used by the draw command. Repeated identical
+///   source/count/content tuples in one frame reuse the first copy to avoid per-draw heap churn.
+///   Allocation or tracking failure leaves the caller with NULL so it can disable the optional
+///   feature safely.
 static float *canvas3d_snapshot_float_payload(rt_canvas3d *c,
                                               const float *values,
                                               size_t count,
                                               const char *trap_message) {
     float *snapshot;
+    float *cached;
+    size_t byte_count;
+    uint64_t content_hash;
+    int finite = 0;
     if (!c || !values || count == 0)
         return NULL;
     if (count > SIZE_MAX / sizeof(*snapshot)) {
         rt_trap(trap_message ? trap_message : "Canvas3D: float payload allocation overflow");
         return NULL;
     }
-    if (!canvas3d_float_array_finite(values, count))
+    byte_count = count * sizeof(*snapshot);
+    content_hash = canvas3d_hash_finite_float_payload(values, count, &finite);
+    if (!finite)
         return NULL;
-    snapshot = (float *)malloc(count * sizeof(*snapshot));
+    cached = canvas3d_find_float_snapshot(c, values, count, content_hash, byte_count);
+    if (cached)
+        return cached;
+    snapshot = (float *)malloc(byte_count);
     if (!snapshot) {
         rt_trap(trap_message ? trap_message : "Canvas3D: float payload allocation failed");
         return NULL;
     }
-    memcpy(snapshot, values, count * sizeof(*snapshot));
+    memcpy(snapshot, values, byte_count);
     if (!canvas3d_track_temp_buffer(c, snapshot)) {
         free(snapshot);
         return NULL;
     }
+    canvas3d_record_float_snapshot(c, values, count, content_hash, snapshot);
     return snapshot;
 }
 
@@ -1125,7 +1259,7 @@ static void canvas3d_record_event_type(rt_canvas3d *c, int64_t type) {
 /// @brief Public resize entry point mirroring window resize events.
 void rt_canvas3d_resize(void *obj, int64_t w, int64_t h) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    if (!c || w <= 0 || h <= 0 || w > INT32_MAX || h > INT32_MAX)
+    if (!c || w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION)
         return;
     if (c->gfx_win)
         vgfx_set_window_size(c->gfx_win, (int32_t)w, (int32_t)h);
@@ -1372,6 +1506,11 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->final_overlay_temp_buffers);
     c->final_overlay_temp_buffers = NULL;
     c->final_overlay_temp_buf_capacity = 0;
+    free(c->final_overlay_arena);
+    c->final_overlay_arena = NULL;
+    c->final_overlay_arena_capacity = 0u;
+    c->final_overlay_arena_used = 0u;
+    c->final_overlay_arena_peak = 0u;
     free(c->final_overlay_temp_objects);
     c->final_overlay_temp_objects = NULL;
     c->final_overlay_temp_obj_capacity = 0;
@@ -1398,6 +1537,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->temp_buffer_set);
     c->temp_buffer_set = NULL;
     c->temp_buffer_set_capacity = 0;
+    free(c->float_snapshots);
+    c->float_snapshots = NULL;
+    c->float_snapshot_count = c->float_snapshot_capacity = 0;
     free(c->mesh_snapshots);
     c->mesh_snapshots = NULL;
     c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
@@ -1472,8 +1614,8 @@ static void canvas3d_close_window(rt_canvas3d *c) {
 ///          is the main entry point for 3D rendering — call Begin/DrawMesh/End/Flip
 ///          each frame. GC finalizer destroys the backend context and window.
 /// @param title Window title (runtime string).
-/// @param w     Window width in pixels (1–8192).
-/// @param h     Window height in pixels (1–8192).
+/// @param w     Window width in pixels (1–CANVAS3D_MAX_DIMENSION).
+/// @param h     Window height in pixels (1–CANVAS3D_MAX_DIMENSION).
 /// @return Opaque canvas handle, or NULL on failure.
 static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fullscreen) {
     vgfx_framebuffer_t fb;
@@ -1487,7 +1629,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         w = disp_w > 0 ? disp_w : 1280;
         h = disp_h > 0 ? disp_h : 720;
     }
-    if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
+    if (w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
     }
@@ -1616,6 +1758,12 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->temp_buf_count = c->temp_buf_capacity = 0;
     c->temp_buffer_set = NULL;
     c->temp_buffer_set_capacity = 0;
+    c->float_snapshots = NULL;
+    c->float_snapshot_count = c->float_snapshot_capacity = 0;
+    c->final_overlay_arena = NULL;
+    c->final_overlay_arena_capacity = 0u;
+    c->final_overlay_arena_used = 0u;
+    c->final_overlay_arena_peak = 0u;
     c->mesh_snapshots = NULL;
     c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
     c->mesh_snapshot_hash = NULL;
@@ -1814,10 +1962,10 @@ void rt_canvas3d_flip(void *obj) {
     vgfx_update(c->gfx_win);
     canvas3d_reset_finalized_frame_state(c);
 
-    if (c->clock_source == 1) {
-        canvas3d_apply_synthetic_clock(c);
-    } else if (c->frame_timing_updated_by_poll) {
+    if (c->frame_timing_updated_by_poll) {
         c->frame_timing_updated_by_poll = 0;
+    } else if (c->clock_source == 1) {
+        canvas3d_apply_synthetic_clock(c, 1);
     } else {
         canvas3d_update_live_clock(c);
     }
@@ -1980,8 +2128,10 @@ int64_t rt_canvas3d_poll(void *obj) {
      * finalized so action queries observe this frame's input. */
     rt_action_update();
 
-    if (c->clock_source == 1)
-        canvas3d_apply_synthetic_clock(c);
+    if (c->clock_source == 1) {
+        canvas3d_apply_synthetic_clock(c, 1);
+        c->frame_timing_updated_by_poll = 1;
+    }
 
     /* Warp cursor to center for next frame (only for the captured fallback
      * path — native relative mode never needs warping). */
@@ -2149,11 +2299,15 @@ int64_t rt_canvas3d_get_active_output_height(void *obj) {
     return rt_canvas3d_get_height(obj);
 }
 
-/// @brief Get the current frames-per-second (updated each Flip call).
+/// @brief Get the rolling-average frames-per-second from recent timing samples.
 int64_t rt_canvas3d_get_fps(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return 0;
+    if (c->fps_sample_count > 0 && c->fps_sample_total_us > 0) {
+        int64_t numerator = (int64_t)c->fps_sample_count * INT64_C(1000000);
+        return (numerator + c->fps_sample_total_us / 2) / c->fps_sample_total_us;
+    }
     if (c->delta_time_us > 0)
         return (1000000 + c->delta_time_us / 2) / c->delta_time_us;
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
@@ -2256,7 +2410,7 @@ void rt_canvas3d_set_clock_source(void *obj, int64_t mode) {
     c->clock_source = canvas3d_clock_source_from_mode(mode);
     c->frame_timing_updated_by_poll = 0;
     if (c->clock_source == 1)
-        canvas3d_apply_synthetic_clock(c);
+        canvas3d_apply_synthetic_clock(c, 0);
 }
 
 /// @brief Set the fixed synthetic delta time in seconds.
@@ -2266,7 +2420,7 @@ void rt_canvas3d_set_synthetic_delta_time_sec(void *obj, double dt) {
         return;
     c->synthetic_dt_us = canvas3d_synthetic_seconds_to_us(dt);
     if (c->clock_source == 1)
-        canvas3d_apply_synthetic_clock(c);
+        canvas3d_apply_synthetic_clock(c, 0);
 }
 
 /// @brief Advance one deterministic synthetic input/timing frame.
@@ -2279,8 +2433,10 @@ void rt_canvas3d_advance_synthetic_frame(void *obj) {
     rt_pad_begin_frame();
     canvas3d_apply_synthetic_input(c);
     rt_action_update();
-    if (c->clock_source == 1)
-        canvas3d_apply_synthetic_clock(c);
+    if (c->clock_source == 1) {
+        canvas3d_apply_synthetic_clock(c, 1);
+        c->frame_timing_updated_by_poll = 1;
+    }
 }
 
 /// @brief Assign a light to one of the per-canvas light slots.
@@ -2324,28 +2480,48 @@ int64_t rt_canvas3d_get_light_count(void *obj) {
     return count;
 }
 
-/// @brief Enable the clustered-lighting path only when advertised by the backend.
-void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled) {
+/// @brief Attempt to enable or disable clustered lighting without trapping.
+///
+/// @param obj Canvas3D instance.
+/// @param enabled Non-zero to request clustered/forward+ lighting; zero to force the
+///        classic forward-light path.
+/// @return 1 when the requested state was applied, or 0 when @p obj is invalid or
+///         clustered lighting was requested but is disabled by the environment or
+///         unsupported by the active backend.
+int8_t rt_canvas3d_try_set_clustered_lighting(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     const char *clusters_env;
     if (!c)
-        return;
+        return 0;
     if (!enabled) {
         c->clustered_lighting = 0;
-        return;
+        return 1;
     }
     clusters_env = getenv("VIPER_3D_CLUSTERS");
     if (clusters_env && clusters_env[0] == '0' && clusters_env[1] == '\0') {
         c->clustered_lighting = 0; /* env kill switch wins over explicit enables */
-        return;
+        return 0;
     }
     if (!rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting"))) {
         c->clustered_lighting = 0;
+        return 0;
+    }
+    c->clustered_lighting = 1;
+    return 1;
+}
+
+/// @brief Enable the clustered-lighting path only when advertised by the backend.
+void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (rt_canvas3d_try_set_clustered_lighting(c, enabled))
+        return;
+    if (enabled) {
         rt_trap("Canvas3D.ClusteredLighting: clustered lighting is not supported by this "
                 "backend");
         return;
     }
-    c->clustered_lighting = 1;
 }
 
 /// @brief Report whether the clustered-lighting path is currently enabled.
@@ -2409,18 +2585,14 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
 }
 
 /// @brief Enable or disable image-based lighting from the canvas skybox.
-/// @details Enabling lazily computes the skybox's IBL payload (SH-9 irradiance
-///   plus a GGX-prefiltered specular mip chain) on this call — a bounded
-///   load-time cost — so the render loop never pays for preparation. While
-///   enabled, PBR draws that have no explicit material env map replace their
-///   flat ambient term with the environment lighting.
+/// @details This setter only toggles state. The skybox's SH-9 irradiance and
+///   GGX-prefiltered specular mip chain are prepared lazily by the first eligible
+///   PBR draw so UI/control paths do not hitch when changing IBL state.
 void rt_canvas3d_set_ibl_enabled(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
     c->ibl_enabled = enabled ? 1 : 0;
-    if (c->ibl_enabled && c->skybox)
-        rt_cubemap3d_ensure_ibl(c->skybox);
 }
 
 /// @brief True when image-based lighting is enabled for this canvas.
@@ -2549,7 +2721,8 @@ void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    c->shadow_bias = canvas3d_sanitize_nonnegative_f64(bias, 0.005f);
+    c->shadow_bias =
+        canvas3d_clamp_f64_to_float(bias, 0.0, CANVAS3D_MATERIAL_DEPTH_BIAS_ABS_MAX, 0.005f);
 }
 
 /// @brief Set the slope-scaled shadow-map rasterization bias for all casters.
@@ -2561,7 +2734,8 @@ void rt_canvas3d_set_shadow_slope_bias(void *obj, double bias) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    c->shadow_slope_bias = canvas3d_sanitize_nonnegative_f64(bias, 1.0f);
+    c->shadow_slope_bias =
+        canvas3d_clamp_f64_to_float(bias, 0.0, CANVAS3D_MATERIAL_SLOPE_DEPTH_BIAS_ABS_MAX, 1.0f);
 }
 
 /// @brief Set how dark fully-occluded texels get (0 = shadows disabled, 1 = fully black).

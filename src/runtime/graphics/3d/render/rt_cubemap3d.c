@@ -69,7 +69,7 @@ static rt_pixels_impl *cubemap_face_pixels_impl(void *pixels) {
     return pv;
 }
 
-static int64_t g_next_cubemap_cache_identity = 1;
+static uint64_t g_next_cubemap_cache_identity = 1;
 
 #define CUBEMAP3D_MAX_FACE_SIZE 32768
 
@@ -119,10 +119,9 @@ static void cubemap_release_face_slot(void **slot) {
 /// @brief Return a process-unique nonzero cache identity for skybox/env-map invalidation.
 static uint64_t cubemap_next_cache_identity(void) {
     uint64_t id =
-        (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+        rt_atomic_fetch_add_u64(&g_next_cubemap_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
     if (id == 0) {
-        id = (uint64_t)__atomic_fetch_add(
-            &g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+        id = rt_atomic_fetch_add_u64(&g_next_cubemap_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
         if (id == 0)
             id = 1;
     }
@@ -992,8 +991,7 @@ static int cubemap_prefilter_level(const rt_cubemap3d *cm,
                         float xi1 = ((float)s + 0.5f) / (float)sample_count;
                         float xi2 = cubemap_radical_inverse((uint32_t)s);
                         float phi = 2.0f * 3.14159265358979323846f * xi1;
-                        float cos_theta =
-                            sqrtf((1.0f - xi2) / (1.0f + (a * a - 1.0f) * xi2));
+                        float cos_theta = sqrtf((1.0f - xi2) / (1.0f + (a * a - 1.0f) * xi2));
                         float sin_theta = sqrtf(fmaxf(1.0f - cos_theta * cos_theta, 0.0f));
                         float hx_t = cosf(phi) * sin_theta;
                         float hy_t = sinf(phi) * sin_theta;
@@ -1044,11 +1042,11 @@ static int cubemap_prefilter_level(const rt_cubemap3d *cm,
 }
 
 /// @brief Lazily compute the cubemap's IBL payload; idempotent.
-/// @details Runs synchronously on the calling (main) thread — this is a
-///   load-time operation triggered by Canvas3D skybox / IBL-enable setters,
-///   never from the per-frame render path. Cost is bounded by the fixed
-///   128-base prefilter chain and the 32x32 SH projection grid, independent
-///   of the source face size.
+/// @details Runs synchronously on the calling thread the first time an IBL-enabled
+///   PBR draw needs the cubemap. Canvas setters intentionally avoid calling this
+///   path so toggling IBL or swapping skyboxes remains cheap. Cost is bounded by
+///   the fixed 128-base prefilter chain and the 32x32 SH projection grid,
+///   independent of the source face size.
 int rt_cubemap3d_ensure_ibl(void *cubemap) {
     rt_cubemap3d *cm = (rt_cubemap3d *)cubemap;
     int base;
@@ -1182,9 +1180,6 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
         rt_obj_free(c->skybox);
     c->skybox = (rt_cubemap3d *)cubemap;
     rt_canvas3d_invalidate_skybox_cache(c);
-    /* Load-time IBL preparation: keep the render loop free of prefilter work. */
-    if (c->ibl_enabled && c->skybox)
-        rt_cubemap3d_ensure_ibl(c->skybox);
 }
 
 /// @brief Remove the skybox from the canvas (reverts to solid clear color).

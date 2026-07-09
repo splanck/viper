@@ -180,7 +180,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendFallback` | Boolean | read | True when Canvas3D fell back from the selected GPU backend to software at creation |
 | `BackendFallbackReason` | String | read | Human-readable reason for `BackendFallback`, or empty string |
-| `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
+| `BackendCapabilities` | Integer | read | 64-bit bitmask of `Canvas3D` backend capabilities |
 | `InstancedFallbackCount` | Integer | read | Instances routed through the bounded per-instance fallback in the current/latest frame |
 | `InstancedFallbackDroppedCount` | Integer | read | Instances skipped because that bounded fallback queue overflowed |
 | `EventDropCount` | Integer | read | Window/input events dropped from the public `PollEvent()` ring since canvas creation |
@@ -457,6 +457,7 @@ compatibility aliases for the shape factories.
 | `TriangleCount` | Integer | read | Number of triangles |
 | `Resident` | Boolean | read/write | Whether the mesh payload is resident and eligible for draw/LOD selection |
 | `ResidentBytes` | Integer | read | Estimated resident vertex/index payload bytes; zero when `Resident` is false |
+| `RetainedBytes` | Integer | read | Estimated retained CPU vertex/index payload bytes regardless of `Resident` |
 
 ### Methods
 
@@ -653,7 +654,7 @@ aliases for these factories.
 | `Clone()` | `obj()` | Duplicate the material state |
 | `MakeInstance()` | `obj()` | Duplicate the material for per-object overrides |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change diffuse color |
-| `SetTexture(texture)` | `void(obj)` | Set/change texture (`Pixels` or `TextureAsset3D`) |
+| `SetTexture(texture)` | `void(obj)` | Set/change texture (`Pixels`, `TextureAsset3D`, or `RenderTarget3D`) |
 | `SetAlbedoMap(texture)` | `void(obj)` | Set/change the PBR albedo map |
 | `SetShininess(s)` | `void(f64)` | Specular exponent (default 32.0, higher = sharper highlights) |
 | `SetUnlit(flag)` | `void(i1)` | Skip lighting (render flat color) |
@@ -737,8 +738,10 @@ assets expose metadata, residency byte counts, retained native mip payloads,
 and software fallbacks for supported compressed blocks; unsupported ASTC or
 ETC2 modes remain native-only. Native mip block payloads upload through capable
 GPU backends under `Canvas3D.SetTextureUploadBudget`;
-`BackendSupports("bc1"|"bc3"|"bc4"|"bc5"|"bc7"|"astc"|"etc2")` advertises the device-specific native
-paths. The open-world native-compressed hitch CTest records raw RGBA bytes,
+`BackendSupports("native-texture:bc1"|"native-texture:bc3"|"native-texture:bc4"|"native-texture:bc5"|"native-texture:bc7"|"native-texture:astc"|"native-texture:etc2")`
+advertises the device-specific native paths. Bare compressed-format names remain
+accepted as legacy native-upload aliases, while `texture:*` names report CPU
+fallback coverage. The open-world native-compressed hitch CTest records raw RGBA bytes,
 compressed resident/upload bytes, RAM/VRAM reduction percentages, and a
 final-frame tolerance check for the selected capable backend.
 
@@ -802,7 +805,7 @@ compatibility aliases.
 | `Direction` | Vec3 | read | Normalized direction for directional and spot lights |
 | `Position` | Vec3 | read | Position for point and spot lights |
 
-Light colors are clamped to `[0, 1]`, intensities and attenuations are clamped to non-negative values, and non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
+Light colors are clamped to `[0, 1]`, intensities are clamped to non-negative values, and point/spot attenuation uses a small non-zero floor when callers pass zero, negative, or non-finite values. Non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
 
 ### Zia Example
 
@@ -848,9 +851,9 @@ their cosines are sent to the software and GPU backends, avoiding undefined fall
 
 GPU backends cull point and spot lights against a 16×9×24 view-space froxel grid each frame (CPU binning, deterministic), so each pixel only evaluates the lights that can actually reach it. Directional and ambient lights always apply globally. This raises the active light budget from 16 to 64 on GPU backends and keeps many-light scenes fast; the software backend keeps the flat 16-light path.
 
-- Clustering is on by default wherever `canvas.BackendSupports("clustered-lighting")` is true. Toggle it with the `ClusteredLighting` property; enabling it on an unsupported backend traps.
+- Clustering is on by default wherever `canvas.BackendSupports("clustered-lighting")` is true. Toggle it with the strict `ClusteredLighting` property when lack of support should trap, or call `canvas.TrySetClusteredLighting(true)` to opt in and receive `false` on unsupported or disabled builds.
 - Per-cluster light lists are capped at 8192 total entries per frame; pathological scenes (many unbounded point lights covering the whole view) truncate later lights per cluster deterministically rather than failing.
-- Point/spot lights with zero attenuation have no distance falloff and bin into every froxel they face — prefer a non-zero attenuation so culling can help.
+- Point/spot lights with zero attenuation are clamped to a small default falloff floor so clustered culling can still bound their influence.
 - The environment variable `VIPER_3D_CLUSTERS=0` disables clustering process-wide (bisection escape hatch).
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
@@ -3473,7 +3476,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` to see which renderer is active, and `canvas.BackendFallback`, `canvas.BackendFallbackReason`, or `canvas.BackendSupports("runtime-fallback")` to detect and explain a runtime software fallback.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `occlusion`, `hlod`, `bc1`, `bc3`, `bc4`, `bc5`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `instancing`, `hardware_instancing`, `postfx`, `postfx-full`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `soft-particles`, `ssr`, `shadow-csm`, `shadow-point`, `occlusion`, `hlod`, `hdr-scene`, `taa`, `native-texture:bc1`, `native-texture:bc3`, `native-texture:bc4`, `native-texture:bc5`, `native-texture:bc7`, `native-texture:astc`, and `native-texture:etc2`; `texture:*` names report CPU decoder/fallback coverage, and fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The 64-bit bitmask values are:
 
 | Bit | Capability |
 |-----|------------|
@@ -3511,6 +3514,9 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x80000000` | Temporal anti-aliasing |
 | `0x100000000` | Soft particles |
 | `0x200000000` | Screen-space reflections |
+| `0x400000000` | Instanced draw hook |
+| `0x800000000` | Omnidirectional point-light shadow slots |
+| `0x1000000000` | Full PostFX chain |
 
 **Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to four directional slots, primary-directional cascaded shadow maps with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 

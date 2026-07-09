@@ -116,6 +116,12 @@ typedef struct {
     int32_t name_index_count;
     int32_t name_index_capacity;
     int8_t name_index_valid;
+    void **animation_animators;
+    int32_t animation_animator_capacity;
+    void **animation_seen_set;
+    size_t animation_seen_capacity;
+    void *animation_jobs;
+    int32_t animation_job_capacity;
     int64_t next_entity_id;
     double dt;
     double elapsed;

@@ -47,8 +47,10 @@ struct NavAgent3DTestLayout {
     double repath_interval;
     double repath_accum;
     double *path_points_xyz;
+    NavAgent3DTestLayout **avoidance_neighbors;
     int32_t path_point_count;
     int32_t path_index;
+    int32_t avoidance_neighbor_capacity;
     int8_t has_target;
     int8_t has_path;
     int8_t auto_repath;

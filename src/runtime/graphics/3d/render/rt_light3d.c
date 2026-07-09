@@ -15,7 +15,7 @@
 //   - Up to VGFX3D_MAX_LIGHTS (64) per Canvas3D, set via SetLight(canvas, slot, light).
 //     The fixed-forward path shades the first 16; the clustered path shades all 64
 //     (drops observable via Canvas3D.DroppedLightCount / ClusterOverflowCount).
-//   - Default intensity=1.0, attenuation=0.0 (no falloff for point lights).
+//   - Default intensity=1.0, attenuation>=0.001 for point/spot falloff.
 //   - Direction/position are borrowed Vec3 values, copied at creation time.
 //   - Spot cone angles are stored as cosines for cheap shader comparison.
 //
@@ -66,6 +66,18 @@ static double clamp_min0(double value) {
 static double clamp_param_min0(double value) {
     value = clamp_min0(value);
     return value > LIGHT3D_PARAM_MAX ? LIGHT3D_PARAM_MAX : value;
+}
+
+/// @brief Sanitize a local-light attenuation value, enforcing a small non-zero falloff floor.
+/// @details Without this floor, point and spot lights with exactly zero attenuation would
+/// illuminate
+///          the whole scene at full strength, which is both visually surprising and expensive when
+///          many local lights are active. The floor preserves wide-radius authoring while
+///          preventing accidental no-falloff lights; non-finite or negative values fall back to the
+///          same default.
+static double sanitize_local_attenuation(double value) {
+    value = clamp_param_min0(value);
+    return value < RT_LIGHT3D_DEFAULT_ATTENUATION ? RT_LIGHT3D_DEFAULT_ATTENUATION : value;
 }
 
 /// @brief Clamp a value to the [0, 1] range, mapping NaN/inf to 0.
@@ -213,13 +225,13 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
 
 /// @brief Create a point light that radiates from a position in all directions.
 /// @details Point lights simulate light bulbs, torches, etc. Intensity falls
-///          off with distance according to the attenuation factor. An attenuation
-///          of 0.0 means no falloff (constant brightness at all distances).
+///          off with distance according to the attenuation factor. Values at or
+///          below 0.0 use a small default falloff floor instead of constant brightness.
 /// @param position    Vec3 world-space position (copied at creation time).
 /// @param r           Red color component [0.0–1.0].
 /// @param g           Green color component [0.0–1.0].
 /// @param b           Blue color component [0.0–1.0].
-/// @param attenuation Distance falloff factor (0.0 = no falloff).
+/// @param attenuation Distance falloff factor (values <= 0 use the default falloff floor).
 /// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation) {
     if (!rt_g3d_is_vec3(position)) {
@@ -243,9 +255,9 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->color[1] = clamp01(g);
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
-    light->attenuation = clamp_param_min0(attenuation);
+    light->attenuation = sanitize_local_attenuation(attenuation);
     light->enabled = 1;
-    light->casts_shadows = 1;
+    light->casts_shadows = 0;
     return light;
 }
 
@@ -326,14 +338,14 @@ void *rt_light3d_new_spot(void *position,
     light->color[1] = clamp01(g);
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
-    light->attenuation = clamp_param_min0(attenuation);
+    light->attenuation = sanitize_local_attenuation(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
     sanitize_spot_angles(&inner_angle, &outer_angle);
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
     light->enabled = 1;
-    light->casts_shadows = 1;
+    light->casts_shadows = 0;
     return light;
 }
 
@@ -379,7 +391,8 @@ void *rt_light3d_get_color(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(clamp01(light->color[0]), clamp01(light->color[1]), clamp01(light->color[2]));
+    return rt_vec3_new(
+        clamp01(light->color[0]), clamp01(light->color[1]), clamp01(light->color[2]));
 }
 
 /// @brief Read the light intensity.
@@ -444,21 +457,29 @@ void *rt_light3d_get_position(void *obj) {
                        light_coord_or_zero(light->position[2]));
 }
 
-/// @brief Move the light to a new world position. Non-Vec3 input is ignored.
+/// @brief Move the light to a new world position.
 void rt_light3d_set_position(void *obj, void *position) {
     rt_light3d *light = light3d_checked(obj);
-    if (!light || !rt_g3d_is_vec3(position))
+    if (!light)
         return;
+    if (!rt_g3d_is_vec3(position)) {
+        rt_trap("Light3D.Position: position must be a Vec3");
+        return;
+    }
     light->position[0] = light_coord_or_zero(rt_vec3_x(position));
     light->position[1] = light_coord_or_zero(rt_vec3_y(position));
     light->position[2] = light_coord_or_zero(rt_vec3_z(position));
 }
 
-/// @brief Re-aim the light. The direction is normalized; non-Vec3 input is ignored.
+/// @brief Re-aim the light. The direction is normalized.
 void rt_light3d_set_direction(void *obj, void *direction) {
     rt_light3d *light = light3d_checked(obj);
-    if (!light || !rt_g3d_is_vec3(direction))
+    if (!light)
         return;
+    if (!rt_g3d_is_vec3(direction)) {
+        rt_trap("Light3D.Direction: direction must be a Vec3");
+        return;
+    }
     light->direction[0] = rt_vec3_x(direction);
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);

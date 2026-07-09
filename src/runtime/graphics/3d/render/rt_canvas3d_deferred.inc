@@ -1066,7 +1066,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
 ///   semantics untouched; unlit and Blinn-Phong draws never participate. The
 ///   flag tells backends to light the ambient term from SH irradiance plus the
 ///   skybox's prefiltered specular chain instead of the flat ambient color.
-static void canvas3d_apply_ibl_env(const rt_canvas3d *c, vgfx3d_draw_cmd_t *cmd) {
+static void canvas3d_apply_ibl_env(rt_canvas3d *c, vgfx3d_draw_cmd_t *cmd) {
     if (!c || !cmd)
         return;
     cmd->ibl_env = 0;
@@ -1074,7 +1074,7 @@ static void canvas3d_apply_ibl_env(const rt_canvas3d *c, vgfx3d_draw_cmd_t *cmd)
         return;
     if (cmd->env_map) /* explicit material env map keeps legacy semantics */
         return;
-    if (!c->skybox || !c->skybox->ibl_ready)
+    if (!c->skybox || !rt_cubemap3d_ensure_ibl(c->skybox))
         return;
     cmd->env_map = c->skybox;
     cmd->ibl_env = 1;
@@ -1406,6 +1406,7 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
     for (int32_t i = 0; i < c->final_overlay_temp_buf_count; i++)
         free(c->final_overlay_temp_buffers[i]);
     c->final_overlay_temp_buf_count = 0;
+    canvas3d_reset_final_overlay_arena(c);
     for (int32_t i = 0; i < c->final_overlay_temp_obj_count; i++) {
         if (c->final_overlay_temp_objects[i] &&
             rt_obj_release_check0(c->final_overlay_temp_objects[i]))

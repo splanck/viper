@@ -528,6 +528,28 @@ static inline void rt_atomic_thread_fence(int order) {
 
 #endif // RT_COMPILER_MSVC
 
+/// @brief Atomically add @p value to an unsigned 64-bit counter and return the previous value.
+/// @details This helper exists for runtime cache-identity counters that are deliberately modeled as
+///          wrapping `uint64_t` sequences. GCC/Clang accept `__atomic_fetch_add` on `uint64_t`
+///          directly, but the MSVC compatibility layer maps GCC-style builtins with `_Generic` and
+///          cannot safely add a `uint64_t *` arm on LLP64 targets where `uint64_t` and `size_t` may
+///          be compatible types. Centralizing the operation here avoids duplicate `_Generic`
+///          associations while still using native interlocked 64-bit instructions on MSVC.
+/// @param ptr Naturally aligned unsigned 64-bit counter storage.
+/// @param value Increment to apply; arithmetic wraps modulo 2^64, matching unsigned C semantics.
+/// @param order GCC-style memory-order constant. Current call sites use relaxed identity
+/// allocation;
+///              stronger values are accepted and mapped to the platform atomic primitive.
+/// @return The value stored in @p ptr before the addition.
+static inline uint64_t rt_atomic_fetch_add_u64(volatile uint64_t *ptr, uint64_t value, int order) {
+    (void)order;
+#if RT_COMPILER_MSVC
+    return (uint64_t)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)value);
+#else
+    return __atomic_fetch_add(ptr, value, order);
+#endif
+}
+
 //===----------------------------------------------------------------------===//
 // Windows POSIX Compatibility
 //===----------------------------------------------------------------------===//

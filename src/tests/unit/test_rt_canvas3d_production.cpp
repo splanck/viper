@@ -277,6 +277,15 @@ static int fake_readback_rgba(void *, uint8_t *, int32_t, int32_t, int32_t) {
     return 0;
 }
 
+static void fake_submit_draw(void *,
+                             vgfx_window_t,
+                             const vgfx3d_draw_cmd_t *,
+                             const vgfx3d_light_params_t *,
+                             int32_t,
+                             const float *,
+                             int8_t,
+                             int8_t) {}
+
 static void fake_present(void *) {}
 
 static void fake_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
@@ -294,6 +303,7 @@ static vgfx3d_backend_t make_fake_gpu_backend() {
     vgfx3d_backend_t backend = {};
     backend.name = "testgpu";
     backend.clear = fake_clear;
+    backend.submit_draw = fake_submit_draw;
     backend.set_render_target = fake_set_render_target;
     backend.shadow_begin = fake_shadow_begin;
     backend.shadow_draw = fake_shadow_draw;
@@ -697,6 +707,7 @@ static int render_software_spot_light_shadow_scene(SoftwareSceneRenderResult *re
 
     rt_camera3d_look_at(camera, eye, look, up);
     rt_light3d_set_intensity(spot, 5.5);
+    rt_light3d_set_casts_shadows(spot, 1);
     rt_canvas3d_set_render_target(&canvas, target_obj);
     rt_canvas3d_enable_shadows(&canvas, 128);
     rt_canvas3d_set_shadow_bias(&canvas, 0.0012);
@@ -908,10 +919,12 @@ static void test_software_ibl_environment_lights_pbr_sphere() {
     rt_canvas3d_set_ibl_enabled(&canvas, 1);
     rt_canvas3d_set_ibl_intensity(&canvas, 1.0);
     EXPECT_TRUE(rt_canvas3d_get_ibl_enabled(&canvas) == 1, "IblEnabled reads back");
-    EXPECT_TRUE(((rt_cubemap3d *)sky)->ibl_ready == 1,
-                "Enabling IBL prepares the skybox payload at load time");
+    EXPECT_TRUE(((rt_cubemap3d *)sky)->ibl_ready == 0,
+                "Enabling IBL defers skybox payload work until the next frame");
     rt_canvas3d_clear(&canvas, 0.0, 0.0, 0.0);
     rt_canvas3d_begin(&canvas, camera);
+    EXPECT_TRUE(((rt_cubemap3d *)sky)->ibl_ready == 1,
+                "First IBL frame prepares the skybox payload lazily");
     rt_canvas3d_draw_mesh_matrix(&canvas, sphere, model, mat);
     rt_canvas3d_end(&canvas);
     float lit_top = sample_luminance_box(target_owner->target, top_x, top_y, 2);

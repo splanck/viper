@@ -128,13 +128,13 @@ var INTERACT_SCAN_SEC: Float = 0.9;    // hold-E charge time to link a beacon
 var AMBIENT_R: Float = 0.14;
 var AMBIENT_G: Float = 0.16;
 var AMBIENT_B: Float = 0.20;
-// Fog day-target is matched to the sky horizon colour (see water_sky sampleSkyForPhase)
-// so distant terrain dissolves into the sky instead of fading to a grey haze band.
-var FOG_R: Float = 0.68;
-var FOG_G: Float = 0.82;
-var FOG_B: Float = 0.94;
-var FOG_NEAR: Float = 220.0;
-var FOG_FAR: Float = 340.0;
+// Fog day-target stays cool but below the sky horizon brightness so first-frame
+// terrain keeps visible contrast after consistent environment/direct lighting.
+var FOG_R: Float = 0.40;
+var FOG_G: Float = 0.52;
+var FOG_B: Float = 0.66;
+var FOG_NEAR: Float = 280.0;
+var FOG_FAR: Float = 520.0;
 var SHADOW_BIAS: Float = 0.006;
 
 var HUD_PANEL_X: Integer = 14;
@@ -219,12 +219,13 @@ var PLAYER_LIGHT_INTENSITY: Float = 0.55;
 var DAY_LENGTH_SEC: Float = 240.0;     // seconds for one full day->night->day cycle
 var DAY_START_PHASE: Float = 0.15;     // begin mid-morning so the demo opens in daylight
 var MOON_INTENSITY: Float = 0.42;      // cool directional moonlight at deep night
-// Keep the startup frame inside the smoke probe's exposure band while preserving
-// the stronger daylight/direct-shadow look introduced with the day/night cycle.
-var SUN_INTENSITY_DAY: Float = 1.35;
-var DAY_AMBIENT_R: Float = 0.13;
-var DAY_AMBIENT_G: Float = 0.15;
-var DAY_AMBIENT_B: Float = 0.19;
+// Keep the startup frame inside the smoke probe's exposure band. The runtime now
+// applies first-frame environment/direct lighting consistently, so the old
+// high-daylight values overexposed the snow-heavy foreground.
+var SUN_INTENSITY_DAY: Float = 0.82;
+var DAY_AMBIENT_R: Float = 0.07;
+var DAY_AMBIENT_G: Float = 0.08;
+var DAY_AMBIENT_B: Float = 0.11;
 var NIGHT_AMBIENT_R: Float = 0.06;
 var NIGHT_AMBIENT_G: Float = 0.08;
 var NIGHT_AMBIENT_B: Float = 0.17;
@@ -238,9 +239,9 @@ var SUN_MIN_ELEV: Float = 0.03;        // cut sun light out just before it graze
 // Shadows soften as the sun lowers (long low-angle shadows read as grey, not ink).
 var SHADOW_STRENGTH_NIGHT: Float = 0.35;
 var SHADOW_STRENGTH_DAY: Float = 0.90;
-// Image-based lighting intensity floor/ceiling across the cycle (GPU only).
+// Image-based lighting intensity floor/ceiling across the cycle (GPU window backends).
 var IBL_INTENSITY_NIGHT: Float = 0.18;
-var IBL_INTENSITY_DAY: Float = 0.55;
+var IBL_INTENSITY_DAY: Float = 0.34;
 // IBL supplies sky-driven ambient, so the flat ambient term is scaled back when
 // IBL is active to avoid double-counting (which over-brightened the foreground).
 var IBL_AMBIENT_SCALE: Float = 0.45;
@@ -282,7 +283,8 @@ var SHAKE_ALL: Float = 0.55;
 // NOTE: AddColorGrade's first arg (brightness) is an ADDITIVE offset near 0.0,
 // not a multiplier — values like 1.0 blow the frame out to pure white.
 var POSTFX_BLOOM_THRESHOLD: Float = 0.78;
-var POSTFX_BLOOM_INTENSITY: Float = 0.42;
+var POSTFX_BLOOM_INTENSITY: Float = 0.18;
+var POSTFX_EXPOSURE: Float = 0.46;
 var POSTFX_COLORGRADE_BRIGHT: Float = 0.0;
 var POSTFX_COLORGRADE_CONTRAST: Float = 1.12;
 var POSTFX_COLORGRADE_SAT: Float = 1.16;

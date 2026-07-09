@@ -122,6 +122,26 @@ static void *body3d_collider_ref(const rt_body3d *body) {
     return body ? rt_g3d_checked_or_null(body->collider, RT_G3D_COLLIDER3D_CLASS_ID) : NULL;
 }
 
+/// @brief Advance a non-zero world broadphase revision, wrapping past UINT64_MAX to 1.
+/// @details Query broadphase cache validation compares this revision in O(1) instead of hashing
+///   every body on every query. Zero is reserved as an invalid/no-cache sentinel.
+static uint64_t world3d_next_broadphase_revision(uint64_t current) {
+    return current == UINT64_MAX ? 1u : current + 1u;
+}
+
+/// @brief Mark all world-level broadphase caches stale after a body set or body bounds change.
+/// @details Bodies still keep their own revision for debugging and future fine-grained caches, but
+///   the world revision is the fast invalidation key used by spatial queries.
+static void world3d_bump_broadphase_revision(rt_world3d *world) {
+    if (!world)
+        return;
+    world->broadphase_world_revision =
+        world3d_next_broadphase_revision(world->broadphase_world_revision);
+    world->query_broadphase_valid = 0;
+    world->query_broadphase_count = 0;
+    world->query_broadphase_signature = 0;
+}
+
 /// @brief Bump a body's broadphase revision (wrapping past UINT64_MAX to 1) so cached broadphase
 ///        structures know to re-evaluate it.
 void body3d_touch_broadphase(rt_body3d *body) {
@@ -129,15 +149,12 @@ void body3d_touch_broadphase(rt_body3d *body) {
         return;
     body->broadphase_revision =
         body->broadphase_revision == UINT64_MAX ? 1u : body->broadphase_revision + 1u;
+    world3d_bump_broadphase_revision(body->owner_world);
 }
 
 /// @brief Invalidate the world's cached query broadphase so the next spatial query rebuilds it.
 static void world3d_invalidate_query_broadphase(rt_world3d *world) {
-    if (!world)
-        return;
-    world->query_broadphase_valid = 0;
-    world->query_broadphase_count = 0;
-    world->query_broadphase_signature = 0;
+    world3d_bump_broadphase_revision(world);
 }
 
 /// @brief Verify that @p joint is a live joint of the kind named by @p joint_type.
@@ -337,6 +354,28 @@ int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
         return 0;
     w->broadphase_entries = new_entries;
     w->broadphase_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Grow the reusable broadphase sort scratch table used by deterministic merge sorting.
+/// @details The buffer is pure scratch; callers write every element before reading it. Keeping it
+///   on the world avoids per-step temporary allocation and lets the query broadphase share the
+///   same storage.
+int world3d_reserve_broadphase_sort_scratch(rt_world3d *w, int32_t needed) {
+    if (!w)
+        return 1;
+    if (needed <= w->broadphase_sort_scratch_capacity)
+        return 1;
+    int32_t new_capacity =
+        ph3d_next_capacity(w->broadphase_sort_scratch_capacity, needed, PH3D_INITIAL_BODIES);
+    if (new_capacity < 0)
+        return 0;
+    ph3d_broadphase_entry *new_entries = (ph3d_broadphase_entry *)realloc(
+        w->broadphase_sort_scratch, (size_t)new_capacity * sizeof(*new_entries));
+    if (!new_entries)
+        return 0;
+    w->broadphase_sort_scratch = new_entries;
+    w->broadphase_sort_scratch_capacity = new_capacity;
     return 1;
 }
 

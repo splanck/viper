@@ -1656,6 +1656,20 @@ static void gl_get_backend_stats(void *ctx_ptr, vgfx3d_backend_stats_t *out_stat
     out_stats->default_framebuffer_writable = ctx->default_framebuffer_writable ? 1 : 0;
 }
 
+/// @brief Return OpenGL feature bits that depend on the probed device/context.
+/// @details The post-FX hook can exist even when a driver cannot render to RGBA16F. HDR scene color
+/// and TAA both allocate float scene/history targets, so they are advertised only after the context
+/// probe has confirmed float color attachments are renderable.
+/// @param ctx_ptr OpenGL backend context.
+/// @return RT_CANVAS3D_BACKEND_CAP_* feature bits supported by this context.
+static int64_t gl_get_feature_caps(void *ctx_ptr) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int64_t caps = 0;
+    if (ctx && ctx->supports_hdr_color_target)
+        caps |= RT_CANVAS3D_BACKEND_CAP_HDR_SCENE | RT_CANVAS3D_BACKEND_CAP_TAA;
+    return caps;
+}
+
 const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .name = "opengl",
     .create_ctx = gl_create_ctx,
@@ -1682,6 +1696,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = gl_get_texture_upload_bytes,
     .get_native_texture_caps = gl_get_native_texture_caps,
+    .get_feature_caps = gl_get_feature_caps,
     .get_backend_stats = gl_get_backend_stats,
 };
 

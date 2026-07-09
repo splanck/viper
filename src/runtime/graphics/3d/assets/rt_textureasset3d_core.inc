@@ -74,7 +74,7 @@ static uint64_t g_next_textureasset3d_cache_identity = 1;
 static uint64_t textureasset3d_next_cache_identity(void) {
     uint64_t id;
     do {
-        id = __atomic_fetch_add(
+        id = rt_atomic_fetch_add_u64(
             &g_next_textureasset3d_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
     } while (id == 0);
     return id;

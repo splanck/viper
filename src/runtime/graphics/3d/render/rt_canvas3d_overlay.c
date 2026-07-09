@@ -1000,6 +1000,16 @@ static int canvas3d_backend_supports_shadow_csm(const vgfx3d_backend_t *backend)
     return 0;
 }
 
+/// @brief Return whether @p backend can submit ordinary 3D draw commands.
+///
+/// @details Several Canvas3D feature bits describe material, animation, scene, and CPU culling
+///          behavior layered around a backend draw path. Partial diagnostic/test backends can
+///          expose telemetry hooks without being drawable, so those feature bits are advertised
+///          only when the base submit hook exists.
+static int canvas3d_backend_has_draw_path(const vgfx3d_backend_t *backend) {
+    return backend && backend->submit_draw;
+}
+
 /// @brief Return the feature bits advertised by the active backend.
 /// @details The mask is based on backend vtable hooks plus the software
 ///          fallback paths owned by Canvas3D. This lets applications choose
@@ -1011,8 +1021,10 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (!c)
         return 0;
     const vgfx3d_backend_t *backend = c->backend;
+    int draw_path;
     if (!backend)
         return 0;
+    draw_path = canvas3d_backend_has_draw_path(backend);
 
     if (backend == &vgfx3d_software_backend ||
         (backend->name && strcmp(backend->name, "software") == 0))
@@ -1032,37 +1044,36 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= RT_CANVAS3D_BACKEND_CAP_INSTANCING;
     if (backend->submit_draw_instanced && (caps & RT_CANVAS3D_BACKEND_CAP_GPU))
         caps |= RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING;
-    if (backend->shadow_atlas_slots && backend->shadow_begin && backend->shadow_draw &&
+    if (draw_path && backend->shadow_atlas_slots && backend->shadow_begin && backend->shadow_draw &&
         backend->shadow_end)
         caps |= RT_CANVAS3D_BACKEND_CAP_SHADOW_POINT;
     /* Depth-aware post-FX runs everywhere: natively on GPU backends, via the
      * CPU parity implementations on software. */
-    if (backend->present_postfx || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+    if (backend->present_postfx || (draw_path && (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)))
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_FULL;
-    if (backend->present_postfx || (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
+    if (backend->present_postfx || (draw_path && (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)))
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX;
     if (backend->present_postfx)
         caps |= RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
-    /* Plan 05: GPU postfx backends render the scene into a linear-HDR (RGBA16F)
-     * offscreen target and implement the temporal-AA resolve pass. (OpenGL falls back
-     * to RGBA8 only on drivers without float color targets.) */
-    if (backend->present_postfx)
-        caps |= RT_CANVAS3D_BACKEND_CAP_HDR_SCENE | RT_CANVAS3D_BACKEND_CAP_TAA;
-    if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
+    /* Device-specific feature bits such as HDR scene color/TAA depend on the
+     * concrete context, not merely the presence of a post-FX vtable hook. */
+    if (backend->get_feature_caps)
+        caps |= backend->get_feature_caps(c->backend_ctx);
+    if (draw_path && (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE))
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
     if (backend->present_postfx && backend->apply_postfx && backend->present)
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY | RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
-    if (canvas3d_backend_supports_clustered_lighting(backend))
+    if (draw_path && canvas3d_backend_supports_clustered_lighting(backend))
         caps |= RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING;
     /* Plan 10: soft particles need the opaque->transparent depth snapshot hook. */
-    if (backend->resolve_opaque_targets)
+    if (draw_path && backend->resolve_opaque_targets)
         caps |= RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES;
     /* Plan 10: the SSR post pass rides the GPU postfx pipeline. */
-    if (backend->present_postfx)
+    if (draw_path && backend->present_postfx)
         caps |= RT_CANVAS3D_BACKEND_CAP_SSR;
-    if (canvas3d_backend_supports_shadow_csm(backend))
+    if (draw_path && canvas3d_backend_supports_shadow_csm(backend))
         caps |= RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM;
     if (backend->get_native_texture_caps)
         caps |= backend->get_native_texture_caps(c->backend_ctx) &
@@ -1070,10 +1081,12 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
                  RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY |
                  RT_CANVAS3D_BACKEND_CAP_BC1 | RT_CANVAS3D_BACKEND_CAP_BC3 |
                  RT_CANVAS3D_BACKEND_CAP_BC4 | RT_CANVAS3D_BACKEND_CAP_BC5);
-    caps |= RT_CANVAS3D_BACKEND_CAP_PBR | RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS |
-            RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK | RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS |
-            RT_CANVAS3D_BACKEND_CAP_SKINNING | RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
-    caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
+    if (draw_path) {
+        caps |= RT_CANVAS3D_BACKEND_CAP_PBR | RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS |
+                RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK | RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS |
+                RT_CANVAS3D_BACKEND_CAP_SKINNING | RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
+        caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
+    }
 
     return caps;
 }
@@ -1193,6 +1206,30 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     return 0;
 }
 
+/// @brief Convert explicit native compressed-texture capability names to backend bits.
+/// @details `texture:*` names intentionally report CPU decode/fallback support for asset loading.
+/// This helper backs the less ambiguous `native-texture:*` and `backend-texture:*` names, which
+/// report whether the active backend/device can upload and sample that compressed format directly.
+/// @param name User-facing capability string.
+/// @return Matching RT_CANVAS3D_BACKEND_CAP_* bit, or 0 when @p name is not a recognized native
+/// texture capability.
+static int64_t canvas3d_native_texture_capability_from_name(const char *name) {
+    const char *suffix = NULL;
+    if (!name)
+        return 0;
+    if (strncmp(name, "native-texture:", 15) == 0)
+        suffix = name + 15;
+    else if (strncmp(name, "native_texture:", 15) == 0)
+        suffix = name + 15;
+    else if (strncmp(name, "backend-texture:", 16) == 0)
+        suffix = name + 16;
+    else if (strncmp(name, "backend_texture:", 16) == 0)
+        suffix = name + 16;
+    if (!suffix || !*suffix)
+        return 0;
+    return canvas3d_capability_from_name(suffix);
+}
+
 /// @brief Return a CPU texture fallback support answer for `texture:*` capability keys.
 /// @return 0/1 for recognized texture keys, -1 when @p name is not a texture capability key.
 static int canvas3d_texture_capability_from_name(const char *name) {
@@ -1222,6 +1259,7 @@ static int canvas3d_texture_capability_from_name(const char *name) {
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
     int64_t flag;
+    int64_t native_texture_flag;
     int texture_capability;
     const char *name;
 
@@ -1234,6 +1272,9 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
         strcmp(name, "backend-fallback") == 0 || strcmp(name, "backend_fallback") == 0 ||
         strcmp(name, "software-fallback") == 0 || strcmp(name, "software_fallback") == 0)
         return rt_canvas3d_get_backend_fallback(obj);
+    native_texture_flag = canvas3d_native_texture_capability_from_name(name);
+    if (native_texture_flag)
+        return (rt_canvas3d_get_backend_capabilities(obj) & native_texture_flag) ? 1 : 0;
     texture_capability = canvas3d_texture_capability_from_name(name);
     if (texture_capability >= 0) {
         rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);

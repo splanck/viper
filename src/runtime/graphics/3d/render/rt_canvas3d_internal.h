@@ -73,6 +73,8 @@ typedef struct {
     uint32_t *indices;
     uint32_t index_count;
     uint32_t index_capacity;
+    double *normal_accum_scratch;       /* reusable vertex_count * 3 normal accumulator */
+    size_t normal_accum_scratch_values; /* allocated double count for normal_accum_scratch */
     /* Transient: set by skinning path before draw, zero otherwise */
     const float *bone_palette;      /* bone_count * 16 floats (4x4 row-major) */
     const float *prev_bone_palette; /* previous-frame palette for motion blur */
@@ -407,24 +409,26 @@ typedef struct {
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
-    int32_t workflow;   /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
-    void *texture;      /* Pixels or TextureAsset3D source (diffuse, slot 0) */
-    void *normal_map;   /* Pixels or TextureAsset3D source (normal map, slot 1) */
-    void *specular_map; /* Pixels or TextureAsset3D source (specular map, slot 2) */
-    void *emissive_map; /* Pixels or TextureAsset3D source (emissive map, slot 3) */
+    int32_t workflow; /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
+    void *texture;    /* Pixels, TextureAsset3D, or RenderTarget3D source (diffuse, slot 0) */
+    void *normal_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (normal map, slot 1) */
     void
-        *metallic_roughness_map; /* Pixels or TextureAsset3D source (glTF metallic/roughness map) */
-    void *ao_map;                /* Pixels or TextureAsset3D source (ambient occlusion map) */
-    double emissive[3];          /* emissive color multiplier */
-    double metallic;             /* [0,1] dielectric->metal */
-    double roughness;            /* [0,1] smooth->rough */
-    double ao;                   /* [0,1] ambient occlusion multiplier */
-    double emissive_intensity;   /* scalar multiplier applied after emissive color/map */
-    double normal_scale;         /* scales tangent-space XY perturbation */
-    double alpha;                /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
-    double alpha_cutoff;         /* alpha-mask cutoff, default 0.5 */
-    void *env_map;               /* CubeMap3D for environment reflections (or NULL) */
-    double reflectivity;         /* [0.0=no reflection, 1.0=mirror], default 0.0 */
+        *specular_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (specular map, slot 2) */
+    void
+        *emissive_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (emissive map, slot 3) */
+    void *metallic_roughness_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (glTF
+                                     metallic/roughness map) */
+    void *ao_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (ambient occlusion map) */
+    double emissive[3];        /* emissive color multiplier */
+    double metallic;           /* [0,1] dielectric->metal */
+    double roughness;          /* [0,1] smooth->rough */
+    double ao;                 /* [0,1] ambient occlusion multiplier */
+    double emissive_intensity; /* scalar multiplier applied after emissive color/map */
+    double normal_scale;       /* scales tangent-space XY perturbation */
+    double alpha;              /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    double alpha_cutoff;       /* alpha-mask cutoff, default 0.5 */
+    void *env_map;             /* CubeMap3D for environment reflections (or NULL) */
+    double reflectivity;       /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
     int8_t double_sided;
     int8_t additive_blend;  /* internal-only: route through additive blend state when true */
@@ -481,6 +485,11 @@ typedef struct {
     int8_t casts_shadows;
 } rt_light3d;
 
+/* Minimum point/spot attenuation used by constructors and importers to avoid unbounded local
+ * lights. Directional and ambient lights keep zero attenuation because they are not distance
+ * falloff lights. */
+#define RT_LIGHT3D_DEFAULT_ATTENUATION 0.001
+
 //=============================================================================
 // Canvas3D
 //=============================================================================
@@ -509,6 +518,18 @@ typedef struct {
     uint32_t *indices;
     int8_t tangents_generated;
 } rt_canvas3d_mesh_snapshot_entry;
+
+/// @brief Per-frame cache entry for copied float payloads used by deferred draw commands.
+/// @details Morph weights, raw morph deltas, and bone palettes are still validated against their
+/// source arrays on every queued draw, but identical source/count/content tuples in one frame can
+/// share a single temp-buffer snapshot. This removes repeated heap copies when a skinned or morphed
+/// mesh is submitted more than once before frame cleanup.
+typedef struct {
+    const float *source;
+    size_t count;
+    uint64_t content_hash;
+    float *snapshot;
+} rt_canvas3d_float_snapshot_entry;
 
 /// @brief CPU occlusion history entry keyed by stable draw identity.
 /// @details Coarse occlusion culling is intentionally delayed for objects that have only just
@@ -862,6 +883,10 @@ typedef struct {
                                           replay */
     int32_t final_overlay_temp_obj_count;
     int32_t final_overlay_temp_obj_capacity;
+    uint8_t *final_overlay_arena; /* Stable vertex/index arena for common final-overlay draws */
+    size_t final_overlay_arena_capacity;
+    size_t final_overlay_arena_used;
+    size_t final_overlay_arena_peak;
     int8_t final_overlay_recording;
     int8_t frame_finalized;
     int8_t frame_presented_by_finalize;
@@ -920,6 +945,9 @@ typedef struct {
     int32_t temp_buf_capacity;
     void **temp_buffer_set;
     int32_t temp_buffer_set_capacity;
+    rt_canvas3d_float_snapshot_entry *float_snapshots;
+    int32_t float_snapshot_count;
+    int32_t float_snapshot_capacity;
     rt_canvas3d_mesh_snapshot_entry *mesh_snapshots;
     int32_t mesh_snapshot_count;
     int32_t mesh_snapshot_capacity;
@@ -1023,6 +1051,10 @@ typedef struct {
     int64_t last_flip_us;
     int64_t delta_time_us;
     int64_t delta_time_ms;
+    int64_t fps_sample_us[32];
+    int64_t fps_sample_total_us;
+    int32_t fps_sample_index;
+    int32_t fps_sample_count;
     int64_t dt_max_ms;
     int64_t timing_serial;
     int8_t frame_timing_updated_by_poll;
@@ -1394,6 +1426,23 @@ void canvas3d_release_tracked_mesh_snapshot(
 int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
 int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
 void canvas3d_release_tracked_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
+/// @brief Allocate stable storage from the retained final-overlay vertex/index arena.
+/// @details The arena is only used for HUD commands that replay after the normal frame temp
+/// cleanup. Returned memory remains valid until @ref canvas3d_clear_final_overlay resets the arena,
+/// and the helper deliberately avoids moving existing storage while a final overlay is being
+/// recorded so previously queued draw commands keep valid pointers.
+/// @param c Canvas that owns the final-overlay arena.
+/// @param bytes Number of payload bytes to reserve.
+/// @param alignment Power-of-two byte alignment for the returned pointer.
+/// @return Pointer to arena storage, or NULL when the request cannot be satisfied without moving
+/// existing queued geometry.
+void *canvas3d_alloc_final_overlay_arena(rt_canvas3d *c, size_t bytes, size_t alignment);
+/// @brief Reset retained final-overlay arena state after overlay replay.
+/// @details This does not normally free the arena; it drops the used byte count so the next overlay
+/// can reuse the same stable memory. Oversized arenas are released to avoid retaining large
+/// transient captures after unusual frames.
+/// @param c Canvas whose final-overlay arena should be reset.
+void canvas3d_reset_final_overlay_arena(rt_canvas3d *c);
 void canvas3d_temp_object_set_clear(rt_canvas3d *c);
 int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint);
 int canvas3d_temp_object_set_contains(rt_canvas3d *c, void *obj);
