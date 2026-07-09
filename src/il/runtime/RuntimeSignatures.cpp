@@ -233,6 +233,8 @@
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
+#include "rt_lensflare3d.h"
+#include "rt_mesh_simplify.h"
 #include "rt_sprite3d.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"

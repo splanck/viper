@@ -533,6 +533,41 @@ static void testZeroFillSection() {
     CHECK(foundBss);
 }
 
+/// F3: A zero-fill (.bss) section that follows a file-backed .data section in the
+/// same writable segment must not inflate p_filesz. p_filesz must cover only the
+/// file-backed bytes; the .data->.bss VA gap and the zero-fill span are p_memsz only.
+static void testBssDoesNotInflateFileSize() {
+    auto path = tmpPath("data_bss.elf");
+    auto text = makeSec(".text", 16, 0x401000, true, false, 0xC3);
+    auto dataSec = makeSec(".data", 16, 0x402000, false, true, 0x11);
+    auto bss = makeSec(".bss", 64, 0x403000, false, true, 0x00, /*zeroFill=*/true);
+
+    auto layout = makeLayout({text, dataSec, bss});
+    std::ostringstream err;
+    bool ok = writeElfExe(path, layout, LinkArch::X86_64, err);
+    CHECK(ok);
+    CHECK(err.str().empty());
+
+    auto data = readFile(path);
+    Elf64_Ehdr ehdr;
+    std::memcpy(&ehdr, data.data(), sizeof(ehdr));
+    std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
+    std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
+
+    // The writable PT_LOAD holds .data + .bss (same permissions → one segment).
+    bool found = false;
+    for (const auto &ph : phdrs) {
+        if (ph.p_type != PT_LOAD || (ph.p_flags & PF_W) == 0)
+            continue;
+        found = true;
+        CHECK(ph.p_vaddr == 0x402000);
+        CHECK(ph.p_filesz == 16);       // only the file-backed .data bytes
+        CHECK(ph.p_memsz == 0x1040);    // spans the gap + .bss: 0x403040 - 0x402000
+        CHECK(ph.p_filesz < ph.p_memsz);
+    }
+    CHECK(found);
+}
+
 /// Test 10: Large page size (16KB for macOS arm64-style layout).
 static void testLargePageSize() {
     auto path = tmpPath("large_page.elf");
@@ -742,6 +777,7 @@ int main() {
     testPageAlignment();
     testEmptySectionSkipped();
     testZeroFillSection();
+    testBssDoesNotInflateFileSize();
     testLargePageSize();
     testGnuStackSectionHeader();
     testDynamicImports();

@@ -1070,7 +1070,6 @@ class DmlHandler {
             c = c + 1;
         }
 
-        var stmtSavepoint = exec.journal.count();
         var rowsUpdated = 0;
         var t1ColCount = t1.columnCount();
 
@@ -1184,7 +1183,6 @@ class DmlHandler {
             c = c + 1;
         }
 
-        var stmtSavepoint = exec.journal.count();
         var rowsDeleted = 0;
         var deletedIndices: List[Integer] = [];
         var t1ColCount = t1.columnCount();
@@ -1244,7 +1242,7 @@ class DmlHandler {
     }
 
     // Multi-table expression evaluation helpers
-    hide func resolveColumnMultiTable(colExpr: Expr, mergedRow: Row, mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> SqlValue {
+    hide func resolveColumnMultiTable(colExpr: Expr, mergedRow: Row, _mergedTable: Table, t1Name: String, t1: Table, t2Name: String, t2: Table) -> SqlValue {
         var tblName = colExpr.tableName;
         var colName = colExpr.columnName;
 
@@ -1826,7 +1824,7 @@ class DmlHandler {
     }
 
     // Handle ON UPDATE CASCADE/RESTRICT/SET NULL when a PK/referenced column is updated
-    hide func handleUpdateCascade(parentTableName: String, parentTable: Table, rowIdx: Integer, oldRow: Row, newRow: Row) -> String {
+    hide func handleUpdateCascade(parentTableName: String, parentTable: Table, _rowIdx: Integer, oldRow: Row, newRow: Row) -> String {
         // Find all tables that have FK references to parentTableName
         var ti = 0;
         while ti < exec.db.tableCount() {
@@ -2134,7 +2132,6 @@ class DmlHandler {
         var sourceName = stmt.sourceAlias;
         if sourceName == "" { sourceName = stmt.sourceTable; }
 
-        var stmtSavepoint = exec.journal.count();
         var affectedRows = 0;
         var targetColCount = target.columnCount();
 

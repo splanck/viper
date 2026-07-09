@@ -317,6 +317,16 @@ struct vg_widget {
     bool manual_position;     ///< Runtime: parent layout should not overwrite x/y.
     bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
 
+    // Damage-region rendering (plan 07): absolute screen bounds recorded at this
+    // widget's last paint. The renderer diffs them against the current bounds to
+    // detect moves/resizes, so a partial repaint can damage both the old and new
+    // rectangles. `last_paint_valid` stays false until the first paint records them.
+    float last_paint_x;    ///< Screen X at last paint.
+    float last_paint_y;    ///< Screen Y at last paint.
+    float last_paint_w;    ///< Width at last paint.
+    float last_paint_h;    ///< Height at last paint.
+    bool last_paint_valid; ///< Whether last_paint_* hold a recorded paint.
+
     // Animation: eased 0..1 state amounts, advanced each paint by
     // vg_widget_anim_tick() and read by widget paint code for smooth
     // hover/press/focus transitions. Snap to target when motion is disabled.
@@ -808,6 +818,14 @@ void vg_widget_release_input_capture(void);
 ///
 /// @return The widget capturing input, or NULL if no capture is active.
 vg_widget_t *vg_widget_get_input_capture(void);
+
+/// @brief Set the global mouse-wheel speed multiplier for scrolling widgets.
+/// @param speed Multiplier (clamped to [0.1, 8.0]); 1.0 is the default.
+void vg_set_wheel_speed(float speed);
+
+/// @brief Get the global mouse-wheel speed multiplier.
+/// @return Current multiplier (1.0 by default).
+float vg_get_wheel_speed(void);
 
 /// @brief Save the current toolkit-global widget runtime state.
 void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state);

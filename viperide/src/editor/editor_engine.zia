@@ -2,6 +2,7 @@ module editor_engine;
 
 bind "../core/document";
 bind Viper.GUI as GUI;
+bind Doc = Viper.Zia.Document;
 
 // ============================================================================
 // MODULE: editor_engine
@@ -31,20 +32,70 @@ bind Viper.GUI as GUI;
 //     has been called (e.g., during construction order).
 // ============================================================================
 
+/// @brief Per-pane metadata for the non-focused pane while the editor is split.
+/// @details Holds only the bookkeeping fields (not the widget); the physical
+///          widgets are EditorEngine.leftWidget / rightWidget. On a focus switch
+///          this bundle and EditorEngine's flat fields are swapped, so the flat
+///          fields always describe the focused pane and `editor` aliases the
+///          focused widget — every existing `engine.editor` consumer keeps
+///          operating on whichever pane has focus.
+class PaneState {
+    expose document.Document currentDoc;
+    expose String currentLanguage;
+    expose Integer lastCursorLine;
+    expose Integer lastCursorCol;
+    expose String cachedTextSnapshot;
+    expose Integer cachedTextRevision;
+
+    expose func init() {
+        currentDoc = null;
+        currentLanguage = "";
+        lastCursorLine = 1;
+        lastCursorCol = 1;
+        cachedTextSnapshot = "";
+        cachedTextRevision = -1;
+    }
+}
+
 /// @brief Wraps a CodeEditor widget with IDE-level helpers.
 class EditorEngine {
-    expose GUI.CodeEditor editor;   // Underlying CodeEditor widget.
+    expose GUI.CodeEditor editor;   // Focused pane's widget (alias into left/right).
+    expose document.Document currentDoc; // Document whose live state is in the editor (null = none).
+    expose String currentLanguage;  // Highlighter currently installed on the widget.
     expose Integer lastCursorLine;  // For detecting cursor changes between frames.
     expose Integer lastCursorCol;
     expose String cachedTextSnapshot;
     expose Integer cachedTextRevision;
 
+    // Split-editor state. Single-pane: rightWidget/shadow null, splitActive false,
+    // editor == leftWidget — behavior is byte-identical to before the split.
+    expose GUI.CodeEditor leftWidget;   // Physical left pane (the Setup editor).
+    expose GUI.CodeEditor rightWidget;  // Physical right pane, null until first split.
+    expose Boolean splitActive;         // Whether a second pane is shown.
+    expose Boolean secondaryFocused;    // Whether the right pane is focused.
+    expose PaneState shadow;            // Non-focused pane's metadata (null when unsplit).
+
+    // Incremental language-service sync (plan 08). Tracks what the focused pane
+    // last pushed to the service's document mirror so the next sync sends only
+    // edit deltas. syncedRevision < 0 forces a full sync on the next call.
+    expose Integer syncedRevision;
+    expose String  syncedPath;
+
     /// @brief Initialize with no widget yet. Call Setup to attach.
     expose func init() {
+        currentDoc = null;
+        currentLanguage = "";
         lastCursorLine = 1;
         lastCursorCol = 1;
         cachedTextSnapshot = "";
         cachedTextRevision = -1;
+        leftWidget = null;
+        rightWidget = null;
+        splitActive = false;
+        secondaryFocused = false;
+        shadow = null;
+        syncedRevision = -1;
+        syncedPath = "";
     }
 
     /// @brief Construct the CodeEditor inside `parent` and configure it.
@@ -55,6 +106,7 @@ class EditorEngine {
         editor.SetShowLineNumbers(true);
         editor.SetShowFoldGutter(true);
         editor.SetFlex(1.0);
+        leftWidget = editor; // the primary pane; `editor` aliases the focused pane
     }
 
     /// @brief Load `doc.content` into the editor and restore its cursor.
@@ -65,39 +117,94 @@ class EditorEngine {
         if doc == null {
             return;
         }
-        editor.SetText(doc.content);
-        editor.ClearModified();
-        if doc.isReadOnlyPreview {
-            editor.SetReadOnly(true);
-        } else {
-            editor.SetReadOnly(false);
-        }
-        editor.ClearSemanticTokens(); // drop the previous document's semantic overlay
-        cachedTextSnapshot = doc.content;
-        cachedTextRevision = editor.Revision;
 
+        // Three cases:
+        //  * doc == currentDoc: a content refresh of the already-active document
+        //    (reload, formatter output, programmatic push). Rebuild the buffer
+        //    from doc.content; resetting undo here is expected.
+        //  * doc has a detached buffer: returning to a previously-visited
+        //    document — reuse its buffer so undo/cursor/scroll are preserved.
+        //  * otherwise: first open of this document.
+        var applyPersistedCursor = false;
+        if doc == currentDoc {
+            doc.buffer = GUI.EditorBuffer.New(doc.content);
+        } else if doc.buffer == null {
+            doc.buffer = GUI.EditorBuffer.New(doc.content);
+            applyPersistedCursor = true;
+        }
+
+        // Swap this document's state into the editor. The previous editor state
+        // (belonging to the previously active document) comes back as `prev` and
+        // is stored on that document so its undo history, cursor, selection,
+        // folds, and semantic tokens survive the switch.
+        var prev = editor.AttachBuffer(doc.buffer);
+        doc.buffer = null; // now active — content lives in the editor widget
+        if currentDoc != null and currentDoc != doc {
+            currentDoc.buffer = prev;
+        }
+        currentDoc = doc;
+
+        editor.SetReadOnly(doc.isReadOnlyPreview);
+
+        // Only reinstall the highlighter when the language actually changes.
+        // SetLanguage frees the per-line syntax color cache, so calling it on a
+        // same-language switch would force a full re-highlight (a visible flash);
+        // skipping it lets the swapped-in buffer's cached colors paint directly.
+        var lang = "text";
         if doc.language == "zia" {
-            editor.SetLanguage("zia");
+            lang = "zia";
         } else if doc.language == "basic" {
-            editor.SetLanguage("basic");
+            lang = "basic";
         } else if doc.language == "viper" {
-            editor.SetLanguage("viper");
-        } else {
-            // Plain text — clear any highlighter left over from a prior document.
-            editor.SetLanguage("text");
+            lang = "viper";
+        }
+        if lang != currentLanguage {
+            editor.SetLanguage(lang);
+            currentLanguage = lang;
         }
 
-        if doc.cursorLine > 0 {
+        // On first open, apply the document's persisted cursor/scroll (session
+        // restore). A returning buffer already carries its live caret/scroll;
+        // a content refresh intentionally starts at the top.
+        if applyPersistedCursor and doc.cursorLine > 0 {
             var cursorLine0 = doc.cursorLine - 1;
             var cursorCol0 = doc.cursorCol - 1;
             if cursorLine0 < 0 { cursorLine0 = 0; }
             if cursorCol0 < 0 { cursorCol0 = 0; }
             editor.SetCursor(cursorLine0, cursorCol0);
+            if doc.scrollLine > 1 {
+                var scrollLine0 = doc.scrollLine - 1;
+                if scrollLine0 < 0 { scrollLine0 = 0; }
+                editor.ScrollTopLine = scrollLine0;
+            }
         }
-        if doc.scrollLine > 1 {
-            var scrollLine0 = doc.scrollLine - 1;
-            if scrollLine0 < 0 { scrollLine0 = 0; }
-            editor.ScrollTopLine = scrollLine0;
+
+        cachedTextSnapshot = "";
+        cachedTextRevision = -1;
+    }
+
+    /// @brief Force-reload a document from new disk text, discarding its editor
+    ///        buffer and undo history (external change accept / revert to disk).
+    /// @param doc  Document to reload.
+    /// @param text New content to load.
+    expose func ReloadDocument(doc: document.Document, text: String) {
+        if doc == null {
+            return;
+        }
+        doc.content = text;
+        doc.buffer = null;
+        LoadDocument(doc); // refresh (active) or first-open (inactive) branch
+    }
+
+    /// @brief Release a document's detached buffer (call when closing its tab).
+    /// @param doc Document being closed.
+    expose func ReleaseDocument(doc: document.Document) {
+        if doc == null {
+            return;
+        }
+        doc.buffer = null;
+        if doc == currentDoc {
+            currentDoc = null;
         }
     }
 
@@ -181,6 +288,56 @@ class EditorEngine {
         return editor.Revision;
     }
 
+    /// @brief Keep the language service's document mirror for `path` current
+    ///        using incremental edit deltas, so semantic requests need not
+    ///        re-send the whole buffer on every revision.
+    /// @param path Mirror key — the active document's path (the semantic query
+    ///        key). A change of `path` means the focused document changed.
+    /// @return True when the mirror matches the editor's current revision.
+    /// @details Full-syncs on first use, on an active-document change, or when
+    ///          the editor reports a delta `overflow` (a cold mutation such as
+    ///          undo/redo/SetText/buffer-swap, or a journal wrap). Otherwise it
+    ///          pushes only `TakeDeltas`, which walks the edit journal without
+    ///          materializing the buffer — so `CodeEditor.GetFullTextCopyCount`
+    ///          stays flat across a typing burst (only full-syncs materialize).
+    expose func SyncActiveDocument(path: String) -> Boolean {
+        if editor == null {
+            return false;
+        }
+        var revision = editor.Revision;
+
+        // First sync of this path, or the focused document changed → full sync.
+        if syncedPath != path or syncedRevision < 0 {
+            Doc.SyncFull(path, GetTextSnapshot(), revision);
+            syncedPath = path;
+            syncedRevision = revision;
+            return true;
+        }
+        if revision == syncedRevision {
+            return true;   // Mirror already current — nothing changed.
+        }
+
+        // Incremental: push only the edit deltas captured since the last sync.
+        var deltas = editor.TakeDeltas(syncedRevision);
+        if deltas != "overflow" and Doc.SyncDelta(path, deltas, revision) {
+            syncedRevision = revision;
+            return true;
+        }
+
+        // Overflow or a delta gap → recover with a single full sync.
+        Doc.SyncFull(path, GetTextSnapshot(), revision);
+        syncedRevision = revision;
+        return true;
+    }
+
+    /// @brief Forget the mirror-sync bookkeeping so the next SyncActiveDocument
+    ///        performs a full sync. Call when a document is closed or its buffer
+    ///        is replaced out from under the editor.
+    expose func InvalidateDocumentSync() {
+        syncedRevision = -1;
+        syncedPath = "";
+    }
+
     /// @brief Replace the buffer contents.
     expose func SetText(text: String) {
         if editor == null {
@@ -220,5 +377,112 @@ class EditorEngine {
             return 1;
         }
         return editor.ScrollTopLine + 1;
+    }
+
+    // ── Split editor (two panes side-by-side) ───────────────────────────────
+
+    /// @brief Number of visible editor panes (1 or 2).
+    expose func PaneCount() -> Integer {
+        if splitActive { return 2; }
+        return 1;
+    }
+
+    hide func captureFlat() -> PaneState {
+        var s = new PaneState();
+        s.currentDoc = currentDoc;
+        s.currentLanguage = currentLanguage;
+        s.lastCursorLine = lastCursorLine;
+        s.lastCursorCol = lastCursorCol;
+        s.cachedTextSnapshot = cachedTextSnapshot;
+        s.cachedTextRevision = cachedTextRevision;
+        return s;
+    }
+
+    hide func loadFlat(s: PaneState) {
+        currentDoc = s.currentDoc;
+        currentLanguage = s.currentLanguage;
+        lastCursorLine = s.lastCursorLine;
+        lastCursorCol = s.lastCursorCol;
+        cachedTextSnapshot = s.cachedTextSnapshot;
+        cachedTextRevision = s.cachedTextRevision;
+    }
+
+    /// @brief Open a second pane to the right showing a copy of the focused
+    ///        document's current text.
+    /// @details v1: at most two panes. The second pane holds an INDEPENDENT
+    ///          buffer — editing the same document in both panes does not
+    ///          live-sync, because the runtime's EditorBuffer is single-owner
+    ///          (a shared multi-view buffer is future runtime work). The common
+    ///          case, two DIFFERENT files side by side, is fully independent.
+    expose func SplitRight(parent: GUI.HBox) {
+        if splitActive { return; }
+        if rightWidget == null {
+            rightWidget = GUI.CodeEditor.New(parent);
+            rightWidget.SetShowLineNumbers(true);
+            rightWidget.SetShowFoldGutter(true);
+            rightWidget.SetFlex(1.0);
+        } else {
+            rightWidget.SetVisible(true);
+        }
+        var buf = GUI.EditorBuffer.New(GetText());
+        rightWidget.AttachBuffer(buf);
+        rightWidget.SetReadOnly(false);
+        if currentLanguage != "" {
+            rightWidget.SetLanguage(currentLanguage);
+        }
+        shadow = new PaneState();
+        shadow.currentDoc = currentDoc;
+        shadow.currentLanguage = currentLanguage;
+        shadow.lastCursorLine = 1;
+        shadow.lastCursorCol = 1;
+        shadow.cachedTextSnapshot = "";
+        shadow.cachedTextRevision = -1;
+        splitActive = true;
+        secondaryFocused = false; // focus stays on the primary pane
+    }
+
+    /// @brief Move focus to the other pane. Swaps which widget `editor` aliases
+    ///        and which pane's metadata the flat fields describe, so every
+    ///        focused-pane consumer (status, semantics, minimap after re-bind)
+    ///        retargets automatically.
+    expose func FocusOtherPane() {
+        if splitActive == false or shadow == null { return; }
+        var tmp = captureFlat();
+        loadFlat(shadow);
+        shadow = tmp;
+        secondaryFocused = secondaryFocused == false;
+        if secondaryFocused {
+            editor = rightWidget;
+        } else {
+            editor = leftWidget;
+        }
+        if editor != null { editor.Focus(); }
+    }
+
+    /// @brief Close the second pane, returning to single-pane mode on the primary.
+    expose func CloseSplit() {
+        if splitActive == false { return; }
+        if secondaryFocused { FocusOtherPane(); } // ensure the primary is focused
+        if rightWidget != null { rightWidget.SetVisible(false); }
+        shadow = null;
+        splitActive = false;
+        secondaryFocused = false;
+        editor = leftWidget;
+    }
+
+    /// @brief Reconcile the focused pane with real keyboard focus (click-to-focus).
+    /// @return true when the focused pane changed, so the caller re-binds the
+    ///         focused-pane controllers (minimap, find bar, completion).
+    expose func SyncFocusFromWidgets() -> Boolean {
+        if splitActive == false { return false; }
+        if secondaryFocused == false and rightWidget != null and rightWidget.IsFocused() {
+            FocusOtherPane();
+            return true;
+        }
+        if secondaryFocused and leftWidget != null and leftWidget.IsFocused() {
+            FocusOtherPane();
+            return true;
+        }
+        return false;
     }
 }

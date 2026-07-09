@@ -3431,6 +3431,48 @@ func start() {
     EXPECT_FALSE(hasDiagnosticCode(result, "V-ZIA-METHOD-CALL"));
 }
 
+TEST(ZiaRuntimeMemberAccess, AnonymousObjectMemberIsSemaErrorNotInternal) {
+    SourceManager sm;
+    // SceneAsset.Instantiate returns an untyped obj; member access on the
+    // result must be an ordinary sema diagnostic, never V-ZIA-INTERNAL.
+    const std::string source = R"(
+module Test;
+bind Viper.Graphics3D;
+func start() {
+    var a = SceneAsset.Load("x.vscn");
+    var node = a.Instantiate();
+    var v = node.Missing;
+}
+)";
+    CompilerInput input{.source = source, .path = "anon_obj_member.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "has no member 'Missing'"));
+    EXPECT_FALSE(hasDiagnosticCode(result, "V-ZIA-INTERNAL"));
+}
+
+TEST(ZiaRuntimeMemberAccess, TypedExtractorReturnsResolveMembers) {
+    SourceManager sm;
+    // FBX extractor APIs carry obj<Class> return annotations, so property and
+    // method syntax on their results resolves without static-call forms.
+    const std::string source = R"(
+module Test;
+bind Viper.Graphics3D;
+func start() {
+    var a = FBX.Load("x.fbx");
+    var n = a.MeshCount;
+    var m = a.GetMesh(0);
+    var t = m.TriangleCount;
+    var v = m.VertexCount;
+}
+)";
+    CompilerInput input{.source = source, .path = "typed_extractor.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main() {

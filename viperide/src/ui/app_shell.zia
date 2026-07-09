@@ -103,6 +103,19 @@ class AppShell {
         app.Poll();
     }
 
+    /// @brief Block up to timeoutMs for OS events, then pump — a drop-in for
+    ///        Poll() that lets an idle IDE sleep instead of busy-looping.
+    /// @param timeoutMs Maximum idle wait in ms (clamped to [0,1000] in runtime).
+    /// @return True if input woke the wait, false on timeout.
+    expose func PollWait(timeoutMs: Integer) -> Boolean {
+        return app.PollWait(timeoutMs);
+    }
+
+    /// @brief Ask the OS to make this app/window foreground-active.
+    expose func Activate() {
+        app.Activate();
+    }
+
     /// @brief Paint the current frame.
     expose func Render() {
         app.Render();

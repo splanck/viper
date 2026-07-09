@@ -474,6 +474,54 @@ int64_t rt_commandpalette_was_command_selected(void *palette) {
     return result;
 }
 
+/// @brief `CommandPalette.GetQuery` — current live query text.
+rt_string rt_commandpalette_get_query(void *palette) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!palette)
+        return rt_str_empty();
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
+        return rt_str_empty();
+    const char *q = vg_commandpalette_get_query(data->palette);
+    return rt_string_from_bytes(q, strlen(q));
+}
+
+/// @brief `CommandPalette.GetQueryGeneration` — bumped on every query change.
+int64_t rt_commandpalette_get_query_generation(void *palette) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!palette)
+        return 0;
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
+        return 0;
+    return (int64_t)vg_commandpalette_get_query_generation(data->palette);
+}
+
+/// @brief `CommandPalette.SetQuery` — prefill the query and re-filter.
+void rt_commandpalette_set_query(void *palette, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!palette)
+        return;
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_commandpalette_set_query(data->palette, ctext);
+    if (ctext)
+        free(ctext);
+}
+
+/// @brief `CommandPalette.SetClientFiltered` — toggle application-driven filtering.
+void rt_commandpalette_set_client_filtered(void *palette, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!palette)
+        return;
+    rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
+    if (!data || !data->palette)
+        return;
+    vg_commandpalette_set_client_filtered(data->palette, enabled != 0);
+}
+
 //=============================================================================
 // Phase 7: Tooltip Implementation
 //=============================================================================
@@ -1354,6 +1402,24 @@ rt_string rt_commandpalette_get_selected_command(void *palette) {
 int64_t rt_commandpalette_was_command_selected(void *palette) {
     (void)palette;
     return 0;
+}
+
+/// @brief Stub: no query text without graphics.
+rt_string rt_commandpalette_get_query(void *palette) {
+    (void)palette;
+    return rt_str_empty();
+}
+int64_t rt_commandpalette_get_query_generation(void *palette) {
+    (void)palette;
+    return 0;
+}
+void rt_commandpalette_set_query(void *palette, rt_string text) {
+    (void)palette;
+    (void)text;
+}
+void rt_commandpalette_set_client_filtered(void *palette, int64_t enabled) {
+    (void)palette;
+    (void)enabled;
 }
 
 /// @brief Show the tooltip.

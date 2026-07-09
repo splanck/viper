@@ -608,10 +608,12 @@ registered on first heap allocation. It runs the following cleanup in order:
 5. `rt_gc_shutdown()` — frees the GC tracking hash table and weak-ref buckets
 6. `rt_pool_shutdown()` — frees all pool slabs
 
-This runs on all `exit()` paths: normal return, `rt_env_exit()`,
-`rt_abort()`/`vm_trap()`, Ctrl-C (SIGINT), and `rt_trap_div0()`. The
-stack-overflow handler uses `_exit(1)` and intentionally bypasses cleanup
-(stack is blown; running arbitrary code is unsafe).
+This runs on normal non-Windows runtime `exit()` paths. Windows runtime builds
+skip CRT `atexit` registration because the same archive is used by native PE
+binaries that enter through Viper's CRT-less startup shim; those builds rely on
+process teardown, and `rt_env_exit()` uses `ExitProcess` there for the same
+reason. The stack-overflow handler uses `_exit(1)` and intentionally bypasses
+cleanup (stack is blown; running arbitrary code is unsafe).
 
 ### 7. LOW: Interned Strings Are Immortal
 

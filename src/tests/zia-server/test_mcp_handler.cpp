@@ -254,11 +254,11 @@ TEST(McpHandler, ToolsCallCheckEmitsStructuredDiagnostics) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     auto text = resp["result"]["content"].at(0)["text"].asString();
     auto parsed = JsonValue::parse(text);
-    EXPECT_TRUE(parsed.size() > 0u);
+    EXPECT_TRUE(parsed["diagnostics"].size() > 0u);
 
     // Locate the undefined-identifier diagnostic and verify the structured shape.
     bool found = false;
-    for (const auto &d : parsed.asArray()) {
+    for (const auto &d : parsed["diagnostics"].asArray()) {
         if (d["code"].asString() != "V-ZIA-UNDEFINED")
             continue;
         found = true;
@@ -341,8 +341,9 @@ TEST(McpHandler, ToolsCallSymbols) {
     auto parsed = JsonValue::parse(text);
     // Should contain at least "start"
     bool foundStart = false;
-    for (size_t i = 0; i < parsed.size(); ++i) {
-        if (parsed.at(i)["name"].asString() == "start")
+    auto symbols = parsed["symbols"].asArray();
+    for (size_t i = 0; i < symbols.size(); ++i) {
+        if (symbols.at(i)["name"].asString() == "start")
             foundStart = true;
     }
     EXPECT_TRUE(foundStart);
@@ -438,7 +439,7 @@ TEST(McpHandler, ToolsCallRuntimeClasses) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     auto text = resp["result"]["content"].at(0)["text"].asString();
     auto parsed = JsonValue::parse(text);
-    EXPECT_TRUE(parsed.size() > 0u);
+    EXPECT_TRUE(parsed["classes"].size() > 0u);
 }
 
 TEST(McpHandler, ToolsCallRuntimeMethods) {
@@ -453,7 +454,7 @@ TEST(McpHandler, ToolsCallRuntimeMethods) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     auto text = resp["result"]["content"].at(0)["text"].asString();
     auto parsed = JsonValue::parse(text);
-    EXPECT_TRUE(parsed.size() > 0u);
+    EXPECT_TRUE(parsed["members"].size() > 0u);
 }
 
 TEST(McpHandler, ToolsCallRuntimeSearch) {
@@ -468,7 +469,7 @@ TEST(McpHandler, ToolsCallRuntimeSearch) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     auto text = resp["result"]["content"].at(0)["text"].asString();
     auto parsed = JsonValue::parse(text);
-    EXPECT_TRUE(parsed.size() > 0u);
+    EXPECT_TRUE(parsed["results"].size() > 0u);
 }
 
 TEST(McpHandler, ToolsCallUnknownTool) {

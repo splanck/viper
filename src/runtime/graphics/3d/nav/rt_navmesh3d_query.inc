@@ -851,6 +851,57 @@ int64_t rt_navmesh3d_get_offmesh_link_count(void *obj) {
     return navmesh3d_read_offmesh_link_count(nm);
 }
 
+/// @brief `NavMesh3D.TileSize` — the tile edge length used by O(tile) rebuilds.
+/// @details Every `Bake` now auto-tiles (extent/16, clamped); `BakeTiled`
+///          overrides explicitly. `Build`-constructed meshes report 0 (no
+///          voxel source to re-carve; obstacle edits refilter the mesh).
+double rt_navmesh3d_get_tile_size(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm && nm->tile_size > 0.0 ? nm->tile_size : 0.0;
+}
+
+/// @brief Does the segment (a -> b) correspond to a registered off-mesh link?
+/// @details Matches either link direction for bidirectional links using a
+///          0.25-unit endpoint tolerance (path corners are inserted at the
+///          exact link endpoints, so the tolerance only absorbs float
+///          round-trips). Writes the link's authored kind string (borrowed,
+///          may be NULL) to @p out_kind when non-NULL.
+int8_t rt_navmesh3d_segment_is_offmesh_link(void *obj,
+                                            const double *a,
+                                            const double *b,
+                                            rt_string *out_kind) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (out_kind)
+        *out_kind = NULL;
+    if (!nm || !a || !b || nm->offmesh_link_count <= 0 || !nm->offmesh_links)
+        return 0;
+    const double tol2 = 0.25 * 0.25;
+    for (int32_t i = 0; i < nm->offmesh_link_count; i++) {
+        const nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        double f[3] = {link->from[0], link->from[1], link->from[2]};
+        double t[3] = {link->to[0], link->to[1], link->to[2]};
+        double dfa = (f[0] - a[0]) * (f[0] - a[0]) + (f[1] - a[1]) * (f[1] - a[1]) +
+                     (f[2] - a[2]) * (f[2] - a[2]);
+        double dtb = (t[0] - b[0]) * (t[0] - b[0]) + (t[1] - b[1]) * (t[1] - b[1]) +
+                     (t[2] - b[2]) * (t[2] - b[2]);
+        int forward = dfa <= tol2 && dtb <= tol2;
+        int backward = 0;
+        if (!forward && link->bidirectional) {
+            double dfb = (f[0] - b[0]) * (f[0] - b[0]) + (f[1] - b[1]) * (f[1] - b[1]) +
+                         (f[2] - b[2]) * (f[2] - b[2]);
+            double dta = (t[0] - a[0]) * (t[0] - a[0]) + (t[1] - a[1]) * (t[1] - a[1]) +
+                         (t[2] - a[2]) * (t[2] - a[2]);
+            backward = dfb <= tol2 && dta <= tol2;
+        }
+        if (forward || backward) {
+            if (out_kind)
+                *out_kind = link->kind;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /// @brief Rebuild one tile after dynamic changes.
 /// @details Real tiled data ownership is future work; this conservative baseline refilters the
 /// preserved source triangles and rebuilds adjacency/off-mesh endpoint resolution for the whole

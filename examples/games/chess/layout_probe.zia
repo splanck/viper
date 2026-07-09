@@ -1,0 +1,140 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/layout_probe.zia
+// Purpose: Headless layout invariant probe for the Chess release UI.
+// Key invariants:
+//   - Menu controls, save-slot rows, settings rows, and pause buttons stay
+//     inside their parent cards.
+//   - Dense controls that share a card do not overlap each other.
+// Ownership/Lifetime:
+//   - Probe owns no runtime resources beyond temporary Rect values.
+// Links: examples/games/chess/ui/layout.zia
+//
+//===----------------------------------------------------------------------===//
+
+module layout_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./core/config";
+bind "./ui/layout";
+
+/// @brief Print a standard failure line for CTest PASS_REGULAR_EXPRESSION use.
+/// @param msg Short invariant name that failed.
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+/// @brief Assert a condition and emit a failure marker on false.
+/// @param cond Condition under test.
+/// @param msg Short invariant name used in the failure output.
+/// @return True when @p cond is true.
+func expect(cond: Boolean, msg: String) -> Boolean {
+    if !cond {
+        fail(msg);
+        return false;
+    }
+    return true;
+}
+
+/// @brief True when @p child is fully contained by @p parent.
+/// @param parent Bounding rectangle.
+/// @param child Rectangle expected to fit inside @p parent.
+/// @return True if all child edges are inside parent edges.
+func containsRect(parent: Rect, child: Rect) -> Boolean {
+    return child.x >= parent.x &&
+           child.y >= parent.y &&
+           child.x + child.w <= parent.x + parent.w &&
+           child.y + child.h <= parent.y + parent.h;
+}
+
+/// @brief True when two rectangles overlap with positive area.
+/// @param a First rectangle.
+/// @param b Second rectangle.
+/// @return True if the rectangles intersect.
+func overlaps(a: Rect, b: Rect) -> Boolean {
+    if a.x + a.w <= b.x { return false; }
+    if b.x + b.w <= a.x { return false; }
+    if a.y + a.h <= b.y { return false; }
+    if b.y + b.h <= a.y { return false; }
+    return true;
+}
+
+/// @brief Validate the main-menu layout and slot-row controls.
+/// @return True when every menu invariant holds.
+func checkMenu() -> Boolean {
+    var card = layout.menuCardRect();
+    if !expect(containsRect(card, layout.modeButtonRect(0)), "mode 0 inside") { return false; }
+    if !expect(containsRect(card, layout.modeButtonRect(1)), "mode 1 inside") { return false; }
+    if !expect(containsRect(card, layout.modeButtonRect(2)), "mode 2 inside") { return false; }
+    if !expect(containsRect(card, layout.sideButtonRect(0)), "side 0 inside") { return false; }
+    if !expect(containsRect(card, layout.sideButtonRect(1)), "side 1 inside") { return false; }
+    for i in 0..4 {
+        if !expect(containsRect(card, layout.difficultyButtonRect(i)), "difficulty inside") { return false; }
+    }
+    if !expect(containsRect(card, layout.startButtonRect()), "start inside") { return false; }
+    if !expect(containsRect(card, layout.continueButtonRect()), "continue inside") { return false; }
+    if !expect(containsRect(card, layout.puzzleButtonRect()), "puzzle inside") { return false; }
+    if !expect(containsRect(card, layout.analysisButtonRect()), "analysis inside") { return false; }
+    if !expect(containsRect(card, layout.settingsButtonRect()), "settings inside") { return false; }
+    for slot in 0..3 {
+        var label = layout.slotLabelRect(slot);
+        var load = layout.slotLoadButtonRect(slot);
+        var save = layout.slotSaveButtonRect(slot);
+        if !expect(containsRect(card, label), "slot label inside") { return false; }
+        if !expect(containsRect(card, load), "slot load inside") { return false; }
+        if !expect(containsRect(card, save), "slot save inside") { return false; }
+        if !expect(!overlaps(label, load), "slot label/load overlap") { return false; }
+        if !expect(!overlaps(load, save), "slot load/save overlap") { return false; }
+    }
+    return true;
+}
+
+/// @brief Validate the two-column settings layout.
+/// @return True when settings rows fit and do not overlap Back.
+func checkSettings() -> Boolean {
+    var card = layout.settingsCardRect();
+    var back = layout.settingsBackRect();
+    if !expect(containsRect(card, back), "settings back inside") { return false; }
+    for i in 0..13 {
+        var row = layout.settingsOptionRect(i);
+        if !expect(containsRect(card, row), "settings row inside") { return false; }
+        if !expect(!overlaps(row, back), "settings row/back overlap") { return false; }
+        for j in i + 1..13 {
+            if !expect(!overlaps(row, layout.settingsOptionRect(j)), "settings row overlap") { return false; }
+        }
+    }
+    return true;
+}
+
+/// @brief Validate board, side panel, and pause-dialog layouts.
+/// @return True when play-screen and pause-screen regions fit.
+func checkGameChrome() -> Boolean {
+    var screen = layout.rect(0, 0, WIN_W, WIN_H);
+    if !expect(containsRect(screen, layout.boardFrameRect()), "board frame inside screen") { return false; }
+    if !expect(containsRect(screen, layout.sidePanelRect()), "side panel inside screen") { return false; }
+    if !expect(!overlaps(layout.boardFrameRect(), layout.sidePanelRect()), "board/panel overlap") { return false; }
+
+    var dialog = layout.pauseDialogRect();
+    if !expect(containsRect(screen, dialog), "pause inside screen") { return false; }
+    for i in 0..10 {
+        var btn = layout.pauseButtonRect(i);
+        if !expect(containsRect(dialog, btn), "pause button inside") { return false; }
+        for j in i + 1..10 {
+            if !expect(!overlaps(btn, layout.pauseButtonRect(j)), "pause button overlap") { return false; }
+        }
+    }
+    return true;
+}
+
+/// @brief Probe entry point. Prints RESULT: ok only after all invariants pass.
+func main() {
+    if !checkMenu() { return; }
+    if !checkSettings() { return; }
+    if !checkGameChrome() { return; }
+    Terminal.Say("RESULT: ok");
+}

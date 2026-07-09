@@ -195,8 +195,8 @@ class HUD {
     ///        timer bars.  Top-anchored so it doesn't overlap
     ///        the action.
     expose func drawHUD(canvas: Canvas, hp: Integer, maxHp: Integer,
-                        score: Integer, lives: Integer, coins: Integer,
-                        levelNum: Integer, speedTimer: Integer,
+                        _score: Integer, lives: Integer, coins: Integer,
+                        _levelNum: Integer, speedTimer: Integer,
                         shieldHits: Integer, rapidTimer: Integer) {
         // Background panel
         hudPanel.Draw(canvas);
@@ -330,7 +330,7 @@ class HUD {
     ///        gem counter, lives.  Drawn separately so the
     ///        baseline HUD can show even on title screens that
     ///        don't yet need the full strip.
-    expose func drawExtendedHud(canvas: Canvas, pal: Palette,
+    expose func drawExtendedHud(canvas: Canvas, _pal: Palette,
                                  gems: Integer, loreCollected: Integer, loreTotal: Integer,
                                  currentLevel: Integer, biomeName: String) {
         // Gem counter (top-right area)
@@ -359,7 +359,7 @@ class HUD {
     ///        and the player's position.  Cheap to draw — one
     ///        rectangle outline + one dot — but huge for
     ///        navigation in big rooms.
-    expose func drawMiniMap(canvas: Canvas, pal: Palette,
+    expose func drawMiniMap(canvas: Canvas, _pal: Palette,
                              playerCol: Integer, playerRow: Integer,
                              levelW: Integer, levelH: Integer) {
         // Small rectangle in top-right corner showing level overview
@@ -445,7 +445,7 @@ class HUD {
     /// @brief Stack of powerup countdown bars in the bottom-
     ///        right.  Rebuilt every frame from the player's
     ///        active timer set; no state of its own.
-    expose func drawPowerupTimers(canvas: Canvas, pal: Palette,
+    expose func drawPowerupTimers(canvas: Canvas, _pal: Palette,
                                    speedTimer: Integer, rapidTimer: Integer,
                                    shieldActive: Boolean) {
         var barY = 42;

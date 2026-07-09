@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ui/renderer.zia
+// Purpose: Stateless Canvas renderer for the Chess board, menus, and dialogs.
+// Key invariants:
+//   - All interactive controls are drawn from layout.zia rectangles.
+//   - Board square colors are deterministic at every square center.
+// Ownership/Lifetime:
+//   - BoardRenderer stores only the Canvas handle; callers own game state.
+// Links: examples/games/chess/ui/layout.zia, examples/games/chess/ui/game.zia
+//
+//===----------------------------------------------------------------------===//
+
 module renderer;
 
 bind Viper.Graphics;
@@ -6,6 +24,7 @@ bind Clock = Viper.Time.Clock;
 bind Fmt = Viper.Text.Fmt;
 bind "../core/config";
 bind "../core/board";
+bind "../settings";
 bind "./pieces";
 bind "./theme";
 bind "./layout";
@@ -117,12 +136,17 @@ class BoardRenderer {
         canvas.BoxAlpha(0, 0, WIN_W, 108, theme.BG_NOISE, 34);
         canvas.BoxAlpha(0, WIN_H - 128, WIN_W, 128, 0x000000, 24);
 
-        var card = layout.menuCardRect();
-        drawMenuPreviewBoard(card.x - 210, card.y + 54);
+        drawMenuPreviewBoard(layout.heroBoardRect());
     }
 
-    hide func drawMenuPreviewBoard(px: Integer, py: Integer) {
-        var size = 32;
+    /// @brief Draw the decorative menu board preview inside @p preview.
+    /// @details The preview uses the same named layout rectangle as hit-test
+    ///          probes, avoiding the old hard-coded offset from menuCardRect.
+    /// @param preview Outer rectangle reserved for the mini board.
+    hide func drawMenuPreviewBoard(preview: Rect) {
+        var px = preview.x;
+        var py = preview.y;
+        var size = preview.w / 8;
         for r in 0..8 {
             for f in 0..8 {
                 var isLight = (r + f) % 2 == 0;
@@ -131,8 +155,8 @@ class BoardRenderer {
                 canvas.Box(px + f * size, py + r * size, size, size, col);
             }
         }
-        canvas.BoxAlpha(px - 8, py - 8, 272, 272, 0x000000, 64);
-        canvas.Frame(px - 6, py - 6, 268, 268, theme.BOARD_FRAME_IN);
+        canvas.BoxAlpha(px - 8, py - 8, preview.w + 16, preview.h + 16, 0x000000, 64);
+        canvas.Frame(px - 6, py - 6, preview.w + 12, preview.h + 12, theme.BOARD_FRAME_IN);
         canvas.BlitAlpha(px + 28, py + 132, pieces.getShadow(KING, true));
         canvas.BlitAlpha(px + 24, py + 126, pieces.getPiece(KING, true));
         canvas.BlitAlpha(px + 132, py + 60, pieces.getShadow(QUEEN, false));
@@ -143,31 +167,29 @@ class BoardRenderer {
 
     /// @brief Draw the 8×8 board, file/rank labels, and last-move /
     ///        hover overlays. Frame and double border drawn first.
-    expose func drawBoard(lastFrom: Integer, lastTo: Integer, hoverSq: Integer) {
+    expose func drawBoard(lastFrom: Integer, lastTo: Integer, hoverSq: Integer,
+                          boardTheme: Integer, highContrast: Boolean,
+                          showCoordinates: Boolean) {
         var frame = layout.boardFrameRect();
         var board = layout.boardRect();
         var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
+        var effectiveTheme = effectiveBoardTheme(boardTheme, highContrast);
+        var dark = boardDark(effectiveTheme);
 
         canvas.BoxAlpha(frame.x + 10, frame.y + 14, frame.w, frame.h, 0x000000, 96);
-        canvas.RoundBox(frame.x, frame.y, frame.w, frame.h, 14, theme.BOARD_FRAME_OUT);
-        canvas.BoxAlpha(frame.x + 3, frame.y + 3, frame.w - 6, 44, theme.BOARD_FRAME_IN, 82);
+        canvas.RoundBox(frame.x, frame.y, frame.w, frame.h, 14, boardFrameOut(effectiveTheme));
+        canvas.BoxAlpha(frame.x + 3, frame.y + 3, frame.w - 6, 44, boardFrameIn(effectiveTheme), 82);
         canvas.RoundFrame(frame.x, frame.y, frame.w, frame.h, 14, theme.ACCENT_GOLD_SOFT);
-        canvas.RoundFrame(frame.x + 2, frame.y + 2, frame.w - 4, frame.h - 4, 12, theme.BOARD_FRAME_IN);
+        canvas.RoundFrame(frame.x + 2, frame.y + 2, frame.w - 4, frame.h - 4, 12, boardFrameIn(effectiveTheme));
 
-        canvas.Box(board.x, board.y, board.w, board.h, theme.BOARD_DARK);
+        canvas.Box(board.x, board.y, board.w, board.h, dark);
         for r in 0..8 {
             for f in 0..8 {
                 var sq = r * 8 + f;
                 var bx = board.x + f * SQ_SIZE;
                 var by = board.y + r * SQ_SIZE;
                 var isLight = (r + f) % 2 == 0;
-                var sqCol = theme.BOARD_DARK;
-                if isLight { sqCol = theme.BOARD_LIGHT; }
-                if (r + f) % 2 == 1 {
-                    sqCol = theme.BOARD_DARK_ALT;
-                } else {
-                    sqCol = theme.BOARD_LIGHT_ALT;
-                }
+                var sqCol = boardSquareColor(effectiveTheme, isLight);
 
                 canvas.Box(bx, by, SQ_SIZE, SQ_SIZE, sqCol);
                 canvas.BoxAlpha(bx, by, SQ_SIZE, SQ_SIZE / 2, theme.ACCENT_CREAM, 14);
@@ -180,14 +202,14 @@ class BoardRenderer {
                     canvas.RoundFrame(bx + 6, by + 6, SQ_SIZE - 12, SQ_SIZE - 12, 10, theme.ACCENT_GOLD_SOFT);
                 }
 
-                if f == 0 {
+                if showCoordinates && f == 0 {
                     var rankLabel = Fmt.Int(8 - r);
                     var labelCol = theme.BOARD_LABEL;
                     if isLight { labelCol = theme.BOARD_LABEL_DIM; }
                     theme.drawTextScaled(canvas, bx + 6, by + 5, rankLabel, 1, labelCol);
                 }
 
-                if r == 7 {
+                if showCoordinates && r == 7 {
                     var labelCol = theme.BOARD_LABEL;
                     if isLight { labelCol = theme.BOARD_LABEL_DIM; }
                     var label = fileLabels.get(f);
@@ -201,8 +223,8 @@ class BoardRenderer {
             }
         }
 
-        canvas.Frame(board.x, board.y, board.w, board.h, theme.BOARD_FRAME_OUT);
-        canvas.Frame(board.x - 1, board.y - 1, board.w + 2, board.h + 2, theme.BOARD_FRAME_IN);
+        canvas.Frame(board.x, board.y, board.w, board.h, boardFrameOut(effectiveTheme));
+        canvas.Frame(board.x - 1, board.y - 1, board.w + 2, board.h + 2, boardFrameIn(effectiveTheme));
     }
 
     /// @brief Highlight the selected square and overlay legal-move
@@ -531,7 +553,19 @@ class BoardRenderer {
 
     /// @brief Main-menu screen: title card, mode/side/difficulty pickers,
     ///        START GAME button.
-    expose func drawMainMenu(gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean, mx: Integer, my: Integer, mouseDown: Boolean) {
+    expose func drawMainMenu(gameMode: Integer,
+                             aiDepth: Integer,
+                             playerIsWhite: Boolean,
+                             slot0Present: Boolean,
+                             slot1Present: Boolean,
+                             slot2Present: Boolean,
+                             canSaveCurrent: Boolean,
+                             timeControl: Integer,
+                             boardTheme: Integer,
+                             highContrast: Boolean,
+                             mx: Integer,
+                             my: Integer,
+                             mouseDown: Boolean) {
         drawMenuBackdrop();
 
         var card = layout.menuCardRect();
@@ -540,7 +574,7 @@ class BoardRenderer {
         theme.drawTextScaled(canvas, card.x + 42, card.y + 30, "VIPER", 2, theme.TEXT_MUTED);
         theme.drawTextScaled(canvas, card.x + 42, card.y + 56, "CHESS", 4, theme.ACCENT_GOLD);
         theme.drawTextClipped(canvas, card.x + 42, card.y + 104, card.w - 84,
-                              "Native Zia chess with local and engine play.",
+                              "Native Zia chess with saved games, puzzles, clocks, and engine play.",
                               1,
                               theme.TEXT_SECONDARY);
 
@@ -564,16 +598,16 @@ class BoardRenderer {
                                   !playerIsWhite);
 
         theme.drawTextScaled(canvas, card.x + 42, card.y + 306, "ENGINE LEVEL", 1, theme.TEXT_MUTED);
-        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(0), "EASY",
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(0), "BEGINNER",
                                   layout.contains(layout.difficultyButtonRect(0), mx, my),
                                   aiDepth == DIFF_EASY);
-        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(1), "MEDIUM",
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(1), "CLUB",
                                   layout.contains(layout.difficultyButtonRect(1), mx, my),
                                   aiDepth == DIFF_MEDIUM);
-        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(2), "HARD",
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(2), "TOURNEY",
                                   layout.contains(layout.difficultyButtonRect(2), mx, my),
                                   aiDepth == DIFF_HARD);
-        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(3), "EXPERT",
+        widgets.drawSegmentButton(canvas, layout.difficultyButtonRect(3), "MASTER",
                                   layout.contains(layout.difficultyButtonRect(3), mx, my),
                                   aiDepth == DIFF_EXPERT);
 
@@ -583,7 +617,205 @@ class BoardRenderer {
                            false,
                            true,
                            false);
-        theme.drawTextCenteredClipped(canvas, card.x + 42, card.y + 486, card.w - 84, "Press Enter to start.", 1, theme.TEXT_MUTED);
+        theme.drawTextClipped(canvas, card.x + 42, card.y + 488, 480,
+                              "Clock: " + settings.timeControlName(timeControl) +
+                              "   Board: " + displayBoardThemeName(boardTheme, highContrast),
+                              1,
+                              theme.TEXT_MUTED);
+
+        theme.drawTextScaled(canvas, card.x + 560, card.y + 118, "RELEASE MENU", 1, theme.TEXT_MUTED);
+        widgets.drawButtonEnabled(canvas, layout.continueButtonRect(), "CONTINUE",
+                                  layout.contains(layout.continueButtonRect(), mx, my),
+                                  mouseDown and layout.contains(layout.continueButtonRect(), mx, my),
+                                  false,
+                                  false,
+                                  false,
+                                  slot0Present);
+
+        drawMenuSlotRow(0, slot0Present, canSaveCurrent, mx, my, mouseDown);
+        drawMenuSlotRow(1, slot1Present, canSaveCurrent, mx, my, mouseDown);
+        drawMenuSlotRow(2, slot2Present, canSaveCurrent, mx, my, mouseDown);
+
+        widgets.drawButton(canvas, layout.puzzleButtonRect(), "PUZZLES",
+                           layout.contains(layout.puzzleButtonRect(), mx, my),
+                           mouseDown and layout.contains(layout.puzzleButtonRect(), mx, my),
+                           false,
+                           false,
+                           false);
+        widgets.drawButton(canvas, layout.analysisButtonRect(), "ANALYSIS",
+                           layout.contains(layout.analysisButtonRect(), mx, my),
+                           mouseDown and layout.contains(layout.analysisButtonRect(), mx, my),
+                           false,
+                           false,
+                           false);
+        widgets.drawButton(canvas, layout.settingsButtonRect(), "SETTINGS",
+                           layout.contains(layout.settingsButtonRect(), mx, my),
+                           mouseDown and layout.contains(layout.settingsButtonRect(), mx, my),
+                           false,
+                           false,
+                           false);
+        theme.drawTextClipped(canvas, card.x + 560, card.y + 548, 238,
+                              "Esc opens menu in-game. Ctrl+S quick-saves slot 1.",
+                              1,
+                              theme.TEXT_MUTED);
+        theme.drawTextCenteredClipped(canvas, card.x + 42, card.y + 604, card.w - 84, "Press Enter to start a configured match.", 1, theme.TEXT_MUTED);
+    }
+
+    /// @brief Draw one save-slot row in the main release menu.
+    /// @details Each row exposes independent Load and Save buttons. Load is
+    ///          disabled until the slot has persisted data; Save is disabled
+    ///          until the controller reports that a live or recently-active
+    ///          game exists.
+    /// @param idx Zero-based save slot index.
+    /// @param slotPresent True when SaveData has this slot.
+    /// @param canSaveCurrent True when saving the current board is meaningful.
+    /// @param mx Current mouse x coordinate.
+    /// @param my Current mouse y coordinate.
+    /// @param mouseDown True while the left mouse button is down.
+    hide func drawMenuSlotRow(idx: Integer,
+                              slotPresent: Boolean,
+                              canSaveCurrent: Boolean,
+                              mx: Integer,
+                              my: Integer,
+                              mouseDown: Boolean) {
+        var label = layout.slotLabelRect(idx);
+        var loadBtn = layout.slotLoadButtonRect(idx);
+        var saveBtn = layout.slotSaveButtonRect(idx);
+        theme.drawTextClipped(canvas, label.x, theme.textYInRect(label.y, label.h, 1),
+                              label.w, "S" + Fmt.Int(idx + 1), 1, theme.TEXT_MUTED);
+        widgets.drawButtonEnabled(canvas, loadBtn, "LOAD",
+                                  layout.contains(loadBtn, mx, my),
+                                  mouseDown and layout.contains(loadBtn, mx, my),
+                                  false,
+                                  false,
+                                  false,
+                                  slotPresent);
+        widgets.drawButtonEnabled(canvas, saveBtn, "SAVE",
+                                  layout.contains(saveBtn, mx, my),
+                                  mouseDown and layout.contains(saveBtn, mx, my),
+                                  false,
+                                  false,
+                                  false,
+                                  canSaveCurrent);
+    }
+
+    /// @brief Settings screen with direct toggle/cycle rows.
+    expose func drawSettingsMenu(boardTheme: Integer,
+                                 pieceTheme: Integer,
+                                 timeControl: Integer,
+                                 showLegalMoves: Boolean,
+                                 showCoordinates: Boolean,
+                                 showAttackMap: Boolean,
+                                 highContrast: Boolean,
+                                 reducedMotion: Boolean,
+                                 largeText: Boolean,
+                                 masterVolume: Integer,
+                                 musicVolume: Integer,
+                                 sfxVolume: Integer,
+                                 muted: Boolean,
+                                 mx: Integer,
+                                 my: Integer,
+                                 mouseDown: Boolean) {
+        drawMenuBackdrop();
+        var card = layout.settingsCardRect();
+        widgets.drawCard(canvas, card, theme.ACCENT_GOLD, true);
+
+        theme.drawTextScaled(canvas, card.x + 42, card.y + 36, "SETTINGS", 3, theme.ACCENT_GOLD);
+        theme.drawTextClipped(canvas, card.x + 42, card.y + 82, card.w - 84,
+                              "Click rows to cycle or toggle. Volume rows step by 10.",
+                              1,
+                              theme.TEXT_SECONDARY);
+
+        drawSettingRow(0, "Board Theme", settings.boardThemeName(boardTheme), mx, my, mouseDown);
+        drawSettingRow(1, "Piece Theme", settings.pieceThemeName(pieceTheme), mx, my, mouseDown);
+        drawSettingRow(2, "Clock", settings.timeControlName(timeControl), mx, my, mouseDown);
+        drawSettingRow(3, "Legal Moves", boolLabel(showLegalMoves), mx, my, mouseDown);
+        drawSettingRow(4, "Coordinates", boolLabel(showCoordinates), mx, my, mouseDown);
+        drawSettingRow(5, "Attack Map", boolLabel(showAttackMap), mx, my, mouseDown);
+        drawSettingRow(6, "High Contrast", boolLabel(highContrast), mx, my, mouseDown);
+        drawSettingRow(7, "Reduced Motion", boolLabel(reducedMotion), mx, my, mouseDown);
+        drawSettingRow(8, "Large Text", boolLabel(largeText), mx, my, mouseDown);
+        drawSettingRow(9, "Master Volume", Fmt.Int(masterVolume) + "%", mx, my, mouseDown);
+        drawSettingRow(10, "Music Volume", Fmt.Int(musicVolume) + "%", mx, my, mouseDown);
+        drawSettingRow(11, "SFX Volume", Fmt.Int(sfxVolume) + "%", mx, my, mouseDown);
+        drawSettingRow(12, "Muted", boolLabel(muted), mx, my, mouseDown);
+
+        widgets.drawButton(canvas, layout.settingsBackRect(), "BACK",
+                           layout.contains(layout.settingsBackRect(), mx, my),
+                           mouseDown and layout.contains(layout.settingsBackRect(), mx, my),
+                           false,
+                           true,
+                           false);
+    }
+
+    /// @brief In-game pause overlay.
+    expose func drawPauseOverlay(mx: Integer, my: Integer, mouseDown: Boolean) {
+        canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 165);
+        var dialog = layout.pauseDialogRect();
+        widgets.drawCard(canvas, dialog, theme.ACCENT_GOLD, true);
+        theme.drawTextCenteredClipped(canvas, dialog.x + 24, dialog.y + 28, dialog.w - 48, "PAUSED", 3, theme.ACCENT_GOLD);
+        widgets.drawButton(canvas, layout.pauseButtonRect(0), "RESUME",
+                           layout.contains(layout.pauseButtonRect(0), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(0), mx, my),
+                           false, true, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(1), "SAVE SLOT 1",
+                           layout.contains(layout.pauseButtonRect(1), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(1), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(2), "SAVE SLOT 2",
+                           layout.contains(layout.pauseButtonRect(2), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(2), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(3), "SAVE SLOT 3",
+                           layout.contains(layout.pauseButtonRect(3), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(3), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(4), "COPY FEN",
+                           layout.contains(layout.pauseButtonRect(4), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(4), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(5), "COPY PGN",
+                           layout.contains(layout.pauseButtonRect(5), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(5), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(6), "SETTINGS",
+                           layout.contains(layout.pauseButtonRect(6), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(6), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(7), "RESTART",
+                           layout.contains(layout.pauseButtonRect(7), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(7), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(8), "MAIN MENU",
+                           layout.contains(layout.pauseButtonRect(8), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(8), mx, my),
+                           false, false, false);
+        widgets.drawButton(canvas, layout.pauseButtonRect(9), "RESIGN",
+                           layout.contains(layout.pauseButtonRect(9), mx, my),
+                           mouseDown and layout.contains(layout.pauseButtonRect(9), mx, my),
+                           false, false, true);
+    }
+
+    hide func drawSettingRow(idx: Integer,
+                             label: String,
+                             value: String,
+                             mx: Integer,
+                             my: Integer,
+                             mouseDown: Boolean) {
+        var r = layout.settingsOptionRect(idx);
+        widgets.drawButton(canvas, r, "",
+                           layout.contains(r, mx, my),
+                           mouseDown and layout.contains(r, mx, my),
+                           false,
+                           false,
+                           false);
+        theme.drawTextClipped(canvas, r.x + 16, theme.textYInRect(r.y, r.h, 1), r.w / 2, label, 1, theme.TEXT_SECONDARY);
+        theme.drawTextRightClipped(canvas, r.x + r.w / 2, theme.textYInRect(r.y, r.h, 1), r.w / 2 - 16, value, 1, theme.TEXT_PRIMARY);
+    }
+
+    hide func boolLabel(v: Boolean) -> String {
+        if v { return "On"; }
+        return "Off";
     }
 
     /// @brief Modal game-over overlay with reason + winner + NEW/MENU.
@@ -609,6 +841,15 @@ class BoardRenderer {
     expose func drawThinkingIndicator() {
         var badge = layout.rect(layout.boardFrameRect().x + 420, layout.boardFrameRect().y - 20, 170, 28);
         widgets.drawBadge(canvas, badge, "ENGINE THINKING", theme.ACCENT_BLUE);
+    }
+
+    /// @brief Show attacked squares as a restrained tactical overlay.
+    expose func drawAttackMap(attacked: List[Integer]) {
+        for i in 0..attacked.length() {
+            var sq = attacked.get(i);
+            if sq < 0 || sq >= 64 { continue; }
+            canvas.BoxAlpha(squareX(sq), squareY(sq), SQ_SIZE, SQ_SIZE, theme.ACCENT_RED, 34);
+        }
     }
 
     hide func promoName(pieceType: Integer) -> String {
@@ -639,10 +880,10 @@ class BoardRenderer {
     }
 
     hide func difficultyString(aiDepth: Integer) -> String {
-        if aiDepth == DIFF_EASY   { return "EASY"; }
-        if aiDepth == DIFF_MEDIUM { return "MEDIUM"; }
-        if aiDepth == DIFF_HARD   { return "HARD"; }
-        return "EXPERT";
+        if aiDepth == DIFF_EASY   { return "BEGINNER"; }
+        if aiDepth == DIFF_MEDIUM { return "CLUB"; }
+        if aiDepth == DIFF_HARD   { return "TOURNAMENT"; }
+        return "MASTER";
     }
 
     hide func captureMaterialValue(captures: List[Integer]) -> Integer {
@@ -670,5 +911,78 @@ class BoardRenderer {
 
     hide func OUTER_MODE_X() -> Integer {
         return WIN_W / 2 - 190;
+    }
+
+    /// @brief Resolve the board theme after accessibility overrides.
+    /// @param boardTheme User-selected persistent board theme.
+    /// @param highContrast True to force the high-contrast palette.
+    /// @return Effective theme id used for board paint this frame.
+    hide func effectiveBoardTheme(boardTheme: Integer, highContrast: Boolean) -> Integer {
+        if highContrast { return BOARD_HIGH_CONTRAST; }
+        return boardTheme;
+    }
+
+    /// @brief Human-readable board-theme name after accessibility overrides.
+    /// @param boardTheme User-selected persistent board theme.
+    /// @param highContrast True to report high-contrast as the active view.
+    /// @return Display label for menu summaries.
+    hide func displayBoardThemeName(boardTheme: Integer, highContrast: Boolean) -> String {
+        return settings.boardThemeName(effectiveBoardTheme(boardTheme, highContrast));
+    }
+
+    /// @brief Color for a board square's center pixel.
+    /// @details The board render probe samples square centers and expects this
+    ///          exact alternating color. Decorative top-half highlights are
+    ///          layered away from the center sample.
+    /// @param boardTheme Effective board theme id.
+    /// @param isLight True for light-color squares.
+    /// @return RGB color used for the square fill.
+    hide func boardSquareColor(boardTheme: Integer, isLight: Boolean) -> Integer {
+        if isLight { return boardLightAlt(boardTheme); }
+        return boardDarkAlt(boardTheme);
+    }
+
+    hide func boardLight(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_SLATE { return 0xD7DEE0; }
+        if boardTheme == BOARD_MARBLE { return 0xECE7DA; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0xF4F4F4; }
+        if boardTheme == BOARD_CLASSIC { return 0xEEEED2; }
+        return theme.BOARD_LIGHT;
+    }
+
+    hide func boardDark(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_SLATE { return 0x58646B; }
+        if boardTheme == BOARD_MARBLE { return 0x9B9180; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0x222222; }
+        if boardTheme == BOARD_CLASSIC { return 0x769656; }
+        return theme.BOARD_DARK;
+    }
+
+    hide func boardLightAlt(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_SLATE { return 0xE8EEF0; }
+        if boardTheme == BOARD_MARBLE { return 0xF6F0E2; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0xFFFFFF; }
+        if boardTheme == BOARD_CLASSIC { return 0xF4F4DA; }
+        return theme.BOARD_LIGHT_ALT;
+    }
+
+    hide func boardDarkAlt(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_SLATE { return 0x4B5962; }
+        if boardTheme == BOARD_MARBLE { return 0x857B6F; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0x111111; }
+        if boardTheme == BOARD_CLASSIC { return 0x66884A; }
+        return theme.BOARD_DARK_ALT;
+    }
+
+    hide func boardFrameOut(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_MARBLE { return 0x4C4740; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0x000000; }
+        return theme.BOARD_FRAME_OUT;
+    }
+
+    hide func boardFrameIn(boardTheme: Integer) -> Integer {
+        if boardTheme == BOARD_MARBLE { return 0xC4B9A4; }
+        if boardTheme == BOARD_HIGH_CONTRAST { return 0xFFFFFF; }
+        return theme.BOARD_FRAME_IN;
     }
 }

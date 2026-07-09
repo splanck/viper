@@ -88,6 +88,7 @@ debug inspection.
 | Area | Status | Notes |
 | --- | --- | --- |
 | Text editing | Implemented | Multi-tab CodeEditor, undo/redo, selections, comments, formatting, folding, minimap option. |
+| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). The focused pane drives typing, IntelliSense, find, minimap, and status. Two different files are fully independent. v1 limits: exactly two panes; the same document opened in both panes uses independent buffers (edits do not live-sync — shared multi-view needs runtime support); the split is not yet restored across sessions. |
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
 | BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
@@ -256,13 +257,18 @@ Supported behavior:
 - Command-palette watch management for add, remove selected, refresh, and clear.
 - Variables panel rows are grouped through a `VirtualTree` model for Watches and
   Locals before being rendered into the current ListBox UI.
+- Composite locals (lists, seqs, maps) are expandable: clicking a `▸` row loads
+  its children lazily through the adapter's `variables` request and shows them
+  indented; nested containers expand one level at a time. Expansion state is kept
+  by variable name-path, so stepping re-opens the same nodes automatically.
 - Debug console output.
 
 Known debugger UX gaps:
 
-- Variables are grouped, but object values are not expandable because the debug
-  adapter currently returns flat local/watch values.
-- Watch management is command-palette based rather than a dedicated panel.
+- Class instances are shown as `<TypeName>` leaves; per-field expansion needs a
+  runtime reflection ABI and is not yet available.
+- Watch management is command-palette based; a dedicated in-panel watch toolbar
+  is planned alongside the bottom-panel layout work.
 - Breakpoint metadata editing exists, but the UX is still lightweight.
 - Session state could still be clearer while a long graceful stop/restart is
   waiting for process exit.
@@ -344,8 +350,12 @@ These gaps are current documentation, not a plan commitment:
 
 - Extend named toolbar icons when new workbench actions are added.
 - Move remaining prompt-style workflows into non-modal workbench overlays.
-- Make tool panels resizable and fully virtualized beyond the current bounded
-  stable-row model.
+- The editor and bottom tool panels share one vertical splitter: every panel tab
+  has the same height (no editor jump on switch), the boundary is drag-resizable
+  with a persisted default height, and the bottom area collapses when no panel is
+  open. Remaining: fully virtualize panel content beyond the bounded stable-row
+  model, and persist the exact dragged height (a configured percentage is stored
+  today; live drags persist within the session).
 - Add richer debugger object expansion and a dedicated watch-management panel.
 - Harden Source Control progress, conflict, credential, and recovery workflows.
 - Add real scene editing before advertising scene editor functionality.

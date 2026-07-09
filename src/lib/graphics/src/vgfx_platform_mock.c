@@ -251,6 +251,19 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 ///
 /// @note To simulate events, use vgfx_mock_inject_key_event(),
 ///       vgfx_mock_inject_mouse_move(), etc.
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    /* Events already pending: return immediately. */
+    if (platform->pending_head != platform->pending_tail)
+        return 1;
+    if (timeout_ms > 0)
+        vgfx_platform_sleep_ms(timeout_ms);
+    /* An event may have been injected concurrently while we slept. */
+    return platform->pending_head != platform->pending_tail ? 1 : 0;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
@@ -362,6 +375,38 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
 void vgfx_platform_hide_cursor(void) {}
 
 void vgfx_platform_show_cursor(void) {}
+
+/// @brief Mock display size: unavailable, so fullscreen creation falls back
+///        to the default window dimensions (deterministic for tests).
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    (void)out_w;
+    (void)out_h;
+    return 0;
+}
+
+/// @brief Mock relative mouse mode: always reports native raw support.
+/// @details Tests drive the accumulators deterministically through
+///          vgfx_mock_push_relative_delta(), exercising the exact code path
+///          real backends use (vgfx_internal_add_relative_delta +
+///          vgfx_get_relative_deltas drain).
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    (void)win;
+    (void)enabled;
+    return 1;
+}
+
+/// @brief Inject a synthetic relative mouse motion delta (test hook).
+/// @details Accumulates into the window's relative delta accumulators exactly
+///          like a platform raw-motion event would. Only meaningful while
+///          relative mouse mode is enabled on @p window.
+/// @param window Target window.
+/// @param dx Horizontal motion delta (sub-pixel capable).
+/// @param dy Vertical motion delta, positive = down (sub-pixel capable).
+void vgfx_mock_push_relative_delta(vgfx_window_t window, double dx, double dy) {
+    if (!window)
+        return;
+    vgfx_internal_add_relative_delta(window, dx, dy);
+}
 
 /// @brief Get the current mock time.
 /// @details Returns the current value of g_mock_time_ms.  Equivalent to
@@ -691,7 +736,15 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
 }
 
 void vgfx_platform_focus(struct vgfx_window *win) {
-    (void)win;
+    vgfx_platform_request_foreground(win);
+}
+
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    platform->focused = 1;
+    vgfx_internal_set_focus_state(win, 1);
 }
 
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {

@@ -316,9 +316,9 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `exit(code)` | `<stdlib.h>` | All | Terminate process |
 
 **Source locations:**
-- `src/runtime/core/rt_heap.c` - `atexit(rt_global_shutdown)` — master shutdown handler (GC finalizer sweep, audio, legacy context, string intern, GC tables, pool slabs)
+- `src/runtime/core/rt_heap.c` - `atexit(rt_global_shutdown)` master shutdown handler on non-Windows runtime paths (Windows builds skip CRT `atexit` and rely on process teardown)
 - `src/runtime/core/rt_term.c` - `atexit` for terminal raw-mode cleanup
-- `src/runtime/core/rt_args.c` - `rt_env_exit` wrapper
+- `src/runtime/core/rt_args.c` - `rt_env_exit` wrapper (`ExitProcess` on Windows native PE, `exit` elsewhere)
 - `src/runtime/core/rt_io.c` - Fatal error exit
 - `src/runtime/network/rt_network.c` - `atexit(rt_net_cleanup_wsa)` (Windows only)
 

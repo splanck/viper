@@ -67,6 +67,7 @@ module lore;
 
 bind Viper.Graphics;
 bind Viper.Game;
+bind Viper.Text.Fmt;
 bind "./config";
 bind "./palette";
 
@@ -168,6 +169,9 @@ class LoreSystem {
         // The Core lore
         addEntry("Final Chamber",
             "The Architect's central processing core. It's merged with the ancient machine. Shutting it down will free the planet — and strand me here forever. So be it.");
+
+        addCrewLogs();
+        initBestiary();
     }
 
     /// @brief Append one lore entry to the title/text lists.
@@ -184,8 +188,10 @@ class LoreSystem {
     ///        off the typewriter from char 0.
     expose func showEntry(index: Integer) {
         if index < 0 or index >= loreTitles.length() { return; }
-        // Mark as collected
-        collectedMask = collectedMask + (1 * index); // Simplified bitmask
+        var bit = bitForIndex(index);
+        if (collectedMask / bit) % 2 == 0 {
+            collectedMask = collectedMask + bit;
+        }
         displayActive = true;
         displayIndex = index;
         tw.Say(loreTexts.get(index), 30); // 30ms per character
@@ -261,7 +267,8 @@ class LoreSystem {
         var count = 0;
         var i = 0;
         while i < loreTitles.length() {
-            if collectedMask / (1 + i) > 0 { count = count + 1; }
+            var bit = bitForIndex(i);
+            if (collectedMask / bit) % 2 == 1 { count = count + 1; }
             i = i + 1;
         }
         return count;
@@ -280,6 +287,18 @@ class LoreSystem {
 
     /// @brief Restore from save.
     expose func setCollectedMask(mask: Integer) { collectedMask = mask; }
+
+    /// @brief Power-of-two bit for a zero-based lore/bestiary index.
+    hide func bitForIndex(index: Integer) -> Integer {
+        if index < 0 { return 0; }
+        var bit = 1;
+        var i = 0;
+        while i < index {
+            bit = bit * 2;
+            i = i + 1;
+        }
+        return bit;
+    }
 
     // =========================================================================
     // Bestiary — enemy descriptions unlocked by defeating them
@@ -365,11 +384,33 @@ class LoreSystem {
     /// @brief Mark an enemy type as "scanned".  Triggered by
     ///        the first kill of that type.  Idempotent.
     expose func unlockBestiaryEntry(enemyType: Integer) {
-        // Map enemy type to bestiary index (simplified)
+        // Map newer enemy enum values to the bestiary list.
         if enemyType >= 5 and enemyType <= 30 {
             var idx = enemyType - 5;
-            bestiaryMask = bestiaryMask + 1; // Simplified tracking
+            if idx >= 0 and idx < bestiaryNames.length() {
+                var bit = bitForIndex(idx);
+                if (bestiaryMask / bit) % 2 == 0 {
+                    bestiaryMask = bestiaryMask + bit;
+                }
+            }
         }
+    }
+
+    expose func getBestiaryMask() -> Integer { return bestiaryMask; }
+
+    expose func setBestiaryMask(mask: Integer) { bestiaryMask = mask; }
+
+    expose func getBestiaryTotal() -> Integer { return bestiaryNames.length(); }
+
+    expose func getBestiaryCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < bestiaryNames.length() {
+            var bit = bitForIndex(i);
+            if (bestiaryMask / bit) % 2 == 1 { count = count + 1; }
+            i = i + 1;
+        }
+        return count;
     }
 
     /// @brief Draw the bestiary tab — list of enemies + the
@@ -401,11 +442,15 @@ class LoreSystem {
         var listY = py + 60;
         while i < bestiaryNames.length() and listY < py + ph - 40 {
             var nameColor = Color.RGB(100, 110, 130);
+            var bit = bitForIndex(i);
+            var unlocked = (bestiaryMask / bit) % 2 == 1;
+            var rowName = "?????";
+            if unlocked { rowName = bestiaryNames.get(i); }
             if i == selectedIdx {
                 canvas.Box(px + 10, listY - 2, listW - 10, 22, Color.RGB(25, 30, 50));
                 nameColor = Color.RGB(255, 255, 255);
             }
-            canvas.Text(px + 16, listY, bestiaryNames.get(i), nameColor);
+            canvas.Text(px + 16, listY, rowName, nameColor);
             listY = listY + 24;
             i = i + 1;
         }
@@ -416,17 +461,88 @@ class LoreSystem {
 
         // Detail panel for selected entry
         if selectedIdx >= 0 and selectedIdx < bestiaryNames.length() {
-            canvas.TextScaled(detailX, py + 65, bestiaryNames.get(selectedIdx),
+            var selectedBit = bitForIndex(selectedIdx);
+            var selectedUnlocked = (bestiaryMask / selectedBit) % 2 == 1;
+            var selectedName = "?????";
+            var selectedDesc = "Defeat this organism to add its field notes.";
+            if selectedUnlocked {
+                selectedName = bestiaryNames.get(selectedIdx);
+                selectedDesc = bestiaryDescs.get(selectedIdx);
+            }
+            canvas.TextScaled(detailX, py + 65, selectedName,
                               Color.RGB(220, 200, 160), 2);
             canvas.Line(detailX, py + 95, px + pw - 30, py + 95,
                         Color.RGB(40, 50, 70));
 
             // Word-wrapped description (simplified — one paragraph)
-            canvas.Text(detailX, py + 110, bestiaryDescs.get(selectedIdx),
+            canvas.Text(detailX, py + 110, selectedDesc,
                         Color.RGB(160, 170, 190));
         }
 
         canvas.TextCenteredScaled(py + ph - 25, "UP/DOWN to browse, ESC to close",
+                                  Color.RGB(60, 70, 90), 1);
+    }
+
+    /// @brief Lore archive browser for the Extras menu.
+    expose func drawArchive(canvas: Canvas, selectedIdx: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 210);
+
+        var px = 90;
+        var py = 50;
+        var pw = SCREEN_W - 180;
+        var ph = SCREEN_H - 100;
+        canvas.Box(px, py, pw, ph, Color.RGB(12, 15, 25));
+        canvas.Frame(px, py, pw, ph, Color.RGB(70, 95, 150));
+
+        canvas.TextCenteredScaled(py + 14, "LORE ARCHIVE", Color.RGB(200, 220, 255), 3);
+        canvas.Text(px + pw - 150, py + 22,
+                    Int(getCollectedCount()) + " / " + Int(getTotalCount()),
+                    Color.RGB(140, 150, 170));
+        canvas.Line(px + 20, py + 52, px + pw - 20, py + 52, Color.RGB(40, 60, 90));
+
+        var listW = 330;
+        var detailX = px + listW + 26;
+        var startIdx = 0;
+        if selectedIdx > 14 { startIdx = selectedIdx - 14; }
+        var i = startIdx;
+        var y = py + 70;
+        while i < loreTitles.length() and y < py + ph - 42 {
+            var bit = bitForIndex(i);
+            var unlocked = (collectedMask / bit) % 2 == 1;
+            var rowName = "Undiscovered Signal";
+            var rowColor = Color.RGB(70, 75, 95);
+            if unlocked {
+                rowName = loreTitles.get(i);
+                rowColor = Color.RGB(170, 185, 220);
+            }
+            if i == selectedIdx {
+                canvas.Box(px + 12, y - 2, listW - 24, 22, Color.RGB(25, 32, 52));
+                rowColor = Color.RGB(255, 255, 255);
+            }
+            canvas.Text(px + 20, y, rowName, rowColor);
+            y = y + 24;
+            i = i + 1;
+        }
+
+        canvas.Line(px + listW, py + 60, px + listW, py + ph - 24,
+                    Color.RGB(40, 50, 70));
+
+        if selectedIdx >= 0 and selectedIdx < loreTitles.length() {
+            var sbit = bitForIndex(selectedIdx);
+            var seen = (collectedMask / sbit) % 2 == 1;
+            var title = "Undiscovered Signal";
+            var body = "Find and activate lore terminals in the world to decode this entry.";
+            if seen {
+                title = loreTitles.get(selectedIdx);
+                body = loreTexts.get(selectedIdx);
+            }
+            canvas.TextScaled(detailX, py + 76, title, Color.RGB(220, 230, 255), 2);
+            canvas.Line(detailX, py + 108, px + pw - 28, py + 108,
+                        Color.RGB(40, 50, 70));
+            canvas.Text(detailX, py + 126, body, Color.RGB(150, 165, 195));
+        }
+
+        canvas.TextCenteredScaled(py + ph - 25, "ESC to return to Extras",
                                   Color.RGB(60, 70, 90), 1);
     }
 

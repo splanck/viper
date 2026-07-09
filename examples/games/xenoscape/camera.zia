@@ -69,7 +69,7 @@ module camera;
 
 bind Viper.Graphics;
 // SmoothValue no longer needed — Camera.SmoothFollow provides built-in interpolation
-bind Viper.Math;
+bind Viper.Math.PerlinNoise as PerlinNoise;
 bind Viper.Core;
 bind "./config";
 bind "./palette";

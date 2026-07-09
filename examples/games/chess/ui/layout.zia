@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ui/layout.zia
+// Purpose: Shared rectangle layout helpers for the Chess Canvas UI.
+// Key invariants:
+//   - Renderer and input hit testing consume the same named rectangles.
+//   - All menu, settings, and dialog controls fit inside their parent card.
+// Ownership/Lifetime:
+//   - Pure helper module; callers own Rect values returned by constructors.
+// Links: examples/games/chess/ui/renderer.zia, examples/games/chess/ui/game.zia
+//
+//===----------------------------------------------------------------------===//
+
 module layout;
 
 bind "../core/config";
@@ -154,14 +172,18 @@ func moveListRect() -> Rect {
     return rect(card.x + 18, card.y + 56, card.w - 36, card.h - 72);
 }
 
+/// @brief Main-menu card containing match setup, save slots, and release actions.
 func menuCardRect() -> Rect {
-    return rect((WIN_W - 640) / 2, 128, 640, 520);
+    return rect((WIN_W - 840) / 2, 86, 840, 650);
 }
 
+/// @brief Decorative mini-board preview rectangle on the menu backdrop.
 func heroBoardRect() -> Rect {
-    return rect(94, 132, 264, 264);
+    var card = menuCardRect();
+    return rect(card.x - 210, card.y + 54, 256, 256);
 }
 
+/// @brief Match-mode segmented control rectangle by zero-based index.
 func modeButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
     var y = card.y + 176;
@@ -169,6 +191,7 @@ func modeButtonRect(idx: Integer) -> Rect {
     return rect(x, y, 158, 42);
 }
 
+/// @brief Player-side segmented control rectangle by zero-based index.
 func sideButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
     var y = card.y + 254;
@@ -176,6 +199,7 @@ func sideButtonRect(idx: Integer) -> Rect {
     return rect(x, y, 186, 42);
 }
 
+/// @brief Engine difficulty segmented control rectangle by zero-based index.
 func difficultyButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
     var y = card.y + 332;
@@ -183,29 +207,115 @@ func difficultyButtonRect(idx: Integer) -> Rect {
     return rect(x, y, 118, 40);
 }
 
+/// @brief Primary new-game button rectangle.
 func startButtonRect() -> Rect {
     var card = menuCardRect();
-    return rect(card.x + 42, card.y + 418, card.w - 84, 56);
+    return rect(card.x + 42, card.y + 418, 480, 56);
 }
 
+/// @brief Continue button rectangle; loads slot 1 when available.
+func continueButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 150, 238, 46);
+}
+
+/// @brief Label region for a save-slot row in the menu card.
+func slotLabelRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 214 + idx * 54, 56, 36);
+}
+
+/// @brief Load button rectangle for menu save slot `idx` (0..2).
+func slotLoadButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 622, card.y + 210 + idx * 54, 82, 40);
+}
+
+/// @brief Save button rectangle for menu save slot `idx` (0..2).
+func slotSaveButtonRect(idx: Integer) -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 714, card.y + 210 + idx * 54, 84, 40);
+}
+
+/// @brief Puzzle entry button rectangle in the release menu.
+func puzzleButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 380, 238, 42);
+}
+
+/// @brief Analysis-board entry button rectangle in the release menu.
+func analysisButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 434, 238, 42);
+}
+
+/// @brief Settings entry button rectangle in the release menu.
+func settingsButtonRect() -> Rect {
+    var card = menuCardRect();
+    return rect(card.x + 560, card.y + 488, 238, 42);
+}
+
+/// @brief Legacy slot-1 save button alias retained for older call sites.
+func menuSaveButtonRect() -> Rect {
+    return slotSaveButtonRect(0);
+}
+
+/// @brief Settings card containing two columns of option rows plus Back.
+func settingsCardRect() -> Rect {
+    return rect((WIN_W - 760) / 2, 86, 760, 650);
+}
+
+/// @brief Settings option row rectangle by zero-based index.
+func settingsOptionRect(idx: Integer) -> Rect {
+    var card = settingsCardRect();
+    var col = idx / 7;
+    var row = idx % 7;
+    var gap = 22;
+    var rowW = (card.w - 84 - gap) / 2;
+    var x = card.x + 42 + col * (rowW + gap);
+    return rect(x, card.y + 128 + row * 46, rowW, 34);
+}
+
+/// @brief Settings Back button rectangle.
+func settingsBackRect() -> Rect {
+    var card = settingsCardRect();
+    return rect(card.x + 42, card.y + card.h - 74, card.w - 84, 48);
+}
+
+/// @brief Pause dialog card rectangle.
+func pauseDialogRect() -> Rect {
+    return rect((WIN_W - 420) / 2, (WIN_H - 640) / 2, 420, 640);
+}
+
+/// @brief Pause-dialog button rectangle by zero-based command index.
+func pauseButtonRect(idx: Integer) -> Rect {
+    var dialog = pauseDialogRect();
+    return rect(dialog.x + 42, dialog.y + 92 + idx * 46, dialog.w - 84, 36);
+}
+
+/// @brief Pawn-promotion dialog card rectangle.
 func promoDialogRect() -> Rect {
     return rect((WIN_W - 420) / 2, (WIN_H - 210) / 2, 420, 210);
 }
 
+/// @brief Promotion option tile rectangle by zero-based index.
 func promoOptionRect(idx: Integer) -> Rect {
     var dialog = promoDialogRect();
     return rect(dialog.x + 22 + idx * 94, dialog.y + 86, 78, 90);
 }
 
+/// @brief Game-over dialog card rectangle.
 func gameOverDialogRect() -> Rect {
     return rect((WIN_W - 460) / 2, (WIN_H - 240) / 2, 460, 240);
 }
 
+/// @brief Game-over New Game button rectangle.
 func gameOverNewRect() -> Rect {
     var dialog = gameOverDialogRect();
     return rect(dialog.x + 44, dialog.y + 170, 160, 44);
 }
 
+/// @brief Game-over Main Menu button rectangle.
 func gameOverMenuRect() -> Rect {
     var dialog = gameOverDialogRect();
     return rect(dialog.x + 256, dialog.y + 170, 160, 44);

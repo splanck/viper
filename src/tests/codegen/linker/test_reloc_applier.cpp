@@ -807,6 +807,81 @@ int main() {
         CHECK(readLE32(layout.sections[0].data.data()) == 12);
     }
 
+    // --- F1: Mach-O x86_64 SIGNED_1 (corrected constant = 6) uses a 1-byte bias ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_macho_signed1.o",
+                           ObjFileFormat::MachO,
+                           code,
+                           "target",
+                           macho_x64::kSigned1,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x100001010ULL;
+        layout.globalSyms["target"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::X86_64, err));
+        // delta = 0x10 (16); extraBias for SIGNED_1 = 1 → 15.
+        CHECK(readLE32(layout.sections[0].data.data()) == 15);
+    }
+
+    // --- F9: an Abs64 fixup that overflows its input chunk into the next chunk is
+    //         rejected, even though it fits within the merged output section ---
+    {
+        std::vector<uint8_t> code(4, 0); // 4-byte chunk, smaller than the 8-byte fixup
+        auto caller = makeObj("test_chunk_overflow.o",
+                              ObjFileFormat::ELF,
+                              code,
+                              "gv",
+                              /*R_X86_64_64=*/1,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile dataObj;
+        dataObj.name = "data.o";
+        dataObj.format = ObjFileFormat::ELF;
+        dataObj.sections.push_back({});
+        ObjSection dataSec;
+        dataSec.name = ".data";
+        dataSec.data.resize(8, 0x42);
+        dataSec.writable = true;
+        dataSec.alloc = true;
+        dataSec.alignment = 8;
+        dataObj.sections.push_back(dataSec);
+        dataObj.symbols.push_back({});
+        ObjSymbol dataSym;
+        dataSym.name = "gv";
+        dataSym.binding = ObjSymbol::Global;
+        dataSym.sectionIndex = 1;
+        dataObj.symbols.push_back(dataSym);
+
+        std::vector<ObjFile> objs = {caller, dataObj};
+        auto layout = makeLayout(objs, 0x401000); // output section = 4 + 8 = 12 bytes
+
+        GlobalSymEntry entry;
+        entry.name = "gv";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        layout.globalSyms["gv"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("out of bounds") != std::string::npos);
+    }
+
     // --- COFF x86_64 REL32_4 includes the trailing-byte bias ---
     {
         std::vector<uint8_t> code(8, 0);

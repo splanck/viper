@@ -2,6 +2,7 @@ module debug_session;
 
 bind "bounded_output";
 bind "breakpoints";
+bind "var_model";
 
 bind Process = Viper.System.Process;
 bind Json = Viper.Text.Json;
@@ -45,9 +46,20 @@ class DebugSession {
 
     // Structured snapshot of the most recent stop, for the Variables and Call
     // Stack panels. Null when not stopped. Each is a parsed JSON array: frames of
-    // {function,path,line}; locals of {name,value,type}.
+    // {function,path,line}; locals of {name,value,type,varRef,childCount}.
     expose Any stopFrames;
     expose Any stopLocals;
+
+    // Children of the most recently expanded composite variable (a parsed JSON
+    // array of {name,value,type,varRef,childCount}), and the varRef they belong
+    // to. Populated by a `variables` event in response to RequestVariables. These
+    // are scoped to the current stop; the adapter's refs die on resume.
+    expose Any lastVarChildren;
+    expose Integer lastVarRef;
+
+    // Persistent expand/collapse state + per-stop child cache for the Variables
+    // panel tree (plan 13). Keyed by stable name-paths so expansion survives steps.
+    expose var_model.VarTreeState varTree;
 
     // Most recent watch/evaluate result (from an `evaluated` event).
     expose String lastEvalExpr;
@@ -91,6 +103,8 @@ class DebugSession {
         exitCode = -1;
         stopFrames = null;
         stopLocals = null;
+        lastVarChildren = null;
+        lastVarRef = 0;
         lastEvalExpr = "";
         lastEvalValue = "";
         lastEvalType = "";
@@ -104,6 +118,7 @@ class DebugSession {
         watchRefreshIndex = -1;
         watchRequestActive = false;
         watchRequestExpr = "";
+        varTree = new var_model.VarTreeState();
         ctrlBuf = "";
         dirty = false;
         terminateRequested = false;
@@ -140,6 +155,7 @@ class DebugSession {
         consoleText = "";
         programOutput = "";
         exitCode = -1;
+        if varTree != null { varTree.ClearAll(); } // fresh session starts collapsed
         ClearStopSnapshot();
         ClearEvaluationSnapshot();
         ClearWatchValues();
@@ -281,6 +297,22 @@ class DebugSession {
         return true;
     }
 
+    /// @brief Request one level of children of a composite variable (a local whose
+    ///        LocalVarRef is > 0, or a nested child's varRef). The children arrive
+    ///        asynchronously as a `variables` event and land in lastVarChildren on
+    ///        a later Poll(). Only valid while stopped; refs die on resume.
+    /// @param varRef Reference id advertised by a local/child at the current stop.
+    /// @param start First child index to fetch (0-based).
+    /// @param count Maximum number of children to fetch (adapter pages at <=100).
+    /// @return True when the request was sent.
+    expose func RequestVariables(varRef: Integer, start: Integer, count: Integer) -> Boolean {
+        if hasSession == false or terminated or processHandle == null { return false; }
+        if stopped == false or varRef <= 0 { return false; }
+        processHandle.WriteStdin("{\"type\":\"variables\",\"varRef\":" + varRef
+            + ",\"start\":" + start + ",\"count\":" + count + "}\n");
+        return true;
+    }
+
     /// @brief Add a persistent watch expression for this debug session.
     /// @details Duplicate and blank expressions are ignored. When execution is
     ///          currently stopped, adding the watch immediately starts a refresh
@@ -415,6 +447,11 @@ class DebugSession {
     hide func ClearStopSnapshot() {
         stopFrames = null;
         stopLocals = null;
+        lastVarChildren = null;
+        lastVarRef = 0;
+        // Child data is bound to the (now dead) stop's varRefs; drop it but keep
+        // the expanded set so the same nodes re-open at the next stop.
+        if varTree != null { varTree.InvalidateRefs(); }
         consoleText = "";
     }
 
@@ -681,6 +718,12 @@ class DebugSession {
                 pendingManualEvalExpr = "";
             }
             dirty = true;
+        } else if evType == "variables" {
+            // Lazy expansion result for a composite local/child (plan 25). The
+            // Variables panel (plan 13) merges these under the requested varRef.
+            lastVarRef = Viper.Collections.Map.GetInt(ev, "varRef");
+            lastVarChildren = Map.Get(ev, "vars");
+            dirty = true;
         } else if evType == "log" {
             // Logpoint: surfaced in the debug console; execution never paused.
             programOutput = AppendBoundedOutput(programOutput,
@@ -738,6 +781,99 @@ class DebugSession {
         var l = Seq.Get(stopLocals, i);
         return Viper.Collections.Map.GetStr(l, "name") + " = " + Viper.Collections.Map.GetStr(l, "value")
             + " : " + Viper.Collections.Map.GetStr(l, "type");
+    }
+
+    /// @brief Expansion ref for local @p i: >0 when it is a composite that can be
+    ///        expanded via RequestVariables, 0 for a leaf.
+    expose func LocalVarRef(i: Integer) -> Integer {
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return 0; }
+        return Viper.Collections.Map.GetInt(Seq.Get(stopLocals, i), "varRef");
+    }
+
+    /// @brief Number of children local @p i has when expandable, else 0.
+    expose func LocalChildCount(i: Integer) -> Integer {
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return 0; }
+        return Viper.Collections.Map.GetInt(Seq.Get(stopLocals, i), "childCount");
+    }
+
+    /// @brief Number of children returned by the most recent RequestVariables.
+    expose func VarChildCount() -> Integer {
+        if lastVarChildren == null { return 0; }
+        return Seq.get_Count(lastVarChildren);
+    }
+
+    /// @brief "name = value : type" label for expanded child @p i.
+    expose func VarChildLabel(i: Integer) -> String {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return ""; }
+        var c = Seq.Get(lastVarChildren, i);
+        return Viper.Collections.Map.GetStr(c, "name") + " = " + Viper.Collections.Map.GetStr(c, "value")
+            + " : " + Viper.Collections.Map.GetStr(c, "type");
+    }
+
+    /// @brief Expansion ref for expanded child @p i (>0 when it nests further).
+    expose func VarChildVarRef(i: Integer) -> Integer {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return 0; }
+        return Viper.Collections.Map.GetInt(Seq.Get(lastVarChildren, i), "varRef");
+    }
+
+    /// @brief Display name of expanded child @p i (e.g. "[0]" or a map key).
+    expose func VarChildName(i: Integer) -> String {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(lastVarChildren, i), "name");
+    }
+
+    /// @brief Display value of expanded child @p i.
+    expose func VarChildValue(i: Integer) -> String {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(lastVarChildren, i), "value");
+    }
+
+    /// @brief Type label of expanded child @p i.
+    expose func VarChildType(i: Integer) -> String {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(lastVarChildren, i), "type");
+    }
+
+    /// @brief Child count of expanded child @p i (>0 when it nests further).
+    expose func VarChildChildCount(i: Integer) -> Integer {
+        if lastVarChildren == null or i < 0 or i >= Seq.get_Count(lastVarChildren) { return 0; }
+        return Viper.Collections.Map.GetInt(Seq.Get(lastVarChildren, i), "childCount");
+    }
+
+    /// @brief Name of local @p i (the stable key used for tree paths).
+    expose func LocalName(i: Integer) -> String {
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(stopLocals, i), "name");
+    }
+
+    /// @brief Display value of local @p i.
+    expose func LocalValue(i: Integer) -> String {
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(stopLocals, i), "value");
+    }
+
+    /// @brief Type label of local @p i.
+    expose func LocalType(i: Integer) -> String {
+        if stopLocals == null or i < 0 or i >= Seq.get_Count(stopLocals) { return ""; }
+        return Viper.Collections.Map.GetStr(Seq.Get(stopLocals, i), "type");
+    }
+
+    /// @brief Synchronously fetch one level of children of @p varRef, blocking the
+    ///        caller until the reply arrives or a short budget elapses.
+    /// @details Only valid while stopped; the VM is paused so the adapter answers
+    ///          within milliseconds. On success the children are readable through
+    ///          VarChildCount / VarChild*(i) until the next fetch. Returns false if
+    ///          not stopped, the ref is invalid, or the reply did not arrive.
+    expose func FetchChildren(varRef: Integer, start: Integer, count: Integer) -> Boolean {
+        if RequestVariables(varRef, start, count) == false { return false; }
+        var waited = 0;
+        while waited < 2000 and lastVarRef != varRef {
+            Poll();
+            if lastVarRef == varRef { return true; }
+            Time.Clock.Sleep(2);
+            waited = waited + 2;
+        }
+        return lastVarRef == varRef;
     }
 
     /// @brief Trailing path component of @p p (handles both / and \\ separators).

@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: viperide/src/probes/smoke_probe.zia
+// Purpose: Smoke-test ViperIDE shell construction, rendering, activation, and
+//          idle event waiting.
+// Key invariants:
+//   - Probe exits with RESULT: ok on successful startup/render coverage.
+//   - Hidden/no-activate graphics modes remain usable for automated tests.
+//
+//===----------------------------------------------------------------------===//
+
 module smoke_probe;
 
 bind "../ui/app_shell";
@@ -43,6 +59,7 @@ func main() {
 
     shell.Build("ViperIDE Smoke", 960, 640);
     shell.CenterAndSize(72);
+    shell.Activate();
     engine.Setup(shell.workbench.editorRow);
 
     shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
@@ -106,6 +123,17 @@ func main() {
 
     shell.Poll();
     shell.Render();
+    shell.Activate();
+
+    // PollWait must return within its (clamped) timeout and not trap: a couple
+    // of short idle waits exercise the blocking-event-wait runtime path.
+    var i = 0;
+    while i < 3 {
+        shell.PollWait(5);
+        shell.Render();
+        i = i + 1;
+    }
+
     shell.Destroy();
 
     Terminal.Say("RESULT: ok");

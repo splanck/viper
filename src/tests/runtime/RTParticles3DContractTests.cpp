@@ -76,8 +76,24 @@ struct StubMaterial {
     int8_t double_sided = 0;
     int8_t additive_blend = 0;
     int32_t alpha_mode = kAlphaModeOpaque;
+    int8_t alpha_mode_auto = 0;
+    int32_t shadow_mode = 0;
+    int32_t texture_wrap_s = 0;
+    int32_t texture_wrap_t = 0;
+    int32_t texture_filter = 0;
+    int32_t anisotropy = 1;
+    int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6] = {{0.0}};
     int32_t shading_model = 0;
     double custom_params[8] = {0.0};
+    double depth_bias = 0.0;
+    double slope_scaled_depth_bias = 0.0;
+    double soft_fade = 0.0;
+    int8_t ssr_enabled = 0;
 };
 
 struct ParticlesView {
@@ -103,6 +119,13 @@ struct ParticlesView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
+    double stretch_k;      /* velocity-aligned stretch factor */
+    float trail_lifetime;  /* ribbon trail history seconds */
+    int32_t trail_segments;
+    float *trail_pos;
+    float *trail_age;
+    int16_t *trail_len;
+    int16_t *trail_head;
     double softness; /* Plan 10: soft-particle fade distance */
     void *texture;
     int32_t emitter_shape;

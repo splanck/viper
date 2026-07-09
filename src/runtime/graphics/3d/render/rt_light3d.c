@@ -12,7 +12,9 @@
 //   - Light types: 0=directional (uses direction), 1=point (uses position
 //     + attenuation), 2=ambient (uniform, uses color * intensity only),
 //     3=spot (uses both, plus inner/outer cone cosines).
-//   - Up to VGFX3D_MAX_LIGHTS (16) per Canvas3D, set via SetLight(canvas, slot, light).
+//   - Up to VGFX3D_MAX_LIGHTS (64) per Canvas3D, set via SetLight(canvas, slot, light).
+//     The fixed-forward path shades the first 16; the clustered path shades all 64
+//     (drops observable via Canvas3D.DroppedLightCount / ClusterOverflowCount).
 //   - Default intensity=1.0, attenuation=0.0 (no falloff for point lights).
 //   - Direction/position are borrowed Vec3 values, copied at creation time.
 //   - Spot cone angles are stored as cosines for cheap shader comparison.

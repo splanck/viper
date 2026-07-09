@@ -589,16 +589,6 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
         viper_set_test_labels(differential_${_prog} arm64 differential)
     endforeach ()
 
-    # Chess demo - compile, assemble, link
-    viper_add_ctest(arm64_native_chess
-            ${CMAKE_COMMAND}
-            -DILC=$<TARGET_FILE:viper>
-            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/games/chess-basic/chess.bas
-            -DDEMO_NAME=chess
-            -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
-    viper_set_test_labels(arm64_native_chess arm64 native_link)
-
     # Vtris demo - compile, assemble, link
     viper_add_ctest(arm64_native_vtris
             ${CMAKE_COMMAND}

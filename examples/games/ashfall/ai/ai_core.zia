@@ -1,0 +1,861 @@
+// =============================================================================
+// ai/ai_core.zia — the enemy manager: pool, perception, FSM, behavior, director
+// =============================================================================
+//
+// One data-oriented pool (parallel Lists, config.POOL_AI slots) runs all 11
+// archetypes + 3 bosses on a shared substrate: perception (sight cone + LOS
+// raycast + hearing off the event bus + an awareness meter), an int FSM
+// (IDLE/PATROL/SUSPICIOUS/SEARCHING/COMBAT/STAGGER/DISABLED/DEAD), per-behavior
+// steering + telegraphed attacks, and a squad director that caps engaged AIs and
+// hands out attack tokens. Enemies are shootable via LAYER_ENEMY colliders
+// (query-only, collision mask 0 so they never shove the player), take damage by
+// draining EV_DAMAGE(TGT_ENEMY), and hurt the player by posting EV_DAMAGE(
+// TGT_PLAYER). Movement is kinematic steering (the arena is open); NavAgent
+// replaces it once levels carry a navmesh.
+// =============================================================================
+module ai_core;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind "../config" as config;
+bind "../core/mathutil" as M;
+bind "../core/events" as events;
+bind "../core/rng" as rng;
+bind "./enemy_defs" as enemy_defs;
+bind "../weapons/ballistics" as ballistics;
+bind "../weapons/targets" as targets;
+bind "../assets/enemy_models" as enemy_models;
+
+// FSM states.
+var AI_IDLE: Integer = 0;
+var AI_PATROL: Integer = 1;
+var AI_SUSPICIOUS: Integer = 2;
+var AI_SEARCHING: Integer = 3;
+var AI_COMBAT: Integer = 4;
+var AI_STAGGER: Integer = 5;
+var AI_DISABLED: Integer = 6;
+var AI_DEAD: Integer = 7;
+
+class EnemyManager {
+    hide Game3D.World3D world;
+    hide G3D.Physics3DWorld phys;
+    hide enemy_defs.EnemyDefs defs;
+    hide targets.TargetRegistry reg;
+    hide ballistics.Ballistics ball;
+    hide events.EventBus bus;
+    hide rng.RngStream rngAi;
+
+    hide List[Integer] arch;
+    hide List[Float] x; hide List[Float] y; hide List[Float] z;
+    hide List[Float] yaw;
+    hide List[Float] health;
+    hide List[Integer] platesLeft;
+    hide List[Float] plateHp;
+    hide List[Float] shield;
+    hide List[Integer] state;
+    hide List[Float] awareness;
+    hide List[Float] stateTimer;
+    hide List[Float] atkCd;
+    hide List[Float] telegraphT;
+    hide List[Integer] telegraphKind;     // 0 idle, 1 winding
+    hide List[Float] disabledT;
+    hide List[Float] staggerT;
+    hide List[Integer] hasToken;
+    hide List[Integer] alive;
+    hide List[Integer] phase;
+    hide List[Integer] routeOn;
+    hide List[Float] routeX; hide List[Float] routeZ;
+    hide List[Float] bossPulseT;
+    hide List[Float] lastKnownX; hide List[Float] lastKnownZ;
+    hide List[Float] orbitPhase;
+    hide List[Float] repositionT;
+    hide List[Integer] flankChoice;
+    hide List[G3D.Physics3DBody] torso;
+    hide List[G3D.Physics3DBody] head;
+    hide List[G3D.Physics3DBody] weakBody;
+    hide List[Float] coverX; hide List[Float] coverZ; hide List[Float] coverFaceX; hide List[Float] coverFaceZ;
+    hide List[Float] flankX; hide List[Float] flankZ;
+    hide enemy_models.EnemyModels models;
+    hide Integer cap;
+    hide Integer killCount;
+    hide Integer attacksLanded;
+    hide Integer alertLevel;
+    hide Float healthScale;
+
+    expose func init() {
+        healthScale = 1.0;
+        arch = []; x = []; y = []; z = []; yaw = []; health = [];
+        platesLeft = []; plateHp = []; shield = []; state = []; awareness = [];
+        stateTimer = []; atkCd = []; telegraphT = []; telegraphKind = [];
+        disabledT = []; staggerT = []; hasToken = []; alive = []; phase = [];
+        routeOn = []; routeX = []; routeZ = []; bossPulseT = [];
+        lastKnownX = []; lastKnownZ = []; orbitPhase = [];
+        repositionT = []; flankChoice = [];
+        torso = []; head = []; weakBody = [];
+        coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
+        flankX = []; flankZ = [];
+        cap = config.POOL_AI;
+        killCount = 0;
+        attacksLanded = 0;
+        alertLevel = 0;
+    }
+
+    expose func setup(w: Game3D.World3D, defs0: enemy_defs.EnemyDefs, reg0: targets.TargetRegistry,
+                      ball0: ballistics.Ballistics, bus0: events.EventBus, rngAi0: rng.RngStream,
+                      models0: enemy_models.EnemyModels) {
+        world = w; phys = w.Physics; defs = defs0; reg = reg0; ball = ball0; bus = bus0; rngAi = rngAi0;
+        models = models0;
+        var i = 0;
+        while i < cap {
+            arch.Add(-1); x.Add(0.0); y.Add(0.0); z.Add(0.0); yaw.Add(0.0); health.Add(0.0);
+            platesLeft.Add(0); plateHp.Add(0.0); shield.Add(0.0); state.Add(AI_DEAD);
+            awareness.Add(0.0); stateTimer.Add(0.0); atkCd.Add(0.0); telegraphT.Add(0.0);
+            telegraphKind.Add(0); disabledT.Add(0.0); staggerT.Add(0.0); hasToken.Add(0);
+            alive.Add(0); phase.Add(0); routeOn.Add(0); routeX.Add(0.0); routeZ.Add(0.0);
+            bossPulseT.Add(0.0); lastKnownX.Add(0.0); lastKnownZ.Add(0.0); orbitPhase.Add(0.0);
+            repositionT.Add(0.0); flankChoice.Add(-1);
+            // Persistent colliders + nodes, reused across the pool.
+            var t = G3D.Physics3DBody.NewAABB(0.4, 0.9, 0.4, 0.0);
+            G3D.Physics3DBody.set_CollisionLayer(t, config.LAYER_ENEMY);
+            G3D.Physics3DBody.set_CollisionMask(t, 0);
+            G3D.Physics3DBody.SetPosition(t, 0.0, -100.0, 0.0);
+            G3D.Physics3DWorld.Add(phys, t);
+            var hd = G3D.Physics3DBody.NewAABB(0.28, 0.28, 0.28, 0.0);
+            G3D.Physics3DBody.set_CollisionLayer(hd, config.LAYER_ENEMY);
+            G3D.Physics3DBody.set_CollisionMask(hd, 0);
+            G3D.Physics3DBody.SetPosition(hd, 0.0, -100.0, 0.0);
+            G3D.Physics3DWorld.Add(phys, hd);
+            var wk = G3D.Physics3DBody.NewAABB(0.22, 0.22, 0.22, 0.0);
+            G3D.Physics3DBody.set_CollisionLayer(wk, config.LAYER_ENEMY);
+            G3D.Physics3DBody.set_CollisionMask(wk, 0);
+            G3D.Physics3DBody.SetPosition(wk, 0.0, -100.0, 0.0);
+            G3D.Physics3DWorld.Add(phys, wk);
+            torso.Add(t); head.Add(hd); weakBody.Add(wk);
+            i = i + 1;
+        }
+    }
+
+    /// Remove authored cover hints before loading a new level.
+    ///
+    /// Cover points are per-level metadata injected by LevelManager after the
+    /// LevelBuilder is built. Clearing them prevents ranged units from trying
+    /// to move toward stale coordinates after a scene transition.
+    expose func clearCovers() {
+        coverX = []; coverZ = []; coverFaceX = []; coverFaceZ = [];
+    }
+
+    expose func clearFlanks() {
+        flankX = []; flankZ = [];
+    }
+
+    /// Register a level-authored cover hint for ranged AI.
+    ///
+    /// The facing vector is stored for future animation/lean work; the current
+    /// behavior uses the point itself to pick believable firing pockets.
+    expose func addCover(x0: Float, z0: Float, faceX0: Float, faceZ0: Float) {
+        coverX.Add(x0); coverZ.Add(z0); coverFaceX.Add(faceX0); coverFaceZ.Add(faceZ0);
+    }
+
+    expose func addFlank(x0: Float, z0: Float) {
+        flankX.Add(x0); flankZ.Add(z0);
+    }
+
+    expose func flankCount() -> Integer { return flankX.Count; }
+
+    // --- Spawn / despawn -----------------------------------------------------
+    hide func freeSlot() -> Integer {
+        var i = 0;
+        while i < cap {
+            if alive[i] == 0 { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    expose func spawn(archetype: Integer, sx: Float, sz: Float) -> Integer {
+        var s = freeSlot();
+        if s < 0 { return -1; }
+        arch[s] = archetype;
+        x[s] = sx; z[s] = sz;
+        y[s] = 0.0;
+        if defs.isFlyer(archetype) { y[s] = 4.0; }
+        yaw[s] = 0.0;
+        health[s] = defs.hpOf(archetype) * healthScale;
+        platesLeft[s] = defs.platesOf(archetype);
+        plateHp[s] = defs.plateHpOf(archetype);
+        shield[s] = defs.shieldOf(archetype);
+        state[s] = AI_IDLE;
+        awareness[s] = 0.0;
+        stateTimer[s] = 0.0;
+        atkCd[s] = 0.0;
+        telegraphT[s] = 0.0;
+        telegraphKind[s] = 0;
+        disabledT[s] = 0.0;
+        staggerT[s] = 0.0;
+        hasToken[s] = 0;
+        phase[s] = 0;
+        bossPulseT[s] = 2.5;
+        routeOn[s] = 0;
+        routeX[s] = sx;
+        routeZ[s] = sz;
+        repositionT[s] = 0.0;
+        flankChoice[s] = -1;
+        alive[s] = 1;
+        orbitPhase[s] = rngAi.range(0.0, 6.28);
+        // Hand the slot's visuals to the model layer (GLB rig or composite).
+        models.onSpawn(s, archetype, defs.colRof(archetype), defs.colGof(archetype),
+                       defs.colBof(archetype));
+        placeBodies(s);
+        reg.register(torso[s], config.TGT_ENEMY, s, config.REGION_BODY);
+        reg.register(head[s], config.TGT_ENEMY, s, config.REGION_HEAD);
+        reg.register(weakBody[s], config.TGT_ENEMY, s, config.REGION_WEAKPOINT);
+        return s;
+    }
+
+    /// Assign an authored first-move waypoint to a live enemy slot.
+    ///
+    /// Level scripts use this for readable ingress lanes. The route is consumed
+    /// once the enemy reaches the waypoint, after which normal archetype combat
+    /// movement resumes.
+    expose func assignRoute(slot: Integer, rx: Float, rz: Float) {
+        if slot < 0 || slot >= cap { return; }
+        if alive[slot] == 0 { return; }
+        routeOn[slot] = 1;
+        routeX[slot] = rx;
+        routeZ[slot] = rz;
+    }
+
+    // Probe helper: point an enemy toward a world point (deterministic detection).
+    expose func devFace(slot: Integer, tx: Float, tz: Float) {
+        if slot < 0 || slot >= cap { return; }
+        yaw[slot] = M.toDeg(Math.Atan2(tx - x[slot], 0.0 - (tz - z[slot])));
+    }
+
+    hide func placeBodies(s: Integer) {
+        // The slot may have been freed mid-update (kamikaze detonation).
+        if alive[s] == 0 { return; }
+        var by = y[s] + 0.9;
+        var hy = y[s] + 1.85;
+        G3D.Physics3DBody.SetPosition(torso[s], x[s], by, z[s]);
+        G3D.Physics3DBody.SetPosition(head[s], x[s], hy, z[s]);
+        var backX = 0.0 - Math.Sin(M.toRad(yaw[s])) * 0.42;
+        var backZ = Math.Cos(M.toRad(yaw[s])) * 0.42;
+        G3D.Physics3DBody.SetPosition(weakBody[s], x[s] + backX, y[s] + 1.25, z[s] + backZ);
+        var hpFrac = 1.0;
+        var mx = defs.hpOf(arch[s]);
+        if mx > 0.5 { hpFrac = health[s] / mx; }
+        models.place(s, arch[s], x[s], y[s], z[s], yaw[s], state[s], telegraphKind[s],
+                     hpFrac, phase[s]);
+    }
+
+    hide func despawn(s: Integer) {
+        alive[s] = 0;
+        arch[s] = -1;
+        routeOn[s] = 0;
+        reg.unregisterEntity(config.TGT_ENEMY, s);
+        G3D.Physics3DBody.SetPosition(torso[s], 0.0, -100.0, 0.0);
+        G3D.Physics3DBody.SetPosition(head[s], 0.0, -100.0, 0.0);
+        G3D.Physics3DBody.SetPosition(weakBody[s], 0.0, -100.0, 0.0);
+        models.onDespawn(s);
+    }
+
+    expose func clearAll() {
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 { despawn(i); }
+            i = i + 1;
+        }
+        killCount = 0;
+        attacksLanded = 0;
+        alertLevel = 0;
+    }
+
+    // --- Accessors (probes) --------------------------------------------------
+    expose func aliveCount() -> Integer {
+        var n = 0; var i = 0;
+        while i < cap { n = n + alive[i]; i = i + 1; }
+        return n;
+    }
+    expose func nearestAliveTo(px: Float, pz: Float) -> Integer {
+        var best = -1;
+        var bestD = 1000000.0;
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 {
+                var d = M.distXZ(x[i], z[i], px, pz);
+                if d < bestD { bestD = d; best = i; }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+    expose func setHealthScale(sc: Float) { if sc > 0.1 { healthScale = sc; } }
+    expose func killCountTotal() -> Integer { return killCount; }
+    expose func attacksLandedTotal() -> Integer { return attacksLanded; }
+    expose func alertLevelNow() -> Integer { return alertLevel; }
+    expose func stateOf(s: Integer) -> Integer { return state[s]; }
+    expose func awarenessOf(s: Integer) -> Float { return awareness[s]; }
+    expose func healthOf(s: Integer) -> Float { return health[s]; }
+    expose func isAlive(s: Integer) -> Boolean { return alive[s] == 1; }
+    expose func archOf(s: Integer) -> Integer { return arch[s]; }
+    expose func posX(s: Integer) -> Float { return x[s]; }
+    expose func posZ(s: Integer) -> Float { return z[s]; }
+    expose func maxAwareness() -> Float {
+        var mx = 0.0; var i = 0;
+        while i < cap {
+            if alive[i] == 1 && awareness[i] > mx { mx = awareness[i]; }
+            i = i + 1;
+        }
+        return mx;
+    }
+    expose func engagedCount() -> Integer {
+        var n = 0; var i = 0;
+        while i < cap {
+            if alive[i] == 1 && state[i] == AI_COMBAT && hasToken[i] == 1 { n = n + 1; }
+            i = i + 1;
+        }
+        return n;
+    }
+
+    // Probe helper: kill every live enemy through the normal death path
+    // (counts kills, posts EV_KILL/drops), so CLEAR/KILL objectives resolve.
+    expose func devKillAll() {
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 { killSelf(i); }
+            i = i + 1;
+        }
+    }
+
+    // --- Main update ---------------------------------------------------------
+    // px/py/pz = player chest position; playerNoise = current noise radius.
+    expose func update(dt: Float, px: Float, py: Float, pz: Float, playerAlive: Boolean) {
+        // Director: recompute token grants first.
+        grantTokens(px, pz);
+        // Hearing pass (reads this frame's events before they drain).
+        hearing();
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 {
+                updateOne(i, dt, px, py, pz, playerAlive);
+            }
+            i = i + 1;
+        }
+        models.update(dt);
+    }
+
+    hide func updateOne(s: Integer, dt: Float, px: Float, py: Float, pz: Float, playerAlive: Boolean) {
+        // Timers.
+        if atkCd[s] > 0.0 { atkCd[s] = atkCd[s] - dt; }
+        if repositionT[s] > 0.0 {
+            repositionT[s] = repositionT[s] - dt;
+            if repositionT[s] <= 0.0 { flankChoice[s] = -1; }
+        }
+        if staggerT[s] > 0.0 {
+            staggerT[s] = staggerT[s] - dt;
+            if staggerT[s] <= 0.0 && state[s] == AI_STAGGER { state[s] = AI_COMBAT; }
+            placeBodies(s);
+            return;
+        }
+        if disabledT[s] > 0.0 {
+            disabledT[s] = disabledT[s] - dt;
+            if disabledT[s] <= 0.0 && state[s] == AI_DISABLED { state[s] = AI_COMBAT; }
+            placeBodies(s);
+            return;
+        }
+
+        var dist = M.distXZ(x[s], z[s], px, pz);
+
+        // Perception + awareness.
+        var seen = false;
+        if playerAlive { seen = canSee(s, px, py, pz, dist); }
+        updateAwareness(s, dt, seen, px, pz);
+
+        // FSM.
+        stateTimer[s] = stateTimer[s] + dt;
+        if state[s] == AI_IDLE || state[s] == AI_PATROL {
+            // Idle scan: slowly sweep so a player wandering into the cone is spotted.
+            yaw[s] = M.wrapDeg(yaw[s] + 45.0 * dt);
+        } else if state[s] == AI_COMBAT || state[s] == AI_SEARCHING || state[s] == AI_SUSPICIOUS {
+            behave(s, dt, px, py, pz, dist, seen, playerAlive);
+        }
+        placeBodies(s);
+    }
+
+    // --- Perception ----------------------------------------------------------
+    hide func canSee(s: Integer, px: Float, py: Float, pz: Float, dist: Float) -> Boolean {
+        var a = arch[s];
+        if dist > defs.sightRangeOf(a) { return false; }
+        // View cone (turrets/searchers face where they look; others toward player once alert).
+        var toX = px - x[s];
+        var toZ = pz - z[s];
+        var tl = Math.Sqrt(toX * toX + toZ * toZ);
+        if tl < 0.01 { return true; }
+        toX = toX / tl; toZ = toZ / tl;
+        var fx = Math.Sin(M.toRad(yaw[s]));
+        var fz = 0.0 - Math.Cos(M.toRad(yaw[s]));
+        var d = fx * toX + fz * toZ;
+        if d < defs.coneCosOf(a) { return false; }
+        // LOS: ray from enemy eye to player chest; blocked only by world geometry.
+        var ex = x[s]; var ey = y[s] + 1.5; var ez = z[s];
+        var dx = px - ex; var dy = py - ey; var dz = pz - ez;
+        var len = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        if len < 0.01 { return true; }
+        var origin = Math.Vec3.New(ex, ey, ez);
+        var dir = Math.Vec3.New(dx / len, dy / len, dz / len);
+        var hit = phys.Raycast(origin, dir, len - 0.3, config.LAYER_WORLD);
+        return hit == null;
+    }
+
+    hide func updateAwareness(s: Integer, dt: Float, seen: Boolean, px: Float, pz: Float) {
+        if seen {
+            awareness[s] = M.clampf(awareness[s] + 140.0 * dt, 0.0, 100.0);
+            lastKnownX[s] = px; lastKnownZ[s] = pz;
+            // Face the player when aware.
+            yaw[s] = M.toDeg(Math.Atan2(px - x[s], 0.0 - (pz - z[s])));
+        } else {
+            awareness[s] = M.clampf(awareness[s] - 24.0 * dt, 0.0, 100.0);
+        }
+        // Threshold transitions.
+        if awareness[s] >= 100.0 {
+            if state[s] != AI_COMBAT && state[s] != AI_STAGGER && state[s] != AI_DISABLED {
+                enterCombat(s);
+            }
+        } else if awareness[s] >= 70.0 {
+            if state[s] == AI_IDLE || state[s] == AI_PATROL { state[s] = AI_SEARCHING; }
+        } else if awareness[s] >= 35.0 {
+            if state[s] == AI_IDLE || state[s] == AI_PATROL { state[s] = AI_SUSPICIOUS; }
+        }
+    }
+
+    hide func enterCombat(s: Integer) {
+        state[s] = AI_COMBAT;
+        stateTimer[s] = 0.0;
+        if alertLevel < 1 { alertLevel = 1; }
+        bus.pushKind(config.EV_ALERT_RAISED, s, arch[s]);
+        // Broadcast to squad: nearby idle enemies go SEARCHING toward the sighting.
+        var i = 0;
+        while i < cap {
+            if alive[i] == 1 && i != s && state[i] == AI_IDLE {
+                if M.distXZ(x[i], z[i], x[s], z[s]) < 30.0 {
+                    state[i] = AI_SEARCHING;
+                    lastKnownX[i] = lastKnownX[s]; lastKnownZ[i] = lastKnownZ[s];
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // --- Hearing -------------------------------------------------------------
+    hide func hearing() {
+        var n = bus.getCount();
+        var e = 0;
+        while e < n {
+            var k = bus.kindAt(e);
+            if k == config.EV_GUNSHOT || k == config.EV_EXPLOSION || k == config.EV_DECOY {
+                var loud = bus.bAt(e) + 0.0;
+                if k == config.EV_EXPLOSION { loud = 40.0; }
+                var nx = bus.xAt(e); var nz = bus.zAt(e);
+                var i = 0;
+                while i < cap {
+                    if alive[i] == 1 && state[i] != AI_COMBAT && state[i] != AI_DEAD {
+                        var d = M.distXZ(x[i], z[i], nx, nz);
+                        if d < loud {
+                            awareness[i] = M.clampf(awareness[i] + 40.0, 0.0, 100.0);
+                            lastKnownX[i] = nx; lastKnownZ[i] = nz;
+                            if state[i] == AI_IDLE || state[i] == AI_PATROL { state[i] = AI_SEARCHING; }
+                        }
+                    }
+                    i = i + 1;
+                }
+            }
+            e = e + 1;
+        }
+    }
+
+    // --- Behavior dispatch ---------------------------------------------------
+    hide func behave(s: Integer, dt: Float, px: Float, py: Float, pz: Float,
+                     dist: Float, seen: Boolean, playerAlive: Boolean) {
+        var a = arch[s];
+        var bc = defs.behaviorOf(a);
+        if state[s] == AI_SEARCHING || state[s] == AI_SUSPICIOUS {
+            // Move to the last known position; give up after a while.
+            moveToward(s, dt, lastKnownX[s], lastKnownZ[s], defs.speedOf(a) * 0.6);
+            if M.distXZ(x[s], z[s], lastKnownX[s], lastKnownZ[s]) < 1.5 && seen == false {
+                if stateTimer[s] > 4.0 { state[s] = AI_IDLE; awareness[s] = 0.0; }
+            }
+            return;
+        }
+        // COMBAT behavior by class.
+        if bc == enemy_defs.BC_MELEE {
+            combatMelee(s, dt, px, pz, dist, playerAlive);
+        } else if bc == enemy_defs.BC_KAMIKAZE {
+            combatKamikaze(s, dt, px, py, pz, dist, playerAlive);
+        } else if bc == enemy_defs.BC_RANGED {
+            combatRanged(s, dt, px, pz, dist, seen, playerAlive);
+        } else if bc == enemy_defs.BC_FLYER {
+            combatFlyer(s, dt, px, pz, dist, seen, playerAlive);
+        } else if bc == enemy_defs.BC_TURRET {
+            combatTurret(s, dt, px, pz, dist, seen, playerAlive);
+        } else if bc == enemy_defs.BC_SWARM {
+            combatMelee(s, dt, px, pz, dist, playerAlive);
+        } else if bc == enemy_defs.BC_BOSS {
+            combatBoss(s, dt, px, pz, dist, seen, playerAlive);
+        }
+    }
+
+    hide func moveToward(s: Integer, dt: Float, tx: Float, tz: Float, speed: Float) {
+        var gx = tx;
+        var gz = tz;
+        if routeOn[s] == 1 {
+            var rd = M.distXZ(x[s], z[s], routeX[s], routeZ[s]);
+            if rd > 1.2 {
+                gx = routeX[s];
+                gz = routeZ[s];
+            } else {
+                routeOn[s] = 0;
+            }
+        }
+        var dx = gx - x[s]; var dz = gz - z[s];
+        var d = Math.Sqrt(dx * dx + dz * dz);
+        if d < 0.05 { return; }
+        var step = speed * dt;
+        if step > d { step = d; }
+        x[s] = x[s] + dx / d * step;
+        z[s] = z[s] + dz / d * step;
+        yaw[s] = M.toDeg(Math.Atan2(dx, 0.0 - dz));
+    }
+
+    // Common: begin a telegraphed attack, then strike when the wind-up elapses.
+    hide func tryAttack(s: Integer, dt: Float, px: Float, pz: Float,
+                        inRange: Boolean, dmgKind: Integer) -> Boolean {
+        var a = arch[s];
+        if telegraphKind[s] == 1 {
+            telegraphT[s] = telegraphT[s] - dt;
+            if telegraphT[s] <= 0.0 {
+                telegraphKind[s] = 0;
+                // Strike: deal damage to the player (LOS-gated for ranged).
+                strikePlayer(s, px, pz, dmgKind);
+                atkCd[s] = defs.atkCooldownOf(a);
+                return true;
+            }
+            return false;
+        }
+        if inRange && atkCd[s] <= 0.0 && hasToken[s] == 1 {
+            telegraphKind[s] = 1;
+            telegraphT[s] = defs.telegraphOf(a);
+        }
+        return false;
+    }
+
+    hide func strikePlayer(s: Integer, px: Float, pz: Float, dmgKind: Integer) {
+        var a = arch[s];
+        var dmg = defs.atkDamageOf(a);
+        var dirDeg = M.toDeg(Math.Atan2(x[s] - px, 0.0 - (z[s] - pz)));
+        bus.push(config.EV_DAMAGE, config.TGT_PLAYER, s, config.REGION_BODY, dmg, dirDeg, dmgKind + 0.0);
+        attacksLanded = attacksLanded + 1;
+    }
+
+    hide func combatMelee(s: Integer, dt: Float, px: Float, pz: Float,
+                          dist: Float, playerAlive: Boolean) {
+        var a = arch[s];
+        var range = defs.atkRangeOf(a);
+        if dist > range * 0.9 {
+            moveToward(s, dt, px, pz, defs.speedOf(a));
+        }
+        if playerAlive {
+            tryAttack(s, dt, px, pz, dist <= range, config.DMG_MELEE);
+        }
+    }
+
+    hide func combatKamikaze(s: Integer, dt: Float, px: Float, py: Float, pz: Float,
+                             dist: Float, playerAlive: Boolean) {
+        var a = arch[s];
+        moveToward(s, dt, px, pz, defs.speedOf(a));
+        if dist <= defs.atkRangeOf(a) && playerAlive {
+            detonate(s, px, py, pz);
+        }
+    }
+
+    hide func detonate(s: Integer, px: Float, py: Float, pz: Float) {
+        var a = arch[s];
+        var r = defs.blastRof(a);
+        // Player damage by proximity.
+        var d = M.dist3(x[s], y[s] + 0.9, z[s], px, py, pz);
+        if d < r {
+            var falloff = M.clampf(1.0 - d / r, 0.0, 1.0);
+            var dirDeg = M.toDeg(Math.Atan2(x[s] - px, 0.0 - (z[s] - pz)));
+            bus.push(config.EV_DAMAGE, config.TGT_PLAYER, s, config.REGION_BODY,
+                     defs.atkDamageOf(a) * falloff, dirDeg, config.DMG_EXPLOSION + 0.0);
+        }
+        // Chain damage to nearby machines (and dummies) through the blast pipeline.
+        ball.blast(x[s], y[s] + 0.9, z[s], r, defs.atkDamageOf(a), config.DMG_EXPLOSION);
+        killSelf(s);
+    }
+
+    hide func combatRanged(s: Integer, dt: Float, px: Float, pz: Float,
+                           dist: Float, seen: Boolean, playerAlive: Boolean) {
+        var a = arch[s];
+        var band = defs.atkRangeOf(a);
+        var cover = bestCoverFor(s, px, pz, band);
+        var flank = bestFlankFor(s, px, pz, band);
+        // Hold a firing band: approach if too far, back off if too close.
+        if dist > band { moveToward(s, dt, px, pz, defs.speedOf(a)); }
+        else if cover >= 0 && dist < band * 0.9 {
+            moveToward(s, dt, coverX[cover], coverZ[cover], defs.speedOf(a) * 0.78);
+        } else if dist < band * 0.4 {
+            moveToward(s, dt, x[s] * 2.0 - px, z[s] * 2.0 - pz, defs.speedOf(a) * 0.6);
+        } else {
+            if flankChoice[s] < 0 && flank >= 0 && repositionT[s] <= 0.0 {
+                flankChoice[s] = flank;
+                repositionT[s] = 2.2;
+            }
+            if flankChoice[s] >= 0 {
+                var fc = flankChoice[s];
+                if M.distXZ(x[s], z[s], flankX[fc], flankZ[fc]) > 1.3 {
+                    moveToward(s, dt, flankX[fc], flankZ[fc], defs.speedOf(a) * 0.55);
+                } else {
+                    flankChoice[s] = -1;
+                    repositionT[s] = 1.5;
+                }
+            }
+        }
+        if playerAlive && seen {
+            tryAttack(s, dt, px, pz, dist <= band, config.DMG_HITSCAN);
+        }
+    }
+
+    /// Pick the nearest useful authored cover point for a ranged enemy.
+    ///
+    /// The score favors points the enemy can reach quickly while avoiding cover
+    /// that sits too close to the player, which would make the unit charge into
+    /// melee range instead of taking a firing pocket.
+    hide func bestCoverFor(s: Integer, px: Float, pz: Float, band: Float) -> Integer {
+        var best = -1;
+        var bestScore = 1000000.0;
+        var i = 0;
+        while i < coverX.Count {
+            var pd = M.distXZ(coverX[i], coverZ[i], px, pz);
+            if pd > band * 0.35 && pd < band * 1.35 {
+                var ed = M.distXZ(coverX[i], coverZ[i], x[s], z[s]);
+                var prefer = M.absf(pd - band * 0.72);
+                var score = ed + prefer * 0.55;
+                if score < bestScore {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    hide func bestFlankFor(s: Integer, px: Float, pz: Float, band: Float) -> Integer {
+        var best = -1;
+        var bestScore = 1000000.0;
+        var i = 0;
+        while i < flankX.Count {
+            var pd = M.distXZ(flankX[i], flankZ[i], px, pz);
+            if pd > band * 0.45 && pd < band * 1.15 {
+                var ed = M.distXZ(flankX[i], flankZ[i], x[s], z[s]);
+                var prefer = M.absf(pd - band * 0.75);
+                var score = ed + prefer * 0.4;
+                if score < bestScore {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    hide func combatFlyer(s: Integer, dt: Float, px: Float, pz: Float,
+                          dist: Float, seen: Boolean, playerAlive: Boolean) {
+        var a = arch[s];
+        // Orbit the player at a hover radius; keep altitude.
+        orbitPhase[s] = orbitPhase[s] + dt * 0.9;
+        var orbitR = 9.0;
+        var tx = px + Math.Cos(orbitPhase[s]) * orbitR;
+        var tz = pz + Math.Sin(orbitPhase[s]) * orbitR;
+        moveToward(s, dt, tx, tz, defs.speedOf(a));
+        y[s] = M.approach(y[s], 4.5, 0.2, dt);
+        yaw[s] = M.toDeg(Math.Atan2(px - x[s], 0.0 - (pz - z[s])));
+        if playerAlive && seen {
+            var dmgKind = config.DMG_HITSCAN;
+            if defs.blastRof(a) > 0.0 { dmgKind = config.DMG_EXPLOSION; }
+            tryAttack(s, dt, px, pz, dist <= defs.atkRangeOf(a), dmgKind);
+        }
+    }
+
+    hide func combatTurret(s: Integer, dt: Float, px: Float, pz: Float,
+                           dist: Float, seen: Boolean, playerAlive: Boolean) {
+        var a = arch[s];
+        // Stationary: face the player, spin up, stream fire.
+        yaw[s] = M.toDeg(Math.Atan2(px - x[s], 0.0 - (pz - z[s])));
+        if playerAlive && seen {
+            tryAttack(s, dt, px, pz, dist <= defs.atkRangeOf(a), config.DMG_HITSCAN);
+        }
+    }
+
+    hide func combatBoss(s: Integer, dt: Float, px: Float, pz: Float,
+                         dist: Float, seen: Boolean, playerAlive: Boolean) {
+        // Phase by remaining health fraction; behavior mixes ranged + charge.
+        var a = arch[s];
+        var frac = health[s] / defs.hpOf(a);
+        var ph = 0;
+        if frac < 0.66 { ph = 1; }
+        if frac < 0.33 { ph = 2; }
+        phase[s] = ph;
+        if bossPulseT[s] > 0.0 { bossPulseT[s] = bossPulseT[s] - dt; }
+        if ph > 0 && bossPulseT[s] <= 0.0 {
+            bossShockwave(s, px, pz, dist, ph);
+            bossPulseT[s] = 6.0 - (ph + 0.0) * 1.4;
+        }
+        if defs.isFlyer(a) {
+            combatFlyer(s, dt, px, pz, dist, seen, playerAlive);
+        } else {
+            // Ground boss: advance and hit, faster/harder in later phases.
+            if dist > defs.atkRangeOf(a) { moveToward(s, dt, px, pz, defs.speedOf(a) * (1.0 + ph * 0.3)); }
+            if playerAlive && seen {
+                tryAttack(s, dt, px, pz, dist <= defs.atkRangeOf(a), config.DMG_HITSCAN);
+            }
+        }
+    }
+
+    /// Emit a phase shockwave for boss pressure without damaging the boss itself.
+    ///
+    /// This creates a readable arena hazard and player damage event directly,
+    /// while keeping the shared blast pipeline for player-authored explosions.
+    hide func bossShockwave(s: Integer, px: Float, pz: Float, dist: Float, ph: Integer) {
+        var r = 6.0 + (ph + 0.0) * 2.0;
+        bus.pushAt(config.EV_EXPLOSION, arch[s], M.roundi(r), x[s], y[s] + 0.9, z[s]);
+        if dist < r {
+            var falloff = M.clampf(1.0 - dist / r, 0.0, 1.0);
+            var dirDeg = M.toDeg(Math.Atan2(x[s] - px, 0.0 - (z[s] - pz)));
+            bus.push(config.EV_DAMAGE, config.TGT_PLAYER, s, config.REGION_BODY,
+                     (18.0 + (ph + 0.0) * 10.0) * falloff, dirDeg, config.DMG_EXPLOSION + 0.0);
+        }
+    }
+
+    // --- Director: attack tokens ---------------------------------------------
+    hide func grantTokens(px: Float, pz: Float) {
+        // Clear tokens, then grant to the closest engaged AIs up to the caps.
+        var i = 0;
+        while i < cap { if alive[i] == 1 { hasToken[i] = 0; } i = i + 1; }
+        var meleeGiven = 0;
+        var rangedGiven = 0;
+        // Simple nearest-first grant; a real director scores by LOS/time too.
+        var pass = 0;
+        while pass < cap {
+            var best = -1;
+            var bestD = 1000000.0;
+            var j = 0;
+            while j < cap {
+                if alive[j] == 1 && state[j] == AI_COMBAT && hasToken[j] == 0 {
+                    var d = M.distXZ(x[j], z[j], px, pz);
+                    if d < bestD { bestD = d; best = j; }
+                }
+                j = j + 1;
+            }
+            if best < 0 { pass = cap; }
+            else {
+                var bc = defs.behaviorOf(arch[best]);
+                var isMelee = bc == enemy_defs.BC_MELEE || bc == enemy_defs.BC_KAMIKAZE || bc == enemy_defs.BC_SWARM;
+                if isMelee && meleeGiven < 2 { hasToken[best] = 1; meleeGiven = meleeGiven + 1; }
+                else if isMelee == false && rangedGiven < 4 { hasToken[best] = 1; rangedGiven = rangedGiven + 1; }
+                else { hasToken[best] = 2; }   // mark considered-but-denied
+                pass = pass + 1;
+            }
+        }
+        // Normalize the "denied" marker back to 0 (only 1 means holds a token).
+        i = 0;
+        while i < cap { if alive[i] == 1 && hasToken[i] == 2 { hasToken[i] = 0; } i = i + 1; }
+    }
+
+    // --- Damage intake -------------------------------------------------------
+    // Drain EV_DAMAGE(TGT_ENEMY) rows and apply plates/shield/health.
+    expose func applyDamageEvents() {
+        var n = bus.getCount();
+        var e = 0;
+        while e < n {
+            if bus.kindAt(e) == config.EV_DAMAGE && bus.aAt(e) == config.TGT_ENEMY {
+                var s = bus.bAt(e);
+                var region = bus.cAt(e);
+                var amt = bus.xAt(e);
+                var dmgKind = M.roundi(bus.yAt(e));
+                damageEnemy(s, amt, region, dmgKind);
+            }
+            e = e + 1;
+        }
+    }
+
+    hide func damageEnemy(s: Integer, amt: Float, region: Integer, dmgKind: Integer) {
+        if s < 0 || s >= cap || alive[s] == 0 { return; }
+        // EMP disables instead of damaging.
+        if dmgKind == config.DMG_EMP {
+            disabledT[s] = 4.0;
+            state[s] = AI_DISABLED;
+            shield[s] = 0.0;
+            return;
+        }
+        var remaining = amt;
+        // Frontal energy shield (Vanguard) absorbs first.
+        if shield[s] > 0.0 && region != config.REGION_WEAKPOINT {
+            var ab = M.minf(shield[s], remaining);
+            shield[s] = shield[s] - ab;
+            remaining = remaining - ab;
+        }
+        if arch[s] == config.EN_SAPPER && region == config.REGION_WEAKPOINT {
+            remaining = remaining * 1.35;
+        }
+        if remaining <= 0.0 { awaken(s); return; }
+        // Plates ablate before the core (region ARMOR untouched here — plates are
+        // the explicit front armor). Rail penetration ignores one plate.
+        if platesLeft[s] > 0 {
+            if dmgKind == config.DMG_HITSCAN && region == config.REGION_WEAKPOINT {
+                // core-exposed weakpoint bypasses plates
+            } else {
+                var take = M.minf(plateHp[s], remaining);
+                plateHp[s] = plateHp[s] - take;
+                remaining = remaining - take;
+                if plateHp[s] <= 0.0 {
+                    platesLeft[s] = platesLeft[s] - 1;
+                    plateHp[s] = defs.plateHpOf(arch[s]);
+                }
+                awaken(s);
+                if remaining <= 0.0 { return; }
+            }
+        }
+        health[s] = health[s] - remaining;
+        models.hitFlash(s);
+        // Stagger on a big hit.
+        if remaining > 40.0 && staggerT[s] <= 0.0 && defs.isBoss(arch[s]) == false {
+            staggerT[s] = 0.6;
+            state[s] = AI_STAGGER;
+        }
+        awaken(s);
+        if health[s] <= 0.0 {
+            killSelf(s);
+        }
+    }
+
+    hide func awaken(s: Integer) {
+        awareness[s] = 100.0;
+        if state[s] == AI_IDLE || state[s] == AI_PATROL || state[s] == AI_SUSPICIOUS || state[s] == AI_SEARCHING {
+            enterCombat(s);
+        }
+    }
+
+    hide func killSelf(s: Integer) {
+        killCount = killCount + 1;
+        models.startDeath(s, arch[s], x[s], y[s], z[s], yaw[s],
+                          defs.colRof(arch[s]), defs.colGof(arch[s]), defs.colBof(arch[s]));
+        bus.pushKind(config.EV_KILL, config.TGT_ENEMY, arch[s]);
+        bus.pushKind(config.EV_ENEMY_DIED, arch[s], s);
+        // Salvage drop is posted for the economy to pick up.
+        bus.push(config.EV_PICKUP, config.PK_SALVAGE, defs.salvageOf(arch[s]), 0, x[s], y[s], z[s]);
+        despawn(s);
+    }
+}

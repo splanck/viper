@@ -549,7 +549,8 @@ static int canvas3d_compute_shadow_cascade_splits(const rt_canvas3d *c,
 
     if (!out_splits || cascade_count <= 0)
         return 0;
-    for (int32_t i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++)
+    /* out_splits is a cascade array: callers pass VGFX3D_CSM_SLOTS entries. */
+    for (int32_t i = 0; i < VGFX3D_CSM_SLOTS; i++)
         out_splits[i] = 0.0f;
     near_depth = c ? c->cached_cam_near : 0.0f;
     far_depth = c ? c->cached_cam_far : 0.0f;
@@ -566,7 +567,7 @@ static int canvas3d_compute_shadow_cascade_splits(const rt_canvas3d *c,
     if (far_depth - near_depth < 1e-3f)
         far_depth = near_depth + 1.0f;
     span = far_depth - near_depth;
-    for (int32_t i = 0; i < cascade_count && i < VGFX3D_MAX_SHADOW_LIGHTS; i++) {
+    for (int32_t i = 0; i < cascade_count && i < VGFX3D_CSM_SLOTS; i++) {
         const float p = (float)(i + 1) / (float)cascade_count;
         const float uniform_split = near_depth + span * p;
         float practical_split = uniform_split;

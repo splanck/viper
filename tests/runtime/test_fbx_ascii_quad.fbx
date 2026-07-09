@@ -1,0 +1,32 @@
+; FBX 7.4.0 project file
+; Minimal ASCII export fixture: a single textured quad (geometry subset).
+FBXHeaderExtension:  {
+    FBXHeaderVersion: 1003
+    FBXVersion: 7400
+}
+Objects:  {
+    Geometry: 140234, "Geometry::Quad", "Mesh" {
+        Vertices: *12 {
+            a: -1,-1,0,1,-1,0,1,1,0,-1,1,0
+        }
+        PolygonVertexIndex: *4 {
+            a: 0,1,2,-4
+        }
+        LayerElementNormal: 0 {
+            MappingInformationType: "ByPolygonVertex"
+            Normals: *12 {
+                a: 0,0,1,0,0,1,0,0,1,0,0,1
+            }
+        }
+        LayerElementUV: 0 {
+            MappingInformationType: "ByPolygonVertex"
+            ReferenceInformationType: "IndexToDirect"
+            UV: *8 {
+                a: 0,0,1,0,1,1,0,1
+            }
+            UVIndex: *4 {
+                a: 0,1,2,3
+            }
+        }
+    }
+}

@@ -494,6 +494,27 @@ for i in (0..=10).step(2).rev() {
 }
 ```
 
+### Discarding the Loop Variable
+
+Sometimes you only want to repeat work a fixed number of times and never use
+the counter itself. Name the variable `_` (a single underscore) to say so
+explicitly — the compiler treats `_` as an intentional discard and will not
+warn about it being unused:
+
+```rust
+bind Viper.Terminal;
+
+// Fire three times; we don't care which iteration we're on.
+for _ in 0..3 {
+    Say("beep");
+}
+```
+
+If you name the variable (`for i in 0..3`) and never read `i`, the compiler
+emits warning `W001` about the unused variable. Use `_` when the repetition
+count is all that matters. You can reuse `_` in as many loops as you like
+within the same function.
+
 ---
 
 ## Choosing Between while and for

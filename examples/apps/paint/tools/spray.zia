@@ -57,7 +57,7 @@ class SprayTool implements Tool {
         }
     }
 
-    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onRelease(_x: Integer, _y: Integer, _ctx: ToolContext) {
         drawing = 0;
     }
 

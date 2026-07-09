@@ -1,0 +1,72 @@
+module palette_query_probe;
+
+// ============================================================================
+// MODULE: palette_query_probe
+// PURPOSE: Verify the CommandPalette live-query runtime surface (plan 24):
+//          GetQuery / GetQueryGeneration / SetQuery / SetClientFiltered, and
+//          that a client-filtered repopulation (Clear + AddCommand) preserves
+//          the query text.
+// ============================================================================
+
+bind "../ui/app_shell";
+
+bind Viper.GUI as GUI;
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Palette Query Probe", 800, 600);
+
+    var p = shell.commandPalette;
+    p.AddCommand("cmd.alpha", "Alpha", "first");
+    p.AddCommand("cmd.beta", "Beta", "second");
+    p.Show();
+    shell.Poll();
+    shell.Render();
+
+    var gen0 = p.GetQueryGeneration();
+
+    // SetQuery must round-trip and bump the generation.
+    p.SetQuery("be");
+    if p.GetQuery() != "be" {
+        fail(shell, "SetQuery/GetQuery round-trip");
+        return;
+    }
+    if p.GetQueryGeneration() == gen0 {
+        fail(shell, "generation did not change after SetQuery");
+        return;
+    }
+
+    // Client-filtered repopulation must not disturb the query text.
+    p.SetClientFiltered(true);
+    var qBefore = p.GetQuery();
+    p.Clear();
+    p.AddCommand("cmd.xray", "Xray", "");
+    p.AddCommand("cmd.yankee", "Yankee", "");
+    shell.Poll();
+    shell.Render();
+    if p.GetQuery() != qBefore {
+        fail(shell, "query text not preserved across repopulate");
+        return;
+    }
+
+    // Clearing the query via SetQuery("") bumps the generation again.
+    var gen1 = p.GetQueryGeneration();
+    p.SetQuery("");
+    if p.GetQuery() != "" {
+        fail(shell, "SetQuery empty did not clear");
+        return;
+    }
+    if p.GetQueryGeneration() == gen1 {
+        fail(shell, "generation did not change after clearing query");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

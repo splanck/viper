@@ -51,7 +51,7 @@ Class Player
     ' Construct a fresh player at the bottom centre of the field with
     ' three lives and no bullet in flight.
     Sub New()
-        Me.X = FIELD_WIDTH / 2
+        Me.X = FIELD_WIDTH \ 2
         Me.Y = FIELD_HEIGHT - 2
         Me.Lives = 3
         Me.Score = 0
@@ -62,7 +62,7 @@ Class Player
     ' Score and lives are preserved — the caller (LoseLife) has already
     ' decremented lives if needed.
     Sub Reset()
-        Me.X = FIELD_WIDTH / 2
+        Me.X = FIELD_WIDTH \ 2
         Me.Y = FIELD_HEIGHT - 2
         Me.BulletActive = 0
     End Sub

@@ -289,6 +289,10 @@ DeclPtr Parser::parseDeclaration() {
     if (check(TokenKind::KwVar) || check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
         return parseGlobalVarDecl();
     }
+    if (check(TokenKind::At)) {
+        error("attributes ('@') are not supported in Zia");
+        return nullptr;
+    }
     error("expected declaration");
     return nullptr;
 }
@@ -594,11 +598,16 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 error("'override' can only be used on methods");
                 isOverride = false;
             }
+            if (isStatic) {
+                error("'static' cannot be applied to properties; use a static method or a "
+                      "static field instead");
+                isStatic = false;
+            }
             auto prop = parsePropertyDecl();
             if (prop) {
                 auto *p = static_cast<PropertyDecl *>(prop.get());
                 p->visibility = visibility;
-                p->isStatic = isStatic;
+                p->isStatic = false;
                 members.push_back(std::move(prop));
             }
         } else if (check(TokenKind::KwDeinit)) {
@@ -610,22 +619,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
             // parseBlock() expects and consumes '{' itself
             dtor->body = parseBlock();
             members.push_back(std::move(dtor));
-        } else if (check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
-            // BUG-FE-012: 'final' is not allowed inside class/struct bodies.
-            // Finals are compile-time constants and must be declared at module scope.
-            // Provide a clear error instead of the generic "expected field..." message.
-            error("'final'/'let' declarations are not allowed inside class bodies. "
-                  "Move the constant to module scope, or use a field initialized in init()");
-            // Skip past the final declaration to recover
-            advance(); // consume 'final' or 'let'
-            if (checkIdentifierLike())
-                advance(); // consume name
-            while (!check(TokenKind::Semicolon) && !check(TokenKind::RBrace) &&
-                   !check(TokenKind::Eof))
-                advance();
-            if (check(TokenKind::Semicolon))
-                advance();
-        } else if (check(TokenKind::Identifier) || check(TokenKind::KwVar)) {
+        } else if (check(TokenKind::Identifier) || check(TokenKind::KwVar) ||
+                   check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
             if (isOverride) {
                 error("'override' can only be used on methods");
                 isOverride = false;
@@ -636,6 +631,8 @@ bool Parser::parseMemberBlock(std::vector<DeclPtr> &members,
                 f->visibility = visibility;
                 f->isStatic = isStatic;
                 f->isWeak = isWeak;
+                if (f->isFinal && f->isWeak)
+                    error("'weak' cannot be combined with 'final'");
                 members.push_back(std::move(field));
             }
         } else {
@@ -891,8 +888,16 @@ DeclPtr Parser::parseGlobalVarDecl() {
 /// @return The parsed FieldDecl, or nullptr on error.
 DeclPtr Parser::parseFieldDecl() {
     SourceLoc loc = peek().loc;
-    if (match(TokenKind::KwVar))
+    // Optional storage-class prefix: `var` (mutable), `final`/`let` (write-once,
+    // assignable only inside init).
+    bool isFinal = false;
+    if (check(TokenKind::KwFinal) || check(TokenKind::KwLet)) {
+        isFinal = true;
+        advance();
         loc = peek().loc;
+    } else if (match(TokenKind::KwVar)) {
+        loc = peek().loc;
+    }
 
     TypePtr type;
     std::string fieldName;
@@ -921,6 +926,7 @@ DeclPtr Parser::parseFieldDecl() {
 
     auto field = std::make_unique<FieldDecl>(loc, std::move(fieldName));
     field->type = std::move(type);
+    field->isFinal = isFinal;
 
     // Optional initializer: = expr
     if (match(TokenKind::Equal)) {

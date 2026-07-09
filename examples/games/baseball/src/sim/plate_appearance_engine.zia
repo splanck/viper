@@ -218,7 +218,7 @@ class PlateAppearanceEngine {
 
     // Pick a pitch type: 45% fastball, 30% slider, 25% changeup. Pitcher's
     // pitch-mix rating is currently unused — calibration can wire it in.
-    hide func choosePitchType(pitcher: player.Player) -> String {
+    hide func choosePitchType(_pitcher: player.Player) -> String {
         var roll = rng.nextInt(100);
         if roll < 45 {
             return "fastball";
@@ -233,7 +233,7 @@ class PlateAppearanceEngine {
     // chase resistance, count leverage (ahead/behind), and the manager's
     // pitch intent. Returns true with probability ~46% + half the swing
     // score; the score itself is a small signed integer.
-    hide func shouldSwing(batter: player.Player, pitcher: player.Player,
+    hide func shouldSwing(batter: player.Player, _pitcher: player.Player,
                           balls: Integer, strikes: Integer,
                           inZone: Boolean, intent: String) -> Boolean {
         var swingScore = batter.attackAggression - 55;

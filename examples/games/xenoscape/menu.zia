@@ -67,7 +67,7 @@ bind Viper.Text.Fmt;
 bind Viper.IO;
 bind Viper.Game;
 bind Viper.Game.UI;
-bind Viper.Math;            // PerlinNoise for the parallax nebula (#1)
+bind Viper.Math.PerlinNoise as PerlinNoise;  // Parallax nebula noise (#1)
 bind Viper.Core;           // Convert.NumToInt for noise->int
 bind "./config";
 bind "./palette";
@@ -87,10 +87,16 @@ class MenuSystem {
     hide ButtonGroup pauseBG;
     hide ButtonGroup gameOverBG;
     hide ButtonGroup levelSelectBG;
+    hide ButtonGroup optionsBG;
+    hide ButtonGroup loadBG;
+    hide ButtonGroup extrasBG;
     hide MenuList titleList;
     hide MenuList levelList;
     hide MenuList pauseList;
     hide MenuList gameOverList;
+    hide MenuList optionsList;
+    hide MenuList loadList;
+    hide MenuList extrasList;
     hide Palette pal;
     hide Integer titleTimer;     // for title animation
     hide Integer bgScroll;       // background scroll
@@ -107,7 +113,7 @@ class MenuSystem {
     hide ParticleEmitter lcBurst;// celebratory rank burst (#8)
     hide Integer lcStarted;      // one-shot guard for the count-up
     hide Integer lcBurstFired;   // one-shot guard for the burst
-    expose Integer selectedLevel; // chosen level from level select (1-4)
+    expose Integer selectedLevel; // chosen level from level select (1-LEVEL_COUNT)
     hide List[Integer] highScores;
     hide List[String] highNames;
     hide SaveData save;          // cross-platform persistent storage
@@ -117,19 +123,23 @@ class MenuSystem {
     ///        scores from SaveData.
     expose func init(p: Palette) {
         pal = p;
-        // Title menu: Play, Level Select, High Scores, Controls, Quit
+        // Title menu: release-style shell.
         titleBG = ButtonGroup.New();
-        titleBG.Add(MENU_PLAY);
-        titleBG.Add(MENU_LEVELSELECT);
-        titleBG.Add(MENU_HIGHSCORES);
-        titleBG.Add(MENU_CONTROLS);
+        titleBG.Add(MENU_NEW_GAME);
+        titleBG.Add(MENU_CONTINUE);
+        titleBG.Add(MENU_LOAD_GAME);
+        titleBG.Add(MENU_OPTIONS);
+        titleBG.Add(MENU_EXTRAS);
+        titleBG.Add(MENU_CREDITS);
         titleBG.Add(MENU_QUIT);
-        titleBG.Select(MENU_PLAY);
-        titleList = MenuList.New(520, 260, 44);
-        titleList.AddItem("PLAY");
-        titleList.AddItem("LEVEL SELECT");
-        titleList.AddItem("HIGH SCORES");
-        titleList.AddItem("CONTROLS");
+        titleBG.Select(MENU_NEW_GAME);
+        titleList = MenuList.New(520, 244, 40);
+        titleList.AddItem("NEW GAME");
+        titleList.AddItem("CONTINUE");
+        titleList.AddItem("LOAD GAME");
+        titleList.AddItem("OPTIONS");
+        titleList.AddItem("EXTRAS");
+        titleList.AddItem("CREDITS");
         titleList.AddItem("QUIT");
         titleList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
@@ -146,15 +156,67 @@ class MenuSystem {
         levelSelectBG.Select(1);
         selectedLevel = 1;
 
-        // Pause menu: Resume (0), Quit to Menu (1)
+        // Pause menu: Resume, World Map, Save, Options, Controls, Quit
         pauseBG = ButtonGroup.New();
         pauseBG.Add(0);
         pauseBG.Add(1);
+        pauseBG.Add(2);
+        pauseBG.Add(3);
+        pauseBG.Add(4);
+        pauseBG.Add(5);
         pauseBG.Select(0);
-        pauseList = MenuList.New(520, 292, 50);
+        pauseList = MenuList.New(520, 260, 44);
         pauseList.AddItem("RESUME");
+        pauseList.AddItem("WORLD MAP");
+        pauseList.AddItem("SAVE GAME");
+        pauseList.AddItem("OPTIONS");
+        pauseList.AddItem("CONTROLS");
         pauseList.AddItem("QUIT TO MENU");
         pauseList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
+
+        // Options menu: volume sliders, fullscreen toggle, back
+        optionsBG = ButtonGroup.New();
+        optionsBG.Add(0);
+        optionsBG.Add(1);
+        optionsBG.Add(2);
+        optionsBG.Add(3);
+        optionsBG.Select(0);
+        optionsList = MenuList.New(460, 272, 56);
+        optionsList.AddItem("MASTER VOLUME");
+        optionsList.AddItem("SFX VOLUME");
+        optionsList.AddItem("FULLSCREEN");
+        optionsList.AddItem("BACK");
+        optionsList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
+
+        // Load Game menu: three save slots + back.
+        loadBG = ButtonGroup.New();
+        loadBG.Add(0);
+        loadBG.Add(1);
+        loadBG.Add(2);
+        loadBG.Add(3);
+        loadBG.Select(0);
+        loadList = MenuList.New(380, 204, 56);
+        loadList.AddItem("SLOT 1");
+        loadList.AddItem("SLOT 2");
+        loadList.AddItem("SLOT 3");
+        loadList.AddItem("BACK");
+        loadList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
+
+        // Extras menu: meta-game surfaces.
+        extrasBG = ButtonGroup.New();
+        extrasBG.Add(0);
+        extrasBG.Add(1);
+        extrasBG.Add(2);
+        extrasBG.Add(3);
+        extrasBG.Add(4);
+        extrasBG.Select(0);
+        extrasList = MenuList.New(480, 250, 46);
+        extrasList.AddItem("ACHIEVEMENTS");
+        extrasList.AddItem("BESTIARY");
+        extrasList.AddItem("LORE ARCHIVE");
+        extrasList.AddItem("HIGH SCORES");
+        extrasList.AddItem("BACK");
+        extrasList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
         // Game over menu: Try Again (0), Main Menu (1)
         gameOverBG = ButtonGroup.New();
@@ -171,7 +233,7 @@ class MenuSystem {
         titleTween = Tween.New();
         titleTween.StartI64(0, 100, 54, EASE_OUT_EXPO);
         backdropReady = 0;       // parallax layers built on first drawTitle
-        highlightY = SmoothValue.New(260.0, 0.6);
+        highlightY = SmoothValue.New(244.0, 0.6);
         titleMoved = 0;
         lcScoreTween = Tween.New();
         lcBurst = ParticleEmitter.New(80);
@@ -223,7 +285,7 @@ class MenuSystem {
         if before == after { titleMoved = 0; } else { titleMoved = 1; }
 
         // Glide the selection highlight toward the focused option (#5).
-        highlightY.Target = (260 + after * 44) + 0.0;
+        highlightY.Target = (244 + after * 40) + 0.0;
         highlightY.Update();
 
         // Selection
@@ -232,10 +294,12 @@ class MenuSystem {
                 selectedLevel = 1;
                 return STATE_PLAYING;
             }
-            if chosen == 1 { return STATE_LEVELSELECT; }
-            if chosen == 2 { return STATE_HIGHSCORES; }
-            if chosen == 3 { return STATE_CONTROLS; }
-            if chosen == 4 { return -2; }
+            if chosen == 1 { return MENU_ACTION_CONTINUE; }
+            if chosen == 2 { return STATE_LOADGAME; }
+            if chosen == 3 { return STATE_OPTIONS; }
+            if chosen == 4 { return STATE_EXTRAS; }
+            if chosen == 5 { return STATE_CREDITS; }
+            if chosen == 6 { return -2; }
         }
 
         return -1;
@@ -245,11 +309,13 @@ class MenuSystem {
     ///        corresponding MenuList highlight (and back).
     hide func syncTitleSelection() {
         var selected = titleList.get_Selected();
-        if selected == 0 { titleBG.Select(MENU_PLAY); }
-        if selected == 1 { titleBG.Select(MENU_LEVELSELECT); }
-        if selected == 2 { titleBG.Select(MENU_HIGHSCORES); }
-        if selected == 3 { titleBG.Select(MENU_CONTROLS); }
-        if selected == 4 { titleBG.Select(MENU_QUIT); }
+        if selected == 0 { titleBG.Select(MENU_NEW_GAME); }
+        if selected == 1 { titleBG.Select(MENU_CONTINUE); }
+        if selected == 2 { titleBG.Select(MENU_LOAD_GAME); }
+        if selected == 3 { titleBG.Select(MENU_OPTIONS); }
+        if selected == 4 { titleBG.Select(MENU_EXTRAS); }
+        if selected == 5 { titleBG.Select(MENU_CREDITS); }
+        if selected == 6 { titleBG.Select(MENU_QUIT); }
     }
 
     // Level select screen — pick starting level for testing
@@ -345,34 +411,71 @@ class MenuSystem {
                                       pal.mix(pal.menuBg, pal.hudGray, pSub), 3);
         }
 
-        // Animated running player silhouette at bottom
-        var runX = (bgScroll * 3) % (SCREEN_W + 80) - 40;
-        var runFrame = (titleTimer / 8) % 2;
-        var runY = SCREEN_H - 55;
-        // Simple running figure silhouette
-        canvas.Disc(runX + 15, runY + 6, 8, pal.playerHelmet);    // head
-        canvas.Box(runX + 8, runY + 14, 14, 16, pal.playerBody);  // body
-        if runFrame == 0 {
-            canvas.Box(runX + 6, runY + 30, 6, 12, pal.playerBoots);
-            canvas.Box(runX + 18, runY + 26, 6, 8, pal.playerBoots);
-        } else {
-            canvas.Box(runX + 18, runY + 30, 6, 12, pal.playerBoots);
-            canvas.Box(runX + 6, runY + 26, 6, 8, pal.playerBoots);
-        }
+        drawMenuDiorama(canvas, p);
 
         // Gliding selection highlight (#5): a single eased box that slides
         // between options via SmoothValue, replacing the instant per-option box.
-        canvas.BoxAlpha(500, highlightY.ValueI64 - 4, 280, 32, pal.menuHighlight, 150);
+        canvas.BoxAlpha(494, highlightY.ValueI64 - 4, 360, 32, pal.menuHighlight, 150);
 
-        var menuY = 260;
-        drawTitleOption(canvas, "PLAY", MENU_PLAY, menuY, titleBG);
-        drawTitleOption(canvas, "LEVEL SELECT", MENU_LEVELSELECT, menuY + 44, titleBG);
-        drawTitleOption(canvas, "HIGH SCORES", MENU_HIGHSCORES, menuY + 88, titleBG);
-        drawTitleOption(canvas, "CONTROLS", MENU_CONTROLS, menuY + 132, titleBG);
-        drawTitleOption(canvas, "QUIT", MENU_QUIT, menuY + 176, titleBG);
+        var menuY = 244;
+        drawTitleOption(canvas, "NEW GAME", MENU_NEW_GAME, menuY, titleBG);
+        drawTitleOption(canvas, "CONTINUE", MENU_CONTINUE, menuY + 40, titleBG);
+        drawTitleOption(canvas, "LOAD GAME", MENU_LOAD_GAME, menuY + 80, titleBG);
+        drawTitleOption(canvas, "OPTIONS", MENU_OPTIONS, menuY + 120, titleBG);
+        drawTitleOption(canvas, "EXTRAS", MENU_EXTRAS, menuY + 160, titleBG);
+        drawTitleOption(canvas, "CREDITS", MENU_CREDITS, menuY + 200, titleBG);
+        drawTitleOption(canvas, "QUIT", MENU_QUIT, menuY + 240, titleBG);
 
         // Version + attribution
         canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
+    }
+
+    /// @brief Draw the title-screen bottom diorama.
+    ///
+    /// The scene communicates the game's premise directly: a wrecked ship,
+    /// scanner beacon, foreground terrain, and one suited explorer silhouette.
+    /// It replaces the old looping runner with slower environmental motion that
+    /// reads as intentional title art rather than an unexplained sprite.
+    ///
+    /// @param canvas Active title-screen canvas.
+    /// @param reveal Logo reveal progress in the range 0..100.
+    hide func drawMenuDiorama(canvas: Canvas, reveal: Integer) {
+        var groundY = SCREEN_H - 88;
+        canvas.BoxAlpha(0, groundY + 24, SCREEN_W, 78, Color.RGB(5, 8, 16), 210);
+        canvas.Line(0, groundY + 22, SCREEN_W, groundY + 18, Color.RGB(48, 76, 98));
+
+        var ridge = 0;
+        while ridge < SCREEN_W {
+            var h = 12 + (ridge / 47) % 28;
+            canvas.Box(ridge, groundY + 24 - h, 62, h + 6, Color.RGB(18, 28, 38));
+            ridge = ridge + 58;
+        }
+
+        var shipX = 148;
+        var shipY = groundY - 10;
+        canvas.Box(shipX, shipY, 180, 34, Color.RGB(74, 88, 108));
+        canvas.Box(shipX + 18, shipY - 18, 92, 22, Color.RGB(94, 112, 136));
+        canvas.Box(shipX + 118, shipY + 5, 52, 16, Color.RGB(42, 55, 72));
+        canvas.Box(shipX + 34, shipY - 11, 28, 10, Color.RGB(36, 176, 210));
+        canvas.Box(shipX + 72, shipY - 11, 28, 10, Color.RGB(36, 176, 210));
+        canvas.Line(shipX - 26, shipY + 28, shipX + 14, shipY + 14, Color.RGB(160, 80, 44));
+        canvas.Line(shipX + 160, shipY + 28, shipX + 216, shipY + 4, Color.RGB(160, 80, 44));
+
+        var beaconX = shipX + 206;
+        var pulse = 35 + (titleTimer % 60);
+        canvas.Line(beaconX, groundY + 14, beaconX, groundY - 56, Color.RGB(120, 160, 190));
+        canvas.Disc(beaconX, groundY - 60, 5, pal.titleYellow);
+        canvas.Ring(beaconX, groundY - 60, pulse, Color.RGB(120, 210, 240));
+        canvas.DiscAlpha(beaconX, groundY - 60, pulse + 10, Color.RGB(120, 210, 240), 18);
+
+        var explorerX = shipX + 286;
+        var explorerY = groundY + 2;
+        canvas.Disc(explorerX + 14, explorerY - 34, 11, pal.playerHelmet);
+        canvas.Box(explorerX + 7, explorerY - 23, 16, 24, pal.playerBody);
+        canvas.Box(explorerX + 4, explorerY + 1, 7, 18, pal.playerBoots);
+        canvas.Box(explorerX + 21, explorerY + 1, 7, 18, pal.playerBoots);
+        canvas.Box(explorerX + 24, explorerY - 16, 20, 5, pal.titleOrange);
+        canvas.DiscAlpha(explorerX + 58, explorerY - 13, 34, pal.titleOrange, 24 + reveal / 8);
     }
 
     /// @brief Draw one menu list entry with selected/unselected
@@ -527,10 +630,123 @@ class MenuSystem {
 
         if chosen >= 0 {
             if chosen == 0 { return STATE_PLAYING; }
-            if chosen == 1 { return STATE_MENU; }
+            if chosen == 1 { return MENU_ACTION_WORLD_MAP; }
+            if chosen == 2 { return MENU_ACTION_SAVE; }
+            if chosen == 3 { return STATE_OPTIONS; }
+            if chosen == 4 { return STATE_CONTROLS; }
+            if chosen == 5 { return STATE_MENU; }
         }
 
         return STATE_PAUSED;
+    }
+
+    /// @brief Options-menu input.
+    ///
+    /// Rows 0 and 1 are sliders adjusted with left/right, row 2 toggles
+    /// fullscreen, and row 3 returns to the previous screen.  The function
+    /// returns action IDs rather than mutating game settings directly so `Game`
+    /// remains the owner of audio and window state.
+    expose func updateOptions() -> Integer {
+        if Action.Pressed(ACT_BACK) {
+            return OPTIONS_ACTION_BACK;
+        }
+
+        var chosen = optionsList.HandleInput(Action.Pressed(ACT_UP),
+                                             Action.Pressed(ACT_DOWN),
+                                             Action.Pressed(ACT_CONFIRM));
+        var selected = optionsList.get_Selected();
+        optionsBG.Select(selected);
+
+        if selected == 0 {
+            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_MASTER_DOWN; }
+            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_MASTER_UP; }
+        }
+        if selected == 1 {
+            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_SFX_DOWN; }
+            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_SFX_UP; }
+        }
+        if selected == 2 {
+            if chosen >= 0 { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
+            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
+            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
+        }
+        if chosen >= 0 {
+            if selected == 3 { return OPTIONS_ACTION_BACK; }
+        }
+
+        return STATE_OPTIONS;
+    }
+
+    /// @brief Load-game input.  Returns a slot action for
+    ///        slots 0..2, or STATE_MENU for Back.
+    expose func updateLoadGame() -> Integer {
+        if Action.Pressed(ACT_BACK) {
+            return STATE_MENU;
+        }
+
+        var chosen = loadList.HandleInput(Action.Pressed(ACT_UP),
+                                          Action.Pressed(ACT_DOWN),
+                                          Action.Pressed(ACT_CONFIRM));
+        loadBG.Select(loadList.get_Selected());
+
+        if chosen >= 0 {
+            if chosen == 0 { return MENU_ACTION_LOAD_SLOT0; }
+            if chosen == 1 { return MENU_ACTION_LOAD_SLOT1; }
+            if chosen == 2 { return MENU_ACTION_LOAD_SLOT2; }
+            if chosen == 3 { return STATE_MENU; }
+        }
+
+        return STATE_LOADGAME;
+    }
+
+    /// @brief Extras input.  Returns the chosen meta-game
+    ///        destination or STATE_MENU for Back.
+    expose func updateExtras() -> Integer {
+        if Action.Pressed(ACT_BACK) {
+            return STATE_MENU;
+        }
+
+        var chosen = extrasList.HandleInput(Action.Pressed(ACT_UP),
+                                            Action.Pressed(ACT_DOWN),
+                                            Action.Pressed(ACT_CONFIRM));
+        extrasBG.Select(extrasList.get_Selected());
+
+        if chosen >= 0 {
+            if chosen == 0 { return MENU_ACTION_EXTRAS_ACHIEVEMENTS; }
+            if chosen == 1 { return MENU_ACTION_EXTRAS_BESTIARY; }
+            if chosen == 2 { return MENU_ACTION_EXTRAS_LORE; }
+            if chosen == 3 { return STATE_HIGHSCORES; }
+            if chosen == 4 { return STATE_MENU; }
+        }
+
+        return STATE_EXTRAS;
+    }
+
+    /// @brief Credits input — exit only.
+    expose func updateCredits() -> Integer {
+        if Action.Pressed(ACT_BACK) { return STATE_MENU; }
+        if Action.Pressed(ACT_CONFIRM) { return STATE_MENU; }
+        return STATE_CREDITS;
+    }
+
+    /// @brief Current pause-menu row, used by enhanced pause rendering.
+    expose func getPauseSelection() -> Integer {
+        return pauseList.get_Selected();
+    }
+
+    /// @brief Current options-menu row, used by settings rendering.
+    expose func getOptionsSelection() -> Integer {
+        return optionsList.get_Selected();
+    }
+
+    /// @brief Selected save slot row.
+    expose func getLoadSelection() -> Integer {
+        return loadList.get_Selected();
+    }
+
+    /// @brief Selected extras row.
+    expose func getExtrasSelection() -> Integer {
+        return extrasList.get_Selected();
     }
 
     /// @brief Pause overlay — dim backdrop + simple menu.
@@ -540,7 +756,11 @@ class MenuSystem {
 
         var y = 340;
         drawMenuOption(canvas, "RESUME", 0, y, pauseBG);
-        drawMenuOption(canvas, "QUIT TO MENU", 1, y + 50, pauseBG);
+        drawMenuOption(canvas, "WORLD MAP", 1, y + 44, pauseBG);
+        drawMenuOption(canvas, "SAVE GAME", 2, y + 88, pauseBG);
+        drawMenuOption(canvas, "OPTIONS", 3, y + 132, pauseBG);
+        drawMenuOption(canvas, "CONTROLS", 4, y + 176, pauseBG);
+        drawMenuOption(canvas, "QUIT TO MENU", 5, y + 220, pauseBG);
     }
 
     // =========================================================================
@@ -850,6 +1070,12 @@ class MenuSystem {
         titleList.set_Selected(0);
         pauseBG.Select(0);
         pauseList.set_Selected(0);
+        optionsBG.Select(0);
+        optionsList.set_Selected(0);
+        loadBG.Select(0);
+        loadList.set_Selected(0);
+        extrasBG.Select(0);
+        extrasList.set_Selected(0);
         gameOverBG.Select(0);
         gameOverList.set_Selected(0);
         levelSelectBG.Select(selectedLevel);
@@ -866,20 +1092,20 @@ class MenuSystem {
     expose func drawSaveSlotScreen(canvas: Canvas, selectedSlot: Integer,
                                     slot1: String, slot2: String, slot3: String) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        drawStarfield(canvas);
 
-        // Title
-        canvas.TextCenteredScaled(80, "SELECT SAVE SLOT", pal.white, 3);
+        canvas.TextCenteredScaled(72, "LOAD GAME", pal.white, 4);
+        canvas.TextCenteredScaled(116, "Choose a save slot to continue the descent",
+                                  pal.hudGray, 2);
 
-        // Slot cards
         var slotTexts = [slot1, slot2, slot3];
         var i = 0;
         while i < 3 {
             var cardX = 240;
-            var cardY = 200 + i * 120;
+            var cardY = 170 + i * 112;
             var cardW = 800;
             var cardH = 90;
 
-            // Highlight selected slot
             if i == selectedSlot {
                 canvas.Box(cardX - 4, cardY - 4, cardW + 8, cardH + 8, pal.menuHighlight);
             }
@@ -901,10 +1127,86 @@ class MenuSystem {
             i = i + 1;
         }
 
-        // Controls hint
-        canvas.TextCenteredScaled(SCREEN_H - 60, "UP/DOWN to select, ENTER to load, DELETE to erase",
+        var backY = 530;
+        if selectedSlot == 3 {
+            canvas.Box(464, backY - 6, 350, 38, pal.menuHighlight);
+        }
+        canvas.TextCenteredScaled(backY, "BACK", pal.white, 2);
+
+        canvas.TextCenteredScaled(SCREEN_H - 60, "UP/DOWN to select, ENTER to load",
                                   pal.hudGray, 1);
         canvas.TextCenteredScaled(SCREEN_H - 35, "ESC to go back", pal.hudGray, 1);
+    }
+
+    /// @brief Extras hub — achievements, bestiary, lore archive,
+    ///        and legacy high-score table.
+    expose func drawExtras(canvas: Canvas, achievementCount: Integer,
+                           achievementTotal: Integer, loreCount: Integer,
+                           loreTotal: Integer, bestiaryCount: Integer,
+                           bestiaryTotal: Integer) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        drawStarfield(canvas);
+
+        canvas.TextCenteredScaled(70, "EXTRAS", pal.titleYellow, 4);
+        canvas.TextCenteredScaled(114, "Records, discoveries, and archived intel",
+                                  pal.hudGray, 2);
+
+        var px = 340;
+        var py = 176;
+        var pw = 600;
+        var ph = 344;
+        canvas.BoxAlpha(px, py, pw, ph, Color.RGB(8, 10, 20), 210);
+        canvas.Frame(px, py, pw, ph, Color.RGB(70, 90, 140));
+
+        drawExtrasOption(canvas, "ACHIEVEMENTS",
+                         Int(achievementCount) + "/" + Int(achievementTotal),
+                         0, py + 42);
+        drawExtrasOption(canvas, "BESTIARY",
+                         Int(bestiaryCount) + "/" + Int(bestiaryTotal),
+                         1, py + 88);
+        drawExtrasOption(canvas, "LORE ARCHIVE",
+                         Int(loreCount) + "/" + Int(loreTotal),
+                         2, py + 134);
+        drawExtrasOption(canvas, "HIGH SCORES", "table", 3, py + 180);
+        drawExtrasOption(canvas, "BACK", "", 4, py + 226);
+
+        canvas.TextCenteredScaled(SCREEN_H - 46, "ENTER to open, ESC to return",
+                                  pal.hudGray, 1);
+    }
+
+    /// @brief One row in the Extras hub.
+    hide func drawExtrasOption(canvas: Canvas, label: String, detail: String,
+                               idx: Integer, y: Integer) {
+        var selected = extrasBG.IsSelected(idx);
+        var col = pal.menuText;
+        if selected {
+            canvas.BoxAlpha(390, y - 4, 500, 34, pal.menuHighlight, 160);
+            canvas.TextScaled(360, y, ">", 3, pal.titleOrange);
+            col = pal.white;
+        }
+        canvas.TextScaled(410, y, label, 2, col);
+        if detail != "" {
+            canvas.TextScaled(760, y, detail, 2, pal.hudGray);
+        }
+    }
+
+    /// @brief Release-style credits screen.
+    expose func drawCredits(canvas: Canvas) {
+        canvas.Box(0, 0, SCREEN_W, SCREEN_H, Color.RGB(4, 5, 14));
+        drawStarfield(canvas);
+
+        canvas.TextCenteredScaled(80, "XENOSCAPE", pal.titleYellow, 4);
+        canvas.TextCenteredScaled(126, "The Descent", pal.titleOrange, 2);
+
+        var y = 210;
+        canvas.TextCenteredScaled(y, "Built with Viper + Zia", pal.white, 2);
+        canvas.TextCenteredScaled(y + 50, "Programming, procedural art, audio, and systems",
+                                  pal.hudGray, 2);
+        canvas.TextCenteredScaled(y + 92, "Viper Project", pal.crystalBlue, 2);
+        canvas.TextCenteredScaled(y + 154, "Thanks for playing the release demo.",
+                                  pal.menuText, 2);
+        canvas.TextCenteredScaled(SCREEN_H - 54, "Press ENTER or ESC to return",
+                                  pal.hudGray, 1);
     }
 
     // =========================================================================
@@ -973,7 +1275,7 @@ class MenuSystem {
     // =========================================================================
     /// @brief Richer pause-menu variant — current biome,
     ///        play-time, ability summary, world map shortcut.
-    expose func drawEnhancedPause(canvas: Canvas, pal: Palette,
+    expose func drawEnhancedPause(canvas: Canvas, _pal: Palette,
                                    currentLevel: Integer, playTime: Integer,
                                    gems: Integer, hp: Integer, maxHp: Integer,
                                    score: Integer, selectedOption: Integer) {
@@ -1043,18 +1345,19 @@ class MenuSystem {
 
         // Menu options
         var optY = statsY + 120;
-        var options = ["Resume", "World Map", "Save Game", "Controls", "Quit to Title"];
+        var options = ["Resume", "World Map", "Save Game", "Options", "Controls", "Quit to Title"];
         var optColors = [
             Color.RGB(100, 255, 150),  // Resume: green
             Color.RGB(100, 180, 255),  // Map: blue
             Color.RGB(255, 221, 34),   // Save: gold
+            Color.RGB(180, 180, 255),  // Options: lavender
             Color.RGB(180, 180, 200),  // Controls: gray
             Color.RGB(255, 100, 100)   // Quit: red
         ];
 
         var i = 0;
-        while i < 5 {
-            var y = optY + i * 50;
+        while i < 6 {
+            var y = optY + i * 44;
             if i == selectedOption {
                 // Selected: highlighted background
                 canvas.Box(panelX + 20, y - 4, panelW - 40, 36,
@@ -1096,7 +1399,7 @@ class MenuSystem {
     // =========================================================================
     /// @brief Rich level-complete screen — score, time,
     ///        deaths, rank letter, ability unlock notice.
-    expose func drawEnhancedLevelComplete(canvas: Canvas, pal: Palette,
+    expose func drawEnhancedLevelComplete(canvas: Canvas, _pal: Palette,
                                           levelNum: Integer, timeMs: Integer,
                                           enemiesKilled: Integer, coinsCollected: Integer,
                                           gemsFound: Integer, score: Integer,
@@ -1261,9 +1564,9 @@ class MenuSystem {
 
         // Volume sliders
         var optY = py + 80;
-        drawSliderRow(canvas, px + 40, optY, "Master Volume", masterVolume, 128,
+        drawSliderRow(canvas, px + 40, optY, "Master Volume", masterVolume, 100,
                       selectedOption == 0);
-        drawSliderRow(canvas, px + 40, optY + 60, "SFX Volume", sfxVolume, 128,
+        drawSliderRow(canvas, px + 40, optY + 60, "SFX Volume", sfxVolume, 100,
                       selectedOption == 1);
 
         // Fullscreen toggle
@@ -1313,7 +1616,7 @@ class MenuSystem {
     // =========================================================================
     /// @brief Pause-menu "abilities" tab — list of every
     ///        ability with locked / unlocked indicators.
-    expose func drawAbilityScreen(canvas: Canvas, pal: Palette,
+    expose func drawAbilityScreen(canvas: Canvas, _pal: Palette,
                                    abilityMask: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 180);
 

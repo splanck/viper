@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-11
+last-verified: 2026-07-08
 ---
 
 # Zia Grammar (EBNF)
@@ -54,13 +54,16 @@ TypeAliasDecl    = "type" IDENT "=" Type ";" ;
 
 ```ebnf
 FuncDecl         = [ "async" ] "func" IDENT [ GenericParams ]
-                   "(" [ ParamList ] ")" [ "->" Type ] Block ;
+                   "(" [ ParamList ] ")" [ "->" Type ] ( Block | "=" Expr ";" ) ;
+                   (* `= Expr ;` is the single-expression body form *)
+ForeignFuncDecl  = "foreign" "func" IDENT "(" [ ParamList ] ")" [ "->" Type ] [ ";" ] ;
 
 GenericParams    = "[" GenericParam { "," GenericParam } "]" ;
-GenericParam     = IDENT [ ":" Type ] ;          (* constraint, e.g. T: Comparable *)
+GenericParam     = IDENT [ ":" QualifiedName ] ;  (* single interface constraint, e.g. T: Comparable *)
 
-ParamList        = Param { "," Param } ;
-Param            = IDENT ":" Type ;
+ParamList        = Param { "," Param } [ "," ] ;
+Param            = IDENT ":" [ "..." ] Type [ "=" Expr ] ;
+                   (* "..." marks a variadic final parameter; "= Expr" a default *)
 ```
 
 ### Classes, Structs, Interfaces
@@ -69,22 +72,25 @@ Param            = IDENT ":" Type ;
 ClassDecl        = "class" IDENT [ GenericParams ]
                    [ "extends" Type ] [ "implements" TypeList ] ClassBody ;
 StructDecl       = "struct" IDENT [ GenericParams ] [ "implements" TypeList ] ClassBody ;
-InterfaceDecl    = "interface" IDENT [ GenericParams ] [ "extends" TypeList ] InterfaceBody ;
+InterfaceDecl    = "interface" IDENT [ GenericParams ] InterfaceBody ;
+                   (* interfaces do not support `extends` *)
 
 TypeList         = Type { "," Type } ;
 
 ClassBody        = "{" { MemberDecl } "}" ;
-MemberDecl       = [ Visibility ] [ "static" ] ( FieldDecl
-                                               | MethodDecl
-                                               | InitDecl
-                                               | DeinitDecl
-                                               | PropertyDecl ) ;
+MemberDecl       = { MemberModifier } ( FieldDecl
+                                      | MethodDecl
+                                      | InitDecl
+                                      | DeinitDecl
+                                      | PropertyDecl ) ;
+MemberModifier   = Visibility | "static" | "override" | "weak" ;
 
-FieldDecl        = [ "weak" ] ( "var" | "final" | "let" ) IDENT [ ":" Type ] [ "=" Expr ] ";"
-                 | [ "weak" ] Type IDENT [ "=" Expr ] ";" ;       (* type-first form *)
+FieldDecl        = [ "var" | "final" | "let" ] IDENT ":" Type [ "=" Expr ] ";"
+                 | Type IDENT [ "=" Expr ] ";" ;       (* type-first form *)
+                   (* `final`/`let` fields are write-once, assignable only in init *)
 
 MethodDecl       = [ "override" ] [ "async" ] "func" IDENT [ GenericParams ]
-                   "(" [ ParamList ] ")" [ "->" Type ] Block ;
+                   "(" [ ParamList ] ")" [ "->" Type ] ( Block | "=" Expr ";" ) ;
 
 InitDecl         = "func" "init" "(" [ ParamList ] ")" Block ;
 DeinitDecl       = "deinit" Block ;
@@ -109,6 +115,7 @@ EnumVariant      = IDENT [ "=" INT_LIT ] ;
 ```ebnf
 Type             = NonOptionalType [ "?" ] ;
 NonOptionalType  = QualifiedName [ GenericArgs ]
+                 | QualifiedName "[" INT_LIT "]"   (* fixed-size array, e.g. Integer[100] *)
                  | CollectionType
                  | TupleType
                  | FunctionType ;
@@ -116,6 +123,7 @@ NonOptionalType  = QualifiedName [ GenericArgs ]
 GenericArgs      = "[" Type { "," Type } "]" ;
 
 CollectionType   = "List" "[" Type "]"
+                 | "[" Type "]"                    (* List shorthand: [Integer] == List[Integer] *)
                  | "Map" "[" Type "," Type "]"
                  | "Set" "[" Type "]" ;
 
@@ -157,7 +165,13 @@ IfStmt           = "if" Condition Block [ "else" ( IfStmt | Block ) ] ;
 WhileStmt        = "while" Condition Block ;
 Condition        = Expr | "(" Expr ")" ;           (* parentheses optional *)
 
-ForStmt          = "for" Binding "in" Expr Block ; (* iterable: range, collection *)
+ForStmt          = CStyleFor | ForInStmt ;
+CStyleFor        = "for" "(" [ VarDecl | ExprStmt ] ";" [ Expr ] ";" [ Expr ] ")" Body ;
+ForInStmt        = "for" ForBinding "in" Expr Body
+                 | "for" "(" ForBinding "in" Expr ")" Body ;
+ForBinding       = IDENT [ ":" Type ] [ "," IDENT [ ":" Type ] ] ;
+                   (* tuple binding: (index, value) for lists/sets/strings; (key, value) for maps *)
+Body             = Block | Stmt ;                  (* single-statement bodies are allowed *)
 
 GuardStmt        = "guard" Condition "else" Stmt ;
 
@@ -178,8 +192,10 @@ ExprStmt         = Expr ";" ;
 ```
 
 Assignment is an expression-statement form: `Lvalue AssignOp Expr ";"` with
-`AssignOp = "=" | "+=" | "-=" | "*=" | "/=" | "%="`. Valid lvalues are
-identifiers, member accesses, and index expressions.
+`AssignOp = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "|=" | "^="`.
+Compound assignments desugar to `Lvalue = Lvalue op Expr` at parse time, so the
+lvalue must be side-effect free. Valid lvalues are identifiers, member accesses,
+and index expressions.
 
 ## Patterns
 
@@ -187,6 +203,7 @@ identifiers, member accesses, and index expressions.
 Pattern          = OrPattern ;
 OrPattern        = PrimaryPattern { "|" PrimaryPattern } ;
 PrimaryPattern   = "_"                              (* wildcard *)
+                 | INT_LIT ( ".." | "..=" ) INT_LIT (* range pattern: 1..=9 *)
                  | Literal                          (* 1, "x", true, null *)
                  | QualifiedName                    (* enum variant: Color.Red *)
                  | IDENT                            (* binding *)
@@ -196,24 +213,33 @@ PrimaryPattern   = "_"                              (* wildcard *)
 
 ## Expressions
 
-Binary operator precedence, lowest to highest (all left-associative unless
-noted):
+Operator precedence, lowest to highest (all left-associative unless noted). This
+table matches the recursive-descent chain in `Parser_Expr.cpp`
+(`parseAssignment` → `parseTernary` → `parseRange` → `parseCoalesce` →
+`parseLogicalOr` → … → `parseUnary` → `parsePostfix`):
 
 | Level | Operators |
 |-------|-----------|
-| 1 | `? :` ternary (right-assoc); `if cond { a } else { b }` if-expression |
-| 2 | `or` |
-| 3 | `and` |
-| 4 | `==` `!=` |
-| 5 | `<` `<=` `>` `>=` `is` |
-| 6 | `..` `..=` (ranges) |
-| 7 | `\|` (bitwise or), `^` (bitwise xor) |
-| 8 | `&` (bitwise and) |
-| 9 | `<<` `>>` |
-| 10 | `+` `-` |
-| 11 | `*` `/` `%` |
-| 12 | unary `-` `not` `!` |
-| 13 | postfix: call `(...)`, index `[...]`, member `.`, optional-chain `?.`, force-unwrap `!`, try-propagate `?` |
+| 1 (lowest) | `=` `+=` `-=` `*=` `/=` `%=` `<<=` `>>=` `&=` `\|=` `^=` (assignment, right-assoc) |
+| 2 | `? :` ternary (right-assoc); `if cond { a } else { b }` if-expression |
+| 3 | `..` `..=` (ranges) |
+| 4 | `??` (null-coalescing, right-assoc) |
+| 5 | `\|\|` / `or` |
+| 6 | `&&` / `and` |
+| 7 | `\|` (bitwise or) |
+| 8 | `^` (bitwise xor) |
+| 9 | `&` (bitwise and) |
+| 10 | `==` `!=` |
+| 11 | `<` `<=` `>` `>=` |
+| 12 | `<<` `>>` |
+| 13 | `+` `-` |
+| 14 | `*` `/` `%` |
+| 15 | unary prefix `-` `!` / `not` `~` `&` (function ref), `await` |
+| 16 (highest) | postfix: call `(...)`, index `[...]`, member `.`, optional-chain `?.`, force-unwrap `!`, try-propagate `?`, `as` Type, `is` Type |
+
+Note: `is` and `as` are **postfix** type operators (level 16), not binary
+comparison operators. Chained relational comparisons (`a < b < c`) and chained
+ranges (`a..b..c`) are rejected; parenthesize instead.
 
 ```ebnf
 Expr             = TernaryExpr ;
@@ -226,10 +252,14 @@ PostfixExpr      = PrimaryExpr { Postfix } ;
 Postfix          = "(" [ ArgList ] ")"          (* call *)
                  | "[" Expr "]"                 (* index *)
                  | "." IDENT                    (* member *)
+                 | "." INT_LIT                  (* tuple index: pair.0 *)
                  | "?." IDENT                   (* optional chain *)
                  | "!"                          (* force unwrap *)
-                 | "?" ;                        (* try-propagation *)
-ArgList          = Expr { "," Expr } ;
+                 | "?"                          (* try-propagation *)
+                 | "as" Type                    (* cast *)
+                 | "is" Type ;                  (* type test *)
+ArgList          = Arg { "," Arg } [ "," ] ;
+Arg              = [ IDENT ":" ] Expr ;         (* named argument: name: value *)
 
 PrimaryExpr      = Literal
                  | IDENT
@@ -262,8 +292,13 @@ RangeExpr        = Expr ".." Expr | Expr "..=" Expr ;    (* chainable: .rev(), .
 
 ```ebnf
 IDENT            = ( LETTER | "_" ) { LETTER | DIGIT | "_" } ;
-INT_LIT          = DIGIT { DIGIT } | "0x" HEXDIGIT { HEXDIGIT } | "0b" BINDIGIT { BINDIGIT } ;
-NUM_LIT          = DIGIT { DIGIT } "." DIGIT { DIGIT } [ Exponent ] ;
+INT_LIT          = DIGIT { DIGIT | "_" }
+                 | "0x" HEXDIGIT { HEXDIGIT | "_" }
+                 | "0o" OCTDIGIT { OCTDIGIT | "_" }
+                 | "0b" BINDIGIT { BINDIGIT | "_" } ;   (* "_" separators allowed between digits *)
+NUM_LIT          = DIGIT { DIGIT | "_" } "." DIGIT { DIGIT | "_" } [ Exponent ]
+                 | DIGIT { DIGIT | "_" } Exponent ;      (* e.g. 1e10, 2.5e-3 *)
+Exponent         = ( "e" | "E" ) [ "+" | "-" ] DIGIT { DIGIT | "_" } ;
 STRING_LIT       = '"' { CHAR | EscapeSeq | Interpolation } '"'
                  | '"""' { ANY } '"""' ;                 (* multi-line *)
 Interpolation    = "${" Expr "}" ;
@@ -280,7 +315,7 @@ DocComment       = "///" { ANY-except-newline } ;
 
 ```
 and as async await bind break catch class continue defer deinit else enum
-error escape export expose extends false final finally for foreign func guard
+export expose extends false final finally for foreign func guard
 hide if implements in interface is let match module namespace new not null
 or override private property public return self static struct super throw
 true try type var weak while

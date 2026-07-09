@@ -46,6 +46,7 @@ extern double rt_vec3_z(void *v);
 extern int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan);
 extern void rt_voice_set_volume(int64_t voice, int64_t volume);
 extern void rt_voice_set_pan(int64_t voice, int64_t pan);
+extern void rt_voice_set_pitch(int64_t voice, double pitch);
 extern int64_t rt_voice_is_playing(int64_t voice);
 
 static rt_sound3d_listener_state s_fallback_listener = {
@@ -655,9 +656,12 @@ void rt_sound3d_update_voice_ex(int64_t voice,
                                        &vol,
                                        &pan,
                                        &doppler);
-    (void)doppler;
     rt_voice_set_volume(voice, vol);
     rt_voice_set_pan(voice, pan);
+    /* Apply the Doppler factor as the voice's playback rate. Historically the
+     * factor was computed and discarded because the mixer had no per-voice
+     * resampling; it is real now. */
+    rt_voice_set_pitch(voice, doppler);
 }
 
 #ifndef VIPER_ENABLE_GRAPHICS

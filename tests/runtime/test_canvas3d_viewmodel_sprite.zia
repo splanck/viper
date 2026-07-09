@@ -1,0 +1,164 @@
+module TestCanvas3DViewModelSprite;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-05 session A coverage:
+//   - Canvas3D.BeginViewModel: secondary pass keeps scene color, clears depth
+//     (geometry behind a wall still draws), independent FOV changes apparent size.
+//   - Sprite3D.Additive: overlapping additive sprites sum toward white;
+//     SetColor tints the texture.
+//   - RenderTarget3D.CopyTo: allocation-free readback matches AsPixels.
+
+// Pixels.Get packs 0xRRGGBBAA.
+func red(c: Integer) -> Integer {
+    return (c / 16777216) % 256;
+}
+
+func green(c: Integer) -> Integer {
+    return (c / 65536) % 256;
+}
+
+func start() {
+    var canvas = Canvas3D.New("ViewModel/Sprite", 160, 120);
+    var cam = Camera3D.New(60.0, 160.0 / 120.0, 0.1, 100.0);
+    var eye = new Vec3(0.0, 0.0, 5.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(cam, eye, target, up);
+
+    var wall = Mesh3D.NewBox(20.0, 20.0, 0.2);
+    var wallMat = Material3D.NewColor(1.0, 0.0, 0.0);
+    Material3D.SetUnlit(wallMat, true);
+    var weapon = Mesh3D.NewBox(0.5, 0.5, 0.5);
+    var weaponMat = Material3D.NewColor(0.0, 1.0, 0.0);
+    Material3D.SetUnlit(weaponMat, true);
+    var ident = Mat4.Identity();
+    var weaponXform = Mat4.Translate(0.0, 0.0, -2.0);
+
+    // --- View-model pass: weapon is BEHIND the wall, must still draw ---------
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, wall, ident, wallMat);
+    Canvas3D.End(canvas);
+    Canvas3D.BeginViewModel(canvas, cam, 60.0);
+    Canvas3D.DrawMesh(canvas, weapon, weaponXform, weaponMat);
+    Canvas3D.End(canvas);
+    var shot = Canvas3D.Screenshot(canvas);
+    if (shot == null) {
+        Say("FAIL: screenshot null");
+        return;
+    }
+    var center = Pixels.Get(shot, 80, 60);
+    if (green(center) < 128 || red(center) > 127) {
+        Say("FAIL: view-model draw behind a wall should still render (fresh depth)");
+        return;
+    }
+    var corner = Pixels.Get(shot, 5, 5);
+    if (red(corner) < 128) {
+        Say("FAIL: view-model pass should preserve the scene color buffer");
+        return;
+    }
+    // Probe 8px below center: outside the weapon at FOV 60.
+    var offAt60 = Pixels.Get(shot, 80, 68);
+    if (red(offAt60) < 128) {
+        Say("FAIL: FOV-60 weapon should not cover the offset probe pixel");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // --- Narrow view-model FOV magnifies the weapon --------------------------
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, wall, ident, wallMat);
+    Canvas3D.End(canvas);
+    Canvas3D.BeginViewModel(canvas, cam, 20.0);
+    Canvas3D.DrawMesh(canvas, weapon, weaponXform, weaponMat);
+    Canvas3D.End(canvas);
+    var shotNarrow = Canvas3D.Screenshot(canvas);
+    var offAt20 = Pixels.Get(shotNarrow, 80, 68);
+    if (green(offAt20) < 128) {
+        Say("FAIL: FOV-20 view-model pass should magnify the weapon");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // --- Additive sprites sum toward white -----------------------------------
+    var tex = Pixels.New(8, 8);
+    Pixels.Fill(tex, 2155905279); // 0x808080FF mid-gray, opaque
+    var s1 = Sprite3D.New(tex);
+    Sprite3D.SetScale(s1, 2.0, 2.0);
+    var s2 = Sprite3D.New(tex);
+    Sprite3D.SetScale(s2, 2.0, 2.0);
+    if (s1.Additive) {
+        Say("FAIL: sprites should default to non-additive");
+        return;
+    }
+    s1.Additive = true;
+    s2.Additive = true;
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawSprite3D(canvas, s1, cam);
+    Canvas3D.End(canvas);
+    var one = red(Pixels.Get(Canvas3D.Screenshot(canvas), 80, 60));
+    Canvas3D.Flip(canvas);
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawSprite3D(canvas, s1, cam);
+    Canvas3D.DrawSprite3D(canvas, s2, cam);
+    Canvas3D.End(canvas);
+    var two = red(Pixels.Get(Canvas3D.Screenshot(canvas), 80, 60));
+    Canvas3D.Flip(canvas);
+
+    if (one < 90 || one > 180) {
+        Say("FAIL: single mid-gray additive sprite should read mid-brightness");
+        return;
+    }
+    if (two < one + 60) {
+        Say("FAIL: overlapping additive sprites should sum toward white");
+        return;
+    }
+
+    // --- SetColor tints the sprite texture -----------------------------------
+    s1.Additive = false;
+    Sprite3D.SetColor(s1, 16711680); // 0xFF0000
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawSprite3D(canvas, s1, cam);
+    Canvas3D.End(canvas);
+    var tinted = Pixels.Get(Canvas3D.Screenshot(canvas), 80, 60);
+    Canvas3D.Flip(canvas);
+    if (red(tinted) < 90 || green(tinted) > 40) {
+        Say("FAIL: SetColor should tint the sprite red");
+        return;
+    }
+
+    // --- CopyTo matches AsPixels without allocating ---------------------------
+    var rt = RenderTarget3D.New(64, 64);
+    var rtCam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(rtCam, eye, target, up);
+    Canvas3D.SetRenderTarget(canvas, rt);
+    Canvas3D.Clear(canvas, 0.2, 0.4, 0.6);
+    Canvas3D.Begin(canvas, rtCam);
+    Canvas3D.DrawMesh(canvas, weapon, ident, weaponMat);
+    Canvas3D.End(canvas);
+    Canvas3D.ResetRenderTarget(canvas);
+
+    var full = RenderTarget3D.AsPixels(rt);
+    var reused = Pixels.New(64, 64);
+    RenderTarget3D.CopyTo(rt, reused);
+    if (Pixels.Get(full, 32, 32) != Pixels.Get(reused, 32, 32)) {
+        Say("FAIL: CopyTo center pixel should match AsPixels");
+        return;
+    }
+    if (Pixels.Get(full, 2, 2) != Pixels.Get(reused, 2, 2)) {
+        Say("FAIL: CopyTo corner pixel should match AsPixels");
+        return;
+    }
+
+    Say("PASS");
+}

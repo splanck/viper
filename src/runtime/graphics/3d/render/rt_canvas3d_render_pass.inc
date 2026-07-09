@@ -76,6 +76,65 @@ static int canvas3d_render_shadow_light_slot(
     return 1;
 }
 
+/// @brief Render an omnidirectional point-light shadow as six perspective faces.
+/// @details Claims VGFX3D_SHADOW_CUBE_FACES consecutive slots (atlas tiles on GPU
+///   backends). The light entry advertises the FIRST slot with the CUBE projection
+///   type; shaders select the face by the dominant axis of light->fragment.
+/// @return 1 when all six faces rendered and the light was granted, 0 otherwise.
+static int canvas3d_render_point_shadow_cube(
+    rt_canvas3d *c,
+    deferred_draw_t *cmds,
+    const float shadow_world_min[3],
+    const float shadow_world_max[3],
+    const vgfx3d_light_params_t *selected_light,
+    vgfx3d_light_params_t shadow_lights[VGFX3D_MAX_SHADOW_LIGHTS],
+    int32_t slot_cap) {
+    vgfx3d_light_params_t light;
+    int32_t base;
+
+    if (!c || !cmds || !shadow_world_min || !shadow_world_max || !selected_light ||
+        !shadow_lights || c->shadow_count < 0)
+        return 0;
+    base = c->shadow_count;
+    if (base + VGFX3D_SHADOW_CUBE_FACES > slot_cap)
+        return 0;
+    light = *selected_light;
+    light.shadow_cascade_count = 1;
+    light.shadow_projection_type = VGFX3D_SHADOW_PROJECTION_CUBE;
+
+    for (int32_t face = 0; face < VGFX3D_SHADOW_CUBE_FACES; face++) {
+        vgfx3d_rendertarget_t *shadow_rt;
+        float light_vp[16];
+        int32_t slot = base + face;
+
+        if (!canvas3d_ensure_shadow_target_slot(c, slot, c->shadow_resolution))
+            return 0;
+        shadow_rt = c->shadow_rts[slot];
+        if (!shadow_rt || !shadow_rt->depth_buf)
+            return 0;
+        if (!canvas3d_build_point_shadow_face_vp(
+                shadow_world_min, shadow_world_max, &light, face, light_vp))
+            return 0;
+        memcpy(c->shadow_light_vps[slot], light_vp, sizeof(light_vp));
+        c->backend->shadow_begin(c->backend_ctx,
+                                 slot,
+                                 shadow_rt->depth_buf,
+                                 shadow_rt->width,
+                                 shadow_rt->height,
+                                 light_vp);
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (!canvas3d_deferred_casts_shadow(&cmds[i]))
+                continue;
+            canvas3d_shadow_deferred(c, &cmds[i]);
+        }
+        c->backend->shadow_end(c->backend_ctx, slot, c->shadow_bias);
+        c->shadow_count++;
+    }
+    shadow_lights[base] = light;
+    shadow_lights[base].shadow_index = base;
+    return 1;
+}
+
 /// @brief Render the directional, spot, and cascaded shadow-map pass for the queued
 ///   3D draws.
 ///   Extracted from rt_canvas3d_end; populates c->shadow_rts and stamps shadow params
@@ -87,10 +146,21 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
     memset(shadow_lights, 0, sizeof(shadow_lights));
     memset(selected_lights, 0, sizeof(selected_lights));
 
+    int32_t shadow_request_count = 0;
+    int32_t shadow_lights_granted = 0;
+    c->last_shadow_slots_used = 0;
+    c->last_shadow_requests_dropped = 0;
     if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
         c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
+        /* Backends without atlas-slot sampling cap the frame at the classic
+         * per-texture slots so no light gets an unresolvable shadow index. */
+        int32_t slot_cap =
+            c->backend->shadow_atlas_slots ? VGFX3D_MAX_SHADOW_LIGHTS : VGFX3D_CSM_SLOTS;
+        int32_t shadow_budget = c->shadow_budget;
+        if (shadow_budget < 1 || shadow_budget > slot_cap)
+            shadow_budget = slot_cap;
         int32_t selected_shadow_count = canvas3d_select_shadow_lights_from_draws(
-            c, cmds, c->draw_count, selected_lights, VGFX3D_MAX_SHADOW_LIGHTS);
+            c, cmds, c->draw_count, selected_lights, shadow_budget, &shadow_request_count);
         float shadow_world_min[3];
         float shadow_world_max[3];
         int has_shadow_bounds = canvas3d_build_shadow_world_bounds(
@@ -100,12 +170,12 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
             c->shadow_cascade_count > 1) {
             vgfx3d_light_params_t primary_light = selected_lights[0];
             int32_t cascade_count = c->shadow_cascade_count;
-            float cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
+            float cascade_splits[VGFX3D_CSM_SLOTS];
             float cascade_near = 0.0f;
             float cascade_far = 0.0f;
 
-            if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS)
-                cascade_count = VGFX3D_MAX_SHADOW_LIGHTS;
+            if (cascade_count > VGFX3D_CSM_SLOTS)
+                cascade_count = VGFX3D_CSM_SLOTS;
             if (!canvas3d_compute_shadow_cascade_splits(c,
                                                         shadow_world_min,
                                                         shadow_world_max,
@@ -184,28 +254,51 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
             if (c->shadow_count > 0) {
                 shadow_lights[0] = primary_light;
                 shadow_lights[0].shadow_index = 0;
+                shadow_lights_granted++;
             }
             for (int32_t slot = 1; has_shadow_bounds && slot < selected_shadow_count &&
-                                   c->shadow_count < VGFX3D_MAX_SHADOW_LIGHTS;
+                                   c->shadow_count < slot_cap;
                  slot++) {
-                canvas3d_render_shadow_light_slot(c,
-                                                  cmds,
-                                                  shadow_world_min,
-                                                  shadow_world_max,
-                                                  &selected_lights[slot],
-                                                  shadow_lights);
+                shadow_lights_granted +=
+                    selected_lights[slot].type == 1
+                        ? canvas3d_render_point_shadow_cube(c,
+                                                            cmds,
+                                                            shadow_world_min,
+                                                            shadow_world_max,
+                                                            &selected_lights[slot],
+                                                            shadow_lights,
+                                                            slot_cap)
+                        : canvas3d_render_shadow_light_slot(c,
+                                                            cmds,
+                                                            shadow_world_min,
+                                                            shadow_world_max,
+                                                            &selected_lights[slot],
+                                                            shadow_lights);
             }
         } else {
             for (int32_t slot = 0; has_shadow_bounds && slot < selected_shadow_count &&
-                                   c->shadow_count < VGFX3D_MAX_SHADOW_LIGHTS;
+                                   c->shadow_count < slot_cap;
                  slot++)
-                canvas3d_render_shadow_light_slot(c,
-                                                  cmds,
-                                                  shadow_world_min,
-                                                  shadow_world_max,
-                                                  &selected_lights[slot],
-                                                  shadow_lights);
+                shadow_lights_granted +=
+                    selected_lights[slot].type == 1
+                        ? canvas3d_render_point_shadow_cube(c,
+                                                            cmds,
+                                                            shadow_world_min,
+                                                            shadow_world_max,
+                                                            &selected_lights[slot],
+                                                            shadow_lights,
+                                                            slot_cap)
+                        : canvas3d_render_shadow_light_slot(c,
+                                                            cmds,
+                                                            shadow_world_min,
+                                                            shadow_world_max,
+                                                            &selected_lights[slot],
+                                                            shadow_lights);
         }
+        c->last_shadow_slots_used = c->shadow_count;
+        c->last_shadow_requests_dropped = shadow_request_count > shadow_lights_granted
+                                              ? shadow_request_count - shadow_lights_granted
+                                              : 0;
     }
 
     for (int32_t i = 0; i < c->draw_count; i++)
@@ -360,6 +453,7 @@ void rt_canvas3d_end(void *obj) {
     if (!c->backend) {
         c->in_frame = 0;
         c->frame_is_2d = 0;
+        c->frame_is_view_model = 0;
         c->last_draw_count = 0;
         c->last_texture_upload_bytes = 0;
         c->last_frame_gpu_time_us = 0;
@@ -368,6 +462,11 @@ void rt_canvas3d_end(void *obj) {
         canvas3d_clear_temp_objects(c);
         return;
     }
+
+    /* Any frame ending into an offscreen target changes its contents (even a
+     * clear-only frame) — advance its revision so material mirrors refresh. */
+    if (c->render_target)
+        c->render_target->content_revision++;
 
     cmds = (deferred_draw_t *)c->draw_cmds;
     queued_draw_count = c->draw_count;
@@ -385,7 +484,7 @@ void rt_canvas3d_end(void *obj) {
         }
     }
 
-    if (!c->frame_is_2d && c->skybox) {
+    if (!c->frame_is_2d && !c->frame_is_view_model && c->skybox) {
         uint8_t *out_pixels = NULL;
         int32_t out_w = 0;
         int32_t out_h = 0;
@@ -436,15 +535,18 @@ void rt_canvas3d_end(void *obj) {
         canvas3d_refresh_frame_gpu_time(c);
         c->in_frame = 0;
         c->frame_is_2d = 0;
+        c->frame_is_view_model = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
         canvas3d_clear_temp_objects(c);
         return;
     }
 
-    c->shadow_count = 0;
-    memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
-    if (!c->frame_is_2d && main_count > 0) {
+    if (!c->frame_is_view_model) {
+        c->shadow_count = 0;
+        memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
+    }
+    if (!c->frame_is_2d && !c->frame_is_view_model && main_count > 0) {
         canvas3d_render_shadow_pass(c, cmds);
     }
 
@@ -472,6 +574,7 @@ void rt_canvas3d_end(void *obj) {
 
     c->in_frame = 0;
     c->frame_is_2d = 0;
+    c->frame_is_view_model = 0;
     c->draw_count = 0;
     canvas3d_clear_temp_buffers(c);
     canvas3d_clear_temp_objects(c);

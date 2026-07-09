@@ -34,6 +34,7 @@
 extern "C" {
 void *rt_model3d_load(rt_string path);
 void *rt_fbx_load(rt_string path);
+int64_t rt_fbx_mesh_count(void *asset);
 void *rt_gltf_load(rt_string path);
 void *rt_mesh3d_from_obj(rt_string path);
 void *rt_mesh3d_from_stl(rt_string path);
@@ -272,7 +273,9 @@ TEST(AssetLoadErrors, StreamManifestDeclaredCountIsBounded) {
     std::remove(manifest.c_str());
 }
 
-TEST(AssetLoadErrors, AsciiFbxHeaderReportsSpecificUnsupportedMessage) {
+TEST(AssetLoadErrors, AsciiFbxHeaderLoadsGeometryThroughAsciiPath) {
+    /* ASCII FBX with the standard comment signature loads its geometry subset
+     * instead of being rejected (fps plan 09 / E31). */
     std::string fbx = tmp_path("ascii_header.fbx");
     write_text(fbx.c_str(),
                "; FBX 7.4.0 project file\n"
@@ -285,10 +288,27 @@ TEST(AssetLoadErrors, AsciiFbxHeaderReportsSpecificUnsupportedMessage) {
                "}\n");
 
     void *asset = rt_fbx_load(rt_const_cstr(fbx.c_str()));
+    EXPECT_NE(asset, nullptr);
+    EXPECT_EQ(rt_fbx_mesh_count(asset), 1);
+
+    std::remove(fbx.c_str());
+}
+
+TEST(AssetLoadErrors, AsciiFbxWithoutGeometryReportsUnsupported) {
+    /* Signature-matching ASCII with no parsable geometry payload still fails
+     * cleanly with a diagnostic naming the actual problem. */
+    std::string fbx = tmp_path("ascii_empty.fbx");
+    write_text(fbx.c_str(),
+               "; FBX 7.4.0 project file\n"
+               "FBXHeaderExtension:  {\n"
+               "  FBXVersion: 7400\n"
+               "}\n");
+
+    void *asset = rt_fbx_load(rt_const_cstr(fbx.c_str()));
     EXPECT_EQ(asset, nullptr);
     EXPECT_EQ(rt_asset_error_get_code(), RT_ASSET_ERROR_UNSUPPORTED);
     EXPECT_EQ(std::string(rt_asset_error_get_message()),
-              std::string("ASCII FBX is not supported; re-export as binary FBX"));
+              std::string("ASCII FBX file did not contain parsable mesh geometry"));
 
     std::remove(fbx.c_str());
 }

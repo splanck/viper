@@ -72,7 +72,6 @@ ilrun program.il
 - `/examples/games/crackman/` - Crackman maze-chase game in Zia
 - `/examples/games/xenoscape/` - Side-scroller game in Zia using ten game-engine helpers
 - `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
-- `/examples/games/chess-basic/` - Chess game in BASIC
 - `/examples/games/frogger-basic/`, `/examples/games/centipede-basic/`, `/examples/games/pacman-basic/` - BASIC ports of the same games
 - `/examples/apps/` - Zia application examples such as `vipersql/` and `paint/`
 - `/viperide/` - ViperIDE source, built separately from the examples

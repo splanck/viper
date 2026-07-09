@@ -162,17 +162,17 @@ class Board {
 
         // Simple deterministic LCG PRNG for Zobrist key generation
         var seed = 1070372317;
-        for i in 0..768 {   // 64 * 12
+        for _ in 0..768 {   // 64 * 12
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkPieces.add(seed);
         }
         seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
         self.zkSide.add(seed);
-        for i in 0..4 {
+        for _ in 0..4 {
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkCastle.add(seed);
         }
-        for i in 0..8 {
+        for _ in 0..8 {
             seed = (seed * 1664525 + 1013904223) & 0x7FFFFFFF;
             self.zkEP.add(seed);
         }
@@ -185,8 +185,10 @@ class Board {
     /// @note Both castle rights ON for both sides; white to move.
     expose func setupStartPosition() {
         self.sq = [];
-        for i in 0..64 {
+        var idx = 0;
+        while idx < 64 {
             self.sq.add(0);
+            idx = idx + 1;
         }
         self.hashVal = 0;
         self.whiteToMove = true;
@@ -221,6 +223,41 @@ class Board {
         self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BK);
         self.hashVal = self.hashVal ^ self.zkCastle.get(config.CR_BQ);
         // White to move — no XOR (side key only XORed when black to move)
+    }
+
+    /// @brief Reset to an empty manually-configured position.
+    /// @details Used by FEN/puzzle/save loading. Call `set` for pieces,
+    ///          then `finishManualPosition` to rebuild the hash including
+    ///          side, castle, and en-passant metadata.
+    expose func setupManualPosition(whiteMove: Boolean,
+                                    epFile: Integer,
+                                    cwk: Boolean,
+                                    cwq: Boolean,
+                                    cbk: Boolean,
+                                    cbq: Boolean,
+                                    halfClock: Integer,
+                                    fullMove: Integer) {
+        self.sq = [];
+        var idx = 0;
+        while idx < 64 {
+            self.sq.add(0);
+            idx = idx + 1;
+        }
+        self.hashVal = 0;
+        self.whiteToMove = whiteMove;
+        self.enPassantFile = epFile;
+        self.castleWK = cwk;
+        self.castleWQ = cwq;
+        self.castleBK = cbk;
+        self.castleBQ = cbq;
+        self.halfMoveClock = halfClock;
+        self.fullMoveNumber = fullMove;
+        if self.fullMoveNumber < 1 { self.fullMoveNumber = 1; }
+    }
+
+    /// @brief Rebuild the hash after manual position setup.
+    expose func finishManualPosition() {
+        self.recomputeHash();
     }
 
     // -----------------------------------------------------------------------

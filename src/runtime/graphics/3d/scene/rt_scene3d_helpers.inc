@@ -1772,23 +1772,195 @@ static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt
     return -1;
 }
 
-/// @brief Build the potentially-visible-set for the camera's current zone by portal flood-fill.
-/// @details Locates the zone containing the camera, then breadth-first traverses the directed
-///          visibility portals to mark every zone reachable from it. The result is a per-zone
-///          visibility bitmap consumed by scene3d_pvs_allows_aabb. Left inactive (zeroed) when the
-///          scene has no zones, the camera is outside all zones, or allocation fails.
+/// @brief Legacy reachability flood-fill: mark every zone reachable through any portal.
+static void scene3d_pvs_flood_fill(rt_scene3d *scene,
+                                   scene3d_pvs_context_t *out,
+                                   int32_t camera_zone,
+                                   int32_t zone_count,
+                                   int32_t portal_count,
+                                   int32_t *queue) {
+    int32_t head = 0;
+    int32_t tail = 0;
+    out->visible_zones[camera_zone] = 1;
+    queue[tail++] = camera_zone;
+    while (head < tail) {
+        int32_t zone = queue[head++];
+        for (int32_t i = 0; i < portal_count; ++i) {
+            const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
+            if (portal->from_zone != zone || portal->to_zone < 0 || portal->to_zone >= zone_count)
+                continue;
+            if (!out->visible_zones[portal->to_zone]) {
+                out->visible_zones[portal->to_zone] = 1;
+                queue[tail++] = portal->to_zone;
+            }
+        }
+    }
+}
+
+/// @brief Project a portal's world-space box through the culling VP into an NDC XY rect.
+/// @details Portals are authored as zone links without geometry, so the "portal frame" is
+///   the per-axis interval between the two zone AABBs — their intersection when they
+///   overlap or touch, the gap slab when they are separated. Corners straddling the near
+///   plane degrade to the full view rect (classic conservative portal handling).
+/// @return 0 = portal entirely behind the camera (cull), 1 = @p out_rect valid,
+///         2 = conservative full-view rect.
+static int scene3d_portal_ndc_rect(const float *vp,
+                                   const rt_scene3d_visibility_zone *a,
+                                   const rt_scene3d_visibility_zone *b,
+                                   double out_rect[4]) {
+    double bmin[3];
+    double bmax[3];
+    double min_x = 1e30, min_y = 1e30, max_x = -1e30, max_y = -1e30;
+    int behind = 0;
+    int front = 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        double lo = fmax(a->world_min[axis], b->world_min[axis]);
+        double hi = fmin(a->world_max[axis], b->world_max[axis]);
+        bmin[axis] = fmin(lo, hi);
+        bmax[axis] = fmax(lo, hi);
+    }
+    for (int i = 0; i < 8; ++i) {
+        double p0 = (i & 1) ? bmax[0] : bmin[0];
+        double p1 = (i & 2) ? bmax[1] : bmin[1];
+        double p2 = (i & 4) ? bmax[2] : bmin[2];
+        double cw = vp[12] * p0 + vp[13] * p1 + vp[14] * p2 + vp[15];
+        if (!isfinite(cw) || cw <= 1e-9) {
+            behind = 1;
+            continue;
+        }
+        front = 1;
+        double inv = 1.0 / cw;
+        double nx = (vp[0] * p0 + vp[1] * p1 + vp[2] * p2 + vp[3]) * inv;
+        double ny = (vp[4] * p0 + vp[5] * p1 + vp[6] * p2 + vp[7]) * inv;
+        if (!isfinite(nx) || !isfinite(ny))
+            return 2;
+        min_x = fmin(min_x, nx);
+        min_y = fmin(min_y, ny);
+        max_x = fmax(max_x, nx);
+        max_y = fmax(max_y, ny);
+    }
+    if (!front)
+        return 0;
+    if (behind)
+        return 2;
+    out_rect[0] = fmax(min_x, -1.0);
+    out_rect[1] = fmax(min_y, -1.0);
+    out_rect[2] = fmin(max_x, 1.0);
+    out_rect[3] = fmin(max_y, 1.0);
+    if (out_rect[0] > out_rect[2] || out_rect[1] > out_rect[3])
+        return 0;
+    return 1;
+}
+
+/// @brief Portal-frustum PVS: propagate screen-space view windows through portals.
+/// @details Each zone accumulates the union NDC rect through which it can be seen.
+///   A portal only propagates when its projected rect intersects the source zone's
+///   window; the target inherits the intersection. Runs to a fixpoint (a wider path
+///   discovered later re-expands the target) with a hard expansion cap for safety.
+///   Falls back to flood-fill mid-run only via the caller's toggle, never silently.
+static void scene3d_pvs_portal_clip(rt_scene3d *scene,
+                                    scene3d_pvs_context_t *out,
+                                    const float *vp,
+                                    int32_t camera_zone,
+                                    int32_t zone_count,
+                                    int32_t portal_count,
+                                    int32_t *queue,
+                                    double *zone_rects,
+                                    uint8_t *in_queue) {
+    int32_t head = 0;
+    int32_t tail = 0;
+    int32_t expansions = 0;
+    const int32_t expansion_cap = 4096;
+    for (int32_t i = 0; i < zone_count; ++i) {
+        zone_rects[i * 4 + 0] = 1.0;
+        zone_rects[i * 4 + 1] = 1.0;
+        zone_rects[i * 4 + 2] = -1.0;
+        zone_rects[i * 4 + 3] = -1.0; /* empty */
+    }
+    zone_rects[camera_zone * 4 + 0] = -1.0;
+    zone_rects[camera_zone * 4 + 1] = -1.0;
+    zone_rects[camera_zone * 4 + 2] = 1.0;
+    zone_rects[camera_zone * 4 + 3] = 1.0;
+    out->visible_zones[camera_zone] = 1;
+    queue[tail] = camera_zone;
+    in_queue[camera_zone] = 1;
+    tail = (tail + 1) % zone_count;
+    int32_t queued = 1;
+    while (queued > 0 && expansions < expansion_cap) {
+        int32_t zone = queue[head];
+        head = (head + 1) % zone_count;
+        in_queue[zone] = 0;
+        queued--;
+        const double *src = &zone_rects[zone * 4];
+        for (int32_t i = 0; i < portal_count; ++i) {
+            const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
+            double rect[4];
+            double clipped[4];
+            int kind;
+            if (portal->from_zone != zone || portal->to_zone < 0 || portal->to_zone >= zone_count ||
+                portal->from_zone < 0 || portal->from_zone >= zone_count)
+                continue;
+            expansions++;
+            kind = scene3d_portal_ndc_rect(vp,
+                                           &scene->visibility_zones[portal->from_zone],
+                                           &scene->visibility_zones[portal->to_zone],
+                                           rect);
+            if (kind == 0)
+                continue;
+            if (kind == 2) {
+                rect[0] = -1.0;
+                rect[1] = -1.0;
+                rect[2] = 1.0;
+                rect[3] = 1.0;
+            }
+            clipped[0] = fmax(rect[0], src[0]);
+            clipped[1] = fmax(rect[1], src[1]);
+            clipped[2] = fmin(rect[2], src[2]);
+            clipped[3] = fmin(rect[3], src[3]);
+            if (clipped[0] > clipped[2] || clipped[1] > clipped[3])
+                continue;
+            double *dst = &zone_rects[portal->to_zone * 4];
+            double grown[4] = {fmin(dst[0], clipped[0]),
+                               fmin(dst[1], clipped[1]),
+                               fmax(dst[2], clipped[2]),
+                               fmax(dst[3], clipped[3])};
+            if (out->visible_zones[portal->to_zone] && grown[0] == dst[0] && grown[1] == dst[1] &&
+                grown[2] == dst[2] && grown[3] == dst[3])
+                continue;
+            memcpy(dst, grown, sizeof(grown));
+            out->visible_zones[portal->to_zone] = 1;
+            if (!in_queue[portal->to_zone]) {
+                queue[tail] = portal->to_zone;
+                tail = (tail + 1) % zone_count;
+                in_queue[portal->to_zone] = 1;
+                queued++;
+            }
+        }
+    }
+    scene->last_portal_traversal_count = expansions;
+}
+
+/// @brief Build the potentially-visible-set for the camera's current zone.
+/// @details Locates the zone containing the camera, then propagates visibility through
+///          the authored portals: by default each portal narrows the view to its
+///          projected screen window (portal-frustum culling); the legacy
+///          reachability-only flood-fill remains available via SetPortalClipping(false)
+///          and is used automatically when no culling VP is supplied. The result is a
+///          per-zone visibility bitmap consumed by scene3d_pvs_allows_aabb. Left
+///          inactive (zeroed) when the scene has no zones, the camera is outside all
+///          zones, or allocation fails.
 /// @return 1 if an active PVS context was produced; 0 otherwise (with @p out zeroed).
 static int scene3d_build_pvs_context(rt_scene3d *scene,
                                      rt_camera3d *cam,
+                                     const float *vp,
                                      scene3d_pvs_context_t *out) {
     int32_t zone_count;
     int32_t portal_count;
     int32_t camera_zone;
     int32_t *queue = NULL;
-    int32_t head = 0;
-    int32_t tail = 0;
     if (!scene || !cam || !out)
         return 0;
+    scene->last_portal_traversal_count = 0;
     zone_count = scene3d_visibility_zone_count_safe(scene);
     portal_count = scene3d_visibility_portal_count_safe(scene);
     if (zone_count <= 0)
@@ -1806,20 +1978,28 @@ static int scene3d_build_pvs_context(rt_scene3d *scene,
     }
     out->zone_count = zone_count;
     out->active = 1;
-    out->visible_zones[camera_zone] = 1;
-    queue[tail++] = camera_zone;
-    while (head < tail) {
-        int32_t zone = queue[head++];
-        for (int32_t i = 0; i < portal_count; ++i) {
-            const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
-            if (portal->from_zone != zone || portal->to_zone < 0 || portal->to_zone >= zone_count)
-                continue;
-            if (!out->visible_zones[portal->to_zone]) {
-                out->visible_zones[portal->to_zone] = 1;
-                queue[tail++] = portal->to_zone;
-            }
+    if (vp && !scene->portal_clipping_disabled) {
+        double *zone_rects = (double *)malloc((size_t)zone_count * 4u * sizeof(double));
+        uint8_t *in_queue = (uint8_t *)calloc((size_t)zone_count, 1);
+        if (zone_rects && in_queue) {
+            scene3d_pvs_portal_clip(scene,
+                                    out,
+                                    vp,
+                                    camera_zone,
+                                    zone_count,
+                                    portal_count,
+                                    queue,
+                                    zone_rects,
+                                    in_queue);
+            free(zone_rects);
+            free(in_queue);
+            free(queue);
+            return 1;
         }
+        free(zone_rects);
+        free(in_queue);
     }
+    scene3d_pvs_flood_fill(scene, out, camera_zone, zone_count, portal_count, queue);
     free(queue);
     return 1;
 }

@@ -210,19 +210,29 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
 /// @brief Capture the current swapchain backbuffer before Present invalidates it.
 static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
     ID3D11Texture2D *back_buffer = NULL;
+    D3D11_TEXTURE2D_DESC back_buffer_desc;
     HRESULT hr;
 
     if (!ctx || !ctx->swap_chain || !ctx->ctx)
         return 0;
     ctx->presented_color_valid = 0;
-    hr = d3d11_ensure_presented_snapshot_texture(ctx, ctx->width, ctx->height);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateTexture2D(presentedSnapshot)", hr);
-        return 0;
-    }
     hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::GetBuffer(presentedSnapshot)", hr);
+        return 0;
+    }
+    ID3D11Texture2D_GetDesc(back_buffer, &back_buffer_desc);
+    if (back_buffer_desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent((int32_t)back_buffer_desc.Width,
+                                                (int32_t)back_buffer_desc.Height)) {
+        SAFE_RELEASE(back_buffer);
+        return 0;
+    }
+    hr = d3d11_ensure_presented_snapshot_texture(
+        ctx, (int32_t)back_buffer_desc.Width, (int32_t)back_buffer_desc.Height);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D(presentedSnapshot)", hr);
+        SAFE_RELEASE(back_buffer);
         return 0;
     }
     d3d11_unbind_draw_resources(ctx);
@@ -256,6 +266,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
+    d3d11_destroy_opaque_depth_target(ctx);
     d3d11_destroy_bloom_targets(ctx);
     d3d11_destroy_taa_targets(ctx);
     d3d11_destroy_ssr_target(ctx);
@@ -740,6 +751,7 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->rtt_depth_tex);
     SAFE_RELEASE(ctx->rtt_rtv);
     SAFE_RELEASE(ctx->rtt_color_tex);
+    d3d11_destroy_opaque_depth_target(ctx);
     ctx->rtt_width = 0;
     ctx->rtt_height = 0;
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
@@ -792,7 +804,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     if (FAILED(hr))
         return hr;
     hr = d3d11_create_depth_target(
-        ctx, rt->width, rt->height, 0, &ctx->rtt_depth_tex, &ctx->rtt_dsv, NULL);
+        ctx, rt->width, rt->height, 1, &ctx->rtt_depth_tex, &ctx->rtt_dsv, NULL);
     if (FAILED(hr)) {
         d3d11_destroy_rtt_targets(ctx);
         return hr;
@@ -833,7 +845,14 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
         SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
         ctx->shadow_width[slot] = 0;
         ctx->shadow_height[slot] = 0;
+        ctx->shadow_slot_complete[slot] = 0;
     }
+    SAFE_RELEASE(ctx->shadow_atlas_srv);
+    SAFE_RELEASE(ctx->shadow_atlas_dsv);
+    SAFE_RELEASE(ctx->shadow_atlas_tex);
+    ctx->shadow_atlas_w = 0;
+    ctx->shadow_atlas_h = 0;
+    ctx->shadow_atlas_cleared = 0;
     ctx->shadow_pass_slot = -1;
     ctx->shadow_count = 0;
 }
@@ -856,6 +875,7 @@ static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     SAFE_RELEASE(ctx->shadow_depth_tex[slot]);
     ctx->shadow_width[slot] = 0;
     ctx->shadow_height[slot] = 0;
+    ctx->shadow_slot_complete[slot] = 0;
 }
 
 /// @brief Recompute the highest contiguous shadow slot advertised to shaders.
@@ -868,8 +888,14 @@ static void d3d11_recompute_shadow_count(d3d11_context_t *ctx) {
     if (!ctx)
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
+        if (slot < VGFX3D_CSM_SLOTS) {
+            if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
+                complete[slot] = 1;
+        } else if (ctx->shadow_atlas_srv && ctx->shadow_slot_complete[slot]) {
+            /* Atlas tiles have no per-slot resources; completeness is stamped
+             * by shadow_end after the tile pass renders. */
             complete[slot] = 1;
+        }
     }
     ctx->shadow_count = vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete);
 }
@@ -907,5 +933,46 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
      * failure/release paths recompute, but this success path previously did not, leaving a
      * valid shadow map silently unsampled until some other path refreshed the count. */
     d3d11_recompute_shadow_count(ctx);
+    return S_OK;
+}
+
+/// @brief Allocate (or resize) the shared shadow atlas for slots >= VGFX3D_CSM_SLOTS.
+/// @details One depth target holding a 4x2 tile grid at the per-slot resolution;
+///   the main pass samples it at t17 through static per-tile UV rects.
+static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, int32_t tile_h) {
+    HRESULT hr;
+    int32_t atlas_w;
+    int32_t atlas_h;
+
+    if (!ctx || tile_w <= 0 || tile_h <= 0 || tile_w > INT32_MAX / 4 || tile_h > INT32_MAX / 2)
+        return E_INVALIDARG;
+    atlas_w = tile_w * 4;
+    atlas_h = tile_h * 2;
+    if (!vgfx3d_d3d11_is_valid_texture2d_extent(atlas_w, atlas_h))
+        return E_INVALIDARG;
+    if (ctx->shadow_atlas_tex && ctx->shadow_atlas_dsv && ctx->shadow_atlas_srv &&
+        ctx->shadow_atlas_w == atlas_w && ctx->shadow_atlas_h == atlas_h)
+        return S_OK;
+
+    d3d11_unbind_shadow_resources(ctx);
+    SAFE_RELEASE(ctx->shadow_atlas_srv);
+    SAFE_RELEASE(ctx->shadow_atlas_dsv);
+    SAFE_RELEASE(ctx->shadow_atlas_tex);
+    ctx->shadow_atlas_w = 0;
+    ctx->shadow_atlas_h = 0;
+    ctx->shadow_atlas_cleared = 0;
+    for (int32_t slot = VGFX3D_CSM_SLOTS; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        ctx->shadow_slot_complete[slot] = 0;
+    hr = d3d11_create_depth_target(ctx,
+                                   atlas_w,
+                                   atlas_h,
+                                   1,
+                                   &ctx->shadow_atlas_tex,
+                                   &ctx->shadow_atlas_dsv,
+                                   &ctx->shadow_atlas_srv);
+    if (FAILED(hr))
+        return hr;
+    ctx->shadow_atlas_w = atlas_w;
+    ctx->shadow_atlas_h = atlas_h;
     return S_OK;
 }

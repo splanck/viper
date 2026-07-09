@@ -1,0 +1,231 @@
+module TestCanvas3DRendererUpgrades;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-05 session B coverage:
+//   - Material3D.SetAlbedoRenderTarget: live RT binding refreshes when a new
+//     frame into the target ends — no per-frame readback or rebinding.
+//   - Software/backend instancing: 70k instances draw without the old
+//     fallback trap; opaque batches report InstancedFallbackCount == 0.
+//   - Portal-frustum PVS: a corridor is fully visible looking down it, culled
+//     looking away; PortalClipping=false restores reachability flood-fill.
+
+// Pixels.Get packs 0xRRGGBBAA.
+func red(c: Integer) -> Integer {
+    return (c / 16777216) % 256;
+}
+
+func green(c: Integer) -> Integer {
+    return (c / 65536) % 256;
+}
+
+func renderIntoTarget(canvas: Canvas3D, rt: RenderTarget3D, cam: Camera3D, mat: Material3D) {
+    var box = Mesh3D.NewBox(2.0, 2.0, 2.0);
+    Canvas3D.SetRenderTarget(canvas, rt);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 1.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, box, Mat4.Identity(), mat);
+    Canvas3D.End(canvas);
+    Canvas3D.ResetRenderTarget(canvas);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Renderer Upgrades", 160, 120);
+    var cam = Camera3D.New(60.0, 160.0 / 120.0, 0.1, 100.0);
+    var eye = new Vec3(0.0, 0.0, 5.0);
+    var target = new Vec3(0.0, 0.0, 0.0);
+    var up = new Vec3(0.0, 1.0, 0.0);
+    Camera3D.LookAt(cam, eye, target, up);
+
+    // --- Non-uniform texture sampling (BUG-E7 regression) ----------------------
+    // Half-green/half-blue texture on a camera-facing plane: asserts exact texel
+    // colors so a UV/constant-buffer layout regression cannot hide behind
+    // uniform textures (the Metal PerMaterial mismatch did exactly that).
+    var halves = Pixels.New(64, 64);
+    var hy = 0;
+    while (hy < 64) {
+        var hx = 0;
+        while (hx < 64) {
+            if (hy < 32) {
+                Pixels.Set(halves, hx, hy, 16711935); // green top
+            } else {
+                Pixels.Set(halves, hx, hy, 65535); // blue bottom
+            }
+            hx = hx + 1;
+        }
+        hy = hy + 1;
+    }
+    var halvesMat = Material3D.New();
+    Material3D.SetUnlit(halvesMat, true);
+    Material3D.SetTexture(halvesMat, halves);
+    var plane = Mesh3D.NewPlane(4.0, 4.0);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, plane, Mat4.RotateX(90.0), halvesMat);
+    Canvas3D.End(canvas);
+    var uvShot = Canvas3D.Screenshot(canvas);
+    var uvTop = Pixels.Get(uvShot, 80, 40);
+    var uvBottom = Pixels.Get(uvShot, 80, 80);
+    if (green(uvTop) < 200 || red(uvTop) > 40) {
+        Say("FAIL: textured plane top half should sample pure green texels");
+        return;
+    }
+    if (green(uvBottom) > 60) {
+        Say("FAIL: textured plane bottom half should sample pure blue texels");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // --- E20: live render-target material -------------------------------------
+    var rt = RenderTarget3D.New(64, 64);
+    var rtCam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(rtCam, eye, target, up);
+    var greenMat = Material3D.NewColor(0.0, 1.0, 0.0);
+    Material3D.SetUnlit(greenMat, true);
+    var redMat = Material3D.NewColor(1.0, 0.0, 0.0);
+    Material3D.SetUnlit(redMat, true);
+    renderIntoTarget(canvas, rt, rtCam, greenMat);
+
+    var quad = Mesh3D.New();
+    Mesh3D.AddVertex(quad, -2.0, -2.0, 0.0, 0, 0, 1, 0, 1);
+    Mesh3D.AddVertex(quad, 2.0, -2.0, 0.0, 0, 0, 1, 1, 1);
+    Mesh3D.AddVertex(quad, 2.0, 2.0, 0.0, 0, 0, 1, 1, 0);
+    Mesh3D.AddVertex(quad, -2.0, 2.0, 0.0, 0, 0, 1, 0, 0);
+    Mesh3D.AddTriangle(quad, 0, 1, 2);
+    Mesh3D.AddTriangle(quad, 0, 2, 3);
+    var monitorMat = Material3D.New();
+    Material3D.SetUnlit(monitorMat, true);
+    Material3D.SetAlbedoRenderTarget(monitorMat, rt);
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, quad, Mat4.Identity(), monitorMat);
+    Canvas3D.End(canvas);
+    var shot = Canvas3D.Screenshot(canvas);
+    if (green(Pixels.Get(shot, 80, 60)) < 128) {
+        Say("FAIL: monitor quad should show the RT's green box");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // Re-render the target red; the monitor must refresh WITHOUT rebinding.
+    renderIntoTarget(canvas, rt, rtCam, redMat);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, quad, Mat4.Identity(), monitorMat);
+    Canvas3D.End(canvas);
+    var shot2 = Canvas3D.Screenshot(canvas);
+    if (red(Pixels.Get(shot2, 80, 60)) < 128 || green(Pixels.Get(shot2, 80, 60)) > 100) {
+        Say("FAIL: rebound-free RT material should refresh to the red frame");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // --- E22: instancing above the old 65536 fallback cap ----------------------
+    var pebble = Mesh3D.NewBox(0.2, 0.2, 0.2);
+    var pebbleMat = Material3D.NewColor(0.9, 0.9, 0.2);
+    Material3D.SetUnlit(pebbleMat, true);
+    var batch = InstanceBatch3D.New(pebble, pebbleMat);
+    var i = 0;
+    while (i < 70000) {
+        var col = i % 300;
+        var row = i / 300;
+        batch.Add(Mat4.Translate(-30.0 + col * 0.2, -12.0 + row * 0.1, -20.0));
+        i = i + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawInstanced(canvas, batch);
+    Canvas3D.End(canvas);
+    if (canvas.InstancedFallbackCount != 0) {
+        Say("FAIL: opaque instanced batch should use the backend hook, not fallback");
+        return;
+    }
+    Canvas3D.Flip(canvas);
+
+    // --- E23: portal-frustum PVS ----------------------------------------------
+    // Topology: zone 0 holds the camera; zone 1 sits directly IN FRONT of the
+    // camera (its node is inside the view frustum) but is only reachable via
+    // zone 2, which lies BEHIND the camera. Reachability flood-fill marks
+    // zone 1 visible; portal-frustum clipping culls the behind-camera portal
+    // and with it zone 1's node — a pure PVS cull with no frustum confound.
+    var scene = SceneGraph.New();
+    var front_node = SceneNode.New();
+    SceneNode.set_Mesh(front_node, Mesh3D.NewBox(2.0, 2.0, 2.0));
+    SceneNode.SetPosition(front_node, 10.5, 0.0, 0.0);
+    SceneGraph.Add(scene, front_node);
+
+    SceneGraph.AddVisibilityZone(scene, "cam",
+                                 new Vec3(0.0, -5.0, -5.0), new Vec3(7.0, 5.0, 5.0));
+    SceneGraph.AddVisibilityZone(scene, "front",
+                                 new Vec3(7.0, -5.0, -5.0), new Vec3(14.0, 5.0, 5.0));
+    SceneGraph.AddVisibilityZone(scene, "behind",
+                                 new Vec3(-7.0, -5.0, -5.0), new Vec3(0.0, 5.0, 5.0));
+    SceneGraph.AddVisibilityPortal(scene, 0, 2, true);
+    SceneGraph.AddVisibilityPortal(scene, 2, 1, true);
+
+    if (!scene.PortalClipping) {
+        Say("FAIL: portal clipping should default on");
+        return;
+    }
+
+    var pvsCam = Camera3D.New(60.0, 160.0 / 120.0, 0.1, 200.0);
+    Camera3D.LookAt(pvsCam, new Vec3(3.5, 0.0, 0.0), new Vec3(10.5, 0.0, 0.0), up);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    SceneGraph.Draw(scene, canvas, pvsCam);
+    Canvas3D.Flip(canvas);
+    if (scene.PvsCulledCount < 1) {
+        Say("FAIL: a zone reachable only through a behind-camera portal should cull");
+        return;
+    }
+    if (scene.PortalTraversalCount < 1) {
+        Say("FAIL: PVS build should report portal traversals");
+        return;
+    }
+
+    scene.PortalClipping = false;
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    SceneGraph.Draw(scene, canvas, pvsCam);
+    Canvas3D.Flip(canvas);
+    if (scene.PvsCulledCount != 0) {
+        Say("FAIL: disabling portal clipping should restore reachability flood-fill");
+        return;
+    }
+    scene.PortalClipping = true;
+
+    // A straight corridor stays fully visible when looked down (no over-cull).
+    var hall = SceneGraph.New();
+    var hall_node = SceneNode.New();
+    SceneNode.set_Mesh(hall_node, Mesh3D.NewBox(2.0, 2.0, 2.0));
+    SceneNode.SetPosition(hall_node, 35.0, 0.0, 0.0);
+    SceneGraph.Add(hall, hall_node);
+    var z = 0;
+    while (z < 4) {
+        SceneGraph.AddVisibilityZone(hall,
+                                     "seg",
+                                     new Vec3(z * 10.0, -5.0, -5.0),
+                                     new Vec3(z * 10.0 + 10.0, 5.0, 5.0));
+        z = z + 1;
+    }
+    SceneGraph.AddVisibilityPortal(hall, 0, 1, true);
+    SceneGraph.AddVisibilityPortal(hall, 1, 2, true);
+    SceneGraph.AddVisibilityPortal(hall, 2, 3, true);
+    var hallCam = Camera3D.New(60.0, 160.0 / 120.0, 0.1, 200.0);
+    Camera3D.LookAt(hallCam, new Vec3(5.0, 0.0, 0.0), new Vec3(15.0, 0.0, 0.0), up);
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    SceneGraph.Draw(hall, canvas, hallCam);
+    Canvas3D.Flip(canvas);
+    if (hall.PvsCulledCount != 0) {
+        Say("FAIL: looking down the corridor should keep every zone visible");
+        return;
+    }
+    if (hall.PortalTraversalCount < 3) {
+        Say("FAIL: forward view should traverse the corridor portals");
+        return;
+    }
+
+    Say("PASS");
+}

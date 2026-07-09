@@ -223,6 +223,11 @@ ExprPtr Parser::parsePrimary() {
         return parseMapOrSetLiteral();
     }
 
+    if (check(TokenKind::At)) {
+        error("attributes ('@') are not supported in Zia");
+        return nullptr;
+    }
+
     error("expected expression");
     return nullptr;
 }
@@ -312,14 +317,12 @@ ExprPtr Parser::parseParenthesizedExpr(SourceLoc loc) {
             return std::make_unique<UnitLiteralExpr>(loc);
         }
 
-        bool matchedUntypedLambda = false;
-        std::vector<LambdaParam> matchedTypedLambdaParams;
-        bool matchedTypedLambda = false;
+        std::vector<LambdaParam> matchedLambdaParams;
+        bool matchedLambda = false;
         {
             Speculation speculative(*this);
             std::vector<LambdaParam> params;
             bool validLambda = true;
-            bool missingTypeAnnotation = false;
 
             do {
                 if (!checkIdentifierLike()) {
@@ -337,34 +340,23 @@ ExprPtr Parser::parseParenthesizedExpr(SourceLoc loc) {
                         validLambda = false;
                         break;
                     }
-                } else {
-                    missingTypeAnnotation = true;
                 }
+                // A missing annotation is allowed: the type is inferred from the
+                // expected function type during semantic analysis (or reported
+                // there when no expected type is available).
 
                 params.push_back(std::move(param));
             } while (match(TokenKind::Comma));
 
             if (validLambda && match(TokenKind::RParen) && match(TokenKind::FatArrow)) {
                 speculative.commit();
-                if (missingTypeAnnotation) {
-                    matchedUntypedLambda = true;
-                } else {
-                    matchedTypedLambdaParams = std::move(params);
-                    matchedTypedLambda = true;
-                }
+                matchedLambdaParams = std::move(params);
+                matchedLambda = true;
             }
         }
 
-        if (matchedUntypedLambda) {
-            error("lambda parameters require explicit type annotations");
-            // Recover by consuming the lambda body so the trailing tokens aren't
-            // re-parsed as stray expressions (prevents cascading diagnostics).
-            parseLambdaBody(loc, {});
-            return nullptr;
-        }
-
-        if (matchedTypedLambda) {
-            return parseLambdaBody(loc, std::move(matchedTypedLambdaParams));
+        if (matchedLambda) {
+            return parseLambdaBody(loc, std::move(matchedLambdaParams));
         }
 
         // Parse first expression - could be parenthesized expression or tuple

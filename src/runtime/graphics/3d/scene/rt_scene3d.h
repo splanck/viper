@@ -251,6 +251,12 @@ int64_t rt_scene3d_get_pvs_culled_count(void *scene);
 int64_t rt_scene3d_get_visibility_zone_count(void *scene);
 /// @brief Number of directed visibility portal links.
 int64_t rt_scene3d_get_visibility_portal_count(void *scene);
+/// @brief Toggle portal-frustum PVS clipping (default on; off = reachability flood-fill).
+void rt_scene3d_set_portal_clipping(void *scene, int8_t enabled);
+/// @brief Current portal-clipping mode.
+int8_t rt_scene3d_get_portal_clipping(void *scene);
+/// @brief Portal expansions evaluated during the most recent PVS build.
+int64_t rt_scene3d_get_portal_traversal_count(void *scene);
 /// @brief Total number of nodes in the scene graph.
 int64_t rt_scene3d_get_node_count(void *scene);
 

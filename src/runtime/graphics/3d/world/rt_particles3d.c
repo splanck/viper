@@ -93,6 +93,17 @@ typedef struct {
 
     int8_t emitting;
     int8_t additive_blend;
+    /* Velocity-aligned stretching: 0 = camera-facing quads, k scales length
+     * by (1 + k * |velocity|). */
+    double stretch_k;
+    /* Ribbon trails: per-particle ring of recent positions (parallel arrays,
+     * swapped alongside the particle pool's swap-remove kills). */
+    float trail_lifetime;  /* seconds of retained history (0 = trails off) */
+    int32_t trail_segments; /* control points per particle (2..16) */
+    float *trail_pos;      /* max_particles * trail_segments * 3 */
+    float *trail_age;      /* seconds since last control-point push */
+    int16_t *trail_len;    /* control points currently stored */
+    int16_t *trail_head;   /* ring head index */
     double softness; /* Plan 10: soft-particle fade distance in world units (0 = off) */
     void *texture;
     int32_t emitter_shape; /* 0=point, 1=sphere, 2=box */
@@ -424,6 +435,14 @@ static void rt_particles3d_finalize(void *obj) {
         return;
     free(ps->particles);
     ps->particles = NULL;
+    free(ps->trail_pos);
+    ps->trail_pos = NULL;
+    free(ps->trail_age);
+    ps->trail_age = NULL;
+    free(ps->trail_len);
+    ps->trail_len = NULL;
+    free(ps->trail_head);
+    ps->trail_head = NULL;
     for (int i = 0; i < PARTICLES3D_DRAW_SLOT_COUNT; ++i) {
         free(ps->draw_vertices[i]);
         ps->draw_vertices[i] = NULL;
@@ -496,6 +515,13 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->accumulator = 0.0;
     ps->emitting = 0;
     ps->additive_blend = 0;
+    ps->stretch_k = 0.0;
+    ps->trail_lifetime = 0.0f;
+    ps->trail_segments = 0;
+    ps->trail_pos = NULL;
+    ps->trail_age = NULL;
+    ps->trail_len = NULL;
+    ps->trail_head = NULL;
     ps->softness = 0.0;
     ps->texture = NULL;
     ps->emitter_shape = 0;
@@ -675,6 +701,92 @@ void rt_particles3d_set_additive(void *o, int8_t a) {
     p->additive_blend = a ? 1 : 0;
 }
 
+/// @brief Velocity-aligned billboard stretching: 0 = camera-facing quads,
+///   k scales the quad length by (1 + k * |velocity|). Clamped to [0, 8].
+void rt_particles3d_set_stretch(void *o, double k) {
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
+        return;
+    if (!isfinite(k) || k < 0.0)
+        k = 0.0;
+    if (k > 8.0)
+        k = 8.0;
+    p->stretch_k = k;
+}
+
+/// @brief Enable per-particle ribbon trails: a ring of the last N positions is
+///   emitted as a camera-facing strip that tapers and fades toward the tail.
+///   @p lifetime_sec of history spread over @p segments control points (2..16);
+///   lifetime <= 0 disables trails and frees the history storage.
+void rt_particles3d_set_trail(void *o, double lifetime_sec, int64_t segments) {
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps)
+        return;
+    if (!isfinite(lifetime_sec) || lifetime_sec <= 0.0) {
+        free(ps->trail_pos);
+        free(ps->trail_age);
+        free(ps->trail_len);
+        free(ps->trail_head);
+        ps->trail_pos = NULL;
+        ps->trail_age = NULL;
+        ps->trail_len = NULL;
+        ps->trail_head = NULL;
+        ps->trail_lifetime = 0.0f;
+        ps->trail_segments = 0;
+        return;
+    }
+    if (segments < 2)
+        segments = 2;
+    if (segments > 16)
+        segments = 16;
+    if (ps->max_particles <= 0)
+        return;
+    if (ps->trail_pos && ps->trail_segments == (int32_t)segments) {
+        ps->trail_lifetime = (float)lifetime_sec;
+        return;
+    }
+    free(ps->trail_pos);
+    free(ps->trail_age);
+    free(ps->trail_len);
+    free(ps->trail_head);
+    size_t n = (size_t)ps->max_particles;
+    ps->trail_pos = (float *)calloc(n * (size_t)segments * 3u, sizeof(float));
+    ps->trail_age = (float *)calloc(n, sizeof(float));
+    ps->trail_len = (int16_t *)calloc(n, sizeof(int16_t));
+    ps->trail_head = (int16_t *)calloc(n, sizeof(int16_t));
+    if (!ps->trail_pos || !ps->trail_age || !ps->trail_len || !ps->trail_head) {
+        free(ps->trail_pos);
+        free(ps->trail_age);
+        free(ps->trail_len);
+        free(ps->trail_head);
+        ps->trail_pos = NULL;
+        ps->trail_age = NULL;
+        ps->trail_len = NULL;
+        ps->trail_head = NULL;
+        ps->trail_lifetime = 0.0f;
+        ps->trail_segments = 0;
+        return;
+    }
+    ps->trail_lifetime = (float)lifetime_sec;
+    ps->trail_segments = (int32_t)segments;
+}
+
+/// @brief Swap-remove particle @p i, keeping the trail slot arrays in sync with
+///   the pool's unstable removal so ribbons never jump between particles.
+static void particles3d_swap_kill(rt_particles3d *ps, int32_t i) {
+    int32_t last = --ps->count;
+    ps->particles[i] = ps->particles[last];
+    if (ps->trail_pos && ps->trail_segments > 0 && i != last) {
+        size_t stride = (size_t)ps->trail_segments * 3u;
+        memcpy(&ps->trail_pos[(size_t)i * stride],
+               &ps->trail_pos[(size_t)last * stride],
+               stride * sizeof(float));
+        ps->trail_age[i] = ps->trail_age[last];
+        ps->trail_len[i] = ps->trail_len[last];
+        ps->trail_head[i] = ps->trail_head[last];
+    }
+}
+
 /// @brief Set the per-particle billboard texture. NULL produces solid color quads.
 void rt_particles3d_set_texture(void *o, void *tex) {
     rt_particles3d *ps = particles3d_checked(o);
@@ -832,6 +944,12 @@ static void spawn_particle(rt_particles3d *ps) {
     p->color[1] = ps->color_start[1];
     p->color[2] = ps->color_start[2];
     p->color[3] = (float)ps->alpha_start;
+    if (ps->trail_pos && ps->trail_segments > 0) {
+        int32_t slot = (int32_t)(p - ps->particles);
+        ps->trail_age[slot] = 0.0f;
+        ps->trail_len[slot] = 0;
+        ps->trail_head[slot] = 0;
+    }
     if (!particle_state_is_finite(p))
         ps->count--;
 }
@@ -880,7 +998,7 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         double z = ps->particles[i].pos[2] - delta[2];
         if (!isfinite(x) || !isfinite(y) || !isfinite(z) || fabs(x) > PARTICLES3D_WORLD_ABS_MAX ||
             fabs(y) > PARTICLES3D_WORLD_ABS_MAX || fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
-            ps->particles[i] = ps->particles[--ps->count];
+            particles3d_swap_kill(ps, i);
             continue;
         }
         ps->particles[i].pos[0] = x;
@@ -933,13 +1051,13 @@ void rt_particles3d_update(void *o, double delta_time) {
     for (int32_t i = 0; i < ps->count;) {
         vgfx3d_particle_t *p = &ps->particles[i];
         if (!particle_state_is_finite(p)) {
-            ps->particles[i] = ps->particles[--ps->count];
+            particles3d_swap_kill(ps, i);
             continue;
         }
         p->life -= dtf;
         if (p->life <= 0.0f) {
             /* Kill: swap with last alive particle (O(1) unstable removal) */
-            ps->particles[i] = ps->particles[--ps->count];
+            particles3d_swap_kill(ps, i);
             continue;
         }
 
@@ -953,6 +1071,23 @@ void rt_particles3d_update(void *o, double delta_time) {
         p->vel[0] = particles_clamp_abs_or(p->vel[0] + gravity[0] * dt, 0.0, PARTICLES3D_PARAM_MAX);
         p->vel[1] = particles_clamp_abs_or(p->vel[1] + gravity[1] * dt, 0.0, PARTICLES3D_PARAM_MAX);
         p->vel[2] = particles_clamp_abs_or(p->vel[2] + gravity[2] * dt, 0.0, PARTICLES3D_PARAM_MAX);
+        if (ps->trail_pos && ps->trail_segments > 0 && ps->trail_lifetime > 0.0f) {
+            int32_t slot = (int32_t)(p - ps->particles);
+            float spacing = ps->trail_lifetime / (float)ps->trail_segments;
+            ps->trail_age[slot] += (float)dt;
+            if (ps->trail_age[slot] >= spacing || ps->trail_len[slot] == 0) {
+                size_t stride = (size_t)ps->trail_segments * 3u;
+                int16_t head = ps->trail_head[slot];
+                float *dst = &ps->trail_pos[(size_t)slot * stride + (size_t)head * 3u];
+                dst[0] = (float)p->pos[0];
+                dst[1] = (float)p->pos[1];
+                dst[2] = (float)p->pos[2];
+                ps->trail_head[slot] = (int16_t)((head + 1) % ps->trail_segments);
+                if (ps->trail_len[slot] < (int16_t)ps->trail_segments)
+                    ps->trail_len[slot]++;
+                ps->trail_age[slot] = 0.0f;
+            }
+        }
 
         /* Interpolate size, color, alpha based on age ratio */
         float age = 1.0f - p->life / p->max_life; /* 0 = birth, 1 = death */
@@ -967,7 +1102,7 @@ void rt_particles3d_update(void *o, double delta_time) {
         p->color[3] = (float)alpha_start + age * (float)(alpha_end - alpha_start);
 
         if (!particle_state_is_finite(p)) {
-            ps->particles[i] = ps->particles[--ps->count];
+            particles3d_swap_kill(ps, i);
             continue;
         }
 
@@ -1309,7 +1444,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             i++;
             continue;
         }
-        ps->particles[i] = ps->particles[--ps->count];
+        particles3d_swap_kill(ps, i);
     }
     if (ps->count == 0)
         return;
@@ -1361,15 +1496,23 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         }
     }
 
-    /* Build batched vertex + index buffers */
-    if ((uint64_t)ps->count > UINT32_MAX / 6u ||
-        (size_t)ps->count > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
-        (size_t)ps->count > SIZE_MAX / (6u * sizeof(uint32_t))) {
+    /* Build batched vertex + index buffers (trail ribbons add one quad per
+     * stored segment pair, appended after the billboards). */
+    uint32_t trail_quads = 0;
+    if (ps->trail_pos && ps->trail_segments > 1) {
+        for (int32_t i = 0; i < ps->count; i++) {
+            if (ps->trail_len[i] > 1)
+                trail_quads += (uint32_t)(ps->trail_len[i] - 1);
+        }
+    }
+    if ((uint64_t)ps->count + (uint64_t)trail_quads > UINT32_MAX / 6u ||
+        (size_t)ps->count + (size_t)trail_quads > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
+        (size_t)ps->count + (size_t)trail_quads > SIZE_MAX / (6u * sizeof(uint32_t))) {
         rt_trap("Particles3D.Draw: particle buffer allocation overflow");
         return;
     }
-    uint32_t vert_count = (uint32_t)ps->count * 4;
-    uint32_t idx_count = (uint32_t)ps->count * 6;
+    uint32_t vert_count = ((uint32_t)ps->count + trail_quads) * 4;
+    uint32_t idx_count = ((uint32_t)ps->count + trail_quads) * 6;
     vgfx3d_vertex_t *verts = NULL;
     uint32_t *indices = NULL;
     void *mat = NULL;
@@ -1392,14 +1535,44 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         float hs = p->size * 0.5f;
         uint32_t base = (uint32_t)i * 4;
 
+        /* Velocity-aligned stretching: orient the quad along the velocity
+         * projected onto the camera plane and scale its length by speed. */
+        float axis_r[3] = {right[0], right[1], right[2]};
+        float axis_u[3] = {up[0], up[1], up[2]};
+        float half_len = hs;
+        if (ps->stretch_k > 0.0) {
+            float vxp = (float)p->vel[0];
+            float vyp = (float)p->vel[1];
+            float vzp = (float)p->vel[2];
+            float vdotf = vxp * forward[0] + vyp * forward[1] + vzp * forward[2];
+            float ax = vxp - forward[0] * vdotf;
+            float ay = vyp - forward[1] * vdotf;
+            float az = vzp - forward[2] * vdotf;
+            float alen = sqrtf(ax * ax + ay * ay + az * az);
+            float speed = sqrtf(vxp * vxp + vyp * vyp + vzp * vzp);
+            if (isfinite(alen) && alen > 1e-4f && isfinite(speed)) {
+                axis_u[0] = ax / alen;
+                axis_u[1] = ay / alen;
+                axis_u[2] = az / alen;
+                /* axis_r x axis_u must equal forward (matches the camera-facing
+                 * quad's winding) or the stretched quads get backface-culled. */
+                axis_r[0] = axis_u[1] * forward[2] - axis_u[2] * forward[1];
+                axis_r[1] = axis_u[2] * forward[0] - axis_u[0] * forward[2];
+                axis_r[2] = axis_u[0] * forward[1] - axis_u[1] * forward[0];
+                half_len = hs * (1.0f + (float)ps->stretch_k * speed);
+                if (half_len > hs * 64.0f)
+                    half_len = hs * 64.0f;
+            }
+        }
+
         /* v0 = bottom-left, v1 = bottom-right, v2 = top-right, v3 = top-left */
         for (int vi = 0; vi < 4; vi++) {
             float rs = (vi == 1 || vi == 2) ? hs : -hs;
-            float us = (vi == 2 || vi == 3) ? hs : -hs;
+            float us = (vi == 2 || vi == 3) ? half_len : -half_len;
             vgfx3d_vertex_t *v = &verts[base + vi];
-            double vx = p->pos[0] - origin[0] + (double)right[0] * rs + (double)up[0] * us;
-            double vy = p->pos[1] - origin[1] + (double)right[1] * rs + (double)up[1] * us;
-            double vz = p->pos[2] - origin[2] + (double)right[2] * rs + (double)up[2] * us;
+            double vx = p->pos[0] - origin[0] + (double)axis_r[0] * rs + (double)axis_u[0] * us;
+            double vy = p->pos[1] - origin[1] + (double)axis_r[1] * rs + (double)axis_u[1] * us;
+            double vz = p->pos[2] - origin[2] + (double)axis_r[2] * rs + (double)axis_u[2] * us;
             vx = particles_clamp_abs_or(vx, 0.0, PARTICLES3D_WORLD_ABS_MAX);
             vy = particles_clamp_abs_or(vy, 0.0, PARTICLES3D_WORLD_ABS_MAX);
             vz = particles_clamp_abs_or(vz, 0.0, PARTICLES3D_WORLD_ABS_MAX);
@@ -1435,6 +1608,82 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         indices[i * 6 + 5] = base + 3;
     }
     sort_keys = NULL;
+
+    /* Ribbon trails: one camera-facing quad per stored segment pair, appended
+     * after the billboards. Width tapers and alpha fades toward the tail. */
+    if (trail_quads > 0) {
+        uint32_t cursor = (uint32_t)ps->count;
+        for (int32_t i = 0; i < ps->count; i++) {
+            vgfx3d_particle_t *p = &ps->particles[i];
+            int16_t len = ps->trail_len[i];
+            if (len < 2)
+                continue;
+            size_t stride = (size_t)ps->trail_segments * 3u;
+            const float *ring = &ps->trail_pos[(size_t)i * stride];
+            int16_t head = ps->trail_head[i];
+            /* Walk newest -> oldest: k = 0 is the most recent control point. */
+            for (int16_t k = 0; k + 1 < len && cursor < (uint32_t)ps->count + trail_quads; k++) {
+                int16_t i0 = (int16_t)((head - 1 - k + 2 * ps->trail_segments) %
+                                       ps->trail_segments);
+                int16_t i1 = (int16_t)((head - 2 - k + 2 * ps->trail_segments) %
+                                       ps->trail_segments);
+                const float *p0 = &ring[(size_t)i0 * 3u];
+                const float *p1 = &ring[(size_t)i1 * 3u];
+                float dirx = p1[0] - p0[0];
+                float diry = p1[1] - p0[1];
+                float dirz = p1[2] - p0[2];
+                float side_x = forward[1] * dirz - forward[2] * diry;
+                float side_y = forward[2] * dirx - forward[0] * dirz;
+                float side_z = forward[0] * diry - forward[1] * dirx;
+                float slen = sqrtf(side_x * side_x + side_y * side_y + side_z * side_z);
+                if (!isfinite(slen) || slen < 1e-6f)
+                    continue;
+                side_x /= slen;
+                side_y /= slen;
+                side_z /= slen;
+                float t0 = (float)k / (float)(ps->trail_segments);
+                float t1 = (float)(k + 1) / (float)(ps->trail_segments);
+                float w0 = p->size * 0.5f * (1.0f - t0 * 0.9f);
+                float w1 = p->size * 0.5f * (1.0f - t1 * 0.9f);
+                float a0 = p->color[3] * (1.0f - t0);
+                float a1 = p->color[3] * (1.0f - t1);
+                uint32_t base = cursor * 4;
+                for (int vi = 0; vi < 4; vi++) {
+                    const float *sp = (vi == 0 || vi == 3) ? p0 : p1;
+                    float wgt = (vi == 0 || vi == 3) ? w0 : w1;
+                    float sgn = (vi == 0 || vi == 1) ? -1.0f : 1.0f;
+                    vgfx3d_vertex_t *v = &verts[base + vi];
+                    v->pos[0] = (float)((double)sp[0] - origin[0]) + side_x * wgt * sgn;
+                    v->pos[1] = (float)((double)sp[1] - origin[1]) + side_y * wgt * sgn;
+                    v->pos[2] = (float)((double)sp[2] - origin[2]) + side_z * wgt * sgn;
+                    v->normal[0] = forward[0];
+                    v->normal[1] = forward[1];
+                    v->normal[2] = forward[2];
+                    v->color[0] = p->color[0];
+                    v->color[1] = p->color[1];
+                    v->color[2] = p->color[2];
+                    v->color[3] = (vi == 0 || vi == 3) ? a0 : a1;
+                    v->uv[0] = (vi == 0 || vi == 3) ? 0.0f : 1.0f;
+                    v->uv[1] = (vi == 0 || vi == 1) ? 1.0f : 0.0f;
+                }
+                indices[cursor * 6 + 0] = base + 0;
+                indices[cursor * 6 + 1] = base + 1;
+                indices[cursor * 6 + 2] = base + 2;
+                indices[cursor * 6 + 3] = base + 0;
+                indices[cursor * 6 + 4] = base + 2;
+                indices[cursor * 6 + 5] = base + 3;
+                cursor++;
+            }
+        }
+        /* Degenerate any unused reserved quads (culled zero-length segments). */
+        while (cursor < (uint32_t)ps->count + trail_quads) {
+            uint32_t base = cursor * 4;
+            memset(&verts[base], 0, sizeof(vgfx3d_vertex_t) * 4u);
+            for (int vi = 0; vi < 6; vi++)
+                indices[cursor * 6 + vi] = base;
+            cursor++;
+        }
+    }
 
     /* Create a temporary mesh and submit via the normal draw pipeline.
      * Use unlit material with particle alpha for the draw command. */

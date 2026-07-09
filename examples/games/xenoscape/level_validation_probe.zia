@@ -1,0 +1,32 @@
+// =============================================================================
+// level_validation_probe.zia - Campaign level-data probe
+// Part of Xenoscape  (the 2D sidescroller platformer demo)
+// =============================================================================
+//
+// Run this probe after editing procedural level builders.  It loads every
+// campaign level and prints `RESULT: ok` only when all structural validation
+// checks pass.
+//
+// =============================================================================
+
+module level_validation_probe;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt;
+bind "./level_validation";
+
+/// @brief Probe entry point for targeted campaign structural validation.
+///
+/// Emits a deterministic summary suitable for local greps or lightweight CI:
+/// `RESULT: ok` on success, or `RESULT: validation_failed` with an error count
+/// when one or more level-data checks fail.
+func main() {
+    var validator = new LevelValidator();
+    var report = validator.validateCampaign(true);
+
+    if report.ok() {
+        Terminal.Say("RESULT: ok");
+    } else {
+        Terminal.Say("RESULT: validation_failed errors=" + Int(report.errors));
+    }
+}

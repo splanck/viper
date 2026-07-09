@@ -1641,6 +1641,24 @@ vg_widget_t *vg_widget_get_input_capture(void) {
     return g_input_capture_widget;
 }
 
+// Global mouse-wheel speed multiplier applied by scrolling widgets (code editor,
+// list box, output pane). 1.0 = default; the IDE exposes this as a scroll
+// sensitivity setting. Clamped to a sane range so a bad value cannot freeze
+// scrolling or send it flying.
+static float g_wheel_speed = 1.0f;
+
+void vg_set_wheel_speed(float speed) {
+    if (speed < 0.1f)
+        speed = 0.1f;
+    if (speed > 8.0f)
+        speed = 8.0f;
+    g_wheel_speed = speed;
+}
+
+float vg_get_wheel_speed(void) {
+    return g_wheel_speed;
+}
+
 /// @brief Returns @p widget if it is live and its stored ID matches @p id; otherwise NULL.
 static vg_widget_t *runtime_widget_ref(vg_widget_t *widget, uint64_t id) {
     if (!vg_widget_is_live(widget))

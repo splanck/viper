@@ -1,0 +1,127 @@
+module TestPhysics3DCcdToi;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal;
+bind Viper.Core.Convert as Convert;
+
+// Swept-CCD anti-tunneling coverage: a fast small sphere must be stopped by a
+// thin static wall when UseCcd is on, at multiple speeds and wall thicknesses.
+// A matching non-CCD control (which skips both substep subdivision and the
+// swept time-of-impact pass) demonstrably tunnels the thinnest wall, pinning
+// why the flag exists.
+
+func runCcdCase(speed: Float, thickness: Float) -> Boolean {
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+
+    // Thin wall at x = 0 spanning a large Y/Z area.
+    var wall = Physics3DBody.NewAABB(thickness * 0.5, 5.0, 5.0, 0.0);
+    Physics3DBody.SetPosition(wall, 0.0, 0.0, 0.0);
+    Physics3DWorld.Add(world, wall);
+
+    // Small fast projectile flying +x at the wall.
+    var bullet = Physics3DBody.NewSphere(0.05, 0.2);
+    Physics3DBody.SetPosition(bullet, -5.0, 0.0, 0.0);
+    Physics3DBody.SetVelocity(bullet, speed, 0.0, 0.0);
+    Physics3DBody.set_UseCcd(bullet, true);
+    Physics3DWorld.Add(world, bullet);
+
+    var i = 0;
+    while (i < 30) {
+        Physics3DWorld.Step(world, 1.0 / 60.0);
+        i = i + 1;
+    }
+
+    var pos = Physics3DBody.get_Position(bullet);
+    // The bullet must never end up past the wall's far face.
+    return Vec3.get_X(pos) < 0.5;
+}
+
+func start() {
+    // Speed / thickness matrix: 30..300 m/s vs 0.05..1.0 m walls.
+    var speeds = [30.0, 90.0, 300.0];
+    var thicknesses = [0.05, 0.2, 1.0];
+    var s = 0;
+    while (s < speeds.Length()) {
+        var t = 0;
+        while (t < thicknesses.Length()) {
+            if (!runCcdCase(speeds.Get(s), thicknesses.Get(t))) {
+                Say("FAIL: CCD body tunneled (speed=" + toString(Convert.NumToInt(speeds.Get(s)))
+                    + " thickness_x100=" + toString(Convert.NumToInt(thicknesses.Get(t) * 100.0)) + ")");
+                return;
+            }
+            t = t + 1;
+        }
+        s = s + 1;
+    }
+
+    // TOI telemetry: at least one clip must have been recorded across the
+    // matrix — re-run one case on a fresh world and check the counter.
+    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var wall = Physics3DBody.NewAABB(0.025, 5.0, 5.0, 0.0);
+    Physics3DBody.SetPosition(wall, 0.0, 0.0, 0.0);
+    Physics3DWorld.Add(world, wall);
+    var bullet = Physics3DBody.NewSphere(0.05, 0.2);
+    Physics3DBody.SetPosition(bullet, -5.0, 0.0, 0.0);
+    Physics3DBody.SetVelocity(bullet, 300.0, 0.0, 0.0);
+    Physics3DBody.set_UseCcd(bullet, true);
+    Physics3DWorld.Add(world, bullet);
+    var i = 0;
+    while (i < 10) {
+        Physics3DWorld.Step(world, 1.0 / 60.0);
+        i = i + 1;
+    }
+    if (Physics3DWorld.get_CcdToiCount(world) < 1) {
+        Say("FAIL: expected at least one TOI clip in the telemetry counter");
+        return;
+    }
+    var stopped = Physics3DBody.get_Position(bullet);
+    if (Vec3.get_X(stopped) >= 0.5) {
+        Say("FAIL: telemetry-case bullet tunneled the 0.05 wall");
+        return;
+    }
+
+    // Control: the same shot WITHOUT UseCcd steps 5 m per frame and passes
+    // straight through the thin wall — documenting what the flag prevents.
+    var world2 = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var wall2 = Physics3DBody.NewAABB(0.025, 5.0, 5.0, 0.0);
+    Physics3DBody.SetPosition(wall2, 0.0, 0.0, 0.0);
+    Physics3DWorld.Add(world2, wall2);
+    var slug = Physics3DBody.NewSphere(0.05, 0.2);
+    Physics3DBody.SetPosition(slug, -5.0, 0.0, 0.0);
+    Physics3DBody.SetVelocity(slug, 300.0, 0.0, 0.0);
+    Physics3DWorld.Add(world2, slug);
+    i = 0;
+    while (i < 10) {
+        Physics3DWorld.Step(world2, 1.0 / 60.0);
+        i = i + 1;
+    }
+    if (Vec3.get_X(Physics3DBody.get_Position(slug)) < 0.5) {
+        Say("FAIL: non-CCD control unexpectedly stopped (test premise broken)");
+        return;
+    }
+
+    // Restitution path: a bouncy CCD ball must reflect off the wall, not stick.
+    var world3 = Physics3DWorld.New(0.0, 0.0, 0.0);
+    var wall3 = Physics3DBody.NewAABB(0.025, 5.0, 5.0, 0.0);
+    Physics3DBody.SetPosition(wall3, 0.0, 0.0, 0.0);
+    Physics3DWorld.Add(world3, wall3);
+    var ball = Physics3DBody.NewSphere(0.05, 0.2);
+    Physics3DBody.SetPosition(ball, -5.0, 0.0, 0.0);
+    Physics3DBody.SetVelocity(ball, 120.0, 0.0, 0.0);
+    Physics3DBody.set_Restitution(ball, 0.8);
+    Physics3DBody.set_UseCcd(ball, true);
+    Physics3DWorld.Add(world3, ball);
+    i = 0;
+    while (i < 30) {
+        Physics3DWorld.Step(world3, 1.0 / 60.0);
+        i = i + 1;
+    }
+    var vel = Physics3DBody.get_Velocity(ball);
+    if (Vec3.get_X(vel) >= 0.0) {
+        Say("FAIL: bouncy CCD ball should be moving away from the wall");
+        return;
+    }
+
+    Say("PASS");
+}

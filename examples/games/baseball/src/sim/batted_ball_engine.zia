@@ -45,7 +45,7 @@ class BattedBallEngine {
     // resolveGroundBall or resolveAirBall depending on ball type. The
     // outcome is fully populated on return.
     expose func resolve(state: game_state.GameState, batter: player.Player,
-                        pitcher: player.Player, ballType: String,
+                        _pitcher: player.Player, ballType: String,
                         contactClass: String, direction: String,
                         exitVelocity: Integer, launchAngle: Integer,
                         hangTime: Integer) -> play_result.BattedBallOutcome {

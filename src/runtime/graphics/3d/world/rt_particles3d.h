@@ -51,6 +51,10 @@ void rt_particles3d_set_alpha(void *obj, double start_alpha, double end_alpha);
 void rt_particles3d_set_rate(void *obj, double particles_per_second);
 /// @brief Toggle additive blending (1 = additive, 0 = alpha blend with back-to-front sort).
 void rt_particles3d_set_additive(void *obj, int8_t additive);
+/// @brief Velocity-aligned stretching (0 = camera-facing; k scales length by speed).
+void rt_particles3d_set_stretch(void *obj, double k);
+/// @brief Ribbon trails: seconds of history over 2..16 control points (<= 0 disables).
+void rt_particles3d_set_trail(void *obj, double lifetime_sec, int64_t segments);
 void rt_particles3d_set_softness(void *obj, double distance);
 /// @brief Bind a Pixels texture for billboard rendering (NULL = solid color quads).
 void rt_particles3d_set_texture(void *obj, void *pixels);

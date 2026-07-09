@@ -41,6 +41,7 @@
 #import <QuartzCore/QuartzCore.h>
 #include <errno.h>
 #include <mach/mach_time.h>
+#include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -148,11 +149,14 @@ static void vgfx_macos_init_timebase(void) {
 ///
 /// @invariant window != nil implies view != nil && delegate != nil
 typedef struct {
-    NSWindow *window;             ///< Native NSWindow instance
-    VGFXView *view;               ///< Custom view for framebuffer display
-    VGFXWindowDelegate *delegate; ///< Delegate for window events
-    int close_requested;          ///< 1 if user clicked close button, 0 otherwise
-    int cursor_type;              ///< Current cursor type for persistent cursor rects
+    NSWindow *window;               ///< Native NSWindow instance
+    VGFXView *view;                 ///< Custom view for framebuffer display
+    VGFXWindowDelegate *delegate;   ///< Delegate for window events
+    int close_requested;            ///< 1 if user clicked close button, 0 otherwise
+    int cursor_type;                ///< Current cursor type for persistent cursor rects
+    int fullscreen_resizable_added; ///< 1 if fullscreen temporarily enabled resizable style
+    NSSize windowed_content_size;   ///< Last windowed content size before native fullscreen
+    int has_windowed_content_size;  ///< 1 if windowed_content_size is valid
 } vgfx_macos_platform;
 
 static BOOL g_finish_launching_called = NO;
@@ -286,6 +290,36 @@ static NSRect macos_screen_frame_for_window(NSWindow *window) {
     return screen ? [screen frame] : NSZeroRect;
 }
 
+static void macos_set_view_tracks_window(VGFXView *view) {
+    if (!view)
+        return;
+    [view setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+}
+
+static void macos_sync_view_frame_to_content(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+    if (!platform->window || !platform->view)
+        return;
+
+    macos_set_view_tracks_window(platform->view);
+
+    NSRect content_rect = [platform->window contentRectForFrameRect:[platform->window frame]];
+    if (content_rect.size.width <= 0.0 || content_rect.size.height <= 0.0)
+        return;
+
+    NSRect view_frame = [platform->view frame];
+    if (fabs(view_frame.size.width - content_rect.size.width) <= 0.5 &&
+        fabs(view_frame.size.height - content_rect.size.height) <= 0.5)
+        return;
+
+    view_frame.origin = NSZeroPoint;
+    view_frame.size = content_rect.size;
+    [platform->view setFrame:view_frame];
+}
+
 static void macos_sync_window_metrics(struct vgfx_window *win,
                                       int emit_resize_event,
                                       int invoke_resize_callback) {
@@ -295,6 +329,8 @@ static void macos_sync_window_metrics(struct vgfx_window *win,
     vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
     if (!platform->window || !platform->view)
         return;
+
+    macos_sync_view_frame_to_content(win);
 
     CGFloat backing_scale = [platform->window backingScaleFactor];
     vgfx_internal_refresh_scale_factor(win, (float)backing_scale);
@@ -659,6 +695,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     self = [super initWithFrame:frameRect];
     if (self) {
         _vgfxWindow = NULL;
+        [self setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
         // Register as a file drop target
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
@@ -909,6 +946,51 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     macos_sync_window_metrics(_vgfxWindow, 1, 0);
 }
 
+- (void)windowWillEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    if (!_vgfxWindow || !_vgfxWindow->platform_data)
+        return;
+    vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+    if (platform->view)
+        platform->windowed_content_size = [platform->view bounds].size;
+    platform->has_windowed_content_size = platform->view != nil ? 1 : 0;
+    macos_set_view_tracks_window(platform->view);
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    macos_sync_window_metrics(_vgfxWindow, 1, 1);
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+
+    if (_vgfxWindow && _vgfxWindow->platform_data) {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)_vgfxWindow->platform_data;
+        if (platform->window && platform->fullscreen_resizable_added && !_vgfxWindow->resizable) {
+            [platform->window
+                setStyleMask:([platform->window styleMask] & ~NSWindowStyleMaskResizable)];
+            platform->fullscreen_resizable_added = 0;
+        }
+
+        if (platform->window && platform->view && platform->has_windowed_content_size) {
+            [platform->window setContentSize:platform->windowed_content_size];
+            [platform->view setFrame:NSMakeRect(0.0,
+                                                0.0,
+                                                platform->windowed_content_size.width,
+                                                platform->windowed_content_size.height)];
+            platform->has_windowed_content_size = 0;
+        }
+    }
+
+    macos_sync_window_metrics(_vgfxWindow, 1, 1);
+}
+
+- (NSSize)window:(NSWindow *)window willUseFullScreenContentSize:(NSSize)proposedSize {
+    (void)window;
+    return proposedSize;
+}
+
 /// @brief Handle window gaining focus.
 /// @details Called when the window becomes the key window (receives keyboard
 ///          input).  Enqueues a FOCUS_GAINED event.
@@ -923,6 +1005,12 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         return;
 
     vgfx_internal_set_focus_state(_vgfxWindow, 1);
+
+    /* Re-engage relative mouse mode (cursor dissociation is a global,
+     * per-process setting — only hold it while we own focus). */
+    if (_vgfxWindow->relative_mouse_enabled)
+        CGAssociateMouseAndMouseCursorPosition(false);
+
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -942,6 +1030,12 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
 
     vgfx_internal_set_focus_state(_vgfxWindow, 0);
     vgfx_internal_clear_input_state(_vgfxWindow);
+
+    /* Suspend relative mouse mode while unfocused so the rest of the desktop
+     * gets a normal cursor back (resumed in windowDidBecomeKey). */
+    if (_vgfxWindow->relative_mouse_enabled)
+        CGAssociateMouseAndMouseCursorPosition(true);
+
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -971,6 +1065,25 @@ float vgfx_platform_get_display_scale(void) {
 
         CGFloat s = [main backingScaleFactor];
         return (s >= 1.0) ? (float)s : 1.0f;
+    }
+}
+
+/// @brief Query the primary display's logical (point) dimensions.
+/// @details NSScreen frames are already in points, which matches vgfx's
+///          logical coordinate space. Used to size fullscreen windows.
+/// @return 1 on success, 0 when no screen is available.
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        NSScreen *main = [NSScreen mainScreen];
+        if (!main)
+            return 0;
+        NSRect frame = [main frame];
+        if (out_w)
+            *out_w = (int32_t)frame.size.width;
+        if (out_h)
+            *out_h = (int32_t)frame.size.height;
+        return frame.size.width > 0 && frame.size.height > 0;
     }
 }
 
@@ -1051,6 +1164,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
         if ([platform->window respondsToSelector:@selector(setTabbingMode:)]) {
             [platform->window setTabbingMode:NSWindowTabbingModeDisallowed];
         }
+        [platform->window setCollectionBehavior:([platform->window collectionBehavior] |
+                                                 NSWindowCollectionBehaviorFullScreenPrimary)];
 
         /* Create custom view for framebuffer display */
         platform->view = [[VGFXView alloc] initWithFrame:contentRect];
@@ -1208,6 +1323,24 @@ static void macos_enqueue_text_input_events(struct vgfx_window *win,
     }
 }
 
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    if (timeout_ms <= 0)
+        return 0;
+
+    @autoreleasepool {
+        /* Block up to timeout for the next event, but leave it queued
+           (dequeue:NO) so vgfx_platform_process_events handles it normally. */
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:(double)timeout_ms / 1000.0];
+        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                            untilDate:deadline
+                                               inMode:NSDefaultRunLoopMode
+                                              dequeue:NO];
+        return event != nil ? 1 : 0;
+    }
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
@@ -1297,6 +1430,21 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
                     int32_t x, y;
                     macos_event_location_to_physical(win, location, contentRect, &x, &y);
+
+                    /* Relative (raw) mouse mode: while the hardware mouse is
+                     * dissociated from the cursor, deltaX/deltaY keep flowing
+                     * unbounded. Accumulate them in logical units so relative
+                     * deltas match the coordinate space of the warp-to-center
+                     * fallback (points * backing scale / coord scale). */
+                    if (win->relative_mouse_enabled && win->relative_mouse_native) {
+                        double sf = win->scale_factor > 0.0f ? (double)win->scale_factor : 1.0;
+                        double cs = (double)vgfx_internal_coord_scale(win);
+                        if (cs <= 0.0)
+                            cs = 1.0;
+                        double k = sf / cs;
+                        vgfx_internal_add_relative_delta(
+                            win, (double)[event deltaX] * k, (double)[event deltaY] * k);
+                    }
 
                     vgfx_internal_set_mouse_position(win, x, y);
 
@@ -1618,9 +1766,23 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
 
         /* Only toggle if state needs to change */
         if (fullscreen && !is_currently_fullscreen) {
+            [platform->window setCollectionBehavior:([platform->window collectionBehavior] |
+                                                     NSWindowCollectionBehaviorFullScreenPrimary)];
+            if (([platform->window styleMask] & NSWindowStyleMaskResizable) == 0) {
+                [platform->window
+                    setStyleMask:([platform->window styleMask] | NSWindowStyleMaskResizable)];
+                platform->fullscreen_resizable_added = 1;
+            }
+            [platform->window makeKeyAndOrderFront:nil];
+            if (!vgfx_macos_no_activate_on_create())
+                [NSApp activateIgnoringOtherApps:YES];
             [platform->window toggleFullScreen:nil];
         } else if (!fullscreen && is_currently_fullscreen) {
             [platform->window toggleFullScreen:nil];
+        } else if (!fullscreen && platform->fullscreen_resizable_added && !win->resizable) {
+            [platform->window
+                setStyleMask:([platform->window styleMask] & ~NSWindowStyleMaskResizable)];
+            platform->fullscreen_resizable_added = 0;
         }
 
         return 1;
@@ -1736,6 +1898,12 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
 void vgfx_platform_focus(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
+    vgfx_platform_request_foreground(win);
+}
+
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
     @autoreleasepool {
         vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
         if (platform->window) {
@@ -1749,7 +1917,17 @@ void vgfx_platform_focus(struct vgfx_window *win) {
                 vgfx_internal_set_focus_state(win, 0);
                 return;
             }
+            [NSApplication sharedApplication];
+            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+            vgfx_platform_macos_finish_launching_if_needed();
+            NSString *window_title = [platform->window title];
+            const char *preferred_title =
+                window_title && [window_title length] > 0 ? [window_title UTF8String] : NULL;
+            vgfx_platform_macos_ensure_default_main_menu(preferred_title);
             [platform->window makeKeyAndOrderFront:nil];
+            [platform->window makeMainWindow];
+            [platform->window orderFrontRegardless];
+            [NSApp activateIgnoringOtherApps:YES];
         }
     }
 }
@@ -1877,6 +2055,16 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
 
     CGDisplayMoveCursorToPoint(display_id, display_point);
     CGAssociateMouseAndMouseCursorPosition(true);
+}
+
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    (void)win;
+    /* Decouple the hardware mouse from the on-screen cursor. While
+     * dissociated the cursor stays parked (no edge pinning) and NSEvent
+     * mouse-moved events continue reporting deltaX/deltaY, which the event
+     * pump accumulates into the window's relative delta accumulators. */
+    CGAssociateMouseAndMouseCursorPosition(enabled ? false : true);
+    return 1;
 }
 
 void vgfx_platform_hide_cursor(void) {

@@ -314,6 +314,8 @@ typedef struct {
     vgfx_event_t last_event; ///< Last polled event for retrieval
     char *title;             ///< Cached window title (heap-allocated, freed in finalizer)
     size_t title_len;        ///< Byte length of cached title; permits embedded NULs in GetTitle()
+    int64_t logical_width;   ///< Canvas drawing width in logical pixels
+    int64_t logical_height;  ///< Canvas drawing height in logical pixels
     int64_t last_flip_us;    ///< Monotonic time (microseconds) of last Flip()
     int64_t delta_time_ms;   ///< Milliseconds elapsed between the last two Flip() calls
     int64_t dt_max_ms;       ///< Maximum delta time clamp (0 = no clamping)
@@ -368,6 +370,37 @@ static inline int64_t rtg_scale_down_i64(int64_t physical, float scale) {
     return rtg_round_scaled((double)physical / (double)rtg_sanitize_scale(scale));
 }
 
+/// @brief Return the coordinate scale the Canvas should use for drawing/input.
+/// @details Windowed Canvas drawing uses the platform HiDPI scale. In native
+///          fullscreen, ViperGFX resizes the framebuffer to the monitor; Canvas
+///          keeps its designed logical size and scales draw/input coordinates to
+///          that fullscreen framebuffer instead of exposing the monitor as a new
+///          game resolution.
+static inline float rt_canvas_effective_coord_scale(rt_canvas *canvas) {
+    if (!canvas || !canvas->gfx_win)
+        return 1.0f;
+
+    float scale = rtg_sanitize_scale(vgfx_window_get_scale(canvas->gfx_win));
+    if (vgfx_is_fullscreen(canvas->gfx_win) != 1)
+        return scale;
+    if (canvas->logical_width <= 0 || canvas->logical_height <= 0)
+        return scale;
+
+    int32_t framebuffer_w = vgfx_window_get_width(canvas->gfx_win);
+    int32_t framebuffer_h = vgfx_window_get_height(canvas->gfx_win);
+    if (framebuffer_w <= 0 || framebuffer_h <= 0)
+        return scale;
+
+    double sx = (double)framebuffer_w / (double)canvas->logical_width;
+    double sy = (double)framebuffer_h / (double)canvas->logical_height;
+    double presentation_scale = sx < sy ? sx : sy;
+    if (presentation_scale < 1.0)
+        return scale;
+    if (presentation_scale > 16.0)
+        return 16.0f;
+    return (float)presentation_scale;
+}
+
 /// @brief Push the canvas's logical coordinate scale and clip rect into the
 ///        underlying ViperGFX window.
 /// @details Re-reads the window HiDPI scale, applies it as the coord scale, and
@@ -377,7 +410,7 @@ static inline void rt_canvas_resync_window_state(rt_canvas *canvas) {
     if (!canvas || !canvas->gfx_win)
         return;
 
-    float scale = rtg_sanitize_scale(vgfx_window_get_scale(canvas->gfx_win));
+    float scale = rt_canvas_effective_coord_scale(canvas);
     vgfx_set_coord_scale(canvas->gfx_win, scale);
     if (canvas->clip_enabled) {
         vgfx_set_clip(canvas->gfx_win,

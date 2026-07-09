@@ -1123,7 +1123,7 @@ void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
 
     for (int64_t row = 0; row < h; row++) {
         int64_t py0 = rtg_scale_up_i64(dy + row, scale);
@@ -1198,7 +1198,7 @@ void rt_canvas_blit_region(void *canvas_ptr,
     if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
 
     for (int64_t row = 0; row < h; row++) {
         int64_t py0 = rtg_scale_up_i64(dy + row, scale);
@@ -1278,7 +1278,7 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
     if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
         return;
 
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
 
     for (int64_t row = 0; row < h; row++) {
         int64_t py0 = rtg_scale_up_i64(dy + row, scale);
@@ -1418,7 +1418,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     }
 
     // Sample the physical pixel at the logical pixel's scaled top-left corner.
-    float scale = vgfx_window_get_scale(canvas->gfx_win);
+    float scale = rt_canvas_effective_coord_scale(canvas);
 
     rt_pixels_impl *pix = rt_pixels_checked_impl_or_null(pixels);
     if (!pix || !pix->data)

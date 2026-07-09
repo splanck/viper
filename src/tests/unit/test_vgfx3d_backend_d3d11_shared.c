@@ -29,7 +29,19 @@
 
 #define VGFX3D_STR_IMPL(x) #x
 #define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+// The embedded HLSL shader sources are single string literals well past ISO
+// C99's 4095-char minimum, which Apple Clang flags under -Werror. The runtime
+// target that also includes this file is not built warning-as-error, so this
+// suppression only re-aligns the test's stricter flags with it. Guarded to
+// GCC/Clang so MSVC (which uses a different long-string limit) is untouched.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+#endif
 #include "vgfx3d_backend_d3d11_shaders.inc"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #undef VGFX3D_STR
 #undef VGFX3D_STR_IMPL
 
@@ -602,6 +614,8 @@ static void test_d3d11_sanitization_helpers(void) {
     size_t elements = 0;
     float znear = 0.0f;
     float zfar = 0.0f;
+    float fog_near = 0.0f;
+    float fog_far = 0.0f;
 
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(0) == 0, "Boolean flag sanitizer preserves false");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_bool_flag(-7) == 1,
@@ -700,6 +714,31 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Tonemap sanitizer preserves the highest valid mode");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_tonemap_mode(99) == 0,
                 "Tonemap sanitizer disables invalid modes");
+    vgfx3d_d3d11_sanitize_fog_range(2.0f, 32.0f, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 2.0f, 1e-6f, "Fog sanitizer preserves finite near distances");
+    EXPECT_NEAR(fog_far, 32.0f, 1e-6f, "Fog sanitizer preserves ordered finite far distances");
+    vgfx3d_d3d11_sanitize_fog_range(HUGE_VALF, -HUGE_VALF, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 10.0f, 1e-6f, "Fog sanitizer replaces non-finite near distances");
+    EXPECT_NEAR(fog_far, 50.0f, 1e-6f, "Fog sanitizer replaces non-finite far distances");
+    vgfx3d_d3d11_sanitize_fog_range(VGFX3D_D3D11_FOG_DISTANCE_MAX, 1.0f, &fog_near, &fog_far);
+    EXPECT_NEAR(fog_near, 10.0f, 1e-6f, "Fog sanitizer falls back when far cannot exceed near");
+    EXPECT_NEAR(fog_far, 50.0f, 1e-6f, "Fog sanitizer restores an ordered fallback range");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(0.125f),
+                0.125f,
+                1e-6f,
+                "Shadow-bias sanitizer preserves small finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(HUGE_VALF),
+                0.0f,
+                1e-6f,
+                "Shadow-bias sanitizer replaces non-finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(VGFX3D_D3D11_SHADOW_BIAS_MAX * 2.0f),
+                VGFX3D_D3D11_SHADOW_BIAS_MAX,
+                1e-6f,
+                "Shadow-bias sanitizer clamps oversized positive values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_shadow_bias(-VGFX3D_D3D11_SHADOW_BIAS_MAX * 2.0f),
+                -VGFX3D_D3D11_SHADOW_BIAS_MAX,
+                1e-6f,
+                "Shadow-bias sanitizer clamps oversized negative values");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(-1, 8) == -1,
                 "Cluster global-count sanitizer preserves flat-loop sentinel");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_cluster_global_count(4, 8) == 4,
@@ -739,6 +778,62 @@ static void test_d3d11_sanitization_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(1u << 28, 8, &elements) == 0 &&
                     elements == 0u,
                 "Morph float-count helper rejects SRV ByteWidth overflow spans");
+}
+
+static void test_d3d11_light_upload_sanitization_helpers(void) {
+    float inner = 0.0f;
+    float outer = 0.0f;
+    float splits[4];
+    float bad_splits[4] = {20.0f, 10.0f, HUGE_VALF, VGFX3D_D3D11_POSTFX_SCALAR_MAX * 2.0f};
+    float negative_splits[4] = {-4.0f, 0.5f, 0.25f, 1.0f};
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(0) == 0,
+                "Light-type sanitizer preserves directional lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(3) == 3,
+                "Light-type sanitizer preserves spot lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(-1) == 0,
+                "Light-type sanitizer falls back below range");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(99) == 0,
+                "Light-type sanitizer falls back above range");
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(
+                    0, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
+                    VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
+                "Shadow projection sanitizer preserves perspective for shadowed lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(
+                    -1, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
+                    VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
+                "Shadow projection sanitizer disables perspective for unshadowed lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(0, 99) ==
+                    VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
+                "Shadow projection sanitizer rejects invalid projection ids");
+
+    vgfx3d_d3d11_sanitize_spot_cone(-0.75f, 0.25f, &inner, &outer);
+    EXPECT_NEAR(inner, 0.25f, 1e-6f, "Spot-cone sanitizer orders inner above outer");
+    EXPECT_NEAR(outer, -0.75f, 1e-6f, "Spot-cone sanitizer keeps the lower outer cosine");
+    vgfx3d_d3d11_sanitize_spot_cone(HUGE_VALF, -HUGE_VALF, &inner, &outer);
+    EXPECT_NEAR(inner, 1.0f, 1e-6f, "Spot-cone sanitizer replaces invalid inner cones");
+    EXPECT_NEAR(outer, 0.0f, 1e-6f, "Spot-cone sanitizer replaces invalid outer cones");
+
+    memset(splits, 0xCD, sizeof(splits));
+    vgfx3d_d3d11_sanitize_shadow_cascade_splits(splits, bad_splits, 4u);
+    EXPECT_NEAR(splits[0], 20.0f, 1e-6f, "Cascade split sanitizer preserves valid first split");
+    EXPECT_NEAR(splits[1], 20.0f, 1e-6f, "Cascade split sanitizer enforces monotonic order");
+    EXPECT_NEAR(splits[2], 20.0f, 1e-6f, "Cascade split sanitizer replaces non-finite splits");
+    EXPECT_NEAR(splits[3],
+                VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                1e-6f,
+                "Cascade split sanitizer clamps oversized splits");
+
+    vgfx3d_d3d11_sanitize_shadow_cascade_splits(splits, negative_splits, 4u);
+    EXPECT_NEAR(splits[0], 0.0f, 1e-6f, "Cascade split sanitizer floors negative distances");
+    EXPECT_NEAR(splits[1], 0.5f, 1e-6f, "Cascade split sanitizer preserves ordered distances");
+    EXPECT_NEAR(splits[2], 0.5f, 1e-6f, "Cascade split sanitizer raises regressing distances");
+    EXPECT_NEAR(splits[3], 1.0f, 1e-6f, "Cascade split sanitizer preserves later valid splits");
+
+    splits[0] = 7.0f;
+    vgfx3d_d3d11_sanitize_shadow_cascade_splits(splits, NULL, 1u);
+    EXPECT_NEAR(splits[0], 0.0f, 1e-6f, "Cascade split sanitizer handles missing source arrays");
 }
 
 static void test_sampler_anisotropy_helpers(void) {
@@ -960,6 +1055,28 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
                                                           mip0.block_bytes) == 0,
                     "Native mip validation rejects corrupt previous-mip descriptors");
     }
+    {
+        vgfx3d_native_texture_mip_t corrupt_previous = mip0;
+        corrupt_previous.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                          &corrupt_previous,
+                                                          mip0.format_id,
+                                                          mip0.block_width,
+                                                          mip0.block_height,
+                                                          mip0.block_bytes) == 0,
+                    "Native mip validation rejects previous-mip format changes");
+    }
+    {
+        vgfx3d_native_texture_mip_t corrupt_previous = mip0;
+        corrupt_previous.bytes = 8;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                          &corrupt_previous,
+                                                          mip0.format_id,
+                                                          mip0.block_width,
+                                                          mip0.block_height,
+                                                          mip0.block_bytes) == 0,
+                    "Native mip validation rejects undersized previous-mip payloads");
+    }
 }
 
 static void test_target_fallback_helper(void) {
@@ -1081,6 +1198,32 @@ static void test_postfx_readback_policy_helpers(void) {
     chain.effects = &effect;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 1,
                 "PostFX chain validator accepts enabled chains with enough storage");
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_TAA;
+    effect.snapshot.taa_enabled = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 0,
+                "PostFX active-effect helper ignores disabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
+                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
+                    0,
+                "PostFX active-chain helper ignores disabled TAA entries");
+    effect.snapshot.taa_enabled = 1;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 1,
+                "PostFX active-effect helper accepts enabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
+                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
+                    1,
+                "PostFX active-chain helper accepts enabled TAA entries");
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effects(&chain) == 1,
+                "PostFX active-chain helper reports any enabled effect");
+    effect.snapshot.taa_enabled = 0;
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_TONEMAP;
+    effect.snapshot.tonemap_explicit = 1;
+    effect.snapshot.tonemap_mode = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 1,
+                "PostFX active-effect helper keeps explicit tonemap mode-zero entries active");
+    effect.snapshot.tonemap_explicit = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effects(&chain) == 0,
+                "PostFX active-chain helper rejects structurally valid but inert chains");
     chain.effect_capacity = 0;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
                 "PostFX chain validator rejects effect counts beyond capacity");
@@ -1125,6 +1268,9 @@ static void test_postfx_readback_policy_helpers(void) {
                 "RTT load-existing passes do not preserve scene temporal history");
     EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SCENE, 0) == 0,
                 "Main scene passes refresh scene temporal history");
+    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
+                    (vgfx3d_d3d11_target_kind_t)99, 1) == 0,
+                "Invalid target kinds do not preserve scene temporal history as overlays");
     EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 1) == 1,
                 "Overlay target passes mark the separate overlay target as used");
     EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 0,
@@ -1166,10 +1312,19 @@ static void test_postfx_readback_policy_helpers(void) {
         vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback can source the offscreen scene when it is still the active target");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_OVERLAY) ==
+            VGFX3D_D3D11_READBACK_SCENE_COLOR,
+        "Readback can source the composed scene when the overlay target is active");
     EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(
                     0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
                     VGFX3D_D3D11_READBACK_BACKBUFFER,
                 "Readback falls back to the swapchain when the current target is the backbuffer");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
+                                          (vgfx3d_d3d11_target_kind_t)99) ==
+            VGFX3D_D3D11_READBACK_BACKBUFFER,
+        "Readback treats invalid target kinds as backbuffer state");
 }
 
 static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
@@ -1256,6 +1411,7 @@ int main(void) {
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
     test_d3d11_sanitization_helpers();
+    test_d3d11_light_upload_sanitization_helpers();
     test_sampler_anisotropy_helpers();
     test_d3d11_limits_and_prune_helpers();
     test_mapped_copy_and_native_mip_validation_helpers();

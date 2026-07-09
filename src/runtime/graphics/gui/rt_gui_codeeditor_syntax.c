@@ -122,7 +122,11 @@ static void rt_codeeditor_invalidate_syntax_cache(vg_codeeditor_t *ce) {
 /// @brief Validate a gutter-marker slot index (0–3) and report it via @p out_type.
 /// @return 1 if the slot is in range; 0 otherwise (leaving `*out_type` untouched).
 int rt_codeeditor_gutter_slot_checked(int64_t slot, int *out_type) {
-    if (slot < 0 || slot > 3)
+    // Slots 0-3 are the disc/image icon slots (0=breakpoint, 1=warning,
+    // 2=error, 3=info). Slot 4 is the SCM change-bar slot; it is only ever used
+    // with SetGutterBar (which supplies an explicit color), so it never indexes
+    // the 4-entry default-color table.
+    if (slot < 0 || slot > 4)
         return 0;
     if (out_type)
         *out_type = (int)slot;

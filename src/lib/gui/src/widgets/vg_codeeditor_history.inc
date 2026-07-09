@@ -59,8 +59,132 @@ static vg_edit_history_t *edit_history_create(void) {
     history->next_group_id = 1;
     history->is_grouping = false;
     history->current_group = 0;
+    history->coalesce_enabled = true;
+    history->coalesce_break = false;
+    history->last_insert_time_ms = 0;
 
     return history;
+}
+
+// Consecutive single-codepoint inserts within this many milliseconds merge into
+// one undo unit. 800ms mirrors the "typing burst" threshold used by mainstream
+// editors — long enough for fast typing, short enough that a deliberate pause
+// starts a new undo step.
+#define CODEEDITOR_UNDO_COALESCE_MS 800
+// Upper bound on a single coalesced unit's byte length. Bounds the realloc/append
+// cost and keeps one Ctrl+Z from reverting an unreasonably large run.
+#define CODEEDITOR_UNDO_COALESCE_MAX_BYTES 64
+
+/// @brief Return the byte length of the single UTF-8 codepoint at the start of
+///        @p s, or 0 if @p s is empty/NULL or is not exactly one codepoint.
+/// @details Used to restrict undo coalescing to genuine single-character typing
+///          (paste of a multi-char string never coalesces).
+static size_t codeeditor_single_codepoint_len(const char *s) {
+    if (!s || !s[0])
+        return 0;
+    unsigned char c = (unsigned char)s[0];
+    size_t len;
+    if (c < 0x80)
+        len = 1;
+    else if ((c & 0xE0) == 0xC0)
+        len = 2;
+    else if ((c & 0xF0) == 0xE0)
+        len = 3;
+    else if ((c & 0xF8) == 0xF0)
+        len = 4;
+    else
+        return 0; // invalid leading byte
+    // Must be exactly that many bytes with no trailing content.
+    for (size_t i = 1; i < len; i++) {
+        if ((s[i] & 0xC0) != 0x80)
+            return 0;
+    }
+    return s[len] == '\0' ? len : 0;
+}
+
+/// @brief Force the next recorded insert to begin a fresh undo unit.
+/// @details Call from operations that should not extend the current typing run
+///          (undo, redo, paste). Position/time/type continuity handles most
+///          break cases implicitly; this is the belt-and-suspenders hook.
+static void edit_history_break_coalescing(vg_edit_history_t *history) {
+    if (history)
+        history->coalesce_break = true;
+}
+
+/// @brief Attempt to merge a freshly built single-codepoint insert @p op into the
+///        previous history operation instead of pushing it as a new undo unit.
+/// @param history History ring.
+/// @param op      Newly created (not yet pushed) INSERT op.
+/// @param now_ms  Current editor typing-clock time.
+/// @return true when merged (the caller must destroy @p op and not push it).
+/// @details Merges only when every continuity rule holds: coalescing enabled and
+///          not broken; both prev and new op are primary-cursor, ungrouped
+///          single-line INSERTs; the new op continues exactly at the previous
+///          op's end; within the time window; under the size cap; and not across
+///          a whitespace→word boundary. Merging appends the new text to the
+///          previous op and advances its end/after-cursor, so undo/redo replay
+///          is unchanged.
+static bool edit_history_try_coalesce_insert(vg_edit_history_t *history,
+                                             const vg_edit_op_t *op,
+                                             uint64_t now_ms) {
+    if (!history || !op)
+        return false;
+    if (!history->coalesce_enabled || history->coalesce_break)
+        return false;
+    if (history->is_grouping)
+        return false;
+    if (history->current_index != history->count) // never across an undo boundary
+        return false;
+    if (history->count == 0)
+        return false;
+    if (op->type != VG_EDIT_INSERT || op->cursor_id != 0 || op->group_id != 0)
+        return false;
+    if (!op->new_text)
+        return false;
+    if (codeeditor_single_codepoint_len(op->new_text) == 0) // single char only (not paste)
+        return false;
+    if (op->new_text[0] == '\n')
+        return false;
+
+    vg_edit_op_t *prev = history->operations[history->count - 1];
+    if (!prev || prev->type != VG_EDIT_INSERT || prev->cursor_id != 0 || prev->group_id != 0)
+        return false;
+    if (!prev->new_text)
+        return false;
+    if (strchr(prev->new_text, '\n') != NULL) // Enter is a natural break point
+        return false;
+    // Insertion must continue exactly where the previous op ended.
+    if (op->start_line != prev->end_line || op->start_col != prev->end_col)
+        return false;
+    // Time window.
+    if (now_ms > history->last_insert_time_ms &&
+        now_ms - history->last_insert_time_ms > CODEEDITOR_UNDO_COALESCE_MS)
+        return false;
+    // Size cap.
+    size_t prev_len = strlen(prev->new_text);
+    if (prev_len >= CODEEDITOR_UNDO_COALESCE_MAX_BYTES)
+        return false;
+    // Word-boundary rule: break when transitioning from whitespace to non-space.
+    char prev_last = prev->new_text[prev_len - 1];
+    char cur_first = op->new_text[0];
+    bool prev_ws = (prev_last == ' ' || prev_last == '\t');
+    bool cur_ws = (cur_first == ' ' || cur_first == '\t');
+    if (prev_ws && !cur_ws)
+        return false;
+
+    // Merge: append the new codepoint to the previous op.
+    size_t add_len = strlen(op->new_text);
+    char *merged = realloc(prev->new_text, prev_len + add_len + 1);
+    if (!merged)
+        return false;
+    memcpy(merged + prev_len, op->new_text, add_len + 1);
+    prev->new_text = merged;
+    prev->end_line = op->end_line;
+    prev->end_col = op->end_col;
+    prev->cursor_line_after = op->cursor_line_after;
+    prev->cursor_col_after = op->cursor_col_after;
+    history->last_insert_time_ms = now_ms;
+    return true;
 }
 
 /// @brief Frees the old_text and new_text strings owned by @p op, then frees the op itself.

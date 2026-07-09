@@ -1,0 +1,81 @@
+// =============================================================================
+// probes/campaign_probe.zia — P6 gate: full-campaign integration (headless)
+// =============================================================================
+//
+// Plays through all nine campaign levels in one session using real objective
+// satisfaction (clear enemies, reach zones, activate consoles, survive timers)
+// and the in-session level transition (loadCampaignLevel, which unloads the
+// previous scene and builds the next). Asserts every level reaches
+// LEVEL_COMPLETE and the hub loads, with no trap and deterministic outcomes.
+// =============================================================================
+module campaign_probe;
+
+bind Viper.Terminal as Terminal;
+bind "../config" as config;
+bind "../game" as game;
+bind "../world/objectives" as objectives;
+
+func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
+
+func tick(g: game.Game) {
+    g.tickSim(config.FIXED_DT);
+    g.stepPhysics(config.FIXED_DT);
+}
+
+// Drive the current level to LEVEL_COMPLETE by satisfying its objectives.
+func completeLevel(g: game.Game) -> Boolean {
+    var mgr = g.getLevelMgr();
+    var obj = mgr.getObjectives();
+    var spins = 0;
+    while g.getState() != config.ST_LEVEL_COMPLETE && spins < 3000 {
+        // Clear any live machines (resolves CLEAR/KILL and stages the next wave).
+        g.devKillAllEnemies();
+        // Handle the active positional objective.
+        var oi = obj.activeIndex();
+        if oi >= 0 {
+            var k = obj.kindOf(oi);
+            if k == objectives.OBJ_REACH {
+                g.devSpawnPlayer(obj.txAt(oi), 0.2, obj.tzAt(oi));
+            } else if k == objectives.OBJ_ACTIVATE {
+                g.devSpawnPlayer(obj.txAt(oi), 0.2, obj.tzAt(oi));
+                g.devInteract();
+            }
+        }
+        tick(g);
+        spins = spins + 1;
+    }
+    return g.getState() == config.ST_LEVEL_COMPLETE;
+}
+
+func start() {
+    var g = new game.Game();
+    g.initCore(0xCA11);
+    g.setScripted(true);
+    g.setLevel(config.LV_L1);
+    g.boot(true, false);
+
+    var lv = config.LV_L1;
+    while lv <= config.LV_L9 {
+        if lv > config.LV_L1 { g.loadCampaignLevel(lv); }
+        g.devSetGod(true);
+        var name = g.getLevelMgr().levelName();
+        if completeLevel(g) == false {
+            fail("level " + toString(lv) + " (" + name + ") did not complete");
+            return;
+        }
+        lv = lv + 1;
+    }
+
+    // The hub loads as a safe zone (no required objectives).
+    g.loadCampaignLevel(config.LV_HUB);
+    if g.getLevelMgr().levelName().Length == 0 { fail("hub did not load"); return; }
+
+    // Total campaign kills should be substantial (every level cleared).
+    var kills = g.getScoring().getTotalKills();
+    if kills < 20 { fail("suspiciously few campaign kills: " + toString(kills)); return; }
+
+    Terminal.Say("campaign=complete levels=9 kills=" + toString(kills) +
+                 " salvage=" + toString(g.getEconomy().available()));
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

@@ -787,7 +787,13 @@ bool writeElfExe(const std::string &path,
             if (!checkedAddSize(delta, fileSize, "load segment file size", err, segFileEnd) ||
                 !checkedAddSize(delta, memSize, "load segment memory size", err, segMemEnd))
                 return false;
-            seg.fileSize = std::max(seg.fileSize, segFileEnd);
+            // A zero-fill (.bss) section contributes memory but no file bytes. Only
+            // advance the segment's file size for file-backed sections; otherwise
+            // p_filesz would grow to cover the VA gap up to the BSS start and the
+            // loader would map trailing file bytes (section headers/.shstrtab) into
+            // the .data->.bss gap. p_memsz still covers the zero-fill span.
+            if (!sec.zeroFill)
+                seg.fileSize = std::max(seg.fileSize, segFileEnd);
             seg.memSize = std::max(seg.memSize, segMemEnd);
         }
 

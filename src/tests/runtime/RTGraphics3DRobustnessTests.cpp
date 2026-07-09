@@ -139,6 +139,8 @@ struct SpriteView {
     int32_t frame_h;
     int32_t tex_w;
     int32_t tex_h;
+    int8_t additive; /* additive blend routing */
+    double tint[3];
     void *cached_mesh;
     void *cached_material;
     void *cached_texture;
@@ -219,6 +221,13 @@ struct ParticleView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
+    double stretch_k;      /* velocity-aligned stretch factor */
+    float trail_lifetime;  /* ribbon trail history seconds */
+    int32_t trail_segments;
+    float *trail_pos;
+    float *trail_age;
+    int16_t *trail_len;
+    int16_t *trail_head;
     double softness; /* Plan 10: soft-particle fade distance */
     void *texture;
     int32_t emitter_shape;
@@ -230,6 +239,9 @@ struct ParticleView {
     uint32_t draw_vertex_capacity[4];
     uint32_t draw_index_capacity[4];
     void *draw_materials[4];
+    void *sort_keys;
+    int32_t sort_key_capacity;
+    uint64_t sort_key_grow_count;
     int64_t draw_frame_serial;
     int32_t draw_slots_used;
 };

@@ -286,6 +286,17 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         return resolveRuntimeClassFieldAccess(expr, baseType);
     }
 
+    // Any other resolved base type has no member namespace at all (for example
+    // the anonymous object handles returned by untyped runtime signatures).
+    // Diagnose here: an undiagnosed unknown() from this path surfaces later as
+    // an internal lowering error instead of a source-level diagnostic.
+    if (baseType && baseType->kind != TypeKindSem::Unknown) {
+        error(expr->loc,
+              "Type '" + baseType->toDisplayString() + "' has no member '" + expr->field +
+                  "'; if this value came from a runtime call returning an untyped object, "
+                  "use the owning class's static form (e.g. Mesh3D.get_TriangleCount(m))");
+    }
+
     return types::unknown();
 }
 
@@ -813,6 +824,25 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
         sourceType->typeArgs[0]->isConvertibleTo(*targetType))
         return targetType;
 
+    // Targeted guidance for String <-> scalar, which is not an `as` cast.
+    auto isScalar = [](TypeKindSem k) {
+        return k == TypeKindSem::Integer || k == TypeKindSem::Number ||
+               k == TypeKindSem::Boolean || k == TypeKindSem::Byte;
+    };
+    if (effectiveSource->kind == TypeKindSem::String && isScalar(targetType->kind)) {
+        error(expr->loc,
+              "Cannot cast String to " + targetType->toDisplayString() +
+                  " with 'as'; use Viper.Core.Parse.IntOr / DoubleOr for fallible parsing");
+        return targetType;
+    }
+    if (isScalar(effectiveSource->kind) && targetType->kind == TypeKindSem::String) {
+        error(expr->loc,
+              "Cannot cast " + effectiveSource->toDisplayString() +
+                  " to String with 'as'; use string interpolation \"${...}\" or "
+                  "Viper.Core.Convert.ToString*");
+        return targetType;
+    }
+
     error(expr->loc,
           "Cannot cast '" + sourceType->toDisplayString() + "' to '" +
               targetType->toDisplayString() + "'");
@@ -913,6 +943,25 @@ bool Sema::analyzeMatchPattern(const MatchArm::Pattern &pattern,
 
         case MatchArm::Pattern::Kind::Expression:
             if (pattern.literal) {
+                // Range pattern (`lo..hi` / `lo..=hi`): matches integer scrutinees
+                // that fall within the range. Refutable, so it never contributes
+                // to exhaustiveness coverage.
+                if (pattern.literal->kind == ExprKind::Range) {
+                    auto *range = static_cast<RangeExpr *>(pattern.literal.get());
+                    TypeRef startT = analyzeExpr(range->start.get());
+                    TypeRef endT = analyzeExpr(range->end.get());
+                    if (scrutineeType && scrutineeType->kind != TypeKindSem::Unknown &&
+                        !scrutineeType->isIntegral()) {
+                        error(pattern.literal->loc,
+                              "Range patterns require an integer scrutinee, got '" +
+                                  scrutineeType->toDisplayString() + "'");
+                    }
+                    if ((startT && startT->kind != TypeKindSem::Unknown && !startT->isIntegral()) ||
+                        (endT && endT->kind != TypeKindSem::Unknown && !endT->isIntegral())) {
+                        error(pattern.literal->loc, "Range pattern bounds must be integers");
+                    }
+                    return true;
+                }
                 TypeRef exprType = analyzeExpr(pattern.literal.get());
                 if (exprType && exprType->kind != TypeKindSem::Unknown &&
                     exprType->kind != TypeKindSem::Boolean) {
@@ -1331,6 +1380,15 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
 }
 
 TypeRef Sema::analyzeLambda(LambdaExpr *expr) {
+    // Consume any expected-type hint (set by a function-typed variable
+    // initializer or a combinator argument). Clearing it first prevents the hint
+    // from leaking into nested lambdas analyzed while checking this body.
+    TypeRef hint = lambdaTypeHint_;
+    lambdaTypeHint_ = nullptr;
+    std::vector<TypeRef> hintParams;
+    if (hint && hint->kind == TypeKindSem::Function)
+        hintParams = hint->paramTypes();
+
     // Collect names that are local to the lambda (params)
     std::set<std::string> lambdaLocals;
     for (const auto &param : expr->params) {
@@ -1340,22 +1398,21 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr) {
     pushScope(expr->loc);
 
     std::vector<TypeRef> paramTypes;
-    for (const auto &param : expr->params) {
-        if (!param.type) {
-            error(expr->loc, "lambda parameters require explicit type annotations");
-            paramTypes.push_back(types::unknown());
-
-            Symbol sym;
-            sym.kind = Symbol::Kind::Parameter;
-            sym.name = param.name;
-            sym.type = types::unknown();
-            sym.isFinal = true;
-            defineSymbol(param.name, sym, expr->loc);
-            markInitialized(param.name);
-            continue;
+    for (size_t i = 0; i < expr->params.size(); ++i) {
+        const auto &param = expr->params[i];
+        TypeRef paramType;
+        if (param.type) {
+            paramType = resolveTypeNode(param.type.get());
+        } else if (i < hintParams.size() && hintParams[i] &&
+                   hintParams[i]->kind != TypeKindSem::Unknown) {
+            // Inferred from the expected function type.
+            paramType = hintParams[i];
+        } else {
+            error(expr->loc,
+                  "lambda parameters require explicit type annotations, unless the lambda is used "
+                  "where the expected function type is known");
+            paramType = types::unknown();
         }
-
-        TypeRef paramType = resolveTypeNode(param.type.get());
         paramTypes.push_back(paramType);
 
         Symbol sym;

@@ -14,6 +14,10 @@ static void rt_skeleton3d_finalize(void *obj) {
     s->bones = NULL;
     s->bone_count = 0;
     s->bone_capacity = 0;
+    free(s->aliases);
+    s->aliases = NULL;
+    s->alias_count = 0;
+    s->alias_capacity = 0;
 }
 
 /// @brief Copy a runtime string into the fixed bone-name storage used by GPU payloads.
@@ -49,6 +53,9 @@ void *rt_skeleton3d_new(void) {
     s->bone_count = 0;
     s->bone_capacity = 0;
     s->frozen = 0;
+    s->aliases = NULL;
+    s->alias_count = 0;
+    s->alias_capacity = 0;
     rt_obj_set_finalizer(s, rt_skeleton3d_finalize);
     return s;
 }
@@ -236,4 +243,75 @@ void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
                        m[13],
                        m[14],
                        m[15]);
+}
+
+/// @brief Register (or remove) an external bone-name alias for retargeting.
+///
+/// `external` is the name a foreign rig uses; `local` is this skeleton's bone
+/// it should map to. Retargeting consults these aliases before falling back
+/// to humanoid-role inference — the deterministic escape hatch for arbitrary
+/// downloaded rigs (e.g. `mixamorig:Hips` -> `hips`). Re-registering an
+/// external name replaces the mapping; an empty/NULL `local` removes it.
+/// The alias table is not consumed by skinning or pose math, so it may be
+/// edited freely even on a frozen skeleton.
+void rt_skeleton3d_set_bone_alias(void *obj, rt_string external, rt_string local) {
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    char ext_buf[64];
+    char local_buf[64];
+    if (!s)
+        return;
+    if (!skeleton3d_copy_canonical_name(external, ext_buf) || ext_buf[0] == '\0') {
+        rt_trap("Skeleton3D.SetBoneAlias: external name must be non-empty");
+        return;
+    }
+    if (!skeleton3d_copy_canonical_name(local, local_buf))
+        local_buf[0] = '\0';
+
+    int32_t found = -1;
+    for (int32_t i = 0; i < s->alias_count; i++) {
+        if (strcmp(s->aliases[i].external, ext_buf) == 0) {
+            found = i;
+            break;
+        }
+    }
+    if (local_buf[0] == '\0') {
+        /* Removal. */
+        if (found >= 0) {
+            s->aliases[found] = s->aliases[s->alias_count - 1];
+            s->alias_count--;
+        }
+        return;
+    }
+    if (found < 0) {
+        if (s->alias_count >= s->alias_capacity) {
+            int32_t cap = s->alias_capacity > 0 ? s->alias_capacity * 2 : 8;
+            rt_skeleton3d_alias *grown =
+                (rt_skeleton3d_alias *)realloc(s->aliases, (size_t)cap * sizeof(*grown));
+            if (!grown)
+                return;
+            s->aliases = grown;
+            s->alias_capacity = cap;
+        }
+        found = s->alias_count++;
+    }
+    memcpy(s->aliases[found].external, ext_buf, sizeof(ext_buf));
+    memcpy(s->aliases[found].local, local_buf, sizeof(local_buf));
+}
+
+/// @brief Number of registered bone-name aliases.
+int64_t rt_skeleton3d_get_alias_count(void *obj) {
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    return s ? s->alias_count : 0;
+}
+
+/// @brief Resolve an external bone name through the alias table.
+/// @return The mapped local bone name, or NULL when no alias matches.
+const char *skeleton3d_alias_lookup(const rt_skeleton3d *s, const char *external) {
+    if (!s || !external || !external[0])
+        return NULL;
+    for (int32_t i = 0; i < s->alias_count; i++) {
+        if (strcmp(s->aliases[i].external, external) == 0)
+            return s->aliases[i].local;
+    }
+    return NULL;
 }

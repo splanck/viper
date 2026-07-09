@@ -72,7 +72,34 @@ typedef struct vg_edit_history {
     uint32_t next_group_id;    ///< Counter for grouping
     bool is_grouping;          ///< Currently recording a group
     uint32_t current_group;    ///< Active group ID
+
+    // Typing coalescing: consecutive single-codepoint inserts that continue the
+    // previous op within a short time window are merged into one undo unit, so
+    // Ctrl+Z reverts words/bursts instead of individual characters.
+    bool coalesce_enabled;        ///< Master switch (default true; tests may disable).
+    bool coalesce_break;          ///< When set, the next insert starts a fresh op.
+    uint64_t last_insert_time_ms; ///< Editor typing-clock time of the last coalesced insert.
 } vg_edit_history_t;
+
+/// @brief Forward content delta for incremental language-service sync (plan 08).
+/// @details One content mutation on the hot editing path: the pre-edit byte range
+///          [(start_line,start_col) .. (end_line,end_col)) was replaced by @p text
+///          (empty for a pure delete; start == end for a pure insert). Positions
+///          are 0-based byte line/column, matching the widget and
+///          codeeditor_materialize_lines() (lines joined by '\n', no trailing
+///          newline). Deltas are captured in application order, so a document
+///          mirror that replays them in order against its own text stays byte-exact.
+typedef struct vg_edit_delta {
+    uint64_t revision; ///< Editor content revision AFTER this delta.
+    int start_line;    ///< 0-based start line of the replaced range.
+    int start_col;     ///< 0-based start byte column.
+    int end_line;      ///< 0-based end line of the replaced range.
+    int end_col;       ///< 0-based end byte column.
+    char *text;        ///< Owned replacement text ("" for a pure delete).
+} vg_edit_delta_t;
+
+/// @brief Capacity of the per-editor delta ring; overflow forces a full re-sync.
+#define VG_EDIT_JOURNAL_CAP 256
 
 /// @brief Line information
 typedef struct vg_code_line {
@@ -135,6 +162,16 @@ typedef enum vg_syntax_token_type {
     VG_SYN_TOKEN_COUNT = 13      ///< Number of token types (array sizing).
 } vg_syntax_token_type;
 
+/// @brief Whitespace-marker rendering modes for CodeEditor.
+/// @details Controls rendering of faint dots (spaces) and arrows (tabs). The
+///          integer values are an ABI contract shared with the Zia runtime
+///          binding Viper.GUI.CodeEditor.SetWhitespaceMode.
+typedef enum vg_whitespace_mode {
+    VG_WHITESPACE_NONE = 0,     ///< No whitespace markers (default; zero-cost).
+    VG_WHITESPACE_BOUNDARY = 1, ///< Only leading and trailing whitespace on each line.
+    VG_WHITESPACE_ALL = 2       ///< Every space and tab.
+} vg_whitespace_mode;
+
 /// @brief CodeEditor widget structure
 typedef struct vg_codeeditor {
     vg_widget_t base;
@@ -182,9 +219,10 @@ typedef struct vg_codeeditor {
     uint32_t current_line_bg; ///< Current line highlight
 
     // Display options
-    bool show_indent_guides;     ///< Draw faint vertical guides at indent levels.
-    bool render_whitespace;      ///< Reserved: render space/tab markers (default off).
-    uint32_t indent_guide_color; ///< Indent-guide line color (0 = derive from gutter).
+    bool show_indent_guides;      ///< Draw faint vertical guides at indent levels.
+    int render_whitespace_mode;   ///< Whitespace markers: 0=none, 1=boundary, 2=all (vg_whitespace_mode).
+    uint32_t whitespace_color;    ///< Whitespace marker color (0 = derive faint from text color).
+    uint32_t indent_guide_color;  ///< Indent-guide line color (0 = derive from gutter).
 
     // Syntax highlighting
     vg_syntax_callback_t syntax_highlighter;
@@ -220,6 +258,8 @@ typedef struct vg_codeeditor {
     // State
     bool cursor_visible;     ///< Cursor blink state
     float cursor_blink_time; ///< Cursor blink timer
+    uint64_t typing_clock_ms; ///< Monotonic ms clock advanced by vg_codeeditor_tick; drives
+                              ///< undo coalescing time windows deterministically (tests control dt).
     bool modified;           ///< Document modified since last save
     uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
     uint64_t highlight_generation;         ///< Monotonic syntax-cache generation.
@@ -249,10 +289,27 @@ typedef struct vg_codeeditor {
     // Undo/redo history
     vg_edit_history_t *history; ///< Edit history for undo/redo
 
+    // Incremental sync journal (plan 08): bounded ring of forward content deltas
+    // captured on the hot editing path so language services update a document
+    // mirror by delta instead of re-copying the whole buffer per keystroke. Cold
+    // mutations (undo/redo, SetText) set journal_overflowed to force a full sync.
+    vg_edit_delta_t journal[VG_EDIT_JOURNAL_CAP]; ///< Ring of retained deltas.
+    int journal_head;            ///< Ring index of the oldest retained delta.
+    int journal_count;           ///< Deltas currently retained (<= VG_EDIT_JOURNAL_CAP).
+    uint64_t journal_oldest_rev; ///< Revision of the oldest retained delta (0 = none).
+    bool journal_overflowed;     ///< A cold mutation or ring wrap requires a full re-sync.
+
     // Scrollbar drag state
     bool scrollbar_dragging;           ///< True while user is dragging the scroll thumb
     float scrollbar_drag_offset;       ///< Mouse Y at drag start (widget-relative)
     float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
+
+    // Horizontal scrollbar drag state + longest-line cache for the scroll range.
+    bool hscrollbar_dragging;           ///< True while dragging the horizontal thumb.
+    float hscrollbar_drag_offset;       ///< Mouse X at drag start (widget-relative).
+    float hscrollbar_drag_start_scroll; ///< scroll_x value at drag start.
+    int longest_line_cols_cache;        ///< Cached widest line in visual columns.
+    uint64_t longest_line_cols_generation; ///< layout_generation the cache was computed for.
 
     // Pointer selection drag state
     bool selection_drag_pending; ///< True after mouse-down before movement crosses drag threshold.
@@ -261,6 +318,10 @@ typedef struct vg_codeeditor {
     float selection_drag_start_y; ///< Mouse-down Y used to distinguish click from drag.
     int selection_anchor_line;    ///< Selection anchor line for pointer drag
     int selection_anchor_col;     ///< Selection anchor column for pointer drag
+    float selection_last_drag_x;  ///< Last pointer X seen during the active drag (widget-local).
+    float selection_last_drag_y;  ///< Last pointer Y seen during the active drag (widget-local).
+    float selection_autoscroll_accum_y; ///< Fractional vertical autoscroll pixels pending this drag.
+    float selection_autoscroll_accum_x; ///< Fractional horizontal autoscroll pixels pending this drag.
 
     // Matching-pair highlight cache. Columns are byte offsets because the
     // native editor stores cursor positions as UTF-8 byte columns.
@@ -326,7 +387,8 @@ typedef struct vg_codeeditor {
     // Gutter icons (breakpoints, diagnostics, etc.)
     struct vg_gutter_icon {
         int line;        ///< 0-based line number
-        int type;        ///< 0=breakpoint, 1=warning, 2=error, 3=info
+        int type;        ///< 0=breakpoint, 1=warning, 2=error, 3=info; also the slot key.
+        int style;       ///< 0=disc/image (default), 1=change bar at the gutter left edge.
         uint32_t color;  ///< Icon color (0x00RRGGBB)
         vg_icon_t image; ///< Optional RGBA icon; falls back to colored disc when absent.
     } *gutter_icons;     ///< Owned array; NULL when unused
@@ -364,6 +426,89 @@ typedef struct vg_codeeditor {
     int extra_cursor_cap;   ///< Allocated capacity
 } vg_codeeditor_t;
 
+/// @brief Detachable per-document editor state (text, undo history, cursor,
+///        scroll, folds, semantic/diagnostic overlays). A CodeEditor holds one
+///        document's worth of this state in its own fields; a vg_editor_buffer_t
+///        is a *detached* snapshot that can be swapped in and out so multiple
+///        documents can share a single editor widget without losing undo history
+///        or view state on every switch. Fields mirror the swappable subset of
+///        vg_codeeditor_t exactly; view-only state (font, colors, layout caches)
+///        stays on the widget and is invalidated on swap.
+typedef struct vg_editor_buffer {
+    // Text
+    vg_code_line_t *lines;
+    int line_count;
+    int line_capacity;
+    void *document_buffer;
+    // History
+    vg_edit_history_t *history;
+    // Caret / selection / scroll
+    int cursor_line;
+    int cursor_col;
+    vg_selection_t selection;
+    bool has_selection;
+    float scroll_x;
+    float scroll_y;
+    struct vg_extra_cursor *extra_cursors;
+    int extra_cursor_count;
+    int extra_cursor_cap;
+    // Folds
+    struct vg_fold_region *fold_regions;
+    int fold_region_count;
+    int fold_region_cap;
+    bool has_folded_lines;
+    // Semantic token overlay
+    struct vg_semantic_token *semantic_tokens;
+    int semantic_token_count;
+    int semantic_token_cap;
+    bool semantic_tokens_sorted;
+    // Diagnostic highlight spans
+    struct vg_highlight_span *highlight_spans;
+    int highlight_span_count;
+    int highlight_span_cap;
+    bool highlight_spans_sorted;
+    // Identity / dirty
+    bool modified;
+    uint64_t revision;
+    uint64_t highlight_generation;
+    uint64_t typing_clock_ms;
+} vg_editor_buffer_t;
+
+/// @brief Create a detached editor buffer initialised from @p text.
+/// @param text Null-terminated UTF-8 (NULL/"" yields a single empty line).
+/// @return New buffer, or NULL on allocation failure.
+vg_editor_buffer_t *vg_editor_buffer_create(const char *text);
+
+/// @brief Destroy a detached buffer and all state it owns.
+/// @param buf Buffer to free (may be NULL). Must not be currently attached.
+void vg_editor_buffer_destroy(vg_editor_buffer_t *buf);
+
+/// @brief Full text of a detached buffer as a newly allocated string.
+/// @param buf Buffer to read (may be NULL → NULL).
+/// @return Caller-owned string, or NULL.
+char *vg_editor_buffer_get_text(vg_editor_buffer_t *buf);
+
+/// @brief Modified flag of a detached buffer.
+bool vg_editor_buffer_is_modified(const vg_editor_buffer_t *buf);
+
+/// @brief Clear the modified flag of a detached buffer.
+void vg_editor_buffer_clear_modified(vg_editor_buffer_t *buf);
+
+/// @brief Content revision of a detached buffer.
+uint64_t vg_editor_buffer_get_revision(const vg_editor_buffer_t *buf);
+
+/// @brief Swap the editor's current document state for @p incoming.
+/// @details The editor's current state is moved into a freshly allocated buffer
+///          (returned to the caller, who now owns it); @p incoming's state is
+///          moved into the editor. @p incoming is consumed: its struct is freed
+///          and it must not be used again. All view caches are invalidated and a
+///          repaint/relayout is requested. Undo history is never touched.
+/// @param editor   Editor to retarget (must be non-NULL).
+/// @param incoming Buffer to display (must be non-NULL; consumed).
+/// @return The editor's previous state as a new detached buffer (caller owns).
+vg_editor_buffer_t *vg_codeeditor_swap_buffer(vg_codeeditor_t *editor,
+                                              vg_editor_buffer_t *incoming);
+
 /// @brief Advance the cursor blink timer; call each frame.
 /// @param editor Code editor widget.
 /// @param dt     Elapsed time in seconds since the last call.
@@ -394,6 +539,18 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor);
 /// @param editor Code editor widget.
 /// @return Content revision, or 0 if editor is NULL.
 uint64_t vg_codeeditor_get_revision(vg_codeeditor_t *editor);
+
+/// @brief Take the forward content deltas recorded since @p since_revision as a
+///        compact JSON array, pruning the consumed entries (plan 08).
+/// @details Each element is {"r":revision,"sl","sc","el","ec","t":text}: the
+///          pre-edit byte range [(sl,sc)..(el,ec)) was replaced by t. Returns the
+///          literal string "overflow" when a cold mutation (undo/redo, SetText,
+///          buffer swap) or a ring wrap means the caller must full-sync instead.
+///          Caller owns and frees the returned string.
+/// @param editor Code editor widget.
+/// @param since_revision Last revision the caller has already applied.
+/// @return Owned JSON array string, "overflow", or NULL on OOM/NULL editor.
+char *vg_codeeditor_take_deltas_json(vg_codeeditor_t *editor, uint64_t since_revision);
 
 /// @brief Return the currently selected text as a newly allocated string.
 /// @param editor Code editor widget.

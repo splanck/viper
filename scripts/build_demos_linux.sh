@@ -114,9 +114,10 @@ ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
     "ridgebound:${GAMES_DIR}/ridgebound"
+    "ashfall:${GAMES_DIR}/ashfall"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
-    "chess-zia:${GAMES_DIR}/chess"
+    "chess:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"
     "baseball:${GAMES_DIR}/baseball"
 )
@@ -222,7 +223,7 @@ build_demo() {
     fi
 
     # All demos build at -O2. The loop-rotate SSA-reconstruction and inliner
-    # escaped-param typing bugs that previously forced centipede/chess-zia/
+    # escaped-param typing bugs that previously forced centipede/chess/
     # crackman down to -O0 on arm64 have been fixed in the IL optimizer (the IL
     # passes are target-independent, so this applies to x86_64 and arm64 alike).
     local demo_opt="-O2"

@@ -10,9 +10,12 @@
 //          Performs mark-and-sweep GC over input sections to remove
 //          unreferenced functions and data from the output.
 // Key invariants:
-//   - Roots: user .o sections, entry point section, ObjC metadata, TLS, init/fini
+//   - Roots: entry point section, ObjC metadata, TLS, init/fini, and sections
+//     explicitly retained (SHF_GNU_RETAIN / S_ATTR_NO_DEAD_STRIP / N_NO_DEAD_STRIP).
+//     Synthetic linker-generated objects are always kept.
 //   - Liveness flows through relocations (section A references symbol in section B)
-//   - Only archive-extracted objects are eligible for stripping
+//   - Every non-synthetic object (user and archive) is eligible for stripping;
+//     only sections reachable from a root survive.
 // Links: codegen/common/linker/ObjFileReader.hpp
 //        codegen/common/linker/LinkTypes.hpp
 //

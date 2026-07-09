@@ -143,6 +143,9 @@ typedef enum {
     VGFX3D_POSTFX_EFFECT_MOTION_BLUR,
     VGFX3D_POSTFX_EFFECT_TAA, /* appended: backend switches key on the raw type value */
     VGFX3D_POSTFX_EFFECT_SSR, /* Plan 10 */
+    VGFX3D_POSTFX_EFFECT_AUTO_EXPOSURE, /* Track E doc 07: eye adaptation */
+    VGFX3D_POSTFX_EFFECT_COLOR_LUT,     /* Track E doc 07: 3D LUT grading */
+    VGFX3D_POSTFX_EFFECT_SUN_SHAFTS,    /* Track E doc 07: screen-space god rays */
 } vgfx3d_postfx_effect_kind_t;
 
 /// @brief One ordered chain entry: an effect kind plus its parameter snapshot.
@@ -166,6 +169,14 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out);
 int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out);
 /// @brief Non-zero if the chain has effects (SSAO/DoF/motion blur) needing scene depth/motion
 /// buffers.
+/// @brief Append eye-adaptation auto-exposure (minEv, maxEv, adaptSpeed).
+void rt_postfx3d_add_auto_exposure(void *obj, double min_ev, double max_ev, double adapt_speed);
+/// @brief Append a 3D LUT color grade from a 256x16 strip Pixels (retained).
+void rt_postfx3d_add_color_lut(void *obj, void *lut_pixels, double blend);
+/// @brief Build the identity 256x16 LUT strip Pixels.
+void *rt_postfx3d_make_identity_lut(void);
+/// @brief Append screen-space sun shafts (intensity, decay, samples <= 48).
+void rt_postfx3d_add_sun_shafts(void *obj, double intensity, double decay, int64_t samples);
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx);
 /// @brief Deep-copy one exported PostFX chain into another (grows @p dst as needed).
 int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src);

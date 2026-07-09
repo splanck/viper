@@ -1140,6 +1140,13 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
                                   ? funcType->returnType()
                                   : types::voidType();
 
+    if (expectedReturnType_ && expectedReturnType_->kind == TypeKindSem::Tuple) {
+        error(decl.loc,
+              "Functions cannot return a tuple type; return a struct with named fields, or use "
+              "out-parameters");
+        expectedReturnType_ = types::unknown();
+    }
+
     pushScope(decl.loc);
 
     // Define parameters
@@ -1403,6 +1410,12 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
                              : types::voidType();
+    if (returnType && returnType->kind == TypeKindSem::Tuple) {
+        error(decl.loc,
+              "Methods cannot return a tuple type; return a struct with named fields, or use "
+              "out-parameters");
+        returnType = types::unknown();
+    }
     expectedReturnType_ = returnType;
 
     // Register method type: "TypeName.methodName" -> function type

@@ -68,7 +68,8 @@ int compileToNative(const std::string &ilPath,
                     bool skipIlOptimization = true,
                     bool timePasses = false,
                     bool fastLink = false,
-                    std::optional<bool> windowsDebugRuntime = std::nullopt);
+                    std::optional<bool> windowsDebugRuntime = std::nullopt,
+                    std::size_t stackSize = 0);
 
 /// @brief Compile an already-built IL module to a native binary without reparsing IL text.
 ///
@@ -103,7 +104,8 @@ int compileModuleToNative(il::core::Module module,
                           bool moduleAlreadyVerified = true,
                           bool timePasses = false,
                           bool fastLink = false,
-                          std::optional<bool> windowsDebugRuntime = std::nullopt);
+                          std::optional<bool> windowsDebugRuntime = std::nullopt,
+                          std::size_t stackSize = 0);
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.

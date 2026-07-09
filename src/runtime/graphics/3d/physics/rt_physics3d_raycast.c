@@ -1046,15 +1046,17 @@ void *rt_world3d_raycast(
 ///
 /// Like `Raycast` but doesn't stop at the first hit — every body
 /// the ray pierces is recorded. Results come back sorted by distance.
-/// Bounded by `PH3D_MAX_QUERY_HITS` (256).
+/// Bounded by the world's configurable query capacity
+/// (`Physics3DWorld.SetMaxQueryHits`, default 256).
 void *rt_world3d_raycast_all(
     void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
+    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+    int32_t hit_capacity = w ? w->max_query_hits : 0;
     double origin[3], dir[3], query_min[3], query_max[3], end[3];
     int32_t hit_count = 0;
     int64_t total_count = 0;
-    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
+    if (!w || !hits || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
         !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
     if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
@@ -1083,7 +1085,7 @@ void *rt_world3d_raycast_all(
             continue;
         if (raycast_body(body, origin, dir, max_distance, &hit)) {
             total_count++;
-            hit_count = query_hit_insert_sorted_bounded(hits, hit_count, PH3D_MAX_QUERY_HITS, &hit);
+            hit_count = query_hit_insert_sorted_bounded(hits, hit_count, hit_capacity, &hit);
         }
     }
     return physics_hit_list3d_new_ex(

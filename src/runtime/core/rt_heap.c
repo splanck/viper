@@ -119,6 +119,14 @@ static int rt_register_shutdown_handler_(void) {
     // __cxa_atexit() is available from libc and feeds the same exit handler list.
     return __cxa_atexit(rt_global_shutdown_atexit_, NULL, NULL);
 }
+#elif RT_PLATFORM_WINDOWS
+static int rt_register_shutdown_handler_(void) {
+    // The Windows runtime archive is shared with native PE binaries that enter
+    // through Viper's CRT-less startup shim. Calling CRT atexit from that path
+    // can block during the first heap-backed allocation, so Windows builds rely
+    // on process teardown for this global cleanup.
+    return 0;
+}
 #else
 static int rt_register_shutdown_handler_(void) {
     return atexit(rt_global_shutdown);

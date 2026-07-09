@@ -138,9 +138,10 @@ REM Build Zia demos
 call :build_demo paint "%APPS_DIR%\paint"
 call :build_demo 3dbowling "%GAMES_DIR%\3dbowling"
 call :build_demo ridgebound "%GAMES_DIR%\ridgebound"
+call :build_demo ashfall "%GAMES_DIR%\ashfall"
 call :build_demo crackman "%GAMES_DIR%\crackman"
 call :build_demo vipersql "%APPS_DIR%\vipersql"
-call :build_demo chess-zia "%GAMES_DIR%\chess"
+call :build_demo chess "%GAMES_DIR%\chess"
 call :build_demo xenoscape "%GAMES_DIR%\xenoscape"
 call :build_demo baseball "%GAMES_DIR%\baseball"
 

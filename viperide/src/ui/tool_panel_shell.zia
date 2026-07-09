@@ -78,6 +78,14 @@ class ToolPanelShell {
     expose GUI.OutputPane terminalPane;
     expose GUI.Button terminalKill;
     expose GUI.Button terminalRestart;
+    expose GUI.Button terminalNew;
+    expose GUI.Button terminalNext;
+    // Vertical splitter shared with the editor: First = editor, Second = panels.
+    // The panel area's height is the splitter's bottom fraction, uniform across
+    // every panel tab. Collapsed (position 1.0) when no panel is shown.
+    expose GUI.SplitPane editorSplit;
+    expose Number bottomSplitFraction; // editor's fraction while a panel is open
+    expose Boolean splitFractionDirty; // set on user drag; consumed for persistence
     expose Integer activeToolPanelKind;
     expose String lastBuildOutput;
     expose String outputPartialLine;
@@ -132,6 +140,11 @@ class ToolPanelShell {
         terminalPane = null;
         terminalKill = null;
         terminalRestart = null;
+        terminalNew = null;
+        terminalNext = null;
+        editorSplit = null;
+        bottomSplitFraction = 0.7;
+        splitFractionDirty = false;
         activeToolPanelKind = tool_panel_model.PANEL_NONE;
         lastBuildOutput = "";
         outputPartialLine = "";
@@ -152,11 +165,16 @@ class ToolPanelShell {
     }
 
     /// @brief Build the complete bottom tool-panel surface under the editor.
-    /// @param editorArea Editor-area container that receives all bottom panels.
+    /// @param panelHost Bottom split host that receives all tool panels; they fill
+    ///        it via flex and the splitter owns the height.
     /// @param appArg Owning application, used for output wrap width.
-    expose func Build(editorArea: GUI.VBox,
-                      appArg: GUI.App) {
-        toolTabBar = GUI.TabBar.New(editorArea);
+    /// @param splitArg Vertical splitter shared with the editor, driven by the
+    ///        panel show/hide paths to collapse/restore the bottom area.
+    expose func Build(panelHost: GUI.VBox,
+                      appArg: GUI.App,
+                      splitArg: GUI.SplitPane) {
+        editorSplit = splitArg;
+        toolTabBar = GUI.TabBar.New(panelHost);
         toolTabBar.SetAutoClose(false);
         toolProblemsTab = toolTabBar.AddTab("Problems", 0);
         toolOutputTab = toolTabBar.AddTab("Output", 0);
@@ -168,27 +186,27 @@ class ToolPanelShell {
         toolTerminalTab = toolTabBar.AddTab("Terminal", 0);
         toolTabBar.SetVisible(false);
 
-        diagListBox = GUI.ListBox.New(editorArea);
+        diagListBox = GUI.ListBox.New(panelHost);
         diagListBox.SetMultiSelect(true);
         diagListBox.SetVisible(false);
-        diagListBox.SetSize(0, 120);
+        diagListBox.SetFlex(1.0);
 
-        outputPane = GUI.OutputPane.New(editorArea);
+        outputPane = GUI.OutputPane.New(panelHost);
         outputPane.SetMaxLines(10000);
         outputPane.SetAutoScroll(true);
         outputPane.SetVisible(false);
-        outputPane.SetSize(0, 100);
+        outputPane.SetFlex(1.0);
 
-        outputListBox = GUI.ListBox.New(editorArea);
+        outputListBox = GUI.ListBox.New(panelHost);
         outputListBox.SetMultiSelect(true);
         outputListBox.SetVisible(false);
-        outputListBox.SetSize(0, 100);
+        outputListBox.SetFlex(1.0);
         outputVirtualList = GUI.VirtualList.New(0, 18, 100);
 
         searchPanel = GUI.VBox.New();
         searchPanel.SetVisible(false);
-        searchPanel.SetSize(0, 170);
-        editorArea.AddChild(searchPanel);
+        searchPanel.SetFlex(1.0);
+        panelHost.AddChild(searchPanel);
         var searchQueryRow = GUI.HBox.New();
         searchQueryRow.SetSpacing(4.0);
         searchPanel.AddChild(searchQueryRow);
@@ -223,32 +241,32 @@ class ToolPanelShell {
         searchListBox.SetVisible(true);
         searchListBox.SetFlex(1.0);
 
-        referencesListBox = GUI.ListBox.New(editorArea);
+        referencesListBox = GUI.ListBox.New(panelHost);
         referencesListBox.SetMultiSelect(true);
         referencesListBox.SetVisible(false);
-        referencesListBox.SetSize(0, 120);
+        referencesListBox.SetFlex(1.0);
 
-        debugListBox = GUI.ListBox.New(editorArea);
+        debugListBox = GUI.ListBox.New(panelHost);
         debugListBox.SetMultiSelect(true);
         debugListBox.SetVisible(false);
-        debugListBox.SetSize(0, 120);
+        debugListBox.SetFlex(1.0);
 
-        variablesListBox = GUI.ListBox.New(editorArea);
+        variablesListBox = GUI.ListBox.New(panelHost);
         variablesListBox.SetMultiSelect(true);
         variablesListBox.SetVisible(false);
-        variablesListBox.SetSize(0, 120);
+        variablesListBox.SetFlex(1.0);
 
-        callStackListBox = GUI.ListBox.New(editorArea);
+        callStackListBox = GUI.ListBox.New(panelHost);
         callStackListBox.SetMultiSelect(false);
         callStackListBox.SetVisible(false);
-        callStackListBox.SetSize(0, 120);
+        callStackListBox.SetFlex(1.0);
 
         terminalPanel = GUI.VBox.New();
         terminalPanel.SetSpacing(0.0);
         terminalPanel.SetPadding(0.0);
-        terminalPanel.SetSize(0, 220);
+        terminalPanel.SetFlex(1.0);
         terminalPanel.SetVisible(false);
-        editorArea.AddChild(terminalPanel);
+        panelHost.AddChild(terminalPanel);
         terminalPane = GUI.OutputPane.New(terminalPanel);
         terminalPane.SetMaxLines(10000);
         terminalPane.SetAutoScroll(true);
@@ -259,6 +277,8 @@ class ToolPanelShell {
         terminalPanel.AddChild(terminalInputRow);
         terminalKill = GUI.Button.New(terminalInputRow, "Stop");
         terminalRestart = GUI.Button.New(terminalInputRow, "Restart");
+        terminalNew = GUI.Button.New(terminalInputRow, "New");
+        terminalNext = GUI.Button.New(terminalInputRow, "Next");
 
         Setup(appArg, toolTabBar, toolProblemsTab, toolOutputTab, toolSearchTab,
               toolReferencesTab, toolVariablesTab, toolCallStackTab,
@@ -994,6 +1014,48 @@ class ToolPanelShell {
     }
 
     /// @brief Hide every bottom tool surface.
+    /// @brief Restore the bottom panel area to its current height fraction.
+    /// @details Called whenever a panel is shown. The splitter position is the
+    ///          editor's fraction, so a smaller number gives the panel more room.
+    hide func ExpandBottomPanel() {
+        if editorSplit == null { return; }
+        editorSplit.SetPosition(bottomSplitFraction);
+    }
+
+    /// @brief Collapse the bottom area so the editor uses the full height.
+    hide func CollapseBottomPanel() {
+        if editorSplit == null { return; }
+        editorSplit.SetPosition(1.0);
+    }
+
+    /// @brief Capture a live splitter drag into the height fraction so the size
+    ///        persists across panel-tab switches within the session. Called each
+    ///        frame from PumpToolTabs; ignores the collapsed/degenerate range.
+    hide func CaptureSplitDrag() {
+        if editorSplit == null { return; }
+        if activeToolPanelKind == tool_panel_model.PANEL_NONE { return; }
+        var pos = editorSplit.GetPosition();
+        if pos < 0.3 or pos > 0.985 { return; } // keep editor 30%+, panel 1.5%+
+        var delta = pos - bottomSplitFraction;
+        if delta < 0.0 { delta = 0.0 - delta; }
+        if delta > 0.004 {
+            bottomSplitFraction = pos;
+            splitFractionDirty = true;
+        }
+    }
+
+    /// @brief Apply a persisted editor-height percentage (settings-driven).
+    /// @param pct Editor's share of the split, clamped to [30, 95].
+    expose func SetBottomSplitPct(pct: Integer) {
+        var clamped = pct;
+        if clamped < 30 { clamped = 30; }
+        if clamped > 95 { clamped = 95; }
+        bottomSplitFraction = clamped / 100.0; // int/float promotes to Number
+        if editorSplit != null and activeToolPanelKind != tool_panel_model.PANEL_NONE {
+            editorSplit.SetPosition(bottomSplitFraction);
+        }
+    }
+
     hide func HideAllToolPanels() {
         diagListBox.SetVisible(false);
         outputPane.SetVisible(false);
@@ -1010,6 +1072,7 @@ class ToolPanelShell {
     /// @brief Show the Problems panel and select its tab.
     expose func ShowProblemsPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolProblemsTab);
         activeToolPanelKind = tool_panel_model.PANEL_PROBLEMS;
         HideAllToolPanels();
@@ -1025,6 +1088,7 @@ class ToolPanelShell {
     /// @brief Show the Output panel and select its tab.
     expose func ShowOutputPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolOutputTab);
         activeToolPanelKind = tool_panel_model.PANEL_OUTPUT;
         HideAllToolPanels();
@@ -1045,6 +1109,7 @@ class ToolPanelShell {
     /// @brief Show the Search panel and select its tab.
     expose func ShowSearchPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolSearchTab);
         activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
         HideAllToolPanels();
@@ -1062,6 +1127,7 @@ class ToolPanelShell {
     /// @brief Show the References panel and select its tab.
     expose func ShowReferencesPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolReferencesTab);
         activeToolPanelKind = tool_panel_model.PANEL_REFERENCES;
         HideAllToolPanels();
@@ -1077,6 +1143,7 @@ class ToolPanelShell {
     /// @brief Show the Variables panel and select its tab.
     expose func ShowVariablesPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolVariablesTab);
         activeToolPanelKind = tool_panel_model.PANEL_VARIABLES;
         HideAllToolPanels();
@@ -1086,6 +1153,7 @@ class ToolPanelShell {
     /// @brief Show the Call Stack panel and select its tab.
     expose func ShowCallStackPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolCallStackTab);
         activeToolPanelKind = tool_panel_model.PANEL_CALL_STACK;
         HideAllToolPanels();
@@ -1095,6 +1163,7 @@ class ToolPanelShell {
     /// @brief Show the Debug Console panel and select its tab.
     expose func ShowDebugPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolDebugTab);
         activeToolPanelKind = tool_panel_model.PANEL_DEBUG;
         HideAllToolPanels();
@@ -1104,6 +1173,7 @@ class ToolPanelShell {
     /// @brief Show the Terminal panel and focus its pane.
     expose func ShowTerminalPanel() {
         toolTabBar.SetVisible(true);
+        ExpandBottomPanel();
         toolTabBar.SetActive(toolTerminalTab);
         activeToolPanelKind = tool_panel_model.PANEL_TERMINAL;
         HideAllToolPanels();
@@ -1158,6 +1228,7 @@ class ToolPanelShell {
         } else {
             toolTabBar.SetVisible(false);
             activeToolPanelKind = tool_panel_model.PANEL_NONE;
+            CollapseBottomPanel();
         }
     }
 
@@ -1180,6 +1251,7 @@ class ToolPanelShell {
         } else {
             toolTabBar.SetVisible(false);
             activeToolPanelKind = tool_panel_model.PANEL_NONE;
+            CollapseBottomPanel();
         }
     }
 
@@ -1192,6 +1264,7 @@ class ToolPanelShell {
     /// @brief Poll bottom tool tabs and show the selected panel.
     expose func PumpToolTabs() {
         if toolTabBar == null { return; }
+        CaptureSplitDrag(); // every frame: keep a live splitter drag remembered
         if !toolTabBar.WasChanged() { return; }
         var idx = toolTabBar.GetActiveIndex();
         if idx == tool_panel_model.TAB_PROBLEMS {

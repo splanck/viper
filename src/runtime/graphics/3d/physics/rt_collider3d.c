@@ -36,7 +36,9 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_collider3d.h"
+#include "rt_quickhull3d.h"
 
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -667,6 +669,124 @@ static void *collider3d_new_mesh_like(void *mesh, int32_t type, int8_t static_on
 /// convex polytope (caller's responsibility to ensure convexity). Suitable for dynamic bodies.
 void *rt_collider3d_new_convex_hull(void *mesh) {
     return collider3d_new_mesh_like(mesh, RT_COLLIDER3D_TYPE_CONVEX_HULL, 0);
+}
+
+/// @brief Build a *reduced* convex hull collider from an arbitrary mesh.
+/// @details Runs quickhull over the mesh's vertices (so interior vertices of
+///   concave art meshes stop costing GJK support scans), then — when the hull
+///   still exceeds @p max_verts — reduces the vertex set with farthest-point
+///   selection and re-hulls it so the final polytope stays convex and closed.
+///   The resulting hull is materialized as a fresh Mesh3D (with faces, so
+///   raycasts against the collider keep working) that the collider owns.
+///   Clamps @p max_verts to 8–255. Traps on a null or degenerate (flat /
+///   collinear) mesh.
+void *rt_collider3d_new_convex_hull_reduced(void *mesh, int64_t max_verts) {
+    rt_mesh3d *mesh_impl = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh_impl) {
+        rt_trap("Collider3D.NewConvexHullReduced: mesh must be non-null");
+        return NULL;
+    }
+    if (mesh_impl->vertex_count < 4) {
+        rt_trap("Collider3D.NewConvexHullReduced: mesh needs at least 4 vertices");
+        return NULL;
+    }
+    if (max_verts < 8)
+        max_verts = 8;
+    if (max_verts > 255)
+        max_verts = 255;
+
+    /* Gather positions (authoritative doubles when present). */
+    int32_t n = (int32_t)mesh_impl->vertex_count;
+    double *cloud = (double *)malloc(sizeof(double) * 3u * (size_t)n);
+    if (!cloud) {
+        rt_trap("Collider3D.NewConvexHullReduced: allocation failed");
+        return NULL;
+    }
+    for (int32_t i = 0; i < n; i++) {
+        if (mesh_impl->positions64) {
+            cloud[i * 3 + 0] = mesh_impl->positions64[i * 3 + 0];
+            cloud[i * 3 + 1] = mesh_impl->positions64[i * 3 + 1];
+            cloud[i * 3 + 2] = mesh_impl->positions64[i * 3 + 2];
+        } else {
+            cloud[i * 3 + 0] = (double)mesh_impl->vertices[i].pos[0];
+            cloud[i * 3 + 1] = (double)mesh_impl->vertices[i].pos[1];
+            cloud[i * 3 + 2] = (double)mesh_impl->vertices[i].pos[2];
+        }
+    }
+
+    double *hull_verts = NULL;
+    int32_t hull_vert_count = 0;
+    int32_t *hull_indices = NULL;
+    int32_t hull_index_count = 0;
+    int ok = rt_quickhull3d_build(
+        cloud, n, &hull_verts, &hull_vert_count, &hull_indices, &hull_index_count);
+    free(cloud);
+    if (!ok) {
+        rt_trap("Collider3D.NewConvexHullReduced: mesh is degenerate (flat or collinear)");
+        return NULL;
+    }
+
+    /* Reduce and re-hull when the exact hull is still too rich. */
+    if (hull_vert_count > (int32_t)max_verts) {
+        double *reduced = (double *)malloc(sizeof(double) * 3u * (size_t)max_verts);
+        if (!reduced) {
+            free(hull_verts);
+            free(hull_indices);
+            rt_trap("Collider3D.NewConvexHullReduced: allocation failed");
+            return NULL;
+        }
+        int32_t reduced_count =
+            rt_quickhull3d_reduce(hull_verts, hull_vert_count, (int32_t)max_verts, reduced);
+        free(hull_verts);
+        free(hull_indices);
+        hull_verts = NULL;
+        hull_indices = NULL;
+        ok = reduced_count >= 4 &&
+             rt_quickhull3d_build(reduced,
+                                  reduced_count,
+                                  &hull_verts,
+                                  &hull_vert_count,
+                                  &hull_indices,
+                                  &hull_index_count);
+        free(reduced);
+        if (!ok) {
+            rt_trap("Collider3D.NewConvexHullReduced: hull reduction failed");
+            return NULL;
+        }
+    }
+
+    /* Materialize the hull as a fresh mesh the collider owns. */
+    void *hull_mesh = rt_mesh3d_new();
+    if (!hull_mesh) {
+        free(hull_verts);
+        free(hull_indices);
+        rt_trap("Collider3D.NewConvexHullReduced: allocation failed");
+        return NULL;
+    }
+    for (int32_t i = 0; i < hull_vert_count; i++) {
+        rt_mesh3d_add_vertex(hull_mesh,
+                             hull_verts[i * 3 + 0],
+                             hull_verts[i * 3 + 1],
+                             hull_verts[i * 3 + 2],
+                             0.0,
+                             1.0,
+                             0.0,
+                             0.0,
+                             0.0);
+    }
+    for (int32_t i = 0; i + 2 < hull_index_count; i += 3) {
+        rt_mesh3d_add_triangle(
+            hull_mesh, hull_indices[i], hull_indices[i + 1], hull_indices[i + 2]);
+    }
+    rt_mesh3d_recalc_normals(hull_mesh);
+    free(hull_verts);
+    free(hull_indices);
+
+    void *collider = collider3d_new_mesh_like(hull_mesh, RT_COLLIDER3D_TYPE_CONVEX_HULL, 0);
+    /* The collider retains the hull mesh; drop the constructor's reference. */
+    if (rt_obj_release_check0(hull_mesh))
+        rt_obj_free(hull_mesh);
+    return collider;
 }
 
 /// @brief Wrap a Mesh3D as a *triangle-mesh* collider — uses every triangle for collision tests.

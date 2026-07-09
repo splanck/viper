@@ -44,6 +44,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rt_string.h"
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -1564,6 +1566,37 @@ void rt_navagent3d_bind_node(void *obj, void *node) {
     } else {
         navagent_sync_position_from_bindings(agent);
     }
+}
+
+
+/// @brief True while the agent's current path segment traverses a registered
+///        off-mesh link (jump/drop/vent). Lets gameplay trigger the matching
+///        traversal animation exactly when the agent commits to the link.
+int8_t rt_navagent3d_get_on_offmesh_link(void *obj) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent || !agent->has_path || !agent->navmesh || !agent->path_points_xyz)
+        return 0;
+    if (agent->path_index < 1 || agent->path_index >= agent->path_point_count)
+        return 0;
+    const double *a = agent->path_points_xyz + (size_t)(agent->path_index - 1) * 3u;
+    const double *b = agent->path_points_xyz + (size_t)agent->path_index * 3u;
+    return rt_navmesh3d_segment_is_offmesh_link(agent->navmesh, a, b, NULL);
+}
+
+/// @brief The authored kind string of the off-mesh link being traversed
+///        (empty when not on a link or the link has no kind).
+rt_string rt_navagent3d_get_link_kind(void *obj) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    rt_string kind = NULL;
+    if (!agent || !agent->has_path || !agent->navmesh || !agent->path_points_xyz)
+        return rt_str_empty();
+    if (agent->path_index < 1 || agent->path_index >= agent->path_point_count)
+        return rt_str_empty();
+    const double *a = agent->path_points_xyz + (size_t)(agent->path_index - 1) * 3u;
+    const double *b = agent->path_points_xyz + (size_t)agent->path_index * 3u;
+    if (!rt_navmesh3d_segment_is_offmesh_link(agent->navmesh, a, b, &kind) || !kind)
+        return rt_str_empty();
+    return rt_string_ref(kind);
 }
 
 #else

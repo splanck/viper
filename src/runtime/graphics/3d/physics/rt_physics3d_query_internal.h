@@ -41,8 +41,26 @@ int query_sanitize_hit(rt_query_hit3d *hit, double max_distance, const double *f
 int query_hit_insert_sorted_bounded(
     rt_query_hit3d *hits, int32_t count, int32_t capacity, const rt_query_hit3d *hit);
 int32_t world3d_build_query_broadphase(rt_world3d *w);
+
+// Lazily allocated world-owned hit scratch buffer sized to w->max_query_hits
+// (configurable via Physics3DWorld.SetMaxQueryHits). NULL on OOM.
+rt_query_hit3d *world3d_query_hits_scratch(rt_world3d *w);
 int query_entry_overlaps_bounds(
     const ph3d_broadphase_entry *entry, const double *query_min, const double *query_max);
+
+// Allocation-free swept-CCD probe (defined in rt_physics3d_query.c, consumed
+// by the step loop's time-of-impact pass in rt_physics3d_world.inc). Sweeps a
+// bounding sphere from `center` along `delta` against STATIC and KINEMATIC
+// bodies only (dynamic-vs-dynamic stays on the substep path), skipping
+// `ignore_body` (the moving body itself). On hit returns 1 and writes the hit
+// fraction (0..1 of |delta|) and the surface normal.
+int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
+                                 const double *center,
+                                 double radius,
+                                 const double *delta,
+                                 const rt_body3d *ignore_body,
+                                 double *out_t,
+                                 double *out_normal);
 
 // Raw raycast primitives (defined in rt_physics3d_raycast.c, used by sweep too).
 int raycast_sphere_raw(const double *origin, const double *dir, const double *center, double radius,

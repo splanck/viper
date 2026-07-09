@@ -504,6 +504,20 @@ static int mesh_indices_form_triangle(const rt_mesh3d *mesh,
         mesh->vertices[i0].pos, mesh->vertices[i1].pos, mesh->vertices[i2].pos);
 }
 
+/// @brief Public non-trapping triangle-validity probe (see rt_canvas3d.h).
+/// @details Shares mesh_indices_form_triangle so asset loaders filter with exactly
+///   the criterion AddTriangle enforces — a fixed loader-side epsilon that diverges
+///   from the mesh's scale-relative epsilon lets slivers through and traps imports.
+int rt_mesh3d_triangle_indices_valid(void *obj, int64_t v0, int64_t v1, int64_t v2) {
+    const rt_mesh3d *m = (const rt_mesh3d *)obj;
+    if (!m || v0 < 0 || v1 < 0 || v2 < 0)
+        return 0;
+    if ((uint64_t)v0 >= m->vertex_count || (uint64_t)v1 >= m->vertex_count ||
+        (uint64_t)v2 >= m->vertex_count)
+        return 0;
+    return mesh_indices_form_triangle(m, (uint32_t)v0, (uint32_t)v1, (uint32_t)v2);
+}
+
 /// @brief Guard for procedural-generator dimensions — trap if `value` is NaN/inf or ≤ 0.
 /// @details The generators (`new_box`, `new_sphere`, `new_plane`, `new_cylinder`) all
 ///   require strictly positive, finite extents; any other value would produce degenerate

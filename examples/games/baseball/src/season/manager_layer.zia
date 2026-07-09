@@ -128,7 +128,7 @@ class SeasonTeamManager {
     // NOOP action with an error rationale if any required slot can't be
     // filled.
     expose func submitPregameLineup(teamState: season_model.TeamSeasonState,
-                                    opponentState: season_model.TeamSeasonState,
+                                    _opponentState: season_model.TeamSeasonState,
                                     day: Integer,
                                     rules: ruleset.Ruleset) -> manager_action.ManagerAction {
         var action = new manager_action.ManagerAction(manager_action.ACTION_SUBMIT_LINEUP,

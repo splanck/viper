@@ -743,12 +743,20 @@ vaud_voice_id vaud_play_ex_group(vaud_sound_t sound, float volume, float pan, in
     voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 0;
     voice->group_id = group_id;
+    vaud_voice_reset_dsp(voice);
     voice->state = VAUD_VOICE_PLAYING;
 
     vaud_voice_id id = voice->id;
 
     vaud_mutex_unlock(&ctx->mutex);
 
+    return id;
+}
+
+vaud_voice_id vaud_play_ex2(vaud_sound_t sound, float volume, float pan, float pitch) {
+    vaud_voice_id id = vaud_play_ex(sound, volume, pan);
+    if (id != VAUD_INVALID_VOICE && sound && sound->ctx)
+        vaud_set_voice_pitch(sound->ctx, id, pitch);
     return id;
 }
 
@@ -783,6 +791,7 @@ vaud_voice_id vaud_play_loop_group(vaud_sound_t sound, float volume, float pan, 
     voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 1;
     voice->group_id = group_id;
+    vaud_voice_reset_dsp(voice);
     voice->state = VAUD_VOICE_PLAYING;
 
     vaud_voice_id id = voice->id;
@@ -850,6 +859,124 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id) {
     vaud_mutex_unlock(&ctx->mutex);
 
     return playing;
+}
+
+void vaud_set_voice_pitch(vaud_context_t ctx, vaud_voice_id voice_id, float pitch) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice) {
+        if (!(pitch > 0.0f)) /* also rejects NaN */
+            pitch = 1.0f;
+        if (pitch < VAUD_PITCH_MIN)
+            pitch = VAUD_PITCH_MIN;
+        if (pitch > VAUD_PITCH_MAX)
+            pitch = VAUD_PITCH_MAX;
+        /* Adopt the integer cursor as the fractional cursor when the voice
+         * transitions from the fast path so playback continues seamlessly. */
+        if (voice->pitch == 1.0f && pitch != 1.0f)
+            voice->frac_pos = (double)voice->position;
+        voice->pitch = pitch;
+    }
+    vaud_mutex_unlock(&ctx->mutex);
+}
+
+float vaud_get_voice_pitch(vaud_context_t ctx, vaud_voice_id voice_id) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return 1.0f;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    float pitch = voice ? voice->pitch : 1.0f;
+    vaud_mutex_unlock(&ctx->mutex);
+    return pitch;
+}
+
+void vaud_set_voice_lowpass(vaud_context_t ctx, vaud_voice_id voice_id, float cutoff_hz) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice) {
+        if (!(cutoff_hz > 0.0f)) /* <= 0 or NaN disables the filter */
+            cutoff_hz = 0.0f;
+        voice->lowpass_cutoff = cutoff_hz;
+    }
+    vaud_mutex_unlock(&ctx->mutex);
+}
+
+void vaud_set_voice_occlusion(vaud_context_t ctx, vaud_voice_id voice_id, float amount) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice) {
+        if (!(amount > 0.0f))
+            amount = 0.0f;
+        if (amount > 1.0f)
+            amount = 1.0f;
+        voice->occlusion_target = amount;
+    }
+    vaud_mutex_unlock(&ctx->mutex);
+}
+
+void vaud_set_group_duck(vaud_context_t ctx,
+                         int64_t trigger_group,
+                         int64_t target_group,
+                         float amount,
+                         float attack_sec,
+                         float release_sec) {
+    if (vaud_context_is_destroying(ctx))
+        return;
+
+    vaud_mutex_lock(&ctx->mutex);
+
+    /* Re-registering a (trigger, target) pair replaces the rule; amount <= 0
+     * removes it. */
+    int32_t found = -1;
+    for (int32_t i = 0; i < ctx->duck_rule_count; i++) {
+        if (ctx->duck_rules[i].trigger_group == trigger_group &&
+            ctx->duck_rules[i].target_group == target_group) {
+            found = i;
+            break;
+        }
+    }
+
+    if (!(amount > 0.0f)) {
+        if (found >= 0) {
+            ctx->duck_rules[found] = ctx->duck_rules[ctx->duck_rule_count - 1];
+            ctx->duck_rule_count--;
+        }
+        vaud_mutex_unlock(&ctx->mutex);
+        return;
+    }
+
+    if (amount > 1.0f)
+        amount = 1.0f;
+    if (!(attack_sec > 0.0f))
+        attack_sec = 0.001f;
+    if (!(release_sec > 0.0f))
+        release_sec = 0.001f;
+
+    if (found < 0) {
+        if (ctx->duck_rule_count >= VAUD_MAX_DUCK_RULES) {
+            vaud_mutex_unlock(&ctx->mutex);
+            return;
+        }
+        found = ctx->duck_rule_count++;
+        ctx->duck_rules[found].gain = 1.0f;
+    }
+    ctx->duck_rules[found].trigger_group = trigger_group;
+    ctx->duck_rules[found].target_group = target_group;
+    ctx->duck_rules[found].amount = amount;
+    ctx->duck_rules[found].attack_sec = attack_sec;
+    ctx->duck_rules[found].release_sec = release_sec;
+
+    vaud_mutex_unlock(&ctx->mutex);
 }
 
 //===----------------------------------------------------------------------===//

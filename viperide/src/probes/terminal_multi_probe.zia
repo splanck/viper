@@ -1,0 +1,82 @@
+module terminal_multi_probe;
+
+// ============================================================================
+// MODULE: terminal_multi_probe
+// PURPOSE: Validate plan 15 — multiple integrated terminal sessions. Exercises
+//          the controller's session list, New/Switch operations, title
+//          numbering, out-of-range guards, and the replay-buffer clear-on-switch
+//          path. PTY startup is not required (session bookkeeping is independent
+//          of whether a shell actually launches), so this runs headless.
+//
+// WHERE-THIS-FITS: TerminalController owns a List of TerminalSession objects with
+//          `sess` aliasing sessions[activeIdx]. NewSession/SwitchTo are public so
+//          both the New/Next buttons and future palette commands can drive them.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../terminal/terminal_controller";
+bind "../terminal/terminal_session";
+
+bind Terminal = Viper.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ViperIDE Terminal Multi Probe", 1000, 700);
+
+    var ctrl = new terminal_controller.TerminalController();
+    ctrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
+               shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
+    ctrl.SetupButtons(shell.toolPanels.terminalNew, shell.toolPanels.terminalNext);
+
+    // Fresh controller starts with exactly one session, selected.
+    if ctrl.sessions.count() != 1 { fail(shell, "expected 1 initial session"); return; }
+    if ctrl.activeIdx != 0 { fail(shell, "initial activeIdx not 0"); return; }
+    if ctrl.sess.title != "1: shell" { fail(shell, "initial title=[" + ctrl.sess.title + "]"); return; }
+
+    // Opening two more terminals appends and auto-selects each newest one.
+    ctrl.NewSession();
+    if ctrl.sessions.count() != 2 { fail(shell, "after NewSession count!=2"); return; }
+    if ctrl.activeIdx != 1 { fail(shell, "after NewSession activeIdx!=1"); return; }
+    if ctrl.sess.title != "2: shell" { fail(shell, "second title=[" + ctrl.sess.title + "]"); return; }
+
+    ctrl.NewSession();
+    if ctrl.sessions.count() != 3 { fail(shell, "after 2nd NewSession count!=3"); return; }
+    if ctrl.activeIdx != 2 { fail(shell, "after 2nd NewSession activeIdx!=2"); return; }
+
+    // Switching selects the requested session and re-aliases `sess`.
+    ctrl.SwitchTo(0);
+    if ctrl.activeIdx != 0 { fail(shell, "SwitchTo(0) activeIdx!=0"); return; }
+    var s0 = ctrl.sessions.get(0) as terminal_session.TerminalSession;
+    if ctrl.sess != s0 { fail(shell, "sess not aliased to sessions[0]"); return; }
+
+    // Out-of-range switches are ignored (activeIdx unchanged).
+    ctrl.SwitchTo(99);
+    if ctrl.activeIdx != 0 { fail(shell, "SwitchTo(99) moved activeIdx"); return; }
+    ctrl.SwitchTo(-1);
+    if ctrl.activeIdx != 0 { fail(shell, "SwitchTo(-1) moved activeIdx"); return; }
+
+    // A background session's replay buffer is flushed and cleared on switch-in.
+    var s1 = ctrl.sessions.get(1) as terminal_session.TerminalSession;
+    s1.replayBuffer = "REPLAYME";
+    ctrl.SwitchTo(1);
+    if ctrl.activeIdx != 1 { fail(shell, "SwitchTo(1) activeIdx!=1"); return; }
+    if s1.replayBuffer != "" { fail(shell, "replayBuffer not cleared on switch"); return; }
+
+    // Next-terminal cycling wraps around the session list.
+    var count = ctrl.sessions.count();
+    ctrl.SwitchTo((ctrl.activeIdx + 1) % count);
+    if ctrl.activeIdx != 2 { fail(shell, "cycle to 2 failed"); return; }
+    ctrl.SwitchTo((ctrl.activeIdx + 1) % count);
+    if ctrl.activeIdx != 0 { fail(shell, "cycle wrap to 0 failed"); return; }
+
+    // Shutdown stops every session without trapping.
+    ctrl.Stop();
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

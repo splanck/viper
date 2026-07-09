@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-16
+last-verified: 2026-07-08
 ---
 
 # Zia — Reference
@@ -112,6 +112,8 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 0xFF        // Hexadecimal
 0xDEAD_BEEF // Hexadecimal with digit separators
 0x8000000000000000 // Hex bit pattern for Integer min
+0o17        // Octal
+0o755       // Octal (e.g. file permissions)
 0b1010      // Binary
 0b1010_0101 // Binary with digit separators
 ```
@@ -246,7 +248,9 @@ Map[String, Integer]    // Map from strings to integers
 Result[Integer]         // Success value or error string
 ```
 
-Map keys are restricted to `String`.
+Map keys must be `String` or `Integer`. Integer-keyed maps route through a
+dedicated integer-map runtime; all other key types are rejected at semantic
+analysis.
 
 `Result[T]` values are constructed with `Ok(value)` and `Err(message)`. The
 success type is `T`; the error payload is a `String`.
@@ -454,6 +458,25 @@ collection types. Zia does not currently support user-defined operator overloadi
 `struct` or `class` cannot define its own `+`, `==`, and so on; use named methods for
 custom value semantics.
 
+#### Arithmetic Semantics
+
+- **Integer overflow traps.** `+`, `-`, and `*` on `Integer` are checked: a
+  result outside the signed 64-bit range terminates the program with an overflow
+  trap rather than wrapping.
+- **Integer division and modulo truncate toward zero.** `7 / 2` is `3` and
+  `-7 / 2` is `-3`. `%` takes the sign of the dividend: `-7 % 3` is `-1` and
+  `7 % -3` is `1`.
+- **Division or modulo by zero traps** at runtime. A literal zero divisor is
+  also reported at compile time (warning `W010`).
+- **`Number` arithmetic follows IEEE 754** — no traps; division by zero yields
+  infinity or NaN.
+- **Mixed `Integer`/`Number` operands widen to `Number`.** There is no implicit
+  narrowing back to `Integer`; use `as Integer` when you want truncation.
+- **`Byte` result types:** arithmetic (`+`, `-`, `*`, `/`, `%`) on `Byte`
+  operands produces `Integer`; bitwise `&`, `|`, `^` on two `Byte` operands
+  produces `Byte`; shifts produce `Integer`. Assign back to a `Byte` with an
+  explicit `as Byte` (a checked narrowing).
+
 ### Ternary Operator
 
 ```rust
@@ -592,10 +615,16 @@ var part = "abcdef".Substring(1, 3);   // "bcd"
 
 Arguments can be passed by name using `name: value` syntax. Named arguments are supported for user-defined functions, methods, and constructors that have declared parameter names. Runtime APIs (`Viper.*` methods, including `String.Substring`) require positional arguments — they don't carry parameter names through the IL, so use the positional form for those.
 
+Named arguments may be supplied in **any order**, and they may **skip parameters
+that have default values**, even in the middle of the list — the omitted
+parameters use their defaults:
+
 ```rust
-func createRect(x: Integer, y: Integer, w: Integer, h: Integer) -> Rect { ... }
+func createRect(x: Integer, y: Integer, w: Integer = 100, h: Integer = 50) -> Rect { ... }
 
 var r = createRect(x: 10, y: 20, w: 100, h: 50);    // OK: user-defined function
+var s = createRect(y: 20, x: 10);                    // reordered; w, h default
+var t = createRect(x: 10, y: 20, h: 80);             // skips w (uses default 100)
 var part = "abcdef".Substring(1, 3);                 // Runtime API: positional only
 ```
 
@@ -699,6 +728,37 @@ var tagCount = tags.count();
 These are language-level generic collections. The object-style runtime classes
 under `Viper.Collections.*` use their own constructor and method surface (for
 example `Map.New()`, `List.New()`, `Set.New()`).
+
+#### Functional Combinators
+
+`List[T]` supports higher-order combinators that take a lambda. The lambda's
+parameter type is inferred from the element type, so it can be written without an
+annotation (see [Parameter Type Inference](#parameter-type-inference)):
+
+```rust
+var nums: List[Integer] = [1, 2, 3, 4, 5];
+
+var doubled = nums.map((n) => n * 2);          // List[Integer] -> List[U]
+var evens   = nums.filter((n) => n % 2 == 0);  // keep elements matching a predicate -> List[T]
+var total   = nums.reduce(0, (acc, n) => acc + n); // fold to a single U
+var big     = nums.firstWhere((n) => n > 3);   // first match as T? (null if none)
+var hasBig  = nums.any((n) => n > 4);          // Boolean: any element matches
+var allPos  = nums.all((n) => n > 0);          // Boolean: every element matches
+var s       = nums.sum();                       // sum of a List[Integer] or List[Number]
+```
+
+| Combinator | Signature | Result |
+|------------|-----------|--------|
+| `map(f)` | `(T) -> U` | `List[U]` |
+| `filter(pred)` | `(T) -> Boolean` | `List[T]` |
+| `reduce(init, f)` | `U, (U, T) -> U` | `U` |
+| `firstWhere(pred)` | `(T) -> Boolean` | `T?` |
+| `any(pred)` | `(T) -> Boolean` | `Boolean` |
+| `all(pred)` | `(T) -> Boolean` | `Boolean` |
+| `sum()` | — (Integer/Number lists) | `T` |
+
+`any`, `all`, and `firstWhere` short-circuit — they stop at the first decisive
+element. Combinators compose: `nums.filter((n) => n > 1).map((n) => n * 10)`.
 Collection count aliases such as `.Count`, `.Length`, `.Len`, `.count`,
 `.length`, and `.size` are read-only properties. Unknown collection and string
 fields or methods are compile-time errors.
@@ -740,6 +800,22 @@ value is Type           // Type check (returns Boolean)
 value as Type           // Type cast
 ```
 
+`as` performs numeric conversions and reference (class/interface) casts:
+
+- `Integer` ↔ `Number`: `Number as Integer` rounds to the nearest integer, with
+  ties rounded away from zero (`3.5 as Integer` is `4`, `-3.5 as Integer` is
+  `-4`), and traps on NaN or a value outside the `Integer` range. `Integer as
+  Number` widens (values above 2^53 may lose precision).
+- `Integer` ↔ `Byte`: `Integer as Byte` is a checked narrowing that traps on
+  overflow; `Byte as Integer` zero-extends.
+- Class/interface casts are checked at runtime and trap on a mismatch.
+
+`as` does **not** convert between `String` and scalar types — there is no
+defined behavior for a failed parse. Format with string interpolation
+(`"${value}"`) and parse with the `Viper.Core.Parse.*` helpers
+(`Viper.Core.Parse.IntOr`, `Viper.Core.Parse.DoubleOr`), which take an explicit
+fallback.
+
 ### Lambda Expressions
 
 ```rust
@@ -748,7 +824,44 @@ value as Type           // Type cast
 () => 42                          // No parameters
 ```
 
-Lambda parameters must include explicit type annotations.
+Lambda parameters must include explicit type annotations, unless the expected
+function type is known from the context (see [Parameter Type Inference](#parameter-type-inference)).
+
+**Capture semantics:** a lambda captures free variables from the enclosing scope
+**by value** — it copies them when the lambda is created. Reassigning a captured
+variable inside the lambda is a compile-time error, because it would silently
+mutate the private copy rather than the original:
+
+```rust
+var counter = 0;
+var inc = () => { counter = counter + 1; };  // error: cannot assign to captured 'counter'
+```
+
+To share mutable state, capture a class instance and mutate its fields (reference
+semantics), or have the lambda return the new value:
+
+```rust
+class Counter { expose var n: Integer; func init() { n = 0; } }
+var c = new Counter();
+var inc = () => { c.n = c.n + 1; };  // OK: mutates the captured object's field
+```
+
+#### Parameter Type Inference
+
+When a lambda is used where the expected type is a known function type — a typed
+parameter, a variable with a function-type annotation, or a collection
+combinator argument — its parameter types may be omitted and are inferred from
+that context:
+
+```rust
+func apply(f: (Integer) -> Integer, x: Integer) -> Integer { return f(x); }
+
+var y = apply((n) => n * 2, 21);          // n inferred as Integer
+var doubled = [1, 2, 3].map((n) => n * 2); // n inferred from the list element type
+```
+
+Annotations are still required when there is no expected function type to infer
+from (for example a bare `var f = (x) => x + 1;`).
 
 ### Result Values
 
@@ -922,6 +1035,14 @@ for index, item in set {
     // index is Integer, item is element type
 }
 
+// String iteration (yields one-character Strings, like str[i])
+for ch in "abc" {
+    // ch is a length-1 String
+}
+for index, ch in "abc" {
+    // index is Integer, ch is a length-1 String
+}
+
 // Runtime collection iteration
 for item in queue {
     // Queue[T], Stack[T], Deque[T], List[T], Ring[T], and Heap[T] iterate as T
@@ -988,11 +1109,28 @@ Supported patterns:
 - `_` wildcard
 - Literals (`0`, `"text"`, `true`, `false`, `null`)
 - Binding identifiers (`x`)
+- Range patterns (`1..=9`, `10..100`) — match an integer scrutinee that falls in
+  the range (`..` is exclusive of the upper bound, `..=` is inclusive). Range
+  patterns are refutable, so a `match` using only ranges still needs a `_` arm to
+  be exhaustive.
 - Tuple patterns with matching arity (`(x, y)`, `(r, g, b)`)
 - Constructor patterns (`Point(x, y)`, `Some(value)`, `None`)
 - OR patterns (`pattern1 | pattern2 | pattern3 => ...`) — multiple alternatives for one arm
 - Enum variant patterns (`Color.Red`, `Direction.Left`)
 - Guards (`pattern if condition => ...`)
+
+Range pattern example:
+
+```rust
+func classify(n: Integer) -> String {
+    return match n {
+        0 => "zero";
+        1..=9 => "single digit";
+        10..100 => "double digit";
+        _ => "large";
+    };
+}
+```
 
 OR pattern example:
 
@@ -1312,6 +1450,29 @@ Member modifiers are checked for the declaration they modify:
 - `property` supports `expose`/`hide` but not `weak`, `override`, or `static`.
 - `deinit` does not take visibility, `override`, `static`, or `weak`.
 
+#### Final Fields
+
+A field declared with `final` (or the alias `let`) is write-once: it may be
+assigned inside `init` (or given an initializer expression), but any later
+assignment is a compile-time error. This is the way to express immutable
+instance state. `final` composes with `expose`/`hide` and with `static` (a
+`static final` is a class-level constant), but not with `weak`.
+
+```rust
+class Circle {
+    expose final radius: Number;      // set once in init, then immutable
+    expose static final PI = 3.14159; // class-level constant
+
+    func init(r: Number) {
+        radius = r;                   // OK: assignment inside init
+    }
+
+    func grow() {
+        radius = radius + 1.0;        // error: cannot assign to final field 'radius'
+    }
+}
+```
+
 ### Class Inheritance
 
 ```rust
@@ -1525,10 +1686,12 @@ struct MyStruct implements InterfaceName {
 }
 ```
 
-Implementing methods must be marked `expose` (public visibility). Classes dispatch
-through their object identity. Struct values are boxed when coerced to an
-interface-typed value, and dispatch then uses adapter thunks for the struct
-methods.
+Implementing methods must be public. Class members default to **private**, so a
+class's interface methods must be marked `expose`. Struct members default to
+**public**, so a struct satisfies an interface without an explicit `expose`
+(though writing it is still allowed for clarity). Classes dispatch through their
+object identity. Struct values are boxed when coerced to an interface-typed
+value, and dispatch then uses adapter thunks for the struct methods.
 Implemented interface names may be qualified, such as
 `class Button implements UI.Clickable`.
 
@@ -1604,10 +1767,17 @@ var c: Color = Color.Red;
 var s = HttpStatus.NOT_FOUND;
 ```
 
-Enum values can be compared with `==` and `!=`:
+Enum values can be compared with `==` and `!=`, and — because each variant is
+backed by an `Integer` — with the relational operators `<`, `<=`, `>`, and `>=`,
+which compare the underlying integer values (declaration order, unless overridden
+by explicit values):
 
 ```rust
 if c != Color.Red {
+    // ...
+}
+
+if Priority.Low < Priority.High {   // compares underlying integers
     // ...
 }
 ```
@@ -1687,11 +1857,16 @@ enumVariant ::= IDENT ["=" ["-"] INTEGER]
 
 ### Module Declaration
 
-Every source file begins with a module declaration:
+A source file may begin with a module declaration:
 
 ```rust
 module ModuleName;
 ```
+
+The declaration is optional — a file with no `module` line is compiled as the
+module `Main`, which is convenient for single-file programs and snippets. Give a
+module an explicit name when it will be bound from other files, so its
+declarations can be qualified (`ModuleName.thing`) on a name collision.
 
 ### Bind Declaration
 
@@ -1846,6 +2021,8 @@ Namespaces can contain:
 - Class types
 - Struct types
 - Interfaces
+- Enums
+- Type aliases
 - Global variables (final or var)
 - Other namespaces
 
@@ -2007,7 +2184,7 @@ From highest to lowest:
 
 | Precedence | Operators | Associativity |
 |------------|-----------|---------------|
-| 1 | `()` `[]` `.` `?.` | Left |
+| 1 | `()` `[]` `.` `?.` `!` (unwrap) `?` (try) `as` `is` | Left |
 | 2 | `-` `!`/`not` `~` `&` (unary) | Right |
 | 3 | `*` `/` `%` | Left |
 | 4 | `+` `-` | Left |
@@ -2019,7 +2196,7 @@ From highest to lowest:
 | 9 | `|` | Left |
 | 10 | `&&` / `and` | Left |
 | 11 | `||` / `or` | Left |
-| 12 | `??` | Left |
+| 12 | `??` | Right |
 | 13 | `..` `..=` | Left |
 | 14 | `? :` | Right |
 | 15 | `=` `+=` `-=` `*=` `/=` `%=` `<<=` `>>=` `&=` `|=` `^=` | Right |
@@ -2055,6 +2232,14 @@ Compatibility aliases:
 - `private` is an accepted alias for `hide`
 - `let` is an accepted alias for `final`
 
+**Spelling policy.** The canonical spellings are `expose`, `hide`, `final`, and
+the PascalCase type names (`Integer`, `Number`, `Boolean`, `String`, …). New code
+should prefer them. The lowercase/legacy aliases (both the keyword aliases above
+and the scalar-type aliases such as `int`, `bool`, `double`, `string`) are
+permanently accepted for compatibility and interop and will not be removed; they
+are simply non-canonical. A single file should not mix spellings for the same
+concept.
+
 ### Reserved for Future Use
 
 There are currently no lexer-only reserved keywords documented here. Keywords listed above either have language semantics or are accepted compatibility aliases.
@@ -2072,6 +2257,51 @@ Seq         Bytes
 `Queue`, `Stack`, `Deque`, `Seq`, and `Bytes` are convenience aliases for typed
 runtime collection classes under `Viper.Collections.*`. They are not reserved
 words.
+
+---
+
+## Diagnostics and Warnings
+
+In addition to hard errors, the Zia frontend emits lint-style **warnings** that
+flag likely bugs without stopping compilation. Each warning has a stable code
+(`W0nn`) and a slug name.
+
+| Code | Name | Default |
+|------|------|---------|
+| `W001` | `unused-variable` | on |
+| `W002` | `unreachable-code` | `-Wall` |
+| `W003` | `implicit-narrowing` | `-Wall` |
+| `W004` | `variable-shadowing` | `-Wall` |
+| `W005` | `float-equality` | on |
+| `W006` | `empty-loop-body` | `-Wall` |
+| `W007` | `assignment-in-condition` | `-Wall` |
+| `W008` | `missing-return` | on |
+| `W009` | `self-assignment` | on |
+| `W010` | `division-by-zero` | on |
+| `W011` | `redundant-bool-comparison` | `-Wall` |
+| `W012` | `duplicate-import` | on |
+| `W013` | `empty-body` | `-Wall` |
+| `W014` | `unused-result` | `-Wall` |
+| `W015` | `uninitialized-variable` | on |
+| `W016` | `optional-without-check` | on |
+| `W017` | `xor-confusion` | `-Wall` |
+| `W018` | `bitwise-and-confusion` | `-Wall` |
+| `W019` | `non-exhaustive-match` | on |
+
+The "on" warnings fire by default; the `-Wall` ones require opting in. `W017`
+(`^` read as exponentiation) and `W018` (`&` read as concatenation) fire on every
+`^`/`&`, which is noise for ordinary bit manipulation, so they are `-Wall` only.
+
+**Suppression.** Add a `// @suppress(...)` comment on the same line as, or the
+line immediately before, the flagged construct. Accept either the code or the
+slug, and list multiple codes separated by commas:
+
+```rust
+var unusedButIntentional = compute();  // @suppress(W001)
+var scratch = compute();               // @suppress(unused-variable)
+// @suppress(W005, W010)
+var ratio = a / b;
+```
 
 ---
 
@@ -2155,9 +2385,9 @@ bitwiseOr   ::= bitwiseXor ("|" bitwiseXor)*
 bitwiseXor  ::= bitwiseAnd ("^" bitwiseAnd)*
 bitwiseAnd  ::= equality ("&" equality)*
 equality    ::= comparison (("==" | "!=") comparison)*
-comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
-additive    ::= shift (("+" | "-") shift)*
-shift       ::= multiplicative (("<<" | ">>") multiplicative)*
+comparison  ::= shift (("<" | "<=" | ">" | ">=") shift)*
+shift       ::= additive (("<<" | ">>") additive)*
+additive    ::= multiplicative (("+" | "-") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
 unary       ::= ("-" | "!" | "not" | "~" | "&") unary | postfix
 postfix     ::= primary (call | index | field | optionalChain | "!" | "?" | "as" type | "is" type)*

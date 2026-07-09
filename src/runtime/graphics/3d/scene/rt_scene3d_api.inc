@@ -457,7 +457,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     }
     scene3d_build_culling_vp(canvas, cam, vp);
     vgfx3d_frustum_extract(&frustum, vp);
-    if (scene3d_build_pvs_context(s, cam, &pvs))
+    if (scene3d_build_pvs_context(s, cam, vp, &pvs))
         pvs.culled_count = &pvs_culled;
 
     double cam_pos[3];
@@ -584,4 +584,26 @@ int64_t rt_scene3d_get_visibility_zone_count(void *obj) {
 int64_t rt_scene3d_get_visibility_portal_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
     return scene ? (int64_t)scene3d_visibility_portal_count_safe(scene) : 0;
+}
+
+/// @brief Toggle portal-frustum PVS clipping (default on). Off = legacy
+///        reachability flood-fill: every zone connected through any portal chain
+///        is treated as visible regardless of view direction.
+void rt_scene3d_set_portal_clipping(void *obj, int8_t enabled) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    if (!scene)
+        return;
+    scene->portal_clipping_disabled = enabled ? 0 : 1;
+}
+
+/// @brief Current portal-clipping mode (true = frustum-clipped traversal).
+int8_t rt_scene3d_get_portal_clipping(void *obj) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    return (scene && !scene->portal_clipping_disabled) ? 1 : 0;
+}
+
+/// @brief Portal expansions evaluated during the most recent PVS build.
+int64_t rt_scene3d_get_portal_traversal_count(void *obj) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    return scene ? scene3d_counter_or_zero(scene->last_portal_traversal_count) : 0;
 }

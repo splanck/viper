@@ -149,6 +149,25 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                 emitBr(failureBlock);
                 return;
             }
+            // Range pattern: test `scrutinee >= lo && scrutinee <(=) hi`, with
+            // short-circuit so the upper-bound test only runs when the lower
+            // bound holds.
+            if (pattern.literal->kind == ExprKind::Range) {
+                auto *range = static_cast<RangeExpr *>(pattern.literal.get());
+                Value x = widenIntegralToI64(scrutinee.value, mapType(scrutinee.type));
+                auto lo = lowerExpr(range->start.get());
+                Value loW = widenIntegralToI64(lo.value, lo.type);
+                Value geLo = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), x, loW);
+                size_t hiBlock = createBlock("match_range_hi");
+                emitCBr(geLo, hiBlock, failureBlock);
+                setBlock(hiBlock);
+                auto hi = lowerExpr(range->end.get());
+                Value hiW = widenIntegralToI64(hi.value, hi.type);
+                Opcode hiOp = range->inclusive ? Opcode::SCmpLE : Opcode::SCmpLT;
+                Value cmpHi = emitBinary(hiOp, Type(Type::Kind::I1), x, hiW);
+                emitCBr(cmpHi, successBlock, failureBlock);
+                return;
+            }
             auto exprResult = lowerExpr(pattern.literal.get());
             Value cond = exprResult.value;
             if (exprResult.type.kind != Type::Kind::I1) {

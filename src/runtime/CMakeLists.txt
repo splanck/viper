@@ -265,6 +265,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_physics2d_collision.c
         graphics/2d/rt_physics2d_joint.c
         graphics/3d/physics/rt_collider3d.c
+        graphics/3d/physics/rt_quickhull3d.c
+        graphics/3d/assets/rt_mesh_simplify.c
         graphics/2d/rt_pixels.c
         graphics/2d/rt_pixels_io.c
         graphics/2d/rt_pixels_png.c
@@ -351,6 +353,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/nav/rt_navmesh3d.c
         graphics/3d/nav/rt_navagent3d.c
         graphics/3d/render/rt_decal3d.c
+        graphics/3d/render/rt_lensflare3d.c
         graphics/3d/render/rt_sprite3d.c
         graphics/3d/world/rt_water3d.c
         graphics/3d/world/rt_vegetation3d.c

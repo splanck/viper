@@ -391,6 +391,66 @@ int main() {
         CHECK(globalSyms["largest_func"].objIndex == 1);
     }
 
+    // --- F6: the losing COMDAT copy (and its associative always-live section) is
+    //     stripped, so a discarded body does not survive as a duplicate ---
+    {
+        auto makeGroup = [](const std::string &objName, const std::vector<uint8_t> &textBytes) {
+            ObjFile obj;
+            obj.name = objName;
+            obj.format = ObjFileFormat::ELF;
+            obj.sections.push_back({}); // null
+
+            ObjSection text;
+            text.name = ".text$dup";
+            text.data = textBytes;
+            text.executable = true;
+            text.alloc = true;
+            text.alignment = 4;
+            text.comdatSelection = ComdatSelection::Any;
+            text.comdatKey = "grp";
+            obj.sections.push_back(text); // section 1 (leader)
+
+            // An associative section whose NAME is always-live (dead-strip roots
+            // .init_array unconditionally). Before F6 this survived for the loser.
+            ObjSection init;
+            init.name = ".init_array";
+            init.data.resize(8, 0);
+            init.alloc = true;
+            init.writable = true;
+            init.alignment = 8;
+            init.comdatSelection = ComdatSelection::Any;
+            init.comdatKey = "grp";
+            init.associativeSection = 1;
+            obj.sections.push_back(init); // section 2 (associative child)
+
+            obj.symbols.push_back({}); // null
+            ObjSymbol sym;
+            sym.name = "dup";
+            sym.sectionIndex = 1;
+            sym.binding = ObjSymbol::Global;
+            obj.symbols.push_back(sym);
+            return obj;
+        };
+
+        std::vector<ObjFile> initObjs = {makeGroup("a.o", {0xC3}), makeGroup("b.o", {0xC3})};
+        std::vector<Archive> archives;
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::vector<ObjFile> allObjects;
+        std::unordered_set<std::string> dynamicSyms;
+        std::ostringstream err;
+
+        bool ok = resolveSymbols(initObjs, archives, globalSyms, allObjects, dynamicSyms, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+        CHECK(globalSyms["dup"].objIndex == 0);
+        // Winner (obj 0) survives; loser (obj 1) leader AND its associative
+        // .init_array are stripped.
+        CHECK(!allObjects[0].sections[1].stripped);
+        CHECK(!allObjects[0].sections[2].stripped);
+        CHECK(allObjects[1].sections[1].stripped);
+        CHECK(allObjects[1].sections[2].stripped);
+    }
+
     // --- COMDAT NODUPLICATES remains a hard multiple-definition error ---
     {
         auto obj1 = makeComdatObj("a.o", "unique_func", ComdatSelection::NoDuplicates, {0xC3});

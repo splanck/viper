@@ -83,9 +83,9 @@ REM ====================================================================
 REM Game Objects
 REM ====================================================================
 DIM frog AS Frog
-DIM vehicles(9) AS Vehicle
-DIM platforms(9) AS Platform
-DIM homes(4) AS Home
+DIM vehicles(10) AS Vehicle
+DIM platforms(10) AS Platform
+DIM homes(5) AS Home
 
 DIM score AS INTEGER
 DIM level AS INTEGER

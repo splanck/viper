@@ -804,6 +804,12 @@ function(viper_add_runtime_tests)
     viper_add_test_labels(test_rt_canvas3d graphics3d unit)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    viper_add_test(test_quickhull3d ${VIPER_TESTS_DIR}/unit/test_quickhull3d.cpp)
+    target_link_libraries(test_quickhull3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_include_directories(test_quickhull3d PRIVATE ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/physics)
+    viper_add_ctest(test_quickhull3d test_quickhull3d)
+    viper_add_test_labels(test_quickhull3d graphics3d unit)
+
     viper_add_test(test_rt_cubemap3d_ibl ${VIPER_TESTS_DIR}/unit/test_rt_cubemap3d_ibl.cpp)
     target_link_libraries(test_rt_cubemap3d_ibl PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_cubemap3d_ibl test_rt_cubemap3d_ibl)

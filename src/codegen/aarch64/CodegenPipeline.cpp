@@ -158,6 +158,7 @@ static int linkToExe(const std::string &asmPath,
                      TargetPlatform targetPlatform,
                      std::size_t stackSize,
                      const std::vector<std::string> &extraObjects,
+                     bool fastLink,
                      std::optional<bool> windowsDebugRuntime,
                      bool preserveDebugSections,
                      std::ostream &out,
@@ -181,7 +182,7 @@ static int linkToExe(const std::string &asmPath,
                                  targetPlatform,
                                  stackSize,
                                  extraObjects,
-                                 false,
+                                 fastLink,
                                  windowsDebugRuntime,
                                  preserveDebugSections,
                                  out,
@@ -644,6 +645,13 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         if (!opts_.output_obj_path.empty() && isObjectOutputPath(opts_.output_obj_path)) {
             objPath = opts_.output_obj_path;
             outputIsObj = true;
+        } else if (!opts_.output_obj_path.empty()) {
+            // Native-exe build: the intermediate object belongs next to the
+            // (unique) output binary, not next to the shared source/IL path.
+            // Deriving it from input_il_path lets two concurrent builds of the
+            // same source to different -o outputs (e.g. the -O0/-O2 struct-return
+            // ABI tests) clobber each other's intermediate .o under parallel ctest.
+            objPath = std::filesystem::path(opts_.output_obj_path).replace_extension(".o");
         } else {
             objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
         }
@@ -773,6 +781,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                                   opts_.target_platform,
                                   opts_.stack_size,
                                   opts_.extra_objects,
+                                  opts_.fast_link,
                                   opts_.windows_debug_runtime,
                                   opts_.emit_debug_lines,
                                   out,
@@ -797,6 +806,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                   opts_.target_platform,
                   opts_.stack_size,
                   opts_.extra_objects,
+                  opts_.fast_link,
                   opts_.windows_debug_runtime,
                   opts_.emit_debug_lines,
                   out,

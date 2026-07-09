@@ -62,6 +62,8 @@ extern int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan);
 extern void rt_voice_stop(int64_t voice_id);
 extern void rt_voice_set_volume(int64_t voice_id, int64_t volume);
 extern void rt_voice_set_pan(int64_t voice_id, int64_t pan);
+extern void rt_voice_set_pitch(int64_t voice_id, double pitch);
+extern void rt_voice_set_occlusion(int64_t voice_id, double amount);
 extern int64_t rt_voice_is_playing(int64_t voice_id);
 
 typedef struct rt_soundlistener3d {
@@ -90,6 +92,8 @@ typedef struct rt_soundsource3d {
     int64_t volume;
     int64_t voice_id;
     int8_t looping;
+    double pitch;     ///< User playback-rate multiplier (composes with Doppler).
+    double occlusion; ///< Occlusion amount 0..1 (game-driven, mixer-smoothed).
     struct rt_soundsource3d *prev;
     struct rt_soundsource3d *next;
 } rt_soundsource3d;
@@ -612,6 +616,12 @@ static void sound3d_source_apply_spatial(rt_soundsource3d *source) {
                                        &source->doppler_factor);
     rt_voice_set_volume(source->voice_id, spatial_volume);
     rt_voice_set_pan(source->voice_id, spatial_pan);
+    /* Doppler and the user pitch compose multiplicatively into the voice's
+     * playback rate; occlusion is forwarded for the mixer's smoothed sweep. */
+    rt_voice_set_pitch(source->voice_id,
+                       sound3d_doppler_or(source->doppler_factor) *
+                           (source->pitch > 0.0 ? source->pitch : 1.0));
+    rt_voice_set_occlusion(source->voice_id, source->occlusion);
 }
 
 /// @brief Refresh the cached Doppler factor even when the source is not playing.
@@ -950,6 +960,8 @@ void *rt_soundsource3d_new(void *sound) {
         rt_obj_retain_maybe(sound);
     source->sound = sound;
     source->doppler_factor = 1.0;
+    source->pitch = 1.0;
+    source->occlusion = 0.0;
     source->ref_distance = 1.0;
     source->max_distance = 50.0;
     source->volume = 100;
@@ -1078,6 +1090,48 @@ void rt_soundsource3d_set_volume(void *obj, int64_t volume) {
     if (!source)
         return;
     source->volume = sound3d_clamp_volume(volume);
+    sound3d_source_apply_spatial(source);
+}
+
+/// @brief Get the source's user playback-rate multiplier (1.0 default).
+double rt_soundsource3d_get_pitch(void *obj) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    return source && source->pitch > 0.0 ? source->pitch : 1.0;
+}
+
+/// @brief Set the source's user playback-rate multiplier.
+/// @details Composes multiplicatively with the Doppler factor; the mixer
+///          clamps the combined rate to 0.25–4.0. Applies immediately to a
+///          voice in flight.
+void rt_soundsource3d_set_pitch(void *obj, double pitch) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    if (!source)
+        return;
+    if (!isfinite(pitch) || pitch <= 0.0)
+        pitch = 1.0;
+    source->pitch = pitch;
+    sound3d_source_apply_spatial(source);
+}
+
+/// @brief Get the source's occlusion amount (0 open .. 1 fully occluded).
+double rt_soundsource3d_get_occlusion(void *obj) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    return source ? source->occlusion : 0.0;
+}
+
+/// @brief Set the source's occlusion amount (0 open .. 1 fully occluded).
+/// @details The game supplies the amount (typically from its own line-of-
+///          sight raycasts); the mixer applies a smoothed perceptual lowpass
+///          sweep plus up to -6 dB of attenuation.
+void rt_soundsource3d_set_occlusion(void *obj, double amount) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    if (!source)
+        return;
+    if (!isfinite(amount) || amount < 0.0)
+        amount = 0.0;
+    if (amount > 1.0)
+        amount = 1.0;
+    source->occlusion = amount;
     sound3d_source_apply_spatial(source);
 }
 

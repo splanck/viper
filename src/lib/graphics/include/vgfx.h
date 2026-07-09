@@ -89,11 +89,13 @@ typedef uint32_t vgfx_color_t;
 ///          of a new window.  Invalid or zero values for width/height are
 ///          replaced with VGFX_DEFAULT_WIDTH and VGFX_DEFAULT_HEIGHT.
 typedef struct {
-    int32_t width;     ///< Window width in pixels (≤ 0 → use default)
-    int32_t height;    ///< Window height in pixels (≤ 0 → use default)
-    const char *title; ///< Window title (UTF-8 string; NULL → use default)
-    int32_t fps;       ///< Target FPS (< 0: unlimited, 0: default, > 0: limit)
-    int32_t resizable; ///< 0 = fixed size, non-zero = user-resizable
+    int32_t width;      ///< Window width in pixels (≤ 0 → use default)
+    int32_t height;     ///< Window height in pixels (≤ 0 → use default)
+    const char *title;  ///< Window title (UTF-8 string; NULL → use default)
+    int32_t fps;        ///< Target FPS (< 0: unlimited, 0: default, > 0: limit)
+    int32_t resizable;  ///< 0 = fixed size, non-zero = user-resizable
+    int32_t fullscreen; ///< Non-zero = create fullscreen at desktop resolution
+                        ///< (width/height ignored; no windowed flash)
 } vgfx_window_params_t;
 
 /// @brief Construct default window parameters.
@@ -369,6 +371,17 @@ void vgfx_destroy_window(vgfx_window_t window);
 /// @return 1 on success, 0 on fatal error
 int vgfx_update(vgfx_window_t window);
 
+/// @brief Apply frame-rate pacing for a window without presenting a frame.
+/// @details Runs the same deadline-based sleep vgfx_update() performs after
+///          presenting. With a positive FPS cap it sleeps until the next frame
+///          deadline (advanced additively to avoid drift). With no FPS cap
+///          (fps <= 0) it sleeps @p min_idle_sleep_ms milliseconds when that is
+///          positive, else returns immediately. GUI event loops call this on
+///          frames that needed no repaint so an idle window does not busy-loop.
+/// @param window Window handle (NULL is a no-op).
+/// @param min_idle_sleep_ms Anti-spin floor applied only when fps <= 0.
+void vgfx_frame_pace(vgfx_window_t window, int32_t min_idle_sleep_ms);
+
 /// @brief Pump pending OS events without presenting the framebuffer.
 /// @details Polls the native event queue and enqueues translated ViperGFX
 ///          events for later consumption via vgfx_poll_event(). Use this when
@@ -376,6 +389,17 @@ int vgfx_update(vgfx_window_t window);
 /// @param window Window handle
 /// @return 1 on success, 0 on fatal error
 int vgfx_pump_events(vgfx_window_t window);
+
+/// @brief Block until an OS event is available for the window, or the timeout
+///        elapses, without dequeuing anything.
+/// @details A hint, not a contract: spurious wakeups are fine, so callers pump
+///          normally afterwards. The timeout is clamped to [0, 1000] ms so a
+///          bug can never hang the UI. Use in event loops to sleep while idle
+///          instead of busy-polling.
+/// @param window Window handle.
+/// @param timeout_ms Maximum wait in milliseconds (0 returns immediately).
+/// @return 1 if events are (probably) available, 0 on timeout.
+int vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms);
 
 /// @brief Get the current window dimensions.
 /// @details Retrieves the current drawable size. When coord scaling is
@@ -482,6 +506,14 @@ void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y);
 
 /// @brief Bring the window to the front and give it keyboard focus.
 void vgfx_focus(vgfx_window_t window);
+
+/// @brief Request foreground application activation for the window.
+/// @details Stronger than vgfx_focus on platforms with app/window separation:
+///          macOS makes the process a regular foreground app, installs its
+///          menu bar, makes the window key/main, and activates NSApp. Other
+///          platforms map this to their best foreground/focus request.
+/// @param window Window handle.
+void vgfx_request_foreground(vgfx_window_t window);
 
 /// @brief Check if the window currently has keyboard focus.
 /// @return 1 if focused, 0 otherwise
@@ -794,6 +826,39 @@ int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 /// @param x Target X coordinate (logical pixels)
 /// @param y Target Y coordinate (logical pixels)
 void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y);
+
+/// @brief Query the primary display's logical (point) dimensions.
+/// @details Used to size fullscreen windows. Falls back to the default window
+///          size when the platform cannot report a display size (mock/headless).
+/// @param out_w Receives the display width in logical pixels (may be NULL)
+/// @param out_h Receives the display height in logical pixels (may be NULL)
+void vgfx_get_display_size(int32_t *out_w, int32_t *out_h);
+
+/// @brief Enable or disable relative (raw) mouse mode for FPS mouse-look.
+/// @details While enabled, platform backends that support raw motion deliver
+///          unbounded, sub-pixel motion deltas (drained via
+///          vgfx_get_relative_deltas()) instead of the cursor tracking
+///          absolute positions. Backends without raw motion support (e.g.
+///          X11 without XInput2) return 0 and callers should fall back to
+///          warp-to-center capture. Disabling always restores normal cursor
+///          behavior and clears any accumulated deltas.
+/// @param window Window handle
+/// @param enabled Non-zero to enable, zero to disable
+/// @return 1 when the platform delivers native raw deltas, 0 otherwise
+int32_t vgfx_set_relative_mouse(vgfx_window_t window, int32_t enabled);
+
+/// @brief Query whether native raw deltas are currently being delivered.
+/// @return 1 when relative mode is enabled AND the platform is native, else 0
+int32_t vgfx_relative_mouse_native(vgfx_window_t window);
+
+/// @brief Drain the accumulated relative mouse deltas (read-and-clear).
+/// @details Returns the motion accumulated since the previous call. Values
+///          are doubles in logical units and may be sub-pixel. Both output
+///          pointers may be NULL. Returns zeros when relative mode is off.
+/// @param window Window handle
+/// @param out_dx Receives horizontal motion (may be NULL)
+/// @param out_dy Receives vertical motion, positive = down (may be NULL)
+void vgfx_get_relative_deltas(vgfx_window_t window, double *out_dx, double *out_dy);
 
 /// @brief Hide the OS mouse cursor.
 void vgfx_hide_cursor(void);

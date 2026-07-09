@@ -897,10 +897,20 @@ static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
     float row_top = current_y - tree->scroll_y;
     float local_row_y = local_y - row_top;
     vg_tree_drop_position_t position = VG_TREE_DROP_INTO;
-    if (local_row_y < tree->row_height * 0.3f)
-        position = VG_TREE_DROP_BEFORE;
-    else if (local_row_y > tree->row_height * 0.7f)
-        position = VG_TREE_DROP_AFTER;
+    if (tree->app_directed_dnd) {
+        // Application-directed DnD is INTO-only, onto an expandable (folder)
+        // node. A leaf target is not a valid drop.
+        if (!target->has_children && target->first_child == NULL) {
+            tree->drop_target = NULL;
+            return;
+        }
+        position = VG_TREE_DROP_INTO;
+    } else {
+        if (local_row_y < tree->row_height * 0.3f)
+            position = VG_TREE_DROP_BEFORE;
+        else if (local_row_y > tree->row_height * 0.7f)
+            position = VG_TREE_DROP_AFTER;
+    }
 
     if (!treeview_drop_is_valid(tree, tree->drag_node, target, position)) {
         tree->drop_target = NULL;
@@ -1079,9 +1089,20 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             bool was_dragging = tree->is_dragging;
             if (vg_widget_get_input_capture() == widget)
                 vg_widget_release_input_capture();
-            if (tree->is_dragging && tree->drag_node && tree->drop_target && tree->on_drop) {
-                tree->on_drop(
-                    tree->drag_node, tree->drop_target, tree->drop_position, tree->drag_user_data);
+            if (tree->is_dragging && tree->drag_node && tree->drop_target) {
+                if (tree->app_directed_dnd) {
+                    // Latch for polling; the application performs the move and
+                    // refreshes the tree. Do NOT self-reorder or fire on_drop.
+                    tree->drop_latched = true;
+                    tree->latched_src = tree->drag_node;
+                    tree->latched_tgt = tree->drop_target;
+                    tree->latched_pos = tree->drop_position;
+                } else if (tree->on_drop) {
+                    tree->on_drop(tree->drag_node,
+                                  tree->drop_target,
+                                  tree->drop_position,
+                                  tree->drag_user_data);
+                }
             }
             tree->drag_node = NULL;
             tree->drop_target = NULL;
@@ -1527,6 +1548,43 @@ void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled) {
     if (!tree)
         return;
     tree->drag_enabled = enabled;
+}
+
+void vg_treeview_set_app_directed_dnd(vg_treeview_t *tree, bool enabled) {
+    if (!tree)
+        return;
+    tree->app_directed_dnd = enabled;
+    tree->drag_enabled = enabled;
+    if (!enabled) {
+        tree->drop_latched = false;
+        tree->latched_src = NULL;
+        tree->latched_tgt = NULL;
+    }
+}
+
+bool vg_treeview_has_pending_drop(const vg_treeview_t *tree) {
+    return tree && tree->drop_latched;
+}
+
+vg_tree_node_t *vg_treeview_drop_source(vg_treeview_t *tree) {
+    return tree ? tree->latched_src : NULL;
+}
+
+vg_tree_node_t *vg_treeview_drop_target_node(vg_treeview_t *tree) {
+    return tree ? tree->latched_tgt : NULL;
+}
+
+int vg_treeview_drop_position_value(const vg_treeview_t *tree) {
+    return tree ? (int)tree->latched_pos : (int)VG_TREE_DROP_INTO;
+}
+
+void vg_treeview_clear_drop(vg_treeview_t *tree) {
+    if (!tree)
+        return;
+    tree->drop_latched = false;
+    tree->latched_src = NULL;
+    tree->latched_tgt = NULL;
+    tree->latched_pos = VG_TREE_DROP_INTO;
 }
 
 /// @brief Set all drag-and-drop callbacks and user data in one call.

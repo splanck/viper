@@ -284,6 +284,42 @@ void lowerPendingCalls(MFunction &func,
     }
 }
 
+/// @brief Install the native runtime context before user code in @c main.
+/// @details Mirrors the AArch64 backend's startup sequence. The calls are
+///          inserted after planned user calls have been lowered, so they use
+///          the fixed ABI registers directly: rt_legacy_context returns a
+///          context pointer, which is then passed as arg0 to
+///          rt_set_current_context.
+void insertMainRuntimeContextInit(MFunction &func, const TargetInfo &target) {
+    if ((func.name != "main" && func.name != "@main") || func.blocks.empty() ||
+        target.intArgOrder.empty()) {
+        return;
+    }
+
+    auto &entry = func.blocks.front().instructions;
+    auto isCallTo = [](const MInstr &instr, const char *name) {
+        if (instr.opcode != MOpcode::CALL || instr.operands.empty())
+            return false;
+        const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+        return label && label->name == name;
+    };
+    if (entry.size() >= 3 && isCallTo(entry[0], "rt_legacy_context") &&
+        isCallTo(entry[2], "rt_set_current_context")) {
+        return;
+    }
+
+    const Operand retReg =
+        makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target.intReturnReg));
+    const Operand argReg =
+        makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(target.intArgOrder.front()));
+    std::vector<MInstr> init;
+    init.reserve(3);
+    init.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_legacy_context")}));
+    init.push_back(MInstr::make(MOpcode::MOVrr, {argReg, retReg}));
+    init.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_set_current_context")}));
+    entry.insert(entry.begin(), init.begin(), init.end());
+}
+
 /// @brief Lower one function to MIR and run pre-RA legalization.
 static void legalizeFunctionPipeline(const ILFunction &ilFunc,
                                      LowerILToMIR &lowering,
@@ -304,6 +340,7 @@ static void legalizeFunctionPipeline(const ILFunction &ilFunc,
     lowerSignedDivRem(machineFunc);
     lowerOverflowOps(machineFunc);
     splitInternalLabelBlocks(machineFunc);
+    insertMainRuntimeContextInit(machineFunc, target);
 }
 
 /// @brief Run register allocation and frame lowering on legalized MIR.

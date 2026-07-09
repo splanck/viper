@@ -1,0 +1,291 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_lensflare3d.c
+// Purpose: LensFlare3D — occlusion-aware ghost-chain lens flares. Each element
+//   is a pre-tinted radial-falloff disc drawn in overlay space along the axis
+//   from the light's projected screen position through screen center.
+//
+// Key invariants:
+//   - Element ghost sprites are generated once at AddElement time (32x32
+//     radial-alpha discs tinted by the element color) and retained.
+//   - Occlusion probes the CPU depth buffer (software zbuf or the bound render
+//     target's depth) in a 3x3 around the light's pixel: visibility is the
+//     fraction of unoccluded probes. Backends without CPU depth draw
+//     unoccluded (documented divergence until GPU readback occlusion lands).
+//   - Lights behind the camera or projecting far off-screen draw nothing.
+//
+// Ownership/Lifetime:
+//   - LensFlare3D is GC-managed; the finalizer releases the bound Light3D and
+//     every element's ghost Pixels.
+//
+// Links: rt_lensflare3d.h, rt_canvas3d_overlay.c (image queue),
+//   misc/plans/fps/07-visual-polish.md
+//
+//===----------------------------------------------------------------------===//
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_lensflare3d.h"
+#include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
+#include "vgfx3d_backend.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
+#include "rt_trap.h"
+extern void *rt_pixels_new(int64_t width, int64_t height);
+
+#define LENSFLARE3D_MAX_ELEMENTS 16
+#define LENSFLARE3D_GHOST_SIZE 32
+
+typedef struct {
+    float axis_offset; /* 0 = at the light, 1 = screen center, 2 = mirrored */
+    float size;        /* base sprite size in pixels at draw time */
+    void *ghost;       /* pre-tinted radial disc Pixels (retained) */
+} lensflare3d_element_t;
+
+typedef struct {
+    void *vptr;
+    void *light; /* retained Light3D */
+    lensflare3d_element_t elements[LENSFLARE3D_MAX_ELEMENTS];
+    int32_t element_count;
+} rt_lensflare3d;
+
+static rt_lensflare3d *lensflare3d_checked(void *obj) {
+    return (rt_lensflare3d *)rt_g3d_checked_or_null(obj, RT_G3D_LENSFLARE3D_CLASS_ID);
+}
+
+/// @brief GC finalizer — release the bound light and every ghost sprite.
+static void lensflare3d_finalize(void *obj) {
+    rt_lensflare3d *lf = (rt_lensflare3d *)obj;
+    if (!lf)
+        return;
+    if (lf->light) {
+        if (rt_obj_release_check0(lf->light))
+            rt_obj_free(lf->light);
+        lf->light = NULL;
+    }
+    for (int32_t i = 0; i < lf->element_count && i < LENSFLARE3D_MAX_ELEMENTS; i++) {
+        if (lf->elements[i].ghost) {
+            if (rt_obj_release_check0(lf->elements[i].ghost))
+                rt_obj_free(lf->elements[i].ghost);
+            lf->elements[i].ghost = NULL;
+        }
+    }
+}
+
+/// @brief Create a lens flare bound to @p light (retained).
+void *rt_lensflare3d_new(void *light) {
+    if (!light || !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID)) {
+        rt_trap("LensFlare3D.New: flare must bind a Light3D");
+        return NULL;
+    }
+    rt_lensflare3d *lf = (rt_lensflare3d *)rt_obj_new_i64(RT_G3D_LENSFLARE3D_CLASS_ID,
+                                                          (int64_t)sizeof(rt_lensflare3d));
+    if (!lf) {
+        rt_trap("LensFlare3D.New: allocation failed");
+        return NULL;
+    }
+    lf->vptr = NULL;
+    lf->light = light;
+    rt_obj_retain_maybe(light);
+    lf->element_count = 0;
+    rt_obj_set_finalizer(lf, lensflare3d_finalize);
+    return lf;
+}
+
+/// @brief Build a 32x32 radial-falloff disc tinted by (r,g,b): the classic ghost.
+static void *lensflare3d_make_ghost(double r, double g, double b) {
+    void *pixels = rt_pixels_new(LENSFLARE3D_GHOST_SIZE, LENSFLARE3D_GHOST_SIZE);
+    rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(pixels);
+    if (!pv || !pv->data)
+        return pixels;
+    const float half = (float)LENSFLARE3D_GHOST_SIZE * 0.5f;
+    uint32_t rr = (uint32_t)(r * 255.0);
+    uint32_t gg = (uint32_t)(g * 255.0);
+    uint32_t bb = (uint32_t)(b * 255.0);
+    for (int32_t y = 0; y < LENSFLARE3D_GHOST_SIZE; y++) {
+        for (int32_t x = 0; x < LENSFLARE3D_GHOST_SIZE; x++) {
+            float dx = ((float)x + 0.5f - half) / half;
+            float dy = ((float)y + 0.5f - half) / half;
+            float d = sqrtf(dx * dx + dy * dy);
+            float a = 1.0f - d;
+            if (a <= 0.0f)
+                continue;
+            /* Soft ring look: quadratic falloff with a slightly bright rim. */
+            a = a * a * (0.55f + 0.45f * d);
+            uint32_t alpha = (uint32_t)(a * 255.0f);
+            pv->data[(size_t)y * (size_t)LENSFLARE3D_GHOST_SIZE + (size_t)x] =
+                (rr << 24) | (gg << 16) | (bb << 8) | alpha;
+        }
+    }
+    pixels_touch(pv);
+    return pixels;
+}
+
+/// @brief Add a ghost element along the light->center axis.
+void rt_lensflare3d_add_element(
+    void *obj, double axis_offset, double size, int64_t color_rgb, double rotation) {
+    (void)rotation; /* circular ghosts are rotation-invariant; kept for API stability */
+    rt_lensflare3d *lf = lensflare3d_checked(obj);
+    if (!lf)
+        return;
+    if (lf->element_count >= LENSFLARE3D_MAX_ELEMENTS)
+        return;
+    if (!isfinite(axis_offset))
+        axis_offset = 0.0;
+    if (axis_offset < -1.0)
+        axis_offset = -1.0;
+    if (axis_offset > 2.0)
+        axis_offset = 2.0;
+    if (!isfinite(size) || size <= 0.0)
+        size = 32.0;
+    if (size > 1024.0)
+        size = 1024.0;
+    double r = (double)((color_rgb >> 16) & 0xFF) / 255.0;
+    double g = (double)((color_rgb >> 8) & 0xFF) / 255.0;
+    double b = (double)(color_rgb & 0xFF) / 255.0;
+    void *ghost = lensflare3d_make_ghost(r, g, b);
+    if (!ghost)
+        return;
+    lensflare3d_element_t *e = &lf->elements[lf->element_count++];
+    e->axis_offset = (float)axis_offset;
+    e->size = (float)size;
+    e->ghost = ghost; /* rt_pixels_new returned an owned reference */
+}
+
+/// @brief Fraction of 3x3 depth probes around (px,py) that see past the light.
+static float lensflare3d_visibility(rt_canvas3d *c, float px, float py, float light_ndc_z) {
+    const float *depth = NULL;
+    int32_t dw = 0;
+    int32_t dh = 0;
+    if (c->render_target && c->render_target->depth_buf) {
+        depth = c->render_target->depth_buf;
+        dw = c->render_target->width;
+        dh = c->render_target->height;
+    } else if (c->backend == &vgfx3d_software_backend) {
+        depth = vgfx3d_sw_get_zbuf(c->backend_ctx, &dw, &dh);
+    }
+    if (!depth || dw <= 0 || dh <= 0)
+        return 1.0f; /* no CPU depth: draw unoccluded (documented) */
+    int visible = 0;
+    int total = 0;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            int32_t sx = (int32_t)px + dx;
+            int32_t sy = (int32_t)py + dy;
+            if (sx < 0 || sy < 0 || sx >= dw || sy >= dh)
+                continue;
+            total++;
+            float d = depth[(size_t)sy * (size_t)dw + (size_t)sx];
+            if (d > 1.0f || d >= light_ndc_z - 1e-4f)
+                visible++;
+        }
+    }
+    return total > 0 ? (float)visible / (float)total : 1.0f;
+}
+
+/// @brief Draw the flare ghosts into the canvas overlay (call after End).
+void rt_canvas3d_draw_lens_flare(void *canvas, void *flare) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    rt_lensflare3d *lf = lensflare3d_checked(flare);
+    const float *vp;
+    int32_t w;
+    int32_t h;
+    float light_screen[3];
+    float light_world[3];
+
+    if (!c || !lf || !lf->light || lf->element_count <= 0)
+        return;
+    const rt_light3d *l = (const rt_light3d *)rt_g3d_checked_or_null(lf->light,
+                                                                     RT_G3D_LIGHT3D_CLASS_ID);
+    if (!l || !l->enabled)
+        return;
+    vp = canvas3d_active_scene_vp(c);
+    if (!vp)
+        return;
+    w = (int32_t)rt_canvas3d_get_width(canvas);
+    h = (int32_t)rt_canvas3d_get_height(canvas);
+    if (w <= 0 || h <= 0)
+        return;
+    if (l->type == 0) {
+        /* Directional: place the "sun" far along the reverse light direction. */
+        float len = (float)sqrt(l->direction[0] * l->direction[0] +
+                                l->direction[1] * l->direction[1] +
+                                l->direction[2] * l->direction[2]);
+        if (!isfinite(len) || len < 1e-6f)
+            return;
+        light_world[0] = c->cached_render_cam_pos[0] - (float)(l->direction[0] / len) * 10000.0f;
+        light_world[1] = c->cached_render_cam_pos[1] - (float)(l->direction[1] / len) * 10000.0f;
+        light_world[2] = c->cached_render_cam_pos[2] - (float)(l->direction[2] / len) * 10000.0f;
+    } else {
+        light_world[0] = (float)l->position[0];
+        light_world[1] = (float)l->position[1];
+        light_world[2] = (float)l->position[2];
+    }
+    {
+        float cx = vp[0] * light_world[0] + vp[1] * light_world[1] + vp[2] * light_world[2] +
+                   vp[3];
+        float cy = vp[4] * light_world[0] + vp[5] * light_world[1] + vp[6] * light_world[2] +
+                   vp[7];
+        float cz = vp[8] * light_world[0] + vp[9] * light_world[1] + vp[10] * light_world[2] +
+                   vp[11];
+        float cw = vp[12] * light_world[0] + vp[13] * light_world[1] + vp[14] * light_world[2] +
+                   vp[15];
+        if (!isfinite(cw) || cw <= 1e-6f)
+            return; /* behind the camera */
+        light_screen[0] = (cx / cw * 0.5f + 0.5f) * (float)w;
+        light_screen[1] = (1.0f - cy / cw) * 0.5f * (float)h;
+        light_screen[2] = cz / cw;
+        if (!isfinite(light_screen[0]) || !isfinite(light_screen[1]) ||
+            light_screen[0] < -(float)w || light_screen[0] > 2.0f * (float)w ||
+            light_screen[1] < -(float)h || light_screen[1] > 2.0f * (float)h)
+            return;
+    }
+    float visibility = lensflare3d_visibility(c, light_screen[0], light_screen[1],
+                                              light_screen[2]);
+    if (visibility <= 0.01f)
+        return;
+    {
+        float center_x = (float)w * 0.5f;
+        float center_y = (float)h * 0.5f;
+        float axis_x = center_x - light_screen[0];
+        float axis_y = center_y - light_screen[1];
+        for (int32_t i = 0; i < lf->element_count; i++) {
+            const lensflare3d_element_t *e = &lf->elements[i];
+            if (!e->ghost)
+                continue;
+            float ex = light_screen[0] + axis_x * e->axis_offset;
+            float ey = light_screen[1] + axis_y * e->axis_offset;
+            float sz = e->size * (0.5f + 0.5f * visibility);
+            rt_canvas3d_draw_image2d_region(canvas,
+                                            (int64_t)(ex - sz * 0.5f),
+                                            (int64_t)(ey - sz * 0.5f),
+                                            (int64_t)sz,
+                                            (int64_t)sz,
+                                            e->ghost,
+                                            0,
+                                            0,
+                                            LENSFLARE3D_GHOST_SIZE,
+                                            LENSFLARE3D_GHOST_SIZE);
+        }
+    }
+}
+
+#else
+typedef int rt_graphics_disabled_tu_guard;
+#endif /* VIPER_ENABLE_GRAPHICS */

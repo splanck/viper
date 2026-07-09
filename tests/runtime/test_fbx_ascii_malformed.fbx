@@ -1,0 +1,5 @@
+; FBX 7.4.0 project file
+; Signature present but no parsable geometry payload.
+Objects:  {
+    Geometry: 1, "Geometry::Broken", "Mesh" {
+        Vertices: *6 {

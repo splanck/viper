@@ -37,11 +37,11 @@ Canvas, Entity, Behavior, AnimStateMachine, PlatformerController, Camera (smooth
 
 #### Chess
 
-**Genre:** Board game with AI | **Language:** Zia | **LOC:** 2,937 across 8 files
+**Genre:** Board game with AI | **Language:** Zia | **LOC:** 4,000+ across 15+ files
 
-Chess with full move validation, check/checkmate detection, and AI opponent using board evaluation. Demonstrates Canvas rendering for board games, turn-based game logic, and StateMachine for game flow.
+Chess with full move validation, check/checkmate detection, save slots, clocks, built-in lessons, settings, achievements, and an alpha-beta AI opponent. Demonstrates Canvas rendering for board games, turn-based game logic, persistence, audio, and StateMachine-driven game flow.
 
-**Engine features:** Canvas, Input.Action, StateMachine
+**Engine features:** Canvas, Input.Action, StateMachine, SaveData, AchievementTracker, SoundBank
 
 **Source:** [`examples/games/chess/`](../../../examples/games/chess/)
 
@@ -117,7 +117,6 @@ These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). 
 |------|-----|-------|-------------|
 | [VTris](../../../examples/games/vtris/) | 1,132 | 4 | Tetris with full rules, line clearing, high scores. Demonstrates 2D arrays, matrix rotation, class composition. |
 | [Frogger BASIC](../../../examples/games/frogger-basic/) | 1,320 | 4 | Frogger clone. Stress test for object lifetime and nested references (Frog contains Position). |
-| [Chess BASIC](../../../examples/games/chess-basic/) | 1,100+ | 5 | Chess with board representation, move validation, and basic AI evaluation. |
 | [Pac-Man BASIC](../../../examples/games/pacman-basic/) | 450 | 5 | Pac-Man-style maze chase with ghost pathfinding and ANSI color maze rendering. |
 | [Centipede BASIC](../../../examples/games/centipede-basic/) | 450 | 5 | Centipede clone with class-based entity architecture. |
 

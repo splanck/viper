@@ -751,9 +751,8 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
     double sensitivity = game3d_nonnegative_clamped_or(controller->look_sensitivity,
                                                        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
                                                        RT_GAME3D_LOOK_SENSITIVITY_MAX);
-    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
-    double pitch =
-        0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) * sensitivity;
+    double yaw = game3d_input_mouse_fdx((rt_game3d_input *)world->input) * sensitivity;
+    double pitch = 0.0 - game3d_input_mouse_fdy((rt_game3d_input *)world->input) * sensitivity;
     yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     void *character_controller = game3d_first_person_character_controller_ref(controller);
@@ -937,9 +936,8 @@ void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt)
     double sensitivity = game3d_nonnegative_clamped_or(controller->look_sensitivity,
                                                        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
                                                        RT_GAME3D_LOOK_SENSITIVITY_MAX);
-    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
-    double pitch =
-        0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) * sensitivity;
+    double yaw = game3d_input_mouse_fdx((rt_game3d_input *)world->input) * sensitivity;
+    double pitch = 0.0 - game3d_input_mouse_fdy((rt_game3d_input *)world->input) * sensitivity;
     yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     rt_camera3d_fps_update(world->camera,

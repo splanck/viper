@@ -334,6 +334,21 @@ extern "C" float vgfx_window_get_scale(vgfx_window_t window) {
     return fake ? fake->scale_factor : 1.0f;
 }
 
+// Fake windows are always windowed, so the effective coordinate scale equals the
+// window scale above (the fullscreen presentation branch is never taken). These
+// exist to satisfy the linker for rt_canvas_effective_coord_scale.
+extern "C" int vgfx_is_fullscreen(vgfx_window_t) {
+    return 0;
+}
+
+extern "C" int32_t vgfx_window_get_width(vgfx_window_t) {
+    return 0;
+}
+
+extern "C" int32_t vgfx_window_get_height(vgfx_window_t) {
+    return 0;
+}
+
 extern "C" int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height) {
     auto *fake = window_from(window);
     if (!fake)

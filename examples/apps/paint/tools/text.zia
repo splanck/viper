@@ -58,7 +58,7 @@ class TextTool implements Tool {
     expose func isDrawing() -> Integer { return active; }
     expose func snapshotsBeforePress() -> Integer { return 0; }
 
-    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onPress(x: Integer, y: Integer, _ctx: ToolContext) {
         // Place / reposition the caret; keep any typed buffer so text can be
         // nudged before committing.
         caretX = x;
@@ -66,10 +66,10 @@ class TextTool implements Tool {
         active = 1;
     }
 
-    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onDrag(_x: Integer, _y: Integer, _ctx: ToolContext) {
     }
 
-    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+    expose func onRelease(_x: Integer, _y: Integer, _ctx: ToolContext) {
     }
 
     expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {

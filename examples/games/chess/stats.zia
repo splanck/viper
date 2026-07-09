@@ -1,0 +1,144 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/stats.zia
+// Purpose: Persistent chess stats and achievements.
+// Key invariants:
+//   - Achievement mask and counters round-trip through SaveData.
+//   - Stat updates are monotonic except best-time style minima.
+// Ownership/Lifetime:
+//   - ChessGame owns one ChessStats instance.
+//   - AchievementTracker owns notification timing/render state.
+// Links: docs/viperlib/game.md#vipergameachievementtracker
+//
+//===----------------------------------------------------------------------===//
+
+module stats;
+
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.IO;
+
+final ACH_FIRST_GAME = 0;
+final ACH_FIRST_WIN = 1;
+final ACH_FIRST_CASTLE = 2;
+final ACH_FIRST_PROMOTION = 3;
+final ACH_ENGINE_WIN = 4;
+final ACH_PUZZLE_SOLVED = 5;
+final ACH_SAVE_GAME = 6;
+final ACH_FAST_FINISH = 7;
+final ACH_COUNT = 8;
+
+/// @brief Persistent stats profile and achievement notifier.
+class ChessStats {
+    hide SaveData store;
+    hide AchievementTracker tracker;
+
+    expose Integer gamesPlayed;
+    expose Integer wins;
+    expose Integer losses;
+    expose Integer draws;
+    expose Integer puzzlesSolved;
+    expose Integer savesMade;
+    expose Integer totalMoves;
+
+    expose func init(saveKey: String) {
+        store = SaveData.New(saveKey);
+        tracker = AchievementTracker.New(ACH_COUNT);
+        tracker.NotifyDuration = 2600;
+        self.defineAchievements();
+        self.resetDefaults();
+    }
+
+    expose func load() {
+        self.resetDefaults();
+        store.Load();
+        gamesPlayed = store.GetInt("games_played", 0);
+        wins = store.GetInt("wins", 0);
+        losses = store.GetInt("losses", 0);
+        draws = store.GetInt("draws", 0);
+        puzzlesSolved = store.GetInt("puzzles_solved", 0);
+        savesMade = store.GetInt("saves_made", 0);
+        totalMoves = store.GetInt("total_moves", 0);
+        tracker.Mask = store.GetInt("achievement_mask", 0);
+    }
+
+    expose func save() {
+        store.SetInt("games_played", gamesPlayed);
+        store.SetInt("wins", wins);
+        store.SetInt("losses", losses);
+        store.SetInt("draws", draws);
+        store.SetInt("puzzles_solved", puzzlesSolved);
+        store.SetInt("saves_made", savesMade);
+        store.SetInt("total_moves", totalMoves);
+        store.SetInt("achievement_mask", tracker.Mask);
+        store.Save();
+    }
+
+    expose func noteMove(castleMove: Boolean, promotion: Boolean) {
+        totalMoves = totalMoves + 1;
+        if castleMove { tracker.Unlock(ACH_FIRST_CASTLE); }
+        if promotion { tracker.Unlock(ACH_FIRST_PROMOTION); }
+    }
+
+    expose func noteGame(result: Integer, moves: Integer, engineWin: Boolean) {
+        gamesPlayed = gamesPlayed + 1;
+        tracker.Unlock(ACH_FIRST_GAME);
+        if result > 0 {
+            wins = wins + 1;
+            tracker.Unlock(ACH_FIRST_WIN);
+        } else if result < 0 {
+            losses = losses + 1;
+        } else {
+            draws = draws + 1;
+        }
+        if engineWin { tracker.Unlock(ACH_ENGINE_WIN); }
+        if moves <= 20 { tracker.Unlock(ACH_FAST_FINISH); }
+        self.save();
+    }
+
+    expose func notePuzzleSolved() {
+        puzzlesSolved = puzzlesSolved + 1;
+        tracker.Unlock(ACH_PUZZLE_SOLVED);
+        self.save();
+    }
+
+    expose func noteSave() {
+        savesMade = savesMade + 1;
+        tracker.Unlock(ACH_SAVE_GAME);
+        self.save();
+    }
+
+    expose func update(dt: Integer) {
+        tracker.Update(dt);
+    }
+
+    expose func draw(canvas: Canvas) {
+        tracker.Draw(canvas);
+    }
+
+    hide func resetDefaults() {
+        gamesPlayed = 0;
+        wins = 0;
+        losses = 0;
+        draws = 0;
+        puzzlesSolved = 0;
+        savesMade = 0;
+        totalMoves = 0;
+    }
+
+    hide func defineAchievements() {
+        tracker.Add(ACH_FIRST_GAME, "OPENING BOOK", "Complete your first game.");
+        tracker.Add(ACH_FIRST_WIN, "CHECKMATE CLUB", "Win your first game.");
+        tracker.Add(ACH_FIRST_CASTLE, "KING SAFETY", "Castle for the first time.");
+        tracker.Add(ACH_FIRST_PROMOTION, "EIGHTH RANK", "Promote a pawn.");
+        tracker.Add(ACH_ENGINE_WIN, "SILICON SPARRING", "Watch an engine side win.");
+        tracker.Add(ACH_PUZZLE_SOLVED, "TACTIC FOUND", "Solve a built-in puzzle.");
+        tracker.Add(ACH_SAVE_GAME, "SEALED MOVE", "Save a game.");
+        tracker.Add(ACH_FAST_FINISH, "MINIATURE", "Finish a game in 20 moves or fewer.");
+    }
+}

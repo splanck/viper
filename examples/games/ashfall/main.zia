@@ -1,0 +1,72 @@
+// =============================================================================
+// main.zia — ASHFALL entry point
+// =============================================================================
+//
+// Trivial by design: parse the launch flags, build the Game, install it as the
+// RunFixed singleton, and hand off. Everything else lives in `game.zia` and its
+// subsystems. Tests/probes build their own Game and never run this file.
+//
+// Flags: --smoke (headless determinism run), --level N (jump to a level),
+//        --windowed (dev: force windowed instead of fullscreen),
+//        --backend NAME (passthrough already handled by the engine env).
+// =============================================================================
+module main;
+
+bind Viper.System.Environment as Env;
+bind Viper.Core.Convert as Convert;
+bind Viper.Terminal as Terminal;
+bind "./config" as config;
+bind "./game" as game;
+
+func hasArg(wanted: String) -> Boolean {
+    var n = Env.GetArgumentCount();
+    var i = 0;
+    while i < n {
+        if Env.GetArgument(i) == wanted { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Return the integer value following `flag`, or `fallback` if absent/last.
+func argValue(flag: String, fallback: Integer) -> Integer {
+    var n = Env.GetArgumentCount();
+    var i = 0;
+    while i < n {
+        if Env.GetArgument(i) == flag {
+            if i + 1 < n {
+                return Convert.ToInt64(Env.GetArgument(i + 1));
+            }
+        }
+        i = i + 1;
+    }
+    return fallback;
+}
+
+func start() {
+    var g = new game.Game();
+    game.setGame(g);
+
+    var smoke = hasArg("--smoke");
+    var windowed = hasArg("--windowed");
+    g.setHeadless(smoke);
+    g.setFullscreen(windowed == false);
+    g.initCore(0x5A17F00D);
+
+    if hasArg("--level") {
+        g.setLevel(config.LV_ARENA + argValue("--level", 0));
+    }
+
+    if smoke {
+        // Headless integration smoke: boot the world software-side and run a
+        // bounded fixed-step simulation, then report.
+        g.boot(true, false);
+        g.runSmoke(300);
+        Terminal.Say("RESULT: ok");
+        Terminal.Say("PASS");
+    } else {
+        g.boot(false, windowed == false);
+        if hasArg("--level") == false { g.enterTitle(); }
+        g.run();
+    }
+}

@@ -60,18 +60,23 @@ constexpr uint32_t kTlsLeAddTprelLo12Nc = 551;  // R_AARCH64_TLSLE_ADD_TPREL_LO1
 // ── Mach-O x86_64 Relocation Types (mach-o/x86_64/reloc.h) ─────────────
 
 namespace macho_x64 {
-constexpr uint32_t kUnsigned = 0; // X86_64_RELOC_UNSIGNED
-constexpr uint32_t kSigned = 1;   // X86_64_RELOC_SIGNED
-constexpr uint32_t kBranch = 2;   // X86_64_RELOC_BRANCH
-constexpr uint32_t kSigned1 = 5;  // X86_64_RELOC_SIGNED_1
-constexpr uint32_t kSigned2 = 6;  // X86_64_RELOC_SIGNED_2
-constexpr uint32_t kSigned4 = 7;  // X86_64_RELOC_SIGNED_4
+constexpr uint32_t kUnsigned = 0;   // X86_64_RELOC_UNSIGNED
+constexpr uint32_t kSigned = 1;     // X86_64_RELOC_SIGNED
+constexpr uint32_t kBranch = 2;     // X86_64_RELOC_BRANCH
+constexpr uint32_t kGotLoad = 3;    // X86_64_RELOC_GOT_LOAD
+constexpr uint32_t kGot = 4;        // X86_64_RELOC_GOT
+constexpr uint32_t kSubtractor = 5; // X86_64_RELOC_SUBTRACTOR
+constexpr uint32_t kSigned1 = 6;    // X86_64_RELOC_SIGNED_1
+constexpr uint32_t kSigned2 = 7;    // X86_64_RELOC_SIGNED_2
+constexpr uint32_t kSigned4 = 8;    // X86_64_RELOC_SIGNED_4
+constexpr uint32_t kTlv = 9;        // X86_64_RELOC_TLV
 } // namespace macho_x64
 
 // ── Mach-O ARM64 Relocation Types (mach-o/arm64/reloc.h) ────────────────
 
 namespace macho_a64 {
 constexpr uint32_t kUnsigned = 0;          // ARM64_RELOC_UNSIGNED
+constexpr uint32_t kSubtractor = 1;        // ARM64_RELOC_SUBTRACTOR
 constexpr uint32_t kBranch26 = 2;          // ARM64_RELOC_BRANCH26
 constexpr uint32_t kPage21 = 3;            // ARM64_RELOC_PAGE21
 constexpr uint32_t kPageOff12 = 4;         // ARM64_RELOC_PAGEOFF12

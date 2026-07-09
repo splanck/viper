@@ -33,6 +33,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
 #include "rt_platform.h"
 #include "vgfx3d_backend.h"
 #include <limits.h>
@@ -220,6 +221,11 @@ static void rt_rendertarget3d_finalize(void *obj) {
         rt_free(rtd->target);
         rtd->target = NULL;
     }
+    if (rtd->material_pixels) {
+        if (rt_obj_release_check0(rtd->material_pixels))
+            rt_obj_free(rtd->material_pixels);
+        rtd->material_pixels = NULL;
+    }
 }
 
 /// @brief Validate @p obj as a RenderTarget3D handle and return its typed pointer (NULL on
@@ -255,6 +261,8 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
     rtd->vptr = NULL;
     rtd->width = width;
     rtd->height = height;
+    rtd->material_pixels = NULL;
+    rtd->material_pixels_revision = 0;
     rtd->target = rt_alloc((int32_t)width, (int32_t)height, color_format);
 
     if (!rtd->target) {
@@ -376,6 +384,90 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     }
 
     return pixels;
+}
+
+/// @brief Sync the target's CPU color mirror and convert it into @p pv's uint32 buffer.
+/// @return 1 on success, 0 when the target has no readable color or sizes disagree.
+static int rendertarget3d_read_into_pixels(rt_rendertarget3d *rtd, rt_pixels_impl *pv) {
+    if (!rtd || !rtd->target || !pv || !pv->data)
+        return 0;
+    size_t color_bytes = 0u;
+    if (!vgfx3d_rendertarget_valid_color_layout(rtd->target, &color_bytes) || color_bytes == 0u)
+        return 0;
+    if (!vgfx3d_rendertarget_ensure_color(rtd->target))
+        return 0;
+    if (!vgfx3d_rendertarget_sync_color_if_needed(rtd->target))
+        return 0;
+
+    int32_t w = rtd->target->width;
+    int32_t h = rtd->target->height;
+    int32_t stride = rtd->target->stride;
+    if (w <= 0 || h <= 0 || (int64_t)stride < (int64_t)w * 4 || !rtd->target->color_buf)
+        return 0;
+    if ((int64_t)w != rtd->width || (int64_t)h != rtd->height)
+        return 0;
+    if (pv->width != (int64_t)w || pv->height != (int64_t)h)
+        return 0;
+
+    for (int32_t y = 0; y < h; y++) {
+        const uint8_t *src = &rtd->target->color_buf[(size_t)y * (size_t)stride];
+        uint32_t *dst = &pv->data[(size_t)y * (size_t)pv->width];
+        for (int32_t x = 0; x < w; x++, src += 4) {
+            dst[x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) | ((uint32_t)src[2] << 8) |
+                     (uint32_t)src[3];
+        }
+    }
+    pixels_touch(pv);
+    return 1;
+}
+
+/// @brief Copy the render target contents into an existing Pixels buffer.
+/// @details Allocation-free readback for per-frame monitor/scope loops: reuses
+///   the caller's Pixels instead of allocating a fresh copy like `as_pixels`.
+///   Dimensions must match the target exactly. Bumps the Pixels generation so
+///   GPU texture caches pick up the new contents.
+/// @param obj Render target handle.
+/// @param pixels Destination Pixels whose width/height equal the target's.
+void rt_rendertarget3d_copy_to(void *obj, void *pixels) {
+    rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
+    if (!rtd || !rtd->target) {
+        rt_trap("RenderTarget3D.CopyTo: invalid render target");
+        return;
+    }
+    rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(pixels);
+    if (!pv || !pv->data) {
+        rt_trap("RenderTarget3D.CopyTo: destination must be a valid Pixels");
+        return;
+    }
+    if (pv->width != rtd->width || pv->height != rtd->height) {
+        rt_trap("RenderTarget3D.CopyTo: size mismatch");
+        return;
+    }
+    (void)rendertarget3d_read_into_pixels(rtd, pv);
+}
+
+/// @brief Resolve a RenderTarget3D to its material-binding Pixels mirror.
+/// @details Lazily creates one same-size Pixels per target and refreshes it only
+///   when the target's `content_revision` advanced (a frame into it ended). While
+///   the target is being rendered to, its revision has not advanced yet, so a
+///   material bound to it keeps sampling the previous completed frame — this is
+///   what makes self-referential monitor setups safe without a hazard trap.
+void *rt_rendertarget3d_material_pixels(void *obj) {
+    rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
+    if (!rtd || !rtd->target)
+        return NULL;
+    if (!rtd->material_pixels) {
+        rtd->material_pixels = rt_pixels_new(rtd->width, rtd->height);
+        if (!rtd->material_pixels)
+            return NULL;
+        rtd->material_pixels_revision = rtd->target->content_revision - 1u;
+    }
+    if (rtd->material_pixels_revision != rtd->target->content_revision) {
+        rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(rtd->material_pixels);
+        if (pv && rendertarget3d_read_into_pixels(rtd, pv))
+            rtd->material_pixels_revision = rtd->target->content_revision;
+    }
+    return rtd->material_pixels;
 }
 
 //=============================================================================

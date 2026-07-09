@@ -504,12 +504,14 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 ### Position Methods
 
-| Method     | Signature   | Description                                            |
-|------------|-------------|--------------------------------------------------------|
-| `DeltaX()` | `Integer()` | Horizontal movement since last frame                   |
-| `DeltaY()` | `Integer()` | Vertical movement since last frame                     |
-| `X()`      | `Integer()` | Current X position relative to the canvas              |
-| `Y()`      | `Integer()` | Current Y position relative to the canvas              |
+| Method      | Signature   | Description                                           |
+|-------------|-------------|-------------------------------------------------------|
+| `DeltaX()`  | `Integer()` | Horizontal movement since last frame                  |
+| `DeltaY()`  | `Integer()` | Vertical movement since last frame                    |
+| `DeltaXF()` | `Float()`   | Sub-pixel horizontal movement (relative mouse mode)   |
+| `DeltaYF()` | `Float()`   | Sub-pixel vertical movement (relative mouse mode)     |
+| `X()`       | `Integer()` | Current X position relative to the canvas             |
+| `Y()`       | `Integer()` | Current Y position relative to the canvas             |
 
 ### Button State Methods (Polling)
 
@@ -548,6 +550,42 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 | `Release()`      | `Void()`                  | Release the cursor lock                        |
 | `SetPos(x, y)`   | `Void(Integer, Integer)`  | Move the cursor to a specific position         |
 | `Show()`         | `Void()`                  | Show the cursor                                |
+
+### Relative (Raw) Mouse Mode — FPS Mouse-Look
+
+Relative mode delivers unbounded, sub-pixel mouse motion for first-person
+camera control. While enabled the cursor is hidden and the absolute position
+freezes; read motion through `DeltaXF()`/`DeltaYF()` (or `DeltaX()`/`DeltaY()`
+rounded). Enabling implies `Capture()`; disabling releases it.
+
+On platforms with native raw input (Windows raw input, macOS cursor
+dissociation, Linux XInput2) the deltas are hardware motion — unbounded and
+unaccelerated where the OS allows. When native raw motion is unavailable the
+runtime transparently falls back to warp-to-center capture, which produces the
+same unbounded deltas at integer precision; `RelativeModeNative` reports which
+path is active.
+
+| Method / Property         | Signature        | Description                                       |
+|---------------------------|------------------|---------------------------------------------------|
+| `SetRelativeMode(on)`     | `Void(Boolean)`  | Enable/disable relative mode (implies Capture)    |
+| `RelativeMode`            | `Boolean`        | True while relative mode is requested             |
+| `RelativeModeNative`      | `Boolean`        | True when native raw deltas are active            |
+
+```zia
+bind Viper.Input.Mouse as Mouse;
+
+Mouse.SetRelativeMode(true);      // enter FPS mouse-look
+// each frame after Canvas.Poll():
+var lookX = Mouse.DeltaXF();      // sub-pixel, unbounded
+var lookY = Mouse.DeltaYF();
+// ...
+Mouse.SetRelativeMode(false);     // back to a normal cursor
+```
+
+In `Viper.Game3D`, prefer `Input3D.SetRelativeLook(true)` — it enables the
+same mode and feeds `Input3D.LookAxis()`/`MouseDelta()` with the sub-pixel
+deltas automatically. Focus loss suspends relative mode (the desktop gets a
+normal cursor back); it resumes when the window regains focus.
 
 ### Button Constants
 

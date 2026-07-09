@@ -261,7 +261,7 @@ TEST(Arm64Bugfix, CurrentInstructionUseNotEvictedUnderPressure) {
 /// Regression: Current-instruction destination operands must not be evicted before
 /// the instruction has written them under GPR pressure.
 ///
-/// The chess-zia board renderer computes square coordinates as
+/// The chess board renderer computes square coordinates as
 /// `boardOrigin + squareIndex * squareSize` and then carries those coordinates
 /// through block-argument edge copies before issuing draw calls.  Before this
 /// fix, the linear allocator protected only current-instruction uses.  While

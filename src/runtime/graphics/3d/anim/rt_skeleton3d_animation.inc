@@ -462,8 +462,9 @@ static int32_t *animation3d_build_humanoid_role_cache(const rt_skeleton3d *skel)
     return roles;
 }
 
-/// @brief Map a source-skeleton bone to the best destination bone for retargeting: exact
-///   name match first, then humanoid-role mapping (which handles cross-convention skeletons).
+/// @brief Map a source-skeleton bone to the best destination bone for retargeting:
+///   explicit alias mapping first (`Skeleton3D.SetBoneAlias`), then exact name match,
+///   then humanoid-role mapping (which handles cross-convention skeletons).
 /// @return Destination bone index, or -1 if @p src_bone is invalid or has no match.
 static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                                               const rt_skeleton3d *dst,
@@ -477,9 +478,31 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
     const char *name = src->bones[src_bone].name;
     int role;
     if (name && name[0] != '\0') {
+        /* Destination-side alias: "a rig calling this bone <name> means my
+         * bone <alias.local>" — the deterministic override for arbitrary
+         * downloaded rigs. */
+        const char *aliased = skeleton3d_alias_lookup(dst, name);
+        if (aliased && aliased[0] != '\0') {
+            for (int32_t i = 0; i < dst_count; ++i)
+                if (strcmp(dst->bones[i].name, aliased) == 0)
+                    return i;
+        }
         for (int32_t i = 0; i < dst_count; ++i)
             if (strcmp(dst->bones[i].name, name) == 0)
                 return i;
+        /* Source-side alias reversal: if the source skeleton declares that a
+         * canonical external name maps to this bone, try that canonical name
+         * against the destination (exact, then its aliases). */
+        for (int32_t a = 0; a < src->alias_count; ++a) {
+            if (strcmp(src->aliases[a].local, name) != 0)
+                continue;
+            const char *canonical = src->aliases[a].external;
+            const char *dst_local = skeleton3d_alias_lookup(dst, canonical);
+            const char *want = dst_local && dst_local[0] != '\0' ? dst_local : canonical;
+            for (int32_t i = 0; i < dst_count; ++i)
+                if (strcmp(dst->bones[i].name, want) == 0)
+                    return i;
+        }
     }
     /* No exact-name match: try humanoid role mapping (handles cross-convention skeletons). */
     role = src_roles ? src_roles[src_bone] : animation3d_humanoid_role(name);

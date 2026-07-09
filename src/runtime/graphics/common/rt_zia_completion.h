@@ -106,6 +106,42 @@ rt_string rt_zia_check(rt_string source);
 /// @brief Run semantic analysis with the real source file path for relative bind resolution.
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 
+//===----------------------------------------------------------------------===//
+// Incremental document mirror sync (plan 08)
+//
+// The IDE keeps the language service's per-path text mirror current by pushing
+// edit deltas instead of the whole buffer on every keystroke. A mirror is keyed
+// by @p path and stamped with the editor's monotonic revision. When a delta
+// cannot be applied (no baseline mirror, or malformed/gapped deltas) the caller
+// falls back to a full sync. Mirror-sourced requests then need no text argument.
+//===----------------------------------------------------------------------===//
+
+/// @brief Replace the mirror for @p path with @p text, stamping @p revision.
+void rt_zia_doc_sync_full(rt_string path, rt_string text, int64_t revision);
+
+/// @brief Apply @p deltas_json (compact edit-delta array) to the mirror for
+///        @p path, advancing it to @p end_revision.
+/// @return 1 on success; 0 when there is no baseline mirror or the deltas are
+///         malformed (the caller must then issue a full sync).
+int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_revision);
+
+/// @brief Drop the mirror for @p path (its document was closed).
+void rt_zia_doc_close(rt_string path);
+
+/// @brief Return the current mirror text for @p path, or "" when none exists.
+/// @details Primarily a testability accessor for byte-exact mirror assertions.
+rt_string rt_zia_doc_text(rt_string path);
+
+/// @brief Run semantic analysis for @p file_path straight off its mirror text.
+/// @return Diagnostics serialized as severity\tline\tcol\tcode\tmessage per row,
+///         or "" when no mirror exists for @p file_path (caller should full-sync).
+rt_string rt_zia_check_for_file_mirror(rt_string file_path);
+
+/// @brief Start async structured diagnostics for @p file_path off its mirror
+///        text. @return SemanticJobHandle producing Seq<Map> diagnostics, or
+///        null when no mirror exists (the caller should full-sync and retry).
+void *rt_zia_doc_begin_check_for_file(rt_string file_path);
+
 /// @brief Run semantic analysis and return structured diagnostic maps.
 /// @return Viper.Collections.Seq of Viper.Collections.Map diagnostics.
 void *rt_zia_toolchain_check(rt_string source);

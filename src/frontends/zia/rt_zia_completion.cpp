@@ -70,6 +70,208 @@ std::string editorPathOrDefault(rt_string filePath) {
     return path.empty() ? std::string("<editor>") : path;
 }
 
+// ── Incremental document mirror (plan 08) ──────────────────────────────────
+// A per-path text mirror the editor keeps in sync via edit deltas, so semantic
+// queries read the mirror instead of receiving the full buffer on every call.
+// The mirror text matches the editor's materialization (codeeditor_materialize_
+// lines): lines joined by '\n' with no trailing newline; positions are 0-based
+// byte line/column.
+
+struct DocumentMirror {
+    std::string text;
+    uint64_t revision = 0;
+};
+
+std::mutex s_mirrorMutex;
+std::unordered_map<std::string, DocumentMirror> s_mirrors;
+
+/// @brief Byte offset of 0-based (line, col) in @p s (a '\n'-joined buffer).
+size_t mirrorOffsetOf(const std::string &s, int line, int col) {
+    size_t o = 0;
+    int l = 0;
+    while (l < line && o < s.size()) {
+        if (s[o] == '\n')
+            l++;
+        o++;
+    }
+    for (int c = 0; c < col && o < s.size() && s[o] != '\n'; c++)
+        o++;
+    return o;
+}
+
+/// @brief Apply the compact delta JSON emitted by
+///        vg_codeeditor_take_deltas_json to @p text in order.
+/// @details Schema: `[{"r":N,"sl":N,"sc":N,"el":N,"ec":N,"t":"<escaped>"},...]`
+///          — each delta replaced the pre-edit byte range [(sl,sc)..(el,ec)) with
+///          t. Returns false on any malformed input (caller then full-syncs).
+bool mirrorApplyDeltasJson(std::string &text, const std::string &json) {
+    size_t i = 0;
+    auto skipWs = [&]() {
+        while (i < json.size() &&
+               (json[i] == ' ' || json[i] == '\n' || json[i] == '\t' || json[i] == '\r'))
+            i++;
+    };
+    skipWs();
+    if (i >= json.size() || json[i] != '[')
+        return false;
+    i++;
+    skipWs();
+    if (i < json.size() && json[i] == ']')
+        return true; // empty array
+    while (i < json.size()) {
+        skipWs();
+        if (i >= json.size() || json[i] != '{')
+            return false;
+        i++;
+        int sl = 0, sc = 0, el = 0, ec = 0;
+        bool haveSl = false, haveSc = false, haveEl = false, haveEc = false;
+        std::string t;
+        while (true) {
+            skipWs();
+            if (i >= json.size())
+                return false;
+            if (json[i] == '}') {
+                i++;
+                break;
+            }
+            if (json[i] != '"')
+                return false;
+            i++;
+            std::string key;
+            while (i < json.size() && json[i] != '"') {
+                key += json[i];
+                i++;
+            }
+            if (i >= json.size())
+                return false;
+            i++; // closing quote of key
+            skipWs();
+            if (i >= json.size() || json[i] != ':')
+                return false;
+            i++;
+            skipWs();
+            if (key == "t") {
+                if (i >= json.size() || json[i] != '"')
+                    return false;
+                i++;
+                while (i < json.size() && json[i] != '"') {
+                    if (json[i] == '\\') {
+                        i++;
+                        if (i >= json.size())
+                            return false;
+                        char e = json[i];
+                        if (e == 'n')
+                            t += '\n';
+                        else if (e == 't')
+                            t += '\t';
+                        else if (e == 'r')
+                            t += '\r';
+                        else if (e == '"')
+                            t += '"';
+                        else if (e == '\\')
+                            t += '\\';
+                        else if (e == 'u') {
+                            if (i + 4 >= json.size())
+                                return false;
+                            int cp = 0;
+                            for (int k = 1; k <= 4; k++) {
+                                char h = json[i + k];
+                                cp <<= 4;
+                                if (h >= '0' && h <= '9')
+                                    cp += h - '0';
+                                else if (h >= 'a' && h <= 'f')
+                                    cp += h - 'a' + 10;
+                                else if (h >= 'A' && h <= 'F')
+                                    cp += h - 'A' + 10;
+                                else
+                                    return false;
+                            }
+                            i += 4;
+                            t += static_cast<char>(cp & 0xFF); // only control chars are \u-escaped
+                        } else {
+                            t += e;
+                        }
+                        i++;
+                    } else {
+                        t += json[i];
+                        i++;
+                    }
+                }
+                if (i >= json.size())
+                    return false;
+                i++; // closing quote of value
+            } else {
+                bool neg = false;
+                if (i < json.size() && json[i] == '-') {
+                    neg = true;
+                    i++;
+                }
+                long v = 0;
+                bool any = false;
+                while (i < json.size() && json[i] >= '0' && json[i] <= '9') {
+                    v = v * 10 + (json[i] - '0');
+                    i++;
+                    any = true;
+                }
+                if (!any)
+                    return false;
+                if (neg)
+                    v = -v;
+                if (key == "sl") {
+                    sl = static_cast<int>(v);
+                    haveSl = true;
+                } else if (key == "sc") {
+                    sc = static_cast<int>(v);
+                    haveSc = true;
+                } else if (key == "el") {
+                    el = static_cast<int>(v);
+                    haveEl = true;
+                } else if (key == "ec") {
+                    ec = static_cast<int>(v);
+                    haveEc = true;
+                }
+                // "r" (revision) is ignored during application.
+            }
+            skipWs();
+            if (i < json.size() && json[i] == ',') {
+                i++;
+                continue;
+            }
+        }
+        if (!haveSl || !haveSc || !haveEl || !haveEc)
+            return false;
+        size_t so = mirrorOffsetOf(text, sl, sc);
+        size_t eo = mirrorOffsetOf(text, el, ec);
+        if (eo > text.size())
+            eo = text.size();
+        if (so > eo)
+            so = eo;
+        text = text.substr(0, so) + t + text.substr(eo);
+
+        skipWs();
+        if (i < json.size() && json[i] == ',') {
+            i++;
+            continue;
+        }
+        if (i < json.size() && json[i] == ']') {
+            i++;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+/// @brief Copy the mirror text for @p path into @p out. @return false if absent.
+bool mirrorTextFor(const std::string &path, std::string &out) {
+    std::lock_guard<std::mutex> lock(s_mirrorMutex);
+    auto it = s_mirrors.find(path);
+    if (it == s_mirrors.end())
+        return false;
+    out = it->second.text;
+    return true;
+}
+
 rt_string toRtString(std::string_view text) {
     const char *data = text.empty() ? "" : text.data();
     return rt_string_from_bytes(data, text.size());
@@ -1970,6 +2172,108 @@ rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
     }
     std::string s = out.str();
     return rt_string_from_bytes(s.c_str(), s.size());
+}
+
+// =========================================================================
+// Incremental document mirror sync (plan 08)
+// =========================================================================
+
+/// @brief Replace the mirror for @p path with @p text at @p revision.
+void rt_zia_doc_sync_full(rt_string path, rt_string text, int64_t revision) {
+    std::string p = toStdString(path);
+    if (p.empty())
+        return;
+    std::string body = toStdString(text);
+    std::lock_guard<std::mutex> lock(s_mirrorMutex);
+    DocumentMirror &m = s_mirrors[p];
+    m.text = std::move(body);
+    m.revision = static_cast<uint64_t>(revision);
+}
+
+/// @brief Apply @p deltas_json to the mirror for @p path, advancing to
+///        @p end_revision. @return 1 on success, 0 if there is no baseline mirror
+///        or the deltas are malformed (the caller must then full-sync).
+int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_revision) {
+    std::string p = toStdString(path);
+    if (p.empty())
+        return 0;
+    std::string json = toStdString(deltas_json);
+    std::lock_guard<std::mutex> lock(s_mirrorMutex);
+    auto it = s_mirrors.find(p);
+    if (it == s_mirrors.end())
+        return 0;
+    std::string working = it->second.text;
+    if (!mirrorApplyDeltasJson(working, json))
+        return 0;
+    it->second.text = std::move(working);
+    it->second.revision = static_cast<uint64_t>(end_revision);
+    return 1;
+}
+
+/// @brief Drop the mirror for @p path (document closed).
+void rt_zia_doc_close(rt_string path) {
+    std::string p = toStdString(path);
+    std::lock_guard<std::mutex> lock(s_mirrorMutex);
+    s_mirrors.erase(p);
+}
+
+/// @brief Return the current mirror text for @p path, or "" when absent.
+rt_string rt_zia_doc_text(rt_string path) {
+    std::string out;
+    if (!mirrorTextFor(toStdString(path), out))
+        return rt_string_from_bytes("", 0);
+    return rt_string_from_bytes(out.c_str(), out.size());
+}
+
+/// @brief Diagnostics for @p file_path sourced from its mirror (no text param),
+///        serialized like rt_zia_check_for_file. Returns "" when no mirror exists
+///        (the caller should full-sync and retry).
+rt_string rt_zia_check_for_file_mirror(rt_string file_path) {
+    std::string sourceStr;
+    if (!mirrorTextFor(toStdString(file_path), sourceStr))
+        return rt_string_from_bytes("", 0);
+    std::string pathStr = editorPathOrDefault(file_path);
+
+    il::support::SourceManager sm;
+    CompilerInput input{.source = sourceStr, .path = pathStr};
+    CompilerOptions opts{};
+    auto result = parseAndAnalyze(input, opts, sm);
+    if (!result)
+        return rt_string_from_bytes("", 0);
+
+    std::ostringstream out;
+    for (const auto &d : result->diagnostics.diagnostics()) {
+        int sev = 0;
+        if (d.severity == il::support::Severity::Warning)
+            sev = 1;
+        else if (d.severity == il::support::Severity::Note)
+            sev = 2;
+        out << sev << '\t' << d.loc.line << '\t' << d.loc.column << '\t' << d.code << '\t'
+            << d.message << '\n';
+    }
+    std::string s = out.str();
+    return rt_string_from_bytes(s.c_str(), s.size());
+}
+
+/// @brief Async structured diagnostics for @p file_path sourced from its mirror
+///        text (no source argument crosses the ABI on each check).
+/// @details Reuses the shared semantic-job worker + diagnosticRecordsForSource,
+///          so the result is the same Seq<Map> shape the editor already consumes
+///          via SemanticJob.Diagnostics. Returns null when no mirror exists for
+///          @p file_path — the caller should full-sync and retry.
+void *rt_zia_doc_begin_check_for_file(rt_string file_path) {
+    std::string sourceStr;
+    if (!mirrorTextFor(toStdString(file_path), sourceStr))
+        return nullptr;
+    std::string pathStr = editorPathOrDefault(file_path);
+    return startSemanticJob(
+        SemanticJobKind::Diagnostics,
+        [sourceStr = std::move(sourceStr), pathStr = std::move(pathStr)](SemanticJob &job) {
+            auto diagnostics = diagnosticRecordsForSource(sourceStr, pathStr);
+            std::lock_guard<std::mutex> lock(job.mutex);
+            if (!job.cancelled.load(std::memory_order_acquire))
+                job.diagnostics = std::move(diagnostics);
+        });
 }
 
 // =========================================================================

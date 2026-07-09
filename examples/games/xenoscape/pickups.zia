@@ -83,8 +83,10 @@ class PickupManager {
         animTimer = 0;
         phys = new PhysicsHelper();
 
-        for i in 0..MAX_PICKUPS {
+        var fill = 0;
+        while fill < MAX_PICKUPS {
             ptype.add(0); px.add(0); py.add(0); pframe.add(0);
+            fill = fill + 1;
         }
     }
 
@@ -284,7 +286,7 @@ class PickupManager {
     ///        head, thin box for the shaft, two bumps for the
     ///        teeth.  Static — no animation beyond the shared
     ///        bob.
-    hide func drawKey(canvas: Canvas, sx: Integer, sy: Integer, timer: Integer) {
+    hide func drawKey(canvas: Canvas, sx: Integer, sy: Integer, _timer: Integer) {
         var cx = sx + 18;
         var cy = sy + 18;
         canvas.Ring(cx, cy - 6, 6, Color.RGB(255, 200, 50));

@@ -6,12 +6,19 @@ A full chess engine with AI opponent, written entirely in Zia.
 
 - Complete chess rules: castling, en passant, pawn promotion, 50-move draw
 - Alpha-beta AI with iterative deepening, transposition tables, killer moves, and quiescence search
-- 4 difficulty levels: Easy (depth 2), Medium (3), Hard (4), Expert (5)
+- 4 engine personalities: Beginner (depth 2), Club (3), Tournament (4), Master (5)
 - 3 game modes: PvP, Player vs Computer, Computer vs Computer
 - Move history in Standard Algebraic Notation (SAN)
-- Chess clocks with per-move timing
+- Casual, blitz, rapid, and classical chess clocks
+- Main menu, pause menu, settings screen, continue flow, analysis board, and built-in puzzles
+- Three save slots backed by cross-platform `SaveData`
+- FEN import/export helpers and PGN export from move history
+- Persistent board theme, piece theme, audio, accessibility, and assist settings
+- Procedural audio for menu, move, capture, check, promotion, and game-over events
+- Persistent stats and achievements
 - Captured piece tracking
 - Drag-and-drop piece movement with legal move indicators
+- Optional attack-map, legal-move, coordinate, high-contrast, reduced-motion, and large-text settings
 - Polished custom-canvas presentation with themed panels, interactive HUD controls, and modal overlays
 - Bundled bitmap-font rendering for menu, HUD, and panel typography
 - Pre-rendered piece sprites with alpha blending, shadows, and mini capture icons
@@ -23,8 +30,10 @@ A full chess engine with AI opponent, written entirely in Zia.
 |-------|--------|
 | Left click + drag | Move a piece |
 | N | New game |
-| Escape | Return to main menu |
+| Escape / P | Pause in-game; Back from menu screens |
 | Enter | Start game (from menu) |
+| Ctrl+S | Save to slot 1 |
+| Ctrl+Z / Ctrl+Y | Step backward / forward through replay history |
 
 ## Project Structure
 
@@ -45,6 +54,13 @@ chess/
     engine/
         ai.zia              Alpha-beta search, transposition table, move ordering
 
+    settings.zia            Persistent settings and theme/time-control names
+    save.zia                Save-slot persistence
+    notation.zia            FEN + PGN helpers
+    puzzles.zia             Built-in lesson puzzle data
+    stats.zia               Persistent stats + achievements
+    sound.zia               Procedural audio wrapper
+
     ui/
         game.zia            Game loop, input handling, state machine
         renderer.zia        Board + UI drawing, status panels, overlays
@@ -52,11 +68,13 @@ chess/
         layout.zia          Named UI regions and hitbox layout helpers
         widgets.zia         Reusable canvas UI primitives
         pieces.zia          Pre-rendered piece sprite cache, shadows, mini icons
+
+    release_probe.zia       Headless release-system smoke probe
 ```
 
-## Design and Polish Planning
+## Release Polish
 
-- [Polish Plan](polish-plan.md) — large-scale visual and UX overhaul plan for the demo
+- [Polish Plan](polish-plan.md) — implemented release upgrade notes and remaining polish ideas
 
 ## Running
 

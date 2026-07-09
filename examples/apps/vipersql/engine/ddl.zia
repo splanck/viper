@@ -1156,14 +1156,7 @@ class DdlHandler {
         // Update row count (live rows only)
         exec.optimizer.stats.setRowCount(table.name, liveRows);
 
-        // Compute per-column distinct value counts for better selectivity estimates
-        var ci = 0;
-        while ci < table.columnCount() {
-            var distinctCount = countDistinctValues(table, ci);
-            // Store in stats (future: per-column distinct counts)
-            // For now, update the table-level distinct estimate
-            ci = ci + 1;
-        }
+        // Per-column distinct estimates are not persisted yet.
 
         // Record analyze stats
         exec.recordAnalyzeStats(table.name, liveRows, deadRows);
@@ -1220,8 +1213,6 @@ class DdlHandler {
         result.init();
         result.addColumnName("command");
         result.addColumnName("description");
-
-        var commands: List[List[String]] = [];
 
         var row1 = new Row();
         row1.init();

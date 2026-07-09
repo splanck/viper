@@ -1,0 +1,123 @@
+module TestCanvas3DShadowBudget;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-03 E10 coverage (software backend — full 12-slot support):
+//   - 3 CSM cascades + 5 shadowed spots fit together (impossible on the old
+//     shared 4-slot budget): ShadowSlotsUsed == 8, ShadowRequestsDropped == 0.
+//   - SetShadowBudget(1) starves the spots: drops become observable.
+
+func spot(x: Float) -> Light3D {
+    var pos = new Vec3(x, 6.0, 0.0);
+    var dir = new Vec3(0.0, -1.0, 0.0);
+    var l = Light3D.NewSpot(pos, dir, 1.0, 1.0, 1.0, 1.0, 20.0, 35.0);
+    l.CastsShadows = true;
+    return l;
+}
+
+func drawScene(canvas: Canvas3D, cam: Camera3D, ground: Mesh3D, box: Mesh3D, mat: Material3D) {
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, ground, Mat4.Translate(0.0, -1.0, 0.0), mat);
+    var i = 0;
+    while (i < 6) {
+        Canvas3D.DrawMesh(canvas, box, Mat4.Translate(-10.0 + i * 4.0, 0.5, 0.0), mat);
+        i = i + 1;
+    }
+    Canvas3D.End(canvas);
+    Canvas3D.Flip(canvas);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Shadow Budget", 96, 64);
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 200.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 10.0, 24.0),
+                    new Vec3(0.0, 0.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var ground = Mesh3D.NewPlane(60.0, 60.0);
+    var box = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var mat = Material3D.NewColor(0.7, 0.7, 0.7);
+
+    Canvas3D.EnableShadows(canvas, 256);
+    Canvas3D.SetShadowCascades(canvas, 3);
+
+    var sunDir = new Vec3(-0.4, -1.0, -0.3);
+    var sun = Light3D.NewDirectional(sunDir, 1.0, 1.0, 0.95);
+    sun.CastsShadows = true;
+    Canvas3D.SetLight(canvas, 0, sun);
+    var i = 0;
+    while (i < 5) {
+        Canvas3D.SetLight(canvas, 1 + i, spot(-10.0 + i * 4.0));
+        i = i + 1;
+    }
+
+    drawScene(canvas, cam, ground, box, mat);
+    if (canvas.ShadowSlotsUsed != 8) {
+        Say("FAIL: 3 cascades + 5 spots should occupy exactly 8 shadow slots");
+        return;
+    }
+    if (canvas.ShadowRequestsDropped != 0) {
+        Say("FAIL: all 6 shadow-requesting lights should be granted slots");
+        return;
+    }
+
+    // Starve the general budget: the sun's cascades stay, spots drop.
+    Canvas3D.SetShadowBudget(canvas, 1);
+    drawScene(canvas, cam, ground, box, mat);
+    if (canvas.ShadowRequestsDropped < 4) {
+        Say("FAIL: budget 1 should deny most spot lights a slot");
+        return;
+    }
+    Canvas3D.SetShadowBudget(canvas, 8);
+
+    // Visual proof that an ATLAS slot (>= 4) really darkens geometry: with the
+    // sun's 3 cascades in slots 0-2 and spots filling 3+, the weakest spot
+    // lands on an atlas tile. Toggling only ITS shadow flag must change scene
+    // brightness (geometry identical between frames).
+    // Angled so the box's shadow falls on open, camera-visible ground
+    // (a straight-down spot hides its shadow under the box).
+    var probePos = new Vec3(7.0, 5.0, 3.0);
+    var probeDir = new Vec3(3.0, -4.5, -3.0);
+    var probeSpot = Light3D.NewSpot(probePos, probeDir, 1.0, 1.0, 1.0, 0.0, 25.0, 45.0);
+    probeSpot.CastsShadows = true;
+    Canvas3D.SetLight(canvas, 6, probeSpot);
+    drawScene(canvas, cam, ground, box, mat);
+    if (canvas.ShadowSlotsUsed < 9) {
+        Say("FAIL: probe spot should be granted a shadow slot");
+        return;
+    }
+    var shotOn = Canvas3D.Screenshot(canvas);
+    var sumOn = 0;
+    var gy = 0;
+    while (gy < 64) {
+        var gx = 0;
+        while (gx < 96) {
+            sumOn = sumOn + (Pixels.Get(shotOn, gx, gy) / 65536) % 256;
+            gx = gx + 1;
+        }
+        gy = gy + 8;
+    }
+    probeSpot.CastsShadows = false;
+    drawScene(canvas, cam, ground, box, mat);
+    var shotOff = Canvas3D.Screenshot(canvas);
+    var sumOff = 0;
+    gy = 0;
+    while (gy < 64) {
+        var gx = 0;
+        while (gx < 96) {
+            sumOff = sumOff + (Pixels.Get(shotOff, gx, gy) / 65536) % 256;
+            gx = gx + 1;
+        }
+        gy = gy + 8;
+    }
+    if (sumOn >= sumOff) {
+        Say("FAIL: an atlas-slot spot shadow should darken the scene when enabled");
+        return;
+    }
+
+    Say("PASS");
+}

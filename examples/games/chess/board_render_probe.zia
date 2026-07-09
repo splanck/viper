@@ -1,0 +1,86 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/board_render_probe.zia
+// Purpose: One-frame Canvas render probe for the Chess board.
+// Key invariants:
+//   - drawBoard paints all 64 square centers with the expected alternating
+//     tournament-theme colors.
+//   - Board geometry from layout.zia agrees with renderer square placement.
+// Ownership/Lifetime:
+//   - Probe owns a temporary Canvas and closes it before exit.
+// Links: examples/games/chess/ui/renderer.zia, examples/games/chess/ui/layout.zia
+//
+//===----------------------------------------------------------------------===//
+
+module board_render_probe;
+
+bind Viper.Graphics;
+bind Viper.Terminal as Terminal;
+bind Fmt = Viper.Text.Fmt;
+bind "./core/config";
+bind "./settings";
+bind "./ui/layout";
+bind "./ui/renderer";
+bind "./ui/theme";
+
+/// @brief Print a standard failure line for the chess render probe.
+/// @param msg Short diagnostic message describing the failed sample.
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+/// @brief Expected tournament board color for a row/file sample.
+/// @param rank Zero-based display rank where 0 is the top row.
+/// @param file Zero-based file where 0 is the left column.
+/// @return RGB color expected at the sampled square center.
+func expectedSquareColor(rank: Integer, file: Integer) -> Integer {
+    if (rank + file) % 2 == 0 { return theme.BOARD_LIGHT_ALT; }
+    return theme.BOARD_DARK_ALT;
+}
+
+/// @brief Validate one sampled square pixel.
+/// @param canvas Canvas that already contains a board render.
+/// @param rank Zero-based display rank.
+/// @param file Zero-based display file.
+/// @return True when the pixel equals the expected square color.
+func checkSquare(canvas: Canvas, rank: Integer, file: Integer) -> Boolean {
+    var board = layout.boardRect();
+    var sampleX = board.x + file * SQ_SIZE + SQ_SIZE / 2;
+    var sampleY = board.y + rank * SQ_SIZE + SQ_SIZE * 3 / 4;
+    var actual = canvas.GetPixel(sampleX, sampleY);
+    var expected = expectedSquareColor(rank, file);
+    if actual != expected {
+        fail("square " + Fmt.Int(rank) + "," + Fmt.Int(file) +
+             " expected " + Fmt.Int(expected) +
+             " got " + Fmt.Int(actual));
+        return false;
+    }
+    return true;
+}
+
+/// @brief Probe entry point. Draws one board frame, samples 64 squares, and exits.
+func main() {
+    var canvas = Canvas.New("Viper Chess Board Render Probe", WIN_W, WIN_H);
+    var render = new BoardRenderer();
+    render.setCanvas(canvas);
+    render.drawGameBackdrop();
+    render.drawBoard(-1, -1, -1, BOARD_TOURNAMENT, false, false);
+
+    for rank in 0..8 {
+        for file in 0..8 {
+            if !checkSquare(canvas, rank, file) {
+                canvas.Close();
+                return;
+            }
+        }
+    }
+
+    canvas.Flip();
+    canvas.Close();
+    Terminal.Say("RESULT: ok");
+}

@@ -59,3 +59,106 @@ Component: `zia-fe` (frontend: lexer/parser/sema/lowerer) · `il` · `vm` · `co
 
 - **Cross-module inherited `init()` with args** → "store operand type mismatch" IL error (`zia-fe`/`il`). Workaround: named setup methods (`initGame()`-style) instead of inheriting `init()`. Relevant because this work adds an interface + class hierarchy for tools.
 - **`viper bench`** may hang on some IL files (`tooling`).
+
+## Xenoscape Upgrade Findings
+
+### ISSUE-005 — 🟠 codegen: native macOS aggregate-return miscompile
+- **Component:** codegen
+- **What:** `examples/games/xenoscape/physics.zia` documents that `MoveResult`
+  must remain a heap class because the native-linked macOS demo binary currently
+  miscompiles aggregate returns.
+- **Impact:** Zia code that should naturally return a lightweight record/struct
+  has to allocate or reuse a class instance instead.
+- **Workaround:** `PhysicsHelper` owns one reusable `MoveResult` instance and
+  mutates it in place.
+- **Status:** Confirmed by Xenoscape source notes; preserve the workaround
+  during this upgrade.
+
+### ISSUE-006 — 🟡 zia-fe: broad namespace binds trigger ambiguous helper warnings
+- **Component:** zia-fe
+- **What:** Building Xenoscape emits `warning[V3001]` because
+  `Viper.Math.Lerp` conflicts with `Viper.Graphics.Color.Lerp` when both modules
+  are bound.
+- **Impact:** Demos that reasonably bind graphics and math APIs get warning
+  noise for common helper names.
+- **Expected:** Alias/import guidance or frontend behavior that lets common
+  helpers coexist without broad-bind warning churn.
+- **Workaround:** Prefer targeted aliases for one side of a conflict when
+  touching affected files.
+
+### ISSUE-007 — 🟡 zia-fe/tooling: intentional fixed-count loops still produce unused-variable noise
+- **Component:** zia-fe / tooling
+- **What:** Xenoscape builds emit `warning[W001]` for loops such as
+  `for i in 0..MAX_ENEMIES` when the loop variable is intentionally unused.
+- **Impact:** Straightforward fixed-count initialization loops are warning-noisy
+  unless rewritten as manual `while` loops.
+- **Expected:** A documented discard pattern for loop variables, or warning
+  suppression for a conventional intentionally-unused loop name.
+- **Workaround:** Use `while` loops in newly touched code when the index is not
+  needed.
+
+### ISSUE-008 — 🟠 zia-fe: whole-project builds can mask missing per-module imports
+- **Component:** zia-fe
+- **What:** `examples/games/xenoscape/save.zia` and `lore.zia` used `Int(...)`
+  without binding `Viper.Text.Fmt`. A whole-project build through
+  `main.zia` compiled successfully, but building the new
+  `progression_probe.zia` exposed `V-ZIA-UNDEFINED` errors for those same
+  `Int(...)` calls.
+- **Impact:** Import availability appears to depend on project entry/import
+  order, so missing module-local binds can be hidden until a different probe or
+  entrypoint imports the module graph.
+- **Expected:** Each module should require its own imports consistently, or the
+  frontend should make any intentionally-global import behavior explicit and
+  deterministic.
+- **Workaround:** Add explicit module-local binds for every external symbol used
+  by a file; targeted probes are useful because they expose hidden import
+  coupling.
+
+### ISSUE-009 — 🟡 docs/runtime: Canvas fullscreen docs call nonexistent keyboard API
+- **Component:** docs / runtime API
+- **What:** `docs/viperlib/graphics/canvas.md` demonstrates fullscreen toggling
+  with `Viper.Input.Keyboard.Pressed(300)`, but the live runtime API exposed to
+  Zia has no `Keyboard.Pressed` method. Xenoscape failed to build when using
+  that documented call; the available edge-triggered API is
+  `Keyboard.WasPressed`.
+- **Impact:** Users following the fullscreen example get a compile-time
+  `Runtime class 'Viper.Input.Keyboard' has no method 'Pressed'` error.
+- **Expected:** Either update the docs to `Keyboard.WasPressed(...)` or provide
+  a compatibility alias if `Pressed` is still intended to exist.
+- **Workaround:** Use `Viper.Input.Keyboard.WasPressed(KEY_F11)` for one-shot
+  fullscreen toggles.
+
+### ISSUE-010 — ✅ runtime: macOS 2D Canvas fullscreen could fail or keep a window-sized drawable
+- **Component:** runtime / graphics (ViperGFX macOS backend)
+- **What:** Xenoscape's `canvas.Fullscreen()` path still did not enter
+  fullscreen after the demo switched to the correct `Keyboard.WasPressed`
+  input API. The 2D Canvas path delegates to ViperGFX; on macOS the backend used
+  `NSWindow toggleFullScreen:` but Canvas windows are fixed-size by default and
+  were not explicitly marked as fullscreen-capable. After native fullscreen was
+  enabled, a second failure mode kept the game drawable at its old windowed
+  size inside the fullscreen Space.
+- **Impact:** 2D Canvas games could call the documented fullscreen API and see
+  no visible fullscreen transition, or enter fullscreen while the rendered game
+  stayed at the original window size, especially for default non-resizable game
+  windows.
+- **Expected:** `Canvas.Fullscreen()` should request real native fullscreen
+  regardless of whether the window is user-resizable in normal windowed mode,
+  while preserving the Canvas's designed logical resolution and scaling draw
+  calls/input to the fullscreen framebuffer.
+- **Resolution (2026-07-07):** `vgfx_platform_macos.m` now marks windows with
+  `NSWindowCollectionBehaviorFullScreenPrimary`, temporarily adds the resizable
+  style while entering fullscreen for fixed-size windows, focuses/activates the
+  window before toggling, makes the framebuffer view track the window content
+  size, accepts AppKit's proposed fullscreen content size, resyncs framebuffer
+  metrics from the fullscreen content rect, and restores the original fixed
+  window size/style after exiting. The Canvas runtime now stores its logical
+  drawing size separately and, in fullscreen, computes an effective coordinate
+  scale from `framebuffer_size / logical_canvas_size` so a `1280x720` game fills
+  a `1920x1080` display at `1.5x` instead of drawing into only part of the
+  enlarged framebuffer.
+- **Coverage:** Incremental `vipergfx`/runtime/`viper` build, focused
+  `test_window` and `test_input` executables, Xenoscape project build, plus a
+  real macOS ViperGFX fullscreen probe that grew a fixed `960x640` window to
+  `1920x1080` fullscreen and restored it back to `960x640`; a coordinate-scale
+  probe confirmed `1280x720 -> 1920x1080` fullscreen uses scale `1.500` while
+  public logical size remains `1280x720`.

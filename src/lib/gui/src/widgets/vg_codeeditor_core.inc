@@ -57,6 +57,10 @@
 // uncomfortably fast scroll. Half-line per delta unit feels closer to the
 // platform-native cadence of Safari, VS Code, and Sublime.
 #define CODEEDITOR_MOUSE_WHEEL_LINES 0.3f
+// Maximum lines/columns per second the view auto-scrolls when a selection drag
+// is held beyond the editor edge. Speed ramps from ~1/3 of this (just past the
+// edge) up to this maximum (far past the edge).
+#define CODEEDITOR_AUTOSCROLL_MAX_LPS 30.0f
 // Prevent malicious or accidental all-document highlight spans from allocating
 // unbounded line-index storage. Normal diagnostics/find highlights are far below
 // this because they usually touch one source line each.
@@ -199,6 +203,74 @@ static void codeeditor_bump_revision(vg_codeeditor_t *editor) {
     if (!editor)
         return;
     editor->revision = editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
+}
+
+/// @brief The revision codeeditor_bump_revision() will produce on its next call.
+static uint64_t codeeditor_pending_revision(const vg_codeeditor_t *editor) {
+    if (!editor)
+        return 1;
+    return editor->revision == UINT64_MAX ? 1 : editor->revision + 1;
+}
+
+/// @brief Drop all retained sync deltas, freeing their replacement text.
+static void codeeditor_journal_reset(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    for (int i = 0; i < editor->journal_count; i++) {
+        int idx = (editor->journal_head + i) % VG_EDIT_JOURNAL_CAP;
+        free(editor->journal[idx].text);
+        editor->journal[idx].text = NULL;
+    }
+    editor->journal_head = 0;
+    editor->journal_count = 0;
+    editor->journal_oldest_rev = 0;
+}
+
+/// @brief Signal that a mutation could not be captured as a delta, so the next
+///        language-service pull must full-sync. Retained deltas are dropped
+///        because they now precede a gap and cannot be applied incrementally.
+static void codeeditor_journal_mark_overflow(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_journal_reset(editor);
+    editor->journal_overflowed = true;
+}
+
+/// @brief Append one forward content delta (pre-edit range [start..end) replaced
+///        by @p text) at @p revision. A full ring or OOM marks overflow instead.
+static void codeeditor_journal_push(vg_codeeditor_t *editor,
+                                    int start_line,
+                                    int start_col,
+                                    int end_line,
+                                    int end_col,
+                                    const char *text,
+                                    uint64_t revision) {
+    if (!editor || editor->journal_overflowed)
+        return; // already need a full sync
+    if (editor->journal_count == VG_EDIT_JOURNAL_CAP) {
+        codeeditor_journal_mark_overflow(editor);
+        return;
+    }
+    const char *src = text ? text : "";
+    size_t len = strlen(src);
+    char *copy = malloc(len + 1);
+    if (!copy) {
+        codeeditor_journal_mark_overflow(editor);
+        return;
+    }
+    memcpy(copy, src, len + 1);
+
+    int tail = (editor->journal_head + editor->journal_count) % VG_EDIT_JOURNAL_CAP;
+    vg_edit_delta_t *d = &editor->journal[tail];
+    d->revision = revision;
+    d->start_line = start_line;
+    d->start_col = start_col;
+    d->end_line = end_line;
+    d->end_col = end_col;
+    d->text = copy;
+    if (editor->journal_count == 0)
+        editor->journal_oldest_rev = revision;
+    editor->journal_count++;
 }
 
 /// @brief Advance the syntax-cache generation after a language/theme/global-state change.
@@ -1872,6 +1944,60 @@ static float codeeditor_max_scroll_y(vg_codeeditor_t *editor, const vg_widget_t 
     return max_scroll > 0.0f ? max_scroll : 0.0f;
 }
 
+/// @brief Visual column width of one line, expanding tabs to tab stops and
+///        counting each UTF-8 codepoint as one column.
+static int codeeditor_line_visual_cols(const vg_code_line_t *ln, int tab_w) {
+    if (!ln || !ln->text)
+        return 0;
+    if (tab_w <= 0)
+        tab_w = 4;
+    int cols = 0;
+    for (int k = 0; k < (int)ln->length; k++) {
+        unsigned char c = (unsigned char)ln->text[k];
+        if ((c & 0xC0) == 0x80)
+            continue; // UTF-8 continuation byte
+        if (c == '\t')
+            cols += tab_w - (cols % tab_w);
+        else
+            cols += 1;
+    }
+    return cols;
+}
+
+/// @brief Widest line in the document, in visual columns. Cached and only
+///        recomputed when the layout generation changes (i.e. after an edit).
+static int codeeditor_longest_line_cols(vg_codeeditor_t *editor) {
+    if (!editor)
+        return 0;
+    if (editor->longest_line_cols_generation == editor->layout_generation &&
+        editor->layout_generation != 0)
+        return editor->longest_line_cols_cache;
+    int tab_w = editor->tab_width > 0 ? editor->tab_width : 4;
+    int longest = 0;
+    for (int i = 0; i < editor->line_count; i++) {
+        int cols = codeeditor_line_visual_cols(&editor->lines[i], tab_w);
+        if (cols > longest)
+            longest = cols;
+    }
+    editor->longest_line_cols_cache = longest;
+    editor->longest_line_cols_generation = editor->layout_generation;
+    return longest;
+}
+
+/// @brief Maximum valid scroll_x: the widest line's pixel width (plus one column
+///        of trailing pad) minus the visible text width. Zero in word-wrap mode.
+static float codeeditor_max_scroll_x(vg_codeeditor_t *editor, const vg_widget_t *widget) {
+    if (!editor || !widget || editor->word_wrap || editor->char_width <= 0.0f)
+        return 0.0f;
+    float view_w = widget->width - editor->gutter_width - CODEEDITOR_SCROLLBAR_WIDTH;
+    if (view_w < 0.0f)
+        view_w = 0.0f;
+    float content_w =
+        (float)codeeditor_longest_line_cols(editor) * editor->char_width + editor->char_width;
+    float max_scroll = content_w - view_w;
+    return max_scroll > 0.0f ? max_scroll : 0.0f;
+}
+
 /// @brief Decomposes (line, col) into a wrap-row index within the line and a column within that
 /// row.
 static void codeeditor_visual_offset_for_position(const vg_codeeditor_t *editor,
@@ -2032,8 +2158,15 @@ static void codeeditor_locate_visual_row(vg_codeeditor_t *editor,
 static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return;
-    if (editor->word_wrap)
+    if (editor->word_wrap) {
         editor->scroll_x = 0.0f;
+    } else {
+        if (editor->scroll_x < 0.0f)
+            editor->scroll_x = 0.0f;
+        float max_scroll_x = codeeditor_max_scroll_x(editor, widget);
+        if (editor->scroll_x > max_scroll_x)
+            editor->scroll_x = max_scroll_x;
+    }
     if (editor->scroll_y < 0.0f)
         editor->scroll_y = 0.0f;
     float max_scroll = codeeditor_max_scroll_y(editor, widget);
@@ -2090,6 +2223,71 @@ static bool codeeditor_get_scrollbar_metrics(vg_codeeditor_t *editor,
         *out_thumb_y = scroll_ratio * thumb_travel;
     if (out_thumb_height)
         *out_thumb_height = thumb_height;
+    if (out_max_scroll)
+        *out_max_scroll = max_scroll;
+    if (out_thumb_travel)
+        *out_thumb_travel = thumb_travel;
+    return true;
+}
+
+/// @brief Computes horizontal scrollbar geometry (all values widget-local).
+/// @details Returns false when word wrap is on or the widest line fits without
+///          horizontal scrolling. The thumb travels within the content area,
+///          which begins at gutter_width, and the track sits along the bottom
+///          edge (widget->height - CODEEDITOR_SCROLLBAR_WIDTH).
+static bool codeeditor_get_hscrollbar_metrics(vg_codeeditor_t *editor,
+                                              const vg_widget_t *widget,
+                                              float *out_track_y,
+                                              float *out_thumb_x,
+                                              float *out_thumb_width,
+                                              float *out_max_scroll,
+                                              float *out_thumb_travel) {
+    if (out_track_y)
+        *out_track_y = 0.0f;
+    if (out_thumb_x)
+        *out_thumb_x = 0.0f;
+    if (out_thumb_width)
+        *out_thumb_width = 0.0f;
+    if (out_max_scroll)
+        *out_max_scroll = 0.0f;
+    if (out_thumb_travel)
+        *out_thumb_travel = 0.0f;
+    if (!editor || !widget || editor->word_wrap || editor->char_width <= 0.0f)
+        return false;
+    if (widget->width <= 0.0f || widget->height <= 0.0f)
+        return false;
+
+    float view_w = widget->width - editor->gutter_width - CODEEDITOR_SCROLLBAR_WIDTH;
+    if (view_w <= 0.0f)
+        return false;
+    float content_w =
+        (float)codeeditor_longest_line_cols(editor) * editor->char_width + editor->char_width;
+    if (content_w <= view_w)
+        return false;
+
+    float thumb_ratio = view_w / content_w;
+    if (thumb_ratio > 1.0f)
+        thumb_ratio = 1.0f;
+    float thumb_width = view_w * thumb_ratio;
+    if (thumb_width < 20.0f)
+        thumb_width = 20.0f;
+    if (thumb_width > view_w)
+        thumb_width = view_w;
+
+    float max_scroll = content_w - view_w;
+    float thumb_travel = view_w - thumb_width;
+    float scroll_ratio = max_scroll > 0.0f ? editor->scroll_x / max_scroll : 0.0f;
+    if (scroll_ratio < 0.0f)
+        scroll_ratio = 0.0f;
+    if (scroll_ratio > 1.0f)
+        scroll_ratio = 1.0f;
+
+    if (out_track_y)
+        *out_track_y = widget->height - CODEEDITOR_SCROLLBAR_WIDTH;
+    if (out_thumb_x)
+        *out_thumb_x = editor->gutter_width + scroll_ratio * thumb_travel;
+    if (out_thumb_width)
+        *out_thumb_width = thumb_width;
     if (out_max_scroll)
         *out_max_scroll = max_scroll;
     if (out_thumb_travel)

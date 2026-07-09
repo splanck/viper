@@ -605,8 +605,20 @@ Cross-platform path manipulation utilities. On Windows, both `/` and `\` are tre
 | `IsAbs(path)`        | `Boolean(String)`        | Returns true if the path is absolute                        |
 | `Abs(path)`          | `String(String)`         | Converts a relative path to absolute                        |
 | `ExeDir()`           | `String()`               | Returns the directory containing the running executable     |
+| `DataDir(app)`       | `String(String)`         | Per-user writable data directory for `app` (created on demand) |
 | `Norm(path)`         | `String(String)`         | Normalizes a path (removes `.`, `..`, duplicate separators) |
 | `Sep()`              | `String()`               | Returns the platform-specific path separator                |
+
+`DataDir(app)` resolves the OS-conventional per-user location and creates the
+directory (including parents) if needed, so settings and save files can be
+written immediately:
+
+- **Windows:** `%APPDATA%\<app>`
+- **macOS:** `~/Library/Application Support/<app>`
+- **Linux:** `$XDG_DATA_HOME/<app>` when set, else `~/.local/share/<app>`
+
+The app name must be alphanumeric/dash/underscore (max 64 chars); anything
+else traps. Repeated calls return the same absolute path.
 
 ### Zia Example
 

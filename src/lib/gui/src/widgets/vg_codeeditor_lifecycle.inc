@@ -138,7 +138,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
 
     // Display options
     editor->show_indent_guides = true;
-    editor->render_whitespace = false;
+    editor->render_whitespace_mode = VG_WHITESPACE_NONE;
+    editor->whitespace_color = 0; // 0 = derive a faint default from the text color at paint time
     editor->indent_guide_color = 0; // 0 = derive a muted default at paint time
 
     // State
@@ -208,6 +209,9 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     // Free undo/redo history
     edit_history_destroy(editor->history);
     editor->history = NULL;
+
+    // Free retained sync-journal delta text (plan 08).
+    codeeditor_journal_reset(editor);
 
     if (editor->custom_keywords) {
         for (int i = 0; i < editor->custom_keyword_count; i++)

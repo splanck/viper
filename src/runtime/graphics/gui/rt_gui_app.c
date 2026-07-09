@@ -432,6 +432,129 @@ static bool rt_gui_app_overlays_need_paint(const rt_gui_app_t *app) {
     return false;
 }
 
+/// @brief Whether any overlay is currently on screen (visible), independent of
+///        whether it needs repainting this frame.
+/// @details Overlays (palettes, dialogs, context menu, notifications, tooltips)
+///          paint above the widget tree without damage tracking. A damage-region
+///          repaint of the tree would overwrite the tree area *under* a static
+///          overlay without re-drawing the overlay on top, erasing it — so the
+///          partial path must be disabled whenever any overlay is visible, not
+///          only when one is paint-dirty.
+static bool rt_gui_app_overlays_visible(const rt_gui_app_t *app) {
+    if (!app)
+        return false;
+    for (int i = 0; i < app->command_palette_count; i++) {
+        if (app->command_palettes[i] && app->command_palettes[i]->is_visible)
+            return true;
+    }
+    for (int i = 0; i < app->dialog_count; i++) {
+        if (app->dialog_stack[i] && app->dialog_stack[i]->is_open)
+            return true;
+    }
+    if (app->active_context_menu && app->active_context_menu->is_visible)
+        return true;
+    if (app->notification_manager && app->notification_manager->notification_count > 0)
+        return true;
+    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
+    if (tooltip_mgr && tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible)
+        return true;
+    if (app->manual_tooltip && app->manual_tooltip->is_visible)
+        return true;
+    return false;
+}
+
+/// @brief Screen-space damage-rectangle accumulator for partial repaint (plan 07).
+typedef struct rt_gui_damage {
+    float x0, y0, x1, y1; ///< Union bounds in screen pixels (x1/y1 exclusive).
+    bool any;             ///< True once at least one dirty widget contributed.
+} rt_gui_damage_t;
+
+// Forward declaration: rt_gui_collect_damage prunes the same internally-painting
+// subtrees (e.g. ScrollView) that render_widget_tree does, so damage detection
+// only compares widgets whose last-paint bounds are actually recorded.
+static int rt_gui_widget_paints_children_internally(vg_widget_t *widget);
+
+/// @brief Union a screen rectangle into the damage accumulator (ignores empties).
+static void rt_gui_damage_add(rt_gui_damage_t *dmg, float x, float y, float w, float h) {
+    if (w <= 0.0f || h <= 0.0f)
+        return;
+    float x1 = x + w;
+    float y1 = y + h;
+    if (!dmg->any) {
+        dmg->x0 = x;
+        dmg->y0 = y;
+        dmg->x1 = x1;
+        dmg->y1 = y1;
+        dmg->any = true;
+        return;
+    }
+    if (x < dmg->x0)
+        dmg->x0 = x;
+    if (y < dmg->y0)
+        dmg->y0 = y;
+    if (x1 > dmg->x1)
+        dmg->x1 = x1;
+    if (y1 > dmg->y1)
+        dmg->y1 = y1;
+}
+
+/// @brief Whether @p w's current screen bounds (@p x,@p y + its size) differ from
+///        the bounds recorded at its last paint (i.e. it moved or resized).
+static bool rt_gui_widget_bounds_moved(const vg_widget_t *w, float x, float y) {
+    return !w->last_paint_valid || fabsf(w->last_paint_x - x) > 0.5f ||
+           fabsf(w->last_paint_y - y) > 0.5f || fabsf(w->last_paint_w - w->width) > 0.5f ||
+           fabsf(w->last_paint_h - w->height) > 0.5f;
+}
+
+/// @brief Accumulate the damage region for @p widget's subtree into @p dmg (plan 07).
+/// @details Walks the same widgets render_widget_tree paints (pruning subtrees that
+///          paint their own children, e.g. ScrollView, whose last-paint bounds are
+///          never recorded). A widget contributes damage when it is paint-dirty
+///          (content changed) OR its current screen bounds differ from its last-paint
+///          bounds (it moved/resized) — the latter damages both the new AND vacated
+///          rectangles. A widget hidden since its last paint damages its old bounds
+///          once so its pixels are erased. This is what lets a partial repaint fire
+///          even though the editor marks needs_layout on every keystroke: the layout
+///          re-runs but is idempotent, so nothing moves and only the editor is dirty.
+///          Over-coverage is always safe; only under-coverage could leave stale pixels.
+static void rt_gui_collect_damage(vg_widget_t *widget, rt_gui_damage_t *dmg) {
+    if (!widget || !dmg)
+        return;
+    vg_widget_t *node = widget;
+    while (node) {
+        bool descend = false;
+        if (!node->visible) {
+            // Hidden since its last paint → erase the vacated pixels once.
+            if (node->last_paint_valid) {
+                rt_gui_damage_add(dmg, node->last_paint_x, node->last_paint_y, node->last_paint_w,
+                                  node->last_paint_h);
+                node->last_paint_valid = false;
+            }
+        } else {
+            float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+            vg_widget_get_screen_bounds(node, &x, &y, &w, &h);
+            bool moved = rt_gui_widget_bounds_moved(node, x, y);
+            if (node->needs_paint || moved) {
+                rt_gui_damage_add(dmg, x, y, w, h); // current bounds
+                if (moved && node->last_paint_valid)
+                    rt_gui_damage_add(dmg, node->last_paint_x, node->last_paint_y,
+                                      node->last_paint_w, node->last_paint_h); // vacated bounds
+            }
+            descend = node->first_child && !rt_gui_widget_paints_children_internally(node);
+        }
+
+        if (descend) {
+            node = node->first_child;
+        } else {
+            while (node && node != widget && !node->next_sibling)
+                node = node->parent;
+            if (!node || node == widget)
+                break;
+            node = node->next_sibling;
+        }
+    }
+}
+
 static void rt_gui_app_clear_paint_flags(rt_gui_app_t *app) {
     if (!app)
         return;
@@ -906,6 +1029,13 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     app->root->user_data = app;
     app->shortcuts_global_enabled = 1;
     app->manual_tooltip_delay_ms = 500;
+
+    // Damage-region rendering is on by default; VIPER_GUI_FULL_REPAINT=1 is the
+    // one-line kill switch that restores unconditional full-window repaints.
+    {
+        const char *full = getenv("VIPER_GUI_FULL_REPAINT");
+        app->partial_paint_enabled = (full && full[0] == '1' && full[1] == '\0') ? 0 : 1;
+    }
 
     if (!rt_gui_register_app(app)) {
         vg_widget_destroy(app->root);
@@ -1737,18 +1867,91 @@ void rt_gui_app_render(void *app_ptr) {
     bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
     if (!did_layout && !size_changed && !root_needs_paint && !overlays_need_paint) {
         vgfx_pump_events(app->window);
+        // Nothing to repaint this frame. Pace the frame anyway so an idle GUI
+        // does not busy-loop a CPU core: with an FPS cap we sleep to the frame
+        // deadline; uncapped, we take a 1ms anti-spin floor. Presentation is
+        // skipped because the framebuffer is unchanged.
+        vgfx_frame_pace(app->window, 1);
         return;
     }
 
-    // Clear with theme background
     vg_theme_t *theme = vg_theme_get_current();
-    vgfx_cls(app->window, theme ? theme->colors.bg_secondary : 0xFF1E1E1E);
+    vgfx_color_t theme_bg = theme ? theme->colors.bg_secondary : 0xFF1E1E1E;
 
-    // Render widget tree — absolute offsets are accumulated during traversal
-    // so widget->x/y stay relative. This is critical: hit testing in poll()
-    // uses vg_widget_get_screen_bounds() which walks the parent chain from
+    // Choose full-window vs. damage-region (partial) repaint. Partial is only safe
+    // when nothing structural changed this frame: no layout (widgets can move), no
+    // resize, and no overlay on screen (overlays paint above the tree without their
+    // own damage tracking). Otherwise we repaint just the bounding rect of the dirty
+    // widgets, leaning on the retained software framebuffer for untouched pixels.
+    // did_layout is intentionally NOT a veto: the editor marks needs_layout on
+    // every keystroke to recompute content metrics, but that layout is idempotent
+    // (no widget moves), so rt_gui_collect_damage — which diffs each widget's
+    // current bounds against its last-paint bounds — reports only the truly changed
+    // region. A real reflow that moves widgets shows up as large damage and
+    // collapses to a full repaint below. Window resize (framebuffer realloc) and
+    // any on-screen overlay still force the full path.
+    bool overlay_on_screen = overlays_need_paint || rt_gui_app_overlays_visible(app);
+    bool use_partial = app->partial_paint_enabled && !size_changed && !overlay_on_screen;
+    int32_t dmg_x = 0, dmg_y = 0, dmg_w = 0, dmg_h = 0;
+    if (use_partial) {
+        rt_gui_damage_t dmg = {0};
+        rt_gui_collect_damage(app->root, &dmg);
+        if (!dmg.any) {
+            use_partial = false;
+        } else {
+            float fx0 = dmg.x0 - 1.0f, fy0 = dmg.y0 - 1.0f; // 1px slack for AA edge rims
+            float fx1 = dmg.x1 + 1.0f, fy1 = dmg.y1 + 1.0f;
+            if (fx0 < 0.0f)
+                fx0 = 0.0f;
+            if (fy0 < 0.0f)
+                fy0 = 0.0f;
+            if (fx1 > (float)win_w)
+                fx1 = (float)win_w;
+            if (fy1 > (float)win_h)
+                fy1 = (float)win_h;
+            dmg_x = (int32_t)fx0;
+            dmg_y = (int32_t)fy0;
+            dmg_w = (int32_t)(fx1 - fx0 + 0.999f); // ceil so the fractional edge is covered
+            dmg_h = (int32_t)(fy1 - fy0 + 0.999f);
+            double win_area = (double)win_w * (double)win_h;
+            double dmg_area = (double)dmg_w * (double)dmg_h;
+            // Only fall back to full when the damage bounds are nearly the whole
+            // window — the partial path is always correct, so the collapse is just
+            // to skip clip setup when it would save almost nothing. At 90% the
+            // common "typing dirties the whole editor" case (~2/3 of the window)
+            // still repaints partially, skipping the sidebar/tabs/panels/bars.
+            if (dmg_w <= 0 || dmg_h <= 0 || (win_area > 0.0 && dmg_area >= win_area * 0.9))
+                use_partial = false;
+        }
+    }
+
+    if (use_partial) {
+        // Clip to the damage rect, clear only that rect, and repaint the tree. Every
+        // vgfx primitive honors the clip, so widgets outside the rect write nothing
+        // and their retained framebuffer pixels survive. Overlays are absent here by
+        // the guard above, so no second-pass overlay paint is needed.
+        vgfx_set_clip(app->window, dmg_x, dmg_y, dmg_w, dmg_h);
+        vgfx_cls(app->window, theme_bg);
+        if (app->root)
+            render_widget_tree(app->window, app->root, 0.0f, 0.0f);
+        vgfx_clear_clip(app->window);
+        app->frames_partial++;
+        app->last_damage_w = (float)dmg_w;
+        app->last_damage_h = (float)dmg_h;
+        rt_gui_app_clear_paint_flags(app);
+        vgfx_update(app->window);
+        return;
+    }
+
+    // Full-window repaint (the pre-plan-07 path). Absolute offsets are accumulated
+    // during traversal so widget->x/y stay relative. This is critical: hit testing in
+    // poll() uses vg_widget_get_screen_bounds() which walks the parent chain from
     // relative coords. If we converted to absolute here, hit testing would
     // double-count parent offsets and fail.
+    app->frames_full++;
+    app->last_damage_w = 0.0f;
+    app->last_damage_h = 0.0f;
+    vgfx_cls(app->window, theme_bg);
     if (app->root) {
         render_widget_tree(app->window, app->root, 0.0f, 0.0f);
     }
@@ -1819,6 +2022,30 @@ void rt_gui_app_render(void *app_ptr) {
     // Present
     rt_gui_app_clear_paint_flags(app);
     vgfx_update(app->window);
+}
+
+/// @brief `App.PollWait` — block up to timeout_ms for OS events, then poll.
+/// @details Sleeps on the OS event queue while the window is idle so the frame
+///          loop does not busy-poll, then drains events exactly like
+///          rt_gui_app_poll (a drop-in replacement for App.Poll). Callers that
+///          animate must cap timeout_ms at their next animation deadline.
+/// @param app_ptr Pointer to the app.
+/// @param timeout_ms Maximum idle wait (clamped to [0, 1000] inside vgfx).
+/// @return 1 if events arrived (wake-from-input), 0 on timeout.
+int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app || !app->window) {
+        rt_gui_app_poll(app_ptr);
+        return 0;
+    }
+    if (timeout_ms < 0)
+        timeout_ms = 0;
+    if (timeout_ms > 1000)
+        timeout_ms = 1000;
+    int32_t had_events = vgfx_wait_events(app->window, (int32_t)timeout_ms);
+    rt_gui_app_poll(app_ptr);
+    return had_events ? 1 : 0;
 }
 
 /// @brief Return the root container widget of the app's widget tree.
@@ -1970,6 +2197,14 @@ static void render_widget_tree(vgfx_window_t window,
             widget->_paint_screen_space = was_screen_space;
         }
 
+        // Record the absolute paint bounds for damage-region move detection
+        // (plan 07). rt_gui_collect_damage diffs these against next frame's bounds.
+        widget->last_paint_x = abs_x;
+        widget->last_paint_y = abs_y;
+        widget->last_paint_w = widget->width;
+        widget->last_paint_h = widget->height;
+        widget->last_paint_valid = true;
+
         widget->x = rel_x;
         widget->y = rel_y;
 
@@ -2083,6 +2318,13 @@ int64_t rt_gui_app_should_close(void *app_ptr) {
 /// @brief Poll the app.
 void rt_gui_app_poll(void *app_ptr) {
     (void)app_ptr;
+}
+
+/// @brief Stub: `App.PollWait` returns 0 without graphics.
+int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
+    (void)app_ptr;
+    (void)timeout_ms;
+    return 0;
 }
 
 /// @brief Render the app.

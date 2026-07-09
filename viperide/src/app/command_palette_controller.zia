@@ -4,6 +4,8 @@ bind "../commands/command_registry";
 bind "../editor/language_service";
 bind "../ui/app_shell";
 
+bind Str = Viper.String;
+
 // ============================================================================
 // MODULE: command_palette_controller
 // PURPOSE: Small state machine for command-palette modes.
@@ -20,14 +22,73 @@ bind "../ui/app_shell";
 
 final MODE_COMMANDS = "commands";
 final MODE_QUICK_OPEN = "quickopen";
+final MODE_GOTO = "goto";
+final GOTO_ID_PREFIX = "goto:";
 
 /// @brief Tracks whether the command palette is showing commands or quick-open files.
 class CommandPaletteController {
     expose String mode;
+    hide Integer lastQueryGen; // Last observed palette query generation (live-mode dispatch).
 
     /// @brief Initialize the palette controller in normal command mode.
     expose func init() {
         mode = MODE_COMMANDS;
+        lastQueryGen = -1;
+    }
+
+    /// @brief Whether the palette is showing a live "go to line" row.
+    expose func IsGoto() -> Boolean {
+        return mode == MODE_GOTO;
+    }
+
+    /// @brief Extract the line argument from a "goto:N" selection id, or "".
+    expose func GotoArgFromId(id: String) -> String {
+        if Str.StartsWith(id, GOTO_ID_PREFIX) {
+            return Str.Mid(id, Str.get_Length(GOTO_ID_PREFIX) + 1);
+        }
+        return "";
+    }
+
+    /// @brief Live-query dispatcher for palette prefix modes. When the command
+    ///        palette query begins with ':' the palette turns into a live "go to
+    ///        line" prompt; clearing the prefix restores command rows. Call once
+    ///        per frame while the palette is open.
+    /// @param shell Workbench shell owning the palette.
+    /// @param registry Command registry (to restore command rows).
+    /// @param service Active language service (capability filtering).
+    expose func PumpLiveQuery(shell: app_shell.AppShell,
+                              registry: command_registry.CommandRegistry,
+                              service: language_service.LanguageService) {
+        if shell == null or shell.commandPalette == null { return; }
+        if shell.commandPalette.IsVisible() == false {
+            lastQueryGen = -1;
+            return;
+        }
+        // Only file/command modes participate in ':' line dispatch; leave the
+        // dedicated Quick Open flow alone.
+        if mode == MODE_QUICK_OPEN { return; }
+
+        var gen = shell.commandPalette.GetQueryGeneration();
+        if gen == lastQueryGen { return; }
+        lastQueryGen = gen;
+        var q = shell.commandPalette.GetQuery();
+
+        if Str.StartsWith(q, ":") {
+            var lineArg = Str.Mid(q, 2);
+            shell.commandPalette.SetClientFiltered(true);
+            shell.commandPalette.Clear();
+            var label = "Go to line";
+            if lineArg != "" { label = "Go to line " + lineArg; }
+            shell.commandPalette.AddCommand(GOTO_ID_PREFIX + lineArg, label, "");
+            mode = MODE_GOTO;
+        } else if mode == MODE_GOTO {
+            // Left goto mode — restore normal command rows.
+            mode = MODE_COMMANDS;
+            shell.commandPalette.SetClientFiltered(false);
+            if registry != null {
+                registry.PopulatePalette(shell.commandPalette, service);
+            }
+        }
     }
 
     /// @brief Return whether the palette is currently in command mode.

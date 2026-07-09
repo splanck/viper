@@ -1,0 +1,288 @@
+module TestCanvas3DVisualPolish;
+
+bind Viper.Graphics3D;
+bind Viper.Graphics;
+bind Viper.Math;
+bind Viper.Terminal;
+
+// Doc-07 coverage (software backend):
+//   E37 auto-exposure brightens a dark scene toward middle gray.
+//   E38 identity LUT is a near-no-op; an inverting LUT inverts.
+//   E41 particle stretch/trails render (ribbons add coverage after motion).
+//   E42 AA text renders at a fractional scale; MeasureText2DAA is monotonic;
+//       nine-slice keeps source corners unscaled.
+
+func sumAll(shot: Pixels) -> Integer {
+    var total = 0;
+    var y = 0;
+    while (y < 64) {
+        var x = 0;
+        while (x < 96) {
+            total = total + (Pixels.Get(shot, x, y) / 65536) % 256;
+            x = x + 1;
+        }
+        y = y + 8;
+    }
+    return total;
+}
+
+func drawDim(canvas: Canvas3D, cam: Camera3D, wall: Mesh3D, mat: Material3D) {
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, wall, Mat4.Translate(0.0, 0.0, -2.0), mat);
+    Canvas3D.End(canvas);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Visual Polish", 96, 64);
+    var cam = Camera3D.New(60.0, 1.5, 0.1, 100.0);
+    Camera3D.LookAt(cam,
+                    new Vec3(0.0, 0.0, 5.0),
+                    new Vec3(0.0, 0.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    var wall = Mesh3D.NewBox(20.0, 20.0, 0.2);
+    var dimMat = Material3D.NewColor(0.08, 0.08, 0.08);
+    Material3D.SetUnlit(dimMat, true);
+
+    // --- E37: auto-exposure raises a dark frame toward middle gray -----------
+    drawDim(canvas, cam, wall, dimMat);
+    var darkSum = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+
+    var aeChain = PostFX3D.New();
+    PostFX3D.AddAutoExposure(aeChain, -4.0, 4.0, 60.0);
+    Canvas3D.SetPostFX(canvas, aeChain);
+    drawDim(canvas, cam, wall, dimMat);
+    var exposedSum = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (exposedSum < darkSum * 2) {
+        Say("FAIL: auto-exposure should at least double the dark frame's brightness");
+        return;
+    }
+
+    // --- E38: identity LUT near-no-op; inverting LUT inverts ------------------
+    var identity = PostFX3D.MakeIdentityLUT();
+    var lutChain = PostFX3D.New();
+    PostFX3D.AddColorLUT(lutChain, identity, 1.0);
+    Canvas3D.SetPostFX(canvas, lutChain);
+    drawDim(canvas, cam, wall, dimMat);
+    var identitySum = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    var lo = darkSum - darkSum / 8 - 64;
+    var hi = darkSum + darkSum / 8 + 64;
+    if (identitySum < lo || identitySum > hi) {
+        Say("FAIL: identity LUT should be a near-no-op");
+        return;
+    }
+
+    var inverted = PostFX3D.MakeIdentityLUT();
+    var iy = 0;
+    while (iy < 16) {
+        var ix = 0;
+        while (ix < 256) {
+            var t = Pixels.Get(inverted, ix, iy);
+            var r = 255 - (t / 16777216) % 256;
+            var g = 255 - (t / 65536) % 256;
+            var b = 255 - (t / 256) % 256;
+            Pixels.Set(inverted, ix, iy, ((r * 256 + g) * 256 + b) * 256 + 255);
+            ix = ix + 1;
+        }
+        iy = iy + 1;
+    }
+    var invChain = PostFX3D.New();
+    PostFX3D.AddColorLUT(invChain, inverted, 1.0);
+    Canvas3D.SetPostFX(canvas, invChain);
+    drawDim(canvas, cam, wall, dimMat);
+    var invertedSum = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (invertedSum < darkSum * 4) {
+        Say("FAIL: an inverting LUT should turn the dark frame bright");
+        return;
+    }
+    Canvas3D.SetPostFX(canvas, null);
+
+    // --- E41: stretch + trails render and add coverage after motion -----------
+    var ps0 = Particles3D.New(64);
+    Particles3D.SetDirection(ps0, 1.0, 0.2, 0.0, 0.1);
+    Particles3D.SetSpeed(ps0, 6.0, 6.0);
+    Particles3D.SetColor(ps0, 16777215, 16777215);
+    Particles3D.SetAlpha(ps0, 1.0, 1.0);
+    Particles3D.SetSize(ps0, 0.4, 0.4);
+    Particles3D.SetLifetime(ps0, 5.0, 5.0);
+    ps0.Additive = true;
+    Particles3D.Burst(ps0, 16);
+    var st0 = 0;
+    while (st0 < 10) {
+        Particles3D.Update(ps0, 0.05);
+        st0 = st0 + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Particles3D.Draw(ps0, canvas, cam);
+    Canvas3D.End(canvas);
+    var baseline = sumAll(Canvas3D.Screenshot(canvas));
+    Canvas3D.Flip(canvas);
+
+    var ps = Particles3D.New(64);
+    Particles3D.SetDirection(ps, 1.0, 0.2, 0.0, 0.1);
+    Particles3D.SetSpeed(ps, 6.0, 6.0);
+    Particles3D.SetColor(ps, 16777215, 16777215);
+    Particles3D.SetAlpha(ps, 1.0, 1.0);
+    Particles3D.SetSize(ps, 0.4, 0.4);
+    Particles3D.SetLifetime(ps, 5.0, 5.0);
+    ps.Additive = true;
+    Particles3D.SetStretch(ps, 2.0);
+    Particles3D.Burst(ps, 16);
+    var st = 0;
+    while (st < 10) {
+        Particles3D.Update(ps, 0.05);
+        st = st + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Particles3D.Draw(ps, canvas, cam);
+    Canvas3D.End(canvas);
+    var stretched = sumAll(Canvas3D.Screenshot(canvas));
+    Canvas3D.Flip(canvas);
+    if (stretched <= baseline) {
+        Say("FAIL: velocity stretching should add coverage over plain billboards");
+        return;
+    }
+
+    var ps2 = Particles3D.New(64);
+    Particles3D.SetDirection(ps2, 1.0, 0.2, 0.0, 0.1);
+    Particles3D.SetSpeed(ps2, 6.0, 6.0);
+    Particles3D.SetColor(ps2, 16777215, 16777215);
+    Particles3D.SetAlpha(ps2, 1.0, 1.0);
+    Particles3D.SetSize(ps2, 0.4, 0.4);
+    Particles3D.SetLifetime(ps2, 5.0, 5.0);
+    ps2.Additive = true;
+    Particles3D.SetTrail(ps2, 0.5, 8);
+    Particles3D.Burst(ps2, 16);
+    st = 0;
+    while (st < 10) {
+        Particles3D.Update(ps2, 0.05);
+        st = st + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Particles3D.Draw(ps2, canvas, cam);
+    Canvas3D.End(canvas);
+    var trailed = sumAll(Canvas3D.Screenshot(canvas));
+    Canvas3D.Flip(canvas);
+    if (trailed <= baseline) {
+        Say("FAIL: ribbon trails should add coverage over plain billboards");
+        return;
+    }
+
+    // --- E39: height fog pools onto low geometry -------------------------------
+    Canvas3D.SetPostFX(canvas, null);
+    drawDim(canvas, cam, wall, dimMat);
+    var noFog = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    Canvas3D.SetHeightFog(canvas, 15.0, 0.2, 0.5, 1.0); // base above the wall: dense fog
+    drawDim(canvas, cam, wall, dimMat);
+    var fogged = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (fogged <= noFog) {
+        Say("FAIL: height fog (default gray) should lift the dim wall toward fog color");
+        return;
+    }
+    Canvas3D.ClearFog(canvas);
+    drawDim(canvas, cam, wall, dimMat);
+    var cleared = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (cleared >= fogged) {
+        Say("FAIL: ClearFog should remove height fog");
+        return;
+    }
+
+    // --- E42: AA text + nine-slice --------------------------------------------
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.End(canvas);
+    Canvas3D.DrawText2DAA(canvas, 4, 20, "HP 87", 16711680, 2.3);
+    var textShot = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var textSum = 0;
+    var ty = 20;
+    while (ty < 40) {
+        var tx = 4;
+        while (tx < 90) {
+            textSum = textSum + (Pixels.Get(textShot, tx, ty) / 16777216) % 256;
+            tx = tx + 1;
+        }
+        ty = ty + 1;
+    }
+    if (textSum <= 0) {
+        Say("FAIL: DrawText2DAA should render visible red text");
+        return;
+    }
+    var m1 = Canvas3D.MeasureText2DAA(canvas, "HELLO", 1.0);
+    var m2 = Canvas3D.MeasureText2DAA(canvas, "HELLO", 2.5);
+    if (m2 <= m1 || m1 <= 0) {
+        Say("FAIL: MeasureText2DAA should be positive and monotonic in scale");
+        return;
+    }
+
+    var panel = Pixels.New(12, 12);
+    Pixels.Fill(panel, 65535); // blue body
+    var px = 0;
+    while (px < 4) {
+        var py = 0;
+        while (py < 4) {
+            Pixels.Set(panel, px, py, 16711935); // green top-left corner block
+            py = py + 1;
+        }
+        px = px + 1;
+    }
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.End(canvas);
+    Canvas3D.DrawImage2DNineSlice(canvas, 10, 10, 60, 40, panel, 4, 4, 4, 4);
+    var nineShot = Canvas3D.ScreenshotFinal(canvas);
+    Canvas3D.Flip(canvas);
+    var corner = Pixels.Get(nineShot, 11, 11);
+    var center = Pixels.Get(nineShot, 40, 30);
+    if ((corner / 65536) % 256 < 128) {
+        Say("FAIL: nine-slice corner should keep the source's green corner");
+        return;
+    }
+    if ((center / 256) % 256 < 128) {
+        Say("FAIL: nine-slice center should stretch the blue body");
+        return;
+    }
+
+    // --- E40: lens flare adds ghost sprites on-screen -------------------------
+    var sunDir = new Vec3(0.0, -0.4, 1.0); // sun sits at -direction: up-forward of the camera
+    var flareSun = Light3D.NewDirectional(sunDir, 1.0, 0.9, 0.7);
+    Canvas3D.SetLight(canvas, 0, flareSun);
+    var flare = LensFlare3D.New(flareSun);
+    LensFlare3D.AddElement(flare, 0.0, 30.0, 16770000, 0.0);
+    LensFlare3D.AddElement(flare, 0.5, 18.0, 8912999, 0.0);
+    LensFlare3D.AddElement(flare, 1.2, 12.0, 4491519, 0.0);
+
+    var flareCam = Camera3D.New(60.0, 1.5, 0.1, 200.0);
+    Camera3D.LookAt(flareCam,
+                    new Vec3(0.0, 0.0, 5.0),
+                    new Vec3(0.0, 2.0, 0.0),
+                    new Vec3(0.0, 1.0, 0.0));
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, flareCam);
+    Canvas3D.End(canvas);
+    var noFlare = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, flareCam);
+    Canvas3D.End(canvas);
+    Canvas3D.DrawLensFlare(canvas, flare);
+    var withFlare = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (withFlare <= noFlare) {
+        Say("FAIL: lens flare ghosts should add visible brightness");
+        return;
+    }
+
+    Say("PASS");
+}

@@ -1558,6 +1558,103 @@ int64_t rt_voice_is_playing(int64_t voice_id) {
     return playing;
 }
 
+/// @brief Set a voice's playback-rate (pitch) multiplier.
+/// @details 1.0 = native rate; the mixer clamps to 0.25–4.0 and resamples
+///          with a fractional cursor, so both pitch and duration scale.
+///          Safe no-op on finished/invalid voices.
+void rt_voice_set_pitch(int64_t voice_id, double pitch) {
+    if (voice_id < 0)
+        return;
+
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_voice_pitch(g_audio_ctx, (vaud_voice_id)voice_id, (float)pitch);
+    audio_state_unlock();
+}
+
+/// @brief Get a voice's playback-rate (pitch) multiplier (1.0 default).
+double rt_voice_get_pitch(int64_t voice_id) {
+    if (voice_id < 0)
+        return 1.0;
+
+    audio_state_lock();
+    double pitch =
+        g_audio_ctx ? (double)vaud_get_voice_pitch(g_audio_ctx, (vaud_voice_id)voice_id) : 1.0;
+    audio_state_unlock();
+    return pitch;
+}
+
+/// @brief Set a direct per-voice lowpass cutoff in Hz (<= 0 disables).
+/// @details Useful for scoped-focus/underwater effects; composes with the
+///          occlusion sweep (the lower cutoff wins).
+void rt_voice_set_lowpass(int64_t voice_id, double cutoff_hz) {
+    if (voice_id < 0)
+        return;
+
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_voice_lowpass(g_audio_ctx, (vaud_voice_id)voice_id, (float)cutoff_hz);
+    audio_state_unlock();
+}
+
+/// @brief Set a voice's occlusion amount (0 = open .. 1 = fully occluded).
+/// @details Maps to a perceptual lowpass sweep plus up to -6 dB attenuation;
+///          the mixer smooths changes (~80 ms) so gameplay-driven line-of-
+///          sight flips never zipper. The caller supplies the amount (e.g.
+///          from its own occlusion raycasts).
+void rt_voice_set_occlusion(int64_t voice_id, double amount) {
+    if (voice_id < 0)
+        return;
+
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_voice_occlusion(g_audio_ctx, (vaud_voice_id)voice_id, (float)amount);
+    audio_state_unlock();
+}
+
+/// @brief Play a sound with volume (0-100), pan (-100..100), and pitch.
+/// @details PlayEx plus a playback-rate multiplier applied atomically at
+///          start so the first rendered chunk is already pitch-shifted.
+int64_t rt_sound_play_ex2(void *sound, int64_t volume, int64_t pan, double pitch) {
+    int64_t voice_id = rt_sound_play_ex(sound, volume, pan);
+    if (voice_id >= 0)
+        rt_voice_set_pitch(voice_id, pitch);
+    return voice_id;
+}
+
+/// @brief Register, replace, or remove a sidechain-style ducking rule
+///        between two mix groups (by name).
+/// @details While anything in @p trigger_group is audible, @p target_group's
+///          gain eases toward (1 - amount) over @p attack_sec and recovers
+///          over @p release_sec. amount <= 0 removes the rule. Group names
+///          are resolved through the same registry as `RegisterGroup`
+///          (registering them on first use).
+void rt_audio_set_group_ducking(rt_string trigger_group,
+                                rt_string target_group,
+                                double amount,
+                                double attack_sec,
+                                double release_sec) {
+    if (!trigger_group || !target_group)
+        return;
+    if (!ensure_audio_init())
+        return;
+
+    int64_t trigger_id = rt_audio_register_group(trigger_group);
+    int64_t target_id = rt_audio_register_group(target_group);
+    if (trigger_id < 0 || target_id < 0)
+        return;
+
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_group_duck(g_audio_ctx,
+                            trigger_id,
+                            target_id,
+                            (float)amount,
+                            (float)attack_sec,
+                            (float)release_sec);
+    audio_state_unlock();
+}
+
 //===----------------------------------------------------------------------===//
 // Music Streaming
 //===----------------------------------------------------------------------===//
@@ -2629,6 +2726,56 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
 int64_t rt_voice_is_playing(int64_t voice_id) {
     (void)voice_id;
     return 0;
+}
+
+/// @brief Audio-disabled stub for `Voice.set_Pitch`. Silent no-op.
+void rt_voice_set_pitch(int64_t voice_id, double pitch) {
+    (void)voice_id;
+    (void)pitch;
+}
+
+/// @brief Audio-disabled stub for `Voice.get_Pitch`.
+/// @return `1.0` (native rate).
+double rt_voice_get_pitch(int64_t voice_id) {
+    (void)voice_id;
+    return 1.0;
+}
+
+/// @brief Audio-disabled stub for `Voice.SetLowpass`. Silent no-op.
+void rt_voice_set_lowpass(int64_t voice_id, double cutoff_hz) {
+    (void)voice_id;
+    (void)cutoff_hz;
+}
+
+/// @brief Audio-disabled stub for `Voice.SetOcclusion`. Silent no-op.
+void rt_voice_set_occlusion(int64_t voice_id, double amount) {
+    (void)voice_id;
+    (void)amount;
+}
+
+/// @brief Audio-disabled stub for `Sound.PlayEx2`. Returns `-1` for a null
+///        sound; otherwise traps so the absence of audio surfaces clearly.
+int64_t rt_sound_play_ex2(void *sound, int64_t volume, int64_t pan, double pitch) {
+    if (!sound)
+        return -1;
+    (void)volume;
+    (void)pan;
+    (void)pitch;
+    rt_audio_unavailable_("Sound.PlayEx2: audio support not compiled in");
+    return -1;
+}
+
+/// @brief Audio-disabled stub for `Audio.SetGroupDucking`. Silent no-op.
+void rt_audio_set_group_ducking(rt_string trigger_group,
+                                rt_string target_group,
+                                double amount,
+                                double attack_sec,
+                                double release_sec) {
+    (void)trigger_group;
+    (void)target_group;
+    (void)amount;
+    (void)attack_sec;
+    (void)release_sec;
 }
 
 /// @brief Audio-disabled stub for `Music.Load`. Returns `NULL` for a

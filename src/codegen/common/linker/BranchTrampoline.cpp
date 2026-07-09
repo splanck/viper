@@ -466,6 +466,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
         TrampolineEntry *chosenExisting = nullptr;
         uint64_t bestExistingDistance = 0;
+        const std::string *chosenKey = nullptr;
         for (auto &[key, trampoline] : trampolines) {
             if (trampoline.targetSymName != oob.targetSymName ||
                 trampoline.targetAddend != oob.targetAddend ||
@@ -476,9 +477,13 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                                       : (trampoline.islandBoundary - sourceOffset);
             if (reachSlack > kBranch26MaxForward || dist > kBranch26MaxForward - reachSlack)
                 continue;
-            if (chosenExisting == nullptr || dist < bestExistingDistance) {
+            // Closest reachable island wins; ties are broken by key so the choice
+            // does not depend on unordered_map iteration order (reproducible builds).
+            if (chosenExisting == nullptr || dist < bestExistingDistance ||
+                (dist == bestExistingDistance && key < *chosenKey)) {
                 chosenExisting = &trampoline;
                 bestExistingDistance = dist;
+                chosenKey = &key;
             }
         }
         if (chosenExisting != nullptr) {
@@ -517,6 +522,20 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     std::map<size_t, std::vector<TrampolineEntry *>> islands;
     for (auto &[key, trampoline] : trampolines)
         islands[trampoline.islandBoundary].push_back(&trampoline);
+
+    // The island map is keyed by boundary (ordered), but the entry vectors were
+    // populated from unordered_map iteration. Sort each island's entries by a
+    // stable key so per-slot offsets — and thus the emitted ADRP/ADD immediates
+    // and patched imm26 fields — are reproducible across runs.
+    for (auto &island : islands) {
+        std::sort(island.second.begin(),
+                  island.second.end(),
+                  [](const TrampolineEntry *a, const TrampolineEntry *b) {
+                      if (a->targetSymName != b->targetSymName)
+                          return a->targetSymName < b->targetSymName;
+                      return a->targetAddend < b->targetAddend;
+                  });
+    }
 
     const std::vector<uint8_t> originalText = textSec.data;
     std::vector<uint8_t> newText;

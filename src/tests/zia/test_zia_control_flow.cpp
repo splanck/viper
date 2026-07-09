@@ -194,6 +194,60 @@ func start() {    var numbers: List[Integer] = [1, 2, 3];
     EXPECT_TRUE(foundMapLoop);
 }
 
+/// @brief Regression: a string-typed for-in loop variable must be
+///        null-initialized before the loop.
+/// @details Each iteration stores the new element with releaseDisplaced=true,
+///          which frees the slot's previous value; on the first iteration that
+///          value is the freshly-allocated (uninitialized) slot. The VM
+///          zero-inits allocas so rt_str_release_maybe(null) was a safe no-op and
+///          this was invisible to interpreter-run tests — but native codegen
+///          leaves stack garbage there, so the release trapped "invalid string
+///          handle". This crashed the IDE's native build on Open Folder
+///          (for dir in Dir.DirsSeq(...)). The fix emits a null store to the loop
+///          variable's string slot before the loop on every backend.
+TEST(ZiaControlFlow, ForInStringLoopVarNullInitialized) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {    var out: Integer = 0;
+    var names: List[String] = ["a", "b"];
+    for (n in names) {
+        out = out + 1;
+    }
+    Viper.Terminal.SayInt(out);
+}
+)";
+    CompilerInput input{.source = source, .path = "forin_str_init.zia"};
+    CompilerOptions opts{.optLevel = OptLevel::O0};
+
+    auto result = compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    // The only string slot in this program is the loop variable `n`; a Store with
+    // a null-pointer value operand is the loop-var zero-init the fix adds. Without
+    // the fix no null store exists (the element store is the actual string, the
+    // integer/list stores are non-null), so this fails if the init is dropped.
+    bool foundNullStore = false;
+    for (const auto &fn : result.module.functions) {
+        if (fn.name != "main")
+            continue;
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.op != il::core::Opcode::Store)
+                    continue;
+                for (const auto &op : instr.operands) {
+                    if (op.kind == il::core::Value::Kind::NullPtr)
+                        foundNullStore = true;
+                }
+            }
+        }
+    }
+    // Failure means the string for-in loop variable slot was not
+    // null-initialized before the loop.
+    EXPECT_TRUE(foundNullStore);
+}
+
 /// @brief Bug #28: Guard statement should work without parentheses.
 /// Swift-style guard syntax should be supported in class methods.
 TEST(ZiaControlFlow, GuardStatementWithoutParens) {

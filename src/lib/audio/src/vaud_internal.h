@@ -121,7 +121,53 @@ typedef struct {
     int32_t id;             ///< Unique voice ID for external reference
     int64_t start_time;     ///< Frame count when voice started (for age-based stealing)
     int64_t group_id;       ///< Logical mix-group id for optional bus processing.
+    float pitch;            ///< Playback-rate multiplier (0.25–4.0; 1.0 = native rate)
+    double frac_pos;        ///< Fractional frame cursor (authoritative when resampling)
+    float lowpass_cutoff;   ///< Direct per-voice lowpass cutoff in Hz (<= 0 = bypass)
+    float occlusion_target; ///< Requested occlusion 0 (open) .. 1 (fully occluded)
+    float occlusion_smooth; ///< Smoothed occlusion actually applied (anti-zipper)
+    float lp_state_l;       ///< One-pole lowpass filter state, left channel
+    float lp_state_r;       ///< One-pole lowpass filter state, right channel
 } vaud_voice;
+
+//===----------------------------------------------------------------------===//
+// Group Ducking
+//===----------------------------------------------------------------------===//
+
+/// @brief Playback-rate (pitch) clamp range for per-voice resampling.
+#define VAUD_PITCH_MIN 0.25f
+#define VAUD_PITCH_MAX 4.0f
+
+/// @brief Reset a voice's DSP state (pitch, fractional cursor, filters) to
+///        pass-through defaults. Called whenever a voice is (re)started so a
+///        recycled pool slot never inherits a previous sound's pitch/filter.
+static inline void vaud_voice_reset_dsp(vaud_voice *voice) {
+    voice->pitch = 1.0f;
+    voice->frac_pos = 0.0;
+    voice->lowpass_cutoff = 0.0f;
+    voice->occlusion_target = 0.0f;
+    voice->occlusion_smooth = 0.0f;
+    voice->lp_state_l = 0.0f;
+    voice->lp_state_r = 0.0f;
+}
+
+/// @brief Maximum simultaneous (trigger, target) ducking rules per context.
+#define VAUD_MAX_DUCK_RULES 8
+
+/// @brief Sidechain-style group ducking rule.
+/// @details While any voice in @c trigger_group is audible, the gain applied
+///          to @c target_group eases toward (1 - amount) at the attack rate;
+///          otherwise it recovers toward 1.0 at the release rate. Rates are
+///          per-second fractions derived from the configured attack/release
+///          times; @c gain is the current envelope value.
+typedef struct {
+    int64_t trigger_group; ///< Group whose activity triggers the duck.
+    int64_t target_group;  ///< Group whose gain is reduced.
+    float amount;          ///< Duck depth 0..1 (gain floor = 1 - amount).
+    float attack_sec;      ///< Seconds to reach the ducked gain.
+    float release_sec;     ///< Seconds to recover to unity.
+    float gain;            ///< Current envelope gain (1.0 = no duck).
+} vaud_duck_rule;
 
 //===----------------------------------------------------------------------===//
 // Sound Structure
@@ -223,6 +269,10 @@ struct vaud_context {
     vaud_voice voices[VAUD_MAX_VOICES]; ///< Voice pool
     int32_t next_voice_id;              ///< Counter for unique voice IDs
     int64_t frame_counter;              ///< Total frames rendered (for timing)
+
+    // Sidechain-style group ducking rules (updated in the mixer render pass).
+    vaud_duck_rule duck_rules[VAUD_MAX_DUCK_RULES]; ///< Active ducking rules.
+    int32_t duck_rule_count;                        ///< Number of active rules.
 
     // Music (single active music stream for simplicity)
     vaud_music_t active_music[VAUD_MAX_MUSIC]; ///< Active music streams

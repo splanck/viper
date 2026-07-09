@@ -406,7 +406,7 @@ class SqlIndex {
     /// Skips the pipe-concatenation; hashes the value's `toString()`
     /// directly.  Used by the hot WHERE = path via
     /// `IndexManager.findIndexForColumn`.
-    expose func lookupSingle(keyVal: SqlValue, tbl: Table) -> List[Integer] {
+    expose func lookupSingle(keyVal: SqlValue, _tbl: Table) -> List[Integer] {
         var results: List[Integer] = [];
         var keyStr = keyVal.toString();
         var hash = hashString(keyStr);

@@ -40,15 +40,9 @@ static float d3d11_halton(uint32_t index, uint32_t base) {
     return r;
 }
 
-/// @brief True when the exported postfx chain contains an effect of @p type_value.
+/// @brief True when the exported postfx chain contains an active effect of @p type_value.
 static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
-    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
-        return 0;
-    for (int32_t i = 0; i < chain->effect_count; i++) {
-        if (chain->effects[i].type == type_value)
-            return 1;
-    }
-    return 0;
+    return vgfx3d_d3d11_postfx_chain_has_active_effect(chain, type_value);
 }
 
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
@@ -61,6 +55,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->frame_serial++;
     ctx->presented_color_valid = 0;
     ctx->shadow_pass_slot = -1;
+    /* Shadow atlas re-clears on its first tile pass each frame. */
+    ctx->shadow_atlas_cleared = 0;
 
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->view, cam->view);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->projection, cam->projection);
@@ -100,12 +96,14 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
-    ctx->fog_near = vgfx3d_d3d11_finite_or(cam->fog_near, 10.0f);
-    if (ctx->fog_near < 0.0f)
-        ctx->fog_near = 0.0f;
-    ctx->fog_far = vgfx3d_d3d11_finite_or(cam->fog_far, 50.0f);
-    if (ctx->fog_far <= ctx->fog_near)
-        ctx->fog_far = ctx->fog_near + 1.0f;
+    ctx->height_fog[0] = vgfx3d_d3d11_finite_or(cam->height_fog_base, 0.0f);
+    ctx->height_fog[1] = vgfx3d_d3d11_finite_or(cam->height_fog_falloff, 0.1f);
+    ctx->height_fog[2] = cam->height_fog_enabled
+                             ? vgfx3d_d3d11_finite_or(
+                                   cam->height_fog_density * cam->height_fog_blend, 0.0f)
+                             : 0.0f;
+    ctx->height_fog[3] = 0.0f;
+    vgfx3d_d3d11_sanitize_fog_range(cam->fog_near, cam->fog_far, &ctx->fog_near, &ctx->fog_far);
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
@@ -892,7 +890,8 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
      * entry uses bloom; passes composite mip 0 via slot t4 while the SRV is non-NULL. */
     ctx->postfx_current_bloom_srv = NULL;
     for (int32_t i = 0; i < chain->effect_count; i++) {
-        if (chain->effects[i].snapshot.bloom_enabled) {
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM &&
+            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i])) {
             ctx->postfx_current_bloom_srv =
                 d3d11_encode_bloom_chain(ctx,
                                          ctx->scene_width,
@@ -1014,7 +1013,7 @@ static int d3d11_readback_rgba(
         ctx->gpu_postfx_chain_valid,
         ctx->gpu_postfx_chain.enabled,
         ctx->gpu_postfx_chain.effect_count,
-        vgfx3d_d3d11_postfx_chain_is_usable(&ctx->gpu_postfx_chain),
+        vgfx3d_d3d11_postfx_chain_has_active_effects(&ctx->gpu_postfx_chain),
         d3d11_has_scene_targets(ctx),
         ctx->current_target_kind);
     if (readback_kind == VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT) {
@@ -1057,7 +1056,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
         ctx->scene_composited_to_swapchain = 0;
         return;
     }
-    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(chain) && ctx->gpu_postfx_enabled &&
+    use_postfx = (vgfx3d_d3d11_postfx_chain_has_active_effects(chain) && ctx->gpu_postfx_enabled &&
                   d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
@@ -1102,7 +1101,7 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
                                                     d3d11_has_scene_targets(ctx),
                                                     ctx->scene_composited_to_swapchain))
         return;
-    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(postfx) && ctx->gpu_postfx_enabled &&
+    use_postfx = (vgfx3d_d3d11_postfx_chain_has_active_effects(postfx) && ctx->gpu_postfx_enabled &&
                   d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
@@ -1247,6 +1246,44 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     if (!light_vp || width <= 0 || height <= 0 || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_pass_slot = -1;
+    ctx->shadow_slot_complete[slot] = 0;
+    if (slot >= VGFX3D_CSM_SLOTS) {
+        /* Atlas tile pass: render into the shared 4x2 depth atlas with a tile
+         * viewport; the atlas clears once per frame on its first tile pass. */
+        int32_t tile = slot - VGFX3D_CSM_SLOTS;
+        hr = d3d11_ensure_shadow_atlas(ctx, width, height);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("CreateShadowAtlas", hr);
+            d3d11_recompute_shadow_count(ctx);
+            return;
+        }
+        ctx->shadow_pass_slot = slot;
+        vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->shadow_vp[slot], light_vp);
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_unbind_shadow_resources(ctx);
+        ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_atlas_dsv);
+        if (!ctx->shadow_atlas_cleared) {
+            ID3D11DeviceContext_ClearDepthStencilView(
+                ctx->ctx, ctx->shadow_atlas_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+            ctx->shadow_atlas_cleared = 1;
+        }
+        memset(&viewport, 0, sizeof(viewport));
+        viewport.TopLeftX = (FLOAT)((tile % 4) * width);
+        viewport.TopLeftY = (FLOAT)((tile / 4) * height);
+        viewport.Width = (FLOAT)width;
+        viewport.Height = (FLOAT)height;
+        viewport.MinDepth = 0.0f;
+        viewport.MaxDepth = 1.0f;
+        ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
+        ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+        ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state, 0);
+        ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
+        ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx,
+                                                   D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_shadow, NULL, 0);
+        ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
+        return;
+    }
     hr = d3d11_ensure_shadow_targets(ctx, slot, width, height);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateShadowTargets", hr);
@@ -1400,8 +1437,9 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         d3d11_leave_shadow_pass(ctx);
         return;
     }
+    ctx->shadow_slot_complete[slot] = 1;
     d3d11_recompute_shadow_count(ctx);
-    ctx->shadow_bias = vgfx3d_d3d11_finite_or(bias, 0.0f);
+    ctx->shadow_bias = vgfx3d_d3d11_sanitize_shadow_bias(bias);
     ctx->shadow_pass_slot = -1;
     d3d11_select_current_targets(ctx);
 }

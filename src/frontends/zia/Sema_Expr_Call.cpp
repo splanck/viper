@@ -702,6 +702,71 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 ///          - Collection method calls (List, Map, Set, String methods)
 ///          - Runtime class method calls
 ///          - Regular function and method calls
+std::optional<TypeRef> Sema::analyzeListCombinatorCall(CallExpr *expr,
+                                                       const std::string &m,
+                                                       TypeRef baseType) {
+    TypeRef elemType =
+        baseType && baseType->elementType() ? baseType->elementType() : types::unknown();
+    auto analyzeAll = [&]() {
+        for (auto &arg : expr->args)
+            analyzeExpr(arg.value.get());
+    };
+
+    if (m == "sum") {
+        analyzeAll();
+        if (!expr->args.empty())
+            error(expr->loc, "sum() takes no arguments");
+        if (elemType->kind != TypeKindSem::Integer && elemType->kind != TypeKindSem::Number &&
+            elemType->kind != TypeKindSem::Unknown)
+            error(expr->loc, "sum() requires a List of Integer or Number, got List of " +
+                                 elemType->toDisplayString());
+        return elemType;
+    }
+
+    if (m == "reduce") {
+        if (expr->args.size() != 2) {
+            analyzeAll();
+            error(expr->loc, "reduce() expects (initial, (accumulator, item) => accumulator)");
+            return TypeRef(types::unknown());
+        }
+        TypeRef accType = analyzeExpr(expr->args[0].value.get());
+        if (!accType)
+            accType = types::unknown();
+        lambdaTypeHint_ = types::function({accType, elemType}, types::unknown());
+        TypeRef fnType = analyzeExpr(expr->args[1].value.get());
+        lambdaTypeHint_ = nullptr;
+        if (fnType && fnType->kind != TypeKindSem::Function && fnType->kind != TypeKindSem::Unknown)
+            error(expr->args[1].value->loc, "reduce() second argument must be a function");
+        return accType;
+    }
+
+    // Unary-closure combinators: map / filter / firstWhere / any / all
+    if (expr->args.size() != 1) {
+        analyzeAll();
+        error(expr->loc, m + "() expects a single function argument");
+        return TypeRef(types::unknown());
+    }
+    lambdaTypeHint_ = types::function({elemType}, types::unknown());
+    TypeRef fnType = analyzeExpr(expr->args[0].value.get());
+    lambdaTypeHint_ = nullptr;
+    if (fnType && fnType->kind != TypeKindSem::Function && fnType->kind != TypeKindSem::Unknown) {
+        error(expr->args[0].value->loc, m + "() argument must be a function");
+        return TypeRef(types::unknown());
+    }
+    TypeRef fnRet = (fnType && fnType->kind == TypeKindSem::Function) ? fnType->returnType()
+                                                                      : types::unknown();
+    if (m == "map")
+        return TypeRef(types::list(fnRet));
+    if (fnRet && fnRet->kind != TypeKindSem::Boolean && fnRet->kind != TypeKindSem::Unknown)
+        error(expr->args[0].value->loc,
+              m + "() predicate must return Boolean, got " + fnRet->toDisplayString());
+    if (m == "filter")
+        return baseType;
+    if (m == "firstWhere")
+        return TypeRef(types::optional(elemType));
+    return TypeRef(types::boolean()); // any / all
+}
+
 TypeRef Sema::analyzeCall(CallExpr *expr) {
     auto analyzeArgTypes = [&]() {
         std::vector<TypeRef> argTypes;
@@ -1367,6 +1432,22 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
     // This allows list.count() as an alternative to list.count
     if (expr->callee->kind == ExprKind::Field) {
         auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
+
+        // Functional combinators are target-typed: their closure argument must be
+        // analyzed with an expected function type, so handle them before the eager
+        // argument analysis below would reject an untyped lambda.
+        {
+            const std::string &f = fieldExpr->field;
+            if (f == "map" || f == "filter" || f == "reduce" || f == "firstWhere" || f == "any" ||
+                f == "all" || f == "sum") {
+                TypeRef combinatorBase = analyzeExpr(fieldExpr->base.get());
+                if (combinatorBase && combinatorBase->kind == TypeKindSem::List) {
+                    if (auto result = analyzeListCombinatorCall(expr, f, combinatorBase))
+                        return *result;
+                }
+            }
+        }
+
         analyzeArgTypes();
 
         if (fieldExpr->base->kind == ExprKind::SuperExpr && currentSelfType_ &&

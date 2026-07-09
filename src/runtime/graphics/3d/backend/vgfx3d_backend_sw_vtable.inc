@@ -140,6 +140,11 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    ctx->height_fog_enabled = cam->height_fog_enabled;
+    ctx->height_fog_base = cam->height_fog_base;
+    ctx->height_fog_falloff = cam->height_fog_falloff;
+    ctx->height_fog_density = cam->height_fog_density;
+    ctx->height_fog_blend = cam->height_fog_blend;
     ctx->ibl_enabled = cam->ibl_enabled;
     ctx->ibl_intensity = cam->ibl_intensity;
     memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
@@ -1303,6 +1308,33 @@ static void sw_submit_draw(void *ctx_ptr,
         return;
     sw_submit_draw_serial(
         ctx_ptr, win, cmd, lights, light_count, ambient, wireframe, backface_cull);
+}
+
+/// @brief Backend `submit_draw_instanced` op — rasterize one shared mesh N times.
+/// @details Iterates instances in the backend inner loop with a stack-local
+///   command whose model matrix is swapped per instance. Removes the deferred
+///   per-instance queue overhead (and its fallback cap) for opaque instanced
+///   batches on the software path; material/texture views and the shared
+///   geometry stay identical across instances.
+static void sw_submit_draw_instanced(void *ctx_ptr,
+                                     vgfx_window_t win,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     const float *instance_matrices,
+                                     int32_t instance_count,
+                                     const vgfx3d_light_params_t *lights,
+                                     int32_t light_count,
+                                     const float *ambient,
+                                     int8_t wireframe,
+                                     int8_t backface_cull) {
+    if (!cmd || !instance_matrices || instance_count <= 0)
+        return;
+    vgfx3d_draw_cmd_t inst = *cmd;
+    for (int32_t i = 0; i < instance_count; i++) {
+        memcpy(inst.model_matrix,
+               &instance_matrices[(size_t)i * 16u],
+               sizeof(inst.model_matrix));
+        sw_submit_draw(ctx_ptr, win, &inst, lights, light_count, ambient, wireframe, backface_cull);
+    }
 }
 
 /// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).

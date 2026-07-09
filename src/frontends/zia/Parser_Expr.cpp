@@ -150,6 +150,84 @@ static ExprPtr clonePureExpr(Expr *expr) {
     }
 }
 
+namespace {
+
+/// @brief Precedence descriptor for a uniform left-associative binary operator.
+struct BinOpDesc {
+    BinaryOp op;
+    int prec; ///< Higher binds tighter. Comparison ops share level kComparisonPrec.
+};
+
+constexpr int kComparisonPrec = 8;
+constexpr int kMinBinaryPrec = 2; ///< Lowest uniform level (logical OR).
+
+/// @brief Classify a token as a uniform binary operator.
+/// @details Covers the operator levels between logical-OR (loosest) and
+/// multiplicative (tightest). The looser special forms — `??`, ranges, ternary,
+/// and assignment — are handled by their own parse routines, not here. This is
+/// the single source of truth for binary precedence, shared by the normal
+/// descent (parseCoalesce) and match-arm continuation (parseBinaryFrom).
+bool binaryOpDesc(TokenKind kind, BinOpDesc &out) {
+    switch (kind) {
+        case TokenKind::Star: out = {BinaryOp::Mul, 11}; return true;
+        case TokenKind::Slash: out = {BinaryOp::Div, 11}; return true;
+        case TokenKind::Percent: out = {BinaryOp::Mod, 11}; return true;
+        case TokenKind::Plus: out = {BinaryOp::Add, 10}; return true;
+        case TokenKind::Minus: out = {BinaryOp::Sub, 10}; return true;
+        case TokenKind::ShiftLeft: out = {BinaryOp::Shl, 9}; return true;
+        case TokenKind::ShiftRight: out = {BinaryOp::Shr, 9}; return true;
+        case TokenKind::Less: out = {BinaryOp::Lt, kComparisonPrec}; return true;
+        case TokenKind::LessEqual: out = {BinaryOp::Le, kComparisonPrec}; return true;
+        case TokenKind::Greater: out = {BinaryOp::Gt, kComparisonPrec}; return true;
+        case TokenKind::GreaterEqual: out = {BinaryOp::Ge, kComparisonPrec}; return true;
+        case TokenKind::EqualEqual: out = {BinaryOp::Eq, 7}; return true;
+        case TokenKind::NotEqual: out = {BinaryOp::Ne, 7}; return true;
+        case TokenKind::Ampersand: out = {BinaryOp::BitAnd, 6}; return true;
+        case TokenKind::Caret: out = {BinaryOp::BitXor, 5}; return true;
+        case TokenKind::Pipe: out = {BinaryOp::BitOr, 4}; return true;
+        case TokenKind::AmpAmp:
+        case TokenKind::KwAnd: out = {BinaryOp::And, 3}; return true;
+        case TokenKind::PipePipe:
+        case TokenKind::KwOr: out = {BinaryOp::Or, kMinBinaryPrec}; return true;
+        default: return false;
+    }
+}
+
+} // namespace
+
+ExprPtr Parser::parseBinaryRhs(ExprPtr left, int minPrec) {
+    if (!left)
+        return nullptr;
+    for (;;) {
+        BinOpDesc desc;
+        if (!binaryOpDesc(peek().kind, desc) || desc.prec < minPrec)
+            break;
+        Token opTok = advance();
+        ExprPtr right = parseUnary();
+        if (!right)
+            return nullptr;
+        // Precedence climb: fold any tighter-binding operators into the right
+        // operand before combining with this one (all uniform ops are left-assoc).
+        BinOpDesc nextDesc;
+        while (binaryOpDesc(peek().kind, nextDesc) && nextDesc.prec > desc.prec) {
+            right = parseBinaryRhs(std::move(right), desc.prec + 1);
+            if (!right)
+                return nullptr;
+        }
+        // Relational operators do not chain: `a < b < c` is rejected.
+        if (desc.prec == kComparisonPrec) {
+            BinOpDesc after;
+            if (binaryOpDesc(peek().kind, after) && after.prec == kComparisonPrec) {
+                errorAt(peek().loc,
+                        "chained relational comparisons require explicit boolean operators");
+                return nullptr;
+            }
+        }
+        left = std::make_unique<BinaryExpr>(opTok.loc, desc.op, std::move(left), std::move(right));
+    }
+    return left;
+}
+
 ExprPtr Parser::parseAssignment() {
     ExprPtr expr = parseTernary();
     if (!expr)
@@ -236,8 +314,13 @@ ExprPtr Parser::parseTernary() {
         if (!thenExpr)
             return nullptr;
 
-        if (!expect(TokenKind::Colon, ":"))
+        if (!check(TokenKind::Colon)) {
+            errorAt(peek().loc,
+                    "expected ':' to complete ternary expression; if you meant the try "
+                    "operator, parenthesize as '(expr?)'");
             return nullptr;
+        }
+        advance();
 
         ExprPtr elseExpr = parseExpressionAllowingStructLiterals();
         if (!elseExpr)
@@ -274,10 +357,16 @@ ExprPtr Parser::parseRange() {
     return expr;
 }
 
-/// @brief Parse a null-coalescing expression (a ?? b).
+/// @brief Parse a null-coalescing expression (a ?? b) and everything tighter.
+/// @details The uniform binary operators (logical-OR down to multiplicative) are
+/// handled by the shared precedence-climbing routine parseBinaryRhs(); `??`
+/// (right-associative) is layered on top here.
 /// @return The parsed expression, potentially wrapping a CoalesceExpr.
 ExprPtr Parser::parseCoalesce() {
-    ExprPtr expr = parseLogicalOr();
+    ExprPtr left = parseUnary();
+    if (!left)
+        return nullptr;
+    ExprPtr expr = parseBinaryRhs(std::move(left), kMinBinaryPrec);
     if (!expr)
         return nullptr;
 
@@ -289,237 +378,6 @@ ExprPtr Parser::parseCoalesce() {
             return nullptr;
 
         expr = std::make_unique<CoalesceExpr>(loc, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseLogicalOr() {
-    ExprPtr expr = parseLogicalAnd();
-    if (!expr)
-        return nullptr;
-
-    Token opTok;
-    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseLogicalAnd();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseLogicalAnd() {
-    ExprPtr expr = parseBitwiseOr();
-    if (!expr)
-        return nullptr;
-
-    Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseOr();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseBitwiseOr() {
-    ExprPtr expr = parseBitwiseXor();
-    if (!expr)
-        return nullptr;
-
-    Token opTok;
-    while (match(TokenKind::Pipe, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseXor();
-        if (!right)
-            return nullptr;
-
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseBitwiseXor() {
-    ExprPtr expr = parseBitwiseAnd();
-    if (!expr)
-        return nullptr;
-
-    Token opTok;
-    while (match(TokenKind::Caret, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseAnd();
-        if (!right)
-            return nullptr;
-
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseBitwiseAnd() {
-    ExprPtr expr = parseEquality();
-    if (!expr)
-        return nullptr;
-
-    Token opTok;
-    while (match(TokenKind::Ampersand, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseEquality();
-        if (!right)
-            return nullptr;
-
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseEquality() {
-    ExprPtr expr = parseComparison();
-    if (!expr)
-        return nullptr;
-
-    while (check(TokenKind::EqualEqual) || check(TokenKind::NotEqual)) {
-        Token opTok = advance();
-        BinaryOp op = opTok.kind == TokenKind::EqualEqual ? BinaryOp::Eq : BinaryOp::Ne;
-        SourceLoc loc = opTok.loc;
-
-        ExprPtr right = parseComparison();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseShift() {
-    ExprPtr expr = parseAdditive();
-    if (!expr)
-        return nullptr;
-
-    while (check(TokenKind::ShiftLeft) || check(TokenKind::ShiftRight)) {
-        Token opTok = advance();
-        BinaryOp op = opTok.kind == TokenKind::ShiftLeft ? BinaryOp::Shl : BinaryOp::Shr;
-        SourceLoc loc = opTok.loc;
-
-        ExprPtr right = parseAdditive();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseComparison() {
-    ExprPtr expr = parseShift();
-    if (!expr)
-        return nullptr;
-
-    bool sawRelational = false;
-    while (check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) ||
-           check(TokenKind::GreaterEqual)) {
-        if (sawRelational) {
-            error("chained relational comparisons require explicit boolean operators");
-            return nullptr;
-        }
-        sawRelational = true;
-        Token opTok = advance();
-        BinaryOp op;
-        switch (opTok.kind) {
-            case TokenKind::Less:
-                op = BinaryOp::Lt;
-                break;
-            case TokenKind::LessEqual:
-                op = BinaryOp::Le;
-                break;
-            case TokenKind::Greater:
-                op = BinaryOp::Gt;
-                break;
-            case TokenKind::GreaterEqual:
-                op = BinaryOp::Ge;
-                break;
-            default:
-                error("expected comparison operator");
-                return nullptr;
-        }
-        SourceLoc loc = opTok.loc;
-
-        ExprPtr right = parseShift();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseAdditive() {
-    ExprPtr expr = parseMultiplicative();
-    if (!expr)
-        return nullptr;
-
-    while (check(TokenKind::Plus) || check(TokenKind::Minus)) {
-        Token opTok = advance();
-        BinaryOp op = opTok.kind == TokenKind::Plus ? BinaryOp::Add : BinaryOp::Sub;
-        SourceLoc loc = opTok.loc;
-
-        ExprPtr right = parseMultiplicative();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-
-    return expr;
-}
-
-ExprPtr Parser::parseMultiplicative() {
-    ExprPtr expr = parseUnary();
-    if (!expr)
-        return nullptr;
-
-    while (check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent)) {
-        Token opTok = advance();
-        BinaryOp op;
-        switch (opTok.kind) {
-            case TokenKind::Star:
-                op = BinaryOp::Mul;
-                break;
-            case TokenKind::Slash:
-                op = BinaryOp::Div;
-                break;
-            case TokenKind::Percent:
-                op = BinaryOp::Mod;
-                break;
-            default:
-                error("expected multiplicative operator");
-                return nullptr;
-        }
-        SourceLoc loc = opTok.loc;
-
-        ExprPtr right = parseUnary();
-        if (!right)
-            return nullptr;
-
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
 
     return expr;
@@ -614,159 +472,14 @@ ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr) {
 /// @param expr The left-hand expression to extend with binary operators.
 /// @return The extended expression.
 ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
-    // Parse multiplicative ops
-    while (true) {
-        Token opTok;
-        if (match(TokenKind::Star, &opTok)) {
-            SourceLoc loc = opTok.loc;
-            ExprPtr right = parseUnary();
-            if (!right)
-                return nullptr;
-            expr =
-                std::make_unique<BinaryExpr>(loc, BinaryOp::Mul, std::move(expr), std::move(right));
-        } else if (match(TokenKind::Slash, &opTok)) {
-            SourceLoc loc = opTok.loc;
-            ExprPtr right = parseUnary();
-            if (!right)
-                return nullptr;
-            expr =
-                std::make_unique<BinaryExpr>(loc, BinaryOp::Div, std::move(expr), std::move(right));
-        } else if (match(TokenKind::Percent, &opTok)) {
-            SourceLoc loc = opTok.loc;
-            ExprPtr right = parseUnary();
-            if (!right)
-                return nullptr;
-            expr =
-                std::make_unique<BinaryExpr>(loc, BinaryOp::Mod, std::move(expr), std::move(right));
-        } else {
-            break;
-        }
-    }
-    // Parse additive ops
-    while (true) {
-        Token opTok;
-        if (match(TokenKind::Plus, &opTok)) {
-            SourceLoc loc = opTok.loc;
-            ExprPtr right = parseMultiplicative();
-            if (!right)
-                return nullptr;
-            expr =
-                std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(expr), std::move(right));
-        } else if (match(TokenKind::Minus, &opTok)) {
-            SourceLoc loc = opTok.loc;
-            ExprPtr right = parseMultiplicative();
-            if (!right)
-                return nullptr;
-            expr =
-                std::make_unique<BinaryExpr>(loc, BinaryOp::Sub, std::move(expr), std::move(right));
-        } else {
-            break;
-        }
-    }
-    // Parse shift ops
-    while (true) {
-        BinaryOp op;
-        Token opTok;
-        if (match(TokenKind::ShiftLeft, &opTok))
-            op = BinaryOp::Shl;
-        else if (match(TokenKind::ShiftRight, &opTok))
-            op = BinaryOp::Shr;
-        else
-            break;
+    // Fold the uniform binary-operator ladder (multiplicative..logical-or) with
+    // the shared precedence-climbing routine, then handle the looser special
+    // forms (`??`, ranges, ternary) and reject assignment in this context.
+    expr = parseBinaryRhs(std::move(expr), kMinBinaryPrec);
+    if (!expr)
+        return nullptr;
 
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseAdditive();
-        if (!right)
-            return nullptr;
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-    // Parse comparison ops
-    bool sawRelational = false;
-    while (true) {
-        BinaryOp op;
-        Token opTok;
-        if (match(TokenKind::Less, &opTok))
-            op = BinaryOp::Lt;
-        else if (match(TokenKind::LessEqual, &opTok))
-            op = BinaryOp::Le;
-        else if (match(TokenKind::Greater, &opTok))
-            op = BinaryOp::Gt;
-        else if (match(TokenKind::GreaterEqual, &opTok))
-            op = BinaryOp::Ge;
-        else
-            break;
-
-        if (sawRelational) {
-            errorAt(opTok.loc, "chained relational comparisons require explicit boolean operators");
-            return nullptr;
-        }
-        sawRelational = true;
-
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseShift();
-        if (!right)
-            return nullptr;
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
-    // Parse equality ops
-    while (true) {
-        BinaryOp op;
-        Token opTok;
-        if (match(TokenKind::EqualEqual, &opTok))
-            op = BinaryOp::Eq;
-        else if (match(TokenKind::NotEqual, &opTok))
-            op = BinaryOp::Ne;
-        else
-            break;
-
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseComparison();
-        if (!right)
-            return nullptr;
-        expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
-    }
     Token opTok;
-    // Parse bitwise operators
-    while (match(TokenKind::Ampersand, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseEquality();
-        if (!right)
-            return nullptr;
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
-    }
-    while (match(TokenKind::Caret, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseAnd();
-        if (!right)
-            return nullptr;
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
-    }
-    while (match(TokenKind::Pipe, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseXor();
-        if (!right)
-            return nullptr;
-        expr =
-            std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
-    }
-    // Parse logical and
-    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseBitwiseOr();
-        if (!right)
-            return nullptr;
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
-    }
-    // Parse logical or
-    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok)) {
-        SourceLoc loc = opTok.loc;
-        ExprPtr right = parseLogicalAnd();
-        if (!right)
-            return nullptr;
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::Or, std::move(expr), std::move(right));
-    }
     while (match(TokenKind::QuestionQuestion, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseCoalesce();
@@ -792,8 +505,13 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
         ExprPtr thenExpr = parseExpressionAllowingStructLiterals();
         if (!thenExpr)
             return nullptr;
-        if (!expect(TokenKind::Colon, ":"))
+        if (!check(TokenKind::Colon)) {
+            errorAt(peek().loc,
+                    "expected ':' to complete ternary expression; if you meant the try "
+                    "operator, parenthesize as '(expr?)'");
             return nullptr;
+        }
+        advance();
         ExprPtr elseExpr = parseExpressionAllowingStructLiterals();
         if (!elseExpr)
             return nullptr;

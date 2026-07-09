@@ -389,6 +389,20 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             }
                             executedAll = allOk.load(std::memory_order_relaxed);
                             passChanged = anyChanged.load(std::memory_order_relaxed);
+                            // Workers invalidated only their own throwaway
+                            // AnalysisManagers; the persistent one still holds
+                            // pre-pass function analyses (dominator trees, CFG
+                            // info) whose BasicBlock pointers may now dangle
+                            // into reallocated block vectors. The per-function
+                            // preservation summaries died with the workers, so
+                            // when the pass mutated the module conservatively
+                            // drop every cached function analysis. (GVN crashed
+                            // intermittently on a stale DomTree without this.)
+                            if (executedAll && moduleStateFingerprint(module) != beforeState) {
+                                const PreservedAnalyses nothingPreserved{};
+                                for (auto &fn : module.functions)
+                                    analysis.invalidateAfterFunctionPass(nothingPreserved, fn);
+                            }
                         } else {
                             for (auto &fn : module.functions) {
                                 bool functionChanged = false;

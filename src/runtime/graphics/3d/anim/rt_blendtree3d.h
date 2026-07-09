@@ -33,6 +33,12 @@ int64_t rt_blend_tree3d_get_sample_count(void *tree);
 /// @brief Internal helper: borrow the underlying AnimBlend3D handle.
 void *rt_blend_tree3d_get_blend(void *tree);
 
+/// @brief 2D weighting mode: 0 = freeform-directional (default), 1 = legacy IDW.
+void rt_blend_tree3d_set_blend_mode(void *tree, int64_t mode);
+
+/// @brief Current 2D weighting mode.
+int64_t rt_blend_tree3d_get_blend_mode(void *tree);
+
 #ifdef __cplusplus
 }
 #endif

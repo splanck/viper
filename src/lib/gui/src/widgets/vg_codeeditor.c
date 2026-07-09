@@ -51,4 +51,5 @@
 #include "vg_codeeditor_paint.inc"
 #include "vg_codeeditor_input.inc"
 #include "vg_codeeditor_api.inc"
+#include "vg_codeeditor_buffer.inc"
 // clang-format on

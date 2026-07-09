@@ -1,0 +1,52 @@
+module scm_diff_probe;
+
+// ============================================================================
+// MODULE: scm_diff_probe
+// PURPOSE: Verify plan 16 — the git-diff hunk parser classifies added,
+//          modified, and deleted line ranges from unified=0 diff headers.
+// ============================================================================
+
+bind "../scm/scm_diff";
+
+bind Terminal = Viper.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    // Added: two new lines at 3-4 (old count 0).
+    var added = scm_diff.ParseHunks("@@ -2,0 +3,2 @@\n+new1\n+new2\n");
+    if added.count() != 1 {
+        fail("added hunk count");
+        return;
+    }
+    var a = added.get(0) as scm_diff.DiffHunk;
+    if a.startLine != 3 or a.endLine != 4 or a.kind != scm_diff.KIND_ADDED {
+        fail("added range/kind");
+        return;
+    }
+
+    // Modified: single line 5 (both counts default to 1).
+    var m = scm_diff.ParseHunks("@@ -5 +5 @@\n-old\n+new\n").get(0) as scm_diff.DiffHunk;
+    if m.startLine != 5 or m.endLine != 5 or m.kind != scm_diff.KIND_MODIFIED {
+        fail("modified range/kind");
+        return;
+    }
+
+    // Deleted: new count 0 -> deletion marker at the boundary line.
+    var d = scm_diff.ParseHunks("@@ -10,2 +9,0 @@\n-a\n-b\n").get(0) as scm_diff.DiffHunk;
+    if d.kind != scm_diff.KIND_DELETED {
+        fail("deleted kind");
+        return;
+    }
+
+    // Multiple hunks in one diff.
+    var multi = scm_diff.ParseHunks("@@ -1 +1 @@\n@@ -8,0 +9,3 @@\n");
+    if multi.count() != 2 {
+        fail("multi-hunk count");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

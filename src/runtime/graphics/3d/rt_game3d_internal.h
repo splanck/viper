@@ -131,7 +131,19 @@ typedef struct rt_game3d_input {
     uint8_t mouse_released[VIPER_MOUSE_BUTTON_MAX];
     int64_t mouse_dx;
     int64_t mouse_dy;
+    /* Sub-pixel mouse deltas (relative mouse mode); mirror mouse_dx/dy. */
+    double mouse_fdx;
+    double mouse_fdy;
     double wheel_y;
+    /* Gamepad merge: index bound via Input3D.BindPad (-1 = none). Stick axes
+     * are snapshotted per update so Move/LookAxis observe a coherent frame. */
+    int64_t bound_pad;
+    double pad_look_sensitivity;
+    double pad_lx;
+    double pad_ly;
+    double pad_rx;
+    double pad_ry;
+    int8_t pad_connected;
 } rt_game3d_input;
 
 /// @brief Entity3D payload: scene node plus optional mesh/material/body/animator,
@@ -820,6 +832,8 @@ void game3d_camera_controller_clear_world_ref_if(void *controller, void *world);
 int game3d_camera_controller_is_valid(void *controller);
 int game3d_entity_world_position_components(rt_game3d_entity *entity, double out_pos[3]);
 int64_t game3d_input_mouse_dx(const rt_game3d_input *input);
+double game3d_input_mouse_fdx(const rt_game3d_input *input);
+double game3d_input_mouse_fdy(const rt_game3d_input *input);
 int64_t game3d_input_mouse_dy(const rt_game3d_input *input);
 void game3d_input_move_axis_components(rt_game3d_input *input,
                                        double *out_x,

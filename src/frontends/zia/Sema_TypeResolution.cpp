@@ -750,6 +750,32 @@ void Sema::collectExprCaptures(CaptureContext &ctx, const Expr *e) {
             break;
         case ExprKind::Binary: {
             auto *bin = static_cast<const BinaryExpr *>(e);
+            // A lambda captures free variables by value, so assigning to a bare
+            // captured name mutates a private copy and is almost always a bug.
+            // (Mutating a captured object's field/index is fine — reference
+            // semantics — and is not a bare-identifier target, so it is allowed.)
+            if (bin->op == BinaryOp::Assign && bin->left &&
+                bin->left->kind == ExprKind::Ident) {
+                const std::string &tgt =
+                    static_cast<const IdentExpr *>(bin->left.get())->name;
+                bool isLocal = false;
+                for (auto it = ctx.localScopes.rbegin(); it != ctx.localScopes.rend(); ++it) {
+                    if (it->find(tgt) != it->end()) {
+                        isLocal = true;
+                        break;
+                    }
+                }
+                if (!isLocal) {
+                    Symbol *sym = lookupSymbol(tgt);
+                    if (sym && (sym->kind == Symbol::Kind::Variable ||
+                                sym->kind == Symbol::Kind::Parameter)) {
+                        error(bin->loc,
+                              "Cannot assign to captured variable '" + tgt +
+                                  "'; lambda captures are by value. Return the new value, or use "
+                                  "a class field for shared mutable state");
+                    }
+                }
+            }
             collectExprCaptures(ctx, bin->left.get());
             collectExprCaptures(ctx, bin->right.get());
             break;

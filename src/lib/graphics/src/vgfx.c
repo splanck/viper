@@ -367,6 +367,15 @@ void vgfx_internal_set_mouse_position(struct vgfx_window *win, int32_t x, int32_
     vgfx_internal_event_unlock(win);
 }
 
+void vgfx_internal_add_relative_delta(struct vgfx_window *win, double dx, double dy) {
+    if (!win)
+        return;
+    vgfx_internal_event_lock(win);
+    win->relative_dx_accum += dx;
+    win->relative_dy_accum += dy;
+    vgfx_internal_event_unlock(win);
+}
+
 void vgfx_internal_set_close_requested(struct vgfx_window *win, int32_t requested) {
     if (!win)
         return;
@@ -920,6 +929,11 @@ void vgfx_focus(vgfx_window_t window) {
         vgfx_platform_focus(window);
 }
 
+void vgfx_request_foreground(vgfx_window_t window) {
+    if (window)
+        vgfx_platform_request_foreground(window);
+}
+
 int32_t vgfx_is_focused(vgfx_window_t window) {
     if (!window)
         return 0;
@@ -970,7 +984,22 @@ vgfx_window_params_t vgfx_window_params_default(void) {
     params.title = VGFX_DEFAULT_TITLE;
     params.fps = VGFX_DEFAULT_FPS;
     params.resizable = 0;
+    params.fullscreen = 0;
     return params;
+}
+
+void vgfx_get_display_size(int32_t *out_w, int32_t *out_h) {
+    extern int vgfx_platform_get_display_logical_size(int32_t *w, int32_t *h);
+    int32_t w = 0;
+    int32_t h = 0;
+    if (!vgfx_platform_get_display_logical_size(&w, &h) || w <= 0 || h <= 0) {
+        w = VGFX_DEFAULT_WIDTH;
+        h = VGFX_DEFAULT_HEIGHT;
+    }
+    if (out_w)
+        *out_w = w;
+    if (out_h)
+        *out_h = h;
 }
 
 /// @brief Create a new window with the specified parameters.
@@ -1008,6 +1037,18 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     }
     if (!actual_params.title) {
         actual_params.title = VGFX_DEFAULT_TITLE;
+    }
+
+    /* Fullscreen creation: size the window to the desktop up front so it never
+     * appears at a small windowed size (the fullscreen state itself is engaged
+     * right after platform init below). Clamp to framebuffer limits. */
+    if (actual_params.fullscreen) {
+        int32_t disp_w = 0;
+        int32_t disp_h = 0;
+        vgfx_get_display_size(&disp_w, &disp_h);
+        actual_params.width = clamp_int(disp_w, 1, VGFX_MAX_WIDTH);
+        actual_params.height = clamp_int(disp_h, 1, VGFX_MAX_HEIGHT);
+        actual_params.resizable = 1; /* fullscreen transitions require it */
     }
 
     /* Validate dimensions against safety limits */
@@ -1099,6 +1140,12 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
         return NULL;
     }
 
+    /* Engage fullscreen immediately after creation. The window was already
+     * sized to the desktop above, so there is no windowed flash — this just
+     * flips the platform window state (borderless/native fullscreen). */
+    if (actual_params.fullscreen)
+        vgfx_set_fullscreen(win, 1);
+
     return win;
 }
 
@@ -1173,7 +1220,34 @@ int32_t vgfx_update(vgfx_window_t window) {
         return 0;
     }
 
-    /* FPS limiting (only if fps > 0) */
+    /* FPS limiting (only if fps > 0). No idle floor here: vgfx_update() is the
+     * game/render loop entry point, and unlimited FPS must stay uncapped. */
+    vgfx_frame_pace(window, 0);
+
+    /* Calculate frame time (for diagnostics) */
+    int64_t frame_end = vgfx_platform_now_ms();
+    window->last_frame_time_ms = frame_end - frame_start;
+
+    return 1;
+}
+
+/// @brief Apply frame-rate pacing for a window without presenting a frame.
+/// @details Runs the same deadline-based sleep that vgfx_update() performs
+///          after presenting: when the window has a positive FPS cap, it sleeps
+///          until the next frame deadline, advancing the deadline additively to
+///          avoid drift and resyncing if it fell more than one frame behind.
+///          When the window has no FPS cap (fps <= 0) it sleeps
+///          @p min_idle_sleep_ms milliseconds if that is positive, otherwise it
+///          returns immediately. GUI applications call this on frames where
+///          nothing needed repainting so an idle window does not busy-loop a
+///          CPU core; passing a small positive floor there keeps idle CPU near
+///          zero even when the window is running uncapped.
+/// @param window Window handle (NULL is a no-op).
+/// @param min_idle_sleep_ms Anti-spin floor applied only when fps <= 0.
+void vgfx_frame_pace(vgfx_window_t window, int32_t min_idle_sleep_ms) {
+    if (!window)
+        return;
+
     if (window->fps > 0) {
         int64_t now = vgfx_platform_now_ms();
         double target_frame_time = 1000.0 / (double)window->fps;
@@ -1195,13 +1269,9 @@ int32_t vgfx_update(vgfx_window_t window) {
         if (window->next_frame_deadline_ms < (double)now - target_frame_time) {
             window->next_frame_deadline_ms = (double)now + target_frame_time;
         }
+    } else if (min_idle_sleep_ms > 0) {
+        vgfx_platform_sleep_ms(min_idle_sleep_ms);
     }
-
-    /* Calculate frame time (for diagnostics) */
-    int64_t frame_end = vgfx_platform_now_ms();
-    window->last_frame_time_ms = frame_end - frame_start;
-
-    return 1;
 }
 
 /// @brief Get the duration of the last frame in milliseconds.
@@ -1229,6 +1299,18 @@ int32_t vgfx_pump_events(vgfx_window_t window) {
         return 0;
     }
     return 1;
+}
+
+int32_t vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms) {
+    if (!window)
+        return 0;
+    if (timeout_ms < 0)
+        timeout_ms = 0;
+    if (timeout_ms > 1000)
+        timeout_ms = 1000; /* hard cap: a bug can never hang the UI for long */
+    if (timeout_ms == 0)
+        return 0;
+    return vgfx_platform_wait_events(window, timeout_ms);
 }
 
 /// @brief Get the window's dimensions.
@@ -1860,6 +1942,48 @@ void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
 
     extern void vgfx_platform_warp_cursor(vgfx_window_t w, int32_t x, int32_t y);
     vgfx_platform_warp_cursor(window, x, y);
+}
+
+int32_t vgfx_set_relative_mouse(vgfx_window_t window, int32_t enabled) {
+    if (!window)
+        return 0;
+
+    extern int vgfx_platform_set_relative_mouse(vgfx_window_t w, int enabled);
+    int native = vgfx_platform_set_relative_mouse(window, enabled ? 1 : 0);
+
+    vgfx_internal_event_lock(window);
+    window->relative_mouse_enabled = enabled ? 1 : 0;
+    window->relative_mouse_native = (enabled && native) ? 1 : 0;
+    window->relative_dx_accum = 0.0;
+    window->relative_dy_accum = 0.0;
+    vgfx_internal_event_unlock(window);
+    return native ? 1 : 0;
+}
+
+int32_t vgfx_relative_mouse_native(vgfx_window_t window) {
+    if (!window)
+        return 0;
+    vgfx_internal_event_lock(window);
+    int32_t native = window->relative_mouse_enabled && window->relative_mouse_native;
+    vgfx_internal_event_unlock(window);
+    return native;
+}
+
+void vgfx_get_relative_deltas(vgfx_window_t window, double *out_dx, double *out_dy) {
+    double dx = 0.0;
+    double dy = 0.0;
+    if (window) {
+        vgfx_internal_event_lock(window);
+        dx = window->relative_dx_accum;
+        dy = window->relative_dy_accum;
+        window->relative_dx_accum = 0.0;
+        window->relative_dy_accum = 0.0;
+        vgfx_internal_event_unlock(window);
+    }
+    if (out_dx)
+        *out_dx = dx;
+    if (out_dy)
+        *out_dy = dy;
 }
 
 void vgfx_hide_cursor(void) {

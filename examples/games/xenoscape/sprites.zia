@@ -325,7 +325,6 @@ class SpriteFactory {
         var SUIT_DD = 0x888899;
         var VISOR = 0x44CCEE;
         var VIS_LT = 0x88EEFF;
-        var ACCENT = 0xFF6633;
         var BLUE = 0x3366FF;
         var METAL = 0x667788;
 
@@ -720,7 +719,6 @@ class SpriteFactory {
     hide func buildTurretBarrel() -> Pixels {
         // Military barrel with cooling vents and muzzle detail.
         var px = Pixels.New(30, 9);
-        var OL = pal.outline;
 
         px.DrawThickLine(0, 5, 22, 5, 4, pal.turretBarrel);
         px.DrawLine(2, 2, 20, 2, 0x778899);                 // top highlight

@@ -1152,6 +1152,15 @@ class Sema {
     /// @return The return type of the called function.
     TypeRef analyzeCall(CallExpr *expr);
 
+    /// @brief Analyze a List functional combinator call (map/filter/reduce/…).
+    /// @details Returns the combinator's result type, or std::nullopt if @p field
+    /// is not a combinator or the receiver is not a List. Handled before generic
+    /// argument analysis so the closure argument can be target-typed from the
+    /// element type. @p baseType must be the already-analyzed receiver type.
+    std::optional<TypeRef> analyzeListCombinatorCall(CallExpr *expr,
+                                                     const std::string &field,
+                                                     TypeRef baseType);
+
     /// @brief Bind an extern (runtime) call's argument types against the symbol's
     ///        parameter specs and record the binding on the call expression.
     /// @return true if binding succeeded or if @p sym is not an extern; false on
@@ -1809,6 +1818,13 @@ class Sema {
     /// @brief Expected return type of current function/method.
     /// @details Used to validate return statements.
     TypeRef expectedReturnType_{nullptr};
+
+    /// @brief Expected function type for the next lambda to be analyzed.
+    /// @details Set by contexts that know the target function type (a variable
+    /// initializer with a function-type annotation, a collection combinator
+    /// argument). analyzeLambda() consumes and clears it to infer omitted
+    /// parameter types. Null when no expected type is available.
+    TypeRef lambdaTypeHint_{nullptr};
 
     /// @brief Current loop nesting depth for break/continue validation.
     int loopDepth_{0};

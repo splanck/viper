@@ -62,12 +62,27 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     }
     Type ilReturnType = mapType(returnType);
 
+    // The lambda's full function type carries any parameter types that Sema
+    // inferred from context (target-typed lambdas), which the AST param nodes
+    // lack when the source omitted the annotation.
+    TypeRef lambdaFnType = sema_.typeOf(expr);
+    auto inferredParamType = [&](size_t i) -> TypeRef {
+        if (lambdaFnType && lambdaFnType->kind == TypeKindSem::Function) {
+            const auto &fnParams = lambdaFnType->paramTypes();
+            if (i < fnParams.size() && fnParams[i])
+                return fnParams[i];
+        }
+        return types::unknown();
+    };
+
     // Build parameter list - always add env pointer as first param for uniform closure ABI
     std::vector<il::core::Param> params;
     params.reserve(expr->params.size() + 1);
     params.push_back({"__env", Type(Type::Kind::Ptr)});
-    for (const auto &param : expr->params) {
-        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+    for (size_t i = 0; i < expr->params.size(); ++i) {
+        const auto &param = expr->params[i];
+        TypeRef paramType =
+            param.type ? sema_.resolveType(param.type.get()) : inferredParamType(i);
         params.push_back({param.name, mapType(paramType)});
     }
 
@@ -193,8 +208,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     for (size_t i = 0; i < expr->params.size(); ++i) {
         size_t paramIdx = i + 1; // Skip __env
         if (paramIdx < blockParams.size()) {
-            TypeRef paramType = expr->params[i].type ? sema_.resolveType(expr->params[i].type.get())
-                                                     : types::unknown();
+            TypeRef paramType = expr->params[i].type
+                                    ? sema_.resolveType(expr->params[i].type.get())
+                                    : inferredParamType(i);
             Type ilParamType = mapType(paramType);
             createSlot(expr->params[i].name, ilParamType);
             storeToSlot(expr->params[i].name, Value::temp(blockParams[paramIdx].id), ilParamType);

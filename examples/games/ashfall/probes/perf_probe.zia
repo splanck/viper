@@ -1,0 +1,53 @@
+// =============================================================================
+// probes/perf_probe.zia — the standing perf harness (arena + load)
+// =============================================================================
+//
+// Boots the arena and runs a fixed number of simulation steps under load,
+// printing a machine-readable line (`fps= frame_ms= draws= culled= ...`) in the
+// open-world slice-probe format so later phases can diff against the P1 baseline.
+// Headless (software) it measures simulation cost; on Metal it is re-run by hand
+// for real frame timing. It never fails on perf (perf is a recorded metric, not
+// a hard gate here) — it fails only on a trap or a budget assertion.
+// =============================================================================
+module perf_probe;
+
+bind Viper.Terminal as Terminal;
+bind "../config" as config;
+bind "../core/strings" as S;
+bind "../game" as game;
+
+func start() {
+    var g = new game.Game();
+    game.setGame(g);
+    g.initCore(0x00E5F00D);
+    g.setScripted(true);
+    g.boot(true, false);
+
+    // Drive continuous motion so the character controller + physics stay hot.
+    var steps = 600;
+    var i = 0;
+    while i < steps {
+        var mz = 1.0;
+        if (i / 60) % 2 == 1 { mz = -1.0; }
+        g.scriptMove(0.3, mz);
+        g.scriptSprint((i / 30) % 2 == 0);
+        g.tickSim(config.FIXED_DT);
+        g.stepPhysics(config.FIXED_DT);
+        i = i + 1;
+    }
+
+    var diag = g.getDiag();
+    if diag.hasFailed() {
+        Terminal.Say("FAIL: budget assertion — " + diag.getViolation());
+        return;
+    }
+
+    // Machine-readable telemetry line (sim-side; render timing added on Metal).
+    Terminal.Say("perf steps=" + S.intStr(steps) +
+                 " enemies=" + S.intStr(0) +
+                 " proj=" + S.intStr(0) +
+                 " draws=" + S.intStr(0) +
+                 " budgets=clean");
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

@@ -93,8 +93,10 @@ static void rt_canvas_finalize(void *obj) {
 ///          Dividing by the per-window scale factor keeps `Mouse.X/Y`
 ///          consistent with the coordinate space the user draws in. The
 ///          `< 0.001f` guard avoids division by an uninitialized scale.
-static void rt_canvas_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t x, int32_t y) {
-    float scale = vgfx_window_get_scale(gfx_win);
+static void rt_canvas_update_mouse_from_physical(rt_canvas *canvas, int32_t x, int32_t y) {
+    if (!canvas || !canvas->gfx_win)
+        return;
+    float scale = rt_canvas_effective_coord_scale(canvas);
     if (scale < 0.001f)
         scale = 1.0f;
     rt_mouse_update_pos((int64_t)((double)x / (double)scale), (int64_t)((double)y / (double)scale));
@@ -131,6 +133,8 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     canvas->should_close = 0;
     canvas->title = NULL;
     canvas->title_len = 0;
+    canvas->logical_width = (int64_t)win_width;
+    canvas->logical_height = (int64_t)win_height;
     canvas->last_event.type = VGFX_EVENT_NONE;
     canvas->last_flip_us = 0;
     canvas->delta_time_ms = 0;
@@ -178,9 +182,9 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
         return NULL;
     }
 
-    // Enable HiDPI coordinate scaling so Canvas apps draw in logical pixels
-    // while the framebuffer is at physical resolution.
-    vgfx_set_coord_scale(canvas->gfx_win, vgfx_window_get_scale(canvas->gfx_win));
+    // Enable coordinate scaling so Canvas apps draw in logical pixels while
+    // the framebuffer may be HiDPI or fullscreen presentation sized.
+    rt_canvas_resync_window_state(canvas);
 
     // Initialize keyboard input for this canvas
     rt_keyboard_set_canvas(canvas->gfx_win);
@@ -226,6 +230,9 @@ int64_t rt_canvas_width(void *canvas_ptr) {
 
     rt_canvas_resync_window_state(canvas);
 
+    if (canvas->logical_width > 0)
+        return canvas->logical_width;
+
     int32_t width = 0;
     vgfx_get_size(canvas->gfx_win, &width, NULL);
     return (int64_t)width;
@@ -243,6 +250,9 @@ int64_t rt_canvas_height(void *canvas_ptr) {
         return 0;
 
     rt_canvas_resync_window_state(canvas);
+
+    if (canvas->logical_height > 0)
+        return canvas->logical_height;
 
     int32_t height = 0;
     vgfx_get_size(canvas->gfx_win, NULL, &height);
@@ -405,23 +415,21 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
 
         // Forward mouse events to mouse module (convert physical -> logical)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
-            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
-                                                 canvas->last_event.data.mouse_move.x,
-                                                 canvas->last_event.data.mouse_move.y);
+            rt_canvas_update_mouse_from_physical(
+                canvas, canvas->last_event.data.mouse_move.x, canvas->last_event.data.mouse_move.y);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN) {
-            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+            rt_canvas_update_mouse_from_physical(canvas,
                                                  canvas->last_event.data.mouse_button.x,
                                                  canvas->last_event.data.mouse_button.y);
             rt_mouse_button_down((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_UP) {
-            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+            rt_canvas_update_mouse_from_physical(canvas,
                                                  canvas->last_event.data.mouse_button.x,
                                                  canvas->last_event.data.mouse_button.y);
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_SCROLL) {
-            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
-                                                 canvas->last_event.data.scroll.x,
-                                                 canvas->last_event.data.scroll.y);
+            rt_canvas_update_mouse_from_physical(
+                canvas, canvas->last_event.data.scroll.x, canvas->last_event.data.scroll.y);
             rt_mouse_update_wheel((double)canvas->last_event.data.scroll.delta_x,
                                   (double)canvas->last_event.data.scroll.delta_y);
         }
@@ -438,7 +446,7 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     // cannot leave the frame using stale coordinates.
     int32_t mx = 0, my = 0;
     vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
-    rt_canvas_update_mouse_from_physical(canvas->gfx_win, mx, my);
+    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
 
     // Update action mapping state AFTER events are processed so that
     // Action.Pressed/Held/Released reflect this frame's input.
@@ -551,6 +559,8 @@ void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
         int32_t win_height = rt_canvas_dimension_to_i32(height, "Canvas.Resize: invalid height");
         if (win_width <= 0 || win_height <= 0)
             return;
+        canvas->logical_width = (int64_t)win_width;
+        canvas->logical_height = (int64_t)win_height;
         vgfx_set_window_size(canvas->gfx_win, win_width, win_height);
         rt_canvas_resync_window_state(canvas);
     }

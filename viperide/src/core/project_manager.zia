@@ -114,6 +114,10 @@ class ProjectManager {
     expose func Setup(tree: GUI.TreeView) {
         treeView = tree;
         project = new project.Project();
+        // Enable poll-model drag-and-drop so files can be moved between folders.
+        if treeView != null {
+            treeView.SetDragDropEnabled(true);
+        }
     }
 
     /// @brief Open a folder as a project. Closes any previously-open project.
@@ -689,6 +693,44 @@ class ProjectManager {
         }
         UpdateEntryAfterRename(oldPath, newPath, oldWasDir);
         lastBindRewriteCount = RewriteProjectBindsAfterRename(oldPath, newPath, oldWasDir, docMgr);
+        RefreshTree();
+        return newPath;
+    }
+
+    /// @brief Move a file or folder into another directory (drag-and-drop).
+    /// @details Mirrors RenamePath but targets a different parent directory.
+    ///          Rejects moving onto the source's own parent, into the source's
+    ///          own subtree, or over an existing destination. Updates open
+    ///          documents, the project entry, and project binds.
+    /// @return New absolute path on success, or "" when rejected.
+    expose func MovePathInto(sourcePath: String,
+                             targetDir: String,
+                             docMgr: document_manager.DocumentManager) -> String {
+        lastBindRewriteCount = 0;
+        if sourcePath == "" or targetDir == "" { return ""; }
+        if Dir.Exists(targetDir) == false { return ""; }
+        // Reject moving a folder into itself or one of its descendants.
+        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + Path.Sep()) {
+            return "";
+        }
+        var baseName = Path.Name(sourcePath);
+        if baseName == "" { return ""; }
+        var newPath = Path.Join(targetDir, baseName);
+        if newPath == sourcePath { return ""; } // already in this folder
+        if IO.File.Exists(newPath) or Dir.Exists(newPath) { return ""; } // don't overwrite
+
+        var oldWasDir = Dir.Exists(sourcePath);
+        if IO.File.Exists(sourcePath) {
+            IO.File.Move(sourcePath, newPath);
+            if docMgr != null { docMgr.UpdatePath(sourcePath, newPath); }
+        } else if Dir.Exists(sourcePath) {
+            Dir.Move(sourcePath, newPath);
+            if docMgr != null { docMgr.UpdatePathPrefix(sourcePath, newPath); }
+        } else {
+            return "";
+        }
+        UpdateEntryAfterRename(sourcePath, newPath, oldWasDir);
+        lastBindRewriteCount = RewriteProjectBindsAfterRename(sourcePath, newPath, oldWasDir, docMgr);
         RefreshTree();
         return newPath;
     }

@@ -378,6 +378,57 @@ int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested) {
     return requested ? 1 : 0;
 }
 
+/// @brief Normalize light type constants before indexing shader-side branches.
+int32_t vgfx3d_d3d11_sanitize_light_type(int32_t requested) {
+    return requested >= 0 && requested <= 3 ? requested : 0;
+}
+
+/// @brief Normalize shadow projection constants after the shadow slot is known valid.
+int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_index,
+                                                     int32_t requested_projection_type) {
+    if (sanitized_shadow_index < 0)
+        return VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+    return requested_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+               ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+               : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+}
+
+/// @brief Clamp and order spot-light cone cosines before shader upload.
+void vgfx3d_d3d11_sanitize_spot_cone(float requested_inner,
+                                      float requested_outer,
+                                      float *out_inner,
+                                      float *out_outer) {
+    float inner = vgfx3d_d3d11_clamp_float_param(requested_inner, -1.0f, 1.0f, 1.0f);
+    float outer = vgfx3d_d3d11_clamp_float_param(requested_outer, -1.0f, 1.0f, 0.0f);
+
+    if (inner < outer) {
+        float tmp = inner;
+        inner = outer;
+        outer = tmp;
+    }
+    if (out_inner)
+        *out_inner = inner;
+    if (out_outer)
+        *out_outer = outer;
+}
+
+/// @brief Sanitize shadow cascade split distances into a finite nondecreasing sequence.
+void vgfx3d_d3d11_sanitize_shadow_cascade_splits(float *dst, const float *src, size_t count) {
+    float previous = 0.0f;
+
+    if (!dst)
+        return;
+    for (size_t i = 0; i < count; i++) {
+        float split = src ? src[i] : 0.0f;
+        split = vgfx3d_d3d11_clamp_float_param(
+            split, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, previous);
+        if (split < previous)
+            split = previous;
+        dst[i] = split;
+        previous = split;
+    }
+}
+
 /// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
 int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count) {
     int32_t max_count;
@@ -461,12 +512,99 @@ int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested) {
     return requested;
 }
 
+/// @brief Sanitize fog near/far distances before scene constant upload.
+void vgfx3d_d3d11_sanitize_fog_range(float requested_near,
+                                      float requested_far,
+                                      float *out_near,
+                                      float *out_far) {
+    float fog_near = vgfx3d_d3d11_clamp_float_param(
+        requested_near, 0.0f, VGFX3D_D3D11_FOG_DISTANCE_MAX, 10.0f);
+    float min_far = fog_near + 1.0f;
+    float fog_far;
+
+    if (min_far > VGFX3D_D3D11_FOG_DISTANCE_MAX)
+        min_far = VGFX3D_D3D11_FOG_DISTANCE_MAX;
+    fog_far = vgfx3d_d3d11_clamp_float_param(
+        requested_far, min_far, VGFX3D_D3D11_FOG_DISTANCE_MAX, 50.0f);
+    if (fog_far <= fog_near) {
+        fog_near = 10.0f;
+        fog_far = 50.0f;
+    }
+    if (out_near)
+        *out_near = fog_near;
+    if (out_far)
+        *out_far = fog_far;
+}
+
+/// @brief Sanitize D3D11 shader-facing shadow depth bias.
+float vgfx3d_d3d11_sanitize_shadow_bias(float requested) {
+    return vgfx3d_d3d11_clamp_float_param(
+        requested, -VGFX3D_D3D11_SHADOW_BIAS_MAX, VGFX3D_D3D11_SHADOW_BIAS_MAX, 0.0f);
+}
+
 /// @brief Validate a backend-facing post-FX chain before indexed iteration.
 int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain) {
     if (!chain || !chain->enabled || !chain->effects || chain->effect_count <= 0 ||
         chain->effect_capacity < chain->effect_count)
         return 0;
     return 1;
+}
+
+/// @brief Return non-zero when one PostFX effect descriptor actually changes rendering.
+int vgfx3d_d3d11_postfx_effect_is_active(const vgfx3d_postfx_effect_desc_t *effect) {
+    const vgfx3d_postfx_snapshot_t *snapshot;
+
+    if (!effect)
+        return 0;
+    snapshot = &effect->snapshot;
+    switch (effect->type) {
+    case VGFX3D_POSTFX_EFFECT_BLOOM:
+        return snapshot->bloom_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_TONEMAP:
+        return snapshot->tonemap_explicit ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_FXAA:
+        return snapshot->fxaa_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_COLOR_GRADE:
+        return snapshot->color_grade_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_VIGNETTE:
+        return snapshot->vignette_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_SSAO:
+        return snapshot->ssao_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_DOF:
+        return snapshot->dof_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_MOTION_BLUR:
+        return snapshot->motion_blur_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_TAA:
+        return snapshot->taa_enabled ? 1 : 0;
+    case VGFX3D_POSTFX_EFFECT_SSR:
+        return snapshot->ssr_enabled ? 1 : 0;
+    default:
+        return 0;
+    }
+}
+
+/// @brief Return non-zero when a usable chain contains an active effect of @p type_value.
+int vgfx3d_d3d11_postfx_chain_has_active_effect(const vgfx3d_postfx_chain_t *chain,
+                                                int32_t type_value) {
+    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == type_value &&
+            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i]))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Return non-zero when a usable chain contains any active effect.
+int vgfx3d_d3d11_postfx_chain_has_active_effects(const vgfx3d_postfx_chain_t *chain) {
+    if (!vgfx3d_d3d11_postfx_chain_is_usable(chain))
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i]))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Decide whether a draw needs current/previous bone cbuffer uploads.
@@ -847,10 +985,29 @@ int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip
     if (previous_mip) {
         int32_t expected_width = previous_mip->width > 1 ? previous_mip->width >> 1 : 1;
         int32_t expected_height = previous_mip->height > 1 ? previous_mip->height >> 1 : 1;
+        uint64_t previous_required_bytes;
+
+        if (!previous_mip->data || previous_mip->bytes == 0 ||
+            previous_mip->format_id != expected_format_id)
+            return 0;
         if (!vgfx3d_d3d11_is_valid_texture2d_extent(previous_mip->width, previous_mip->height))
             return 0;
         if (previous_mip->block_width <= 0 || previous_mip->block_height <= 0 ||
             previous_mip->block_bytes <= 0)
+            return 0;
+        if (previous_mip->block_width != format_block_width ||
+            previous_mip->block_height != format_block_height ||
+            previous_mip->block_bytes != format_block_bytes)
+            return 0;
+        if (expected_block_width > 0 && previous_mip->block_width != expected_block_width)
+            return 0;
+        if (expected_block_height > 0 && previous_mip->block_height != expected_block_height)
+            return 0;
+        if (expected_block_bytes > 0 && previous_mip->block_bytes != expected_block_bytes)
+            return 0;
+        previous_required_bytes = vgfx3d_d3d11_native_mip_required_bytes(previous_mip);
+        if (previous_required_bytes == 0 || previous_mip->bytes < previous_required_bytes ||
+            previous_mip->bytes > UINT_MAX)
             return 0;
         if (mip->width != expected_width || mip->height != expected_height)
             return 0;
@@ -1208,8 +1365,12 @@ int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(int8_t curr
 /// @brief Decide whether a begin-frame should preserve scene temporal history.
 int vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
     vgfx3d_d3d11_target_kind_t resolved_target_kind, int8_t requested_load_existing_color) {
-    return resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ||
-           (requested_load_existing_color && resolved_target_kind != VGFX3D_D3D11_TARGET_RTT);
+    if (resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY)
+        return 1;
+    if (!requested_load_existing_color)
+        return 0;
+    return resolved_target_kind == VGFX3D_D3D11_TARGET_SWAPCHAIN ||
+           resolved_target_kind == VGFX3D_D3D11_TARGET_SCENE;
 }
 
 /// @brief Decide whether overlay contents are in the separate overlay target.
@@ -1237,7 +1398,9 @@ vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     if (gpu_postfx_enabled && postfx_chain_valid && postfx_chain_enabled && has_scene_targets &&
         postfx_effect_count > 0 && postfx_has_effects)
         return VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE;
-    if (has_scene_targets && current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN)
+    if (has_scene_targets && (current_target_kind == VGFX3D_D3D11_TARGET_SCENE ||
+                              current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ||
+                              current_target_kind == VGFX3D_D3D11_TARGET_RTT))
         return VGFX3D_D3D11_READBACK_SCENE_COLOR;
     return VGFX3D_D3D11_READBACK_BACKBUFFER;
 }

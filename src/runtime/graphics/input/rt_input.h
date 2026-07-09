@@ -419,6 +419,38 @@ void rt_mouse_update_pos(int64_t x, int64_t y);
 /// @brief Override mouse delta for the current frame without moving the cursor.
 void rt_mouse_force_delta(int64_t dx, int64_t dy);
 
+/// @brief Override mouse delta with sub-pixel precision (relative mouse mode).
+/// @details Sets both the f64 deltas returned by rt_mouse_delta_xf/yf and the
+///          rounded i64 deltas returned by rt_mouse_delta_x/y. Used by the
+///          Canvas3D poll while native raw mouse deltas are active.
+void rt_mouse_force_delta_f(double dx, double dy);
+
+//=========================================================================
+// Relative (raw) mouse mode — FPS mouse-look
+//=========================================================================
+
+/// @brief Request or release relative (raw) mouse mode.
+/// @details Enabling implies mouse capture (cursor hidden, absolute position
+///          frozen); disabling releases capture. The platform window applies
+///          the actual raw-input mode on its next poll and reports back via
+///          rt_mouse_set_relative_native().
+void rt_mouse_set_relative_mode(int8_t enabled);
+
+/// @brief Whether relative mouse mode has been requested.
+int8_t rt_mouse_get_relative_mode(void);
+
+/// @brief Record whether the platform delivers native raw deltas (poll-side).
+void rt_mouse_set_relative_native(int8_t native);
+
+/// @brief Whether native raw deltas are active (vs warp-to-center fallback).
+int8_t rt_mouse_get_relative_native(void);
+
+/// @brief Sub-pixel horizontal mouse delta for the current frame.
+double rt_mouse_delta_xf(void);
+
+/// @brief Sub-pixel vertical mouse delta for the current frame.
+double rt_mouse_delta_yf(void);
+
 /// @brief Register a mouse button press event.
 /// @param button Button index.
 void rt_mouse_button_down(int64_t button);

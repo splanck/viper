@@ -428,9 +428,14 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     use_fallback_instances = rebase_positions64_instances ||
                              canvas3d_cmd_requires_blend(&base_cmd) ||
                              !c->backend->submit_draw_instanced;
-    if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
-        rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
-        return;
+    if (use_fallback_instances) {
+        /* Per-instance queueing is bounded to keep the deferred queue sane;
+         * overflow clamps (observable via get_InstancedFallbackCount) instead
+         * of trapping. Opaque batches take the backend instanced hook on every
+         * backend, including software, and never hit this path. */
+        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES)
+            instance_count = CANVAS3D_MAX_FALLBACK_INSTANCES;
+        c->last_instanced_fallback_count += instance_count;
     }
     if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
         (has_prev_instance_matrices && prev_instance_matrices &&

@@ -286,6 +286,105 @@ static void codeeditor_paint_indent_guides(
     }
 }
 
+/// @brief Whether the whitespace byte at column @p col of @p ln shows a marker
+///        under @p mode. Factored out so the boundary/all/none rules are unit
+///        testable without a font or window.
+/// @param ln   Line whose text is inspected (may be NULL).
+/// @param col  Byte column into ln->text.
+/// @param mode vg_whitespace_mode value.
+/// @return true when the cell is a space/tab that should be marked.
+static bool codeeditor_whitespace_cell_visible(const vg_code_line_t *ln, int col, int mode) {
+    if (mode == VG_WHITESPACE_NONE)
+        return false;
+    if (!ln || !ln->text || col < 0 || col >= (int)ln->length)
+        return false;
+    char c = ln->text[col];
+    if (c != ' ' && c != '\t')
+        return false;
+    if (mode == VG_WHITESPACE_ALL)
+        return true;
+    if (mode != VG_WHITESPACE_BOUNDARY)
+        return false;
+    // Boundary: leading (before first non-space) or trailing (after last non-space).
+    int first_non_ws = 0;
+    while (first_non_ws < (int)ln->length &&
+           (ln->text[first_non_ws] == ' ' || ln->text[first_non_ws] == '\t'))
+        first_non_ws++;
+    if (col < first_non_ws)
+        return true;
+    int last_non_ws = (int)ln->length - 1;
+    while (last_non_ws >= 0 &&
+           (ln->text[last_non_ws] == ' ' || ln->text[last_non_ws] == '\t'))
+        last_non_ws--;
+    return col > last_non_ws;
+}
+
+/// @brief Paint faint space/tab markers for one line inside the viewport.
+/// @details Space cells draw a small centered dot; tab cells draw a thin arrow
+///          spanning to the next tab stop. Only cells selected by
+///          render_whitespace_mode are drawn, and only those inside the visible
+///          x-range. Visual columns are tracked so tab expansion and multibyte
+///          text stay aligned with the rendered glyphs.
+static void codeeditor_paint_whitespace(vg_codeeditor_t *editor,
+                                        void *canvas,
+                                        int line,
+                                        float content_x,
+                                        float content_width,
+                                        float line_y) {
+    if (!editor || editor->render_whitespace_mode == VG_WHITESPACE_NONE)
+        return;
+    if (line < 0 || line >= editor->line_count)
+        return;
+    const vg_code_line_t *ln = &editor->lines[line];
+    if (!ln->text || ln->length == 0)
+        return;
+
+    int mode = editor->render_whitespace_mode;
+    int tab_w = editor->tab_width > 0 ? editor->tab_width : 4;
+    float cw = editor->char_width;
+    if (cw <= 0.0f)
+        return;
+    uint32_t color = editor->whitespace_color;
+    if (!color)
+        color = editor->line_number_color;
+    if (!color)
+        color = 0xFF5A5A5Au;
+
+    float right_limit = content_x + content_width;
+    float cy = line_y + editor->line_height * 0.5f;
+    float dot_r = cw * 0.10f;
+    if (dot_r < 1.0f)
+        dot_r = 1.0f;
+
+    int visual_col = 0;
+    for (int k = 0; k < (int)ln->length; k++) {
+        char c = ln->text[k];
+        if (((unsigned char)c & 0xC0) == 0x80)
+            continue; // UTF-8 continuation byte: no new visual column
+        float x = content_x + (float)visual_col * cw - editor->scroll_x;
+        int adv = 1;
+        if (c == '\t')
+            adv = tab_w - (visual_col % tab_w);
+
+        bool marked = codeeditor_whitespace_cell_visible(ln, k, mode);
+        if (marked && x >= content_x - cw && x <= right_limit) {
+            if (c == ' ') {
+                vg_draw_disc_fill((vgfx_window_t)canvas, x + cw * 0.5f, cy, dot_r, color);
+            } else if (c == '\t') {
+                float x0 = x + 2.0f;
+                float x1 = x + (float)adv * cw - 2.0f;
+                if (x1 > x0) {
+                    vg_draw_line_aa((vgfx_window_t)canvas, x0, cy, x1, cy, 1.0f, color);
+                    // Small arrowhead at the trailing edge.
+                    vg_draw_line_aa((vgfx_window_t)canvas, x1, cy, x1 - 3.0f, cy - 3.0f, 1.0f, color);
+                    vg_draw_line_aa((vgfx_window_t)canvas, x1, cy, x1 - 3.0f, cy + 3.0f, 1.0f, color);
+                }
+            }
+        }
+        visual_col += adv;
+    }
+}
+
 /// @brief Draw a crisp anti-aliased caret with a soft accent glow behind it.
 ///
 /// @details Replaces the legacy hard 2px rectangle. The glow is a centred
@@ -393,6 +492,9 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
 
             if (editor->show_indent_guides)
                 codeeditor_paint_indent_guides(editor, canvas, i, content_x, line_y);
+
+            if (editor->render_whitespace_mode != VG_WHITESPACE_NONE)
+                codeeditor_paint_whitespace(editor, canvas, i, content_x, content_width, line_y);
 
             codeeditor_paint_highlights_for_line(editor,
                                                  canvas,
@@ -770,9 +872,25 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                       editor->line_number_color);
                 }
 
+                // Change bars (SCM diff markers): thin vertical bars at the
+                // gutter's left edge. Drawn as a separate pass so they coexist
+                // with breakpoint/diagnostic disc icons on the same line.
                 for (int g = 0; g < editor->gutter_icon_count; g++) {
                     struct vg_gutter_icon *icon = &editor->gutter_icons[g];
-                    if (icon->line != i)
+                    if (icon->line != i || icon->style != 1)
+                        continue;
+                    vg_draw_round_rect_fill((vgfx_window_t)canvas,
+                                            widget->x,
+                                            line_y,
+                                            3.0f,
+                                            editor->line_height,
+                                            1.0f,
+                                            icon->color);
+                }
+
+                for (int g = 0; g < editor->gutter_icon_count; g++) {
+                    struct vg_gutter_icon *icon = &editor->gutter_icons[g];
+                    if (icon->line != i || icon->style == 1)
                         continue;
                     int32_t icon_box = (int32_t)editor->line_height - 4;
                     if (icon_box < 8)
@@ -908,5 +1026,36 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                 thumb_height,
                                 thumb_w * 0.5f,
                                 thumb_color);
+    }
+
+    // Horizontal scrollbar along the bottom edge (only when the widest line
+    // overflows the viewport and word wrap is off).
+    {
+        float htrack_y_local = 0.0f;
+        float hthumb_x_local = 0.0f;
+        float hthumb_width = 0.0f;
+        if (codeeditor_get_hscrollbar_metrics(
+                editor, widget, &htrack_y_local, &hthumb_x_local, &hthumb_width, NULL, NULL)) {
+            float htrack_y = widget->y + htrack_y_local;
+            float track_span = widget->width - editor->gutter_width - scrollbar_width;
+            if (track_span < 0.0f)
+                track_span = 0.0f;
+            uint32_t track_color = 0xFF3C3C3C;
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)(widget->x + editor->gutter_width),
+                           (int32_t)htrack_y,
+                           (int32_t)track_span,
+                           (int32_t)scrollbar_width,
+                           track_color);
+            uint32_t thumb_color = 0xFF6C6C6C;
+            float thumb_h = scrollbar_width - 4.0f;
+            vg_draw_round_rect_fill((vgfx_window_t)canvas,
+                                    widget->x + hthumb_x_local,
+                                    htrack_y + 2.0f,
+                                    hthumb_width,
+                                    thumb_h,
+                                    thumb_h * 0.5f,
+                                    thumb_color);
+        }
     }
 }

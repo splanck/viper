@@ -342,6 +342,59 @@ static int canvas3d_build_spot_shadow_light_vp(const float *world_min,
     return 1;
 }
 
+/// @brief Build the view-projection for one face of an omnidirectional point shadow.
+/// @details 92-degree perspective faces (2 degrees of guard band so PCF taps near a
+///   face seam still land inside the face's tile) along +X,-X,+Y,-Y,+Z,-Z. The far
+///   plane derives from the shadow-caster world bounds exactly like spot shadows.
+static int canvas3d_build_point_shadow_face_vp(const float *world_min,
+                                               const float *world_max,
+                                               const vgfx3d_light_params_t *point_light,
+                                               int32_t face,
+                                               float *out_light_vp) {
+    static const float face_dirs[VGFX3D_SHADOW_CUBE_FACES][3] = {
+        {1.0f, 0.0f, 0.0f},
+        {-1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {0.0f, -1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, -1.0f},
+    };
+    float eye[3];
+    float center[3];
+    float view[16];
+    float proj[16];
+    float far_z;
+    float near_z;
+    /* cos(46 deg): a 92-degree cone, i.e. 90 degrees + guard band. */
+    const float face_cos = 0.69466f;
+
+    if (!world_min || !world_max || !point_light || !out_light_vp || face < 0 ||
+        face >= VGFX3D_SHADOW_CUBE_FACES)
+        return 0;
+    eye[0] = point_light->position[0];
+    eye[1] = point_light->position[1];
+    eye[2] = point_light->position[2];
+    if (!isfinite(eye[0]) || !isfinite(eye[1]) || !isfinite(eye[2]))
+        return 0;
+    center[0] = eye[0] + face_dirs[face][0];
+    center[1] = eye[1] + face_dirs[face][1];
+    center[2] = eye[2] + face_dirs[face][2];
+    far_z = canvas3d_shadow_spot_range_from_bounds(point_light, world_min, world_max);
+    if (!isfinite(far_z) || far_z <= 0.1f)
+        far_z = 1.0f;
+    near_z = fmaxf(0.02f, fminf(0.5f, far_z * 0.02f));
+    if (near_z >= far_z)
+        near_z = far_z * 0.1f;
+    if (near_z < 0.001f)
+        near_z = 0.001f;
+
+    canvas3d_shadow_build_light_view(center, eye, view);
+    if (!canvas3d_shadow_build_perspective_projection(face_cos, near_z, far_z, proj))
+        return 0;
+    canvas3d_mul_mat4(proj, view, out_light_vp);
+    return 1;
+}
+
 /// @brief Snap light-space bounds to shadow-map texel/depth increments.
 /// @details Stable cascaded shadows need the orthographic light projection to move in whole shadow
 ///   texels; otherwise tiny camera movements shift the projected depth map under the scene and

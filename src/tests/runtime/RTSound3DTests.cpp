@@ -39,6 +39,7 @@ int64_t g_last_play_pan = 0;
 int64_t g_last_update_voice = -1;
 int64_t g_last_update_volume = -1;
 int64_t g_last_update_pan = 0;
+double g_last_update_pitch = 0.0;
 
 void reset_audio_stub_state() {
     g_next_play_result = 0;
@@ -47,6 +48,7 @@ void reset_audio_stub_state() {
     g_last_update_voice = -1;
     g_last_update_volume = -1;
     g_last_update_pan = 0;
+    g_last_update_pitch = 0.0;
 }
 
 } // namespace
@@ -79,6 +81,11 @@ extern "C" void rt_voice_set_volume(int64_t voice, int64_t volume) {
 extern "C" void rt_voice_set_pan(int64_t voice, int64_t pan) {
     g_last_update_voice = voice;
     g_last_update_pan = pan;
+}
+
+extern "C" void rt_voice_set_pitch(int64_t voice, double pitch) {
+    g_last_update_voice = voice;
+    g_last_update_pitch = pitch;
 }
 
 extern "C" int64_t rt_voice_is_playing(int64_t voice) {
@@ -133,6 +140,8 @@ static void test_update_voice_reuses_original_base_volume_and_distance() {
     assert(g_last_update_voice == voice);
     assert(g_last_update_volume == 20);
     assert(g_last_update_pan == 100);
+    /* A stationary source relative to a stationary listener is Doppler-neutral. */
+    assert(g_last_update_pitch == 1.0);
 }
 
 static void test_invalid_inputs_are_ignored() {

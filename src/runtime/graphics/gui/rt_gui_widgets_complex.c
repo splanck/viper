@@ -623,6 +623,26 @@ int64_t rt_codeeditor_get_revision(void *editor) {
     return revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)revision;
 }
 
+/// @brief Serialize the editor's buffered edit deltas after @p since_revision as
+///        compact JSON for incremental language-service sync (plan 08).
+/// @details Returns the literal "overflow" when a cold mutation (undo/redo/
+///          SetText/buffer swap) or a journal wrap means the deltas cannot be
+///          applied incrementally — the caller must then full-sync. Taking the
+///          deltas drains the journal, so each delta is delivered exactly once.
+rt_string rt_codeeditor_take_deltas(void *editor, int64_t since_revision) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_codeeditor_t *ce = rt_codeeditor_checked(editor);
+    if (!ce)
+        return rt_str_empty();
+    uint64_t since = since_revision < 0 ? 0u : (uint64_t)since_revision;
+    char *json = vg_codeeditor_take_deltas_json(ce, since);
+    if (!json)
+        return rt_string_from_bytes("overflow", 8); // OOM: force a safe full-sync
+    rt_string result = rt_string_from_bytes(json, strlen(json));
+    free(json);
+    return result;
+}
+
 /// @brief Retrieve the currently selected text in a code editor.
 rt_string rt_codeeditor_get_selected_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
@@ -1665,6 +1685,13 @@ rt_string rt_codeeditor_get_text(void *editor) {
 int64_t rt_codeeditor_get_revision(void *editor) {
     (void)editor;
     return 0;
+}
+
+/// @brief Stub: graphics disabled — no editor journal to serialize.
+rt_string rt_codeeditor_take_deltas(void *editor, int64_t since_revision) {
+    (void)editor;
+    (void)since_revision;
+    return rt_str_empty();
 }
 
 /// @brief Retrieve the currently selected text in a code editor.

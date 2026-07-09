@@ -229,6 +229,65 @@ probes for scene data behavior. Relevant scene runtime capabilities include load
 saving, JSON round-trip, diagnostics, scene-owned mutators, properties, and
 tilemap render-copy creation.
 
+## Debug Adapter Protocol
+
+`viper run --debug-adapter <file>` speaks a newline-delimited JSON control
+protocol. Commands arrive on stdin as one JSON object per line; events are
+emitted on stderr, each prefixed with the `@@VDBG@@ ` sentinel so they stay
+distinct from the debuggee's own stderr. `DebugSession` in
+`viperide/src/build/debug_session.zia` is the IDE-side client.
+
+### Stop events
+
+A `stopped` event carries the top-frame `locals` array. Each local is:
+
+```json
+{ "name": "nums", "value": "List(3)", "type": "List", "varRef": 4, "childCount": 3 }
+```
+
+- `varRef` is `0` for a leaf (scalar, string, class instance) and `> 0` for a
+  composite that can be expanded. `childCount` is the number of children a
+  composite has (`0` for leaves).
+- These two fields are **additive**: a client that ignores them sees the
+  historical flat `{name,value,type}` locals unchanged.
+
+### Expanding a composite
+
+Send a `variables` command while stopped to fetch one level of children, paged:
+
+```json
+→ { "type": "variables", "varRef": 4, "start": 0, "count": 100 }
+← { "type": "variables", "varRef": 4, "start": 0,
+    "vars": [ { "name": "[0]", "value": "10", "type": "i64", "varRef": 0, "childCount": 0 }, ... ] }
+```
+
+Rules:
+
+- **Lazy, one level per request.** A child that is itself a composite carries its
+  own `varRef > 0`; the client re-requests to drill down. The adapter never
+  recurses, so depth is bounded by how far the user expands.
+- **Refs are valid only at the stop that produced them.** They are backed by a
+  per-stop provider that is discarded when execution resumes (continue / step /
+  terminate), matching DAP semantics. Requesting a stale or unknown ref yields an
+  empty `vars` list rather than an error.
+- **Paging.** `start`/`count` select a window (the IDE requests `<= 100` at a
+  time). When `count` is omitted the adapter defaults to 100.
+
+### What is expandable
+
+Value formatting during a stop never invokes user code (no `toString` dispatch),
+because the adapter runs on the paused VM thread. Consequently:
+
+- `List`, `Seq`, and the canonical `Map` expand into their elements / key-value
+  pairs. Boxed primitives and strings render with their real values.
+- Class instances and other collection kinds are **leaves** (`varRef 0`,
+  displayed as `<TypeName>`); per-field expansion would require a runtime
+  reflection ABI and is future work.
+
+Watch/evaluate results (`evaluated` events) are always scalar leaves today and
+carry `varRef: 0` / `childCount: 0` so the IDE can render locals and watches
+through one code path.
+
 ViperIDE currently does not mount a visual scene editor. Runtime scene support is
 available below the IDE, but the IDE still lacks:
 

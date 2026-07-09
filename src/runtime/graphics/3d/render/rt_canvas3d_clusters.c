@@ -269,9 +269,15 @@ void canvas3d_build_cluster_table(const rt_canvas3d *c,
      * entries deterministically (later lights in flattened order drop first). */
     {
         int32_t running = 0;
+        /* E11: configurable per-cluster capacity on top of the shared pool. */
+        int32_t per_cluster = c->cluster_light_budget;
+        if (per_cluster < 8 || per_cluster > VGFX3D_MAX_LIGHTS)
+            per_cluster = VGFX3D_MAX_LIGHTS;
         for (int32_t cidx = 0; cidx < VGFX3D_CLUSTER_COUNT; cidx++) {
             int32_t want = counts[cidx];
             int32_t room = VGFX3D_MAX_CLUSTER_LIGHT_INDICES - running;
+            if (room > per_cluster)
+                room = per_cluster;
             int32_t give = want < room ? want : (room > 0 ? room : 0);
             out->offsets[cidx] = (uint16_t)running;
             out->overflow_count += want - give;

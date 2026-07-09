@@ -244,7 +244,7 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->uNormalTex, 1);
     gl.Uniform1i(ctx->uSpecularTex, 2);
     gl.Uniform1i(ctx->uEmissiveTex, 3);
-    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+    for (int32_t slot = 0; slot < VGFX3D_CSM_SLOTS; slot++)
         gl.Uniform1i(ctx->uShadowTex[slot], GL_TU_SHADOW0 + slot);
     gl.Uniform1i(ctx->uSplatTex, GL_TU_SPLAT_CONTROL);
     gl.Uniform1i(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0);

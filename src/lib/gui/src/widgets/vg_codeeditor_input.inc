@@ -1409,6 +1409,125 @@ static void codeeditor_finish_keyboard_navigation(vg_codeeditor_t *editor,
     }
 }
 
+/// @brief Extend the active pointer selection to the widget-local point (x, y).
+/// @details Maps the point to a document position, sets the selection from the
+///          drag anchor to that position, moves the cursor there, and marks the
+///          widget for repaint. Shared by the MOUSE_MOVE handler (live pointer)
+///          and the per-frame edge-autoscroll tick (last known pointer), so the
+///          selection math lives in exactly one place.
+static void codeeditor_update_drag_selection(vg_codeeditor_t *editor,
+                                             vg_widget_t *widget,
+                                             float x,
+                                             float y) {
+    int line = 0;
+    int col = 0;
+    codeeditor_local_point_to_position(editor, widget, x, y, &line, &col);
+    editor->selection.start_line = editor->selection_anchor_line;
+    editor->selection.start_col = editor->selection_anchor_col;
+    editor->selection.end_line = line;
+    editor->selection.end_col = col;
+    editor->cursor_line = line;
+    editor->cursor_col = col;
+    editor->has_selection = compare_positions(editor->selection.start_line,
+                                              editor->selection.start_col,
+                                              editor->selection.end_line,
+                                              editor->selection.end_col) != 0;
+    editor->cursor_visible = true;
+    widget->needs_paint = true;
+}
+
+/// @brief Advance edge-autoscroll while a content-area selection drag is active.
+/// @details When the pointer is held beyond the editor's top/bottom edge (or,
+///          with word wrap off, the left/right content edge) the view keeps
+///          scrolling even though no MOUSE_MOVE events arrive. Scroll speed is
+///          proportional to how far past the edge the pointer sits, clamped to a
+///          sane maximum. After scrolling, the selection is re-extended to the
+///          last known pointer position so the highlighted range grows with the
+///          view. ensure_cursor_visible() is intentionally NOT called here: it
+///          would fight the proportional speed. codeeditor_clamp_scroll() bounds
+///          the result. No-op unless a drag is in progress.
+/// @param editor Code editor.
+/// @param widget Editor widget (for viewport metrics).
+/// @param dt     Seconds elapsed since the previous frame.
+static void codeeditor_drag_autoscroll_tick(vg_codeeditor_t *editor,
+                                            vg_widget_t *widget,
+                                            float dt) {
+    if (!editor || !widget || !editor->selection_dragging)
+        return;
+    if (dt <= 0.0f)
+        return;
+
+    float viewport_height = widget->height;
+    float line_height = editor->line_height > 0.0f ? editor->line_height : 1.0f;
+    float x = editor->selection_last_drag_x;
+    float y = editor->selection_last_drag_y;
+    bool scrolled = false;
+
+    // Vertical edge autoscroll.
+    float overshoot_y = 0.0f;
+    if (y < 0.0f)
+        overshoot_y = y; // negative: scroll up
+    else if (y > viewport_height)
+        overshoot_y = y - viewport_height; // positive: scroll down
+    if (overshoot_y != 0.0f) {
+        float mag = overshoot_y < 0.0f ? -overshoot_y : overshoot_y;
+        float lines_per_sec = mag / line_height;
+        if (lines_per_sec < 1.0f)
+            lines_per_sec = 1.0f;
+        if (lines_per_sec > 3.0f)
+            lines_per_sec = 3.0f;
+        lines_per_sec *= CODEEDITOR_AUTOSCROLL_MAX_LPS / 3.0f;
+        float delta = (overshoot_y < 0.0f ? -1.0f : 1.0f) * lines_per_sec * line_height * dt;
+        editor->selection_autoscroll_accum_y += delta;
+        float whole = (float)(int)editor->selection_autoscroll_accum_y;
+        if (whole != 0.0f) {
+            editor->scroll_y += whole;
+            editor->selection_autoscroll_accum_y -= whole;
+            scrolled = true;
+        }
+    } else {
+        editor->selection_autoscroll_accum_y = 0.0f;
+    }
+
+    // Horizontal edge autoscroll (skipped in word-wrap mode).
+    if (!editor->word_wrap) {
+        float char_width = editor->char_width > 0.0f ? editor->char_width : 1.0f;
+        float left_edge = editor->gutter_width;
+        float right_edge = widget->width - CODEEDITOR_SCROLLBAR_WIDTH;
+        float overshoot_x = 0.0f;
+        if (x < left_edge)
+            overshoot_x = x - left_edge; // negative: scroll left
+        else if (x > right_edge)
+            overshoot_x = x - right_edge; // positive: scroll right
+        if (overshoot_x != 0.0f) {
+            float mag = overshoot_x < 0.0f ? -overshoot_x : overshoot_x;
+            float cols_per_sec = mag / char_width;
+            if (cols_per_sec < 1.0f)
+                cols_per_sec = 1.0f;
+            if (cols_per_sec > 3.0f)
+                cols_per_sec = 3.0f;
+            cols_per_sec *= CODEEDITOR_AUTOSCROLL_MAX_LPS / 3.0f;
+            float delta = (overshoot_x < 0.0f ? -1.0f : 1.0f) * cols_per_sec * char_width * dt;
+            editor->selection_autoscroll_accum_x += delta;
+            float whole = (float)(int)editor->selection_autoscroll_accum_x;
+            if (whole != 0.0f) {
+                editor->scroll_x += whole;
+                if (editor->scroll_x < 0.0f)
+                    editor->scroll_x = 0.0f;
+                editor->selection_autoscroll_accum_x -= whole;
+                scrolled = true;
+            }
+        } else {
+            editor->selection_autoscroll_accum_x = 0.0f;
+        }
+    }
+
+    if (scrolled) {
+        codeeditor_clamp_scroll(editor, widget);
+        codeeditor_update_drag_selection(editor, widget, x, y);
+    }
+}
+
 /// @brief VTable handle_event: routes mouse (click/drag/scroll/scrollbar) and keyboard events to
 /// the appropriate editor action.
 static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
@@ -1427,8 +1546,17 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->needs_paint = true;
                 return true;
             }
+            if (editor->hscrollbar_dragging) {
+                editor->hscrollbar_dragging = false;
+                if (vg_widget_get_input_capture() == widget)
+                    vg_widget_release_input_capture();
+                widget->needs_paint = true;
+                return true;
+            }
             if (editor->selection_dragging) {
                 editor->selection_dragging = false;
+                editor->selection_autoscroll_accum_y = 0.0f;
+                editor->selection_autoscroll_accum_x = 0.0f;
                 if (vg_widget_get_input_capture() == widget)
                     vg_widget_release_input_capture();
                 widget->needs_paint = true;
@@ -1468,6 +1596,31 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->needs_paint = true;
                 return true;
             }
+            if (editor->hscrollbar_dragging) {
+                float thumb_x = 0.0f;
+                float thumb_width = 0.0f;
+                float max_scroll_x = 0.0f;
+                float thumb_travel = 0.0f;
+                if (codeeditor_get_hscrollbar_metrics(editor,
+                                                      widget,
+                                                      NULL,
+                                                      &thumb_x,
+                                                      &thumb_width,
+                                                      &max_scroll_x,
+                                                      &thumb_travel) &&
+                    thumb_travel > 0.0f && max_scroll_x > 0.0f) {
+                    float target_thumb_x =
+                        (event->mouse.x - editor->hscrollbar_drag_offset) - editor->gutter_width;
+                    if (target_thumb_x < 0.0f)
+                        target_thumb_x = 0.0f;
+                    if (target_thumb_x > thumb_travel)
+                        target_thumb_x = thumb_travel;
+                    editor->scroll_x = (target_thumb_x / thumb_travel) * max_scroll_x;
+                }
+                codeeditor_clamp_scroll(editor, widget);
+                widget->needs_paint = true;
+                return true;
+            }
             if (editor->selection_drag_pending) {
                 float dx = event->mouse.x - editor->selection_drag_start_x;
                 float dy = event->mouse.y - editor->selection_drag_start_y;
@@ -1479,23 +1632,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 editor->selection_dragging = true;
             }
             if (editor->selection_dragging) {
-                int line = 0;
-                int col = 0;
-                codeeditor_local_point_to_position(
-                    editor, widget, event->mouse.x, event->mouse.y, &line, &col);
-                editor->selection.start_line = editor->selection_anchor_line;
-                editor->selection.start_col = editor->selection_anchor_col;
-                editor->selection.end_line = line;
-                editor->selection.end_col = col;
-                editor->cursor_line = line;
-                editor->cursor_col = col;
-                editor->has_selection = compare_positions(editor->selection.start_line,
-                                                          editor->selection.start_col,
-                                                          editor->selection.end_line,
-                                                          editor->selection.end_col) != 0;
-                editor->cursor_visible = true;
+                editor->selection_last_drag_x = event->mouse.x;
+                editor->selection_last_drag_y = event->mouse.y;
+                codeeditor_update_drag_selection(editor, widget, event->mouse.x, event->mouse.y);
                 ensure_cursor_visible(editor);
-                widget->needs_paint = true;
                 return true;
             }
             break;
@@ -1533,6 +1673,46 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         target_thumb_y = thumb_travel;
                     editor->scroll_y =
                         thumb_travel > 0.0f ? (target_thumb_y / thumb_travel) * max_scroll : 0.0f;
+                    codeeditor_clamp_scroll(editor, widget);
+                }
+                widget->needs_paint = true;
+                return true;
+            }
+
+            // Horizontal scrollbar along the bottom edge (checked after the
+            // vertical bar so the corner belongs to the vertical thumb).
+            float htrack_y = 0.0f;
+            float hthumb_x = 0.0f;
+            float hthumb_width = 0.0f;
+            float hmax_scroll = 0.0f;
+            float hthumb_travel = 0.0f;
+            if (codeeditor_get_hscrollbar_metrics(editor,
+                                                  widget,
+                                                  &htrack_y,
+                                                  &hthumb_x,
+                                                  &hthumb_width,
+                                                  &hmax_scroll,
+                                                  &hthumb_travel) &&
+                event->mouse.y >= htrack_y && event->mouse.y < htrack_y + scrollbar_width &&
+                event->mouse.x >= editor->gutter_width &&
+                event->mouse.x < widget->width - scrollbar_width) {
+                if (event->mouse.x >= hthumb_x && event->mouse.x <= hthumb_x + hthumb_width) {
+                    // Click on thumb — start drag.
+                    editor->hscrollbar_dragging = true;
+                    editor->hscrollbar_drag_offset = event->mouse.x - hthumb_x;
+                    editor->hscrollbar_drag_start_scroll = editor->scroll_x;
+                    vg_widget_set_input_capture(widget);
+                } else {
+                    // Click on track — jump.
+                    float target_thumb_x =
+                        (event->mouse.x - editor->gutter_width) - hthumb_width * 0.5f;
+                    if (target_thumb_x < 0.0f)
+                        target_thumb_x = 0.0f;
+                    if (target_thumb_x > hthumb_travel)
+                        target_thumb_x = hthumb_travel;
+                    editor->scroll_x = hthumb_travel > 0.0f
+                                           ? (target_thumb_x / hthumb_travel) * hmax_scroll
+                                           : 0.0f;
                     codeeditor_clamp_scroll(editor, widget);
                 }
                 widget->needs_paint = true;
@@ -1948,12 +2128,26 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return true;
         }
 
-        case VG_EVENT_MOUSE_WHEEL:
-            editor->scroll_y -=
-                event->wheel.delta_y * editor->line_height * CODEEDITOR_MOUSE_WHEEL_LINES;
+        case VG_EVENT_MOUSE_WHEEL: {
+            float wheel_dy = event->wheel.delta_y;
+            float wheel_dx = event->wheel.delta_x;
+            // Shift + vertical wheel scrolls horizontally (mice without an
+            // x-wheel). Trackpads deliver delta_x directly.
+            if ((event->modifiers & VG_MOD_SHIFT) != 0 && wheel_dx == 0.0f) {
+                wheel_dx = wheel_dy;
+                wheel_dy = 0.0f;
+            }
+            float wheel_speed = vg_get_wheel_speed();
+            if (wheel_dy != 0.0f)
+                editor->scroll_y -=
+                    wheel_dy * editor->line_height * CODEEDITOR_MOUSE_WHEEL_LINES * wheel_speed;
+            if (wheel_dx != 0.0f && !editor->word_wrap)
+                editor->scroll_x -=
+                    wheel_dx * editor->char_width * CODEEDITOR_MOUSE_WHEEL_LINES * wheel_speed;
             codeeditor_clamp_scroll(editor, widget);
             widget->needs_paint = true;
             return true;
+        }
 
         default:
             break;

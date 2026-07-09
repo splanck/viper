@@ -1,0 +1,89 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/release_probe.zia
+// Purpose: Headless probe for Chess release-game persistence/notation systems.
+// Key invariants:
+//   - FEN round-trips preserve the starting position exactly.
+//   - Save slots can restore metadata without launching the Canvas UI.
+// Ownership/Lifetime:
+//   - Probe owns temporary SaveData keys under chess-release-probe-*.
+//   - No runtime game window is created.
+// Links: examples/games/chess/save.zia, examples/games/chess/notation.zia
+//
+//===----------------------------------------------------------------------===//
+
+module release_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./core/config";
+bind "./core/board";
+bind "./settings";
+bind "./notation";
+bind "./save";
+bind "./puzzles";
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func expect(cond: Boolean, msg: String) -> Boolean {
+    if !cond {
+        fail(msg);
+        return false;
+    }
+    return true;
+}
+
+func main() {
+    var board = new Board();
+    var startFen = notation.boardToFEN(board);
+    if !expect(startFen == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "start fen") { return; }
+
+    var copy = new Board();
+    if !expect(notation.applyFEN(copy, startFen), "apply start fen") { return; }
+    if !expect(notation.boardToFEN(copy) == startFen, "fen round trip") { return; }
+
+    var cfg = new ChessSettings("chess-release-probe-settings");
+    cfg.resetDefaults();
+    cfg.boardTheme = BOARD_SLATE;
+    cfg.pieceTheme = PIECES_CARVED;
+    cfg.timeControl = TIME_RAPID;
+    cfg.showAttackMap = true;
+    cfg.save();
+    var loadedCfg = new ChessSettings("chess-release-probe-settings");
+    loadedCfg.load();
+    if !expect(loadedCfg.boardTheme == BOARD_SLATE, "settings board theme") { return; }
+    if !expect(loadedCfg.pieceTheme == PIECES_CARVED, "settings piece theme") { return; }
+    if !expect(loadedCfg.timeControl == TIME_RAPID, "settings clock") { return; }
+    if !expect(loadedCfg.showAttackMap, "settings attack map") { return; }
+
+    var history = [];
+    history.add("e4");
+    history.add("e5");
+    var whiteCaps = [];
+    whiteCaps.add(PAWN);
+    var blackCaps = [];
+
+    var saves = new ChessSaveManager("chess-release-probe-saves");
+    if !expect(saves.saveSlot(2, board, history, whiteCaps, blackCaps,
+                              MODE_PVC, DIFF_HARD, true, TIME_RAPID,
+                              600, 605, 52, 36), "save slot") { return; }
+    if !expect(saves.hasSlot(2), "has slot") { return; }
+    if !expect(saves.loadSlot(2), "load slot") { return; }
+    var restored = new Board();
+    if !expect(notation.applyFEN(restored, saves.payload.fen), "save fen valid") { return; }
+    if !expect(save.decodeStringList(saves.payload.historyText).length() == 2, "save history") { return; }
+    if !expect(save.decodePieceList(saves.payload.whiteCaptureText).length() == 1, "save captures") { return; }
+    if !expect(saves.payload.timeControl == TIME_RAPID, "save clock mode") { return; }
+
+    var puzzleBoard = new Board();
+    if !expect(notation.applyFEN(puzzleBoard, puzzles.fen(1)), "puzzle fen") { return; }
+    if !expect(puzzles.targetFrom(1) == 62 && puzzles.targetTo(1) == 45, "puzzle target") { return; }
+
+    Terminal.Say("RESULT: ok");
+}

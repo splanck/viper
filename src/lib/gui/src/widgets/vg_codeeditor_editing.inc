@@ -406,8 +406,22 @@ static void record_edit_history(vg_codeeditor_t *editor,
                                       cursor_col_before,
                                       cursor_line_after,
                                       cursor_col_after);
-    if (op)
-        edit_history_push(editor->history, op);
+    if (!op)
+        return;
+    // Merge single-character typing into the previous undo unit when it continues
+    // an in-progress run; otherwise push a new op and (for a fresh coalescable
+    // insert) anchor the next run.
+    if (edit_history_try_coalesce_insert(editor->history, op, editor->typing_clock_ms)) {
+        edit_op_destroy(op);
+        return;
+    }
+    if (op->type == VG_EDIT_INSERT && op->cursor_id == 0 && !editor->history->is_grouping &&
+        op->new_text && codeeditor_single_codepoint_len(op->new_text) != 0 &&
+        op->new_text[0] != '\n') {
+        editor->history->last_insert_time_ms = editor->typing_clock_ms;
+        editor->history->coalesce_break = false;
+    }
+    edit_history_push(editor->history, op);
 }
 
 /// @brief Applies @p replacement_text at each edit target in descending order, recording undo ops,
@@ -473,6 +487,7 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         history_group_open = true;
     }
 
+    const uint64_t pending_rev = codeeditor_pending_revision(editor);
     for (int i = 0; i < target_count; i++) {
         const vg_edit_target_t *target = &clamped_targets[i];
         char *old_text = old_texts[i];
@@ -536,6 +551,23 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
                                 target->start_line,
                                 target->start_col);
         }
+
+        // Incremental sync journal (plan 08): capture the forward delta for the
+        // single-cursor hot path — the pre-edit range [start..end) was replaced by
+        // the replacement text (empty for a pure delete). Multi-cursor batches
+        // fall back to an overflow (full re-sync) after the loop to avoid any
+        // delta-ordering hazard.
+        if (target_count == 1 &&
+            ((replacement_text && replacement_text[0] != '\0') || has_old_text)) {
+            codeeditor_journal_push(
+                editor,
+                target->start_line,
+                target->start_col,
+                target->end_line,
+                target->end_col,
+                (replacement_text && replacement_text[0] != '\0') ? replacement_text : "",
+                pending_rev);
+        }
     }
 
 cleanup:
@@ -556,6 +588,8 @@ cleanup:
         return;
     codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
+    if (target_count > 1)
+        codeeditor_journal_mark_overflow(editor); // multi-cursor batch: consumer full-syncs
     if (syntax_global_dirty)
         codeeditor_invalidate_all_highlights(editor);
     editor->modified = true;

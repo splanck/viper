@@ -598,40 +598,6 @@ static void gltf_normalize_joint_influences(float *weights) {
     }
 }
 
-/// @brief True if vertices i0/i1/i2 form a non-degenerate triangle (positive squared
-///   cross-product area); rejects out-of-range indices and collinear/zero-area triples.
-static int gltf_triangle_positions_form_triangle(const rt_mesh3d *mesh,
-                                                 uint32_t i0,
-                                                 uint32_t i1,
-                                                 uint32_t i2) {
-    const float *p0;
-    const float *p1;
-    const float *p2;
-    double e1[3];
-    double e2[3];
-    double nx;
-    double ny;
-    double nz;
-    double area_sq;
-    if (!mesh || !mesh->vertices || i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
-        i2 >= mesh->vertex_count)
-        return 0;
-    p0 = mesh->vertices[i0].pos;
-    p1 = mesh->vertices[i1].pos;
-    p2 = mesh->vertices[i2].pos;
-    e1[0] = (double)p1[0] - (double)p0[0];
-    e1[1] = (double)p1[1] - (double)p0[1];
-    e1[2] = (double)p1[2] - (double)p0[2];
-    e2[0] = (double)p2[0] - (double)p0[0];
-    e2[1] = (double)p2[1] - (double)p0[1];
-    e2[2] = (double)p2[2] - (double)p0[2];
-    nx = e1[1] * e2[2] - e1[2] * e2[1];
-    ny = e1[2] * e2[0] - e1[0] * e2[2];
-    nz = e1[0] * e2[1] - e1[1] * e2[0];
-    area_sq = nx * nx + ny * ny + nz * nz;
-    return isfinite(area_sq) && area_sq > 1e-20;
-}
-
 /// @brief Validate and emit one triangle to the mesh if all three indices form an area.
 /// @details Duplicate-index, collinear-position, and out-of-range triangles are silently
 ///   dropped. This is a safety net for glTF files that include degenerate geometry (exported by
@@ -639,11 +605,13 @@ static int gltf_triangle_positions_form_triangle(const rt_mesh3d *mesh,
 ///   was emitted, 0 if it was rejected.
 static int gltf_emit_triangle(
     void *mesh, uint32_t vertex_count, uint32_t i0, uint32_t i1, uint32_t i2) {
-    if (i0 == i1 || i1 == i2 || i0 == i2)
-        return 0;
     if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
         return 0;
-    if (!gltf_triangle_positions_form_triangle((const rt_mesh3d *)mesh, i0, i1, i2))
+    /* Delegate the degeneracy test to the mesh's own predicate so the filter and
+     * AddTriangle agree exactly. A separate loader-side epsilon (the old fixed
+     * 1e-20 area check) let scale-relative slivers through and trapped imports
+     * of real-world low-poly character models. */
+    if (!rt_mesh3d_triangle_indices_valid(mesh, (int64_t)i0, (int64_t)i1, (int64_t)i2))
         return 0;
     rt_mesh3d_add_triangle(mesh, (int64_t)i0, (int64_t)i1, (int64_t)i2);
     return !((rt_mesh3d *)mesh)->build_failed;

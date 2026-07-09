@@ -163,7 +163,6 @@ class TransitionManager {
         if currentTransition == TRANS_NONE { return false; }
         transTimer = transTimer + dt;
         if transTimer >= transDuration {
-            var completed = currentTransition;
             currentTransition = TRANS_NONE;
             return true;
         }
@@ -171,7 +170,7 @@ class TransitionManager {
     }
 
     // Draw the transition overlay.
-    expose func draw(canvas: Canvas, playerScreenX: Integer, playerScreenY: Integer) {
+    expose func draw(canvas: Canvas, _playerScreenX: Integer, _playerScreenY: Integer) {
         if currentTransition == TRANS_NONE { return; }
 
         var progress = transTimer * 100 / transDuration; // 0-100

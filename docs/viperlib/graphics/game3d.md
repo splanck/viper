@@ -211,6 +211,16 @@ defaults with custom vertical-FOV camera projection values.
 horizontal FOV and converts it for the runtime camera projection. `NewWithCamera`
 and `NewWithHorizontalCamera` remain available as compatibility aliases.
 
+`World3D.NewFullscreen(title)` and
+`World3D.NewFullscreenWithHorizontalCamera(title, fov, near, far)` create the
+window directly in fullscreen at the desktop resolution — it never appears at
+a windowed size first. The world and camera adopt the actual display
+dimensions (`world.Canvas.Width`/`Height` report them). Runtime toggling via
+`Canvas3D.SetFullscreen`/`ToggleFullscreen` (e.g. an F11 binding) still works;
+pass `--windowed`-style flags through your own game code by choosing the
+constructor at startup. `Canvas3D.NewFullscreen(title)` is the low-level
+equivalent when driving the canvas directly.
+
 ---
 
 ## Presets And Prefabs
@@ -796,10 +806,11 @@ cellSize)` are Game3D editor hooks over the lower-level
 `Viper.Graphics3D.NavMesh3D.Bake*` APIs. They bake from the world's current
 `SceneGraph`, including hidden streamed-terrain nav source nodes, preserve
 world-space transforms, and return a
-`Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. The tiled entry uses
-`NavMesh3D.BakeTiled`, which retains tile voxel source data so
-`NavMesh3D.RebuildTile(tileX, tileZ)` can refresh one tile's geometry and
-obstacle state without a whole-scene bake.
+`Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. Both entries produce tiled
+bakes (the non-tiled hook auto-derives a tile size from the scene extent), so
+`NavMesh3D.RebuildTile(tileX, tileZ)` can always refresh one tile's geometry
+and obstacle state without a whole-scene bake; the tiled entry just pins an
+explicit tile size.
 
 ---
 
@@ -1077,12 +1088,15 @@ frame.
 | `lookSensitivity` | Multiplier for `lookAxis()` |
 | `update()` | Synchronize input helper state |
 | `isDown(key)` / `pressed(key)` / `released(key)` | Keyboard queries |
-| `mouseDelta()` | Current mouse movement as `Vec2` |
+| `mouseDelta()` | Current mouse movement as `Vec2` (sub-pixel in relative mode) |
 | `mouseButton(button)` / `mousePressed(button)` | Mouse button queries |
 | `wheelY()` | Vertical wheel delta |
-| `moveAxis()` | WASD/arrow movement as a normalized `Vec3` |
-| `lookAxis()` | Mouse look as `Vec2`, scaled by `lookSensitivity` |
+| `moveAxis()` | WASD/arrow movement as a normalized `Vec3` (merges the bound pad's left stick) |
+| `lookAxis()` | Mouse look as `Vec2`, scaled by `lookSensitivity` (merges the bound pad's right stick) |
 | `captureMouse()` / `releaseMouse()` | Forward to the active mouse capture policy |
+| `setRelativeLook(on)` | Enable raw relative mouse-look: captures the cursor and switches `mouseDelta()`/`lookAxis()` to unbounded sub-pixel deltas (see `Viper.Input.Mouse.SetRelativeMode`) |
+| `bindPad(index)` / `padBound` | Merge gamepad `index`'s sticks into `moveAxis()`/`lookAxis()` (`-1` unbinds; poll buttons/triggers via `Viper.Input.Pad`) |
+| `padLookSensitivity` | Right-stick look speed (degrees per frame at full tilt, response curve x^1.8, radial deadzone 0.18) |
 
 Use `Viper.Input.Key` and `Game3D.MouseButtons` instead of hard-coded integer
 input codes in game code. `Viper.Input.Key` is the canonical key-code namespace

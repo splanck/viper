@@ -1335,6 +1335,16 @@ int64_t game3d_input_mouse_dy(const rt_game3d_input *input) {
     return input && input->has_snapshot ? input->mouse_dy : rt_mouse_delta_y();
 }
 
+/// @brief Sub-pixel mouse X delta (relative mouse mode). Snapshot-aware, else live.
+double game3d_input_mouse_fdx(const rt_game3d_input *input) {
+    return input && input->has_snapshot ? input->mouse_fdx : rt_mouse_delta_xf();
+}
+
+/// @brief Sub-pixel mouse Y delta (relative mouse mode). Snapshot-aware, else live.
+double game3d_input_mouse_fdy(const rt_game3d_input *input) {
+    return input && input->has_snapshot ? input->mouse_fdy : rt_mouse_delta_yf();
+}
+
 /// @brief This frame's mouse wheel Y. Snapshot-aware, else live wheel value.
 double game3d_input_wheel_y_snapshot(const rt_game3d_input *input) {
     return input && input->has_snapshot ? input->wheel_y : rt_mouse_wheel_yf();

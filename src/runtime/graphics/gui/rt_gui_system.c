@@ -860,6 +860,23 @@ void rt_app_set_ui_scale(void *app, double scale) {
     gui_app->user_scale = (float)scale;
 }
 
+/// @brief `App.SetWheelSpeed` — set the global mouse-wheel scroll sensitivity
+///        used by the code editor, list box, and output pane. The value is
+///        clamped inside the gui library. The app handle is accepted for API
+///        symmetry but the setting is process-global.
+void rt_app_set_wheel_speed(void *app, double speed) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    vg_set_wheel_speed((float)speed);
+}
+
+/// @brief `App.GetWheelSpeed` — return the global mouse-wheel scroll sensitivity.
+double rt_app_get_wheel_speed(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    return (double)vg_get_wheel_speed();
+}
+
 /// @brief Get the current user UI zoom multiplier (1.0 = default).
 double rt_app_get_ui_scale(void *app) {
     RT_ASSERT_MAIN_THREAD();
@@ -987,7 +1004,12 @@ void rt_app_focus(void *app) {
     if (!gui_app)
         return;
     if (gui_app->window)
-        vgfx_focus(gui_app->window);
+        vgfx_request_foreground(gui_app->window);
+}
+
+/// @brief Activate the app as the foreground OS application/window.
+void rt_app_activate(void *app) {
+    rt_app_focus(app);
 }
 
 /// @brief Check whether the app window currently has OS-level focus.
@@ -997,6 +1019,30 @@ int64_t rt_app_is_focused(void *app) {
     if (!gui_app)
         return 0;
     return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
+}
+
+/// @brief Count of frames that took the full-window repaint path (plan 07).
+int64_t rt_app_get_paint_frames_full(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    return gui_app ? (int64_t)gui_app->frames_full : 0;
+}
+
+/// @brief Count of frames that took the damage-region (partial) repaint path.
+int64_t rt_app_get_paint_frames_partial(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    return gui_app ? (int64_t)gui_app->frames_partial : 0;
+}
+
+/// @brief Enable or disable damage-region rendering at runtime (kill switch).
+/// @details Complements the VIPER_GUI_FULL_REPAINT=1 env var. Passing 0 forces
+///          every dirty frame through the full-window repaint path.
+void rt_app_set_partial_paint(void *app, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (gui_app)
+        gui_app->partial_paint_enabled = (enabled != 0) ? 1 : 0;
 }
 
 /// @brief Control whether the OS close button is allowed to close the window.
@@ -1290,6 +1336,18 @@ double rt_app_get_ui_scale(void *app) {
     return 1.0;
 }
 
+/// @brief Stub: `App.SetWheelSpeed` is a no-op without graphics.
+void rt_app_set_wheel_speed(void *app, double speed) {
+    (void)app;
+    (void)speed;
+}
+
+/// @brief Stub: graphics disabled — returns 1.0.
+double rt_app_get_wheel_speed(void *app) {
+    (void)app;
+    return 1.0;
+}
+
 /// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     (void)app;
@@ -1353,10 +1411,33 @@ void rt_app_focus(void *app) {
     (void)app;
 }
 
+/// @brief Stub: graphics disabled — no-op; no window to activate.
+void rt_app_activate(void *app) {
+    (void)app;
+}
+
 /// @brief Check whether the app window currently has OS-level focus.
 int64_t rt_app_is_focused(void *app) {
     (void)app;
     return 0;
+}
+
+/// @brief Stub: graphics disabled — no frames are ever painted.
+int64_t rt_app_get_paint_frames_full(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no frames are ever painted.
+int64_t rt_app_get_paint_frames_partial(void *app) {
+    (void)app;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no-op; there is no render path to toggle.
+void rt_app_set_partial_paint(void *app, int64_t enabled) {
+    (void)app;
+    (void)enabled;
 }
 
 /// @brief Stub: graphics disabled — no-op; no window close event can be intercepted.

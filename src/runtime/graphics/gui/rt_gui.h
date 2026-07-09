@@ -80,6 +80,12 @@ int64_t rt_gui_app_should_close(void *app);
 /// @param app GUI application handle.
 void rt_gui_app_poll(void *app);
 
+/// @brief Block up to timeout_ms for OS events, then poll (App.PollWait).
+/// @param app GUI application handle.
+/// @param timeout_ms Maximum idle wait in ms (clamped to [0, 1000]).
+/// @return 1 if events arrived, 0 on timeout.
+int64_t rt_gui_app_poll_wait(void *app, int64_t timeout_ms);
+
 /// @brief Render all widgets to the window.
 /// @param app GUI application handle.
 void rt_gui_app_render(void *app);
@@ -433,6 +439,26 @@ void *rt_treeview_get_selected(void *tree);
 /// @return Tree node handle or NULL if the point is outside rows.
 void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y);
 
+/// @brief Enable application-directed (poll-model) drag-and-drop on the tree.
+/// @param tree TreeView widget handle.
+/// @param enabled Non-zero to enable INTO-only latched drops.
+void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled);
+
+/// @brief True while a completed drop is waiting to be consumed.
+int64_t rt_treeview_was_drop_received(void *tree);
+
+/// @brief Data string of the dragged node at the latched drop.
+rt_string rt_treeview_get_drop_source_data(void *tree);
+
+/// @brief Data string of the target node at the latched drop.
+rt_string rt_treeview_get_drop_target_data(void *tree);
+
+/// @brief Latched drop position (0=before, 1=into, 2=after).
+int64_t rt_treeview_get_drop_position(void *tree);
+
+/// @brief Consume the latched drop so the next drop can be observed.
+void rt_treeview_clear_drop(void *tree);
+
 /// @brief Check if selection changed since last call (polling pattern).
 /// @param tree TreeView widget handle.
 /// @return 1 if selection changed, 0 otherwise.
@@ -607,6 +633,10 @@ rt_string rt_codeeditor_get_text(void *editor);
 /// @param editor CodeEditor widget handle.
 /// @return Monotonic content revision, or 0 when unavailable.
 int64_t rt_codeeditor_get_revision(void *editor);
+
+/// @brief Serialize buffered edit deltas after @p since_revision as compact JSON
+///        for incremental language-service sync; "overflow" means full-sync.
+rt_string rt_codeeditor_take_deltas(void *editor, int64_t since_revision);
 
 /// @brief Get the currently selected text.
 /// @param editor CodeEditor widget handle.
@@ -1304,6 +1334,16 @@ void rt_app_set_ui_scale(void *app, double scale);
 /// @return Zoom factor (1.0 = default).
 double rt_app_get_ui_scale(void *app);
 
+/// @brief Set the global mouse-wheel scroll sensitivity (clamped in the gui lib).
+/// @param app GUI application handle (accepted for symmetry; setting is global).
+/// @param speed Sensitivity multiplier; 1.0 is the default.
+void rt_app_set_wheel_speed(void *app, double speed);
+
+/// @brief Get the global mouse-wheel scroll sensitivity.
+/// @param app GUI application handle.
+/// @return Sensitivity multiplier (1.0 = default).
+double rt_app_get_wheel_speed(void *app);
+
 /// @brief Set the window position.
 /// @param app GUI application handle.
 /// @param x X position in screen coordinates.
@@ -1356,10 +1396,23 @@ int64_t rt_app_is_fullscreen(void *app);
 /// @param app GUI application handle.
 void rt_app_focus(void *app);
 
+/// @brief Activate the app as the foreground OS application/window.
+/// @param app GUI application handle.
+void rt_app_activate(void *app);
+
 /// @brief Check if the window has keyboard focus.
 /// @param app GUI application handle.
 /// @return 1 if focused, 0 otherwise.
 int64_t rt_app_is_focused(void *app);
+
+/// @brief Count of frames that took the full-window repaint path (plan 07).
+int64_t rt_app_get_paint_frames_full(void *app);
+
+/// @brief Count of frames that took the damage-region (partial) repaint path.
+int64_t rt_app_get_paint_frames_partial(void *app);
+
+/// @brief Enable/disable damage-region rendering at runtime (0 forces full repaint).
+void rt_app_set_partial_paint(void *app, int64_t enabled);
 
 /// @brief Enable or disable close prevention.
 /// @param app GUI application handle.
@@ -2123,6 +2176,13 @@ void rt_codeeditor_set_line_number_width(void *editor, int64_t width);
 /// @param slot Gutter slot (0=primary, 1=secondary).
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot);
 
+/// @brief Add/update a change bar (SCM diff marker) on a gutter line.
+/// @param editor CodeEditor handle.
+/// @param line 0-based line.
+/// @param color Bar color (0xAARRGGBB).
+/// @param slot Gutter slot (distinct from breakpoint/diagnostic slots).
+void rt_codeeditor_set_gutter_bar(void *editor, int64_t line, int64_t color, int64_t slot);
+
 /// @brief Clear a gutter icon for a specific line.
 /// @param editor CodeEditor handle.
 /// @param line Line number (0-based).
@@ -2375,6 +2435,30 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled);
 /// @param editor CodeEditor handle.
 /// @return 1 if enabled, 0 otherwise.
 int64_t rt_codeeditor_get_word_wrap(void *editor);
+
+/// @brief Set whitespace-marker rendering mode (0=none, 1=boundary, 2=all).
+/// @param editor CodeEditor handle.
+/// @param mode Whitespace mode; out-of-range values clamp to none.
+void rt_codeeditor_set_whitespace_mode(void *editor, int64_t mode);
+
+/// @brief Return the current whitespace-marker rendering mode.
+/// @param editor CodeEditor handle.
+/// @return 0=none, 1=boundary, 2=all.
+int64_t rt_codeeditor_get_whitespace_mode(void *editor);
+
+/// @brief `EditorBuffer.New` — detached per-document editor state from text.
+void *rt_editorbuffer_new(rt_string text);
+/// @brief `EditorBuffer.get_Text` — full document text.
+rt_string rt_editorbuffer_get_text(void *handle);
+/// @brief `EditorBuffer.get_Revision` — content revision.
+int64_t rt_editorbuffer_get_revision(void *handle);
+/// @brief `EditorBuffer.IsModified`.
+int64_t rt_editorbuffer_is_modified(void *handle);
+/// @brief `EditorBuffer.ClearModified`.
+void rt_editorbuffer_clear_modified(void *handle);
+/// @brief `CodeEditor.AttachBuffer` — swap the editor's document for a buffer,
+///        returning the previous document as a new EditorBuffer (buffer consumed).
+void *rt_codeeditor_attach_buffer(void *editor, void *bufHandle);
 
 /// @brief Toggle faint vertical indentation guides.
 /// @param editor CodeEditor handle.
@@ -2850,6 +2934,18 @@ rt_string rt_commandpalette_get_selected_command(void *palette);
 /// @return 1 if command was selected, 0 otherwise.
 int64_t rt_commandpalette_was_command_selected(void *palette);
 
+/// @brief Current live query text (never NULL; "" when empty).
+rt_string rt_commandpalette_get_query(void *palette);
+
+/// @brief Query generation counter (bumped on every query change).
+int64_t rt_commandpalette_get_query_generation(void *palette);
+
+/// @brief Programmatically set the query text and re-filter.
+void rt_commandpalette_set_query(void *palette, rt_string text);
+
+/// @brief Enable client-filtered mode (application filters/ranks; widget shows order).
+void rt_commandpalette_set_client_filtered(void *palette, int64_t enabled);
+
 //=========================================================================
 // Phase 7: Tooltip
 //=========================================================================
@@ -3316,6 +3412,29 @@ rt_string rt_zia_check(rt_string source);
 
 /// @brief Run semantic analysis with a source path for relative bind resolution.
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
+
+// Incremental document mirror sync (plan 08): the IDE pushes edit deltas so
+// semantic requests avoid re-materializing the whole buffer on each keystroke.
+// See src/runtime/graphics/common/rt_zia_completion.h for full contracts.
+
+/// @brief Replace the mirror for @p path with @p text, stamping @p revision.
+void rt_zia_doc_sync_full(rt_string path, rt_string text, int64_t revision);
+
+/// @brief Apply @p deltas_json to the mirror for @p path, advancing to
+///        @p end_revision. Returns 1 on success, 0 if no baseline/malformed.
+int8_t rt_zia_doc_sync_delta(rt_string path, rt_string deltas_json, int64_t end_revision);
+
+/// @brief Drop the mirror for @p path (document closed).
+void rt_zia_doc_close(rt_string path);
+
+/// @brief Return the current mirror text for @p path, or "" when absent.
+rt_string rt_zia_doc_text(rt_string path);
+
+/// @brief Run diagnostics for @p file_path straight off its mirror text.
+rt_string rt_zia_check_for_file_mirror(rt_string file_path);
+
+/// @brief Start async structured diagnostics for @p file_path off its mirror.
+void *rt_zia_doc_begin_check_for_file(rt_string file_path);
 
 /// @brief Run semantic analysis and return structured diagnostic maps.
 void *rt_zia_toolchain_check(rt_string source);

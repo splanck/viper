@@ -392,3 +392,39 @@ expose func TreeDelete(shell: app_shell.AppShell,
     }
     overlay.OpenDelete(shell, deletePath);
 }
+
+/// @brief Per-frame: apply a completed file-tree drag-and-drop as a file move.
+/// @details Reads the latched drop (source/target node paths), moves the source
+///          into the target folder through ProjectManager.MovePathInto (which
+///          updates open documents and project binds), reindexes, refreshes the
+///          active editor, and reports the result. Invalid drops are rejected
+///          with a status message.
+expose func PumpTreeDrops(shell: app_shell.AppShell,
+                          projMgr: project_manager.ProjectManager,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          indexer: project_index.ProjectIndexer) {
+    var tree = shell.workbench.sidebarTree;
+    if tree == null { return; }
+    if tree.WasDropReceived() == false { return; }
+    var src = tree.GetDropSourceData();
+    var dst = tree.GetDropTargetData();
+    tree.ClearDrop();
+    if src == "" or dst == "" { return; }
+
+    var movedPath = projMgr.MovePathInto(src, dst, docMgr);
+    if movedPath == "" {
+        shell.SetStatusLeft("Move canceled (invalid drop target)");
+        return;
+    }
+
+    var activeAfter = docMgr.GetActive();
+    if activeAfter != null {
+        engine.LoadDocument(activeAfter!);
+        if activeAfter!.isNew == false {
+            shell.SetBreadcrumbPath(activeAfter!.filePath);
+        }
+    }
+    workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    shell.SetStatusLeft("Moved " + Path.Name(movedPath) + " to folder");
+}

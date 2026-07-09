@@ -319,6 +319,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_GuiTab,
     RTCLS_GuiSplitPane,
     RTCLS_GuiCodeEditor,
+    RTCLS_GuiEditorBuffer,
     RTCLS_GuiDropdown,
     RTCLS_GuiSlider,
     RTCLS_GuiProgressBar,
@@ -566,6 +567,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_AnimController3D,
     RTCLS_Decal3D,
     RTCLS_Sprite3D,
+    RTCLS_LensFlare3D,
     RTCLS_Vegetation3D,
     RTCLS_VideoPlayer,
     RTCLS_VideoWidget,
@@ -616,6 +618,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_IKSolver3D,
     RTCLS_NodeAnimation3D,
     RTCLS_NodeAnimator3D,
+    RTCLS_ZiaDocument,
 };
 
 /// @brief Describes a property on a runtime class.

@@ -45,6 +45,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
@@ -1006,6 +1007,32 @@ float vgfx_platform_get_display_scale(void) {
     return scale;
 }
 
+/// @brief Query the primary display's logical dimensions.
+/// @details X11 reports physical pixels; divide by the display scale for
+///          vgfx logical units. Uses a short-lived display connection (called
+///          once per fullscreen window creation).
+/// @return 1 on success, 0 when no X display is reachable.
+int vgfx_platform_get_display_logical_size(int32_t *out_w, int32_t *out_h) {
+    x11_init_threads_once();
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy)
+        return 0;
+    int screen = DefaultScreen(dpy);
+    int phys_w = DisplayWidth(dpy, screen);
+    int phys_h = DisplayHeight(dpy, screen);
+    XCloseDisplay(dpy);
+    if (phys_w <= 0 || phys_h <= 0)
+        return 0;
+    float scale = vgfx_platform_get_display_scale();
+    if (scale < 1.0f)
+        scale = 1.0f;
+    if (out_w)
+        *out_w = (int32_t)((float)phys_w / scale);
+    if (out_h)
+        *out_h = (int32_t)((float)phys_h / scale);
+    return 1;
+}
+
 /// @brief Initialize platform-specific window resources for X11.
 /// @details Opens connection to X server, creates X11 window with appropriate
 ///          attributes, sets up WM_DELETE_WINDOW protocol for close button,
@@ -1536,6 +1563,32 @@ static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requ
 /// @post All pending XEvents processed and translated
 /// @post win->key_state and win->mouse_* updated to reflect current input state
 /// @post Corresponding vgfx_event_t enqueued for each XEvent
+/* Relative-mouse helpers implemented after the XInput2 loader at the bottom
+ * of this file (see "Relative (raw) mouse mode" section). */
+static void x11_handle_generic_event(struct vgfx_window *win, XEvent *event);
+void x11_relative_apply_grab(struct vgfx_window *win, int enable);
+
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display)
+        return 0;
+    if (timeout_ms <= 0)
+        return 0;
+    /* Events already buffered client-side: return immediately. */
+    if (XPending(x11->display) > 0)
+        return 1;
+    /* Block on the X connection fd until data arrives or the timeout elapses.
+       Events are left for vgfx_platform_process_events to read. */
+    struct pollfd pfd;
+    pfd.fd = ConnectionNumber(x11->display);
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int r = poll(&pfd, 1, timeout_ms);
+    return r > 0 ? 1 : 0;
+}
+
 int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
@@ -1829,6 +1882,9 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 g_vgfx_cursor_window = win;
                 g_vgfx_clipboard_window = win;
                 x11_global_unlock();
+                /* Re-confine the cursor while relative (raw) mouse is on. */
+                if (win->relative_mouse_enabled)
+                    x11_relative_apply_grab(win, 1);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
@@ -1839,8 +1895,18 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     XUnsetICFocus(x11->xic);
                 vgfx_internal_set_focus_state(win, 0);
                 vgfx_internal_clear_input_state(win);
+                /* Release the pointer grab while unfocused (re-applied on
+                 * FocusIn) so the desktop stays usable. */
+                if (win->relative_mouse_enabled)
+                    x11_relative_apply_grab(win, 0);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
+                break;
+            }
+
+            case GenericEvent: {
+                /* XInput2 raw motion for relative (FPS mouse-look) mode. */
+                x11_handle_generic_event(win, &event);
                 break;
             }
 
@@ -2322,6 +2388,19 @@ void vgfx_platform_focus(struct vgfx_window *win) {
     }
 }
 
+void vgfx_platform_request_foreground(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (x11->hidden)
+        return;
+    if (x11->display && x11->window) {
+        XRaiseWindow(x11->display, x11->window);
+        XSetInputFocus(x11->display, x11->window, RevertToParent, CurrentTime);
+        XFlush(x11->display);
+    }
+}
+
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
     if (!win)
         return 0;
@@ -2633,6 +2712,195 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
                  vgfx_internal_scale_up_i32(x, cs),
                  vgfx_internal_scale_up_i32(y, cs));
     XFlush(x11->display);
+}
+
+//===----------------------------------------------------------------------===//
+// Relative (raw) mouse mode — XInput2 raw motion
+//===----------------------------------------------------------------------===//
+// libXi is loaded at runtime via dlopen (same policy as the GLX loader above)
+// so no build-time XInput2 headers or link dependency is introduced. The tiny
+// ABI subset we need has been stable since XInput 2.0 (2009) and is declared
+// locally below.
+
+#define VGFX_XI_RAW_MOTION 17
+#define VGFX_XI_ALL_MASTER_DEVICES 1
+
+typedef struct {
+    int deviceid;
+    int mask_len;
+    unsigned char *mask;
+} vgfx_xi_event_mask_t;
+
+/* Layout of XIRawEvent (XInput 2.0 stable ABI). Only the fields up to
+ * raw_values are accessed. */
+typedef struct {
+    int type;
+    unsigned long serial;
+    int send_event;
+    Display *display;
+    int extension;
+    int evtype;
+    unsigned long time;
+    int deviceid;
+    int sourceid;
+    int detail;
+    int flags;
+
+    struct {
+        int mask_len;
+        unsigned char *mask;
+        double *values;
+    } valuators;
+
+    double *raw_values;
+} vgfx_xi_raw_event_t;
+
+typedef int (*vgfx_xi_query_version_fn)(Display *, int *, int *);
+typedef int (*vgfx_xi_select_events_fn)(Display *, Window, vgfx_xi_event_mask_t *, int);
+
+static void *g_vgfx_xi_handle = NULL;
+static vgfx_xi_query_version_fn g_vgfx_xi_query_version = NULL;
+static vgfx_xi_select_events_fn g_vgfx_xi_select_events = NULL;
+int g_vgfx_xi_opcode = -1; /* consulted by the GenericEvent handler */
+
+/// @brief Lazily load libXi and resolve the XInput2 entry points we use.
+/// @return 1 when XInput2 >= 2.0 is available on @p display, 0 otherwise.
+static int x11_xi2_load(Display *display) {
+    if (!display)
+        return 0;
+    if (!g_vgfx_xi_handle) {
+        g_vgfx_xi_handle = dlopen("libXi.so.6", RTLD_LAZY);
+        if (!g_vgfx_xi_handle)
+            g_vgfx_xi_handle = dlopen("libXi.so", RTLD_LAZY);
+        if (!g_vgfx_xi_handle)
+            return 0;
+        g_vgfx_xi_query_version =
+            (vgfx_xi_query_version_fn)dlsym(g_vgfx_xi_handle, "XIQueryVersion");
+        g_vgfx_xi_select_events =
+            (vgfx_xi_select_events_fn)dlsym(g_vgfx_xi_handle, "XISelectEvents");
+    }
+    if (!g_vgfx_xi_query_version || !g_vgfx_xi_select_events)
+        return 0;
+
+    int opcode = 0;
+    int event_base = 0;
+    int error_base = 0;
+    if (!XQueryExtension(display, "XInputExtension", &opcode, &event_base, &error_base))
+        return 0;
+
+    int major = 2;
+    int minor = 0;
+    if (g_vgfx_xi_query_version(display, &major, &minor) != Success)
+        return 0;
+
+    g_vgfx_xi_opcode = opcode;
+    return 1;
+}
+
+/// @brief Decode a GenericEvent cookie and accumulate raw mouse motion.
+/// @details Only consumes XI raw-motion events while relative mode is active;
+///          everything else is ignored. Raw valuator 0/1 presence is checked
+///          via the event's valuator mask (devices may report axes sparsely).
+static void x11_handle_generic_event(struct vgfx_window *win, XEvent *event) {
+    if (!win || !event || !win->relative_mouse_enabled || !win->relative_mouse_native)
+        return;
+    if (g_vgfx_xi_opcode < 0)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11 || !x11->display)
+        return;
+
+    XGenericEventCookie *cookie = &event->xcookie;
+    if (cookie->extension != g_vgfx_xi_opcode)
+        return;
+    if (!XGetEventData(x11->display, cookie))
+        return;
+
+    if (cookie->evtype == VGFX_XI_RAW_MOTION && cookie->data) {
+        const vgfx_xi_raw_event_t *raw = (const vgfx_xi_raw_event_t *)cookie->data;
+        double dx = 0.0;
+        double dy = 0.0;
+        int value_index = 0;
+        const unsigned char *mask = raw->valuators.mask;
+        const int mask_len = raw->valuators.mask_len;
+        if (mask && raw->raw_values) {
+            if (mask_len > 0 && (mask[0] & 0x01u))
+                dx = raw->raw_values[value_index++];
+            if (mask_len > 0 && (mask[0] & 0x02u))
+                dy = raw->raw_values[value_index++];
+        }
+        if (dx != 0.0 || dy != 0.0) {
+            double cs = (double)vgfx_internal_coord_scale(win);
+            if (cs <= 0.0)
+                cs = 1.0;
+            vgfx_internal_add_relative_delta(win, dx / cs, dy / cs);
+        }
+    }
+
+    XFreeEventData(x11->display, cookie);
+}
+
+/// @brief Select or deselect XI raw-motion events on the root window.
+static int x11_xi2_select_raw_motion(vgfx_x11_data *x11, int enable) {
+    unsigned char mask_bits[3] = {0, 0, 0};
+    if (enable)
+        mask_bits[VGFX_XI_RAW_MOTION >> 3] |= (unsigned char)(1u << (VGFX_XI_RAW_MOTION & 7));
+
+    vgfx_xi_event_mask_t mask;
+    mask.deviceid = VGFX_XI_ALL_MASTER_DEVICES;
+    mask.mask_len = (int)sizeof(mask_bits);
+    mask.mask = mask_bits;
+
+    Window root = RootWindow(x11->display, x11->screen);
+    return g_vgfx_xi_select_events(x11->display, root, &mask, 1) == Success;
+}
+
+/// @brief Confine the pointer to the window while relative mode is active.
+/// @details Raw motion keeps flowing regardless of the cursor position; the
+///          grab only prevents the (hidden) cursor from drifting onto other
+///          windows/workspaces and stealing a click.
+void x11_relative_apply_grab(struct vgfx_window *win, int enable) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    if (enable) {
+        XGrabPointer(x11->display,
+                     x11->window,
+                     True,
+                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+                     GrabModeAsync,
+                     GrabModeAsync,
+                     x11->window,
+                     None,
+                     CurrentTime);
+    } else {
+        XUngrabPointer(x11->display, CurrentTime);
+    }
+    XFlush(x11->display);
+}
+
+int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
+    if (!win || !win->platform_data)
+        return 0;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return 0;
+
+    if (enabled) {
+        if (!x11_xi2_load(x11->display))
+            return 0; /* No XInput2 — caller falls back to warp-to-center. */
+        if (!x11_xi2_select_raw_motion(x11, 1))
+            return 0;
+        x11_relative_apply_grab(win, 1);
+    } else {
+        if (g_vgfx_xi_select_events && g_vgfx_xi_opcode >= 0)
+            (void)x11_xi2_select_raw_motion(x11, 0);
+        x11_relative_apply_grab(win, 0);
+    }
+    XFlush(x11->display);
+    return 1;
 }
 
 #endif /* __linux__ */

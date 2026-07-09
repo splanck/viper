@@ -1103,7 +1103,7 @@ func makeRoundRobinCalendar(leagueName: String, seasonYear: Integer, seed: Integ
     var gameNumber = 1;
     var playedRounds = 0;
     while !allTeamsScheduled(counters, targetGames) {
-        for round in 0..baseRounds {
+        for _ in 0..baseRounds {
             if allTeamsScheduled(counters, targetGames) {
                 break;
             }

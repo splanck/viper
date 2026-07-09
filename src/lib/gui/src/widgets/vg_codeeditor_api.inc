@@ -45,7 +45,22 @@
 /// @param editor The code editor to tick.
 /// @param dt     Elapsed time in seconds since the last frame.
 void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
-    if (!editor || !(editor->base.state & VG_STATE_FOCUSED))
+    if (!editor)
+        return;
+
+    // Edge autoscroll during a selection drag must run before the focus gate:
+    // the drag holds input capture and should keep scrolling even if the blink
+    // focus flag is not set. No-op unless a drag is in progress.
+    codeeditor_drag_autoscroll_tick(editor, &editor->base, dt);
+
+    // Advance the deterministic typing clock that drives undo coalescing. Using
+    // accumulated frame dt (not a wall clock) keeps the gui library free of
+    // platform time calls and lets tests control elapsed time via tick(dt).
+    if (dt > 0.0f) {
+        editor->typing_clock_ms += (uint64_t)(dt * 1000.0f);
+    }
+
+    if (!(editor->base.state & VG_STATE_FOCUSED))
         return;
 
     editor->cursor_blink_time += dt;
@@ -147,12 +162,149 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
     edit_history_clear(editor->history);
 
     codeeditor_bump_revision(editor);
+    codeeditor_journal_mark_overflow(editor); // full text replace: consumer full-syncs
     vg_codeeditor_refresh_layout_state(editor);
     editor->base.needs_paint = true;
 }
 
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     vg_codeeditor_set_text_bytes(editor, text, text ? strlen(text) : 0);
+}
+
+// ── Incremental sync journal serialization (plan 08) ────────────────────────
+
+/// @brief Minimal growable byte buffer for delta-JSON assembly.
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+    bool ok;
+} cej_buf_t;
+
+static void cej_ensure(cej_buf_t *b, size_t extra) {
+    if (!b->ok)
+        return;
+    if (b->len + extra + 1 > b->cap) {
+        size_t ncap = b->cap ? b->cap : 256;
+        while (ncap < b->len + extra + 1)
+            ncap *= 2;
+        char *nd = realloc(b->data, ncap);
+        if (!nd) {
+            b->ok = false;
+            return;
+        }
+        b->data = nd;
+        b->cap = ncap;
+    }
+}
+
+static void cej_puts(cej_buf_t *b, const char *s) {
+    size_t n = strlen(s);
+    cej_ensure(b, n);
+    if (b->ok) {
+        memcpy(b->data + b->len, s, n);
+        b->len += n;
+    }
+}
+
+static void cej_putc(cej_buf_t *b, char c) {
+    cej_ensure(b, 1);
+    if (b->ok)
+        b->data[b->len++] = c;
+}
+
+static void cej_put_i64(cej_buf_t *b, long long v) {
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%lld", v);
+    cej_puts(b, tmp);
+}
+
+/// @brief Append @p s as a JSON string literal with standard escaping.
+static void cej_put_jstr(cej_buf_t *b, const char *s) {
+    cej_putc(b, '"');
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        unsigned char c = *p;
+        if (c == '"')
+            cej_puts(b, "\\\"");
+        else if (c == '\\')
+            cej_puts(b, "\\\\");
+        else if (c == '\n')
+            cej_puts(b, "\\n");
+        else if (c == '\r')
+            cej_puts(b, "\\r");
+        else if (c == '\t')
+            cej_puts(b, "\\t");
+        else if (c < 0x20) {
+            char u[8];
+            snprintf(u, sizeof(u), "\\u%04x", c);
+            cej_puts(b, u);
+        } else
+            cej_putc(b, (char)c);
+    }
+    cej_putc(b, '"');
+}
+
+static char *cej_dup(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *r = malloc(n);
+    if (r)
+        memcpy(r, s, n);
+    return r;
+}
+
+char *vg_codeeditor_take_deltas_json(vg_codeeditor_t *editor, uint64_t since_revision) {
+    if (!editor)
+        return NULL;
+    // A cold mutation (undo/redo/SetText/buffer swap) or a ring wrap happened:
+    // the caller cannot apply incrementally and must full-sync.
+    if (editor->journal_overflowed) {
+        codeeditor_journal_reset(editor);
+        editor->journal_overflowed = false;
+        return cej_dup("overflow");
+    }
+    // Defensive gap check: retained deltas are contiguous in revision, so an
+    // oldest revision beyond since_revision+1 means intervening deltas were lost.
+    if (editor->journal_count > 0 && editor->journal_oldest_rev > since_revision + 1) {
+        codeeditor_journal_reset(editor);
+        return cej_dup("overflow");
+    }
+
+    cej_buf_t b = {NULL, 0, 0, true};
+    cej_putc(&b, '[');
+    bool first = true;
+    for (int i = 0; i < editor->journal_count; i++) {
+        int idx = (editor->journal_head + i) % VG_EDIT_JOURNAL_CAP;
+        const vg_edit_delta_t *d = &editor->journal[idx];
+        if (d->revision <= since_revision)
+            continue;
+        if (!first)
+            cej_putc(&b, ',');
+        first = false;
+        cej_puts(&b, "{\"r\":");
+        cej_put_i64(&b, (long long)d->revision);
+        cej_puts(&b, ",\"sl\":");
+        cej_put_i64(&b, d->start_line);
+        cej_puts(&b, ",\"sc\":");
+        cej_put_i64(&b, d->start_col);
+        cej_puts(&b, ",\"el\":");
+        cej_put_i64(&b, d->end_line);
+        cej_puts(&b, ",\"ec\":");
+        cej_put_i64(&b, d->end_col);
+        cej_puts(&b, ",\"t\":");
+        cej_put_jstr(&b, d->text ? d->text : "");
+        cej_putc(&b, '}');
+    }
+    cej_putc(&b, ']');
+
+    // The caller now holds every delta up to the latest revision; drop them.
+    codeeditor_journal_reset(editor);
+
+    if (!b.ok) {
+        free(b.data);
+        return NULL;
+    }
+    b.data[b.len] = '\0';
+    return b.data;
 }
 
 void vg_codeeditor_clear_inlay_hints(vg_codeeditor_t *editor) {
@@ -736,6 +888,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
+    edit_history_break_coalescing(editor->history);
     vg_edit_op_t *op = edit_history_pop_undo(editor->history);
     if (!op)
         return;
@@ -788,6 +941,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     clear_extra_cursor_selections(editor);
     codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
+    codeeditor_journal_mark_overflow(editor); // undo/redo replay: consumer full-syncs
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
 }
@@ -802,6 +956,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
+    edit_history_break_coalescing(editor->history);
     vg_edit_op_t *op = edit_history_pop_redo(editor->history);
     if (!op)
         return;
@@ -856,6 +1011,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     clear_extra_cursor_selections(editor);
     codeeditor_discard_document_buffer_mirror(editor);
     codeeditor_bump_revision(editor);
+    codeeditor_journal_mark_overflow(editor); // undo/redo replay: consumer full-syncs
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
 }
@@ -999,6 +1155,8 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only)
         return false;
 
+    // A paste is its own undo unit even if it happens to be one character.
+    edit_history_break_coalescing(editor->history);
     char *text = vgfx_clipboard_get_text();
     if (text) {
         vg_codeeditor_insert_text(editor, text);

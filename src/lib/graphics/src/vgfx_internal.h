@@ -241,6 +241,26 @@ struct vgfx_window {
     ///          backend when processing mouse button events.
     uint8_t mouse_button_state[8];
 
+    /// @brief Relative (raw) mouse mode requested by the application.
+    /// @details When non-zero the platform backend delivers unbounded motion
+    ///          deltas into relative_dx_accum/relative_dy_accum instead of the
+    ///          cursor tracking absolute positions (FPS mouse-look).
+    int32_t relative_mouse_enabled;
+
+    /// @brief Whether the platform delivers native raw deltas in relative mode.
+    /// @details 0 means the backend cannot provide raw motion (e.g. X11
+    ///          without XInput2); callers fall back to warp-to-center capture.
+    int32_t relative_mouse_native;
+
+    /// @brief Accumulated relative mouse deltas since the last drain.
+    /// @details Written by the platform event handlers under the event lock;
+    ///          drained (read-and-clear) by vgfx_get_relative_deltas().
+    ///          Units are logical pixels/motion counts (sub-pixel capable).
+    double relative_dx_accum;
+
+    /// @copydoc vgfx_window::relative_dx_accum
+    double relative_dy_accum;
+
     //===------------------------------------------------------------------===//
     // Drawing State
     //===------------------------------------------------------------------===//
@@ -385,6 +405,14 @@ void vgfx_platform_destroy_window(struct vgfx_window *win);
 /// @post win->key_state, mouse_*, and event queue are updated
 int vgfx_platform_process_events(struct vgfx_window *win);
 
+/// @brief Block until an OS event is available for @p win, or the timeout
+///        elapses. Does not dequeue or dispatch — callers pump normally after.
+/// @param win Window structure.
+/// @param timeout_ms Maximum wait in milliseconds (0 = return immediately).
+/// @return 1 if events are (probably) available, 0 on timeout.
+/// @pre win != NULL && win->platform_data != NULL
+int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms);
+
 /// @brief Present (blit) the framebuffer to the native window.
 /// @details Transfers the contents of win->pixels to the OS window surface
 ///          so they become visible on screen.  This may involve creating a
@@ -506,6 +534,9 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y);
 
 /// @brief Give keyboard focus to the native window.
 void vgfx_platform_focus(struct vgfx_window *win);
+
+/// @brief Request foreground activation for the native application/window.
+void vgfx_platform_request_foreground(struct vgfx_window *win);
 
 /// @brief Check if the native window has keyboard focus.
 /// @return 1 if focused, 0 otherwise
@@ -672,6 +703,16 @@ void vgfx_internal_set_mouse_button_state(struct vgfx_window *win, int32_t butto
 /// @param x Raw physical X coordinate.
 /// @param y Raw physical Y coordinate.
 void vgfx_internal_set_mouse_position(struct vgfx_window *win, int32_t x, int32_t y);
+
+/// @brief Accumulate a relative (raw) mouse motion delta.
+/// @details Acquires the window event/state lock before adding to the
+///          relative accumulators drained by `vgfx_get_relative_deltas()`.
+///          Platform event handlers call this while relative mouse mode is
+///          enabled; deltas are sub-pixel capable doubles in logical units.
+/// @param win Window receiving the motion.
+/// @param dx Horizontal motion since the previous event.
+/// @param dy Vertical motion since the previous event (positive = down).
+void vgfx_internal_add_relative_delta(struct vgfx_window *win, double dx, double dy);
 
 /// @brief Set the close-requested polling flag.
 /// @details Acquires the window event/state lock before updating the flag read

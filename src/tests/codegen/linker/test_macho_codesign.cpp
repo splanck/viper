@@ -14,15 +14,12 @@
 #include "codegen/common/linker/MachOCodeSign.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
-
-#if defined(__APPLE__)
-#include <CommonCrypto/CommonDigest.h>
-#endif
 
 using namespace viper::codegen::linker;
 
@@ -46,14 +43,88 @@ static uint64_t readBE64(const uint8_t *p) {
     return (static_cast<uint64_t>(readBE32(p)) << 32) | static_cast<uint64_t>(readBE32(p + 4));
 }
 
+// Portable SHA-256 (FIPS 180-4) so the expected hashes match the signer's
+// dependency-free digest on every host, not just Apple platforms.
 static void sha256(const uint8_t *data, size_t len, uint8_t out[32]) {
-#if defined(__APPLE__)
-    CC_SHA256(data, static_cast<CC_LONG>(len), out);
-#else
-    std::memset(out, 0, 32);
-    (void)data;
-    (void)len;
-#endif
+    auto ror32 = [](uint32_t v, unsigned b) { return (v >> b) | (v << (32 - b)); };
+    auto rd = [](const uint8_t *p) {
+        return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+               (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+    };
+    static constexpr std::array<uint32_t, 64> k = {
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
+        0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
+        0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu,
+        0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+        0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+        0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
+        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u,
+        0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u,
+        0xc67178f2u};
+    uint32_t h[8] = {0x6a09e667u,
+                     0xbb67ae85u,
+                     0x3c6ef372u,
+                     0xa54ff53au,
+                     0x510e527fu,
+                     0x9b05688cu,
+                     0x1f83d9abu,
+                     0x5be0cd19u};
+    auto block = [&](const uint8_t *b) {
+        uint32_t w[64] = {};
+        for (size_t i = 0; i < 16; ++i)
+            w[i] = rd(b + i * 4);
+        for (size_t i = 16; i < 64; ++i) {
+            const uint32_t s0 = ror32(w[i - 15], 7) ^ ror32(w[i - 15], 18) ^ (w[i - 15] >> 3);
+            const uint32_t s1 = ror32(w[i - 2], 17) ^ ror32(w[i - 2], 19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+        }
+        uint32_t a = h[0], bb = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+        for (size_t i = 0; i < 64; ++i) {
+            const uint32_t S1 = ror32(e, 6) ^ ror32(e, 11) ^ ror32(e, 25);
+            const uint32_t ch = (e & f) ^ ((~e) & g);
+            const uint32_t t1 = hh + S1 + ch + k[i] + w[i];
+            const uint32_t S0 = ror32(a, 2) ^ ror32(a, 13) ^ ror32(a, 22);
+            const uint32_t maj = (a & bb) ^ (a & c) ^ (bb & c);
+            const uint32_t t2 = S0 + maj;
+            hh = g;
+            g = f;
+            f = e;
+            e = d + t1;
+            d = c;
+            c = bb;
+            bb = a;
+            a = t1 + t2;
+        }
+        h[0] += a;
+        h[1] += bb;
+        h[2] += c;
+        h[3] += d;
+        h[4] += e;
+        h[5] += f;
+        h[6] += g;
+        h[7] += hh;
+    };
+    size_t off = 0;
+    while (off + 64 <= len) {
+        block(data + off);
+        off += 64;
+    }
+    std::vector<uint8_t> tail(data + off, data + len);
+    tail.push_back(0x80);
+    while ((tail.size() % 64) != 56)
+        tail.push_back(0);
+    const uint64_t bits = static_cast<uint64_t>(len) * 8ull;
+    for (int s = 56; s >= 0; s -= 8)
+        tail.push_back(static_cast<uint8_t>((bits >> s) & 0xffu));
+    for (size_t p = 0; p < tail.size(); p += 64)
+        block(tail.data() + p);
+    for (size_t i = 0; i < 8; ++i) {
+        out[i * 4 + 0] = static_cast<uint8_t>((h[i] >> 24) & 0xffu);
+        out[i * 4 + 1] = static_cast<uint8_t>((h[i] >> 16) & 0xffu);
+        out[i * 4 + 2] = static_cast<uint8_t>((h[i] >> 8) & 0xffu);
+        out[i * 4 + 3] = static_cast<uint8_t>(h[i] & 0xffu);
+    }
 }
 
 static void testAppleStyleSignatureLayout() {
@@ -69,7 +140,7 @@ static void testAppleStyleSignatureLayout() {
 
     const size_t pageSize = 16384;
     const size_t codeLimit = 20000;
-    const std::string identifier = "chess-zia";
+    const std::string identifier = "chess";
 
     std::vector<uint8_t> file(codeLimit);
     for (size_t i = 0; i < file.size(); ++i)
@@ -235,7 +306,32 @@ static void testDuplicateRebaseEntriesAreCoalesced() {
     CHECK(countRebaseFixups(rebaseData) == 2);
 }
 
+// F4: known-answer test pinning the portable SHA-256 to FIPS 180-4 vectors, so
+// the signer's digest is verified correct on every build host (not just Apple).
+static void testSha256KnownAnswers() {
+    auto hex = [](const uint8_t *h) {
+        static const char *d = "0123456789abcdef";
+        std::string s;
+        for (int i = 0; i < 32; ++i) {
+            s.push_back(d[h[i] >> 4]);
+            s.push_back(d[h[i] & 0xf]);
+        }
+        return s;
+    };
+    uint8_t out[32];
+    sha256(reinterpret_cast<const uint8_t *>(""), 0, out);
+    CHECK(hex(out) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    const std::string abc = "abc";
+    sha256(reinterpret_cast<const uint8_t *>(abc.data()), abc.size(), out);
+    CHECK(hex(out) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    // A 1000-byte input crosses multiple 64-byte blocks and a padding block.
+    const std::string big(1000, 'a');
+    sha256(reinterpret_cast<const uint8_t *>(big.data()), big.size(), out);
+    CHECK(hex(out) == "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3");
+}
+
 int main() {
+    testSha256KnownAnswers();
     testAppleStyleSignatureLayout();
     testDuplicateRebaseEntriesAreCoalesced();
     if (gFail != 0) {

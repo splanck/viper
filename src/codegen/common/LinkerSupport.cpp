@@ -110,16 +110,6 @@ std::optional<std::filesystem::path> installedLibraryPathInDir(
     return *dir / archiveFileName(libBaseName);
 }
 
-/// @brief Resolve the installed-layout path for a runtime/support library, if any.
-/// @return std::nullopt when no installed lib directory has been discovered.
-[[maybe_unused]] std::optional<std::filesystem::path>
-// cppcheck-suppress unusedFunction
-installedLibraryPath(std::string_view libBaseName) {
-    if (const auto installedLibDir = findInstalledLibDir())
-        return *installedLibDir / archiveFileName(libBaseName);
-    return std::nullopt;
-}
-
 /// @brief Source/build-tree sub-directory that produces a given support lib.
 /// @details Most companion libs land under `lib/`, but a few live where their
 ///          sources are: GUI under src/lib/gui, shared text under
@@ -647,6 +637,23 @@ std::optional<std::filesystem::path> findBuildDir() {
             return candidate;
     }
 
+    // A dev-tree viper executable lives inside its own CMake build directory
+    // (e.g. <root>/build/src/tools/viper/viper). Walking the executable's
+    // ancestors finds that build tree regardless of the caller's working
+    // directory — otherwise a stale installed toolchain layout can shadow the
+    // freshly-built runtime archives. Installed binaries have no CMakeCache.txt
+    // above them and fall through to the installed-layout discovery unchanged.
+    if (const auto exePath = currentExecutablePath()) {
+        std::filesystem::path cur = exePath->parent_path();
+        for (int depth = 0; depth < 8 && !cur.empty(); ++depth) {
+            if (fileExists(cur / "CMakeCache.txt"))
+                return cur;
+            if (!cur.has_parent_path())
+                break;
+            cur = cur.parent_path();
+        }
+    }
+
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
     if (!ec) {
@@ -993,123 +1000,6 @@ int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols
                                   std::ostream &out,
                                   std::ostream &err) {
     return resolveAndBuildArchives(symbols, ctx, out, err);
-}
-
-void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd) {
-    for (auto it = ctx.requiredArchives.rbegin(); it != ctx.requiredArchives.rend(); ++it)
-        if (fileExists(it->second))
-            cmd.push_back(it->second.string());
-}
-
-void appendGraphicsLibs(const LinkContext &ctx,
-                        std::vector<std::string> &cmd,
-                        const std::vector<std::string> &frameworks) {
-    if (!hasComponent(ctx, RtComponent::Graphics))
-        return;
-
-    // vipergui (widget implementations) must come before viper_text_core and
-    // vipergfx because libviper_rt_graphics calls vg_* from vipergui, while
-    // vipergui calls both the shared text C ABI and lower-level drawing APIs.
-    const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
-    const std::filesystem::path textCoreLib = supportLibraryPath(ctx.buildDir, "viper_text_core");
-    const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "vipergfx");
-    if (fileExists(guiLib))
-        cmd.push_back(guiLib.string());
-    if (fileExists(textCoreLib))
-        cmd.push_back(textCoreLib.string());
-    if (fileExists(gfxLib))
-        cmd.push_back(gfxLib.string());
-
-    for (const auto &fw : frameworks) {
-        cmd.push_back("-framework");
-        cmd.push_back(fw);
-    }
-
-    if constexpr (!viper::platform::kHostMacOS && !viper::platform::kHostWindows)
-        cmd.push_back("-lX11");
-}
-
-void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
-    if (!hasComponent(ctx, RtComponent::Audio))
-        return;
-    const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
-    const bool haveAudLib = fileExists(audLib);
-    if (haveAudLib)
-        cmd.push_back(audLib.string());
-
-    if constexpr (viper::platform::kHostMacOS) {
-        cmd.push_back("-framework");
-        cmd.push_back("AudioToolbox");
-    } else if constexpr (!viper::platform::kHostWindows) {
-        // Linux: ALSA backs viperaud; without the backend library the runtime's
-        // audio stubs are linked instead and no system dependency is needed.
-        if (haveAudLib)
-            cmd.push_back("-lasound");
-    }
-}
-
-std::vector<std::string> defaultGraphicsFrameworks() {
-    if constexpr (viper::platform::kHostMacOS) {
-        return {"Cocoa",
-                "IOKit",
-                "CoreFoundation",
-                "UniformTypeIdentifiers",
-                "ImageIO",
-                "Metal",
-                "QuartzCore"};
-    }
-    return {};
-}
-
-[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx,
-                                             std::vector<std::string> &cmd) {
-    appendArchives(ctx, cmd);
-    appendGraphicsLibs(ctx, cmd, defaultGraphicsFrameworks());
-    appendAudioLibs(ctx, cmd);
-
-    if constexpr (viper::platform::kHostMacOS) {
-        if (hasComponent(ctx, RtComponent::Threads))
-            cmd.push_back("-lc++");
-    } else if constexpr (viper::platform::kHostWindows) {
-        (void)ctx;
-    } else {
-        // Linux links libstdc++ through the compiler driver; pthread is added
-        // in appendSystemLinkFlags when threads are required.
-    }
-}
-
-[[maybe_unused]] void appendSystemLinkFlags(const LinkContext &ctx,
-                                            std::vector<std::string> &cmd,
-                                            std::size_t stackSize,
-                                            bool useElfPie,
-                                            bool useElfMath) {
-    if constexpr (viper::platform::kHostMacOS) {
-        cmd.push_back("-Wl,-dead_strip");
-        if (stackSize > 0) {
-            std::ostringstream stackArg;
-            stackArg << "-Wl,-stack_size,0x" << std::hex << stackSize;
-            cmd.push_back(stackArg.str());
-        }
-        (void)ctx;
-        (void)useElfPie;
-        (void)useElfMath;
-    } else if constexpr (!viper::platform::kHostWindows) {
-        cmd.push_back("-Wl,--gc-sections");
-        if (useElfPie)
-            cmd.push_back("-pie");
-        if (hasComponent(ctx, RtComponent::Threads))
-            cmd.push_back("-pthread");
-        if (useElfMath)
-            cmd.push_back("-lm");
-        if (stackSize > 0)
-            cmd.push_back("-Wl,-z,stack-size=" + std::to_string(stackSize));
-    } else {
-        (void)ctx;
-        (void)cmd;
-        (void)stackSize;
-        (void)useElfPie;
-        (void)useElfMath;
-    }
 }
 
 // =========================================================================

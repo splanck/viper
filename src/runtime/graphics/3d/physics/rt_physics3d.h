@@ -87,6 +87,12 @@ int64_t rt_world3d_get_ccd_substep_clamped_count(void *world);
 int64_t rt_world3d_get_last_ccd_clamped_body_count(void *world);
 /// @brief Total bodies affected by CCD substep clamping.
 int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *world);
+/// @brief Total swept time-of-impact clips applied by the CCD pass.
+int64_t rt_world3d_get_ccd_toi_count(void *world);
+/// @brief Configure the query result capacity (RaycastAll/Overlap*), 16-4096.
+void rt_world3d_set_max_query_hits(void *world, int64_t max_hits);
+/// @brief Current query result capacity.
+int64_t rt_world3d_get_max_query_hits(void *world);
 /// @brief Number of broadphase reserve failures that fell back to brute-force pair scans.
 int64_t rt_world3d_get_broadphase_fallback_count(void *world);
 /// @brief Replace the world gravity vector at runtime.

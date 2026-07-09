@@ -238,6 +238,8 @@ typedef struct rt_scene3d {
     rt_scene3d_visibility_portal *visibility_portals;
     int32_t visibility_portal_count;
     int32_t visibility_portal_capacity;
+    int8_t portal_clipping_disabled;       /* 1 = legacy reachability flood-fill */
+    int32_t last_portal_traversal_count;   /* portal expansions in the last PVS build */
     rt_scene3d_spatial_entry **query_candidates;
     int32_t query_candidate_capacity;
 } rt_scene3d;
