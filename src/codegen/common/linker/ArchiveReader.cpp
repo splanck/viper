@@ -109,44 +109,6 @@ static size_t parseSize(const uint8_t *header) {
     return val > kMaxMemberSize ? SIZE_MAX : val;
 }
 
-/// Parse the name field from an archive member header (16 chars at offset 0).
-/// Returns the trimmed name and whether this is a special member.
-[[maybe_unused]] static std::string parseName(const uint8_t *header, const std::string &longNames) {
-    char raw[17] = {};
-    std::memcpy(raw, header, 16);
-    std::string name(raw, 16);
-
-    // BSD long name: "#1/N" — N bytes of name follow the header.
-    if (name[0] == '#' && name[1] == '1' && name[2] == '/') {
-        size_t nameLen = 0;
-        for (size_t i = 3; i < name.size() && name[i] >= '0' && name[i] <= '9'; ++i)
-            nameLen = nameLen * 10 + (name[i] - '0');
-        // Name bytes are at the start of member data; we'll extract in the caller.
-        // Return a marker so the caller knows.
-        return "#1/" + std::to_string(nameLen);
-    }
-
-    // GNU long name: "/offset" referencing the "//" string table.
-    if (name[0] == '/' && name[1] >= '0' && name[1] <= '9') {
-        size_t offset = 0;
-        for (size_t i = 1; i < name.size() && name[i] >= '0' && name[i] <= '9'; ++i)
-            offset = offset * 10 + (name[i] - '0');
-        if (offset < longNames.size()) {
-            size_t end = longNames.find('/', offset);
-            if (end == std::string::npos)
-                end = longNames.find('\n', offset);
-            if (end == std::string::npos)
-                end = longNames.size();
-            return longNames.substr(offset, end - offset);
-        }
-    }
-
-    // Trim trailing spaces and '/' (GNU terminator).
-    while (!name.empty() && (name.back() == ' ' || name.back() == '/'))
-        name.pop_back();
-    return name;
-}
-
 /// Parse a GNU-style symbol table ("/" member).
 /// Format: big-endian 32-bit count, then count big-endian 32-bit offsets,
 /// then count NUL-terminated symbol names.
@@ -478,12 +440,16 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             return false;
         }
         if (pos & 1) {
-            if (pos >= fileSize || ar.data[pos] != '\n') {
+            if (pos == fileSize) {
+                // Final member ended on an odd boundary with the trailing pad
+                // omitted at end-of-file — accepted (some archivers skip it).
+            } else if (pos >= fileSize || ar.data[pos] != '\n') {
                 err << "error: archive member at offset " << dataStart
                     << " is missing its padding byte in '" << path << "'\n";
                 return false;
+            } else {
+                ++pos;
             }
-            ++pos;
         }
     }
     if (pos != fileSize) {
@@ -526,6 +492,19 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
                 << fileOffset << " in '" << path << "'\n";
             return false;
         }
+    }
+
+    // Deduplicate candidate member indices per symbol. MSVC/COFF archives carry
+    // two linker members (the GNU-style "/" and the second "/") that list the same
+    // symbols, so each candidate would otherwise be recorded twice.
+    for (auto &entry : ar.symbolCandidates) {
+        auto &members = entry.second;
+        std::vector<size_t> deduped;
+        deduped.reserve(members.size());
+        for (size_t m : members)
+            if (std::find(deduped.begin(), deduped.end(), m) == deduped.end())
+                deduped.push_back(m);
+        members = std::move(deduped);
     }
 
     return true;

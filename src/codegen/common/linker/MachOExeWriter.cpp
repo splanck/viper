@@ -276,9 +276,13 @@ bool writeMachOExe(const std::string &path,
     // Phase 2: Build __LINKEDIT content.
     // =======================================================================
     // Need LC_DYLD_INFO_ONLY if we have GOT entries, TLV descriptors, or rebase entries.
+    // Derive TLV presence from the same tlvDescriptors flag that drives the
+    // _tlv_bootstrap bind opcodes, so MH_HAS_TLV_DESCRIPTORS can never disagree
+    // with the emitted binds (a mismatch makes dyld abort on the first
+    // thread-local access).
     bool hasTLS = false;
     for (const auto &sec : layout.sections)
-        if (sec.tls && sec.name == ".tdata" && !sec.data.empty())
+        if (sec.tlvDescriptors)
             hasTLS = true;
     const bool hasDynamic = !layout.gotEntries.empty() || hasTLS || !layout.rebaseEntries.empty() ||
                             !layout.bindEntries.empty();
@@ -581,12 +585,18 @@ bool writeMachOExe(const std::string &path,
     // __DWARF segment has no VM mapping (vmaddr=0, vmsize=0), so it doesn't
     // shift __LINKEDIT's vmaddr. However, it does occupy file space.
     uint64_t linkeditVmAddr = 0;
-    if (!checkedAddU64(
-            textSegVmAddr, textSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr) ||
-        (!dataSections.empty() &&
-         !checkedAddU64(
-             linkeditVmAddr, dataSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr)))
+    if (!checkedAddU64(textSegVmAddr, textSegVmSize, "__LINKEDIT VM address", err, linkeditVmAddr))
         return false;
+    if (!dataSections.empty()) {
+        // __LINKEDIT must follow every mapped segment. Use the actual __DATA end
+        // (dataSegVmAddr + dataSegVmSize) rather than assuming __DATA is VM-
+        // contiguous with __TEXT; a gap between them would otherwise place
+        // __LINKEDIT overlapping __DATA, which dyld rejects.
+        uint64_t dataSegEnd = 0;
+        if (!checkedAddU64(dataSegVmAddr, dataSegVmSize, "__DATA segment end", err, dataSegEnd))
+            return false;
+        linkeditVmAddr = std::max(linkeditVmAddr, dataSegEnd);
+    }
     size_t linkeditVmSizeSize = 0;
     if (!checkedAlignUpSize(
             linkeditTotalSize, pageSize, "__LINKEDIT VM size", err, linkeditVmSizeSize))
@@ -633,7 +643,6 @@ bool writeMachOExe(const std::string &path,
                 entryVA = it->second.resolvedAddr;
         }
         if (entryVA != 0 && !textSections.empty()) {
-            const uint64_t firstTextSecVA = layout.sections[textSections[0]].virtualAddr;
             bool foundEntry = false;
             for (size_t idx : textSections) {
                 const auto &sec = layout.sections[idx];
@@ -646,13 +655,16 @@ bool writeMachOExe(const std::string &path,
                 const uint64_t secEnd = sec.virtualAddr + secMemSize;
                 if (entryVA < sec.virtualAddr || entryVA >= secEnd)
                     continue;
-                const uint64_t delta = entryVA - firstTextSecVA;
-                if (delta >
-                    std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(textDataFileOff)) {
-                    err << "error: Mach-O entry file offset overflows\n";
+                // __TEXT is mapped at fileoff 0, and each section's bytes are
+                // written at (VA - textSegVmAddr). The entry's file offset is
+                // therefore entryVA - textSegVmAddr directly — deriving it this way
+                // avoids assuming the first text section sits exactly at
+                // textSegVmAddr + textDataFileOff.
+                if (entryVA < textSegVmAddr) {
+                    err << "error: Mach-O entry address precedes __TEXT segment base\n";
                     return false;
                 }
-                mainEntryOff = static_cast<uint64_t>(textDataFileOff) + delta;
+                mainEntryOff = entryVA - textSegVmAddr;
                 foundEntry = true;
                 break;
             }

@@ -113,8 +113,10 @@ class WeaponModels {
         var w = weapons.getCurrent();
         G3D.Canvas3D.BeginViewModel(canvas, cam, camRig.getFov() * 0.75);
         // Camera basis (local -Z = forward).
-        var ex = camRig.getEyeX(); var ey = camRig.getEyeY(); var ez = camRig.getEyeZ();
-        var fx = camRig.forwardX(); var fy = camRig.forwardY(); var fz = camRig.forwardZ();
+        var eye = cam.Position;
+        var fwd = cam.Forward;
+        var ex = Math.Vec3.get_X(eye); var ey = Math.Vec3.get_Y(eye); var ez = Math.Vec3.get_Z(eye);
+        var fx = Math.Vec3.get_X(fwd); var fy = Math.Vec3.get_Y(fwd); var fz = Math.Vec3.get_Z(fwd);
         var rx = fy * 0.0 - fz * 1.0;
         var ry = fz * 0.0 - fx * 0.0;
         var rz = fx * 1.0 - fy * 0.0;

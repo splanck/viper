@@ -20,8 +20,6 @@
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 
-#include <stdexcept>
-
 namespace viper::codegen::objfile {
 
 bool ObjectFileWriter::write(const std::string &path,
@@ -44,7 +42,9 @@ std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjAr
         case ObjFormat::COFF:
             return std::make_unique<CoffWriter>(arch);
     }
-    throw std::invalid_argument("unsupported object file format");
+    // Unhandled format/arch combination: return nullptr per the documented
+    // contract so callers' null-checks handle it, rather than throwing.
+    return nullptr;
 }
 
 } // namespace viper::codegen::objfile

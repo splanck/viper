@@ -113,6 +113,29 @@ int main() {
         CHECK(objs[1].sections[1].data.empty());
     }
 
+    // --- F15: retained sections survive GC even when unreferenced ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+
+        // archive.o: sec1 section-level retained; sec2 owns a no-dead-strip
+        // symbol; sec3 plain unreferenced (must be stripped).
+        auto archive = makeObj("archive.o", {".data.retain", ".data.used", ".data.dead"});
+        archive.sections[1].noDeadStrip = true; // SHF_GNU_RETAIN / S_ATTR_NO_DEAD_STRIP
+        addSymbol(archive, "used_sym", 2, ObjSymbol::Global);
+        archive.symbols.back().noDeadStrip = true; // N_NO_DEAD_STRIP
+
+        std::vector<ObjFile> objs = {user, archive};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        std::ostringstream err;
+        deadStrip(objs, 1, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty()); // section-level retain kept alive
+        CHECK(!objs[1].sections[2].data.empty()); // no-dead-strip symbol keeps its section
+        CHECK(objs[1].sections[3].data.empty());  // plain unreferenced still stripped
+    }
+
     // --- Transitive liveness through relocations ---
     {
         auto user = makeObj("user.o", {".text"});

@@ -13,6 +13,9 @@ module render_probe;
 bind Viper.Terminal as Terminal;
 bind "../config" as config;
 bind "../game" as game;
+bind "../core/mathutil" as M;
+
+func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
 
 func tick(g: game.Game) {
     g.tickSim(config.FIXED_DT);
@@ -94,8 +97,26 @@ func start() {
         v.devRenderFrame();
         w = w + 1;
     }
+    var minY = 1000.0;
+    var maxY = -1000.0;
+    var b = 0;
+    while b < 90 {
+        v.scriptMove(0.0, 1.0);
+        v.scriptSprint(b > 30);
+        tick(v);
+        var oy = v.devViewOffY();
+        if oy < minY { minY = oy; }
+        if oy > maxY { maxY = oy; }
+        b = b + 1;
+    }
+    v.scriptMove(0.0, 0.0);
+    if maxY - minY < 0.018 {
+        fail("viewmodel bob amplitude too small: " + toString(M.roundi((maxY - minY) * 1000.0)));
+        return;
+    }
 
-    Terminal.Say("renderedFrames=48 levelSweep=ok title=ok viewmodels=ok pipeline=ok");
+    Terminal.Say("renderedFrames=48 levelSweep=ok title=ok viewmodels=ok bob=" +
+                 toString(M.roundi((maxY - minY) * 1000.0)) + " pipeline=ok");
     Terminal.Say("RESULT: ok");
     Terminal.Say("PASS");
 }

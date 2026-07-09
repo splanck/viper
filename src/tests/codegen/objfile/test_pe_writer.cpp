@@ -416,10 +416,14 @@ TEST(PeWriter, SkipsNonAllocDebugSections) {
     uint32_t peOffset = readU32(data, 0x3C);
     uint16_t numSections = readU16(data, peOffset + 6);
 
-    EXPECT_EQ(numSections, 2U);
+    // .text, .rsrc, and a (possibly empty) .reloc — the linker always emits
+    // .reloc so the image can advertise DYNAMICBASE/ASLR. The non-alloc
+    // .debug_line section must still be skipped.
+    EXPECT_EQ(numSections, 3U);
     auto names = sectionNames(data);
     EXPECT_TRUE(std::find(names.begin(), names.end(), ".text") != names.end());
     EXPECT_TRUE(std::find(names.begin(), names.end(), ".rsrc") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), ".reloc") != names.end());
     for (const auto &name : names) {
         EXPECT_NE(name, ".debug");
         EXPECT_NE(name, ".debug_line");

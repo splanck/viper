@@ -52,6 +52,13 @@ class LevelBuilder {
     hide List[Float] spRouteX; hide List[Float] spRouteZ;
     // AI cover hints: world position plus a preferred facing vector.
     hide List[Float] covX; hide List[Float] covZ; hide List[Float] covFaceX; hide List[Float] covFaceZ;
+    // Tactical flank hints: authored side pockets for enemies that should
+    // reposition instead of orbiting or walking straight at the player.
+    hide List[Float] flX; hide List[Float] flZ;
+    // Readability metadata used by probes and in-game guidance.
+    hide List[Float] routeX; hide List[Float] routeZ; hide List[Integer] routeKind;
+    hide List[Float] markX; hide List[Float] markZ; hide List[Integer] markKind;
+    hide List[Float] beatX; hide List[Float] beatZ; hide List[Integer] beatKind; hide List[Integer] beatWave;
     // Objective gates: physical blockers that open after an objective completes.
     hide List[Float] gtX; hide List[Float] gtY; hide List[Float] gtZ;
     hide List[Float] gtHX; hide List[Float] gtHY; hide List[Float] gtHZ;
@@ -84,6 +91,10 @@ class LevelBuilder {
         ambR = 0.15; ambG = 0.15; ambB = 0.18;
         spArch = []; spX = []; spZ = []; spWave = []; spRouteX = []; spRouteZ = [];
         covX = []; covZ = []; covFaceX = []; covFaceZ = [];
+        flX = []; flZ = [];
+        routeX = []; routeZ = []; routeKind = [];
+        markX = []; markZ = []; markKind = [];
+        beatX = []; beatZ = []; beatKind = []; beatWave = [];
         gtX = []; gtY = []; gtZ = []; gtHX = []; gtHY = []; gtHZ = [];
         gtUnlockObj = []; gtOpen = []; gtNode = []; gtBody = [];
         pkKind = []; pkX = []; pkY = []; pkZ = []; pkAmt = [];
@@ -136,6 +147,16 @@ class LevelBuilder {
         addBoxMat(0.0, wallH * 0.5, half, half, wallH * 0.5, 0.4, wallSurf, wr, wg, wb, true);
         addBoxMat(0.0 - half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wallSurf, wr, wg, wb, true);
         addBoxMat(half, wallH * 0.5, 0.0, 0.4, wallH * 0.5, half, wallSurf, wr, wg, wb, true);
+        // Visual trim breaks up graybox shells and gives every combat space a
+        // readable perimeter line without adding collision complexity.
+        addBoxMat(0.0, 0.08, 0.0 - half + 0.72, half - 1.0, 0.04, 0.07,
+                  textures.SURF_ACCENT, 0.72, 0.48, 0.18, false);
+        addBoxMat(0.0, 0.08, half - 0.72, half - 1.0, 0.04, 0.07,
+                  textures.SURF_ACCENT, 0.72, 0.48, 0.18, false);
+        addBoxMat(0.0 - half + 0.72, 0.08, 0.0, 0.07, 0.04, half - 1.0,
+                  textures.SURF_ACCENT, 0.72, 0.48, 0.18, false);
+        addBoxMat(half - 0.72, 0.08, 0.0, 0.07, 0.04, half - 1.0,
+                  textures.SURF_ACCENT, 0.72, 0.48, 0.18, false);
     }
 
     expose func addProp(kind: Integer, x: Float, y: Float, z: Float, yaw: Float, scale: Float) {
@@ -218,6 +239,48 @@ class LevelBuilder {
     expose func coverFaceXat(i: Integer) -> Float { return covFaceX[i]; }
     /// Return the preferred Z-facing component for an authored AI cover hint.
     expose func coverFaceZat(i: Integer) -> Float { return covFaceZ[i]; }
+
+    /// Add an authored side pocket that enemies can use for flanking.
+    expose func addFlank(x: Float, z: Float) {
+        flX.Add(x); flZ.Add(z);
+    }
+    expose func flankCount() -> Integer { return flX.Count; }
+    expose func flankXat(i: Integer) -> Float { return flX[i]; }
+    expose func flankZat(i: Integer) -> Float { return flZ[i]; }
+
+    /// Add a route marker for player guidance and level-readability gates.
+    ///
+    /// kind is game-local metadata: 0=route, 1=objective, 2=exit, 3=safe/hold.
+    expose func addRouteMarker(x: Float, z: Float, kind: Integer) {
+        routeX.Add(x); routeZ.Add(z); routeKind.Add(kind);
+    }
+    expose func routeMarkerCount() -> Integer { return routeX.Count; }
+    expose func routeMarkerXat(i: Integer) -> Float { return routeX[i]; }
+    expose func routeMarkerZat(i: Integer) -> Float { return routeZ[i]; }
+    expose func routeMarkerKindAt(i: Integer) -> Integer { return routeKind[i]; }
+
+    /// Add a strong visual landmark used to prove the level has a readable identity.
+    ///
+    /// kind is game-local metadata: 0=hero prop, 1=exit, 2=objective, 3=hazard.
+    expose func addLandmark(x: Float, z: Float, kind: Integer) {
+        markX.Add(x); markZ.Add(z); markKind.Add(kind);
+    }
+    expose func landmarkCount() -> Integer { return markX.Count; }
+    expose func landmarkXat(i: Integer) -> Float { return markX[i]; }
+    expose func landmarkZat(i: Integer) -> Float { return markZ[i]; }
+    expose func landmarkKindAt(i: Integer) -> Integer { return markKind[i]; }
+
+    /// Add an encounter beat so level flow is authored, not just enemy count.
+    ///
+    /// kind is game-local metadata: 0=reveal, 1=ambush, 2=holdout, 3=boss phase.
+    expose func addEncounterBeat(x: Float, z: Float, kind: Integer, wave: Integer) {
+        beatX.Add(x); beatZ.Add(z); beatKind.Add(kind); beatWave.Add(wave);
+    }
+    expose func encounterBeatCount() -> Integer { return beatX.Count; }
+    expose func encounterBeatXat(i: Integer) -> Float { return beatX[i]; }
+    expose func encounterBeatZat(i: Integer) -> Float { return beatZ[i]; }
+    expose func encounterBeatKindAt(i: Integer) -> Integer { return beatKind[i]; }
+    expose func encounterBeatWaveAt(i: Integer) -> Integer { return beatWave[i]; }
 
     /// Add a physical gate that opens after `unlockObjective` is completed.
     ///

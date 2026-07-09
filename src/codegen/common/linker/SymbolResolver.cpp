@@ -41,6 +41,9 @@ static void synthesizeWindowsThreadSafeStaticGuards(
 static bool materializeCommonSymbols(std::vector<ObjFile> &allObjects,
                                      std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                                      std::ostream &err);
+static void discardComdatLosers(std::vector<ObjFile> &allObjects,
+                                std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                const std::vector<InputSectionKey> &comdatLosers);
 
 struct ComdatDefinition {
     ComdatSelection selection = ComdatSelection::None;
@@ -287,13 +290,25 @@ static bool getComdatDefinition(const ObjFile &obj,
     return true;
 }
 
+/// @brief Resolve a duplicate COMDAT definition, reporting which copy loses.
+/// @details On success (@return true) the winning definition is left in @p entry
+///          (switched to @p candidate for the LARGEST case when it is bigger).
+///          @p loser is set to the section of the discarded copy so the caller
+///          can strip it and its associative group; @p hasLoser is false only
+///          when both copies are kept (distinct ANY groups sharing a name).
 static bool selectComdatDuplicate(const ObjFile &obj,
                                   const ObjSymbol &sym,
                                   size_t objIdx,
                                   const ComdatDefinition &existing,
                                   const ComdatDefinition &candidate,
                                   GlobalSymEntry &entry,
+                                  InputSectionKey &loser,
+                                  bool &hasLoser,
                                   std::ostream &err) {
+    hasLoser = false;
+    const InputSectionKey candidateKey{candidate.objIdx, candidate.secIdx};
+    const InputSectionKey existingKey{existing.objIdx, existing.secIdx};
+
     if (existing.key != candidate.key) {
         if (existing.selection == ComdatSelection::Any &&
             candidate.selection == ComdatSelection::Any)
@@ -306,21 +321,35 @@ static bool selectComdatDuplicate(const ObjFile &obj,
         existing.selection != ComdatSelection::None ? existing.selection : candidate.selection;
     switch (selection) {
         case ComdatSelection::Any:
+            loser = candidateKey;
+            hasLoser = true;
             return true;
         case ComdatSelection::SameSize:
-            if (existing.size == candidate.size)
+            if (existing.size == candidate.size) {
+                loser = candidateKey;
+                hasLoser = true;
                 return true;
+            }
             err << "error: COMDAT SAME_SIZE symbol '" << sym.name
                 << "' has different section sizes\n";
             return false;
         case ComdatSelection::ExactMatch:
-            if (existing.size == candidate.size && existing.hash == candidate.hash)
+            if (existing.size == candidate.size && existing.hash == candidate.hash) {
+                loser = candidateKey;
+                hasLoser = true;
                 return true;
+            }
             err << "error: COMDAT EXACT_MATCH symbol '" << sym.name << "' has different contents\n";
             return false;
         case ComdatSelection::Largest:
-            if (candidate.size > existing.size)
+            if (candidate.size > existing.size) {
+                // Candidate wins: the previously-recorded copy is discarded.
                 setEntryFromSymbol(entry, sym, objIdx, GlobalSymEntry::Global);
+                loser = existingKey;
+            } else {
+                loser = candidateKey;
+            }
+            hasLoser = true;
             return true;
         case ComdatSelection::NoDuplicates:
             err << "error: COMDAT NODUPLICATES symbol '" << sym.name
@@ -349,6 +378,7 @@ static bool addObjSymbols(const ObjFile &obj,
                           LinkPlatform platform,
                           bool allowArchiveDefinitionPreference,
                           std::vector<std::string> *newUndefined,
+                          std::vector<InputSectionKey> *comdatLosers,
                           std::ostream &err) {
     auto eraseUndefinedVariants = [&](const std::string &name) {
         undefined.erase(name);
@@ -480,9 +510,20 @@ static bool addObjSymbols(const ObjFile &obj,
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
                 auto comdatIt = findWithPlatformFallback(comdatDefs, sym.name, platform);
                 if (hasCandidateComdat && comdatIt != comdatDefs.end()) {
-                    if (!selectComdatDuplicate(
-                            obj, sym, objIdx, comdatIt->second, candidateComdat, existing, err))
+                    InputSectionKey loser;
+                    bool hasLoser = false;
+                    if (!selectComdatDuplicate(obj,
+                                               sym,
+                                               objIdx,
+                                               comdatIt->second,
+                                               candidateComdat,
+                                               existing,
+                                               loser,
+                                               hasLoser,
+                                               err))
                         return false;
+                    if (hasLoser && comdatLosers)
+                        comdatLosers->push_back(loser);
                     if (candidateComdat.selection == ComdatSelection::Largest &&
                         candidateComdat.size > comdatIt->second.size)
                         comdatIt->second = candidateComdat;
@@ -590,6 +631,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     std::unordered_set<std::string> undefined;
     std::unordered_map<std::string, ComdatDefinition> comdatDefs;
     std::vector<std::string> pendingUndefined;
+    std::vector<InputSectionKey> comdatLosers;
     size_t pendingIndex = 0;
 
     for (size_t i = 0; i < allObjects.size(); ++i) {
@@ -601,6 +643,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                            platform,
                            false,
                            &pendingUndefined,
+                           &comdatLosers,
                            err))
             return false;
     }
@@ -698,6 +741,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                                    platform,
                                    allowArchiveDefinitionPreference,
                                    &pendingUndefined,
+                                   &comdatLosers,
                                    err))
                     return false;
                 extractedForUndef = true;
@@ -712,6 +756,10 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
     if (platform == LinkPlatform::Windows)
         synthesizeWindowsThreadSafeStaticGuards(globalSyms, undefined);
+
+    // Discard the sections of every losing COMDAT copy before layout so a
+    // duplicate body (and any always-live section it drags in) is not emitted.
+    discardComdatLosers(allObjects, globalSyms, comdatLosers);
 
     if (!materializeCommonSymbols(allObjects, globalSyms, err))
         return false;
@@ -756,6 +804,79 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     }
 
     return true;
+}
+
+static void discardComdatLosers(std::vector<ObjFile> &allObjects,
+                                std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                const std::vector<InputSectionKey> &comdatLosers) {
+    if (comdatLosers.empty())
+        return;
+
+    auto stripSection = [](ObjSection &sec) {
+        sec.stripped = true;
+        sec.data.clear();
+        sec.relocs.clear();
+        sec.memSize = 0;
+        sec.zeroFill = false;
+    };
+
+    // 1. Strip each losing leader plus its associative group members. comdatKey is
+    //    retained (not cleared) so the surviving winner can be located below.
+    std::unordered_set<InputSectionKey, InputSectionKeyHash> strippedKeys;
+    for (const auto &loser : comdatLosers) {
+        if (loser.objIndex >= allObjects.size())
+            continue;
+        auto &obj = allObjects[loser.objIndex];
+        if (loser.secIndex == 0 || loser.secIndex >= obj.sections.size())
+            continue;
+        stripSection(obj.sections[loser.secIndex]);
+        strippedKeys.insert(loser);
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
+            if (obj.sections[si].associativeSection == loser.secIndex) {
+                stripSection(obj.sections[si]);
+                strippedKeys.insert(InputSectionKey{loser.objIndex, si});
+            }
+        }
+    }
+
+    // 2. Map each COMDAT key to its one surviving winner leader.
+    std::unordered_map<std::string, InputSectionKey> winnerByKey;
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
+        const auto &obj = allObjects[oi];
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
+            const auto &sec = obj.sections[si];
+            if (sec.stripped || sec.comdatSelection == ComdatSelection::None ||
+                sec.comdatKey.empty() || sec.associativeSection != 0)
+                continue;
+            winnerByKey.emplace(sec.comdatKey, InputSectionKey{oi, si});
+        }
+    }
+
+    // 3. Redirect any global symbol still pointing into a stripped loser section to
+    //    the same-named definition in the winning group. SELECT_ANY already leaves
+    //    globalSyms pointing at the winner (the loser hit the dedup path without
+    //    overwriting it); this repoint only matters for the rare LARGEST winner
+    //    switch, where symbols of the displaced old winner were already registered.
+    for (auto &[name, entry] : globalSyms) {
+        if (entry.binding == GlobalSymEntry::Undefined ||
+            entry.binding == GlobalSymEntry::Dynamic || entry.secIndex == 0)
+            continue;
+        if (!strippedKeys.count(InputSectionKey{entry.objIndex, entry.secIndex}))
+            continue;
+        const auto &loserSec = allObjects[entry.objIndex].sections[entry.secIndex];
+        auto wit = winnerByKey.find(loserSec.comdatKey);
+        if (wit == winnerByKey.end())
+            continue;
+        const auto &winObj = allObjects[wit->second.objIndex];
+        for (size_t k = 1; k < winObj.symbols.size(); ++k) {
+            const auto &wsym = winObj.symbols[k];
+            if (wsym.name == name && wsym.binding != ObjSymbol::Undefined &&
+                wsym.binding != ObjSymbol::Local && !wsym.common) {
+                setEntryFromSymbol(entry, wsym, wit->second.objIndex, entry.binding);
+                break;
+            }
+        }
+    }
 }
 
 static void synthesizeWindowsThreadSafeStaticGuards(

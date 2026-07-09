@@ -900,7 +900,13 @@ bool readCoffObj(
             }
         } else if (sym.sectionNumber == coff::IMAGE_SYM_ABSOLUTE ||
                    sym.sectionNumber == coff::IMAGE_SYM_DEBUG) {
-            os.binding = ObjSymbol::Local;
+            // An external absolute symbol (e.g. `PUBLIC x = 0x1234` / `.globl`
+            // equate) must stay Global so cross-object references resolve; only
+            // non-external absolutes/debug symbols are file-local.
+            os.binding = (sym.sectionNumber == coff::IMAGE_SYM_ABSOLUTE &&
+                          sym.storageClass == coff::IMAGE_SYM_CLASS_EXTERNAL)
+                             ? ObjSymbol::Global
+                             : ObjSymbol::Local;
             os.absolute = (sym.sectionNumber == coff::IMAGE_SYM_ABSOLUTE);
         } else if (sym.storageClass == coff::IMAGE_SYM_CLASS_EXTERNAL) {
             os.binding = ObjSymbol::Global;

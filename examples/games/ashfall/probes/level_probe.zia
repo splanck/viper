@@ -15,6 +15,7 @@ bind Viper.Terminal as Terminal;
 bind "../config" as config;
 bind "../core/mathutil" as M;
 bind "../game" as game;
+bind "../world/level_env" as level_env;
 
 func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
 
@@ -33,22 +34,33 @@ func tick(g: game.Game) {
 }
 
 func start() {
+    var env = new level_env.LevelEnv();
+    env.setup();
     // --- 1. Every campaign level + hub builds and ticks without a trap ------
     var lv = config.LV_L1;
     while lv <= config.LV_HUB {
         var g = bootLevel(lv, 0x9000 + lv);
         if g.getLevelMgr().levelName().Length == 0 { fail("level " + toString(lv) + " has no name"); return; }
+        var lb0 = g.getLevelMgr().getBuilder();
+        if lb0.routeMarkerCount() < 1 { fail("level " + toString(lv) + " has no route markers"); return; }
+        if lb0.landmarkCount() < 1 { fail("level " + toString(lv) + " has no landmarks"); return; }
+        if env.fogFarOf(lv) < 65.0 { fail("level " + toString(lv) + " fog is too dense"); return; }
         if lv != config.LV_HUB {
             if g.getEnemies().aliveCount() < 1 { fail("level " + toString(lv) + " spawned no enemies"); return; }
             var routed = 0;
             var si = 0;
-            var lb = g.getLevelMgr().getBuilder();
-            while si < lb.spawnCount() {
-                if lb.spawnRouteXat(si) < 90000.0 { routed = routed + 1; }
+            while si < lb0.spawnCount() {
+                if lb0.spawnRouteXat(si) < 90000.0 { routed = routed + 1; }
                 si = si + 1;
             }
             if routed < 1 { fail("level " + toString(lv) + " has no routed spawns"); return; }
-            if lb.coverCount() < 1 { fail("level " + toString(lv) + " has no AI cover hints"); return; }
+            if lb0.coverCount() < 1 { fail("level " + toString(lv) + " has no AI cover hints"); return; }
+            if lb0.flankCount() < 2 { fail("level " + toString(lv) + " has too few flank hints"); return; }
+            if lb0.routeMarkerCount() < 5 { fail("level " + toString(lv) + " has weak route readability"); return; }
+            if lb0.landmarkCount() < 2 { fail("level " + toString(lv) + " has too few landmarks"); return; }
+            if lb0.encounterBeatCount() < 2 { fail("level " + toString(lv) + " has too few encounter beats"); return; }
+            if lb0.boxCount() < 28 { fail("level " + toString(lv) + " has sparse geometry"); return; }
+            if lb0.propCount() < 6 { fail("level " + toString(lv) + " has sparse props"); return; }
         }
         if g.getLevelMgr().getObjectives().count() < 1 { fail("level " + toString(lv) + " has no objectives"); return; }
         var ai = g.getLevelMgr().getObjectives().activeIndex();

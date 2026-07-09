@@ -473,6 +473,10 @@ bool readElfObj(
         sec.writable = (sh->sh_flags & elf::SHF_WRITE) != 0;
         sec.alloc = (sh->sh_flags & elf::SHF_ALLOC) != 0;
         sec.tls = (sh->sh_flags & elf::SHF_TLS) != 0;
+        // SHF_GNU_RETAIN marks a section the linker must keep even under
+        // --gc-sections (e.g. __attribute__((retain))).
+        constexpr uint64_t SHF_GNU_RETAIN = 0x200000;
+        sec.noDeadStrip = (sh->sh_flags & SHF_GNU_RETAIN) != 0;
 
         // ELF sections with SHF_STRINGS + SHF_MERGE contain NUL-terminated
         // string literals suitable for cross-module deduplication.
