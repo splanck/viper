@@ -31,6 +31,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define CANVAS3D_SKYBOX_CPU_CACHE_MAX_DIM 1024
+
 /// @brief Free and reset the canvas's cached CPU-rendered skybox, forcing a re-render on the
 ///   next software skybox draw (call when the skybox texture or view parameters change).
 void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
@@ -59,6 +61,44 @@ static int canvas3d_float_array_close(const float *a, const float *b, int32_t co
             return 0;
     }
     return 1;
+}
+
+/// @brief Choose the retained CPU skybox cache dimensions for a destination size.
+/// @details Large software fallback targets do not need one cubemap sample per output pixel: the
+///          skybox is infinitely distant and bilinear upscaling is visually stable. This caps the
+///          largest cache axis while preserving aspect ratio and exact dimensions for small
+///          targets.
+static void canvas3d_skybox_cpu_cache_dimensions(int32_t dst_w,
+                                                 int32_t dst_h,
+                                                 int32_t *out_w,
+                                                 int32_t *out_h) {
+    int32_t cache_w = dst_w;
+    int32_t cache_h = dst_h;
+
+    if (dst_w <= 0 || dst_h <= 0) {
+        if (out_w)
+            *out_w = 0;
+        if (out_h)
+            *out_h = 0;
+        return;
+    }
+    if (dst_w > CANVAS3D_SKYBOX_CPU_CACHE_MAX_DIM || dst_h > CANVAS3D_SKYBOX_CPU_CACHE_MAX_DIM) {
+        if (dst_w >= dst_h) {
+            cache_w = CANVAS3D_SKYBOX_CPU_CACHE_MAX_DIM;
+            cache_h = (int32_t)(((int64_t)dst_h * cache_w + dst_w / 2) / dst_w);
+        } else {
+            cache_h = CANVAS3D_SKYBOX_CPU_CACHE_MAX_DIM;
+            cache_w = (int32_t)(((int64_t)dst_w * cache_h + dst_h / 2) / dst_h);
+        }
+        if (cache_w < 1)
+            cache_w = 1;
+        if (cache_h < 1)
+            cache_h = 1;
+    }
+    if (out_w)
+        *out_w = cache_w;
+    if (out_h)
+        *out_h = cache_h;
 }
 
 /// @brief Normalize a skybox sample direction, using @p fallback then -Z for malformed input.
@@ -129,7 +169,7 @@ static int canvas3d_render_skybox_cpu(
         float b;
 
         canvas3d_sanitize_skybox_dir(c->cached_cam_forward, NULL, dir);
-        rt_cubemap_sample(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
+        rt_cubemap_sample_unit(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
         uint8_t r8 = canvas3d_clamp01_to_u8(r);
         uint8_t g8 = canvas3d_clamp01_to_u8(g);
         uint8_t b8 = canvas3d_clamp01_to_u8(b);
@@ -186,14 +226,11 @@ static int canvas3d_render_skybox_cpu(
                 world[1] /= world[3];
                 world[2] /= world[3];
             }
-            /* canvas3d_sanitize_skybox_dir normalizes the direction (and
-             * rt_cubemap_sample normalizes again), so feed it the raw ray
-             * instead of spending an extra per-pixel sqrtf to pre-normalize. */
             dir[0] = world[0] - c->cached_cam_pos[0];
             dir[1] = world[1] - c->cached_cam_pos[1];
             dir[2] = world[2] - c->cached_cam_pos[2];
             canvas3d_sanitize_skybox_dir(dir, c->cached_cam_forward, dir);
-            rt_cubemap_sample(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
+            rt_cubemap_sample_unit(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
             dst = &row[(size_t)x * 4u];
             dst[0] = canvas3d_clamp01_to_u8(r);
             dst[1] = canvas3d_clamp01_to_u8(g);
@@ -247,21 +284,27 @@ static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
 int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
     uint64_t generation;
     size_t bytes;
+    int32_t cache_w;
+    int32_t cache_h;
 
-    if (!c || !c->skybox || !rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID) ||
-        w <= 0 || h <= 0 || (size_t)w > (size_t)INT32_MAX / 4u)
+    if (!c || !c->skybox || !rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID) || w <= 0 ||
+        h <= 0 || (size_t)w > (size_t)INT32_MAX / 4u)
+        return 0;
+    canvas3d_skybox_cpu_cache_dimensions(w, h, &cache_w, &cache_h);
+    if (cache_w <= 0 || cache_h <= 0)
         return 0;
     generation = vgfx3d_get_cubemap_generation(c->skybox);
     if (generation == 0) {
         rt_canvas3d_invalidate_skybox_cache(c);
         return 0;
     }
-    if (canvas3d_skybox_cache_matches(c, w, h, generation))
+    if (canvas3d_skybox_cache_matches(c, cache_w, cache_h, generation))
         return 1;
-    if ((size_t)w > SIZE_MAX / (size_t)h / 4u)
+    if ((size_t)cache_w > SIZE_MAX / (size_t)cache_h / 4u)
         return 0;
-    bytes = (size_t)w * (size_t)h * 4u;
-    if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h || !c->skybox_cpu_cache) {
+    bytes = (size_t)cache_w * (size_t)cache_h * 4u;
+    if (c->skybox_cpu_cache_w != cache_w || c->skybox_cpu_cache_h != cache_h ||
+        !c->skybox_cpu_cache) {
         uint8_t *new_cache = (uint8_t *)realloc(c->skybox_cpu_cache, bytes);
         if (!new_cache) {
             rt_canvas3d_invalidate_skybox_cache(c);
@@ -269,9 +312,10 @@ int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
         }
         c->skybox_cpu_cache = new_cache;
     }
-    c->skybox_cpu_cache_w = w;
-    c->skybox_cpu_cache_h = h;
-    if (!canvas3d_render_skybox_cpu(c, c->skybox_cpu_cache, w, h, (int32_t)((int64_t)w * 4))) {
+    c->skybox_cpu_cache_w = cache_w;
+    c->skybox_cpu_cache_h = cache_h;
+    if (!canvas3d_render_skybox_cpu(
+            c, c->skybox_cpu_cache, cache_w, cache_h, (int32_t)((int64_t)cache_w * 4))) {
         rt_canvas3d_invalidate_skybox_cache(c);
         return 0;
     }
@@ -282,29 +326,47 @@ int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
     if (c->cached_cam_is_ortho)
         canvas3d_sanitize_skybox_dir(c->cached_cam_forward, NULL, c->skybox_cpu_cache_forward);
     else
-        memcpy(c->skybox_cpu_cache_forward, c->cached_cam_forward, sizeof(c->skybox_cpu_cache_forward));
+        memcpy(c->skybox_cpu_cache_forward,
+               c->cached_cam_forward,
+               sizeof(c->skybox_cpu_cache_forward));
     return 1;
 }
 
 /// @brief Copy the cached CPU skybox into the frame's destination buffer row-by-row.
 /// @details Performs no rendering — it assumes `canvas3d_ensure_skybox_cpu_cache`
-///   has already refreshed the cache for this frame. Silently no-ops when the
-///   cache size doesn't match the destination, which is by design: the caller
-///   uses it as a "try the fast path" hook before falling back to a full
-///   CPU render.
+///   has already refreshed the cache for this frame. Exact-size caches use row
+///   copies; downsampled large-target caches are nearest-upscaled to the target.
 void canvas3d_blit_skybox_cpu_cache(
     rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
     int32_t src_stride;
 
     if (!c || !c->skybox_cpu_cache || !dst_pixels || dst_w <= 0 || dst_h <= 0 ||
-        c->skybox_cpu_cache_w != dst_w || c->skybox_cpu_cache_h != dst_h ||
         !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
         return;
-    src_stride = (int32_t)((int64_t)dst_w * 4);
-    for (int32_t y = 0; y < dst_h; y++)
-        memcpy(&dst_pixels[(size_t)y * (size_t)dst_stride],
-               &c->skybox_cpu_cache[(size_t)y * (size_t)src_stride],
-               (size_t)src_stride);
+    if (c->skybox_cpu_cache_w <= 0 || c->skybox_cpu_cache_h <= 0)
+        return;
+    src_stride = (int32_t)((int64_t)c->skybox_cpu_cache_w * 4);
+    if (c->skybox_cpu_cache_w == dst_w && c->skybox_cpu_cache_h == dst_h) {
+        for (int32_t y = 0; y < dst_h; y++)
+            memcpy(&dst_pixels[(size_t)y * (size_t)dst_stride],
+                   &c->skybox_cpu_cache[(size_t)y * (size_t)src_stride],
+                   (size_t)src_stride);
+        return;
+    }
+    for (int32_t y = 0; y < dst_h; y++) {
+        int32_t sy = (int32_t)(((int64_t)y * c->skybox_cpu_cache_h) / dst_h);
+        const uint8_t *src_row = &c->skybox_cpu_cache[(size_t)sy * (size_t)src_stride];
+        uint8_t *dst_row = &dst_pixels[(size_t)y * (size_t)dst_stride];
+        for (int32_t x = 0; x < dst_w; x++) {
+            int32_t sx = (int32_t)(((int64_t)x * c->skybox_cpu_cache_w) / dst_w);
+            const uint8_t *src = &src_row[(size_t)sx * 4u];
+            uint8_t *dst = &dst_row[(size_t)x * 4u];
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            dst[3] = src[3];
+        }
+    }
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

@@ -29,6 +29,7 @@
 
 #include "rt_blendtree3d.h"
 
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_skeleton3d.h"
 
@@ -100,11 +101,10 @@ static void blend_tree3d_release_blend_ref(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_ANIMBLEND3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
-    blend_tree3d_release_local(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Return @p value when finite, else 0 — sanitizes parameter inputs.

@@ -558,6 +558,38 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                              0);
 }
 
+/// @brief Queue instanced matrices that have already been converted to frame render space.
+/// @details Used by InstanceBatch3D's double-matrix camera-relative path. It reuses the normal
+///          instanced queueing pipeline but suppresses the queue's translation rebase so the
+///          already-rebased matrices are not shifted twice.
+void rt_canvas3d_queue_instanced_batch_frame_matrices(void *canvas_obj,
+                                                      void *mesh_obj,
+                                                      void *material_obj,
+                                                      const float *instance_matrices,
+                                                      int32_t instance_count,
+                                                      const float *prev_instance_matrices,
+                                                      int8_t has_prev_instance_matrices) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
+    int8_t saved_camera_relative;
+
+    if (!c)
+        return;
+    saved_camera_relative = c->camera_relative_upload;
+    c->camera_relative_upload = 0;
+    rt_canvas3d_queue_instanced_batch_bounds(canvas_obj,
+                                             mesh_obj,
+                                             material_obj,
+                                             instance_matrices,
+                                             instance_count,
+                                             prev_instance_matrices,
+                                             has_prev_instance_matrices,
+                                             NULL,
+                                             NULL,
+                                             0,
+                                             0);
+    c->camera_relative_upload = saved_camera_relative;
+}
+
 /// @brief Recompute the canvas's pending/active texture-upload byte counters for this frame.
 /// @details Aggregates the streaming upload state of referenced textures so the caller can budget
 ///          GPU upload bandwidth.

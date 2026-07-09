@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/world/rt_terrain3d_lod.inc  (#included from rt_terrain3d.c; not a standalone translation unit)
-// Purpose: Terrain3D LOD selection, chunk-grid accessors, union AABB, and lifecycle
+// File: src/runtime/graphics/3d/world/rt_terrain3d_lod.inc  (#included from rt_terrain3d.c; not a
+// standalone translation unit) Purpose: Terrain3D LOD selection, chunk-grid accessors, union AABB,
+// and lifecycle
 //===----------------------------------------------------------------------===//
 static int32_t terrain_safe_chunk_count(const rt_terrain3d *t);
 
@@ -9,11 +10,7 @@ static int32_t terrain_safe_chunk_count(const rt_terrain3d *t);
 /// @details Shared plumbing for the terrain's texture slots (`base_texture`,
 ///   `baked_texture`, splat layer textures) and LOD mesh grids. Idempotent on null.
 static void terrain_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief True if @p ref is a usable terrain texture reference (a Pixels image or a
@@ -23,50 +20,46 @@ static int terrain_texture_ref_supported(void *ref) {
                    rt_g3d_has_class(ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
 }
 
-/// @brief Release a retained texture slot only if it still holds a supported texture;
-///   otherwise just clear the slot (the stale value is not a releasable handle).
+/// @brief Release a retained texture slot and tolerate stale, wrong-class handles.
 static void terrain_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!terrain_texture_ref_supported(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     terrain_release_ref(slot);
 }
 
-/// @brief Clear a texture slot in place when its contents are no longer a supported texture
-///   (defensive; performs no release).
+/// @brief Release and clear a texture slot whose contents are no longer supported.
 static void terrain_repair_texture_slot(void **slot) {
     if (slot && *slot && !terrain_texture_ref_supported(*slot))
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
 }
 
-/// @brief Release a retained material slot only if it still holds a Material3D; otherwise
-///   just clear the slot.
+/// @brief Release a retained material slot and tolerate stale, wrong-class handles.
 static void terrain_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     terrain_release_ref(slot);
 }
 
-/// @brief Clear a material slot in place when its contents are no longer a Material3D
-///   (defensive; performs no release).
+/// @brief Release and clear a material slot whose contents are no longer a Material3D.
 static void terrain_repair_material_slot(void **slot) {
     if (slot && *slot && !rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID))
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
 }
 
-/// @brief Release a retained mesh slot only if it still holds a Mesh3D; otherwise just clear it.
+/// @brief Release a retained mesh slot and tolerate stale, wrong-class handles.
 static void terrain_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     terrain_release_ref(slot);
@@ -186,7 +179,7 @@ static void terrain_reset_lod_state(rt_terrain3d *t) {
 /// @details The first selection uses the raw thresholds. Later selections require the distance to
 ///   move outside a threshold plus/minus the hysteresis band before changing state, preventing
 ///   terrain triangles from visibly popping or flickering while the camera jitters near a boundary.
-static int32_t terrain_select_lod(
+static TERRAIN3D_UNUSED_PRIVATE int32_t terrain_select_lod(
     rt_terrain3d *t, int32_t chunk_index, double distance, float lod_near, float lod_far) {
     float hys;
     uint8_t current;
@@ -212,6 +205,56 @@ static int32_t terrain_select_lod(
             current = 2;
     } else {
         if (distance < (double)lod_far - (double)hys)
+            current = 1;
+    }
+    t->chunk_lod_state[chunk_index] = current;
+    return (int32_t)current;
+}
+
+/// @brief Select a chunk LOD from squared distance, preserving hysteresis behavior.
+/// @details Terrain draw only compares chunk distance against thresholds; it does not need the
+///   actual Euclidean distance. Squaring the sanitized thresholds avoids one `sqrt` per visible
+///   chunk while matching `terrain_select_lod` for non-negative distances.
+static int32_t terrain_select_lod_squared(
+    rt_terrain3d *t, int32_t chunk_index, double distance2, float lod_near, float lod_far) {
+    float hys;
+    uint8_t current;
+    if (!isfinite(distance2) || distance2 < 0.0)
+        distance2 = (double)lod_far * (double)lod_far;
+    if (!t || chunk_index < 0 || chunk_index >= terrain_safe_chunk_count(t)) {
+        double near2 = (double)lod_near * (double)lod_near;
+        double far2 = (double)lod_far * (double)lod_far;
+        return distance2 >= far2 ? 2 : (distance2 >= near2 ? 1 : 0);
+    }
+    hys = terrain_lod_hysteresis_or(t, lod_near, lod_far);
+    if (!t->chunk_lod_state) {
+        double near2 = (double)lod_near * (double)lod_near;
+        double far2 = (double)lod_far * (double)lod_far;
+        return distance2 >= far2 ? 2 : (distance2 >= near2 ? 1 : 0);
+    }
+    current = t->chunk_lod_state[chunk_index];
+    if (current > 2) {
+        double near2 = (double)lod_near * (double)lod_near;
+        double far2 = (double)lod_far * (double)lod_far;
+        current = (uint8_t)(distance2 >= far2 ? 2 : (distance2 >= near2 ? 1 : 0));
+    } else if (current == 0) {
+        double threshold = (double)lod_near + (double)hys;
+        if (distance2 >= threshold * threshold)
+            current = 1;
+    } else if (current == 1) {
+        double near_threshold = (double)lod_near - (double)hys;
+        double far_threshold = (double)lod_far + (double)hys;
+        if (near_threshold < 0.0)
+            near_threshold = 0.0;
+        if (distance2 < near_threshold * near_threshold)
+            current = 0;
+        else if (distance2 >= far_threshold * far_threshold)
+            current = 2;
+    } else {
+        double threshold = (double)lod_far - (double)hys;
+        if (threshold < 0.0)
+            threshold = 0.0;
+        if (distance2 < threshold * threshold)
             current = 1;
     }
     t->chunk_lod_state[chunk_index] = current;

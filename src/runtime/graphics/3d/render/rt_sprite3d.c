@@ -27,6 +27,7 @@
 #include "rt_sprite3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_pixels_internal.h"
 
 #include <limits.h>
@@ -70,8 +71,8 @@ typedef struct {
     double anchor[2];   /* pivot [0,1], default (0.5, 0.5) */
     int32_t frame_x, frame_y, frame_w, frame_h;
     int32_t tex_w, tex_h;
-    int8_t additive;    /* route through the additive blend state (muzzle glows, tracers) */
-    double tint[3];     /* multiplies the texture; default white */
+    int8_t additive;       /* route through the additive blend state (muzzle glows, tracers) */
+    double tint[3];        /* multiplies the texture; default white */
     void *cached_mesh;     /* Reused each frame (billboard changes with camera) */
     void *cached_material; /* Created once, reused until texture changes */
     void *cached_texture;  /* Track texture for material invalidation */
@@ -82,11 +83,7 @@ typedef struct {
 ///   when the sprite is finalized or when the material needs to be rebuilt because the
 ///   texture changed. Nulling the slot makes subsequent calls idempotent.
 static void sprite3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Return true when @p texture is a live Pixels object.
@@ -99,7 +96,7 @@ static void sprite3d_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!sprite3d_texture_valid(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     sprite3d_release_ref(slot);
@@ -110,7 +107,7 @@ static void sprite3d_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     sprite3d_release_ref(slot);
@@ -121,7 +118,7 @@ static void sprite3d_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     sprite3d_release_ref(slot);

@@ -122,22 +122,18 @@ static int model_count_i64_to_i32(int64_t count, int32_t *out, const char *trap_
 /// (`slot == NULL` or `*slot == NULL`). Frees the object only when the release drops the
 /// retain count to zero — bystander references stay alive.
 static void model_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release an owned Graphics3D slot only when it still has the expected class.
 /// @details Model3D assignment paths validate classes before retaining. If private state is later
-///          corrupted to an unrelated object, clear the slot without altering that object's
-///          refcount because ownership can no longer be proven.
+///          corrupted to an unrelated object, clear it without releasing because the runtime cannot
+///          prove the mismatched handle is owned by this slot.
 static void model_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     model_release_ref(slot);

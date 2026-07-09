@@ -32,6 +32,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_heap.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
@@ -853,11 +854,7 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
 
 /// @brief Drop one retained object ref and clear the slot.
 static void mesh3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained MorphTarget3D slot only if it still points at MorphTarget3D.
@@ -865,7 +862,7 @@ static void mesh3d_release_morph_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MORPHTARGET3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     mesh3d_release_ref(slot);

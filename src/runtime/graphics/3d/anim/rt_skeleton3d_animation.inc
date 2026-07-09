@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/anim/rt_skeleton3d_animation.inc  (#included from rt_skeleton3d.c; not a standalone translation unit)
-// Purpose: Animation3D clip implementation and keyframe sampling
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d_animation.inc  (#included from rt_skeleton3d.c;
+// not a standalone translation unit) Purpose: Animation3D clip implementation and keyframe sampling
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Animation3D implementation
@@ -27,11 +27,7 @@ static void rt_animation3d_finalize(void *obj) {
 ///   as a local copy so this translation unit has no dependency on scene3d internals.
 ///   Safe to call with a NULL slot or a slot already holding NULL.
 static void animation3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained private slot only when it still holds the expected 3D class.
@@ -39,7 +35,7 @@ static void animation3d_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     animation3d_release_ref(slot);
@@ -59,7 +55,7 @@ static rt_skeleton3d *animation3d_skeleton_slot(void **slot) {
     if (!slot || !*slot)
         return NULL;
     if (!rt_g3d_has_class(*slot, RT_G3D_SKELETON3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return NULL;
     }
     return (rt_skeleton3d *)*slot;
@@ -70,7 +66,7 @@ static rt_animation3d *animation3d_clip_slot(void **slot) {
     if (!slot || !*slot)
         return NULL;
     if (!rt_g3d_has_class(*slot, RT_G3D_ANIMATION3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return NULL;
     }
     return (rt_animation3d *)*slot;

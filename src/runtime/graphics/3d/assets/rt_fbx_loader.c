@@ -42,6 +42,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_compress.h"
 #include "rt_file_stdio.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_gif.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"

@@ -762,6 +762,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Vegetation3D.SetSeed\""),
+                 "Vegetation3D.SetSeed must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.BlendTree3D.New1D\""),
                  "BlendTree3D.New1D must use Graphics3D PascalCase naming") &&
          ok;
@@ -1605,6 +1608,8 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.TextureAsset3D.setResidentMipRange",
         "Viper.Graphics3D.TextureAsset3D.SetResidentMiprange",
         "Viper.Graphics3D.TextureAsset3D.set_Texture",
+        "Viper.Graphics3D.Vegetation3D.setSeed",
+        "Viper.Graphics3D.Vegetation3D.Setseed",
         "Viper.Graphics3D.Blendtree3D",
         "Viper.Graphics3D.BlendTree3D.new1D",
         "Viper.Graphics3D.BlendTree3D.New1d",

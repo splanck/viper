@@ -9,11 +9,7 @@
 
 /// @brief Release a GC-managed object held in `*slot` and NULL-out the slot.
 static void fbx_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Stash a namespace-stripped FBX object name onto a `SceneNode3D`. Skips the

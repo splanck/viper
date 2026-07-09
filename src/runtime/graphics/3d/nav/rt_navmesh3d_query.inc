@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_query.inc  (#included from rt_navmesh3d.c; not a standalone translation unit)
-// Purpose: NavMesh3D A* pathfinding and point/poly queries
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_query.inc  (#included from rt_navmesh3d.c; not a
+// standalone translation unit) Purpose: NavMesh3D A* pathfinding and point/poly queries
 //===----------------------------------------------------------------------===//
 
 /*==========================================================================
@@ -101,6 +101,31 @@ static float navmesh3d_offmesh_cost(const nav_offmesh_link_t *link) {
     return isfinite(total) ? total : FLT_MAX;
 }
 
+/// @brief Relax one directed offmesh edge during A* expansion.
+/// @details Applies the link traversal cost, skips blocked/closed targets, and pushes the target
+///   triangle with its updated f-score when this edge improves the known g-cost.
+static void navmesh3d_astar_relax_offmesh(rt_navmesh3d *nm,
+                                          int32_t cur,
+                                          int32_t next,
+                                          int32_t goal,
+                                          const nav_offmesh_link_t *link,
+                                          float *g_cost,
+                                          int32_t *parent,
+                                          int8_t *closed,
+                                          heap_entry_t *heap,
+                                          int32_t *heap_size,
+                                          int32_t heap_cap) {
+    int32_t tc = nm ? nm->triangle_count : 0;
+    if (!nm || !link || next < 0 || next >= tc || closed[next] || nm->triangles[next].blocked)
+        return;
+    float new_g = g_cost[cur] + navmesh3d_offmesh_cost(link);
+    if (new_g < g_cost[next]) {
+        g_cost[next] = new_g;
+        parent[next] = cur;
+        heap_push(heap, heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+    }
+}
+
 /// @brief Internal: compute the path from `from_v` to `to_v` and copy the waypoints into a
 /// freshly malloc'd `*out_points_xyz` (interleaved x,y,z). Returns the point count, or 0 on
 /// failure. Caller frees `*out_points_xyz`.
@@ -140,36 +165,44 @@ static int navmesh3d_astar_search(rt_navmesh3d *nm,
             }
         }
 
-        for (int32_t li = 0; li < nm->offmesh_link_count; li++) {
-            const nav_offmesh_link_t *link = &nm->offmesh_links[li];
-            int32_t next = -1;
-            if (link->from_tri == cur)
-                next = link->to_tri;
-            else if (link->bidirectional && link->to_tri == cur)
-                next = link->from_tri;
-            if (next < 0 || next >= tc || closed[next] || nm->triangles[next].blocked)
-                continue;
-
-            float new_g = g_cost[cur] + navmesh3d_offmesh_cost(link);
-            if (new_g < g_cost[next]) {
-                g_cost[next] = new_g;
-                parent[next] = cur;
-                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+        if (cur >= 0 && cur < tc && nm->offmesh_adjacency_starts && nm->offmesh_adjacency_edges &&
+            nm->offmesh_adjacency_edge_count > 0) {
+            int32_t begin = nm->offmesh_adjacency_starts[cur];
+            int32_t end = nm->offmesh_adjacency_starts[cur + 1];
+            for (int32_t ei = begin; ei < end; ei++) {
+                int32_t li = -1;
+                int reverse = 0;
+                if (!navmesh3d_unpack_offmesh_edge(nm->offmesh_adjacency_edges[ei], &li, &reverse))
+                    continue;
+                if (li < 0 || li >= nm->offmesh_link_count)
+                    continue;
+                const nav_offmesh_link_t *link = &nm->offmesh_links[li];
+                int32_t next = reverse ? link->from_tri : link->to_tri;
+                navmesh3d_astar_relax_offmesh(
+                    nm, cur, next, goal, link, g_cost, parent, closed, heap, &heap_size, heap_cap);
+            }
+        } else {
+            for (int32_t li = 0; li < nm->offmesh_link_count; li++) {
+                const nav_offmesh_link_t *link = &nm->offmesh_links[li];
+                int32_t next = -1;
+                if (link->from_tri == cur)
+                    next = link->to_tri;
+                else if (link->bidirectional && link->to_tri == cur)
+                    next = link->from_tri;
+                navmesh3d_astar_relax_offmesh(
+                    nm, cur, next, goal, link, g_cost, parent, closed, heap, &heap_size, heap_cap);
             }
         }
     }
     return 0;
 }
 
-/// @brief Emit the funnel waypoint(s) for one triangle transition @p ti -> @p tn, advancing @p apex.
+/// @brief Emit the funnel waypoint(s) for one triangle transition @p ti -> @p tn, advancing @p
+/// apex.
 /// @details Prefers the shared-edge portal midpoint; falls back to an off-mesh link's endpoints,
 ///          then to the destination triangle's centroid. Appends into @p points / @p point_count.
-static void navmesh3d_pull_segment(rt_navmesh3d *nm,
-                                   int32_t ti,
-                                   int32_t tn,
-                                   float apex[3],
-                                   double *points,
-                                   int64_t *point_count) {
+static void navmesh3d_pull_segment(
+    rt_navmesh3d *nm, int32_t ti, int32_t tn, float apex[3], double *points, int64_t *point_count) {
     /* Find the shared edge (portal) between consecutive triangles */
     nav_triangle_t *ta = &nm->triangles[ti];
     for (int e = 0; e < 3; e++) {
@@ -235,6 +268,164 @@ static void navmesh3d_pull_segment(rt_navmesh3d *nm,
     }
 }
 
+typedef struct {
+    float left[3];
+    float right[3];
+} navmesh3d_portal_t;
+
+/// @brief Signed twice-area of triangle a/b/c in the XZ plane.
+/// @details Positive/negative signs describe which side of segment a->b point c lies on and are
+///   used by the string-pulling funnel to detect corridor constrictions.
+static float navmesh3d_triarea2_xz(const float *a, const float *b, const float *c) {
+    float abx = b[0] - a[0];
+    float abz = b[2] - a[2];
+    float acx = c[0] - a[0];
+    float acz = c[2] - a[2];
+    return acx * abz - abx * acz;
+}
+
+/// @brief Compare two XZ points with a small tolerance for repeated portal vertices.
+static int navmesh3d_vequal_xz(const float *a, const float *b) {
+    float dx = b[0] - a[0];
+    float dz = b[2] - a[2];
+    return dx * dx + dz * dz < 1e-6f;
+}
+
+/// @brief Append a funnel corner unless it is nearly identical to the previous apex.
+static void navmesh3d_append_funnel_corner(double *points,
+                                           int64_t *point_count,
+                                           const float *corner,
+                                           float apex[3]) {
+    float dx = corner[0] - apex[0];
+    float dy = corner[1] - apex[1];
+    float dz = corner[2] - apex[2];
+    if (dx * dx + dy * dy + dz * dz > 0.01f) {
+        points[*point_count * 3 + 0] = corner[0];
+        points[*point_count * 3 + 1] = corner[1];
+        points[*point_count * 3 + 2] = corner[2];
+        (*point_count)++;
+    }
+    apex[0] = corner[0];
+    apex[1] = corner[1];
+    apex[2] = corner[2];
+}
+
+/// @brief Extract and orient the shared-edge portal for an adjacent triangle transition.
+/// @details The portal is ordered left/right from the supplied path apex in XZ. If the transition
+///   is not a normal adjacency edge (for example an offmesh link), returns 0 so the caller can use
+///   the existing offmesh fallback.
+static int navmesh3d_transition_portal(
+    rt_navmesh3d *nm, int32_t ti, int32_t tn, const float *apex, navmesh3d_portal_t *out) {
+    if (!nm || !out || ti < 0 || tn < 0 || ti >= nm->triangle_count || tn >= nm->triangle_count)
+        return 0;
+    nav_triangle_t *ta = &nm->triangles[ti];
+    for (int e = 0; e < 3; e++) {
+        if (ta->neighbors[e] != tn)
+            continue;
+        int32_t vi0 = ta->v[e];
+        int32_t vi1 = ta->v[(e + 1) % 3];
+        if (vi0 < 0 || vi1 < 0 || vi0 >= nm->vertex_count || vi1 >= nm->vertex_count)
+            return 0;
+        const float *p0 = nm->vertices[vi0].position;
+        const float *p1 = nm->vertices[vi1].position;
+        if (!navmesh3d_float3_finite(p0) || !navmesh3d_float3_finite(p1))
+            return 0;
+        if (navmesh3d_triarea2_xz(apex, p0, p1) >= 0.0f) {
+            memcpy(out->left, p0, sizeof(out->left));
+            memcpy(out->right, p1, sizeof(out->right));
+        } else {
+            memcpy(out->left, p1, sizeof(out->left));
+            memcpy(out->right, p0, sizeof(out->right));
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Run string-pulling over a normal triangle corridor.
+/// @details Builds shared-edge portals for the A* triangle sequence and applies the standard
+///   simple-stupid funnel in XZ. The final destination point is not appended here; the caller adds
+///   the exact requested endpoint after the funnel emits only necessary corners.
+/// @return 1 when the corridor used only normal adjacency and the funnel ran, 0 to use fallback.
+static int navmesh3d_pull_funnel_corridor(rt_navmesh3d *nm,
+                                          const int32_t *seq,
+                                          int32_t count,
+                                          const float start[3],
+                                          const float end[3],
+                                          double *points,
+                                          int64_t *point_count) {
+    if (!nm || !seq || count < 2 || !points || !point_count)
+        return 0;
+    if ((size_t)count + 1u > SIZE_MAX / sizeof(navmesh3d_portal_t))
+        return 0;
+    navmesh3d_portal_t *portals =
+        (navmesh3d_portal_t *)malloc(((size_t)count + 1u) * sizeof(*portals));
+    if (!portals)
+        return 0;
+    memcpy(portals[0].left, start, sizeof(portals[0].left));
+    memcpy(portals[0].right, start, sizeof(portals[0].right));
+    float ordering_apex[3] = {start[0], start[1], start[2]};
+    for (int32_t i = 0; i < count - 1; i++) {
+        if (!navmesh3d_transition_portal(nm, seq[i], seq[i + 1], ordering_apex, &portals[i + 1])) {
+            free(portals);
+            return 0;
+        }
+        ordering_apex[0] = nm->triangles[seq[i + 1]].centroid[0];
+        ordering_apex[1] = nm->triangles[seq[i + 1]].centroid[1];
+        ordering_apex[2] = nm->triangles[seq[i + 1]].centroid[2];
+    }
+    memcpy(portals[count].left, end, sizeof(portals[count].left));
+    memcpy(portals[count].right, end, sizeof(portals[count].right));
+
+    float portal_apex[3] = {start[0], start[1], start[2]};
+    float portal_left[3] = {start[0], start[1], start[2]};
+    float portal_right[3] = {start[0], start[1], start[2]};
+    int32_t apex_index = 0;
+    int32_t left_index = 0;
+    int32_t right_index = 0;
+    int32_t portal_count = count + 1;
+    for (int32_t i = 1; i < portal_count; i++) {
+        const float *left = portals[i].left;
+        const float *right = portals[i].right;
+
+        if (navmesh3d_triarea2_xz(portal_apex, portal_right, right) <= 0.0f) {
+            if (navmesh3d_vequal_xz(portal_apex, portal_right) ||
+                navmesh3d_triarea2_xz(portal_apex, portal_left, right) > 0.0f) {
+                memcpy(portal_right, right, sizeof(portal_right));
+                right_index = i;
+            } else {
+                navmesh3d_append_funnel_corner(points, point_count, portal_left, portal_apex);
+                apex_index = left_index;
+                memcpy(portal_left, portal_apex, sizeof(portal_left));
+                memcpy(portal_right, portal_apex, sizeof(portal_right));
+                left_index = apex_index;
+                right_index = apex_index;
+                i = apex_index;
+                continue;
+            }
+        }
+
+        if (navmesh3d_triarea2_xz(portal_apex, portal_left, left) >= 0.0f) {
+            if (navmesh3d_vequal_xz(portal_apex, portal_left) ||
+                navmesh3d_triarea2_xz(portal_apex, portal_right, left) < 0.0f) {
+                memcpy(portal_left, left, sizeof(portal_left));
+                left_index = i;
+            } else {
+                navmesh3d_append_funnel_corner(points, point_count, portal_right, portal_apex);
+                apex_index = right_index;
+                memcpy(portal_left, portal_apex, sizeof(portal_left));
+                memcpy(portal_right, portal_apex, sizeof(portal_right));
+                left_index = apex_index;
+                right_index = apex_index;
+                i = apex_index;
+                continue;
+            }
+        }
+    }
+    free(portals);
+    return 1;
+}
+
 /// @brief Reconstruct the smoothed waypoint list from an A* @p parent chain ending at @p goal.
 /// @return Newly malloc'd points buffer (caller owns) with @p out_point_count entries, or NULL on
 ///         allocation failure (then @p out_point_count is 0).
@@ -289,13 +480,17 @@ static double *navmesh3d_reconstruct_path(rt_navmesh3d *nm,
     points[point_count * 3 + 2] = fdz;
     point_count++;
 
-    /* Simple string-pulling: find portals between adjacent triangles and
-     * walk the funnel to produce smooth waypoints. If portal extraction
-     * fails for any edge, fall back to the centroid for that segment. */
+    /* String-pulling: use a full funnel for ordinary adjacent-triangle corridors.
+     * If the corridor contains offmesh/non-adjacent transitions, preserve the
+     * endpoint-aware segment fallback so offmesh links still emit their authored
+     * traversal endpoints. */
     if (count >= 2) {
         float apex[3] = {fx, fy, fz};
-        for (int32_t i = 0; i < count - 1; i++)
-            navmesh3d_pull_segment(nm, seq[i], seq[i + 1], apex, points, &point_count);
+        float end[3] = {(float)tdx, (float)tdy, (float)tdz};
+        if (!navmesh3d_pull_funnel_corridor(nm, seq, count, apex, end, points, &point_count)) {
+            for (int32_t i = 0; i < count - 1; i++)
+                navmesh3d_pull_segment(nm, seq[i], seq[i + 1], apex, points, &point_count);
+        }
     } else if (count == 1) {
         float *cen = nm->triangles[seq[0]].centroid;
         points[point_count * 3 + 0] = cen[0];
@@ -594,6 +789,7 @@ int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bid
     link->state_flags = 0;
     link->traversal_cost = 1.0f;
     link->kind = NULL;
+    (void)navmesh3d_build_offmesh_adjacency(nm);
     return 1;
 }
 
@@ -821,8 +1017,8 @@ rt_string rt_navmesh3d_get_area(void *obj, void *point) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || !nm->triangles || !nm->vertices)
         return rt_const_cstr("");
-    int32_t tri = find_tri_with_max_dy(
-        nm, query[0], query[1], query[2], navmesh3d_vertical_tolerance(nm));
+    int32_t tri =
+        find_tri_with_max_dy(nm, query[0], query[1], query[2], navmesh3d_vertical_tolerance(nm));
     if (tri < 0)
         return rt_const_cstr("");
     return navmesh3d_area_name(nm, nm->triangles[tri].area_id);
@@ -838,8 +1034,8 @@ double rt_navmesh3d_get_traversal_cost(void *obj, void *point) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || !nm->triangles || !nm->vertices)
         return 0.0;
-    int32_t tri = find_tri_with_max_dy(
-        nm, query[0], query[1], query[2], navmesh3d_vertical_tolerance(nm));
+    int32_t tri =
+        find_tri_with_max_dy(nm, query[0], query[1], query[2], navmesh3d_vertical_tolerance(nm));
     if (tri < 0)
         return 0.0;
     return (double)navmesh3d_tri_cost(nm, tri);
@@ -968,10 +1164,11 @@ int8_t rt_navmesh3d_test_tile_of_point(
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!isfinite(px) || !isfinite(pz))
         return 0;
-    return (int8_t)(navmesh3d_tile_of_point(
-                        nm, navmesh3d_coord_or(px, 0.0), navmesh3d_coord_or(pz, 0.0), out_tx, out_tz)
-                        ? 1
-                        : 0);
+    return (
+        int8_t)(navmesh3d_tile_of_point(
+                    nm, navmesh3d_coord_or(px, 0.0), navmesh3d_coord_or(pz, 0.0), out_tx, out_tz)
+                    ? 1
+                    : 0);
 }
 
 /// @brief Test-only: edit retained voxel source for a tile without touching the live mesh.

@@ -593,10 +593,10 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
     }
 }
 
-/// @brief Software-decode a whole BC7 mip into a new RGBA8 Pixels object.
-/// @details First scans every block and bails (returns NULL) if any uses the reserved mode 8, so
-///          the texture stays native-only rather than partially decoded. Otherwise decodes each
-///          block, clipping edge overhang. Bounds/budget-checked.
+/// @brief Software-decode one BC7 mip into a new RGBA8 Pixels object.
+/// @details Returns NULL only for this mip when a block uses an unsupported/reserved BC7 mode or
+///          the payload is malformed. Other mips may still keep decoded fallbacks while the native
+///          compressed payload remains available for backend upload.
 static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
                                                 size_t size,
                                                 uint32_t width,
@@ -654,14 +654,15 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
     return pixels;
 }
 
-/// @brief Decode all mips of a BC7 texture into a Pixels array.
-/// @details Returns NULL if any mip contains a reserved/unsupported block, so a texture is either
-///          fully software-decoded or left native-only — never a mix.
+/// @brief Decode all supported BC7 mips into a Pixels array, allowing per-mip misses.
+/// @details The returned array has one slot per mip. Unsupported/reserved blocks leave only that
+///          slot NULL instead of discarding fallbacks already decoded for other levels.
 static void **textureasset3d_decode_bc7_mips(const uint8_t *data,
                                              size_t size,
                                              const textureasset3d_mip *mips,
                                              int64_t mip_count) {
     void **mip_pixels;
+    int decoded_count = 0;
     if (!data || !mips || mip_count <= 0)
         return NULL;
     mip_pixels = (void **)calloc((size_t)mip_count, sizeof(void *));
@@ -670,11 +671,12 @@ static void **textureasset3d_decode_bc7_mips(const uint8_t *data,
     for (int64_t i = 0; i < mip_count; i++) {
         mip_pixels[i] = textureasset3d_decode_bc7_fallback(
             data, size, mips[i].width, mips[i].height, mips[i].offset, mips[i].length);
-        if (!mip_pixels[i]) {
-            /* A reserved block (or any failure) means no whole-texture RGBA fallback. */
-            textureasset3d_release_mip_pixels(mip_pixels, mip_count);
-            return NULL;
-        }
+        if (mip_pixels[i])
+            decoded_count++;
+    }
+    if (decoded_count <= 0) {
+        free(mip_pixels);
+        return NULL;
     }
     return mip_pixels;
 }
@@ -1062,8 +1064,8 @@ void rt_textureasset3d_decode_bc1_block(const uint8_t *b, uint8_t *out_rgba) {
         cr[3] = cg[3] = cb[3] = 0;
         ca[3] = 0; /* punch-through transparent */
     }
-    cbits = (uint32_t)b[4] | ((uint32_t)b[5] << 8) | ((uint32_t)b[6] << 16) |
-            ((uint32_t)b[7] << 24);
+    cbits =
+        (uint32_t)b[4] | ((uint32_t)b[5] << 8) | ((uint32_t)b[6] << 16) | ((uint32_t)b[7] << 24);
     for (int t = 0; t < 16; t++) {
         uint32_t ci = (cbits >> (2 * t)) & 0x3u;
         out_rgba[t * 4 + 0] = cr[ci];

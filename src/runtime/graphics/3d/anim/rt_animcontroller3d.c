@@ -33,6 +33,7 @@
 #include "rt_animcontroller3d.h"
 
 #include "rt_blendtree3d.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_iksolver3d.h"

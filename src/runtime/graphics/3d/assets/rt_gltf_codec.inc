@@ -174,11 +174,7 @@ static char *gltf_strdup_cstr(const char *text) {
 
 /// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void gltf_preload_release_object(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Free one dependency's owned path, raw bytes, and decoded object, then zero it.

@@ -1844,6 +1844,8 @@ struct WorkerAnimBatchSummary {
     double entity_x[12];
     double state_time[12];
     int64_t event_count[12];
+    int32_t animation_job_capacity;
+    int8_t jobs_enabled;
 };
 
 static WorkerAnimBatchSummary run_worker_animation_batch(int64_t worker_count) {
@@ -1873,6 +1875,9 @@ static WorkerAnimBatchSummary run_worker_animation_batch(int64_t worker_count) {
         summary.state_time[i] = rt_game3d_animator_state_time(animators[i]);
         summary.event_count[i] = rt_game3d_animator_event_count(animators[i]);
     }
+    Game3DWorldTestLayout *layout = (Game3DWorldTestLayout *)world;
+    summary.animation_job_capacity = layout->animation_job_capacity;
+    summary.jobs_enabled = layout->jobs_enabled;
     rt_game3d_world_destroy(world);
     return summary;
 }
@@ -1894,6 +1899,9 @@ static bool test_worker_count_parallel_animation_parity() {
         EXPECT_EQ_INT(single.event_count[i], 1, "single-worker animation fires event");
         EXPECT_EQ_INT(multi.event_count[i], 1, "multi-worker animation fires event");
     }
+    EXPECT_EQ_INT(single.animation_job_capacity, 0, "single-worker animation stays serial");
+    EXPECT_TRUE(multi.animation_job_capacity > 1, "multi-worker animation allocated job slots");
+    EXPECT_EQ_INT(multi.jobs_enabled, 1, "multi-worker animation keeps jobs enabled");
     PASS();
 }
 

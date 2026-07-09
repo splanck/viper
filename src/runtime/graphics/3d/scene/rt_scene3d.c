@@ -38,6 +38,7 @@
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_mat4.h"
@@ -86,11 +87,7 @@ static const rt_scene_node3d *scene_node3d_checked_const(const rt_scene_node3d *
 
 /// @brief Drop the GC reference in `*slot` and null the pointer (refcount-aware free).
 void scene3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained Graphics3D slot only if it still has the expected class.
@@ -98,7 +95,7 @@ static void scene3d_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     scene3d_release_ref(slot);
@@ -109,7 +106,7 @@ static void scene3d_release_pixels_ref(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_pixels_checked_impl_or_null(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     scene3d_release_ref(slot);

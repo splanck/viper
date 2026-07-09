@@ -378,7 +378,9 @@ void rt_canvas3d_draw_terrain_at(
         for (int32_t i = 0; i < chunk_count && !any_invalid; i++)
             if (!t->chunk_meshes[i])
                 any_invalid = 1;
-        if (t->splat_dirty || any_invalid)
+        if (complete_splat_layers)
+            terrain_use_realtime_splat_state(t);
+        else if (t->splat_dirty || any_invalid || !t->baked_texture)
             bake_splat_texture(t);
     }
     vgfx3d_frustum_t frustum;
@@ -451,11 +453,11 @@ void rt_canvas3d_draw_terrain_at(
             float chunk_cz = (world_min[2] + world_max[2]) * 0.5f;
             double dx = (double)chunk_cx - (double)c->cached_cam_pos[0];
             double dz = (double)chunk_cz - (double)c->cached_cam_pos[2];
-            double dist = sqrt(dx * dx + dz * dz);
-            if (!isfinite(dist))
-                dist = (double)lod_dist2;
+            double dist2 = dx * dx + dz * dz;
+            if (!isfinite(dist2) || dist2 < 0.0)
+                dist2 = (double)lod_dist2 * (double)lod_dist2;
 
-            int32_t lod = terrain_select_lod(t, idx, dist, lod_dist1, lod_dist2);
+            int32_t lod = terrain_select_lod_squared(t, idx, dist2, lod_dist1, lod_dist2);
             lod = terrain_clamp_lod_to_neighbors(t, idx, lod);
             if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, lod))
                 t->last_missing_lod_count++;

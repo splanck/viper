@@ -29,6 +29,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
@@ -98,11 +99,7 @@ int rt_cubemap3d_is_complete(void *cubemap) {
 /// @details Idempotent — safe to call on already-null slots. Used by the
 ///          finalizer to release each of the six cached face Pixels.
 static void cubemap_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a cubemap face only when it still points at a Pixels object.
@@ -110,7 +107,7 @@ static void cubemap_release_face_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!cubemap_pixels_valid(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     cubemap_release_ref(slot);
@@ -262,6 +259,72 @@ static void cubemap_direction_to_face_uv(
         }
     }
 
+    if (ma < 1e-8f)
+        ma = 1e-8f;
+    *out_face = face;
+    *out_u = (u / ma + 1.0f) * 0.5f;
+    *out_v = (v / ma + 1.0f) * 0.5f;
+}
+
+/// @brief Convert an already-normalized finite direction into a cubemap face plus UV.
+/// @details Same major-axis projection as @ref cubemap_direction_to_face_uv, but skips the
+///          defensive normalization step. This is for CPU hot paths that have already sanitized
+///          each direction and would otherwise pay a second square root per sample.
+static void cubemap_unit_direction_to_face_uv(
+    float dx, float dy, float dz, int *out_face, float *out_u, float *out_v) {
+    float ax;
+    float ay;
+    float az;
+    int face;
+    float u;
+    float v;
+    float ma;
+
+    if (!out_face || !out_u || !out_v)
+        return;
+    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) ||
+        (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f)) {
+        dx = 0.0f;
+        dy = 0.0f;
+        dz = -1.0f;
+    }
+    ax = fabsf(dx);
+    ay = fabsf(dy);
+    az = fabsf(dz);
+    if (ax >= ay && ax >= az) {
+        ma = ax;
+        if (dx > 0.0f) {
+            face = 0;
+            u = -dz;
+            v = -dy;
+        } else {
+            face = 1;
+            u = dz;
+            v = -dy;
+        }
+    } else if (ay >= ax && ay >= az) {
+        ma = ay;
+        if (dy > 0.0f) {
+            face = 2;
+            u = dx;
+            v = dz;
+        } else {
+            face = 3;
+            u = dx;
+            v = -dz;
+        }
+    } else {
+        ma = az;
+        if (dz > 0.0f) {
+            face = 4;
+            u = dx;
+            v = -dy;
+        } else {
+            face = 5;
+            u = -dx;
+            v = -dy;
+        }
+    }
     if (ma < 1e-8f)
         ma = 1e-8f;
     *out_face = face;
@@ -555,6 +618,99 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     p11 = cubemap_sample_nearest_rgba(cm, dir11[0], dir11[1], dir11[2]);
 
 /* Extract channels and bilinear blend */
+#define BL(ch, shift)                                                                              \
+    do {                                                                                           \
+        float c00 = (float)((p00 >> (shift)) & 0xFF);                                              \
+        float c10 = (float)((p10 >> (shift)) & 0xFF);                                              \
+        float c01 = (float)((p01 >> (shift)) & 0xFF);                                              \
+        float c11 = (float)((p11 >> (shift)) & 0xFF);                                              \
+        *(ch) =                                                                                    \
+            ((c00 * (1 - sx) + c10 * sx) * (1 - sy) + (c01 * (1 - sx) + c11 * sx) * sy) / 255.0f;  \
+    } while (0)
+
+    BL(out_r, 24);
+    BL(out_g, 16);
+    BL(out_b, 8);
+#undef BL
+}
+
+/// @brief Bilinearly sample a cubemap along a pre-normalized direction vector.
+/// @details Internal Canvas3D hot-path variant of @ref rt_cubemap_sample. It preserves the same
+///          cross-face bilinear tap behavior but skips the defensive input normalization because
+///          callers have already sanitized the direction.
+void rt_cubemap_sample_unit(const rt_cubemap3d *cm,
+                            float dx,
+                            float dy,
+                            float dz,
+                            float *out_r,
+                            float *out_g,
+                            float *out_b) {
+    int face = 0;
+    float u = 0.5f;
+    float v = 0.5f;
+    rt_pixels_impl *pv;
+    int64_t fw;
+    int64_t fh;
+    float fx;
+    float fy;
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+    float sx;
+    float sy;
+    float tap_u0;
+    float tap_u1;
+    float tap_v0;
+    float tap_v1;
+    float dir00[3];
+    float dir10[3];
+    float dir01[3];
+    float dir11[3];
+    uint32_t p00;
+    uint32_t p10;
+    uint32_t p01;
+    uint32_t p11;
+
+    if (!out_r || !out_g || !out_b)
+        return;
+    if (!cubemap_faces_valid(cm)) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    cubemap_unit_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
+    if (face < 0 || face > 5) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    pv = cubemap_face_pixels_impl(cm->faces[face]);
+    if (!pv) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+    fw = pv->width;
+    fh = pv->height;
+    fx = u * (float)fw - 0.5f;
+    fy = v * (float)fh - 0.5f;
+    x0 = (int)floorf(fx);
+    y0 = (int)floorf(fy);
+    x1 = x0 + 1;
+    y1 = y0 + 1;
+    sx = fx - (float)x0;
+    sy = fy - (float)y0;
+    tap_u0 = ((float)x0 + 0.5f) / (float)fw;
+    tap_u1 = ((float)x1 + 0.5f) / (float)fw;
+    tap_v0 = ((float)y0 + 0.5f) / (float)fh;
+    tap_v1 = ((float)y1 + 0.5f) / (float)fh;
+    cubemap_face_uv_to_direction(face, tap_u0, tap_v0, &dir00[0], &dir00[1], &dir00[2]);
+    cubemap_face_uv_to_direction(face, tap_u1, tap_v0, &dir10[0], &dir10[1], &dir10[2]);
+    cubemap_face_uv_to_direction(face, tap_u0, tap_v1, &dir01[0], &dir01[1], &dir01[2]);
+    cubemap_face_uv_to_direction(face, tap_u1, tap_v1, &dir11[0], &dir11[1], &dir11[2]);
+    p00 = cubemap_sample_nearest_rgba(cm, dir00[0], dir00[1], dir00[2]);
+    p10 = cubemap_sample_nearest_rgba(cm, dir10[0], dir10[1], dir10[2]);
+    p01 = cubemap_sample_nearest_rgba(cm, dir01[0], dir01[1], dir01[2]);
+    p11 = cubemap_sample_nearest_rgba(cm, dir11[0], dir11[1], dir11[2]);
+
 #define BL(ch, shift)                                                                              \
     do {                                                                                           \
         float c00 = (float)((p00 >> (shift)) & 0xFF);                                              \
@@ -1151,14 +1307,12 @@ static int canvas3d_repair_skybox_slot(rt_canvas3d *c) {
     if (!c || !c->skybox)
         return 0;
     if (!cubemap_handle_valid(c->skybox)) {
-        c->skybox = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)&c->skybox);
         rt_canvas3d_invalidate_skybox_cache(c);
         return 1;
     }
     if (!rt_cubemap3d_is_complete(c->skybox)) {
-        if (rt_obj_release_check0(c->skybox))
-            rt_obj_free(c->skybox);
-        c->skybox = NULL;
+        rt_g3d_ref_slot_release((void **)&c->skybox);
         rt_canvas3d_invalidate_skybox_cache(c);
         return 1;
     }
@@ -1176,8 +1330,8 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (c->skybox == (rt_cubemap3d *)cubemap)
         return;
     rt_obj_retain_maybe(cubemap);
-    if (cubemap_handle_valid(c->skybox) && rt_obj_release_check0(c->skybox))
-        rt_obj_free(c->skybox);
+    if (cubemap_handle_valid(c->skybox))
+        rt_g3d_ref_slot_release((void **)&c->skybox);
     c->skybox = (rt_cubemap3d *)cubemap;
     rt_canvas3d_invalidate_skybox_cache(c);
 }
@@ -1189,9 +1343,10 @@ void rt_canvas3d_clear_skybox(void *canvas) {
         return;
     if (canvas3d_repair_skybox_slot(c))
         return;
-    if (cubemap_handle_valid(c->skybox) && rt_obj_release_check0(c->skybox))
-        rt_obj_free(c->skybox);
-    c->skybox = NULL;
+    if (cubemap_handle_valid(c->skybox))
+        rt_g3d_ref_slot_release((void **)&c->skybox);
+    else
+        c->skybox = NULL;
     rt_canvas3d_invalidate_skybox_cache(c);
 }
 

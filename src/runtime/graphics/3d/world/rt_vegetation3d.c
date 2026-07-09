@@ -31,7 +31,9 @@
 #include "rt_vegetation3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 #include "rt_world3d_common.h"
 #include "vgfx3d_backend.h"
 
@@ -103,6 +105,7 @@ typedef struct {
     float *visible_transforms; /* visible_count * 16 floats */
     int32_t visible_count;
     int32_t visible_capacity;
+    uint32_t scatter_seed;
 } rt_vegetation3d;
 
 /// @brief Return @p value when finite, else @p fallback. Sanitizes scalar inputs.
@@ -127,11 +130,7 @@ static double vegetation_abs_or(double value, double fallback, double max_abs) {
 
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void vegetation3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Return true when @p pixels is a live Pixels object.
@@ -144,7 +143,7 @@ static void vegetation3d_release_pixels_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!vegetation3d_is_pixels_handle(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     vegetation3d_release_ref(slot);
@@ -155,7 +154,7 @@ static void vegetation3d_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     vegetation3d_release_ref(slot);
@@ -166,7 +165,7 @@ static void vegetation3d_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     vegetation3d_release_ref(slot);
@@ -242,7 +241,7 @@ static double vegetation3d_wind_wave(double phase, double bx, double bz) {
     return isfinite(wave) ? wave : 0.0;
 }
 
-/// @brief Clear corrupted retained resource slots without releasing unrelated objects.
+/// @brief Release and clear corrupted retained resource slots.
 static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
     if (!v)
         return;
@@ -323,6 +322,27 @@ static uint32_t lcg_next(uint32_t *state) {
         return 0u;
     *state = *state * 1103515245u + 12345u;
     return *state;
+}
+
+/// @brief Mix a user/default seed into the non-zero 32-bit LCG state space.
+static uint32_t vegetation3d_seed_from_i64(int64_t seed) {
+    uint64_t x = (uint64_t)seed;
+    x ^= x >> 33;
+    x *= UINT64_C(0xff51afd7ed558ccd);
+    x ^= x >> 33;
+    x *= UINT64_C(0xc4ceb9fe1a85ec53);
+    x ^= x >> 33;
+    uint32_t out = (uint32_t)x ^ (uint32_t)(x >> 32);
+    return out ? out : 0x6D2B79F5u;
+}
+
+/// @brief Generate a non-zero default scatter seed for a new vegetation object.
+/// @details Uses a process-local monotonic counter so separate Vegetation3D instances no longer
+///   share identical layouts unless the author explicitly calls `SetSeed`.
+static uint32_t vegetation3d_next_default_seed(void) {
+    static int64_t counter = INT64_C(0x51ED270B);
+    int64_t old = rt_atomic_fetch_add_i64(&counter, INT64_C(0x1E3779B97F4A7C1), __ATOMIC_RELAXED);
+    return vegetation3d_seed_from_i64(old);
 }
 
 /// @brief Repair count/buffer invariants before update/draw work touches flat arrays.
@@ -424,6 +444,7 @@ void *rt_vegetation3d_new(void *blade_texture) {
     v->visible_transforms = NULL;
     v->visible_count = 0;
     v->visible_capacity = 0;
+    v->scatter_seed = vegetation3d_next_default_seed();
 
     /* Build blade mesh */
     v->blade_mesh = rt_mesh3d_new();
@@ -544,6 +565,18 @@ void rt_vegetation3d_set_blade_size(void *obj, double width, double height, doub
         rt_mesh3d_clear(v->blade_mesh);
     }
     build_blade_mesh(v->blade_mesh, width, height);
+}
+
+/// @brief Set the deterministic scatter seed used by subsequent Populate calls.
+/// @details The seed is stored on the Vegetation3D object; calling Populate repeatedly after the
+///   same seed produces the same candidate sequence, while different objects no longer default to
+///   the same hardcoded layout.
+void rt_vegetation3d_set_seed(void *obj, int64_t seed) {
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
+        return;
+    v->scatter_seed = vegetation3d_seed_from_i64(seed);
 }
 
 /// @brief Build a row-major 4x4 transform: translate(x,y,z) * rotateY(angle) * scale(s).
@@ -667,7 +700,7 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     v->total_count = 0;
     v->visible_count = 0;
 
-    uint32_t rng = 42;
+    uint32_t rng = v->scatter_seed ? v->scatter_seed : vegetation3d_seed_from_i64(42);
     double min_x = tw >= 4.0 ? 2.0 : 0.0;
     double max_x = tw >= 4.0 ? tw - 2.0 : tw;
     double min_z = td >= 4.0 ? 2.0 : 0.0;
@@ -754,6 +787,8 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         (float)vegetation_nonnegative_or((double)v->lod_far, VEGETATION3D_TERRAIN_EXTENT_MAX);
     if (lod_far <= lod_near)
         lod_far = lod_near + 1.0f;
+    const double lod_near2 = (double)lod_near * (double)lod_near;
+    const double lod_far2 = (double)lod_far * (double)lod_far;
     double wind_speed = vegetation_abs_or(v->wind_speed, 0.0, VEGETATION3D_WIND_PARAM_MAX);
     double wind_strength = vegetation_nonnegative_or(v->wind_strength, VEGETATION3D_WIND_PARAM_MAX);
     double wind_turbulence =
@@ -792,19 +827,16 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         double dist2 = dx * dx + dz * dz;
         if (!isfinite(dist2))
             continue;
-        /* Hard cull beyond far distance using squared distance first, so blades
-         * outside the LOD range never pay for the sqrt. The post-sqrt check
-         * below still authoritatively handles a negative/degenerate lod_far. */
-        if (lod_far >= 0.0f && dist2 > (double)lod_far * (double)lod_far)
-            continue;
-        float dist = (float)sqrt(dist2);
-        if (!isfinite(dist))
-            continue;
-        if (dist > lod_far)
+        /* Hard-cull and foreground-accept via squared distance so only the transition band pays
+         * for sqrt-based thinning. */
+        if (dist2 > lod_far2)
             continue;
 
         /* Progressive thinning between near and far */
-        if (dist > lod_near) {
+        if (dist2 > lod_near2) {
+            float dist = (float)sqrt(dist2);
+            if (!isfinite(dist))
+                continue;
             float denom = lod_far - lod_near;
             float t = denom > 1e-6f ? (dist - lod_near) / denom : 1.0f;
             if (t < 0.0f)

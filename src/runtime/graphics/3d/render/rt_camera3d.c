@@ -65,7 +65,7 @@ static void build_ortho(double *m,
 /// @return Non-zero xorshift seed value.
 static uint32_t camera3d_next_shake_seed(void) {
     static int64_t counter = INT64_C(0x12345678);
-    int64_t old = __atomic_fetch_add(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
+    int64_t old = rt_atomic_fetch_add_i64(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
     uint32_t seed = (uint32_t)old ^ 0xA341316Cu;
     return seed ? seed : 0x12345678u;
 }

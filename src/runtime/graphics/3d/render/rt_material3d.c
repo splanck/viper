@@ -32,6 +32,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -77,33 +78,30 @@ static int material_texture_ref_supported(void *texture_ref);
 /// NULL or *slot == NULL). Only frees the underlying object when the release drops its
 /// retain count to zero — bystander references keep the texture alive.
 static void material_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release an owned material texture slot only when it still stores a supported texture.
-/// @details Wrong-class private state is treated as corruption. The slot is cleared without
-///          releasing the object because this material cannot prove it owns that unrelated handle.
+/// @details Wrong-class private state is treated as borrowed corruption and is cleared without
+///          releasing; matching texture slots are owned and released normally.
 static void material_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!material_texture_ref_supported(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     material_release_ref(slot);
 }
 
 /// @brief Release an owned environment-map slot only when it still stores a CubeMap3D.
-/// @details Wrong-class private state is cleared without altering the unrelated object's refcount.
+/// @details Wrong-class private state is cleared without releasing; matching Cubemap3D slots are
+///          owned and released normally.
 static void material_release_env_map_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_CUBEMAP3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     material_release_ref(slot);
@@ -197,7 +195,7 @@ static int material_texture_slot_has_drawable_source(void **slot) {
     if (!slot || !*slot)
         return 0;
     if (!material_texture_ref_supported(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return 0;
     }
     return material_texture_ref_has_drawable_source(*slot);
@@ -220,7 +218,7 @@ static void material_repair_env_map(rt_material3d *mat) {
     if (!mat || !mat->env_map || material_cubemap_handle_valid(mat->env_map))
         return;
     if (!rt_g3d_has_class(mat->env_map, RT_G3D_CUBEMAP3D_CLASS_ID)) {
-        mat->env_map = NULL;
+        rt_g3d_ref_slot_clear_unowned(&mat->env_map);
         return;
     }
     material_release_ref(&mat->env_map);
@@ -254,7 +252,7 @@ static int material_assign_texture_ref_checked(void **slot, void *texture, const
         return 0;
     }
     if (*slot && !material_texture_ref_supported(*slot))
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
     if (!material_texture_ref_valid_or_trap(texture, method))
         return 0;
     material_assign_ref(slot, texture);
@@ -317,12 +315,18 @@ static int32_t material_sanitize_anisotropy(int64_t value);
 /// @details Thin wrapper over `clamp01` whose separate name documents
 ///   intent at call sites — a reader scanning a setter sees "this channel
 ///   is a color component with normalized range" rather than a generic
-///   01 clamp that happens to be applied to RGBA. Values above 1.0 (HDR
-///   color authoring) are deliberately clamped down: the legacy material
-///   model is SDR-only, and HDR authoring goes through the separate PBR
-///   workflow.
+///   01 clamp that happens to be applied to RGBA.
 static double sanitize_color(double value) {
     return clamp01(value);
+}
+
+/// @brief Sanitize an emissive color component while preserving HDR authoring values.
+/// @details Emissive color is a light contribution multiplier, not a reflectance term.
+///          Negative and non-finite inputs collapse to zero; large finite values are capped at
+///          the same bounded scalar used for emissive intensity so shader constants remain
+///          finite and predictable across CPU/GPU backends.
+static double sanitize_emissive_color(double value) {
+    return clamp_range(value, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
 }
 
 /// @brief Initialize all six texture slots to neutral defaults so materials that
@@ -414,7 +418,7 @@ static void material_sanitize_state(rt_material3d *mat) {
     for (int i = 0; i < 3; i++) {
         mat->diffuse[i] = sanitize_color(mat->diffuse[i]);
         mat->specular[i] = sanitize_color(mat->specular[i]);
-        mat->emissive[i] = sanitize_color(mat->emissive[i]);
+        mat->emissive[i] = sanitize_emissive_color(mat->emissive[i]);
     }
     mat->diffuse[3] = clamp01(mat->diffuse[3]);
     mat->shininess = clamp_range(mat->shininess, 0.0, MATERIAL3D_SHININESS_MAX);
@@ -1108,13 +1112,16 @@ int8_t rt_material3d_get_has_env_map(void *obj) {
 }
 
 /// @brief Set the emissive (self-illumination) color, independent of scene lights.
+/// @details Emissive channels intentionally accept HDR values above 1.0. Use
+///          `Material3D.SetEmissiveIntensity` as an additional scalar multiplier; both are
+///          sanitized to finite, non-negative ranges before rendering.
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     rt_material3d *m = material_checked(obj);
     if (!m)
         return;
-    m->emissive[0] = sanitize_color(r);
-    m->emissive[1] = sanitize_color(g);
-    m->emissive[2] = sanitize_color(b);
+    m->emissive[0] = sanitize_emissive_color(r);
+    m->emissive[1] = sanitize_emissive_color(g);
+    m->emissive[2] = sanitize_emissive_color(b);
 }
 
 /// @brief Set normal-map intensity (≥ 0). 1.0 = no scaling, > 1 amplifies bumps, < 1 flattens.

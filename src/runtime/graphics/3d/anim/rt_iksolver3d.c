@@ -32,6 +32,7 @@
 #include "rt_iksolver3d.h"
 
 #include "rt_box.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -102,11 +103,7 @@ static rt_skeleton3d *ik_solver3d_skeleton_checked(void *obj) {
 
 /// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void ik_solver3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release the retained skeleton only if the slot still points at Skeleton3D.
@@ -114,7 +111,7 @@ static void ik_solver3d_release_skeleton_ref(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_SKELETON3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     ik_solver3d_release_ref(slot);

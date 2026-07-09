@@ -30,8 +30,10 @@
 #include "rt_terrain3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 #include "rt_world3d_common.h"
 
 #include "vgfx3d_frustum.h"
@@ -82,6 +84,12 @@ extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 #define TERRAIN_MAX_SPLAT_LAYERS 4
 #define TERRAIN_LOD_LEVELS 3
 
+#if RT_COMPILER_GCC_LIKE
+#define TERRAIN3D_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define TERRAIN3D_UNUSED_PRIVATE
+#endif
+
 typedef struct {
     void *vptr;
     float *heights;
@@ -121,9 +129,13 @@ typedef struct {
     int8_t cpu_occlusion_enabled; /* opt-in: default off because terrain AABBs are not solid */
 } rt_terrain3d;
 
+// clang-format off
+// Order-sensitive implementation includes: lifecycle/LOD helpers are used by
+// construction, and draw uses the construction helpers.
 #include "rt_terrain3d_lod.inc"
 #include "rt_terrain3d_build.inc"
 #include "rt_terrain3d_draw.inc"
+// clang-format on
 #else
 typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

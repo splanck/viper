@@ -31,6 +31,7 @@
 
 #include "rt_navagent3d.h"
 
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_navmesh3d.h"
@@ -105,7 +106,7 @@ static int64_t g_navagent3d_registry_count = 0;
 #define NAVAGENT_GRID_CELL 4.0
 #define NAVAGENT_GRID_BUCKETS 1024u /* power of two for mask-based modulo */
 #define NAVAGENT_GRID_MAX_RING 16   /* beyond this, fall back to a full registry scan */
-#define NAVAGENT_RVO_MIN_TIME_HORIZON 0.75
+#define NAVAGENT_RVO_MIN_TIME_HORIZON 0.65
 #define NAVAGENT_RVO_MAX_TIME_HORIZON 2.0
 #define NAVAGENT_RVO_MAX_CANDIDATES 48
 #define NAVAGENT_COORD_ABS_MAX 1000000000000.0
@@ -262,11 +263,7 @@ static void navagent_vec_copy(double dst[3], const double src[3]) {
 ///   so subsequent calls are idempotent, and the finalizer can call this on every slot
 ///   without needing per-field null checks.
 static void navagent_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained Graphics3D binding only if it still has the expected class.
@@ -274,7 +271,7 @@ static void navagent_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     navagent_release_ref(slot);

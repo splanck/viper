@@ -37,6 +37,8 @@ void rt_vegetation3d_set_wind_params(void *veg, double speed, double strength, d
 void rt_vegetation3d_set_lod_distances(void *veg, double near_dist, double far_dist);
 /// @brief Set per-blade dimensions: average width, average height, and ±variation factor.
 void rt_vegetation3d_set_blade_size(void *veg, double width, double height, double variation);
+/// @brief Set the deterministic scatter seed used by subsequent Populate calls.
+void rt_vegetation3d_set_seed(void *veg, int64_t seed);
 /// @brief Spawn @p count blades scattered across the terrain (sampled using density map if set).
 void rt_vegetation3d_populate(void *veg, void *terrain, int64_t count);
 /// @brief Advance wind animation by @p dt and apply distance-based culling against the camera.

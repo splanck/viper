@@ -24,8 +24,9 @@ typedef struct {
     vgfx3d_draw_cmd_t cmd;
     const float *instance_matrices; /* row-major float[instance_count * 16] */
     int32_t instance_count;
-    vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
+    vgfx3d_light_params_t *lights;
     int32_t light_count;
+    int32_t light_offset;
     float ambient[3];
     int8_t wireframe;
     int8_t backface_cull;
@@ -115,6 +116,110 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
     *buf = new_buf;
     *capacity = new_cap;
     return 1;
+}
+
+/// @brief Reset the compact per-frame light-snapshot arena for reuse.
+/// @details Deferred draws store pointers to exact-sized light slices rather than embedding
+///          `VGFX3D_MAX_LIGHTS` entries in every command. Resetting only the used count preserves
+///          the allocation across frames and keeps queued draw commands compact.
+static void canvas3d_reset_frame_light_snapshots(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->frame_light_snapshot_count = 0;
+    if (c->frame_light_snapshot_capacity > VGFX3D_MAX_LIGHTS * 4096) {
+        free(c->frame_light_snapshots);
+        c->frame_light_snapshots = NULL;
+        c->frame_light_snapshot_capacity = 0;
+    }
+}
+
+/// @brief Remap deferred-draw light pointers after the light-snapshot arena moves.
+/// @details The runtime keeps the direct `dd->lights` pointer for hot backend submission and
+///          unit-test visibility. When `realloc` moves the arena, this helper patches every queued
+///          draw whose pointer referenced the previous allocation.
+static void canvas3d_remap_light_snapshot_pointers(deferred_draw_t *draws,
+                                                   int32_t count,
+                                                   vgfx3d_light_params_t *old_base,
+                                                   vgfx3d_light_params_t *new_base,
+                                                   int32_t old_capacity) {
+    if (!draws || count <= 0 || !old_base || !new_base || old_capacity <= 0)
+        return;
+    vgfx3d_light_params_t *old_end = old_base + old_capacity;
+    for (int32_t i = 0; i < count; ++i) {
+        if (!draws[i].lights || draws[i].light_count <= 0)
+            continue;
+        if (draws[i].lights >= old_base && draws[i].lights < old_end)
+            draws[i].lights = new_base + (draws[i].lights - old_base);
+    }
+}
+
+/// @brief Copy @p light_count light parameters into the canvas's compact snapshot arena.
+/// @details Returns a stable pointer for the current frame. The arena grows geometrically and
+///          remaps existing queued command pointers on relocation; callers therefore keep direct
+///          light pointers without paying for a fixed-size light array inside every command.
+/// @param c Canvas that owns the per-frame snapshot arena.
+/// @param lights Source light parameters, already sanitized by `build_light_params`.
+/// @param light_count Number of valid entries in @p lights.
+/// @param out_offset Receives the arena element offset, or -1 for no lights/fallback.
+/// @return Pointer to the copied light slice, or NULL when @p light_count is zero or allocation
+///         fails.
+static vgfx3d_light_params_t *canvas3d_store_frame_light_snapshot(
+    rt_canvas3d *c, const vgfx3d_light_params_t *lights, int32_t light_count, int32_t *out_offset) {
+    vgfx3d_light_params_t *base;
+    vgfx3d_light_params_t *grown;
+    int32_t needed;
+    int32_t new_capacity;
+    int32_t old_capacity;
+
+    if (out_offset)
+        *out_offset = -1;
+    if (!c || !lights || light_count <= 0)
+        return NULL;
+    if (light_count > VGFX3D_MAX_LIGHTS)
+        light_count = VGFX3D_MAX_LIGHTS;
+    if (c->frame_light_snapshot_count < 0 ||
+        c->frame_light_snapshot_count > INT32_MAX - light_count)
+        return NULL;
+    needed = c->frame_light_snapshot_count + light_count;
+    if (needed > c->frame_light_snapshot_capacity) {
+        base = (vgfx3d_light_params_t *)c->frame_light_snapshots;
+        old_capacity = c->frame_light_snapshot_capacity;
+        new_capacity = old_capacity > 0 ? old_capacity : VGFX3D_MAX_LIGHTS * 32;
+        while (new_capacity < needed) {
+            if (new_capacity > INT32_MAX / 2) {
+                new_capacity = needed;
+                break;
+            }
+            new_capacity *= 2;
+        }
+        if ((size_t)new_capacity > SIZE_MAX / sizeof(*grown))
+            return NULL;
+        grown = (vgfx3d_light_params_t *)realloc(c->frame_light_snapshots,
+                                                 (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return NULL;
+        c->frame_light_snapshots = grown;
+        c->frame_light_snapshot_capacity = new_capacity;
+        if (grown != base) {
+            canvas3d_remap_light_snapshot_pointers(
+                (deferred_draw_t *)c->draw_cmds, c->draw_count, base, grown, old_capacity);
+            canvas3d_remap_light_snapshot_pointers((deferred_draw_t *)c->final_overlay_cmds,
+                                                   c->final_overlay_count,
+                                                   base,
+                                                   grown,
+                                                   old_capacity);
+        }
+    }
+    base = (vgfx3d_light_params_t *)c->frame_light_snapshots;
+    if (!base)
+        return NULL;
+    if (out_offset)
+        *out_offset = c->frame_light_snapshot_count;
+    memcpy(&base[c->frame_light_snapshot_count],
+           lights,
+           (size_t)light_count * sizeof(vgfx3d_light_params_t));
+    c->frame_light_snapshot_count += light_count;
+    return &base[c->frame_light_snapshot_count - light_count];
 }
 
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd);
@@ -991,9 +1096,12 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     canvas3d_capture_texture_asset_snapshot(
         cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS, cmd->metallic_roughness_map_asset);
     canvas3d_capture_texture_asset_snapshot(cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO, cmd->ao_map_asset);
-    cmd->emissive_color[0] = canvas3d_clamp01_f64(mat->emissive[0]);
-    cmd->emissive_color[1] = canvas3d_clamp01_f64(mat->emissive[1]);
-    cmd->emissive_color[2] = canvas3d_clamp01_f64(mat->emissive[2]);
+    cmd->emissive_color[0] = canvas3d_clamp_material_f64(
+        mat->emissive[0], 0.0, CANVAS3D_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
+    cmd->emissive_color[1] = canvas3d_clamp_material_f64(
+        mat->emissive[1], 0.0, CANVAS3D_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
+    cmd->emissive_color[2] = canvas3d_clamp_material_f64(
+        mat->emissive[2], 0.0, CANVAS3D_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
     cmd->metallic = canvas3d_clamp01_f64(mat->metallic);
     cmd->roughness = canvas3d_clamp_material_f64(mat->roughness, 0.0, 1.0, 0.5f);
     cmd->ao = canvas3d_clamp_material_f64(mat->ao, 0.0, 1.0, 1.0f);
@@ -1289,6 +1397,7 @@ static void canvas3d_insert_shadow_light_candidate(vgfx3d_light_params_t *out_li
 /// @return Number of shadow-light slots populated.
 static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
                                                         const deferred_draw_t *cmds,
+                                                        const int32_t *shadow_indices,
                                                         int32_t draw_count,
                                                         vgfx3d_light_params_t *out_lights,
                                                         int32_t max_shadow_lights,
@@ -1314,10 +1423,15 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
     }
 
     for (int32_t ci = 0; ci < draw_count; ci++) {
-        if (!canvas3d_deferred_casts_shadow(&cmds[ci]))
+        int32_t draw_index = shadow_indices ? shadow_indices[ci] : ci;
+        if (draw_index < 0)
             continue;
-        for (int32_t li = 0; li < cmds[ci].light_count; li++) {
-            const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
+        if (!shadow_indices && !canvas3d_deferred_casts_shadow(&cmds[draw_index]))
+            continue;
+        if (!cmds[draw_index].lights)
+            continue;
+        for (int32_t li = 0; li < cmds[draw_index].light_count; li++) {
+            const vgfx3d_light_params_t *light = &cmds[draw_index].lights[li];
             float score = canvas3d_shadow_directional_light_param_score(light);
 
             canvas3d_note_shadow_request(requests, &request_count, light, score);
@@ -1328,10 +1442,15 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
 
     spot_phase_start = count;
     for (int32_t ci = 0; ci < draw_count; ci++) {
-        if (!canvas3d_deferred_casts_shadow(&cmds[ci]))
+        int32_t draw_index = shadow_indices ? shadow_indices[ci] : ci;
+        if (draw_index < 0)
             continue;
-        for (int32_t li = 0; li < cmds[ci].light_count; li++) {
-            const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
+        if (!shadow_indices && !canvas3d_deferred_casts_shadow(&cmds[draw_index]))
+            continue;
+        if (!cmds[draw_index].lights)
+            continue;
+        for (int32_t li = 0; li < cmds[draw_index].light_count; li++) {
+            const vgfx3d_light_params_t *light = &cmds[draw_index].lights[li];
             float score =
                 canvas3d_shadow_spot_light_param_score(light, c ? c->cached_cam_pos : NULL);
             if (light->type == 1)
@@ -1846,6 +1965,7 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->kind = kind;
     dd->pass_kind = pass_kind;
     dd->visible = 1;
+    dd->light_offset = -1;
     dd->cmd = *cmd;
     dd->requires_blend = canvas3d_cmd_requires_blend(cmd);
     dd->instance_matrices = instance_matrices;
@@ -1855,8 +1975,16 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];
-    dd->light_count =
-        include_lights ? build_light_params(c, dd->lights, canvas3d_active_light_limit(c)) : 0;
+    if (include_lights) {
+        vgfx3d_light_params_t light_scratch[VGFX3D_MAX_LIGHTS];
+        dd->light_count = build_light_params(c, light_scratch, canvas3d_active_light_limit(c));
+        dd->lights = canvas3d_store_frame_light_snapshot(
+            c, light_scratch, dd->light_count, &dd->light_offset);
+        if (dd->light_count > 0 && !dd->lights) {
+            rt_trap("Canvas3D.Draw: light snapshot allocation failed");
+            dd->light_count = 0;
+        }
+    }
     dd->cmd.lights_revision =
         include_lights ? canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count) : 0;
     /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */

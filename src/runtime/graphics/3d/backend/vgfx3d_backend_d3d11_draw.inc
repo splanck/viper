@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #define D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX VGFX3D_D3D11_POSTFX_SCALAR_MAX
+#define D3D11_MATERIAL_EMISSIVE_COLOR_MAX VGFX3D_D3D11_POSTFX_SCALAR_MAX
 #define D3D11_MATERIAL_NORMAL_SCALE_MAX 1000.0f
 
 /// @brief Push the currently-selected render target(s) and viewport into the pipeline.
@@ -333,9 +334,8 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     }
     vgfx3d_d3d11_copy_float_array_finite_or(scene_data->camera_pos, ctx->cam_pos, 3u, 0.0f);
     scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
-    vgfx3d_d3d11_copy_vec3_direction_or(scene_data->camera_forward,
-                                         ctx->cam_forward,
-                                         forward_fallback);
+    vgfx3d_d3d11_copy_vec3_direction_or(
+        scene_data->camera_forward, ctx->cam_forward, forward_fallback);
     if (ambient)
         vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, ambient, 3u, 0.0f);
     else
@@ -549,12 +549,12 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->specular[2] = vgfx3d_d3d11_clamp_float_param(cmd->specular[2], 0.0f, 1.0f, 1.0f);
     material_data->specular[3] = vgfx3d_d3d11_clamp_float_param(
         cmd->shininess, 0.0f, VGFX3D_D3D11_MATERIAL_SHININESS_MAX, 32.0f);
-    material_data->emissive[0] =
-        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[0], 0.0f, 1.0f, 0.0f);
-    material_data->emissive[1] =
-        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[1], 0.0f, 1.0f, 0.0f);
-    material_data->emissive[2] =
-        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[2], 0.0f, 1.0f, 0.0f);
+    material_data->emissive[0] = vgfx3d_d3d11_clamp_float_param(
+        cmd->emissive_color[0], 0.0f, D3D11_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
+    material_data->emissive[1] = vgfx3d_d3d11_clamp_float_param(
+        cmd->emissive_color[1], 0.0f, D3D11_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
+    material_data->emissive[2] = vgfx3d_d3d11_clamp_float_param(
+        cmd->emissive_color[2], 0.0f, D3D11_MATERIAL_EMISSIVE_COLOR_MAX, 0.0f);
     material_data->scalars[0] = vgfx3d_d3d11_clamp_float_param(cmd->alpha, 0.0f, 1.0f, 1.0f);
     material_data->scalars[1] = vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f);
     material_data->scalars[2] = ibl_env_max_lod;
@@ -640,9 +640,8 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
         light_data[i].shadow_cascade_count = vgfx3d_d3d11_sanitize_shadow_cascade_count(
             lights[i].shadow_cascade_count, light_data[i].shadow_index, advertised_shadow_count);
-        light_data[i].shadow_projection_type =
-            vgfx3d_d3d11_sanitize_shadow_projection_type(light_data[i].shadow_index,
-                                                         lights[i].shadow_projection_type);
+        light_data[i].shadow_projection_type = vgfx3d_d3d11_sanitize_shadow_projection_type(
+            light_data[i].shadow_index, lights[i].shadow_projection_type);
         vgfx3d_d3d11_copy_vec3_direction_or(
             light_data[i].direction, lights[i].direction, default_light_direction);
         vgfx3d_d3d11_copy_float_array_finite_or(
@@ -658,9 +657,9 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         light_data[i].attenuation = vgfx3d_d3d11_clamp_float_param(
             lights[i].attenuation, 0.0f, VGFX3D_D3D11_LIGHT_ATTENUATION_MAX, 0.0f);
         vgfx3d_d3d11_sanitize_spot_cone(lights[i].inner_cos,
-                                         lights[i].outer_cos,
-                                         &light_data[i].inner_cos,
-                                         &light_data[i].outer_cos);
+                                        lights[i].outer_cos,
+                                        &light_data[i].inner_cos,
+                                        &light_data[i].outer_cos);
         vgfx3d_d3d11_sanitize_shadow_cascade_splits(
             light_data[i].shadow_cascade_splits,
             lights[i].shadow_cascade_splits,
@@ -950,9 +949,8 @@ static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *sky
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             skybox_data->inverse_view_rotation[r * 4 + c] = view_rotation[c * 4 + r];
-    vgfx3d_d3d11_copy_vec3_direction_or(skybox_data->camera_forward,
-                                         ctx->cam_forward,
-                                         forward_fallback);
+    vgfx3d_d3d11_copy_vec3_direction_or(
+        skybox_data->camera_forward, ctx->cam_forward, forward_fallback);
     skybox_data->camera_forward[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
 }
 

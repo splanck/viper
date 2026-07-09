@@ -60,6 +60,8 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->source_triangles);
     free(nm->triangles);
     free(nm->offmesh_links);
+    free(nm->offmesh_adjacency_starts);
+    free(nm->offmesh_adjacency_edges);
     free(nm->area_names);
     free(nm->obstacles);
     free(nm->qgrid_starts);
@@ -71,6 +73,9 @@ static void navmesh3d_finalizer(void *obj) {
     nm->source_triangles = NULL;
     nm->triangles = NULL;
     nm->offmesh_links = NULL;
+    nm->offmesh_adjacency_starts = NULL;
+    nm->offmesh_adjacency_edges = NULL;
+    nm->offmesh_adjacency_edge_count = 0;
     nm->area_names = NULL;
     nm->obstacles = NULL;
     nm->qgrid_starts = NULL;

@@ -39,7 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VGFX3D_RENDERTARGET_DIM_MAX 8192
+#define VGFX3D_RENDERTARGET_DIM_MAX 16384
 
 //=============================================================================
 // Vertex format
@@ -917,6 +917,9 @@ typedef struct {
     float last_light_snapshot_ambient[3];
     int32_t last_light_snapshot_count;
     int8_t last_light_snapshot_valid;
+    void *frame_light_snapshots; /* vgfx3d_light_params_t compact draw-light arena */
+    int32_t frame_light_snapshot_count;
+    int32_t frame_light_snapshot_capacity;
 
     /* Skybox */
     rt_cubemap3d *skybox;      /* CubeMap3D for background (or NULL) */
@@ -1031,6 +1034,8 @@ typedef struct {
     int32_t shadow_budget;            /* general shadow-light slots (1..VGFX3D_MAX_SHADOW_LIGHTS) */
     int32_t last_shadow_slots_used; /* shadow slots rendered in the latest frame (incl. cascades) */
     int32_t last_shadow_requests_dropped; /* shadow-requesting lights denied a slot this frame */
+    void *shadow_draw_indices;            /* int32_t scratch list of shadow-casting draw indices */
+    int32_t shadow_draw_index_capacity;
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
     int32_t last_frustum_culled_draw_count;
@@ -1210,6 +1215,11 @@ int rt_canvas3d_add_temp_object(void *obj, void *value);
 /// @brief Internal: sample a cubemap direction into linear RGB components.
 void rt_cubemap_sample(
     const rt_cubemap3d *cm, float dx, float dy, float dz, float *out_r, float *out_g, float *out_b);
+/// @brief Internal: sample a cubemap with an already normalized finite direction.
+/// @details This avoids the sampler's defensive normalization in CPU hot paths that already
+///          sanitized the direction, such as the Canvas3D software skybox cache.
+void rt_cubemap_sample_unit(
+    const rt_cubemap3d *cm, float dx, float dy, float dz, float *out_r, float *out_g, float *out_b);
 /// @brief Internal: sample a cubemap reflection with a roughness-dependent blur kernel.
 void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
                                  float dx,
@@ -1250,6 +1260,14 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        int32_t instance_count,
                                        const float *prev_instance_matrices,
                                        int8_t has_prev_instance_matrices);
+/// @brief Internal: queue an instanced batch whose matrices are already frame-relative.
+void rt_canvas3d_queue_instanced_batch_frame_matrices(void *canvas_obj,
+                                                      void *mesh_obj,
+                                                      void *material_obj,
+                                                      const float *instance_matrices,
+                                                      int32_t instance_count,
+                                                      const float *prev_instance_matrices,
+                                                      int8_t has_prev_instance_matrices);
 /// @brief Internal: queue an instanced batch with explicit local bounds and occlusion flags.
 void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                               void *mesh_obj,

@@ -662,7 +662,7 @@ void rt_canvas3d_draw_text2d_aa(
         scale = 64.0;
     out_w = (int32_t)ceil((double)len * 8.0 * scale);
     out_h = (int32_t)ceil(8.0 * scale);
-    if (out_w <= 0 || out_h <= 0 || out_w > 8192)
+    if (out_w <= 0 || out_h <= 0 || out_w > VGFX3D_RENDERTARGET_DIM_MAX)
         return;
 
     pixels = rt_pixels_new((int64_t)out_w, (int64_t)out_h);

@@ -1716,6 +1716,7 @@ GPU-instanced foliage (grass, bushes) with density map, wind animation, and LOD.
 | `SetWindParams(speed, strength, turbulence)` | `Void(Double, Double, Double)` | Set foliage wind sway |
 | `SetLODDistances(near, far)` | `Void(Double, Double)` | Set LOD fade distances |
 | `SetBladeSize(width, height, variance)` | `Void(Double, Double, Double)` | Set blade/frond dimensions |
+| `SetSeed(seed)` | `Void(Integer)` | Set deterministic scatter seed for later `Populate` calls |
 | `Populate(terrain, count)` | `Void(Object, Integer)` | Scatter `count` instances over a `Terrain3D` using the density map |
 | `Update(deltaSeconds, camX, camY, camZ)` | `Void(Double, Double, Double, Double)` | Advance wind simulation relative to camera position |
 

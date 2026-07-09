@@ -20,6 +20,7 @@
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_mat4.h"
@@ -61,7 +62,7 @@ static void node_anim_release_string_slot(rt_string *slot) {
     if (!slot || !*slot)
         return;
     if (!rt_string_is_handle(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)slot);
         return;
     }
     scene3d_release_ref((void **)slot);
@@ -72,7 +73,7 @@ static void node_anim_release_clip_slot(rt_node_animation3d **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_NODEANIMATION3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)slot);
         return;
     }
     scene3d_release_ref((void **)slot);
@@ -90,7 +91,7 @@ static void node_animator_repair_clips(rt_node_animator3d *animator) {
         if (rt_g3d_has_class(clip, RT_G3D_NODEANIMATION3D_CLASS_ID)) {
             animator->animations[write++] = clip;
         } else {
-            animator->animations[read] = NULL;
+            node_anim_release_clip_slot(&animator->animations[read]);
         }
     }
     int32_t kept = write;

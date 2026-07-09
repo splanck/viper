@@ -789,11 +789,7 @@ static int gltf_append_primitive_indices(void *mesh,
 
 /// @brief Refcount-aware free of `*slot`; nulls the pointer afterwards.
 static void gltf_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Drop a transient GC reference taken during the load (e.g. parsed JSON map).

@@ -37,13 +37,14 @@
 
 #include "rt_asset.h"
 #include "rt_asset_error.h"
+#include "rt_compress.h"
 #include "rt_file_stdio.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
-#include "rt_compress.h"
 #include "rt_trap.h"
 #include "rt_zstd.h"
 

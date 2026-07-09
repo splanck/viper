@@ -18,6 +18,7 @@
 /// Returns 0 if there are no opaque draws (nothing to shadow).
 static int canvas3d_build_shadow_world_bounds(rt_canvas3d *c,
                                               const deferred_draw_t *cmds,
+                                              const int32_t *shadow_indices,
                                               int32_t count,
                                               float *world_min,
                                               float *world_max) {
@@ -27,9 +28,11 @@ static int canvas3d_build_shadow_world_bounds(rt_canvas3d *c,
     world_min[0] = world_min[1] = world_min[2] = 0.0f;
     world_max[0] = world_max[1] = world_max[2] = 0.0f;
     for (int32_t i = 0; i < count; i++) {
-        if (!canvas3d_deferred_casts_shadow(&cmds[i]))
+        int32_t draw_index = shadow_indices ? shadow_indices[i] : i;
+        if (draw_index < 0)
             continue;
-        canvas3d_accumulate_deferred_world_bounds(c, &cmds[i], world_min, world_max, &has_bounds);
+        canvas3d_accumulate_deferred_world_bounds(
+            c, &cmds[draw_index], world_min, world_max, &has_bounds);
     }
     return has_bounds ? 1 : 0;
 }

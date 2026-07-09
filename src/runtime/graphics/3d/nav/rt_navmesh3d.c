@@ -61,6 +61,10 @@
 #define NAVMESH3D_MAX_TILES_PER_REFLAG 65536LL
 #define NAVMESH3D_IMPORT_MAX_RECORDS (1 << 24)
 #define NAVMESH3D_IMPORT_MAX_STRING_BYTES (1u << 20)
+#define NAVMESH3D_VOXEL_MAX_DIM 512LL
+#define NAVMESH3D_VOXEL_MIN_CELLS 16384LL
+#define NAVMESH3D_VOXEL_ABS_MAX_CELLS 262144LL
+#define NAVMESH3D_VOXEL_TARGET_BYTES (64u * 1024u * 1024u)
 
 static int8_t g_navmesh3d_test_force_query_grid_alloc_failure = 0;
 
@@ -108,6 +112,11 @@ typedef struct {
     rt_string kind;       /* optional authored traversal kind/state name */
 } nav_offmesh_link_t;
 
+/// @brief Packed directed off-mesh edge reference used by the per-triangle adjacency cache.
+/// @details The high bits store the index into `offmesh_links`; bit 0 is set when the edge is the
+///   reverse direction of a bidirectional link. This keeps the A* hot loop cache compact.
+typedef int32_t nav_offmesh_edge_ref_t;
+
 typedef struct {
     float min[3];
     float max[3];
@@ -124,6 +133,9 @@ typedef struct {
     nav_offmesh_link_t *offmesh_links;
     int32_t offmesh_link_count;
     int32_t offmesh_link_capacity;
+    int32_t *offmesh_adjacency_starts;
+    nav_offmesh_edge_ref_t *offmesh_adjacency_edges;
+    int32_t offmesh_adjacency_edge_count;
     rt_string *area_names;
     int32_t area_name_count;
     int32_t area_name_capacity;

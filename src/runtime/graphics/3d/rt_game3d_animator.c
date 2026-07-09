@@ -32,6 +32,7 @@
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
 #include "rt_g3d_commit_queue.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_game3d.h"
 #include "rt_game3d_internal.h"
 #include "rt_gltf.h"
@@ -48,12 +49,12 @@
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
-#include "rt_skeleton3d.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
+#include "rt_skeleton3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
@@ -94,14 +95,15 @@ static int32_t game3d_animator_event_count_clamped(const rt_game3d_animator *ani
                                                             : animator->event_count;
 }
 
-/// @brief Release an owned string event slot without touching wrong-class private corruption.
+/// @brief Release an owned string event slot, clearing stale private corruption safely.
 static void game3d_animator_release_event_slot(rt_string *slot) {
     if (!slot || !*slot)
         return;
-    rt_string event_name = *slot;
-    *slot = NULL;
-    if (rt_string_is_handle(event_name))
-        rt_string_unref(event_name);
+    if (!rt_string_is_handle(*slot)) {
+        rt_g3d_ref_slot_clear_unowned(slot);
+        return;
+    }
+    rt_g3d_ref_slot_release((void **)slot);
 }
 
 /// @brief Drop non-string private event slots and compact the visible event buffer.
@@ -113,7 +115,7 @@ static int32_t game3d_animator_repair_event_buffer(rt_game3d_animator *animator)
     for (int32_t i = 0; i < event_count; ++i) {
         rt_string event_name = animator->events[i];
         if (!rt_string_is_handle(event_name)) {
-            animator->events[i] = NULL;
+            game3d_animator_release_event_slot(&animator->events[i]);
             continue;
         }
         if (write != i) {
@@ -124,7 +126,7 @@ static int32_t game3d_animator_repair_event_buffer(rt_game3d_animator *animator)
     }
     for (int32_t i = event_count; i < RT_GAME3D_ANIM_EVENT_MAX; ++i) {
         if (animator->events[i] && !rt_string_is_handle(animator->events[i]))
-            animator->events[i] = NULL;
+            game3d_animator_release_event_slot(&animator->events[i]);
     }
     animator->event_count = write;
     return write;

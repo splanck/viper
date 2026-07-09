@@ -150,12 +150,12 @@ static const char *game3d_asset_async_error_or_fallback(rt_game3d_asset_handle *
 }
 
 static int8_t game3d_asset_handle_load_flag(const int8_t *flag) {
-    return flag && __atomic_load_n(flag, __ATOMIC_ACQUIRE) ? 1 : 0;
+    return flag && rt_atomic_load_i8(flag, __ATOMIC_ACQUIRE) ? 1 : 0;
 }
 
 static void game3d_asset_handle_store_flag(int8_t *flag, int8_t value) {
     if (flag)
-        __atomic_store_n(flag, value ? 1 : 0, __ATOMIC_RELEASE);
+        rt_atomic_store_i8(flag, value ? 1 : 0, __ATOMIC_RELEASE);
 }
 
 static double game3d_asset_handle_sanitize_progress(double progress) {
@@ -170,14 +170,14 @@ static double game3d_asset_handle_sanitize_progress(double progress) {
 static double game3d_asset_handle_load_progress(const rt_game3d_asset_handle *handle) {
     double progress = 0.0;
     if (handle)
-        __atomic_load(&handle->progress, &progress, __ATOMIC_ACQUIRE);
+        rt_atomic_load_f64(&handle->progress, &progress, __ATOMIC_ACQUIRE);
     return game3d_asset_handle_sanitize_progress(progress);
 }
 
 static void game3d_asset_handle_store_progress(rt_game3d_asset_handle *handle, double progress) {
     double sanitized = game3d_asset_handle_sanitize_progress(progress);
     if (handle)
-        __atomic_store(&handle->progress, &sanitized, __ATOMIC_RELEASE);
+        rt_atomic_store_f64(&handle->progress, &sanitized, __ATOMIC_RELEASE);
 }
 
 static int game3d_asset_handle_is_ready(const rt_game3d_asset_handle *handle) {
@@ -231,7 +231,7 @@ static int game3d_asset_async_ensure_runtime(void) {
 static void game3d_asset_async_drain_commits(void) {
     if (g_game3d_asset_commit_queue) {
         uint64_t upload_budget =
-            __atomic_load_n(&g_game3d_asset_upload_budget_bytes, __ATOMIC_ACQUIRE);
+            rt_atomic_load_u64(&g_game3d_asset_upload_budget_bytes, __ATOMIC_ACQUIRE);
         (void)rt_g3d_commit_queue_drain_budget(
             g_game3d_asset_commit_queue, RT_GAME3D_ASSET_COMMIT_DRAIN_BUDGET, upload_budget);
     }
@@ -347,7 +347,7 @@ static int game3d_asset_handle_has_external_waiter(rt_game3d_asset_handle *handl
     rt_heap_hdr_t *hdr = rt_heap_hdr(handle);
     if (!hdr || hdr->kind != RT_HEAP_OBJECT)
         return 0;
-    size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+    size_t refcnt = rt_atomic_load_size(&hdr->refcnt, __ATOMIC_ACQUIRE);
     return refcnt > 1u && refcnt < RT_HEAP_IMMORTAL_REFCNT;
 }
 
@@ -1198,7 +1198,7 @@ void rt_game3d_assets_set_residency_hint(void *model_template_obj,
 /// @brief Set the process-wide async asset upload budget. Negative means unlimited.
 void rt_game3d_assets_set_upload_budget(int64_t bytes) {
     uint64_t budget = bytes < 0 ? UINT64_MAX : (uint64_t)bytes;
-    __atomic_store_n(&g_game3d_asset_upload_budget_bytes, budget, __ATOMIC_RELEASE);
+    rt_atomic_store_u64(&g_game3d_asset_upload_budget_bytes, budget, __ATOMIC_RELEASE);
 }
 
 /// @brief Evict the cached template backing a ready template AssetHandle3D.

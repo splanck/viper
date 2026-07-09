@@ -15,7 +15,7 @@
 //   - All effects operate on the software framebuffer (RGBA uint8 pixels).
 //   - Bloom uses a half-resolution scratch buffer for performance.
 //   - Effects chain in order: first added = first applied.
-//   - Temporary buffers are allocated per-apply and freed after.
+//   - CPU temporary buffers are retained on the PostFX3D object and reused.
 //   - SSAO / DOF / Motion Blur require GPU scene buffers and trap on CPU path.
 //   - Tonemap mode 0 is identity (passthrough); modes 1/2 are Reinhard/ACES.
 //
@@ -179,6 +179,13 @@ typedef struct {
     int8_t auto_exposure_valid;
     /* Color LUT source: retained Pixels (256x16 strip = 16 tiles of 16x16). */
     void *lut_pixels;
+    /* Reusable CPU apply scratch: packed RGB framebuffer plus two effect work buffers. */
+    float *cpu_fbuf;
+    size_t cpu_fbuf_bytes;
+    float *cpu_scratch_primary;
+    size_t cpu_scratch_primary_bytes;
+    float *cpu_scratch_secondary;
+    size_t cpu_scratch_secondary_bytes;
 } rt_postfx3d;
 
 /// @brief Record a recoverable configuration error on the chain (NULL msg clears).
@@ -333,8 +340,8 @@ static int postfx_rgb_float_layout(
 }
 
 /// @brief Reserve a reusable float scratch buffer for a CPU post-processing pass.
-/// @details Scratch buffers are retained for the duration of one effect-chain application and
-///          reused by bloom and FXAA instead of allocating/freeing fresh buffers for each effect.
+/// @details Scratch buffers are retained by the PostFX3D object and reused by bloom, FXAA, and
+///          depth-aware effects instead of allocating/freeing fresh buffers for each apply.
 ///          When @p clear is non-zero, the reserved byte range is zeroed before return.
 /// @param slot In/out scratch pointer.
 /// @param capacity_bytes In/out scratch capacity.
@@ -359,16 +366,17 @@ static float *postfx_scratch_reserve(float **slot,
     return *slot;
 }
 
-/// @brief Release all heap storage owned by a per-apply postfx scratch context.
-/// @details Scratch buffers contain transient framebuffer colors only; no ownership escapes the
-///          effect-chain call. Safe to call on a zero-initialized context.
-/// @param scratch Scratch context to release.
-static void postfx_scratch_release(postfx_scratch_t *scratch) {
-    if (!scratch)
-        return;
-    free(scratch->primary);
-    free(scratch->secondary);
-    memset(scratch, 0, sizeof(*scratch));
+/// @brief Reserve the retained CPU framebuffer scratch for one PostFX apply.
+/// @details CPU post-processing runs through a packed RGB float buffer. Keeping that allocation on
+///          the PostFX object avoids malloc/free churn for stable frame sizes; the buffer grows on
+///          demand and is released by the PostFX finalizer.
+/// @param fx PostFX chain that owns the scratch buffer.
+/// @param needed_bytes Required byte count for this frame.
+/// @return Retained framebuffer scratch pointer, or NULL on allocation failure.
+static float *postfx3d_reserve_cpu_fbuf(rt_postfx3d *fx, size_t needed_bytes) {
+    if (!fx || needed_bytes == 0)
+        return NULL;
+    return postfx_scratch_reserve(&fx->cpu_fbuf, &fx->cpu_fbuf_bytes, needed_bytes, 0);
 }
 
 /// @brief Populate a small lookup table for linear-to-display gamma correction.
@@ -1808,7 +1816,10 @@ static void postfx_apply_float_effects(rt_postfx3d *fx,
     postfx_scratch_t scratch;
     if (!fx || !fx->enabled || effect_count == 0 || !fbuf)
         return;
-    memset(&scratch, 0, sizeof(scratch));
+    scratch.primary = fx->cpu_scratch_primary;
+    scratch.primary_bytes = fx->cpu_scratch_primary_bytes;
+    scratch.secondary = fx->cpu_scratch_secondary;
+    scratch.secondary_bytes = fx->cpu_scratch_secondary_bytes;
 
     for (int32_t i = 0; i < effect_count; i++) {
         postfx_entry_t *e = &fx->effects[i];
@@ -1907,7 +1918,10 @@ static void postfx_apply_float_effects(rt_postfx3d *fx,
                 break;
         }
     }
-    postfx_scratch_release(&scratch);
+    fx->cpu_scratch_primary = scratch.primary;
+    fx->cpu_scratch_primary_bytes = scratch.primary_bytes;
+    fx->cpu_scratch_secondary = scratch.secondary;
+    fx->cpu_scratch_secondary_bytes = scratch.secondary_bytes;
 }
 
 /// @brief Run the CPU-supported effect chain over a framebuffer.
@@ -1931,8 +1945,8 @@ static void postfx_apply(rt_postfx3d *fx,
         return;
     (void)pixel_count;
 
-    /* Convert framebuffer to float RGB for processing */
-    float *fbuf = (float *)malloc(fbuf_bytes);
+    /* Convert framebuffer to retained float RGB scratch for processing. */
+    float *fbuf = postfx3d_reserve_cpu_fbuf(fx, fbuf_bytes);
     if (!fbuf)
         return;
 
@@ -1957,8 +1971,6 @@ static void postfx_apply(rt_postfx3d *fx,
             dst[2] = (uint8_t)(clampf(fbuf[si + 2], 0.0f, 1.0f) * 255.0f);
             /* Preserve alpha */
         }
-
-    free(fbuf);
 }
 
 /// @brief Apply post-processing effects to an HDR render target's floating-point color buffer.
@@ -1977,7 +1989,7 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
     if (target->stride < 0 || (size_t)target->stride < (size_t)target->width * 4u ||
         !postfx_rgb_float_layout(target->width, target->height, &count, NULL, &fbuf_bytes))
         return;
-    fbuf = (float *)malloc(fbuf_bytes);
+    fbuf = postfx3d_reserve_cpu_fbuf(fx, fbuf_bytes);
     if (!fbuf)
         return;
     for (size_t i = 0; i < count; i++) {
@@ -2008,7 +2020,6 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
                 tonemapped ? (uint8_t)(clampf(b, 0.0f, 1.0f) * 255.0f) : vgfx3d_hdr_to_unorm8(b);
         }
     }
-    free(fbuf);
 }
 
 /*==========================================================================
@@ -2024,6 +2035,15 @@ static void rt_postfx3d_finalize(void *obj) {
         return;
     free(fx->taa_history);
     fx->taa_history = NULL;
+    free(fx->cpu_fbuf);
+    fx->cpu_fbuf = NULL;
+    fx->cpu_fbuf_bytes = 0;
+    free(fx->cpu_scratch_primary);
+    fx->cpu_scratch_primary = NULL;
+    fx->cpu_scratch_primary_bytes = 0;
+    free(fx->cpu_scratch_secondary);
+    fx->cpu_scratch_secondary = NULL;
+    fx->cpu_scratch_secondary_bytes = 0;
     if (fx->lut_pixels) {
         if (rt_obj_release_check0(fx->lut_pixels))
             rt_obj_free(fx->lut_pixels);

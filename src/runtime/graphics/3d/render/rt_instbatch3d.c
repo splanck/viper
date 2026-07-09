@@ -33,6 +33,7 @@
 #include "rt_instbatch3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "vgfx3d_backend.h"
@@ -50,7 +51,6 @@ extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
-extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 #define INST_INIT_CAP 64
 #define INSTBATCH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
@@ -70,6 +70,12 @@ typedef struct {
     int64_t last_motion_frame;
     int8_t has_prev_snapshot;
     double *transforms64; /* authoritative N * 16 double matrices */
+    float *visible_transforms;
+    float *visible_prev_transforms;
+    int32_t visible_capacity;
+    int32_t visible_prev_capacity;
+    float *prev_submit_transforms;
+    int32_t prev_submit_capacity;
 } rt_instbatch3d;
 
 /// @brief Compute the next geometric growth capacity for the instance buffer.
@@ -202,16 +208,78 @@ static void instbatch_copy_matrix_slot(float *dst,
     instbatch_sanitize_matrix_slot(&dst[(size_t)dst_idx * 16u]);
 }
 
+/// @brief Ensure a retained float-matrix scratch buffer can hold @p needed matrices.
+/// @details InstanceBatch draw uses this for partial-cull and previous-transform repair paths.
+///   The queueing layer snapshots submitted matrices before returning, so these buffers can be
+///   retained on the batch and reused across frames without frame-temp ownership.
+/// @param slot In/out scratch pointer.
+/// @param capacity In/out matrix capacity for @p slot.
+/// @param needed Number of 4x4 matrices required.
+/// @return Non-zero when the scratch buffer is available.
+static int instbatch_ensure_matrix_scratch(float **slot, int32_t *capacity, int32_t needed) {
+    float *grown;
+    int32_t new_capacity;
+
+    if (!slot || !capacity || needed < 0)
+        return 0;
+    if (needed == 0)
+        return 1;
+    if (*capacity >= needed && *slot)
+        return 1;
+    new_capacity = *capacity > 0 ? *capacity : 64;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / (16u * sizeof(float)))
+        return 0;
+    grown = (float *)realloc(*slot, (size_t)new_capacity * 16u * sizeof(*grown));
+    if (!grown)
+        return 0;
+    *slot = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Convert a double matrix to the active canvas frame's float render space.
+/// @details Camera-relative canvases subtract the current origin before narrowing translation, so
+///          large world coordinates retain precision without decomposing the batch into individual
+///          mesh draws. Non-translation terms are still validated against the float backend range.
+/// @param c Canvas providing the current camera-relative origin.
+/// @param src Row-major double 4x4 source matrix.
+/// @param dst Row-major float 4x4 destination matrix.
+/// @return Non-zero when every element can be represented safely.
+static int instbatch_matrix64_to_canvas_frame(const rt_canvas3d *c, const double *src, float *dst) {
+    if (!src || !dst)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        double value = src[i];
+        if (!isfinite(value))
+            return 0;
+        if (canvas3d_uses_camera_relative_upload(c)) {
+            if (i == 3)
+                value -= c->camera_relative_origin[0];
+            else if (i == 7)
+                value -= c->camera_relative_origin[1];
+            else if (i == 11)
+                value -= c->camera_relative_origin[2];
+        }
+        if (!instbatch_value_fits_float(value))
+            return 0;
+        dst[i] = (float)value;
+    }
+    return 1;
+}
+
 /// @brief Drop a retained reference from a slot and clear it.
 /// @details Paired helper for the batch's mesh / material slots — the
 ///   instance-batch owns refs to these, so finalize must release them. Idempotent on
 ///   already-null slots so a partially-initialized batch can be torn down safely.
 static void instbatch_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained Mesh3D slot only when it still points at Mesh3D.
@@ -219,7 +287,7 @@ static void instbatch_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     instbatch_release_ref(slot);
@@ -230,13 +298,13 @@ static void instbatch_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     instbatch_release_ref(slot);
 }
 
-/// @brief Clear corrupted private resource slots without releasing unrelated objects.
+/// @brief Release and clear corrupted private resource slots.
 static void instbatch_repair_resource_handles(rt_instbatch3d *b) {
     if (!b)
         return;
@@ -351,11 +419,18 @@ static void instbatch_finalizer(void *obj) {
     free(b->transforms64);
     free(b->current_snapshot);
     free(b->prev_transforms);
+    free(b->visible_transforms);
+    free(b->visible_prev_transforms);
+    free(b->prev_submit_transforms);
     b->transforms = NULL;
     b->transforms64 = NULL;
     b->current_snapshot = NULL;
     b->prev_transforms = NULL;
+    b->visible_transforms = NULL;
+    b->visible_prev_transforms = NULL;
+    b->prev_submit_transforms = NULL;
     b->instance_count = b->instance_capacity = 0;
+    b->visible_capacity = b->visible_prev_capacity = b->prev_submit_capacity = 0;
     b->motion_snapshot_count = b->prev_count = 0;
     b->last_motion_frame = 0;
     b->has_prev_snapshot = 0;
@@ -582,10 +657,21 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     if (!mat)
         return;
     if (canvas3d_uses_camera_relative_upload(c) && b->transforms64) {
+        if (!instbatch_ensure_matrix_scratch(
+                &b->visible_transforms, &b->visible_capacity, b->instance_count)) {
+            rt_trap("InstanceBatch3D.Draw: camera-relative matrix scratch allocation failed");
+            return;
+        }
         for (int32_t i = 0; i < b->instance_count; i++) {
             const double *model = &b->transforms64[(size_t)i * 16u];
-            rt_canvas3d_draw_mesh_matrix_keyed(canvas_obj, mesh, model, mat, model, NULL, NULL);
+            if (!instbatch_matrix64_to_canvas_frame(
+                    c, model, &b->visible_transforms[(size_t)i * 16u])) {
+                rt_trap("InstanceBatch3D.Draw: camera-relative matrix is out of float range");
+                return;
+            }
         }
+        rt_canvas3d_queue_instanced_batch_frame_matrices(
+            canvas_obj, mesh, mat, b->visible_transforms, b->instance_count, NULL, 0);
         return;
     }
     instbatch_sanitize_active_matrices(b);
@@ -605,7 +691,6 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
 
     {
         const float *submit_transforms = b->transforms;
-        float *owned_prev = NULL;
         const float *submit_prev = NULL;
         int8_t has_prev = 0;
         int32_t submit_count = b->instance_count;
@@ -614,21 +699,21 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                 submit_prev = b->prev_transforms;
                 has_prev = 1;
             } else {
-                owned_prev = (float *)malloc((size_t)b->instance_count * 16u * sizeof(float));
-                if (owned_prev) {
+                if (instbatch_ensure_matrix_scratch(
+                        &b->prev_submit_transforms, &b->prev_submit_capacity, b->instance_count)) {
                     int32_t preserved =
                         b->prev_count < b->instance_count ? b->prev_count : b->instance_count;
                     if (preserved > 0) {
-                        memcpy(owned_prev,
+                        memcpy(b->prev_submit_transforms,
                                b->prev_transforms,
                                (size_t)preserved * 16u * sizeof(float));
                     }
                     if (preserved < b->instance_count) {
-                        memcpy(&owned_prev[(size_t)preserved * 16u],
+                        memcpy(&b->prev_submit_transforms[(size_t)preserved * 16u],
                                &b->transforms[(size_t)preserved * 16u],
                                (size_t)(b->instance_count - preserved) * 16u * sizeof(float));
                     }
-                    submit_prev = owned_prev;
+                    submit_prev = b->prev_submit_transforms;
                     has_prev = 1;
                 }
             }
@@ -641,24 +726,21 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                     visible_count++;
             }
             if (visible_count == 0) {
-                free(owned_prev);
                 return;
             }
             if (visible_count < b->instance_count) {
-                /* Allocate only when culling actually removes at least one instance. Fully visible
-                 * batches now submit their existing transform arrays without per-frame malloc/free
-                 * churn; partial batches still use tracked frame-lifetime scratch buffers. */
-                float *visible_transforms =
-                    (float *)malloc((size_t)visible_count * 16u * sizeof(float));
-                float *visible_prev =
-                    has_prev ? (float *)malloc((size_t)visible_count * 16u * sizeof(float)) : NULL;
-                if (visible_transforms && (!has_prev || visible_prev)) {
+                if (instbatch_ensure_matrix_scratch(
+                        &b->visible_transforms, &b->visible_capacity, visible_count) &&
+                    (!has_prev || instbatch_ensure_matrix_scratch(&b->visible_prev_transforms,
+                                                                  &b->visible_prev_capacity,
+                                                                  visible_count))) {
                     int32_t write_index = 0;
+                    float *visible_prev = has_prev ? b->visible_prev_transforms : NULL;
                     for (int32_t i = 0; i < b->instance_count; i++) {
                         const float *src = &b->transforms[(size_t)i * 16u];
                         if (!instbatch_instance_visible(&frustum, mesh_min, mesh_max, src))
                             continue;
-                        memcpy(&visible_transforms[(size_t)write_index * 16u],
+                        memcpy(&b->visible_transforms[(size_t)write_index * 16u],
                                src,
                                16u * sizeof(float));
                         if (visible_prev) {
@@ -668,37 +750,13 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                         }
                         write_index++;
                     }
-                    int visible_tracked =
-                        rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
-                    int prev_tracked =
-                        visible_prev ? rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev) : 1;
-                    if (!visible_tracked || !prev_tracked) {
-                        if (!visible_tracked)
-                            free(visible_transforms);
-                        if (!prev_tracked)
-                            free(visible_prev);
-                        free(owned_prev);
-                        return;
-                    }
-                    free(owned_prev);
-                    owned_prev = NULL; /* visible_prev now carries prev data; NULL this so the
-                                        * submit_prev ownership check below never compares (or
-                                        * re-tracks) a freed pointer */
-                    submit_transforms = visible_transforms;
+                    submit_transforms = b->visible_transforms;
                     submit_prev = visible_prev;
                     submit_count = visible_count;
                     has_prev = visible_prev ? 1 : 0;
-                } else {
-                    free(visible_transforms);
-                    free(visible_prev);
                 }
             }
         }
-        if (owned_prev && submit_prev == owned_prev)
-            if (!rt_canvas3d_add_temp_buffer(canvas_obj, owned_prev)) {
-                free(owned_prev);
-                return;
-            }
         rt_canvas3d_queue_instanced_batch(
             canvas_obj, mesh, mat, submit_transforms, submit_count, submit_prev, has_prev);
     }

@@ -28,6 +28,7 @@
 #include "rt_water3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_heap.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -138,11 +139,7 @@ static int water3d_is_pixels_handle(void *pixels) {
 
 /// @brief Drop one reference and zero the slot. Idempotent on null/empty slots.
 static void water3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained Pixels slot only if it still points at a valid Pixels object.
@@ -150,7 +147,7 @@ static void water3d_release_pixels_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!water3d_is_pixels_handle(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     water3d_release_ref(slot);
@@ -170,7 +167,7 @@ static void water3d_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     water3d_release_ref(slot);
@@ -181,7 +178,7 @@ static void water3d_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     water3d_release_ref(slot);
@@ -192,7 +189,7 @@ static void water3d_release_env_map_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_CUBEMAP3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     water3d_release_ref(slot);

@@ -137,11 +137,7 @@ static float controller_clamp_nonnegative_float(double value) {
 ///          object pointer the controller owns. NULL slot or NULL contents
 ///          are no-ops.
 static void controller_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained controller-owned object only when its class still matches.
@@ -149,7 +145,7 @@ static void controller_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     controller_release_ref(slot);

@@ -28,8 +28,9 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_joints3d.h"
-#include "rt_joints3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_joints3d_internal.h"
 #include "rt_mat4.h"
 #include "rt_physics3d.h"
 
@@ -46,7 +47,6 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 #include "rt_trap.h"
-
 
 /// @brief True if a body view is solvable: finite, non-negative inverse mass and
 ///        finite position/velocity. Guards the joint solver against NaN bodies.
@@ -65,11 +65,7 @@ int joint3d_body_is_finite(const rt_body3d_kinematics *body) {
 
 /// @brief Release the GC reference held in `*slot` (if any) and null the slot. Idempotent.
 static void joint3d_release_body_ref(rt_body3d_kinematics **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release_class((void **)slot, RT_G3D_BODY3D_CLASS_ID);
 }
 
 /*==========================================================================
@@ -324,8 +320,7 @@ double rt_spring_joint3d_get_rest_length(void *joint) {
 static void solve_spring(rt_spring_joint3d *j, double dt) {
     double delta[3];
     dt = joint3d_sanitize_dt(dt);
-    if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b) ||
-        dt <= 0.0)
+    if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b) || dt <= 0.0)
         return;
 
     joint3d_vec3_sub(j->body_b->position, j->body_a->position, delta);
@@ -733,10 +728,10 @@ static void solve_rope(rt_rope_joint3d *j, double dt) {
     double error = dist - j->max_length;
     double correction = joint3d_clamp_coord(error / inv_sum);
     for (int i = 0; i < 3; i++) {
-        j->body_a->position[i] = joint3d_clamp_coord(
-            j->body_a->position[i] + correction * j->body_a->inv_mass * n[i]);
-        j->body_b->position[i] = joint3d_clamp_coord(
-            j->body_b->position[i] - correction * j->body_b->inv_mass * n[i]);
+        j->body_a->position[i] =
+            joint3d_clamp_coord(j->body_a->position[i] + correction * j->body_a->inv_mass * n[i]);
+        j->body_b->position[i] =
+            joint3d_clamp_coord(j->body_b->position[i] - correction * j->body_b->inv_mass * n[i]);
     }
 
     joint3d_vec3_sub(j->body_b->velocity, j->body_a->velocity, rel_velocity);
@@ -745,10 +740,10 @@ static void solve_rope(rt_rope_joint3d *j, double dt) {
         return;
     double impulse = joint3d_clamp_force(rel_along / inv_sum);
     for (int i = 0; i < 3; i++) {
-        j->body_a->velocity[i] = joint3d_clamp_force(
-            j->body_a->velocity[i] + impulse * j->body_a->inv_mass * n[i]);
-        j->body_b->velocity[i] = joint3d_clamp_force(
-            j->body_b->velocity[i] - impulse * j->body_b->inv_mass * n[i]);
+        j->body_a->velocity[i] =
+            joint3d_clamp_force(j->body_a->velocity[i] + impulse * j->body_a->inv_mass * n[i]);
+        j->body_b->velocity[i] =
+            joint3d_clamp_force(j->body_b->velocity[i] - impulse * j->body_b->inv_mass * n[i]);
     }
 }
 

@@ -640,7 +640,7 @@ void *rt_game3d_world_get_stream(void *obj) {
     if (!world)
         return NULL;
     if (world->stream && !rt_g3d_has_class(world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID))
-        world->stream = NULL;
+        game3d_release_typed_ref(&world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
     if (!world->stream) {
         rt_game3d_world_stream *stream =
             game3d_world_stream_create(world, 0, "Game3D.World3D.get_stream: allocation failed");
@@ -871,8 +871,8 @@ void *rt_game3d_world_spawn_heightfield_collider(void *world_obj,
                                                  double pos_x,
                                                  double pos_y,
                                                  double pos_z) {
-    rt_game3d_world *world = game3d_world_checked(
-        world_obj, "Game3D.World3D.spawnHeightfieldCollider: invalid world");
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.World3D.spawnHeightfieldCollider: invalid world");
     void *collider;
     void *body;
     void *entity;
@@ -1120,14 +1120,12 @@ static void game3d_world_repair_canvas_skybox(rt_game3d_world *world) {
     if (!canvas->skybox)
         return;
     if (!rt_g3d_has_class(canvas->skybox, RT_G3D_CUBEMAP3D_CLASS_ID)) {
-        canvas->skybox = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)&canvas->skybox);
         rt_canvas3d_invalidate_skybox_cache(canvas);
         return;
     }
     if (!rt_cubemap3d_is_complete(canvas->skybox)) {
-        if (rt_obj_release_check0(canvas->skybox))
-            rt_obj_free(canvas->skybox);
-        canvas->skybox = NULL;
+        rt_g3d_ref_slot_release((void **)&canvas->skybox);
         rt_canvas3d_invalidate_skybox_cache(canvas);
     }
 #else

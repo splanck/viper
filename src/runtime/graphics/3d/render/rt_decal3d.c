@@ -27,6 +27,7 @@
 #include "rt_decal3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
 
@@ -83,11 +84,7 @@ typedef struct {
 ///          release so the finalizer can run twice without double-free
 ///          (would never happen under normal GC but defensive anyway).
 static void decal3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Return @p value when finite, else @p fallback.
@@ -125,7 +122,7 @@ static void decal3d_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!decal3d_texture_valid(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     decal3d_release_ref(slot);
@@ -136,7 +133,7 @@ static void decal3d_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     decal3d_release_ref(slot);
@@ -147,7 +144,7 @@ static void decal3d_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     decal3d_release_ref(slot);

@@ -2010,6 +2010,61 @@ static void test_textureasset3d_decode_failure_checker_fallback() {
     PASS();
 }
 
+static void test_textureasset3d_bc7_partial_mip_fallback() {
+    TEST("TextureAsset3D BC7 keeps decoded mips when a later mip is unsupported");
+    const char *path = "/tmp/viper_textureasset3d_bc7_partial_mip_fallback.ktx2";
+    const uint8_t valid_block[16] = {
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
+    };
+    uint8_t level0[64];
+    const uint8_t reserved_level1[16] = {0};
+    const uint8_t *levels[] = {level0, reserved_level1};
+    const uint64_t level_bytes[] = {sizeof(level0), sizeof(reserved_level1)};
+    rt_string path_s;
+    void *asset;
+    TextureAsset3DTestLayout *layout;
+
+    for (size_t i = 0; i < sizeof(level0); i += sizeof(valid_block))
+        std::memcpy(level0 + i, valid_block, sizeof(valid_block));
+
+    EXPECT_TRUE(write_test_ktx2_mips(path, 145u, 8u, 8u, levels, level_bytes, 2u),
+                "mixed-validity BC7 mip chain fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+    layout = static_cast<TextureAsset3DTestLayout *>(asset);
+
+    EXPECT_TRUE(layout->mip_pixels != nullptr, "BC7 partial decode keeps a mip fallback table");
+    EXPECT_TRUE(layout->mip_pixels[0] != nullptr, "supported BC7 mip remains decoded");
+    EXPECT_TRUE(layout->mip_pixels[1] == nullptr, "unsupported BC7 mip is left native-only");
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == layout->mip_pixels[0],
+                "resident mip 0 resolves to its decoded fallback");
+    rt_textureasset3d_set_resident_mip_range(asset, 1, 1);
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                "resident unsupported mip does not receive a whole-texture checker fallback");
+    EXPECT_TRUE(vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
+                "partial BC7 fallback still supports native compressed upload");
+
+    std::remove(path);
+    PASS();
+}
+
 static void test_textureasset3d_mip_residency() {
     TEST("TextureAsset3D mip residency range telemetry");
     const char *path = "/tmp/viper_textureasset3d_mips_test.ktx2";
@@ -3520,7 +3575,7 @@ static void test_material_sanitizes_numeric_inputs() {
     rt_material3d_set_shininess(m, -12.0);
     EXPECT_NEAR(m->shininess, 0.0, 0.001);
     rt_material3d_set_emissive_color(m, 3.0, -1.0, NAN);
-    EXPECT_NEAR(m->emissive[0], 1.0, 0.001);
+    EXPECT_NEAR(m->emissive[0], 3.0, 0.001);
     EXPECT_NEAR(m->emissive[1], 0.0, 0.001);
     EXPECT_NEAR(m->emissive[2], 0.0, 0.001);
     PASS();
@@ -5879,9 +5934,9 @@ static void test_canvas_resize_updates_backend_and_projection_aspect() {
     EXPECT_EQ(g_backend_resize_h, 720);
 
     rt_canvas3d_resize(&canvas, 9000, 720);
-    EXPECT_EQ(rt_canvas3d_get_window_width(&canvas), 1280);
+    EXPECT_EQ(rt_canvas3d_get_window_width(&canvas), 9000);
     EXPECT_EQ(rt_canvas3d_get_window_height(&canvas), 720);
-    EXPECT_EQ(g_backend_resize_calls, 1);
+    EXPECT_EQ(g_backend_resize_calls, 2);
 
     g_canvas_begin_frame_calls = 0;
     memset(&g_canvas_begin_frame_params, 0, sizeof(g_canvas_begin_frame_params));
@@ -5890,7 +5945,7 @@ static void test_canvas_resize_updates_backend_and_projection_aspect() {
 
     EXPECT_EQ(g_canvas_begin_frame_calls, 1);
     EXPECT_NEAR(cam->aspect, 1.0, 0.0001);
-    EXPECT_NEAR(g_canvas_begin_frame_params.projection[0], 0.974279f, 0.001);
+    EXPECT_NEAR(g_canvas_begin_frame_params.projection[0], 0.138564f, 0.001);
     PASS();
 }
 
@@ -7426,9 +7481,7 @@ static void test_terrain_splat_layers_resolve_texture_assets() {
     rt_canvas3d_end(&canvas);
 
     rt_material3d *mat = (rt_material3d *)material;
-    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
-    EXPECT_TRUE(baked != nullptr && baked->data != nullptr && baked->data[0] == 0xAA2030FF,
-                "Terrain splat bake samples TextureAsset3D resident pixels");
+    EXPECT_TRUE(mat->texture == nullptr, "Complete terrain splat layers skip CPU material baking");
     EXPECT_TRUE(g_last_draw_cmd.has_splat == 1 && g_last_draw_cmd.splat_layers[0] == asset_pixels,
                 "Terrain splat draw resolves TextureAsset3D layers to resident pixels");
     PASS();
@@ -8618,6 +8671,7 @@ int main() {
     test_textureasset3d_bc7_software_decode();
     test_textureasset3d_etc2_astc_software_decode();
     test_textureasset3d_decode_failure_checker_fallback();
+    test_textureasset3d_bc7_partial_mip_fallback();
     test_textureasset3d_mip_residency();
     test_textureasset3d_supercompressed_ktx2_loads();
     test_textureasset3d_rejects_unsupported_ktx2_headers();

@@ -34,6 +34,7 @@
 #include "rt_particles3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
@@ -137,7 +138,7 @@ typedef struct {
 /// @return Non-zero xorshift32 seed.
 static uint32_t particles3d_next_seed(void) {
     static int64_t counter = INT64_C(0xA341316C);
-    int64_t old = __atomic_fetch_add(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
+    int64_t old = rt_atomic_fetch_add_i64(&counter, INT64_C(0x9E3779B9), __ATOMIC_RELAXED);
     uint32_t seed = (uint32_t)old ^ 0x12345678u;
     return seed ? seed : 0xA341316Cu;
 }
@@ -149,11 +150,7 @@ static rt_particles3d *particles3d_checked(void *obj) {
 
 /// @brief Drop one retained object ref and clear the slot.
 static void particles3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Return true when @p texture is a live Pixels object.
@@ -166,7 +163,7 @@ static void particles3d_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!particles3d_texture_valid(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     particles3d_release_ref(slot);
@@ -177,7 +174,7 @@ static void particles3d_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     particles3d_release_ref(slot);
@@ -1461,8 +1458,8 @@ static int particles3d_ensure_overflow_draw_slots(rt_particles3d *ps, int32_t ne
 }
 
 /// @brief Prepare one reusable draw slot's vertex/index buffers and material.
-/// @details Used by both fixed and overflow slot arrays. The vertex buffer is zero-filled because
-///   later trail emission may leave degenerate quads for culled trail segments.
+/// @details Used by both fixed and overflow slot arrays. Vertex payloads are fully initialized by
+///   the billboard/trail emitters, so this avoids a full-buffer zero-fill on every draw.
 /// @return 1 with output pointers assigned, 0 on allocation/material failure.
 static int particles3d_prepare_draw_slot(vgfx3d_vertex_t **draw_vertices,
                                          uint32_t **draw_indices,
@@ -1501,11 +1498,46 @@ static int particles3d_prepare_draw_slot(vgfx3d_vertex_t **draw_vertices,
     }
     if (!particles3d_ensure_material(&draw_materials[slot]))
         return 0;
-    memset(draw_vertices[slot], 0, (size_t)vert_count * sizeof(*draw_vertices[slot]));
     *out_vertices = draw_vertices[slot];
     *out_indices = draw_indices[slot];
     *out_material = draw_materials[slot];
     return 1;
+}
+
+/// @brief Fill vertex attributes that particle billboard/trail emission does not vary.
+/// @details Particle quads do not use secondary UVs, tangents, or skinning, but the draw path may
+///   still hash/copy the whole `vgfx3d_vertex_t`. Writing these fields explicitly keeps the
+///   reusable draw buffer deterministic without a per-frame memset.
+static void particles3d_finalize_draw_vertex(vgfx3d_vertex_t *v) {
+    if (!v)
+        return;
+    v->uv1[0] = v->uv[0];
+    v->uv1[1] = v->uv[1];
+    v->tangent[0] = 1.0f;
+    v->tangent[1] = 0.0f;
+    v->tangent[2] = 0.0f;
+    v->tangent[3] = 1.0f;
+    for (int i = 0; i < 4; i++) {
+        v->bone_indices[i] = 0;
+        v->bone_weights[i] = 0.0f;
+    }
+}
+
+/// @brief Write one fully-initialized transparent degenerate vertex for unused trail capacity.
+static void particles3d_write_degenerate_vertex(vgfx3d_vertex_t *v, const float forward[3]) {
+    if (!v)
+        return;
+    memset(v->pos, 0, sizeof(v->pos));
+    v->normal[0] = forward ? forward[0] : 0.0f;
+    v->normal[1] = forward ? forward[1] : 0.0f;
+    v->normal[2] = forward ? forward[2] : 1.0f;
+    v->uv[0] = 0.0f;
+    v->uv[1] = 0.0f;
+    v->color[0] = 0.0f;
+    v->color[1] = 0.0f;
+    v->color[2] = 0.0f;
+    v->color[3] = 0.0f;
+    particles3d_finalize_draw_vertex(v);
 }
 
 /// @brief Acquire transient vertex/index/material storage for this frame's particle batch.
@@ -1671,8 +1703,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
 
     particle3d_sort_key *sort_keys = NULL;
 
-    /* Sort particles back-to-front for alpha blend (skip for additive) */
-    if (!ps->additive_blend) {
+    /* Sort particles back-to-front for alpha blend (skip for additive or a single quad). */
+    if (!ps->additive_blend && ps->count > 1) {
         if (!particles3d_ensure_sort_keys(ps, ps->count))
             return;
         sort_keys = (particle3d_sort_key *)ps->sort_keys;
@@ -1799,6 +1831,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         verts[base + 2].uv[1] = 0;
         verts[base + 3].uv[0] = 0;
         verts[base + 3].uv[1] = 0;
+        for (int vi = 0; vi < 4; vi++)
+            particles3d_finalize_draw_vertex(&verts[base + vi]);
 
         /* 2 triangles per quad (CCW). Alpha particles are sorted by the vertex
          * construction order above, so absolute indices preserve the sorted
@@ -1868,6 +1902,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                     v->color[3] = (vi == 0 || vi == 3) ? a0 : a1;
                     v->uv[0] = (vi == 0 || vi == 3) ? 0.0f : 1.0f;
                     v->uv[1] = (vi == 0 || vi == 1) ? 1.0f : 0.0f;
+                    particles3d_finalize_draw_vertex(v);
                 }
                 indices[cursor * 6 + 0] = base + 0;
                 indices[cursor * 6 + 1] = base + 1;
@@ -1881,7 +1916,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         /* Degenerate any unused reserved quads (culled zero-length segments). */
         while (cursor < (uint32_t)ps->count + trail_quads) {
             uint32_t base = cursor * 4;
-            memset(&verts[base], 0, sizeof(vgfx3d_vertex_t) * 4u);
+            for (int vi = 0; vi < 4; vi++)
+                particles3d_write_degenerate_vertex(&verts[base + vi], forward);
             for (int vi = 0; vi < 6; vi++)
                 indices[cursor * 6 + vi] = base;
             cursor++;

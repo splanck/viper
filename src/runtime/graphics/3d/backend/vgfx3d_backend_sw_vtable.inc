@@ -871,7 +871,7 @@ static void sw_clip_task_run(void *arg) {
                                            task->half_w,
                                            task->half_h,
                                            &task->out)) {
-        __atomic_store_n(task->failed, 1, __ATOMIC_RELAXED);
+        rt_atomic_store_i32(task->failed, 1, __ATOMIC_RELAXED);
     }
 }
 
@@ -918,7 +918,7 @@ static int sw_collect_screen_triangles_parallel(sw_context_t *ctx,
     sw_clip_task_run(&tasks[0]);
     if (submitted > 0)
         rt_threadpool_wait(ctx->worker_pool);
-    if (__atomic_load_n(&failed, __ATOMIC_RELAXED)) {
+    if (rt_atomic_load_i32(&failed, __ATOMIC_RELAXED)) {
         for (int32_t i = 0; i < task_count; i++)
             sw_screen_tri_list_free(&tasks[i].out);
         return 0;
@@ -994,7 +994,7 @@ static void sw_raster_task_run(void *arg) {
     if (!task || !task->grid || !task->tris || !task->next_tile)
         return;
     for (;;) {
-        int32_t tile_index = __atomic_fetch_add(task->next_tile, 1, __ATOMIC_RELAXED);
+        int32_t tile_index = rt_atomic_fetch_add_i32(task->next_tile, 1, __ATOMIC_RELAXED);
         if (tile_index >= task->grid->active_count)
             break;
         tile_index = task->grid->active_indices[tile_index];
@@ -1187,61 +1187,87 @@ cleanup:
     return ok;
 }
 
-/// @brief Backend `submit_draw` op for the software rasterizer. Resolves output
-///   buffers, transforms vertices, then clips and rasterizes (or wireframes) each
-///   triangle of the mesh.
-static void sw_submit_draw_serial(void *ctx_ptr,
-                                  vgfx_window_t win,
-                                  const vgfx3d_draw_cmd_t *cmd,
-                                  const vgfx3d_light_params_t *lights,
-                                  int32_t light_count,
-                                  const float *ambient,
-                                  int8_t wireframe,
-                                  int8_t backface_cull) {
-    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+/// @brief Serial software draw setup shared by single-draw and instanced paths.
+/// @details Resolving the output framebuffer and material texture views is invariant across
+///   instances in a batch. Keeping those views in one prepared struct lets the instanced
+///   software path avoid revalidating the same render target and material maps for every
+///   instance while preserving the existing per-instance transform, clip, and raster code.
+typedef struct {
+    uint8_t *pixels;
+    float *zbuf;
+    int32_t width;
+    int32_t height;
+    int32_t stride;
+    float half_width;
+    float half_height;
+    sw_material_views material_views;
+} sw_serial_draw_setup_t;
+
+/// @brief Prepare invariant framebuffer and material state for a serial software draw.
+/// @param ctx Software backend context.
+/// @param win Window handle used when no render target is bound.
+/// @param cmd Draw command whose material maps will be resolved.
+/// @param setup Receives output target pointers, dimensions, and material views.
+/// @return 1 on success, 0 when the output target cannot be resolved.
+static int sw_prepare_serial_draw_setup(sw_context_t *ctx,
+                                        vgfx_window_t win,
+                                        const vgfx3d_draw_cmd_t *cmd,
+                                        sw_serial_draw_setup_t *setup) {
+    if (!ctx || !cmd || !setup)
+        return 0;
+    memset(setup, 0, sizeof(*setup));
+    if (!sw_resolve_output_target(
+            ctx, win, &setup->pixels, &setup->zbuf, &setup->width, &setup->height, &setup->stride))
+        return 0;
+    setup->half_width = (float)setup->width * 0.5f;
+    setup->half_height = (float)setup->height * 0.5f;
+    sw_resolve_material_views(cmd, &setup->material_views);
+    return 1;
+}
+
+/// @brief Execute the serial software rasterizer using already-prepared invariant state.
+/// @details The caller supplies output buffers and material views that are shared across one
+///   or more commands. The command's model matrix may vary between calls, so this helper still
+///   recomputes MVP/normal matrices and transforms vertices for each instance.
+/// @param ctx Software backend context.
+/// @param cmd Draw command to render.
+/// @param setup Prepared framebuffer and material view state.
+/// @param lights Active light array, or NULL for no direct lights.
+/// @param light_count Number of valid entries in @p lights.
+/// @param ambient Ambient RGB triplet.
+/// @param wireframe Non-zero to draw triangle edges only.
+/// @param backface_cull Non-zero to cull back-facing triangles.
+static void sw_submit_draw_serial_prepared(sw_context_t *ctx,
+                                           const vgfx3d_draw_cmd_t *cmd,
+                                           const sw_serial_draw_setup_t *setup,
+                                           const vgfx3d_light_params_t *lights,
+                                           int32_t light_count,
+                                           const float *ambient,
+                                           int8_t wireframe,
+                                           int8_t backface_cull) {
     uint32_t index_count;
-    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0)
+    float mvp[16];
+    float normal_matrix[16];
+    uint32_t vc;
+    pipe_vert_t *pv;
+    pipe_vert_t clipped[MAX_CLIP_VERTS];
+
+    if (!ctx || !cmd || !setup || !setup->pixels || !setup->zbuf || !cmd->vertices ||
+        !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0)
         return;
-    if (!ambient)
-        ambient = zero_ambient;
-    if (!lights || light_count < 0)
-        light_count = 0;
 
-    /* Determine output buffers: render target or window framebuffer */
-    uint8_t *out_pixels;
-    float *out_zbuf;
-    int32_t out_w, out_h, out_stride;
-    if (!sw_resolve_output_target(ctx, win, &out_pixels, &out_zbuf, &out_w, &out_h, &out_stride))
-        return;
-
-    /* Build MVP = VP * model */
-    float mvp[16];
-    float normal_matrix[16];
     mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
 
-    /* Texture setup — resolve up to six material maps into stack-local views. */
-    sw_material_views mv;
-    sw_resolve_material_views(cmd, &mv);
-
-    float half_w = (float)out_w * 0.5f;
-    float half_h = (float)out_h * 0.5f;
-
-    /* Transform mesh vertices */
-    uint32_t vc = cmd->vertex_count;
-    pipe_vert_t *pv = sw_acquire_pipe_vertices(ctx, vc);
+    vc = cmd->vertex_count;
+    pv = sw_acquire_pipe_vertices(ctx, vc);
     if (!pv)
         return;
     sw_transform_vertices(ctx, cmd, pv, vc, mvp, normal_matrix, lights, light_count, ambient);
     sw_debug_log_draw(cmd, ctx, mvp, pv, vc, ambient, light_count);
-
-    /* Process triangles: clip → rasterize */
-    pipe_vert_t clipped[MAX_CLIP_VERTS];
 
     for (uint32_t i = 0; i + 2 < index_count; i += 3) {
         uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
@@ -1258,7 +1284,8 @@ static void sw_submit_draw_serial(void *ctx_ptr,
             const pipe_vert_t *fan[3] = {&clipped[0], &clipped[t], &clipped[t + 1]};
             int ok = 1;
             for (int vi = 0; vi < 3; vi++) {
-                if (!sw_project_clip_to_screen(fan[vi], half_w, half_h, &sv[vi])) {
+                if (!sw_project_clip_to_screen(
+                        fan[vi], setup->half_width, setup->half_height, &sv[vi])) {
                     ok = 0;
                     break;
                 }
@@ -1267,23 +1294,24 @@ static void sw_submit_draw_serial(void *ctx_ptr,
                 continue;
 
             if (wireframe) {
-                sw_draw_wireframe_tri(out_pixels, out_w, out_h, out_stride, sv);
+                sw_draw_wireframe_tri(
+                    setup->pixels, setup->width, setup->height, setup->stride, sv);
             } else {
-                raster_triangle(out_pixels,
-                                out_zbuf,
-                                out_w,
-                                out_h,
-                                out_stride,
+                raster_triangle(setup->pixels,
+                                setup->zbuf,
+                                setup->width,
+                                setup->height,
+                                setup->stride,
                                 &sv[0],
                                 &sv[1],
                                 &sv[2],
-                                mv.tex_ptr,
-                                mv.emissive_ptr,
+                                setup->material_views.tex_ptr,
+                                setup->material_views.emissive_ptr,
                                 cmd->emissive_color,
-                                mv.normal_ptr,
-                                mv.specular_ptr,
-                                mv.metallic_roughness_ptr,
-                                mv.ao_ptr,
+                                setup->material_views.normal_ptr,
+                                setup->material_views.specular_ptr,
+                                setup->material_views.metallic_roughness_ptr,
+                                setup->material_views.ao_ptr,
                                 cmd,
                                 lights,
                                 light_count,
@@ -1293,6 +1321,38 @@ static void sw_submit_draw_serial(void *ctx_ptr,
             }
         }
     }
+}
+
+/// @brief Backend `submit_draw` op for the software rasterizer. Resolves output
+///   buffers, transforms vertices, then clips and rasterizes (or wireframes) each
+///   triangle of the mesh.
+static void sw_submit_draw_serial(void *ctx_ptr,
+                                  vgfx_window_t win,
+                                  const vgfx3d_draw_cmd_t *cmd,
+                                  const vgfx3d_light_params_t *lights,
+                                  int32_t light_count,
+                                  const float *ambient,
+                                  int8_t wireframe,
+                                  int8_t backface_cull) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    uint32_t index_count;
+    sw_serial_draw_setup_t setup;
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
+
+    if (!sw_prepare_serial_draw_setup(ctx, win, cmd, &setup))
+        return;
+    sw_submit_draw_serial_prepared(
+        ctx, cmd, &setup, lights, light_count, ambient, wireframe, backface_cull);
 }
 
 static void sw_submit_draw(void *ctx_ptr,
@@ -1326,14 +1386,40 @@ static void sw_submit_draw_instanced(void *ctx_ptr,
                                      const float *ambient,
                                      int8_t wireframe,
                                      int8_t backface_cull) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    sw_serial_draw_setup_t setup;
     if (!cmd || !instance_matrices || instance_count <= 0)
+        return;
+    if (!ctx)
+        return;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
+
+    /* Keep the existing parallel path for very large meshes, where worker
+     * throughput matters more than per-instance setup overhead. Small instanced
+     * meshes are the common particle/foliage case and benefit from hoisting the
+     * invariant serial draw setup once for the whole batch. */
+    if (ctx->worker_pool && ctx->worker_count > 1 &&
+        vgfx3d_draw_cmd_validated_index_count(cmd) >= SW_PARALLEL_MIN_INDICES) {
+        vgfx3d_draw_cmd_t inst = *cmd;
+        for (int32_t i = 0; i < instance_count; i++) {
+            memcpy(
+                inst.model_matrix, &instance_matrices[(size_t)i * 16u], sizeof(inst.model_matrix));
+            sw_submit_draw(
+                ctx_ptr, win, &inst, lights, light_count, ambient, wireframe, backface_cull);
+        }
+        return;
+    }
+    if (!sw_prepare_serial_draw_setup(ctx, win, cmd, &setup))
         return;
     vgfx3d_draw_cmd_t inst = *cmd;
     for (int32_t i = 0; i < instance_count; i++) {
-        memcpy(inst.model_matrix,
-               &instance_matrices[(size_t)i * 16u],
-               sizeof(inst.model_matrix));
-        sw_submit_draw(ctx_ptr, win, &inst, lights, light_count, ambient, wireframe, backface_cull);
+        memcpy(inst.model_matrix, &instance_matrices[(size_t)i * 16u], sizeof(inst.model_matrix));
+        sw_submit_draw_serial_prepared(
+            ctx, &inst, &setup, lights, light_count, ambient, wireframe, backface_cull);
     }
 }
 

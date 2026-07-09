@@ -113,6 +113,11 @@ typedef struct {
 } NavMeshObstacleTestLayout;
 
 typedef struct {
+    int32_t tri;
+    int32_t link;
+} NavMeshOffmeshEdgeRefTestLayout;
+
+typedef struct {
     void *vptr;
     void *vertices;
     int32_t vertex_count;
@@ -123,6 +128,9 @@ typedef struct {
     NavMeshOffmeshLinkTestLayout *offmesh_links;
     int32_t offmesh_link_count;
     int32_t offmesh_link_capacity;
+    int32_t *offmesh_adjacency_starts;
+    NavMeshOffmeshEdgeRefTestLayout *offmesh_adjacency_edges;
+    int32_t offmesh_adjacency_edge_count;
     rt_string *area_names;
     int32_t area_name_count;
     int32_t area_name_capacity;

@@ -25,6 +25,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_texatlas3d.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
 
@@ -58,11 +59,7 @@ typedef struct {
 
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void texatlas3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief GC finalizer — free the atlas backing pixel buffer and cached Pixels copy.

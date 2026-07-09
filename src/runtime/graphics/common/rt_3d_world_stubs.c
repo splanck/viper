@@ -1432,6 +1432,18 @@ void rt_vegetation3d_set_blade_size(void *v, double w, double h, double va) {
     (void)va;
 }
 
+/// @brief Stub for `Vegetation3D.SetSeed` — configure the deterministic
+///        scatter seed used by later Populate calls.
+///
+/// Silent no-op stub.
+///
+/// @param v Vegetation3D handle (ignored).
+/// @param seed Scatter seed (ignored).
+void rt_vegetation3d_set_seed(void *v, int64_t seed) {
+    (void)v;
+    (void)seed;
+}
+
 /// @brief Stub for `Vegetation3D.Populate` — scatter `c` blade
 ///        instances across the surface of the given Terrain3D using LCG
 ///        random sampling, optionally filtered by the bound density map.

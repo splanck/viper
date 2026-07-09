@@ -132,7 +132,10 @@
 #define __ATOMIC_ACQ_REL 4
 #define __ATOMIC_SEQ_CST 5
 
-// Atomic load (8-bit)
+/// @brief Atomically load an 8-bit signed integer on MSVC platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value observed in @p ptr.
 static inline int8_t rt_atomic_load_i8(const volatile int8_t *ptr, int order) {
     (void)order;
     int8_t value = *ptr;
@@ -144,7 +147,10 @@ static inline int8_t rt_atomic_load_i8(const volatile int8_t *ptr, int order) {
     return value;
 }
 
-// Atomic store (8-bit)
+/// @brief Atomically store an 8-bit signed integer on MSVC platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_i8(volatile int8_t *ptr, int8_t value, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -160,8 +166,12 @@ static inline void rt_atomic_store_i8(volatile int8_t *ptr, int8_t value, int or
 #endif
 }
 
-// Atomic load (32-bit)
-// CONC-004 fix: ARM64 needs CPU fence, not just compiler barrier.
+/// @brief Atomically load a 32-bit signed integer on MSVC platforms.
+/// @details ARM64 builds use a CPU data-memory barrier because a compiler-only barrier is not
+///          sufficient to preserve cross-thread visibility on that architecture.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value observed in @p ptr.
 static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
     (void)order;
     int value = *ptr;
@@ -173,7 +183,10 @@ static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
     return value;
 }
 
-// Atomic store (32-bit)
+/// @brief Atomically store a 32-bit signed integer on MSVC platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -189,13 +202,23 @@ static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) 
 #endif
 }
 
-// Atomic exchange (32-bit)
+/// @brief Atomically exchange a 32-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Replacement value.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The previous value stored in @p ptr.
 static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, value);
 }
 
-// Atomic compare-exchange (32-bit)
+/// @brief Atomically compare-and-swap a 32-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update when it equals @p expected.
+/// @param expected In/out expected value; receives the observed value on failure.
+/// @param desired Value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
 static inline int rt_atomic_compare_exchange_i32(
     volatile int *ptr, int *expected, int desired, int success_order, int fail_order) {
     (void)success_order;
@@ -208,19 +231,30 @@ static inline int rt_atomic_compare_exchange_i32(
     return 0;
 }
 
-// Atomic fetch-add (32-bit)
+/// @brief Atomically add to a 32-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Increment to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the addition.
 static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, value);
 }
 
-// Atomic fetch-sub (32-bit)
+/// @brief Atomically subtract from a 32-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Decrement to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the subtraction.
 static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, -value);
 }
 
-// Atomic load (64-bit)
+/// @brief Atomically load a 64-bit signed integer on MSVC platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value observed in @p ptr.
 static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -237,7 +271,10 @@ static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
 #endif
 }
 
-// Atomic store (64-bit)
+/// @brief Atomically store a 64-bit signed integer on MSVC platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -253,19 +290,32 @@ static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int
 #endif
 }
 
-// Atomic fetch-add (64-bit)
+/// @brief Atomically add to a 64-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Increment to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the addition.
 static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, value);
 }
 
-// Atomic fetch-sub (64-bit)
+/// @brief Atomically subtract from a 64-bit signed integer on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Decrement to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the subtraction.
 static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, -value);
 }
 
-// Atomic load (size_t) - needed because size_t is unsigned and may differ from int64_t
+/// @brief Atomically load a size_t value on MSVC platforms.
+/// @details `size_t` is handled separately from signed 64-bit storage because LLP64 Windows targets
+///          give it a distinct ABI shape from `int64_t`.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value observed in @p ptr.
 static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -281,7 +331,10 @@ static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order) 
 #endif
 }
 
-// Atomic store (size_t)
+/// @brief Atomically store a size_t value on MSVC platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -297,7 +350,13 @@ static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int 
 #endif
 }
 
-// Atomic compare-exchange (size_t)
+/// @brief Atomically compare-and-swap a size_t value on MSVC platforms.
+/// @param ptr Storage to update when it equals @p expected.
+/// @param expected In/out expected value; receives the observed value on failure.
+/// @param desired Value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
 static inline int rt_atomic_compare_exchange_size(
     volatile size_t *ptr, size_t *expected, size_t desired, int success_order, int fail_order) {
     (void)success_order;
@@ -316,7 +375,11 @@ static inline int rt_atomic_compare_exchange_size(
     return 0;
 }
 
-// Atomic fetch-add (size_t)
+/// @brief Atomically add to a size_t counter on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Increment to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the addition.
 static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -326,7 +389,11 @@ static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value
 #endif
 }
 
-// Atomic fetch-sub (size_t)
+/// @brief Atomically subtract from a size_t counter on MSVC platforms.
+/// @param ptr Storage to update.
+/// @param value Decrement to apply.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The value stored in @p ptr before the subtraction.
 static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -336,7 +403,10 @@ static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value
 #endif
 }
 
-// Atomic load (pointer)
+/// @brief Atomically load a pointer on MSVC platforms.
+/// @param ptr Address of pointer storage to load from.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The pointer value observed in @p ptr.
 static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -346,7 +416,10 @@ static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order) {
 #endif
 }
 
-// Atomic store (pointer)
+/// @brief Atomically store a pointer on MSVC platforms.
+/// @param ptr Address of pointer storage to update.
+/// @param value Pointer value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -356,7 +429,11 @@ static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int ord
 #endif
 }
 
-// Atomic exchange (pointer)
+/// @brief Atomically exchange a pointer on MSVC platforms.
+/// @param ptr Address of pointer storage to update.
+/// @param value Replacement pointer value.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return The previous pointer value.
 static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -366,7 +443,13 @@ static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int
 #endif
 }
 
-// Atomic compare-exchange (pointer)
+/// @brief Atomically compare-and-swap a pointer on MSVC platforms.
+/// @param ptr Address of pointer storage to update when it equals @p expected.
+/// @param expected In/out expected pointer; receives the observed value on failure.
+/// @param desired Pointer value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
 static inline int rt_atomic_compare_exchange_ptr(
     void *volatile *ptr, void **expected, void *desired, int success_order, int fail_order) {
     (void)success_order;
@@ -394,7 +477,10 @@ static inline volatile long long *rt_atomic_f64_bits_ptr(volatile double *ptr) {
     return (volatile long long *)(volatile void *)ptr;
 }
 
-// Atomic load/store for double values used with GCC's non-_n builtins.
+/// @brief Atomically load a double by copying its IEEE-754 representation on MSVC platforms.
+/// @param ptr Naturally aligned double storage.
+/// @param out Receives the loaded value.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
     (void)order;
     long long bits =
@@ -402,6 +488,10 @@ static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, i
     memcpy(out, &bits, sizeof(*out));
 }
 
+/// @brief Atomically store a double by copying its IEEE-754 representation on MSVC platforms.
+/// @param ptr Naturally aligned double storage.
+/// @param value Source value to publish.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
     (void)order;
     long long bits;
@@ -485,13 +575,18 @@ static inline void rt_atomic_store_f64(volatile double *ptr, const double *value
         volatile size_t *: rt_atomic_fetch_sub_size,                                               \
         size_t *: rt_atomic_fetch_sub_size)((ptr), (val), (order))
 
-// Atomic test-and-set (spinlock primitive)
+/// @brief Atomically set a spinlock flag on MSVC platforms.
+/// @param ptr Storage containing 0 when unlocked and nonzero when locked.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
+/// @return Nonzero when the flag was already set, zero when this call acquired it.
 static inline int rt_atomic_test_and_set(volatile int *ptr, int order) {
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, 1) != 0;
 }
 
-// Atomic clear (spinlock release)
+/// @brief Atomically clear a spinlock flag on MSVC platforms.
+/// @param ptr Storage to set back to 0.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_clear(volatile int *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
@@ -510,7 +605,8 @@ static inline void rt_atomic_clear(volatile int *ptr, int order) {
 #define __atomic_test_and_set(ptr, order) rt_atomic_test_and_set((volatile int *)(ptr), (order))
 #define __atomic_clear(ptr, order) rt_atomic_clear((volatile int *)(ptr), (order))
 
-// Atomic thread fence
+/// @brief Emit a full thread fence on MSVC platforms.
+/// @param order GCC-style memory-order constant accepted for source compatibility.
 static inline void rt_atomic_thread_fence(int order) {
     (void)order;
     // Use _mm_mfence for full memory barrier on x86/x64
@@ -527,6 +623,193 @@ static inline void rt_atomic_thread_fence(int order) {
 #define __atomic_thread_fence(order) rt_atomic_thread_fence(order)
 
 #endif // RT_COMPILER_MSVC
+
+#if !RT_COMPILER_MSVC
+/// @brief Atomically load an 8-bit signed integer on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant.
+/// @return The value observed in @p ptr.
+static inline int8_t rt_atomic_load_i8(const volatile int8_t *ptr, int order) {
+    return __atomic_load_n(ptr, order);
+}
+
+/// @brief Atomically store an 8-bit signed integer on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_store_i8(volatile int8_t *ptr, int8_t value, int order) {
+    __atomic_store_n(ptr, value, order);
+}
+
+/// @brief Atomically load a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant.
+/// @return The value observed in @p ptr.
+static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
+    return __atomic_load_n(ptr, order);
+}
+
+/// @brief Atomically store a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) {
+    __atomic_store_n(ptr, value, order);
+}
+
+/// @brief Atomically compare-and-swap a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Storage to update when it equals @p expected.
+/// @param expected In/out expected value; receives the observed value on failure.
+/// @param desired Value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
+static inline int rt_atomic_compare_exchange_i32(
+    volatile int *ptr, int *expected, int desired, int success_order, int fail_order) {
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, success_order, fail_order);
+}
+
+/// @brief Atomically add to a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Storage to update.
+/// @param value Increment to apply.
+/// @param order GCC-style memory-order constant.
+/// @return The value stored in @p ptr before the addition.
+static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order) {
+    return __atomic_fetch_add(ptr, value, order);
+}
+
+/// @brief Atomically load a 64-bit signed integer on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant.
+/// @return The value observed in @p ptr.
+static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order) {
+    return __atomic_load_n(ptr, order);
+}
+
+/// @brief Atomically add to a 64-bit signed integer on GCC/Clang platforms.
+/// @param ptr Storage to update.
+/// @param value Increment to apply.
+/// @param order GCC-style memory-order constant.
+/// @return The value stored in @p ptr before the addition.
+static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order) {
+    return __atomic_fetch_add(ptr, value, order);
+}
+
+/// @brief Atomically load a size_t value on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to load from.
+/// @param order GCC-style memory-order constant.
+/// @return The value observed in @p ptr.
+static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order) {
+    return __atomic_load_n(ptr, order);
+}
+
+/// @brief Atomically store a size_t value on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order) {
+    __atomic_store_n(ptr, value, order);
+}
+
+/// @brief Atomically compare-and-swap a size_t value on GCC/Clang platforms.
+/// @param ptr Storage to update when it equals @p expected.
+/// @param expected In/out expected value; receives the observed value on failure.
+/// @param desired Value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
+static inline int rt_atomic_compare_exchange_size(
+    volatile size_t *ptr, size_t *expected, size_t desired, int success_order, int fail_order) {
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, success_order, fail_order);
+}
+
+/// @brief Atomically load a pointer on GCC/Clang platforms.
+/// @param ptr Address of pointer storage to load from.
+/// @param order GCC-style memory-order constant.
+/// @return The pointer value observed in @p ptr.
+static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order) {
+    return __atomic_load_n(ptr, order);
+}
+
+/// @brief Atomically exchange a pointer on GCC/Clang platforms.
+/// @param ptr Address of pointer storage to update.
+/// @param value Replacement pointer value.
+/// @param order GCC-style memory-order constant.
+/// @return The previous pointer value.
+static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int order) {
+    return __atomic_exchange_n(ptr, value, order);
+}
+
+/// @brief Atomically compare-and-swap a pointer on GCC/Clang platforms.
+/// @param ptr Address of pointer storage to update when it equals @p expected.
+/// @param expected In/out expected pointer; receives the observed value on failure.
+/// @param desired Pointer value to store on success.
+/// @param success_order Memory order for a successful exchange.
+/// @param fail_order Memory order for a failed exchange.
+/// @return 1 on success, 0 when @p expected did not match.
+static inline int rt_atomic_compare_exchange_ptr(
+    void *volatile *ptr, void **expected, void *desired, int success_order, int fail_order) {
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, success_order, fail_order);
+}
+
+/// @brief Atomically load a double by copying its IEEE-754 representation.
+/// @param ptr Naturally aligned double storage.
+/// @param out Receives the loaded value.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
+    __atomic_load(ptr, out, order);
+}
+
+/// @brief Atomically store a double by copying its IEEE-754 representation.
+/// @param ptr Naturally aligned double storage.
+/// @param value Source value to publish.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
+    volatile double tmp = *value;
+    __atomic_store(ptr, &tmp, order);
+}
+
+/// @brief Atomically set a spinlock flag on GCC/Clang platforms.
+/// @param ptr Storage containing 0 when unlocked and nonzero when locked.
+/// @param order GCC-style memory-order constant.
+/// @return Nonzero when the flag was already set, zero when this call acquired it.
+static inline int rt_atomic_test_and_set(volatile int *ptr, int order) {
+    return __atomic_exchange_n(ptr, 1, order) != 0;
+}
+
+/// @brief Atomically clear a spinlock flag on GCC/Clang platforms.
+/// @param ptr Storage to set back to 0.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_clear(volatile int *ptr, int order) {
+    __atomic_store_n(ptr, 0, order);
+}
+#endif
+
+/// @brief Atomically load an unsigned 64-bit value.
+/// @param ptr Naturally aligned unsigned 64-bit storage.
+/// @param order GCC-style memory-order constant.
+/// @return The value observed in @p ptr.
+static inline uint64_t rt_atomic_load_u64(const volatile uint64_t *ptr, int order) {
+    (void)order;
+#if RT_COMPILER_MSVC
+    return (uint64_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+#else
+    return __atomic_load_n(ptr, order);
+#endif
+}
+
+/// @brief Atomically store an unsigned 64-bit value.
+/// @param ptr Naturally aligned unsigned 64-bit storage.
+/// @param value Value to publish.
+/// @param order GCC-style memory-order constant.
+static inline void rt_atomic_store_u64(volatile uint64_t *ptr, uint64_t value, int order) {
+    (void)order;
+#if RT_COMPILER_MSVC
+    _InterlockedExchange64((volatile long long *)ptr, (long long)value);
+#else
+    __atomic_store_n(ptr, value, order);
+#endif
+}
 
 /// @brief Atomically add @p value to an unsigned 64-bit counter and return the previous value.
 /// @details This helper exists for runtime cache-identity counters that are deliberately modeled as

@@ -8,7 +8,7 @@
 // File: src/tests/runtime/RTVegetation3DContractTests.cpp
 // Purpose: Isolated behavioral contract test for the Graphics3D vegetation
 //   subsystem (src/runtime/graphics/3d/world/rt_vegetation3d.c). Pins blade-mesh
-//   construction, deterministic density-gated population (LCG seed = 42),
+//   construction, deterministic density-gated population (configurable LCG seed),
 //   wind-time advance, distance LOD culling, and the single instanced draw
 //   submission — without a GPU backend, GC, or mesh allocator.
 // Key invariants:
@@ -78,6 +78,7 @@ struct VegetationView {
     float *visible_transforms;
     int32_t visible_count;
     int32_t visible_capacity;
+    uint32_t scatter_seed;
 };
 
 // Layout the local terrain_view in rt_vegetation3d_populate casts the handle to.
@@ -292,6 +293,7 @@ static void test_new_builds_blade_mesh_and_defaults() {
     assert(v->lod_far == 100.0f);
     assert(v->total_count == 0);
     assert(v->visible_count == 0);
+    assert(v->scatter_seed != 0);
 }
 
 static void test_populate_scatters_requested_count() {
@@ -305,6 +307,35 @@ static void test_populate_scatters_requested_count() {
 
     rt_vegetation3d_populate(veg, &terrain, 250);
     assert(v->total_count == 250); // re-populate resets and refills deterministically
+    g_terrain = nullptr;
+}
+
+static void test_seed_controls_population_layout() {
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    void *a_obj = rt_vegetation3d_new(nullptr);
+    void *b_obj = rt_vegetation3d_new(nullptr);
+    void *c_obj = rt_vegetation3d_new(nullptr);
+    auto *a = static_cast<VegetationView *>(a_obj);
+    auto *b = static_cast<VegetationView *>(b_obj);
+    auto *c = static_cast<VegetationView *>(c_obj);
+
+    rt_vegetation3d_set_seed(a_obj, 12345);
+    rt_vegetation3d_set_seed(b_obj, 12345);
+    rt_vegetation3d_set_seed(c_obj, 67890);
+    rt_vegetation3d_populate(a_obj, &terrain, 32);
+    rt_vegetation3d_populate(b_obj, &terrain, 32);
+    rt_vegetation3d_populate(c_obj, &terrain, 32);
+
+    assert(a->total_count == 32);
+    assert(b->total_count == 32);
+    assert(c->total_count == 32);
+    assert(std::memcmp(a->positions, b->positions, sizeof(float) * 32 * 3) == 0);
+    assert(std::memcmp(a->base_transforms, b->base_transforms, sizeof(float) * 32 * 16) == 0);
+    bool different = std::memcmp(a->positions, c->positions, sizeof(float) * 32 * 3) != 0;
+    assert(different);
+
     g_terrain = nullptr;
 }
 
@@ -505,6 +536,7 @@ static void test_setters_sanitize_nonfinite_inputs() {
 int main() {
     test_new_builds_blade_mesh_and_defaults();
     test_populate_scatters_requested_count();
+    test_seed_controls_population_layout();
     test_populate_nonpositive_count_clears();
     test_populate_overflow_count_traps();
     test_density_map_gates_population();

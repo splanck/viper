@@ -200,7 +200,7 @@ The rendering surface. Creates a window and manages the render loop.
 | Constructor | Description |
 |-------------|-------------|
 | `IsAvailable()` | Return `true` when the Graphics3D Canvas runtime is compiled in |
-| `New(title, w, h)` | Create canvas window (1-8192 pixels per dimension) |
+| `New(title, w, h)` | Create canvas window (1-16384 pixels per dimension) |
 
 ### Core Methods
 
@@ -866,7 +866,7 @@ Offscreen rendering targets for render-to-texture effects (TV screens, mirrors, 
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `New(width, height)` | `obj(i64, i64)` | Create offscreen target (1-8192 pixels per dimension) |
+| `New(width, height)` | `obj(i64, i64)` | Create offscreen target (1-16384 pixels per dimension) |
 | `NewHdr(width, height)` | `obj(i64, i64)` | Create HDR offscreen target with RGBA16F internal color storage |
 
 ### Properties
@@ -3358,10 +3358,11 @@ Procedural grass/foliage rendering with wind animation and LOD.
 | `SetWindParams(speed, strength, turbulence)` | `void(f64, f64, f64)` | Set wind animation parameters |
 | `SetLODDistances(near, far)` | `void(f64, f64)` | Set LOD transition distances |
 | `SetBladeSize(width, height, variance)` | `void(f64, f64, f64)` | Set grass blade dimensions |
+| `SetSeed(seed)` | `void(i64)` | Set deterministic scatter seed for later `Populate` calls |
 | `Populate(camera, maxBlades)` | `void(obj, i64)` | Generate blade instances around camera |
 | `Update(dt, camX, camY, camZ)` | `void(f64, f64, f64, f64)` | Update wind animation and camera-relative LOD |
 
-Draw via `Canvas3D.DrawVegetation(vegetation)`. `Update(0.0, camX, camY, camZ)` refreshes camera-relative visibility and LOD without advancing wind time, which is useful for paused scenes. `DrawVegetation` marks the blade material double-sided instead of mutating `Canvas3D`'s global backface-cull flag, and it must run inside the 3D `Canvas3D.Begin`/`End` section.
+Draw via `Canvas3D.DrawVegetation(vegetation)`. `SetSeed(seed)` pins reproducible scatter for subsequent `Populate` calls; omitting it uses a per-instance default seed. `Update(0.0, camX, camY, camZ)` refreshes camera-relative visibility and LOD without advancing wind time, which is useful for paused scenes. `DrawVegetation` marks the blade material double-sided instead of mutating `Canvas3D`'s global backface-cull flag, and it must run inside the 3D `Canvas3D.Begin`/`End` section.
 
 ### Zia Example
 
@@ -3386,6 +3387,7 @@ func start() {
     Vegetation3D.SetBladeSize(veg, 0.1, 0.4, 0.15);
     Vegetation3D.SetWindParams(veg, 1.2, 0.5, 0.3);
     Vegetation3D.SetLODDistances(veg, 30.0, 60.0);
+    Vegetation3D.SetSeed(veg, 12345);
     Vegetation3D.Populate(veg, cam, 50000);
 
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
@@ -3526,7 +3528,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, clamps clustered-light prefix/depth constants before shader upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and IBL mip payload extents before GPU upload, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting uses the real-time backend payload when the control map and all four layer textures are resident and falls back to CPU baking only for incomplete sets, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, clamps clustered-light prefix/depth constants before shader upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and IBL mip payload extents before GPU upload, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
 
 ## Performance Tips
 
@@ -3540,7 +3542,7 @@ Backend correctness rules are shared where possible: skinning weights are normal
 
 | Resource | Limit |
 |----------|-------|
-| Canvas dimensions | 8192 x 8192 |
+| Canvas dimensions | 16384 x 16384 |
 | Texture dimensions | 8192 x 8192 |
 | Mesh vertices | 16M (32-bit index buffer) |
 | Lights per scene | 8 |

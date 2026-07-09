@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/anim/rt_skeleton3d_matrix.inc  (#included from rt_skeleton3d.c; not a standalone translation unit)
-// Purpose: Skeleton3D float row-major matrix math helpers
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d_matrix.inc  (#included from rt_skeleton3d.c; not
+// a standalone translation unit) Purpose: Skeleton3D float row-major matrix math helpers
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Matrix math helpers (float, row-major)
@@ -185,11 +185,7 @@ static float animation3d_wrap_time(float time, float duration) {
 
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void mesh3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a retained Skeleton3D slot only if it still points at Skeleton3D.
@@ -197,7 +193,7 @@ static void mesh3d_release_skeleton_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_SKELETON3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     mesh3d_release_ref(slot);

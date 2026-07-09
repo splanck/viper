@@ -28,6 +28,7 @@
 #include "rt_action.h"
 #include "rt_canvas3d_clusters.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_graphics_internal.h"
 #include "rt_heap.h"
 #include "rt_input.h"
@@ -69,7 +70,7 @@ static const char CANVAS3D_FALLBACK_REASON_INIT_FAILED[] =
 
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
-#define CANVAS3D_MAX_DIMENSION 8192
+#define CANVAS3D_MAX_DIMENSION 16384
 #define CANVAS3D_FPS_SAMPLE_COUNT 32
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX 64
@@ -81,6 +82,7 @@ static const char CANVAS3D_FALLBACK_REASON_INIT_FAILED[] =
 #define CANVAS3D_MATERIAL_UV_ABS_MAX 1000000.0
 #define CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX 1000000.0
 #define CANVAS3D_MATERIAL_SHININESS_MAX 8192.0
+#define CANVAS3D_MATERIAL_EMISSIVE_COLOR_MAX 1000000.0
 #define CANVAS3D_MATERIAL_EMISSIVE_INTENSITY_MAX 1000000.0
 #define CANVAS3D_MATERIAL_NORMAL_SCALE_MAX 1000.0
 #define CANVAS3D_MATERIAL_DEPTH_BIAS_ABS_MAX 0.05
@@ -113,12 +115,11 @@ int8_t rt_canvas3d_is_available(void) {
 
 static void canvas3d_emit_backend_fallback_notice_once(const char *requested, const char *active) {
     int expected = 0;
-    if (!__atomic_compare_exchange_n(&g_canvas3d_backend_fallback_notice_emitted,
-                                     &expected,
-                                     1,
-                                     0,
-                                     __ATOMIC_ACQ_REL,
-                                     __ATOMIC_ACQUIRE))
+    if (!rt_atomic_compare_exchange_i32(&g_canvas3d_backend_fallback_notice_emitted,
+                                        &expected,
+                                        1,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE))
         return;
     fprintf(stderr,
             "Canvas3D.New: %s backend initialization failed; falling back to %s\n",
@@ -131,20 +132,12 @@ static void canvas3d_emit_backend_fallback_notice_once(const char *requested, co
 /// with
 ///          an acquire-release exchange across MSVC and GCC/Clang atomics.
 static rt_canvas3d *canvas3d_synthetic_owner_exchange(rt_canvas3d *c) {
-#if RT_COMPILER_MSVC
     return (rt_canvas3d *)rt_atomic_exchange_ptr(&g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
-#else
-    return (rt_canvas3d *)__atomic_exchange_n(&g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
-#endif
 }
 
 /// @brief Atomically load the current global synthetic-input owner (acquire ordering).
 static rt_canvas3d *canvas3d_synthetic_owner_load(void) {
-#if RT_COMPILER_MSVC
     return (rt_canvas3d *)rt_atomic_load_ptr(&g_canvas3d_synthetic_owner, __ATOMIC_ACQUIRE);
-#else
-    return (rt_canvas3d *)__atomic_load_n(&g_canvas3d_synthetic_owner, __ATOMIC_ACQUIRE);
-#endif
 }
 
 /// @brief CAS the synthetic-input owner from @p expected_owner to @p desired_owner.
@@ -152,17 +145,8 @@ static rt_canvas3d *canvas3d_synthetic_owner_load(void) {
 static int canvas3d_synthetic_owner_compare_exchange(rt_canvas3d *expected_owner,
                                                      rt_canvas3d *desired_owner) {
     void *expected = expected_owner;
-#if RT_COMPILER_MSVC
     return rt_atomic_compare_exchange_ptr(
         &g_canvas3d_synthetic_owner, &expected, desired_owner, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
-#else
-    return __atomic_compare_exchange_n(&g_canvas3d_synthetic_owner,
-                                       &expected,
-                                       desired_owner,
-                                       0,
-                                       __ATOMIC_ACQ_REL,
-                                       __ATOMIC_ACQUIRE);
-#endif
 }
 
 /// @brief Sanitize an input-source mode (0 live, 1 synthetic, 2 live+synthetic); out of
@@ -1322,11 +1306,7 @@ static void rt_canvas3d_on_resize(void *userdata, int32_t w, int32_t h) {
 /// Idempotent — safe to call on already-NULL slots. Used in the
 /// canvas finalizer to release every owned sub-object cleanly.
 static void canvas3d_release_owned_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Replace the GC-managed reference in `*slot` with `value`, retain/release as needed.
@@ -1493,6 +1473,10 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->last_light_snapshot);
     c->last_light_snapshot = NULL;
     c->last_light_snapshot_valid = 0;
+    free(c->frame_light_snapshots);
+    c->frame_light_snapshots = NULL;
+    c->frame_light_snapshot_count = 0;
+    c->frame_light_snapshot_capacity = 0;
     free(c->cluster_tables);
     c->cluster_tables = NULL;
     c->cluster_table_count = 0;
@@ -1529,6 +1513,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->occlusion_duplicate_counts);
     c->occlusion_duplicate_counts = NULL;
     c->occlusion_duplicate_count_capacity = 0;
+    free(c->shadow_draw_indices);
+    c->shadow_draw_indices = NULL;
+    c->shadow_draw_index_capacity = 0;
     /* Free any leftover temp buffers (e.g., from skinned draws) */
     canvas3d_clear_temp_buffers(c);
     free(c->temp_buffers);
@@ -1630,7 +1617,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         h = disp_h > 0 ? disp_h : 720;
     }
     if (w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION) {
-        rt_trap("Canvas3D.New: dimensions must be 1-8192");
+        rt_trap("Canvas3D.New: dimensions must be 1-16384");
         return NULL;
     }
     /* ADR 0065: make the Game.UI widgets canvas-polymorphic by registering the
@@ -2046,12 +2033,6 @@ int64_t rt_canvas3d_poll(void *obj) {
         }
         relative_native = (int8_t)(captured && rt_mouse_get_relative_native());
 
-        /* Read current platform mouse position. vgfx_mouse_pos() returns
-         * logical coordinates because Canvas3D enables coord_scale at window
-         * creation. Raw events below still arrive in physical pixels. */
-        int32_t mx, my;
-        vgfx_mouse_pos(c->gfx_win, &mx, &my);
-
         if (captured && relative_native) {
             /* Native raw deltas: unbounded, unaccelerated (platform-
              * dependent), sub-pixel. No warping needed. */
@@ -2059,20 +2040,10 @@ int64_t rt_canvas3d_poll(void *obj) {
             double rdy = 0.0;
             vgfx_get_relative_deltas(c->gfx_win, &rdx, &rdy);
             rt_mouse_force_delta_f(rdx, rdy);
-        } else if (captured) {
-            /* For captured (FPS) mode: compute delta as offset from window center.
-             * This avoids issues with warp timing, stale events, and OS mouse tracking. */
-            int32_t cw, ch;
-            vgfx_get_size(c->gfx_win, &cw, &ch);
-            int32_t cx = cw / 2, cy = ch / 2;
-            int64_t dx = (int64_t)((double)mx - (double)cx);
-            int64_t dy = (int64_t)((double)my - (double)cy);
-            rt_mouse_force_delta(dx, dy);
-        } else {
-            rt_canvas3d_update_mouse_from_logical(mx, my);
         }
 
-        /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
+        /* Process events before sampled fallback deltas so queued warp/move events are drained
+         * before the center-offset path reads the live cursor position. */
         vgfx_event_t evt;
         while (vgfx_poll_event(c->gfx_win, &evt)) {
             canvas3d_record_event_type(c, (int64_t)evt.type);
@@ -2115,8 +2086,18 @@ int64_t rt_canvas3d_poll(void *obj) {
             return 0;
         }
 
-        if (!captured) {
-            vgfx_mouse_pos(c->gfx_win, &mx, &my);
+        /* Read current platform mouse position. vgfx_mouse_pos() returns logical coordinates
+         * because Canvas3D enables coord_scale at window creation. */
+        int32_t mx, my;
+        vgfx_mouse_pos(c->gfx_win, &mx, &my);
+        if (captured && !relative_native) {
+            int32_t cw, ch;
+            vgfx_get_size(c->gfx_win, &cw, &ch);
+            int32_t cx = cw / 2, cy = ch / 2;
+            int64_t dx = (int64_t)((double)mx - (double)cx);
+            int64_t dy = (int64_t)((double)my - (double)cy);
+            rt_mouse_force_delta(dx, dy);
+        } else if (!captured) {
             rt_canvas3d_update_mouse_from_logical(mx, my);
         }
     }

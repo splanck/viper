@@ -630,7 +630,7 @@ static void sw_shadow_collect_task_run(void *arg) {
                                            task->half_w,
                                            task->half_h,
                                            &task->out)) {
-        __atomic_store_n(task->failed, 1, __ATOMIC_RELAXED);
+        rt_atomic_store_i32(task->failed, 1, __ATOMIC_RELAXED);
     }
 }
 
@@ -674,7 +674,7 @@ static int sw_shadow_collect_triangles_parallel(sw_context_t *ctx,
     sw_shadow_collect_task_run(&tasks[0]);
     if (submitted > 0)
         rt_threadpool_wait(ctx->worker_pool);
-    if (__atomic_load_n(&failed, __ATOMIC_RELAXED)) {
+    if (rt_atomic_load_i32(&failed, __ATOMIC_RELAXED)) {
         for (int32_t i = 0; i < task_count; i++)
             sw_shadow_tri_list_free(&tasks[i].out);
         return 0;
@@ -711,7 +711,7 @@ static void sw_shadow_raster_task_run(void *arg) {
     if (!task || !task->grid || !task->tris || !task->next_tile)
         return;
     for (;;) {
-        int32_t tile_index = __atomic_fetch_add(task->next_tile, 1, __ATOMIC_RELAXED);
+        int32_t tile_index = rt_atomic_fetch_add_i32(task->next_tile, 1, __ATOMIC_RELAXED);
         if (tile_index >= task->grid->active_count)
             break;
         tile_index = task->grid->active_indices[tile_index];

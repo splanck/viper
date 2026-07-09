@@ -564,18 +564,36 @@ static int navmesh3d_voxel_xz_bounds(const rt_mesh3d *src,
     return 1;
 }
 
+/// @brief Compute the maximum retained voxel-cell count allowed by the memory budget.
+/// @details A retained voxel cell owns two source triangles, two live triangles, amortized corner
+///   vertex storage, height/walkability, and corner-index data. Deriving the count from the actual
+///   C struct sizes prevents silent budget drift when nav-triangle metadata grows.
+static int64_t navmesh3d_voxel_cell_budget(void) {
+    size_t bytes_per_cell = 4u * sizeof(nav_triangle_t) + sizeof(nav_vertex_t) + sizeof(float) +
+                            sizeof(uint8_t) + sizeof(int32_t);
+    if (bytes_per_cell == 0)
+        return NAVMESH3D_VOXEL_MIN_CELLS;
+    size_t budget = (size_t)NAVMESH3D_VOXEL_TARGET_BYTES / bytes_per_cell;
+    if (budget < (size_t)NAVMESH3D_VOXEL_MIN_CELLS)
+        budget = (size_t)NAVMESH3D_VOXEL_MIN_CELLS;
+    if (budget > (size_t)NAVMESH3D_VOXEL_ABS_MAX_CELLS)
+        budget = (size_t)NAVMESH3D_VOXEL_ABS_MAX_CELLS;
+    return (int64_t)budget;
+}
+
 /// @brief Derive bounded voxel grid dimensions for the given spans, coarsening @p cell_size
-///        (in/out) until the grid fits the MAX_DIM/MAX_CELLS budget. @return 0 on failure.
+///        (in/out) until the grid fits the configured dimension and memory budgets.
+/// @return 0 on failure.
 static int navmesh3d_voxel_grid_dims(
     double span_x, double span_z, double *cell_size, int32_t *out_nx, int32_t *out_nz) {
-    const int64_t MAX_DIM = 128;
-    const int64_t MAX_CELLS = 16384;
+    const int64_t max_dim = NAVMESH3D_VOXEL_MAX_DIM;
+    const int64_t max_cells = navmesh3d_voxel_cell_budget();
     for (int guard = 0; guard < 64; guard++) {
         int64_t tnx = 0;
         int64_t tnz = 0;
         if (navmesh3d_voxel_dim_for_span(span_x, *cell_size, &tnx) &&
-            navmesh3d_voxel_dim_for_span(span_z, *cell_size, &tnz) && tnx <= MAX_DIM &&
-            tnz <= MAX_DIM && tnz > 0 && tnx <= MAX_CELLS / tnz)
+            navmesh3d_voxel_dim_for_span(span_z, *cell_size, &tnz) && tnx <= max_dim &&
+            tnz <= max_dim && tnz > 0 && tnx <= max_cells / tnz)
             break;
         *cell_size = navmesh3d_cell_size_or(*cell_size * 2.0, NAVMESH3D_CELL_SIZE_MAX);
         if (!isfinite(*cell_size))
@@ -586,7 +604,7 @@ static int navmesh3d_voxel_grid_dims(
     if (!navmesh3d_voxel_dim_for_span(span_x, *cell_size, &nx64) ||
         !navmesh3d_voxel_dim_for_span(span_z, *cell_size, &nz64))
         return 0;
-    if (nx64 > MAX_DIM || nz64 > MAX_DIM || nz64 <= 0 || nx64 > MAX_CELLS / nz64)
+    if (nx64 > max_dim || nz64 > max_dim || nz64 <= 0 || nx64 > max_cells / nz64)
         return 0;
     int32_t nx = (int32_t)nx64;
     int32_t nz = (int32_t)nz64;
@@ -955,10 +973,130 @@ int8_t rt_navmesh3d_check_query_grid_parity(void *obj) {
     return 1;
 }
 
+/// @brief Drop the cached per-triangle offmesh adjacency list.
+static void navmesh3d_clear_offmesh_adjacency(rt_navmesh3d *nm) {
+    if (!nm)
+        return;
+    free(nm->offmesh_adjacency_starts);
+    free(nm->offmesh_adjacency_edges);
+    nm->offmesh_adjacency_starts = NULL;
+    nm->offmesh_adjacency_edges = NULL;
+    nm->offmesh_adjacency_edge_count = 0;
+}
+
+/// @brief Pack an offmesh link index and direction bit for storage in the adjacency cache.
+/// @details Returns -1 when the link index cannot fit into the signed packed representation.
+static nav_offmesh_edge_ref_t navmesh3d_pack_offmesh_edge(int32_t link_index, int reverse) {
+    if (link_index < 0 || link_index > INT32_MAX / 2)
+        return -1;
+    return (nav_offmesh_edge_ref_t)((link_index << 1) | (reverse ? 1 : 0));
+}
+
+/// @brief Decode a packed offmesh adjacency reference into link index and reverse flag.
+/// @return 1 on success, 0 for malformed packed refs.
+static int navmesh3d_unpack_offmesh_edge(nav_offmesh_edge_ref_t edge,
+                                         int32_t *out_link_index,
+                                         int *out_reverse) {
+    if (edge < 0)
+        return 0;
+    if (out_link_index)
+        *out_link_index = edge >> 1;
+    if (out_reverse)
+        *out_reverse = edge & 1;
+    return 1;
+}
+
+/// @brief Rebuild the CSR offmesh-link adjacency cache from resolved link endpoint triangles.
+/// @details A* expands links from the current triangle. Without this cache it must scan every
+///   authored offmesh link for every expanded node. The cache stores only directed links incident
+///   on each triangle. Allocation failure clears the cache and leaves pathfinding to use the
+///   correct full-scan fallback.
+/// @return 1 when the cache is available or not needed, 0 when allocation failed.
+static int navmesh3d_build_offmesh_adjacency(rt_navmesh3d *nm) {
+    int32_t tri_count;
+    int32_t link_count;
+    int32_t directed_count = 0;
+    int32_t *starts = NULL;
+    int32_t *cursor = NULL;
+    nav_offmesh_edge_ref_t *edges = NULL;
+
+    navmesh3d_clear_offmesh_adjacency(nm);
+    if (!nm || !nm->offmesh_links || nm->offmesh_link_count <= 0 || nm->triangle_count <= 0)
+        return 1;
+    tri_count = nm->triangle_count;
+    link_count = navmesh3d_read_offmesh_link_count(nm);
+    if (link_count <= 0)
+        return 1;
+    if ((size_t)tri_count + 1u > SIZE_MAX / sizeof(int32_t))
+        return 0;
+
+    starts = (int32_t *)calloc((size_t)tri_count + 1u, sizeof(*starts));
+    if (!starts)
+        return 0;
+    for (int32_t i = 0; i < link_count; i++) {
+        const nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        if (link->from_tri >= 0 && link->from_tri < tri_count && link->to_tri >= 0 &&
+            link->to_tri < tri_count) {
+            starts[link->from_tri + 1]++;
+            directed_count++;
+        }
+        if (link->bidirectional && link->to_tri >= 0 && link->to_tri < tri_count &&
+            link->from_tri >= 0 && link->from_tri < tri_count) {
+            starts[link->to_tri + 1]++;
+            directed_count++;
+        }
+    }
+    if (directed_count <= 0) {
+        free(starts);
+        return 1;
+    }
+    for (int32_t i = 0; i < tri_count; i++)
+        starts[i + 1] += starts[i];
+    if ((size_t)directed_count > SIZE_MAX / sizeof(*edges) ||
+        (size_t)tri_count > SIZE_MAX / sizeof(*cursor)) {
+        free(starts);
+        return 0;
+    }
+    edges = (nav_offmesh_edge_ref_t *)malloc((size_t)directed_count * sizeof(*edges));
+    cursor = (int32_t *)malloc((size_t)tri_count * sizeof(*cursor));
+    if (!edges || !cursor) {
+        free(starts);
+        free(edges);
+        free(cursor);
+        return 0;
+    }
+    memcpy(cursor, starts, (size_t)tri_count * sizeof(*cursor));
+    for (int32_t i = 0; i < link_count; i++) {
+        const nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        nav_offmesh_edge_ref_t packed;
+        if (link->from_tri >= 0 && link->from_tri < tri_count && link->to_tri >= 0 &&
+            link->to_tri < tri_count) {
+            packed = navmesh3d_pack_offmesh_edge(i, 0);
+            if (packed >= 0)
+                edges[cursor[link->from_tri]++] = packed;
+        }
+        if (link->bidirectional && link->to_tri >= 0 && link->to_tri < tri_count &&
+            link->from_tri >= 0 && link->from_tri < tri_count) {
+            packed = navmesh3d_pack_offmesh_edge(i, 1);
+            if (packed >= 0)
+                edges[cursor[link->to_tri]++] = packed;
+        }
+    }
+    free(cursor);
+    nm->offmesh_adjacency_starts = starts;
+    nm->offmesh_adjacency_edges = edges;
+    nm->offmesh_adjacency_edge_count = directed_count;
+    return 1;
+}
+
 /// @brief Re-resolve authored off-mesh link endpoints against the current walkable triangle set.
 static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm) {
-    if (!nm || !nm->offmesh_links)
+    if (!nm)
         return;
+    if (!nm->offmesh_links || nm->offmesh_link_count <= 0) {
+        navmesh3d_clear_offmesh_adjacency(nm);
+        return;
+    }
     float max_dy = navmesh3d_vertical_tolerance(nm);
     for (int32_t i = 0; i < nm->offmesh_link_count; i++) {
         nav_offmesh_link_t *link = &nm->offmesh_links[i];
@@ -966,6 +1104,7 @@ static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm) {
             find_tri_with_max_dy(nm, link->from[0], link->from[1], link->from[2], max_dy);
         link->to_tri = find_tri_with_max_dy(nm, link->to[0], link->to[1], link->to[2], max_dy);
     }
+    (void)navmesh3d_build_offmesh_adjacency(nm);
 }
 
 /// @brief Return the authored link connecting two triangles, if any. Sets @p reverse for to->from.
@@ -977,6 +1116,28 @@ static const nav_offmesh_link_t *navmesh3d_find_offmesh_link(const rt_navmesh3d 
         *reverse = 0;
     if (!nm || !nm->offmesh_links)
         return NULL;
+    if (from_tri >= 0 && from_tri < nm->triangle_count && nm->offmesh_adjacency_starts &&
+        nm->offmesh_adjacency_edges && nm->offmesh_adjacency_edge_count > 0) {
+        int32_t begin = nm->offmesh_adjacency_starts[from_tri];
+        int32_t end = nm->offmesh_adjacency_starts[from_tri + 1];
+        for (int32_t ei = begin; ei < end; ei++) {
+            int32_t link_index = -1;
+            int edge_reverse = 0;
+            if (!navmesh3d_unpack_offmesh_edge(
+                    nm->offmesh_adjacency_edges[ei], &link_index, &edge_reverse))
+                continue;
+            if (link_index < 0 || link_index >= nm->offmesh_link_count)
+                continue;
+            const nav_offmesh_link_t *link = &nm->offmesh_links[link_index];
+            int32_t edge_to = edge_reverse ? link->from_tri : link->to_tri;
+            if (edge_to == to_tri) {
+                if (reverse)
+                    *reverse = edge_reverse;
+                return link;
+            }
+        }
+        return NULL;
+    }
     for (int32_t i = 0; i < nm->offmesh_link_count; i++) {
         const nav_offmesh_link_t *link = &nm->offmesh_links[i];
         if (link->from_tri == from_tri && link->to_tri == to_tri)

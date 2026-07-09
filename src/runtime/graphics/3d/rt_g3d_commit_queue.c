@@ -102,7 +102,7 @@ int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *obj,
     item->user_data = user_data;
     item->cost = cost;
     rt_concqueue_enqueue(queue->items, item);
-    __atomic_fetch_add(&queue->submitted, 1, __ATOMIC_RELAXED);
+    rt_atomic_fetch_add_i64(&queue->submitted, 1, __ATOMIC_RELAXED);
     return 1;
 }
 
@@ -171,7 +171,7 @@ int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t 
         }
     }
     if (count > 0)
-        __atomic_fetch_add(&queue->drained, count, __ATOMIC_RELAXED);
+        rt_atomic_fetch_add_i64(&queue->drained, count, __ATOMIC_RELAXED);
     return count;
 }
 
@@ -194,7 +194,7 @@ int64_t rt_g3d_commit_queue_submitted(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
         return 0;
-    int64_t submitted = __atomic_load_n(&queue->submitted, __ATOMIC_RELAXED);
+    int64_t submitted = rt_atomic_load_i64(&queue->submitted, __ATOMIC_RELAXED);
     return submitted > 0 ? submitted : 0;
 }
 
@@ -203,6 +203,6 @@ int64_t rt_g3d_commit_queue_drained(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
         return 0;
-    int64_t drained = __atomic_load_n(&queue->drained, __ATOMIC_RELAXED);
+    int64_t drained = rt_atomic_load_i64(&queue->drained, __ATOMIC_RELAXED);
     return drained > 0 ? drained : 0;
 }

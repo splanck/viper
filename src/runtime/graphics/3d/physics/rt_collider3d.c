@@ -40,6 +40,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_trap.h"
@@ -350,15 +351,10 @@ static void collider3d_finalizer(void *obj) {
     rt_collider3d *collider = (rt_collider3d *)obj;
     if (!collider)
         return;
-    if (collider->mesh && rt_obj_release_check0(collider->mesh))
-        rt_obj_free(collider->mesh);
-    collider->mesh = NULL;
+    rt_g3d_ref_slot_release_class(&collider->mesh, RT_G3D_MESH3D_CLASS_ID);
     int32_t child_count = collider3d_safe_child_count(collider, 0);
-    for (int32_t i = 0; i < child_count; ++i) {
-        if (collider->children[i] && rt_obj_release_check0(collider->children[i]))
-            rt_obj_free(collider->children[i]);
-        collider->children[i] = NULL;
-    }
+    for (int32_t i = 0; i < child_count; ++i)
+        rt_g3d_ref_slot_release_class(&collider->children[i], RT_G3D_COLLIDER3D_CLASS_ID);
     free(collider->children);
     free(collider->child_transforms);
     free(collider->heightfield_heights);
@@ -741,13 +737,12 @@ void *rt_collider3d_new_convex_hull_reduced(void *mesh, int64_t max_verts) {
         free(hull_indices);
         hull_verts = NULL;
         hull_indices = NULL;
-        ok = reduced_count >= 4 &&
-             rt_quickhull3d_build(reduced,
-                                  reduced_count,
-                                  &hull_verts,
-                                  &hull_vert_count,
-                                  &hull_indices,
-                                  &hull_index_count);
+        ok = reduced_count >= 4 && rt_quickhull3d_build(reduced,
+                                                        reduced_count,
+                                                        &hull_verts,
+                                                        &hull_vert_count,
+                                                        &hull_indices,
+                                                        &hull_index_count);
         free(reduced);
         if (!ok) {
             rt_trap("Collider3D.NewConvexHullReduced: hull reduction failed");

@@ -114,15 +114,14 @@ static int rt_rendertarget_reserve_budget(uint64_t bytes) {
         return 0;
     reserve_bytes = (size_t)bytes;
     for (;;) {
-        old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
+        old_value = rt_atomic_load_size(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
         if (old_value > budget_bytes - reserve_bytes)
             return 0;
-        if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
-                                        &old_value,
-                                        old_value + reserve_bytes,
-                                        0,
-                                        __ATOMIC_ACQ_REL,
-                                        __ATOMIC_RELAXED))
+        if (rt_atomic_compare_exchange_size(&g_rendertarget3d_reserved_bytes,
+                                            &old_value,
+                                            old_value + reserve_bytes,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_RELAXED))
             return 1;
     }
 }
@@ -137,14 +136,13 @@ static void rt_rendertarget_release_budget(uint64_t bytes) {
         return;
     release_bytes = bytes > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)bytes;
     for (;;) {
-        old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
+        old_value = rt_atomic_load_size(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
         size_t new_value = old_value > release_bytes ? old_value - release_bytes : 0u;
-        if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
-                                        &old_value,
-                                        new_value,
-                                        0,
-                                        __ATOMIC_ACQ_REL,
-                                        __ATOMIC_RELAXED))
+        if (rt_atomic_compare_exchange_size(&g_rendertarget3d_reserved_bytes,
+                                            &old_value,
+                                            new_value,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_RELAXED))
             return;
     }
 }
@@ -239,14 +237,15 @@ static rt_rendertarget3d *rendertarget3d_checked(void *obj) {
 ///          bound to a Canvas3D via rt_canvas3d_bind_render_target, all subsequent
 ///          Begin/DrawMesh/End calls render to this target instead of the window.
 ///          The result can be read back as a Pixels object via as_pixels.
-/// @param width  Target width in pixels (1–8192).
-/// @param height Target height in pixels (1–8192).
+/// @param width  Target width in pixels (1–VGFX3D_RENDERTARGET_DIM_MAX).
+/// @param height Target height in pixels (1–VGFX3D_RENDERTARGET_DIM_MAX).
 /// @return Opaque render target handle, or NULL on failure.
 static void *rt_rendertarget3d_new_with_format(int64_t width,
                                                int64_t height,
                                                vgfx3d_rendertarget_color_format_t color_format,
                                                const char *trap_name) {
-    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+    if (width <= 0 || height <= 0 || width > VGFX3D_RENDERTARGET_DIM_MAX ||
+        height > VGFX3D_RENDERTARGET_DIM_MAX) {
         rt_trap(trap_name);
         return NULL;
     }
@@ -278,14 +277,14 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
 
 /// @brief Allocate an LDR (8-bit per channel) off-screen render target.
 /// @details Thin wrapper around the shared constructor that selects the
-///   `UNORM8` color format. Dimensions outside 1-8192 trap with a descriptive
-///   message rather than silently clamping.
+///   `UNORM8` color format. Dimensions outside the supported render-target range
+///   trap with a descriptive message rather than silently clamping.
 /// @return Retained pointer to the new `rt_rendertarget3d`, or traps on failure.
 void *rt_rendertarget3d_new(int64_t width, int64_t height) {
     return rt_rendertarget3d_new_with_format(width,
                                              height,
                                              VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8,
-                                             "RenderTarget3D.New: dimensions must be 1-8192");
+                                             "RenderTarget3D.New: dimensions must be 1-16384");
 }
 
 /// @brief Allocate an HDR (16-bit float per channel) off-screen render target.
@@ -297,7 +296,7 @@ void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
     return rt_rendertarget3d_new_with_format(width,
                                              height,
                                              VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F,
-                                             "RenderTarget3D.NewHdr: dimensions must be 1-8192");
+                                             "RenderTarget3D.NewHdr: dimensions must be 1-16384");
 }
 
 /// @brief Get the width of the render target in pixels.

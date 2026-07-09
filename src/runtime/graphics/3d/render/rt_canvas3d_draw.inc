@@ -928,6 +928,7 @@ void rt_canvas3d_begin_2d(void *obj) {
     canvas3d_prune_motion_history(c);
     canvas3d_reset_frame_submission_stats(c);
     c->draw_count = 0;
+    canvas3d_reset_frame_light_snapshots(c);
     c->frame_is_2d = 1;
     c->last_texture_upload_bytes = 0;
     // Cache the full VP product so cached_vp has consistent semantics between
@@ -1365,6 +1366,7 @@ static void canvas3d_begin_camera_pass(void *obj,
             ring[ci].lights_revision = 0;
     }
     c->draw_count = 0;
+    canvas3d_reset_frame_light_snapshots(c);
     c->frame_is_2d = 0;
     c->frame_is_view_model = view_model_pass ? 1 : 0;
     c->last_instanced_fallback_count = 0;
@@ -1584,6 +1586,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
     dd->visible = 1;
+    dd->light_offset = -1;
     canvas3d_make_deferred_world_bounds_cache_key(
         &bounds_cache_key, mesh_obj ? mesh_obj : mesh, model_matrix);
 
@@ -1668,7 +1671,16 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     canvas3d_bind_morph_cmd(c, &dd->cmd, mesh, prev_morph_weights);
 
     /* Build light params */
-    dd->light_count = build_light_params(c, dd->lights, canvas3d_active_light_limit(c));
+    {
+        vgfx3d_light_params_t light_scratch[VGFX3D_MAX_LIGHTS];
+        dd->light_count = build_light_params(c, light_scratch, canvas3d_active_light_limit(c));
+        dd->lights = canvas3d_store_frame_light_snapshot(
+            c, light_scratch, dd->light_count, &dd->light_offset);
+        if (dd->light_count > 0 && !dd->lights) {
+            rt_trap("Canvas3D.DrawMesh: light snapshot allocation failed");
+            goto fail_after_refs;
+        }
+    }
     dd->cmd.lights_revision = canvas3d_stamp_light_snapshot(c, dd->lights, dd->light_count);
     /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
     dd->cmd.cluster_table = canvas3d_cluster_table_for_revision(

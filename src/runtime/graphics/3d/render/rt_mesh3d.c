@@ -28,6 +28,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_file_stdio.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
@@ -753,33 +754,30 @@ static void mesh_default_tangent_from_normal(const float *normal, float *tangent
 ///   the `morph_targets_ref` field. The slot is cleared to NULL after release so a
 ///   subsequent assignment can't accidentally double-release.
 static void mesh_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release an owned Skeleton3D slot only when it still stores a Skeleton3D.
-/// @details Wrong-class private state is cleared without releasing the object because the mesh
-///          cannot prove the corrupted slot owns that unrelated handle.
+/// @details Wrong-class private state is treated as borrowed corruption and cleared without
+///          releasing; matching Skeleton3D slots are owned and released normally.
 static void mesh_release_skeleton_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_SKELETON3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     mesh_release_ref(slot);
 }
 
 /// @brief Release an owned MorphTarget3D slot only when it still stores a MorphTarget3D.
-/// @details Wrong-class private state is cleared without releasing the unrelated object.
+/// @details Wrong-class private state is treated as borrowed corruption and cleared without
+///          releasing; matching MorphTarget3D slots are owned and released normally.
 static void mesh_release_morph_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, RT_G3D_MORPHTARGET3D_CLASS_ID)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     mesh_release_ref(slot);
@@ -803,7 +801,7 @@ static void mesh_assign_morph_ref(void **slot, void *value) {
     *slot = value;
 }
 
-/// @brief Clear corrupted animation refs without releasing unrelated private handles.
+/// @brief Release and clear corrupted animation refs.
 static void mesh_repair_animation_refs(rt_mesh3d *m) {
     if (!m)
         return;

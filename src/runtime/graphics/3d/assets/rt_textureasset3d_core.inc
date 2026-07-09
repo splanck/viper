@@ -118,11 +118,7 @@ static int64_t textureasset3d_safe_mip_count(const rt_textureasset3d *asset) {
 
 /// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void textureasset3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Release a decoded mip fallback only if it is still a live Pixels object.
@@ -130,7 +126,7 @@ static void textureasset3d_release_pixels_ref(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_pixels_checked_impl_or_null(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     textureasset3d_release_ref(slot);

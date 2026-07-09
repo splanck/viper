@@ -19,6 +19,7 @@
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_mat4.h"
@@ -55,7 +56,7 @@ static void scene_node_release_class_slot(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;
     if (!rt_g3d_has_class(*slot, class_id)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     scene3d_release_ref(slot);
@@ -66,7 +67,7 @@ static void scene_node_release_pixels_slot(void **slot) {
     if (!slot || !*slot)
         return;
     if (!rt_pixels_checked_impl_or_null(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned(slot);
         return;
     }
     scene3d_release_ref(slot);
@@ -77,7 +78,7 @@ static void scene_node_release_string_slot(rt_string *slot) {
     if (!slot || !*slot)
         return;
     if (!rt_string_is_handle(*slot)) {
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)slot);
         return;
     }
     scene3d_release_ref((void **)slot);
@@ -103,7 +104,7 @@ static void scene_node_repair_class_slot(void **slot, int64_t class_id) {
 /// @brief Clear one string slot if it no longer points at an rt_string handle.
 static void scene_node_repair_string_slot(rt_string *slot) {
     if (slot && *slot && !rt_string_is_handle(*slot))
-        *slot = NULL;
+        rt_g3d_ref_slot_clear_unowned((void **)slot);
 }
 
 /// @brief Class-checked cast of an opaque handle to a SceneNode3D, or NULL on mismatch.

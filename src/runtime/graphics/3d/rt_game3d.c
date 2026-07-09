@@ -47,6 +47,7 @@
 #include "rt_decal3d.h"
 #include "rt_file_stdio.h"
 #include "rt_g3d_commit_queue.h"
+#include "rt_g3d_ref_slots.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_heap.h"
@@ -156,10 +157,10 @@ static void *g_game3d_asset_commit_queue = NULL;
 #else
 #define GAME3D_UNUSED_PRIVATE
 #endif
-/* Animator3D updates can allocate/release runtime strings while sampling events and root motion.
- * Keep those updates on the main thread until those runtime paths are explicitly audited as
- * worker-thread safe. */
-#define RT_GAME3D_PARALLEL_ANIMATOR_UPDATES 0
+/* Animator3D sampling owns per-controller scratch, drains events into per-animator buffers, and
+ * applies root motion only to that animator's bound node. The world animation gather pass dedupes
+ * shared animators before partitioning, so each worker updates a disjoint controller set. */
+#define RT_GAME3D_PARALLEL_ANIMATOR_UPDATES 1
 static uint64_t g_game3d_asset_upload_budget_bytes = RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES;
 
 #if RT_PLATFORM_WINDOWS
@@ -539,12 +540,7 @@ static void game3d_world_restore_run_frames_canvas(void *canvas_obj,
 /// @brief Release the object held in `*slot`, free it if its refcount hits zero,
 ///   and clear the slot to NULL. Safe on NULL slot or empty slot.
 void game3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    void *obj = *slot;
-    *slot = NULL;
-    if (rt_obj_release_check0(obj))
-        rt_obj_free(obj);
+    rt_g3d_ref_slot_release(slot);
 }
 
 /// @brief Retain `value` then release the previous occupant of `*slot` and store it.
@@ -558,18 +554,18 @@ void game3d_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
-/// @brief Release an owned slot only when its current object still has the expected class.
-/// @details Wrong-class private state is treated as corruption and cleared without touching the
-///          referenced object's refcount, avoiding accidental release of an unrelated handle that
-///          this slot cannot prove it retained.
+/// @brief Release an owned typed slot, or clear wrong-class private corruption.
+/// @details Matching slots are owned retained references. Wrong-class private state is treated as a
+///          borrowed corruption sentinel and cleared without releasing so tests and defensive
+///          repair paths never drop a handle they did not retain.
 void game3d_release_typed_ref(void **slot, int64_t class_id) {
-    void *obj;
     if (!slot || !*slot)
         return;
-    obj = *slot;
-    *slot = NULL;
-    if (rt_g3d_has_class(obj, class_id) && rt_obj_release_check0(obj))
-        rt_obj_free(obj);
+    if (!rt_g3d_has_class(*slot, class_id)) {
+        rt_g3d_ref_slot_clear_unowned(slot);
+        return;
+    }
+    game3d_release_ref(slot);
 }
 
 /// @brief Retain a typed value, release the previous typed occupant, and store it.

@@ -29,6 +29,7 @@
 
 #if defined(__linux__) && defined(VIPER_ENABLE_GRAPHICS)
 
+#include "rt_platform.h"
 #include "rt_textureasset3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
@@ -506,11 +507,11 @@ static int gl_load_lock = 0;
 /// The OpenGL backend keeps a single libGL/GLX function table shared by every
 /// Canvas3D context in the process. Backend creation can happen from more than
 /// one thread, so the dispatch resolver must be serialized without adding a new
-/// library dependency to the runtime. The GCC/Clang atomic builtins are already
-/// available on this Linux-only backend and provide a small spin lock here.
+/// library dependency to the runtime. The platform atomic wrapper keeps this
+/// code aligned with the portable runtime atomic policy.
 static void gl_dispatch_lock(void) {
     int spins = 0;
-    while (__sync_lock_test_and_set(&gl_load_lock, 1)) {
+    while (rt_atomic_test_and_set(&gl_load_lock, __ATOMIC_ACQUIRE)) {
         if (++spins >= 1024) {
             sched_yield();
             spins = 0;
@@ -520,7 +521,7 @@ static void gl_dispatch_lock(void) {
 
 /// @brief Release the process-global OpenGL dispatch table lock.
 static void gl_dispatch_unlock(void) {
-    __sync_lock_release(&gl_load_lock);
+    rt_atomic_clear(&gl_load_lock, __ATOMIC_RELEASE);
 }
 
 /// @brief Reset the global libGL/GLX dispatch state after a failed dynamic-load attempt.

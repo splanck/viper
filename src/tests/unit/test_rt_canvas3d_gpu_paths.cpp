@@ -100,8 +100,9 @@ typedef struct {
     vgfx3d_draw_cmd_t cmd;
     const float *instance_matrices;
     int32_t instance_count;
-    vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
+    vgfx3d_light_params_t *lights;
     int32_t light_count;
+    int32_t light_offset;
     float ambient[3];
     int8_t wireframe;
     int8_t backface_cull;

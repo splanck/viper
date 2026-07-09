@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/world/rt_terrain3d_build.inc  (#included from rt_terrain3d.c; not a standalone translation unit)
-// Purpose: Terrain3D construction, splat map/texture, and chunk surface/skirt building
+// File: src/runtime/graphics/3d/world/rt_terrain3d_build.inc  (#included from rt_terrain3d.c; not a
+// standalone translation unit) Purpose: Terrain3D construction, splat map/texture, and chunk
+// surface/skirt building
 //===----------------------------------------------------------------------===//
 /// @brief Construct a `width × depth` heightmap terrain (heights initially zero). Allocates
 /// chunked mesh caches at three LOD levels plus per-chunk AABB storage. Default scale 1×1×1,
@@ -334,6 +335,20 @@ static void terrain_clear_invalid_splat_state(rt_terrain3d *t) {
         t->splat_map = NULL;
     terrain_restore_material_base_texture(t);
     terrain_release_texture_slot(&t->baked_texture);
+    t->splat_dirty = 0;
+}
+
+/// @brief Drop stale CPU splat-bake state when the complete real-time splat path can render.
+/// @details A terrain with a valid control map and all four layer textures no longer needs a
+///          pre-blended material texture. Restoring the base texture avoids leaving an old baked
+///          fallback bound after authors repair a previously incomplete splat setup.
+static void terrain_use_realtime_splat_state(rt_terrain3d *t) {
+    if (!t)
+        return;
+    if (t->baked_texture) {
+        terrain_restore_material_base_texture(t);
+        terrain_release_texture_slot(&t->baked_texture);
+    }
     t->splat_dirty = 0;
 }
 
@@ -1092,9 +1107,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
 }
 
 /// @brief Build one chunk LOD if its mesh slot is empty or corrupt.
-/// @details The generated AABB is written to the matching per-LOD bounds array. Wrong-class private
-///   mesh slots are cleared without releasing them, matching the terrain finalizer's defensive slot
-///   policy. Returns true only when both a checked Mesh3D and valid AABB are resident afterward.
+/// @details The generated AABB is written to the matching per-LOD bounds array. Stale private mesh
+///   slots are repaired through the retained Graphics3D slot helper so wrong-class heap handles are
+///   released only when they are owned retained objects. Returns true only when both a checked
+///   Mesh3D and valid AABB are resident afterward.
 static int terrain_build_chunk_lod_if_missing(
     rt_terrain3d *t, int32_t cx, int32_t cz, int32_t chunk_index, int32_t lod) {
     void **array;
