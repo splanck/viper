@@ -353,8 +353,48 @@ static void test_particles_expire_after_lifetime() {
     rt_particles3d_burst(ps, 4);
     assert(rt_particles3d_get_count(ps) == 4);
 
+    // Render-then-reap: the update that exhausts a particle's life pins it at its exact
+    // age=1 end state for one final rendered frame; the following update reaps it.
+    rt_particles3d_update(ps, 0.2);
+    assert(rt_particles3d_get_count(ps) == 4);
     rt_particles3d_update(ps, 0.2);
     assert(rt_particles3d_get_count(ps) == 0);
+}
+
+static void test_particle_final_frame_renders_end_state() {
+    void *ps = rt_particles3d_new(4);
+    assert(ps != nullptr);
+    ParticlesView *view = static_cast<ParticlesView *>(ps);
+
+    rt_particles3d_set_lifetime(ps, 0.1, 0.1);
+    rt_particles3d_set_size(ps, 0.5, 2.5);
+    rt_particles3d_set_alpha(ps, 1.0, 0.8);                    // does NOT fade to zero
+    rt_particles3d_set_color(ps, 0xFFFFFFll, 0x336699ll);      // end = (0.2, 0.4, 0.6)
+    rt_particles3d_burst(ps, 1);
+    assert(rt_particles3d_get_count(ps) == 1);
+
+    // Exhaust the lifetime in one step: the particle must survive this update pinned at
+    // its end state so the nonzero end alpha/color actually reaches the screen.
+    rt_particles3d_update(ps, 0.2);
+    assert(rt_particles3d_get_count(ps) == 1);
+    struct RealParticleView {
+        double pos[3];
+        double vel[3];
+        float color[4];
+        float size;
+        float life;
+        float max_life;
+    };
+    const RealParticleView *p = static_cast<const RealParticleView *>(view->particles);
+    assert(p[0].life == 0.0f);
+    assert(std::fabs(p[0].size - 2.5f) < 1e-6f);
+    assert(std::fabs(p[0].color[0] - 0.2f) < 0.01f);
+    assert(std::fabs(p[0].color[1] - 0.4f) < 0.01f);
+    assert(std::fabs(p[0].color[2] - 0.6f) < 0.01f);
+    assert(std::fabs(p[0].color[3] - 0.8f) < 1e-6f);
+
+    rt_particles3d_update(ps, 0.016);
+    assert(rt_particles3d_get_count(ps) == 0); // reaped after its end-state frame
 }
 
 static void test_update_clamps_large_finite_delta_time() {
@@ -607,6 +647,7 @@ int main() {
     test_burst_caps_to_available_pool();
     test_start_stop_and_update_spawns_particles();
     test_particles_expire_after_lifetime();
+    test_particle_final_frame_renders_end_state();
     test_update_clamps_large_finite_delta_time();
     test_setters_sanitize_nonfinite_ranges();
     test_rebase_origin_shifts_emitter_and_live_particles();

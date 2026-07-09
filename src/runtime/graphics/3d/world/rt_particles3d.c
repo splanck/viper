@@ -1103,10 +1103,28 @@ void rt_particles3d_update(void *o, double delta_time) {
             particles3d_swap_kill(ps, i);
             continue;
         }
+        if (p->life <= 0.0f) {
+            /* Already rendered its final age=1 frame last update — reap now.
+             * Kill: swap with last alive particle (O(1) unstable removal) */
+            particles3d_swap_kill(ps, i);
+            continue;
+        }
         p->life -= dtf;
         if (p->life <= 0.0f) {
-            /* Kill: swap with last alive particle (O(1) unstable removal) */
-            particles3d_swap_kill(ps, i);
+            /* Render-then-reap: pin the particle at its exact end state for one final frame.
+             * Emitters that do not fade to zero (additive glow, nonzero end alpha) end on a
+             * deterministic frame instead of popping out mid-brightness one step early. */
+            p->life = 0.0f;
+            p->size = (float)size_end;
+            p->color[0] = color_end[0];
+            p->color[1] = color_end[1];
+            p->color[2] = color_end[2];
+            p->color[3] = (float)alpha_end;
+            if (!particle_state_is_finite(p)) {
+                particles3d_swap_kill(ps, i);
+                continue;
+            }
+            i++;
             continue;
         }
 

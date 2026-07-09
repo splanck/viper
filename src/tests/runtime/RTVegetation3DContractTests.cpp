@@ -37,6 +37,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 namespace {
 
@@ -79,6 +80,15 @@ struct VegetationView {
     int32_t visible_count;
     int32_t visible_capacity;
     uint32_t scatter_seed;
+    int32_t *grid_cell_start;
+    int32_t *grid_indices;
+    int32_t grid_cells_x;
+    int32_t grid_cells_z;
+    float grid_min_x;
+    float grid_min_z;
+    float grid_cell_w;
+    float grid_cell_d;
+    int32_t grid_ready;
 };
 
 // Layout the local terrain_view in rt_vegetation3d_populate casts the handle to.
@@ -533,6 +543,153 @@ static void test_setters_sanitize_nonfinite_inputs() {
     assert(v->size_variation == 1.0); // clamped to [0,1]
 }
 
+// Collect the visible set as exact (x, z) translation keys. Translations are copied verbatim
+// from base_transforms, so identical blades produce bit-identical keys across updates.
+static void collect_visible_keys(const VegetationView *v,
+                                 std::pair<float, float> *keys,
+                                 int32_t *count) {
+    *count = v->visible_count;
+    for (int32_t i = 0; i < v->visible_count; i++) {
+        keys[i] = {v->visible_transforms[i * 16 + 3], v->visible_transforms[i * 16 + 11]};
+    }
+}
+
+static bool key_present(const std::pair<float, float> *keys, int32_t count,
+                        std::pair<float, float> key) {
+    for (int32_t i = 0; i < count; i++) {
+        if (keys[i] == key)
+            return true;
+    }
+    return false;
+}
+
+// Regression for the non-monotone skip-stride thinning: as the camera recedes (every blade's
+// distance strictly increasing), the visible set must only shrink — a blade that dropped out
+// must never reappear at a larger distance. The old `hash % skip` test swapped cohorts at each
+// stride boundary and fails this.
+static void test_lod_thinning_is_monotone_with_distance() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    VegetationView *v = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    rt_vegetation3d_populate(veg, &terrain, 400);
+    rt_vegetation3d_set_lod_distances(veg, 10.0, 120.0);
+    rt_vegetation3d_set_wind_params(veg, 0.0, 0.0, 0.0);
+
+    // Camera starts beyond the field's +X edge (blades span x in [2, 62]) and walks away
+    // along +X, so every blade's distance is strictly increasing step to step.
+    static std::pair<float, float> prev_keys[400];
+    static std::pair<float, float> cur_keys[400];
+    int32_t prev_count = -1;
+    for (int step = 0; step < 60; step++) {
+        double cam_x = 70.0 + 2.0 * step;
+        rt_vegetation3d_update(veg, 0.0, cam_x, 0.0, 32.0);
+        int32_t cur_count = 0;
+        collect_visible_keys(v, cur_keys, &cur_count);
+        if (prev_count >= 0) {
+            assert(cur_count <= prev_count); // set can only shrink
+            for (int32_t i = 0; i < cur_count; i++)
+                assert(key_present(prev_keys, prev_count, cur_keys[i]));
+        }
+        std::memcpy(prev_keys, cur_keys, sizeof(cur_keys[0]) * static_cast<size_t>(cur_count));
+        prev_count = cur_count;
+    }
+    assert(prev_count == 0); // far enough that everything has faded out
+    g_terrain = nullptr;
+}
+
+// Blades in the outer LOD band must shrink (scale fade) instead of holding full size until the
+// hard cull. With wind disabled the visible transform is exactly base * fade, so comparing the
+// 3x3 basis magnitude against the matching base transform detects the fade.
+static void test_lod_far_band_fades_scale() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    VegetationView *v = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    rt_vegetation3d_populate(veg, &terrain, 300);
+    rt_vegetation3d_set_wind_params(veg, 0.0, 0.0, 0.0);
+    const double lod_near = 5.0;
+    const double lod_far = 40.0;
+    rt_vegetation3d_set_lod_distances(veg, lod_near, lod_far);
+    const double cam_x = 32.0;
+    const double cam_z = 32.0;
+    rt_vegetation3d_update(veg, 0.0, cam_x, 0.0, cam_z);
+    assert(v->visible_count > 0);
+
+    const double fade_start_dist = lod_near + 0.85 * (lod_far - lod_near);
+    int faded_seen = 0;
+    for (int32_t i = 0; i < v->visible_count; i++) {
+        const float *m = &v->visible_transforms[i * 16];
+        // Match the source blade by exact translation.
+        const float *base = nullptr;
+        for (int32_t b = 0; b < v->total_count; b++) {
+            const float *bm = &v->base_transforms[b * 16];
+            if (bm[3] == m[3] && bm[11] == m[11]) {
+                base = bm;
+                break;
+            }
+        }
+        assert(base != nullptr);
+        double dx = static_cast<double>(m[3]) - cam_x;
+        double dz = static_cast<double>(m[11]) - cam_z;
+        double dist = std::sqrt(dx * dx + dz * dz);
+        double norm_vis = 0.0, norm_base = 0.0;
+        static const int basis_idx[9] = {0, 1, 2, 4, 5, 6, 8, 9, 10};
+        for (int k = 0; k < 9; k++) {
+            norm_vis += static_cast<double>(m[basis_idx[k]]) * m[basis_idx[k]];
+            norm_base += static_cast<double>(base[basis_idx[k]]) * base[basis_idx[k]];
+        }
+        if (dist > fade_start_dist + 0.5) {
+            assert(norm_vis < norm_base - 1e-6); // shrinking toward the far edge
+            faded_seen++;
+        } else if (dist < fade_start_dist - 0.5) {
+            assert(std::fabs(norm_vis - norm_base) < 1e-6); // untouched inside the band
+        }
+    }
+    assert(faded_seen > 0); // the fixture actually exercised the fade band
+    g_terrain = nullptr;
+}
+
+// A camera far outside the field's grid bounds must still see every blade when lod_far covers
+// the whole field (guards the grid cell-range clamping).
+static void test_camera_outside_field_still_sees_blades() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    VegetationView *v = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    rt_vegetation3d_populate(veg, &terrain, 128);
+    rt_vegetation3d_set_lod_distances(veg, 5000.0, 6000.0); // near band covers everything
+    rt_vegetation3d_update(veg, 0.0, 200.0, 0.0, -150.0);   // outside the populated area
+    assert(v->visible_count == v->total_count);
+    g_terrain = nullptr;
+}
+
+// Re-populating must invalidate and rebuild the spatial grid.
+static void test_grid_rebuilds_after_repopulate() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    VegetationView *v = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(64, 64);
+    g_terrain = &terrain;
+
+    rt_vegetation3d_populate(veg, &terrain, 100);
+    rt_vegetation3d_set_lod_distances(veg, 1000.0, 2000.0);
+    rt_vegetation3d_update(veg, 0.0, 32.0, 0.0, 32.0);
+    assert(v->grid_ready == 1);
+    assert(v->grid_cell_start != nullptr);
+    assert(v->grid_indices != nullptr);
+    assert(v->visible_count == 100);
+
+    rt_vegetation3d_populate(veg, &terrain, 60);
+    assert(v->grid_ready == 0); // population change invalidates the grid
+    rt_vegetation3d_update(veg, 0.0, 32.0, 0.0, 32.0);
+    assert(v->grid_ready == 1);
+    assert(v->visible_count == 60); // rebuilt grid still reaches every blade
+    g_terrain = nullptr;
+}
+
 int main() {
     test_new_builds_blade_mesh_and_defaults();
     test_populate_scatters_requested_count();
@@ -547,6 +704,10 @@ int main() {
     test_draw_is_noop_outside_frame();
     test_set_blade_size_rebuilds_mesh();
     test_setters_sanitize_nonfinite_inputs();
+    test_lod_thinning_is_monotone_with_distance();
+    test_lod_far_band_fades_scale();
+    test_camera_outside_field_still_sees_blades();
+    test_grid_rebuilds_after_repopulate();
     std::printf("RTVegetation3DContractTests passed.\n");
     return 0;
 }

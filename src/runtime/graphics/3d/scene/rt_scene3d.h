@@ -109,6 +109,36 @@ int8_t rt_scene_node3d_get_world_position_components(void *node, double *x, doub
 void *rt_scene_node3d_get_world_rotation(void *node);
 /// @brief Get the node's world-space scale magnitudes as a Vec3.
 void *rt_scene_node3d_get_world_scale(void *node);
+/// @brief Get the local position as raw components (1 on success, 0 on invalid node).
+int8_t rt_scene_node3d_get_position_components(void *node, double *x, double *y, double *z);
+/// @brief Get the local rotation quaternion as raw components (1 on success, 0 on invalid node).
+int8_t
+rt_scene_node3d_get_rotation_components(void *node, double *x, double *y, double *z, double *w);
+/// @brief Get the world rotation quaternion as raw components (1 on success, 0 on invalid node).
+int8_t rt_scene_node3d_get_world_rotation_components(
+    void *node, double *x, double *y, double *z, double *w);
+/// @brief Get the local scale as raw components (1 on success, 0 on invalid node).
+int8_t rt_scene_node3d_get_scale_components(void *node, double *x, double *y, double *z);
+/// @brief Get the world scale magnitudes as raw components (1 on success, 0 on invalid node).
+int8_t rt_scene_node3d_get_world_scale_components(void *node, double *x, double *y, double *z);
+/// @brief Copy the world matrix into @p out (row-major 16 doubles); 1 on success.
+int8_t rt_scene_node3d_get_world_matrix_components(void *node, double out[16]);
+/// @brief Set position, rotation (quaternion components), and scale in one call.
+void rt_scene_node3d_set_transform(void *node,
+                                   double px,
+                                   double py,
+                                   double pz,
+                                   double qx,
+                                   double qy,
+                                   double qz,
+                                   double qw,
+                                   double sx,
+                                   double sy,
+                                   double sz);
+/// @brief Apply packed TRS values (10 floats per node) to a list of nodes in one call.
+void rt_scene_node3d_set_transform_batch(void *nodes, void *values);
+/// @brief SceneGraph.SetNodeTransforms: batch-apply packed TRS values through a scene handle.
+void rt_scene3d_set_node_transforms(void *scene, void *nodes, void *values);
 /// @brief Attach @p child as a child of @p node (detaches from any prior parent).
 void rt_scene_node3d_add_child(void *node, void *child);
 /// @brief Attach @p child as a child of @p node, returning 1 when the child is parented there.

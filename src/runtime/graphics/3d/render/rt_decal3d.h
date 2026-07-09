@@ -30,6 +30,8 @@ extern "C" {
 void *rt_decal3d_new(void *position, void *normal, double size, void *texture);
 /// @brief Set the decal's lifetime in seconds (it expires after this long).
 void rt_decal3d_set_lifetime(void *decal, double seconds);
+/// @brief Override the constant depth bias (negative pulls toward camera; 0 = auto).
+void rt_decal3d_set_depth_bias(void *decal, double bias);
 /// @brief Advance the decal's age by @p dt seconds.
 void rt_decal3d_update(void *decal, double dt);
 /// @brief Whether the decal has exceeded its lifetime and should be removed.

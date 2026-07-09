@@ -80,6 +80,32 @@ static void test_from_euler() {
     void *q = rt_quat_from_euler(0.0, 0.0, 0.0);
     assert(approx_eq(rt_quat_len(q), 1.0));
     assert(approx_eq(rt_quat_w(q), 1.0));
+
+    /* Axis mapping must match Transform3D.SetEuler: pitch -> X, yaw -> Y, roll -> Z. */
+    void *pitch_q = rt_quat_from_euler(PI / 2.0, 0.0, 0.0);
+    assert(approx_eq(rt_quat_x(pitch_q), sin(PI / 4.0)));
+    assert(approx_eq(rt_quat_y(pitch_q), 0.0));
+    assert(approx_eq(rt_quat_z(pitch_q), 0.0));
+    assert(approx_eq(rt_quat_w(pitch_q), cos(PI / 4.0)));
+
+    void *yaw_q = rt_quat_from_euler(0.0, PI / 2.0, 0.0);
+    assert(approx_eq(rt_quat_x(yaw_q), 0.0));
+    assert(approx_eq(rt_quat_y(yaw_q), sin(PI / 4.0)));
+    assert(approx_eq(rt_quat_z(yaw_q), 0.0));
+    assert(approx_eq(rt_quat_w(yaw_q), cos(PI / 4.0)));
+
+    void *roll_q = rt_quat_from_euler(0.0, 0.0, PI / 2.0);
+    assert(approx_eq(rt_quat_x(roll_q), 0.0));
+    assert(approx_eq(rt_quat_y(roll_q), 0.0));
+    assert(approx_eq(rt_quat_z(roll_q), sin(PI / 4.0)));
+    assert(approx_eq(rt_quat_w(roll_q), cos(PI / 4.0)));
+
+    /* Yaw must match the equivalent axis-angle rotation exactly. */
+    void *axis_y = rt_quat_from_axis_angle(rt_vec3_new(0.0, 1.0, 0.0), PI / 2.0);
+    assert(approx_eq(rt_quat_x(yaw_q), rt_quat_x(axis_y)));
+    assert(approx_eq(rt_quat_y(yaw_q), rt_quat_y(axis_y)));
+    assert(approx_eq(rt_quat_z(yaw_q), rt_quat_z(axis_y)));
+    assert(approx_eq(rt_quat_w(yaw_q), rt_quat_w(axis_y)));
     printf("test_from_euler: PASSED\n");
 }
 

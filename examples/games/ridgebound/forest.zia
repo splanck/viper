@@ -227,7 +227,7 @@ class RidgeboundForest {
         ent.Layer = Layers.get_World();
         applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
         ent.SetScaleXYZ(scale, scale, scale);
-        ent.SetRotationEuler(yawDeg, 0.0, 0.0);
+        ent.SetRotationEuler(0.0, yawDeg, 0.0);
         ent.SetPosition(x, y, z);
         // Screen-size-driven LOD: distant maples simplify automatically.
         ent.Node.SetAutoLOD(true, config.FOREST_LOD_ERROR_PX);
@@ -268,7 +268,9 @@ class RidgeboundForest {
         var branch: Entity3D = Prefab.Cylinder(radius, length, 12, barkMat);
         branch.Name = "procedural_maple_branch";
         branch.Layer = Layers.get_World();
-        branch.SetRotationEuler(pitchDeg, yawDeg, 38.0);
+        // Args permuted when SetRotationEuler's axis convention was fixed, preserving the
+        // originally tuned branch orientation (old (A,B,C) == fixed (C,A,B)).
+        branch.SetRotationEuler(38.0, pitchDeg, yawDeg);
         branch.SetPosition(x + Sin(yawDeg * 0.0174533) * length * 0.18, y + length * 0.18, z + Cos(yawDeg * 0.0174533) * length * 0.18);
         world.Spawn(branch);
     }
@@ -293,7 +295,9 @@ class RidgeboundForest {
         var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
         plate.Name = "procedural_maple_leaf_plate";
         plate.Layer = Layers.get_World();
-        plate.SetRotationEuler(6.0, yawDeg, 11.0);
+        // Args permuted when SetRotationEuler's axis convention was fixed, preserving the
+        // originally tuned leaf-plate orientation (old (A,B,C) == fixed (C,A,B)).
+        plate.SetRotationEuler(11.0, 6.0, yawDeg);
         plate.SetPosition(wx, y + scaleCanopyBase(radius) + lift * radius, wz);
         world.Spawn(plate);
     }

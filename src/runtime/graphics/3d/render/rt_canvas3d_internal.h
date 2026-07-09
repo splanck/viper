@@ -873,6 +873,9 @@ typedef struct {
     int32_t trans_capacity;
     void *sort_cmds; /* reusable deferred stable-sort scratch buffer */
     int32_t sort_capacity;
+    uint64_t *sort_keys;         /* cached radix keys, evaluated once per draw per sort */
+    uint64_t *sort_keys_scratch; /* scatter companion for sort_keys */
+    int32_t sort_key_capacity;
     void *final_overlay_cmds; /* dynamic array of deferred_draw_t, replayed after post-FX */
     int32_t final_overlay_count;
     int32_t final_overlay_capacity;

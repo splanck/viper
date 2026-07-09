@@ -75,8 +75,9 @@ typedef struct {
     double lifetime;
     double max_lifetime;
     double alpha;
-    void *mesh;     /* built on first draw */
-    void *material; /* built on first draw */
+    double depth_bias; /* constant depth bias override; 0 = auto (size-scaled) */
+    void *mesh;        /* built on first draw */
+    void *material;    /* built on first draw */
 } rt_decal3d;
 
 /// @brief Idempotent release of a GC-managed reference held in `**slot`.
@@ -257,10 +258,32 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     d->lifetime = -1.0; /* permanent by default */
     d->max_lifetime = -1.0;
     d->alpha = 1.0;
+    d->depth_bias = 0.0; /* auto: size-scaled */
     d->mesh = NULL;
     d->material = NULL;
     rt_obj_set_finalizer(d, decal3d_finalizer);
     return d;
+}
+
+/// @brief Override the decal's constant depth bias (negative pulls it toward the camera).
+/// @details 0 restores the automatic size-scaled bias. Values are clamped to the same ±0.05
+///          NDC range the software rasterizer enforces. Applies immediately when the decal's
+///          material already exists.
+void rt_decal3d_set_depth_bias(void *obj, double bias) {
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!d)
+        return;
+    if (!isfinite(bias))
+        bias = 0.0;
+    if (bias > 0.05)
+        bias = 0.05;
+    if (bias < -0.05)
+        bias = -0.05;
+    d->depth_bias = bias;
+    if (d->material) {
+        double applied = bias != 0.0 ? bias : -fmax(0.0005, fmin(0.005, d->size * 0.0005));
+        rt_material3d_set_depth_bias(d->material, applied, -1.0);
+    }
 }
 
 /// @brief Set how long the decal should live before expiring (< 0 = permanent).
@@ -475,7 +498,13 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     d->alpha = decal3d_alpha_or(d->alpha, 1.0);
     rt_material3d_set_alpha(d->material, d->alpha);
     rt_material3d_set_unlit(d->material, 1); /* decals are unlit — they show texture only */
-    rt_material3d_set_depth_bias(d->material, -0.0005, -1.0);
+    /* Constant depth bias pulls the decal in front of its receiver. Auto mode scales with
+     * decal size — larger decals span more depth at grazing angles, where a fixed constant
+     * shimmers in the far field. Units are NDC-scale (VGFX3D_DEPTH_BIAS_CONSTANT_SCALE);
+     * SetDepthBias overrides for content that needs its own tuning. */
+    double bias = d->depth_bias != 0.0 ? d->depth_bias
+                                       : -fmax(0.0005, fmin(0.005, d->size * 0.0005));
+    rt_material3d_set_depth_bias(d->material, bias, -1.0);
 }
 
 /// @brief Render a decal onto the canvas (no-op for expired decals).

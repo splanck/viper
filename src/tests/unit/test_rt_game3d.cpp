@@ -4468,6 +4468,11 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     rt_game3d_world_stream_set_residency_budget(stream, measured_total - 1);
     rt_game3d_world_stream_update(stream, 1.0 / 60.0);
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "one-byte budget overshoot stays inside the eviction watermark (hysteresis)");
+    rt_game3d_world_stream_set_residency_budget(stream, (measured_total * 3) / 4);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
                   0,
                   "undersized budget evicts measured-over-manifest cell");
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("stream_lod_residency_marker")) ==
@@ -4582,6 +4587,134 @@ static bool test_phase5_world_stream3d_hitch_budgeted_update() {
     std::remove(far_path);
     std::remove(cells_manifest_path);
     std::remove(terrain_manifest_path);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_budget_hysteresis_and_cooldown() {
+    TEST("WorldStream3D budget eviction has hysteresis and a reload cooldown");
+
+    const char *near_path = "/tmp/viper_game3d_stream_hyst_near.vscn";
+    const char *far_path = "/tmp/viper_game3d_stream_hyst_far.vscn";
+    const char *sidecar_path = "/tmp/viper_game3d_stream_hyst_far.bin";
+    const char *cells_manifest_path = "/tmp/viper_game3d_stream_hyst_cells.vscn";
+    EXPECT_TRUE(write_stream_cell_scene(near_path, "hyst_near_marker"),
+                "near hysteresis cell fixture saves");
+    EXPECT_TRUE(write_stream_cell_scene(far_path, "hyst_far_marker"),
+                "far hysteresis cell fixture saves");
+
+    // A 1 MiB binary sidecar dominates the far cell's measured residency so the
+    // budget-watermark math below operates on predictable magnitudes.
+    {
+        std::vector<char> blob(1024u * 1024u, 'x');
+        std::FILE *f = std::fopen(sidecar_path, "wb");
+        EXPECT_TRUE(f != nullptr, "far sidecar fixture opens");
+        EXPECT_TRUE(std::fwrite(blob.data(), 1, blob.size(), f) == blob.size(),
+                    "far sidecar fixture writes");
+        std::fclose(f);
+    }
+
+    char cells_manifest[2048];
+    std::snprintf(cells_manifest,
+                  sizeof(cells_manifest),
+                  "{"
+                  "\"cells\":["
+                  "{\"name\":\"hyst_near\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":16,\"bytes\":4096},"
+                  "{\"name\":\"hyst_far\",\"path\":\"%s\",\"center\":[40,0,0],"
+                  "\"radius\":16,\"bytes\":4096,"
+                  "\"sidecar\":\"viper_game3d_stream_hyst_far.bin\"}"
+                  "]"
+                  "}",
+                  near_path,
+                  far_path);
+    EXPECT_TRUE(write_text_file(cells_manifest_path, cells_manifest),
+                "hysteresis cell manifest writes");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Hysteresis Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(stream, 64.0, 96.0); // both cells stay in radius throughout
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  2,
+                  "unlimited budget admits both cells");
+    int64_t both_bytes = rt_game3d_world_stream_get_resident_bytes(stream);
+    EXPECT_TRUE(both_bytes > 1024 * 1024, "far sidecar dominates resident-byte telemetry");
+
+    // Hysteresis: a budget just below the resident total must NOT evict the boundary cell —
+    // it survives inside the high watermark (budget + max(budget/8, 64 KiB)).
+    rt_game3d_world_stream_set_residency_budget(stream, both_bytes - 40 * 1024);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  2,
+                  "small budget overshoot keeps the boundary cell resident (hysteresis)");
+
+    // Eviction: cutting well past the watermark evicts the boundary cell and starts its
+    // reload cooldown.
+    rt_game3d_world_stream_set_residency_budget(stream, both_bytes - 300 * 1024);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "budget cut past the watermark evicts the boundary cell");
+
+    // Cooldown: restoring an unlimited budget must not reload the evicted cell immediately —
+    // that instant round-trip is exactly the thrash the cooldown exists to stop.
+    rt_game3d_world_stream_set_residency_budget(stream, -1);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "budget-evicted cell holds through its reload cooldown");
+    EXPECT_TRUE(rt_game3d_world_stream_get_pending_request_count(stream) >= 1,
+                "cooldown-held cell is reported as pending");
+
+    // Cooldown expiry: the cell streams back in after the hold elapses.
+    bool reloaded = false;
+    for (int i = 0; i < 40 && !reloaded; i++) {
+        rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+        reloaded = rt_game3d_world_stream_get_resident_cell_count(stream) == 2;
+    }
+    EXPECT_TRUE(reloaded, "cooldown expires and the evicted cell streams back in");
+
+    rt_game3d_world_destroy(world);
+    std::remove(near_path);
+    std::remove(far_path);
+    std::remove(sidecar_path);
+    std::remove(cells_manifest_path);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_zero_radius_update_traps() {
+    TEST("WorldStream3D.Update traps when a manifest is mounted but the load radius is 0");
+
+    const char *cell_path = "/tmp/viper_game3d_stream_zero_radius_cell.vscn";
+    const char *cells_manifest_path = "/tmp/viper_game3d_stream_zero_radius_cells.vscn";
+    EXPECT_TRUE(write_stream_cell_scene(cell_path, "zero_radius_marker"),
+                "zero-radius cell fixture saves");
+    char cells_manifest[1024];
+    // The cell sits away from the stream center: with zero radii nothing is desired
+    // (a cell surrounding the focus point would stream in through its own radius).
+    std::snprintf(cells_manifest,
+                  sizeof(cells_manifest),
+                  "{\"cells\":[{\"name\":\"zero_radius\",\"path\":\"%s\","
+                  "\"center\":[100,0,0],\"radius\":16,\"bytes\":4096}]}",
+                  cell_path);
+    EXPECT_TRUE(write_text_file(cells_manifest_path, cells_manifest),
+                "zero-radius cell manifest writes");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Zero Radius Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    // SetRadii deliberately never called: the default radii are zero, which streams nothing.
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  0,
+                  "zero-radius mount streams nothing in");
+    EXPECT_TRUE(
+        expect_trap_contains([&]() { rt_game3d_world_stream_update(stream, 1.0 / 60.0); },
+                             "load radius is 0"),
+        "update with a mounted manifest and zero radii traps instead of silently rendering "
+        "an empty world");
+
+    rt_game3d_world_destroy(world);
+    std::remove(cell_path);
+    std::remove(cells_manifest_path);
     PASS();
 }
 
@@ -5914,6 +6047,8 @@ int main() {
     ok = test_phase5_world_stream3d_cell_binary_sidecar() && ok;
     ok = test_phase5_world_stream3d_measures_lod_residency() && ok;
     ok = test_phase5_world_stream3d_hitch_budgeted_update() && ok;
+    ok = test_phase5_world_stream3d_budget_hysteresis_and_cooldown() && ok;
+    ok = test_phase5_world_stream3d_zero_radius_update_traps() && ok;
     ok = test_phase12_world_stream3d_inspection_hooks() && ok;
     ok = test_phase4_body_def_attach_body() && ok;
     ok = test_shared_body_attachment_rejected_without_state_leak() && ok;

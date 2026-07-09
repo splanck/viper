@@ -649,7 +649,7 @@ static void test_crossfade_basic() {
     /* Animation B: bone rotated 90 degrees around Y */
     void *anim_b = rt_animation3d_new(rt_const_cstr("turn"), 1.0);
     void *pos_b = rt_vec3_new(0, 0, 0);
-    void *rot_b = rt_quat_from_euler(0, 90, 0); /* 90 deg yaw */
+    void *rot_b = rt_quat_from_euler(0, 1.5707963267948966, 0); /* 90 deg yaw about Y */
     void *scl_b = rt_vec3_new(1, 1, 1);
     rt_animation3d_add_keyframe(anim_b, 0, 0.0, pos_b, rot_b, scl_b);
     rt_animation3d_add_keyframe(anim_b, 0, 1.0, pos_b, rot_b, scl_b);

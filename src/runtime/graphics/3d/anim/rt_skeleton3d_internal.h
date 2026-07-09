@@ -140,6 +140,7 @@ typedef struct rt_anim_blend3d {
     float *motion_palette_snapshot;
     float *local_transforms;
     float *temp_state_local;
+    float *blend_acc_trs; /* TRS-space blend accumulator (pos3/rot4/scl3 per 16-float slot) */
     float *globals_buf;
     int32_t pose_capacity;
     int64_t last_motion_frame;

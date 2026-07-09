@@ -1306,23 +1306,41 @@ static void apply_dof_cpu(float *fbuf,
             float sr = 0.0f;
             float sg = 0.0f;
             float sb = 0.0f;
-            int32_t n = 0;
+            float wsum = 0.0f;
             for (int32_t t = 0; t < 12; t++) {
-                int32_t sx = x + (int32_t)(postfx_poisson12[t][0] * radius);
-                int32_t sy = y + (int32_t)(postfx_poisson12[t][1] * radius);
+                float px = postfx_poisson12[t][0];
+                float py = postfx_poisson12[t][1];
+                int32_t sx = x + (int32_t)(px * radius);
+                int32_t sy = y + (int32_t)(py * radius);
                 if (sx < 0 || sy < 0 || sx >= w || sy >= h)
                     continue;
                 size_t sidx = (size_t)sy * (size_t)w + (size_t)sx;
-                sr += rp[sidx];
-                sg += gp[sidx];
-                sb += bp[sidx];
-                n++;
+                /* Scatter-as-gather weighting: a tap only contributes to this pixel if its
+                 * OWN circle of confusion could reach here. Without this, sharp in-focus
+                 * geometry bleeds across silhouettes into blurred neighbors (halos) and
+                 * blurred backgrounds contaminate in-focus edges. */
+                float wt = 1.0f;
+                float sndc = postfx_depth_at(sc, sx, sy);
+                if (sndc <= 1.0f) {
+                    float slin = postfx_linear_depth(sc, sndc);
+                    float scoc = fabsf(slin - focus_distance) / aperture;
+                    if (scoc > 1.0f)
+                        scoc = 1.0f;
+                    float reach = scoc * max_radius;
+                    float tap_dist = radius * sqrtf(px * px + py * py);
+                    if (tap_dist > 0.5f)
+                        wt = reach >= tap_dist ? 1.0f : (reach + 0.5f) / (tap_dist + 0.5f);
+                }
+                sr += rp[sidx] * wt;
+                sg += gp[sidx] * wt;
+                sb += bp[sidx] * wt;
+                wsum += wt;
             }
-            if (n == 0)
+            if (wsum < 1e-4f)
                 continue;
-            float br = sr / (float)n;
-            float bg = sg / (float)n;
-            float bb = sb / (float)n;
+            float br = sr / wsum;
+            float bg = sg / wsum;
+            float bb = sb / wsum;
             fbuf[idx] = fbuf[idx] * (1.0f - coc) + br * coc;
             fbuf[count + idx] = fbuf[count + idx] * (1.0f - coc) + bg * coc;
             fbuf[count * 2u + idx] = fbuf[count * 2u + idx] * (1.0f - coc) + bb * coc;
@@ -1740,11 +1758,25 @@ static void apply_taa_cpu(
                         hy = prev[1] - 0.5f;
                     }
                 }
-                int32_t ix = (int32_t)(hx + 0.5f);
-                int32_t iy = (int32_t)(hy + 0.5f);
-                if (ix < 0 || iy < 0 || ix >= w || iy >= h)
+                /* Floor-based rejection: the old truncation-toward-zero rounding accepted
+                 * reprojections in (-1, 0) as column/row 0, smearing wrong history along
+                 * the left/top border. */
+                if (!(hx >= 0.0f) || !(hy >= 0.0f) || hx > (float)(w - 1) || hy > (float)(h - 1))
                     continue;
-                size_t hidx = (size_t)iy * (size_t)w + (size_t)ix;
+                int32_t ix0 = (int32_t)floorf(hx);
+                int32_t iy0 = (int32_t)floorf(hy);
+                int32_t ix1 = ix0 + 1 < w ? ix0 + 1 : w - 1;
+                int32_t iy1 = iy0 + 1 < h ? iy0 + 1 : h - 1;
+                float tx = hx - (float)ix0;
+                float ty = hy - (float)iy0;
+                size_t i00 = (size_t)iy0 * (size_t)w + (size_t)ix0;
+                size_t i10 = (size_t)iy0 * (size_t)w + (size_t)ix1;
+                size_t i01 = (size_t)iy1 * (size_t)w + (size_t)ix0;
+                size_t i11 = (size_t)iy1 * (size_t)w + (size_t)ix1;
+                float w00 = (1.0f - tx) * (1.0f - ty);
+                float w10 = tx * (1.0f - ty);
+                float w01 = (1.0f - tx) * ty;
+                float w11 = tx * ty;
                 /* 3x3 neighborhood clamp bounds ghosting. */
                 float mn[3] = {1e30f, 1e30f, 1e30f};
                 float mx[3] = {-1e30f, -1e30f, -1e30f};
@@ -1772,9 +1804,12 @@ static void apply_taa_cpu(
                             mx[2] = cb;
                     }
                 }
-                float histr = hr[hidx];
-                float histg = hg[hidx];
-                float histb = hb[hidx];
+                /* Bilinear history sampling: point sampling cannot resolve the sub-pixel
+                 * jitter TAA relies on — history snaps between texels and edges shimmer
+                 * instead of converging. */
+                float histr = hr[i00] * w00 + hr[i10] * w10 + hr[i01] * w01 + hr[i11] * w11;
+                float histg = hg[i00] * w00 + hg[i10] * w10 + hg[i01] * w01 + hg[i11] * w11;
+                float histb = hb[i00] * w00 + hb[i10] * w10 + hb[i01] * w01 + hb[i11] * w11;
                 if (histr < mn[0])
                     histr = mn[0];
                 if (histg < mn[1])

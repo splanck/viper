@@ -59,6 +59,30 @@ extern double rt_vec3_z(void *v);
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_quat_new(double x, double y, double z, double w);
 extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
+extern int8_t rt_scene_node3d_get_position_components(void *node, double *x, double *y, double *z);
+extern int8_t
+rt_scene_node3d_get_rotation_components(void *node, double *x, double *y, double *z, double *w);
+extern int8_t rt_scene_node3d_get_world_rotation_components(
+    void *node, double *x, double *y, double *z, double *w);
+extern int8_t rt_scene_node3d_get_scale_components(void *node, double *x, double *y, double *z);
+extern int8_t
+rt_scene_node3d_get_world_scale_components(void *node, double *x, double *y, double *z);
+extern int8_t rt_scene_node3d_get_world_matrix_components(void *node, double out[16]);
+extern void rt_scene_node3d_set_transform(void *node,
+                                          double px,
+                                          double py,
+                                          double pz,
+                                          double qx,
+                                          double qy,
+                                          double qz,
+                                          double qw,
+                                          double sx,
+                                          double sy,
+                                          double sz);
+extern void rt_scene_node3d_set_transform_batch(void *nodes, void *values);
+extern void *rt_seq_new(void);
+extern void rt_seq_push(void *obj, void *val);
+extern void *rt_box_f64(double val);
 extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
@@ -342,14 +366,68 @@ static void test_scene_rebase_origin_shifts_root_subtrees() {
     EXPECT_NEAR(rt_vec3_z(after_nonfinite), 0.0, 0.001, "RebaseOrigin ignores non-finite Z");
 }
 
+static void test_transform_components_and_batch() {
+    void *node = rt_scene_node3d_new();
+    double x = 0, y = 0, z = 0, w = 0;
+    double m[16];
+
+    /* Combined setter: one call sets TRS without intermediate Vec3/Quat allocations. */
+    rt_scene_node3d_set_transform(node, 1.0, 2.0, 3.0, 0.0, 0.7071067812, 0.0, 0.7071067812, 2.0,
+                                  2.0, 2.0);
+    EXPECT_TRUE(rt_scene_node3d_get_position_components(node, &x, &y, &z) == 1,
+                "position components read succeeds");
+    EXPECT_NEAR(x, 1.0, 1e-9, "SetTransform stores position X");
+    EXPECT_NEAR(y, 2.0, 1e-9, "SetTransform stores position Y");
+    EXPECT_NEAR(z, 3.0, 1e-9, "SetTransform stores position Z");
+    EXPECT_TRUE(rt_scene_node3d_get_rotation_components(node, &x, &y, &z, &w) == 1,
+                "rotation components read succeeds");
+    EXPECT_NEAR(y, 0.7071067812, 1e-6, "SetTransform stores rotation (normalized) Y");
+    EXPECT_NEAR(w, 0.7071067812, 1e-6, "SetTransform stores rotation (normalized) W");
+    EXPECT_TRUE(rt_scene_node3d_get_scale_components(node, &x, &y, &z) == 1,
+                "scale components read succeeds");
+    EXPECT_NEAR(x, 2.0, 1e-9, "SetTransform stores scale");
+    EXPECT_TRUE(rt_scene_node3d_get_world_scale_components(node, &x, &y, &z) == 1,
+                "world scale components read succeeds");
+    EXPECT_NEAR(x, 2.0, 1e-6, "world scale magnitude matches local for a root node");
+    EXPECT_TRUE(rt_scene_node3d_get_world_rotation_components(node, &x, &y, &z, &w) == 1,
+                "world rotation components read succeeds");
+    EXPECT_NEAR(w, 0.7071067812, 1e-6, "world rotation matches local for a root node");
+    EXPECT_TRUE(rt_scene_node3d_get_world_matrix_components(node, m) == 1,
+                "world matrix components read succeeds");
+    EXPECT_NEAR(m[3], 1.0, 1e-9, "world matrix carries translation X");
+    EXPECT_NEAR(m[7], 2.0, 1e-9, "world matrix carries translation Y");
+
+    /* Batch setter: 10 packed floats per node, one runtime call for the whole list. */
+    void *a = rt_scene_node3d_new();
+    void *b = rt_scene_node3d_new();
+    void *nodes = rt_seq_new();
+    void *values = rt_seq_new();
+    rt_seq_push(nodes, a);
+    rt_seq_push(nodes, b);
+    const double packed[20] = {/* node a */ 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                               /* node b */ 0.0,  5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 3.0, 3.0};
+    for (int i = 0; i < 20; i++)
+        rt_seq_push(values, rt_box_f64(packed[i]));
+    rt_scene_node3d_set_transform_batch(nodes, values);
+    EXPECT_TRUE(rt_scene_node3d_get_position_components(a, &x, &y, &z) == 1,
+                "batch node A read succeeds");
+    EXPECT_NEAR(x, 10.0, 1e-9, "batch applied node A position");
+    EXPECT_TRUE(rt_scene_node3d_get_position_components(b, &x, &y, &z) == 1,
+                "batch node B read succeeds");
+    EXPECT_NEAR(y, 5.0, 1e-9, "batch applied node B position");
+    EXPECT_TRUE(rt_scene_node3d_get_scale_components(b, &x, &y, &z) == 1,
+                "batch node B scale read succeeds");
+    EXPECT_NEAR(x, 3.0, 1e-9, "batch applied node B scale");
+}
+
 static void test_rotation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
 
     /* Rotate parent 90° around Y axis.
-     * rt_quat_from_euler(pitch, yaw, roll) — pitch maps to Y rotation. */
+     * rt_quat_from_euler(pitch, yaw, roll) — yaw maps to Y rotation. */
     double angle = M_PI / 2.0;
-    void *rot = rt_quat_from_euler(angle, 0.0, 0.0);
+    void *rot = rt_quat_from_euler(0.0, angle, 0.0);
     rt_scene_node3d_set_rotation(parent, rot);
 
     /* Child at local position (1, 0, 0) */
@@ -3558,6 +3636,7 @@ int main() {
     test_translation_propagation();
     test_world_position_and_scale_getters();
     test_scene_rebase_origin_shifts_root_subtrees();
+    test_transform_components_and_batch();
     test_rotation_propagation();
     test_scale_propagation();
     test_deep_hierarchy();

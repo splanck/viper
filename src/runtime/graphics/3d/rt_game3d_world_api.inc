@@ -569,6 +569,15 @@ void rt_game3d_world_stream_update(void *obj, double dt) {
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.update: invalid stream");
     if (!stream)
         return;
+    /* A mounted manifest with a zero load radius streams nothing in — the world silently
+     * renders empty. Trap the misuse instead of leaving authors hunting a blank screen. */
+    if (stream->load_radius <= 0.0 &&
+        ((stream->cells_manifest_loaded && game3d_world_stream_safe_cell_count(stream) > 0) ||
+         (stream->terrain_manifest_loaded &&
+          game3d_world_stream_safe_terrain_tile_count(stream) > 0))) {
+        rt_trap("Game3D.WorldStream3D.update: load radius is 0 — call SetRadii before Update");
+        return;
+    }
     dt = game3d_finite_or(dt, 0.0);
     game3d_world_stream_recompute(stream, game3d_world_stream_update_load_budget(dt));
 }

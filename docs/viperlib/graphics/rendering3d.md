@@ -561,6 +561,7 @@ transforms.
 | `QueryAABB(min, max)` | `Seq(SceneNode)(Vec3, Vec3)` | Return visible mesh nodes whose world AABB intersects the box |
 | `QuerySphere(center, radius)` | `Seq(SceneNode)(Vec3, Double)` | Return visible mesh nodes whose world AABB intersects the sphere |
 | `RaycastNodes(origin, direction, maxDistance)` | `SceneNode(Vec3, Vec3, Double)` | Return the closest visible mesh node hit by the ray |
+| `SetNodeTransforms(nodes, values)` | `Void(Object, Object)` | Batch-apply packed TRS values (10 floats per node: `px,py,pz,qx,qy,qz,qw,sx,sy,sz`) to a list of nodes in one runtime call |
 | `Draw(canvas, camera)` | `Void(Object, Object)` | Draw visible node meshes |
 | `SyncBindings(dt)` | `Void(Double)` | Push physics, animation, and binding transforms |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift every root-level subtree by `-delta` while leaving the root unchanged |
@@ -1387,6 +1388,7 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetLifetime(seconds)` | `Void(Double)` | Override the decal lifetime |
+| `SetDepthBias(bias)` | `Void(Double)` | Override the constant depth bias (negative pulls toward the camera; `0` restores the automatic size-scaled bias) |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the lifetime timer |
 
 ---

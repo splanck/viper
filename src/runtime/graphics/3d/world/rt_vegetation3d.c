@@ -13,7 +13,8 @@
 //   - Blade mesh: 2 perpendicular quads (8 verts, 4 tris) — cross-billboard.
 //   - Population: LCG random scatter on terrain, filtered by density map.
 //   - Wind: per-blade Y-axis shear using sin(position + time).
-//   - LOD: progressive thinning + hard cull at far distance.
+//   - LOD: monotone per-blade thinning with a scale fade-out approaching the
+//     far distance; culling walks a coarse XZ grid, not the full population.
 //   - Rendering: queues instanced blade draws through Canvas3D so they share
 //     the same shadow, sorting, and overlay pipeline as other 3D content.
 //   - Backface culling temporarily disabled for grass (visible both sides).
@@ -49,6 +50,9 @@
 #define VEGETATION3D_DT_MAX 1.0
 #define VEGETATION3D_MAX_BLADES 2000000
 #define VEGETATION3D_TWO_PI 6.28318530717958647692
+#define VEGETATION3D_LOD_FADE_START 0.85f /* band position where the scale fade-out begins */
+#define VEGETATION3D_LOD_FADE_FLOOR 0.02f /* below this scale a blade is invisible: drop it */
+#define VEGETATION3D_GRID_MAX_CELLS 128   /* per-axis cap for the spatial cull grid */
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -106,6 +110,16 @@ typedef struct {
     int32_t visible_count;
     int32_t visible_capacity;
     uint32_t scatter_seed;
+    /* Spatial cull grid (rebuilt lazily whenever the population changes) */
+    int32_t *grid_cell_start; /* cells_x*cells_z + 1 CSR offsets into grid_indices */
+    int32_t *grid_indices;    /* blade indices bucketed by XZ cell */
+    int32_t grid_cells_x;
+    int32_t grid_cells_z;
+    float grid_min_x;
+    float grid_min_z;
+    float grid_cell_w;
+    float grid_cell_d;
+    int32_t grid_ready; /* 0 → rebuild before the next culling pass */
 } rt_vegetation3d;
 
 /// @brief Return @p value when finite, else @p fallback. Sanitizes scalar inputs.
@@ -213,20 +227,18 @@ static uint32_t vegetation3d_hash_u32(uint32_t x) {
     return x;
 }
 
-/// @brief Return true if a blade survives the current distance-thinning skip factor.
-/// @details `skip` values above one keep roughly 1/skip of blades using a deterministic hash,
-///   avoiding the camera-facing bands produced by modulo-index thinning.
-static int vegetation3d_lod_keeps_blade(int32_t index, float bx, float bz, int skip) {
-    uint32_t qx;
-    uint32_t qz;
-    uint32_t h;
-    if (skip <= 1)
-        return 1;
-    qx = (uint32_t)((int32_t)lrintf(bx * 16.0f));
-    qz = (uint32_t)((int32_t)lrintf(bz * 16.0f));
-    h = vegetation3d_hash_u32((uint32_t)index ^ vegetation3d_hash_u32(qx) ^
-                              (vegetation3d_hash_u32(qz) << 1));
-    return (h % (uint32_t)skip) == 0u;
+/// @brief Deterministic per-blade random in [0, 1) used for monotone distance thinning.
+/// @details Combines the blade index with its quantized position so the value is stable across
+///   frames and free of the banding a plain index-modulo pattern would produce. Comparing this
+///   fixed value against a density threshold that falls with distance makes the kept set strictly
+///   shrink as the camera recedes — each blade winks out at exactly one radius instead of whole
+///   cohorts swapping in and out at stride boundaries.
+static float vegetation3d_lod_hash01(int32_t index, float bx, float bz) {
+    uint32_t qx = (uint32_t)((int32_t)lrintf(bx * 16.0f));
+    uint32_t qz = (uint32_t)((int32_t)lrintf(bz * 16.0f));
+    uint32_t h = vegetation3d_hash_u32((uint32_t)index ^ vegetation3d_hash_u32(qx) ^
+                                       (vegetation3d_hash_u32(qz) << 1));
+    return (float)h * (1.0f / 4294967296.0f);
 }
 
 /// @brief Smooth, layered wind wave for one blade.
@@ -253,6 +265,19 @@ static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
         vegetation3d_release_material_slot(&v->blade_material);
 }
 
+/// @brief Free the spatial cull grid and mark it for rebuild.
+static void vegetation3d_free_grid(rt_vegetation3d *v) {
+    if (!v)
+        return;
+    free(v->grid_cell_start);
+    free(v->grid_indices);
+    v->grid_cell_start = NULL;
+    v->grid_indices = NULL;
+    v->grid_cells_x = 0;
+    v->grid_cells_z = 0;
+    v->grid_ready = 0;
+}
+
 /// @brief Free all population buffers and reset the population/visible counters.
 static void vegetation3d_clear_population_buffers(rt_vegetation3d *v) {
     if (!v)
@@ -267,6 +292,7 @@ static void vegetation3d_clear_population_buffers(rt_vegetation3d *v) {
     v->capacity = 0;
     v->visible_count = 0;
     v->visible_capacity = 0;
+    vegetation3d_free_grid(v);
 }
 
 /// @brief GC finalizer — release owned blade resources and instance arrays.
@@ -445,6 +471,15 @@ void *rt_vegetation3d_new(void *blade_texture) {
     v->visible_count = 0;
     v->visible_capacity = 0;
     v->scatter_seed = vegetation3d_next_default_seed();
+    v->grid_cell_start = NULL;
+    v->grid_indices = NULL;
+    v->grid_cells_x = 0;
+    v->grid_cells_z = 0;
+    v->grid_min_x = 0.0f;
+    v->grid_min_z = 0.0f;
+    v->grid_cell_w = 1.0f;
+    v->grid_cell_d = 1.0f;
+    v->grid_ready = 0;
 
     /* Build blade mesh */
     v->blade_mesh = rt_mesh3d_new();
@@ -699,6 +734,7 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     v->capacity = cap;
     v->total_count = 0;
     v->visible_count = 0;
+    v->grid_ready = 0;
 
     uint32_t rng = v->scatter_seed ? v->scatter_seed : vegetation3d_seed_from_i64(42);
     double min_x = tw >= 4.0 ? 2.0 : 0.0;
@@ -754,10 +790,236 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     }
 }
 
-/// @brief Per-frame tick. Advances wind time by `dt`, then rebuilds the visible-instances buffer
-/// by walking every populated blade: hard-cull beyond `lod_far`, progressively skip between
-/// `lod_near` and `lod_far` (skip stride 1..5), and apply per-blade wind shear to columns 1 and 9
-/// of the transform (bending blade tops). `camY` is unused — culling is XZ-only.
+/// @brief Rebuild the CSR spatial grid that buckets blade indices by XZ cell.
+/// @details Sized so a cell holds ~128 blades on average (clamped to 4..128 cells per axis).
+///   Blades with non-finite positions are left out of every cell; they were already invisible to
+///   the culling pass. Returns 0 (grid unavailable, callers fall back to the linear walk) on
+///   allocation failure or degenerate extents.
+static int vegetation3d_rebuild_grid(rt_vegetation3d *v) {
+    vegetation3d_free_grid(v);
+    if (!v || v->total_count <= 0 || !v->positions)
+        return 0;
+
+    float min_x = 0.0f, min_z = 0.0f, max_x = 0.0f, max_z = 0.0f;
+    int have_bounds = 0;
+    for (int32_t i = 0; i < v->total_count; i++) {
+        float bx = v->positions[i * 3 + 0];
+        float bz = v->positions[i * 3 + 2];
+        if (!isfinite(bx) || !isfinite(bz))
+            continue;
+        if (!have_bounds) {
+            min_x = max_x = bx;
+            min_z = max_z = bz;
+            have_bounds = 1;
+            continue;
+        }
+        if (bx < min_x)
+            min_x = bx;
+        if (bx > max_x)
+            max_x = bx;
+        if (bz < min_z)
+            min_z = bz;
+        if (bz > max_z)
+            max_z = bz;
+    }
+    if (!have_bounds)
+        return 0;
+
+    int32_t cells = (int32_t)ceil(sqrt((double)v->total_count / 128.0));
+    if (cells < 4)
+        cells = 4;
+    if (cells > VEGETATION3D_GRID_MAX_CELLS)
+        cells = VEGETATION3D_GRID_MAX_CELLS;
+    float extent_x = max_x - min_x;
+    float extent_z = max_z - min_z;
+    if (extent_x < 1e-3f)
+        extent_x = 1e-3f;
+    if (extent_z < 1e-3f)
+        extent_z = 1e-3f;
+
+    int32_t cell_count = cells * cells;
+    int32_t *starts = (int32_t *)calloc((size_t)cell_count + 1u, sizeof(int32_t));
+    int32_t *indices = (int32_t *)malloc((size_t)v->total_count * sizeof(int32_t));
+    if (!starts || !indices) {
+        free(starts);
+        free(indices);
+        return 0;
+    }
+
+    v->grid_cells_x = cells;
+    v->grid_cells_z = cells;
+    v->grid_min_x = min_x;
+    v->grid_min_z = min_z;
+    v->grid_cell_w = extent_x / (float)cells;
+    v->grid_cell_d = extent_z / (float)cells;
+
+    /* Counting sort: pass 1 counts, prefix-sum, pass 2 scatters. */
+    for (int32_t i = 0; i < v->total_count; i++) {
+        float bx = v->positions[i * 3 + 0];
+        float bz = v->positions[i * 3 + 2];
+        if (!isfinite(bx) || !isfinite(bz))
+            continue;
+        int32_t cx = (int32_t)((bx - min_x) / v->grid_cell_w);
+        int32_t cz = (int32_t)((bz - min_z) / v->grid_cell_d);
+        if (cx < 0)
+            cx = 0;
+        if (cx >= cells)
+            cx = cells - 1;
+        if (cz < 0)
+            cz = 0;
+        if (cz >= cells)
+            cz = cells - 1;
+        starts[cz * cells + cx + 1]++;
+    }
+    for (int32_t c = 0; c < cell_count; c++)
+        starts[c + 1] += starts[c];
+    int32_t *cursor = (int32_t *)malloc((size_t)cell_count * sizeof(int32_t));
+    if (!cursor) {
+        free(starts);
+        free(indices);
+        v->grid_cells_x = 0;
+        v->grid_cells_z = 0;
+        return 0;
+    }
+    memcpy(cursor, starts, (size_t)cell_count * sizeof(int32_t));
+    for (int32_t i = 0; i < v->total_count; i++) {
+        float bx = v->positions[i * 3 + 0];
+        float bz = v->positions[i * 3 + 2];
+        if (!isfinite(bx) || !isfinite(bz))
+            continue;
+        int32_t cx = (int32_t)((bx - min_x) / v->grid_cell_w);
+        int32_t cz = (int32_t)((bz - min_z) / v->grid_cell_d);
+        if (cx < 0)
+            cx = 0;
+        if (cx >= cells)
+            cx = cells - 1;
+        if (cz < 0)
+            cz = 0;
+        if (cz >= cells)
+            cz = cells - 1;
+        indices[cursor[cz * cells + cx]++] = i;
+    }
+    free(cursor);
+
+    v->grid_cell_start = starts;
+    v->grid_indices = indices;
+    v->grid_ready = 1;
+    return 1;
+}
+
+/// @brief Frame-constant parameters shared by the per-blade culling helper.
+typedef struct {
+    double camX;
+    double camZ;
+    double lod_near2;
+    double lod_far2;
+    float lod_near;
+    float lod_far;
+    double wind_speed;
+    double wind_strength;
+    double wind_turbulence;
+    double time;
+} vegetation3d_update_params;
+
+/// @brief Cull, thin, fade, and wind-shear one blade, appending it to the visible buffer.
+static void
+vegetation3d_collect_blade(rt_vegetation3d *v, int32_t i, const vegetation3d_update_params *p) {
+    if (i < 0 || i >= v->total_count)
+        return; /* stale grid entry after a state repair shrank the population */
+    float bx = v->positions[i * 3 + 0];
+    float bz = v->positions[i * 3 + 2];
+    if (!isfinite(bx) || !isfinite(bz))
+        return;
+
+    /* Distance to camera (XZ plane) */
+    double dx = (double)bx - p->camX;
+    double dz = (double)bz - p->camZ;
+    double dist2 = dx * dx + dz * dz;
+    if (!isfinite(dist2))
+        return;
+    /* Hard-cull via squared distance so only the transition band pays for sqrt-based thinning.
+     * The scale fade below has already shrunk blades to zero by this radius. */
+    if (dist2 > p->lod_far2)
+        return;
+
+    /* Monotone thinning + scale fade between near and far */
+    float fade = 1.0f;
+    if (dist2 > p->lod_near2) {
+        float dist = (float)sqrt(dist2);
+        if (!isfinite(dist))
+            return;
+        float denom = p->lod_far - p->lod_near;
+        float t = denom > 1e-6f ? (dist - p->lod_near) / denom : 1.0f;
+        if (t < 0.0f)
+            t = 0.0f;
+        if (t > 1.0f)
+            t = 1.0f;
+        /* Density falls as 1/(1+4t): the same budget the old skip-stride tiers (1/1..1/5)
+         * spent, but continuous and monotone — each blade owns a stable random threshold,
+         * so the kept set only shrinks as t grows instead of swapping cohorts at edges. */
+        float keep = 1.0f / (1.0f + 4.0f * t);
+        if (vegetation3d_lod_hash01(i, bx, bz) >= keep)
+            return;
+        /* Scale-fade the outermost band so survivors shrink out instead of popping at lod_far. */
+        if (t > VEGETATION3D_LOD_FADE_START) {
+            fade = (1.0f - t) * (1.0f / (1.0f - VEGETATION3D_LOD_FADE_START));
+            if (fade < VEGETATION3D_LOD_FADE_FLOOR)
+                return;
+        }
+    }
+
+    /* Copy base transform */
+    float *dst = &v->visible_transforms[v->visible_count * 16];
+    memcpy(dst, &v->base_transforms[i * 16], 16 * sizeof(float));
+    if (!vegetation3d_matrix_is_drawable(dst))
+        return;
+
+    /* Apply wind shear to the transform's Y-column entries.
+     * This bends the blade tops in the wind direction. */
+    double phase = p->wind_turbulence * (bx * 0.1 + bz * 0.07) + p->time * p->wind_speed;
+    if (!isfinite(phase))
+        phase = 0.0;
+    phase = fmod(phase, VEGETATION3D_TWO_PI);
+    if (!isfinite(phase))
+        phase = 0.0;
+    double wave_x = vegetation3d_wind_wave(phase, (double)bx, (double)bz);
+    double wave_z =
+        vegetation3d_wind_wave(phase * 0.71 + 1.0471975511965976, (double)bz, (double)bx);
+    float wind_x = (float)(wave_x * p->wind_strength);
+    float wind_z = (float)(wave_z * p->wind_strength * 0.42);
+    if (!isfinite(wind_x))
+        wind_x = 0.0f;
+    if (!isfinite(wind_z))
+        wind_z = 0.0f;
+    /* Bend the blade's up (Y) axis toward the wind. In this row-major 4x4,
+     * indices 1 and 9 are the X and Z components of the second (Y) column,
+     * so adding to them leans the blade top along world X and Z. */
+    dst[1] += wind_x;
+    dst[9] += wind_z;
+    if (fade < 1.0f) {
+        /* Uniformly shrink the 3x3 basis (translation untouched) for the far fade-out. */
+        dst[0] *= fade;
+        dst[1] *= fade;
+        dst[2] *= fade;
+        dst[4] *= fade;
+        dst[5] *= fade;
+        dst[6] *= fade;
+        dst[8] *= fade;
+        dst[9] *= fade;
+        dst[10] *= fade;
+    }
+    if (!vegetation3d_matrix_is_drawable(dst))
+        return;
+
+    v->visible_count++;
+}
+
+/// @brief Per-frame tick. Advances wind time by `dt`, then rebuilds the visible-instances buffer:
+/// hard-cull beyond `lod_far`, monotone per-blade thinning between `lod_near` and `lod_far` with a
+/// scale fade-out approaching the far edge, and per-blade wind shear on columns 1 and 9 of the
+/// transform (bending blade tops). Culling iterates only the spatial-grid cells within `lod_far`
+/// of the camera, so per-frame cost scales with the visible set, not the total population.
+/// `camY` is unused — culling is XZ-only.
 void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, double camZ) {
     (void)camY;
     rt_vegetation3d *v =
@@ -815,73 +1077,63 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
     }
     v->visible_count = 0;
 
-    for (int32_t i = 0; i < v->total_count; i++) {
-        float bx = v->positions[i * 3 + 0];
-        float bz = v->positions[i * 3 + 2];
-        if (!isfinite(bx) || !isfinite(bz))
-            continue;
+    vegetation3d_update_params params;
+    params.camX = camX;
+    params.camZ = camZ;
+    params.lod_near2 = lod_near2;
+    params.lod_far2 = lod_far2;
+    params.lod_near = lod_near;
+    params.lod_far = lod_far;
+    params.wind_speed = wind_speed;
+    params.wind_strength = wind_strength;
+    params.wind_turbulence = wind_turbulence;
+    params.time = v->time;
 
-        /* Distance to camera (XZ plane) */
-        double dx = (double)bx - camX;
-        double dz = (double)bz - camZ;
-        double dist2 = dx * dx + dz * dz;
-        if (!isfinite(dist2))
-            continue;
-        /* Hard-cull and foreground-accept via squared distance so only the transition band pays
-         * for sqrt-based thinning. */
-        if (dist2 > lod_far2)
-            continue;
+    if (!v->grid_ready)
+        vegetation3d_rebuild_grid(v);
 
-        /* Progressive thinning between near and far */
-        if (dist2 > lod_near2) {
-            float dist = (float)sqrt(dist2);
-            if (!isfinite(dist))
-                continue;
-            float denom = lod_far - lod_near;
-            float t = denom > 1e-6f ? (dist - lod_near) / denom : 1.0f;
-            if (t < 0.0f)
-                t = 0.0f;
-            if (t > 1.0f)
-                t = 1.0f;
-            int skip = 1 + (int)(t * 4.0f);
-            if (skip < 1)
-                skip = 1;
-            if (!vegetation3d_lod_keeps_blade(i, bx, bz, skip))
-                continue;
+    if (v->grid_ready && v->grid_cell_start && v->grid_indices && v->grid_cells_x > 0 &&
+        v->grid_cells_z > 0) {
+        /* Walk only the grid cells whose AABB intersects the lod_far disc around the camera. */
+        int32_t cells_x = v->grid_cells_x;
+        int32_t cells_z = v->grid_cells_z;
+        double inv_w = 1.0 / (double)v->grid_cell_w;
+        double inv_d = 1.0 / (double)v->grid_cell_d;
+        int32_t cx0 = (int32_t)floor((camX - (double)lod_far - (double)v->grid_min_x) * inv_w);
+        int32_t cx1 = (int32_t)floor((camX + (double)lod_far - (double)v->grid_min_x) * inv_w);
+        int32_t cz0 = (int32_t)floor((camZ - (double)lod_far - (double)v->grid_min_z) * inv_d);
+        int32_t cz1 = (int32_t)floor((camZ + (double)lod_far - (double)v->grid_min_z) * inv_d);
+        if (cx0 < 0)
+            cx0 = 0;
+        if (cz0 < 0)
+            cz0 = 0;
+        if (cx1 >= cells_x)
+            cx1 = cells_x - 1;
+        if (cz1 >= cells_z)
+            cz1 = cells_z - 1;
+        for (int32_t cz = cz0; cz <= cz1; cz++) {
+            double cell_min_z = (double)v->grid_min_z + (double)cz * (double)v->grid_cell_d;
+            double cell_max_z = cell_min_z + (double)v->grid_cell_d;
+            double ndz = camZ < cell_min_z ? cell_min_z - camZ
+                                           : (camZ > cell_max_z ? camZ - cell_max_z : 0.0);
+            for (int32_t cx = cx0; cx <= cx1; cx++) {
+                double cell_min_x = (double)v->grid_min_x + (double)cx * (double)v->grid_cell_w;
+                double cell_max_x = cell_min_x + (double)v->grid_cell_w;
+                double ndx = camX < cell_min_x ? cell_min_x - camX
+                                               : (camX > cell_max_x ? camX - cell_max_x : 0.0);
+                if (ndx * ndx + ndz * ndz > lod_far2)
+                    continue; /* corner cell of the bounding square, outside the disc */
+                int32_t c = cz * cells_x + cx;
+                int32_t begin = v->grid_cell_start[c];
+                int32_t end = v->grid_cell_start[c + 1];
+                for (int32_t k = begin; k < end; k++)
+                    vegetation3d_collect_blade(v, v->grid_indices[k], &params);
+            }
         }
-
-        /* Copy base transform */
-        float *dst = &v->visible_transforms[v->visible_count * 16];
-        memcpy(dst, &v->base_transforms[i * 16], 16 * sizeof(float));
-        if (!vegetation3d_matrix_is_drawable(dst))
-            continue;
-
-        /* Apply wind shear to the transform's Y-column entries.
-         * This bends the blade tops in the wind direction. */
-        double phase = wind_turbulence * (bx * 0.1 + bz * 0.07) + v->time * wind_speed;
-        if (!isfinite(phase))
-            phase = 0.0;
-        phase = fmod(phase, VEGETATION3D_TWO_PI);
-        if (!isfinite(phase))
-            phase = 0.0;
-        double wave_x = vegetation3d_wind_wave(phase, (double)bx, (double)bz);
-        double wave_z =
-            vegetation3d_wind_wave(phase * 0.71 + 1.0471975511965976, (double)bz, (double)bx);
-        float wind_x = (float)(wave_x * wind_strength);
-        float wind_z = (float)(wave_z * wind_strength * 0.42);
-        if (!isfinite(wind_x))
-            wind_x = 0.0f;
-        if (!isfinite(wind_z))
-            wind_z = 0.0f;
-        /* Bend the blade's up (Y) axis toward the wind. In this row-major 4x4,
-         * indices 1 and 9 are the X and Z components of the second (Y) column,
-         * so adding to them leans the blade top along world X and Z. */
-        dst[1] += wind_x;
-        dst[9] += wind_z;
-        if (!vegetation3d_matrix_is_drawable(dst))
-            continue;
-
-        v->visible_count++;
+    } else {
+        /* Grid unavailable (allocation failure): fall back to the full linear walk. */
+        for (int32_t i = 0; i < v->total_count; i++)
+            vegetation3d_collect_blade(v, i, &params);
     }
 }
 

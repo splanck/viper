@@ -1483,6 +1483,11 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->sort_cmds);
     c->sort_cmds = NULL;
     c->sort_capacity = 0;
+    free(c->sort_keys);
+    c->sort_keys = NULL;
+    free(c->sort_keys_scratch);
+    c->sort_keys_scratch = NULL;
+    c->sort_key_capacity = 0;
     canvas3d_clear_final_overlay(c);
     free(c->final_overlay_cmds);
     c->final_overlay_cmds = NULL;

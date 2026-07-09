@@ -353,6 +353,8 @@ typedef struct rt_game3d_stream_cell {
     int8_t resident;
     void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
     int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
+    int32_t reload_cooldown; /* recompute passes to wait before reloading after a
+                                budget eviction (prevents load/unload thrash) */
 } rt_game3d_stream_cell;
 
 /// @brief Scratch entry used to sort manifest-backed streaming loads nearest-first.
@@ -393,6 +395,8 @@ typedef struct rt_game3d_stream_terrain_tile {
     int8_t resident;
     void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
     int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
+    int32_t reload_cooldown; /* recompute passes to wait before reloading after a
+                                budget eviction (prevents load/unload thrash) */
 } rt_game3d_stream_terrain_tile;
 
 /// @brief WorldStream3D payload: streaming focus/radii, mounted manifest paths,

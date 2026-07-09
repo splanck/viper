@@ -143,7 +143,13 @@ typedef struct {
 } vgfx3d_draw_cmd_t;
 
 #define VGFX3D_MAX_DRAW_INDEX_COUNT ((uint32_t)INT_MAX)
-#define VGFX3D_DEPTH_BIAS_CONSTANT_SCALE 65536.0f
+/* Renderer depth-bias units are NDC-scale offsets (the software rasterizer adds them to the
+ * interpolated depth directly). GPU constant-bias units are multiples of the depth buffer's
+ * smallest resolvable step — 2^-24 for D24 and, for float depth in the typical [0.5, 1) scene
+ * range, effectively the same magnitude. Scaling by 2^24 therefore makes one renderer unit
+ * ~one NDC unit on every backend; the previous 65536 scale left GPU biases ~256x weaker than
+ * the software reference, so decal/material biases behaved differently per platform. */
+#define VGFX3D_DEPTH_BIAS_CONSTANT_SCALE 16777216.0f
 
 /// @brief Return the triangle-list index count accepted by all backends, or 0 if invalid.
 /// @details GPU APIs do not share the software backend's per-triangle out-of-range guard. This

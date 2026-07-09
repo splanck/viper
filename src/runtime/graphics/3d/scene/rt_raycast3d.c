@@ -522,8 +522,8 @@ typedef struct {
 /// hits with `u`, `v`, or `1 - u - v` outside `[0, 1]`. The classic algorithm — no
 /// precomputation required, branch-light enough for tight inner loops over triangle
 /// soups.
-double rt_ray3d_intersect_triangle(
-    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
+static double ray3d_intersect_triangle_impl(
+    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj, int front_only) {
     double o[3];
     double d[3];
     double a_pt[3];
@@ -555,8 +555,10 @@ double rt_ray3d_intersect_triangle(
         return -1.0;
 
     double det = e1x * px + e1y * py + e1z * pz;
-    if (!isfinite(det) || fabs(det) < EPSILON)
-        return -1.0; /* parallel */
+    /* Front-only mode rejects negative determinants (back-facing, CCW winding) so
+     * picking and line-of-sight queries can ignore a mesh's interior faces. */
+    if (!isfinite(det) || (front_only ? det < EPSILON : fabs(det) < EPSILON))
+        return -1.0; /* parallel (or culled backface) */
 
     double inv_det = 1.0 / det;
 
@@ -581,6 +583,20 @@ double rt_ray3d_intersect_triangle(
     /* t = e2 · Q * inv_det */
     double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
     return isfinite(t) && t >= 0.0 ? raycast3d_sanitize_hit_distance(t) : -1.0;
+}
+
+double rt_ray3d_intersect_triangle(
+    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
+    return ray3d_intersect_triangle_impl(origin, dir, v0_obj, v1_obj, v2_obj, 0);
+}
+
+/// @brief Ray/triangle intersection with optional backface culling.
+/// @details With @p front_only non-zero, triangles whose winding faces away from the ray are
+///          rejected — the natural mode for picking and line-of-sight queries where hits on a
+///          mesh's interior faces are surprising. Zero preserves the two-sided behavior.
+double rt_ray3d_intersect_triangle_cull(
+    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj, int8_t front_only) {
+    return ray3d_intersect_triangle_impl(origin, dir, v0_obj, v1_obj, v2_obj, front_only ? 1 : 0);
 }
 
 /*==========================================================================

@@ -147,7 +147,7 @@ static void test_node_from_body_resolves_child_local_space() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
     void *body = rt_body3d_new_sphere(0.5, 1.0);
-    void *rot = rt_quat_from_euler(1.5707963267948966, 0.0, 0.0);
+    void *rot = rt_quat_from_euler(0.0, 1.5707963267948966, 0.0);
     void *pos;
     void *local_rot;
     rt_scene_node3d_set_position(parent, 5.0, 0.0, 0.0);
@@ -176,7 +176,7 @@ static void test_body_from_node_uses_world_space() {
     void *body = rt_body3d_new_sphere(0.5, 1.0);
     void *body_pos;
     void *body_rot;
-    rt_scene_node3d_set_rotation(parent, rt_quat_from_euler(1.5707963267948966, 0.0, 0.0));
+    rt_scene_node3d_set_rotation(parent, rt_quat_from_euler(0.0, 1.5707963267948966, 0.0));
     rt_scene_node3d_set_position(child, 1.0, 0.0, 0.0);
     rt_scene_node3d_add_child(parent, child);
     rt_scene3d_add(scene, parent);

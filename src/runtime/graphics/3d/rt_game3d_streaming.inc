@@ -1774,6 +1774,21 @@ static int game3d_i64_budget_can_fit(int64_t current, int64_t budget, int64_t co
     return cost <= budget - current;
 }
 
+/* Recompute passes a budget-evicted item waits before it may reload (~0.5 s at 60 Hz). */
+#define GAME3D_STREAM_BUDGET_EVICT_COOLDOWN 30
+
+/// @brief Eviction watermark for the residency budget: budget + budget/8.
+/// @details New loads respect the strict budget, but already-resident content is only evicted
+///   once the running total passes this higher watermark. The 12.5% gap gives budget-bound
+///   residency the same hysteresis the load/unload radii give distance-bound residency, so
+///   byte-count jitter or nearest-first reordering at the budget line cannot thrash a boundary
+///   cell in and out every pass. Non-positive budgets stay strict (<0 unlimited, 0 evict-all).
+static int64_t game3d_stream_budget_high_watermark(int64_t budget) {
+    if (budget <= 0)
+        return budget;
+    return game3d_i64_saturating_add(budget, budget / 8);
+}
+
 /// @brief Square a non-negative stream radius, saturating overflow and rejecting invalid radii.
 static double game3d_stream_radius_sq(double radius) {
     if (!isfinite(radius) || radius < 0.0)
@@ -1800,14 +1815,26 @@ static void game3d_world_stream_process_cell(rt_game3d_world_stream *stream,
                                              rt_game3d_stream_cell *cell,
                                              int64_t budget) {
     int64_t bytes = game3d_stream_cell_bytes(cell);
-    if (!game3d_i64_budget_can_fit(state->cell_bytes, budget, bytes)) {
-        if (cell->resident)
-            game3d_world_stream_unload_cell(stream, cell);
-        return;
-    }
     if (cell->resident) {
+        /* Resident cells survive until the high watermark so budget-line jitter cannot
+         * thrash them in and out; a budget eviction also starts a reload cooldown. */
+        if (!game3d_i64_budget_can_fit(
+                state->cell_bytes, game3d_stream_budget_high_watermark(budget), bytes)) {
+            game3d_world_stream_unload_cell(stream, cell);
+            cell->reload_cooldown = GAME3D_STREAM_BUDGET_EVICT_COOLDOWN;
+            return;
+        }
         state->cells++;
         state->cell_bytes = game3d_i64_saturating_add(state->cell_bytes, bytes);
+        return;
+    }
+    /* New loads respect the strict budget (low watermark). */
+    if (!game3d_i64_budget_can_fit(state->cell_bytes, budget, bytes))
+        return;
+    if (cell->reload_cooldown > 0) {
+        /* Recently budget-evicted: hold as pending so the cell cannot reload the very next
+         * pass and resume the thrash cycle. */
+        game3d_stream_increment_pending(&state->pending);
         return;
     }
     if (state->load_budget == 0) {
@@ -1818,8 +1845,11 @@ static void game3d_world_stream_process_cell(rt_game3d_world_stream *stream,
         state->load_budget--;
     if (game3d_world_stream_load_cell(stream, cell)) {
         bytes = game3d_stream_cell_bytes(cell);
-        if (!game3d_i64_budget_can_fit(state->cell_bytes, budget, bytes)) {
+        if (!game3d_i64_budget_can_fit(
+                state->cell_bytes, game3d_stream_budget_high_watermark(budget), bytes)) {
+            /* Measured size busted even the eviction watermark — undo and back off. */
             game3d_world_stream_unload_cell(stream, cell);
+            cell->reload_cooldown = GAME3D_STREAM_BUDGET_EVICT_COOLDOWN;
             return;
         }
         state->cells++;
@@ -1844,6 +1874,8 @@ static void game3d_world_stream_recompute_cells(rt_game3d_world_stream *stream,
                 candidates = stream->cell_candidates;
             for (int32_t i = 0; i < cell_count; ++i) {
                 rt_game3d_stream_cell *cell = &stream->cells[i];
+                if (cell->reload_cooldown > 0)
+                    cell->reload_cooldown--;
                 if (cell->resident)
                     game3d_world_stream_refresh_cell_residency_bytes(cell);
                 if (!game3d_stream_cell_desired(stream, cell)) {
@@ -1903,15 +1935,28 @@ static void game3d_world_stream_process_terrain_tile(rt_game3d_world_stream *str
                                                      int terrain_unlimited,
                                                      int64_t remaining_budget) {
     int64_t tile_bytes = game3d_stream_terrain_tile_bytes(tile);
+    if (game3d_stream_terrain_tile_terrain_ref(tile)) {
+        /* Resident tiles survive until the high watermark (see process_cell). */
+        if (!terrain_unlimited &&
+            !game3d_i64_budget_can_fit(state->terrain_bytes,
+                                       game3d_stream_budget_high_watermark(remaining_budget),
+                                       tile_bytes)) {
+            game3d_world_stream_unload_terrain_tile(stream, tile);
+            tile->reload_cooldown = GAME3D_STREAM_BUDGET_EVICT_COOLDOWN;
+            return;
+        }
+        state->terrain++;
+        state->terrain_bytes = game3d_i64_saturating_add(state->terrain_bytes, tile_bytes);
+        return;
+    }
     if (!terrain_unlimited &&
         !game3d_i64_budget_can_fit(state->terrain_bytes, remaining_budget, tile_bytes)) {
         if (tile->resident)
             game3d_world_stream_unload_terrain_tile(stream, tile);
         return;
     }
-    if (game3d_stream_terrain_tile_terrain_ref(tile)) {
-        state->terrain++;
-        state->terrain_bytes = game3d_i64_saturating_add(state->terrain_bytes, tile_bytes);
+    if (tile->reload_cooldown > 0) {
+        game3d_stream_increment_pending(&state->pending);
         return;
     }
     if (state->load_budget == 0) {
@@ -1923,8 +1968,11 @@ static void game3d_world_stream_process_terrain_tile(rt_game3d_world_stream *str
     if (game3d_world_stream_load_terrain_tile(stream, tile)) {
         tile_bytes = game3d_stream_terrain_tile_bytes(tile);
         if (!terrain_unlimited &&
-            !game3d_i64_budget_can_fit(state->terrain_bytes, remaining_budget, tile_bytes)) {
+            !game3d_i64_budget_can_fit(state->terrain_bytes,
+                                       game3d_stream_budget_high_watermark(remaining_budget),
+                                       tile_bytes)) {
             game3d_world_stream_unload_terrain_tile(stream, tile);
+            tile->reload_cooldown = GAME3D_STREAM_BUDGET_EVICT_COOLDOWN;
             return;
         }
         state->terrain++;
@@ -1977,6 +2025,8 @@ static void game3d_world_stream_recompute_terrain(rt_game3d_world_stream *stream
                 candidates = stream->terrain_candidates;
             for (int32_t i = 0; i < tile_count; ++i) {
                 rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+                if (tile->reload_cooldown > 0)
+                    tile->reload_cooldown--;
                 if (!game3d_stream_terrain_tile_desired(stream, tile)) {
                     game3d_world_stream_unload_terrain_tile(stream, tile);
                     continue;
@@ -2039,7 +2089,7 @@ static void game3d_world_stream_commit_recompute(rt_game3d_world_stream *stream,
                                                  game3d_stream_recompute_state *state) {
     int64_t budget = stream->residency_budget_bytes;
     int64_t bytes = game3d_i64_saturating_add(state->cell_bytes, state->terrain_bytes);
-    if (budget >= 0 && bytes > budget) {
+    if (budget >= 0 && bytes > game3d_stream_budget_high_watermark(budget)) {
         if (stream->cells_manifest_loaded) {
             int32_t cell_count = game3d_world_stream_safe_cell_count(stream);
             for (int32_t i = 0; i < cell_count; ++i)

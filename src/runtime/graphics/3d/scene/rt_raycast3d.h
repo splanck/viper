@@ -32,6 +32,9 @@ extern "C" {
 /* Ray intersection */
 /// @brief Möller-Trumbore ray-triangle test. Returns Euclidean hit distance, -1 on miss.
 double rt_ray3d_intersect_triangle(void *origin, void *dir, void *v0, void *v1, void *v2);
+/// @brief Ray-triangle test with optional backface culling (front_only != 0 rejects backfaces).
+double rt_ray3d_intersect_triangle_cull(
+    void *origin, void *dir, void *v0, void *v1, void *v2, int8_t front_only);
 /// @brief Test ray against every triangle in a transformed mesh; returns RayHit3D or NULL.
 void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh, void *transform);
 /// @brief Slab-method ray-AABB test. Returns Euclidean hit distance, -1 on miss.

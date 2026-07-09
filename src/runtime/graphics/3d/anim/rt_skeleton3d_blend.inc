@@ -20,9 +20,10 @@ static void anim_blend3d_finalizer(void *obj) {
     free(b->motion_palette_snapshot);
     free(b->local_transforms);
     free(b->temp_state_local);
+    free(b->blend_acc_trs);
     free(b->globals_buf);
     b->bone_palette = b->prev_bone_palette = b->motion_palette_snapshot = NULL;
-    b->local_transforms = b->temp_state_local = b->globals_buf = NULL;
+    b->local_transforms = b->temp_state_local = b->blend_acc_trs = b->globals_buf = NULL;
     b->state_count = 0;
 }
 
@@ -38,6 +39,7 @@ static int anim_blend3d_ensure_pose_capacity(rt_anim_blend3d *b, int32_t bone_co
         !skeleton3d_grow_pose_buffer(&b->motion_palette_snapshot, old_capacity, new_capacity) ||
         !skeleton3d_grow_pose_buffer(&b->local_transforms, old_capacity, new_capacity) ||
         !skeleton3d_grow_pose_buffer(&b->temp_state_local, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->blend_acc_trs, old_capacity, new_capacity) ||
         !skeleton3d_grow_pose_buffer(&b->globals_buf, old_capacity, new_capacity))
         return 0;
     b->pose_capacity = new_capacity;
@@ -76,9 +78,10 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     b->motion_palette_snapshot = (float *)calloc(1, buf_sz);
     b->local_transforms = (float *)calloc(1, buf_sz);
     b->temp_state_local = (float *)calloc(1, buf_sz);
+    b->blend_acc_trs = (float *)calloc(1, buf_sz);
     b->globals_buf = (float *)calloc(1, buf_sz);
     if (!b->bone_palette || !b->prev_bone_palette || !b->motion_palette_snapshot ||
-        !b->local_transforms || !b->temp_state_local || !b->globals_buf) {
+        !b->local_transforms || !b->temp_state_local || !b->blend_acc_trs || !b->globals_buf) {
         anim_blend3d_finalizer(b);
         if (rt_obj_release_check0(b))
             rt_obj_free(b);
@@ -227,7 +230,8 @@ void rt_anim_blend3d_update(void *obj, double dt) {
         return;
     if (!anim_blend3d_ensure_pose_capacity(b, bc))
         return;
-    if (!b->local_transforms || !b->temp_state_local || !b->globals_buf || !b->bone_palette)
+    if (!b->local_transforms || !b->temp_state_local || !b->blend_acc_trs || !b->globals_buf ||
+        !b->bone_palette)
         return;
 
     /* Advance all state timers */
@@ -251,9 +255,19 @@ void rt_anim_blend3d_update(void *obj, double dt) {
         }
     }
 
-    /* Start with bind pose */
-    for (int32_t i = 0; i < bc; i++)
-        memcpy(&b->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+    /* Blend entirely in TRS space and compose matrices exactly once per bone at the end.
+     * The previous loop decomposed two just-built matrices per bone per state (matrix
+     * decompose costs normalizations and square roots), which dominated crowd frames.
+     * Buffer roles during this update:
+     *   temp_state_local[bone*16 + 0..9]  — bind-pose TRS (pos3, rot4, scl3), persists
+     *   blend_acc_trs[bone*16 + 0..9]     — running blended TRS accumulator
+     *   local_transforms                  — final composed matrices (written at the end) */
+    for (int32_t i = 0; i < bc; i++) {
+        float *bind_trs = &b->temp_state_local[i * 16];
+        mat4f_decompose_trs(
+            skel->bones[i].bind_pose_local, &bind_trs[0], &bind_trs[3], &bind_trs[7]);
+        memcpy(&b->blend_acc_trs[i * 16], bind_trs, 10 * sizeof(float));
+    }
 
     /* Blend active states */
     float total_weight = 0.0f;
@@ -264,41 +278,54 @@ void rt_anim_blend3d_update(void *obj, double dt) {
         if (!anim || !isfinite(st->weight) || st->weight < 1e-6f)
             continue;
 
-        /* Sample this state's channels into temp */
-        for (int32_t i = 0; i < bc; i++)
-            memcpy(
-                &b->temp_state_local[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+        float w = st->weight;
+        total_weight += w;
+        float blend_t = skeleton3d_clamp01f((total_weight > 1e-6f) ? w / total_weight : 1.0f);
 
+        /* Sample this state's pose in TRS form into local_transforms' slots (free until the
+         * final compose): bind TRS for every bone, then channel overrides — O(bones+channels),
+         * matching the old full-pose temp buffer without touching matrices. */
+        for (int32_t bone = 0; bone < bc; bone++)
+            memcpy(&b->local_transforms[bone * 16],
+                   &b->temp_state_local[bone * 16],
+                   10 * sizeof(float));
         channel_count = animation3d_safe_channel_count(anim);
         for (int32_t c = 0; c < channel_count; c++) {
             int32_t bone = anim->channels[c].bone_index;
             if (bone < 0 || bone >= bc)
                 continue;
-            sample_channel_with_fallback(&anim->channels[c],
-                                         st->anim_time,
-                                         skel->bones[bone].bind_pose_local,
-                                         &b->temp_state_local[bone * 16]);
+            const float *bind_trs = &b->temp_state_local[bone * 16];
+            float *state_trs = &b->local_transforms[bone * 16];
+            sample_channel_trs_with_fallback(&anim->channels[c],
+                                             st->anim_time,
+                                             &bind_trs[0],
+                                             &bind_trs[3],
+                                             &bind_trs[7],
+                                             &state_trs[0],
+                                             &state_trs[3],
+                                             &state_trs[7]);
         }
-
-        /* Weighted TRS blend into local_transforms. */
-        float w = st->weight;
-        total_weight += w;
-        float blend_t = skeleton3d_clamp01f((total_weight > 1e-6f) ? w / total_weight : 1.0f);
 
         for (int32_t bone = 0; bone < bc; bone++) {
-            float from_pos[3], from_rot[4], from_scl[3];
-            float to_pos[3], to_rot[4], to_scl[3];
+            const float *to_trs = &b->local_transforms[bone * 16];
+            float *acc = &b->blend_acc_trs[bone * 16];
             float blend_pos[3], blend_rot[4], blend_scl[3];
-            mat4f_decompose_trs(&b->local_transforms[bone * 16], from_pos, from_rot, from_scl);
-            mat4f_decompose_trs(&b->temp_state_local[bone * 16], to_pos, to_rot, to_scl);
             for (int32_t i = 0; i < 3; i++) {
-                blend_pos[i] = from_pos[i] + (to_pos[i] - from_pos[i]) * blend_t;
-                blend_scl[i] = from_scl[i] + (to_scl[i] - from_scl[i]) * blend_t;
+                blend_pos[i] = acc[0 + i] + (to_trs[0 + i] - acc[0 + i]) * blend_t;
+                blend_scl[i] = acc[7 + i] + (to_trs[7 + i] - acc[7 + i]) * blend_t;
             }
-            quat_slerp_float(from_rot, to_rot, blend_t, blend_rot);
-            animation3d_sanitize_trs(blend_pos, blend_rot, blend_scl, from_pos, from_rot, from_scl);
-            build_trs_float(blend_pos, blend_rot, blend_scl, &b->local_transforms[bone * 16]);
+            quat_slerp_float(&acc[3], &to_trs[3], blend_t, blend_rot);
+            animation3d_sanitize_trs(blend_pos, blend_rot, blend_scl, &acc[0], &acc[3], &acc[7]);
+            memcpy(&acc[0], blend_pos, 3 * sizeof(float));
+            memcpy(&acc[3], blend_rot, 4 * sizeof(float));
+            memcpy(&acc[7], blend_scl, 3 * sizeof(float));
         }
+    }
+
+    /* Compose matrices once per bone from the blended TRS. */
+    for (int32_t bone = 0; bone < bc; bone++) {
+        const float *acc = &b->blend_acc_trs[bone * 16];
+        build_trs_float(&acc[0], &acc[3], &acc[7], &b->local_transforms[bone * 16]);
     }
 
     compute_palette_from_locals(skel, b->local_transforms, b->globals_buf, b->bone_palette);

@@ -1053,6 +1053,7 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 |--------|-----------|-------------|
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Set local position |
 | `SetScale(x, y, z)` | `void(f64, f64, f64)` | Set local scale |
+| `SetTransform(px,py,pz, qx,qy,qz,qw, sx,sy,sz)` | `void(f64 ×10)` | Set position, rotation (quaternion components), and scale in one call — the allocation-free hot-loop form |
 | `AddChild(child)` | `void(obj)` | Attach child (auto-detaches from previous parent) |
 | `TryAddChild(child)` | `i1(obj)` | Attach child and return whether the parent-child link was accepted |
 | `RemoveChild(child)` | `void(obj)` | Detach child node |
@@ -1788,6 +1789,7 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `Ray3D.IntersectTriangle(o, d, v0, v1, v2)` | `f64(obj, obj, obj, obj, obj)` | Möller-Trumbore; returns distance or -1 |
+| `Ray3D.IntersectTriangleCull(o, d, v0, v1, v2, frontOnly)` | `f64(obj, obj, obj, obj, obj, i1)` | As above; `frontOnly = true` rejects back-facing triangles (natural for picking and line-of-sight) |
 | `Ray3D.IntersectMesh(o, d, mesh, transform)` | `obj(obj, obj, obj, obj)` | Test all triangles, returns closest RayHit3D or null |
 | `Ray3D.IntersectAABB(o, d, min, max)` | `f64(obj, obj, obj, obj)` | Slab method; returns distance or -1 |
 | `Ray3D.IntersectSphere(o, d, center, radius)` | `f64(obj, obj, obj, f64)` | Quadratic formula; returns distance or -1 |

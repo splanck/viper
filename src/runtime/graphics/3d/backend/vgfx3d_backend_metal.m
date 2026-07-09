@@ -101,6 +101,9 @@
      * seam) + validity latch; camera clip planes for shader linearization. */
     int8_t _opaqueDepthValid;
     float _camNear, _camFar;
+    /* Ambient last encoded into the per-scene constants; ambient is a per-draw
+     * parameter, so it participates in the lights-revision dirty check. */
+    float _encoderAmbient[3];
 }
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> commandQueue;
@@ -161,8 +164,10 @@
 @property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipeline;
 @property(nonatomic, strong) id<MTLSamplerState> shadowSampler;
 @property(nonatomic, strong) id<MTLDepthStencilState> shadowDepthState;
-/* MTL-13: Instanced rendering — pooled instance buffer */
+/* MTL-13: Instanced rendering — per-draw slices of a transient ring slot */
 @property(nonatomic, strong) id<MTLBuffer> instanceBuf;
+@property(nonatomic) NSUInteger instanceBufLength;
+@property(nonatomic) NSUInteger instanceWriteOffset;
 /* Reusable transient geometry buffers for non-cacheable draws. */
 @property(nonatomic, strong) id<MTLBuffer> dynamicVertexBuf;
 @property(nonatomic, strong) id<MTLBuffer> dynamicIndexBuf;
@@ -170,6 +175,18 @@
 @property(nonatomic) NSUInteger dynamicIndexBufLength;
 @property(nonatomic) NSUInteger dynamicVertexWriteOffset;
 @property(nonatomic) NSUInteger dynamicIndexWriteOffset;
+/* Frames-in-flight throttle + transient-buffer ring.
+ * Every context command buffer waits on the semaphore at creation and signals it
+ * on completion, capping unfinished command buffers at VGFX3D_METAL_MAX_INFLIGHT.
+ * Each creation also rotates the transient ring slot that backs the dynamic
+ * vertex/index/instance buffers, so the CPU never rewrites a slice the GPU may
+ * still be reading for an earlier command buffer. */
+@property(nonatomic, strong) dispatch_semaphore_t inflightSemaphore;
+@property(nonatomic, strong) NSMutableArray *dynamicVertexPool;
+@property(nonatomic, strong) NSMutableArray *dynamicIndexPool;
+@property(nonatomic, strong) NSMutableArray *instancePool;
+@property(nonatomic) NSUInteger transientRingCursor;
+@property(nonatomic) NSUInteger transientRingSlot;
 /* MTL-11: Post-processing state */
 @property(nonatomic, strong) id<MTLTexture> postfxColorTexture;
 @property(nonatomic, strong) id<MTLTexture> postfxScratchTexture;
@@ -1515,6 +1532,8 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
                                       float *dst_hdr_rgba);
 static void metal_update_layer_size(VGFXMetalContext *ctx);
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx);
+static id<MTLCommandBuffer> metal_acquire_command_buffer(VGFXMetalContext *ctx);
+static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted);
 static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
                                                     const vgfx3d_postfx_chain_t *postfx);
 
@@ -1924,7 +1943,7 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
     if (!ctx)
         return;
     if (!ctx.cmdBuf) {
-        ctx.cmdBuf = [ctx.commandQueue commandBuffer];
+        ctx.cmdBuf = metal_acquire_command_buffer(ctx);
         if (!ctx.cmdBuf)
             return;
     }
@@ -2297,6 +2316,74 @@ static void metal_finish_encoding(VGFXMetalContext *ctx) {
     }
 }
 
+/* Transient-buffer ring depth and the frames-in-flight cap. A single MTLCommandQueue
+ * completes command buffers in FIFO order, so capping unfinished buffers at RING-1
+ * guarantees the previous user of a reused ring slot has already completed. */
+#define VGFX3D_METAL_TRANSIENT_RING 4u
+#define VGFX3D_METAL_MAX_INFLIGHT 3
+
+/// @brief Fetch the MTLBuffer stored in a transient pool slot (NSNull → nil).
+static id<MTLBuffer> metal_transient_pool_buffer(NSMutableArray *pool, NSUInteger slot) {
+    if (!pool || slot >= pool.count)
+        return nil;
+    id obj = pool[slot];
+    return obj == (id)[NSNull null] ? nil : (id<MTLBuffer>)obj;
+}
+
+/// @brief Lazily create a transient pool with one NSNull placeholder per ring slot.
+static NSMutableArray *metal_transient_pool_ensure(NSMutableArray *pool) {
+    if (pool)
+        return pool;
+    NSMutableArray *created = [NSMutableArray arrayWithCapacity:VGFX3D_METAL_TRANSIENT_RING];
+    for (NSUInteger i = 0; i < VGFX3D_METAL_TRANSIENT_RING; i++)
+        [created addObject:[NSNull null]];
+    return created;
+}
+
+/// @brief Rotate to the next transient ring slot and reset its write offsets.
+/// @details Called whenever a new context command buffer is created; the frames-in-flight
+///          semaphore guarantees the slot's previous user has finished on the GPU.
+static void metal_rotate_transient_ring(VGFXMetalContext *ctx) {
+    NSUInteger slot;
+    if (!ctx)
+        return;
+    ctx.dynamicVertexPool = metal_transient_pool_ensure(ctx.dynamicVertexPool);
+    ctx.dynamicIndexPool = metal_transient_pool_ensure(ctx.dynamicIndexPool);
+    ctx.instancePool = metal_transient_pool_ensure(ctx.instancePool);
+    slot = ctx.transientRingCursor % VGFX3D_METAL_TRANSIENT_RING;
+    ctx.transientRingCursor = ctx.transientRingCursor + 1u;
+    ctx.transientRingSlot = slot;
+    ctx.dynamicVertexBuf = metal_transient_pool_buffer(ctx.dynamicVertexPool, slot);
+    ctx.dynamicIndexBuf = metal_transient_pool_buffer(ctx.dynamicIndexPool, slot);
+    ctx.instanceBuf = metal_transient_pool_buffer(ctx.instancePool, slot);
+    ctx.dynamicVertexBufLength = ctx.dynamicVertexBuf ? ctx.dynamicVertexBuf.length : 0;
+    ctx.dynamicIndexBufLength = ctx.dynamicIndexBuf ? ctx.dynamicIndexBuf.length : 0;
+    ctx.instanceBufLength = ctx.instanceBuf ? ctx.instanceBuf.length : 0;
+    ctx.dynamicVertexWriteOffset = 0;
+    ctx.dynamicIndexWriteOffset = 0;
+    ctx.instanceWriteOffset = 0;
+}
+
+/// @brief Create a context command buffer, throttled to the frames-in-flight budget.
+/// @details Waits on the in-flight semaphore (signalled by each committed buffer's completion)
+///          so the CPU can never run more than VGFX3D_METAL_MAX_INFLIGHT command buffers ahead
+///          of the GPU, then rotates the transient ring for the new buffer's dynamic writes.
+static id<MTLCommandBuffer> metal_acquire_command_buffer(VGFXMetalContext *ctx) {
+    id<MTLCommandBuffer> buf;
+    if (!ctx || !ctx.commandQueue)
+        return nil;
+    if (ctx.inflightSemaphore)
+        dispatch_semaphore_wait(ctx.inflightSemaphore, DISPATCH_TIME_FOREVER);
+    buf = [ctx.commandQueue commandBuffer];
+    if (!buf) {
+        if (ctx.inflightSemaphore)
+            dispatch_semaphore_signal(ctx.inflightSemaphore);
+        return nil;
+    }
+    metal_rotate_transient_ring(ctx);
+    return buf;
+}
+
 /// @brief Commit the pending command buffer, optionally blocking until the GPU finishes it.
 static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted) {
     if (!ctx)
@@ -2306,16 +2393,22 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
         id<MTLCommandBuffer> cmdBuf = ctx.cmdBuf;
         NSMutableArray *retainedFrameBuffers = ctx.frameBuffers;
         id<CAMetalDrawable> retainedDrawable = ctx.drawable;
+        dispatch_semaphore_t inflight = ctx.inflightSemaphore;
         if (!waitUntilCompleted) {
             [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
               (void)buffer;
               (void)retainedFrameBuffers;
               (void)retainedDrawable;
+              if (inflight)
+                  dispatch_semaphore_signal(inflight);
             }];
         }
         [cmdBuf commit];
-        if (waitUntilCompleted)
+        if (waitUntilCompleted) {
             [cmdBuf waitUntilCompleted];
+            if (inflight)
+                dispatch_semaphore_signal(inflight);
+        }
         ctx.cmdBuf = nil;
         ctx.frameBuffers = nil;
         ctx.drawable = nil;
@@ -2384,7 +2477,7 @@ static BOOL metal_present_texture(VGFXMetalContext *ctx,
     if (!ctx || !texture || ctx.rttActive)
         return NO;
     if (!ctx.cmdBuf) {
-        ctx.cmdBuf = [ctx.commandQueue commandBuffer];
+        ctx.cmdBuf = metal_acquire_command_buffer(ctx);
         if (!ctx.cmdBuf)
             return NO;
         if (!ctx.frameBuffers)
@@ -2449,17 +2542,26 @@ static NSUInteger metal_align_dynamic_offset(NSUInteger value) {
     return (value + align - 1u) & ~(align - 1u);
 }
 
-/// @brief Upload transient geometry into a reusable shared-storage Metal buffer slice.
-/// @details Non-cacheable meshes can be produced every frame by skinning/morphing/snapshotting.
-///          Allocating a fresh MTLBuffer for each draw creates avoidable churn and frame spikes.
-///          This helper grows a per-command-buffer ring, appends the current draw bytes at a unique
-///          offset, and returns both buffer and offset so earlier encoded draws are never
-///          overwritten before the GPU consumes them.
-static id<MTLBuffer> metal_upload_dynamic_geometry_buffer(VGFXMetalContext *ctx,
-                                                          BOOL vertex_buffer,
-                                                          const void *bytes,
-                                                          size_t length,
-                                                          NSUInteger *out_offset) {
+/* Transient upload streams: which ring-slot buffer a per-draw slice appends into. */
+typedef enum {
+    VGFX3D_METAL_TRANSIENT_VERTEX = 0,
+    VGFX3D_METAL_TRANSIENT_INDEX = 1,
+    VGFX3D_METAL_TRANSIENT_INSTANCE = 2,
+} vgfx3d_metal_transient_stream_t;
+
+/// @brief Upload transient per-draw bytes into a reusable shared-storage Metal buffer slice.
+/// @details Non-cacheable meshes are produced every frame by skinning/morphing/snapshotting,
+///          instanced draws upload a matrix block per batch, and skinned draws a bone palette.
+///          Allocating a fresh MTLBuffer for each would churn; overwriting one shared buffer
+///          would corrupt earlier encoded draws. This helper appends into the current
+///          transient-ring slot at a unique offset (the ring itself protects against
+///          frames-in-flight reuse) and grows the slot's buffer on demand, publishing growth
+///          back into the pool so the slot keeps its high-water capacity.
+static id<MTLBuffer> metal_upload_transient_buffer(VGFXMetalContext *ctx,
+                                                   vgfx3d_metal_transient_stream_t stream,
+                                                   const void *bytes,
+                                                   size_t length,
+                                                   NSUInteger *out_offset) {
     id<MTLBuffer> buffer;
     NSUInteger capacity;
     NSUInteger write_offset;
@@ -2471,38 +2573,81 @@ static id<MTLBuffer> metal_upload_dynamic_geometry_buffer(VGFXMetalContext *ctx,
         *out_offset = 0;
     if (!ctx || !bytes || length == 0 || length > (size_t)max_capacity)
         return nil;
-    buffer = vertex_buffer ? ctx.dynamicVertexBuf : ctx.dynamicIndexBuf;
-    capacity = vertex_buffer ? ctx.dynamicVertexBufLength : ctx.dynamicIndexBufLength;
-    write_offset = vertex_buffer ? ctx.dynamicVertexWriteOffset : ctx.dynamicIndexWriteOffset;
+    switch (stream) {
+        case VGFX3D_METAL_TRANSIENT_VERTEX:
+            buffer = ctx.dynamicVertexBuf;
+            capacity = ctx.dynamicVertexBufLength;
+            write_offset = ctx.dynamicVertexWriteOffset;
+            break;
+        case VGFX3D_METAL_TRANSIENT_INDEX:
+            buffer = ctx.dynamicIndexBuf;
+            capacity = ctx.dynamicIndexBufLength;
+            write_offset = ctx.dynamicIndexWriteOffset;
+            break;
+        case VGFX3D_METAL_TRANSIENT_INSTANCE:
+        default:
+            buffer = ctx.instanceBuf;
+            capacity = ctx.instanceBufLength;
+            write_offset = ctx.instanceWriteOffset;
+            break;
+    }
     aligned_offset = metal_align_dynamic_offset(write_offset);
     if (aligned_offset > max_capacity - (NSUInteger)length)
         return nil;
     if (!buffer || capacity < aligned_offset + (NSUInteger)length) {
-        aligned_offset = 0;
-        new_capacity = capacity > 0 ? capacity : 65536u;
-        while (new_capacity < (NSUInteger)length) {
-            if (new_capacity > max_capacity / 2u) {
-                new_capacity = (NSUInteger)length;
+        NSUInteger grown_capacity = capacity > 0 ? capacity : 65536u;
+        NSUInteger required = aligned_offset + (NSUInteger)length;
+        while (grown_capacity < required) {
+            if (grown_capacity > max_capacity / 2u) {
+                grown_capacity = required;
                 break;
             }
-            new_capacity *= 2u;
+            grown_capacity *= 2u;
         }
+        new_capacity = grown_capacity;
         buffer = metal_new_shared_buffer_with_length(ctx, (size_t)new_capacity);
         if (!buffer)
             return nil;
-        if (vertex_buffer) {
-            ctx.dynamicVertexBuf = buffer;
-            ctx.dynamicVertexBufLength = new_capacity;
-        } else {
-            ctx.dynamicIndexBuf = buffer;
-            ctx.dynamicIndexBufLength = new_capacity;
+        /* Fresh buffer: restart at offset 0 (previous slices live in the old buffer, which
+         * stays retained by the encoder and frameBuffers until the GPU is done with it). */
+        aligned_offset = 0;
+        switch (stream) {
+            case VGFX3D_METAL_TRANSIENT_VERTEX:
+                ctx.dynamicVertexBuf = buffer;
+                ctx.dynamicVertexBufLength = new_capacity;
+                ctx.dynamicVertexPool = metal_transient_pool_ensure(ctx.dynamicVertexPool);
+                ctx.dynamicVertexPool[ctx.transientRingSlot] = buffer;
+                break;
+            case VGFX3D_METAL_TRANSIENT_INDEX:
+                ctx.dynamicIndexBuf = buffer;
+                ctx.dynamicIndexBufLength = new_capacity;
+                ctx.dynamicIndexPool = metal_transient_pool_ensure(ctx.dynamicIndexPool);
+                ctx.dynamicIndexPool[ctx.transientRingSlot] = buffer;
+                break;
+            case VGFX3D_METAL_TRANSIENT_INSTANCE:
+            default:
+                ctx.instanceBuf = buffer;
+                ctx.instanceBufLength = new_capacity;
+                ctx.instancePool = metal_transient_pool_ensure(ctx.instancePool);
+                ctx.instancePool[ctx.transientRingSlot] = buffer;
+                break;
         }
+        if (ctx.frameBuffers)
+            [ctx.frameBuffers addObject:buffer];
     }
     memcpy((uint8_t *)buffer.contents + aligned_offset, bytes, length);
-    if (vertex_buffer)
-        ctx.dynamicVertexWriteOffset = aligned_offset + (NSUInteger)length;
-    else
-        ctx.dynamicIndexWriteOffset = aligned_offset + (NSUInteger)length;
+    switch (stream) {
+        case VGFX3D_METAL_TRANSIENT_VERTEX:
+            ctx.dynamicVertexWriteOffset = aligned_offset + (NSUInteger)length;
+            break;
+        case VGFX3D_METAL_TRANSIENT_INDEX:
+            ctx.dynamicIndexWriteOffset = aligned_offset + (NSUInteger)length;
+            break;
+        case VGFX3D_METAL_TRANSIENT_INSTANCE:
+        default:
+            ctx.instanceWriteOffset = aligned_offset + (NSUInteger)length;
+            break;
+    }
     if (out_offset)
         *out_offset = aligned_offset;
     return buffer;
@@ -2578,13 +2723,16 @@ static int metal_get_geometry_buffers(VGFXMetalContext *ctx,
     }
 
     *outVB =
-        metal_upload_dynamic_geometry_buffer(ctx,
-                                             YES,
-                                             cmd->vertices,
-                                             (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
-                                             outVertexOffset);
-    *outIB = metal_upload_dynamic_geometry_buffer(
-        ctx, NO, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t), outIndexOffset);
+        metal_upload_transient_buffer(ctx,
+                                      VGFX3D_METAL_TRANSIENT_VERTEX,
+                                      cmd->vertices,
+                                      (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
+                                      outVertexOffset);
+    *outIB = metal_upload_transient_buffer(ctx,
+                                           VGFX3D_METAL_TRANSIENT_INDEX,
+                                           cmd->indices,
+                                           (size_t)cmd->index_count * sizeof(uint32_t),
+                                           outIndexOffset);
     return (*outVB && *outIB) ? 1 : 0;
 }
 
@@ -2895,6 +3043,9 @@ static BOOL metal_create_command_queue_and_defaults(VGFXMetalContext *ctx, id<MT
         NSLog(@ "[Metal] newCommandQueue returned nil");
         return NO;
     }
+    ctx.inflightSemaphore = dispatch_semaphore_create(VGFX3D_METAL_MAX_INFLIGHT);
+    ctx.transientRingCursor = 0;
+    ctx.transientRingSlot = 0;
     mat4f_identity(ctx->_view);
     mat4f_identity(ctx->_projection);
     mat4f_identity(ctx->_vp);
@@ -4059,7 +4210,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
          * RTT end_frame commits and nils the cmdBuf, so on-screen passes
          * after an RTT pass will create a fresh one. */
         if (!ctx.cmdBuf) {
-            ctx.cmdBuf = [ctx.commandQueue commandBuffer];
+            ctx.cmdBuf = metal_acquire_command_buffer(ctx);
             if (!ctx.cmdBuf)
                 return;
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
@@ -4067,8 +4218,6 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             ctx.displayTexture = nil;
             ctx.postfxEncodedThisFrame = 0;
             ctx.postfxCompositedToDrawable = 0;
-            ctx.dynamicVertexWriteOffset = 0;
-            ctx.dynamicIndexWriteOffset = 0;
             new_command_buffer = YES;
         } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
@@ -4086,8 +4235,14 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         }
 
         metal_begin_scene_encoder(ctx, load_existing_color, cam->load_existing_depth);
-        if (!ctx.encoder)
+        if (!ctx.encoder) {
+            /* Scene target unavailable — drawable acquisition routinely fails during window
+             * resize/occlusion. Abandoning the open command buffer here would leak this
+             * frame's state into the next begin_frame (whose per-frame resets only run when
+             * cmdBuf is nil); commit it empty so the next frame starts clean. */
+            metal_commit_pending(ctx, NO);
             return;
+        }
         ctx.inFrame = YES;
     }
 }
@@ -4848,7 +5003,12 @@ static VGFXMetalMorphCacheEntry *metal_get_cached_morph_entry(VGFXMetalContext *
 }
 
 /// @brief Bind a draw's skeletal bone matrices (the skinning palette) into the vertex stage.
-/// @return 1 on success, 0 if the palette is missing or too large.
+/// @details Palettes are appended into the transient ring instead of allocating fresh
+///          MTLBuffers — with many skinned characters the per-draw device allocations were a
+///          measurable frame-time cost. The palette stays identity-padded to the full
+///          VGFX3D_METAL_MAX_BONES because the shader clamps bone indices to the palette
+///          size, not the draw's bone count (the MSL PerScene/PerObject ABI is contractual).
+/// @return 1 on success, 0 if the palette is missing or the upload failed.
 static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
                                     const vgfx3d_draw_cmd_t *cmd,
                                     int has_skinning,
@@ -4857,6 +5017,7 @@ static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
     float packed_palette[VGFX3D_METAL_MAX_BONES * 16];
     size_t palette_bytes = sizeof(packed_palette);
     id<MTLBuffer> bone_buf;
+    NSUInteger bone_offset = 0;
 
     if (out_prev_ok)
         *out_prev_ok = 0;
@@ -4865,23 +5026,22 @@ static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
         return 0;
 
     vgfx3d_metal_pack_bone_palette(packed_palette, cmd->bone_palette, cmd->bone_count);
-    bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+    bone_buf = metal_upload_transient_buffer(
+        ctx, VGFX3D_METAL_TRANSIENT_VERTEX, packed_palette, palette_bytes, &bone_offset);
     if (!bone_buf)
         return 0;
-    [ctx.encoder setVertexBuffer:bone_buf offset:0 atIndex:3];
-    if (ctx.frameBuffers && bone_buf)
-        [ctx.frameBuffers addObject:bone_buf];
+    [ctx.encoder setVertexBuffer:bone_buf offset:bone_offset atIndex:3];
     if (has_prev_skinning) {
         id<MTLBuffer> prev_bone_buf;
+        NSUInteger prev_offset = 0;
         vgfx3d_metal_pack_bone_palette(packed_palette, cmd->prev_bone_palette, cmd->bone_count);
-        prev_bone_buf = metal_new_shared_buffer(ctx, packed_palette, palette_bytes);
+        prev_bone_buf = metal_upload_transient_buffer(
+            ctx, VGFX3D_METAL_TRANSIENT_VERTEX, packed_palette, palette_bytes, &prev_offset);
         if (prev_bone_buf) {
-            [ctx.encoder setVertexBuffer:prev_bone_buf offset:0 atIndex:7];
+            [ctx.encoder setVertexBuffer:prev_bone_buf offset:prev_offset atIndex:7];
             if (out_prev_ok)
                 *out_prev_ok = 1;
         }
-        if (ctx.frameBuffers && prev_bone_buf)
-            [ctx.frameBuffers addObject:prev_bone_buf];
     }
     return 1;
 }
@@ -4936,8 +5096,9 @@ static metal_morph_bind_status_t metal_bind_morph_payload(VGFXMetalContext *ctx,
     return status;
 }
 
-/// @brief Ensure the per-instance transform buffer can hold @p instance_count instances (grows as
-/// needed).
+/// @brief Ensure the CPU-side instance staging scratch can hold @p instance_count instances.
+/// @details GPU storage is a per-draw slice of the transient ring (see
+///          metal_upload_transient_buffer); only the packing scratch persists here.
 static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instance_count) {
     int32_t needed_capacity;
     int32_t next_capacity;
@@ -4952,9 +5113,6 @@ static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instanc
         byte_count = (NSUInteger)next_capacity * sizeof(vgfx3d_metal_instance_data_t);
         ctx.instanceScratch = [NSMutableData dataWithLength:byte_count];
         ctx.instanceCapacity = (NSUInteger)next_capacity;
-    }
-    if (!ctx.instanceBuf || ctx.instanceBuf.length < ctx.instanceScratch.length) {
-        ctx.instanceBuf = metal_new_shared_buffer_with_length(ctx, ctx.instanceScratch.length);
     }
 }
 
@@ -5062,7 +5220,9 @@ static void metal_submit_draw(void *ctx_ptr,
         /* Scene + light constants persist in the encoder; re-encode only when
          * the queued light-snapshot revision changes (0 = always encode). */
         int lights_dirty =
-            (cmd->lights_revision == 0 || cmd->lights_revision != ctx->_encoderLightsRevision);
+            (cmd->lights_revision == 0 || cmd->lights_revision != ctx->_encoderLightsRevision ||
+             ambient[0] != ctx->_encoderAmbient[0] || ambient[1] != ctx->_encoderAmbient[1] ||
+             ambient[2] != ctx->_encoderAmbient[2]);
 
         /* Per-scene (includes MTL-07 fog) */
         mtl_per_scene_t scene;
@@ -5357,6 +5517,9 @@ static void metal_submit_draw(void *ctx_ptr,
             if (clusterBuf)
                 [ctx.encoder setFragmentBuffer:clusterBuf offset:0 atIndex:3];
             ctx->_encoderLightsRevision = cmd->lights_revision;
+            ctx->_encoderAmbient[0] = ambient[0];
+            ctx->_encoderAmbient[1] = ambient[1];
+            ctx->_encoderAmbient[2] = ambient[2];
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -5614,7 +5777,7 @@ static void metal_shadow_begin(
 
         /* Start shadow render pass */
         if (!ctx.cmdBuf)
-            ctx.cmdBuf = [ctx.commandQueue commandBuffer];
+            ctx.cmdBuf = metal_acquire_command_buffer(ctx);
         if (ctx.encoder) {
             [ctx.encoder endEncoding];
             ctx.encoder = nil;
@@ -5818,7 +5981,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             light_count = 0;
 
         metal_ensure_instance_storage(ctx, instance_count);
-        if (!ctx.instanceScratch || !ctx.instanceBuf)
+        if (!ctx.instanceScratch)
             return;
         instance_data = (vgfx3d_metal_instance_data_t *)ctx.instanceScratch.mutableBytes;
         if (!instance_data)
@@ -5828,9 +5991,20 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                                         instance_matrices,
                                         cmd->prev_instance_matrices,
                                         cmd->has_prev_instance_matrices ? 1 : 0);
-        memcpy(ctx.instanceBuf.contents,
-               instance_data,
-               (size_t)instance_count * sizeof(vgfx3d_metal_instance_data_t));
+        /* Each instanced batch gets its own slice of the transient ring. Binding one shared
+         * buffer at offset 0 and memcpy-ing over it per draw corrupted every batch except the
+         * last: the encoder records a reference, so the GPU read whatever the final memcpy
+         * left behind — all batches rendered with the last batch's transforms. */
+        NSUInteger instance_offset = 0;
+        id<MTLBuffer> instance_buffer =
+            metal_upload_transient_buffer(ctx,
+                                          VGFX3D_METAL_TRANSIENT_INSTANCE,
+                                          instance_data,
+                                          (size_t)instance_count *
+                                              sizeof(vgfx3d_metal_instance_data_t),
+                                          &instance_offset);
+        if (!instance_buffer)
+            return;
 
         blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
         [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, YES)];
@@ -5851,11 +6025,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         /* Vertex/index buffers */
-        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset) ||
-            !ctx.instanceBuf)
+        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
             return;
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
-        [ctx.encoder setVertexBuffer:ctx.instanceBuf offset:0 atIndex:6];
+        [ctx.encoder setVertexBuffer:instance_buffer offset:instance_offset atIndex:6];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
@@ -5895,7 +6068,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         /* Scene + light constants persist in the encoder; re-encode only when
          * the queued light-snapshot revision changes (0 = always encode). */
         int lights_dirty =
-            (cmd->lights_revision == 0 || cmd->lights_revision != ctx->_encoderLightsRevision);
+            (cmd->lights_revision == 0 || cmd->lights_revision != ctx->_encoderLightsRevision ||
+             ambient[0] != ctx->_encoderAmbient[0] || ambient[1] != ctx->_encoderAmbient[1] ||
+             ambient[2] != ctx->_encoderAmbient[2]);
 
         mtl_per_scene_t scene;
         id<MTLBuffer> clusterBuf = nil;
@@ -6182,6 +6357,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             if (clusterBuf)
                 [ctx.encoder setFragmentBuffer:clusterBuf offset:0 atIndex:3];
             ctx->_encoderLightsRevision = cmd->lights_revision;
+            ctx->_encoderAmbient[0] = ambient[0];
+            ctx->_encoderAmbient[1] = ambient[1];
+            ctx->_encoderAmbient[2] = ambient[2];
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle

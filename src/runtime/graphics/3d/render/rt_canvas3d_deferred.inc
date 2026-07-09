@@ -303,17 +303,19 @@ static uint64_t canvas3d_mix_sort_ptr(uint64_t key, const void *ptr) {
 /// @details This deliberately excludes depth and enqueue order; those are applied as later stable
 ///          sort keys. The key is a grouping hint, not serialized data, so process-local pointer
 ///          identity is sufficient.
-static uint64_t canvas3d_deferred_backend_state_key(const deferred_draw_t *dd) {
-    const vgfx3d_draw_cmd_t *cmd;
+static uint64_t canvas3d_backend_state_key_core(deferred_draw_kind_t kind,
+                                                deferred_pass_t pass_kind,
+                                                int8_t wireframe,
+                                                int8_t backface_cull,
+                                                const vgfx3d_draw_cmd_t *cmd) {
     uint64_t key = UINT64_C(0xD1B54A32D192ED03);
 
-    if (!dd)
+    if (!cmd)
         return key;
-    cmd = &dd->cmd;
-    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)dd->kind);
-    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)dd->pass_kind);
-    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)dd->wireframe);
-    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)dd->backface_cull);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)kind);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)pass_kind);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)wireframe);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)backface_cull);
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->workflow);
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->alpha_mode);
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->shadow_mode);
@@ -351,6 +353,14 @@ static uint64_t canvas3d_deferred_backend_state_key(const deferred_draw_t *dd) {
     return key ? key : UINT64_C(1);
 }
 
+/// @brief Backend-state grouping key for a queued deferred draw.
+static uint64_t canvas3d_deferred_backend_state_key(const deferred_draw_t *dd) {
+    if (!dd)
+        return UINT64_C(0xD1B54A32D192ED03);
+    return canvas3d_backend_state_key_core(
+        dd->kind, dd->pass_kind, dd->wireframe, dd->backface_cull, &dd->cmd);
+}
+
 /// @brief Account for one backend draw submission and material-state transition.
 static void canvas3d_note_backend_submission(rt_canvas3d *c,
                                              const vgfx3d_draw_cmd_t *cmd,
@@ -358,7 +368,6 @@ static void canvas3d_note_backend_submission(rt_canvas3d *c,
                                              int8_t backface_cull,
                                              deferred_draw_kind_t kind,
                                              deferred_pass_t pass_kind) {
-    deferred_draw_t state_draw;
     uint64_t state_key;
 
     if (!c || !cmd)
@@ -366,13 +375,7 @@ static void canvas3d_note_backend_submission(rt_canvas3d *c,
     c->frame_draws_submitted++;
     if (canvas3d_backend_uses_software_raster(c))
         return;
-    memset(&state_draw, 0, sizeof(state_draw));
-    state_draw.kind = kind;
-    state_draw.pass_kind = pass_kind;
-    state_draw.cmd = *cmd;
-    state_draw.wireframe = wireframe;
-    state_draw.backface_cull = backface_cull;
-    state_key = canvas3d_deferred_backend_state_key(&state_draw);
+    state_key = canvas3d_backend_state_key_core(kind, pass_kind, wireframe, backface_cull, cmd);
     if (!c->frame_has_backend_state_key || c->frame_last_backend_state_key != state_key) {
         c->frame_backend_state_changes++;
         c->frame_last_backend_state_key = state_key;
@@ -528,32 +531,66 @@ static uint64_t canvas3d_sort_key_backend_state(const deferred_draw_t *draw, voi
     return canvas3d_deferred_backend_state_key(draw);
 }
 
+/// @brief Grow the cached radix-key scratch arrays that ride along with sort_cmds.
+static int canvas3d_ensure_sort_key_capacity(rt_canvas3d *c, int32_t needed) {
+    uint64_t *grown;
+    if (!c || needed <= 0)
+        return 0;
+    if (c->sort_key_capacity >= needed && c->sort_keys && c->sort_keys_scratch)
+        return 1;
+    if ((size_t)needed > SIZE_MAX / sizeof(uint64_t))
+        return 0;
+    grown = (uint64_t *)realloc(c->sort_keys, (size_t)needed * sizeof(uint64_t));
+    if (!grown)
+        return 0;
+    c->sort_keys = grown;
+    grown = (uint64_t *)realloc(c->sort_keys_scratch, (size_t)needed * sizeof(uint64_t));
+    if (!grown)
+        return 0;
+    c->sort_keys_scratch = grown;
+    c->sort_key_capacity = needed;
+    return 1;
+}
+
 static int canvas3d_stable_radix_sort_u64(
     rt_canvas3d *c, deferred_draw_t *items, int32_t count, canvas3d_sort_key_fn key_fn, void *ctx) {
     deferred_draw_t *scratch;
+    uint64_t *keys;
+    uint64_t *keys_scratch;
 
     if (!c || !items || count <= 1 || !key_fn)
         return 1;
     if (!ensure_deferred_capacity(&c->sort_cmds, &c->sort_capacity, count))
         return 0;
+    if (!canvas3d_ensure_sort_key_capacity(c, count))
+        return 0;
     scratch = (deferred_draw_t *)c->sort_cmds;
+    keys = c->sort_keys;
+    keys_scratch = c->sort_keys_scratch;
+    /* The key function can be arbitrarily expensive (the backend-state key hashes ~40 material
+     * fields), so evaluate it exactly once per draw and radix over the cached values. */
+    for (int32_t i = 0; i < count; i++)
+        keys[i] = key_fn(&items[i], ctx);
     for (int shift = 0; shift < 64; shift += 8) {
         int32_t counts[256] = {0};
         int32_t offsets[256];
 
-        for (int32_t i = 0; i < count; i++) {
-            uint64_t key = key_fn(&items[i], ctx);
-            counts[(key >> shift) & 0xFFu]++;
-        }
+        for (int32_t i = 0; i < count; i++)
+            counts[(keys[i] >> shift) & 0xFFu]++;
+        /* Every key shares this byte (common for high bytes): the pass is a no-op. */
+        if (counts[(keys[0] >> shift) & 0xFFu] == count)
+            continue;
         offsets[0] = 0;
         for (int i = 1; i < 256; i++)
             offsets[i] = offsets[i - 1] + counts[i - 1];
         for (int32_t i = 0; i < count; i++) {
-            uint64_t key = key_fn(&items[i], ctx);
-            uint32_t bucket = (uint32_t)((key >> shift) & 0xFFu);
-            scratch[offsets[bucket]++] = items[i];
+            uint32_t bucket = (uint32_t)((keys[i] >> shift) & 0xFFu);
+            int32_t dst = offsets[bucket]++;
+            scratch[dst] = items[i];
+            keys_scratch[dst] = keys[i];
         }
         memcpy(items, scratch, (size_t)count * sizeof(*items));
+        memcpy(keys, keys_scratch, (size_t)count * sizeof(*keys));
     }
     c->frame_sort_passes++;
     return 1;
@@ -646,7 +683,9 @@ static int canvas3d_stable_bucket_sort_depth(
             max_key = key;
     }
     if (min_key == FLT_MAX || max_key == -FLT_MAX || min_key == max_key)
-        return 1;
+        return 1; /* CONTRACT: equal-key input is returned untouched, so callers MUST run a
+                   * stable identity pass (radix by stable_sort_id) first — otherwise output
+                   * order for equal depths would depend on caller submission order. */
     if (!ensure_deferred_capacity(&c->sort_cmds, &c->sort_capacity, count))
         return 0;
     scratch = (deferred_draw_t *)c->sort_cmds;
@@ -1654,6 +1693,13 @@ static void canvas3d_compute_depth_range(const rt_canvas3d *c,
 ///          available, the key comes from the transformed AABB rather than the
 ///          model origin, which makes sorting more stable for large or offset
 ///          meshes.
+///
+///          KNOWN LIMITATION: transparency is ordered per-object from this single
+///          scalar — interpenetrating or mutually overlapping transparent meshes
+///          can composite in the wrong order because no per-triangle sort or OIT
+///          pass exists. Authors should split large transparent meshes or avoid
+///          intersecting them; an order-independent-transparency path is the
+///          eventual fix if content outgrows per-object sorting.
 static float canvas3d_compute_sort_key(const rt_canvas3d *c,
                                        const float *model_matrix,
                                        const float *local_bounds_min,

@@ -425,6 +425,179 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
 }
 
 /*==========================================================================
+ * SceneNode3D — allocation-free transform access + combined/batch setters
+ *
+ * Per-frame game loops reading or writing many node transforms through the
+ * object-returning getters allocate a GC Vec3/Quat/Mat4 per call. These
+ * out-parameter variants (mirroring get_world_position_components) and the
+ * combined SetTransform/SetTransformBatch entry points keep hot loops
+ * allocation-free and collapse three VM crossings per node into one.
+ *=========================================================================*/
+
+/// @brief Read the local position into out params without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle.
+int8_t rt_scene_node3d_get_position_components(void *obj, double *x, double *y, double *z) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n || !x || !y || !z)
+        return 0;
+    *x = n->position[0];
+    *y = n->position[1];
+    *z = n->position[2];
+    return 1;
+}
+
+/// @brief Read the local rotation quaternion into out params without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle.
+int8_t
+rt_scene_node3d_get_rotation_components(void *obj, double *x, double *y, double *z, double *w) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n || !x || !y || !z || !w)
+        return 0;
+    *x = n->rotation[0];
+    *y = n->rotation[1];
+    *z = n->rotation[2];
+    *w = n->rotation[3];
+    return 1;
+}
+
+/// @brief Read the world-space rotation quaternion into out params without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle.
+int8_t rt_scene_node3d_get_world_rotation_components(
+    void *obj, double *x, double *y, double *z, double *w) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    double q[4];
+    if (!n || !x || !y || !z || !w)
+        return 0;
+    scene_node_get_world_rotation(n, q);
+    *x = q[0];
+    *y = q[1];
+    *z = q[2];
+    *w = q[3];
+    return 1;
+}
+
+/// @brief Read the local scale into out params without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle.
+int8_t rt_scene_node3d_get_scale_components(void *obj, double *x, double *y, double *z) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n || !x || !y || !z)
+        return 0;
+    *x = n->scale_xyz[0];
+    *y = n->scale_xyz[1];
+    *z = n->scale_xyz[2];
+    return 1;
+}
+
+/// @brief Read the world-space scale magnitudes into out params without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle.
+int8_t rt_scene_node3d_get_world_scale_components(void *obj, double *x, double *y, double *z) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    const double *m;
+    double sx;
+    double sy;
+    double sz;
+    if (!n || !x || !y || !z)
+        return 0;
+    recompute_world_matrix(n);
+    m = n->world_matrix;
+    sx = scene_node_basis_length(m[0], m[4], m[8]);
+    sy = scene_node_basis_length(m[1], m[5], m[9]);
+    sz = scene_node_basis_length(m[2], m[6], m[10]);
+    *x = scene3d_clamp_abs_or(isfinite(sx) ? sx : 1.0, 1.0);
+    *y = scene3d_clamp_abs_or(isfinite(sy) ? sy : 1.0, 1.0);
+    *z = scene3d_clamp_abs_or(isfinite(sz) ? sz : 1.0, 1.0);
+    return 1;
+}
+
+/// @brief Copy the composed world matrix into @p out (row-major, 16 doubles) without allocating.
+/// @return 1 on success, 0 (no writes) for an invalid handle or NULL @p out.
+int8_t rt_scene_node3d_get_world_matrix_components(void *obj, double out[16]) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n || !out)
+        return 0;
+    recompute_world_matrix(n);
+    memcpy(out, n->world_matrix, 16 * sizeof(double));
+    return 1;
+}
+
+/// @brief Set position, rotation (quaternion components), and scale in one call.
+/// @details Equivalent to SetPosition + SetRotation + SetScale but without the intermediate
+///          Quat allocation and with a single VM crossing — the hot-loop form for moving
+///          many nodes per frame.
+void rt_scene_node3d_set_transform(void *obj,
+                                   double px,
+                                   double py,
+                                   double pz,
+                                   double qx,
+                                   double qy,
+                                   double qz,
+                                   double qw,
+                                   double sx,
+                                   double sy,
+                                   double sz) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    double q[4];
+    if (!n)
+        return;
+    rt_scene_node3d_set_position(obj, px, py, pz);
+    q[0] = qx;
+    q[1] = qy;
+    q[2] = qz;
+    q[3] = qw;
+    scene3d_quat_normalize_local(q);
+    if (n->rotation[0] != q[0] || n->rotation[1] != q[1] || n->rotation[2] != q[2] ||
+        n->rotation[3] != q[3]) {
+        n->rotation[0] = q[0];
+        n->rotation[1] = q[1];
+        n->rotation[2] = q[2];
+        n->rotation[3] = q[3];
+        mark_dirty(n);
+    }
+    rt_scene_node3d_set_scale(obj, sx, sy, sz);
+}
+
+/// @brief SceneGraph.SetNodeTransforms: apply packed TRS values to a list of nodes.
+/// @details The scene handle anchors the call as an instance method (the nodes need not
+///          belong to it); the work is delegated to the internal batch helper.
+void rt_scene3d_set_node_transforms(void *scene, void *nodes, void *values) {
+    if (!scene3d_checked(scene))
+        return;
+    rt_scene_node3d_set_transform_batch(nodes, values);
+}
+
+/// @brief Apply packed TRS values to a list of nodes in one runtime call.
+/// @details @p values packs 10 floats per node: px,py,pz, qx,qy,qz,qw, sx,sy,sz. Traps when
+///          the value count does not match the node count. Null node entries are skipped so
+///          callers can keep sparse lists.
+void rt_scene_node3d_set_transform_batch(void *nodes, void *values) {
+    int64_t node_count;
+    int64_t value_count;
+    int64_t i;
+    if (!nodes || !values) {
+        rt_trap("SceneNode3D.SetTransformBatch: nodes and values must be non-null lists");
+        return;
+    }
+    node_count = rt_seq_len(nodes);
+    value_count = rt_seq_len(values);
+    if (value_count != node_count * 10) {
+        rt_trap("SceneNode3D.SetTransformBatch: values must pack 10 floats per node "
+                "(px,py,pz, qx,qy,qz,qw, sx,sy,sz)");
+        return;
+    }
+    for (i = 0; i < node_count; i++) {
+        void *node = rt_seq_get(nodes, i);
+        double v[10];
+        int k;
+        if (!node)
+            continue;
+        for (k = 0; k < 10; k++)
+            v[k] = rt_unbox_f64(rt_seq_get(values, i * 10 + k));
+        rt_scene_node3d_set_transform(
+            node, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]);
+    }
+}
+
+/*==========================================================================
  * SceneNode3D — hierarchy
  *=========================================================================*/
 

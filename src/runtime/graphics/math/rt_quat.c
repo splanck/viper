@@ -161,8 +161,10 @@ void *rt_quat_from_axis_angle(void *axis, double angle) {
     return quat_alloc(ax * s, ay * s, az * s, cos(half));
 }
 
-/// @brief Build a unit quaternion from Euler angles (radians). Convention: roll about Z, then
-/// pitch about X, then yaw about Y (intrinsic ZXY). Match against your scene's rotation order.
+/// @brief Build a unit quaternion from Euler angles (radians). Convention: pitch about X, yaw
+/// about Y, roll about Z, composed in ZYX intrinsic order (yaw, then pitch, then roll). This is
+/// the same convention as Viper.Graphics3D.Transform3D.SetEuler so every Euler-consuming API in
+/// the engine agrees on axes.
 void *rt_quat_from_euler(double pitch, double yaw, double roll) {
     if (!isfinite(pitch) || !isfinite(yaw) || !isfinite(roll))
         return quat_alloc(0.0, 0.0, 0.0, 1.0);
@@ -173,10 +175,10 @@ void *rt_quat_from_euler(double pitch, double yaw, double roll) {
     double cr = cos(roll * 0.5);
     double sr = sin(roll * 0.5);
 
-    double w = cr * cp * cy + sr * sp * sy;
-    double x = sr * cp * cy - cr * sp * sy;
-    double y = cr * sp * cy + sr * cp * sy;
-    double z = cr * cp * sy - sr * sp * cy;
+    double x = sp * cy * cr - cp * sy * sr;
+    double y = cp * sy * cr + sp * cy * sr;
+    double z = cp * cy * sr - sp * sy * cr;
+    double w = cp * cy * cr + sp * sy * sr;
     return quat_alloc(x, y, z, w);
 }
 

@@ -1713,9 +1713,20 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                                                         dd->has_local_bounds,
                                                                         dd->requires_blend),
                                               dd->requires_blend);
-    dd->stable_sort_id = (uintptr_t)motion_key
-                             ? (uintptr_t)motion_key
-                             : ((uintptr_t)mesh_obj ^ ((uintptr_t)material_obj << 1));
+    /* Without a caller motion key, mesh^material alone collapses every identical prop onto
+     * one identity, so the transparent-sort tie-break degrades to submission order — alpha
+     * shimmer whenever the app iterates an unordered container. Mixing in the quantized
+     * translation keeps statics stable across frames while separating instances (the same
+     * scheme the occlusion fingerprint uses). */
+    if ((uintptr_t)motion_key) {
+        dd->stable_sort_id = (uintptr_t)motion_key;
+    } else {
+        uint64_t id = (uint64_t)((uintptr_t)mesh_obj ^ ((uintptr_t)material_obj << 1));
+        id = canvas3d_occlusion_mix_quantized_float(id, dd->cmd.model_matrix[3]);
+        id = canvas3d_occlusion_mix_quantized_float(id, dd->cmd.model_matrix[7]);
+        id = canvas3d_occlusion_mix_quantized_float(id, dd->cmd.model_matrix[11]);
+        dd->stable_sort_id = (uintptr_t)(id ? id : 1u);
+    }
     dd->occlusion_key = dd->stable_sort_id ? dd->stable_sort_id : (uintptr_t)queued_vertices;
 
     if (canvas3d_append_prepared_deferred_draw(c, &queued, &bounds_cache_key)) {

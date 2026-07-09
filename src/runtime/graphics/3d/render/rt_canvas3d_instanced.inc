@@ -246,6 +246,11 @@ static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
 
 /// @brief Hardware instanced submission: snapshot instance (and motion) matrices into
 ///        frame-owned buffers and enqueue a single instanced draw command.
+/// @details @p motion_indices / @p motion_batch_obj / @p motion_batch_count carry the
+///          caller-visible identity for per-instance motion-history keys. Spatially split
+///          sub-batches pass the ORIGINAL batch pointer/count and an index remap so each
+///          instance keeps the same motion key it had before the split; unsplit batches
+///          pass NULL / the live arguments.
 static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *b,
                                               vgfx3d_draw_cmd_t *base_cmd,
                                               const float *instance_matrices,
@@ -255,7 +260,10 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
                                               const float *explicit_local_bounds_min,
                                               const float *explicit_local_bounds_max,
                                               int8_t conservative_bounds,
-                                              int8_t disable_occlusion) {
+                                              int8_t disable_occlusion,
+                                              const int32_t *motion_indices,
+                                              const void *motion_batch_obj,
+                                              int32_t motion_batch_count) {
     rt_canvas3d *c = b->c;
     rt_mesh3d *mesh = b->mesh;
     float local_bounds_min[3];
@@ -310,25 +318,16 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
         float *dst_prev =
             needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u] : ignored_prev;
         const float *current = &queued_instance_matrices[(size_t)i * 16u];
+        int32_t motion_index = motion_indices ? motion_indices[i] : i;
+        uintptr_t motion_key = canvas3d_instance_motion_key(
+            b->mesh_obj, b->material_obj, motion_batch_obj, motion_batch_count, motion_index);
         if (needs_motion_vectors && has_prev_instance_matrices && prev_instance_matrices) {
             /* Keep the internal motion history current for the next frame even when the caller
              * supplies an explicit previous-instance snapshot for this draw. */
-            canvas3d_resolve_previous_model(
-                c,
-                canvas3d_instance_motion_key(
-                    b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
-                current,
-                ignored_prev,
-                &has_prev);
+            canvas3d_resolve_previous_model(c, motion_key, current, ignored_prev, &has_prev);
             continue;
         }
-        canvas3d_resolve_previous_model(
-            c,
-            canvas3d_instance_motion_key(
-                b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
-            current,
-            dst_prev,
-            &has_prev);
+        canvas3d_resolve_previous_model(c, motion_key, current, dst_prev, &has_prev);
         if (needs_motion_vectors && !has_prev)
             memcpy(dst_prev, current, 16u * sizeof(float));
     }
@@ -368,6 +367,138 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
         &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1],
         conservative_bounds,
         disable_occlusion || instance_count > 1);
+}
+
+/* A hardware batch culls as one unit through its union AABB, so a spatially wide batch (a
+ * forest's every trunk in one call) survives the frustum whole and pops in/out as a block.
+ * Batches wider than this along X or Z are partitioned into a small world-space grid of
+ * sub-batches so distant cells cull independently. */
+#define CANVAS3D_INSTANCED_SPLIT_EXTENT 256.0f
+#define CANVAS3D_INSTANCED_SPLIT_MIN_INSTANCES 64
+#define CANVAS3D_INSTANCED_SPLIT_MAX_CELLS 4
+
+/// @brief Partition a wide opaque instanced batch into XZ-grid sub-batches and queue each.
+/// @return 1 when the batch was split and queued (or split was attempted and trapped),
+///         0 when the batch is compact enough to queue as a single hardware draw.
+static int canvas3d_queue_instanced_split(const canvas3d_instanced_batch_t *b,
+                                          vgfx3d_draw_cmd_t *base_cmd,
+                                          const float *instance_matrices,
+                                          int32_t instance_count,
+                                          const float *prev_instance_matrices,
+                                          int8_t has_prev_instance_matrices,
+                                          const float *explicit_local_bounds_min,
+                                          const float *explicit_local_bounds_max,
+                                          int8_t conservative_bounds,
+                                          int8_t disable_occlusion) {
+    float min_x = 0.0f, max_x = 0.0f, min_z = 0.0f, max_z = 0.0f;
+    if (instance_count < CANVAS3D_INSTANCED_SPLIT_MIN_INSTANCES)
+        return 0;
+    for (int32_t i = 0; i < instance_count; i++) {
+        float tx = instance_matrices[(size_t)i * 16u + 3u];
+        float tz = instance_matrices[(size_t)i * 16u + 11u];
+        if (i == 0) {
+            min_x = max_x = tx;
+            min_z = max_z = tz;
+            continue;
+        }
+        if (tx < min_x)
+            min_x = tx;
+        if (tx > max_x)
+            max_x = tx;
+        if (tz < min_z)
+            min_z = tz;
+        if (tz > max_z)
+            max_z = tz;
+    }
+    float extent_x = max_x - min_x;
+    float extent_z = max_z - min_z;
+    float extent = extent_x > extent_z ? extent_x : extent_z;
+    if (!(extent > CANVAS3D_INSTANCED_SPLIT_EXTENT))
+        return 0;
+
+    int32_t cells = (int32_t)(extent / CANVAS3D_INSTANCED_SPLIT_EXTENT) + 1;
+    if (cells > CANVAS3D_INSTANCED_SPLIT_MAX_CELLS)
+        cells = CANVAS3D_INSTANCED_SPLIT_MAX_CELLS;
+    int32_t cell_count = cells * cells;
+    float inv_w = extent_x > 1e-6f ? (float)cells / (extent_x * 1.0001f) : 0.0f;
+    float inv_d = extent_z > 1e-6f ? (float)cells / (extent_z * 1.0001f) : 0.0f;
+
+    /* Staging: bucket-contiguous matrices (+ optional prev) and the original index remap
+     * that keeps per-instance motion-history keys stable across the split. The hardware
+     * path snapshots into frame-owned buffers, so this staging is freed before returning. */
+    size_t matrices_bytes = (size_t)instance_count * 16u * sizeof(float);
+    float *staged = (float *)malloc(matrices_bytes);
+    float *staged_prev = (has_prev_instance_matrices && prev_instance_matrices)
+                             ? (float *)malloc(matrices_bytes)
+                             : NULL;
+    int32_t *remap = (int32_t *)malloc((size_t)instance_count * sizeof(int32_t));
+    int32_t *cell_of = (int32_t *)malloc((size_t)instance_count * sizeof(int32_t));
+    int32_t *starts = (int32_t *)calloc((size_t)cell_count + 1u, sizeof(int32_t));
+    int32_t *cursor = (int32_t *)malloc((size_t)cell_count * sizeof(int32_t));
+    if (!staged || !remap || !cell_of || !starts || !cursor ||
+        (has_prev_instance_matrices && prev_instance_matrices && !staged_prev)) {
+        free(staged);
+        free(staged_prev);
+        free(remap);
+        free(cell_of);
+        free(starts);
+        free(cursor);
+        return 0; /* fall back to the single wide batch rather than failing the draw */
+    }
+    for (int32_t i = 0; i < instance_count; i++) {
+        float tx = instance_matrices[(size_t)i * 16u + 3u];
+        float tz = instance_matrices[(size_t)i * 16u + 11u];
+        int32_t cx = (int32_t)((tx - min_x) * inv_w);
+        int32_t cz = (int32_t)((tz - min_z) * inv_d);
+        if (cx < 0)
+            cx = 0;
+        if (cx >= cells)
+            cx = cells - 1;
+        if (cz < 0)
+            cz = 0;
+        if (cz >= cells)
+            cz = cells - 1;
+        cell_of[i] = cz * cells + cx;
+        starts[cell_of[i] + 1]++;
+    }
+    for (int32_t cidx = 0; cidx < cell_count; cidx++)
+        starts[cidx + 1] += starts[cidx];
+    memcpy(cursor, starts, (size_t)cell_count * sizeof(int32_t));
+    for (int32_t i = 0; i < instance_count; i++) {
+        int32_t dst = cursor[cell_of[i]]++;
+        memcpy(&staged[(size_t)dst * 16u], &instance_matrices[(size_t)i * 16u],
+               16u * sizeof(float));
+        if (staged_prev)
+            memcpy(&staged_prev[(size_t)dst * 16u], &prev_instance_matrices[(size_t)i * 16u],
+                   16u * sizeof(float));
+        remap[dst] = i;
+    }
+    for (int32_t cidx = 0; cidx < cell_count; cidx++) {
+        int32_t begin = starts[cidx];
+        int32_t count = starts[cidx + 1] - begin;
+        if (count <= 0)
+            continue;
+        canvas3d_queue_instanced_hardware(b,
+                                          base_cmd,
+                                          &staged[(size_t)begin * 16u],
+                                          count,
+                                          staged_prev ? &staged_prev[(size_t)begin * 16u] : NULL,
+                                          has_prev_instance_matrices,
+                                          explicit_local_bounds_min,
+                                          explicit_local_bounds_max,
+                                          conservative_bounds,
+                                          disable_occlusion,
+                                          &remap[begin],
+                                          instance_matrices,
+                                          instance_count);
+    }
+    free(staged);
+    free(staged_prev);
+    free(remap);
+    free(cell_of);
+    free(starts);
+    free(cursor);
+    return 1;
 }
 
 /// @brief Queue an instanced-mesh draw (mesh + material + @p instance_count transforms, with
@@ -525,6 +656,17 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                           disable_occlusion);
         return;
     }
+    if (canvas3d_queue_instanced_split(&batch,
+                                       &base_cmd,
+                                       instance_matrices,
+                                       instance_count,
+                                       prev_instance_matrices,
+                                       has_prev_instance_matrices,
+                                       explicit_local_bounds_min,
+                                       explicit_local_bounds_max,
+                                       conservative_bounds,
+                                       disable_occlusion))
+        return;
     canvas3d_queue_instanced_hardware(&batch,
                                       &base_cmd,
                                       instance_matrices,
@@ -534,7 +676,10 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                       explicit_local_bounds_min,
                                       explicit_local_bounds_max,
                                       conservative_bounds,
-                                      disable_occlusion);
+                                      disable_occlusion,
+                                      NULL,
+                                      instance_matrices,
+                                      instance_count);
 }
 
 /// @brief Queue an instanced-mesh draw using the mesh's authored local bounds.

@@ -656,7 +656,7 @@ smooth interpolation via SLERP.
 | `New(x, y, z, w)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components (x, y, z, w order)    |
 | `Identity()`                  | `obj()`               | Create identity quaternion (1, 0, 0, 0)                 |
 | `FromAxisAngle(axis, angle)`  | `obj(obj, f64)`       | Create from a Vec3 axis and angle in radians            |
-| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians                     |
+| `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians: pitch about X, yaw about Y, roll about Z (ZYX intrinsic order, matching `Transform3D.SetEuler`) |
 
 ### Properties
 

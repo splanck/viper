@@ -72,6 +72,7 @@ typedef struct {
     int32_t shape_capacity;
     int32_t vertex_count;
     int64_t last_motion_frame;
+    int32_t name_lookup_memo; /* index of the last name-lookup hit (verified before use) */
     int8_t has_prev_weights;
     int8_t packed_dirty;
 } rt_morphtarget3d;
@@ -727,6 +728,9 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
 }
 
 /// @brief Set the blend weight for a shape by its name (string lookup).
+/// @details Facial rigs drive the same few shapes by name every frame, so the last hit is
+///          memoized; the memo is re-verified by name before use, so shape-list mutations
+///          can never make it resolve to the wrong shape.
 void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt || !name)
@@ -734,8 +738,15 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     char target[64];
     if (!morphtarget_copy_canonical_name(name, target) || target[0] == '\0')
         return;
-    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; i++) {
+    int32_t count = morphtarget_safe_shape_count(mt);
+    int32_t memo = mt->name_lookup_memo;
+    if (memo >= 0 && memo < count && strcmp(mt->shapes[memo].name, target) == 0) {
+        rt_morphtarget3d_set_weight(mt, memo, weight);
+        return;
+    }
+    for (int32_t i = 0; i < count; i++) {
         if (strcmp(mt->shapes[i].name, target) == 0) {
+            mt->name_lookup_memo = i;
             rt_morphtarget3d_set_weight(mt, i, weight);
             return;
         }

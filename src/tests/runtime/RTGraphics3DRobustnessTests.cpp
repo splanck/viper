@@ -155,6 +155,7 @@ struct DecalView {
     double lifetime;
     double max_lifetime;
     double alpha;
+    double depth_bias; /* constant depth bias override; 0 = auto (size-scaled) */
     void *mesh;
     void *material;
 };
