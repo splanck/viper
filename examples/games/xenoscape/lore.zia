@@ -1,7 +1,21 @@
-// =============================================================================
-// lore.zia — Lore terminals + typewriter text reveal
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/lore.zia
+// Purpose: Owns stable lore/bestiary content and nonblocking archive surfaces.
+// Key invariants:
+//   - Authored lore ids remain stable because collected masks persist by index.
+//   - Gameplay lore uses one modal typewriter while archive screens are read-only.
+// Ownership/Lifetime:
+//   - Game owns one LoreSystem and its retained content/typewriter objects.
+// Links: game.zia, level.zia, save.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — ENVIRONMENTAL STORYTELLING IN PLATFORMERS
 // ----------------------------------------------------
@@ -67,6 +81,7 @@ module lore;
 
 bind Viper.Graphics;
 bind Viper.Game;
+bind Viper.Input;
 bind Viper.Text.Fmt;
 bind "./config";
 bind "./palette";
@@ -252,11 +267,15 @@ class LoreSystem {
 
         // Progress indicator + hint
         if tw.IsComplete {
-            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
-                        "[ Press Jump to close ]", Color.RGB(100, 100, 130));
+            canvas.TextCenteredScaled(
+                panelY + panelH - 30,
+                "[ " + Action.BindingsStr(ACT_JUMP) + " close ]",
+                Color.RGB(100, 100, 130), 1);
         } else {
-            canvas.Text(panelX + panelW / 2 - 60, panelY + panelH - 30,
-                        "[ Press Jump to skip ]", Color.RGB(80, 80, 100));
+            canvas.TextCenteredScaled(
+                panelY + panelH - 30,
+                "[ " + Action.BindingsStr(ACT_JUMP) + " reveal ]",
+                Color.RGB(80, 80, 100), 1);
         }
     }
 
@@ -479,8 +498,11 @@ class LoreSystem {
                         Color.RGB(160, 170, 190));
         }
 
-        canvas.TextCenteredScaled(py + ph - 25, "UP/DOWN to browse, ESC to close",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.TextCenteredScaled(
+            py + ph - 25,
+            Action.BindingsStr(ACT_UP) + "/" + Action.BindingsStr(ACT_DOWN) +
+            " browse   " + Action.BindingsStr(ACT_BACK) + " close",
+            Color.RGB(60, 70, 90), 1);
     }
 
     /// @brief Lore archive browser for the Extras menu.
@@ -542,8 +564,10 @@ class LoreSystem {
             canvas.Text(detailX, py + 126, body, Color.RGB(150, 165, 195));
         }
 
-        canvas.TextCenteredScaled(py + ph - 25, "ESC to return to Extras",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.TextCenteredScaled(
+            py + ph - 25,
+            Action.BindingsStr(ACT_BACK) + " return to Extras",
+            Color.RGB(60, 70, 90), 1);
     }
 
     // =========================================================================

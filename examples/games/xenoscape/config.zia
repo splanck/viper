@@ -1,7 +1,21 @@
-// =============================================================================
-// config.zia — Every `final` constant the game reads
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/config.zia
+// Purpose: Centralizes Xenoscape tuning, identifiers, and shared constants.
+// Key invariants:
+//   - Fixed-point gameplay values are expressed in centipixels unless noted.
+//   - Cross-module identifiers remain stable for saves, probes, and content.
+// Ownership/Lifetime:
+//   - Constants are compile-time module values and own no runtime resources.
+// Links: game.zia, player.zia, level.zia, environment.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — ONE FILE TO RULE THE CONSTANTS
 // -----------------------------------------
@@ -92,6 +106,7 @@ final HALF_H = 360;
 final GRAVITY = 78;           // vy += GRAVITY per frame (x100 units)
 final MAX_FALL = 1350;        // terminal fall speed (x100)
 final PLAYER_SPEED = 525;     // max run speed (x100)
+final WALL_STICK_GRACE_MS = 80;
 final PLAYER_JUMP = -1500;    // jump impulse (x100, negative = up)
 final PLAYER_DJUMP = -1200;   // double jump impulse (x100)
 final PLAYER_ACCEL = 68;      // ground acceleration per frame (x100)
@@ -110,7 +125,30 @@ final JUMP_BUFFER_MS = 128;   // 8 frames * 16ms
 final IFRAMES_MS = 960;       // 60 frames * 16ms
 final IFRAMES_STOMP_MS = 320; // 20 frames * 16ms (stomp bounce)
 final HURT_TIMER_MS = 160;    // 10 frames * 16ms (enemy flash)
-final DEATH_TIMER_MS = 1440;  // 90 frames * 16ms
+final DEATH_RETRY_MS = 720;   // retry input appears before the 800 ms contract
+final DEATH_TIMER_MS = 1440;  // automatic retry after the full presentation beat
+final DEATH_MARKER_RECOVER_RADIUS = 40;
+
+// Dynamic-surface contracts. Percentages are integral so simulation remains
+// deterministic across native and VM backends.
+final ICE_DECEL_PERCENT = 25;
+final QUICKSAND_SPEED_PERCENT = 55;
+final QUICKSAND_JUMP_PERCENT = 80;
+final CONVEYOR_PUSH = 200;
+final CONVEYOR_MAX_SPEED = PLAYER_SPEED + CONVEYOR_PUSH;
+final STEAM_LAUNCH_VY = -1800;
+final STEAM_RETRIGGER_MS = 300;
+final CRUMBLE_CONTACT_MS = 350;
+final CRUMBLE_REGEN_MS = 2400;
+final CRUMBLE_SHAKE_START_MS = 250;
+final ONE_WAY_DROP_MS = 180;
+final GROUND_POUND_RADIUS = 160;
+final GROUND_POUND_STAGGER_MS = 600;
+final GRAPPLE_ACQUIRE_RADIUS = 384;
+final GRAPPLE_MAX_ROPE_LENGTH = 448;
+final GRAPPLE_PULL_ACCEL = 180;
+final GRAPPLE_TANGENT_ACCEL = 90;
+final GRAPPLE_RELEASE_MAX_SPEED = 3000;
 
 // =============================================================================
 // Player (scaled ~1.5x for visible detail at 1280x720)
@@ -211,6 +249,17 @@ final TILE_SAVE_STATION = 52;    // heal + checkpoint
 final TILE_ABILITY_SHRINE = 53;  // grants new ability
 final TILE_TELEPORTER = 54;      // links to other area
 final TILE_LORE_TERMINAL = 55;   // scannable lore entry
+final TILE_GRAPPLE_ANCHOR = 56;  // non-solid authored grapple attachment point
+
+// Authored interaction-record types stored by Level.
+final INTERACTION_SWITCH = 1;
+final INTERACTION_SWITCH_TARGET = 2;
+final INTERACTION_LOCKED_DOOR = 3;
+final INTERACTION_SAVE_STATION = 4;
+final INTERACTION_ABILITY_SHRINE = 5;
+final INTERACTION_TELEPORTER = 6;
+final INTERACTION_LORE_TERMINAL = 7;
+final INTERACTION_RADIUS = TILE_SIZE + TILE_SIZE / 2;
 
 // =============================================================================
 // Enemy Types
@@ -494,7 +543,9 @@ final PAD_IDX = 0;
 final PAD_BTN_A = 0;
 final PAD_BTN_B = 1;
 final PAD_BTN_X = 2;
+final PAD_BTN_Y = 3;
 final PAD_BTN_RB = 5;
+final PAD_BTN_SELECT = 6;
 final PAD_BTN_START = 7;
 final PAD_BTN_UP = 10;
 final PAD_BTN_DOWN = 11;
@@ -556,6 +607,8 @@ final OPTIONS_ACTION_MASTER_UP = -33;
 final OPTIONS_ACTION_SFX_DOWN = -34;
 final OPTIONS_ACTION_SFX_UP = -35;
 final OPTIONS_ACTION_TOGGLE_FULLSCREEN = -36;
+final OPTIONS_ACTION_VALUE_DOWN = -37;
+final OPTIONS_ACTION_VALUE_UP = -38;
 
 // Sentinel for "no menu transition pending" — distinct from every
 // GameState value and menu index (which are small non-negative ints).
@@ -595,6 +648,9 @@ final KEY_W = 87;
 final KEY_S = 83;
 final KEY_Z = 90;
 final KEY_X = 88;
+final KEY_E = 69;
+final KEY_C = 67;
+final KEY_M = 77;
 final KEY_ENTER = 257;
 final KEY_ESCAPE = 256;
 final KEY_F3 = 292;
@@ -870,8 +926,14 @@ final COL_UI_DIM = 0x666688;
 // =============================================================================
 final ACT_LEFT = "move_left";
 final ACT_RIGHT = "move_right";
+final ACT_MOVE_UP = "move_up";
+final ACT_MOVE_DOWN = "move_down";
 final ACT_JUMP = "jump";
 final ACT_SHOOT = "shoot";
+final ACT_INTERACT = "interact";
+final ACT_GRAPPLE = "grapple";
+final ACT_DASH = "dash";
+final ACT_MAP = "map";
 final ACT_UP = "menu_up";
 final ACT_DOWN = "menu_down";
 final ACT_CONFIRM = "confirm";

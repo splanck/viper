@@ -351,8 +351,8 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
     int32_t node_count = 0;
     int32_t *node_parents = NULL;
     gltf_skin_t *skins = NULL;
-    if (hard_error)
-        *hard_error = 0;
+    /* hard_error accumulates across load phases (the caller passes its running
+     * load_failed flag); only ever raise it here, never reset earlier failures. */
     if (out_skins)
         *out_skins = NULL;
     if (out_skin_count)
@@ -1143,6 +1143,11 @@ static int gltf_skin_anim_collect_bone_curves(const gltf_anim_curve_t *curves,
             curve_r = &curves[ci];
         else if (curves[ci].path == 2)
             curve_s = &curves[ci];
+        /* Skeletal playback stores discrete keys (linear/slerp interpolation), so a
+         * CUBICSPLINE channel is Hermite-sampled at import and baked to sampled keys.
+         * Report the bake — the node-animation path keeps true cubic tangents. */
+        if (curves[ci].interpolation && strcmp(curves[ci].interpolation, "CUBICSPLINE") == 0)
+            rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS, 1);
         if (!gltf_anim_insert_curve_times(&times, &time_count, &time_capacity, &curves[ci])) {
             free(times);
             return 0;

@@ -1796,6 +1796,109 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_xenoscape_level_validation
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/level_validation_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_level_validation PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_progression
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/progression_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_progression PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_mechanics
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/mechanics_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_mechanics PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_world
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/world_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_world PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_meta
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/meta_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_meta PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_settings
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/settings_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_settings PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_campaign
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/campaign_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_campaign PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;render;requires_display"
+        RESOURCE_LOCK viper_display
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_package
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/package_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_package PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;package"
+        TIMEOUT 30)
+
+add_test(NAME zia_xenoscape_performance
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/performance_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(zia_xenoscape_performance PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;gameplay;performance"
+        TIMEOUT 20)
+
+add_test(NAME xenoscape_package_dry_run
+        COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+set_tests_properties(xenoscape_package_dry_run PROPERTIES
+        LABELS "zia;smoke;package"
+        TIMEOUT 60)
+
+if (NOT WIN32)
+    foreach (probe IN ITEMS mechanics campaign)
+        add_test(NAME native_xenoscape_${probe}
+                COMMAND ${CMAKE_COMMAND}
+                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DTEST_FILE=${CMAKE_SOURCE_DIR}/examples/games/xenoscape/${probe}_probe.zia
+                -DOUT_EXE=${CMAKE_BINARY_DIR}/xenoscape_${probe}_native
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
+        set_tests_properties(native_xenoscape_${probe} PROPERTIES
+                LABELS "zia;smoke;gameplay;native_run"
+                TIMEOUT 120)
+    endforeach ()
+endif ()
+
 set(VIPER_DISPLAY_TESTS
         zia_smoke_paint_canvas_capture
         zia_smoke_viperide

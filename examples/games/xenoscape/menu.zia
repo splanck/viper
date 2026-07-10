@@ -1,7 +1,21 @@
-// =============================================================================
-// menu.zia — Title, pause, game-over, level-select, high scores, controls
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/menu.zia
+// Purpose: Renders Xenoscape's title, pause, settings, and archive surfaces.
+// Key invariants:
+//   - Menu navigation consumes semantic actions shared by keyboard and gamepad.
+//   - Retained backdrops and widget groups are allocated once, never per frame.
+// Ownership/Lifetime:
+//   - Game owns one MenuSystem for the application lifetime.
+// Links: game.zia, profile_flow.zia, save.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — MENUS ARE A GAME WITHIN THE GAME
 // -------------------------------------------
@@ -64,14 +78,17 @@ module menu;
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Text.Fmt;
+bind Viper.Terminal as Terminal;
 bind Viper.IO;
 bind Viper.Game;
+bind "./accessibility";
 bind Viper.Game.UI;
 bind Viper.Math.PerlinNoise as PerlinNoise;  // Parallax nebula noise (#1)
 bind Viper.Core;           // Convert.NumToInt for noise->int
 bind "./config";
 bind "./palette";
 bind "./sprites";
+bind "./settings";
 
 /// @brief All non-gameplay screens: title, level select,
 ///        pause, game over, level complete, victory, high
@@ -109,6 +126,7 @@ class MenuSystem {
     hide Integer backdropReady;  // 0 until layers are lazily built (needs canvas)
     hide SmoothValue highlightY; // eased title selection highlight (#5)
     hide Integer titleMoved;     // 1 when the title selection changed this frame (#6)
+    hide Boolean continueAvailable; // valid expedition exists in SaveManager
     hide Tween lcScoreTween;     // level-complete score count-up (#8)
     hide ParticleEmitter lcBurst;// celebratory rank burst (#8)
     hide Integer lcStarted;      // one-shot guard for the count-up
@@ -117,12 +135,28 @@ class MenuSystem {
     hide List[Integer] highScores;
     hide List[String] highNames;
     hide SaveData save;          // cross-platform persistent storage
+    hide Integer accessibilityUiScale;
+    hide Boolean accessibilityHighContrast;
+    hide Boolean accessibilityLargeText;
+    hide Boolean accessibilityReducedMotion;
+    hide Pixels titleKeyArt;
+    hide Pixels titlePanelTexture;
+    hide Boolean authoredTitleArtAvailable;
+    hide Boolean authoredTitlePanelAvailable;
+    hide Boolean authoredTitleArtEnabled;
 
     /// @brief Construct every ButtonGroup + MenuList needed
     ///        across every screen.  Loads persisted high
     ///        scores from SaveData.
     expose func init(p: Palette) {
         pal = p;
+        accessibilityUiScale = 100;
+        accessibilityHighContrast = false;
+        accessibilityLargeText = false;
+        accessibilityReducedMotion = false;
+        authoredTitleArtAvailable = false;
+        authoredTitlePanelAvailable = false;
+        authoredTitleArtEnabled = true;
         // Title menu: release-style shell.
         titleBG = ButtonGroup.New();
         titleBG.Add(MENU_NEW_GAME);
@@ -174,17 +208,21 @@ class MenuSystem {
         pauseList.AddItem("QUIT TO MENU");
         pauseList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
-        // Options menu: volume sliders, fullscreen toggle, back
+        // Options menu: every persistent setting plus Back.
         optionsBG = ButtonGroup.New();
-        optionsBG.Add(0);
-        optionsBG.Add(1);
-        optionsBG.Add(2);
-        optionsBG.Add(3);
+        var setting = 0;
+        while setting < SETTING_COUNT {
+            optionsBG.Add(setting);
+            setting = setting + 1;
+        }
+        optionsBG.Add(SETTING_COUNT);
         optionsBG.Select(0);
-        optionsList = MenuList.New(460, 272, 56);
-        optionsList.AddItem("MASTER VOLUME");
-        optionsList.AddItem("SFX VOLUME");
-        optionsList.AddItem("FULLSCREEN");
+        optionsList = MenuList.New(460, 180, 34);
+        setting = 0;
+        while setting < SETTING_COUNT {
+            optionsList.AddItem(settingName(setting));
+            setting = setting + 1;
+        }
         optionsList.AddItem("BACK");
         optionsList.SetColors(pal.menuText, pal.white, pal.menuHighlight);
 
@@ -235,6 +273,7 @@ class MenuSystem {
         backdropReady = 0;       // parallax layers built on first drawTitle
         highlightY = SmoothValue.New(244.0, 0.6);
         titleMoved = 0;
+        continueAvailable = false;
         lcScoreTween = Tween.New();
         lcBurst = ParticleEmitter.New(80);
         lcBurst.Color = pal.coinGold;
@@ -255,6 +294,85 @@ class MenuSystem {
             highNames.add("AAA");
             i = i + 1;
         }
+        loadAuthoredTitleArt();
+    }
+
+    /// @brief Load and release-scale the optional first-party title key art.
+    ///
+    /// Package-relative, source-root, and examples/bin development paths are
+    /// attempted in stable order. Missing/invalid PNG data records one diagnostic
+    /// and leaves the existing procedural parallax/diorama fallback fully active.
+    ///
+    /// @return True when a 1280x720 title bitmap is ready, otherwise false.
+    expose func loadAuthoredTitleArt() -> Boolean {
+        loadAuthoredTitlePanel();
+        titleKeyArt = Pixels.Load("assets/art/title-key-art.png");
+        if titleKeyArt == null {
+            titleKeyArt = Pixels.Load(
+                "examples/games/xenoscape/assets/art/title-key-art.png");
+        }
+        if titleKeyArt == null {
+            titleKeyArt = Pixels.Load("../games/xenoscape/assets/art/title-key-art.png");
+        }
+        if titleKeyArt == null {
+            authoredTitleArtAvailable = false;
+            Terminal.Say(
+                "XENOSCAPE asset fallback: assets/art/title-key-art.png");
+            return false;
+        }
+        titleKeyArt = titleKeyArt.Scale(SCREEN_W, SCREEN_H);
+        authoredTitleArtAvailable = true;
+        return true;
+    }
+
+    /// @brief Decode the first-party translucent title-menu UI texture.
+    ///
+    /// The panel is optional independently of key art: missing or malformed data
+    /// keeps the existing Canvas rectangle fallback, while a valid exact-size PNG
+    /// supplies circuit framing beneath live accessible text and focus widgets.
+    ///
+    /// @return True only when a 440x330 panel texture is retained.
+    hide func loadAuthoredTitlePanel() -> Boolean {
+        titlePanelTexture = Pixels.Load("assets/ui/title-menu-panel.png");
+        if titlePanelTexture == null {
+            titlePanelTexture = Pixels.Load(
+                "examples/games/xenoscape/assets/ui/title-menu-panel.png");
+        }
+        if titlePanelTexture == null {
+            titlePanelTexture = Pixels.Load(
+                "../games/xenoscape/assets/ui/title-menu-panel.png");
+        }
+        if titlePanelTexture == null or
+           titlePanelTexture.get_Width() != 440 or
+           titlePanelTexture.get_Height() != 330 {
+            authoredTitlePanelAvailable = false;
+            Terminal.Say(
+                "XENOSCAPE asset fallback: assets/ui/title-menu-panel.png");
+            return false;
+        }
+        authoredTitlePanelAvailable = true;
+        return true;
+    }
+
+    /// @brief Report whether first-party title art loaded successfully.
+    ///
+    /// @return True for authored art and false for procedural fallback mode.
+    expose func hasAuthoredTitleArt() -> Boolean {
+        return authoredTitleArtAvailable;
+    }
+
+    /// @brief Select authored title art or its permanent procedural fallback.
+    ///
+    /// @param enabled True to use loaded key art; false to force fallback mode.
+    /// @return True when the request is drawable. Enabling without a loaded asset
+    ///         returns false and leaves procedural fallback active.
+    expose func setAuthoredTitleArtEnabled(enabled: Boolean) -> Boolean {
+        if enabled and authoredTitleArtAvailable == false {
+            authoredTitleArtEnabled = false;
+            return false;
+        }
+        authoredTitleArtEnabled = enabled;
+        return true;
     }
 
     // =========================================================================
@@ -354,7 +472,11 @@ class MenuSystem {
             levelNum = levelNum + 1;
         }
 
-        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to start, ESC to go back", pal.hudGray, 2);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 40,
+            Action.BindingsStr(ACT_CONFIRM) + " start   " +
+            Action.BindingsStr(ACT_BACK) + " back",
+            pal.hudGray, 2);
     }
 
     /// @brief Draw one row of the level-select list.
@@ -378,9 +500,21 @@ class MenuSystem {
         // (nebula / stars / ridge / rocks) tiled and scrolled by a slowly
         // drifting menu Camera — replaces the old flat gradient + starfield +
         // ground/cloud loops.  Built once on first draw (Canvas now exists).
-        if backdropReady == 0 { buildMenuBackdrop(); }
-        menuCam.Move(1, 0);                 // slow ambient drift
-        menuCam.DrawParallax(canvas);
+        if authoredTitleArtAvailable and authoredTitleArtEnabled {
+            canvas.Blit(0, 0, titleKeyArt);
+            canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H,
+                            Color.RGB(1, 5, 12), 54);
+            if authoredTitlePanelAvailable {
+                canvas.Blit(450, 205, titlePanelTexture);
+            } else {
+                canvas.BoxAlpha(450, 205, 440, 330,
+                                Color.RGB(2, 7, 16), 105);
+            }
+        } else {
+            if backdropReady == 0 { buildMenuBackdrop(); }
+            if accessibilityReducedMotion == false { menuCam.Move(1, 0); }
+            menuCam.DrawParallax(canvas);
+        }
 
         // Cinematic logo reveal (#2): one eased master progress (0..100)
         // drives a staggered fade+rise — XENO leads, SCAPE follows, the
@@ -388,6 +522,7 @@ class MenuSystem {
         // palette's integer-percent `mix` helper (there is no alpha-text API,
         // so "fade-in" = blend toward the final colour).
         var p = titleTween.ValueI64;
+        if accessibilityReducedMotion { p = 100; }
         var pXeno = revealStage(p, 0, 70);
         var pScape = revealStage(p, 30, 100);
         var pSub = revealStage(p, 70, 100);
@@ -395,10 +530,12 @@ class MenuSystem {
         var baseY = 80;
         var yXeno = baseY + (40 * (100 - pXeno)) / 100;
         var yScape = baseY + (40 * (100 - pScape)) / 100;
+        if accessibilityReducedMotion { yXeno = baseY; yScape = baseY; }
 
         // Additive-style bloom behind the logo (#4): layered DiscAlpha haloes
         // whose strength tracks the reveal, then breathes subtly afterwards.
         var breathe = 6 + (titleTimer % 48) / 6;
+        if accessibilityReducedMotion { breathe = 6; }
         var glow = (pXeno * (6 + breathe)) / 100;
         canvas.DiscAlpha(520, baseY + 24, 150, pal.titleOrange, glow);
         canvas.DiscAlpha(520, baseY + 24, 90, pal.titleYellow, glow + 4);
@@ -411,15 +548,27 @@ class MenuSystem {
                                       pal.mix(pal.menuBg, pal.hudGray, pSub), 3);
         }
 
-        drawMenuDiorama(canvas, p);
+        if authoredTitleArtAvailable == false or
+           authoredTitleArtEnabled == false {
+            drawMenuDiorama(canvas, p);
+        }
 
         // Gliding selection highlight (#5): a single eased box that slides
         // between options via SmoothValue, replacing the instant per-option box.
-        canvas.BoxAlpha(494, highlightY.ValueI64 - 4, 360, 32, pal.menuHighlight, 150);
+        var highlightAlpha = 150;
+        if accessibilityHighContrast { highlightAlpha = 235; }
+        canvas.BoxAlpha(494, highlightY.ValueI64 - 4, 360, 32,
+                        pal.menuHighlight, highlightAlpha);
 
         var menuY = 244;
         drawTitleOption(canvas, "NEW GAME", MENU_NEW_GAME, menuY, titleBG);
-        drawTitleOption(canvas, "CONTINUE", MENU_CONTINUE, menuY + 40, titleBG);
+        if continueAvailable {
+            drawTitleOption(canvas, "CONTINUE", MENU_CONTINUE,
+                            menuY + 40, titleBG);
+        } else {
+            drawDisabledTitleOption(canvas, "CONTINUE  [NO SAVE]",
+                                    menuY + 40);
+        }
         drawTitleOption(canvas, "LOAD GAME", MENU_LOAD_GAME, menuY + 80, titleBG);
         drawTitleOption(canvas, "OPTIONS", MENU_OPTIONS, menuY + 120, titleBG);
         drawTitleOption(canvas, "EXTRAS", MENU_EXTRAS, menuY + 160, titleBG);
@@ -488,10 +637,40 @@ class MenuSystem {
         if bg.IsSelected(index) {
             canvas.BoxAlpha(x - 20, y - 4, 280, 32, pal.menuHighlight, 150);
             col = pal.white;
-            canvas.TextScaled(x - 30, y, ">", 3, pal.titleOrange);
+            canvas.TextScaled(x - 30, y, ">", menuTextScale(3),
+                              pal.titleOrange);
         }
 
-        canvas.TextScaled(x, y, label, 3, col);
+        canvas.TextScaled(x, y, label, menuTextScale(3), col);
+    }
+
+    /// @brief Apply persistent menu legibility settings immediately.
+    ///
+    /// @param uiScale Advertised 100, 125, or 150 percent UI scale.
+    /// @param highContrast True for opaque backing and brighter focus treatment.
+    /// @param largeText True for one additional bitmap-font scale step.
+    /// @param reducedMotion True to suppress title drift, bounce, and breathing.
+    /// @return Nothing. Stores normalized values used by subsequent draws.
+    expose func setAccessibility(uiScale: Integer, highContrast: Boolean,
+                                 largeText: Boolean,
+                                 reducedMotion: Boolean) {
+        accessibilityUiScale = uiScale;
+        if accessibilityUiScale != 100 and accessibilityUiScale != 125 and
+           accessibilityUiScale != 150 { accessibilityUiScale = 100; }
+        accessibilityHighContrast = highContrast;
+        accessibilityLargeText = largeText;
+        accessibilityReducedMotion = reducedMotion;
+    }
+
+    /// @brief Resolve one authored menu font scale through accessibility state.
+    ///
+    /// @param baseScale Positive authored bitmap-font scale.
+    /// @return Bounded live menu scale in 1..6.
+    hide func menuTextScale(baseScale: Integer) -> Integer {
+        var result = accessibleTextScale(baseScale, accessibilityUiScale,
+                                         accessibilityLargeText);
+        if baseScale >= 3 and result > 4 { result = 4; }
+        return result;
     }
 
     /// @brief Title-menu entry: text + selected arrow only.  The selection
@@ -504,9 +683,22 @@ class MenuSystem {
         var col = pal.menuText;
         if bg.IsSelected(index) {
             col = pal.white;
-            canvas.TextScaled(x - 30, y, ">", 3, pal.titleOrange);
+            canvas.TextScaled(x - 30, y, ">", menuTextScale(3),
+                              pal.titleOrange);
         }
-        canvas.TextScaled(x, y, label, 3, col);
+        canvas.TextScaled(x, y, label, menuTextScale(3), col);
+    }
+
+    /// @brief Draw a title action that currently has no valid target.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @param label Disabled row text including its reason.
+    /// @param y Screen-space baseline matching the ordinary title list.
+    /// @return Nothing. Uses subdued color and never draws the activation arrow.
+    hide func drawDisabledTitleOption(canvas: Canvas, label: String,
+                                      y: Integer) {
+        canvas.TextScaled(520, y, label, menuTextScale(3),
+                          Color.RGB(72, 78, 96));
     }
 
     /// @brief Animated star backdrop used by the title screen.
@@ -541,6 +733,17 @@ class MenuSystem {
     ///        play the menu-move SFX without re-reading (consuming) input.
     expose func titleSelectionMoved() -> Boolean {
         return titleMoved == 1;
+    }
+
+    /// @brief Set whether Continue has a valid expedition target.
+    ///
+    /// The title retains cursor navigation for consistent wrapping, but the row
+    /// renders disabled and Game refuses activation when no slot is populated.
+    ///
+    /// @param available True when SaveManager exposes a valid continue slot.
+    /// @return Nothing. Updates title presentation state only.
+    expose func setContinueAvailable(available: Boolean) {
+        continueAvailable = available;
     }
 
     /// @brief Build the four parallax layers for the menu backdrop (#1):
@@ -642,10 +845,9 @@ class MenuSystem {
 
     /// @brief Options-menu input.
     ///
-    /// Rows 0 and 1 are sliders adjusted with left/right, row 2 toggles
-    /// fullscreen, and row 3 returns to the previous screen.  The function
-    /// returns action IDs rather than mutating game settings directly so `Game`
-    /// remains the owner of audio and window state.
+    /// Every persistent row is adjusted with left/right or confirm; the final
+    /// row returns to the previous screen. The function returns generic action
+    /// IDs so Game remains the owner of persistence and live subsystem updates.
     expose func updateOptions() -> Integer {
         if Action.Pressed(ACT_BACK) {
             return OPTIONS_ACTION_BACK;
@@ -657,21 +859,13 @@ class MenuSystem {
         var selected = optionsList.get_Selected();
         optionsBG.Select(selected);
 
-        if selected == 0 {
-            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_MASTER_DOWN; }
-            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_MASTER_UP; }
-        }
-        if selected == 1 {
-            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_SFX_DOWN; }
-            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_SFX_UP; }
-        }
-        if selected == 2 {
-            if chosen >= 0 { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
-            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
-            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_TOGGLE_FULLSCREEN; }
+        if selected < SETTING_COUNT {
+            if Action.Pressed(ACT_LEFT) { return OPTIONS_ACTION_VALUE_DOWN; }
+            if Action.Pressed(ACT_RIGHT) { return OPTIONS_ACTION_VALUE_UP; }
+            if chosen >= 0 { return OPTIONS_ACTION_VALUE_UP; }
         }
         if chosen >= 0 {
-            if selected == 3 { return OPTIONS_ACTION_BACK; }
+            if selected == SETTING_COUNT { return OPTIONS_ACTION_BACK; }
         }
 
         return STATE_OPTIONS;
@@ -847,7 +1041,9 @@ class MenuSystem {
         }
 
         if revealFrames > 120 {
-            canvas.TextCenteredScaled(430, "Press ENTER to continue", pal.hudGray, 2);
+            canvas.TextCenteredScaled(
+                430, Action.BindingsStr(ACT_CONFIRM) + " continue",
+                pal.hudGray, 2);
         }
     }
 
@@ -859,19 +1055,40 @@ class MenuSystem {
         lcBurstFired = 0;
     }
 
-    /// @brief Cinematic level-complete (#7 + #8): renders the rich enhanced
-    ///        panel fed a Tweened score count-up, then fires a one-shot
-    ///        ParticleEmitter burst when the tally lands on the rank.
+    /// @brief Render a ranked regional debrief with a tweened score celebration.
+    ///
+    /// The letter rank is supplied by the authoritative meta-progression scorer;
+    /// this presentation never derives performance from arcade score.  Once the
+    /// score tween settles, a one-shot particle burst confirms the final tally.
+    ///
+    /// @param canvas Active release-resolution canvas.
+    /// @param levelNum One-based completed campaign region.
+    /// @param timeMs Regional clear time in milliseconds.
+    /// @param damageTaken Total HP lost during the completed region.
+    /// @param discoveries Optional discoveries completed in the region.
+    /// @param rankLabel Authoritative D/C/B/A/S rank label.
+    /// @param rankScore Authoritative 0..1000 performance score.
+    /// @param enemiesKilled Regional enemies defeated.
+    /// @param coinsCollected Regional coin total.
+    /// @param gemsFound Regional salvage total.
+    /// @param finalScore Arcade score before the time bonus.
+    /// @param timeBonus Awarded arcade time bonus.
+    /// @return Nothing. Draws presentation and advances local visual effects.
     expose func drawLevelCompleteCinematic(canvas: Canvas, levelNum: Integer,
-                                         timeMs: Integer, enemiesKilled: Integer,
-                                         coinsCollected: Integer, gemsFound: Integer,
-                                         finalScore: Integer, timeBonus: Integer) {
+                                         timeMs: Integer, damageTaken: Integer,
+                                         discoveries: Integer, rankLabel: String,
+                                         rankScore: Integer, enemiesKilled: Integer,
+                                         coinsCollected: Integer,
+                                         gemsFound: Integer, finalScore: Integer,
+                                         timeBonus: Integer) {
         if lcStarted == 0 { startLevelComplete(finalScore); }
         lcScoreTween.Update();
         var shownScore = lcScoreTween.ValueI64;
 
-        drawEnhancedLevelComplete(canvas, pal, levelNum, timeMs, enemiesKilled,
-                                  coinsCollected, gemsFound, shownScore, timeBonus);
+        drawEnhancedLevelComplete(canvas, pal, levelNum, timeMs, damageTaken,
+                                  discoveries, rankLabel, rankScore,
+                                  enemiesKilled, coinsCollected, gemsFound,
+                                  shownScore, timeBonus);
 
         if lcScoreTween.IsComplete and lcBurstFired == 0 {
             lcBurst.SetPosition((SCREEN_W / 2) + 0.0, 480.0);
@@ -916,7 +1133,9 @@ class MenuSystem {
         canvas.TextScaled(480, 390, scoreStr, 4, pal.coinGold);
 
         if titleTimer > 60 {
-            canvas.TextCenteredScaled(490, "Press ENTER for menu", pal.hudGray, 2);
+            canvas.TextCenteredScaled(
+                490, Action.BindingsStr(ACT_CONFIRM) + " return to menu",
+                pal.hudGray, 2);
         }
     }
 
@@ -960,7 +1179,11 @@ class MenuSystem {
             i = i + 1;
         }
 
-        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 40,
+            Action.BindingsStr(ACT_CONFIRM) + " / " +
+            Action.BindingsStr(ACT_BACK) + " return",
+            pal.hudGray, 2);
     }
 
     /// @brief Insert a new high score, evict the lowest if
@@ -1030,37 +1253,55 @@ class MenuSystem {
     /// @brief Render the input bindings cheat-sheet.
     expose func drawControls(canvas: Canvas) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, pal.menuBg);
+        drawStarfield(canvas);
 
-        canvas.TextCenteredScaled(40, "CONTROLS", pal.titleOrange, 4);
+        canvas.TextCenteredScaled(36, "CONTROL MATRIX", pal.titleOrange, 4);
+        canvas.TextCenteredScaled(82,
+                                  "Live keyboard and gamepad bindings",
+                                  pal.hudGray, 2);
 
-        var y = 150;
-        var gap = 44;
-        drawControlRow(canvas, y, "MOVE LEFT", "LEFT / A");
-        drawControlRow(canvas, y + gap, "MOVE RIGHT", "RIGHT / D");
-        drawControlRow(canvas, y + gap * 2, "JUMP", "UP / W / SPACE");
-        drawControlRow(canvas, y + gap * 3, "SHOOT", "Z / X");
-        drawControlRow(canvas, y + gap * 4, "PAUSE", "ESCAPE");
+        canvas.BoxAlpha(82, 126, 535, 454, Color.RGB(8, 13, 25), 220);
+        canvas.Frame(82, 126, 535, 454, Color.RGB(55, 80, 125));
+        canvas.BoxAlpha(663, 126, 535, 454, Color.RGB(8, 13, 25), 220);
+        canvas.Frame(663, 126, 535, 454, Color.RGB(55, 80, 125));
+        canvas.TextScaled(112, 151, "MOVEMENT", 3, pal.titleYellow);
+        canvas.TextScaled(693, 151, "SUIT SYSTEMS", 3, pal.titleYellow);
 
-        // Gamepad controls
-        canvas.TextScaled(430, y + gap * 6, "GAMEPAD:", 3, pal.titleYellow);
-        drawControlRow(canvas, y + gap * 7, "MOVE", "D-PAD");
-        drawControlRow(canvas, y + gap * 8, "JUMP", "A BUTTON");
-        drawControlRow(canvas, y + gap * 9, "SHOOT", "X / RB");
-        drawControlRow(canvas, y + gap * 10, "PAUSE", "START");
+        var y = 202;
+        var gap = 58;
+        drawControlCard(canvas, 112, y, "MOVE LEFT", ACT_LEFT);
+        drawControlCard(canvas, 112, y + gap, "MOVE RIGHT", ACT_RIGHT);
+        drawControlCard(canvas, 112, y + gap * 2, "LOOK UP", ACT_MOVE_UP);
+        drawControlCard(canvas, 112, y + gap * 3, "CROUCH / POUND", ACT_MOVE_DOWN);
+        drawControlCard(canvas, 112, y + gap * 4, "JUMP", ACT_JUMP);
+        drawControlCard(canvas, 112, y + gap * 5, "WORLD MAP", ACT_MAP);
 
-        canvas.TextScaled(430, y + gap * 12, "TIPS:", 3, pal.titleYellow);
-        canvas.TextScaled(370, y + gap * 13, "Hold jump for higher jumps", 2, pal.menuText);
-        canvas.TextScaled(370, y + gap * 13 + 28, "Slide on walls and wall-jump", 2, pal.menuText);
-        canvas.TextScaled(370, y + gap * 13 + 56, "Double-jump in mid-air", 2, pal.menuText);
+        drawControlCard(canvas, 693, y, "BLASTER / CHARGE", ACT_SHOOT);
+        drawControlCard(canvas, 693, y + gap, "DASH", ACT_DASH);
+        drawControlCard(canvas, 693, y + gap * 2, "GRAPPLE", ACT_GRAPPLE);
+        drawControlCard(canvas, 693, y + gap * 3, "INTERACT", ACT_INTERACT);
+        drawControlCard(canvas, 693, y + gap * 4, "PAUSE / BACK", ACT_BACK);
+        drawControlCard(canvas, 693, y + gap * 5, "FULLSCREEN", ACT_FULLSCREEN);
 
-        canvas.TextCenteredScaled(SCREEN_H - 40, "Press ENTER to return", pal.hudGray, 2);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 54,
+            Action.BindingsStr(ACT_CONFIRM) + " / " +
+            Action.BindingsStr(ACT_BACK) + " return",
+            pal.hudGray, 1);
     }
 
-    /// @brief One label/binding row on the controls screen.
-    hide func drawControlRow(canvas: Canvas, y: Integer,
-                              action: String, keys: String) {
-        canvas.TextScaled(360, y, action, 2, pal.hudGray);
-        canvas.TextScaled(620, y, keys, 2, pal.white);
+    /// @brief Draw one live semantic-action binding on the Controls screen.
+    ///
+    /// @param canvas Borrowed menu canvas.
+    /// @param x Left edge of the row within its two-column panel.
+    /// @param y Baseline of the action label.
+    /// @param label Player-facing semantic action label.
+    /// @param action Stable runtime action id queried for current bindings.
+    /// @return Nothing. Draws the label and active keyboard/gamepad binding text.
+    hide func drawControlCard(canvas: Canvas, x: Integer, y: Integer,
+                              label: String, action: String) {
+        canvas.TextScaled(x, y, label, 2, pal.hudGray);
+        canvas.TextScaled(x + 245, y, Action.BindingsStr(action), 2, pal.white);
     }
 
     /// @brief Reset every screen's cursor focus to the first
@@ -1133,9 +1374,14 @@ class MenuSystem {
         }
         canvas.TextCenteredScaled(backY, "BACK", pal.white, 2);
 
-        canvas.TextCenteredScaled(SCREEN_H - 60, "UP/DOWN to select, ENTER to load",
-                                  pal.hudGray, 1);
-        canvas.TextCenteredScaled(SCREEN_H - 35, "ESC to go back", pal.hudGray, 1);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 60,
+            Action.BindingsStr(ACT_UP) + "/" + Action.BindingsStr(ACT_DOWN) +
+            " select   " + Action.BindingsStr(ACT_CONFIRM) + " load",
+            pal.hudGray, 1);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 35, Action.BindingsStr(ACT_BACK) + " back",
+            pal.hudGray, 1);
     }
 
     /// @brief Extras hub — achievements, bestiary, lore archive,
@@ -1170,8 +1416,11 @@ class MenuSystem {
         drawExtrasOption(canvas, "HIGH SCORES", "table", 3, py + 180);
         drawExtrasOption(canvas, "BACK", "", 4, py + 226);
 
-        canvas.TextCenteredScaled(SCREEN_H - 46, "ENTER to open, ESC to return",
-                                  pal.hudGray, 1);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 46,
+            Action.BindingsStr(ACT_CONFIRM) + " open   " +
+            Action.BindingsStr(ACT_BACK) + " return",
+            pal.hudGray, 1);
     }
 
     /// @brief One row in the Extras hub.
@@ -1203,20 +1452,33 @@ class MenuSystem {
         canvas.TextCenteredScaled(y + 50, "Programming, procedural art, audio, and systems",
                                   pal.hudGray, 2);
         canvas.TextCenteredScaled(y + 92, "Viper Project", pal.crystalBlue, 2);
-        canvas.TextCenteredScaled(y + 154, "Thanks for playing the release demo.",
-                                  pal.menuText, 2);
-        canvas.TextCenteredScaled(SCREEN_H - 54, "Press ENTER or ESC to return",
+        canvas.TextCenteredScaled(y + 132,
+                                  "Original key art and ARIA portrait commissioned for XENOSCAPE",
                                   pal.hudGray, 1);
+        canvas.TextCenteredScaled(y + 178, "Thanks for playing XENOSCAPE: The Descent.",
+                                  pal.menuText, 2);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 54,
+            Action.BindingsStr(ACT_CONFIRM) + " / " +
+            Action.BindingsStr(ACT_BACK) + " return",
+            pal.hudGray, 1);
     }
 
     // =========================================================================
     // Victory Screen (game complete)
     // =========================================================================
 
-    /// @brief Rich victory-screen variant — total time +
-    ///        per-level rank breakdown.
+    /// @brief Draw the normal or true ending and postgame-unlock summary.
+    ///
+    /// @param canvas Active release-resolution canvas.
+    /// @param totalTime Campaign play time in seconds.
+    /// @param totalGems Current banked salvage.
+    /// @param lorePercent Stable primary-lore completion percentage.
+    /// @param trueEnding True when all abilities and primary lore were collected.
+    /// @return Nothing. Draws only; Game owns the return-to-hub transition.
     expose func drawVictoryScreen(canvas: Canvas, totalTime: Integer,
-                                   totalGems: Integer, lorePercent: Integer) {
+                                   totalGems: Integer, lorePercent: Integer,
+                                   trueEnding: Boolean) {
         canvas.Box(0, 0, SCREEN_W, SCREEN_H, Color.RGB(5, 5, 15));
 
         // Stars background
@@ -1230,11 +1492,17 @@ class MenuSystem {
 
         // Title
         canvas.TextCenteredScaled(100, "XENOSCAPE", Color.RGB(255, 221, 34), 4);
-        canvas.TextCenteredScaled(160, "THE ARCHITECT HAS BEEN SHUT DOWN", Color.RGB(180, 200, 220), 2);
+        var endingTitle = "THE ARCHITECT HAS BEEN SHUT DOWN";
+        if trueEnding { endingTitle = "THE XENOSCAPE SIGNAL IS RESTORED"; }
+        canvas.TextCenteredScaled(160, endingTitle,
+                                  Color.RGB(180, 200, 220), 2);
 
         // Stats
         var statsY = 260;
-        canvas.TextCenteredScaled(statsY, "MISSION COMPLETE", Color.RGB(100, 255, 150), 2);
+        var missionTitle = "NORMAL ENDING // MISSION COMPLETE";
+        if trueEnding { missionTitle = "TRUE ENDING // ALL SIGNALS RECOVERED"; }
+        canvas.TextCenteredScaled(statsY, missionTitle,
+                                  Color.RGB(100, 255, 150), 2);
 
         var mins = totalTime / 60;
         var secs = totalTime % 60;
@@ -1246,11 +1514,16 @@ class MenuSystem {
                                   Color.RGB(200, 180, 255), 2);
 
         // Thank you
-        canvas.TextCenteredScaled(statsY + 200, "Thank you for playing.", Color.RGB(120, 130, 160), 1);
-        canvas.TextCenteredScaled(statsY + 230, "A Viper Engine Showcase", Color.RGB(80, 90, 110), 1);
+        canvas.TextCenteredScaled(statsY + 200,
+                                  "Boss Rush and New Game+ are now online.",
+                                  Color.RGB(180, 150, 235), 1);
+        canvas.TextCenteredScaled(statsY + 230,
+                                  "Regional Time Trials remain available in the hub.",
+                                  Color.RGB(120, 130, 160), 1);
 
         // Return prompt
-        canvas.TextCenteredScaled(SCREEN_H - 50, "Press ENTER to return to title",
+        canvas.TextCenteredScaled(SCREEN_H - 50,
+                                  "Confirm to return to the Shipwreck Hub",
                                   Color.RGB(100, 100, 130), 1);
     }
 
@@ -1374,8 +1647,11 @@ class MenuSystem {
         }
 
         // Bottom hint
-        canvas.TextCenteredScaled(panelY + panelH - 30, "UP/DOWN to navigate, ENTER to select",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.TextCenteredScaled(
+            panelY + panelH - 30,
+            Action.BindingsStr(ACT_UP) + "/" + Action.BindingsStr(ACT_DOWN) +
+            " navigate   " + Action.BindingsStr(ACT_CONFIRM) + " select",
+            Color.RGB(60, 70, 90), 1);
     }
 
     // Get biome indicator color for the pause menu
@@ -1397,20 +1673,39 @@ class MenuSystem {
     // =========================================================================
     // Level Complete Screen — enhanced with stats breakdown
     // =========================================================================
-    /// @brief Rich level-complete screen — score, time,
-    ///        deaths, rank letter, ability unlock notice.
+    /// @brief Draw the complete regional performance and collection debrief.
+    ///
+    /// @param canvas Active release-resolution canvas.
+    /// @param _pal Borrowed palette retained for API compatibility.
+    /// @param levelNum One-based completed campaign region.
+    /// @param timeMs Regional clear time in milliseconds.
+    /// @param damageTaken Total HP lost during the completed region.
+    /// @param discoveries Optional discoveries completed in 0..4.
+    /// @param rank Authoritative D/C/B/A/S label from meta progression.
+    /// @param rankScore Authoritative composite performance score in 0..1000.
+    /// @param enemiesKilled Regional enemy defeats retained for the arcade tally.
+    /// @param coinsCollected Regional coins retained for the arcade tally.
+    /// @param gemsFound Regional salvage retained for the arcade tally.
+    /// @param score Current tweened arcade score.
+    /// @param timeBonus Awarded arcade time bonus.
+    /// @return Nothing. Draws only and does not mutate progression.
     expose func drawEnhancedLevelComplete(canvas: Canvas, _pal: Palette,
                                           levelNum: Integer, timeMs: Integer,
-                                          enemiesKilled: Integer, coinsCollected: Integer,
+                                          damageTaken: Integer,
+                                          discoveries: Integer, rank: String,
+                                          rankScore: Integer,
+                                          enemiesKilled: Integer,
+                                          coinsCollected: Integer,
                                           gemsFound: Integer, score: Integer,
                                           timeBonus: Integer) {
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 180);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10),
+                        accessiblePanelAlpha(accessibilityHighContrast));
 
         // Panel
         var px = SCREEN_W / 2 - 350;
         var py = 100;
         var pw = 700;
-        var ph = 480;
+        var ph = 510;
         canvas.Box(px + 4, py + 4, pw, ph, Color.RGB(0, 0, 0));
         canvas.Box(px, py, pw, ph, Color.RGB(12, 15, 25));
         canvas.Frame(px, py, pw, ph, Color.RGB(60, 100, 160));
@@ -1427,37 +1722,94 @@ class MenuSystem {
         var labelX = px + 60;
         var valueX = px + pw - 180;
 
-        drawStatRow(canvas, labelX, statY, "Time", formatTime(timeMs), Color.RGB(180, 190, 210));
-        drawStatRow(canvas, labelX, statY + 40, "Enemies Defeated", Int(enemiesKilled),
+        drawStatRow(canvas, labelX, statY, "Clear Time", formatTime(timeMs),
+                    Color.RGB(180, 190, 210));
+        drawStatRow(canvas, labelX, statY + 36, "Damage Taken", Int(damageTaken),
                     Color.RGB(255, 150, 100));
-        drawStatRow(canvas, labelX, statY + 80, "Coins Collected", Int(coinsCollected),
-                    Color.RGB(255, 221, 34));
-        drawStatRow(canvas, labelX, statY + 120, "Gems Found", Int(gemsFound),
+        drawStatRow(canvas, labelX, statY + 72, "Discoveries", Int(discoveries) + " / 4",
                     Color.RGB(100, 200, 255));
+        var optionalStatus = "INCOMPLETE";
+        var optionalColor = Color.RGB(180, 100, 100);
+        if discoveries >= 4 {
+            optionalStatus = "COMPLETE";
+            optionalColor = Color.RGB(100, 255, 150);
+        }
+        drawStatRow(canvas, labelX, statY + 108, "Optional Objectives",
+                    optionalStatus, optionalColor);
 
         // Divider
-        canvas.Line(px + 30, statY + 160, px + pw - 30, statY + 160, Color.RGB(40, 60, 90));
+        canvas.Line(px + 30, statY + 148, px + pw - 30, statY + 148,
+                    Color.RGB(40, 60, 90));
+
+        canvas.TextCenteredScaled(statY + 165,
+                                  "ENEMIES " + Int(enemiesKilled) +
+                                  "   COINS " + Int(coinsCollected) +
+                                  "   SALVAGE " + Int(gemsFound),
+                                  Color.RGB(140, 150, 170), 1);
 
         // Bonuses
-        drawStatRow(canvas, labelX, statY + 180, "Time Bonus", "+" + Int(timeBonus),
+        drawStatRow(canvas, labelX, statY + 192, "Time Bonus", "+" + Int(timeBonus),
                     Color.RGB(200, 255, 100));
 
         // Total score
-        canvas.Line(px + 30, statY + 220, px + pw - 30, statY + 220, Color.RGB(60, 80, 120));
-        canvas.TextScaled(labelX, statY + 240, "TOTAL SCORE", Color.RGB(255, 221, 34), 2);
-        canvas.TextScaled(valueX, statY + 240, Int(score), Color.RGB(255, 255, 200), 2);
+        canvas.Line(px + 30, statY + 228, px + pw - 30, statY + 228,
+                    Color.RGB(60, 80, 120));
+        canvas.TextScaled(labelX, statY + 246, "ARCADE SCORE", Color.RGB(255, 221, 34), 2);
+        canvas.TextScaled(valueX, statY + 246, Int(score), Color.RGB(255, 255, 200), 2);
+        canvas.TextScaled(labelX, statY + 282, "PERFORMANCE", Color.RGB(140, 150, 170), 2);
+        canvas.TextScaled(valueX, statY + 282, Int(rankScore) + " / 1000",
+                          Color.RGB(180, 220, 255), 2);
 
         // Rank
-        var rank = "D";
-        if score > 50000 { rank = "S"; }
-        else if score > 30000 { rank = "A"; }
-        else if score > 20000 { rank = "B"; }
-        else if score > 10000 { rank = "C"; }
-        canvas.TextCenteredScaled(statY + 300, "RANK: " + rank, getRankColor(rank), 4);
+        canvas.TextCenteredScaled(statY + 326, "RANK: " + rank,
+                                  getRankColor(rank), 4);
 
         // Next level prompt
-        canvas.TextCenteredScaled(py + ph - 40, "Press ENTER to continue",
-                                  Color.RGB(100, 100, 130), 1);
+        canvas.TextCenteredScaled(
+            py + ph - 40, Action.BindingsStr(ACT_CONFIRM) + " continue",
+            Color.RGB(100, 100, 130), 1);
+    }
+
+    /// @brief Draw the four-encounter Boss Rush completion debrief.
+    ///
+    /// @param canvas Active release-resolution canvas.
+    /// @param elapsedMs Continuous Boss Rush completion time in milliseconds.
+    /// @param damageTaken Cumulative HP lost across all four encounters.
+    /// @param rank Authoritative D/C/B/A/S simulator rank label.
+    /// @param rankScore Authoritative composite result in 0..1000.
+    /// @return Nothing. Draws only and leaves result restoration to Game.
+    expose func drawBossRushComplete(canvas: Canvas, elapsedMs: Integer,
+                                     damageTaken: Integer, rank: String,
+                                     rankScore: Integer) {
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 205);
+        var px = SCREEN_W / 2 - 350;
+        var py = 105;
+        var pw = 700;
+        var ph = 500;
+        canvas.Box(px + 5, py + 5, pw, ph, Color.RGB(0, 0, 0));
+        canvas.Box(px, py, pw, ph, Color.RGB(13, 10, 25));
+        canvas.Frame(px, py, pw, ph, Color.RGB(190, 90, 235));
+        canvas.TextCenteredScaled(py + 28, "BOSS RUSH COMPLETE",
+                                  Color.RGB(245, 205, 95), 3);
+        canvas.TextCenteredScaled(py + 78,
+                                  "SPORE MOTHER  //  CRYSTAL WYRM  //",
+                                  Color.RGB(150, 175, 210), 1);
+        canvas.TextCenteredScaled(py + 102,
+                                  "MAGMA CORE  //  THE ARCHITECT",
+                                  Color.RGB(150, 175, 210), 1);
+        canvas.Line(px + 35, py + 140, px + pw - 35, py + 140,
+                    Color.RGB(70, 45, 100));
+        drawStatRow(canvas, px + 70, py + 175, "Continuous Time",
+                    formatTime(elapsedMs), Color.RGB(180, 220, 255));
+        drawStatRow(canvas, px + 70, py + 220, "Damage Taken",
+                    Int(damageTaken), Color.RGB(255, 150, 100));
+        drawStatRow(canvas, px + 70, py + 265, "Performance",
+                    Int(rankScore) + " / 1000", Color.RGB(180, 220, 255));
+        canvas.TextCenteredScaled(py + 330, "RANK: " + rank,
+                                  getRankColor(rank), 5);
+        canvas.TextCenteredScaled(py + ph - 45,
+                                  "Confirm to return to the simulator",
+                                  Color.RGB(120, 125, 150), 1);
     }
 
     /// @brief One label/value stat row on enhanced
@@ -1543,72 +1895,120 @@ class MenuSystem {
     }
 
     // =========================================================================
-    // Settings Menu (Volume, Display)
+    // Settings Menu (audio, display, accessibility)
     // =========================================================================
-    /// @brief Settings screen — volume sliders, fullscreen
-    ///        toggle, scanlines, etc.
+    /// @brief Draw the complete persistent settings browser with scrolling.
+    ///
+    /// Eleven rows remain visible at once. Selection stays centered when possible,
+    /// and values come directly from GameSettings so presentation cannot drift
+    /// from persisted accessibility state.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @param pal Borrowed release palette.
+    /// @param settings Borrowed normalized application settings.
+    /// @param selectedOption Focused setting id or `SETTING_COUNT` for Back.
+    /// @return Nothing. Renders without mutating settings.
     expose func drawSettings(canvas: Canvas, pal: Palette,
-                              masterVolume: Integer, sfxVolume: Integer,
-                              fullscreen: Boolean, selectedOption: Integer) {
+                              settings: GameSettings,
+                              selectedOption: Integer) {
         canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 180);
 
-        var px = SCREEN_W / 2 - 300;
-        var py = 120;
-        var pw = 600;
-        var ph = 400;
-        canvas.Box(px, py, pw, ph, Color.RGB(15, 15, 25));
+        var px = SCREEN_W / 2 - 390;
+        var py = 38;
+        var pw = 780;
+        var ph = 640;
+        var panelColor = Color.RGB(15, 15, 25);
+        if accessibilityHighContrast { panelColor = Color.RGB(0, 0, 0); }
+        canvas.Box(px, py, pw, ph, panelColor);
         canvas.Frame(px, py, pw, ph, Color.RGB(80, 100, 160));
 
-        canvas.TextCenteredScaled(py + 20, "SETTINGS", pal.white, 3);
+        canvas.TextCenteredScaled(py + 18, "SETTINGS & ACCESSIBILITY", pal.white, 3);
         canvas.Line(px + 20, py + 55, px + pw - 20, py + 55, Color.RGB(50, 60, 90));
 
-        // Volume sliders
-        var optY = py + 80;
-        drawSliderRow(canvas, px + 40, optY, "Master Volume", masterVolume, 100,
-                      selectedOption == 0);
-        drawSliderRow(canvas, px + 40, optY + 60, "SFX Volume", sfxVolume, 100,
-                      selectedOption == 1);
+        var visibleRows = 11;
+        var totalRows = SETTING_COUNT + 1;
+        var first = selectedOption - visibleRows / 2;
+        if first < 0 { first = 0; }
+        var maxFirst = totalRows - visibleRows;
+        if maxFirst < 0 { maxFirst = 0; }
+        if first > maxFirst { first = maxFirst; }
 
-        // Fullscreen toggle
-        var fsText = "OFF";
-        if fullscreen { fsText = "ON"; }
-        var fsColor = Color.RGB(140, 150, 170);
-        if selectedOption == 2 { fsColor = Color.RGB(255, 255, 255); }
-        canvas.TextScaled(px + 40, optY + 120, "Fullscreen: " + fsText, fsColor, 2);
+        var row = 0;
+        while row < visibleRows and first + row < totalRows {
+            var setting = first + row;
+            var label = "< Back";
+            var value = "RETURN";
+            var percent = -1;
+            if setting < SETTING_COUNT {
+                label = settingName(setting);
+                value = settings.getValueLabel(setting);
+                if setting == SETTING_MASTER_VOLUME or
+                   setting == SETTING_MUSIC_VOLUME or
+                   setting == SETTING_SFX_VOLUME or
+                   setting == SETTING_AMBIENCE_VOLUME or
+                   setting == SETTING_SCREEN_SHAKE or
+                   setting == SETTING_VOICE_VOLUME {
+                    percent = settings.getValue(setting);
+                }
+            }
+            drawSettingRow(canvas, pal, px + 36, py + 76 + row * 46,
+                           pw - 72, label, value, percent,
+                           setting == selectedOption,
+                           setting == SETTING_COUNT);
+            row = row + 1;
+        }
 
-        // Back option
-        var backColor = Color.RGB(140, 150, 170);
-        if selectedOption == 3 { backColor = Color.RGB(255, 100, 100); }
-        canvas.TextScaled(px + 40, optY + 180, "< Back", backColor, 2);
-
-        canvas.TextCenteredScaled(py + ph - 30,
-                                  "LEFT/RIGHT to adjust, ENTER to select",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.Text(px + 32, py + ph - 52,
+                    "Rows " + Int(first + 1) + "-" +
+                    Int(first + visibleRows) + " of " + Int(totalRows),
+                    pal.hudGray);
+        canvas.Text(px + 300, py + ph - 52,
+                    Action.BindingsStr(ACT_LEFT) + " / " +
+                    Action.BindingsStr(ACT_RIGHT) + " adjust    " +
+                    Action.BindingsStr(ACT_BACK) + " back",
+                    pal.hudGray);
     }
 
-    /// @brief Render one labelled slider row in settings.
-    hide func drawSliderRow(canvas: Canvas, sx: Integer, sy: Integer,
-                             label: String, value: Integer, maxVal: Integer,
-                             selected: Boolean) {
-        var labelColor = Color.RGB(140, 150, 170);
-        if selected { labelColor = Color.RGB(255, 255, 255); }
-        canvas.TextScaled(sx, sy, label, labelColor, 2);
-        // Slider bar
-        var barX = sx + 250;
-        var barW = 200;
-        var barH = 10;
-        canvas.Box(barX, sy + 4, barW, barH, Color.RGB(30, 35, 50));
-        var fillW = value * barW / maxVal;
-        var fillColor = Color.RGB(60, 100, 160);
-        if selected { fillColor = Color.RGB(80, 140, 220); }
-        canvas.Box(barX, sy + 4, fillW, barH, fillColor);
-        canvas.Frame(barX, sy + 4, barW, barH, Color.RGB(50, 60, 80));
-        // Value text
-        var percent = value * 100 / maxVal;
-        canvas.Text(barX + barW + 10, sy + 2, Int(percent) + "%", labelColor);
-        // Knob
-        canvas.Disc(barX + fillW, sy + 9, 6, fillColor);
-        canvas.Ring(barX + fillW, sy + 9, 6, Color.RGB(200, 210, 230));
+    /// @brief Draw one settings row with optional compact percentage meter.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @param pal Borrowed release palette.
+    /// @param x Row origin X.
+    /// @param y Row origin Y.
+    /// @param width Row width in pixels.
+    /// @param label Release setting label.
+    /// @param value Formatted normalized value.
+    /// @param percent Percentage in 0..100, or -1 when no meter applies.
+    /// @param selected Whether the row currently owns focus.
+    /// @param destructive True only for the Back row's warm accent.
+    /// @return Nothing. Draws one bounded row.
+    hide func drawSettingRow(canvas: Canvas, pal: Palette,
+                             x: Integer, y: Integer, width: Integer,
+                             label: String, value: String,
+                             percent: Integer, selected: Boolean,
+                             destructive: Boolean) {
+        var color = Color.RGB(145, 158, 184);
+        if selected {
+            canvas.BoxAlpha(x - 8, y - 5, width + 16, 38,
+                            pal.menuHighlight, 120);
+            color = pal.white;
+            canvas.TextScaled(x - 22, y, ">", menuTextScale(2),
+                              pal.titleOrange);
+        }
+        if destructive and selected { color = pal.hudRed; }
+        canvas.TextScaled(x, y, label, menuTextScale(2), color);
+        canvas.TextScaled(x + width - 142, y, value,
+                          menuTextScale(2), color);
+
+        if percent >= 0 {
+            var barX = x + width - 300;
+            var barY = y + 10;
+            var barW = 120;
+            canvas.Box(barX, barY, barW, 7, Color.RGB(30, 35, 50));
+            canvas.Box(barX, barY, percent * barW / 100, 7,
+                       pal.crystalBlue);
+            canvas.Frame(barX, barY, barW, 7, Color.RGB(60, 76, 106));
+        }
     }
 
     // =========================================================================
@@ -1681,7 +2081,8 @@ class MenuSystem {
             i = i + 1;
         }
 
-        canvas.TextCenteredScaled(py + ph - 30, "Press ESC to go back",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.TextCenteredScaled(
+            py + ph - 30, Action.BindingsStr(ACT_BACK) + " go back",
+            Color.RGB(60, 70, 90), 1);
     }
 }

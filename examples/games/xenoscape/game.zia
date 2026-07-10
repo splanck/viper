@@ -1,7 +1,22 @@
-// =============================================================================
-// game.zia — The top-level game object: loop, state, orchestration
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/game.zia
+// Purpose: Owns XENOSCAPE's application loop, scenes, and subsystem orchestration.
+// Key invariants:
+//   - Exactly one top-level scene consumes input and presents each frame.
+//   - Campaign-owned state is synchronized before player or combat simulation.
+// Ownership/Lifetime:
+//   - Main owns one Game until the application window closes.
+//   - Game owns every gameplay, presentation, audio, and persistence subsystem.
+// Links: main.zia, config.zia, player.zia, level.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — THE "GAME" OBJECT IS YOUR ROOT
 // -----------------------------------------
@@ -107,6 +122,7 @@ module game;
 bind Viper.Graphics;
 bind Viper.Input;
 bind Viper.Input.Keyboard as Keyboard;
+bind Viper.Input.Pad as Pad;
 bind Viper.Text.Fmt;
 bind Viper.Game;
 bind Viper.Game.DebugOverlay as Debug;
@@ -121,6 +137,8 @@ bind "./projectile";
 bind "./level";
 bind "./physics";
 bind "./camera";
+bind "./campaign_content";
+bind "./combat_feedback";
 bind "./particles";
 bind "./pickups";
 bind "./hud";
@@ -128,7 +146,10 @@ bind "./menu";
 bind "./renderer";
 bind "./sound";
 bind "./abilities";
+bind "./accessibility";
 bind "./save";
+bind "./world_state";
+bind "./world_graph";
 bind "./worldmap";
 bind "./lore";
 bind "./transitions";
@@ -137,6 +158,22 @@ bind "./texture";
 bind "./ai";
 bind "./achievements";
 bind "./tuning";
+bind "./economy";
+bind "./difficulty";
+bind "./hub";
+bind "./death_loop";
+bind "./profile_flow";
+bind "./radio";
+bind "./settings";
+bind "./objectives";
+bind "./tutorials";
+bind "./meta_modes";
+
+final EXPEDITION_MODE_CAMPAIGN = 0;
+final EXPEDITION_MODE_TIME_TRIAL = 1;
+final EXPEDITION_MODE_BOSS_RUSH = 2;
+final BOSS_RUSH_ENCOUNTER_COUNT = 4;
+final NEW_GAME_PLUS_CONFIRM_MS = 5000;
 
 /// @brief The whole game.  Owns every subsystem, the
 ///        top-level state, and the main loop.
@@ -172,11 +209,14 @@ class Game {
     hide SoundManager sfx;
     hide Debug debugOverlay;
     hide RuntimeTuning tuning;
+    hide GameSettings settings;
     hide Boolean debugEnabled;
 
     // New subsystems (XENOSCAPE expansion)
     hide AbilityManager abilities;
     hide SaveManager saveManager;
+    hide WorldState worldState;
+    hide WorldGraph worldGraph;
     hide WorldMap worldMap;
     hide LoreSystem loreSystem;
     // hide TransitionManager transitions;
@@ -184,6 +224,14 @@ class Game {
     hide TextureFactory textures;
     hide TransitionManager transitions;
     hide AchievementSystem achSys;
+    hide UpgradeSystem upgrades;
+    hide DifficultySystem difficulty;
+    hide HubSystem hub;
+    hide DeathRecovery deathRecovery;
+    hide ProfileFlow profileFlow;
+    hide TutorialSystem tutorialSystem;
+    hide MetaProgression metaProgression;
+    hide RadioSystem radioSystem;
 
     // Expansion state
     hide Integer gems;
@@ -205,6 +253,23 @@ class Game {
     hide Integer achBrowse;
     hide Integer bestiaryBrowse;
     hide Integer loreBrowse;
+    hide Integer routeSelection;
+    hide Integer hubLaunchLevel;
+    hide Integer hubRouteSelection;
+    hide Integer currentRoomIndex;
+    hide Integer roomTitleTimer;
+    hide String interactionMessage;
+    hide Integer interactionMessageTimer;
+    hide Boolean expeditionActive;
+    hide Integer lastRegionRank;
+    hide Integer lastRegionRankScore;
+    hide Integer lastRegionDiscoveries;
+    hide Integer expeditionMode;
+    hide Integer hubSimulatorRegion;
+    hide Integer bossRushIndex;
+    hide Integer bossRushElapsedMs;
+    hide Integer bossRushDamageTaken;
+    hide Integer newGamePlusConfirmTimer;
 
     // Death flash tracking (draw bright circle at kill position)
     hide Integer killFlashX;       // world pixel X of last kill
@@ -219,6 +284,9 @@ class Game {
     hide Integer levelTimer;     // milliseconds elapsed in level
     hide Integer levelDamageTaken;
     hide Boolean reachedCheckpoint;
+    hide Integer checkpointLevel;
+    hide Integer checkpointX;
+    hide Integer checkpointY;
 
     // Level complete state
     hide Integer levelCompleteTimer;
@@ -226,6 +294,9 @@ class Game {
 
     // Frame timing
     hide Integer dt;
+    hide Integer frameDt;
+    hide Integer hitStopTimer;
+    hide Integer rumbleTimer;
 
     // Menu screen-transition state (#3): deferred fade-out -> switch -> fade-in
     hide Integer menuPending;    // pending action code, or MENU_PENDING_NONE
@@ -242,6 +313,7 @@ class Game {
     hide Integer prevVy;
     hide Integer wallSparkTimer;   // ms accumulator for wall-slide sparks
     hide Integer jetFlameTimer;    // ms accumulator for jetpack flame
+    hide Integer footstepTimer;    // ms until the next surface-specific step
 
     // Level intro splash
     hide Integer introTimer;       // ms countdown for level name splash
@@ -271,6 +343,8 @@ class Game {
         sm.Add("achievements");
         sm.Add("bestiary");
         sm.Add("lorearchive");
+        sm.Add("hub");
+        sm.Add("profiles");
         sm.Switch("menu");
 
         score = 0;
@@ -279,15 +353,22 @@ class Game {
         levelTimer = 0;
         levelDamageTaken = 0;
         reachedCheckpoint = false;
+        checkpointLevel = 0;
+        checkpointX = 0;
+        checkpointY = 0;
         levelCompleteTimer = 0;
         timeBonus = 0;
         dt = 16;
+        frameDt = 16;
+        hitStopTimer = 0;
+        rumbleTimer = 0;
         deathTimer = 0;
         prevPlayerState = PS_IDLE;
         prevOnGround = false;
         prevVy = 0;
         wallSparkTimer = 0;
         jetFlameTimer = 0;
+        footstepTimer = 0;
         introTimer = 0;
         fullscreenOn = false;
         optionsReturnToPause = false;
@@ -298,6 +379,18 @@ class Game {
         achBrowse = 0;
         bestiaryBrowse = 0;
         loreBrowse = 0;
+        expeditionActive = false;
+        hubLaunchLevel = 1;
+        hubRouteSelection = 0;
+        lastRegionRank = REGION_RANK_UNRANKED;
+        lastRegionRankScore = 0;
+        lastRegionDiscoveries = 0;
+        expeditionMode = EXPEDITION_MODE_CAMPAIGN;
+        hubSimulatorRegion = 0;
+        bossRushIndex = 0;
+        bossRushElapsedMs = 0;
+        bossRushDamageTaken = 0;
+        newGamePlusConfirmTimer = 0;
 
         // Create palette first — passed to all subsystems that use colors
         pal = new Palette();
@@ -315,10 +408,22 @@ class Game {
         menus = new MenuSystem(pal);
         renderObj = new Renderer(pal);
         phys = new PhysicsHelper();
+        settings = new GameSettings();
+        syncRendererAccessibility();
         sfx = new SoundManager();
         sfx.setup(resolveAssetBasePath());
+        sfx.setMasterVolume(settings.getValue(SETTING_MASTER_VOLUME));
+        sfx.setMusicVolume(settings.getValue(SETTING_MUSIC_VOLUME));
+        sfx.setSfxVolume(settings.getValue(SETTING_SFX_VOLUME));
+        sfx.setAmbienceVolume(settings.getValue(SETTING_AMBIENCE_VOLUME));
+        sfx.setVoiceVolume(settings.getValue(SETTING_VOICE_VOLUME));
+        fullscreenOn = settings.getValue(SETTING_FULLSCREEN) == 1;
         tuning = new RuntimeTuning(resolveTuningPath());
-        debugEnabled = tuning.getBool("debug.enabled", true);
+        debugEnabled = tuning.getBool("debug.enabled", false);
+        var authoredArtEnabled =
+            tuning.getBool("presentation.authoredArtEnabled", true);
+        menus.setAuthoredTitleArtEnabled(authoredArtEnabled);
+        sprites.setAuthoredPlayerArtEnabled(authoredArtEnabled);
         debugOverlay = Debug.New();
         if tuning.getBool("debug.showOnStart", false) {
             debugOverlay.Enable();
@@ -326,6 +431,7 @@ class Game {
         currentLevel = tuning.getInt("game.startLevel", 1);
         if currentLevel < 1 { currentLevel = 1; }
         if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
+        hubLaunchLevel = currentLevel;
 
         // Setup input actions via presets + custom bindings
         setupActions();
@@ -335,15 +441,12 @@ class Game {
 
         // Initialize expansion systems (abilities, save, lighting, etc.)
         initNewSystems();
+        syncPresentationAccessibility();
+        syncPlayerAbilities();
 
         // Menu transition controller starts idle.
         menuPending = MENU_PENDING_NONE;
         menuTransT = 0;
-
-        // Define dash action binding (X key = 120 ASCII, LB pad button = 4)
-        Action.Define("dash");
-        Action.BindKey("dash", 120);  // 'x' key
-        Action.BindPadButton("dash", PAD_IDX, 4);
 
         // Down action already bound by platformer preset as move_down
         // We reuse it for ground pound detection
@@ -373,6 +476,18 @@ class Game {
         Action.BindKey(ACT_SHOOT, KEY_Z);               // Z key for shoot
         Action.BindPadButton(ACT_SHOOT, PAD_IDX, PAD_BTN_RB);   // RB for shoot
         Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START); // Start for back/pause
+        Action.Define(ACT_INTERACT);
+        Action.BindKey(ACT_INTERACT, KEY_E);
+        Action.BindPadButton(ACT_INTERACT, PAD_IDX, PAD_BTN_Y);
+        Action.Define(ACT_GRAPPLE);
+        Action.BindKey(ACT_GRAPPLE, KEY_C);
+        Action.BindPadButton(ACT_GRAPPLE, PAD_IDX, PAD_BTN_SELECT);
+        Action.Define(ACT_DASH);
+        Action.BindKey(ACT_DASH, KEY_X);
+        Action.BindPadButton(ACT_DASH, PAD_IDX, 4);
+        Action.Define(ACT_MAP);
+        Action.BindKey(ACT_MAP, KEY_M);
+        Action.BindPadButton(ACT_MAP, PAD_IDX, PAD_BTN_UP);
 
         // Debug overlay toggle (F3)
         Action.Define("debug");
@@ -394,9 +509,16 @@ class Game {
         canvas = Canvas.New("XENOSCAPE: The Descent", SCREEN_W, SCREEN_H);
         canvas.SetFps(60);
         canvas.SetMaxDeltaTime(DT_MAX);
+        if fullscreenOn { canvas.Fullscreen(); }
 
         while canvas.BeginFrame() != 0 {
-            dt = canvas.DeltaTime;
+            frameDt = canvas.DeltaTime;
+            dt = frameDt;
+            updateRumble();
+            if sm.IsScene("playing") {
+                dt = dt * settings.getValue(SETTING_GAME_SPEED) / 100;
+                if dt < 1 { dt = 1; }
+            }
 
             // Debug overlay toggle (F3)
             if debugEnabled and Action.Pressed("debug") {
@@ -460,13 +582,22 @@ class Game {
             } else {
             if sm.IsScene("levelselect") {
                 updateLevelSelect();
+            } else {
+            if sm.IsScene("hub") {
+                updateHub();
+            } else {
+            if sm.IsScene("profiles") {
+                updateProfiles();
             }
-            }}}}}}}}}}}}}}}}
+            }}}}}}}}}}}}}}}}}}
 
             updateDebugOverlay();
 
             canvas.Flip();
         }
+        saveBeforeReturnToTitle();
+        Pad.StopVibration(0);
+        sfx.shutdown();
     }
 
     /// @brief Toggle the game window between fullscreen and windowed modes.
@@ -480,6 +611,41 @@ class Game {
         } else {
             canvas.Fullscreen();
             fullscreenOn = true;
+        }
+        settings.setValue(SETTING_FULLSCREEN, boolToSetting(fullscreenOn));
+        if settings.save() == false {
+            setInteractionMessage(
+                "Settings could not be saved. Check storage permissions and try again.");
+        }
+    }
+
+    /// @brief Convert a Boolean display state to the settings integer encoding.
+    ///
+    /// @param value Boolean state to serialize.
+    /// @return One for true and zero for false.
+    hide func boolToSetting(value: Boolean) -> Integer {
+        if value { return 1; }
+        return 0;
+    }
+
+    /// @brief Flush active expedition and application settings on a clean exit.
+    ///
+    /// The explicit `expeditionActive` guard prevents quitting directly from the
+    /// boot title from overwriting a real slot with default in-memory game state.
+    /// Failures use nonblocking messages when another frame can still render.
+    ///
+    /// @return Nothing. Marks any active expedition inactive after its save try.
+    hide func saveBeforeReturnToTitle() {
+        if expeditionActive {
+            if saveProgress() == false {
+                setInteractionMessage(
+                    "Progress could not be saved. Check storage permissions and try again.");
+            }
+            expeditionActive = false;
+        }
+        if settings.save() == false {
+            setInteractionMessage(
+                "Settings could not be saved. Check storage permissions and try again.");
         }
     }
 
@@ -562,6 +728,8 @@ class Game {
         if sm.IsScene("lorearchive") { return 14; }
         if sm.IsScene("victory") { return 15; }
         if sm.IsScene("levelselect") { return 16; }
+        if sm.IsScene("hub") { return 17; }
+        if sm.IsScene("profiles") { return 18; }
         return -1;
     }
 
@@ -573,6 +741,11 @@ class Game {
     ///        input through `MenuSystem.updateTitle` and
     ///        switches state on its return code.
     hide func updateMenu() {
+        menus.setContinueAvailable(saveManager.getContinueSlot() >= 0);
+        if interactionMessageTimer > 0 {
+            interactionMessageTimer = interactionMessageTimer - dt;
+            if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
+        }
         // Reuse the renderer's single ScreenFX instance for menu transitions
         // (otherwise dormant in the menu).  ScreenFX is ms-based, so feed it the
         // real frame dt; the menu's Tween-driven logo anim is per-frame.
@@ -586,6 +759,8 @@ class Game {
         if menuPending != MENU_PENDING_NONE {
             menuTransT = menuTransT + 1;
             menus.drawTitle(canvas);
+            renderObj.drawNotification(canvas, interactionMessage,
+                                       interactionMessageTimer, 2400);
             renderObj.drawTransition(canvas);
             if renderObj.overlayAlpha() >= 200 or menuTransT > 40 {
                 commitMenuTransition();
@@ -595,10 +770,19 @@ class Game {
 
         var result = menus.updateTitle();
         menus.drawTitle(canvas);
+        renderObj.drawNotification(canvas, interactionMessage,
+                                   interactionMessageTimer, 2400);
         renderObj.drawTransition(canvas);
 
         if menus.titleSelectionMoved() {
             sfx.playMenuMove();
+        }
+
+        if result == MENU_ACTION_CONTINUE and
+           saveManager.getContinueSlot() < 0 {
+            setInteractionMessage("No saved expedition is available.");
+            sfx.playMenuBack();
+            return;
         }
 
         // A selection darkens the screen first; the switch happens later
@@ -622,12 +806,12 @@ class Game {
             return;
         }
         if action == STATE_PLAYING {
-            startNewGame();
+            openProfileFlow(PROFILE_MODE_NEW);
         } else {
         if action == MENU_ACTION_CONTINUE {
             if loadMostAdvancedSlot() == false {
-                sm.Switch("loadgame");
-                menus.resetSelection();
+                openProfileFlow(PROFILE_MODE_LOAD);
+                setInteractionMessage("No saved expedition is available.");
             }
         } else {
         if action == STATE_LEVELSELECT {
@@ -639,8 +823,7 @@ class Game {
             menus.resetSelection();
         } else {
         if action == STATE_LOADGAME {
-            sm.Switch("loadgame");
-            menus.resetSelection();
+            openProfileFlow(PROFILE_MODE_LOAD);
         } else {
         if action == STATE_EXTRAS {
             sm.Switch("extras");
@@ -713,6 +896,17 @@ class Game {
     ///             save stations, lore)
     ///         11. level-end + game-over checks
     hide func updatePlaying() {
+        if Action.Pressed(ACT_MAP) {
+            tutorialSystem.acknowledge(TUTORIAL_MAP);
+            showWorldMap = true;
+            sm.Switch("paused");
+            menus.resetSelection();
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            return;
+        }
         // Pause check
         if Action.Pressed(ACT_BACK) {
             sm.Switch("paused");
@@ -724,12 +918,55 @@ class Game {
             return;
         }
 
-        // Update expansion systems (abilities, lighting, achievements, lore, etc.)
-        // Must run BEFORE player.update so abilities affect this frame's physics.
-        updateNewSystems();
+        // Synchronize campaign-owned abilities before any input can activate a
+        // traversal move. Modal overlays then get first refusal over simulation.
+        syncPlayerAbilities();
+        if updateNewSystems() {
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            return;
+        }
+        if hitStopTimer > 0 {
+            hitStopTimer = hitStopTimer - frameDt;
+            if hitStopTimer < 0 { hitStopTimer = 0; }
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            return;
+        }
+
+        // Dynamic tiles advance only during live simulation. Contact from the
+        // previous frame is consumed before Player reports this frame's contact.
+        level.updateDynamicTiles(dt);
 
         // Update player
         player.update(level, dt);
+        updateRoomDiscovery();
+        if player.didStartJump() { achSys.onJump(); }
+        if player.didLaunchFromSteam() {
+            particles.burstDust(player.centerX(), player.pixelY() + PLAYER_H);
+            sfx.playJump();
+        }
+        if player.didBreakCrumble() {
+            particles.burstCrystalShatter(player.centerX(),
+                                          player.pixelY() + PLAYER_H);
+            sfx.playCrystalBreak();
+        }
+        if player.didLandGroundPound() {
+            var impactX = player.centerX();
+            var impactY = player.pixelY() + PLAYER_H + 2;
+            level.damageDestructibleAtWorld(impactX, impactY, 2);
+            enemies.staggerInRadius(impactX, impactY,
+                                    GROUND_POUND_RADIUS,
+                                    GROUND_POUND_STAGGER_MS);
+            poundImpactTimer = 12;
+            particles.burstPoundImpact(impactX, impactY);
+            sfx.playGroundPound();
+            startRumble(85, 180);
+        }
 
         // Check if player wants to shoot
         if player.wantsToShoot() {
@@ -740,16 +977,40 @@ class Game {
             } else {
                 bx = player.pixelX() - BULLET_W;
             }
-            bullets.fire(bx, by, player.facing);
-            sfx.playShoot();
+            if bullets.fire(bx, by, player.facing) {
+                player.startShootAnimation();
+                sfx.playShoot();
+                achSys.onBulletFired();
+            }
         }
 
         // Update camera + background animation
-        camera.follow(player.centerX(), player.centerY());
+        var cameraVerticalIntent = 0;
+        if Action.Held(ACT_MOVE_UP) { cameraVerticalIntent = -1; }
+        if Action.Held(ACT_MOVE_DOWN) { cameraVerticalIntent = 1; }
+        camera.followWithIntent(
+            player.centerX(), player.centerY(), player.vx,
+            cameraVerticalIntent, dt,
+            settings.getValue(SETTING_REDUCED_MOTION) == 1);
         camera.updateBg(dt);
 
         // Update enemies (with particle trails for enemy bullets)
         enemies.updateAll(level, player.pixelX(), player.pixelY(), dt, particles);
+        if enemies.didFireEnemyProjectile() { sfx.playEnemyTell(); }
+        var combatIntensity = 0;
+        if enemies.hasThreatNear(player.centerX(), player.centerY(), 820) {
+            combatIntensity = 100;
+        }
+        sfx.setCombatIntensity(combatIntensity);
+        if enemies.didBossPhaseChange() {
+            var bossX = enemies.getEnemyPixelX(enemies.bossIndex);
+            var bossY = enemies.getEnemyPixelY(enemies.bossIndex);
+            particles.burstBossPhaseTransition(bossX, bossY, pal.bossEye);
+            renderObj.shake(12, 6);
+            sfx.playBossPhase();
+            startHitStop(bossPhaseHitStopDurationMs());
+            startRumble(100, 260);
+        }
 
         // Update bullets (with particle trails)
         bullets.updateAll(level, dt, particles);
@@ -770,6 +1031,9 @@ class Game {
 
         // Level timer (ms-based)
         levelTimer = levelTimer + dt;
+        if expeditionMode == EXPEDITION_MODE_BOSS_RUSH {
+            bossRushElapsedMs = bossRushElapsedMs + dt;
+        }
 
         // Detect jump state transition for sound
         if player.state == PS_JUMP || player.state == PS_DJUMP {
@@ -834,14 +1098,18 @@ class Game {
 
         prevOnGround = player.onGround;
         prevVy = player.vy;
+        updateFootstepAudio();
 
         // --- Collision checks ---
         checkPlayerEnemyCollision();
         checkPlayerPickupCollision();
+        updateDeathMarkerRecovery();
         checkBulletEnemyCollision();
         checkPlayerEnemyBullets();
+        checkPlayerReflectedBullets();
         checkHazards();
         checkCheckpoint();
+        updateContextualTutorials();
         checkLevelEnd();
         updateBossDiscoveryCue();
 
@@ -914,6 +1182,27 @@ class Game {
     // Collision: Player vs Enemies
     // =========================================================================
 
+    /// @brief Dispatch one captured enemy death-effect family to particles.
+    ///
+    /// Enemy traits are captured before pool release, then routed here after the
+    /// kill is confirmed. Unknown effect ids deliberately use the existing gold
+    /// enemy burst so malformed content remains visible rather than silent.
+    ///
+    /// @param effect Stable id from `enemyDeathEffectForType` in the range 0..6.
+    /// @param worldX World-pixel horizontal center of the defeated enemy.
+    /// @param worldY World-pixel vertical center of the defeated enemy.
+    /// @return Nothing. Emits particles only; scoring and audio remain caller-owned.
+    hide func spawnEnemyDeathEffect(effect: Integer, worldX: Integer,
+                                    worldY: Integer) {
+        if effect == 1 { particles.burstPoisonCloud(worldX, worldY); }
+        else if effect == 2 { particles.burstCrystalShatter(worldX, worldY); }
+        else if effect == 3 { particles.burstLavaSplash(worldX, worldY); }
+        else if effect == 4 { particles.burstFrostShatter(worldX, worldY); }
+        else if effect == 5 { particles.burstCorruptionDeath(worldX, worldY); }
+        else if effect == 6 { particles.burstExplosion(worldX, worldY); }
+        else { particles.burstEnemyDeath(worldX, worldY, pal.sparkYellow); }
+    }
+
     /// @brief Player vs each live enemy AABB.  Stomp from
     ///        above kills the enemy; side/below contact
     ///        damages the player (subject to iframes).
@@ -924,30 +1213,35 @@ class Game {
         var hit = enemies.checkPlayerHit(player.pixelX(), player.pixelY());
         if hit >= 0 {
             var etype = enemies.getEnemyType(hit);
+            var contactDamage = enemies.getContactDamage(hit);
+            var freezeDuration = enemies.getFreezeDuration(hit);
 
             if player.vy > 0 {
                 if etype != ENEMY_TURRET {
+                    var ex = enemies.getEnemyPixelX(hit);
+                    var ey = enemies.getEnemyPixelY(hit);
+                    var defeatedScore = enemies.getEnemyScore(hit);
+                    var deathEffect = enemies.getDeathEffectType(hit);
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
                     player.syncVelocity();
                     player.iframes = IFRAMES_STOMP_MS;
 
-                    var ex = enemies.getEnemyPixelX(hit);
-                    var ey = enemies.getEnemyPixelY(hit);
-
                     // Check if enemy actually died
                     if enemies.isActive(hit) == 0 {
-                        score = score + ENEMY_SCORE;
-                        particles.burstDeath(ex, ey);
+                        score = score + defeatedScore;
+                        spawnEnemyDeathEffect(deathEffect, ex, ey);
                         renderObj.shake(8, 4);
                         sfx.playEnemyDeath();
                         achSys.onEnemyKilled();
                         loreSystem.unlockBestiaryEntry(etype);
                         enemiesKilled = enemiesKilled + 1;
+                        hudObj.spawnPopup(ex, ey, defeatedScore);
                         // Trigger visible kill flash
                         killFlashX = ex;
                         killFlashY = ey;
                         killFlashTimer = 15;
+                        startHitStop(killHitStopDurationMs(0));
                     } else {
                         particles.burstSpark(ex, ey, pal.sparkYellow);
                         renderObj.shake(4, 2);
@@ -957,8 +1251,11 @@ class Game {
                 }
             }
 
-            player.takeDamage(1);
-            levelDamageTaken = levelDamageTaken + 1;
+            applyIncomingDamage(contactDamage);
+            if freezeDuration > 0 and player.state != PS_DEAD {
+                player.freeze(freezeDuration);
+                sfx.playFreeze();
+            }
             renderObj.shake(8, 4);
             renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
@@ -995,6 +1292,13 @@ class Game {
                 particles.burstSpark(player.centerX(), player.centerY(),
                                      pal.sparkYellow);
                 sfx.playPowerup();
+            } else if collected == PICKUP_KEY {
+                if worldState.collectKey(currentLevel - 1) {
+                    particles.burstAbilityAcquired(player.centerX(),
+                                                   player.centerY());
+                    sfx.playAbilityGet();
+                    saveProgress();
+                }
             } else {
                 player.collectPowerUp(collected);
                 particles.burstSpark(player.centerX(), player.centerY(),
@@ -1022,34 +1326,102 @@ class Game {
 
                 var hit = enemies.checkBulletHit(bx, by, BULLET_W, BULLET_H);
                 if hit >= 0 {
-                    bullets.deactivate(i);
-                    enemies.damageEnemy(hit, 1);
-                    particles.burstSpark(bx, by, pal.bullet);
-
-                    if enemies.isActive(hit) == 0 {
-                        var etype2 = enemies.getEnemyType(hit);
-                        if etype2 == ENEMY_BOSS {
-                            score = score + BOSS_SCORE;
-                            renderObj.shake(15, 8);
-                            particles.burstDeath(bx, by);
+                    var etype2 = enemies.getEnemyType(hit);
+                    if enemies.isProjectileImmune(hit) {
+                        if etype2 == ENEMY_MIRROR_SLIME {
+                            bullets.reflectBullet(i);
+                            particles.burstSpark(bx, by, pal.crystalBlue);
                         } else {
-                            score = score + ENEMY_SCORE;
-                            renderObj.shake(6, 3);
-                            particles.burstEnemyDeath(bx, by, pal.sparkYellow);
+                            bullets.deactivate(i);
+                            particles.burstSpark(bx, by, pal.stoneLight);
                         }
-                        sfx.playEnemyDeath();
-                        achSys.onEnemyKilled();
-                        loreSystem.unlockBestiaryEntry(etype2);
-                        enemiesKilled = enemiesKilled + 1;
-                        // Trigger visible kill flash
-                        killFlashX = bx;
-                        killFlashY = by;
-                        hudObj.spawnPopup(bx, by, ENEMY_SCORE);   // floating +score (#14)
-                        killFlashTimer = 15;
+                    } else {
+                        var charge = bullets.getChargeLevel(i);
+                        var damage = projectileDamageForCharge(charge);
+                        var defeatedScore = enemies.getEnemyScore(hit);
+                        var deathEffect = enemies.getDeathEffectType(hit);
+                        var enemyX = enemies.getEnemyPixelX(hit);
+                        var enemyY = enemies.getEnemyPixelY(hit);
+                        var wasBoss = enemies.isEnemyBoss(hit);
+
+                        bullets.deactivate(i);
+                        enemies.damageEnemy(hit, damage);
+                        particles.burstSpark(bx, by, pal.bullet);
+
+                        if enemies.isActive(hit) == 0 {
+                            score = score + defeatedScore;
+                            spawnEnemyDeathEffect(deathEffect, enemyX, enemyY);
+                            if wasBoss {
+                                renderObj.shake(15, 8);
+                            } else {
+                                renderObj.shake(6, 3);
+                            }
+                            sfx.playEnemyDeath();
+                            achSys.onEnemyKilled();
+                            loreSystem.unlockBestiaryEntry(etype2);
+                            enemiesKilled = enemiesKilled + 1;
+                            killFlashX = enemyX;
+                            killFlashY = enemyY;
+                            hudObj.spawnPopup(enemyX, enemyY, defeatedScore);
+                            killFlashTimer = 15;
+                            startHitStop(killHitStopDurationMs(charge));
+                        }
                     }
                 }
             }
             i = i + 1;
+        }
+    }
+
+    /// @brief Arm a nonadditive gameplay-only impact pause.
+    ///
+    /// A stronger event replaces a shorter remaining pause, while repeated weak
+    /// events cannot stretch combat indefinitely. Rendering and input polling
+    /// continue during the pause; player, enemy, projectile, timer, and camera
+    /// simulation remain frozen until the real-time countdown reaches zero.
+    ///
+    /// @param durationMs Requested nonnegative pause duration in milliseconds.
+    /// @return Nothing. Updates only the owned hit-stop countdown.
+    hide func startHitStop(durationMs: Integer) {
+        var duration = durationMs;
+        if duration < 0 { duration = 0; }
+        if duration > hitStopTimer { hitStopTimer = duration; }
+    }
+
+    /// @brief Start bounded cross-platform controller vibration when enabled.
+    ///
+    /// Linux backends safely no-op through the existing runtime adapter, while
+    /// macOS and Windows receive equal low/high motor strengths. Repeated events
+    /// replace only a shorter remaining vibration window.
+    ///
+    /// @param requestedStrength Authored magnitude in 0..100.
+    /// @param durationMs Requested real-time duration in milliseconds.
+    /// @return Nothing. Does not mutate gameplay state.
+    hide func startRumble(requestedStrength: Integer, durationMs: Integer) {
+        var strength = accessibleRumbleStrength(
+            requestedStrength, settings.getValue(SETTING_RUMBLE) == 1);
+        if strength <= 0 or durationMs <= 0 { return; }
+        var amount = strength + 0.0;
+        amount = amount / 100.0;
+        Pad.Vibrate(0, amount, amount);
+        if durationMs > rumbleTimer { rumbleTimer = durationMs; }
+    }
+
+    /// @brief Advance and stop the real-time rumble envelope once per frame.
+    ///
+    /// @return Nothing. Stops immediately when the setting is disabled or the
+    ///         countdown expires; safe no-op platforms use the same call path.
+    hide func updateRumble() {
+        if settings.getValue(SETTING_RUMBLE) == 0 {
+            if rumbleTimer > 0 { Pad.StopVibration(0); }
+            rumbleTimer = 0;
+            return;
+        }
+        if rumbleTimer <= 0 { return; }
+        rumbleTimer = rumbleTimer - frameDt;
+        if rumbleTimer <= 0 {
+            rumbleTimer = 0;
+            Pad.StopVibration(0);
         }
     }
 
@@ -1064,11 +1436,46 @@ class Game {
         if player.state == PS_DEAD { return; }
 
         if enemies.checkEnemyBulletHit(player.pixelX(), player.pixelY()) {
-            player.takeDamage(1);
-            levelDamageTaken = levelDamageTaken + 1;
+            applyIncomingDamage(1);
             renderObj.shake(8, 4);
             renderObj.flash(pal.hudRed, 6);
             sfx.playHurt();
+            achSys.onPlayerHit();
+        }
+    }
+
+    /// @brief Resolve hostile projectiles returned by reflective enemies.
+    ///
+    /// Reflected shots stay in the player projectile pool so they can travel
+    /// through the same continuous tile collision path and strike other enemies.
+    /// This pass adds the missing ownership rule: a reflected slot also damages
+    /// the player once, then releases immediately. Ordinary player-owned slots
+    /// are ignored even when their sprite overlaps the shooter.
+    ///
+    /// @return Nothing. May release one projectile, damage the player, update
+    ///         level damage, and emit hurt feedback. Iframes suppress the pass.
+    hide func checkPlayerReflectedBullets() {
+        if player.iframes > 0 or player.state == PS_DEAD { return; }
+
+        var i = 0;
+        while i < bullets.getCount() {
+            if bullets.isActive(i) == 1 and bullets.isReflected(i) {
+                if phys.rectOverlapPx(player.pixelX(), player.pixelY(),
+                                      PLAYER_W, PLAYER_H,
+                                      bullets.getBulletX(i), bullets.getBulletY(i),
+                                      BULLET_W, BULLET_H) {
+                    bullets.deactivate(i);
+                    applyIncomingDamage(1);
+                    particles.burstSpark(player.centerX(), player.centerY(),
+                                         pal.enemyBullet);
+                    renderObj.shake(8, 4);
+                    renderObj.flash(pal.hudRed, 6);
+                    sfx.playHurt();
+                    achSys.onPlayerHit();
+                    return;
+                }
+            }
+            i = i + 1;
         }
     }
 
@@ -1084,12 +1491,33 @@ class Game {
         if player.state == PS_DEAD { return; }
 
         if phys.isOnHazard(player.x, player.y, PLAYER_W, PLAYER_H, level) {
-            player.takeDamage(2);
-            levelDamageTaken = levelDamageTaken + 2;
+            applyIncomingDamage(2);
             renderObj.shake(10, 5);
             renderObj.flash(pal.lavaBright, 8);
             sfx.playHurt();
         }
+    }
+
+    /// @brief Apply one difficulty-scaled damage event and record real HP loss.
+    ///
+    /// Shield absorption and Player iframes remain authoritative: level damage
+    /// statistics increase only by the actual HP delta after `takeDamage`.
+    /// Positive base hits use the active Explorer/Standard/Veteran multiplier.
+    ///
+    /// @param baseDamage Unscaled positive gameplay damage units.
+    /// @return Actual HP removed, or zero when absorbed or ignored.
+    hide func applyIncomingDamage(baseDamage: Integer) -> Integer {
+        var scaled = difficultyScaleIncomingDamage(
+            baseDamage, difficulty.getProfile());
+        scaled = (scaled * settings.getValue(SETTING_DAMAGE_ASSIST) + 99) / 100;
+        if scaled < 1 and baseDamage > 0 { scaled = 1; }
+        var before = player.hp;
+        player.takeDamage(scaled);
+        var dealt = before - player.hp;
+        if dealt < 0 { dealt = 0; }
+        levelDamageTaken = levelDamageTaken + dealt;
+        if dealt > 0 { startRumble(72, 170); }
+        return dealt;
     }
 
     // =========================================================================
@@ -1115,8 +1543,17 @@ class Game {
         if dx < TILE_SIZE * 2 {
             if dy < TILE_SIZE * 2 {
                 reachedCheckpoint = true;
+                checkpointLevel = currentLevel;
+                checkpointX = cpx;
+                checkpointY = cpy;
                 particles.burstSpark(cpx + 16, cpy + 16, pal.checkpoint);
                 sfx.playCheckpoint();
+                if saveProgress() {
+                    setInteractionMessage("Checkpoint activated. Expedition saved.");
+                } else {
+                    setInteractionMessage(
+                        "Progress could not be saved. Check storage permissions and try again.");
+                }
             }
         }
     }
@@ -1142,6 +1579,10 @@ class Game {
             bossIntroPlayed = true;
             bossCueTimer = 1800;
             renderObj.shake(5, 2);
+            radioSystem.queueBossWarning(currentLevel - 1);
+            sfx.playRadioCue();
+            sfx.playBossIntro();
+            sfx.playBossMusic();
         }
     }
 
@@ -1196,13 +1637,39 @@ class Game {
                 }
             }
 
+            if expeditionMode == EXPEDITION_MODE_TIME_TRIAL {
+                beginTimeTrialDebrief();
+                return;
+            }
+            if expeditionMode == EXPEDITION_MODE_BOSS_RUSH {
+                advanceBossRush();
+                return;
+            }
+
             timeBonus = (600 - levelTimer / 1000) * TIME_BONUS_PER_SEC;
             if timeBonus < 0 { timeBonus = 0; }
             levelCompleteTimer = 0;
             menus.resetSelection();
             grantCompletionAbility();
             markLevelComplete(currentLevel);
+            lastRegionDiscoveries = regionOptionalProgress(
+                currentLevel - 1, loreSystem.getCollectedMask(),
+                worldState.getRoomMask(currentLevel - 1));
+            var rankResult = calculateRegionRank(
+                currentLevel - 1, levelTimer, levelDamageTaken,
+                lastRegionDiscoveries,
+                lastRegionDiscoveries >= REGION_OPTIONAL_TARGET);
+            lastRegionRank = rankResult.rank;
+            lastRegionRankScore = rankResult.score;
+            metaProgression.record(currentLevel - 1, rankResult, levelTimer);
             achSys.onLevelComplete(levelTimer, levelDamageTaken);
+            achSys.onPacifistLevelComplete(currentLevel, enemiesKilled);
+            if trueEndingUnlocked(
+                completionMask, abilities.getMask(),
+                loreSystem.getCollectedCount(), loreSystem.getTotalCount()) {
+                achSys.onTrueEnding();
+            }
+            saveProgress();
             sfx.playLevelComplete();
 
             var totalScore = score + timeBonus;
@@ -1211,13 +1678,99 @@ class Game {
                 menus.saveHighScores();
             }
 
+            if currentLevel == 2 or currentLevel == 3 or currentLevel == 6 {
+                enterHubAfterMajorBoss();
+                return;
+            }
+
             if currentLevel == LEVEL_COUNT {
                 sm.Switch("victory");
+                sfx.playVictoryMusic();
             } else {
+                routeSelection = worldGraph.recommendedNeighborSelection(
+                    currentLevel - 1, abilities.getMask(), completionMask);
                 sm.Switch("levelcomplete");
                 menus.startLevelComplete(score);   // arm the score count-up + burst (#8)
             }
         }
+    }
+
+    /// @brief Freeze a completed Time Trial result for the ranked debrief.
+    ///
+    /// Campaign progression, pickups, and interactions remain uncommitted. The
+    /// existing debrief screen still reports all four authoritative rank inputs;
+    /// confirmation later restores the pre-simulation save before writing only
+    /// an improved regional best.
+    ///
+    /// @return Nothing. Switches from gameplay to the level-complete scene.
+    hide func beginTimeTrialDebrief() {
+        timeBonus = (600 - levelTimer / 1000) * TIME_BONUS_PER_SEC;
+        if timeBonus < 0 { timeBonus = 0; }
+        lastRegionDiscoveries = regionOptionalProgress(
+            currentLevel - 1, loreSystem.getCollectedMask(),
+            worldState.getRoomMask(currentLevel - 1));
+        var rankResult = calculateRegionRank(
+            currentLevel - 1, levelTimer, levelDamageTaken,
+            lastRegionDiscoveries,
+            lastRegionDiscoveries >= REGION_OPTIONAL_TARGET);
+        lastRegionRank = rankResult.rank;
+        lastRegionRankScore = rankResult.score;
+        levelCompleteTimer = 0;
+        menus.resetSelection();
+        menus.startLevelComplete(score);
+        sfx.playLevelComplete();
+        sm.Switch("levelcomplete");
+    }
+
+    /// @brief Advance a cleared Boss Rush arena or open the final rush debrief.
+    ///
+    /// Each cleared arena contributes its damage to one cumulative result. The
+    /// continuous clock is maintained independently from the per-level timer so
+    /// loading the next authored arena cannot reset the run time.
+    ///
+    /// @return Nothing. Loads the next arena or switches to level-complete.
+    hide func advanceBossRush() {
+        bossRushDamageTaken = bossRushDamageTaken + levelDamageTaken;
+        if bossRushIndex + 1 < BOSS_RUSH_ENCOUNTER_COUNT {
+            bossRushIndex = bossRushIndex + 1;
+            loadBossRushEncounter();
+            sfx.playAbilityGet();
+            return;
+        }
+        var rankResult = calculateBossRushRank(
+            bossRushElapsedMs, bossRushDamageTaken);
+        lastRegionRank = rankResult.rank;
+        lastRegionRankScore = rankResult.score;
+        lastRegionDiscoveries = BOSS_RUSH_ENCOUNTER_COUNT;
+        timeBonus = 0;
+        levelCompleteTimer = 0;
+        menus.resetSelection();
+        sfx.playVictory();
+        sm.Switch("levelcomplete");
+    }
+
+    /// @brief Return to the evolving shipwreck after a major campaign boss.
+    ///
+    /// The graph recommends the first currently traversable uncompleted neighbor
+    /// and stores it separately from the still-loaded completed region. Hub Launch
+    /// then performs the real regional transition, preserving honest first-entry
+    /// autosave semantics and giving the player a workbench/archive breather.
+    ///
+    /// @return Nothing. Switches to the hub scene and starts its music identity.
+    hide func enterHubAfterMajorBoss() {
+        var region = currentLevel - 1;
+        hubRouteSelection = worldGraph.recommendedNeighborSelection(
+            region, abilities.getMask(), completionMask);
+        var destination = worldGraph.getAvailableNeighbor(
+            region, hubRouteSelection, abilities.getMask());
+        if destination < 0 { destination = region; }
+        hubLaunchLevel = destination + 1;
+        hub.reset();
+        setInteractionMessage(
+            "ARIA plotted the next launch: " +
+            worldGraph.getRegionName(destination) + ".");
+        sm.Switch("hub");
+        sfx.playHubMusic();
     }
 
     /// @brief Test whether the player's hitbox overlaps any exit-sign tile.
@@ -1261,18 +1814,14 @@ class Game {
     /// abilities need a reliable fallback in the procedural demo so the world
     /// map gates remain completable during linear testing.
     hide func grantCompletionAbility() {
-        if currentLevel == 5 {
-            if not abilities.has(ABILITY_CHARGE_SHOT) {
-                abilities.grant(ABILITY_CHARGE_SHOT);
-                sfx.playAbilityGet();
-            }
+        var reward = regionAbilityReward(currentLevel - 1);
+        if reward > 0 and abilities.has(reward) == false {
+            abilities.grant(reward);
+            player.startAcquisitionAnimation();
+            sfx.playAbilityGet();
         }
-        if currentLevel == 7 {
-            if not abilities.has(ABILITY_GRAPPLE) {
-                abilities.grant(ABILITY_GRAPPLE);
-                sfx.playAbilityGet();
-            }
-        }
+        syncPlayerAbilities();
+        if abilities.getMask() == 63 { achSys.onAllAbilities(); }
     }
 
     /// @brief Mark a one-based level as completed in the
@@ -1302,11 +1851,26 @@ class Game {
     // Death handling
     // =========================================================================
 
-    /// @brief Player just died.  Decrement lives, fire the
-    ///        death FX, schedule respawn (if lives left) or
-    ///        switch to GAME_OVER.
+    /// @brief Present one campaign death and accept a checkpoint retry.
+    ///
+    /// The first frame creates a single recoverable salvage marker using the
+    /// active difficulty profile. Simulation remains frozen while the short
+    /// death beat plays; confirm, interact, or jump becomes a valid retry at
+    /// `DEATH_RETRY_MS`, and the retry happens automatically at the full timer.
+    /// Campaign mode never consumes a finite life or enters Game Over.
+    ///
+    /// @return Nothing. May rebuild the active room through `respawnAfterDeath`.
     hide func handleDeath() {
         if deathTimer == 0 {
+            var beforeGems = gems;
+            gems = deathRecovery.recordDeath(
+                gems, difficulty.getProfile(), currentLevel,
+                player.centerX(), player.centerY());
+            var droppedGems = beforeGems - gems;
+            if droppedGems > 0 {
+                setInteractionMessage(Int(droppedGems) +
+                                      " salvage dropped. Recover the signal.");
+            }
             particles.burstDeath(player.centerX(), player.centerY());
             renderObj.shake(12, 6);
             renderObj.flash(pal.hudRed, 10);
@@ -1324,35 +1888,109 @@ class Game {
                                 score, coins, currentLevel);
         drawNewSystems(canvas, camera.x, camera.y);
 
-        if deathTimer >= DEATH_TIMER_MS {
-            deathTimer = 0;
-            var lives = player.lives - 1;
-
-            if lives <= 0 {
-                var totalScore = score;
-                if menus.isHighScore(totalScore) {
-                    menus.addHighScore(totalScore, "PLR");
-                    menus.saveHighScores();
-                }
-                menus.resetSelection();
-                sfx.stopMusic();
-                sm.Switch("gameover");
-                return;
-            }
-
-            player.reset();
-            player.lives = lives;
-
-            if reachedCheckpoint {
-                player.spawn(level.checkpointX, level.checkpointY);
-            } else {
-                player.spawn(level.playerStartX, level.playerStartY);
-            }
-            camera.snapTo(player.centerX(), player.centerY());
-
-            bullets.reset();
-            renderObj.fadeIn(30);
+        if deathTimer >= DEATH_RETRY_MS {
+            canvas.BoxAlpha(SCREEN_W / 2 - 250, SCREEN_H - 104,
+                            500, 48, pal.black, 190);
+            canvas.Frame(SCREEN_W / 2 - 250, SCREEN_H - 104,
+                         500, 48, pal.panelBorder);
+            canvas.TextScaled(SCREEN_W / 2 - 190, SCREEN_H - 92,
+                              Action.BindingsStr(ACT_CONFIRM) +
+                              "  RECONSTITUTE",
+                              2, pal.uiText);
         }
+
+        var retryRequested = deathTimer >= DEATH_TIMER_MS;
+        if deathTimer >= DEATH_RETRY_MS {
+            if Action.Pressed(ACT_CONFIRM) or Action.Pressed(ACT_INTERACT) or
+               Action.Pressed(ACT_JUMP) {
+                retryRequested = true;
+            }
+        }
+        if retryRequested {
+            respawnAfterDeath();
+        }
+    }
+
+    /// @brief Rebuild temporary room state and respawn at the safe campaign point.
+    ///
+    /// Permanent player, profile, world, lore, economy, and discovery state are
+    /// retained. Level construction recreates current-room enemies, pickups,
+    /// destructibles, and temporary surfaces; persistent doors/switches/shrines
+    /// are projected back afterward. A checkpoint is used only in its own region,
+    /// otherwise the authored area entrance is authoritative.
+    ///
+    /// @return Nothing. Returns the game to live play with full HP and iframes.
+    hide func respawnAfterDeath() {
+        var permanentMaxHp = player.maxHp;
+        var spawnX = level.playerStartX;
+        var spawnY = level.playerStartY;
+        var useCheckpoint = checkpointLevel == currentLevel and
+                            expeditionMode == EXPEDITION_MODE_CAMPAIGN;
+        if useCheckpoint {
+            spawnX = checkpointX;
+            spawnY = checkpointY;
+        }
+        if expeditionMode == EXPEDITION_MODE_BOSS_RUSH {
+            spawnX = level.bossX - TILE_SIZE * 6;
+            if spawnX < TILE_SIZE { spawnX = TILE_SIZE; }
+            spawnY = level.bossY;
+        }
+
+        level.loadLevel(currentLevel);
+        level.enrichEnemies(currentLevel);
+        level.applyPersistentInteractionState(worldState.getSwitchMask(),
+                                              worldState.getDoorMask(),
+                                              worldState.getShrineMask());
+        camera.setLevelSize(level.levelWidth, level.levelHeight);
+
+        player.reset();
+        player.maxHp = permanentMaxHp;
+        player.hp = permanentMaxHp;
+        syncPlayerAbilities();
+        player.spawn(spawnX, spawnY);
+        camera.snapTo(player.centerX(), player.centerY());
+
+        enemies.reset();
+        enemies.setDifficultyProfile(difficulty.getProfile());
+        enemies.setNewGamePlusActive(metaProgression.isNewGamePlusActive());
+        enemies.spawnFromLevel(level);
+        pickups.reset();
+        pickups.spawnFromLevel(level);
+        bullets.reset();
+        particles.reset();
+
+        reachedCheckpoint = useCheckpoint;
+        currentRoomIndex = worldGraph.roomIndexForColumn(
+            player.pixelX() / TILE_SIZE, level.levelWidth);
+        worldState.discoverRoom(currentLevel - 1, currentRoomIndex);
+        roomTitleTimer = 0;
+        footstepTimer = 0;
+        deathTimer = 0;
+        prevPlayerState = player.state;
+        prevOnGround = false;
+        prevVy = 0;
+        renderObj.fadeIn(30);
+    }
+
+    /// @brief Collect the active death marker when the living player returns.
+    ///
+    /// Recovery is evaluated after ordinary pickup collision so the feedback can
+    /// share pickup sound and particles without interfering with entity pools.
+    /// The marker system guarantees a single collection and returns zero when the
+    /// marker belongs to another region or lies outside the configured radius.
+    ///
+    /// @return Nothing. May increase carried salvage and consume the marker.
+    hide func updateDeathMarkerRecovery() {
+        if player.state == PS_DEAD { return; }
+        var recovered = deathRecovery.recoverIfNear(
+            currentLevel, player.centerX(), player.centerY(),
+            DEATH_MARKER_RECOVER_RADIUS);
+        if recovered <= 0 { return; }
+        gems = gems + recovered;
+        tutorialSystem.acknowledge(TUTORIAL_DEATH_RECOVERY);
+        particles.burstAbilityAcquired(player.centerX(), player.centerY());
+        sfx.playCoin();
+        setInteractionMessage("Recovered " + Int(recovered) + " salvage.");
     }
 
     // =========================================================================
@@ -1407,6 +2045,7 @@ class Game {
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
+            saveBeforeReturnToTitle();
             sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
@@ -1424,11 +2063,12 @@ class Game {
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
-            startNewGame();
+            startNewGame(saveSlot, difficulty.getProfile());
             sfx.playGameMusic();
         }
         if result == STATE_MENU {
             sfx.playMenuSelect();
+            saveBeforeReturnToTitle();
             sm.Switch("menu");
             sfx.playMenuMusic();
             menus.resetSelection();
@@ -1444,24 +2084,540 @@ class Game {
     hide func updateLevelComplete() {
         levelCompleteTimer = levelCompleteTimer + 1;
 
+        var routeCount = 0;
+        if expeditionMode == EXPEDITION_MODE_CAMPAIGN {
+            routeCount = worldGraph.getAvailableNeighborCount(
+                currentLevel - 1, abilities.getMask());
+            if Action.Pressed(ACT_DOWN) and routeCount > 0 {
+                routeSelection = routeSelection + 1;
+                if routeSelection >= routeCount { routeSelection = 0; }
+                sfx.playMenuMove();
+            }
+            if Action.Pressed(ACT_UP) and routeCount > 0 {
+                routeSelection = routeSelection - 1;
+                if routeSelection < 0 { routeSelection = routeCount - 1; }
+                sfx.playMenuMove();
+            }
+        }
+
         var result = menus.updateLevelComplete();
 
         renderObj.renderPlaying(canvas, camera, level, player, enemies,
                                 bullets, pickups, particles, hudObj, sprites,
                                 score, coins, currentLevel);
-        menus.drawLevelCompleteCinematic(canvas, currentLevel, levelTimer,
-                                         enemiesKilled, coins, gems, score, timeBonus);
+        if expeditionMode == EXPEDITION_MODE_BOSS_RUSH {
+            menus.drawBossRushComplete(
+                canvas, bossRushElapsedMs, bossRushDamageTaken,
+                regionRankLabel(lastRegionRank), lastRegionRankScore);
+        } else {
+            menus.drawLevelCompleteCinematic(canvas, currentLevel, levelTimer,
+                                             levelDamageTaken,
+                                             lastRegionDiscoveries,
+                                             regionRankLabel(lastRegionRank),
+                                             lastRegionRankScore,
+                                             enemiesKilled, coins, gems, score,
+                                             timeBonus);
+        }
+        if expeditionMode == EXPEDITION_MODE_CAMPAIGN {
+            drawRouteChoices(canvas, routeCount);
+        }
 
         if result == STATE_PLAYING {
             sfx.playMenuSelect();
-            score = score + timeBonus;
-            currentLevel = currentLevel + 1;
-            if currentLevel > LEVEL_COUNT {
-                currentLevel = 1;
+            if expeditionMode == EXPEDITION_MODE_TIME_TRIAL {
+                restoreSimulationSnapshot(true, currentLevel - 1,
+                                          levelTimer, lastRegionRank,
+                                          lastRegionRankScore);
+                return;
             }
-            loadLevel(currentLevel);
+            if expeditionMode == EXPEDITION_MODE_BOSS_RUSH {
+                restoreSimulationSnapshot(false, -1,
+                                          bossRushElapsedMs,
+                                          lastRegionRank,
+                                          lastRegionRankScore);
+                return;
+            }
+            score = score + timeBonus;
+            var destination = worldGraph.getAvailableNeighbor(
+                currentLevel - 1, routeSelection, abilities.getMask());
+            if destination < 0 { destination = currentLevel - 1; }
+            loadLevel(destination + 1);
             levelCompleteTimer = 0;
             sm.Switch("playing");
+        }
+    }
+
+    /// @brief Restore the pre-simulator campaign and commit allowed result data.
+    ///
+    /// All combat, pickup, interaction, death, and checkpoint mutations from a
+    /// simulator run disappear when the saved campaign snapshot is reloaded. A
+    /// Time Trial then records only its improved best time/rank; Boss Rush has no
+    /// campaign mutation. Both modes return to the same hub profile and route.
+    ///
+    /// @param recordTrial True to commit a regional Time Trial result.
+    /// @param region Zero-based trial region, ignored for Boss Rush.
+    /// @param elapsedMs Completed simulation time in milliseconds.
+    /// @param rank Authoritative result rank id.
+    /// @param rankScore Authoritative composite result in 0..1000.
+    /// @return Nothing. Falls back to title if the previously valid slot vanished.
+    hide func restoreSimulationSnapshot(recordTrial: Boolean, region: Integer,
+                                        elapsedMs: Integer, rank: Integer,
+                                        rankScore: Integer) {
+        expeditionMode = EXPEDITION_MODE_CAMPAIGN;
+        if loadFromSlot(saveSlot) == false {
+            expeditionActive = false;
+            setInteractionMessage("The expedition snapshot could not be restored.");
+            sm.Switch("menu");
+            sfx.playMenuMusic();
+            return;
+        }
+        if recordTrial {
+            var result = new RegionRankResult(rankScore, rank);
+            metaProgression.record(region, result, elapsedMs);
+            hubSimulatorRegion = region;
+            saveProgress();
+            setInteractionMessage(
+                "Time Trial recorded: " + Int(elapsedMs / 1000) +
+                "s, rank " + regionRankLabel(rank) + ".");
+        } else {
+            setInteractionMessage(
+                "Boss Rush complete: " + Int(elapsedMs / 1000) +
+                "s, rank " + regionRankLabel(rank) + ".");
+        }
+        hubLaunchLevel = currentLevel;
+        hub.reset();
+        sm.Switch("hub");
+        sfx.playHubMusic();
+    }
+
+    // =========================================================================
+    // State: Shipwreck Hub
+    // =========================================================================
+
+    /// @brief Update the five-station shipwreck hub and workbench mutations.
+    ///
+    /// HubSystem owns only navigation. Game applies purchases, difficulty policy,
+    /// save writes, map composition, and launch transitions so permanent state
+    /// remains centralized. Launch reapplies pending difficulty at level load.
+    ///
+    /// @return Nothing. Draws the complete hub frame and may switch to gameplay.
+    hide func updateHub() {
+        renderObj.update(dt);
+        ensureSimulatorRegion();
+        if newGamePlusConfirmTimer > 0 {
+            newGamePlusConfirmTimer = newGamePlusConfirmTimer - dt;
+            if newGamePlusConfirmTimer < 0 { newGamePlusConfirmTimer = 0; }
+        }
+        if interactionMessageTimer > 0 {
+            interactionMessageTimer = interactionMessageTimer - dt;
+            if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
+        }
+
+        var action = hub.update();
+        if action >= HUB_ACTION_PURCHASE_BASE and
+           action < HUB_ACTION_PURCHASE_BASE + UPGRADE_BRANCH_COUNT {
+            var branch = action - HUB_ACTION_PURCHASE_BASE;
+            var result = upgrades.purchase(branch, gems);
+            if result.status == PURCHASE_SUCCESS {
+                gems = result.remainingGems;
+                if branch == UPGRADE_SUIT_INTEGRITY {
+                    player.maxHp = player.maxHp + 1;
+                    player.hp = player.maxHp;
+                }
+                syncPlayerAbilities();
+                saveProgress();
+                setInteractionMessage(upgradeBranchName(branch) +
+                                      " upgraded to tier " + Int(result.newTier) + ".");
+                sfx.playAbilityGet();
+            } else if result.status == PURCHASE_INSUFFICIENT_GEMS {
+                setInteractionMessage("Insufficient banked salvage.");
+                sfx.playMenuBack();
+            } else if result.status == PURCHASE_MAX_TIER {
+                setInteractionMessage("That upgrade branch is already complete.");
+                sfx.playMenuBack();
+            }
+        }
+        if action == HUB_ACTION_DIFFICULTY_DOWN or
+           action == HUB_ACTION_DIFFICULTY_UP {
+            var requested = difficulty.getPendingProfile();
+            if action == HUB_ACTION_DIFFICULTY_DOWN { requested = requested - 1; }
+            if action == HUB_ACTION_DIFFICULTY_UP { requested = requested + 1; }
+            if difficulty.requestAtSaveStation(requested) {
+                if requested <= difficulty.getProfile() {
+                    setInteractionMessage("Difficulty changed to " +
+                                          difficultyName(requested) + ".");
+                } else {
+                    setInteractionMessage("Difficulty will increase on launch.");
+                }
+                sfx.playMenuMove();
+            }
+        }
+        if action == HUB_ACTION_ROUTE_PREVIOUS or
+           action == HUB_ACTION_ROUTE_NEXT {
+            var routeCount = worldGraph.getAvailableNeighborCount(
+                currentLevel - 1, abilities.getMask());
+            if routeCount > 0 {
+                if action == HUB_ACTION_ROUTE_PREVIOUS {
+                    hubRouteSelection = hubRouteSelection - 1;
+                } else {
+                    hubRouteSelection = hubRouteSelection + 1;
+                }
+                if hubRouteSelection < 0 { hubRouteSelection = routeCount - 1; }
+                if hubRouteSelection >= routeCount { hubRouteSelection = 0; }
+                sfx.playMenuMove();
+            }
+        }
+        if action == HUB_ACTION_ROUTE_SELECT {
+            var selectedDestination = worldGraph.getAvailableNeighbor(
+                currentLevel - 1, hubRouteSelection, abilities.getMask());
+            if selectedDestination >= 0 {
+                hubLaunchLevel = selectedDestination + 1;
+                setInteractionMessage(
+                    "Launch route set: " +
+                    worldGraph.getRegionName(selectedDestination) + ".");
+                sfx.playMenuSelect();
+            }
+        }
+        if action == HUB_ACTION_TIME_TRIAL_PREVIOUS {
+            cycleSimulatorRegion(-1);
+            sfx.playMenuMove();
+        }
+        if action == HUB_ACTION_TIME_TRIAL_NEXT {
+            cycleSimulatorRegion(1);
+            sfx.playMenuMove();
+        }
+        if action == HUB_ACTION_TIME_TRIAL_START {
+            startTimeTrial(hubSimulatorRegion);
+            return;
+        }
+        if action == HUB_ACTION_BOSS_RUSH_START {
+            startBossRush();
+            return;
+        }
+        if action == HUB_ACTION_NEW_GAME_PLUS_START {
+            requestNewGamePlus();
+            if sm.IsScene("hub") == false { return; }
+        }
+        if action == HUB_ACTION_LAUNCH {
+            hub.reset();
+            loadLevel(hubLaunchLevel);
+            saveProgress();
+            sm.Switch("playing");
+            sfx.playGameMusic();
+            return;
+        }
+
+        hub.draw(canvas, majorBossCount(), gems, upgrades, difficulty,
+                 loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
+                 loreSystem.getBestiaryCount(), loreSystem.getBestiaryTotal(),
+                 achSys.getUnlockedCount(), ACH_COUNT,
+                 worldGraph.getRegionName(hubSimulatorRegion),
+                 hasAnyCompletedRegion(),
+                 metaProgression.getBestTime(hubSimulatorRegion),
+                 regionRankLabel(
+                     metaProgression.getBestRank(hubSimulatorRegion)),
+                 normalEndingUnlocked(completionMask),
+                 normalEndingUnlocked(completionMask),
+                 metaProgression.isNewGamePlusActive());
+        if hub.isMapMode() {
+            worldMap.draw(canvas, currentLevel, bossesDefeated,
+                          worldState.getTeleporterMask(), abilities);
+            var routeDestination = worldGraph.getAvailableNeighbor(
+                currentLevel - 1, hubRouteSelection, abilities.getMask());
+            if routeDestination >= 0 {
+                canvas.BoxAlpha(350, SCREEN_H - 120, 580, 42,
+                                Color.RGB(5, 12, 24), 220);
+                canvas.Frame(350, SCREEN_H - 120, 580, 42,
+                             pal.crystalBlue);
+                canvas.TextCenteredScaled(
+                    SCREEN_H - 110,
+                    "LAUNCH VECTOR: " +
+                    worldGraph.getRegionName(routeDestination),
+                    pal.white, 1);
+            }
+        }
+        renderObj.drawNotification(canvas, interactionMessage,
+                                   interactionMessageTimer, 2400);
+    }
+
+    /// @brief Count the four major-boss completion bits for hub restoration art.
+    ///
+    /// @return Integer in 0..4 for Spore Mother, Crystal Wyrm, Magma Core, and
+    ///         The Architect; minor/legacy boss bits do not affect restoration.
+    hide func majorBossCount() -> Integer {
+        var count = 0;
+        var fungal = bitForLevel(2);
+        var crystal = bitForLevel(3);
+        var magma = bitForLevel(6);
+        var architect = bitForLevel(10);
+        if (bossesDefeated / fungal) % 2 == 1 { count = count + 1; }
+        if (bossesDefeated / crystal) % 2 == 1 { count = count + 1; }
+        if (bossesDefeated / magma) % 2 == 1 { count = count + 1; }
+        if (bossesDefeated / architect) % 2 == 1 { count = count + 1; }
+        return count;
+    }
+
+    /// @brief Report whether this profile has unlocked any regional Time Trial.
+    ///
+    /// @return True when at least one completion-mask bit is set.
+    hide func hasAnyCompletedRegion() -> Boolean {
+        var region = 0;
+        while region < META_REGION_COUNT {
+            if timeTrialUnlocked(region, completionMask) { return true; }
+            region = region + 1;
+        }
+        return false;
+    }
+
+    /// @brief Move the simulator cursor onto a valid completed region if needed.
+    ///
+    /// Empty profiles retain region zero so the locked launch card can still show
+    /// a stable name. The bounded ten-step search cannot loop indefinitely even
+    /// when corrupted completion data contains no recognized campaign bits.
+    ///
+    /// @return Nothing. May update only the hub-local simulator region cursor.
+    hide func ensureSimulatorRegion() {
+        if hasAnyCompletedRegion() == false {
+            hubSimulatorRegion = 0;
+            return;
+        }
+        if timeTrialUnlocked(hubSimulatorRegion, completionMask) { return; }
+        cycleSimulatorRegion(1);
+    }
+
+    /// @brief Select the previous or next completed regional simulation.
+    ///
+    /// @param direction Negative for previous and nonnegative for next.
+    /// @return Nothing. Leaves the cursor stable when no trial is unlocked.
+    hide func cycleSimulatorRegion(direction: Integer) {
+        if hasAnyCompletedRegion() == false { return; }
+        var candidate = hubSimulatorRegion;
+        var attempts = 0;
+        while attempts < META_REGION_COUNT {
+            if direction < 0 { candidate = candidate - 1; }
+            else { candidate = candidate + 1; }
+            if candidate < 0 { candidate = META_REGION_COUNT - 1; }
+            if candidate >= META_REGION_COUNT { candidate = 0; }
+            if timeTrialUnlocked(candidate, completionMask) {
+                hubSimulatorRegion = candidate;
+                return;
+            }
+            attempts = attempts + 1;
+        }
+    }
+
+    /// @brief Save the campaign snapshot and launch one read-only regional trial.
+    ///
+    /// Simulation mutations are never serialized; returning from the debrief
+    /// reloads this pre-launch snapshot and then commits only the improved result.
+    ///
+    /// @param region Zero-based selected campaign region.
+    /// @return Nothing. On failure, remains in the hub with a nonblocking message.
+    hide func startTimeTrial(region: Integer) {
+        if timeTrialUnlocked(region, completionMask) == false {
+            setInteractionMessage("Complete that region to unlock its Time Trial.");
+            sfx.playMenuBack();
+            return;
+        }
+        if saveProgress() == false {
+            setInteractionMessage(
+                "Progress could not be saved. Check storage permissions and try again.");
+            sfx.playMenuBack();
+            return;
+        }
+        expeditionMode = EXPEDITION_MODE_TIME_TRIAL;
+        hub.reset();
+        loadLevel(region + 1);
+        setInteractionMessage("TIME TRIAL // " + worldGraph.getRegionName(region));
+        sm.Switch("playing");
+        sfx.playGameMusic();
+    }
+
+    /// @brief Return the one-based campaign level for a Boss Rush encounter.
+    ///
+    /// @param index Stable encounter index in 0..3.
+    /// @return Levels 2, 3, 6, and 10; invalid indices fall back to level 2.
+    hide func bossRushLevel(index: Integer) -> Integer {
+        if index == 0 { return 2; }
+        if index == 1 { return 3; }
+        if index == 2 { return 6; }
+        if index == 3 { return 10; }
+        return 2;
+    }
+
+    /// @brief Save the campaign snapshot and launch the four-boss sequence.
+    ///
+    /// @return Nothing. Locked or failed-save requests remain safely in the hub.
+    hide func startBossRush() {
+        if normalEndingUnlocked(completionMask) == false {
+            setInteractionMessage("Defeat The Architect to unlock Boss Rush.");
+            sfx.playMenuBack();
+            return;
+        }
+        if saveProgress() == false {
+            setInteractionMessage(
+                "Progress could not be saved. Check storage permissions and try again.");
+            sfx.playMenuBack();
+            return;
+        }
+        expeditionMode = EXPEDITION_MODE_BOSS_RUSH;
+        bossRushIndex = 0;
+        bossRushElapsedMs = 0;
+        bossRushDamageTaken = 0;
+        hub.reset();
+        loadBossRushEncounter();
+        sm.Switch("playing");
+        sfx.playBossMusic();
+    }
+
+    /// @brief Load the current Boss Rush arena and place the player at its gate.
+    ///
+    /// @return Nothing. Uses existing authored bosses, arenas, AI, and rewards;
+    ///         permanent mutations remain isolated by simulation-mode saves.
+    hide func loadBossRushEncounter() {
+        var encounterLevel = bossRushLevel(bossRushIndex);
+        loadLevel(encounterLevel);
+        var startX = level.bossX - TILE_SIZE * 6;
+        if startX < TILE_SIZE { startX = TILE_SIZE; }
+        player.spawn(startX, level.bossY);
+        camera.snapTo(player.centerX(), player.centerY());
+        setInteractionMessage(
+            "BOSS RUSH " + Int(bossRushIndex + 1) + " / " +
+            Int(BOSS_RUSH_ENCOUNTER_COUNT) + " // " +
+            enemyDisplayName(level.bossType));
+    }
+
+    /// @brief Require a second confirmation before replacing campaign progress.
+    ///
+    /// The first request opens a five-second confirmation window. A second request
+    /// begins NG+ only when the normal ending is unlocked and the profile is not
+    /// already running the remixed ruleset.
+    ///
+    /// @return Nothing. Draws feedback or transitions into `beginNewGamePlus`.
+    hide func requestNewGamePlus() {
+        if metaProgression.isNewGamePlusActive() {
+            setInteractionMessage("New Game+ is already active on this expedition.");
+            sfx.playMenuBack();
+            return;
+        }
+        if normalEndingUnlocked(completionMask) == false {
+            setInteractionMessage("Defeat The Architect to unlock New Game+.");
+            sfx.playMenuBack();
+            return;
+        }
+        if newGamePlusConfirmTimer <= 0 {
+            newGamePlusConfirmTimer = NEW_GAME_PLUS_CONFIRM_MS;
+            setInteractionMessage(
+                "Confirm BEGIN NEW GAME+ again to restart the campaign.");
+            sfx.playMenuBack();
+            return;
+        }
+        beginNewGamePlus();
+    }
+
+    /// @brief Start a remixed campaign while retaining permanent collection data.
+    ///
+    /// Abilities, max HP, salvage, upgrades, lore, bestiary, keycards, shrines,
+    /// teleporters, and discovered map rooms survive. Story bosses, routes,
+    /// switches, doors, checkpoints, run time, and deaths reset for a clean loop.
+    /// The current completed campaign is flushed before any destructive mutation.
+    ///
+    /// @return Nothing. A failed save leaves the completed campaign untouched.
+    hide func beginNewGamePlus() {
+        if saveProgress() == false {
+            setInteractionMessage(
+                "Progress could not be saved. Check storage permissions and try again.");
+            newGamePlusConfirmTimer = 0;
+            sfx.playMenuBack();
+            return;
+        }
+        if metaProgression.setNewGamePlusActive(true, completionMask) == false {
+            setInteractionMessage("New Game+ could not be unlocked for this profile.");
+            newGamePlusConfirmTimer = 0;
+            sfx.playMenuBack();
+            return;
+        }
+
+        var retainedMaxHp = player.maxHp;
+        var retainedKeys = worldState.getKeyMask();
+        var retainedShrines = worldState.getShrineMask();
+        var retainedTeleporters = worldState.getTeleporterMask();
+        var retainedRooms = [];
+        var region = 0;
+        while region < META_REGION_COUNT {
+            retainedRooms.add(worldState.getRoomMask(region));
+            region = region + 1;
+        }
+
+        expeditionMode = EXPEDITION_MODE_CAMPAIGN;
+        currentLevel = 1;
+        hubLaunchLevel = 1;
+        bossesDefeated = 0;
+        completionMask = 0;
+        checkpointLevel = 0;
+        checkpointX = 0;
+        checkpointY = 0;
+        reachedCheckpoint = false;
+        totalPlaytime = 0;
+        deathCount = 0;
+        score = 0;
+        coins = 0;
+        deathRecovery.reset(gems);
+        worldState.reset();
+        worldState.setMasks(retainedKeys, 0, 0, retainedShrines,
+                            retainedTeleporters);
+        region = 0;
+        while region < META_REGION_COUNT {
+            worldState.setRoomMask(region, retainedRooms.get(region));
+            region = region + 1;
+        }
+        player.reset();
+        player.maxHp = retainedMaxHp;
+        player.hp = retainedMaxHp;
+        syncPlayerAbilities();
+        loadLevel(1);
+        saveProgress();
+        newGamePlusConfirmTimer = 0;
+        openingIntroTimer = 0;
+        sm.Switch("intro");
+        sfx.playGameMusic();
+    }
+
+    /// @brief Draw traversable regional destinations on the completion screen.
+    ///
+    /// Choices come exclusively from the authoritative WorldGraph and therefore
+    /// include bidirectional return routes while excluding locked ability gates.
+    /// The selected destination is highlighted and includes its stable region
+    /// name; input handling lives in `updateLevelComplete`.
+    ///
+    /// @param canvas Active release-resolution canvas.
+    /// @param routeCount Number of currently traversable neighboring regions.
+    /// @return Nothing. Draws a compact route selector without mutating state.
+    hide func drawRouteChoices(canvas: Canvas, routeCount: Integer) {
+        var panelW = 560;
+        var panelH = 42 + routeCount * 26;
+        var panelX = SCREEN_W / 2 - panelW / 2;
+        var panelY = SCREEN_H - panelH - 28;
+        canvas.BoxAlpha(panelX, panelY, panelW, panelH,
+                        Color.RGB(5, 10, 20), 220);
+        canvas.Frame(panelX, panelY, panelW, panelH,
+                     Color.RGB(70, 130, 180));
+        canvas.Text(panelX + 18, panelY + 10,
+                    "SELECT NEXT EXPEDITION ROUTE",
+                    Color.RGB(160, 220, 255));
+        var i = 0;
+        while i < routeCount {
+            var destination = worldGraph.getAvailableNeighbor(
+                currentLevel - 1, i, abilities.getMask());
+            var marker = "  ";
+            var color = Color.RGB(130, 150, 170);
+            if i == routeSelection {
+                marker = "> ";
+                color = Color.RGB(255, 220, 120);
+            }
+            canvas.Text(panelX + 24, panelY + 36 + i * 26,
+                        marker + worldGraph.getRegionName(destination), color);
+            i = i + 1;
         }
     }
 
@@ -1478,13 +2634,21 @@ class Game {
         if loreTotal > 0 {
             lorePct = loreSystem.getCollectedCount() * 100 / loreTotal;
         }
-        menus.drawVictoryScreen(canvas, totalPlaytime / 1000, gems, lorePct);
+        var trueEnding = trueEndingUnlocked(
+            completionMask, abilities.getMask(),
+            loreSystem.getCollectedCount(), loreTotal);
+        menus.drawVictoryScreen(canvas, totalPlaytime / 1000, gems, lorePct,
+                                trueEnding);
 
         if result == STATE_MENU {
             sfx.playMenuSelect();
-            sm.Switch("menu");
-            sfx.playMenuMusic();
-            menus.resetSelection();
+            hubLaunchLevel = 1;
+            hubSimulatorRegion = currentLevel - 1;
+            hub.reset();
+            setInteractionMessage(
+                "Postgame simulator online: Boss Rush and New Game+ unlocked.");
+            sm.Switch("hub");
+            sfx.playHubMusic();
         }
     }
 
@@ -1543,6 +2707,10 @@ class Game {
     /// audio mix values on SoundManager.  The menu only reports row/action IDs.
     hide func updateOptions() {
         renderObj.update(dt);
+        if interactionMessageTimer > 0 {
+            interactionMessageTimer = interactionMessageTimer - dt;
+            if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
+        }
         var result = menus.updateOptions();
 
         if optionsReturnToPause {
@@ -1554,29 +2722,29 @@ class Game {
             menus.drawTitle(canvas);
         }
 
-        menus.drawSettings(canvas, pal, sfx.getMasterVolume(), sfx.getSfxVolume(),
-                           fullscreenOn, menus.getOptionsSelection());
+        menus.drawSettings(canvas, pal, settings, menus.getOptionsSelection());
+        renderObj.drawNotification(canvas, interactionMessage,
+                                   interactionMessageTimer, 2400);
         renderObj.drawTransition(canvas);
 
-        if result == OPTIONS_ACTION_MASTER_DOWN {
-            sfx.setMasterVolume(sfx.getMasterVolume() - 5);
-            sfx.playMenuMove();
-        }
-        if result == OPTIONS_ACTION_MASTER_UP {
-            sfx.setMasterVolume(sfx.getMasterVolume() + 5);
-            sfx.playMenuMove();
-        }
-        if result == OPTIONS_ACTION_SFX_DOWN {
-            sfx.setSfxVolume(sfx.getSfxVolume() - 5);
-            sfx.playMenuMove();
-        }
-        if result == OPTIONS_ACTION_SFX_UP {
-            sfx.setSfxVolume(sfx.getSfxVolume() + 5);
-            sfx.playMenuMove();
-        }
-        if result == OPTIONS_ACTION_TOGGLE_FULLSCREEN {
-            toggleFullscreen();
-            sfx.playMenuSelect();
+        if result == OPTIONS_ACTION_VALUE_DOWN or
+           result == OPTIONS_ACTION_VALUE_UP {
+            var selectedSetting = menus.getOptionsSelection();
+            if selectedSetting < SETTING_COUNT {
+                if selectedSetting == SETTING_FULLSCREEN {
+                    toggleFullscreen();
+                } else {
+                    var direction = 1;
+                    if result == OPTIONS_ACTION_VALUE_DOWN { direction = -1; }
+                    settings.adjust(selectedSetting, direction);
+                    applyLiveSetting(selectedSetting);
+                    if settings.save() == false {
+                        setInteractionMessage(
+                            "Settings could not be saved. Check storage permissions and try again.");
+                    }
+                }
+                sfx.playMenuMove();
+            }
         }
         if result == OPTIONS_ACTION_BACK {
             sfx.playMenuBack();
@@ -1592,9 +2760,159 @@ class Game {
         }
     }
 
+    /// @brief Apply one changed setting to the relevant live subsystem.
+    ///
+    /// Persistence remains owned by updateOptions. Settings without immediate
+    /// subsystem state (for example navigation hints) are read directly at their
+    /// gameplay/render call sites and therefore require no dispatch here.
+    ///
+    /// @param setting One valid `SETTING_*` id that just changed.
+    /// @return Nothing. May update active audio mix state.
+    hide func applyLiveSetting(setting: Integer) {
+        if setting == SETTING_MASTER_VOLUME {
+            sfx.setMasterVolume(settings.getValue(setting));
+        }
+        if setting == SETTING_MUSIC_VOLUME {
+            sfx.setMusicVolume(settings.getValue(setting));
+        }
+        if setting == SETTING_SFX_VOLUME {
+            sfx.setSfxVolume(settings.getValue(setting));
+        }
+        if setting == SETTING_AMBIENCE_VOLUME {
+            sfx.setAmbienceVolume(settings.getValue(setting));
+        }
+        if setting == SETTING_VOICE_VOLUME {
+            sfx.setVoiceVolume(settings.getValue(setting));
+        }
+        if setting == SETTING_REDUCED_MOTION or
+           setting == SETTING_REDUCED_FLASHES or
+           setting == SETTING_SCREEN_SHAKE or
+           setting == SETTING_HIGH_CONTRAST {
+            syncRendererAccessibility();
+        }
+        if setting == SETTING_UI_SCALE or
+           setting == SETTING_HIGH_CONTRAST or
+           setting == SETTING_LARGE_TEXT or
+           setting == SETTING_REDUCED_MOTION {
+            syncPresentationAccessibility();
+        }
+    }
+
+    /// @brief Copy persistent motion/flash/shake settings into Renderer.
+    ///
+    /// @return Nothing. Subsequent trails, ambient motion, flashes, and camera
+    ///         shakes use the new accessibility values immediately.
+    hide func syncRendererAccessibility() {
+        renderObj.setAccessibility(
+            settings.getValue(SETTING_REDUCED_MOTION) == 1,
+            settings.getValue(SETTING_REDUCED_FLASHES) == 1,
+            settings.getValue(SETTING_SCREEN_SHAKE),
+            settings.getValue(SETTING_HIGH_CONTRAST) == 1);
+    }
+
+    /// @brief Push persistent scale/contrast/text choices into menu and HUD.
+    ///
+    /// @return Nothing. Subsequent menu and gameplay draws immediately use the
+    ///         normalized settings without recreating either long-lived system.
+    hide func syncPresentationAccessibility() {
+        var uiScale = settings.getValue(SETTING_UI_SCALE);
+        var highContrast = settings.getValue(SETTING_HIGH_CONTRAST) == 1;
+        var largeText = settings.getValue(SETTING_LARGE_TEXT) == 1;
+        menus.setAccessibility(
+            uiScale, highContrast, largeText,
+            settings.getValue(SETTING_REDUCED_MOTION) == 1);
+        hudObj.setAccessibility(uiScale, highContrast, largeText);
+        profileFlow.setAccessibility(uiScale, highContrast, largeText);
+        hub.setAccessibility(uiScale, highContrast, largeText);
+    }
+
     // =========================================================================
     // State: Load Game / Extras / Credits
     // =========================================================================
+
+    /// @brief Update the explicit New Game / Load Game expedition profile flow.
+    ///
+    /// ProfileFlow owns navigation and confirmation state. Game remains the sole
+    /// authority for persistent deletion, slot loading, difficulty creation, and
+    /// audio/scene transitions. Empty slots and destructive actions therefore
+    /// receive deterministic, user-visible outcomes.
+    ///
+    /// @return Nothing. May enter intro/gameplay or return to the title scene.
+    hide func updateProfiles() {
+        renderObj.update(dt);
+        if interactionMessageTimer > 0 {
+            interactionMessageTimer = interactionMessageTimer - dt;
+            if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
+        }
+
+        var action = profileFlow.update();
+        profileFlow.draw(canvas, pal);
+        renderObj.drawNotification(canvas, interactionMessage,
+                                   interactionMessageTimer, 2400);
+        renderObj.drawTransition(canvas);
+
+        if action == PROFILE_ACTION_BACK {
+            sfx.playMenuBack();
+            sm.Switch("menu");
+            menus.resetSelection();
+            menus.resetTitleAnim();
+            renderObj.menuFadeIn(350);
+            return;
+        }
+        if action == PROFILE_ACTION_EMPTY {
+            setInteractionMessage("This expedition slot is empty.");
+            sfx.playMenuBack();
+            return;
+        }
+        if action == PROFILE_ACTION_DELETE {
+            saveManager.deleteSlot(profileFlow.getSelectedSlot());
+            refreshProfileSlots();
+            setInteractionMessage("Expedition slot deleted.");
+            sfx.playMenuSelect();
+            return;
+        }
+        if action == PROFILE_ACTION_LOAD {
+            if loadFromSlot(profileFlow.getSelectedSlot()) == false {
+                setInteractionMessage("This expedition slot is empty.");
+                sfx.playMenuBack();
+            } else {
+                sfx.playMenuSelect();
+            }
+            return;
+        }
+        if action == PROFILE_ACTION_CREATE {
+            var slot = profileFlow.getSelectedSlot();
+            var profile = profileFlow.getSelectedDifficulty();
+            saveManager.deleteSlot(slot);
+            startNewGame(slot, profile);
+            sfx.playMenuSelect();
+        }
+    }
+
+    /// @brief Enter one profile workflow and cache all release slot summaries.
+    ///
+    /// @param mode `PROFILE_MODE_NEW` for creation, otherwise load browsing.
+    /// @return Nothing. Switches to the profile scene with deterministic focus.
+    hide func openProfileFlow(mode: Integer) {
+        refreshProfileSlots();
+        if mode == PROFILE_MODE_NEW {
+            profileFlow.beginNew();
+        } else {
+            profileFlow.beginLoad();
+        }
+        sm.Switch("profiles");
+    }
+
+    /// @brief Synchronize ProfileFlow's three cached cards from SaveManager.
+    ///
+    /// @return Nothing. Copies summaries and occupancy without changing saves.
+    hide func refreshProfileSlots() {
+        profileFlow.refreshSlots(
+            saveManager.getSlotSummary(0), saveManager.getSlotSummary(1),
+            saveManager.getSlotSummary(2), saveManager.isSlotUsed(0),
+            saveManager.isSlotUsed(1), saveManager.isSlotUsed(2));
+        menus.setContinueAvailable(saveManager.getContinueSlot() >= 0);
+    }
 
     /// @brief Load-game slot browser.
     hide func updateLoadGame() {
@@ -1722,7 +3040,11 @@ class Game {
         canvas.Text(174, 536,
                     "Find shelter. Recover the relics. Reach the core before the planet is processed.",
                     Color.RGB(180, 200, 220));
-        canvas.TextCenteredScaled(628, "ENTER / ESC to skip", Color.RGB(80, 90, 120), 1);
+        canvas.TextCenteredScaled(
+            628,
+            Action.BindingsStr(ACT_CONFIRM) + " / " +
+            Action.BindingsStr(ACT_BACK) + " skip",
+            Color.RGB(80, 90, 120), 1);
     }
 
     /// @brief Achievements browser entry from Extras.
@@ -1788,26 +3110,48 @@ class Game {
     // Game initialization helpers
     // =========================================================================
 
-    /// @brief Reset all run-state (lives, score, abilities)
-    ///        and load level 0.  Called from "New Game".
-    hide func startNewGame() {
+    /// @brief Reset all expedition state and load the configured opening area.
+    ///
+    /// Called only after the profile front end selects a destination slot and
+    /// difficulty. Checkpoint, recovery marker, economy, world, lore, and combat
+    /// state all return to deterministic clean-profile values.
+    ///
+    /// @param slot User-confirmed zero-based destination profile slot.
+    /// @param profile User-selected `DIFFICULTY_*` profile id.
+    /// @return Nothing. Builds the opening area and enters the intro scene.
+    hide func startNewGame(slot: Integer, profile: Integer) {
+        saveSlot = slot;
+        if saveSlot < 0 or saveSlot >= MAX_SAVE_SLOTS { saveSlot = 0; }
+        expeditionActive = true;
+        expeditionMode = EXPEDITION_MODE_CAMPAIGN;
         score = 0;
         coins = 0;
         currentLevel = tuning.getInt("game.startLevel", 1);
         if currentLevel < 1 { currentLevel = 1; }
         if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
+        hubLaunchLevel = currentLevel;
         levelTimer = 0;
         levelDamageTaken = 0;
         reachedCheckpoint = false;
+        checkpointLevel = 0;
+        checkpointX = 0;
+        checkpointY = 0;
         deathTimer = 0;
         bossesDefeated = 0;
         completionMask = 0;
         deathCount = 0;
         gems = 0;
+        deathRecovery.reset(0);
         totalPlaytime = 0;
+        upgrades.reset();
+        difficulty.setProfile(profile);
         abilities.setMask(ABILITY_WALL_JUMP);
+        syncPlayerAbilities();
         loreSystem.setCollectedMask(0);
         loreSystem.setBestiaryMask(0);
+        tutorialSystem.reset();
+        metaProgression.reset();
+        worldState.reset();
 
         player.reset();
         loadLevel(currentLevel);
@@ -1839,21 +3183,48 @@ class Game {
         if saveManager.isSlotUsed(slot) == false { return false; }
 
         saveSlot = slot;
+        expeditionActive = true;
+        expeditionMode = EXPEDITION_MODE_CAMPAIGN;
         currentLevel = saveManager.getSlotLevel(slot);
         if currentLevel < 1 { currentLevel = 1; }
         if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
+        hubLaunchLevel = currentLevel;
 
+        upgrades.setEncodedTiers(saveManager.getSlotUpgradeTiers(slot));
+        difficulty.setProfile(saveManager.getSlotDifficulty(slot));
         abilities.setMask(saveManager.getSlotAbilities(slot));
+        syncPlayerAbilities();
         player.reset();
         player.maxHp = saveManager.getSlotMaxHp(slot);
         player.hp = player.maxHp;
         gems = saveManager.getSlotGems(slot);
+        deathRecovery.reset(gems);
+        checkpointLevel = saveManager.getSlotCheckpointLevel(slot);
+        checkpointX = saveManager.getSlotCheckpointX(slot);
+        checkpointY = saveManager.getSlotCheckpointY(slot);
         totalPlaytime = saveManager.getSlotTime(slot) * 1000;
         bossesDefeated = saveManager.getSlotBosses(slot);
         completionMask = saveManager.getSlotCompletionMask(slot);
         deathCount = saveManager.getSlotDeaths(slot);
         loreSystem.setCollectedMask(saveManager.getSlotLoreMask(slot));
         loreSystem.setBestiaryMask(saveManager.getSlotBestiaryMask(slot));
+        tutorialSystem.setMask(saveManager.getSlotTutorialMask(slot));
+        metaProgression.restore(
+            saveManager.getSlotBestTimes(slot),
+            saveManager.getSlotPackedRanks(slot),
+            saveManager.getSlotNewGamePlusActive(slot));
+        worldState.reset();
+        worldState.setMasks(saveManager.getSlotKeyMask(slot),
+                            saveManager.getSlotSwitchMask(slot),
+                            saveManager.getSlotDoorMask(slot),
+                            saveManager.getSlotShrineMask(slot),
+                            saveManager.getSlotTeleporterMask(slot));
+        var region = 0;
+        while region < LEVEL_COUNT {
+            worldState.setRoomMask(
+                region, saveManager.getSlotRoomMask(slot, region));
+            region = region + 1;
+        }
 
         score = 0;
         coins = 0;
@@ -1862,37 +3233,71 @@ class Game {
         reachedCheckpoint = false;
         deathTimer = 0;
         loadLevel(currentLevel);
+        if checkpointLevel == currentLevel {
+            reachedCheckpoint = true;
+            player.spawn(checkpointX, checkpointY);
+            camera.snapTo(player.centerX(), player.centerY());
+        }
         introTimer = tuning.getInt("presentation.introSplashMs", 1200);
         sm.Switch("playing");
         sfx.playGameMusic();
         return true;
     }
 
-    /// @brief Persist the active slot using the release
-    ///        metadata snapshot.
-    hide func saveProgress() {
-        saveManager.saveSlotFull(saveSlot, currentLevel, abilities.getMask(),
-                                 player.maxHp, gems, totalPlaytime / 1000,
-                                 bossesDefeated, loreSystem.getCollectedMask(),
-                                 loreSystem.getBestiaryMask(), completionMask,
-                                 deathCount);
+    /// @brief Persist the active slot using the schema-v2 release snapshot.
+    ///
+    /// Core progression and every persistent interaction mask are staged in one
+    /// SaveData batch. Callers use the result for user-facing save confirmation
+    /// and the required storage-permission failure message.
+    ///
+    /// @return True when the active slot flush succeeds; false on storage error.
+    hide func saveProgress() -> Boolean {
+        if expeditionMode != EXPEDITION_MODE_CAMPAIGN { return true; }
+        var saved = saveManager.saveSlotRelease(
+            saveSlot, currentLevel, abilities.getMask(),
+            player.maxHp, gems, totalPlaytime / 1000,
+            bossesDefeated, loreSystem.getCollectedMask(),
+            loreSystem.getBestiaryMask(), completionMask, deathCount,
+            worldState.getKeyMask(), worldState.getSwitchMask(),
+            worldState.getDoorMask(), worldState.getShrineMask(),
+            worldState.getTeleporterMask(), worldState.getRoomMasks(),
+            upgrades.getEncodedTiers(), difficulty.getProfile(),
+            checkpointLevel, checkpointX, checkpointY,
+            tutorialSystem.getMask(), metaProgression.getBestTimes(),
+            metaProgression.getPackedRanks(),
+            boolToSetting(metaProgression.isNewGamePlusActive()));
+        if saved { deathRecovery.bank(gems); }
+        return saved;
     }
 
     /// @brief Load level `num` — wipes pools, builds the
     ///        new tilemap + spawn lists, snaps the camera,
     ///        triggers the intro banner.
     hide func loadLevel(num: Integer) {
+        difficulty.applyPendingOnTransition();
+        hitStopTimer = 0;
         currentLevel = num;
         enemiesKilled = 0;        // per-level kill tally resets each level (#7)
         achSys.onLevelReached(num);
         level.loadLevel(num);
         level.enrichEnemies(num); // Add new enemy types
+        worldState.discoverTeleporter(num - 1);
+        level.applyPersistentInteractionState(worldState.getSwitchMask(),
+                                              worldState.getDoorMask(),
+                                              worldState.getShrineMask());
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
         player.spawn(level.playerStartX, level.playerStartY);
+        currentRoomIndex = worldGraph.roomIndexForColumn(
+            player.pixelX() / TILE_SIZE, level.levelWidth);
+        worldState.discoverRoom(num - 1, currentRoomIndex);
+        roomTitleTimer = 1800;
+        footstepTimer = 0;
         camera.snapTo(player.centerX(), player.centerY());
 
         enemies.reset();
+        enemies.setDifficultyProfile(difficulty.getProfile());
+        enemies.setNewGamePlusActive(metaProgression.isNewGamePlusActive());
         enemies.spawnFromLevel(level);
 
         pickups.reset();
@@ -1918,6 +3323,16 @@ class Game {
         bossCueTimer = 0;
         bossIntroPlayed = false;
         introTimer = tuning.getInt("presentation.introSplashMs", 1200);
+        radioSystem.queueRegionArrival(num - 1);
+        sfx.playRadioCue();
+        sfx.setCombatIntensity(0);
+        if tuning.getBool("presentation.adaptiveMusicEnabled", true) {
+            sfx.playGameMusicForRegion(num);
+        } else {
+            sfx.playGameMusic();
+        }
+        sfx.playAmbienceForRegion(num);
+        saveProgress();
     }
 
     // =========================================================================
@@ -1939,6 +3354,17 @@ class Game {
         achSys = new AchievementSystem();
         achSys.initAchievements(pal);
 
+        upgrades = new UpgradeSystem();
+        difficulty = new DifficultySystem();
+        deathRecovery = new DeathRecovery();
+        profileFlow = new ProfileFlow();
+        tutorialSystem = new TutorialSystem();
+        metaProgression = new MetaProgression();
+        radioSystem = new RadioSystem();
+
+        hub = new HubSystem();
+        hub.initHub(pal);
+
         transitions = new TransitionManager();
         transitions.initTransitions(pal);
 
@@ -1950,6 +3376,10 @@ class Game {
 
         saveManager = new SaveManager();
         saveManager.initSave();
+
+        worldState = new WorldState();
+
+        worldGraph = new WorldGraph();
 
         worldMap = new WorldMap();
         worldMap.initMap(pal);
@@ -1966,15 +3396,358 @@ class Game {
         killFlashX = 0;
         killFlashY = 0;
         killFlashTimer = 0;
+        interactionMessage = "";
+        interactionMessageTimer = 0;
+        routeSelection = 0;
+        currentRoomIndex = 0;
+        roomTitleTimer = 0;
+        if saveManager.didRecoverCorruptSave() {
+            setInteractionMessage(
+                "Save data was unreadable. A backup was preserved and defaults were restored.");
+        }
     }
 
-    // Update all expansion systems each frame
-    /// @brief Per-frame ticks for the "newer" subsystems
-    ///        listed above.
-    hide func updateNewSystems() {
+    /// @brief Copy the authoritative campaign ability mask into Player.
+    ///
+    /// `AbilityManager` owns unlock persistence while Player owns the hot input
+    /// path. Synchronizing once before simulation prevents locked movement from
+    /// leaking through reset, spawn, save load, or direct action bindings.
+    ///
+    /// @return Nothing. Player's local mask and current air-jump availability may
+    ///         change according to `Player.setAbilityMask` rules.
+    hide func syncPlayerAbilities() {
+        player.setAbilityMask(abilities.getMask());
+        player.setUpgradeTuning(upgrades.getChargeTimePercent(),
+                                upgrades.getDashCooldownPercent());
+    }
+
+    /// @brief Update stable room identity from the player's regional column.
+    ///
+    /// Each procedural region is divided into eight deterministic authored room
+    /// bands. Entering a band marks its bit in WorldState; the masks persist at
+    /// the next autosave and drive map completion/readable location labels.
+    ///
+    /// @return Nothing. May update `currentRoomIndex` and one discovery bit.
+    hide func updateRoomDiscovery() {
+        if roomTitleTimer > 0 {
+            roomTitleTimer = roomTitleTimer - dt;
+            if roomTitleTimer < 0 { roomTitleTimer = 0; }
+        }
+        var previousRoom = currentRoomIndex;
+        var nextRoom = worldGraph.roomIndexForColumn(
+            player.pixelX() / TILE_SIZE, level.levelWidth);
+        currentRoomIndex = nextRoom;
+        var newlyDiscovered = worldState.discoverRoom(
+            currentLevel - 1, currentRoomIndex);
+        if currentRoomIndex != previousRoom { roomTitleTimer = 1800; }
+        if newlyDiscovered and
+           (currentRoomIndex == 2 or currentRoomIndex == 6) {
+            sfx.playSecretFound();
+            setInteractionMessage(
+                "SECRET ROUTE DISCOVERED // " +
+                worldGraph.getRoomName(currentLevel - 1, currentRoomIndex));
+        }
+    }
+
+    /// @brief Emit cadence-controlled footsteps using the authored floor tile.
+    ///
+    /// The cadence depends on current horizontal speed but never affects player
+    /// movement. Leaving the floor or stopping resets the envelope so the first
+    /// deliberate step responds immediately. SoundManager classifies material
+    /// and safely no-ops when audio is unavailable.
+    ///
+    /// @return Nothing. May play one SFX and mutate only `footstepTimer`.
+    hide func updateFootstepAudio() {
+        var speed = player.vx;
+        if speed < 0 { speed = 0 - speed; }
+        if player.onGround == false or speed < 90 or
+           player.state == PS_HURT or player.state == PS_DEAD {
+            footstepTimer = 0;
+            return;
+        }
+        footstepTimer = footstepTimer - dt;
+        if footstepTimer > 0 { return; }
+
+        var tileCol = player.centerX() / TILE_SIZE;
+        var tileRow = (player.pixelY() + PLAYER_H + 2) / TILE_SIZE;
+        sfx.playFootstep(level.getTile(tileCol, tileRow));
+        footstepTimer = 245;
+        if speed > PLAYER_SPEED * 3 / 4 { footstepTimer = 190; }
+    }
+
+    /// @brief Advance and resolve contextual per-profile tutorial guidance.
+    ///
+    /// Crash Site onboarding is staged by actual route position so prompts appear
+    /// near the mechanic they explain. Acknowledgement requires the demonstrated
+    /// semantic action, not elapsed time. Ability and death-recovery cards reuse
+    /// the same persistent system throughout the campaign.
+    ///
+    /// @return Nothing. May request or acknowledge one tutorial bit.
+    hide func updateContextualTutorials() {
+        tutorialSystem.update(dt);
+        var col = player.pixelX() / TILE_SIZE;
+
+        if currentLevel == 1 {
+            if tutorialSystem.isAcknowledged(TUTORIAL_MOVE) == false {
+                tutorialSystem.request(TUTORIAL_MOVE);
+                if Action.Held(ACT_LEFT) or Action.Held(ACT_RIGHT) {
+                    tutorialSystem.acknowledge(TUTORIAL_MOVE);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_JUMP) == false and col >= 5 {
+                tutorialSystem.request(TUTORIAL_JUMP);
+                if player.didStartJump() {
+                    tutorialSystem.acknowledge(TUTORIAL_JUMP);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_SHOOT) == false and col >= 10 {
+                tutorialSystem.request(TUTORIAL_SHOOT);
+                if Action.Pressed(ACT_SHOOT) {
+                    tutorialSystem.acknowledge(TUTORIAL_SHOOT);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_WALL_JUMP) == false and
+               col >= 14 {
+                tutorialSystem.request(TUTORIAL_WALL_JUMP);
+                if player.didStartJump() and player.wallDir != 0 {
+                    tutorialSystem.acknowledge(TUTORIAL_WALL_JUMP);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_INTERACT) == false and
+               col >= 24 {
+                tutorialSystem.request(TUTORIAL_INTERACT);
+                if Action.Pressed(ACT_INTERACT) {
+                    tutorialSystem.acknowledge(TUTORIAL_INTERACT);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_CHECKPOINT) == false and
+               col >= 38 {
+                tutorialSystem.request(TUTORIAL_CHECKPOINT);
+                if reachedCheckpoint {
+                    tutorialSystem.acknowledge(TUTORIAL_CHECKPOINT);
+                }
+                return;
+            }
+            if tutorialSystem.isAcknowledged(TUTORIAL_MAP) == false and
+               reachedCheckpoint {
+                tutorialSystem.request(TUTORIAL_MAP);
+                return;
+            }
+        }
+
+        if abilities.has(ABILITY_CHARGE_SHOT) and
+           tutorialSystem.isAcknowledged(TUTORIAL_CHARGE) == false {
+            tutorialSystem.request(TUTORIAL_CHARGE);
+            if player.isCharging {
+                tutorialSystem.acknowledge(TUTORIAL_CHARGE);
+            }
+            return;
+        }
+        if abilities.has(ABILITY_DASH) and
+           tutorialSystem.isAcknowledged(TUTORIAL_DASH) == false {
+            tutorialSystem.request(TUTORIAL_DASH);
+            if player.isDashing {
+                tutorialSystem.acknowledge(TUTORIAL_DASH);
+            }
+            return;
+        }
+        if abilities.has(ABILITY_GROUND_POUND) and
+           tutorialSystem.isAcknowledged(TUTORIAL_GROUND_POUND) == false {
+            tutorialSystem.request(TUTORIAL_GROUND_POUND);
+            if player.isPounding {
+                tutorialSystem.acknowledge(TUTORIAL_GROUND_POUND);
+            }
+            return;
+        }
+        if abilities.has(ABILITY_GRAPPLE) and
+           tutorialSystem.isAcknowledged(TUTORIAL_GRAPPLE) == false {
+            tutorialSystem.request(TUTORIAL_GRAPPLE);
+            if player.isGrappling {
+                tutorialSystem.acknowledge(TUTORIAL_GRAPPLE);
+            }
+            return;
+        }
+        if deathRecovery.hasMarker() and
+           tutorialSystem.isAcknowledged(TUTORIAL_DEATH_RECOVERY) == false {
+            tutorialSystem.request(TUTORIAL_DEATH_RECOVERY);
+        }
+    }
+
+    /// @brief Resolve one interact-button press against stable authored records.
+    ///
+    /// Interaction priority is lore, save station, shrine, switch, keyed door,
+    /// then teleporter. Every path reads stable ids/payloads from Level rather
+    /// than deriving content from coordinates. Persistent mutations immediately
+    /// update the active level and save slot; lore, shrine acquisition, and fast
+    /// travel return true so ordinary simulation remains frozen this frame.
+    ///
+    /// @return True when the interaction opened a modal overlay or transition;
+    ///         false for no input, no nearby record, or a nonmodal interaction.
+    hide func handleAuthoredInteraction() -> Boolean {
+        if Action.Pressed(ACT_INTERACT) == false { return false; }
+
+        var wx = player.centerX();
+        var wy = player.centerY();
+        var scanRange = upgrades.getScannerRange();
+        var idx = level.findNearbyInteraction(
+            INTERACTION_LORE_TERMINAL, wx, wy, scanRange);
+        if idx >= 0 {
+            var loreId = level.interactionPayloads.get(idx);
+            loreSystem.showEntry(loreId);
+            var loreCount = loreSystem.getCollectedCount();
+            achSys.onLoreFound(loreCount);
+            if loreCount >= loreSystem.getTotalCount() { achSys.onAllLore(); }
+            sfx.playLoreFound();
+            return true;
+        }
+
+        idx = level.findNearbyInteraction(
+            INTERACTION_SAVE_STATION, wx, wy, scanRange);
+        if idx >= 0 {
+            player.hp = player.maxHp;
+            reachedCheckpoint = true;
+            level.checkpointX = player.pixelX();
+            level.checkpointY = player.pixelY();
+            checkpointLevel = currentLevel;
+            checkpointX = level.checkpointX;
+            checkpointY = level.checkpointY;
+            var requestedDifficulty = difficulty.getPendingProfile();
+            if Action.Held(ACT_LEFT) { requestedDifficulty = requestedDifficulty - 1; }
+            if Action.Held(ACT_RIGHT) { requestedDifficulty = requestedDifficulty + 1; }
+            difficulty.requestAtSaveStation(requestedDifficulty);
+            if saveProgress() {
+                setInteractionMessage("Expedition saved. Suit integrity restored.");
+                particles.burstCheckpoint(wx, wy);
+                sfx.playSave();
+            } else {
+                setInteractionMessage(
+                    "Progress could not be saved. Check storage permissions and try again.");
+            }
+            return false;
+        }
+
+        idx = level.findNearbyInteraction(
+            INTERACTION_ABILITY_SHRINE, wx, wy, scanRange);
+        if idx >= 0 {
+            var shrineId = level.interactionIds.get(idx);
+            var ability = level.interactionPayloads.get(idx);
+            if worldState.consumeShrine(shrineId) {
+                abilities.grant(ability);
+                player.startAcquisitionAnimation();
+                syncPlayerAbilities();
+                level.applyPersistentInteractionState(worldState.getSwitchMask(),
+                                                      worldState.getDoorMask(),
+                                                      worldState.getShrineMask());
+                saveProgress();
+                particles.burstAbilityAcquired(wx, wy);
+                sfx.playAbilityGet();
+                transitions.startAbility(abilityName(ability));
+                if abilities.getMask() == 63 { achSys.onAllAbilities(); }
+                return true;
+            }
+            setInteractionMessage("This shrine has already transferred its module.");
+            return false;
+        }
+
+        idx = level.findNearbyInteraction(
+            INTERACTION_SWITCH, wx, wy, scanRange);
+        if idx >= 0 {
+            var channel = level.interactionChannels.get(idx);
+            var enabled = worldState.toggleSwitch(channel);
+            level.applyPersistentInteractionState(worldState.getSwitchMask(),
+                                                  worldState.getDoorMask(),
+                                                  worldState.getShrineMask());
+            saveProgress();
+            if enabled {
+                setInteractionMessage("Holographic shortcut online.");
+            } else {
+                setInteractionMessage("Holographic shortcut offline.");
+            }
+            particles.burstElectricSpark(wx, wy);
+            sfx.playCheckpoint();
+            return false;
+        }
+
+        idx = level.findNearbyInteraction(
+            INTERACTION_LOCKED_DOOR, wx, wy, scanRange);
+        if idx >= 0 {
+            var doorId = level.interactionIds.get(idx);
+            var opened = worldState.tryOpenDoor(doorId);
+            if opened == 0 {
+                setInteractionMessage("A matching keycard is required.");
+            } else {
+                level.applyPersistentInteractionState(worldState.getSwitchMask(),
+                                                      worldState.getDoorMask(),
+                                                      worldState.getShrineMask());
+                saveProgress();
+                setInteractionMessage("Keycard accepted. Door permanently unlocked.");
+                particles.burstElectricSpark(wx, wy);
+                sfx.playCheckpoint();
+            }
+            return false;
+        }
+
+        idx = level.findNearbyInteraction(
+            INTERACTION_TELEPORTER, wx, wy, scanRange);
+        if idx >= 0 {
+            var padId = level.interactionIds.get(idx);
+            worldState.discoverTeleporter(padId);
+            if padId == 0 and majorBossCount() > 0 {
+                saveProgress();
+                hub.reset();
+                hubLaunchLevel = currentLevel;
+                hubRouteSelection = worldGraph.recommendedNeighborSelection(
+                    currentLevel - 1, abilities.getMask(), completionMask);
+                sm.Switch("hub");
+                sfx.playHubMusic();
+                return true;
+            }
+            var destination = worldState.findTeleporterDestination(padId);
+            if destination < 0 {
+                setInteractionMessage("Discover another transit pad to enable fast travel.");
+                return false;
+            }
+            saveProgress();
+            transitions.startLevelExit(destination + 1);
+            return true;
+        }
+
+        setInteractionMessage("No compatible system is within range.");
+        return false;
+    }
+
+    /// @brief Display a nonblocking interaction result as a timed HUD toast.
+    ///
+    /// @param message Player-facing status or failure text.
+    /// @return Nothing. Replaces any older toast and resets its 2.4-second timer.
+    hide func setInteractionMessage(message: String) {
+        interactionMessage = message;
+        interactionMessageTimer = 2400;
+    }
+
+    /// @brief Update expansion systems that run before ordinary world simulation.
+    ///
+    /// Lore and transition overlays are modal: when either consumes the frame,
+    /// this method updates only that modal state and asks `updatePlaying` to draw
+    /// the frozen world without advancing player, enemies, projectiles, pickups,
+    /// timers, or collision. Nonmodal ability and interaction work returns false.
+    ///
+    /// @return True when a modal system consumed the frame; false when ordinary
+    ///         gameplay simulation should continue.
+    hide func updateNewSystems() -> Boolean {
         abilities.updateUI();
         lighting.update();
         achSys.update(dt);
+        radioSystem.update(dt);
+        if interactionMessageTimer > 0 {
+            interactionMessageTimer = interactionMessageTimer - dt;
+            if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
+        }
 
         // Lore display (Typewriter-based text reveal)
         if loreSystem.isDisplayActive() {
@@ -1982,24 +3755,26 @@ class Game {
             if Action.Pressed("jump") {
                 loreSystem.dismiss(); // First press skips text, second dismisses
             }
-            return; // Pause game while reading lore
+            return true;
         }
 
         // Transitions
         if transitions.isActive() {
+            var trans = transitions.getTransition();
+            var target = transitions.getTargetLevel();
             var done = transitions.update(dt);
             if done {
-                var trans = transitions.getTransition();
-                if trans == 1 { // TRANS_LEVEL_OUT complete
-                    loadLevel(transitions.getTargetLevel());
+                if trans == TRANS_LEVEL_OUT {
+                    loadLevel(target);
                 }
             }
-            return; // Pause game during transitions
+            return true;
         }
 
         // Frozen state suppresses all abilities
         if player.isFrozen() {
-            player.updateFreeze(dt);
+            // Player.update owns timer decrement and frozen physics so the
+            // status advances exactly once per frame.
         } else {
             // Player ability updates (only when not frozen)
             if player.isDashing {
@@ -2011,12 +3786,6 @@ class Game {
             }
             if player.isPounding {
                 player.updatePound(dt);
-                if player.onGround and not wasPounding {
-                    // Pound just landed
-                    poundImpactTimer = 12;
-                    particles.burstPoundImpact(player.pixelX(), player.pixelY() + PLAYER_H);
-                    sfx.playGroundPound();
-                }
             }
         }
         wasPounding = player.isPounding;
@@ -2024,29 +3793,7 @@ class Game {
             poundImpactTimer = poundImpactTimer - 1;
         }
 
-        // Check for lore terminals
-        var loreIdx = phys.isNearLoreTerminal(player.x, player.y,
-                                                PLAYER_W, PLAYER_H, level);
-        if loreIdx >= 0 and Action.Pressed("jump") {
-            var mappedIdx = loreIdx % loreSystem.getTotalCount();
-            loreSystem.showEntry(mappedIdx);
-            achSys.onLoreFound(loreSystem.getCollectedCount());
-            sfx.playLoreFound();
-        }
-
-        // Check for save stations
-        if phys.isNearSaveStation(player.x, player.y, PLAYER_W, PLAYER_H, level) {
-            if Action.Pressed("jump") {
-                // Save progress
-                saveProgress();
-                sfx.playSave();
-                // Heal player
-                player.hp = player.maxHp;
-                reachedCheckpoint = true;
-                level.checkpointX = player.pixelX();
-                level.checkpointY = player.pixelY();
-            }
-        }
+        if handleAuthoredInteraction() { return true; }
 
         // Environmental tile effects
         var hazard = phys.checkHazardTile(player.x, player.y,
@@ -2055,55 +3802,42 @@ class Game {
             // Poison damage over time (every 500ms)
             if levelTimer % 500 < dt {
                 if player.iframes <= 0 {
-                    player.hp = player.hp - 1;
-                    levelDamageTaken = levelDamageTaken + 1;
-                    player.iframes = 200;
+                    if applyIncomingDamage(1) > 0 { player.iframes = 200; }
                 }
             }
         }
 
-        // Ice physics
-        if phys.isOnIce(player.x, player.y, PLAYER_W, PLAYER_H, level) {
-            // Reduced friction — vx decays slower
-            // This is handled by the player physics module
-        }
-
-        // Conveyor belt
-        var convDir = phys.getConveyorDir(player.x, player.y,
-                                            PLAYER_W, PLAYER_H, level);
-        if convDir != 0 {
-            player.vx = player.vx + convDir * 200; // Push player
-            player.syncVelocity();
-        }
-
-        // Steam vent
-        if phys.isOnSteamVent(player.x, player.y, PLAYER_W, PLAYER_H, level) {
-            player.vy = -1800; // Launch upward
-            player.syncVelocity();
-            sfx.playJump();
-        }
-
         // Ability input handling
-        if Action.Pressed("dash") and abilities.has(ABILITY_DASH) {
-            player.startDash();
-            sfx.playDash();
-        }
-        if Action.Pressed("shoot") and abilities.has(ABILITY_CHARGE_SHOT) {
-            player.startCharge();
-            sfx.playChargeStart();
-        }
-        if Action.Released("shoot") and player.isCharging {
-            var chargeLevel = player.releaseCharge();
-            if chargeLevel > 0 {
-                bullets.fireCharged(player.pixelX() + PLAYER_W / 2,
-                                    player.pixelY() + PLAYER_H / 3,
-                                    player.facing, chargeLevel);
-                sfx.playChargeRelease();
+        if Action.Pressed(ACT_DASH) and abilities.has(ABILITY_DASH) {
+            if player.startDash() {
+                sfx.playDash();
+                achSys.onDashUsed();
             }
         }
-        if Action.Pressed("move_down") and abilities.has(ABILITY_GROUND_POUND) {
+        if Action.Pressed(ACT_SHOOT) and abilities.has(ABILITY_CHARGE_SHOT) {
+            if settings.getValue(SETTING_HOLD_TO_CHARGE) == 0 and
+               player.isCharging {
+                releaseChargedShot();
+            } else {
+                if player.startCharge() { sfx.playChargeStart(); }
+            }
+        }
+        if settings.getValue(SETTING_HOLD_TO_CHARGE) == 1 and
+           Action.Released(ACT_SHOOT) and player.isCharging {
+            releaseChargedShot();
+        }
+        if Action.Pressed(ACT_MOVE_DOWN) and abilities.has(ABILITY_GROUND_POUND) {
             if not player.onGround {
-                player.startPound();
+                if player.startPound() { achSys.onPoundUsed(); }
+            }
+        }
+        if Action.Pressed(ACT_GRAPPLE) {
+            if player.isGrappling {
+                if player.releaseGrapple() { sfx.playDash(); }
+            } else if player.startGrapple(level) {
+                particles.burstElectricSpark(player.getGrappleAnchorX(),
+                                             player.getGrappleAnchorY());
+                sfx.playDash();
             }
         }
 
@@ -2123,12 +3857,46 @@ class Game {
                 bossesDefeated = bossesDefeated + bossBit;
                 achSys.onBossDefeated(level.bossType);
                 loreSystem.unlockBestiaryEntry(level.bossType);
-                // Grant ability based on which boss
-                if currentLevel == 2 { abilities.grant(ABILITY_DOUBLE_JUMP); sfx.playAbilityGet(); }
-                if currentLevel == 3 { abilities.grant(ABILITY_DASH); sfx.playAbilityGet(); }
-                if currentLevel == 6 { abilities.grant(ABILITY_GROUND_POUND); sfx.playAbilityGet(); }
+                var bossReward = regionAbilityReward(currentLevel - 1);
+                if bossReward > 0 and abilities.has(bossReward) == false {
+                    abilities.grant(bossReward);
+                    player.startAcquisitionAnimation();
+                    transitions.startAbility(abilityName(bossReward));
+                    sfx.playAbilityGet();
+                }
+                syncPlayerAbilities();
+                if abilities.getMask() == 63 { achSys.onAllAbilities(); }
+                saveProgress();
             }
         }
+        return false;
+    }
+
+    /// @brief Release the active charge and spawn its normal/charged projectile.
+    ///
+    /// A quick tap remains a normal shot. Partial/full tiers use the charge pool
+    /// path and its exact damage/destructible-power contract. Failed full pools
+    /// do not emit sound or achievement events.
+    ///
+    /// @return True when a projectile was spawned; false when not charging or
+    ///         the corresponding projectile pool is full.
+    hide func releaseChargedShot() -> Boolean {
+        if player.isCharging == false { return false; }
+        var chargeLevel = player.releaseCharge();
+        var fired = false;
+        var bx = player.pixelX() + PLAYER_W / 2;
+        var by = player.pixelY() + PLAYER_H / 3;
+        if chargeLevel <= 0 {
+            fired = bullets.fire(bx, by, player.facing);
+        } else {
+            fired = bullets.fireCharged(bx, by, player.facing, chargeLevel);
+        }
+        if fired {
+            player.startShootAnimation();
+            sfx.playChargeRelease();
+            achSys.onBulletFired();
+        }
+        return fired;
     }
 
     // Draw all expansion system overlays
@@ -2138,7 +3906,7 @@ class Game {
     ///        composite over gameplay.
     hide func drawNewSystems(canvas: Canvas, camX: Integer, camY: Integer) {
         // Biome ambient particles
-        renderObj.drawBiomeAmbient(canvas, camX, camY, level.levelTheme, levelTimer);
+        renderObj.drawBiomeAmbient(canvas, camX, camY, currentLevel, levelTimer);
 
         // Dash trail
         renderObj.drawDashTrail(canvas, camX, camY, player);
@@ -2152,6 +3920,9 @@ class Game {
 
         // Freeze overlay
         renderObj.drawFreezeOverlay(canvas, camX, camY, player);
+
+        // Recoverable campaign salvage remains at the latest death site.
+        drawDeathMarker(canvas, camX, camY);
 
         // Environmental overlays
         var hazard = phys.checkHazardTile(player.x, player.y,
@@ -2173,6 +3944,13 @@ class Game {
         hudObj.drawExtendedHud(canvas, pal, gems,
                                 loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
                                 currentLevel, biomeName);
+        canvas.BoxAlpha(18, 96, 360, 26, Color.RGB(5, 10, 20), 150);
+        canvas.Text(28, 103,
+                    worldGraph.getRoomName(currentLevel - 1,
+                                           currentRoomIndex),
+                    Color.RGB(150, 205, 230));
+        drawRoomTitleToast(canvas);
+        drawObjectiveHud(canvas);
 
         // Mini-map
         var playerCol = player.pixelX() / TILE_SIZE;
@@ -2189,6 +3967,10 @@ class Game {
 
         // Boss discovery/direction cue.
         drawBossCue(canvas, camX, camY);
+
+        // Nonblocking interaction success/failure feedback.
+        renderObj.drawNotification(canvas, interactionMessage,
+                                   interactionMessageTimer, 2400);
 
         // Transition overlay (on top of everything)
         if transitions.isActive() {
@@ -2208,9 +3990,120 @@ class Game {
         // Achievement notification popup
         achSys.drawNotification(canvas);
 
+        // Contextual onboarding is persistent per profile and uses live bindings.
+        if settings.getValue(SETTING_NAVIGATION_HINTS) != NAV_HINTS_OFF {
+            tutorialSystem.draw(canvas, pal);
+        }
+
+        radioSystem.draw(
+            canvas, pal, settings.getValue(SETTING_SUBTITLES) == 1,
+            settings.getValue(SETTING_UI_SCALE),
+            settings.getValue(SETTING_LARGE_TEXT) == 1,
+            settings.getValue(SETTING_HIGH_CONTRAST) == 1);
+
         // World map (if open)
         if showWorldMap {
-            worldMap.draw(canvas, currentLevel, bossesDefeated, abilities);
+            worldMap.draw(canvas, currentLevel, bossesDefeated,
+                          worldState.getTeleporterMask(), abilities);
         }
+    }
+
+    /// @brief Draw the current region's recoverable salvage marker in world space.
+    ///
+    /// A pulsing diamond and ring remain legible against every biome without
+    /// requiring authored art. Off-screen and cross-region markers cost no draw
+    /// calls. The label exposes the exact recoverable amount before collection.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @param camX Camera world X in pixels.
+    /// @param camY Camera world Y in pixels.
+    /// @return Nothing. Draws only when a marker is active in the current region.
+    hide func drawDeathMarker(canvas: Canvas, camX: Integer, camY: Integer) {
+        if deathRecovery.hasMarker() == false or
+           deathRecovery.getMarkerLevel() != currentLevel { return; }
+        var sx = deathRecovery.getMarkerX() - camX;
+        var sy = deathRecovery.getMarkerY() - camY;
+        if sx < -48 or sx > SCREEN_W + 48 or
+           sy < -48 or sy > SCREEN_H + 48 { return; }
+
+        var phase = (levelTimer % 800) / 100;
+        var radius = 18 + phase;
+        canvas.DiscAlpha(sx, sy, radius, Color.RGB(40, 180, 255), 70);
+        canvas.Ring(sx, sy, radius, Color.RGB(130, 230, 255));
+        canvas.Triangle(sx, sy - 14, sx - 10, sy,
+                        sx + 10, sy, Color.RGB(210, 250, 255));
+        canvas.Triangle(sx, sy + 14, sx - 10, sy,
+                        sx + 10, sy, Color.RGB(70, 170, 240));
+        canvas.Text(sx - 22, sy + 24,
+                    "+" + Int(deathRecovery.getMarkerGems()),
+                    Color.RGB(190, 235, 255));
+    }
+
+    /// @brief Draw current primary and optional regional objective progress.
+    ///
+    /// Navigation Hints Off removes the gameplay overlay, Contextual shows the
+    /// concise objective, and Always adds its authored instruction. Persistent
+    /// completion, lore, and room masks remain the only progress authorities.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @return Nothing. Draws a compact HUD panel according to accessibility.
+    hide func drawObjectiveHud(canvas: Canvas) {
+        var hintMode = settings.getValue(SETTING_NAVIGATION_HINTS);
+        if hintMode == NAV_HINTS_OFF { return; }
+        var region = currentLevel - 1;
+        var completeText = "ACTIVE";
+        var accent = Color.RGB(245, 205, 95);
+        if regionObjectiveComplete(region, completionMask) {
+            completeText = "COMPLETE";
+            accent = Color.RGB(95, 225, 145);
+        }
+        var optional = regionOptionalProgress(
+            region, loreSystem.getCollectedMask(),
+            worldState.getRoomMask(region));
+        var panelH = 45;
+        if hintMode == NAV_HINTS_ALWAYS { panelH = 89; }
+        var panelAlpha = 165;
+        if settings.getValue(SETTING_HIGH_CONTRAST) == 1 {
+            panelAlpha = 235;
+        }
+        canvas.BoxAlpha(18, 128, 700, panelH, Color.RGB(5, 10, 20),
+                        panelAlpha);
+        canvas.Frame(18, 128, 700, panelH, Color.RGB(48, 67, 94));
+        canvas.Text(28, 136,
+                    "OBJECTIVE: " + regionObjectiveTitle(region), accent);
+        canvas.Text(520, 136,
+                    completeText + "  DISC " + Int(optional) + "/" +
+                    Int(REGION_OPTIONAL_TARGET), accent);
+        if hintMode == NAV_HINTS_ALWAYS {
+            canvas.Text(28, 158, regionObjectiveDescription(region),
+                        Color.RGB(155, 175, 205));
+            canvas.Text(28, 180,
+                        "LANDMARK: " + regionLandmarkName(region) +
+                        "  //  " + regionMechanicName(region),
+                        Color.RGB(120, 205, 220));
+        }
+    }
+
+    /// @brief Draw a short room-entry title without interrupting movement.
+    ///
+    /// @param canvas Borrowed release-resolution gameplay canvas.
+    /// @return Nothing. Draws only while `roomTitleTimer` is positive; Reduced
+    ///         Motion keeps the panel static while ordinary mode adds a tiny
+    ///         bounded vertical settle.
+    hide func drawRoomTitleToast(canvas: Canvas) {
+        if roomTitleTimer <= 0 { return; }
+        var y = 86;
+        if settings.getValue(SETTING_REDUCED_MOTION) == 0 and
+           roomTitleTimer > 1500 {
+            y = y - (roomTitleTimer - 1500) / 30;
+        }
+        var alpha = 205;
+        if roomTitleTimer < 300 { alpha = roomTitleTimer * 205 / 300; }
+        canvas.BoxAlpha(430, y, 420, 54, Color.RGB(4, 9, 18), alpha);
+        canvas.Frame(430, y, 420, 54, Color.RGB(55, 110, 145));
+        canvas.TextCenteredScaled(
+            y + 10,
+            worldGraph.getRoomName(currentLevel - 1, currentRoomIndex),
+            Color.RGB(205, 235, 245), 2);
     }
 }

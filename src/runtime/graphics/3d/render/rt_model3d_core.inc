@@ -43,6 +43,11 @@ typedef struct {
     model3d_scene_entry *scenes;
     int32_t scene_count;
     int32_t scene_capacity;
+
+    /* KHR_materials_variants: variant display names copied from the importer.
+     * The per-node material tables live on the scene nodes themselves. */
+    char **variant_names;
+    int32_t variant_count;
 } rt_model3d;
 
 /// @brief Validate @p obj as a Model3D handle and return its typed pointer (NULL on mismatch).
@@ -230,6 +235,13 @@ static void rt_model3d_finalize(void *obj) {
                               RT_G3D_NODEANIMATION3D_CLASS_ID);
     model_release_array_typed(
         &model->cameras, &model->camera_count, &model->camera_capacity, RT_G3D_CAMERA3D_CLASS_ID);
+    if (model->variant_names) {
+        for (int32_t i = 0; i < model->variant_count; i++)
+            free(model->variant_names[i]);
+        free(model->variant_names);
+    }
+    model->variant_names = NULL;
+    model->variant_count = 0;
 }
 
 /// @brief Allocate a zeroed `rt_model3d` with finalizer wired and a fresh template-root
@@ -709,6 +721,11 @@ after_lods:
         rt_scene_node3d_set_impostor(dst, impostor_distance, src->impostor_pixels);
     }
 
+    if (!rt_scene_node3d_copy_variant_materials(dst, src)) {
+        model_release_local(dst);
+        return NULL;
+    }
+
     return dst;
 }
 
@@ -1016,6 +1033,19 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
                                          &model->mesh_capacity,
                                          lod_mesh,
                                          "Model3D.Load: mesh list allocation failed")) {
+                free(stack);
+                return 0;
+            }
+        }
+        for (int32_t i = 0; i < current->variant_material_count && current->variant_materials;
+             i++) {
+            void *variant_material =
+                rt_g3d_checked_or_null(current->variant_materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
+            if (!model_append_unique_ref(&model->materials,
+                                         &model->material_count,
+                                         &model->material_capacity,
+                                         variant_material,
+                                         "Model3D.Load: material list allocation failed")) {
                 free(stack);
                 return 0;
             }

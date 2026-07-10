@@ -1,0 +1,229 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/tutorials.zia
+// Purpose: Owns per-profile contextual tutorial acknowledgement and presentation.
+// Key invariants:
+//   - Acknowledged tutorials never reopen for the same expedition profile.
+//   - At most one nonmodal tutorial card is active at a time.
+// Ownership/Lifetime:
+//   - Game owns one TutorialSystem; SaveManager persists its acknowledgement mask.
+// Links: game.zia, save.zia, settings.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
+
+module tutorials;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Text.Fmt;
+bind "./config";
+bind "./palette";
+
+final TUTORIAL_MOVE = 0;
+final TUTORIAL_JUMP = 1;
+final TUTORIAL_SHOOT = 2;
+final TUTORIAL_INTERACT = 3;
+final TUTORIAL_WALL_JUMP = 4;
+final TUTORIAL_CHECKPOINT = 5;
+final TUTORIAL_MAP = 6;
+final TUTORIAL_CHARGE = 7;
+final TUTORIAL_DASH = 8;
+final TUTORIAL_GROUND_POUND = 9;
+final TUTORIAL_GRAPPLE = 10;
+final TUTORIAL_DEATH_RECOVERY = 11;
+final TUTORIAL_COUNT = 12;
+
+/// @brief Return the concise heading for one contextual tutorial.
+///
+/// @param tutorial One `TUTORIAL_*` id.
+/// @return Stable release heading, or `Suit Guidance` for invalid ids.
+func tutorialTitle(tutorial: Integer) -> String {
+    if tutorial == TUTORIAL_MOVE { return "SUIT MOBILITY"; }
+    if tutorial == TUTORIAL_JUMP { return "JUMP ASSIST"; }
+    if tutorial == TUTORIAL_SHOOT { return "BLASTER ONLINE"; }
+    if tutorial == TUTORIAL_INTERACT { return "SYSTEM LINK"; }
+    if tutorial == TUTORIAL_WALL_JUMP { return "WALL THRUSTERS"; }
+    if tutorial == TUTORIAL_CHECKPOINT { return "RECONSTITUTION NODE"; }
+    if tutorial == TUTORIAL_MAP { return "NAVIGATION ARRAY"; }
+    if tutorial == TUTORIAL_CHARGE { return "CAPACITOR SHOT"; }
+    if tutorial == TUTORIAL_DASH { return "THRUSTER BURST"; }
+    if tutorial == TUTORIAL_GROUND_POUND { return "KINETIC DESCENT"; }
+    if tutorial == TUTORIAL_GRAPPLE { return "GRAPPLE RIG"; }
+    if tutorial == TUTORIAL_DEATH_RECOVERY { return "SALVAGE SIGNAL"; }
+    return "SUIT GUIDANCE";
+}
+
+/// @brief Return the semantic action name used as a live binding hint.
+///
+/// @param tutorial One `TUTORIAL_*` id.
+/// @return Action id for Action.BindingsStr, or an empty string for prose cards.
+func tutorialAction(tutorial: Integer) -> String {
+    if tutorial == TUTORIAL_MOVE { return ACT_RIGHT; }
+    if tutorial == TUTORIAL_JUMP { return ACT_JUMP; }
+    if tutorial == TUTORIAL_SHOOT { return ACT_SHOOT; }
+    if tutorial == TUTORIAL_INTERACT { return ACT_INTERACT; }
+    if tutorial == TUTORIAL_WALL_JUMP { return ACT_JUMP; }
+    if tutorial == TUTORIAL_CHECKPOINT { return ACT_INTERACT; }
+    if tutorial == TUTORIAL_MAP { return ACT_MAP; }
+    if tutorial == TUTORIAL_CHARGE { return ACT_SHOOT; }
+    if tutorial == TUTORIAL_DASH { return ACT_DASH; }
+    if tutorial == TUTORIAL_GROUND_POUND { return ACT_MOVE_DOWN; }
+    if tutorial == TUTORIAL_GRAPPLE { return ACT_GRAPPLE; }
+    return "";
+}
+
+/// @brief Return one-line contextual tutorial instruction text.
+///
+/// @param tutorial One `TUTORIAL_*` id.
+/// @return Stable player-facing instruction.
+func tutorialInstruction(tutorial: Integer) -> String {
+    if tutorial == TUTORIAL_MOVE { return "Move toward the emergency beacon."; }
+    if tutorial == TUTORIAL_JUMP { return "Hold jump for height; late input is buffered."; }
+    if tutorial == TUTORIAL_SHOOT { return "Clear unstable fauna with the suit blaster."; }
+    if tutorial == TUTORIAL_INTERACT { return "Link with terminals, doors, shrines, and transit pads."; }
+    if tutorial == TUTORIAL_WALL_JUMP { return "Press away and jump while sliding on a wall."; }
+    if tutorial == TUTORIAL_CHECKPOINT { return "Save stations restore integrity and set your respawn point."; }
+    if tutorial == TUTORIAL_MAP { return "Review discovered rooms and ability-gated routes."; }
+    if tutorial == TUTORIAL_CHARGE { return "Charge to tier two to break reinforced alien walls."; }
+    if tutorial == TUTORIAL_DASH { return "Dash through danger during the 160 ms immunity burst."; }
+    if tutorial == TUTORIAL_GROUND_POUND { return "Press down in air to break floors and stagger foes."; }
+    if tutorial == TUTORIAL_GRAPPLE { return "Attach to luminous anchors and release with momentum."; }
+    if tutorial == TUTORIAL_DEATH_RECOVERY { return "Return to the cyan signal to recover dropped salvage."; }
+    return "Follow ARIA's contextual suit guidance.";
+}
+
+/// @brief Per-profile contextual tutorial state and nonmodal HUD card.
+class TutorialSystem {
+    hide Integer acknowledgedMask;
+    hide Integer activeTutorial;
+    hide Integer revealTimer;
+
+    /// @brief Construct a clean tutorial profile with no active card.
+    ///
+    /// @return Nothing. Initializes all tutorial state to deterministic defaults.
+    expose func init() { reset(); }
+
+    /// @brief Reset acknowledgement and presentation state for New Game.
+    ///
+    /// @return Nothing. Clears all persisted and active tutorial bits.
+    expose func reset() {
+        acknowledgedMask = 0;
+        activeTutorial = -1;
+        revealTimer = 0;
+    }
+
+    /// @brief Restore a serialized acknowledgement mask without opening cards.
+    ///
+    /// @param mask Candidate nonnegative 12-bit profile mask.
+    /// @return Nothing. Clamps the mask and clears transient presentation.
+    expose func setMask(mask: Integer) {
+        acknowledgedMask = mask;
+        if acknowledgedMask < 0 { acknowledgedMask = 0; }
+        if acknowledgedMask > 4095 { acknowledgedMask = 4095; }
+        activeTutorial = -1;
+        revealTimer = 0;
+    }
+
+    /// @brief Read the serialized per-profile acknowledgement mask.
+    ///
+    /// @return Integer in 0..4095.
+    expose func getMask() -> Integer { return acknowledgedMask; }
+
+    /// @brief Request a tutorial card if it remains relevant and no card is active.
+    ///
+    /// @param tutorial One `TUTORIAL_*` id.
+    /// @return True when the card became active; false for invalid, acknowledged,
+    ///         duplicate, or lower-priority overlapping requests.
+    expose func request(tutorial: Integer) -> Boolean {
+        if tutorial < 0 or tutorial >= TUTORIAL_COUNT { return false; }
+        if isAcknowledged(tutorial) { return false; }
+        if activeTutorial >= 0 { return false; }
+        activeTutorial = tutorial;
+        revealTimer = 0;
+        return true;
+    }
+
+    /// @brief Permanently acknowledge a tutorial after its demonstrated action.
+    ///
+    /// @param tutorial One `TUTORIAL_*` id.
+    /// @return True only when a new acknowledgement bit was added.
+    expose func acknowledge(tutorial: Integer) -> Boolean {
+        if tutorial < 0 or tutorial >= TUTORIAL_COUNT { return false; }
+        if isAcknowledged(tutorial) { return false; }
+        var bit = tutorialBit(tutorial);
+        acknowledgedMask = acknowledgedMask + bit;
+        if activeTutorial == tutorial {
+            activeTutorial = -1;
+            revealTimer = 0;
+        }
+        return true;
+    }
+
+    /// @brief Query whether one tutorial has been completed in this profile.
+    ///
+    /// @param tutorial One `TUTORIAL_*` id.
+    /// @return True when its persistent bit is present.
+    expose func isAcknowledged(tutorial: Integer) -> Boolean {
+        var bit = tutorialBit(tutorial);
+        if bit <= 0 { return false; }
+        return (acknowledgedMask / bit) % 2 == 1;
+    }
+
+    /// @brief Read the currently visible tutorial id.
+    ///
+    /// @return One `TUTORIAL_*` id, or -1 when no card is active.
+    expose func getActiveTutorial() -> Integer { return activeTutorial; }
+
+    /// @brief Advance the card's bounded slide-in timer.
+    ///
+    /// @param dt Nonnegative elapsed simulation milliseconds.
+    /// @return Nothing. The card remains until its demonstrated action occurs.
+    expose func update(dt: Integer) {
+        if activeTutorial < 0 { return; }
+        revealTimer = revealTimer + dt;
+        if revealTimer > 300 { revealTimer = 300; }
+    }
+
+    /// @brief Draw the active contextual card using live semantic bindings.
+    ///
+    /// @param canvas Borrowed frame canvas.
+    /// @param pal Borrowed release palette.
+    /// @return Nothing. Draws no card when inactive.
+    expose func draw(canvas: Canvas, pal: Palette) {
+        if activeTutorial < 0 { return; }
+        var y = SCREEN_H - 154;
+        if revealTimer < 300 { y = SCREEN_H - revealTimer * 154 / 300; }
+        canvas.BoxAlpha(210, y, 860, 100, Color.RGB(7, 13, 27), 225);
+        canvas.Frame(210, y, 860, 100, pal.crystalBlue);
+        canvas.TextScaled(238, y + 16, tutorialTitle(activeTutorial),
+                          pal.titleYellow, 2);
+        canvas.Text(238, y + 52, tutorialInstruction(activeTutorial),
+                    pal.menuText);
+        var action = tutorialAction(activeTutorial);
+        if action != "" {
+            canvas.Text(815, y + 20, Action.BindingsStr(action),
+                        pal.crystalBlue);
+        }
+    }
+
+    /// @brief Convert one valid tutorial id to its power-of-two bit.
+    ///
+    /// @param tutorial One `TUTORIAL_*` id.
+    /// @return Positive bit value, or zero for invalid ids.
+    hide func tutorialBit(tutorial: Integer) -> Integer {
+        if tutorial < 0 or tutorial >= TUTORIAL_COUNT { return 0; }
+        var bit = 1;
+        var i = 0;
+        while i < tutorial {
+            bit = bit * 2;
+            i = i + 1;
+        }
+        return bit;
+    }
+}

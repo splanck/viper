@@ -175,6 +175,10 @@ typedef struct {
     int32_t scene_capacity;
     void *scene_root;
     int32_t node_count;
+    /* KHR_materials_variants: variant display names, index-aligned with the
+     * per-node variant material tables built during scene import. */
+    char **variant_names;
+    int32_t variant_name_count;
 } rt_gltf_asset;
 
 /// @brief Validate @p obj as a GLTF asset handle, returning NULL on class mismatch.
@@ -292,6 +296,13 @@ static void gltf_asset_finalize(void *obj) {
         rt_obj_free(a->scene_root);
     a->scene_root = NULL;
     a->node_count = 0;
+    if (a->variant_names) {
+        for (int32_t i = 0; i < a->variant_name_count; i++)
+            free(a->variant_names[i]);
+        free(a->variant_names);
+    }
+    a->variant_names = NULL;
+    a->variant_name_count = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -526,6 +537,11 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_unlit") == 0 ||
            strcmp(name, "KHR_materials_specular") == 0 ||
            strcmp(name, "KHR_materials_pbrSpecularGlossiness") == 0 ||
+           strcmp(name, "KHR_materials_variants") == 0 ||
+           strcmp(name, "EXT_meshopt_compression") == 0 ||
+           strcmp(name, "KHR_mesh_quantization") == 0 ||
+           strcmp(name, "KHR_texture_basisu") == 0 ||
+           strcmp(name, "KHR_draco_mesh_compression") == 0 ||
            strcmp(name, "KHR_lights_punctual") == 0;
 }
 
@@ -620,6 +636,7 @@ static void gltf_warn_unsupported_used_extensions(void *root) {
         const char *ext = rt_string_is_handle(name) ? rt_string_cstr(name) : NULL;
         if (gltf_used_extension_supported(ext))
             continue;
+        rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_IGNORED_EXTENSIONS, 1);
         rt_asset_error_add_warningf("glTF extension '%s' ignored: visual result may miss "
                                     "extension-specific material, geometry, animation, lighting, "
                                     "or texture behavior",
@@ -983,6 +1000,8 @@ static int64_t gltf_texture_source_index(void *texture_json) {
 //===----------------------------------------------------------------------===//
 // clang-format off
 #include "rt_gltf_codec.inc"
+#include "rt_gltf_meshopt.inc"
+#include "rt_gltf_draco.inc"
 #include "rt_gltf_accessor.inc"
 #include "rt_gltf_import.inc"
 #include "rt_gltf_preload.inc"
@@ -1065,6 +1084,7 @@ static int gltf_load_buffers(void *root,
                              uint8_t *bin_chunk,
                              size_t bin_chunk_len,
                              size_t root_size,
+                             int allow_placeholder_buffers,
                              gltf_buffer_t **out_buffers,
                              int *out_buf_count) {
     void *buffers_arr = jarr(root, "buffers");
@@ -1103,7 +1123,10 @@ static int gltf_load_buffers(void *root,
                 gltf_free_buffers(buffers, buf_count, bin_chunk);
                 return 0;
             }
-        } else if (byte_length > 0) {
+        } else if (byte_length > 0 && !allow_placeholder_buffers) {
+            /* URI-less buffers are only legal as EXT_meshopt_compression fallback
+             * placeholders; compressed views bypass them via the shadow table and
+             * plain views referencing a data-less buffer keep failing bounds checks. */
             gltf_free_buffers(buffers, buf_count, bin_chunk);
             return 0;
         }
@@ -1279,6 +1302,8 @@ typedef struct {
     int *mesh_prim_start;
     int *mesh_prim_count;
     void **primitive_materials;
+    int32_t **primitive_variant_mappings;
+    int32_t primitive_variant_mapping_count;
     gltf_material_info_t *material_infos;
     gltf_skin_t *skins;
     int32_t skin_count;
@@ -1301,6 +1326,11 @@ static void gltf_load_scratch_cleanup(gltf_load_scratch_t *scratch) {
     free(scratch->mesh_prim_start);
     free(scratch->mesh_prim_count);
     free(scratch->primitive_materials);
+    if (scratch->primitive_variant_mappings) {
+        for (int32_t i = 0; i < scratch->primitive_variant_mapping_count; i++)
+            free(scratch->primitive_variant_mappings[i]);
+    }
+    free(scratch->primitive_variant_mappings);
     free(scratch->material_infos);
     if (scratch->imported_lights) {
         for (int32_t i = 0; i < scratch->imported_light_count; i++)
@@ -1308,6 +1338,40 @@ static void gltf_load_scratch_cleanup(gltf_load_scratch_t *scratch) {
     }
     free(scratch->imported_lights);
     gltf_free_skins(scratch->skins, scratch->skin_count);
+}
+
+/// @brief Parse root `extensions.KHR_materials_variants.variants[].name` into the asset.
+/// @details Missing or unnamed entries synthesize "variant_N" so every variant stays
+///          addressable by index and by a stable display name. Absent extension → no-op.
+static void gltf_load_variant_names(rt_gltf_asset *asset, void *root) {
+    void *extensions = jget(root, "extensions");
+    void *variants_ext = extensions ? jget(extensions, "KHR_materials_variants") : NULL;
+    void *variants_arr = variants_ext ? jarr(variants_ext, "variants") : NULL;
+    int64_t count = jarr_len(variants_arr);
+    if (!asset || count <= 0)
+        return;
+    if (count > INT32_MAX || (size_t)count > SIZE_MAX / sizeof(char *))
+        return;
+    asset->variant_names = (char **)calloc((size_t)count, sizeof(char *));
+    if (!asset->variant_names)
+        return;
+    for (int64_t i = 0; i < count; i++) {
+        const char *name = jstr(rt_seq_get(variants_arr, i), "name");
+        char fallback[64];
+        if (!name || name[0] == '\0') {
+            snprintf(fallback, sizeof(fallback), "variant_%d", (int)i);
+            name = fallback;
+        }
+        asset->variant_names[i] = gltf_strdup_cstr(name);
+        if (!asset->variant_names[i]) {
+            for (int64_t j = 0; j < i; j++)
+                free(asset->variant_names[j]);
+            free(asset->variant_names);
+            asset->variant_names = NULL;
+            return;
+        }
+    }
+    asset->variant_name_count = (int32_t)count;
 }
 
 static int gltf_load_asset_payload(rt_gltf_asset *asset,
@@ -1342,6 +1406,7 @@ static int gltf_load_asset_payload(rt_gltf_asset *asset,
                         &scratch->material_infos,
                         &load_failed);
     gltf_parse_punctual_lights(root, &scratch->imported_lights, &scratch->imported_light_count);
+    gltf_load_variant_names(asset, root);
     gltf_load_meshes(asset,
                      root,
                      buffers,
@@ -1350,6 +1415,8 @@ static int gltf_load_asset_payload(rt_gltf_asset *asset,
                      &scratch->mesh_prim_start,
                      &scratch->mesh_prim_count,
                      &scratch->primitive_materials,
+                     &scratch->primitive_variant_mappings,
+                     &scratch->primitive_variant_mapping_count,
                      &load_failed);
     gltf_parse_skins(
         asset, root, buffers, buf_count, &scratch->skins, &scratch->skin_count, &load_failed);
@@ -1362,6 +1429,7 @@ static int gltf_load_asset_payload(rt_gltf_asset *asset,
                                                 scratch->mesh_prim_start,
                                                 scratch->mesh_prim_count,
                                                 scratch->primitive_materials,
+                                                scratch->primitive_variant_mappings,
                                                 scratch->skins,
                                                 scratch->skin_count,
                                                 scratch->imported_lights,
@@ -1459,8 +1527,11 @@ static void *rt_gltf_load_impl(rt_string path,
     int buf_count = 0;
     gltf_buffer_t *buffers = NULL;
     gltf_load_scratch_t scratch;
+    gltf_meshopt_table_t meshopt_table;
+    const gltf_meshopt_table_t *prev_meshopt_views;
     int load_failed = 0;
     memset(&scratch, 0, sizeof(scratch));
+    memset(&meshopt_table, 0, sizeof(meshopt_table));
     if (!gltf_load_buffers(root,
                            filepath,
                            load_assets,
@@ -1468,6 +1539,7 @@ static void *rt_gltf_load_impl(rt_string path,
                            bin_chunk,
                            bin_chunk_len,
                            file_size,
+                           gltf_document_lists_meshopt(root),
                            &buffers,
                            &buf_count)) {
         gltf_release_local(root);
@@ -1477,7 +1549,24 @@ static void *rt_gltf_load_impl(rt_string path,
         return NULL;
     }
 
+    /* EXT_meshopt_compression: materialize compressed bufferViews before anything
+     * (sparse validation included) resolves view data. The decoded table is
+     * thread-scoped so gltf_get_buffer_view_data can consult it transparently. */
+    if (!gltf_meshopt_decode_views(root, buffers, buf_count, &meshopt_table)) {
+        gltf_free_buffers(buffers, buf_count, bin_chunk);
+        gltf_release_local(root);
+        free(file_data);
+        rt_asset_error_setf_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                     "GLTF.Load: '%s' has invalid compressed buffer views",
+                                     filepath);
+        return NULL;
+    }
+    prev_meshopt_views = g_gltf_meshopt_views;
+    g_gltf_meshopt_views = &meshopt_table;
+
     if (!gltf_validate_sparse_accessors(root, buffers, buf_count)) {
+        g_gltf_meshopt_views = prev_meshopt_views;
+        gltf_meshopt_table_free(&meshopt_table);
         gltf_free_buffers(buffers, buf_count, bin_chunk);
         gltf_release_local(root);
         free(file_data);
@@ -1488,6 +1577,8 @@ static void *rt_gltf_load_impl(rt_string path,
 
     rt_gltf_asset *asset = gltf_asset_new_empty();
     if (!asset) {
+        g_gltf_meshopt_views = prev_meshopt_views;
+        gltf_meshopt_table_free(&meshopt_table);
         gltf_free_buffers(buffers, buf_count, bin_chunk);
         gltf_release_local(root);
         free(file_data);
@@ -1498,6 +1589,8 @@ static void *rt_gltf_load_impl(rt_string path,
         asset, root, filepath, load_assets, preload_bundle, buffers, buf_count, &scratch);
     gltf_load_scratch_cleanup(&scratch);
 
+    g_gltf_meshopt_views = prev_meshopt_views;
+    gltf_meshopt_table_free(&meshopt_table);
     gltf_free_buffers(buffers, buf_count, bin_chunk);
     gltf_release_local(root);
     free(file_data);
@@ -1781,6 +1874,23 @@ int64_t rt_gltf_node_count(void *obj) {
 void *rt_gltf_get_scene_root(void *obj) {
     rt_gltf_asset *a = gltf_asset_checked(obj);
     return a ? rt_g3d_checked_or_null(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID) : NULL;
+}
+
+/// @brief Number of KHR_materials_variants names imported with the asset (0 when absent).
+int64_t rt_gltf_variant_count(void *obj) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a || !a->variant_names || a->variant_name_count <= 0)
+        return 0;
+    return a->variant_name_count;
+}
+
+/// @brief Return the material-variant name at @p index, or an empty string when invalid.
+rt_string rt_gltf_get_variant_name(void *obj, int64_t index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a || !a->variant_names || index < 0 || index >= a->variant_name_count ||
+        !a->variant_names[index])
+        return rt_const_cstr("");
+    return rt_const_cstr(a->variant_names[index]);
 }
 
 #else

@@ -82,6 +82,8 @@
 // clang-format off
 #include "rt_textureasset3d_core.inc"
 #include "rt_textureasset3d_codecs.inc"
+#include "rt_textureasset3d_basislz.inc"
+#include "rt_textureasset3d_uastc.inc"
 #include "rt_textureasset3d_ktx2.inc"
 // clang-format on
 #endif

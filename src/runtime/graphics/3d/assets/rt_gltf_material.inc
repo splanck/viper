@@ -451,12 +451,12 @@ static void *gltf_material_create_pbr_from_json(void *pbr) {
 
 /// @brief Plan 09: convert a KHR_materials_pbrSpecularGlossiness payload into a
 ///        metallic-roughness Material3D.
-/// @details Standard lossy approximation implemented from the published math:
+/// @details Standard approximation implemented from the published math:
 ///          `diffuseFactor` → base color, `roughness = 1 - glossinessFactor`, and
 ///          `metallic ≈ saturate((maxComponent(specularFactor) - 0.04) / (1 - 0.04))`
-///          (dielectric F0 = 0.04). Per-texel gloss→roughness conversion of the
-///          specularGlossinessTexture is out of scope (v1 approximation; the texture
-///          binds to the specular slot).
+///          (dielectric F0 = 0.04). When a specularGlossinessTexture is present and
+///          decodes to CPU pixels, gltf_material_synthesize_spec_gloss_mr_map upgrades
+///          this factor-level conversion to a per-texel metallic-roughness map.
 static void *gltf_material_create_spec_gloss_from_json(void *spec_gloss) {
     double rgba[4] = {1.0, 1.0, 1.0, 1.0};
     double spec[3] = {1.0, 1.0, 1.0};
@@ -539,6 +539,105 @@ static int gltf_material_apply_spec_gloss_textures(void *spec_gloss,
             material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR),
         rt_material3d_set_specular_map);
     return load_failed;
+}
+
+/// @brief Convert one 8-bit sRGB-encoded channel to linear [0,1] (IEC 61966-2-1).
+static double gltf_srgb_u8_to_linear(uint8_t value) {
+    double c = (double)value / 255.0;
+    if (c <= 0.04045)
+        return c / 12.92;
+    return pow((c + 0.055) / 1.055, 2.4);
+}
+
+/// @brief Clamp @p value to [0,1] and quantize to an 8-bit channel with rounding.
+static uint8_t gltf_unit_to_u8(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0u;
+    if (value >= 1.0)
+        return 255u;
+    return (uint8_t)(value * 255.0 + 0.5);
+}
+
+/// @brief Per-texel spec-gloss → metallic-roughness conversion (completes Plan 09 §3.2).
+/// @details When the specularGlossinessTexture resolves to CPU pixels, synthesize a
+///          metallic-roughness Pixels in the glTF convention (roughness in G, metallic in
+///          B; R and A left at 255) with the material factors baked into the texels:
+///          `roughness = 1 - glossinessFactor * glossTexel` and metallic from the max
+///          component of `specularFactor * linear(specTexel)` against dielectric F0 0.04.
+///          The synthesized map binds to the metallic-roughness slot with the source
+///          texture's sampler/texcoord state, and the scalar metallic/roughness reset to 1
+///          so the baked texels are not scaled twice. Compressed (non-Pixels) sources keep
+///          the factor-level approximation.
+static void gltf_material_synthesize_spec_gloss_mr_map(void *spec_gloss,
+                                                       void *material,
+                                                       int32_t material_index,
+                                                       void **texture_images,
+                                                       const gltf_sampler_info_t *texture_samplers,
+                                                       int32_t texture_count,
+                                                       gltf_material_info_t *material_infos) {
+    void *sg_tex = spec_gloss ? jget(spec_gloss, "specularGlossinessTexture") : NULL;
+    int64_t tex_idx = jint(sg_tex, "index", -1);
+    rt_pixels_impl *src;
+    rt_pixels_impl *mr;
+    double gloss_factor;
+    double spec_factor[3] = {1.0, 1.0, 1.0};
+    void *sf;
+    size_t pixel_count;
+    if (!material || !texture_images || tex_idx < 0 || tex_idx >= texture_count)
+        return;
+    src = rt_pixels_checked_impl_or_null(texture_images[tex_idx]);
+    if (!src || !src->data || src->width <= 0 || src->height <= 0)
+        return;
+    gloss_factor = gltf_clamp_double(jnum(spec_gloss, "glossinessFactor", 1.0), 0.0, 1.0, 1.0);
+    sf = jarr(spec_gloss, "specularFactor");
+    if (sf && jarr_len(sf) >= 3) {
+        for (int i = 0; i < 3; i++)
+            spec_factor[i] = gltf_clamp_double(jvalue_num(rt_seq_get(sf, i), 1.0), 0.0, 1.0, 1.0);
+    }
+    mr = pixels_alloc(src->width, src->height);
+    if (!mr)
+        return;
+    pixel_count = (size_t)src->width * (size_t)src->height;
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint32_t texel = src->data[i]; /* 0xRRGGBBAA */
+        double spec_r = gltf_srgb_u8_to_linear((uint8_t)((texel >> 24) & 0xFFu)) * spec_factor[0];
+        double spec_g = gltf_srgb_u8_to_linear((uint8_t)((texel >> 16) & 0xFFu)) * spec_factor[1];
+        double spec_b = gltf_srgb_u8_to_linear((uint8_t)((texel >> 8) & 0xFFu)) * spec_factor[2];
+        double gloss = gloss_factor * ((double)(texel & 0xFFu) / 255.0);
+        double max_spec = spec_r;
+        double metallic;
+        uint8_t roughness_u8;
+        uint8_t metallic_u8;
+        if (spec_g > max_spec)
+            max_spec = spec_g;
+        if (spec_b > max_spec)
+            max_spec = spec_b;
+        metallic = (max_spec - 0.04) / (1.0 - 0.04);
+        roughness_u8 = gltf_unit_to_u8(1.0 - gloss);
+        metallic_u8 = gltf_unit_to_u8(metallic);
+        mr->data[i] = 0xFF000000u | ((uint32_t)roughness_u8 << 16) | ((uint32_t)metallic_u8 << 8) |
+                      0xFFu;
+    }
+    pixels_touch(mr);
+    rt_material3d_set_metallic_roughness_map(material, mr);
+    {
+        /* The MR map samples with the SG texture's texcoord/transform and sampler state. */
+        gltf_texture_info_t *sg_info = gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+        gltf_texture_info_t *mr_info = gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
+        if (sg_info && mr_info)
+            *mr_info = *sg_info;
+        gltf_apply_texture_slot(texture_samplers,
+                                texture_count,
+                                tex_idx,
+                                material,
+                                RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                mr_info);
+    }
+    rt_material3d_set_metallic(material, 1.0);
+    rt_material3d_set_roughness(material, 1.0);
+    gltf_release_local(mr);
 }
 
 static void *gltf_material_create_default_pbr(void) {
@@ -902,6 +1001,13 @@ static void gltf_load_materials(rt_gltf_asset *asset,
                                                                        texture_samplers,
                                                                        texture_count,
                                                                        material_infos);
+                gltf_material_synthesize_spec_gloss_mr_map(spec_gloss,
+                                                           mat,
+                                                           i,
+                                                           texture_images,
+                                                           texture_samplers,
+                                                           texture_count,
+                                                           material_infos);
             } else if (pbr) {
                 mat = gltf_material_create_pbr_from_json(pbr);
                 load_failed |= gltf_material_apply_pbr_textures(pbr,

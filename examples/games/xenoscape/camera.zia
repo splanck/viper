@@ -1,7 +1,21 @@
-// =============================================================================
-// camera.zia — Smooth camera + parallax + biome-specific backgrounds
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/camera.zia
+// Purpose: Owns deterministic player framing and ten biome background families.
+// Key invariants:
+//   - Look-ahead and vertical intent never exceed their authored pixel bounds.
+//   - Runtime Camera remains the single owner of world-bound clamping.
+// Ownership/Lifetime:
+//   - Game owns one GameCamera; generated background Pixels live with it.
+// Links: game.zia, renderer.zia, sprites.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — CAMERAS THAT DON'T MAKE PLAYERS NAUSEOUS
 // ---------------------------------------------------
@@ -71,9 +85,13 @@ bind Viper.Graphics;
 // SmoothValue no longer needed — Camera.SmoothFollow provides built-in interpolation
 bind Viper.Math.PerlinNoise as PerlinNoise;
 bind Viper.Core;
+bind "./camera_logic";
 bind "./config";
 bind "./palette";
 bind "./sprites";
+
+final CAMERA_BASE_VERTICAL_BIAS = 80;
+final CAMERA_FOLLOW_LERP = 150;
 
 /// @brief Smooth-following camera + biome-specific animated
 ///        background renderer.  One instance lives on `Game`.
@@ -105,6 +123,10 @@ class GameCamera {
 
     // Background animation timer (accumulated ms, wraps at 60000)
     hide Integer bgTimer;
+    hide Integer lookAheadX;
+    hide Integer verticalIntentTimer;
+    hide Integer verticalIntentDirection;
+    hide Integer verticalIntentOffset;
 
     // Pre-generated Perlin noise cloud textures (5 variants)
     hide Pixels cloudFar0;   // 64x28  — small wisp
@@ -123,6 +145,10 @@ class GameCamera {
         levelPixelW = 0;
         levelPixelH = 0;
         bgTimer = 0;
+        lookAheadX = 0;
+        verticalIntentTimer = 0;
+        verticalIntentDirection = 0;
+        verticalIntentOffset = 0;
         cam = Camera.New(SCREEN_W, SCREEN_H);
         // Camera.SmoothFollow provides built-in interpolation with lerp factor
 
@@ -161,8 +187,12 @@ class GameCamera {
     ///        respawn so the player isn't off-screen for the
     ///        first frame.
     expose func snapTo(playerCX: Integer, playerCY: Integer) {
+        lookAheadX = 0;
+        verticalIntentTimer = 0;
+        verticalIntentDirection = 0;
+        verticalIntentOffset = 0;
         // SmoothFollow with lerp=1000 is instant (same as Follow)
-        cam.SmoothFollow(playerCX, playerCY + 80, 1000);
+        cam.SmoothFollow(playerCX, playerCY + CAMERA_BASE_VERTICAL_BIAS, 1000);
         x = cam.get_X();
         y = cam.get_Y();
     }
@@ -172,10 +202,58 @@ class GameCamera {
     ///        Game.tick calls this every frame with the
     ///        player's centre.
     expose func follow(playerCX: Integer, playerCY: Integer) {
-        // Smooth follow with downward bias — Camera.SmoothFollow handles
-        // interpolation + bounds clamping in a single call.
-        // The +80 offset biases the view slightly downward for platformer feel.
-        cam.SmoothFollow(playerCX, playerCY + 80, 150);
+        followWithIntent(playerCX, playerCY, 0, 0, DT_BASE, false);
+    }
+
+    /// @brief Follow velocity look-ahead and deliberate vertical inspection.
+    ///
+    /// Horizontal framing scales linearly to 160 pixels at full run speed and
+    /// eases toward direction changes. Holding up/down continuously for 250 ms
+    /// enables a signed 96-pixel vertical offset. Reduced Motion suppresses both
+    /// nonessential sweeps while retaining the ordinary platforming bias.
+    /// Runtime Camera performs the final easing and world-bounds clamp.
+    ///
+    /// @param playerCX Player center X in world pixels.
+    /// @param playerCY Player center Y in world pixels.
+    /// @param playerVx Horizontal centipixel velocity.
+    /// @param verticalDirection Negative for up, positive for down, zero neutral.
+    /// @param dt Clamped live-simulation delta in milliseconds.
+    /// @param reducedMotion True to suppress look-ahead and vertical sweeps.
+    /// @return Nothing. Updates exposed camera X/Y and owned intent state.
+    expose func followWithIntent(playerCX: Integer, playerCY: Integer,
+                                 playerVx: Integer,
+                                 verticalDirection: Integer, dt: Integer,
+                                 reducedMotion: Boolean) {
+        var elapsed = dt;
+        if elapsed < 0 { elapsed = 0; }
+        if elapsed > DT_MAX { elapsed = DT_MAX; }
+
+        var targetLookAhead = cameraLookAheadTarget(playerVx, reducedMotion);
+        lookAheadX = approachCameraOffset(
+            lookAheadX, targetLookAhead, elapsed, 96);
+
+        var direction = 0;
+        if verticalDirection < 0 { direction = -1; }
+        if verticalDirection > 0 { direction = 1; }
+        if reducedMotion { direction = 0; }
+        if direction == 0 or direction != verticalIntentDirection {
+            verticalIntentTimer = 0;
+            verticalIntentDirection = direction;
+        } else {
+            verticalIntentTimer = verticalIntentTimer + elapsed;
+            if verticalIntentTimer > CAMERA_VERTICAL_INTENT_DELAY_MS {
+                verticalIntentTimer = CAMERA_VERTICAL_INTENT_DELAY_MS;
+            }
+        }
+        var targetVertical = cameraVerticalIntentTarget(
+            direction, verticalIntentTimer, reducedMotion);
+        verticalIntentOffset = approachCameraOffset(
+            verticalIntentOffset, targetVertical, elapsed, 120);
+
+        cam.SmoothFollow(playerCX + lookAheadX,
+                         playerCY + CAMERA_BASE_VERTICAL_BIAS +
+                         verticalIntentOffset,
+                         CAMERA_FOLLOW_LERP);
 
         x = cam.get_X();
         y = cam.get_Y();

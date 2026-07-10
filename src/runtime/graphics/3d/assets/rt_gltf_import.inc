@@ -179,6 +179,7 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     uint32_t vertex_bytes_u32;
     uint32_t index_bytes_u32;
     uint32_t bone_count_u32;
+    gltf_skin_import_stats_t skin_stats;
     size_t vertex_bytes;
     size_t index_bytes;
     size_t vertex_offset;
@@ -206,6 +207,8 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     vertex_bytes_u32 = gltf_read_u32_le(blob + 20);
     index_bytes_u32 = gltf_read_u32_le(blob + 24);
     bone_count_u32 = gltf_read_u32_le(blob + 28);
+    skin_stats.truncated_vertices = gltf_read_u32_le(blob + 32);
+    skin_stats.out_of_range_vertices = gltf_read_u32_le(blob + 36);
     if (magic != GLTF_PRELOAD_MESH_POD_MAGIC || version != GLTF_PRELOAD_MESH_POD_VERSION ||
         vertex_count == 0 || index_count == 0)
         goto malformed;
@@ -258,6 +261,10 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     if (!gltf_preload_take_decoded_morph(
             preload_bundle, mesh_index, primitive_index, mesh_obj, vertex_count))
         goto malformed;
+    /* The worker that decoded this POD could not reach the loader's thread-local
+     * warning store, so its skin-import diagnostics ride the header and are
+     * surfaced here on the committing thread. */
+    gltf_emit_skin_import_warnings(mesh_index, primitive_index, &skin_stats);
     if (out_flags)
         *out_flags = flags;
     free(blob);
@@ -526,6 +533,10 @@ static rt_scene_node3d *gltf_clone_scene_node_shallow(const rt_scene_node3d *src
     if (src->name) {
         rt_obj_retain_maybe(src->name);
         dst->name = src->name;
+    }
+    if (!rt_scene_node3d_copy_variant_materials(dst, src)) {
+        gltf_release_local(dst);
+        return NULL;
     }
     return dst;
 }
@@ -989,13 +1000,13 @@ static void gltf_import_primitive_morph_targets(void *root,
         int has_tangent =
             gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &tangent_view);
         if (has_pos && (!gltf_accessor_has_payload(&pos_view) ||
-                        !gltf_accessor_is_f32_components(&pos_view, 3, 3)))
+                        !gltf_accessor_is_position(&pos_view)))
             has_pos = 0;
         if (has_norm && (!gltf_accessor_has_payload(&norm_view) ||
-                         !gltf_accessor_is_f32_components(&norm_view, 3, 3)))
+                         !gltf_accessor_is_normal(&norm_view)))
             has_norm = 0;
         if (has_tangent && (!gltf_accessor_has_payload(&tangent_view) ||
-                            !gltf_accessor_is_f32_components(&tangent_view, 3, 4)))
+                            !gltf_accessor_is_tangent(&tangent_view, 3)))
             has_tangent = 0;
         char fallback_name[64];
         const char *name;

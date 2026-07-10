@@ -1,7 +1,22 @@
-// =============================================================================
-// level.zia — Tilemaps, room layouts, enemy + pickup spawn lists
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/level.zia
+// Purpose: Owns campaign tilemaps, dynamic tiles, and authored spawn records.
+// Key invariants:
+//   - Tile coordinates are bounds-checked before mutation or property lookup.
+//   - Dynamic durability state is reset whenever an authored level is rebuilt.
+// Ownership/Lifetime:
+//   - Game owns one Level and replaces its content on regional transitions.
+//   - Level owns the active Tilemap and all parallel spawn/dynamic-state lists.
+// Links: physics.zia, projectile.zia, renderer.zia, game.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — STORING A 2D LEVEL
 // -----------------------------
@@ -86,7 +101,9 @@ module level;
 bind Viper.Graphics;
 bind Viper.Graphics2D.Tilemap as Tilemap;
 bind Viper.Game;
+bind "./abilities";
 bind "./config";
+bind "./world_state";
 
 class Level {
     expose Tilemap tilemap;
@@ -111,11 +128,40 @@ class Level {
     expose List[Integer] pickupX;
     expose List[Integer] pickupY;
 
+    // Stable authored interaction records. Parallel list index is a room-local
+    // handle; `interactionIds` and channels remain stable across rebuilds/saves.
+    expose List[Integer] interactionTypes;
+    expose List[Integer] interactionIds;
+    expose List[Integer] interactionCols;
+    expose List[Integer] interactionRows;
+    expose List[Integer] interactionChannels;
+    expose List[Integer] interactionPayloads;
+
+    // Structural content anchors used by HUD, validation, and deterministic
+    // campaign probes. Values are tile columns in the currently loaded region.
+    expose Integer landmarkCol;
+    expose Integer tutorialStartCol;
+    expose Integer masteryStartCol;
+    expose Integer setPieceCol;
+    expose List[Integer] secretCols;
+
     // Boss spawn
     expose Integer bossX;
     expose Integer bossY;
     expose Boolean hasBoss;
     expose Integer bossType;
+
+    // Lazily allocated durability records for destructible tiles. The tile key
+    // is `col + row * levelWidth`; authored tiles not yet hit implicitly have 2 HP.
+    hide List[Integer] destructibleKeys;
+    hide List[Integer] destructibleHp;
+
+    // Crumble records are also lazy. Contact time applies only while intact;
+    // regeneration time applies only while the authored tile is temporarily empty.
+    hide List[Integer] crumbleKeys;
+    hide List[Integer] crumbleContactMs;
+    hide List[Integer] crumbleRegenMs;
+    hide List[Integer] crumbleTouched;
 
     expose func init() {
         levelWidth = 0;
@@ -132,10 +178,27 @@ class Level {
         pickupTypes = [];
         pickupX = [];
         pickupY = [];
+        interactionTypes = [];
+        interactionIds = [];
+        interactionCols = [];
+        interactionRows = [];
+        interactionChannels = [];
+        interactionPayloads = [];
+        landmarkCol = -1;
+        tutorialStartCol = -1;
+        masteryStartCol = -1;
+        setPieceCol = -1;
+        secretCols = [];
         bossX = 0;
         bossY = 0;
         hasBoss = false;
         bossType = ENEMY_BOSS;
+        destructibleKeys = [];
+        destructibleHp = [];
+        crumbleKeys = [];
+        crumbleContactMs = [];
+        crumbleRegenMs = [];
+        crumbleTouched = [];
     }
 
     expose func loadLevel(num: Integer) {
@@ -146,9 +209,26 @@ class Level {
         pickupTypes = [];
         pickupX = [];
         pickupY = [];
+        interactionTypes = [];
+        interactionIds = [];
+        interactionCols = [];
+        interactionRows = [];
+        interactionChannels = [];
+        interactionPayloads = [];
+        landmarkCol = -1;
+        tutorialStartCol = -1;
+        masteryStartCol = -1;
+        setPieceCol = -1;
+        secretCols = [];
         hasCheckpoint = false;
         hasBoss = false;
         bossType = ENEMY_BOSS;
+        destructibleKeys = [];
+        destructibleHp = [];
+        crumbleKeys = [];
+        crumbleContactMs = [];
+        crumbleRegenMs = [];
+        crumbleTouched = [];
 
         // Xenoscape: 10-level interconnected world
         if num == 1 { buildDescent(); }          // Crash Site / tutorial
@@ -161,6 +241,10 @@ class Level {
         else if num == 8 { buildFrozenAbyss(); }    // Frozen Abyss
         else if num == 9 { buildSkyFortress(); }    // Corrupted Ruins (repurposed)
         else { buildTheCore(); } // Level 10: The Core — final level
+
+        authorReleaseInteractions(num);
+        authorRegionalMechanics(num);
+        authorCampaignContent(num);
     }
 
     expose func isSolid(col: Integer, row: Integer) -> Boolean {
@@ -187,6 +271,363 @@ class Level {
         if col >= levelWidth { return TILE_EMPTY; }
         if row >= levelHeight { return TILE_EMPTY; }
         return tilemap.GetTile(col, row);
+    }
+
+    /// @brief Find the nearest authored interaction of one type.
+    ///
+    /// Distance is measured from the supplied world point to each authored tile
+    /// center using Manhattan distance. This keeps selection deterministic when
+    /// two records overlap and avoids deriving gameplay ids from coordinates.
+    ///
+    /// @param interactionType One `INTERACTION_*` record type.
+    /// @param worldX Query point x coordinate in whole world pixels.
+    /// @param worldY Query point y coordinate in whole world pixels.
+    /// @param radius Maximum inclusive Manhattan distance in pixels.
+    /// @return Room-local record index, or -1 when no matching record is nearby.
+    expose func findNearbyInteraction(interactionType: Integer,
+                                      worldX: Integer, worldY: Integer,
+                                      radius: Integer) -> Integer {
+        var best = -1;
+        var bestDistance = radius + 1;
+        var i = 0;
+        while i < interactionTypes.length() {
+            if interactionTypes.get(i) == interactionType {
+                var dx = interactionCols.get(i) * TILE_SIZE + TILE_SIZE / 2 - worldX;
+                var dy = interactionRows.get(i) * TILE_SIZE + TILE_SIZE / 2 - worldY;
+                if dx < 0 { dx = 0 - dx; }
+                if dy < 0 { dy = 0 - dy; }
+                var distance = dx + dy;
+                if distance <= radius and distance < bestDistance {
+                    best = i;
+                    bestDistance = distance;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    /// @brief Rebuild mutable interaction tiles from persistent save masks.
+    ///
+    /// Switch targets mirror their channel polarity, keyed doors disappear once
+    /// permanently opened, and consumed shrines become inert consoles. Authored
+    /// records remain intact so proximity, map metadata, and save ids do not
+    /// change when their visible tile changes.
+    ///
+    /// @param switches Persistent switch-channel mask from `WorldState`.
+    /// @param doors Permanently opened keyed-door mask.
+    /// @param shrines Permanently consumed ability-shrine mask.
+    /// @return Nothing. Mutates only tiles represented by authored records.
+    expose func applyPersistentInteractionState(switches: Integer,
+                                                doors: Integer,
+                                                shrines: Integer) {
+        var i = 0;
+        while i < interactionTypes.length() {
+            var kind = interactionTypes.get(i);
+            var col = interactionCols.get(i);
+            var row = interactionRows.get(i);
+            if kind == INTERACTION_SWITCH_TARGET {
+                if worldStateMaskHas(switches, interactionChannels.get(i)) {
+                    tilemap.SetTile(col, row, TILE_HOLO_BRIDGE);
+                } else {
+                    tilemap.SetTile(col, row, TILE_EMPTY);
+                }
+            }
+            if kind == INTERACTION_LOCKED_DOOR {
+                if worldStateMaskHas(doors, interactionIds.get(i)) {
+                    tilemap.SetTile(col, row, TILE_EMPTY);
+                } else {
+                    tilemap.SetTile(col, row, TILE_LOCKED_DOOR);
+                }
+            }
+            if kind == INTERACTION_ABILITY_SHRINE {
+                if worldStateMaskHas(shrines, interactionIds.get(i)) {
+                    tilemap.SetTile(col, row, TILE_CONSOLE);
+                } else {
+                    tilemap.SetTile(col, row, TILE_ABILITY_SHRINE);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Find the nearest visible authored grapple anchor within range.
+    ///
+    /// Candidates use squared pixel distance and must have clear tilemap line of
+    /// sight from the player query point. Ties prefer the earliest row-major
+    /// coordinate, keeping selection identical across VM/native executions.
+    ///
+    /// @param worldX Player/query x in whole world pixels.
+    /// @param worldY Player/query y in whole world pixels.
+    /// @param radius Maximum inclusive acquisition radius in pixels.
+    /// @return Flattened anchor tile key, or -1 when none is valid and visible.
+    expose func findNearestGrappleAnchor(worldX: Integer, worldY: Integer,
+                                         radius: Integer) -> Integer {
+        if radius < 0 { return -1; }
+        var best = -1;
+        var bestDistance = radius * radius + 1;
+        var row = 0;
+        while row < levelHeight {
+            var col = 0;
+            while col < levelWidth {
+                if getTile(col, row) == TILE_GRAPPLE_ANCHOR {
+                    var ax = col * TILE_SIZE + TILE_SIZE / 2;
+                    var ay = row * TILE_SIZE + TILE_SIZE / 2;
+                    var dx = ax - worldX;
+                    var dy = ay - worldY;
+                    var distance = dx * dx + dy * dy;
+                    if distance <= radius * radius and distance < bestDistance {
+                        if Raycast.HasLineOfSight(tilemap, worldX, worldY, ax, ay) {
+                            best = col + row * levelWidth;
+                            bestDistance = distance;
+                        }
+                    }
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+        return best;
+    }
+
+    /// @brief Read remaining durability for one authored destructible tile.
+    ///
+    /// Untouched destructible tiles implicitly have two durability, avoiding a
+    /// full-map allocation during load. Broken, non-destructible, and out-of-
+    /// bounds coordinates report zero.
+    ///
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @return Remaining durability in the inclusive range 0..2.
+    expose func getDestructibleDurability(col: Integer, row: Integer) -> Integer {
+        if getTile(col, row) != TILE_DESTRUCTIBLE { return 0; }
+        var key = col + row * levelWidth;
+        var idx = findDestructibleRecord(key);
+        if idx < 0 { return 2; }
+        return destructibleHp.get(idx);
+    }
+
+    /// @brief Apply charged-shot power to one destructible tile.
+    ///
+    /// The first hit lazily creates a two-durability record. Power is clamped by
+    /// behavior: nonpositive values do nothing, positive values subtract from
+    /// durability, and reaching zero replaces the tile with `TILE_EMPTY` so
+    /// collision, raycast, AI navigation on reload, and rendering agree.
+    ///
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @param power Positive destructible power from the projectile charge tier.
+    /// @return 0 when unaffected, 1 when damaged but intact, or 2 when broken.
+    expose func damageDestructible(col: Integer, row: Integer,
+                                   power: Integer) -> Integer {
+        if power <= 0 { return 0; }
+        if getTile(col, row) != TILE_DESTRUCTIBLE { return 0; }
+
+        var key = col + row * levelWidth;
+        var idx = findDestructibleRecord(key);
+        if idx < 0 {
+            destructibleKeys.add(key);
+            destructibleHp.add(2);
+            idx = destructibleHp.length() - 1;
+        }
+
+        var remaining = destructibleHp.get(idx) - power;
+        if remaining <= 0 {
+            destructibleHp.set(idx, 0);
+            tilemap.SetTile(col, row, TILE_EMPTY);
+            return 2;
+        }
+        destructibleHp.set(idx, remaining);
+        return 1;
+    }
+
+    /// @brief Damage the first destructible crossed by a horizontal shot path.
+    ///
+    /// Player projectiles currently travel horizontally. Iterating tile columns
+    /// prevents a high-speed charged shot from tunnelling over a destructible
+    /// wall before the ordinary solid-tile raycast releases the projectile.
+    ///
+    /// @param fromWorldX Starting world-pixel x coordinate.
+    /// @param toWorldX Ending world-pixel x coordinate for this frame.
+    /// @param worldY World-pixel y coordinate sampled for the projectile center.
+    /// @param power Destructible power; nonpositive input performs no mutation.
+    /// @return The 0/1/2 result from `damageDestructible`, or zero when no
+    ///         destructible tile intersects the bounded horizontal path.
+    expose func damageFirstDestructibleHorizontal(fromWorldX: Integer,
+                                                   toWorldX: Integer,
+                                                   worldY: Integer,
+                                                   power: Integer) -> Integer {
+        if power <= 0 or levelWidth <= 0 or levelHeight <= 0 { return 0; }
+        var row = worldY / TILE_SIZE;
+        if row < 0 or row >= levelHeight { return 0; }
+
+        var fromCol = fromWorldX / TILE_SIZE;
+        var toCol = toWorldX / TILE_SIZE;
+        if fromCol < 0 { fromCol = 0; }
+        if toCol < 0 { toCol = 0; }
+        if fromCol >= levelWidth { fromCol = levelWidth - 1; }
+        if toCol >= levelWidth { toCol = levelWidth - 1; }
+
+        var step = 1;
+        if toCol < fromCol { step = -1; }
+        var col = fromCol;
+        while true {
+            if getTile(col, row) == TILE_DESTRUCTIBLE {
+                return damageDestructible(col, row, power);
+            }
+            if col == toCol { break; }
+            col = col + step;
+        }
+        return 0;
+    }
+
+    /// @brief Damage a destructible tile at one world-pixel sample point.
+    ///
+    /// Ground-pound landing uses the player's center foot point; converting in
+    /// Level keeps tile bounds and durability policy centralized with projectiles.
+    ///
+    /// @param worldX World-pixel x coordinate inside the candidate floor tile.
+    /// @param worldY World-pixel y coordinate inside the candidate floor tile.
+    /// @param power Positive destructible power, normally full power for pound.
+    /// @return The 0/1/2 result from `damageDestructible`.
+    expose func damageDestructibleAtWorld(worldX: Integer,
+                                          worldY: Integer,
+                                          power: Integer) -> Integer {
+        return damageDestructible(worldX / TILE_SIZE,
+                                  worldY / TILE_SIZE, power);
+    }
+
+    /// @brief Find a lazily allocated destructible record by flattened tile key.
+    ///
+    /// @param key Flattened `col + row * levelWidth` tile coordinate.
+    /// @return Record index, or -1 when the authored tile has not been hit yet.
+    hide func findDestructibleRecord(key: Integer) -> Integer {
+        var i = 0;
+        while i < destructibleKeys.length() {
+            if destructibleKeys.get(i) == key { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Accumulate continuous player contact on one crumble tile.
+    ///
+    /// The record is created lazily on first contact. Calling this method during
+    /// consecutive simulation frames accumulates toward `CRUMBLE_CONTACT_MS`.
+    /// Once the threshold is reached, the tile becomes empty and starts its
+    /// regeneration timer. `updateDynamicTiles` resets interrupted contact.
+    ///
+    /// @param col Zero-based authored tile column under the player's feet.
+    /// @param row Zero-based authored tile row under the player's feet.
+    /// @param dt Nonnegative elapsed simulation time in milliseconds.
+    /// @return 0 for no crumble contact, 1 while intact/contacting, or 2 on the
+    ///         exact call that removes the tile.
+    expose func touchCrumble(col: Integer, row: Integer,
+                             dt: Integer) -> Integer {
+        if getTile(col, row) != TILE_CRUMBLE { return 0; }
+
+        var key = col + row * levelWidth;
+        var idx = findCrumbleRecord(key);
+        if idx < 0 {
+            crumbleKeys.add(key);
+            crumbleContactMs.add(0);
+            crumbleRegenMs.add(0);
+            crumbleTouched.add(0);
+            idx = crumbleKeys.length() - 1;
+        }
+        if crumbleRegenMs.get(idx) > 0 { return 0; }
+
+        var elapsed = dt;
+        if elapsed < 0 { elapsed = 0; }
+        crumbleTouched.set(idx, 1);
+        var contact = crumbleContactMs.get(idx) + elapsed;
+        if contact >= CRUMBLE_CONTACT_MS {
+            crumbleContactMs.set(idx, 0);
+            crumbleRegenMs.set(idx, CRUMBLE_REGEN_MS);
+            tilemap.SetTile(col, row, TILE_EMPTY);
+            return 2;
+        }
+        crumbleContactMs.set(idx, contact);
+        return 1;
+    }
+
+    /// @brief Advance temporary dynamic-tile state by one live gameplay frame.
+    ///
+    /// Call this before the player's contact pass. A crumble record untouched in
+    /// the preceding frame loses its partial contact progress. Broken tiles count
+    /// down and restore their authored `TILE_CRUMBLE` identity after exactly the
+    /// configured regeneration interval. Modal overlays intentionally skip this
+    /// update so the world remains frozen beneath them.
+    ///
+    /// @param dt Nonnegative elapsed simulation time in milliseconds.
+    /// @return Number of crumble tiles regenerated during this call.
+    expose func updateDynamicTiles(dt: Integer) -> Integer {
+        var elapsed = dt;
+        if elapsed < 0 { elapsed = 0; }
+        var regenerated = 0;
+        var i = 0;
+        while i < crumbleKeys.length() {
+            var regen = crumbleRegenMs.get(i);
+            if regen > 0 {
+                regen = regen - elapsed;
+                if regen <= 0 {
+                    regen = 0;
+                    var key = crumbleKeys.get(i);
+                    var col = key % levelWidth;
+                    var row = key / levelWidth;
+                    tilemap.SetTile(col, row, TILE_CRUMBLE);
+                    crumbleContactMs.set(i, 0);
+                    regenerated = regenerated + 1;
+                }
+                crumbleRegenMs.set(i, regen);
+            } else if crumbleTouched.get(i) == 0 {
+                crumbleContactMs.set(i, 0);
+            }
+            crumbleTouched.set(i, 0);
+            i = i + 1;
+        }
+        return regenerated;
+    }
+
+    /// @brief Read continuous contact time for crumble warning animation.
+    ///
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @return Contact milliseconds for an intact recorded tile, otherwise zero.
+    expose func getCrumbleContactMs(col: Integer, row: Integer) -> Integer {
+        if col < 0 or row < 0 or col >= levelWidth or row >= levelHeight {
+            return 0;
+        }
+        var idx = findCrumbleRecord(col + row * levelWidth);
+        if idx < 0 or crumbleRegenMs.get(idx) > 0 { return 0; }
+        return crumbleContactMs.get(idx);
+    }
+
+    /// @brief Read remaining regeneration time for a broken crumble tile.
+    ///
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @return Remaining milliseconds, or zero for intact/untracked coordinates.
+    expose func getCrumbleRegenMs(col: Integer, row: Integer) -> Integer {
+        if col < 0 or row < 0 or col >= levelWidth or row >= levelHeight {
+            return 0;
+        }
+        var idx = findCrumbleRecord(col + row * levelWidth);
+        if idx < 0 { return 0; }
+        return crumbleRegenMs.get(idx);
+    }
+
+    /// @brief Find a crumble record by flattened tile coordinate.
+    ///
+    /// @param key Flattened `col + row * levelWidth` tile coordinate.
+    /// @return Existing parallel-list index, or -1 if never contacted.
+    hide func findCrumbleRecord(key: Integer) -> Integer {
+        var i = 0;
+        while i < crumbleKeys.length() {
+            if crumbleKeys.get(i) == key { return i; }
+            i = i + 1;
+        }
+        return -1;
     }
 
     expose func getTilePropertyAt(col: Integer, row: Integer,
@@ -252,8 +693,7 @@ class Level {
         tilemap.SetCollision(TILE_CONVEYOR_R, 1);
         tilemap.SetCollision(TILE_STEAM_VENT, 1);
         tilemap.SetCollision(TILE_DESTRUCTIBLE, 1);
-        tilemap.SetCollision(TILE_SAVE_STATION, 1);
-        tilemap.SetCollision(TILE_LORE_TERMINAL, 1);
+        tilemap.SetCollision(TILE_LOCKED_DOOR, 1);
         registerTileProperties();
     }
 
@@ -268,12 +708,715 @@ class Level {
         tilemap.SetTileProperty(TILE_POISON_POOL, "hazard", TILE_POISON_POOL);
 
         tilemap.SetTileProperty(TILE_ICE_FLOOR, "surface", 1);
+        tilemap.SetTileProperty(TILE_QUICKSAND, "quicksand", 1);
         tilemap.SetTileProperty(TILE_CONVEYOR_L, "conveyor", -1);
         tilemap.SetTileProperty(TILE_CONVEYOR_R, "conveyor", 1);
         tilemap.SetTileProperty(TILE_STEAM_VENT, "steam", 1);
         tilemap.SetTileProperty(TILE_SAVE_STATION, "save", 1);
         tilemap.SetTileProperty(TILE_LORE_TERMINAL, "lore", 1);
         tilemap.SetTileProperty(TILE_CRUMBLE, "crumble", 1);
+        tilemap.SetTileProperty(TILE_GRAPPLE_ANCHOR, "grapple", 1);
+    }
+
+    /// @brief Add the commercial-release interaction set for one campaign area.
+    ///
+    /// Every region receives stable save, lore, switch, optional-platform,
+    /// keycard, keyed-door, and teleporter records. Underground Lake and
+    /// Overgrowth additionally receive their authored ability shrines. Placement
+    /// searches for walkable floor near percentage-based design anchors, keeping
+    /// procedural fallback builders playable without coordinate-derived ids.
+    ///
+    /// @param levelNum One-based campaign area number just built by `loadLevel`.
+    /// @return Nothing. Appends records, tiles, and one key pickup to the level.
+    hide func authorReleaseInteractions(levelNum: Integer) {
+        var regionId = levelNum - 1;
+        var loreBase = primaryLoreIdForLevel(levelNum);
+
+        // Preserve the original Core fixtures by assigning stable records to
+        // their authored coordinates; every other placement uses floor search.
+        if levelNum == 10 and getTile(158, levelHeight - 3) == TILE_SAVE_STATION {
+            addInteractionRecord(INTERACTION_SAVE_STATION, regionId,
+                                 158, levelHeight - 3, regionId, 0);
+        } else {
+            placeAuthoredInteraction(INTERACTION_SAVE_STATION, regionId,
+                                     levelWidth / 5, regionId, 0,
+                                     TILE_SAVE_STATION);
+        }
+
+        placeAuthoredInteraction(INTERACTION_LORE_TERMINAL, loreBase,
+                                 levelWidth * 7 / 20, regionId, loreBase,
+                                 TILE_LORE_TERMINAL);
+        if levelNum == 10 and getTile(162, levelHeight - 3) == TILE_LORE_TERMINAL {
+            addInteractionRecord(INTERACTION_LORE_TERMINAL, loreBase + 1,
+                                 162, levelHeight - 3, regionId, loreBase + 1);
+        } else {
+            placeAuthoredInteraction(INTERACTION_LORE_TERMINAL, loreBase + 1,
+                                     levelWidth * 4 / 5, regionId, loreBase + 1,
+                                     TILE_LORE_TERMINAL);
+        }
+
+        placeAuthoredInteraction(INTERACTION_SWITCH, regionId,
+                                 levelWidth * 2 / 5, regionId, 0,
+                                 TILE_SWITCH);
+        placeSwitchTarget(regionId, levelWidth * 9 / 20);
+        addKeyPickupNearFloor(levelWidth / 2);
+        placeLockedDoor(regionId, levelWidth * 3 / 5);
+        placeAuthoredInteraction(INTERACTION_TELEPORTER, regionId,
+                                 levelWidth / 10, regionId, levelNum,
+                                 TILE_TELEPORTER);
+        placeGrappleAnchors(levelWidth * 3 / 10,
+                            levelWidth * 7 / 10);
+
+        if levelNum == 5 {
+            placeAuthoredInteraction(INTERACTION_ABILITY_SHRINE, 0,
+                                     levelWidth * 11 / 20, regionId,
+                                     ABILITY_CHARGE_SHOT, TILE_ABILITY_SHRINE);
+        }
+        if levelNum == 7 {
+            placeAuthoredInteraction(INTERACTION_ABILITY_SHRINE, 1,
+                                     levelWidth * 11 / 20, regionId,
+                                     ABILITY_GRAPPLE, TILE_ABILITY_SHRINE);
+        }
+    }
+
+    /// @brief Layer each region's signature traversal surfaces onto its route.
+    ///
+    /// Placement searches existing safe floor and never assumes a legacy builder's
+    /// exact coordinates. Every region receives at least one mechanically active
+    /// surface, while later regions combine earlier vocabulary for mastery beats.
+    /// The Core retains its original fixtures and gains the complete mechanic set.
+    ///
+    /// @param levelNum One-based campaign region.
+    /// @return Nothing. Replaces bounded surface tiles and adds optional platforms.
+    hide func authorRegionalMechanics(levelNum: Integer) {
+        if levelNum == 1 {
+            placeSurfaceStrip(levelWidth / 4, 4, TILE_CONVEYOR_R);
+            placeOneWayBridge(levelWidth * 7 / 20, 4);
+            authorGoldSliceLandmark(levelNum);
+        }
+        if levelNum == 2 {
+            placeSurfaceStrip(levelWidth / 3, 5, TILE_QUICKSAND);
+            placeSurfaceStrip(levelWidth * 2 / 3, 4, TILE_CRUMBLE);
+            authorGoldSliceLandmark(levelNum);
+        }
+        if levelNum == 3 {
+            placeSurfaceStrip(levelWidth / 3, 5, TILE_CRUMBLE);
+            placeDestructibleColumn(levelWidth * 3 / 4);
+        }
+        if levelNum == 4 {
+            placeOneWayBridge(levelWidth / 3, 5);
+            placeSurfaceStrip(levelWidth * 2 / 3, 5, TILE_CONVEYOR_L);
+        }
+        if levelNum == 5 {
+            placeSurfaceStrip(levelWidth / 3, 6, TILE_QUICKSAND);
+            placeOneWayBridge(levelWidth * 2 / 3, 5);
+        }
+        if levelNum == 6 {
+            placeSurfaceStrip(levelWidth / 3, 2, TILE_STEAM_VENT);
+            placeSurfaceStrip(levelWidth * 2 / 3, 4, TILE_CONVEYOR_R);
+        }
+        if levelNum == 7 {
+            placeSurfaceStrip(levelWidth / 3, 5, TILE_CRUMBLE);
+            placeOneWayBridge(levelWidth * 2 / 3, 6);
+        }
+        if levelNum == 8 {
+            placeSurfaceStrip(levelWidth / 3, 7, TILE_ICE_FLOOR);
+            placeSurfaceStrip(levelWidth * 2 / 3, 7, TILE_ICE_FLOOR);
+        }
+        if levelNum == 9 {
+            placeDestructibleColumn(levelWidth / 2);
+            placeSurfaceStrip(levelWidth * 3 / 4, 5, TILE_CRUMBLE);
+        }
+        if levelNum == 10 {
+            placeSurfaceStrip(levelWidth / 4, 5, TILE_ICE_FLOOR);
+            placeSurfaceStrip(levelWidth / 2, 4, TILE_CONVEYOR_L);
+            placeSurfaceStrip(levelWidth * 3 / 4, 2, TILE_STEAM_VENT);
+            placeOneWayBridge(levelWidth * 2 / 3, 5);
+        }
+    }
+
+    /// @brief Add unmistakable Crash Site and Fungal Caverns landmark silhouettes.
+    ///
+    /// The broken ship spine and elder mushroom crown occupy elevated space so
+    /// they enrich navigation without closing the principal ground route. Two
+    /// optional salvage pickups reinforce stable secret-room bands 2 and 6.
+    ///
+    /// @param levelNum One-based region; values other than one/two are no-ops.
+    /// @return Nothing. Adds deterministic tiles and pickup records.
+    hide func authorGoldSliceLandmark(levelNum: Integer) {
+        if levelNum == 1 {
+            var i = 0;
+            while i < 7 {
+                tilemap.SetTile(70 + i, 7 - i / 2, TILE_HULL_PLATE);
+                i = i + 1;
+            }
+            tilemap.SetTile(73, 3, TILE_CONSOLE);
+            tilemap.SetTile(74, 3, TILE_CONSOLE);
+            addPickup(PICKUP_GEM, levelWidth * 5 / 16, 8);
+            addPickup(PICKUP_GEM, levelWidth * 13 / 16, 8);
+        }
+        if levelNum == 2 {
+            addPlatformTile(70, 6, 9, TILE_MUSHROOM);
+            var stemRow = 7;
+            while stemRow < GROUND_ROW {
+                tilemap.SetTile(74, stemRow, TILE_VINE);
+                stemRow = stemRow + 1;
+            }
+            tilemap.SetTile(69, 7, TILE_CRYSTAL);
+            tilemap.SetTile(79, 7, TILE_CRYSTAL);
+            addPickup(PICKUP_GEM, levelWidth * 5 / 16, 8);
+            addPickup(PICKUP_GEM, levelWidth * 13 / 16, 8);
+        }
+    }
+
+    /// @brief Author the release content anchors shared by all ten regions.
+    ///
+    /// Every region records a tutorial band, a later mastery band, two elevated
+    /// optional caches, a landmark column, and a region-specific combat set piece.
+    /// Crash Site/Fungal retain their hand-authored gold-slice landmarks; later
+    /// regions receive equally recognizable silhouettes from their own tile set.
+    ///
+    /// @param levelNum One-based campaign region just built by `loadLevel`.
+    /// @return Nothing. Adds visible content and stable structural metadata.
+    hide func authorCampaignContent(levelNum: Integer) {
+        landmarkCol = levelWidth / 2;
+        tutorialStartCol = levelWidth / 4;
+        masteryStartCol = levelWidth * 2 / 3;
+        setPieceCol = levelWidth * 3 / 4;
+        if levelNum > 2 { authorCampaignLandmark(levelNum); }
+
+        var firstSecret = placeSecretCache(levelWidth * 5 / 16);
+        var secondSecret = placeSecretCache(levelWidth * 13 / 16);
+        if firstSecret >= 0 { secretCols.add(firstSecret); }
+        if secondSecret >= 0 { secretCols.add(secondSecret); }
+        authorRegionalSetPiece(levelNum);
+    }
+
+    /// @brief Draw one unmistakable elevated silhouette for regions three to ten.
+    ///
+    /// @param levelNum One-based campaign region in 3..10.
+    /// @return Nothing. Writes only a bounded landmark around `landmarkCol`.
+    hide func authorCampaignLandmark(levelNum: Integer) {
+        var center = landmarkCol;
+        var baseRow = levelHeight / 2;
+        if baseRow < 6 { baseRow = 6; }
+        if baseRow > levelHeight - 5 { baseRow = levelHeight - 5; }
+        var i = -4;
+        while i <= 4 {
+            var height = 2 + (4 - absLevelValue(i)) / 2;
+            var tile = TILE_CRYSTAL;
+            if levelNum == 4 { tile = TILE_RUIN_STONE; }
+            if levelNum == 5 { tile = TILE_CAVE_CRYSTAL; }
+            if levelNum == 6 { tile = TILE_PIPE; }
+            if levelNum == 7 { tile = TILE_MOSS_STONE; }
+            if levelNum == 8 { tile = TILE_ICE_FLOOR; }
+            if levelNum == 9 { tile = TILE_OBSIDIAN; }
+            if levelNum == 10 { tile = TILE_CONSOLE; }
+            var h = 0;
+            while h < height {
+                var col = center + i;
+                var row = baseRow - h;
+                if col > 1 and col < levelWidth - 2 and row > 1 and
+                   getTile(col, row) == TILE_EMPTY {
+                    tilemap.SetTile(col, row, tile);
+                }
+                h = h + 1;
+            }
+            i = i + 1;
+        }
+        if levelNum == 6 {
+            tilemap.SetTile(center, baseRow + 1, TILE_STEAM_VENT);
+        }
+        if levelNum == 7 {
+            var vineRow = baseRow + 1;
+            while vineRow < levelHeight - 2 {
+                if getTile(center, vineRow) == TILE_EMPTY {
+                    tilemap.SetTile(center, vineRow, TILE_VINE);
+                }
+                vineRow = vineRow + 1;
+            }
+        }
+        if levelNum == 9 or levelNum == 10 {
+            tilemap.SetTile(center - 5, baseRow - 3, TILE_GRAPPLE_ANCHOR);
+            tilemap.SetTile(center + 5, baseRow - 3, TILE_GRAPPLE_ANCHOR);
+        }
+    }
+
+    /// @brief Place one elevated salvage cache near a stable secret-room band.
+    ///
+    /// @param preferredCol Approximate room-band center column.
+    /// @return Actual cache column, or -1 when no safe placement exists.
+    hide func placeSecretCache(preferredCol: Integer) -> Integer {
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return -1; }
+        var col = key % levelWidth;
+        var floorRow = key / levelWidth;
+        var row = floorRow - 3;
+        if row < 1 { row = 1; }
+        while row < floorRow and getTile(col, row) != TILE_EMPTY {
+            row = row + 1;
+        }
+        if row >= floorRow { return -1; }
+        addPickup(PICKUP_GEM, col, row);
+        return col;
+    }
+
+    /// @brief Add a three-enemy regional combat composition near its climax band.
+    ///
+    /// @param levelNum One-based campaign region selecting the enemy vocabulary.
+    /// @return Nothing. Failed individual floor searches are safely skipped.
+    hide func authorRegionalSetPiece(levelNum: Integer) {
+        var first = ENEMY_SLIME;
+        var second = ENEMY_BAT;
+        var third = ENEMY_TURRET;
+        if levelNum == 1 {
+            first = ENEMY_PATROL_DRONE; second = ENEMY_BOMB_CARRIER;
+        }
+        if levelNum == 2 {
+            first = ENEMY_SPOREWALKER; second = ENEMY_GLOWMOTH;
+            third = ENEMY_FUNGAL_TURRET;
+        }
+        if levelNum == 3 {
+            first = ENEMY_CRYSTAL_GOLEM; second = ENEMY_SHARD_BAT;
+            third = ENEMY_RESONANCE_ORB;
+        }
+        if levelNum == 4 {
+            first = ENEMY_RUIN_GUARDIAN; second = ENEMY_VINE_WHIP;
+            third = ENEMY_PATROL_DRONE;
+        }
+        if levelNum == 5 {
+            first = ENEMY_FROST_BEETLE; second = ENEMY_GLOWMOTH;
+            third = ENEMY_BOMB_CARRIER;
+        }
+        if levelNum == 6 {
+            first = ENEMY_MAGMA_SLUG; second = ENEMY_EMBER_WASP;
+            third = ENEMY_FORGE_SENTINEL;
+        }
+        if levelNum == 7 {
+            first = ENEMY_MOSS_GOLEM; second = ENEMY_VINE_WHIP;
+            third = ENEMY_SPOREWALKER;
+        }
+        if levelNum == 8 {
+            first = ENEMY_ICE_WRAITH; second = ENEMY_FROST_BEETLE;
+            third = ENEMY_STALACTITE_BAT;
+        }
+        if levelNum == 9 {
+            first = ENEMY_SHADOW_CLONE; second = ENEMY_CORRUPTION;
+            third = ENEMY_PATROL_DRONE;
+        }
+        if levelNum == 10 {
+            first = ENEMY_SHADOW_CLONE; second = ENEMY_CORRUPTION;
+            third = ENEMY_FORGE_SENTINEL;
+        }
+        addSetPieceEnemy(first, setPieceCol - 4);
+        addSetPieceEnemy(second, setPieceCol);
+        addSetPieceEnemy(third, setPieceCol + 4);
+    }
+
+    /// @brief Place one set-piece enemy on the nearest safe floor.
+    ///
+    /// @param enemyType One `ENEMY_*` archetype id.
+    /// @param preferredCol Approximate encounter column.
+    /// @return True when a spawn record was appended; false if no floor exists.
+    hide func addSetPieceEnemy(enemyType: Integer,
+                               preferredCol: Integer) -> Boolean {
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return false; }
+        addEnemy(enemyType, key % levelWidth, key / levelWidth);
+        return true;
+    }
+
+    /// @brief Return the nonnegative absolute value used by landmark profiles.
+    ///
+    /// @param value Signed small integer.
+    /// @return Absolute magnitude.
+    hide func absLevelValue(value: Integer) -> Integer {
+        if value < 0 { return 0 - value; }
+        return value;
+    }
+
+    /// @brief Replace a bounded safe-floor run with one dynamic surface type.
+    ///
+    /// @param preferredCol Approximate center column.
+    /// @param width Desired positive strip width.
+    /// @param tile Registered solid surface tile id.
+    /// @return Number of existing solid floor tiles replaced.
+    hide func placeSurfaceStrip(preferredCol: Integer, width: Integer,
+                               tile: Integer) -> Integer {
+        if width <= 0 { return 0; }
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return 0; }
+        var centerCol = key % levelWidth;
+        var surfaceRow = key / levelWidth + 1;
+        var start = centerCol - width / 2;
+        if start < 1 { start = 1; }
+        if start + width >= levelWidth - 1 {
+            start = levelWidth - width - 2;
+        }
+        var placed = 0;
+        var i = 0;
+        while i < width {
+            var col = start + i;
+            if col > 0 and col < levelWidth - 1 and
+               surfaceRow > 0 and surfaceRow < levelHeight and
+               isSolid(col, surfaceRow) and
+               hasInteractionAt(col, surfaceRow) == false {
+                tilemap.SetTile(col, surfaceRow, tile);
+                placed = placed + 1;
+            }
+            i = i + 1;
+        }
+        return placed;
+    }
+
+    /// @brief Add an elevated pass-through bridge above an existing safe route.
+    ///
+    /// @param preferredCol Approximate bridge center.
+    /// @param width Desired positive platform width.
+    /// @return Number of empty tiles converted to one-way platform tiles.
+    hide func placeOneWayBridge(preferredCol: Integer,
+                                width: Integer) -> Integer {
+        if width <= 0 { return 0; }
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return 0; }
+        var centerCol = key % levelWidth;
+        var row = key / levelWidth - 3;
+        if row < 2 { row = 2; }
+        var start = centerCol - width / 2;
+        var placed = 0;
+        var i = 0;
+        while i < width {
+            var col = start + i;
+            if col > 0 and col < levelWidth - 1 and
+               getTile(col, row) == TILE_EMPTY and
+               hasInteractionAt(col, row) == false {
+                tilemap.SetTile(col, row, TILE_ONE_WAY);
+                placed = placed + 1;
+            }
+            i = i + 1;
+        }
+        return placed;
+    }
+
+    /// @brief Author a three-tile optional charge-shot wall near a safe floor.
+    ///
+    /// @param preferredCol Approximate wall column.
+    /// @return Number of destructible tiles placed in 0..3.
+    hide func placeDestructibleColumn(preferredCol: Integer) -> Integer {
+        var key = findTallDoorPlacement(preferredCol);
+        if key < 0 { return 0; }
+        var col = key % levelWidth;
+        var baseRow = key / levelWidth - 4;
+        if baseRow < 3 { baseRow = 3; }
+        var placed = 0;
+        var dy = 0;
+        while dy < 3 {
+            var row = baseRow - dy;
+            if row >= 1 and getTile(col, row) == TILE_EMPTY and
+               hasInteractionAt(col, row) == false {
+                tilemap.SetTile(col, row, TILE_DESTRUCTIBLE);
+                placed = placed + 1;
+            }
+            dy = dy + 1;
+        }
+        return placed;
+    }
+
+    /// @brief Count tiles of one type for structural validation and probes.
+    ///
+    /// @param tile Tile id to count across the complete regional tilemap.
+    /// @return Nonnegative occurrence count, or zero before a level is loaded.
+    expose func countTilesOfType(tile: Integer) -> Integer {
+        var count = 0;
+        var row = 0;
+        while row < levelHeight {
+            var col = 0;
+            while col < levelWidth {
+                if getTile(col, row) == tile { count = count + 1; }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+        return count;
+    }
+
+    /// @brief Map a campaign area to its first stable LoreSystem entry id.
+    ///
+    /// The lore list is organized by narrative region rather than numeric level
+    /// order for Overgrowth/Frozen Abyss, so an explicit mapping prevents content
+    /// drift and replaces the former coordinate-modulo behavior.
+    ///
+    /// @param levelNum One-based area number.
+    /// @return Stable zero-based id of the area's first primary lore entry.
+    hide func primaryLoreIdForLevel(levelNum: Integer) -> Integer {
+        if levelNum == 1 { return 0; }
+        if levelNum == 2 { return 2; }
+        if levelNum == 3 { return 5; }
+        if levelNum == 4 { return 8; }
+        if levelNum == 5 { return 10; }
+        if levelNum == 6 { return 12; }
+        if levelNum == 7 { return 17; }
+        if levelNum == 8 { return 15; }
+        if levelNum == 9 { return 19; }
+        return 21;
+    }
+
+    /// @brief Place one visible interaction near a walkable floor anchor.
+    ///
+    /// @param kind One `INTERACTION_*` type.
+    /// @param id Stable authored id stored in saves/content references.
+    /// @param preferredCol Preferred tile column before bounded floor search.
+    /// @param channel Stable linked channel or owning region id.
+    /// @param payload Type-specific value such as lore id or ability flag.
+    /// @param tileId Visible tile identity written at the selected coordinate.
+    /// @return Room-local record index, or -1 when no safe floor was found.
+    hide func placeAuthoredInteraction(kind: Integer, id: Integer,
+                                       preferredCol: Integer,
+                                       channel: Integer, payload: Integer,
+                                       tileId: Integer) -> Integer {
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return -1; }
+        var col = key % levelWidth;
+        var row = key / levelWidth;
+        tilemap.SetTile(col, row, tileId);
+        return addInteractionRecord(kind, id, col, row, channel, payload);
+    }
+
+    /// @brief Append one stable interaction record without changing its tile.
+    ///
+    /// @param kind One `INTERACTION_*` type.
+    /// @param id Stable authored content/save id.
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @param channel Stable linked switch/region channel.
+    /// @param payload Type-specific authored integer.
+    /// @return Newly appended room-local record index.
+    hide func addInteractionRecord(kind: Integer, id: Integer,
+                                   col: Integer, row: Integer,
+                                   channel: Integer,
+                                   payload: Integer) -> Integer {
+        interactionTypes.add(kind);
+        interactionIds.add(id);
+        interactionCols.add(col);
+        interactionRows.add(row);
+        interactionChannels.add(channel);
+        interactionPayloads.add(payload);
+        return interactionTypes.length() - 1;
+    }
+
+    /// @brief Locate an empty tile directly above solid walkable geometry.
+    ///
+    /// Candidate columns alternate right/left around the preferred anchor. Rows
+    /// scan bottom-up so interactions favor the main ground route. Existing
+    /// authored interaction coordinates are excluded to avoid visual overlap.
+    ///
+    /// @param preferredCol Desired approximate tile column.
+    /// @return Flattened `col + row * levelWidth`, or -1 when unavailable.
+    hide func findInteractionPlacement(preferredCol: Integer) -> Integer {
+        var offset = 0;
+        while offset < levelWidth {
+            var candidate = preferredCol;
+            if offset > 0 {
+                if offset % 2 == 1 {
+                    candidate = preferredCol + (offset + 1) / 2;
+                } else {
+                    candidate = preferredCol - offset / 2;
+                }
+            }
+            if candidate > 1 and candidate < levelWidth - 2 {
+                var row = levelHeight - 2;
+                while row >= 1 {
+                    if getTile(candidate, row) == TILE_EMPTY and
+                       isSolid(candidate, row + 1) and
+                       hasInteractionAt(candidate, row) == false {
+                        return candidate + row * levelWidth;
+                    }
+                    row = row - 1;
+                }
+            }
+            offset = offset + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Test whether a record already owns one authored tile coordinate.
+    ///
+    /// @param col Zero-based tile column.
+    /// @param row Zero-based tile row.
+    /// @return True when any existing interaction record uses the coordinate.
+    hide func hasInteractionAt(col: Integer, row: Integer) -> Boolean {
+        var i = 0;
+        while i < interactionTypes.length() {
+            if interactionCols.get(i) == col and interactionRows.get(i) == row {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /// @brief Author a three-tile optional holographic platform for one switch.
+    ///
+    /// The platform sits three tiles above nearby ground and starts absent. Each
+    /// tile shares the same channel so `applyPersistentInteractionState` toggles
+    /// the full shortcut atomically on later loads.
+    ///
+    /// @param channel Stable switch channel.
+    /// @param preferredCol Approximate platform center column.
+    /// @return Nothing when placement is unavailable; otherwise appends records.
+    hide func placeSwitchTarget(channel: Integer, preferredCol: Integer) {
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return; }
+        var centerCol = key % levelWidth;
+        var targetRow = key / levelWidth - 3;
+        if targetRow < 1 { return; }
+        var dx = -1;
+        while dx <= 1 {
+            var col = centerCol + dx;
+            if getTile(col, targetRow) == TILE_EMPTY {
+                addInteractionRecord(INTERACTION_SWITCH_TARGET,
+                                     channel * 3 + dx + 1,
+                                     col, targetRow, channel, 0);
+                tilemap.SetTile(col, targetRow, TILE_EMPTY);
+            }
+            dx = dx + 1;
+        }
+    }
+
+    /// @brief Place two elevated, non-solid grapple anchors in every region.
+    ///
+    /// Early regions preview the eventual traversal language; later areas use
+    /// the same deterministic fallback anchors for required Grapple routing.
+    /// Placement derives an open point above safe floor without creating a new
+    /// persistent interaction id.
+    ///
+    /// @param firstCol Preferred column for the first anchor.
+    /// @param secondCol Preferred column for the second anchor.
+    /// @return Nothing. Unavailable candidates are skipped independently.
+    hide func placeGrappleAnchors(firstCol: Integer, secondCol: Integer) {
+        placeGrappleAnchor(firstCol);
+        placeGrappleAnchor(secondCol);
+    }
+
+    /// @brief Place one elevated grapple anchor above a walkable-floor result.
+    ///
+    /// @param preferredCol Approximate horizontal placement column.
+    /// @return True when an empty anchor tile was written; false otherwise.
+    hide func placeGrappleAnchor(preferredCol: Integer) -> Boolean {
+        var key = findGrappleAnchorPlacement(preferredCol);
+        if key < 0 { return false; }
+        var col = key % levelWidth;
+        var row = key / levelWidth;
+        tilemap.SetTile(col, row, TILE_GRAPPLE_ANCHOR);
+        return true;
+    }
+
+    /// @brief Locate open elevated space near an authored horizontal anchor.
+    ///
+    /// Search begins six rows above the bottom and moves upward, keeping anchors
+    /// within acquisition range of the principal ground route while avoiding
+    /// solid platforms. Candidate columns alternate around the preferred value.
+    ///
+    /// @param preferredCol Desired approximate anchor column.
+    /// @return Flattened empty tile coordinate, or -1 when the level is full.
+    hide func findGrappleAnchorPlacement(preferredCol: Integer) -> Integer {
+        var offset = 0;
+        while offset < levelWidth {
+            var candidate = preferredCol;
+            if offset > 0 {
+                if offset % 2 == 1 {
+                    candidate = preferredCol + (offset + 1) / 2;
+                } else {
+                    candidate = preferredCol - offset / 2;
+                }
+            }
+            if candidate > 1 and candidate < levelWidth - 2 {
+                var row = levelHeight - 6;
+                while row >= 2 {
+                    if getTile(candidate, row) == TILE_EMPTY and
+                       hasInteractionAt(candidate, row) == false {
+                        return candidate + row * levelWidth;
+                    }
+                    row = row - 1;
+                }
+            }
+            offset = offset + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Add the region keycard pickup before its keyed door anchor.
+    ///
+    /// Pickup type remains the existing `PICKUP_KEY`; Game maps it to the stable
+    /// current-region id, making repeated room spawns harmless and idempotent.
+    ///
+    /// @param preferredCol Approximate pickup column.
+    /// @return Nothing when no safe floor placement exists.
+    hide func addKeyPickupNearFloor(preferredCol: Integer) {
+        var key = findInteractionPlacement(preferredCol);
+        if key < 0 { return; }
+        addPickup(PICKUP_KEY, key % levelWidth, key / levelWidth);
+    }
+
+    /// @brief Author a three-tile-high keyed door sharing one persistent id.
+    ///
+    /// @param doorId Stable door/keycard id, normally the region id.
+    /// @param preferredCol Approximate main-route gate column.
+    /// @return Nothing when suitable empty vertical space cannot be authored.
+    hide func placeLockedDoor(doorId: Integer, preferredCol: Integer) {
+        var key = findTallDoorPlacement(preferredCol);
+        if key < 0 { return; }
+        var col = key % levelWidth;
+        var baseRow = key / levelWidth;
+        var dy = 0;
+        while dy < 3 {
+            var row = baseRow - dy;
+            if row >= 1 and getTile(col, row) == TILE_EMPTY {
+                tilemap.SetTile(col, row, TILE_LOCKED_DOOR);
+                addInteractionRecord(INTERACTION_LOCKED_DOOR, doorId,
+                                     col, row, doorId, doorId);
+            }
+            dy = dy + 1;
+        }
+    }
+
+    /// @brief Locate three empty vertical tiles above a solid floor for a door.
+    ///
+    /// The search mirrors `findInteractionPlacement` but rejects low ceilings
+    /// and platform clutter so every keyed door forms the intended three-tile
+    /// barrier instead of silently authoring a partial, jumpable gate.
+    ///
+    /// @param preferredCol Desired approximate gate column.
+    /// @return Flattened coordinate of the lowest door tile, or -1 if unavailable.
+    hide func findTallDoorPlacement(preferredCol: Integer) -> Integer {
+        var offset = 0;
+        while offset < levelWidth {
+            var candidate = preferredCol;
+            if offset > 0 {
+                if offset % 2 == 1 {
+                    candidate = preferredCol + (offset + 1) / 2;
+                } else {
+                    candidate = preferredCol - offset / 2;
+                }
+            }
+            if candidate > 1 and candidate < levelWidth - 2 {
+                var row = levelHeight - 2;
+                while row >= 3 {
+                    if getTile(candidate, row) == TILE_EMPTY and
+                       getTile(candidate, row - 1) == TILE_EMPTY and
+                       getTile(candidate, row - 2) == TILE_EMPTY and
+                       isSolid(candidate, row + 1) and
+                       hasInteractionAt(candidate, row) == false and
+                       hasInteractionAt(candidate, row - 1) == false and
+                       hasInteractionAt(candidate, row - 2) == false {
+                        return candidate + row * levelWidth;
+                    }
+                    row = row - 1;
+                }
+            }
+            offset = offset + 1;
+        }
+        return -1;
     }
 
     // Add enemy spawn
@@ -560,7 +1703,7 @@ class Level {
     hide func buildSalvage() {
         levelWidth = 150;
         levelHeight = LEVEL_HEIGHT;
-        levelTheme = THEME_STATION;
+        levelTheme = THEME_CAVE;
 
         tilemap = Tilemap.New(levelWidth, levelHeight, TILE_SIZE, TILE_SIZE);
         registerSolidTiles();
@@ -571,24 +1714,23 @@ class Level {
 
         // ==== BIOME 1: OUTER HULL (cols 0-49) ====
 
-        // Hull floor
-        fillRowTile(GROUND_ROW, 0, 49, TILE_HULL_PLATE);
-        fillRowTile(FLOOR_ROW, 0, 49, TILE_HULL_PLATE);
-        // Hull ceiling
-        fillRowTile(0, 0, 49, TILE_AIRLOCK);
-        fillRowTile(1, 0, 49, TILE_HULL_PLATE);
+        // The wreck's outer hull has been absorbed into a living fungal shelf.
+        fillRowTile(GROUND_ROW, 0, 49, TILE_MOSS_STONE);
+        fillRowTile(FLOOR_ROW, 0, 49, TILE_DIRT);
+        fillRowTile(0, 0, 49, TILE_CAVE_TOP);
+        fillRowTile(1, 0, 49, TILE_CAVE_WALL);
 
         // --- Hull Section 1: Entry airlock (cols 0-12) ---
-        buildPlatformRun(6, 12, 4, TILE_GIRDER, 11);
-        buildPlatformRun(11, 10, 3, TILE_GIRDER, 9);
+        buildPlatformRun(6, 12, 4, TILE_MUSHROOM, 11);
+        buildPlatformRun(11, 10, 3, TILE_JUNGLE_PLATFORM, 9);
         addPickup(PICKUP_COIN, 4, 14);
         addPickup(PICKUP_COIN, 8, 14);
 
         // --- Hull Section 2: Hull breach gap (cols 13-25) ---
-        buildGapWithHazard(16, 20, TILE_ELECTRIC);
-        buildPlatformRun(16, 11, 2, TILE_GIRDER, 10);
-        buildPlatformRun(19, 9, 2, TILE_GIRDER, 8);
-        addEnemy(ENEMY_BAT, 18, 7);
+        buildGapWithHazard(16, 20, TILE_POISON_POOL);
+        buildPlatformRun(16, 11, 2, TILE_MUSHROOM, 10);
+        buildPlatformRun(19, 9, 2, TILE_MUSHROOM, 8);
+        addEnemy(ENEMY_GLOWMOTH, 18, 7);
         addPickup(PICKUP_COIN, 17, 10);
         addPickup(PICKUP_COIN, 20, 8);
         addPickup(PICKUP_HEALTH, 22, 14);
@@ -597,8 +1739,8 @@ class Level {
         buildPlatformRun(27, 12, 3, TILE_HULL_PLATE, 11);
         buildPlatformRun(31, 10, 4, TILE_GIRDER, 9);
         buildPlatformRun(36, 12, 3, TILE_HULL_PLATE, 11);
-        addEnemy(ENEMY_SLIME, 29, 11);
-        addEnemy(ENEMY_BAT, 34, 7);
+        addEnemy(ENEMY_SPOREWALKER, 29, 11);
+        addEnemy(ENEMY_GLOWMOTH, 34, 7);
         addPickup(PICKUP_COIN, 28, 11);
         addPickup(PICKUP_COIN, 33, 9);
         addPickup(PICKUP_COIN, 37, 11);
@@ -607,8 +1749,8 @@ class Level {
         // --- Hull Section 4: Transition to reactor (cols 39-49) ---
         buildPlatformRun(40, 13, 3, TILE_HULL_PLATE, 12);
         buildPlatformRun(44, 11, 4, TILE_HULL_PLATE, 10);
-        addEnemy(ENEMY_SLIME, 42, 12);
-        addEnemy(ENEMY_BAT, 46, 8);
+        addEnemy(ENEMY_SPOREWALKER, 42, 12);
+        addEnemy(ENEMY_GLOWMOTH, 46, 8);
         addPickup(PICKUP_COIN, 41, 12);
         addPickup(PICKUP_COIN, 45, 10);
         // Checkpoint
@@ -619,28 +1761,28 @@ class Level {
 
         // ==== BIOME 2: REACTOR CORE (cols 50-99) ====
 
-        // Reactor walls and floor
-        fillRowTile(0, 50, 99, TILE_CONDUIT);
-        fillRowTile(1, 50, 99, TILE_PIPE);
-        fillRowTile(GROUND_ROW, 50, 99, TILE_CATWALK);
-        fillRowTile(FLOOR_ROW, 50, 99, TILE_CATWALK);
+        // Mycelial sink: old machinery is visible only beneath root tissue.
+        fillRowTile(0, 50, 99, TILE_CAVE_TOP);
+        fillRowTile(1, 50, 99, TILE_CAVE_WALL);
+        fillRowTile(GROUND_ROW, 50, 99, TILE_MOSS_STONE);
+        fillRowTile(FLOOR_ROW, 50, 99, TILE_CAVE_WALL);
 
         // --- Reactor Section 1: Pipe walkways (cols 50-62) ---
         buildPlatformRun(52, 12, 4, TILE_PIPE, 11);
         buildPlatformRun(57, 10, 3, TILE_PIPE, 9);
         buildPlatformRun(61, 12, 3, TILE_CATWALK, 11);
-        addEnemy(ENEMY_TURRET, 55, 11);
+        addEnemy(ENEMY_FUNGAL_TURRET, 55, 11);
         addPickup(PICKUP_COIN, 53, 11);
         addPickup(PICKUP_COIN, 58, 9);
         addPickup(PICKUP_COIN, 62, 11);
 
         // --- Reactor Section 2: Coolant river (cols 63-75) ---
-        buildGapWithHazard(66, 72, TILE_COOLANT);
+        buildGapWithHazard(66, 72, TILE_QUICKSAND);
         buildPlatformRun(66, 11, 2, TILE_CATWALK, 10);
         buildPlatformRun(69, 9, 2, TILE_PIPE, 8);
         buildPlatformRun(72, 11, 2, TILE_CATWALK, 10);
-        addEnemy(ENEMY_BAT, 68, 6);
-        addEnemy(ENEMY_BAT, 71, 8);
+        addEnemy(ENEMY_GLOWMOTH, 68, 6);
+        addEnemy(ENEMY_GLOWMOTH, 71, 8);
         addPickup(PICKUP_COIN, 67, 10);
         addPickup(PICKUP_COIN, 70, 8);
         addPickup(PICKUP_COIN, 73, 10);
@@ -650,9 +1792,9 @@ class Level {
         buildPlatformRun(77, 12, 5, TILE_CATWALK, 11);
         buildPlatformRun(83, 10, 4, TILE_PIPE, 9);
         buildPlatformRun(88, 12, 3, TILE_CATWALK, 11);
-        addEnemy(ENEMY_TURRET, 80, 11);
-        addEnemy(ENEMY_TURRET, 86, 9);
-        addEnemy(ENEMY_SLIME, 90, 11);
+        addEnemy(ENEMY_FUNGAL_TURRET, 80, 11);
+        addEnemy(ENEMY_MYCELIUM, 86, 9);
+        addEnemy(ENEMY_SPOREWALKER, 90, 11);
         addPickup(PICKUP_COIN, 78, 11);
         addPickup(PICKUP_COIN, 84, 9);
         addPickup(PICKUP_COIN, 89, 11);
@@ -660,7 +1802,7 @@ class Level {
 
         // --- Reactor Section 4: Bridge approach (cols 91-99) ---
         buildPlatformRun(92, 11, 4, TILE_CATWALK, 10);
-        addEnemy(ENEMY_TURRET, 96, 10);
+        addEnemy(ENEMY_FUNGAL_TURRET, 96, 10);
         addPickup(PICKUP_HEALTH, 93, 10);
         addPickup(PICKUP_COIN, 97, 14);
         // Checkpoint
@@ -668,35 +1810,35 @@ class Level {
 
         // ==== BIOME 3: COMMAND BRIDGE (cols 100-149) ====
 
-        // Bridge floor and walls
-        fillRowTile(0, 100, 149, TILE_CONSOLE);
-        fillRowTile(GROUND_ROW, 100, 149, TILE_HOLO_BRIDGE);
-        fillRowTile(FLOOR_ROW, 100, 149, TILE_HOLO_BRIDGE);
+        // Brood galleries and the Spore Mother's root chamber.
+        fillRowTile(0, 100, 149, TILE_CAVE_TOP);
+        fillRowTile(GROUND_ROW, 100, 149, TILE_MOSS_STONE);
+        fillRowTile(FLOOR_ROW, 100, 149, TILE_CAVE_WALL);
 
         // --- Bridge Section 1: Console corridors (cols 100-115) ---
         buildPlatformRun(102, 12, 4, TILE_HOLO_BRIDGE, 11);
         buildPlatformRun(107, 10, 3, TILE_CONSOLE, 9);
         buildPlatformRun(112, 12, 3, TILE_HOLO_BRIDGE, 11);
-        addEnemy(ENEMY_BAT, 105, 7);
-        addEnemy(ENEMY_TURRET, 110, 9);
+        addEnemy(ENEMY_GLOWMOTH, 105, 7);
+        addEnemy(ENEMY_FUNGAL_TURRET, 110, 9);
         addPickup(PICKUP_COIN, 103, 11);
         addPickup(PICKUP_COIN, 108, 9);
         addPickup(PICKUP_COIN, 113, 11);
 
         // --- Bridge Section 2: Data stream gap (cols 116-128) ---
-        buildGapWithHazard(118, 124, TILE_ELECTRIC);
+        buildGapWithHazard(118, 124, TILE_POISON_POOL);
         buildPlatformRun(118, 11, 2, TILE_HOLO_BRIDGE, 10);
         buildPlatformRun(121, 9, 2, TILE_HOLO_BRIDGE, 8);
         buildPlatformRun(124, 11, 2, TILE_HOLO_BRIDGE, 10);
-        addEnemy(ENEMY_BAT, 120, 6);
-        addEnemy(ENEMY_TURRET, 126, 10);
+        addEnemy(ENEMY_GLOWMOTH, 120, 6);
+        addEnemy(ENEMY_MYCELIUM, 126, 10);
         addPickup(PICKUP_COIN, 119, 10);
         addPickup(PICKUP_COIN, 122, 8);
         addPickup(PICKUP_HEALTH, 127, 14);
         addPickup(PICKUP_SHIELD, 125, 10);
 
         // --- Bridge Section 3: Boss arena (cols 129-149) ---
-        buildArena(129, 149, TILE_HOLO_BRIDGE, TILE_CONSOLE);
+        buildArena(129, 149, TILE_MOSS_STONE, TILE_CAVE_WALL);
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;

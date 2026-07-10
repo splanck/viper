@@ -39,6 +39,7 @@ static RT_THREAD_LOCAL int g_asset_warning_truncated[RT_ASSET_WARNING_CAP];
 static RT_THREAD_LOCAL int64_t g_asset_warning_count = 0;
 static RT_THREAD_LOCAL int64_t g_asset_warning_suppressed = 0;
 static RT_THREAD_LOCAL int32_t g_asset_load_depth = 0;
+static RT_THREAD_LOCAL int64_t g_asset_import_stats[RT_ASSET_IMPORT_STAT_COUNT];
 
 static int asset_error_vformat(char *dst, size_t dst_cap, const char *fmt, va_list ap)
 #if defined(__GNUC__) || defined(__clang__)
@@ -79,6 +80,23 @@ void rt_asset_error_clear(void) {
         g_asset_warnings[i][0] = '\0';
         g_asset_warning_truncated[i] = 0;
     }
+    for (int i = 0; i < RT_ASSET_IMPORT_STAT_COUNT; i++)
+        g_asset_import_stats[i] = 0;
+}
+
+void rt_asset_error_add_import_stat(rt_asset_import_stat stat, int64_t amount) {
+    if (stat < 0 || stat >= RT_ASSET_IMPORT_STAT_COUNT || amount <= 0)
+        return;
+    if (g_asset_import_stats[stat] > INT64_MAX - amount)
+        g_asset_import_stats[stat] = INT64_MAX;
+    else
+        g_asset_import_stats[stat] += amount;
+}
+
+int64_t rt_asset_error_get_import_stat(rt_asset_import_stat stat) {
+    if (stat < 0 || stat >= RT_ASSET_IMPORT_STAT_COUNT)
+        return 0;
+    return g_asset_import_stats[stat];
 }
 
 int rt_asset_error_begin_load(void) {
@@ -241,4 +259,108 @@ rt_string rt_assets3d_get_load_warnings(void) {
             break;
     }
     return rt_string_from_bytes(joined, used);
+}
+
+/// @brief Append @p text to a bounded report buffer, tracking the used length.
+static void asset_report_append(char *dst, size_t cap, size_t *used, const char *text) {
+    size_t len = text ? strlen(text) : 0;
+    if (*used >= cap - 1)
+        return;
+    if (len > cap - 1 - *used)
+        len = cap - 1 - *used;
+    memcpy(dst + *used, text, len);
+    *used += len;
+    dst[*used] = '\0';
+}
+
+/// @brief Append @p text as a JSON string literal (quoted, minimally escaped).
+static void asset_report_append_json_string(char *dst, size_t cap, size_t *used, const char *text) {
+    asset_report_append(dst, cap, used, "\"");
+    for (const char *p = text ? text : ""; *p; p++) {
+        char escaped[8];
+        unsigned char ch = (unsigned char)*p;
+        if (ch == '"' || ch == '\\') {
+            escaped[0] = '\\';
+            escaped[1] = (char)ch;
+            escaped[2] = '\0';
+        } else if (ch == '\n') {
+            memcpy(escaped, "\\n", 3);
+        } else if (ch == '\r') {
+            memcpy(escaped, "\\r", 3);
+        } else if (ch == '\t') {
+            memcpy(escaped, "\\t", 3);
+        } else if (ch < 0x20u) {
+            snprintf(escaped, sizeof(escaped), "\\u%04x", (unsigned)ch);
+        } else {
+            escaped[0] = (char)ch;
+            escaped[1] = '\0';
+        }
+        asset_report_append(dst, cap, used, escaped);
+    }
+    asset_report_append(dst, cap, used, "\"");
+}
+
+/// @brief Append one `"key":value` counter field (with optional leading comma).
+static void asset_report_append_counter(
+    char *dst, size_t cap, size_t *used, const char *key, int64_t value, int leading_comma) {
+    char field[96];
+    snprintf(field,
+             sizeof(field),
+             "%s\"%s\":%lld",
+             leading_comma ? "," : "",
+             key,
+             (long long)value);
+    asset_report_append(dst, cap, used, field);
+}
+
+rt_string rt_assets3d_get_import_report(void) {
+    char report[RT_ASSET_WARNING_JOINED_CAP + 1024];
+    size_t used = 0;
+    int64_t count = rt_asset_error_get_warning_count();
+    report[0] = '\0';
+    asset_report_append(report, sizeof(report), &used, "{");
+    asset_report_append_counter(report,
+                                sizeof(report),
+                                &used,
+                                "skippedPrimitives",
+                                g_asset_import_stats[RT_ASSET_IMPORT_STAT_SKIPPED_PRIMITIVES],
+                                0);
+    asset_report_append_counter(
+        report,
+        sizeof(report),
+        &used,
+        "truncatedInfluenceVertices",
+        g_asset_import_stats[RT_ASSET_IMPORT_STAT_TRUNCATED_INFLUENCE_VERTICES],
+        1);
+    asset_report_append_counter(
+        report,
+        sizeof(report),
+        &used,
+        "outOfRangeJointVertices",
+        g_asset_import_stats[RT_ASSET_IMPORT_STAT_OUT_OF_RANGE_JOINT_VERTICES],
+        1);
+    asset_report_append_counter(report,
+                                sizeof(report),
+                                &used,
+                                "ignoredExtensions",
+                                g_asset_import_stats[RT_ASSET_IMPORT_STAT_IGNORED_EXTENSIONS],
+                                1);
+    asset_report_append_counter(
+        report,
+        sizeof(report),
+        &used,
+        "bakedCubicSplineChannels",
+        g_asset_import_stats[RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS],
+        1);
+    asset_report_append_counter(
+        report, sizeof(report), &used, "suppressedWarnings", g_asset_warning_suppressed, 1);
+    asset_report_append(report, sizeof(report), &used, ",\"warnings\":[");
+    for (int64_t i = 0; i < count; i++) {
+        if (i > 0)
+            asset_report_append(report, sizeof(report), &used, ",");
+        asset_report_append_json_string(
+            report, sizeof(report), &used, rt_asset_error_get_warning(i));
+    }
+    asset_report_append(report, sizeof(report), &used, "]}");
+    return rt_string_from_bytes(report, used);
 }

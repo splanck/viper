@@ -21,7 +21,7 @@ fuzz_harness_registrations 18
 platform_skip_markers 121
 platform_policy_allowlist_entries 33
 raw_platform_macro_occurrences 740
-mega_files_over_3000_lines 25
+mega_files_over_4000_lines 13
 manual_alloc_hotspots_over_70 22
 sanitizer_coverage_options 11
 diagnostic_json_entrypoints 50

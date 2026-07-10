@@ -59,11 +59,9 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             RT_ASSET_ERROR_UNSUPPORTED, "%s: unsupported KTX2 dimensionality", api_name);
         return NULL;
     }
-    /* Scheme 0 = none, 2 = Zstandard, 3 = ZLIB (both decompressed per level
-     * below). Scheme 1 (BasisLZ/ETC1S) needs the supercompression global data
-     * segment and a transcoder, which this loader does not implement yet. */
-    if (supercompression_scheme != 0 && supercompression_scheme != 2 &&
-        supercompression_scheme != 3) {
+    /* Scheme 0 = none, 1 = BasisLZ/ETC1S (decoded by the dedicated path below),
+     * 2 = Zstandard, 3 = ZLIB (both decompressed per level below). */
+    if (supercompression_scheme > 3) {
         rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
                             "%s: unsupported KTX2 supercompression scheme %u",
                             api_name,
@@ -92,7 +90,27 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         return NULL;
     }
 
+    /* BasisLZ/ETC1S levels have no vkFormat and carry their own codebook segment;
+     * they decode straight to RGBA8 Pixels through the dedicated path. */
+    if (supercompression_scheme == 1)
+        return textureasset3d_parse_ktx2_basislz(
+            data, size, api_name, pixel_width, pixel_height, level_count);
+
     format = textureasset3d_format_from_vk(vk_format);
+    /* UASTC LDR 4x4 also carries vkFormat 0; it is identified by the Data Format
+     * Descriptor's color model (166). Level payloads are 128-bit blocks that the
+     * generic block-decode path unpacks to RGBA8 (no native GPU upload format). */
+    int format_is_uastc = 0;
+    if (vk_format == 0) {
+        uint32_t dfd_offset = textureasset3d_read_u32le(data + 48);
+        uint32_t dfd_length = textureasset3d_read_u32le(data + 52);
+        if (dfd_length >= 16u && (uint64_t)dfd_offset <= (uint64_t)size &&
+            (uint64_t)dfd_length <= (uint64_t)size - dfd_offset &&
+            data[dfd_offset + 12u] == 166u) {
+            format_is_uastc = 1;
+            format = (textureasset3d_format_info){"uastc", 1, 4, 4, 16};
+        }
+    }
     mips = (textureasset3d_mip *)calloc((size_t)mip_count, sizeof(textureasset3d_mip));
     if (!mips) {
         rt_trap("TextureAsset3D.LoadKTX2: mip table allocation failed");
@@ -309,6 +327,20 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             textureasset3d_decode_astc_block_adapter,
             "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
     }
+    if (format_is_uastc) {
+        attempted_cpu_decode = 1;
+        decode_failure_detail = "reserved UASTC mode or corrupt block payload";
+        mip_pixels = textureasset3d_decode_compressed_mips(
+            level_data,
+            level_size,
+            mips,
+            mip_count,
+            format.block_width,
+            format.block_height,
+            format.block_bytes,
+            textureasset3d_decode_uastc_block_adapter,
+            "TextureAsset3D.LoadKTX2: UASTC Pixels fallback allocation failed");
+    }
     if (format.compressed && attempted_cpu_decode && !mip_pixels) {
         mip_pixels = textureasset3d_make_decode_failure_checker_mips(mip_count);
         if (!mip_pixels) {
@@ -323,7 +355,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
                                     format.name,
                                     decode_failure_detail);
     }
-    if (format.compressed) {
+    if (format.compressed && !format_is_uastc) {
         mip_payloads =
             textureasset3d_copy_native_mip_payloads(level_data, level_size, mips, mip_count);
         if (!mip_payloads) {
@@ -333,6 +365,16 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             rt_trap("TextureAsset3D.LoadKTX2: native mip payload allocation failed");
             return NULL;
         }
+    }
+    if (format_is_uastc) {
+        /* No GPU consumes UASTC blocks directly here; the decoded RGBA8 Pixels are the
+         * texture. Clear the file byte ranges so accounting treats it as uncompressed. */
+        for (int64_t i = 0; i < mip_count; i++) {
+            mips[i].offset = 0;
+            mips[i].length = 0;
+            mips[i].uncompressed_length = 0;
+        }
+        format = (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
     }
     /* Decoded Pixels and native payload copies own their bytes now. */
     free(unpacked);

@@ -1,7 +1,21 @@
-// =============================================================================
-// sprites.zia — Procedural sprite atelier (every sprite is drawn from code)
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/sprites.zia
+// Purpose: Builds deterministic fallback sprites, tiles, icons, and effects.
+// Key invariants:
+//   - Every authored gameplay tile id resolves to a visible fallback sprite.
+//   - Generated pixels are retained for the SpriteFactory lifetime and reused.
+// Ownership/Lifetime:
+//   - Game owns one SpriteFactory; it owns every generated Pixels surface.
+// Links: config.zia, renderer.zia, player.zia, level.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — DRAWING SPRITES IN CODE
 // ----------------------------------
@@ -100,8 +114,11 @@
 module sprites;
 
 bind Viper.Graphics;
+bind Viper.IO.File as File;
+bind Viper.Terminal as Terminal;
 bind "./config";
 bind "./palette";
+bind "./player_animation";
 
 // Original (pre-scale) sprite sizes. All draw calls use these coordinates,
 // then Pixels.Scale() upsamples to the final display size. This avoids
@@ -124,6 +141,12 @@ class SpriteFactory {
     hide Palette pal;
     hide List[Pixels] playerRight;
     hide List[Pixels] playerLeft;
+    hide List[Pixels] proceduralPlayerRight;
+    hide List[Pixels] proceduralPlayerLeft;
+    hide List[Pixels] authoredPlayerRight;
+    hide List[Pixels] authoredPlayerLeft;
+    hide Boolean authoredPlayerArtAvailable;
+    hide Boolean authoredPlayerArtEnabled;
 
     // Enemies
     hide List[Pixels] slimeFrames;
@@ -254,6 +277,16 @@ class SpriteFactory {
         droneFrames = [];
 
         buildPlayerSprites();
+        proceduralPlayerRight = playerRight;
+        proceduralPlayerLeft = playerLeft;
+        authoredPlayerRight = [];
+        authoredPlayerLeft = [];
+        authoredPlayerArtAvailable = loadAuthoredPlayerSprites();
+        authoredPlayerArtEnabled = authoredPlayerArtAvailable;
+        if authoredPlayerArtEnabled {
+            playerRight = authoredPlayerRight;
+            playerLeft = authoredPlayerLeft;
+        }
         buildEnemySprites();
         buildTileSprites();
         buildStationTileSprites();
@@ -271,29 +304,23 @@ class SpriteFactory {
     // the final display size. This avoids recalculating 120+ coordinates.
 
     hide func buildPlayerSprites() {
-        // Build right-facing frames at 36x48, then scale + flip for left
-        // Frame 0-1: Idle (visor glow pulse)
-        playerRight.add(scalePlayer(buildPlayerFrame(0, 0)));
-        playerRight.add(scalePlayer(buildPlayerFrame(0, 1)));
-
-        // Frame 2-5: Run (4-frame leg animation cycle)
-        playerRight.add(scalePlayer(buildPlayerFrame(1, 0)));
-        playerRight.add(scalePlayer(buildPlayerFrame(1, 1)));
-        playerRight.add(scalePlayer(buildPlayerFrame(1, 2)));
-        playerRight.add(scalePlayer(buildPlayerFrame(1, 3)));
-
-        // Frame 6: Jump
-        playerRight.add(scalePlayer(buildPlayerFrame(2, 0)));
-        // Frame 7: Fall
-        playerRight.add(scalePlayer(buildPlayerFrame(3, 0)));
-        // Frame 8: Double jump
-        playerRight.add(scalePlayer(buildPlayerFrame(4, 0)));
-        // Frame 9: Wall slide
-        playerRight.add(scalePlayer(buildPlayerFrame(5, 0)));
-        // Frame 10: Hurt
-        playerRight.add(scalePlayer(buildPlayerFrame(6, 0)));
-        // Frame 11: Dead
-        playerRight.add(scalePlayer(buildPlayerFrame(7, 0)));
+        // Stable release layout is declared in player_animation.zia.
+        addPlayerAnimationFrames(PLAYER_ANIM_IDLE);
+        addPlayerAnimationFrames(PLAYER_ANIM_RUN);
+        addPlayerAnimationFrames(PLAYER_ANIM_JUMP);
+        addPlayerAnimationFrames(PLAYER_ANIM_FALL);
+        addPlayerAnimationFrames(PLAYER_ANIM_DOUBLE_JUMP);
+        addPlayerAnimationFrames(PLAYER_ANIM_WALL_SLIDE);
+        addPlayerAnimationFrames(PLAYER_ANIM_HURT);
+        addPlayerAnimationFrames(PLAYER_ANIM_DEATH);
+        addPlayerAnimationFrames(PLAYER_ANIM_TURN);
+        addPlayerAnimationFrames(PLAYER_ANIM_LAND);
+        addPlayerAnimationFrames(PLAYER_ANIM_SHOOT);
+        addPlayerAnimationFrames(PLAYER_ANIM_CHARGE);
+        addPlayerAnimationFrames(PLAYER_ANIM_DASH);
+        addPlayerAnimationFrames(PLAYER_ANIM_GRAPPLE);
+        addPlayerAnimationFrames(PLAYER_ANIM_POUND);
+        addPlayerAnimationFrames(PLAYER_ANIM_ACQUIRE);
 
         // Create left-facing versions by flipping the scaled sprites.
         // Note: Pixels.FlipH returns a new Pixels rather than mutating in
@@ -305,6 +332,101 @@ class SpriteFactory {
             var flipped = playerRight.get(i).FlipH();
             playerLeft.add(flipped);
         }
+    }
+
+    /// @brief Append every frame in one stable player animation family.
+    ///
+    /// @param animation One valid `PLAYER_ANIM_*` id.
+    /// @return Nothing. Invalid ids append no frames; valid frames are scaled once.
+    hide func addPlayerAnimationFrames(animation: Integer) {
+        var count = playerAnimationFrameCount(animation);
+        var frame = 0;
+        while frame < count {
+            playerRight.add(scalePlayer(buildPlayerFrame(animation, frame)));
+            frame = frame + 1;
+        }
+    }
+
+    /// @brief Decode the baked first-party player atlas into stable frame lists.
+    ///
+    /// Package-relative, repository-root, and examples/bin paths are checked in
+    /// deterministic order. All 41 cells must decode before active lists change;
+    /// a missing, corrupt, or short sheet leaves the procedural frames intact and
+    /// records one diagnostic without preventing game startup.
+    ///
+    /// @return True only when both right/left authored frame lists are complete.
+    hide func loadAuthoredPlayerSprites() -> Boolean {
+        var path = "";
+        if File.Exists("assets/sprites/player-release-sheet.png") {
+            path = "assets/sprites/player-release-sheet.png";
+        } else if File.Exists(
+            "examples/games/xenoscape/assets/sprites/player-release-sheet.png") {
+            path = "examples/games/xenoscape/assets/sprites/player-release-sheet.png";
+        } else if File.Exists(
+            "../games/xenoscape/assets/sprites/player-release-sheet.png") {
+            path = "../games/xenoscape/assets/sprites/player-release-sheet.png";
+        }
+        if path == "" {
+            Terminal.Say(
+                "XENOSCAPE asset fallback: assets/sprites/player-release-sheet.png");
+            return false;
+        }
+        var atlas = Pixels.Load(path);
+        if atlas == null or atlas.get_Width() != PLAYER_SPRITE_W * 8 or
+           atlas.get_Height() != PLAYER_SPRITE_H * 6 {
+            Terminal.Say("XENOSCAPE asset fallback: " + path);
+            return false;
+        }
+
+        var right = [];
+        var left = [];
+        var frameIndex = 0;
+        while frameIndex < PLAYER_RELEASE_FRAME_COUNT {
+            var frame = Pixels.New(PLAYER_SPRITE_W, PLAYER_SPRITE_H);
+            var sourceX = (frameIndex % 8) * PLAYER_SPRITE_W;
+            var sourceY = (frameIndex / 8) * PLAYER_SPRITE_H;
+            frame.Copy(0, 0, atlas, sourceX, sourceY,
+                       PLAYER_SPRITE_W, PLAYER_SPRITE_H);
+            right.add(frame);
+            left.add(frame.FlipH());
+            frameIndex = frameIndex + 1;
+        }
+        authoredPlayerRight = right;
+        authoredPlayerLeft = left;
+        return true;
+    }
+
+    /// @brief Select baked player art or the permanent procedural frame fallback.
+    ///
+    /// @param enabled True to use the complete authored atlas when available;
+    ///        false to force code-generated fallback frames.
+    /// @return True when the requested mode is active. Enabling without a valid
+    ///         atlas returns false and safely retains procedural art.
+    expose func setAuthoredPlayerArtEnabled(enabled: Boolean) -> Boolean {
+        if enabled and authoredPlayerArtAvailable {
+            playerRight = authoredPlayerRight;
+            playerLeft = authoredPlayerLeft;
+            authoredPlayerArtEnabled = true;
+            return true;
+        }
+        playerRight = proceduralPlayerRight;
+        playerLeft = proceduralPlayerLeft;
+        authoredPlayerArtEnabled = false;
+        return enabled == false;
+    }
+
+    /// @brief Report whether the mandatory player atlas decoded completely.
+    ///
+    /// @return True when all 41 production frames are available.
+    expose func hasAuthoredPlayerArt() -> Boolean {
+        return authoredPlayerArtAvailable;
+    }
+
+    /// @brief Report which player-art path currently supplies frame accessors.
+    ///
+    /// @return True for the baked atlas and false for procedural fallback.
+    expose func isAuthoredPlayerArtEnabled() -> Boolean {
+        return authoredPlayerArtEnabled;
     }
 
     // Scale a 36x48 sprite to the final player display size.
@@ -331,12 +453,19 @@ class SpriteFactory {
         // === Leg animation ===
         var bOff = 0;
         var lSp = 0;
-        if state == 1 {
+        if state == PLAYER_ANIM_RUN {
             if frame == 0 { bOff = 3; lSp = 2; }
             if frame == 1 { bOff = 1; lSp = 0; }
             if frame == 2 { bOff = -3; lSp = 2; }
             if frame == 3 { bOff = -1; lSp = 0; }
+            if frame == 4 { bOff = 2; lSp = -2; }
+            if frame == 5 { bOff = -2; lSp = -2; }
         }
+        if state == PLAYER_ANIM_LAND {
+            bOff = 4 - frame;
+            lSp = 2 - frame / 2;
+        }
+        if state == PLAYER_ANIM_TURN { lSp = 2 - frame; }
 
         // === Jetpack (behind body, left side) ===
         px.DrawEllipse(5, 22, 4, 9, METAL);
@@ -355,11 +484,11 @@ class SpriteFactory {
         px.DrawDisc(5, 27, 1, 0x44FF66);
 
         // === Back arm (state-specific) ===
-        if state == 2 {
+        if state == PLAYER_ANIM_JUMP {
             px.DrawThickLine(11, 18, 6, 10, 2, SUIT_DK);
             px.DrawDisc(6, 10, 2, SUIT);
         }
-        if state == 3 {
+        if state == PLAYER_ANIM_FALL {
             px.DrawThickLine(11, 20, 4, 24, 2, SUIT_DK);
             px.DrawDisc(4, 24, 2, SUIT);
         }
@@ -420,7 +549,7 @@ class SpriteFactory {
         px.DrawEllipseFrame(17, 24, 9, 10, OL);
 
         // === Gun arm (articulated: shoulder → elbow → forearm → barrel) ===
-        if state != 7 {
+        if state != PLAYER_ANIM_DEATH {
             px.DrawDisc(25, 19, 3, SUIT);                    // shoulder
             px.DrawThickLine(25, 19, 29, 18, 2, SUIT);       // upper arm
             px.DrawDisc(29, 18, 2, METAL);                   // elbow
@@ -451,28 +580,63 @@ class SpriteFactory {
         px.DrawEllipseFrame(21, 7, 6, 4, OL);
 
         // === State overlays ===
-        if state == 0 {
+        if state == PLAYER_ANIM_IDLE {
             if frame == 1 {
                 px.DrawEllipse(21, 7, 4, 2, 0x33AACC);      // visor dim
             }
         }
-        if state == 2 {
+        if state == PLAYER_ANIM_JUMP {
             // Jump flames
             px.DrawTriangle(1, 34, 5, 34, 3, 44, 0xFF6622);
             px.DrawTriangle(5, 34, 9, 34, 7, 44, 0xFF6622);
             px.DrawTriangle(2, 35, 4, 35, 3, 41, 0xFFDD44);
             px.DrawTriangle(6, 35, 8, 35, 7, 41, 0xFFDD44);
         }
-        if state == 4 {
+        if state == PLAYER_ANIM_DOUBLE_JUMP {
             px.DrawEllipse(18, 20, 13, 2, VISOR);
         }
-        if state == 6 {
+        if state == PLAYER_ANIM_HURT {
             px.DrawEllipse(21, 7, 5, 3, 0xFF4466);          // visor red flash
+            if frame == 1 { px.DrawLine(4, 20, 31, 20, 0xFF8899); }
         }
-        if state == 7 {
+        if state == PLAYER_ANIM_DEATH {
             px.DrawEllipse(21, 7, 5, 3, 0x334455);          // visor dark
             px.DrawLine(17, 5, 21, 9, 0xFF6666);
             px.DrawLine(21, 5, 17, 9, 0xFF6666);
+            px.DrawLine(2 + frame * 3, 38 - frame * 4,
+                        10 + frame * 4, 42 - frame * 2, 0x8844AA);
+        }
+        if state == PLAYER_ANIM_TURN {
+            px.DrawLine(4, 16 + frame * 4, 31, 16 + frame * 4, VISOR);
+        }
+        if state == PLAYER_ANIM_LAND {
+            px.DrawLine(5 - frame, 45, 31 + frame, 45, 0x99AACC);
+            px.DrawDisc(6 + frame * 8, 44, 1 + frame / 2, 0x667788);
+        }
+        if state == PLAYER_ANIM_SHOOT {
+            var muzzle = 2 + frame * 2;
+            px.DrawDisc(35, 18, muzzle, 0xFFDD66);
+            px.DrawLine(28, 14 - frame, 35, 14 - frame, VIS_LT);
+        }
+        if state == PLAYER_ANIM_CHARGE {
+            px.DrawRing(33, 18, 4 + frame * 2, VISOR);
+            px.DrawDisc(33, 18, 2 + frame, 0xDDFFFF);
+        }
+        if state == PLAYER_ANIM_DASH {
+            px.DrawLine(1, 14 + frame * 12, 14, 14 + frame * 12, VISOR);
+            px.DrawLine(0, 18 + frame * 10, 11, 18 + frame * 10, 0x3366FF);
+        }
+        if state == PLAYER_ANIM_GRAPPLE {
+            px.DrawThickLine(25, 18, 31, 4 + frame * 3, 2, SUIT_LT);
+            px.DrawLine(31, 4 + frame * 3, 35, 0, VISOR);
+        }
+        if state == PLAYER_ANIM_POUND {
+            px.DrawTriangle(12, 39, 22, 39, 17, 47, 0xFF8844);
+            px.DrawLine(6 + frame * 20, 4, 6 + frame * 20, 16, 0xFFCC66);
+        }
+        if state == PLAYER_ANIM_ACQUIRE {
+            px.DrawRing(18, 23, 12 + frame * 3, 0x88EEFF);
+            px.DrawDisc(18, 23, 2 + frame, 0xFFFFFF);
         }
 
         return px;
@@ -1934,8 +2098,15 @@ class SpriteFactory {
         registerTile(TILE_STEAM_VENT, tileSteamVent);
         registerTile(TILE_DESTRUCTIBLE, tileDestructible);
         registerTile(TILE_ONE_WAY, tileOneWay);
+        // Interaction aliases guarantee a readable fallback until the authored
+        // asset path replaces each with its dedicated release sprite.
+        registerTile(TILE_SWITCH, tileConsole);
+        registerTile(TILE_LOCKED_DOOR, tileAirlock);
         registerTile(TILE_SAVE_STATION, tileSaveStation);
+        registerTile(TILE_ABILITY_SHRINE, tileSaveStation);
+        registerTile(TILE_TELEPORTER, tileHoloBridge);
         registerTile(TILE_LORE_TERMINAL, tileLoreTerminal);
+        registerTile(TILE_GRAPPLE_ANCHOR, tileCaveCrystal);
     }
 
     hide func registerTile(id: Integer, sprite: Pixels) {
@@ -2109,6 +2280,13 @@ class SpriteFactory {
             }
         }
         return playerLeft.get(0);
+    }
+
+    /// @brief Report the number of built release player frames per facing.
+    ///
+    /// @return `PLAYER_RELEASE_FRAME_COUNT` when construction is complete.
+    expose func getPlayerFrameCount() -> Integer {
+        return playerRight.length();
     }
 
     expose func getSlimeFrame(frame: Integer) -> Pixels {

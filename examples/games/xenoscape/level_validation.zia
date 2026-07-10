@@ -1,7 +1,21 @@
-// =============================================================================
-// level_validation.zia - Campaign structural checks
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/level_validation.zia
+// Purpose: Validates campaign geometry, spawns, and authored interaction data.
+// Key invariants:
+//   - Every campaign builder is loaded through the production enrichment path.
+//   - Validation is deterministic and does not mutate persistent player stores.
+// Ownership/Lifetime:
+//   - Each validation call owns a temporary Level and one aggregate report.
+// Links: level.zia, level_validation_probe.zia, config.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // This module is intentionally separate from the runtime game loop.  It gives
 // maintainers a cheap probe for procedural level data problems: out-of-bounds
@@ -14,8 +28,10 @@ module level_validation;
 
 bind Viper.Terminal as Terminal;
 bind Viper.Text.Fmt;
+bind "./campaign_content";
 bind "./config";
 bind "./level";
+bind "./world_graph";
 
 /// @brief Mutable result object returned by the campaign validator.
 ///
@@ -110,6 +126,9 @@ class LevelValidator {
 
         validateEnemySpawns(levelNum, lvl);
         validatePickupSpawns(levelNum, lvl);
+        validateInteractions(levelNum, lvl);
+        validateRegionalMechanics(levelNum, lvl);
+        validateContentContract(levelNum, lvl);
 
         var exitCol = findExitCol(lvl);
         if exitCol < 0 {
@@ -196,6 +215,223 @@ class LevelValidator {
                           lvl.pickupX.get(i), lvl.pickupY.get(i),
                           lvl.levelWidth, lvl.levelHeight);
             i = i + 1;
+        }
+    }
+
+    /// @brief Validate release interaction records and per-region coverage.
+    ///
+    /// Parallel arrays must remain aligned, every record must be in bounds, and
+    /// each region must expose its save station, two stable lore terminals,
+    /// switch shortcut, three-tile keyed door, teleporter, and key pickup. The
+    /// two shrine regions additionally require their authored shrine record.
+    ///
+    /// @param levelNum One-based campaign level used in failure output.
+    /// @param lvl Loaded level whose authored interaction table is validated.
+    /// @return Nothing. Appends descriptive failures to the shared report.
+    hide func validateInteractions(levelNum: Integer, lvl: Level) {
+        var total = lvl.interactionTypes.length();
+        if lvl.interactionIds.length() != total or
+           lvl.interactionCols.length() != total or
+           lvl.interactionRows.length() != total or
+           lvl.interactionChannels.length() != total or
+           lvl.interactionPayloads.length() != total {
+            fail(levelNum, "interaction parallel-list length mismatch");
+            return;
+        }
+
+        var saves = 0;
+        var lore = 0;
+        var switches = 0;
+        var targets = 0;
+        var doors = 0;
+        var teleporters = 0;
+        var shrines = 0;
+        var firstDoorCol = lvl.levelWidth;
+        var i = 0;
+        while i < total {
+            validatePoint(levelNum, "interaction " + Int(i),
+                          lvl.interactionCols.get(i) * TILE_SIZE,
+                          lvl.interactionRows.get(i) * TILE_SIZE,
+                          lvl.levelWidth, lvl.levelHeight);
+            var kind = lvl.interactionTypes.get(i);
+            if kind == INTERACTION_SAVE_STATION { saves = saves + 1; }
+            if kind == INTERACTION_LORE_TERMINAL { lore = lore + 1; }
+            if kind == INTERACTION_SWITCH { switches = switches + 1; }
+            if kind == INTERACTION_SWITCH_TARGET { targets = targets + 1; }
+            if kind == INTERACTION_LOCKED_DOOR {
+                doors = doors + 1;
+                if lvl.interactionCols.get(i) < firstDoorCol {
+                    firstDoorCol = lvl.interactionCols.get(i);
+                }
+            }
+            if kind == INTERACTION_TELEPORTER {
+                teleporters = teleporters + 1;
+                if lvl.interactionIds.get(i) != levelNum - 1 {
+                    fail(levelNum, "teleporter id does not match stable region id");
+                }
+            }
+            if kind == INTERACTION_ABILITY_SHRINE { shrines = shrines + 1; }
+            i = i + 1;
+        }
+
+        if saves < 1 { fail(levelNum, "missing authored save station"); }
+        if lore < 2 { fail(levelNum, "fewer than two authored lore terminals"); }
+        if switches < 1 { fail(levelNum, "missing authored switch"); }
+        if targets < 1 { fail(levelNum, "missing linked switch target"); }
+        if doors < 3 { fail(levelNum, "keyed door is not three tiles high"); }
+        if teleporters < 1 { fail(levelNum, "missing authored teleporter"); }
+        if (levelNum == 5 or levelNum == 7) and shrines < 1 {
+            fail(levelNum, "missing authored ability shrine");
+        }
+
+        var anchors = 0;
+        var row = 0;
+        while row < lvl.levelHeight {
+            var col = 0;
+            while col < lvl.levelWidth {
+                if lvl.getTile(col, row) == TILE_GRAPPLE_ANCHOR {
+                    anchors = anchors + 1;
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+        if anchors < 2 { fail(levelNum, "fewer than two grapple anchors"); }
+
+        var keyBeforeDoor = false;
+        i = 0;
+        while i < lvl.pickupTypes.length() {
+            if lvl.pickupTypes.get(i) == PICKUP_KEY and
+               lvl.pickupX.get(i) / TILE_SIZE < firstDoorCol {
+                keyBeforeDoor = true;
+            }
+            i = i + 1;
+        }
+        if keyBeforeDoor == false {
+            fail(levelNum, "no matching key pickup before keyed door");
+        }
+    }
+
+    /// @brief Enforce each region's authored environmental-mechanic vocabulary.
+    ///
+    /// @param levelNum One-based campaign region used to select its contract.
+    /// @param lvl Loaded production level whose complete tilemap is counted.
+    /// @return Nothing. Appends a descriptive failure for every missing mechanic.
+    hide func validateRegionalMechanics(levelNum: Integer, lvl: Level) {
+        if levelNum == 1 {
+            requireTile(levelNum, lvl, TILE_CONVEYOR_R, "right conveyor");
+            requireTile(levelNum, lvl, TILE_ONE_WAY, "one-way bridge");
+        }
+        if levelNum == 2 {
+            requireTile(levelNum, lvl, TILE_QUICKSAND, "quicksand");
+            requireTile(levelNum, lvl, TILE_CRUMBLE, "crumble route");
+        }
+        if levelNum == 3 {
+            requireTile(levelNum, lvl, TILE_CRUMBLE, "crumble route");
+            requireTile(levelNum, lvl, TILE_DESTRUCTIBLE, "destructible wall");
+        }
+        if levelNum == 4 {
+            requireTile(levelNum, lvl, TILE_ONE_WAY, "one-way bridge");
+            requireTile(levelNum, lvl, TILE_CONVEYOR_L, "left conveyor");
+        }
+        if levelNum == 5 {
+            requireTile(levelNum, lvl, TILE_QUICKSAND, "quicksand");
+            requireTile(levelNum, lvl, TILE_ONE_WAY, "one-way bridge");
+        }
+        if levelNum == 6 {
+            requireTile(levelNum, lvl, TILE_STEAM_VENT, "steam vents");
+            requireTile(levelNum, lvl, TILE_CONVEYOR_R, "right conveyor");
+        }
+        if levelNum == 7 {
+            requireTile(levelNum, lvl, TILE_CRUMBLE, "crumble route");
+            requireTile(levelNum, lvl, TILE_ONE_WAY, "one-way bridge");
+        }
+        if levelNum == 8 {
+            requireTile(levelNum, lvl, TILE_ICE_FLOOR, "ice floor");
+        }
+        if levelNum == 9 {
+            requireTile(levelNum, lvl, TILE_DESTRUCTIBLE, "destructible wall");
+            requireTile(levelNum, lvl, TILE_CRUMBLE, "crumble route");
+        }
+        if levelNum == 10 {
+            requireTile(levelNum, lvl, TILE_ICE_FLOOR, "ice floor");
+            requireTile(levelNum, lvl, TILE_CONVEYOR_L, "left conveyor");
+            requireTile(levelNum, lvl, TILE_STEAM_VENT, "steam vents");
+            requireTile(levelNum, lvl, TILE_ONE_WAY, "one-way bridge");
+        }
+    }
+
+    /// @brief Enforce the complete per-region commercial content template.
+    ///
+    /// This complements tile/spawn validity with named-room, landmark, tutorial,
+    /// mastery, two-secret, shortcut, and combat-climax anchors. Lore and save
+    /// station counts are already checked by `validateInteractions`; checking the
+    /// remaining anchors here keeps failures specific and deterministic.
+    ///
+    /// @param levelNum One-based campaign region used in diagnostics.
+    /// @param lvl Loaded production level containing content anchor metadata.
+    /// @return Nothing. Appends one descriptive failure per missing contract.
+    hide func validateContentContract(levelNum: Integer, lvl: Level) {
+        var region = levelNum - 1;
+        if regionContentAuthored(region) == false {
+            fail(levelNum, "missing authored campaign content labels");
+        }
+        var graph = new WorldGraph();
+        var room = 0;
+        while room < CAMPAIGN_ROOM_TARGET {
+            if graph.getRoomName(region, room) == "Unknown Room" {
+                fail(levelNum, "missing stable named room " + Int(room));
+            }
+            room = room + 1;
+        }
+        validateContentColumn(levelNum, "landmark", lvl.landmarkCol,
+                              lvl.levelWidth);
+        validateContentColumn(levelNum, "tutorial", lvl.tutorialStartCol,
+                              lvl.levelWidth);
+        validateContentColumn(levelNum, "mastery", lvl.masteryStartCol,
+                              lvl.levelWidth);
+        validateContentColumn(levelNum, "set piece", lvl.setPieceCol,
+                              lvl.levelWidth);
+        if lvl.secretCols.length() < CAMPAIGN_SECRET_TARGET {
+            fail(levelNum, "fewer than two authored optional secret caches");
+        } else {
+            var firstRoom = graph.roomIndexForColumn(
+                lvl.secretCols.get(0), lvl.levelWidth);
+            var secondRoom = graph.roomIndexForColumn(
+                lvl.secretCols.get(1), lvl.levelWidth);
+            if firstRoom != 2 { fail(levelNum, "first secret is not in room 2"); }
+            if secondRoom != 6 { fail(levelNum, "second secret is not in room 6"); }
+        }
+        if lvl.enemyTypes.length() < 3 {
+            fail(levelNum, "combat set piece has fewer than three enemies");
+        }
+    }
+
+    /// @brief Validate one tile-column content anchor against regional bounds.
+    ///
+    /// @param levelNum One-based campaign region used in diagnostics.
+    /// @param label Human-readable anchor role.
+    /// @param column Zero-based tile column.
+    /// @param width Positive regional width in tiles.
+    /// @return Nothing. Appends a failure for an out-of-bounds anchor.
+    hide func validateContentColumn(levelNum: Integer, label: String,
+                                    column: Integer, width: Integer) {
+        if column < 0 or column >= width {
+            fail(levelNum, label + " content anchor outside level bounds");
+        }
+    }
+
+    /// @brief Require at least one tile of a named mechanic type.
+    ///
+    /// @param levelNum One-based region for diagnostics.
+    /// @param lvl Loaded level to inspect.
+    /// @param tile Required tile id.
+    /// @param label Player-facing mechanic label included in a failure.
+    /// @return Nothing. Adds one report error when the tile count is zero.
+    hide func requireTile(levelNum: Integer, lvl: Level,
+                          tile: Integer, label: String) {
+        if lvl.countTilesOfType(tile) <= 0 {
+            fail(levelNum, "missing regional mechanic: " + label);
         }
     }
 

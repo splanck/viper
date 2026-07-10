@@ -53,6 +53,14 @@ Warnings are per outer load, append-only, and capped. Use
 `AssetDiagnostics3D.LoadWarningCount`, `AssetDiagnostics3D.GetLoadWarning(index)`, or
 `AssetDiagnostics3D.GetLoadWarnings()` to inspect partial degradation.
 
+`AssetDiagnostics3D.GetImportReport()` returns the same degradation as one JSON
+document: structured counters plus the warning strings, e.g.
+`{"skippedPrimitives":1,"truncatedInfluenceVertices":0,"outOfRangeJointVertices":0,`
+`"ignoredExtensions":0,"bakedCubicSplineChannels":0,"suppressedWarnings":0,"warnings":[...]}`.
+Counters cover primitives skipped for unsupported modes, vertices whose bone
+influences were truncated or referenced out-of-range joints, optional extensions
+the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
+
 | Loader | Content failure behavior | Partial degradation |
 |--------|--------------------------|---------------------|
 | `SceneAsset.LoadResult(path)` / `LoadAssetResult(path)` | Returns `Err(message)` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
@@ -85,16 +93,19 @@ glTF extension support is explicit:
 | `KHR_materials_emissive_strength` | Supported | Supported | Emissive intensity is imported |
 | `KHR_materials_unlit` | Supported | Supported | Material uses unlit shading |
 | `KHR_materials_specular` | Supported | Supported | Specular factors/textures are imported |
-| `KHR_materials_pbrSpecularGlossiness` | Supported | Supported | Legacy spec-gloss converts to metallic-roughness (`roughness = 1 - glossiness`, metallic from the max specular component vs dielectric 0.04); the specularGlossiness texture binds to the specular slot; per-texel gloss conversion is not attempted |
+| `KHR_materials_pbrSpecularGlossiness` | Supported | Supported | Legacy spec-gloss converts to metallic-roughness (`roughness = 1 - glossiness`, metallic from the max specular component vs dielectric 0.04). A specularGlossinessTexture that decodes to CPU pixels also converts per-texel into a synthesized metallic-roughness map (factors baked in); the source texture additionally binds to the specular slot |
 | `KHR_lights_punctual` | Supported | Supported | Punctual lights are imported |
-| `KHR_texture_basisu` | Not supported as required | Optional KTX2 source selection supported | Required use returns `requires KHR_texture_basisu (unsupported)` |
+| `KHR_materials_variants` | Supported | Supported | Variant names import onto the `SceneAsset` (`VariantCount`/`GetVariantName`); per-primitive material mappings apply through `ApplyVariant` |
+| `EXT_meshopt_compression` | Supported | Supported | Compressed bufferViews decode transparently (ATTRIBUTES/TRIANGLES/INDICES modes plus OCTAHEDRAL/QUATERNION/EXPONENTIAL filters); data-less placeholder fallback buffers are accepted; malformed streams fail the load with a named Corrupt diagnostic |
+| `KHR_mesh_quantization` | Supported | Supported | Quantized POSITION (any 8/16-bit integer type), NORMAL/TANGENT (normalized signed byte/short), and TEXCOORD (any 8/16-bit integer type) attributes — including morph-target deltas — decode to floats per the accessor rules; dequantization node scales apply through the scene hierarchy as authored |
+| `KHR_texture_basisu` | Supported | Supported | KTX2 textures decode fully on the CPU: BasisLZ/ETC1S (supercompression scheme 1) and UASTC LDR 4x4 (scheme 0/Zstd/ZLIB) both decode to RGBA8 pixels |
 | `KHR_materials_clearcoat` | Not supported as required | Optional approximation supported | Clearcoat values map to reflectivity/custom material params |
 | `KHR_materials_transmission` | Not supported as required | Optional approximation supported | Transmission factor is recorded; material remains opaque |
-| Other extensions, including `KHR_draco_mesh_compression` | Not supported | Ignored with a load warning | Visual result may miss extension-specific material, geometry, animation, lighting, or texture behavior |
+| `KHR_draco_mesh_compression` | Partial | Partial | Sequential-encoded meshes decode fully (rANS entropy coding, difference prediction, wrap/octahedron transforms, quantized positions/texcoords/normals, skinning attributes). Edgebreaker-encoded meshes fail the load with a named diagnostic (`uses Draco edgebreaker connectivity (unsupported)`) |
+| Other extensions | Not supported | Ignored with a load warning | Visual result may miss extension-specific material, geometry, animation, lighting, or texture behavior |
 
 Unsupported required extensions fail the load and name the extension list, for
-example `GLTF.Load: requires KHR_draco_mesh_compression (unsupported)`. Draco
-mesh compression is not implemented.
+example `GLTF.Load: requires EXT_texture_webp (unsupported)`.
 
 Writable `Viper.Graphics3D` properties expose `get_X` / `set_X` runtime
 accessors and language-level property assignment where supported, such as
@@ -1028,6 +1039,10 @@ glTF cameras are imported as standalone `Camera3D` handles with the node's world
 | `Instantiate()` | `SceneNode(Object)` | Clone the template hierarchy into a fresh node subtree |
 | `InstantiateScene()` | `SceneGraph(Object)` | Clone the default scene as a standalone scene graph |
 | `InstantiateSceneAt(index)` | `SceneGraph(Object, Integer)` | Clone an immutable scene by index |
+| `get_VariantCount(model)` | `Integer(Object)` | Number of `KHR_materials_variants` names imported with the asset |
+| `GetVariantName(model, index)` | `String(Object, Integer)` | Variant display name, or `""` when out of range |
+| `ApplyVariant(model, target, index)` | `Integer(Object, Object, Integer)` | Apply a material variant to every mapped node under `target` (a `SceneNode` from `Instantiate()` or a `SceneGraph`); returns the node count updated. Variants a primitive does not map restore its default material, so switching is reversible |
+| `GenerateLODs(model, levels, ratio)` | `Integer(Object, Integer, Float)` | Generate 1..4 LOD levels (~`ratio^k` triangles, QEM decimation) for every template/scene mesh node and enable auto screen-error selection; each unique mesh is decimated once, nodes that already carry chains are skipped, and later `Instantiate()` clones inherit the chains. Returns the node count chained |
 
 Prefer `FindNodeOption()` for new code. `FindNode()` remains available for
 compatibility with existing `null` checks. Mutating an instantiated node does not

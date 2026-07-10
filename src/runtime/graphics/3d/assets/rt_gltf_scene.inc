@@ -52,6 +52,41 @@ static void gltf_node_set_primitive_material(rt_scene_node3d *node,
         rt_scene_node3d_set_material(node, primitive_materials[primitive_index]);
 }
 
+/// @brief Install the primitive's KHR_materials_variants table on @p node.
+/// @details Resolves each variant's material index into the asset material list; variants the
+///          primitive does not map keep the primitive's default material, so applying any
+///          variant is always reversible. No-op when the asset has no variants or the
+///          primitive carries no mappings.
+static void gltf_node_bind_variant_materials(rt_gltf_asset *asset,
+                                             rt_scene_node3d *node,
+                                             int32_t **primitive_variant_mappings,
+                                             int32_t primitive_index,
+                                             void **primitive_materials) {
+    const int32_t *mapping;
+    void **table;
+    void *default_material;
+    int32_t count;
+    if (!asset || !node || !primitive_variant_mappings || primitive_index < 0)
+        return;
+    mapping = primitive_variant_mappings[primitive_index];
+    count = asset->variant_name_count;
+    if (!mapping || count <= 0)
+        return;
+    default_material =
+        primitive_materials ? primitive_materials[primitive_index] : NULL;
+    table = (void **)calloc((size_t)count, sizeof(void *));
+    if (!table)
+        return;
+    for (int32_t v = 0; v < count; v++) {
+        void *material = default_material;
+        if (mapping[v] >= 0 && mapping[v] < asset->material_count && asset->materials)
+            material = asset->materials[mapping[v]];
+        table[v] = material;
+    }
+    rt_scene_node3d_assign_variant_materials(node, table, count);
+    free(table);
+}
+
 static int gltf_node_attach_primitive_mesh(rt_gltf_asset *asset,
                                            rt_scene_node3d *node,
                                            int32_t mesh_index,
@@ -78,6 +113,7 @@ static int gltf_node_attach_extra_primitive(rt_gltf_asset *asset,
                                             int64_t skin_ref,
                                             void *weights_arr,
                                             void **primitive_materials,
+                                            int32_t **primitive_variant_mappings,
                                             const gltf_skin_t *skins,
                                             int32_t skin_count) {
     rt_scene_node3d *prim_node = (rt_scene_node3d *)rt_scene_node3d_new();
@@ -89,6 +125,8 @@ static int gltf_node_attach_extra_primitive(rt_gltf_asset *asset,
         return 0;
     }
     gltf_node_set_primitive_material(prim_node, primitive_materials, mesh_index);
+    gltf_node_bind_variant_materials(
+        asset, prim_node, primitive_variant_mappings, mesh_index, primitive_materials);
     if (!rt_scene_node3d_try_add_child(node, prim_node)) {
         gltf_release_local(prim_node);
         return 0;
@@ -106,6 +144,7 @@ static int gltf_node_attach_mesh_primitives(rt_gltf_asset *asset,
                                             int *mesh_prim_start,
                                             int *mesh_prim_count,
                                             void **primitive_materials,
+                                            int32_t **primitive_variant_mappings,
                                             const gltf_skin_t *skins,
                                             int32_t skin_count) {
     int32_t prim_start;
@@ -137,6 +176,8 @@ static int gltf_node_attach_mesh_primitives(rt_gltf_asset *asset,
                                          skin_count))
         return 0;
     gltf_node_set_primitive_material(node, primitive_materials, prim_start);
+    gltf_node_bind_variant_materials(
+        asset, node, primitive_variant_mappings, prim_start, primitive_materials);
     for (int32_t pi = 1; pi < prim_count; pi++) {
         if (!gltf_node_attach_extra_primitive(asset,
                                              node,
@@ -144,6 +185,7 @@ static int gltf_node_attach_mesh_primitives(rt_gltf_asset *asset,
                                              skin_ref,
                                              weights_arr,
                                              primitive_materials,
+                                             primitive_variant_mappings,
                                              skins,
                                              skin_count))
             return 0;
@@ -158,6 +200,7 @@ static int gltf_build_template_node(rt_gltf_asset *asset,
                                     int *mesh_prim_start,
                                     int *mesh_prim_count,
                                     void **primitive_materials,
+                                    int32_t **primitive_variant_mappings,
                                     gltf_skin_t *skins,
                                     int32_t skin_count,
                                     void **imported_lights,
@@ -199,6 +242,7 @@ static int gltf_build_template_node(rt_gltf_asset *asset,
                                            mesh_prim_start,
                                            mesh_prim_count,
                                            primitive_materials,
+                                           primitive_variant_mappings,
                                            skins,
                                            skin_count);
 }
@@ -386,6 +430,7 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                      int *mesh_prim_start,
                                      int *mesh_prim_count,
                                      void **primitive_materials,
+                                     int32_t **primitive_variant_mappings,
                                      gltf_skin_t *skins,
                                      int32_t skin_count,
                                      void **imported_lights,
@@ -411,6 +456,7 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                               mesh_prim_start,
                                               mesh_prim_count,
                                               primitive_materials,
+                                              primitive_variant_mappings,
                                               skins,
                                               skin_count,
                                               imported_lights,

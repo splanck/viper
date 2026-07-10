@@ -1,7 +1,21 @@
-// =============================================================================
-// physics.zia — The platformer's beating heart: tile collision + gravity
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/physics.zia
+// Purpose: Resolves deterministic tile collision and environmental probes.
+// Key invariants:
+//   - Positions and velocities use signed centipixels at the collision boundary.
+//   - Axis-separated resolution reuses scratch results without frame allocations.
+// Ownership/Lifetime:
+//   - Each owner keeps one PhysicsHelper for reusable rectangles and MoveResult.
+// Links: level.zia, player.zia, environment.zia, enemy.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — HOW A 2D PLATFORMER ACTUALLY MOVES
 // ---------------------------------------------
@@ -131,7 +145,10 @@ module physics;
 
 bind Viper.Game;
 bind "./config";
+bind "./environment";
 bind "./level";
+
+final CORNER_CORRECTION_MAX_PX = 6;
 
 //=============================================================================
 // COLLISION RESULT
@@ -241,6 +258,57 @@ class PhysicsHelper {
         x: Integer, y: Integer, vx: Integer, vy: Integer,
         w: Integer, h: Integer, level: Level
     ) -> MoveResult {
+        return moveAndCollideInternal(x, y, vx, vy, w, h, level,
+                                      false, false);
+    }
+
+    /// @brief Resolve player motion while honoring an active drop-through window.
+    ///
+    /// This is the player-specific entry point for the same axis-separated
+    /// collision solver used by enemies. Ordinary solid tiles always collide;
+    /// one-way tiles collide only on a downward crossing from above and are
+    /// ignored while `droppingThroughOneWay` is true.
+    ///
+    /// @param x Current left coordinate in centipixels.
+    /// @param y Current top coordinate in centipixels.
+    /// @param vx Horizontal displacement for this simulation step.
+    /// @param vy Vertical displacement for this simulation step.
+    /// @param w Hitbox width in whole pixels.
+    /// @param h Hitbox height in whole pixels.
+    /// @param level Active level queried for collision and tile identity.
+    /// @param droppingThroughOneWay True during the 180 ms down+jump window.
+    /// @return Reused `MoveResult`; callers must copy fields before another call.
+    expose func movePlayerAndCollide(
+        x: Integer, y: Integer, vx: Integer, vy: Integer,
+        w: Integer, h: Integer, level: Level,
+        droppingThroughOneWay: Boolean
+    ) -> MoveResult {
+        return moveAndCollideInternal(x, y, vx, vy, w, h, level,
+                                      droppingThroughOneWay, true);
+    }
+
+    /// @brief Shared axis-separated solver for ordinary and player motion.
+    ///
+    /// Horizontal resolution considers only fully solid tiles. Vertical
+    /// resolution additionally treats a one-way tile as a floor when the body
+    /// sweeps downward across its top from above. The cached result makes the
+    /// method non-reentrant on one helper instance but allocation-free.
+    ///
+    /// @param x Current left coordinate in centipixels.
+    /// @param y Current top coordinate in centipixels.
+    /// @param vx Horizontal displacement for this simulation step.
+    /// @param vy Vertical displacement for this simulation step.
+    /// @param w Hitbox width in whole pixels.
+    /// @param h Hitbox height in whole pixels.
+    /// @param level Active collision level.
+    /// @param droppingThroughOneWay Whether one-way floor checks are suppressed.
+    /// @param allowCornerCorrection Whether upward collisions may nudge <=6 px.
+    /// @return The helper-owned reusable collision result.
+    hide func moveAndCollideInternal(
+        x: Integer, y: Integer, vx: Integer, vy: Integer,
+        w: Integer, h: Integer, level: Level,
+        droppingThroughOneWay: Boolean, allowCornerCorrection: Boolean
+    ) -> MoveResult {
         var newX = x + vx;
         var newY = y + vy;
         var floor = false;
@@ -292,13 +360,29 @@ class PhysicsHelper {
             var rightTile = toTileCoord(newX + w100 - 1);
 
             for tx in leftTile..=rightTile {
-                if level.isSolid(tx, tileY) {
+                var blocks = level.isSolid(tx, tileY);
+                if blocks == false and level.getTile(tx, tileY) == TILE_ONE_WAY {
+                    blocks = environmentalOneWayBlocks(
+                        y + h100, newY + h100,
+                        tileY * TILE_SIZE * 100,
+                        droppingThroughOneWay);
+                }
+                if blocks {
                     if vy > 0 {
                         newY = tileY * TILE_SIZE * 100 - h100;
                         floor = true;
                     } else {
-                        newY = (tileY + 1) * TILE_SIZE * 100;
-                        ceiling = true;
+                        var correctedX = newX;
+                        if allowCornerCorrection {
+                            correctedX = findUpwardCornerCorrection(
+                                newX, newY, w100, h100, level);
+                        }
+                        if correctedX != newX {
+                            newX = correctedX;
+                        } else {
+                            newY = (tileY + 1) * TILE_SIZE * 100;
+                            ceiling = true;
+                        }
                     }
                     break;
                 }
@@ -307,6 +391,68 @@ class PhysicsHelper {
 
         moveResult.set(newX, newY, floor, ceiling, left, right);
         return moveResult;
+    }
+
+    /// @brief Find the smallest safe horizontal nudge for an upward corner hit.
+    ///
+    /// Left and right candidates are tested one pixel at a time through the exact
+    /// six-pixel release limit. A candidate must leave the player's entire swept
+    /// rectangle clear of ordinary solid tiles, preventing correction through a
+    /// neighboring wall. One-way floors never block upward travel.
+    ///
+    /// @param x Proposed left coordinate in centipixels.
+    /// @param y Proposed top coordinate in centipixels.
+    /// @param w100 Hitbox width in centipixels.
+    /// @param h100 Hitbox height in centipixels.
+    /// @param level Active collision level.
+    /// @return Corrected X, or the original X when no <=6 px correction is safe.
+    hide func findUpwardCornerCorrection(x: Integer, y: Integer,
+                                         w100: Integer, h100: Integer,
+                                         level: Level) -> Integer {
+        var distance = 1;
+        while distance <= CORNER_CORRECTION_MAX_PX {
+            var leftX = x - distance * 100;
+            if rectangleHasSolid(leftX, y, w100, h100, level) == false {
+                return leftX;
+            }
+            var rightX = x + distance * 100;
+            if rectangleHasSolid(rightX, y, w100, h100, level) == false {
+                return rightX;
+            }
+            distance = distance + 1;
+        }
+        return x;
+    }
+
+    /// @brief Test a centipixel rectangle against every overlapped solid tile.
+    ///
+    /// @param x Candidate left coordinate in centipixels.
+    /// @param y Candidate top coordinate in centipixels.
+    /// @param w100 Candidate width in centipixels.
+    /// @param h100 Candidate height in centipixels.
+    /// @param level Active collision level.
+    /// @return True for an out-of-bounds/solid overlap, otherwise false.
+    hide func rectangleHasSolid(x: Integer, y: Integer,
+                                w100: Integer, h100: Integer,
+                                level: Level) -> Boolean {
+        if x < 0 or y < 0 { return true; }
+        var leftTile = toTileCoord(x);
+        var rightTile = toTileCoord(x + w100 - 1);
+        var topTile = toTileCoord(y);
+        var bottomTile = toTileCoord(y + h100 - 1);
+        if rightTile >= level.levelWidth or bottomTile >= level.levelHeight {
+            return true;
+        }
+        var ty = topTile;
+        while ty <= bottomTile {
+            var tx = leftTile;
+            while tx <= rightTile {
+                if level.isSolid(tx, ty) { return true; }
+                tx = tx + 1;
+            }
+            ty = ty + 1;
+        }
+        return false;
     }
 
     /// @brief "Am I standing on something solid?"
@@ -325,7 +471,7 @@ class PhysicsHelper {
         var rightTile = toTileCoord(x + w100 - 1);
 
         for tx in leftTile..=rightTile {
-            if level.isSolid(tx, tileY) {
+            if level.isSolid(tx, tileY) or level.getTile(tx, tileY) == TILE_ONE_WAY {
                 return true;
             }
         }
@@ -498,6 +644,53 @@ class PhysicsHelper {
             return level.getTilePropertyAt(tileX, tileY, "surface", 0) == 1;
         }
         return false;
+    }
+
+    /// @brief Test whether the player's center foot probe overlaps quicksand.
+    ///
+    /// Quicksand remains a solid walkable surface; Player uses this semantic
+    /// property to select the 55-percent speed cap and 80-percent jump impulse.
+    ///
+    /// @param x100 Player left coordinate in centipixels.
+    /// @param y100 Player top coordinate in centipixels.
+    /// @param w Player hitbox width in pixels.
+    /// @param h Player hitbox height in pixels.
+    /// @param level Active level containing semantic tile properties.
+    /// @return True only when the center foot probe is on authored quicksand.
+    expose func isInQuicksand(x100: Integer, y100: Integer,
+                              w: Integer, h: Integer,
+                              level: Level) -> Boolean {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h + 2) / TILE_SIZE;
+        if tileX >= 0 and tileX < level.levelWidth and
+           tileY >= 0 and tileY < level.levelHeight {
+            return level.getTilePropertyAt(tileX, tileY, "quicksand", 0) == 1;
+        }
+        return false;
+    }
+
+    /// @brief Test whether the center of the hitbox stands on a one-way tile.
+    ///
+    /// This query is intentionally narrower than `isOnGround`: Player uses it
+    /// only to decide whether down+jump should start the temporary pass-through
+    /// window. Down+jump on ordinary solid ground remains an ordinary jump.
+    ///
+    /// @param x100 Player left coordinate in centipixels.
+    /// @param y100 Player top coordinate in centipixels.
+    /// @param w Player hitbox width in pixels.
+    /// @param h Player hitbox height in pixels.
+    /// @param level Active level queried for tile identity.
+    /// @return True when the center foot probe lies on `TILE_ONE_WAY`.
+    expose func isOnOneWay(x100: Integer, y100: Integer,
+                           w: Integer, h: Integer,
+                           level: Level) -> Boolean {
+        var px = x100 / 100;
+        var py = y100 / 100;
+        var tileX = (px + w / 2) / TILE_SIZE;
+        var tileY = (py + h + 2) / TILE_SIZE;
+        return level.getTile(tileX, tileY) == TILE_ONE_WAY;
     }
 
     /// @brief Conveyor direction under the feet: -1 left, +1

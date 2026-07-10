@@ -140,6 +140,10 @@ void *rt_gltf_get_scene_camera(void *asset, int64_t scene_index, int64_t index);
 int64_t rt_gltf_node_count(void *asset);
 /// @brief Get the asset's scene-graph root node (NULL if none).
 void *rt_gltf_get_scene_root(void *asset);
+/// @brief Number of KHR_materials_variants names imported with the asset (0 when absent).
+int64_t rt_gltf_variant_count(void *asset);
+/// @brief Get the material-variant name at @p index (empty string if out of range).
+rt_string rt_gltf_get_variant_name(void *asset, int64_t index);
 
 #ifdef __cplusplus
 }

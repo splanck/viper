@@ -516,6 +516,25 @@ static int gltf_preload_parse_buffer_views(const char *json,
             views[index].byte_stride =
                 gltf_json_object_get_size(json, json_len, pos, object_end, "byteStride", 0u);
             views[index].valid = views[index].buffer >= 0 && views[index].byte_length > 0;
+            /* EXT_meshopt_compression views resolve through the sync loader's decoded
+             * shadow table; the parent range may point at a data-less placeholder
+             * buffer, so worker staging must not read it. Marking the view invalid
+             * makes dependent primitives fall back to the commit-time sync decode. */
+            {
+                size_t ext_start;
+                size_t ext_end;
+                if (gltf_json_object_find_value(
+                        json, json_len, pos, object_end, "extensions", &ext_start, &ext_end) &&
+                    ext_start < ext_end && json[ext_start] == '{' &&
+                    gltf_json_object_find_value(json,
+                                                json_len,
+                                                ext_start,
+                                                ext_end,
+                                                "EXT_meshopt_compression",
+                                                &ext_start,
+                                                &ext_end))
+                    views[index].valid = 0;
+            }
             index++;
             pos = object_end;
         } else {
@@ -1074,9 +1093,10 @@ static uint32_t gltf_preload_write_vertex_bone_weights(vgfx3d_vertex_t *vertex,
 }
 
 /// @brief Serialize a packed mesh primitive into a "VGMP" POD blob and stage it as a dependency.
-/// @details Writes the 32-byte header (magic, version, vertex/index counts, flags, byte spans, bone
-///          count) followed by the raw vertex and index arrays, all overflow-checked, then stores
-///          it under the mesh/primitive key for gltf_preload_take_decoded_mesh to consume later.
+/// @details Writes the 40-byte header (magic, version, vertex/index counts, flags, byte spans, bone
+///          count, skin-import diagnostics) followed by the raw vertex and index arrays, all
+///          overflow-checked, then stores it under the mesh/primitive key for
+///          gltf_preload_take_decoded_mesh to consume later.
 static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
                                       int mesh_index,
                                       int primitive_index,
@@ -1086,6 +1106,7 @@ static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
                                       uint32_t *indices,
                                       uint32_t index_count,
                                       uint32_t bone_count,
+                                      const gltf_skin_import_stats_t *skin_stats,
                                       char *error,
                                       size_t error_cap) {
     uint8_t *blob;
@@ -1119,6 +1140,8 @@ static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
     gltf_write_u32_le(blob + 20, (uint32_t)vertex_bytes);
     gltf_write_u32_le(blob + 24, (uint32_t)index_bytes);
     gltf_write_u32_le(blob + 28, bone_count);
+    gltf_write_u32_le(blob + 32, skin_stats ? skin_stats->truncated_vertices : 0u);
+    gltf_write_u32_le(blob + 36, skin_stats ? skin_stats->out_of_range_vertices : 0u);
     memcpy(blob + GLTF_PRELOAD_MESH_POD_HEADER_SIZE, vertices, vertex_bytes);
     memcpy(blob + payload_offset, indices, index_bytes);
     gltf_preload_mesh_key(mesh_index, primitive_index, key, sizeof(key));
@@ -1432,7 +1455,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                          view_count,
                                                          &pos_view) &&
                       gltf_accessor_has_payload(&pos_view) &&
-                      gltf_accessor_is_f32_components(&pos_view, 3, 3);
+                      gltf_accessor_is_position(&pos_view);
             has_norm = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           norm_acc,
@@ -1442,7 +1465,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                           view_count,
                                                           &norm_view) &&
                        gltf_accessor_has_payload(&norm_view) &&
-                       gltf_accessor_is_f32_components(&norm_view, 3, 3);
+                       gltf_accessor_is_normal(&norm_view);
             has_tangent = gltf_preload_resolve_accessor_view(accessors,
                                                              accessor_count,
                                                              tangent_acc,
@@ -1452,7 +1475,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                              view_count,
                                                              &tangent_view) &&
                           gltf_accessor_has_payload(&tangent_view) &&
-                          gltf_accessor_is_f32_components(&tangent_view, 3, 4);
+                          gltf_accessor_is_tangent(&tangent_view, 3);
             if (has_pos || has_norm || has_tangent) {
                 if (shape_count > (SIZE_MAX / sizeof(*shapes)) - 1u) {
                     gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
@@ -1690,7 +1713,7 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                            view_count,
                                                            &out->tangent_view) &&
                         gltf_accessor_has_payload(&out->tangent_view) &&
-                        gltf_accessor_is_f32_components(&out->tangent_view, 4, 4) &&
+                        gltf_accessor_is_tangent(&out->tangent_view, 4) &&
                         out->tangent_view.count >= out->pos_view.count;
     out->has_joints = gltf_preload_resolve_accessor_view(accessors,
                                                          accessor_count,
@@ -1763,12 +1786,17 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
 }
 
 /// @brief Decode each vertex's attributes into @p vertices, normalizing skin influences.
+/// @details Skin influences that cannot be represented (a fifth meaningful influence, or a
+///          joint index past VGFX3D_MAX_BONES) are counted into @p skin_stats_io so the
+///          committing thread can surface load warnings — the decode itself runs on a
+///          preload worker where the thread-local warning store is not the loader's.
 /// @return 1 on success, 0 to skip the primitive (non-finite source data). Sets @p out_bone_count.
 static int gltf_preload_build_primitive_vertices(const gltf_primitive_attribs_t *a,
                                                  vgfx3d_vertex_t *vertices,
                                                  uint32_t *out_bone_count,
                                                  int *out_valid_normals,
-                                                 int *out_valid_tangents) {
+                                                 int *out_valid_tangents,
+                                                 gltf_skin_import_stats_t *skin_stats_io) {
     uint32_t bone_count = 0u;
     int valid_normals = a && a->has_normals;
     int valid_tangents = a && a->has_tangents;
@@ -1851,25 +1879,44 @@ static int gltf_preload_build_primitive_vertices(const gltf_primitive_attribs_t 
                 gltf_accessor_read_u32(&a->joints1_view, vi, joints1, 4);
             if (a->has_weights1)
                 gltf_accessor_read_f32(&a->weights1_view, vi, weights1, 4);
+            int truncated = 0;
+            int out_of_range = 0;
             if (a->has_joints1 && a->has_weights1) {
                 uint32_t merged_joints[4] = {0u, 0u, 0u, 0u};
                 float merged_weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
                 if (a->has_joints && a->has_weights) {
                     for (int j = 0; j < 4; j++)
-                        gltf_add_top_joint_influence(
-                            joints[j], weights[j], merged_joints, merged_weights);
+                        gltf_add_top_joint_influence(joints[j],
+                                                     weights[j],
+                                                     merged_joints,
+                                                     merged_weights,
+                                                     &truncated,
+                                                     &out_of_range);
                 }
                 for (int j = 0; j < 4; j++)
-                    gltf_add_top_joint_influence(
-                        joints1[j], weights1[j], merged_joints, merged_weights);
+                    gltf_add_top_joint_influence(joints1[j],
+                                                 weights1[j],
+                                                 merged_joints,
+                                                 merged_weights,
+                                                 &truncated,
+                                                 &out_of_range);
                 gltf_normalize_joint_influences(merged_weights);
                 memcpy(joints, merged_joints, sizeof(joints));
                 memcpy(weights, merged_weights, sizeof(weights));
             } else {
                 for (int j = 0; j < 4; j++) {
-                    if (joints[j] >= VGFX3D_MAX_BONES)
+                    if (joints[j] >= VGFX3D_MAX_BONES) {
+                        if (isfinite(weights[j]) && weights[j] > 1e-8f)
+                            out_of_range = 1;
                         weights[j] = 0.0f;
+                    }
                 }
+            }
+            if (skin_stats_io) {
+                if (truncated)
+                    skin_stats_io->truncated_vertices++;
+                if (out_of_range)
+                    skin_stats_io->out_of_range_vertices++;
             }
             vertex_bone_count =
                 gltf_preload_write_vertex_bone_weights(&vertices[vi], joints, weights);
@@ -1963,6 +2010,7 @@ static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
     uint32_t index_count = 0;
     size_t vertex_bytes;
     size_t index_bytes;
+    gltf_skin_import_stats_t skin_stats = {0u, 0u};
     int ok = 1;
 
     if (!bundle || !json || !accessors)
@@ -1997,7 +2045,7 @@ static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
     }
 
     if (!gltf_preload_build_primitive_vertices(
-            &attribs, vertices, &bone_count, &valid_normals, &valid_tangents))
+            &attribs, vertices, &bone_count, &valid_normals, &valid_tangents, &skin_stats))
         goto done;
 
     gltf_preload_triangulate_primitive(&attribs, vertices, indices, &index_count);
@@ -2020,6 +2068,7 @@ static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
                                     indices,
                                     index_count,
                                     bone_count,
+                                    &skin_stats,
                                     error,
                                     error_cap);
     if (ok) {

@@ -99,12 +99,11 @@ static int gltf_accessor_bind_buffer_view(void *root,
     size_t byte_length_bv;
     size_t byte_stride;
     size_t elem_size;
-    size_t offset;
     size_t view_end;
     size_t last_offset;
     size_t last_span;
     size_t required_view_len;
-    size_t required_len;
+    const uint8_t *view_base;
     if (bv_idx < 0)
         return 1;
     if (!views || bv_idx >= jarr_len(views))
@@ -117,11 +116,22 @@ static int gltf_accessor_bind_buffer_view(void *root,
         !gltf_nonnegative_size(bv, "byteLength", 0, &byte_length_bv) ||
         !gltf_nonnegative_size(bv, "byteStride", 0, &byte_stride))
         return 0;
-    if (!buffers || buf_count <= 0 || buf_idx < 0 || buf_idx >= buf_count)
-        return 0;
-    if (!gltf_checked_add_size(byte_offset_bv, byte_length_bv, &view_end) ||
-        view_end > buffers[buf_idx].len)
-        return 0;
+    /* EXT_meshopt_compression: compressed views bind against the decoded shadow
+     * buffer; the parent (buffer, byteOffset) range may reference a data-less
+     * placeholder fallback, so the raw-buffer bounds checks below don't apply. */
+    if (g_gltf_meshopt_views && bv_idx < g_gltf_meshopt_views->view_count &&
+        g_gltf_meshopt_views->view_data[bv_idx]) {
+        view_base = g_gltf_meshopt_views->view_data[bv_idx];
+        if (byte_length_bv != g_gltf_meshopt_views->view_len[bv_idx])
+            return 0;
+    } else {
+        if (!buffers || buf_count <= 0 || buf_idx < 0 || buf_idx >= buf_count)
+            return 0;
+        if (!gltf_checked_add_size(byte_offset_bv, byte_length_bv, &view_end) ||
+            view_end > buffers[buf_idx].len)
+            return 0;
+        view_base = buffers[buf_idx].data ? buffers[buf_idx].data + byte_offset_bv : NULL;
+    }
 
     elem_size = (size_t)comp_size * (size_t)comp_count;
     if (byte_stride > 0) {
@@ -133,9 +143,7 @@ static int gltf_accessor_bind_buffer_view(void *root,
             return 0;
         out->stride = (int32_t)elem_size;
     }
-    if (!gltf_checked_add_size(byte_offset_bv, byte_offset_acc, &offset))
-        return 0;
-    if (byte_offset_acc > byte_length_bv || offset > buffers[buf_idx].len)
+    if (byte_offset_acc > byte_length_bv)
         return 0;
     if (!rt_untrusted_count_ok((int64_t)out->count, elem_size, byte_length_bv - byte_offset_acc))
         return 0;
@@ -147,10 +155,7 @@ static int gltf_accessor_bind_buffer_view(void *root,
         return 0;
     if (required_view_len > byte_length_bv)
         return 0;
-    if (!gltf_checked_add_size(byte_offset_bv, required_view_len, &required_len) ||
-        required_len > buffers[buf_idx].len)
-        return 0;
-    out->data = buffers[buf_idx].data + offset;
+    out->data = view_base ? view_base + byte_offset_acc : NULL;
     return 1;
 }
 
@@ -524,6 +529,45 @@ static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
     }
 }
 
+/// @brief Per-primitive skin-import diagnostics: how many vertices lost source
+///        influence data on the way into the fixed 4-slot vertex record.
+typedef struct {
+    uint32_t truncated_vertices;    /**< vertices with >4 meaningful influences folded to top-4 */
+    uint32_t out_of_range_vertices; /**< vertices whose meaningful joints >= VGFX3D_MAX_BONES */
+} gltf_skin_import_stats_t;
+
+/// @brief Emit load warnings for skin data the importer had to drop or truncate.
+/// @details Both the synchronous mesh import and the preloaded-POD commit paths funnel
+///          their per-primitive stats through here so the two paths produce identical
+///          AssetDiagnostics3D warnings. No-op when the stats are all zero.
+static void gltf_emit_skin_import_warnings(int mesh_index,
+                                           int primitive_index,
+                                           const gltf_skin_import_stats_t *stats) {
+    if (!stats)
+        return;
+    if (stats->truncated_vertices > 0u) {
+        rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_TRUNCATED_INFLUENCE_VERTICES,
+                                       (int64_t)stats->truncated_vertices);
+        rt_asset_error_add_warningf(
+            "glTF mesh %d primitive %d: %u vertices carried more than 4 bone influences; "
+            "weakest influences dropped and weights renormalized",
+            mesh_index,
+            primitive_index,
+            stats->truncated_vertices);
+    }
+    if (stats->out_of_range_vertices > 0u) {
+        rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_OUT_OF_RANGE_JOINT_VERTICES,
+                                       (int64_t)stats->out_of_range_vertices);
+        rt_asset_error_add_warningf(
+            "glTF mesh %d primitive %d: %u vertices referenced joints beyond the %d-bone "
+            "limit; those influences were dropped",
+            mesh_index,
+            primitive_index,
+            stats->out_of_range_vertices,
+            (int)VGFX3D_MAX_BONES);
+    }
+}
+
 /// @brief Insert a `(joint, weight)` influence into a fixed 4-slot vertex influence
 ///        record, keeping the top four weights.
 /// @details GPU skinning palettes cap per-vertex influences at 4 slots, but glTF meshes
@@ -535,21 +579,32 @@ static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
 ///            2. Empty slot available (weight ~= 0) → fill it.
 ///            3. All slots full and the incoming weight is larger than the smallest
 ///               slot → evict the weakest. Otherwise the incoming weight is dropped.
-///          Inputs whose joint index exceeds VGFX3D_MAX_BONES or whose weight is
-///          negligible/non-finite (<= 1e-8) are silently dropped so garbage in the
-///          source accessors can't corrupt the influence record.
+///          Inputs whose weight is negligible/non-finite (<= 1e-8) are silently dropped
+///          so garbage in the source accessors can't corrupt the influence record.
+///          Meaningful influences that are still lost are reported through the flags:
+///          a joint index past VGFX3D_MAX_BONES raises @p out_of_range_io, and a fifth
+///          meaningful influence hitting a full record raises @p truncated_io (whether
+///          the incoming or the weakest resident influence is the one dropped).
 /// @param joint Source joint index from a glTF JOINTS_* accessor.
 /// @param weight Source weight from the matching WEIGHTS_* accessor.
 /// @param out_joints 4-element joint-index array, mutated in place.
 /// @param out_weights 4-element weight array, mutated in place.
+/// @param truncated_io Optional flag set to 1 when a meaningful influence is folded away.
+/// @param out_of_range_io Optional flag set to 1 when a meaningful joint is out of range.
 static void gltf_add_top_joint_influence(uint32_t joint,
                                          float weight,
                                          uint32_t *out_joints,
-                                         float *out_weights) {
+                                         float *out_weights,
+                                         int *truncated_io,
+                                         int *out_of_range_io) {
     int replace = -1;
-    if (!out_joints || !out_weights || joint >= VGFX3D_MAX_BONES || !isfinite(weight) ||
-        weight <= 1e-8f)
+    if (!out_joints || !out_weights || !isfinite(weight) || weight <= 1e-8f)
         return;
+    if (joint >= VGFX3D_MAX_BONES) {
+        if (out_of_range_io)
+            *out_of_range_io = 1;
+        return;
+    }
     for (int i = 0; i < 4; i++) {
         if (out_weights[i] > 1e-8f && out_joints[i] == joint) {
             out_weights[i] += weight;
@@ -559,6 +614,8 @@ static void gltf_add_top_joint_influence(uint32_t joint,
             replace = i;
     }
     if (replace < 0) {
+        if (truncated_io)
+            *truncated_io = 1;
         replace = 0;
         for (int i = 1; i < 4; i++) {
             if (out_weights[i] < out_weights[replace])
@@ -636,26 +693,51 @@ static int gltf_accessor_has_payload(const gltf_accessor_view_t *view) {
            (view->data || (view->sparse_count > 0 && view->sparse_indices && view->sparse_values));
 }
 
-/// @brief True if the accessor is FLOAT (comp_type 5126) with a component count in
-///   [@p min_components, @p max_components].
-static int gltf_accessor_is_f32_components(const gltf_accessor_view_t *view,
-                                           int min_components,
-                                           int max_components) {
-    return view && view->comp_type == 5126 && view->comp_count >= min_components &&
-           view->comp_count <= max_components;
-}
-
 /// @brief True if the accessor is a scalar unsigned index stream (u8/u16/u32 component types).
 static int gltf_accessor_is_indices(const gltf_accessor_view_t *view) {
     return view && view->comp_count == 1 &&
            (view->comp_type == 5121 || view->comp_type == 5123 || view->comp_type == 5125);
 }
 
-/// @brief True if the accessor is a valid UV stream (≥2 components, FLOAT or normalized u8/u16).
+/// @brief True if the accessor uses one of the four 8/16-bit integer component types.
+static int gltf_accessor_is_quantized_int(const gltf_accessor_view_t *view) {
+    return view && (view->comp_type == 5120 || view->comp_type == 5121 ||
+                    view->comp_type == 5122 || view->comp_type == 5123);
+}
+
+/// @brief True if the accessor is a valid POSITION stream: FLOAT VEC3, or a
+///        KHR_mesh_quantization 8/16-bit integer VEC3 (normalized or plain).
+static int gltf_accessor_is_position(const gltf_accessor_view_t *view) {
+    if (!view || view->comp_count != 3)
+        return 0;
+    return view->comp_type == 5126 || gltf_accessor_is_quantized_int(view);
+}
+
+/// @brief True if the accessor is a valid NORMAL stream: FLOAT VEC3, or a
+///        KHR_mesh_quantization normalized signed byte/short VEC3.
+static int gltf_accessor_is_normal(const gltf_accessor_view_t *view) {
+    if (!view || view->comp_count < 3)
+        return 0;
+    if (view->comp_type == 5126)
+        return view->comp_count == 3;
+    return view->normalized && (view->comp_type == 5120 || view->comp_type == 5122);
+}
+
+/// @brief True if the accessor is a valid TANGENT stream (@p min_components..4): FLOAT,
+///        or a KHR_mesh_quantization normalized signed byte/short.
+static int gltf_accessor_is_tangent(const gltf_accessor_view_t *view, int min_components) {
+    if (!view || view->comp_count < min_components || view->comp_count > 4)
+        return 0;
+    if (view->comp_type == 5126)
+        return 1;
+    return view->normalized && (view->comp_type == 5120 || view->comp_type == 5122);
+}
+
+/// @brief True if the accessor is a valid UV stream (≥2 components, FLOAT or a
+///        KHR_mesh_quantization 8/16-bit integer, normalized or plain).
 static int gltf_accessor_is_texcoord(const gltf_accessor_view_t *view) {
     return view && view->comp_count >= 2 &&
-           (view->comp_type == 5126 ||
-            (view->normalized && (view->comp_type == 5121 || view->comp_type == 5123)));
+           (view->comp_type == 5126 || gltf_accessor_is_quantized_int(view));
 }
 
 /// @brief True if the accessor is a valid vertex-color stream (3-4 components, FLOAT or

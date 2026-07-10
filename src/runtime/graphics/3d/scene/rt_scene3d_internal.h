@@ -214,6 +214,14 @@ typedef struct rt_scene_node3d {
     uint32_t lod_view_state_clock;
     rt_scene3d_lod_view_state lod_view_states[RT_SCENE3D_LOD_VIEW_STATE_COUNT];
 
+    /* KHR_materials_variants: variant-indexed retained Material3D pointers imported
+     * with this node's glTF primitive. Slot v holds the material the node uses when
+     * variant v is applied (unmapped variants resolve to the primitive's default
+     * material at import). NULL table = node is unaffected by variant switching.
+     * Cloned with the node; not persisted by .vscn. */
+    void **variant_materials;
+    int32_t variant_material_count;
+
     int8_t has_impostor;
     int8_t impostor_selected;
     double impostor_distance;
@@ -329,6 +337,15 @@ void rt_scene_node3d_set_animator_scene_update(void *obj, int8_t enabled);
 void rt_scene_node3d_set_light(void *obj, void *light);
 /// @brief Get the Light3D attached to a scene node (NULL if none).
 void *rt_scene_node3d_get_light(void *obj);
+/// @brief Importer hook: install a variant-indexed material table on a node.
+/// @details Replaces any existing table. Retains each non-NULL entry; @p materials may
+///          contain NULL slots (variant leaves the node's material untouched). Passing
+///          NULL/0 clears the table. Returns 1 on success, 0 on allocation failure.
+int rt_scene_node3d_assign_variant_materials(rt_scene_node3d *node,
+                                             void *const *materials,
+                                             int32_t count);
+/// @brief Copy the variant-material table from @p src onto @p dst (clone helper).
+int rt_scene_node3d_copy_variant_materials(rt_scene_node3d *dst, const rt_scene_node3d *src);
 
 // Shared internal helpers exposed for the split rt_scene3d_*.c sibling TUs.
 rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target);

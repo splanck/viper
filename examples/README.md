@@ -39,7 +39,7 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 |---------|-------------|------------|
 | [Ridgebound](games/ridgebound/) | Open-world Game3D sample | Game3D world loop, procedural terrain, water, skybox, PBR materials, beacon objectives, post-FX, final overlay |
 | [Chess](games/chess/) | Polished chess game with AI opponent | Alpha-beta AI, save slots, clocks, puzzles, themes, audio, FEN/PGN, drag-and-drop GUI |
-| [XENOSCAPE](games/xenoscape/) | Metroidvania sidescroller | 25+ enemies, 10 levels, parallax, particles, lighting, abilities, saves, VAPS Windows demo packaging (17K LOC) |
+| [XENOSCAPE](games/xenoscape/) | Release-quality action Metroidvania | 10-region nonlinear campaign, 80 rooms, hub/economy, profiles, accessibility, ranks, Time Trials, Boss Rush, New Game+, authored/fallback art and adaptive audio |
 | [Crackman](games/crackman/) | Maze chase game with ghost AI | BFS pathfinding, scatter/chase/frightened modes, [Canvas](../docs/viperlib/graphics/canvas.md) rendering |
 | [Centipede](games/centipede/) | Arcade centipede game | Multiple enemy types, particle effects, Canvas graphics |
 | [Frogger](games/frogger/) | Frogger clone | Single-file implementation, ANSI terminal |

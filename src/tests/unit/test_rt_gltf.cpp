@@ -134,6 +134,22 @@ static bool write_binary_file(const char *path, const std::vector<uint8_t> &byte
     return ok;
 }
 
+static bool load_warnings_contain(const char *needle) {
+    int64_t count = rt_asset_error_get_warning_count();
+    for (int64_t i = 0; i < count; i++) {
+        const char *warning = rt_asset_error_get_warning(i);
+        if (warning && std::strstr(warning, needle) != nullptr)
+            return true;
+    }
+    return false;
+}
+
+static bool import_report_contains(const char *needle) {
+    rt_string report = rt_assets3d_get_import_report();
+    const char *text = report ? rt_string_cstr(report) : nullptr;
+    return text && std::strstr(text, needle) != nullptr;
+}
+
 static void test_gltf_accessors_reject_wrong_handles() {
     void *fake = rt_obj_new_i64(0, 8);
     EXPECT_TRUE(rt_gltf_mesh_count(fake) == 0, "GLTF mesh count rejects wrong handles");
@@ -1612,6 +1628,10 @@ static void test_gltf_skips_non_triangle_primitives() {
         return;
     EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1,
                 "GLTF.Load skips non-triangle primitive modes without failing the asset");
+    EXPECT_TRUE(load_warnings_contain("unsupported"),
+                "Skipped non-triangle primitives record a load warning");
+    EXPECT_TRUE(import_report_contains("\"skippedPrimitives\":1"),
+                "Import report counts skipped non-triangle primitives");
 }
 
 static void test_gltf_drops_invalid_optional_attributes() {
@@ -2089,6 +2109,12 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
     EXPECT_TRUE(mesh->indices[0] == 0 && mesh->indices[1] == 1 && mesh->indices[2] == 2 &&
                     mesh->indices[3] == 2 && mesh->indices[4] == 1 && mesh->indices[5] == 3,
                 "GLTF.Load preserves triangle-strip winding during triangulation");
+    EXPECT_TRUE(!load_warnings_contain("bone influences") &&
+                    !load_warnings_contain("joints beyond the"),
+                "Clean 4-influence skins load without skin-diagnostic warnings");
+    EXPECT_TRUE(import_report_contains("\"truncatedInfluenceVertices\":0") &&
+                    import_report_contains("\"skippedPrimitives\":0"),
+                "Clean assets produce an all-zero import report");
 }
 
 static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
@@ -2157,6 +2183,10 @@ static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
                 0.5,
                 0.001,
                 "GLTF.Load renormalizes remaining primary joint weight B");
+    EXPECT_TRUE(load_warnings_contain("joints beyond the"),
+                "GLTF.Load warns when out-of-range joint influences are dropped");
+    EXPECT_TRUE(load_warnings_contain("1 vertices"),
+                "Out-of-range joint warning reports the affected vertex count");
 }
 
 static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
@@ -2275,6 +2305,10 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
                                 "Preloaded JOINTS_1 mesh keeps secondary weights");
                     EXPECT_TRUE(preloaded_mesh->bone_count == 7,
                                 "Preloaded JOINTS_1 mesh keeps its bone palette size");
+                    EXPECT_TRUE(load_warnings_contain("more than 4 bone influences"),
+                                "Preloaded JOINTS_1 load warns when influences are truncated");
+                    EXPECT_TRUE(load_warnings_contain("3 vertices"),
+                                "Preloaded truncation warning reports the affected vertex count");
                 }
             }
         }
@@ -2301,6 +2335,12 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
                 0.001,
                 "GLTF.Load keeps the strongest secondary influence");
     EXPECT_TRUE(mesh->bone_count == 7, "GLTF.Load includes retained JOINTS_1 palette entries");
+    EXPECT_TRUE(load_warnings_contain("more than 4 bone influences"),
+                "GLTF.Load warns when influences are truncated to the top four");
+    EXPECT_TRUE(load_warnings_contain("3 vertices"),
+                "Truncation warning reports the affected vertex count");
+    EXPECT_TRUE(import_report_contains("\"truncatedInfluenceVertices\":3"),
+                "Import report counts truncated-influence vertices");
 }
 
 static void test_gltf_applies_matrix_nodes_in_column_major_order() {
@@ -2578,6 +2618,8 @@ static void test_gltf_imports_skins_and_animation_clips() {
         EXPECT_TRUE(anim->channel_count == 1, "GLTF animation targets the imported root bone");
         EXPECT_TRUE(anim->channels[0].keyframe_count == 3,
                     "GLTF animation merges CUBICSPLINE and scale sample times");
+        EXPECT_TRUE(import_report_contains("\"bakedCubicSplineChannels\":1"),
+                    "Import report counts skeletal CUBICSPLINE channels baked to sampled keys");
         EXPECT_NEAR(anim->channels[0].keyframes[1].position[0],
                     1.25,
                     0.001,
@@ -3956,6 +3998,436 @@ static void test_gltf_unsupported_texture_texcoord_falls_back_to_primary() {
                 "GLTF.Load maps unsupported texture texCoord values to TEXCOORD_0");
 }
 
+static std::string build_variant_fixture_json() {
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    return "{\"asset\":{\"version\":\"2.0\"},"
+           "\"extensionsUsed\":[\"KHR_materials_variants\"],"
+           "\"extensionsRequired\":[\"KHR_materials_variants\"],"
+           "\"extensions\":{\"KHR_materials_variants\":{\"variants\":"
+           "[{\"name\":\"day\"},{\"name\":\"night\"}]}},"
+           "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+           buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+           "}],"
+           "\"bufferViews\":["
+           "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+           "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+           "],"
+           "\"accessors\":["
+           "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+           "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+           "],"
+           "\"materials\":["
+           "{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,0.0,0.0,1.0]}},"
+           "{\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.0,0.0,1.0,1.0]}}"
+           "],"
+           "\"meshes\":[{\"primitives\":[{"
+           "\"attributes\":{\"POSITION\":0},\"indices\":1,\"material\":0,"
+           "\"extensions\":{\"KHR_materials_variants\":{\"mappings\":"
+           "[{\"material\":1,\"variants\":[1]}]}}"
+           "}]}],"
+           "\"nodes\":[{\"mesh\":0,\"name\":\"variant_node\"}],"
+           "\"scenes\":[{\"nodes\":[0]}],"
+           "\"scene\":0"
+           "}";
+}
+
+static void test_gltf_imports_material_variants() {
+    const char *gltf_path = "/tmp/viper_gltf_material_variants.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, build_variant_fixture_json()),
+                "Material-variants glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_materials_variants");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_variant_count(asset) == 2, "GLTF.Load imports both variant names");
+    rt_string day = rt_gltf_get_variant_name(asset, 0);
+    rt_string night = rt_gltf_get_variant_name(asset, 1);
+    EXPECT_TRUE(day && std::strcmp(rt_string_cstr(day), "day") == 0,
+                "GLTF.Load imports variant name 0");
+    EXPECT_TRUE(night && std::strcmp(rt_string_cstr(night), "night") == 0,
+                "GLTF.Load imports variant name 1");
+    rt_string out_of_range = rt_gltf_get_variant_name(asset, 7);
+    EXPECT_TRUE(out_of_range && rt_string_cstr(out_of_range)[0] == '\0',
+                "Out-of-range variant name is empty");
+}
+
+// --- EXT_meshopt_compression test-side encoders (emit spec-conformant streams) ---
+
+static void meshopt_test_push_leb(std::vector<uint8_t> &out, uint32_t v) {
+    while (v >= 0x80u) {
+        out.push_back((uint8_t)((v & 0x7Fu) | 0x80u));
+        v >>= 7;
+    }
+    out.push_back((uint8_t)v);
+}
+
+static uint32_t meshopt_test_zigzag32(int32_t delta) {
+    return delta < 0 ? (((~(uint32_t)delta) << 1) | 1u) : ((uint32_t)delta << 1);
+}
+
+/// Mode 0 stream using raw byte groups (header bits = 3) and a zero baseline tail.
+static std::vector<uint8_t> meshopt_test_encode_attributes(const uint8_t *elements,
+                                                           size_t count,
+                                                           size_t stride) {
+    std::vector<uint8_t> out;
+    out.push_back(0xA0);
+    size_t max_block = std::min<size_t>((8192u / stride) & ~(size_t)15u, 256u);
+    std::vector<uint8_t> baseline(stride, 0);
+    size_t done = 0;
+    while (done < count) {
+        size_t block = std::min(count - done, max_block);
+        size_t groups = (block + 15u) / 16u;
+        for (size_t k = 0; k < stride; k++) {
+            for (size_t h = 0; h < (groups + 3u) / 4u; h++)
+                out.push_back(0xFF); /* every group: raw bytes (bits = 3) */
+            uint8_t prev = baseline[k];
+            for (size_t g = 0; g < groups; g++) {
+                for (int j = 0; j < 16; j++) {
+                    size_t e = g * 16u + (size_t)j;
+                    uint8_t cur = e < block ? elements[(done + e) * stride + k] : prev;
+                    uint8_t delta = (uint8_t)(cur - prev);
+                    uint8_t zig = (delta & 0x80u) ? (uint8_t)~(uint8_t)(delta << 1)
+                                                  : (uint8_t)(delta << 1);
+                    out.push_back(zig);
+                    if (e < block)
+                        prev = cur;
+                }
+            }
+            baseline[k] = prev;
+        }
+        done += block;
+    }
+    size_t tail = stride < 32u ? 32u : stride;
+    for (size_t i = 0; i < tail; i++)
+        out.push_back(0); /* zero baseline element (padded) */
+    return out;
+}
+
+/// Mode 1 stream where every triangle uses code 0xff with fully explicit indices.
+static std::vector<uint8_t> meshopt_test_encode_triangles(const uint32_t *indices, size_t count) {
+    std::vector<uint8_t> out;
+    out.push_back(0xE1);
+    size_t tris = count / 3u;
+    for (size_t t = 0; t < tris; t++)
+        out.push_back(0xFF);
+    uint32_t last = 0;
+    for (size_t t = 0; t < tris; t++) {
+        out.push_back(0xFF); /* aux: Z = W = 0xf -> a, b, c all explicit */
+        for (int j = 0; j < 3; j++) {
+            uint32_t v = indices[t * 3u + (size_t)j];
+            meshopt_test_push_leb(out, meshopt_test_zigzag32((int32_t)(v - last)));
+            last = v;
+        }
+    }
+    for (int i = 0; i < 16; i++)
+        out.push_back(0); /* codeaux tail (all-zero satisfies the table constraints) */
+    return out;
+}
+
+/// Mode 2 stream using baseline 0 for every delta.
+static std::vector<uint8_t> meshopt_test_encode_indices(const uint32_t *indices, size_t count) {
+    std::vector<uint8_t> out;
+    out.push_back(0xD1);
+    uint32_t last = 0;
+    for (size_t i = 0; i < count; i++) {
+        int32_t delta = (int32_t)(indices[i] - last);
+        uint32_t v = delta < 0 ? (((~(uint32_t)delta) << 2) | 2u) : ((uint32_t)delta << 2);
+        meshopt_test_push_leb(out, v);
+        last = indices[i];
+    }
+    for (int i = 0; i < 4; i++)
+        out.push_back(0); /* reserved tail */
+    return out;
+}
+
+/// Build a triangle .gltf whose POSITION and index views are meshopt-compressed.
+/// The parent views reference a data-less placeholder fallback buffer per the spec.
+static std::string meshopt_test_build_gltf(const std::vector<uint8_t> &pos_stream,
+                                           const std::vector<uint8_t> &idx_stream,
+                                           const char *index_mode) {
+    std::vector<uint8_t> compressed = pos_stream;
+    compressed.insert(compressed.end(), idx_stream.begin(), idx_stream.end());
+    std::string b64 = base64_encode(compressed.data(), compressed.size());
+    return "{\"asset\":{\"version\":\"2.0\"},"
+           "\"extensionsUsed\":[\"EXT_meshopt_compression\"],"
+           "\"extensionsRequired\":[\"EXT_meshopt_compression\"],"
+           "\"buffers\":["
+           "{\"uri\":\"data:application/octet-stream;base64," +
+           b64 + "\",\"byteLength\":" + std::to_string(compressed.size()) +
+           "},"
+           "{\"byteLength\":44,\"extensions\":{\"EXT_meshopt_compression\":{\"fallback\":true}}}"
+           "],"
+           "\"bufferViews\":["
+           "{\"buffer\":1,\"byteOffset\":0,\"byteLength\":36,\"byteStride\":12,"
+           "\"extensions\":{\"EXT_meshopt_compression\":{"
+           "\"buffer\":0,\"byteOffset\":0,\"byteLength\":" +
+           std::to_string(pos_stream.size()) +
+           ",\"byteStride\":12,\"count\":3,\"mode\":\"ATTRIBUTES\"}}},"
+           "{\"buffer\":1,\"byteOffset\":36,\"byteLength\":6,"
+           "\"extensions\":{\"EXT_meshopt_compression\":{"
+           "\"buffer\":0,\"byteOffset\":" +
+           std::to_string(pos_stream.size()) + ",\"byteLength\":" +
+           std::to_string(idx_stream.size()) + ",\"byteStride\":2,\"count\":3,\"mode\":\"" +
+           index_mode +
+           "\"}}}"
+           "],"
+           "\"accessors\":["
+           "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+           "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+           "],"
+           "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+           "\"nodes\":[{\"mesh\":0}],"
+           "\"scenes\":[{\"nodes\":[0]}],"
+           "\"scene\":0"
+           "}";
+}
+
+static void meshopt_test_check_triangle_asset(void *asset, const char *label) {
+    char message[160];
+    snprintf(message, sizeof(message), "%s: asset loads", label);
+    EXPECT_TRUE(asset != nullptr, message);
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    snprintf(message, sizeof(message), "%s: mesh decodes", label);
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3, message);
+    if (!mesh || mesh->vertex_count != 3)
+        return;
+    snprintf(message, sizeof(message), "%s: decompressed positions match", label);
+    EXPECT_TRUE(mesh->vertices[0].pos[0] == 0.0f && mesh->vertices[1].pos[0] == 1.0f &&
+                    mesh->vertices[2].pos[1] == 1.0f,
+                message);
+    snprintf(message, sizeof(message), "%s: decompressed indices match", label);
+    EXPECT_TRUE(mesh->indices[0] == 0 && mesh->indices[1] == 1 && mesh->indices[2] == 2, message);
+}
+
+static void test_gltf_meshopt_compressed_views_roundtrip() {
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint32_t indices[3] = {0, 1, 2};
+    std::vector<uint8_t> pos_bytes(sizeof(positions));
+    std::memcpy(pos_bytes.data(), positions, sizeof(positions));
+    std::vector<uint8_t> pos_stream =
+        meshopt_test_encode_attributes(pos_bytes.data(), 3, 12);
+    std::vector<uint8_t> tri_stream = meshopt_test_encode_triangles(indices, 3);
+    std::vector<uint8_t> seq_stream = meshopt_test_encode_indices(indices, 3);
+
+    const char *gltf_path = "/tmp/viper_gltf_meshopt_triangles.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, meshopt_test_build_gltf(pos_stream, tri_stream,
+                                                                   "TRIANGLES")),
+                "meshopt TRIANGLES fixture can be created");
+    meshopt_test_check_triangle_asset(rt_gltf_load(rt_const_cstr(gltf_path)),
+                                      "meshopt ATTRIBUTES+TRIANGLES");
+
+    const char *seq_path = "/tmp/viper_gltf_meshopt_indices.gltf";
+    EXPECT_TRUE(write_text_file(seq_path, meshopt_test_build_gltf(pos_stream, seq_stream,
+                                                                  "INDICES")),
+                "meshopt INDICES fixture can be created");
+    meshopt_test_check_triangle_asset(rt_gltf_load(rt_const_cstr(seq_path)),
+                                      "meshopt ATTRIBUTES+INDICES");
+
+    /* Corrupt stream: flip the attribute header byte; the load must fail cleanly. */
+    std::vector<uint8_t> corrupt_stream = pos_stream;
+    corrupt_stream[0] = 0x00;
+    const char *corrupt_path = "/tmp/viper_gltf_meshopt_corrupt.gltf";
+    EXPECT_TRUE(write_text_file(corrupt_path, meshopt_test_build_gltf(corrupt_stream, tri_stream,
+                                                                      "TRIANGLES")),
+                "meshopt corrupt fixture can be created");
+    void *corrupt_asset = rt_gltf_load(rt_const_cstr(corrupt_path));
+    EXPECT_TRUE(corrupt_asset == nullptr, "Corrupt meshopt stream fails the load");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Corrupt meshopt stream reports Corrupt");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_message(), "EXT_meshopt_compression") != nullptr,
+                "Corrupt meshopt diagnostic names the extension");
+}
+
+static void test_gltf_meshopt_octahedral_filter() {
+    /* Octahedral texels (x, y, one=127, passthrough): (127,0) -> +X, (0,0) -> +Z,
+     * (-127,0) after hemisphere fold -> -X... use simple axis cases. Normals bind as
+     * normalized BYTE VEC3 over a 4-byte-stride view (KHR_mesh_quantization). */
+    const int8_t oct[12] = {127, 0, 127, 0, /* +X */
+                            0, 127, 127, 0, /* +Y */
+                            0, 0, 127, 0};  /* +Z */
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint32_t indices[3] = {0, 1, 2};
+    std::vector<uint8_t> pos_bytes(sizeof(positions));
+    std::memcpy(pos_bytes.data(), positions, sizeof(positions));
+    std::vector<uint8_t> pos_stream = meshopt_test_encode_attributes(pos_bytes.data(), 3, 12);
+    std::vector<uint8_t> norm_stream =
+        meshopt_test_encode_attributes(reinterpret_cast<const uint8_t *>(oct), 3, 4);
+    std::vector<uint8_t> tri_stream = meshopt_test_encode_triangles(indices, 3);
+
+    std::vector<uint8_t> compressed = pos_stream;
+    size_t norm_at = compressed.size();
+    compressed.insert(compressed.end(), norm_stream.begin(), norm_stream.end());
+    size_t idx_at = compressed.size();
+    compressed.insert(compressed.end(), tri_stream.begin(), tri_stream.end());
+    std::string b64 = base64_encode(compressed.data(), compressed.size());
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsUsed\":[\"EXT_meshopt_compression\",\"KHR_mesh_quantization\"],"
+        "\"extensionsRequired\":[\"EXT_meshopt_compression\",\"KHR_mesh_quantization\"],"
+        "\"buffers\":["
+        "{\"uri\":\"data:application/octet-stream;base64," +
+        b64 + "\",\"byteLength\":" + std::to_string(compressed.size()) +
+        "},"
+        "{\"byteLength\":56}"
+        "],"
+        "\"bufferViews\":["
+        "{\"buffer\":1,\"byteOffset\":0,\"byteLength\":36,\"byteStride\":12,"
+        "\"extensions\":{\"EXT_meshopt_compression\":{\"buffer\":0,\"byteOffset\":0,"
+        "\"byteLength\":" +
+        std::to_string(pos_stream.size()) +
+        ",\"byteStride\":12,\"count\":3,\"mode\":\"ATTRIBUTES\"}}},"
+        "{\"buffer\":1,\"byteOffset\":36,\"byteLength\":12,\"byteStride\":4,"
+        "\"extensions\":{\"EXT_meshopt_compression\":{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(norm_at) + ",\"byteLength\":" + std::to_string(norm_stream.size()) +
+        ",\"byteStride\":4,\"count\":3,\"mode\":\"ATTRIBUTES\",\"filter\":\"OCTAHEDRAL\"}}},"
+        "{\"buffer\":1,\"byteOffset\":48,\"byteLength\":6,"
+        "\"extensions\":{\"EXT_meshopt_compression\":{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(idx_at) + ",\"byteLength\":" + std::to_string(tri_stream.size()) +
+        ",\"byteStride\":2,\"count\":3,\"mode\":\"TRIANGLES\"}}}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5120,\"normalized\":true,\"count\":3,"
+        "\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+        "\"indices\":2}]}]"
+        "}";
+    const char *gltf_path = "/tmp/viper_gltf_meshopt_octahedral.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "meshopt OCTAHEDRAL fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "meshopt OCTAHEDRAL asset loads");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3, "meshopt OCTAHEDRAL mesh decodes");
+    if (!mesh || mesh->vertex_count != 3)
+        return;
+    EXPECT_NEAR(mesh->vertices[0].normal[0], 1.0, 0.02, "Octahedral filter decodes +X normal");
+    EXPECT_NEAR(mesh->vertices[1].normal[1], 1.0, 0.02, "Octahedral filter decodes +Y normal");
+    EXPECT_NEAR(mesh->vertices[2].normal[2], 1.0, 0.02, "Octahedral filter decodes +Z normal");
+}
+
+static void test_gltf_quantized_attributes_roundtrip() {
+    /* KHR_mesh_quantization: SHORT (non-normalized) positions and normalized BYTE
+     * normals decode to floats through the standard accessor rules. */
+    const char *gltf_path = "/tmp/viper_gltf_quantized.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const int16_t positions[9] = {0, 0, 0, 2, 0, 0, 0, 3, 0};
+    const int8_t normals[9] = {0, 0, 127, 0, 0, 127, 0, 0, 127};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (int16_t v : positions)
+        append_bytes(gltf_buffer, v);
+    while (gltf_buffer.size() % 4 != 0)
+        gltf_buffer.push_back(0);
+    size_t norm_off = gltf_buffer.size();
+    for (int8_t v : normals)
+        append_bytes(gltf_buffer, v);
+    while (gltf_buffer.size() % 4 != 0)
+        gltf_buffer.push_back(0);
+    size_t idx_off = gltf_buffer.size();
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsUsed\":[\"KHR_mesh_quantization\"],"
+        "\"extensionsRequired\":[\"KHR_mesh_quantization\"],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":18},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(norm_off) +
+        ",\"byteLength\":9},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(idx_off) +
+        ",\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5122,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5120,\"normalized\":true,\"count\":3,"
+        "\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+        "\"indices\":2}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Quantized glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_mesh_quantization");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3, "Quantized mesh decodes");
+    if (!mesh || mesh->vertex_count != 3)
+        return;
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 2.0, 0.0001, "SHORT positions convert to plain floats");
+    EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.0001, "SHORT positions keep integer values");
+    EXPECT_NEAR(mesh->vertices[0].normal[2],
+                1.0,
+                0.01,
+                "Normalized BYTE normals decode to unit floats");
+}
+
+static void test_gltf_meshopt_exponential_filter() {
+    /* Exact e/m pairs: 5.0, 0.5, -2.0, 1.0, 2.0, 4.0, 0.0, 3.0, -0.5 */
+    const uint32_t words[9] = {
+        0x00000005u, /* 2^0 * 5 = 5.0 */
+        0xFF000001u, /* 2^-1 * 1 = 0.5 */
+        0x01FFFFFFu, /* 2^1 * -1 = -2.0 */
+        0x00000001u, /* 1.0 */
+        0x01000001u, /* 2.0 */
+        0x02000001u, /* 4.0 */
+        0x00000000u, /* 0.0 */
+        0x00000003u, /* 3.0 */
+        0xFEFFFFFEu, /* 2^-2 * -2 = -0.5 */
+    };
+    uint8_t elements[36];
+    for (int i = 0; i < 9; i++) {
+        elements[i * 4 + 0] = (uint8_t)(words[i] & 0xFFu);
+        elements[i * 4 + 1] = (uint8_t)((words[i] >> 8) & 0xFFu);
+        elements[i * 4 + 2] = (uint8_t)((words[i] >> 16) & 0xFFu);
+        elements[i * 4 + 3] = (uint8_t)((words[i] >> 24) & 0xFFu);
+    }
+    std::vector<uint8_t> pos_stream = meshopt_test_encode_attributes(elements, 3, 12);
+    const uint32_t indices[3] = {0, 1, 2};
+    std::vector<uint8_t> tri_stream = meshopt_test_encode_triangles(indices, 3);
+    std::string gltf_json = meshopt_test_build_gltf(pos_stream, tri_stream, "TRIANGLES");
+    const std::string needle = "\"mode\":\"ATTRIBUTES\"";
+    size_t at = gltf_json.find(needle);
+    EXPECT_TRUE(at != std::string::npos, "Exponential fixture finds the ATTRIBUTES view");
+    gltf_json.replace(at, needle.size(), "\"mode\":\"ATTRIBUTES\",\"filter\":\"EXPONENTIAL\"");
+    const char *gltf_path = "/tmp/viper_gltf_meshopt_exponential.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "meshopt EXPONENTIAL fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "meshopt EXPONENTIAL asset loads");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3, "meshopt EXPONENTIAL mesh decodes");
+    if (!mesh || mesh->vertex_count != 3)
+        return;
+    EXPECT_NEAR(mesh->vertices[0].pos[0], 5.0, 0.0001, "Exponential filter decodes 2^0*5");
+    EXPECT_NEAR(mesh->vertices[0].pos[1], 0.5, 0.0001, "Exponential filter decodes 2^-1*1");
+    EXPECT_NEAR(mesh->vertices[0].pos[2], -2.0, 0.0001, "Exponential filter decodes 2^1*-1");
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 1.0, 0.0001, "Exponential filter decodes 1.0");
+    EXPECT_NEAR(mesh->vertices[2].pos[2], -0.5, 0.0001, "Exponential filter decodes 2^-2*-2");
+}
+
 static void test_gltf_imports_material_extensions_supported_by_material3d() {
     const char *gltf_path = "/tmp/viper_gltf_material_extensions.gltf";
     std::string gltf_json =
@@ -4039,6 +4511,86 @@ static void test_gltf_converts_spec_glossiness_materials() {
         dielectric->metallic, 0.0, 0.001, "Dielectric specular (0.04) converts to metallic 0");
     EXPECT_NEAR(metal->metallic, 1.0, 0.001, "Full specular converts to metallic 1");
     EXPECT_NEAR(metal->roughness, 0.0, 0.001, "Full glossiness converts to roughness 0");
+}
+
+static std::vector<uint8_t> build_test_bmp_1x1_bgra(uint8_t b, uint8_t g, uint8_t r, uint8_t a) {
+    std::vector<uint8_t> bmp;
+    bmp.push_back('B');
+    bmp.push_back('M');
+    append_u32_le(bmp, 58u); /* file size: 14 + 40 + 4 */
+    append_u32_le(bmp, 0u);
+    append_u32_le(bmp, 54u); /* pixel offset */
+    append_u32_le(bmp, 40u); /* BITMAPINFOHEADER size */
+    append_u32_le(bmp, 1u);  /* width */
+    append_u32_le(bmp, 1u);  /* height (bottom-up) */
+    bmp.push_back(1);        /* planes lo */
+    bmp.push_back(0);        /* planes hi */
+    bmp.push_back(32);       /* bpp lo */
+    bmp.push_back(0);        /* bpp hi */
+    append_u32_le(bmp, 0u);  /* compression BI_RGB */
+    append_u32_le(bmp, 4u);  /* image size */
+    append_u32_le(bmp, 0u);  /* x ppm */
+    append_u32_le(bmp, 0u);  /* y ppm */
+    append_u32_le(bmp, 0u);  /* colors */
+    append_u32_le(bmp, 0u);  /* important colors */
+    bmp.push_back(b);
+    bmp.push_back(g);
+    bmp.push_back(r);
+    bmp.push_back(a);
+    return bmp;
+}
+
+static void test_gltf_converts_spec_glossiness_texture_per_texel() {
+    const char *gltf_path = "/tmp/viper_gltf_spec_gloss_texture.gltf";
+    /* 1x1 spec-gloss texel: sRGB specular 128 (linear ~0.2159), gloss alpha 128. */
+    std::vector<uint8_t> bmp = build_test_bmp_1x1_bgra(128, 128, 128, 128);
+    std::string bmp_b64 = base64_encode(bmp.data(), bmp.size());
+    std::string gltf_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"extensionsUsed\":[\"KHR_materials_pbrSpecularGlossiness\"],"
+                            "\"images\":[{\"uri\":\"data:image/bmp;base64," +
+                            bmp_b64 +
+                            "\"}],"
+                            "\"textures\":[{\"source\":0}],"
+                            "\"materials\":["
+                            "{\"extensions\":{\"KHR_materials_pbrSpecularGlossiness\":{"
+                            "\"diffuseFactor\":[1.0,1.0,1.0,1.0],"
+                            "\"specularFactor\":[1.0,1.0,1.0],"
+                            "\"glossinessFactor\":0.8,"
+                            "\"specularGlossinessTexture\":{\"index\":0}}}}"
+                            "]"
+                            "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Spec-gloss texture glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts spec-gloss materials with textures");
+    if (!asset)
+        return;
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(material != nullptr, "Spec-gloss texture material is exposed");
+    if (!material)
+        return;
+    EXPECT_TRUE(material->metallic_roughness_map != nullptr,
+                "Spec-gloss texture synthesizes a per-texel metallic-roughness map");
+    if (!material->metallic_roughness_map)
+        return;
+    int64_t texel = rt_pixels_get_rgba(material->metallic_roughness_map, 0, 0);
+    double roughness_texel = (double)((texel >> 16) & 0xFF);
+    double metallic_texel = (double)((texel >> 8) & 0xFF);
+    /* roughness = 1 - glossFactor * glossTexel = 1 - 0.8 * (128/255) ~= 0.5984 -> 153 */
+    EXPECT_NEAR(roughness_texel, 153.0, 1.5, "MR map bakes gloss factor and texel into roughness");
+    /* metallic from linearized sRGB 128 (~0.2159): (0.2159 - 0.04)/0.96 ~= 0.1832 -> 47 */
+    EXPECT_NEAR(metallic_texel, 47.0, 1.5, "MR map bakes per-texel specular into metallic");
+    EXPECT_NEAR(material->roughness,
+                1.0,
+                0.001,
+                "Scalar roughness resets to 1 when factors bake into the MR map");
+    EXPECT_NEAR(material->metallic,
+                1.0,
+                0.001,
+                "Scalar metallic resets to 1 when factors bake into the MR map");
+    EXPECT_TRUE(material->specular_map != nullptr,
+                "Spec-gloss texture still binds to the specular slot");
 }
 
 static void test_gltf_forced_tangents_load_option() {
@@ -4214,10 +4766,12 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
 }
 
 static void test_gltf_rejects_unsupported_required_extensions() {
+    /* KHR_draco_mesh_compression graduated to the supported gate; EXT_texture_webp
+     * remains genuinely unsupported. */
     const char *gltf_path = "/tmp/viper_gltf_required_extension.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
-                            "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
-                            "\"extensionsUsed\":[\"KHR_draco_mesh_compression\"]}";
+                            "\"extensionsRequired\":[\"EXT_texture_webp\"],"
+                            "\"extensionsUsed\":[\"EXT_texture_webp\"]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Required-extension glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -4227,7 +4781,7 @@ static void test_gltf_rejects_unsupported_required_extensions() {
     EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_UNSUPPORTED,
                 "GLTF.Load records unsupported required extensions as Unsupported");
     EXPECT_TRUE(std::strstr(rt_asset_error_get_message(),
-                            "requires KHR_draco_mesh_compression (unsupported)") != nullptr,
+                            "requires EXT_texture_webp (unsupported)") != nullptr,
                 "GLTF.Load names unsupported required extensions in LastLoadError");
     std::remove(gltf_path);
 }
@@ -4249,13 +4803,19 @@ static void test_gltf_warns_unsupported_optional_extensions() {
                 "Unsupported optional glTF warning names the extension");
     EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "visual") != nullptr,
                 "Unsupported optional glTF warning describes the visual consequence");
+    EXPECT_TRUE(import_report_contains("\"ignoredExtensions\":1"),
+                "Import report counts ignored optional extensions");
+    EXPECT_TRUE(import_report_contains("EXT_missing_material_model"),
+                "Import report carries the load warnings verbatim");
     std::remove(gltf_path);
 }
 
 static void test_gltf_rejects_required_extensions_with_partial_runtime_support() {
     const char *gltf_path = "/tmp/viper_gltf_partial_required_extensions.gltf";
+    /* KHR_texture_basisu moved to the fully-supported list once the runtime gained
+     * ETC1S/BasisLZ and UASTC KTX2 decoding; clearcoat/transmission remain
+     * factor-level approximations. */
     const char *extensions[] = {
-        "KHR_texture_basisu",
         "KHR_materials_clearcoat",
         "KHR_materials_transmission",
     };
@@ -4542,8 +5102,14 @@ int main() {
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_unsupported_texture_texcoord_falls_back_to_primary();
+    test_gltf_imports_material_variants();
+    test_gltf_meshopt_compressed_views_roundtrip();
+    test_gltf_meshopt_exponential_filter();
+    test_gltf_meshopt_octahedral_filter();
+    test_gltf_quantized_attributes_roundtrip();
     test_gltf_imports_material_extensions_supported_by_material3d();
     test_gltf_converts_spec_glossiness_materials();
+    test_gltf_converts_spec_glossiness_texture_per_texel();
     test_gltf_forced_tangents_load_option();
     test_gltf_imports_ktx2_basisu_textures();
     test_gltf_preserves_negative_matrix_scale_sign();

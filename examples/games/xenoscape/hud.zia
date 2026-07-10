@@ -1,7 +1,21 @@
-// =============================================================================
-// hud.zia — The heads-up display: health, score, coins, boss bar
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/hud.zia
+// Purpose: Composes Xenoscape's animated gameplay HUD and combat feedback.
+// Key invariants:
+//   - Campaign presentation never exposes the retired finite-lives counter.
+//   - Widget animation is updated separately from deterministic game state.
+// Ownership/Lifetime:
+//   - Game owns one HUD and passes borrowed render-state values each frame.
+// Links: game.zia, renderer.zia, palette.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — THE HUD IS A COMPOSITION OF WIDGETS
 // ----------------------------------------------
@@ -71,6 +85,7 @@ bind Viper.Graphics;
 bind Viper.Text.Fmt;
 bind Viper.Game;
 bind Viper.Game.UI;
+bind "./accessibility";
 bind "./config";
 bind "./palette";
 
@@ -90,7 +105,7 @@ class HUD {
     hide Bar bossBarWidget;
     hide HudLabel scoreLabel;
     hide HudLabel coinLabel;
-    hide HudLabel livesLabel;
+    hide HudLabel expeditionLabel;
     hide HudLabel levelLabel;
 
     // --- Animation state ---
@@ -102,6 +117,9 @@ class HUD {
     // --- Timing ---
     hide Integer pulseTimer;
     hide Integer displayCoins;
+    hide Integer accessibilityUiScale;
+    hide Boolean accessibilityHighContrast;
+    hide Boolean accessibilityLargeText;
 
     // --- Floating damage/score popups (#14) — fixed pool, no per-hit alloc ---
     hide List[Integer] popX;
@@ -115,6 +133,9 @@ class HUD {
     ///        boss appears.
     expose func init(p: Palette) {
         pal = p;
+        accessibilityUiScale = 100;
+        accessibilityHighContrast = false;
+        accessibilityLargeText = false;
         // SmoothValue: smoothing=0.75 means score rolls quickly but visibly
         displayScore = SmoothValue.New(0.0, 0.75);
         displayCoins = 0;
@@ -159,13 +180,49 @@ class HUD {
         coinLabel = HudLabel.New(440, 6, "x0", pal.coinGold);
         coinLabel.set_Scale(2);
 
-        // Lives label
-        livesLabel = HudLabel.New(SCREEN_W - 200, 6, "LIVES 3", pal.uiText);
-        livesLabel.set_Scale(2);
+        // Campaign status replaces the retired arcade lives counter.
+        expeditionLabel = HudLabel.New(SCREEN_W - 230, 6,
+                                       "EXPEDITION", pal.uiText);
+        expeditionLabel.set_Scale(2);
 
         // Level name label
         levelLabel = HudLabel.New(SCREEN_W - 400, 30, "GRASSLANDS", pal.hudBlue);
         levelLabel.set_Scale(2);
+    }
+
+    /// @brief Apply persistent HUD scale, contrast, and text-size choices.
+    ///
+    /// Runtime label widgets update immediately. The scale is capped at three for
+    /// the compact combat strip, while secondary text uses the same resolver and
+    /// high contrast adds an opaque backing layer before all HUD widgets.
+    ///
+    /// @param uiScale Advertised 100, 125, or 150 percent setting.
+    /// @param highContrast True for maximum backing opacity and white outlines.
+    /// @param largeText True for one additional bitmap-font scale step.
+    /// @return Nothing. Mutates presentation only.
+    expose func setAccessibility(uiScale: Integer, highContrast: Boolean,
+                                 largeText: Boolean) {
+        accessibilityUiScale = uiScale;
+        if accessibilityUiScale != 100 and accessibilityUiScale != 125 and
+           accessibilityUiScale != 150 { accessibilityUiScale = 100; }
+        accessibilityHighContrast = highContrast;
+        accessibilityLargeText = largeText;
+        var scale = hudTextScale(2);
+        scoreLabel.set_Scale(scale);
+        coinLabel.set_Scale(scale);
+        expeditionLabel.set_Scale(scale);
+        levelLabel.set_Scale(scale);
+    }
+
+    /// @brief Resolve compact HUD text while preventing top-strip overlap.
+    ///
+    /// @param baseScale Positive authored bitmap-font scale.
+    /// @return Live scale in 1..3.
+    hide func hudTextScale(baseScale: Integer) -> Integer {
+        var result = accessibleTextScale(
+            baseScale, accessibilityUiScale, accessibilityLargeText);
+        if result > 3 { result = 3; }
+        return result;
     }
 
     // Update animated values each frame.
@@ -195,9 +252,12 @@ class HUD {
     ///        timer bars.  Top-anchored so it doesn't overlap
     ///        the action.
     expose func drawHUD(canvas: Canvas, hp: Integer, maxHp: Integer,
-                        _score: Integer, lives: Integer, coins: Integer,
+                        _score: Integer, coins: Integer,
                         _levelNum: Integer, speedTimer: Integer,
                         shieldHits: Integer, rapidTimer: Integer) {
+        if accessibilityHighContrast {
+            canvas.BoxAlpha(0, 0, SCREEN_W, 88, pal.black, 235);
+        }
         // Background panel
         hudPanel.Draw(canvas);
 
@@ -218,7 +278,8 @@ class HUD {
         healthBar.Draw(canvas);
 
         // HP number overlay on bar
-        canvas.TextScaled(16, 12, "${hp}/${maxHp}", 2, pal.white);
+        canvas.TextScaled(16, 12, "${hp}/${maxHp}", hudTextScale(2),
+                          pal.white);
 
         // Score (animated via SmoothValue)
         scoreLabel.SetText("SCORE ${displayScore.get_ValueI64()}");
@@ -231,9 +292,9 @@ class HUD {
         coinLabel.SetText("x${coins}");
         coinLabel.Draw(canvas);
 
-        // Lives
-        livesLabel.SetText("LIVES ${lives}");
-        livesLabel.Draw(canvas);
+        // Campaign mode uses checkpoint retries instead of finite lives.
+        expeditionLabel.SetText("EXPEDITION");
+        expeditionLabel.Draw(canvas);
 
         // Level name
         // Xenoscape: biome name from level number
@@ -281,7 +342,8 @@ class HUD {
     ///        screen.  Lerps via the Tween instance so a
     ///        damage event slides the bar smoothly instead of
     ///        snapping.  Skips drawing when no boss is active.
-    expose func drawBossBar(canvas: Canvas, bossHp: Integer, bossMaxHpVal: Integer) {
+    expose func drawBossBar(canvas: Canvas, bossHp: Integer,
+                            bossMaxHpVal: Integer, bossName: String) {
         if bossHp <= 0 { return; }
 
         // Detect HP change — start tween from current to new value
@@ -296,7 +358,7 @@ class HUD {
         // Background behind boss bar
         var barX = (SCREEN_W - 400) / 2;
         canvas.BoxAlpha(barX - 4, 52, 408, 26, pal.black, 200);
-        canvas.TextScaled(barX, 38, "MECH GUARDIAN", 2, pal.bossEye);
+        canvas.TextScaled(barX, 38, bossName, hudTextScale(2), pal.bossEye);
 
         // Update bar value (tweened) and color
         bossBarWidget.SetValue(bossBarDisplay, bossMaxHpVal);
@@ -310,7 +372,8 @@ class HUD {
         bossBarWidget.Draw(canvas);
 
         // HP text on bar
-        canvas.TextScaled(barX + 170, 58, "${bossHp}/${bossMaxHpVal}", 2, pal.white);
+        canvas.TextScaled(barX + 170, 58, "${bossHp}/${bossMaxHpVal}",
+                          hudTextScale(2), pal.white);
     }
 
     /// @brief Initialise the boss bar for a new fight.  Game
@@ -327,7 +390,7 @@ class HUD {
     // =========================================================================
 
     /// @brief Optional second-row HUD: ability icons strip,
-    ///        gem counter, lives.  Drawn separately so the
+    ///        gem counter and region identity. Drawn separately so the
     ///        baseline HUD can show even on title screens that
     ///        don't yet need the full strip.
     expose func drawExtendedHud(canvas: Canvas, _pal: Palette,
@@ -348,7 +411,10 @@ class HUD {
                     Color.RGB(120, 130, 160));
 
         // Biome name (bottom-left, faded)
-        canvas.TextScaled(12, SCREEN_H - 24, biomeName, Color.RGB(80, 90, 110), 1);
+        var identityColor = Color.RGB(80, 90, 110);
+        if accessibilityHighContrast { identityColor = pal.white; }
+        canvas.TextScaled(12, SCREEN_H - 24, biomeName,
+                          hudTextScale(1), identityColor);
 
         // Level number indicator (bottom-left, above biome name)
         canvas.Text(12, SCREEN_H - 40, "Area ${currentLevel}", Color.RGB(100, 110, 130));

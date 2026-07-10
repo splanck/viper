@@ -1,0 +1,101 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/render_probe.zia
+// Purpose: Verifies authored and fallback title presentation on a real Canvas.
+// Key invariants:
+//   - Authored key art and procedural fallback both fill the 1280x720 frame.
+//   - Their sparse signatures differ, proving the feature toggle changes paths.
+// Ownership/Lifetime:
+//   - Probe owns one temporary Canvas, Palette, MenuSystem, and two screenshots.
+// Links: menu.zia, assets/art/title-key-art.png, src/tests/CMakeLists.txt
+//
+//===----------------------------------------------------------------------===//
+
+module render_probe;
+
+bind Viper.Graphics;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./menu";
+bind "./palette";
+
+/// @brief Emit one deterministic render-probe failure.
+///
+/// @param message Concise violated presentation invariant.
+/// @return Nothing. Omits the success marker expected by CTest.
+func fail(message: String) { Terminal.Say("RESULT: fail " + message); }
+
+/// @brief Calculate a sparse deterministic RGB signature for one frame.
+///
+/// Sampling a fixed 16-by-9 grid is cheap while still distinguishing authored
+/// key art from the procedural parallax fallback. Alpha/order are irrelevant to
+/// the invariant; the bounded modulo prevents signed integer overflow.
+///
+/// @param pixels Borrowed 1280x720 screenshot buffer.
+/// @return Nonnegative signature below 1,000,003.
+func sparseFrameSignature(pixels: Pixels) -> Integer {
+    if pixels == null { return -1; }
+    var signature = 0;
+    var row = 0;
+    while row < 9 {
+        var col = 0;
+        while col < 16 {
+            var x = col * (SCREEN_W - 1) / 15;
+            var y = row * (SCREEN_H - 1) / 8;
+            signature = (signature * 131 + pixels.Get(x, y)) % 1000003;
+            if signature < 0 { signature = 0 - signature; }
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+    return signature;
+}
+
+/// @brief Render and compare authored and procedural title paths.
+///
+/// @return Nothing. Prints `RESULT: ok` only after both screenshots are valid.
+func main() {
+    var canvas = Canvas.New("XENOSCAPE Render Probe", SCREEN_W, SCREEN_H);
+    canvas.SetFps(60);
+    if canvas.BeginFrame() == 0 {
+        fail("canvas unavailable"); return;
+    }
+    var pal = new Palette();
+    var menu = new MenuSystem(pal);
+    if menu.hasAuthoredTitleArt() == false {
+        canvas.Close();
+        fail("mandatory title key art unavailable"); return;
+    }
+
+    menu.setAccessibility(100, false, false, true);
+    menu.setAuthoredTitleArtEnabled(true);
+    menu.drawTitle(canvas);
+    var authored = canvas.Screenshot();
+    if authored == null or authored.get_Width() != SCREEN_W or
+       authored.get_Height() != SCREEN_H {
+        canvas.Close();
+        fail("authored title screenshot dimensions"); return;
+    }
+    var authoredSignature = sparseFrameSignature(authored);
+
+    menu.setAuthoredTitleArtEnabled(false);
+    menu.drawTitle(canvas);
+    var fallback = canvas.Screenshot();
+    if fallback == null or fallback.get_Width() != SCREEN_W or
+       fallback.get_Height() != SCREEN_H {
+        canvas.Close();
+        fail("fallback title screenshot dimensions"); return;
+    }
+    var fallbackSignature = sparseFrameSignature(fallback);
+    canvas.Close();
+    if authoredSignature <= 0 or fallbackSignature <= 0 or
+       authoredSignature == fallbackSignature {
+        fail("authored/fallback title signatures"); return;
+    }
+    Terminal.Say("RESULT: ok");
+}

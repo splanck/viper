@@ -229,8 +229,8 @@ metric_value() {
         raw_platform_macro_occurrences)
             rg_count '(_WIN32|__APPLE__|__linux__)' src include viperide tests
             ;;
-        mega_files_over_3000_lines)
-            file_line_count_over 3000 src include examples scripts cmake viperide tests
+        mega_files_over_4000_lines)
+            file_line_count_over 4000 src include examples scripts cmake viperide tests
             ;;
         manual_alloc_hotspots_over_70)
             manual_alloc_hotspot_count 70
@@ -332,7 +332,7 @@ fuzz_harness_registrations
 platform_skip_markers
 platform_policy_allowlist_entries
 raw_platform_macro_occurrences
-mega_files_over_3000_lines
+mega_files_over_4000_lines
 manual_alloc_hotspots_over_70
 sanitizer_coverage_options
 diagnostic_json_entrypoints

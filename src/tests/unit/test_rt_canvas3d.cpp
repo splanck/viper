@@ -2290,12 +2290,24 @@ static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
     uint8_t short_payload[8] = {0};
     rt_string path_s;
 
+    /* Scheme 4 is beyond the known KTX2 supercompression schemes (0 none, 1 BasisLZ,
+     * 2 Zstd, 3 ZLIB — all supported now); it must fail with the unsupported
+     * diagnostic. A scheme-1 header without its global data segment must fail as
+     * truncated BasisLZ instead. */
     EXPECT_TRUE(
-        write_test_ktx2_custom_header(super_path, 37u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
+        write_test_ktx2_custom_header(super_path, 37u, 1u, 1u, 1u, 4u, payload, sizeof(payload)),
         "supercompressed KTX2 fixture written");
     path_s = rt_string_from_bytes(super_path, std::strlen(super_path));
     EXPECT_TRUE(ktx2_load_fails_with(path_s, "unsupported KTX2 supercompression"),
                 "supercompressed KTX2 fails recoverably with a diagnostic");
+    rt_string_unref(path_s);
+
+    EXPECT_TRUE(
+        write_test_ktx2_custom_header(super_path, 0u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
+        "BasisLZ KTX2 fixture without global data written");
+    path_s = rt_string_from_bytes(super_path, std::strlen(super_path));
+    EXPECT_TRUE(ktx2_load_fails_with(path_s, "BasisLZ"),
+                "truncated BasisLZ KTX2 fails recoverably with a diagnostic");
     rt_string_unref(path_s);
 
     EXPECT_TRUE(write_test_ktx2_custom_header(implicit_path, 37u, 1u, 1u, 0u, 0u, nullptr, 0u),

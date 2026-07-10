@@ -1,13 +1,18 @@
 {
   "debug": {
-    "enabled": true,
+    "enabled": false,
     "showOnStart": false
   },
   "game": {
     "startLevel": 1
   },
   "presentation": {
-    "sceneTransitionMs": 0,
-    "introSplashMs": 1200
+    "sceneTransitionMs": 350,
+    "introSplashMs": 1200,
+    "authoredArtEnabled": true,
+    "adaptiveMusicEnabled": true
+  },
+  "campaign": {
+    "worldGraphEnabled": true
   }
 }

@@ -1,7 +1,21 @@
-// =============================================================================
-// sound.zia — SFX + music manager with procedural fallback
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/sound.zia
+// Purpose: Coordinates Xenoscape music, semantic SFX, and procedural fallbacks.
+// Key invariants:
+//   - Missing audio devices/assets never prevent gameplay.
+//   - Master, music, SFX, ambience, and voice values remain independently bounded.
+// Ownership/Lifetime:
+//   - Game owns one SoundManager and explicitly shuts it down at exit.
+// Links: game.zia, settings.zia, sounds/README.md,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — AUDIO IS OPTIONAL BUT IT'S CHEAP TO DO WELL
 // ------------------------------------------------------
@@ -58,7 +72,41 @@
 module sound;
 
 bind Viper.Sound;
+bind Viper.Text.Fmt;
 bind "./config";
+
+final FOOTSTEP_SOFT = 0;
+final FOOTSTEP_METAL = 1;
+final FOOTSTEP_CRYSTAL = 2;
+final FOOTSTEP_HEAVY = 3;
+
+/// @brief Classify one authored floor tile into a stable footstep family.
+///
+/// The classifier is intentionally pure so movement cadence remains owned by
+/// Game while SoundManager owns only timbre and mixer routing. Unknown tiles
+/// use the heavy/stone family, which stays audible without implying a special
+/// material that the level did not author.
+///
+/// @param tile Stable `TILE_*` identity sampled under the player's feet.
+/// @return One `FOOTSTEP_*` family in the inclusive range 0..3.
+func footstepIdentityForTile(tile: Integer) -> Integer {
+    if tile == TILE_GRASS_TOP or tile == TILE_DIRT or
+       tile == TILE_JUNGLE_GROUND or tile == TILE_JUNGLE_PLATFORM or
+       tile == TILE_MUSHROOM or tile == TILE_QUICKSAND or
+       tile == TILE_VINE or tile == TILE_MOSS_STONE {
+        return FOOTSTEP_SOFT;
+    }
+    if (tile >= TILE_HULL_PLATE and tile <= TILE_VIEWPORT) or
+       tile == TILE_CONVEYOR_L or tile == TILE_CONVEYOR_R or
+       tile == TILE_STEAM_VENT {
+        return FOOTSTEP_METAL;
+    }
+    if tile == TILE_CRYSTAL or tile == TILE_CAVE_CRYSTAL or
+       tile == TILE_ICE_FLOOR {
+        return FOOTSTEP_CRYSTAL;
+    }
+    return FOOTSTEP_HEAVY;
+}
 
 /// @brief Game-wide audio coordinator.  Wraps a SoundBank,
 ///        falls back to procedural Synth when WAV files
@@ -71,9 +119,15 @@ class SoundManager {
     hide Boolean ready;
     hide SoundBank bank;
     hide Integer musicVoice;
+    hide Integer ambienceVoice;
     hide Integer currentTrack;
+    hide Integer currentAmbience;
     hide Integer masterVolume;
+    hide Integer musicVolume;
     hide Integer sfxVolume;
+    hide Integer ambienceVolume;
+    hide Integer voiceVolume;
+    hide Integer combatIntensity;
 
     /// @brief Construct in "not-ready" state.  Real init is
     ///        `setup(basePath)`; until then every `play*`
@@ -81,9 +135,15 @@ class SoundManager {
     expose func init() {
         ready = false;
         musicVoice = -1;
+        ambienceVoice = -1;
         currentTrack = -1;
+        currentAmbience = -1;
         masterVolume = 80;
-        sfxVolume = 100;
+        musicVolume = 55;
+        sfxVolume = 85;
+        ambienceVolume = 70;
+        voiceVolume = 85;
+        combatIntensity = 0;
     }
 
     // Initialize audio system and register all sounds.
@@ -124,6 +184,7 @@ class SoundManager {
         bank.Register("menu_back", basePath + "sounds/menu_back.wav");
         bank.Register("death", basePath + "sounds/death.wav");
         bank.Register("stomp", basePath + "sounds/stomp.wav");
+        bank.Register("radio_chirp", basePath + "sounds/radio_chirp.wav");
 
         // Synth fallback: if a WAV wasn't found, SoundBank.Has() returns false.
         // Register procedural replacements for any missing sounds.
@@ -167,6 +228,32 @@ class SoundManager {
         if bank.Has("stomp") == false {
             bank.RegisterSound("stomp", Synth.Sfx(SFX_HIT));
         }
+        if bank.Has("radio_chirp") == false {
+            bank.RegisterSound("radio_chirp", Synth.Tone(760, 90, 1));
+        }
+
+        // First-party procedural effects for release mechanics. Registering
+        // retained Sound objects is essential: constructing Synth output alone
+        // does not enqueue playback.
+        bank.RegisterSound("dash", Synth.Sweep(170, 760, 115, 2));
+        bank.RegisterSound("charge_start", Synth.Sweep(210, 520, 130, 1));
+        bank.RegisterSound("charge_release", Synth.Sweep(1180, 190, 170, 2));
+        bank.RegisterSound("ground_pound", Synth.Sweep(180, 55, 210, 2));
+        bank.RegisterSound("freeze", Synth.Sweep(1500, 720, 145, 3));
+        bank.RegisterSound("boss_phase", Synth.Sweep(95, 310, 360, 2));
+        bank.RegisterSound("enemy_tell", Synth.Sweep(430, 760, 85, 3));
+        bank.RegisterSound("ability_get", Synth.Sweep(420, 1180, 330, 1));
+        bank.RegisterSound("save", Synth.Sweep(500, 940, 180, 1));
+        bank.RegisterSound("lore_found", Synth.Sweep(310, 680, 180, 1));
+        bank.RegisterSound("secret_found", Synth.Sweep(760, 1520, 240, 3));
+        bank.RegisterSound("boss_intro", Synth.Sweep(70, 260, 440, 2));
+        bank.RegisterSound("victory", Synth.Sweep(520, 1320, 520, 1));
+        bank.RegisterSound("explosion", Synth.Sfx(SFX_EXPLODE));
+        bank.RegisterSound("crystal_break", Synth.Sweep(2100, 620, 150, 3));
+        bank.RegisterSound("footstep_soft", Synth.Tone(165, 34, 0));
+        bank.RegisterSound("footstep_metal", Synth.Tone(330, 32, 2));
+        bank.RegisterSound("footstep_crystal", Synth.Tone(980, 30, 3));
+        bank.RegisterSound("footstep_heavy", Synth.Tone(105, 42, 2));
 
         // =====================================================================
         // Procedural music via MusicGen — zero external assets needed
@@ -287,6 +374,26 @@ class SoundManager {
             bank.RegisterSound("music_game", gameSound);
         }
 
+        // Ten distinct regional identities plus dedicated hub/boss/ending cues.
+        var identity = 1;
+        while identity <= 14 {
+            var identitySound = buildMusicIdentity(identity);
+            if identitySound != null {
+                bank.RegisterSound("music_identity_" + Int(identity),
+                                   identitySound);
+            }
+            identity = identity + 1;
+        }
+        identity = 1;
+        while identity <= 10 {
+            var ambienceSound = buildAmbienceIdentity(identity);
+            if ambienceSound != null {
+                bank.RegisterSound("ambience_identity_" + Int(identity),
+                                   ambienceSound);
+            }
+            identity = identity + 1;
+        }
+
         ready = true;
         applyVolumeSettings();
     }
@@ -309,6 +416,35 @@ class SoundManager {
         applyVolumeSettings();
     }
 
+    /// @brief Set the independent background-music mix volume.
+    ///
+    /// An active music voice updates immediately without restarting its track.
+    ///
+    /// @param value Volume in inclusive range 0..100; outliers are clamped.
+    /// @return Nothing. Mutates the stored mix and possibly the active voice.
+    expose func setMusicVolume(value: Integer) {
+        musicVolume = clampVolume(value);
+        applyVolumeSettings();
+    }
+
+    /// @brief Set the independent environmental ambience mix volume.
+    ///
+    /// @param value Volume in inclusive range 0..100; outliers are clamped.
+    /// @return Nothing. Applies group-three gain without restarting music.
+    expose func setAmbienceVolume(value: Integer) {
+        ambienceVolume = clampVolume(value);
+        applyVolumeSettings();
+    }
+
+    /// @brief Set the independent ARIA/radio voice mix volume.
+    ///
+    /// @param value Volume in inclusive range 0..100; outliers are clamped.
+    /// @return Nothing. Applies group-four gain without affecting SFX.
+    expose func setVoiceVolume(value: Integer) {
+        voiceVolume = clampVolume(value);
+        applyVolumeSettings();
+    }
+
     /// @brief Read the current global audio master volume.
     expose func getMasterVolume() -> Integer {
         return masterVolume;
@@ -317,6 +453,34 @@ class SoundManager {
     /// @brief Read the current sound-effect mix volume.
     expose func getSfxVolume() -> Integer {
         return sfxVolume;
+    }
+
+    /// @brief Read the independent background-music mix volume.
+    ///
+    /// @return Integer in 0..100.
+    expose func getMusicVolume() -> Integer { return musicVolume; }
+
+    /// @brief Read independent environmental ambience volume.
+    ///
+    /// @return Integer in 0..100.
+    expose func getAmbienceVolume() -> Integer { return ambienceVolume; }
+
+    /// @brief Read independent ARIA/radio voice volume.
+    ///
+    /// @return Integer in 0..100.
+    expose func getVoiceVolume() -> Integer { return voiceVolume; }
+
+    /// @brief Apply exploration-to-combat intensity without restarting a track.
+    ///
+    /// @param percent Requested intensity in 0..100.
+    /// @return Nothing. Updates group gain only when the normalized value changes.
+    expose func setCombatIntensity(percent: Integer) {
+        var bounded = percent;
+        if bounded < 0 { bounded = 0; }
+        if bounded > 100 { bounded = 100; }
+        if bounded == combatIntensity { return; }
+        combatIntensity = bounded;
+        applyVolumeSettings();
     }
 
     /// @brief Clamp a user-facing volume value into the audio API range.
@@ -338,6 +502,11 @@ class SoundManager {
         if ready == false { return; }
         Audio.SetMasterVolume(masterVolume);
         Audio.SetGroupVolume(1, sfxVolume);
+        var adaptiveMusicVolume =
+            musicVolume * (85 + combatIntensity * 15 / 100) / 100;
+        Audio.SetGroupVolume(2, adaptiveMusicVolume);
+        Audio.SetGroupVolume(3, ambienceVolume);
+        Audio.SetGroupVolume(4, voiceVolume);
     }
 
     /// @brief Scale a base sound-effect volume by the current SFX slider.
@@ -346,6 +515,107 @@ class SoundManager {
     /// @return The effective per-effect volume after SFX scaling.
     hide func scaledSfx(base: Integer) -> Integer {
         return base * sfxVolume / 100;
+    }
+
+    /// @brief Procedurally compose one regional or scene-specific music identity.
+    ///
+    /// Identities 1..10 map to campaign regions; 11 is hub, 12 boss, 13 victory,
+    /// and 14 game over. Each receives a distinct root, tempo, waveform, melodic
+    /// rotation, bass pulse, and ambient pad while retaining a coherent shared
+    /// harmonic language. The returned loop is first-party and dependency-free.
+    ///
+    /// @param identity Stable music identity in 1..14.
+    /// @return Newly built loopable Sound, or null if synthesis fails.
+    hide func buildMusicIdentity(identity: Integer) -> Sound {
+        var bounded = identity;
+        if bounded < 1 { bounded = 1; }
+        if bounded > 14 { bounded = 14; }
+        var tempo = 76 + bounded * 5;
+        if bounded == 11 { tempo = 84; }
+        if bounded == 12 { tempo = 152; }
+        if bounded == 13 { tempo = 108; }
+        if bounded == 14 { tempo = 66; }
+        var root = 42 + (bounded * 5) % 12;
+        var song = MusicGen.New(tempo);
+        var pad = song.AddChannel(0);
+        var pulse = song.AddChannel(bounded % 4);
+        var bass = song.AddChannel(2);
+        var texture = song.AddChannel(4);
+
+        song.SetEnvelope(pad, 180, 160, 46, 220);
+        song.SetChannelVol(pad, 28);
+        song.SetDetune(pad, 2 + bounded % 7);
+        song.SetPan(pad, -22);
+        song.SetEnvelope(pulse, 6, 55, 42, 90);
+        song.SetChannelVol(pulse, 42);
+        song.SetPan(pulse, 20);
+        song.SetVibrato(pulse, 4 + bounded % 8, 360 + bounded * 30);
+        song.SetEnvelope(bass, 4, 45, 70, 70);
+        song.SetChannelVol(bass, 40);
+        song.SetPan(bass, -8);
+        song.SetEnvelope(texture, 1, 22, 0, 35);
+        song.SetChannelVol(texture, 18 + bounded % 12);
+
+        var chord = 0;
+        while chord < 4 {
+            var chordRoot = root + (chord * 5 + bounded) % 8;
+            song.AddNote(pad, chord * 400, chordRoot + 12, 400);
+            song.AddNote(bass, chord * 400, chordRoot, 200);
+            song.AddNote(bass, chord * 400 + 200, chordRoot + 7, 200);
+            chord = chord + 1;
+        }
+
+        var step = 0;
+        while step < 16 {
+            var degree = (step * 3 + bounded) % 7;
+            var interval = degree;
+            if degree >= 2 { interval = interval + 1; }
+            if degree >= 5 { interval = interval + 1; }
+            song.AddNote(pulse, step * 100, root + 24 + interval, 82);
+            if step % 2 == 0 {
+                song.AddNote(texture, step * 100, 4 + bounded % 10, 24);
+            }
+            step = step + 1;
+        }
+        song.Length = 1600;
+        song.SetLoopable(true);
+        return song.Build();
+    }
+
+    /// @brief Compose one sparse environmental bed for a campaign biome.
+    ///
+    /// A quiet detuned pad establishes regional air/pressure while a low-volume
+    /// noise channel adds wind, spores, steam, ice, or machine texture according
+    /// to its stable region id. It loops separately on ambience mixer group three.
+    ///
+    /// @param region One-based campaign region in 1..10.
+    /// @return Newly built loopable Sound, or null if synthesis fails.
+    hide func buildAmbienceIdentity(region: Integer) -> Sound {
+        var bounded = region;
+        if bounded < 1 { bounded = 1; }
+        if bounded > 10 { bounded = 10; }
+        var song = MusicGen.New(54 + bounded * 3);
+        var air = song.AddChannel(0);
+        var texture = song.AddChannel(4);
+        song.SetEnvelope(air, 350, 260, 35, 420);
+        song.SetChannelVol(air, 24);
+        song.SetDetune(air, 4 + bounded);
+        song.SetPan(air, -28 + bounded * 5);
+        song.SetEnvelope(texture, 2, 90, 4, 120);
+        song.SetChannelVol(texture, 9 + bounded);
+        song.SetPan(texture, 24 - bounded * 4);
+        var root = 34 + (bounded * 7) % 12;
+        song.AddNote(air, 0, root + 12, 1600);
+        song.AddNote(air, 1600, root + 17, 1600);
+        var pulse = 0;
+        while pulse < 3200 {
+            song.AddNote(texture, pulse + bounded * 17 % 90,
+                         2 + bounded, 35 + bounded * 2);
+            pulse = pulse + 320;
+        }
+        song.Length = 3200;
+        song.SetLoopable(true);
+        return song.Build();
     }
 
     // Shut down audio system cleanly.
@@ -461,90 +731,123 @@ class SoundManager {
     /// @brief Dash whoosh.
     expose func playDash() {
         if ready == false { return; }
-        // Use synth — whoosh sound
-        Synth.Tone(200, 100, 2);
+        bank.PlayEx("dash", scaledSfx(65), 0);
     }
 
     /// @brief Charge-shot wind-up loop start.
     expose func playChargeStart() {
         if ready == false { return; }
-        Synth.Tone(220, 50, 1);
+        bank.PlayEx("charge_start", scaledSfx(48), 0);
     }
 
     /// @brief Charge-shot release boom.
     expose func playChargeRelease() {
         if ready == false { return; }
-        Synth.Tone(880, 150, 3);
+        bank.PlayEx("charge_release", scaledSfx(78), 0);
     }
 
     /// @brief Ground-pound landing thud.
     expose func playGroundPound() {
         if ready == false { return; }
-        Synth.Tone(80, 200, 2);
+        bank.PlayEx("ground_pound", scaledSfx(82), 0);
     }
 
     /// @brief Ice-wraith freeze impact.
     expose func playFreeze() {
         if ready == false { return; }
-        Synth.Tone(1200, 120, 1);
+        bank.PlayEx("freeze", scaledSfx(70), 0);
     }
 
     /// @brief Boss phase-change roar.
     expose func playBossPhase() {
         if ready == false { return; }
-        Synth.Tone(150, 300, 2);
+        bank.PlayEx("boss_phase", scaledSfx(90), 0);
+    }
+
+    /// @brief Play the shared hostile-projectile attack-tell cue.
+    ///
+    /// EnemyManager collapses multi-shot patterns to one frame event, preventing
+    /// stacked voices while still warning the player before projectiles travel.
+    ///
+    /// @return Nothing. Routes through SFX volume or no-ops without audio.
+    expose func playEnemyTell() {
+        if ready == false { return; }
+        bank.PlayEx("enemy_tell", scaledSfx(38), 0);
     }
 
     /// @brief Ability acquired sting.  Used by the freeze-
     ///        frame popup.
     expose func playAbilityGet() {
         if ready == false { return; }
-        Synth.Tone(440, 100, 1);
-        Synth.Tone(660, 100, 1);
-        Synth.Tone(880, 200, 1);
+        bank.PlayEx("ability_get", scaledSfx(85), 0);
     }
 
     /// @brief Save-station activation chime.
     expose func playSave() {
         if ready == false { return; }
-        Synth.Tone(523, 80, 1);
-        Synth.Tone(659, 80, 1);
+        bank.PlayEx("save", scaledSfx(72), 0);
     }
 
     /// @brief Lore terminal scanned beep.
     expose func playLoreFound() {
         if ready == false { return; }
-        Synth.Tone(330, 100, 1);
-        Synth.Tone(440, 150, 1);
+        bank.PlayEx("lore_found", scaledSfx(62), 0);
+    }
+
+    /// @brief Confirm an optional secret-room discovery with a unique shimmer.
+    ///
+    /// @return Nothing. Routes through the SFX mixer or silently no-ops when the
+    ///         audio device was unavailable during setup.
+    expose func playSecretFound() {
+        if ready == false { return; }
+        bank.PlayEx("secret_found", scaledSfx(74), 0);
+    }
+
+    /// @brief Play one cadence-controlled step for the sampled floor material.
+    ///
+    /// @param tile Stable authored tile id under the player's center foot probe.
+    /// @return Nothing. Selects exactly one retained sound and uses SFX volume.
+    expose func playFootstep(tile: Integer) {
+        if ready == false { return; }
+        var family = footstepIdentityForTile(tile);
+        var name = "footstep_heavy";
+        if family == FOOTSTEP_SOFT { name = "footstep_soft"; }
+        if family == FOOTSTEP_METAL { name = "footstep_metal"; }
+        if family == FOOTSTEP_CRYSTAL { name = "footstep_crystal"; }
+        bank.PlayEx(name, scaledSfx(34), 0);
+    }
+
+    /// @brief Play the short ARIA channel-open cue at independent voice volume.
+    ///
+    /// @return Nothing. Missing audio hardware remains a silent safe no-op.
+    expose func playRadioCue() {
+        if ready == false { return; }
+        bank.PlayEx("radio_chirp", 65 * voiceVolume / 100, 0);
     }
 
     /// @brief Boss-room entry sting.
     expose func playBossIntro() {
         if ready == false { return; }
-        Synth.Tone(110, 400, 2);
+        bank.PlayEx("boss_intro", scaledSfx(88), 0);
     }
 
     /// @brief Game-clear / endgame fanfare.
     expose func playVictory() {
         if ready == false { return; }
-        Synth.Tone(523, 150, 1);
-        Synth.Tone(659, 150, 1);
-        Synth.Tone(784, 150, 1);
-        Synth.Tone(1047, 400, 1);
+        bank.PlayEx("victory", scaledSfx(92), 0);
     }
 
     /// @brief Generic explosion.  Used for breaking walls,
     ///        boss minions, etc.
     expose func playExplosion() {
         if ready == false { return; }
-        Synth.Tone(60, 300, 2);
+        bank.PlayEx("explosion", scaledSfx(82), 0);
     }
 
     /// @brief Glassy shatter for crystal tiles.
     expose func playCrystalBreak() {
         if ready == false { return; }
-        Synth.Tone(2000, 60, 3);
-        Synth.Tone(1500, 80, 3);
+        bank.PlayEx("crystal_break", scaledSfx(68), 0);
     }
 
     // =========================================================================
@@ -560,11 +863,12 @@ class SoundManager {
     ///        so a redundant call is a no-op.
     expose func playMenuMusic() {
         if ready == false { return; }
+        stopAmbience();
         if currentTrack == 0 { return; }
         stopMusic();
         if bank.Has("music_menu") {
             var snd = bank.Get("music_menu");
-            musicVoice = snd.PlayLoop(45, 0);
+            musicVoice = snd.PlayLoop(45, 2);
             currentTrack = 0;
         }
     }
@@ -573,12 +877,93 @@ class SoundManager {
     ///        rules as `playMenuMusic`.
     expose func playGameMusic() {
         if ready == false { return; }
-        if currentTrack == 1 { return; }
+        if currentTrack >= 1 and currentTrack <= 10 { return; }
+        playGameMusicForRegion(1);
+    }
+
+    /// @brief Begin a distinct regional exploration identity.
+    ///
+    /// @param region One-based campaign region in 1..10; invalid values clamp.
+    /// @return Nothing. Redundant requests preserve the current playback position.
+    expose func playGameMusicForRegion(region: Integer) {
+        var bounded = region;
+        if bounded < 1 { bounded = 1; }
+        if bounded > 10 { bounded = 10; }
+        playIdentity(bounded, bounded, 40);
+    }
+
+    /// @brief Begin the independently mixed environmental bed for one region.
+    ///
+    /// @param region One-based campaign region in 1..10; invalid values clamp.
+    /// @return Nothing. Redundant requests preserve playback position.
+    expose func playAmbienceForRegion(region: Integer) {
+        if ready == false { return; }
+        var bounded = region;
+        if bounded < 1 { bounded = 1; }
+        if bounded > 10 { bounded = 10; }
+        if currentAmbience == bounded { return; }
+        stopAmbience();
+        var key = "ambience_identity_" + Int(bounded);
+        if bank.Has(key) {
+            var snd = bank.Get(key);
+            ambienceVoice = snd.PlayLoop(32, 3);
+            currentAmbience = bounded;
+        }
+    }
+
+    /// @brief Stop the environmental ambience voice without affecting music.
+    ///
+    /// @return Nothing. Safe when no ambience voice is active.
+    expose func stopAmbience() {
+        if ambienceVoice >= 0 { Voice.Stop(ambienceVoice); }
+        ambienceVoice = -1;
+        currentAmbience = -1;
+    }
+
+    /// @brief Begin the dedicated evolving-shipwreck hub identity.
+    ///
+    /// @return Nothing. Redundant requests preserve playback position.
+    expose func playHubMusic() {
+        stopAmbience();
+        playIdentity(11, 20, 38);
+    }
+
+    /// @brief Begin the dedicated high-intensity boss identity.
+    ///
+    /// @return Nothing. Redundant requests preserve playback position.
+    expose func playBossMusic() { playIdentity(12, 21, 46); }
+
+    /// @brief Begin the dedicated campaign-victory identity.
+    ///
+    /// @return Nothing. Redundant requests preserve playback position.
+    expose func playVictoryMusic() { playIdentity(13, 22, 44); }
+
+    /// @brief Begin the dedicated game-over identity.
+    ///
+    /// @return Nothing. Redundant requests preserve playback position.
+    expose func playGameOverMusic() { playIdentity(14, 23, 38); }
+
+    /// @brief Switch to one generated music identity through mixer group two.
+    ///
+    /// @param identity Generated identity key in 1..14.
+    /// @param trackId Internal playback id distinct from identity namespace.
+    /// @param volume Authored loop voice volume in 0..100.
+    /// @return Nothing. Missing synthesis output falls back to `music_game`.
+    hide func playIdentity(identity: Integer, trackId: Integer,
+                           volume: Integer) {
+        if ready == false or currentTrack == trackId { return; }
         stopMusic();
+        var key = "music_identity_" + Int(identity);
+        if bank.Has(key) {
+            var snd = bank.Get(key);
+            musicVoice = snd.PlayLoop(volume, 2);
+            currentTrack = trackId;
+            return;
+        }
         if bank.Has("music_game") {
-            var snd = bank.Get("music_game");
-            musicVoice = snd.PlayLoop(40, 0);
-            currentTrack = 1;
+            var fallback = bank.Get("music_game");
+            musicVoice = fallback.PlayLoop(volume, 2);
+            currentTrack = trackId;
         }
     }
 

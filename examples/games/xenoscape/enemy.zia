@@ -1,7 +1,22 @@
-// =============================================================================
-// enemy.zia — Every enemy archetype + boss in one big pool
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/enemy.zia
+// Purpose: Owns pooled enemies, archetype AI, combat traits, and hostile shots.
+// Key invariants:
+//   - Active enemy state lives in fixed-capacity parallel arrays keyed by handle.
+//   - Archetype combat traits are pure and remain valid across slot deactivation.
+// Ownership/Lifetime:
+//   - Game owns one EnemyManager for the application lifetime.
+//   - EnemyManager owns its pools, quadtree, navigation cache, and runtime bodies.
+// Links: ai.zia, player.zia, projectile.zia, game.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — ONE POOL, MANY ENEMY TYPES
 // -------------------------------------
@@ -89,10 +104,155 @@ bind Viper.Graphics;
 bind Viper.Game;
 bind Viper.Game.Raycast as Raycast;
 bind "./config";
+bind "./difficulty";
 bind "./level";
+bind "./meta_modes";
 bind "./physics";
 bind "./sprites";
 bind "./particles";
+
+/// @brief Return the commercial display name for an enemy archetype.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return Stable bestiary/boss-bar name, or `Unknown Lifeform` for invalid ids.
+func enemyDisplayName(enemyType: Integer) -> String {
+    if enemyType == ENEMY_SLIME { return "Gel Crawler"; }
+    if enemyType == ENEMY_BAT { return "Cave Flier"; }
+    if enemyType == ENEMY_TURRET { return "Defense Turret"; }
+    if enemyType == ENEMY_BOSS { return "Salvage Sentinel"; }
+    if enemyType == ENEMY_DRONE { return "Maintenance Drone"; }
+    if enemyType == ENEMY_SPOREWALKER { return "Sporewalker"; }
+    if enemyType == ENEMY_GLOWMOTH { return "Glowmoth"; }
+    if enemyType == ENEMY_FUNGAL_TURRET { return "Fungal Turret"; }
+    if enemyType == ENEMY_MYCELIUM { return "Mycelium Lurker"; }
+    if enemyType == ENEMY_SPORE_MOTHER { return "Spore Mother"; }
+    if enemyType == ENEMY_CRYSTAL_GOLEM { return "Crystal Golem"; }
+    if enemyType == ENEMY_SHARD_BAT { return "Shard Bat"; }
+    if enemyType == ENEMY_RESONANCE_ORB { return "Resonance Orb"; }
+    if enemyType == ENEMY_MIRROR_SLIME { return "Mirror Slime"; }
+    if enemyType == ENEMY_CRYSTAL_WYRM { return "Crystal Wyrm"; }
+    if enemyType == ENEMY_MAGMA_SLUG { return "Magma Slug"; }
+    if enemyType == ENEMY_EMBER_WASP { return "Ember Wasp"; }
+    if enemyType == ENEMY_FORGE_SENTINEL { return "Forge Sentinel"; }
+    if enemyType == ENEMY_PISTON_TRAP { return "Piston Trap"; }
+    if enemyType == ENEMY_MAGMA_CORE { return "Magma Core"; }
+    if enemyType == ENEMY_ICE_WRAITH { return "Ice Wraith"; }
+    if enemyType == ENEMY_FROST_BEETLE { return "Frost Beetle"; }
+    if enemyType == ENEMY_STALACTITE_BAT { return "Stalactite Bat"; }
+    if enemyType == ENEMY_VINE_WHIP { return "Vine Whip"; }
+    if enemyType == ENEMY_MOSS_GOLEM { return "Moss Golem"; }
+    if enemyType == ENEMY_RUIN_GUARDIAN { return "Ruin Guardian"; }
+    if enemyType == ENEMY_SHADOW_CLONE { return "Shadow Clone"; }
+    if enemyType == ENEMY_CORRUPTION { return "Corruption Node"; }
+    if enemyType == ENEMY_ARCHITECT { return "The Architect"; }
+    if enemyType == ENEMY_PATROL_DRONE { return "Patrol Drone"; }
+    if enemyType == ENEMY_BOMB_CARRIER { return "Bomb Carrier"; }
+    return "Unknown Lifeform";
+}
+
+/// @brief Return the visual death-effect family for an enemy archetype.
+///
+/// The result is intentionally pure so callers can capture it before an enemy
+/// pool slot is released. Effect ids are consumed by `ParticleSystem`: zero is
+/// the default burst, one poison, two crystal, three lava, four frost, five
+/// corruption, and six explosion.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return Stable death-effect family id in the inclusive range 0..6.
+func enemyDeathEffectForType(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_SPOREWALKER { return 1; }
+    if enemyType == ENEMY_CRYSTAL_GOLEM { return 2; }
+    if enemyType == ENEMY_SHARD_BAT { return 2; }
+    if enemyType == ENEMY_RESONANCE_ORB { return 2; }
+    if enemyType == ENEMY_MIRROR_SLIME { return 2; }
+    if enemyType == ENEMY_CRYSTAL_WYRM { return 2; }
+    if enemyType == ENEMY_MAGMA_SLUG { return 3; }
+    if enemyType == ENEMY_EMBER_WASP { return 3; }
+    if enemyType == ENEMY_FORGE_SENTINEL { return 3; }
+    if enemyType == ENEMY_MAGMA_CORE { return 3; }
+    if enemyType == ENEMY_ICE_WRAITH { return 4; }
+    if enemyType == ENEMY_FROST_BEETLE { return 4; }
+    if enemyType == ENEMY_STALACTITE_BAT { return 4; }
+    if enemyType == ENEMY_SHADOW_CLONE { return 5; }
+    if enemyType == ENEMY_CORRUPTION { return 5; }
+    if enemyType == ENEMY_ARCHITECT { return 5; }
+    if enemyType == ENEMY_BOMB_CARRIER { return 6; }
+    return 0;
+}
+
+/// @brief Return the score awarded for defeating one enemy archetype.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return Authored score value. Unknown ids use the global `ENEMY_SCORE`.
+func enemyScoreForType(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_SLIME { return 100; }
+    if enemyType == ENEMY_BAT { return 150; }
+    if enemyType == ENEMY_TURRET { return 200; }
+    if enemyType == ENEMY_SPOREWALKER { return 120; }
+    if enemyType == ENEMY_GLOWMOTH { return 100; }
+    if enemyType == ENEMY_FUNGAL_TURRET { return 200; }
+    if enemyType == ENEMY_MYCELIUM { return 180; }
+    if enemyType == ENEMY_CRYSTAL_GOLEM { return 300; }
+    if enemyType == ENEMY_SHARD_BAT { return 180; }
+    if enemyType == ENEMY_RESONANCE_ORB { return 250; }
+    if enemyType == ENEMY_MIRROR_SLIME { return 200; }
+    if enemyType == ENEMY_MAGMA_SLUG { return 150; }
+    if enemyType == ENEMY_EMBER_WASP { return 80; }
+    if enemyType == ENEMY_FORGE_SENTINEL { return 350; }
+    if enemyType == ENEMY_ICE_WRAITH { return 250; }
+    if enemyType == ENEMY_FROST_BEETLE { return 220; }
+    if enemyType == ENEMY_STALACTITE_BAT { return 100; }
+    if enemyType == ENEMY_VINE_WHIP { return 150; }
+    if enemyType == ENEMY_MOSS_GOLEM { return 400; }
+    if enemyType == ENEMY_RUIN_GUARDIAN { return 350; }
+    if enemyType == ENEMY_SHADOW_CLONE { return 200; }
+    if enemyType == ENEMY_CORRUPTION { return 250; }
+    if enemyType == ENEMY_PATROL_DRONE { return 180; }
+    if enemyType == ENEMY_BOMB_CARRIER { return 120; }
+    if enemyType == ENEMY_SPORE_MOTHER { return 2000; }
+    if enemyType == ENEMY_CRYSTAL_WYRM { return 3000; }
+    if enemyType == ENEMY_MAGMA_CORE { return 4000; }
+    if enemyType == ENEMY_ARCHITECT { return 10000; }
+    if enemyType == ENEMY_BOSS { return 5000; }
+    return ENEMY_SCORE;
+}
+
+/// @brief Return player health damage caused by touching an archetype.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return Positive contact damage; unknown and ordinary enemies return one.
+func enemyContactDamageForType(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_SPORE_MOTHER { return 2; }
+    if enemyType == ENEMY_CRYSTAL_WYRM { return 2; }
+    if enemyType == ENEMY_MAGMA_CORE { return 3; }
+    if enemyType == ENEMY_ARCHITECT { return 2; }
+    if enemyType == ENEMY_FORGE_SENTINEL { return 2; }
+    if enemyType == ENEMY_RUIN_GUARDIAN { return 2; }
+    if enemyType == ENEMY_CRYSTAL_GOLEM { return 2; }
+    if enemyType == ENEMY_BOMB_CARRIER { return 3; }
+    return 1;
+}
+
+/// @brief Report whether an archetype ignores ordinary player projectiles.
+///
+/// Mirror Slime reflects shots and Piston Trap is an indestructible environment
+/// hazard. All other current archetypes accept projectile damage, subject to
+/// their runtime vulnerability windows.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return True for Mirror Slime and Piston Trap; false otherwise.
+func enemyProjectileImmuneForType(enemyType: Integer) -> Boolean {
+    return enemyType == ENEMY_MIRROR_SLIME or enemyType == ENEMY_PISTON_TRAP;
+}
+
+/// @brief Return the freeze status duration applied by enemy contact.
+///
+/// @param enemyType One `ENEMY_*` archetype id.
+/// @return Freeze duration in milliseconds, or zero when no freeze is applied.
+func enemyFreezeDurationForType(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_ICE_WRAITH { return ICE_FREEZE_DURATION_MS; }
+    return 0;
+}
 
 /// @brief One ObjectPool of MAX_ENEMIES slots holding every
 ///        enemy archetype + boss in the world.
@@ -121,6 +281,7 @@ class EnemyManager {
     hide List[Integer] eframe;   // animation frame
     hide List[Integer] etimer;   // generic timer (AI, animation, cooldown)
     hide List[Integer] etimer2;  // secondary timer (shoot cooldown, etc.)
+    hide List[Integer] estagger; // generic ground-pound stagger remaining (ms)
     hide List[Entity] ebody;     // persistent runtime Entity per pool slot
     hide List[Behavior] ebhv;    // persistent runtime Behavior per pool slot
 
@@ -128,6 +289,8 @@ class EnemyManager {
     hide PhysicsHelper phys;
     hide Pathfinder nav;
     hide Boolean navReady;
+    hide Integer difficultyProfile;
+    hide Boolean newGamePlusActive;
 
     // (MoveResult struct replaces old out-parameter Lists)
 
@@ -135,6 +298,9 @@ class EnemyManager {
     expose Integer bossIndex;    // index into pool, or -1
     expose Integer bossPhase;    // 0, 1, 2
     expose Integer bossMaxHp;
+    hide Integer bossPhaseTransitionTimer;
+    hide Boolean bossPhaseChangedThisFrame;
+    hide Boolean enemyShotThisFrame;
 
     // Enemy bullets (turret/boss projectiles)
     hide List[Integer] ebx;      // bullet x (pixels)
@@ -162,6 +328,7 @@ class EnemyManager {
         eframe = [];
         etimer = [];
         etimer2 = [];
+        estagger = [];
         ebody = [];
         ebhv = [];
 
@@ -172,6 +339,7 @@ class EnemyManager {
             evx.add(0); evy.add(0); ehp.add(0);
             estate.add(0); edir.add(1); eframe.add(0);
             etimer.add(0); etimer2.add(0);
+            estagger.add(0);
             ebody.add(Entity.New(0, 0, 1, 1));
             ebhv.add(Behavior.New());
             fill = fill + 1;
@@ -180,11 +348,16 @@ class EnemyManager {
         phys = new PhysicsHelper();
         nav = Pathfinder.New(1, 1);
         navReady = false;
+        difficultyProfile = DIFFICULTY_STANDARD;
+        newGamePlusActive = false;
         // (MoveResult struct replaces old out-parameter Lists)
 
         bossIndex = -1;
         bossPhase = 0;
         bossMaxHp = BOSS_HP;
+        bossPhaseTransitionTimer = 0;
+        bossPhaseChangedThisFrame = false;
+        enemyShotThisFrame = false;
 
         ebx = [];
         eby = [];
@@ -203,6 +376,9 @@ class EnemyManager {
         bossIndex = -1;
         bossPhase = 0;
         bossMaxHp = BOSS_HP;
+        bossPhaseTransitionTimer = 0;
+        bossPhaseChangedThisFrame = false;
+        enemyShotThisFrame = false;
         ebCount = 0;
         ebx = [];
         eby = [];
@@ -229,6 +405,7 @@ class EnemyManager {
         eframe.set(handle, 0);
         etimer.set(handle, 0);
         etimer2.set(handle, 0);
+        estagger.set(handle, 0);
         estate.set(handle, 0);
 
         // Initialize HP and speed per type
@@ -264,8 +441,52 @@ class EnemyManager {
         else if t == ENEMY_BOMB_CARRIER { ehp.set(handle, BOMB_CARRIER_HP); evx.set(handle, BOMB_CARRIER_SPEED); }
         else { ehp.set(handle, 1); } // Fallback
 
+        if t != ENEMY_PISTON_TRAP {
+            var scaledHp = difficultyScaleEnemyHp(ehp.get(handle),
+                                                  difficultyProfile);
+            scaledHp = scaledHp *
+                       newGamePlusEnemyHpPercent(newGamePlusActive) / 100;
+            ehp.set(handle, scaledHp);
+            if handle == bossIndex { bossMaxHp = scaledHp; }
+        }
+
         resetRuntimeBody(handle);
         resetRuntimeBehavior(handle);
+    }
+
+    /// @brief Select the profile used for subsequently spawned enemy stats.
+    ///
+    /// Existing active enemies retain their current HP to avoid mid-room health
+    /// jumps. Game calls this before `spawnFromLevel` at each transition.
+    ///
+    /// @param profile One `DIFFICULTY_*` id; invalid values behave as Standard.
+    /// @return Nothing. Stores a bounded profile for later spawns/range queries.
+    expose func setDifficultyProfile(profile: Integer) {
+        difficultyProfile = profile;
+        if difficultyProfile < 0 or difficultyProfile >= DIFFICULTY_COUNT {
+            difficultyProfile = DIFFICULTY_STANDARD;
+        }
+    }
+
+    /// @brief Select ordinary-campaign or New Game+ encounter tuning.
+    ///
+    /// Existing enemies retain their health and encounter membership. Game must
+    /// call this after `reset` and before `spawnFromLevel`, keeping a mode change
+    /// from producing visible mid-fight stat jumps or duplicate entities.
+    ///
+    /// @param active True for the unlocked New Game+ ruleset.
+    /// @return Nothing. Stores the choice used by subsequent enemy spawns.
+    expose func setNewGamePlusActive(active: Boolean) {
+        newGamePlusActive = active;
+    }
+
+    /// @brief Scale an enemy detection range by active aggression profile.
+    ///
+    /// @param baseRange Positive authored pixel range.
+    /// @return Profile-scaled nonnegative integer range.
+    hide func aggressionRange(baseRange: Integer) -> Integer {
+        if baseRange <= 0 { return 0; }
+        return baseRange * difficultyAggressionPercent(difficultyProfile) / 100;
     }
 
     /// @brief Reset the runtime physics body for slot `i`
@@ -324,22 +545,46 @@ class EnemyManager {
         ebhv.set(i, bhv);
     }
 
-    /// @brief Drain the level's parallel spawn lists
-    ///        (`enemyTypes/X/Y`) into `spawnEnemy` calls.
-    ///        Called once per level load.
+    /// @brief Drain authored spawn lists and apply optional NG+ remix density.
+    ///
+    /// Ordinary expeditions receive every authored spawn exactly once. New Game+
+    /// adds one offset copy for alternating non-boss records, producing the
+    /// promised 150-percent encounter density while preserving the authored boss
+    /// count. ObjectPool exhaustion safely bounds unusually dense rooms.
+    ///
+    /// @param level Borrowed active level containing parallel type/X/Y records.
+    /// @return Nothing. Rebuilds navigation and populates the owned enemy pool.
     expose func spawnFromLevel(level: Level) {
         rebuildNavigation(level);
         var i = 0;
         while i < level.enemyTypes.length() {
-            spawnEnemy(level.enemyTypes.get(i),
-                       level.enemyX.get(i),
-                       level.enemyY.get(i));
+            var enemyType = level.enemyTypes.get(i);
+            var spawnX = level.enemyX.get(i);
+            var spawnY = level.enemyY.get(i);
+            spawnEnemy(enemyType, spawnX, spawnY);
+            if newGamePlusActive and i % 2 == 0 and
+               isBossType(enemyType) == false {
+                spawnEnemy(enemyType, spawnX + TILE_SIZE, spawnY);
+            }
             i = i + 1;
         }
 
         if level.hasBoss {
             spawnEnemy(level.bossType, level.bossX, level.bossY);
         }
+    }
+
+    /// @brief Test whether an archetype is one of the five campaign bosses.
+    ///
+    /// @param enemyType One `ENEMY_*` id from authored spawn data.
+    /// @return True for a boss archetype and false for regular enemies/invalid ids.
+    hide func isBossType(enemyType: Integer) -> Boolean {
+        if enemyType == ENEMY_BOSS { return true; }
+        if enemyType == ENEMY_SPORE_MOTHER { return true; }
+        if enemyType == ENEMY_CRYSTAL_WYRM { return true; }
+        if enemyType == ENEMY_MAGMA_CORE { return true; }
+        if enemyType == ENEMY_ARCHITECT { return true; }
+        return false;
     }
 
     /// @brief Re-bake any cached navigation data after the
@@ -378,6 +623,13 @@ class EnemyManager {
     ///        quadtree at the end so the next frame's
     ///        collision queries see current positions.
     expose func updateAll(level: Level, playerPx: Integer, playerPy: Integer, dt: Integer, particles: ParticleSystem) {
+        bossPhaseChangedThisFrame = false;
+        enemyShotThisFrame = false;
+        if bossPhaseTransitionTimer > 0 {
+            bossPhaseTransitionTimer = bossPhaseTransitionTimer - dt;
+            if bossPhaseTransitionTimer < 0 { bossPhaseTransitionTimer = 0; }
+        }
+        var phaseBeforeUpdate = bossPhase;
         var i = pool.FirstActive();
         while i >= 0 {
             var nextHandle = pool.NextActive(i);
@@ -393,6 +645,16 @@ class EnemyManager {
                     }
                 }
 
+                var stagger = estagger.get(i);
+                if i == bossIndex and bossPhaseTransitionTimer > 0 {
+                    stagger = bossPhaseTransitionTimer;
+                }
+                if stagger > 0 {
+                    stagger = stagger - dt;
+                    if stagger < 0 { stagger = 0; }
+                    estagger.set(i, stagger);
+                    evx.set(i, 0);
+                } else {
                 if t == ENEMY_SLIME { updateSlime(i, level, dt); }
                 if t == ENEMY_BAT { updateBat(i, playerPx, playerPy, dt); }
                 if t == ENEMY_TURRET { updateTurret(i, level, playerPx, playerPy, dt); }
@@ -422,8 +684,15 @@ class EnemyManager {
                 if t == ENEMY_ARCHITECT { updateArchitect(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_PATROL_DRONE { updatePatrolDrone(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_BOMB_CARRIER { updateBombCarrier(i, level, playerPx, playerPy, dt); }
+                }
 
             i = nextHandle;
+        }
+
+        if bossIndex >= 0 and bossPhase > phaseBeforeUpdate {
+            bossPhaseTransitionTimer = 500;
+            bossPhaseChangedThisFrame = true;
+            clearAllEnemyBullets();
         }
 
         // Rebuild Quadtree with updated positions for spatial queries.
@@ -442,6 +711,95 @@ class EnemyManager {
 
         // Update enemy bullets (with particle trails)
         updateEnemyBullets(level, dt, particles);
+    }
+
+    /// @brief Report whether the active boss advanced phase during this update.
+    ///
+    /// @return True for one frame at each increasing phase boundary; false for
+    ///         ordinary updates, phase regressions, or levels without a boss.
+    expose func didBossPhaseChange() -> Boolean {
+        return bossPhaseChangedThisFrame;
+    }
+
+    /// @brief Report whether one or more hostile projectiles fired this frame.
+    ///
+    /// Multi-projectile patterns collapse to one event so Game can emit a single
+    /// readable attack-tell cue without audio stacking. The flag resets at the
+    /// start of every `updateAll` call and remains independent of bullet lifetime.
+    ///
+    /// @return True after the first successful hostile spawn in this update.
+    expose func didFireEnemyProjectile() -> Boolean {
+        return enemyShotThisFrame;
+    }
+
+    /// @brief Read remaining boss phase-transition lockout time.
+    ///
+    /// @return Remaining readable transition milliseconds in the range 0..500.
+    expose func getBossPhaseTransitionTimer() -> Integer {
+        return bossPhaseTransitionTimer;
+    }
+
+    /// @brief Remove every active hostile projectile at a boss phase boundary.
+    ///
+    /// Clearing the bounded bullet pool is deliberately stronger than the
+    /// minimum nearby-clear contract and prevents an old pattern from obscuring
+    /// the new phase tell anywhere in a compact boss arena.
+    ///
+    /// @return Nothing. Marks all existing enemy bullet slots inactive.
+    hide func clearAllEnemyBullets() {
+        var i = 0;
+        while i < ebCount {
+            ebactive.set(i, 0);
+            i = i + 1;
+        }
+    }
+
+    /// @brief Stagger active enemies within a ground-pound shockwave radius.
+    ///
+    /// Distance is measured center-to-impact with squared integer pixels. Piston
+    /// traps are environmental machinery and remain immune. Reapplying stagger
+    /// extends a shorter remaining timer but never shortens a longer one.
+    ///
+    /// @param worldX Shockwave center x in whole world pixels.
+    /// @param worldY Shockwave center y in whole world pixels.
+    /// @param radius Inclusive radial range in whole pixels.
+    /// @param durationMs Positive stagger duration in milliseconds.
+    /// @return Number of active, nonimmune enemies affected by this call.
+    expose func staggerInRadius(worldX: Integer, worldY: Integer,
+                                radius: Integer,
+                                durationMs: Integer) -> Integer {
+        if radius < 0 or durationMs <= 0 { return 0; }
+        var affected = 0;
+        var radiusSquared = radius * radius;
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            if etype.get(i) != ENEMY_PISTON_TRAP {
+                var cx = ex.get(i) / 100 + getEnemyW(etype.get(i)) / 2;
+                var cy = ey.get(i) / 100 + getEnemyH(etype.get(i)) / 2;
+                var dx = cx - worldX;
+                var dy = cy - worldY;
+                if dx * dx + dy * dy <= radiusSquared {
+                    if estagger.get(i) < durationMs {
+                        estagger.set(i, durationMs);
+                    }
+                    evx.set(i, 0);
+                    affected = affected + 1;
+                }
+            }
+            i = next;
+        }
+        return affected;
+    }
+
+    /// @brief Read remaining generic stagger for deterministic probes/rendering.
+    ///
+    /// @param index Enemy pool slot index.
+    /// @return Remaining milliseconds, or zero for inactive/out-of-range slots.
+    expose func getStaggerRemaining(index: Integer) -> Integer {
+        if index < 0 or index >= MAX_ENEMIES { return 0; }
+        if pool.IsActive(index) == false { return 0; }
+        return estagger.get(index);
     }
 
     // =========================================================================
@@ -580,7 +938,7 @@ class EnemyManager {
         if ady < 0 { ady = 0 - ady; }
         var dist = adx + ady;
 
-        if dist < BAT_DETECT_RANGE * 2 {
+        if dist < aggressionRange(BAT_DETECT_RANGE * 2) {
             // Chase player
             var moveX = 0;
             var moveY = 0;
@@ -640,8 +998,8 @@ class EnemyManager {
 
         ebhv.get(i).Update(ebody.get(i), level.tilemap, playerPx, playerPy, dt);
 
-        if adx < TURRET_RANGE {
-            if ady < TURRET_RANGE / 2 {
+        if adx < aggressionRange(TURRET_RANGE) {
+            if ady < aggressionRange(TURRET_RANGE / 2) {
                 if Raycast.HasLineOfSight(level.tilemap, cx + TURRET_W / 2, cy + TURRET_H / 2, playerPx, playerPy) {
                 if ebhv.get(i).get_ShootReady() {
                     // Fire bullet
@@ -1483,40 +1841,58 @@ class EnemyManager {
         }
         var hp = ehp.get(i);
         var phase = 0;
-        if hp > SPORE_MOTHER_HP * 2 / 3 { phase = 0; }
-        else if hp > SPORE_MOTHER_HP / 3 { phase = 1; }
+        if hp * 3 > bossMaxHp * 2 { phase = 0; }
+        else if hp * 3 > bossMaxHp { phase = 1; }
         else { phase = 2; }
         bossPhase = phase;
-        eframe.set(i, phase);
 
         var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
         var dx = playerPx - cx;
         if dx > 0 { edir.set(i, 1); } if dx < 0 { edir.set(i, -1); }
 
-        // Slow movement
-        evx.set(i, edir.get(i) * SPORE_MOTHER_SPEED);
+        // Each pattern advertises a 400 ms bright core frame before release.
+        var attackInterval = 2600;
+        if phase == 1 { attackInterval = 1500; }
+        if phase == 2 { attackInterval = 900; }
+        var tm = etimer.get(i) + dt;
+        etimer.set(i, tm);
+        if tm >= attackInterval - 400 {
+            eframe.set(i, 3);
+            evx.set(i, 0);
+        } else {
+            eframe.set(i, phase);
+            var moveSpeed = SPORE_MOTHER_SPEED;
+            if phase == 2 { moveSpeed = moveSpeed * 2; }
+            evx.set(i, edir.get(i) * moveSpeed);
+        }
+
         var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
         if curVy > MAX_FALL { curVy = MAX_FALL; }
         evy.set(i, curVy);
 
-        var tm = etimer.get(i) + dt; etimer.set(i, tm);
-        if phase == 0 {
-            if tm >= 3000 { etimer.set(i, 0);
-                // Spawn sporewalker
-                spawnEnemyBullet(cx + 48, cy + 80, edir.get(i) * 2, 0);
+        if tm >= attackInterval {
+            etimer.set(i, 0);
+            if phase == 0 {
+                // Brood call: one real Sporewalker plus a readable low seed arc.
+                spawnEnemy(ENEMY_SPOREWALKER,
+                           cx - edir.get(i) * 84, cy + 48);
+                spawnEnemyBullet(cx + 48, cy + 40, edir.get(i) * 5, -3);
             }
-        }
-        if phase == 1 {
-            if tm >= 1500 { etimer.set(i, 0);
-                // Rain spores
-                spawnEnemyBullet(cx + 20, cy, 0, 4);
-                spawnEnemyBullet(cx + 48, cy, -1, 4);
-                spawnEnemyBullet(cx + 76, cy, 1, 4);
+            if phase == 1 {
+                // Canopy rain leaves safe gaps between five vertical lanes.
+                spawnEnemyBullet(cx + 8, cy, -2, 4);
+                spawnEnemyBullet(cx + 28, cy, -1, 5);
+                spawnEnemyBullet(cx + 48, cy, 0, 4);
+                spawnEnemyBullet(cx + 68, cy, 1, 5);
+                spawnEnemyBullet(cx + 88, cy, 2, 4);
             }
-        }
-        // Phase 2: core exposed — just moves faster
-        if phase == 2 {
-            evx.set(i, edir.get(i) * SPORE_MOTHER_SPEED * 2);
+            if phase == 2 {
+                // Exposed core alternates close pressure with diagonal escapes.
+                spawnEnemyBullet(cx + 48, cy + 36, -6, 0);
+                spawnEnemyBullet(cx + 48, cy + 36, 6, 0);
+                spawnEnemyBullet(cx + 48, cy + 36, -4, -5);
+                spawnEnemyBullet(cx + 48, cy + 36, 4, -5);
+            }
         }
 
         var dispX = evx.get(i) * dt / DT_BASE;
@@ -1774,6 +2150,7 @@ class EnemyManager {
                 ebvx.set(i, vx2);
                 ebvy.set(i, vy2);
                 ebactive.set(i, 1);
+                enemyShotThisFrame = true;
                 return;
             }
             i = i + 1;
@@ -1786,6 +2163,7 @@ class EnemyManager {
         ebvy.add(vy2);
         ebactive.add(1);
         ebCount = ebCount + 1;
+        enemyShotThisFrame = true;
     }
 
     /// @brief Per-frame: advance every enemy bullet, despawn
@@ -1878,64 +2256,14 @@ class EnemyManager {
     ///        type — used by particles / sound dispatch.
     expose func getDeathEffectType(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 0; }
-        var t = etype.get(i);
-        if t == ENEMY_SPOREWALKER { return 1; } // Poison cloud
-        if t == ENEMY_CRYSTAL_GOLEM { return 2; } // Crystal shatter
-        if t == ENEMY_SHARD_BAT { return 2; } // Crystal shatter
-        if t == ENEMY_RESONANCE_ORB { return 2; } // Crystal shatter
-        if t == ENEMY_MIRROR_SLIME { return 2; } // Crystal shatter
-        if t == ENEMY_CRYSTAL_WYRM { return 2; } // Crystal shatter
-        if t == ENEMY_MAGMA_SLUG { return 3; } // Lava splash
-        if t == ENEMY_EMBER_WASP { return 3; } // Lava splash
-        if t == ENEMY_FORGE_SENTINEL { return 3; } // Lava splash
-        if t == ENEMY_MAGMA_CORE { return 3; } // Lava splash
-        if t == ENEMY_ICE_WRAITH { return 4; } // Frost shatter
-        if t == ENEMY_FROST_BEETLE { return 4; } // Frost shatter
-        if t == ENEMY_STALACTITE_BAT { return 4; } // Frost shatter
-        if t == ENEMY_SHADOW_CLONE { return 5; } // Corruption wisps
-        if t == ENEMY_CORRUPTION { return 5; } // Corruption wisps
-        if t == ENEMY_ARCHITECT { return 5; } // Corruption wisps
-        if t == ENEMY_BOMB_CARRIER { return 6; } // Explosion
-        return 0; // Default: normal death burst
+        return enemyDeathEffectForType(etype.get(i));
     }
 
     // Get the score value for killing an enemy
     /// @brief Score points awarded for killing this enemy.
     expose func getEnemyScore(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return ENEMY_SCORE; }
-        var t = etype.get(i);
-        // Regular enemies
-        if t == ENEMY_SLIME { return 100; }
-        if t == ENEMY_BAT { return 150; }
-        if t == ENEMY_TURRET { return 200; }
-        if t == ENEMY_SPOREWALKER { return 120; }
-        if t == ENEMY_GLOWMOTH { return 100; }
-        if t == ENEMY_FUNGAL_TURRET { return 200; }
-        if t == ENEMY_MYCELIUM { return 180; }
-        if t == ENEMY_CRYSTAL_GOLEM { return 300; }
-        if t == ENEMY_SHARD_BAT { return 180; }
-        if t == ENEMY_RESONANCE_ORB { return 250; }
-        if t == ENEMY_MIRROR_SLIME { return 200; }
-        if t == ENEMY_MAGMA_SLUG { return 150; }
-        if t == ENEMY_EMBER_WASP { return 80; }
-        if t == ENEMY_FORGE_SENTINEL { return 350; }
-        if t == ENEMY_ICE_WRAITH { return 250; }
-        if t == ENEMY_FROST_BEETLE { return 220; }
-        if t == ENEMY_STALACTITE_BAT { return 100; }
-        if t == ENEMY_VINE_WHIP { return 150; }
-        if t == ENEMY_MOSS_GOLEM { return 400; }
-        if t == ENEMY_RUIN_GUARDIAN { return 350; }
-        if t == ENEMY_SHADOW_CLONE { return 200; }
-        if t == ENEMY_CORRUPTION { return 250; }
-        if t == ENEMY_PATROL_DRONE { return 180; }
-        if t == ENEMY_BOMB_CARRIER { return 120; }
-        // Bosses
-        if t == ENEMY_SPORE_MOTHER { return 2000; }
-        if t == ENEMY_CRYSTAL_WYRM { return 3000; }
-        if t == ENEMY_MAGMA_CORE { return 4000; }
-        if t == ENEMY_ARCHITECT { return 10000; }
-        if t == ENEMY_BOSS { return 5000; }
-        return ENEMY_SCORE;
+        return enemyScoreForType(etype.get(i));
     }
 
     // Check if this enemy type is a boss
@@ -1956,16 +2284,7 @@ class EnemyManager {
     /// @brief How much HP a player loses on contact.
     expose func getContactDamage(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 1; }
-        var t = etype.get(i);
-        if t == ENEMY_SPORE_MOTHER { return 2; }
-        if t == ENEMY_CRYSTAL_WYRM { return 2; }
-        if t == ENEMY_MAGMA_CORE { return 3; }
-        if t == ENEMY_ARCHITECT { return 2; }
-        if t == ENEMY_FORGE_SENTINEL { return 2; }
-        if t == ENEMY_RUIN_GUARDIAN { return 2; }
-        if t == ENEMY_CRYSTAL_GOLEM { return 2; }
-        if t == ENEMY_BOMB_CARRIER { return 3; } // Explosion damage
-        return 1;
+        return enemyContactDamageForType(etype.get(i));
     }
 
     // Is this enemy immune to projectiles? (must stomp or use environment)
@@ -1973,10 +2292,17 @@ class EnemyManager {
     ///        the mirror slime, which reflects them instead.
     expose func isProjectileImmune(i: Integer) -> Boolean {
         if i < 0 or pool.IsActive(i) == false { return false; }
-        var t = etype.get(i);
-        if t == ENEMY_MIRROR_SLIME { return true; }
-        if t == ENEMY_PISTON_TRAP { return true; }
-        return false;
+        return enemyProjectileImmuneForType(etype.get(i));
+    }
+
+    /// @brief Return the contact-applied freeze duration for one active slot.
+    ///
+    /// @param i Active enemy pool handle returned by a collision query.
+    /// @return Freeze duration in milliseconds, or zero for invalid, inactive,
+    ///         and non-freezing archetypes. No enemy state is mutated.
+    expose func getFreezeDuration(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        return enemyFreezeDurationForType(etype.get(i));
     }
 
     // Get position of enemy (for particle effects, death handling)
@@ -2227,6 +2553,34 @@ class EnemyManager {
     expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
     expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
     expose func activeCount() -> Integer { return pool.get_ActiveCount(); }
+
+    /// @brief Report whether any live hostile is near a world-space listener.
+    ///
+    /// Manhattan distance is sufficient for adaptive audio and avoids square-root
+    /// work in the per-frame presentation path. Dead slots and indestructible
+    /// piston hazards are ignored so ambient intensity reflects active combat.
+    ///
+    /// @param worldX Listener center X in world pixels.
+    /// @param worldY Listener center Y in world pixels.
+    /// @param radius Positive authored proximity radius in pixels.
+    /// @return True when one active hostile lies within the bounded radius.
+    expose func hasThreatNear(worldX: Integer, worldY: Integer,
+                              radius: Integer) -> Boolean {
+        if radius <= 0 { return false; }
+        var i = pool.FirstActive();
+        while i >= 0 {
+            var next = pool.NextActive(i);
+            if estate.get(i) != 2 and etype.get(i) != ENEMY_PISTON_TRAP {
+                var dx = ex.get(i) / 100 - worldX;
+                var dy = ey.get(i) / 100 - worldY;
+                if dx < 0 { dx = 0 - dx; }
+                if dy < 0 { dy = 0 - dy; }
+                if dx + dy <= radius { return true; }
+            }
+            i = next;
+        }
+        return false;
+    }
     expose func enemyBulletCount() -> Integer {
         var count = 0;
         var i = 0;

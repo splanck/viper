@@ -1,7 +1,21 @@
-// =============================================================================
-// achievements.zia — 32 achievements tracked by a runtime AchievementTracker
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/achievements.zia
+// Purpose: Defines, tracks, persists, and renders 32 gameplay achievements.
+// Key invariants:
+//   - Achievement indices remain stable because tracker masks persist by index.
+//   - Gameplay emits events; threshold policy remains centralized in this file.
+// Ownership/Lifetime:
+//   - Game owns one AchievementSystem and its runtime AchievementTracker.
+// Links: game.zia, save.zia, lore.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — ACHIEVEMENTS AS A SEPARATE SUBSYSTEM
 // -----------------------------------------------
@@ -64,6 +78,8 @@ module achievements;
 
 bind Viper.Graphics;
 bind Viper.Game;
+bind Viper.Input;
+bind Viper.Text.Fmt;
 bind "./config";
 bind "./palette";
 
@@ -321,6 +337,25 @@ class AchievementSystem {
     ///        `lore.zia` when the collected mask hits full.
     expose func onAllLore() { tracker.Unlock(24); }
 
+    /// @brief Evaluate the Crash Site pacifist achievement at area completion.
+    ///
+    /// @param levelNum One-based completed campaign area.
+    /// @param enemiesKilled Number of enemies defeated during that area visit.
+    /// @return Nothing. Unlocks Pacifist only for Crash Site with zero kills.
+    expose func onPacifistLevelComplete(levelNum: Integer,
+                                        enemiesKilled: Integer) {
+        if levelNum == 1 and enemiesKilled == 0 { tracker.Unlock(29); }
+    }
+
+    /// @brief Unlock the true-ending achievement after final-state validation.
+    ///
+    /// Game calls this only after The Architect is defeated while all abilities
+    /// and all primary lore entries are owned, keeping ending policy outside the
+    /// generic victory-screen renderer.
+    ///
+    /// @return Nothing. Idempotently unlocks achievement index 31.
+    expose func onTrueEnding() { tracker.Unlock(31); }
+
     /// @brief Read combat counters and unlock any
     ///        threshold-tier kill achievements that just
     ///        crossed.  Called from `onEnemyKilled`.
@@ -459,8 +494,11 @@ class AchievementSystem {
             i = i + 1;
         }
 
-        canvas.TextCenteredScaled(py + ph - 25, "UP/DOWN to browse, ESC to close",
-                                  Color.RGB(60, 70, 90), 1);
+        canvas.TextCenteredScaled(
+            py + ph - 25,
+            Action.BindingsStr(ACT_UP) + "/" + Action.BindingsStr(ACT_DOWN) +
+            " browse   " + Action.BindingsStr(ACT_BACK) + " close",
+            Color.RGB(60, 70, 90), 1);
     }
 
     /// @brief "EXPLORE" / "COMBAT" / etc. for category

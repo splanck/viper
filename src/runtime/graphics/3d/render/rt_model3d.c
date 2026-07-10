@@ -46,6 +46,7 @@
 #include "rt_g3d_ref_slots.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_mesh_simplify.h"
 #include "rt_morphtarget3d.h"
 #include "rt_numeric.h"
 #include "rt_object.h"

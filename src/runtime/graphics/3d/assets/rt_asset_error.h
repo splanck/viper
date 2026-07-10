@@ -60,6 +60,29 @@ void rt_asset_error_add_warning(const char *message);
 void rt_asset_error_add_warningf(const char *fmt, ...) RT_ASSET_ERROR_PRINTF(1, 2);
 int64_t rt_asset_error_get_warning_count(void);
 const char *rt_asset_error_get_warning(int64_t index);
+
+/// @brief Structured import-degradation counters recorded alongside load warnings.
+/// @details Loaders bump these whenever content is dropped or approximated during
+///          import so tools can inspect degradation without parsing warning text.
+///          Reset with the warning list at the start of each top-level load.
+typedef enum rt_asset_import_stat {
+    /// Primitives skipped because their mode is unsupported (glTF POINTS/LINES/...).
+    RT_ASSET_IMPORT_STAT_SKIPPED_PRIMITIVES = 0,
+    /// Vertices whose >4 meaningful bone influences were folded to the top four.
+    RT_ASSET_IMPORT_STAT_TRUNCATED_INFLUENCE_VERTICES,
+    /// Vertices whose meaningful joints exceeded the runtime bone limit and were dropped.
+    RT_ASSET_IMPORT_STAT_OUT_OF_RANGE_JOINT_VERTICES,
+    /// Optional (extensionsUsed) extensions the loader does not interpret.
+    RT_ASSET_IMPORT_STAT_IGNORED_EXTENSIONS,
+    /// Skeletal CUBICSPLINE channels baked to sampled keys (playback is linear/slerp).
+    RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS,
+    RT_ASSET_IMPORT_STAT_COUNT
+} rt_asset_import_stat;
+
+/// @brief Add @p amount to one structured import counter (negative/invalid inputs ignored).
+void rt_asset_error_add_import_stat(rt_asset_import_stat stat, int64_t amount);
+/// @brief Read one structured import counter for the current thread's last load.
+int64_t rt_asset_error_get_import_stat(rt_asset_import_stat stat);
 /// @brief Return whether the current load-error message was truncated to fit storage.
 int rt_asset_error_get_message_was_truncated(void);
 /// @brief Return whether warning @p index was truncated to fit storage.
@@ -72,6 +95,9 @@ int64_t rt_assets3d_get_last_load_error_code(void);
 int64_t rt_assets3d_get_load_warning_count(void);
 rt_string rt_assets3d_get_load_warning(int64_t index);
 rt_string rt_assets3d_get_load_warnings(void);
+/// @brief JSON summary of the last load's degradation: the structured counters plus
+///        the warning strings, e.g. `{"skippedPrimitives":1,...,"warnings":["..."]}`.
+rt_string rt_assets3d_get_import_report(void);
 
 #ifdef __cplusplus
 }

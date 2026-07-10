@@ -303,6 +303,280 @@ rt_string rt_model3d_get_scene_name(void *obj, int64_t index) {
     return rt_const_cstr(model->scenes[index].name);
 }
 
+/// @brief Number of KHR_materials_variants names imported with the asset (0 when absent).
+int64_t rt_model3d_get_variant_count(void *obj) {
+    rt_model3d *model = model3d_checked(obj);
+    if (!model || !model->variant_names || model->variant_count <= 0)
+        return 0;
+    return model->variant_count;
+}
+
+/// @brief Return the material-variant name at @p index (empty string when invalid).
+rt_string rt_model3d_get_variant_name(void *obj, int64_t index) {
+    rt_model3d *model = model3d_checked(obj);
+    if (!model || !model->variant_names || index < 0 || index >= model->variant_count ||
+        !model->variant_names[index])
+        return rt_const_cstr("");
+    return rt_const_cstr(model->variant_names[index]);
+}
+
+/// @brief Apply material variant @p variant_index to every mapped node under @p target.
+/// @details @p target may be a SceneNode3D subtree root (e.g. an Instantiate() result) or a
+///          SceneGraph, in which case its root node is used. Nodes without a variant table
+///          keep their current material; unmapped table slots were resolved to the
+///          primitive's default material at import, so switching variants is reversible.
+/// @return Number of nodes whose material was set (0 for invalid handles or indices).
+int64_t rt_model3d_apply_variant(void *obj, void *target, int64_t variant_index) {
+    rt_model3d *model = model3d_checked(obj);
+    rt_scene_node3d *root = NULL;
+    rt_scene_node3d **stack;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    int32_t visited_count = 1;
+    int64_t applied = 0;
+    if (!model || !target || variant_index < 0 || variant_index >= model->variant_count)
+        return 0;
+    root = (rt_scene_node3d *)rt_g3d_checked_or_null(target, RT_G3D_SCENENODE3D_CLASS_ID);
+    if (!root) {
+        rt_scene3d *scene = (rt_scene3d *)rt_g3d_checked_or_null(target, RT_G3D_SCENE3D_CLASS_ID);
+        root = scene ? (rt_scene_node3d *)rt_g3d_checked_or_null(scene->root,
+                                                                 RT_G3D_SCENENODE3D_CLASS_ID)
+                     : NULL;
+    }
+    if (!root)
+        return 0;
+    stack = (rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("SceneAsset.ApplyVariant: walk stack allocation failed");
+        return 0;
+    }
+    stack[stack_count++] = root;
+    while (stack_count > 0) {
+        rt_scene_node3d *current = stack[--stack_count];
+        int32_t child_count;
+        if (!current)
+            continue;
+        if (current->variant_materials && variant_index < current->variant_material_count &&
+            current->variant_materials[variant_index]) {
+            rt_scene_node3d_set_material(current, current->variant_materials[variant_index]);
+            applied++;
+        }
+        child_count = model_node_child_count(current);
+        for (int32_t i = 0; i < child_count; i++) {
+            rt_scene_node3d *child = (rt_scene_node3d *)rt_g3d_checked_or_null(
+                current->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
+            if (!child)
+                continue;
+            if (visited_count >= MODEL3D_MAX_WALK_NODES) {
+                free(stack);
+                rt_trap("SceneAsset.ApplyVariant: too many nodes");
+                return applied;
+            }
+            if (stack_count >= stack_capacity) {
+                if (stack_capacity > INT32_MAX / 2 ||
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *)) {
+                    free(stack);
+                    rt_trap("SceneAsset.ApplyVariant: too many nodes");
+                    return applied;
+                }
+                int32_t new_capacity = stack_capacity * 2;
+                rt_scene_node3d **grown = (rt_scene_node3d **)realloc(
+                    stack, (size_t)new_capacity * sizeof(rt_scene_node3d *));
+                if (!grown) {
+                    free(stack);
+                    rt_trap("SceneAsset.ApplyVariant: walk stack allocation failed");
+                    return applied;
+                }
+                stack = grown;
+                stack_capacity = new_capacity;
+            }
+            stack[stack_count++] = child;
+            visited_count++;
+        }
+    }
+    free(stack);
+    return applied;
+}
+
+/// @brief One generated LOD chain shared by every node that renders the same mesh.
+/// @details Instantiated scene clones share mesh pointers, so simplifying once per
+///          unique mesh (instead of once per node) avoids duplicate QEM work and keeps
+///          all consumers of a mesh on the identical decimated chain.
+typedef struct {
+    void *mesh;
+    void *lods[4];
+    double distances[4];
+    int32_t count;
+} model_lod_chain_entry;
+
+/// @brief Build (or fetch) the shared LOD chain for @p mesh_obj inside @p entries.
+/// @details Mirrors rt_scene_node3d_generate_lods' decimation schedule: level k holds
+///          ~ratio^k of the source triangles and distance thresholds derive from the
+///          mesh bounding radius. Meshes under 8 triangles produce an empty chain.
+/// @return The cache entry for @p mesh_obj, or NULL on allocation failure.
+static model_lod_chain_entry *model_lod_chain_find_or_build(model_lod_chain_entry **entries,
+                                                            int32_t *entry_count,
+                                                            int32_t *entry_capacity,
+                                                            void *mesh_obj,
+                                                            int64_t levels,
+                                                            double ratio) {
+    rt_mesh3d *mesh;
+    model_lod_chain_entry *entry;
+    uint32_t base_tris;
+    double radius;
+    double target;
+    double distance;
+    for (int32_t i = 0; i < *entry_count; i++) {
+        if ((*entries)[i].mesh == mesh_obj)
+            return &(*entries)[i];
+    }
+    if (*entry_count >= *entry_capacity) {
+        int32_t new_capacity = *entry_capacity > 0 ? *entry_capacity * 2 : 8;
+        model_lod_chain_entry *grown;
+        if (*entry_capacity > INT32_MAX / 2 ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(model_lod_chain_entry))
+            return NULL;
+        grown = (model_lod_chain_entry *)realloc(*entries,
+                                                 (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return NULL;
+        *entries = grown;
+        *entry_capacity = new_capacity;
+    }
+    entry = &(*entries)[(*entry_count)++];
+    memset(entry, 0, sizeof(*entry));
+    entry->mesh = mesh_obj;
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh)
+        return entry;
+    rt_mesh3d_repair_geometry_counts(mesh);
+    base_tris = rt_mesh3d_validated_index_count(mesh) / 3u;
+    if (base_tris < 8u)
+        return entry; /* nothing worth decimating */
+    rt_mesh3d_refresh_bounds(mesh);
+    radius = mesh->bsphere_radius > 0.0f ? (double)mesh->bsphere_radius : 1.0;
+    target = (double)base_tris;
+    distance = radius * 12.0;
+    for (int64_t k = 0; k < levels; k++) {
+        int64_t tri_target;
+        void *lod;
+        target *= ratio;
+        tri_target = (int64_t)target;
+        if (tri_target < 2)
+            tri_target = 2;
+        lod = rt_mesh3d_simplify(mesh_obj, tri_target);
+        if (!lod)
+            break;
+        entry->lods[entry->count] = lod; /* construction ref released by the caller */
+        entry->distances[entry->count] = distance;
+        entry->count++;
+        distance *= 2.0;
+    }
+    return entry;
+}
+
+/// @brief Generate shared LOD chains for every mesh node in the asset's templates.
+/// @details Walks the template hierarchy and every immutable scene root, decimating each
+///          unique mesh once (QEM subset placement, skin/UV-seam safe) into 1..4 levels of
+///          ~@p ratio^k triangles, then attaches the chain and enables auto screen-error
+///          selection. Nodes that already carry LOD chains are left untouched, so the call
+///          is idempotent. Instantiate()/InstantiateScene() clones inherit the chains.
+/// @return Number of nodes that received a LOD chain.
+int64_t rt_model3d_generate_lods(void *obj, int64_t levels, double ratio) {
+    rt_model3d *model = model3d_checked(obj);
+    model_lod_chain_entry *chains = NULL;
+    int32_t chain_count = 0;
+    int32_t chain_capacity = 0;
+    rt_scene_node3d **stack;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    int32_t visited_count = 0;
+    int64_t chained_nodes = 0;
+    int32_t scene_count;
+    if (!model)
+        return 0;
+    if (levels < 1)
+        levels = 1;
+    if (levels > 4)
+        levels = 4;
+    if (!isfinite(ratio) || ratio <= 0.0 || ratio >= 1.0)
+        ratio = 0.4;
+    stack = (rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("SceneAsset.GenerateLODs: walk stack allocation failed");
+        return 0;
+    }
+    if (model->template_root)
+        stack[stack_count++] = model->template_root;
+    scene_count = model_scene_count(model);
+    for (int32_t si = 0; si < scene_count; si++) {
+        rt_scene_node3d *scene_root = (rt_scene_node3d *)rt_g3d_checked_or_null(
+            model->scenes[si].root, RT_G3D_SCENENODE3D_CLASS_ID);
+        /* Scene 0 aliases the template root; the per-node lod_count guard below also
+         * keeps a re-visit harmless. */
+        if (!scene_root || scene_root == model->template_root)
+            continue;
+        if (stack_count >= stack_capacity)
+            break; /* unreachable with the initial capacity; scenes are few */
+        stack[stack_count++] = scene_root;
+    }
+    while (stack_count > 0) {
+        rt_scene_node3d *current = stack[--stack_count];
+        int32_t child_count;
+        if (!current)
+            continue;
+        if (++visited_count >= MODEL3D_MAX_WALK_NODES) {
+            free(stack);
+            model_lod_chain_entry *entries = chains;
+            for (int32_t i = 0; i < chain_count; i++)
+                for (int32_t k = 0; k < entries[i].count; k++)
+                    model_release_local(entries[i].lods[k]);
+            free(chains);
+            rt_trap("SceneAsset.GenerateLODs: too many nodes");
+            return chained_nodes;
+        }
+        if (current->mesh && model_node_lod_count(current) == 0) {
+            model_lod_chain_entry *entry = model_lod_chain_find_or_build(
+                &chains, &chain_count, &chain_capacity, current->mesh, levels, ratio);
+            if (entry && entry->count > 0) {
+                for (int32_t k = 0; k < entry->count; k++)
+                    rt_scene_node3d_add_lod(current, entry->distances[k], entry->lods[k]);
+                rt_scene_node3d_set_auto_lod(current, 1, 3.0);
+                chained_nodes++;
+            }
+        }
+        child_count = model_node_child_count(current);
+        for (int32_t i = 0; i < child_count; i++) {
+            rt_scene_node3d *child = (rt_scene_node3d *)rt_g3d_checked_or_null(
+                current->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
+            if (!child)
+                continue;
+            if (stack_count >= stack_capacity) {
+                int32_t new_capacity;
+                rt_scene_node3d **grown;
+                if (stack_capacity > INT32_MAX / 2 ||
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *))
+                    break;
+                new_capacity = stack_capacity * 2;
+                grown = (rt_scene_node3d **)realloc(stack,
+                                                    (size_t)new_capacity * sizeof(*stack));
+                if (!grown)
+                    break;
+                stack = grown;
+                stack_capacity = new_capacity;
+            }
+            stack[stack_count++] = child;
+        }
+    }
+    free(stack);
+    /* Nodes retained the LOD meshes through add_lod; drop the construction refs. */
+    for (int32_t i = 0; i < chain_count; i++)
+        for (int32_t k = 0; k < chains[i].count; k++)
+            model_release_local(chains[i].lods[k]);
+    free(chains);
+    return chained_nodes;
+}
+
 /// @brief Load a temporary Model3D and return one retained clip from it.
 static void *model3d_load_clip_from_model(rt_string path,
                                           int64_t index,

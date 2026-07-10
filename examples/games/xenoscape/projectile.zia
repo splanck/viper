@@ -1,7 +1,22 @@
-// =============================================================================
-// projectile.zia — Player-bullet pool
-// Part of Xenoscape  (the 2D sidescroller platformer demo)
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/projectile.zia
+// Purpose: Owns pooled player projectiles and charge-tier combat traits.
+// Key invariants:
+//   - Active projectile state lives in fixed-capacity parallel arrays.
+//   - Charge values are clamped before they affect speed, damage, or tile power.
+// Ownership/Lifetime:
+//   - Game owns one ProjectilePool for the application lifetime.
+//   - ObjectPool owns slot activity; ProjectilePool owns all parallel data.
+// Links: player.zia, enemy.zia, level.zia, game.zia,
+//        misc/plans/demos/xenoscape-release-upgrade.md
+//
+//===----------------------------------------------------------------------===//
 //
 // TUTORIAL — OBJECT POOLS AND WHY YOU WANT ONE
 // --------------------------------------------
@@ -33,6 +48,7 @@
 //     by[i]       — y position
 //     bvx[i]      — velocity x (pixels/frame)
 //     bcharge[i]  — 0 (normal), 1 (partial), 2 (full charge)
+//     breflected[i] — 1 after an enemy returns the shot toward the player
 //
 // Same idiom used across Xenoscape (and vipersql) — wherever
 // you see a group of `List[Integer]` fields indexed by a
@@ -76,6 +92,35 @@ bind "./level";
 bind "./sprites";
 bind "./particles";
 
+/// @brief Map a projectile charge tier to authored combat damage.
+///
+/// Charge values are defensively clamped by behavior: values at or below zero
+/// are normal shots, tier one is partial charge, and values at or above two are
+/// full charge. Keeping this mapping pure makes VM/native probes independent of
+/// pool allocation and rendering.
+///
+/// @param chargeLevel Candidate charge tier supplied by Player or a save probe.
+/// @return Damage amount: 1 for normal, 2 for partial, or 3 for full charge.
+func projectileDamageForCharge(chargeLevel: Integer) -> Integer {
+    if chargeLevel <= 0 { return 1; }
+    if chargeLevel == 1 { return 2; }
+    return 3;
+}
+
+/// @brief Map a projectile charge tier to destructible-tile power.
+///
+/// Normal shots cannot damage reinforced walls. Partial charge removes one
+/// durability point and full charge removes two. Values above full charge are
+/// clamped to the full-charge result.
+///
+/// @param chargeLevel Candidate charge tier supplied by the projectile slot.
+/// @return Destructible power in the inclusive range 0..2.
+func projectileDestructiblePower(chargeLevel: Integer) -> Integer {
+    if chargeLevel <= 0 { return 0; }
+    if chargeLevel == 1 { return 1; }
+    return 2;
+}
+
 /// @brief Fixed-capacity pool of player bullets.
 ///
 /// Design notes are in the file header; in short: the `ObjectPool`
@@ -87,6 +132,7 @@ class ProjectilePool {
     hide List[Integer] by;       // position y (pixels)
     hide List[Integer] bvx;      // velocity x (pixels/frame)
     hide List[Integer] bcharge;  // 0 / 1 / 2 = charge level
+    hide List[Integer] breflected; // 0=player-owned, 1=returned hostile shot
 
     /// Timer for trail-particle emission.  Using a runtime
     /// `Timer` instead of a frame-counter makes the trail
@@ -104,12 +150,13 @@ class ProjectilePool {
         by = [];
         bvx = [];
         bcharge = [];
+        breflected = [];
         trailClock = Timer.New();
         trailClock.StartRepeatingMs(48);
 
         var fill = 0;
         while fill < MAX_BULLETS {
-            bx.add(0); by.add(0); bvx.add(0); bcharge.add(0);
+            bx.add(0); by.add(0); bvx.add(0); bcharge.add(0); breflected.add(0);
             fill = fill + 1;
         }
     }
@@ -123,13 +170,16 @@ class ProjectilePool {
         trailClock.StartRepeatingMs(48);
     }
 
-    /// @brief Spawn a normal bullet.  No-op when the pool is
-    ///        full — the game deliberately caps bullet density,
-    ///        the player can't spam their way through a wall
-    ///        by exhausting the pool.
-    expose func fire(wx: Integer, wy: Integer, dir: Integer) {
+    /// @brief Attempt to spawn one normal player-owned projectile.
+    ///
+    /// @param wx World-pixel x origin at the weapon muzzle.
+    /// @param wy World-pixel y origin at the weapon muzzle.
+    /// @param dir Horizontal direction; negative travels left, otherwise right.
+    /// @return True when a pool slot was acquired. False means the fixed pool is
+    ///         saturated and no projectile or achievement event should be made.
+    expose func fire(wx: Integer, wy: Integer, dir: Integer) -> Boolean {
         var handle = pool.Acquire();
-        if handle < 0 { return; }
+        if handle < 0 { return false; }
 
         // Convert the ×100 fixed-point speed constant to whole
         // pixels/frame.
@@ -138,6 +188,8 @@ class ProjectilePool {
         by.set(handle, wy);
         bvx.set(handle, dir * speed);
         bcharge.set(handle, 0);
+        breflected.set(handle, 0);
+        return true;
     }
 
     /// @brief Advance every live bullet by `dt` time units.
@@ -147,12 +199,18 @@ class ProjectilePool {
     ///      time lets the game run at any FPS and still feel
     ///      identical.
     ///   2. Emit a trail particle if the timer ticked.
-    ///   3. Raycast from the old position to the new one — if
-    ///      any tile along the way is solid, kill the bullet.
-    ///      This is the critical path that prevents fast
-    ///      bullets from tunnelling through thin walls.
-    ///   4. Additionally kill bullets that wander off the left
+    ///   3. Give charged shots the first chance to damage a destructible tile
+    ///      crossed by the swept path. The projectile is consumed on either a
+    ///      damaging or breaking hit so one shot cannot drill multiple walls.
+    ///   4. Raycast from the old position to the new one — if any remaining
+    ///      solid tile lies along the way, kill the bullet. This is the critical
+    ///      path that prevents fast bullets from tunnelling through thin walls.
+    ///   5. Additionally kill bullets that wander off the left
     ///      or right edge of the map (20-pixel margin).
+    ///
+    /// @param level Mutable level whose destructible tiles may be damaged.
+    /// @param dt Elapsed simulation time in the game's `DT_BASE` units.
+    /// @param particles Particle pool receiving trail and impact feedback.
     expose func updateAll(level: Level, dt: Integer, particles: ParticleSystem) {
         var emitTrail = trailClock.UpdateMs(dt);
 
@@ -167,13 +225,29 @@ class ProjectilePool {
             bx.set(i, nx);
 
             if emitTrail {
-                particles.burstTrail(nx, oldY, COL_BULLET);
+                var trailColor = COL_BULLET;
+                if breflected.get(i) == 1 { trailColor = COL_ENEMY_BULLET; }
+                particles.burstTrail(nx, oldY, trailColor);
             }
+
+            // Resolve destructibles before the ordinary raycast: until broken,
+            // these tiles are solid and would otherwise hide the charged-hit
+            // contract behind the generic wall collision.
+            var destructibleResult = level.damageFirstDestructibleHorizontal(
+                oldX, nx, oldY + BULLET_H / 2,
+                projectileDestructiblePower(bcharge.get(i)));
 
             // Kill conditions (any triggers a Release).
             var tileX = nx / TILE_SIZE;
             var tileY = oldY / TILE_SIZE;
-            if not Raycast.HasLineOfSight(level.tilemap, oldX, oldY, nx, oldY) {
+            if destructibleResult > 0 {
+                if destructibleResult == 2 {
+                    particles.burstCrystalShatter(nx, oldY);
+                } else {
+                    particles.burstSpark(nx, oldY, COL_BULLET_GLOW);
+                }
+                pool.Release(i);
+            } else if not Raycast.HasLineOfSight(level.tilemap, oldX, oldY, nx, oldY) {
                 // Raycast found a solid tile between old→new.
                 pool.Release(i);
             } else if level.isSolid(tileX, tileY) {
@@ -209,6 +283,10 @@ class ProjectilePool {
                     if cl > 0 {
                         drawCharged(canvas, i, sx, sy);
                     }
+                    if breflected.get(i) == 1 {
+                        canvas.Ring(sx + BULLET_W / 2, sy + BULLET_H / 2,
+                                    8, COL_ENEMY_BULLET);
+                    }
                 }
             }
             i = next;
@@ -240,31 +318,54 @@ class ProjectilePool {
     // CHARGE SHOT (unlock-gated, see abilities.zia)
     //=========================================================================
 
-    /// @brief Spawn a charged bullet.  Charge levels:
+    /// @brief Attempt to spawn a charged player-owned projectile. Charge levels:
     ///          0 = normal (use `fire` instead)
     ///          1 = partial — 1.5× speed, small glow
     ///          2 = full    — 2.0× speed, bright glow + ring
     ///
-    /// The game's damage calc branches on `getChargeLevel`, so
-    /// this function doesn't need to know about damage itself.
-    expose func fireCharged(wx: Integer, wy: Integer, dir: Integer, chargeLevel: Integer) {
+    /// The charge value is clamped to 0..2 before storage. Pool saturation is a
+    /// nonfatal refusal and leaves every existing projectile unchanged.
+    ///
+    /// @param wx World-pixel x origin at the weapon muzzle.
+    /// @param wy World-pixel y origin at the weapon muzzle.
+    /// @param dir Horizontal direction; negative travels left, otherwise right.
+    /// @param chargeLevel Requested charge tier, defensively clamped to 0..2.
+    /// @return True when a slot was acquired; false when the pool is full.
+    expose func fireCharged(wx: Integer, wy: Integer, dir: Integer,
+                            chargeLevel: Integer) -> Boolean {
         var handle = pool.Acquire();
-        if handle < 0 { return; }
+        if handle < 0 { return false; }
 
+        var boundedCharge = chargeLevel;
+        if boundedCharge < 0 { boundedCharge = 0; }
+        if boundedCharge > 2 { boundedCharge = 2; }
         var speed = BULLET_SPEED / 100;
-        if chargeLevel == 1 { speed = speed * 3 / 2; }
-        if chargeLevel == 2 { speed = speed * 2; }
+        if boundedCharge == 1 { speed = speed * 3 / 2; }
+        if boundedCharge == 2 { speed = speed * 2; }
 
         bx.set(handle, wx);
         by.set(handle, wy);
         bvx.set(handle, dir * speed);
-        bcharge.set(handle, chargeLevel);
+        bcharge.set(handle, boundedCharge);
+        breflected.set(handle, 0);
+        return true;
     }
 
     /// @brief Read the charge level of a live bullet.  Used by
     ///        the damage calculation on hit.
     expose func getChargeLevel(i: Integer) -> Integer {
         return bcharge.get(i);
+    }
+
+    /// @brief Report whether an active projectile has been reflected hostile.
+    ///
+    /// @param i Projectile pool handle in the range 0..`getCount()-1`.
+    /// @return True only for an active slot reflected by an enemy. Invalid or
+    ///         inactive handles return false and never read parallel-array data.
+    expose func isReflected(i: Integer) -> Boolean {
+        if i < 0 or i >= MAX_BULLETS { return false; }
+        if pool.IsActive(i) == false { return false; }
+        return breflected.get(i) == 1;
     }
 
     /// @brief Draw the extra visual layer for a charged bullet
@@ -302,6 +403,7 @@ class ProjectilePool {
     expose func reflectBullet(i: Integer) {
         if pool.IsActive(i) {
             bvx.set(i, 0 - bvx.get(i));
+            breflected.set(i, 1);
         }
     }
 }

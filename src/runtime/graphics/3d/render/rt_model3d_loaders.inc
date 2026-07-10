@@ -423,6 +423,34 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
+    {
+        int32_t variant_count = 0;
+        if (!model_count_i64_to_i32(rt_gltf_variant_count(asset),
+                                    &variant_count,
+                                    "Model3D.Load: too many glTF material variants")) {
+            model_release_local(asset);
+            return 0;
+        }
+        if (variant_count > 0) {
+            model->variant_names = (char **)calloc((size_t)variant_count, sizeof(char *));
+            if (!model->variant_names) {
+                rt_trap("Model3D.Load: variant name list allocation failed");
+                model_release_local(asset);
+                return 0;
+            }
+            /* Set the count before filling so the finalizer covers partial fills. */
+            model->variant_count = variant_count;
+            for (int32_t i = 0; i < variant_count; i++) {
+                rt_string name = rt_gltf_get_variant_name(asset, i);
+                model->variant_names[i] =
+                    model_strdup_or(name ? rt_string_cstr(name) : NULL, "variant");
+                if (!model->variant_names[i]) {
+                    model_release_local(asset);
+                    return 0;
+                }
+            }
+        }
+    }
     scene_root = rt_gltf_get_scene_root(asset);
     if (scene_root) {
         if (!model_clone_children_to_root(model->template_root,

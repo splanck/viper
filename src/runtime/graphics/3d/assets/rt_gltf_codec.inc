@@ -23,8 +23,13 @@ typedef enum {
 } gltf_preload_dependency_kind_t;
 
 #define GLTF_PRELOAD_MESH_POD_MAGIC 0x504D4756u /* "VGMP" little-endian */
-#define GLTF_PRELOAD_MESH_POD_VERSION 1u
-#define GLTF_PRELOAD_MESH_POD_HEADER_SIZE 32u
+/* Version 2 grew the header from 32 to 40 bytes to carry the per-primitive skin-import
+ * diagnostics (truncated-influence / out-of-range-joint vertex counts) from the worker
+ * decode to the committing thread, where warnings can be recorded. The POD only ever
+ * lives in memory between a preload worker and the same process's loader, so the bump
+ * has no persistence implications. */
+#define GLTF_PRELOAD_MESH_POD_VERSION 2u
+#define GLTF_PRELOAD_MESH_POD_HEADER_SIZE 40u
 #define GLTF_PRELOAD_MESH_POD_HAS_NORMALS 0x1u
 #define GLTF_PRELOAD_MESH_POD_HAS_UV0 0x2u
 #define GLTF_PRELOAD_MESH_POD_HAS_TANGENTS 0x4u
@@ -1264,6 +1269,20 @@ static void gltf_data_uri_copy_mime(const char *uri, char *mime_buf, size_t mime
     mime_buf[mime_len] = '\0';
 }
 
+/// @brief EXT_meshopt_compression: decoded shadow buffers, indexed by bufferView.
+/// @details Built once per load (after buffers materialize, before accessors resolve)
+///          and consulted by gltf_get_buffer_view_data so every downstream consumer
+///          (accessors, sparse tables, images) reads decompressed bytes transparently.
+///          The active table is thread-scoped for the duration of one load, mirroring
+///          the rt_gltf_load_options pattern; preload workers never install one.
+typedef struct {
+    uint8_t **view_data; /* per bufferView: owned decoded bytes, or NULL (not compressed) */
+    size_t *view_len;    /* decoded byte length (byteStride * count) */
+    int64_t view_count;
+} gltf_meshopt_table_t;
+
+static RT_THREAD_LOCAL const gltf_meshopt_table_t *g_gltf_meshopt_views = NULL;
+
 /// @brief Resolve a buffer-view index to its `(data, length)` slice into the underlying buffer.
 ///
 /// glTF separates buffers (raw bytes) from bufferViews (named
@@ -1281,6 +1300,14 @@ static const uint8_t *gltf_get_buffer_view_data(
     void *view = rt_seq_get(views, view_idx);
     if (!view)
         return NULL;
+    /* Compressed views bypass the parent buffer entirely — the parent may be a
+     * data-less placeholder fallback per the EXT_meshopt_compression spec. */
+    if (g_gltf_meshopt_views && view_idx < g_gltf_meshopt_views->view_count &&
+        g_gltf_meshopt_views->view_data[view_idx]) {
+        if (out_len)
+            *out_len = g_gltf_meshopt_views->view_len[view_idx];
+        return g_gltf_meshopt_views->view_data[view_idx];
+    }
     int buf_idx = (int)jint(view, "buffer", -1);
     if (buf_idx < 0 || buf_idx >= buf_count)
         return NULL;

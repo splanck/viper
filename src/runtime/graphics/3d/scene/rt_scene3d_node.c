@@ -174,7 +174,53 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene_node_release_pixels_slot(&node->impostor_pixels);
     scene_node_release_class_slot(&node->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
     scene_node_release_class_slot(&node->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
+    for (int32_t i = 0; i < node->variant_material_count && node->variant_materials; i++)
+        scene_node_release_class_slot(&node->variant_materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
+    free(node->variant_materials);
+    node->variant_materials = NULL;
+    node->variant_material_count = 0;
     scene_node_release_string_slot(&node->name);
+}
+
+/// @brief Install a variant-indexed material table on @p node (importer/clone hook).
+/// @details Retains each non-NULL entry before releasing any previous table, so
+///          re-assigning the same table is safe. NULL slots are preserved (they mean
+///          "this variant leaves the node's material untouched").
+int rt_scene_node3d_assign_variant_materials(rt_scene_node3d *node,
+                                             void *const *materials,
+                                             int32_t count) {
+    void **table = NULL;
+    if (!node)
+        return 0;
+    if (materials && count > 0) {
+        if ((size_t)count > SIZE_MAX / sizeof(void *))
+            return 0;
+        table = (void **)calloc((size_t)count, sizeof(void *));
+        if (!table)
+            return 0;
+        for (int32_t i = 0; i < count; i++) {
+            void *material = rt_g3d_checked_or_null(materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
+            if (material)
+                rt_obj_retain_maybe(material);
+            table[i] = material;
+        }
+    }
+    for (int32_t i = 0; i < node->variant_material_count && node->variant_materials; i++)
+        scene_node_release_class_slot(&node->variant_materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
+    free(node->variant_materials);
+    node->variant_materials = table;
+    node->variant_material_count = table ? count : 0;
+    return 1;
+}
+
+/// @brief Copy the variant-material table from @p src onto @p dst (clone helper).
+int rt_scene_node3d_copy_variant_materials(rt_scene_node3d *dst, const rt_scene_node3d *src) {
+    if (!dst)
+        return 0;
+    if (!src || !src->variant_materials || src->variant_material_count <= 0)
+        return rt_scene_node3d_assign_variant_materials(dst, NULL, 0);
+    return rt_scene_node3d_assign_variant_materials(
+        dst, src->variant_materials, src->variant_material_count);
 }
 
 // ===========================================================================
@@ -251,6 +297,8 @@ void *rt_scene_node3d_new(void) {
     node->impostor_pixels = NULL;
     node->impostor_mesh = NULL;
     node->impostor_material = NULL;
+    node->variant_materials = NULL;
+    node->variant_material_count = 0;
 
     rt_obj_set_finalizer(node, rt_scene_node3d_finalize);
     return node;

@@ -37,6 +37,7 @@
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 
 #include <cmath>
 #include <csetjmp>
@@ -3710,6 +3711,538 @@ static void test_model3d_loads_demo_fbx_textures() {
         "FBX imports preserve demo diffuse textures when texture files sit beside the asset");
 }
 
+static void mesh_position_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3]) {
+    for (int a = 0; a < 3; a++) {
+        out_min[a] = 0.0f;
+        out_max[a] = 0.0f;
+    }
+    if (!mesh || !mesh->vertices || mesh->vertex_count == 0)
+        return;
+    for (int a = 0; a < 3; a++) {
+        out_min[a] = mesh->vertices[0].pos[a];
+        out_max[a] = mesh->vertices[0].pos[a];
+    }
+    for (uint32_t v = 1; v < mesh->vertex_count; v++) {
+        for (int a = 0; a < 3; a++) {
+            if (mesh->vertices[v].pos[a] < out_min[a])
+                out_min[a] = mesh->vertices[v].pos[a];
+            if (mesh->vertices[v].pos[a] > out_max[a])
+                out_max[a] = mesh->vertices[v].pos[a];
+        }
+    }
+}
+
+static void test_model3d_loads_gltfpack_meshopt_fixture() {
+    /* Real gltfpack output (npx gltfpack -noq -c): EXT_meshopt_compression in
+     * extensionsRequired, 7 ATTRIBUTES + 1 TRIANGLES compressed views, one skin and
+     * two animation clips. The uncompressed source is its committed twin. */
+    const char *compressed = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb",
+         "../examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb",
+#ifdef VIPER_SOURCE_DIR
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb"
+#endif
+        });
+    const char *reference =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#endif
+        });
+    EXPECT_TRUE(compressed != nullptr && reference != nullptr,
+                "gltfpack meshopt fixture and its uncompressed twin are present");
+    if (!compressed || !reference)
+        return;
+    void *ref_model = rt_model3d_load(rt_const_cstr(reference));
+    void *cmp_model = rt_model3d_load(rt_const_cstr(compressed));
+    EXPECT_TRUE(ref_model != nullptr, "Uncompressed skinned twin loads");
+    EXPECT_TRUE(cmp_model != nullptr, "gltfpack meshopt-compressed asset loads");
+    if (!ref_model || !cmp_model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(cmp_model) == rt_model3d_get_mesh_count(ref_model),
+                "meshopt asset keeps the mesh count");
+    EXPECT_TRUE(rt_model3d_get_skeleton_count(cmp_model) ==
+                    rt_model3d_get_skeleton_count(ref_model),
+                "meshopt asset keeps the skeleton count");
+    EXPECT_TRUE(rt_model3d_get_animation_count(cmp_model) ==
+                    rt_model3d_get_animation_count(ref_model),
+                "meshopt asset keeps the animation count");
+    auto *ref_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(ref_model, 0));
+    auto *cmp_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(cmp_model, 0));
+    EXPECT_TRUE(ref_mesh != nullptr && cmp_mesh != nullptr, "Both twins expose mesh 0");
+    if (!ref_mesh || !cmp_mesh)
+        return;
+    EXPECT_TRUE(cmp_mesh->vertex_count == ref_mesh->vertex_count &&
+                    cmp_mesh->index_count == ref_mesh->index_count,
+                "meshopt mesh keeps vertex and index counts");
+    /* gltfpack reorders vertices for cache locality; -noq keeps float payloads exact,
+     * so the reorder-invariant position bounds must match bit-for-bit. */
+    float ref_min[3];
+    float ref_max[3];
+    float cmp_min[3];
+    float cmp_max[3];
+    mesh_position_bounds(ref_mesh, ref_min, ref_max);
+    mesh_position_bounds(cmp_mesh, cmp_min, cmp_max);
+    EXPECT_TRUE(ref_min[0] == cmp_min[0] && ref_min[1] == cmp_min[1] &&
+                    ref_min[2] == cmp_min[2] && ref_max[0] == cmp_max[0] &&
+                    ref_max[1] == cmp_max[1] && ref_max[2] == cmp_max[2],
+                "meshopt-decoded positions match the uncompressed twin exactly");
+    EXPECT_TRUE(cmp_mesh->bone_count == ref_mesh->bone_count,
+                "meshopt mesh keeps the skinning palette size");
+    auto *ref_anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(ref_model, 0));
+    auto *cmp_anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(cmp_model, 0));
+    EXPECT_TRUE(ref_anim != nullptr && cmp_anim != nullptr, "Both twins expose animation 0");
+    if (ref_anim && cmp_anim)
+        EXPECT_NEAR(cmp_anim->duration,
+                    ref_anim->duration,
+                    0.0001,
+                    "meshopt animation keeps its clip duration");
+    if (rt_obj_release_check0(ref_model))
+        rt_obj_free(ref_model);
+    if (rt_obj_release_check0(cmp_model))
+        rt_obj_free(cmp_model);
+}
+
+static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
+    /* Real gltfpack -tc output: KTX2 supercompression scheme 1 (BasisLZ/ETC1S),
+     * 16x16 with 5 mips, quadrant colors red/green/blue/white. */
+    const char *path =
+        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
+                            "../examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2"
+#endif
+        });
+    EXPECT_TRUE(path != nullptr, "ETC1S KTX2 fixture is present");
+    if (!path)
+        return;
+    void *asset = rt_textureasset3d_load_ktx2(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "BasisLZ/ETC1S KTX2 loads");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_textureasset3d_get_width(asset) == 16 &&
+                    rt_textureasset3d_get_height(asset) == 16,
+                "ETC1S texture keeps its dimensions");
+    EXPECT_TRUE(rt_textureasset3d_get_mip_count(asset) == 5, "ETC1S texture keeps its mip chain");
+    rt_string format = rt_textureasset3d_get_format(asset);
+    EXPECT_TRUE(format && std::strcmp(rt_string_cstr(format), "rgba8") == 0,
+                "ETC1S decodes to an rgba8 asset");
+    void *pixels = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(pixels != nullptr, "ETC1S texture exposes decoded pixels");
+    if (pixels) {
+        struct {
+            int64_t x;
+            int64_t y;
+            int r;
+            int g;
+            int b;
+            const char *name;
+        } quads[4] = {{3, 3, 255, 0, 0, "red"},
+                      {12, 3, 0, 255, 0, "green"},
+                      {3, 12, 0, 0, 255, "blue"},
+                      {12, 12, 255, 255, 255, "white"}};
+        for (int q = 0; q < 4; q++) {
+            uint32_t rgba = (uint32_t)rt_pixels_get_rgba(pixels, quads[q].x, quads[q].y);
+            int r = (int)((rgba >> 24) & 0xFF);
+            int g = (int)((rgba >> 16) & 0xFF);
+            int b = (int)((rgba >> 8) & 0xFF);
+            char message[96];
+            snprintf(message, sizeof(message), "ETC1S decodes the %s quadrant", quads[q].name);
+            EXPECT_TRUE(std::abs(r - quads[q].r) <= 32 && std::abs(g - quads[q].g) <= 32 &&
+                            std::abs(b - quads[q].b) <= 32,
+                        message);
+        }
+    }
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+
+    /* UASTC twin (scheme 2 + UASTC DFD): same quadrants through the UASTC block decoder. */
+    const char *uastc_path =
+        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
+                            "../examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2"
+#endif
+        });
+    EXPECT_TRUE(uastc_path != nullptr, "UASTC KTX2 fixture is present");
+    if (uastc_path) {
+        void *uastc_asset = rt_textureasset3d_load_ktx2(rt_const_cstr(uastc_path));
+        EXPECT_TRUE(uastc_asset != nullptr, "UASTC KTX2 loads");
+        if (uastc_asset) {
+            void *uastc_pixels = rt_textureasset3d_get_pixels(uastc_asset);
+            EXPECT_TRUE(uastc_pixels != nullptr, "UASTC texture exposes decoded pixels");
+            if (uastc_pixels) {
+                struct {
+                    int64_t x;
+                    int64_t y;
+                    int r;
+                    int g;
+                    int b;
+                    const char *name;
+                } quads[4] = {{3, 3, 255, 0, 0, "red"},
+                              {12, 3, 0, 255, 0, "green"},
+                              {3, 12, 0, 0, 255, "blue"},
+                              {12, 12, 255, 255, 255, "white"}};
+                for (int q = 0; q < 4; q++) {
+                    uint32_t rgba =
+                        (uint32_t)rt_pixels_get_rgba(uastc_pixels, quads[q].x, quads[q].y);
+                    int r = (int)((rgba >> 24) & 0xFF);
+                    int g = (int)((rgba >> 16) & 0xFF);
+                    int b = (int)((rgba >> 8) & 0xFF);
+                    char message[96];
+                    snprintf(message, sizeof(message), "UASTC decodes the %s quadrant",
+                             quads[q].name);
+                    EXPECT_TRUE(std::abs(r - quads[q].r) <= 16 && std::abs(g - quads[q].g) <= 16 &&
+                                    std::abs(b - quads[q].b) <= 16,
+                                message);
+                }
+            }
+            if (rt_obj_release_check0(uastc_asset))
+                rt_obj_free(uastc_asset);
+        }
+    }
+
+    /* End-to-end: a GLB whose base color texture is that ETC1S KTX2 (KHR_texture_basisu). */
+    const char *glb =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
+                            "../examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/quad_etc1s.glb"
+#endif
+        });
+    EXPECT_TRUE(glb != nullptr, "ETC1S GLB fixture is present");
+    if (!glb)
+        return;
+    void *model = rt_model3d_load(rt_const_cstr(glb));
+    EXPECT_TRUE(model != nullptr, "GLB with BasisU/ETC1S texture loads");
+    if (!model)
+        return;
+    auto *material = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr,
+                "BasisU/ETC1S base color texture binds to the material");
+    if (rt_obj_release_check0(model))
+        rt_obj_free(model);
+}
+
+static void test_model3d_loads_draco_sequential_fixture() {
+    /* Real gltf-pipeline output: KHR_draco_mesh_compression in extensionsRequired.
+     * The sequential-encoding fixture (compressionLevel 0) must decode; the
+     * edgebreaker fixture is expected to fail cleanly with a named diagnostic
+     * until edgebreaker connectivity lands. */
+    const char *seq_path =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
+                            "../examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/quad_draco_seq.glb"
+#endif
+        });
+    EXPECT_TRUE(seq_path != nullptr, "Draco sequential fixture is present");
+    if (!seq_path)
+        return;
+    void *model = rt_model3d_load(rt_const_cstr(seq_path));
+    EXPECT_TRUE(model != nullptr, "Draco sequential-encoded GLB loads");
+    if (model) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Draco mesh decodes the triangle");
+        if (mesh && mesh->vertex_count == 3) {
+            /* Source geometry: (0,0,0) (1,0,0) (0,1,0), uv (0,0) (1,0) (0,1);
+             * positions are quantized (14-bit default), so compare with tolerance. */
+            float max_x = 0.0f;
+            float max_y = 0.0f;
+            float max_u = 0.0f;
+            float max_v = 0.0f;
+            for (uint32_t v = 0; v < 3; v++) {
+                if (mesh->vertices[v].pos[0] > max_x)
+                    max_x = mesh->vertices[v].pos[0];
+                if (mesh->vertices[v].pos[1] > max_y)
+                    max_y = mesh->vertices[v].pos[1];
+                if (mesh->vertices[v].uv[0] > max_u)
+                    max_u = mesh->vertices[v].uv[0];
+                if (mesh->vertices[v].uv[1] > max_v)
+                    max_v = mesh->vertices[v].uv[1];
+            }
+            EXPECT_NEAR(max_x, 1.0, 0.001, "Draco dequantizes position X");
+            EXPECT_NEAR(max_y, 1.0, 0.001, "Draco dequantizes position Y");
+            EXPECT_NEAR(max_u, 1.0, 0.001, "Draco dequantizes texcoord U");
+            EXPECT_NEAR(max_v, 1.0, 0.001, "Draco dequantizes texcoord V");
+        }
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+
+    const char *eb_path =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
+                            "../examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/quad_draco_eb.glb"
+#endif
+        });
+    EXPECT_TRUE(eb_path != nullptr, "Draco edgebreaker fixture is present");
+    if (eb_path) {
+        void *eb_model = rt_model3d_load(rt_const_cstr(eb_path));
+        EXPECT_TRUE(eb_model == nullptr,
+                    "Draco edgebreaker assets fail until edgebreaker connectivity lands");
+        EXPECT_TRUE(std::strstr(rt_asset_error_get_message(), "edgebreaker") != nullptr,
+                    "Draco edgebreaker failure names the unsupported encoding");
+        if (eb_model && rt_obj_release_check0(eb_model))
+            rt_obj_free(eb_model);
+    }
+}
+
+static rt_scene_node3d *find_first_mesh_node(rt_scene_node3d *node, int depth) {
+    if (!node || depth > 8)
+        return nullptr;
+    if (node->mesh)
+        return node;
+    for (int32_t i = 0; i < node->child_count; i++) {
+        auto *child = (rt_scene_node3d *)node->children[i];
+        rt_scene_node3d *found = find_first_mesh_node(child, depth + 1);
+        if (found)
+            return found;
+    }
+    return nullptr;
+}
+
+static void test_model3d_loads_gltfpack_quantized_fixtures() {
+    /* Real gltfpack output requiring KHR_mesh_quantization + EXT_meshopt_compression:
+     * skinned_agent_quantized.glb stores USHORT positions with a dequantization node
+     * scale; skinned_agent_filtered.glb keeps float positions through the EXPONENTIAL
+     * filter and 16-bit octahedral-filtered normals. */
+    const char *reference =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#endif
+        });
+    EXPECT_TRUE(reference != nullptr, "Quantized-fixture reference twin is present");
+    if (!reference)
+        return;
+    void *ref_model = rt_model3d_load(rt_const_cstr(reference));
+    EXPECT_TRUE(ref_model != nullptr, "Quantized-fixture reference twin loads");
+    if (!ref_model)
+        return;
+    auto *ref_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(ref_model, 0));
+    if (!ref_mesh)
+        return;
+    float ref_min[3];
+    float ref_max[3];
+    mesh_position_bounds(ref_mesh, ref_min, ref_max);
+
+    const struct {
+        const char *name;
+        const char *paths[3];
+    } fixtures[2] = {
+        {"quantized",
+         {"examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb",
+          "../examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb",
+#ifdef VIPER_SOURCE_DIR
+          VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_quantized.glb"
+#endif
+         }},
+        {"filtered",
+         {"examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb",
+          "../examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb",
+#ifdef VIPER_SOURCE_DIR
+          VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_filtered.glb"
+#endif
+         }},
+    };
+    for (int f = 0; f < 2; f++) {
+        char message[160];
+        const char *path =
+            find_existing_path({fixtures[f].paths[0], fixtures[f].paths[1], fixtures[f].paths[2]});
+        snprintf(message, sizeof(message), "gltfpack %s fixture is present", fixtures[f].name);
+        EXPECT_TRUE(path != nullptr, message);
+        if (!path)
+            continue;
+        void *model = rt_model3d_load(rt_const_cstr(path));
+        snprintf(message, sizeof(message), "gltfpack %s fixture loads", fixtures[f].name);
+        EXPECT_TRUE(model != nullptr, message);
+        if (!model)
+            continue;
+        snprintf(message, sizeof(message), "gltfpack %s fixture keeps counts", fixtures[f].name);
+        EXPECT_TRUE(rt_model3d_get_mesh_count(model) == rt_model3d_get_mesh_count(ref_model) &&
+                        rt_model3d_get_skeleton_count(model) ==
+                            rt_model3d_get_skeleton_count(ref_model),
+                    message);
+        void *inst = rt_model3d_instantiate(model);
+        rt_scene_node3d *mesh_node = find_first_mesh_node((rt_scene_node3d *)inst, 0);
+        snprintf(message, sizeof(message), "gltfpack %s fixture exposes a mesh node",
+                 fixtures[f].name);
+        EXPECT_TRUE(mesh_node != nullptr, message);
+        if (mesh_node) {
+            auto *mesh = static_cast<rt_mesh3d *>(mesh_node->mesh);
+            float cmp_min[3];
+            float cmp_max[3];
+            mesh_position_bounds(mesh, cmp_min, cmp_max);
+            /* Compare dequantized extents (reorder- and translation-invariant): the
+             * node scale undoes position quantization per KHR_mesh_quantization. */
+            int extents_ok = 1;
+            for (int a = 0; a < 3; a++) {
+                double scaled = (double)(cmp_max[a] - cmp_min[a]) * mesh_node->scale_xyz[a];
+                double expected = (double)(ref_max[a] - ref_min[a]);
+                if (std::fabs(scaled - expected) > 0.02)
+                    extents_ok = 0;
+            }
+            snprintf(message, sizeof(message),
+                     "gltfpack %s fixture dequantizes to the reference extents",
+                     fixtures[f].name);
+            EXPECT_TRUE(extents_ok, message);
+        }
+        if (inst && rt_obj_release_check0(inst))
+            rt_obj_free(inst);
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+    if (rt_obj_release_check0(ref_model))
+        rt_obj_free(ref_model);
+}
+
+static void test_model3d_generate_lods_builds_chains() {
+    const char *obj_path = "/tmp/viper_model3d_generate_lods.obj";
+    std::string obj_text = "v -1 -1 -1\n"
+                           "v 1 -1 -1\n"
+                           "v 1 1 -1\n"
+                           "v -1 1 -1\n"
+                           "v -1 -1 1\n"
+                           "v 1 -1 1\n"
+                           "v 1 1 1\n"
+                           "v -1 1 1\n"
+                           "f 1 2 3\nf 1 3 4\n"
+                           "f 5 7 6\nf 5 8 7\n"
+                           "f 1 5 6\nf 1 6 2\n"
+                           "f 2 6 7\nf 2 7 3\n"
+                           "f 3 7 8\nf 3 8 4\n"
+                           "f 4 8 5\nf 4 5 1\n";
+    EXPECT_TRUE(write_text_file(obj_path, obj_text), "GenerateLODs OBJ fixture can be created");
+    void *model = rt_model3d_load(rt_const_cstr(obj_path));
+    EXPECT_TRUE(model != nullptr, "GenerateLODs OBJ fixture loads");
+    if (!model)
+        return;
+    int64_t chained = rt_model3d_generate_lods(model, 2, 0.5);
+    EXPECT_TRUE(chained == 1, "SceneAsset.GenerateLODs chains the box mesh node");
+
+    void *inst = rt_model3d_instantiate(model);
+    EXPECT_TRUE(inst != nullptr, "LOD-chained model instantiates");
+    if (!inst)
+        return;
+    EXPECT_TRUE(rt_scene_node3d_child_count(inst) == 1, "Instance carries the mesh node");
+    auto *mesh_node = (rt_scene_node3d *)rt_scene_node3d_get_child(inst, 0);
+    EXPECT_TRUE(mesh_node != nullptr, "Instance mesh node is reachable");
+    if (!mesh_node)
+        return;
+    EXPECT_TRUE(mesh_node->lod_count >= 1, "Instantiated nodes inherit the generated LOD chain");
+    EXPECT_TRUE(mesh_node->auto_lod_enabled == 1,
+                "Instantiated nodes inherit auto screen-error LOD selection");
+
+    EXPECT_TRUE(rt_model3d_generate_lods(model, 2, 0.5) == 0,
+                "GenerateLODs skips nodes that already carry LOD chains");
+    EXPECT_TRUE(rt_model3d_generate_lods(nullptr, 2, 0.5) == 0,
+                "GenerateLODs rejects invalid handles");
+    if (rt_obj_release_check0(inst))
+        rt_obj_free(inst);
+    if (rt_obj_release_check0(model))
+        rt_obj_free(model);
+}
+
+static void test_model3d_applies_material_variants() {
+    const char *gltf_path = "/tmp/viper_model3d_material_variants.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsUsed\":[\"KHR_materials_variants\"],"
+        "\"extensionsRequired\":[\"KHR_materials_variants\"],"
+        "\"extensions\":{\"KHR_materials_variants\":{\"variants\":"
+        "[{\"name\":\"day\"},{\"name\":\"night\"}]}},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"materials\":["
+        "{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,0.0,0.0,1.0]}},"
+        "{\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.0,0.0,1.0,1.0]}}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{"
+        "\"attributes\":{\"POSITION\":0},\"indices\":1,\"material\":0,"
+        "\"extensions\":{\"KHR_materials_variants\":{\"mappings\":"
+        "[{\"material\":1,\"variants\":[1]}]}}"
+        "}]}],"
+        "\"nodes\":[{\"mesh\":0,\"name\":\"variant_node\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],"
+        "\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Material-variants SceneAsset fixture can be created");
+    void *model = rt_model3d_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(model != nullptr, "SceneAsset.Load accepts KHR_materials_variants assets");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_variant_count(model) == 2, "SceneAsset exposes the variant count");
+    rt_string night = rt_model3d_get_variant_name(model, 1);
+    EXPECT_TRUE(night && std::strcmp(rt_string_cstr(night), "night") == 0,
+                "SceneAsset exposes variant names");
+    rt_string out_of_range = rt_model3d_get_variant_name(model, 9);
+    EXPECT_TRUE(out_of_range && rt_string_cstr(out_of_range)[0] == '\0',
+                "SceneAsset out-of-range variant name is empty");
+
+    void *inst = rt_model3d_instantiate(model);
+    EXPECT_TRUE(inst != nullptr, "Variant fixture instantiates");
+    if (!inst)
+        return;
+    EXPECT_TRUE(rt_scene_node3d_child_count(inst) == 1, "Instance has the glTF node");
+    auto *mesh_node = (rt_scene_node3d *)rt_scene_node3d_get_child(inst, 0);
+    EXPECT_TRUE(mesh_node != nullptr && mesh_node->mesh != nullptr,
+                "Instance child carries the primitive mesh");
+    if (!mesh_node)
+        return;
+    void *default_material = mesh_node->material;
+    EXPECT_TRUE(default_material != nullptr, "Primitive default material is bound");
+
+    int64_t changed = rt_model3d_apply_variant(model, inst, 1);
+    EXPECT_TRUE(changed == 1, "ApplyVariant updates the mapped node");
+    EXPECT_TRUE(mesh_node->material != nullptr && mesh_node->material != default_material,
+                "ApplyVariant swaps in the variant material");
+    EXPECT_TRUE(mesh_node->material == rt_model3d_get_material(model, 1),
+                "Variant material is enumerable through GetMaterial");
+
+    changed = rt_model3d_apply_variant(model, inst, 0);
+    EXPECT_TRUE(changed == 1 && mesh_node->material == default_material,
+                "Unmapped variant restores the primitive default material");
+
+    EXPECT_TRUE(rt_model3d_apply_variant(model, inst, 5) == 0,
+                "Out-of-range variant index applies nothing");
+    EXPECT_TRUE(rt_model3d_apply_variant(model, nullptr, 1) == 0,
+                "ApplyVariant with no target applies nothing");
+    if (rt_obj_release_check0(inst))
+        rt_obj_free(inst);
+    if (rt_obj_release_check0(model))
+        rt_obj_free(model);
+}
+
 static void test_model3d_autoplays_gltf_node_and_morph_animation() {
     const char *path = "/tmp/viper_model3d_node_animation.gltf";
     std::vector<uint8_t> buffer;
@@ -4350,6 +4883,12 @@ int main() {
     test_gltf_rejects_unknown_animation_interpolation();
     test_gltf_rejects_oversized_node_animation_key_count_before_scan();
     test_gltf_rejects_oversized_morph_weight_animation_width();
+    test_model3d_loads_gltfpack_meshopt_fixture();
+    test_model3d_loads_gltfpack_quantized_fixtures();
+    test_textureasset3d_decodes_basislz_etc1s_ktx2();
+    test_model3d_loads_draco_sequential_fixture();
+    test_model3d_generate_lods_builds_chains();
+    test_model3d_applies_material_variants();
     test_model3d_autoplays_gltf_node_and_morph_animation();
     test_gltf_short_node_weights_clear_morph_tail();
     std::printf("SceneAsset tests: %d/%d passed\n", tests_passed, tests_run);

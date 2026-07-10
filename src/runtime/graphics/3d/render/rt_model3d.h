@@ -105,6 +105,21 @@ void *rt_model3d_get_camera(void *obj, int64_t scene_index, int64_t index);
 /// @brief Get the immutable scene name at @p index (empty string if out of range).
 rt_string rt_model3d_get_scene_name(void *obj, int64_t index);
 
+/// @brief Number of KHR_materials_variants names imported with the asset (0 when absent).
+int64_t rt_model3d_get_variant_count(void *obj);
+/// @brief Get the material-variant name at @p index (empty string if out of range).
+rt_string rt_model3d_get_variant_name(void *obj, int64_t index);
+/// @brief Apply material variant @p variant_index to every mapped node under @p target.
+/// @details @p target is a SceneNode3D (e.g. an Instantiate() result) or a SceneGraph.
+///          Returns the number of nodes whose material was set.
+int64_t rt_model3d_apply_variant(void *obj, void *target, int64_t variant_index);
+/// @brief Generate LOD chains (1..4 levels of ~ratio^k triangles) for every mesh node in
+///        the asset's template and scene hierarchies, and enable auto screen-error
+///        selection. Each unique mesh is decimated once; nodes that already carry LOD
+///        chains are skipped. Instantiate() clones inherit the chains.
+/// @return Number of nodes that received a LOD chain.
+int64_t rt_model3d_generate_lods(void *obj, int64_t levels, double ratio);
+
 /// @brief Find a scene-graph node by name (NULL if not found).
 void *rt_model3d_find_node(void *obj, rt_string name);
 /// @brief Find a scene-graph node by name as Some(SceneNode3D), or None when absent.
