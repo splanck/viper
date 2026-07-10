@@ -57,6 +57,7 @@ platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
 | `VIPER_EXTRA_CMAKE_ARGS="-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
 | `VIPER_GFX_NO_ACTIVATE=1` | On macOS and Linux, show new ViperGFX windows without making them the active app/window; CTest applies this automatically to `requires_display` and `graphics3d` tests |
 | `VIPER_GFX_HIDE_WINDOWS=1` | On macOS and Linux, keep ViperGFX windows hidden while preserving framebuffer rendering; CTest applies this automatically to `requires_display` and `graphics3d` tests |
+| `VIPER_AUDIO_SILENT=1` | Keep platform-device output silent while still advancing voices, music, effects, and playback state; CTest applies this automatically to the main repository test suite |
 
 ```bash
 

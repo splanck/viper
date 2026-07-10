@@ -151,6 +151,13 @@ function(viper_apply_display_test_environment)
     endforeach ()
 endfunction()
 
+function(viper_apply_audio_test_environment)
+    get_property(_tests DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY TESTS)
+    foreach (_test IN LISTS _tests)
+        _viper_append_test_environment(${_test} "VIPER_AUDIO_SILENT=1")
+    endforeach ()
+endfunction()
+
 # Helper function to assign labels based on test name patterns.
 function(_viper_assign_test_label name)
     if (name MATCHES "^test_basic_" OR name MATCHES "^test_frontends_basic_" OR name MATCHES "^test_lowerer_" OR name MATCHES "^test_type_" OR name MATCHES "^test_builtin_" OR name MATCHES "^test_lowering_")

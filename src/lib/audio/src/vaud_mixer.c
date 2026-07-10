@@ -755,6 +755,16 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     /* H-1: accum is ctx->accum_buf — no free needed */
 }
 
+/// @brief Render PCM for a platform device while honoring the silent-output policy.
+/// @details Mixing still runs normally so voices, music positions, fades, effects,
+///          telemetry, and lifecycle assertions advance exactly as they do in a
+///          live application. Only the final device-bound samples are discarded.
+void vaud_mixer_render_device(vaud_context_t ctx, int16_t *output, int32_t frames) {
+    vaud_mixer_render(ctx, output, frames);
+    if (ctx && output && frames > 0 && ctx->device_output_silent)
+        vaud_zero_output(output, frames);
+}
+
 //===----------------------------------------------------------------------===//
 // Voice Management
 //===----------------------------------------------------------------------===//

@@ -246,6 +246,129 @@ uint32_t readLe32(const std::vector<uint8_t> &bytes, std::size_t offset) {
            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
 }
 
+/// @brief Read a big-endian 32-bit value from @p bytes at @p offset.
+uint32_t readBe32(const std::vector<uint8_t> &bytes, std::size_t offset) {
+    if (offset + 4 > bytes.size())
+        throw std::runtime_error("truncated staged executable header");
+    return (static_cast<uint32_t>(bytes[offset]) << 24) |
+           (static_cast<uint32_t>(bytes[offset + 1]) << 16) |
+           (static_cast<uint32_t>(bytes[offset + 2]) << 8) |
+           static_cast<uint32_t>(bytes[offset + 3]);
+}
+
+/// @brief Read an endian-selected 64-bit value from @p bytes at @p offset.
+uint64_t readEndian64(const std::vector<uint8_t> &bytes, std::size_t offset, bool bigEndian) {
+    if (offset + 8 > bytes.size())
+        throw std::runtime_error("truncated staged executable header");
+    uint64_t value = 0;
+    if (bigEndian) {
+        for (std::size_t i = 0; i < 8; ++i)
+            value = (value << 8) | bytes[offset + i];
+    } else {
+        for (std::size_t i = 0; i < 8; ++i)
+            value |= static_cast<uint64_t>(bytes[offset + i]) << (i * 8);
+    }
+    return value;
+}
+
+/// @brief Inspect a Mach-O header and return its canonical payload architecture.
+/// @return x64, arm64, or universal; nullopt when the bytes are not Mach-O.
+/// @details Fat headers are parsed rather than trusted by magic alone. Every declared slice must
+///          have a non-empty range inside the file, and `universal` requires both x86_64 and arm64.
+std::optional<std::string> detectMachOArchitecture(const fs::path &path,
+                                                   const std::vector<uint8_t> &bytes) {
+    if (bytes.size() < 4)
+        return std::nullopt;
+
+    const auto hasMagic = [&](uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+        return bytes[0] == a && bytes[1] == b && bytes[2] == c && bytes[3] == d;
+    };
+    bool headerBigEndian = false;
+    bool thin = false;
+    if (hasMagic(0xCF, 0xFA, 0xED, 0xFE) || hasMagic(0xCE, 0xFA, 0xED, 0xFE)) {
+        thin = true;
+    } else if (hasMagic(0xFE, 0xED, 0xFA, 0xCF) || hasMagic(0xFE, 0xED, 0xFA, 0xCE)) {
+        thin = true;
+        headerBigEndian = true;
+    }
+    if (thin) {
+        if (bytes.size() < 8)
+            throw std::runtime_error("truncated Mach-O executable header: " + path.string());
+        const uint32_t cpuType = headerBigEndian ? readBe32(bytes, 4) : readLe32(bytes, 4);
+        if (cpuType == 0x01000007)
+            return std::string("x64");
+        if (cpuType == 0x0100000c)
+            return std::string("arm64");
+        throw std::runtime_error("unsupported Mach-O executable architecture in '" + path.string() +
+                                 "': CPU type " + std::to_string(cpuType));
+    }
+
+    bool fat64 = false;
+    if (hasMagic(0xCA, 0xFE, 0xBA, 0xBE)) {
+        headerBigEndian = true;
+    } else if (hasMagic(0xBE, 0xBA, 0xFE, 0xCA)) {
+        headerBigEndian = false;
+    } else if (hasMagic(0xCA, 0xFE, 0xBA, 0xBF)) {
+        headerBigEndian = true;
+        fat64 = true;
+    } else if (hasMagic(0xBF, 0xBA, 0xFE, 0xCA)) {
+        headerBigEndian = false;
+        fat64 = true;
+    } else {
+        return std::nullopt;
+    }
+
+    if (bytes.size() < 8)
+        throw std::runtime_error("truncated universal Mach-O header: " + path.string());
+    const auto read32 = [&](std::size_t offset) {
+        return headerBigEndian ? readBe32(bytes, offset) : readLe32(bytes, offset);
+    };
+    const uint32_t sliceCount = read32(4);
+    constexpr uint32_t kMaxFatSlices = 32;
+    if (sliceCount == 0 || sliceCount > kMaxFatSlices)
+        throw std::runtime_error("invalid universal Mach-O slice count in '" + path.string() +
+                                 "': " + std::to_string(sliceCount));
+    const std::size_t entrySize = fat64 ? 32u : 20u;
+    if (sliceCount > (bytes.size() - 8) / entrySize)
+        throw std::runtime_error("truncated universal Mach-O architecture table: " + path.string());
+
+    std::error_code ec;
+    const uint64_t fileSize = fs::file_size(path, ec);
+    if (ec)
+        throw std::runtime_error("cannot inspect universal Mach-O size for '" + path.string() +
+                                 "': " + ec.message());
+    const uint64_t headerSize = 8u + static_cast<uint64_t>(sliceCount) * entrySize;
+    bool hasX64 = false;
+    bool hasArm64 = false;
+    for (uint32_t i = 0; i < sliceCount; ++i) {
+        const std::size_t entry = 8u + static_cast<std::size_t>(i) * entrySize;
+        const uint32_t cpuType = read32(entry);
+        const uint64_t sliceOffset =
+            fat64 ? readEndian64(bytes, entry + 8, headerBigEndian) : read32(entry + 8);
+        const uint64_t sliceSize =
+            fat64 ? readEndian64(bytes, entry + 16, headerBigEndian) : read32(entry + 12);
+        if (sliceSize == 0 || sliceOffset < headerSize || sliceOffset > fileSize ||
+            sliceSize > fileSize - sliceOffset) {
+            throw std::runtime_error("invalid universal Mach-O slice bounds in '" + path.string() +
+                                     "'");
+        }
+        if (cpuType == 0x01000007)
+            hasX64 = true;
+        else if (cpuType == 0x0100000c)
+            hasArm64 = true;
+        else
+            throw std::runtime_error("unsupported universal Mach-O architecture in '" +
+                                     path.string() + "': CPU type " + std::to_string(cpuType));
+    }
+    if (hasX64 && hasArm64)
+        return std::string("universal");
+    if (hasX64)
+        return std::string("x64");
+    if (hasArm64)
+        return std::string("arm64");
+    throw std::runtime_error("universal Mach-O has no supported slices: " + path.string());
+}
+
 /// @brief Detect payload platform and architecture from the staged `viper` binary.
 /// @details Supports PE (Windows), ELF (Linux), thin Mach-O, and universal Mach-O
 ///          headers. Throws when the executable format or CPU is unsupported so
@@ -254,7 +377,7 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
     const std::vector<uint8_t> bytes = readBinaryPrefix(path, 4096);
     if (bytes.size() >= 64 && bytes[0] == 'M' && bytes[1] == 'Z') {
         const uint32_t peOffset = readLe32(bytes, 0x3c);
-        if (peOffset + 6 <= bytes.size() && bytes[peOffset] == 'P' && bytes[peOffset + 1] == 'E' &&
+        if (peOffset <= bytes.size() - 6 && bytes[peOffset] == 'P' && bytes[peOffset + 1] == 'E' &&
             bytes[peOffset + 2] == 0 && bytes[peOffset + 3] == 0) {
             const uint16_t machine = readLe16(bytes, peOffset + 4);
             if (machine == 0x8664)
@@ -274,21 +397,32 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
             return {"linux", "arm64"};
         throw std::runtime_error("unsupported ELF viper executable architecture: " + path.string());
     }
-    if (bytes.size() >= 8) {
-        const uint32_t magic = readLe32(bytes, 0);
-        if (magic == 0xfeedfacf || magic == 0xcffaedfe) {
-            const uint32_t cpuType = readLe32(bytes, 4);
-            if (cpuType == 0x01000007)
-                return {"macos", "x64"};
-            if (cpuType == 0x0100000c)
-                return {"macos", "arm64"};
-            throw std::runtime_error("unsupported Mach-O viper executable architecture: " +
-                                     path.string());
-        }
-        if (magic == 0xbebafeca || magic == 0xcafebabe)
-            return {"macos", "universal"};
-    }
+    if (const auto arch = detectMachOArchitecture(path, bytes))
+        return {"macos", *arch};
     throw std::runtime_error("cannot determine staged viper executable platform: " + path.string());
+}
+
+/// @brief Require every Mach-O payload file to match the staged viper architecture.
+void validateMacOSPayloadArchitectures(const fs::path &stagePrefix,
+                                       const std::vector<fs::path> &files,
+                                       const std::string &expectedArch) {
+    for (const fs::path &file : files) {
+        std::error_code ec;
+        if (!fs::is_regular_file(file, ec)) {
+            if (ec)
+                throw std::runtime_error("cannot inspect staged macOS payload file '" +
+                                         file.string() + "': " + ec.message());
+            continue;
+        }
+        const std::vector<uint8_t> bytes = readBinaryPrefix(file, 4096);
+        const std::optional<std::string> arch = detectMachOArchitecture(file, bytes);
+        if (!arch || *arch == expectedArch)
+            continue;
+        const fs::path relative = stagedLexicalRelativePath(stagePrefix, file);
+        throw std::runtime_error("macOS payload architecture mismatch: '" +
+                                 relative.generic_string() + "' is " + *arch +
+                                 " but staged viper is " + expectedArch);
+    }
 }
 
 /// @brief Find the staged `viper` executable and return its payload identity.
@@ -683,6 +817,8 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 
     ToolchainInstallManifest manifest;
     const StagedToolchainIdentity identity = detectStagedToolchainIdentity(stage, files);
+    if (identity.platform == "macos")
+        validateMacOSPayloadArchitectures(stage, files, identity.arch);
     manifest.version = detectManifestVersion(stage);
     manifest.arch = identity.arch;
     manifest.platform = identity.platform;

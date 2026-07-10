@@ -72,7 +72,7 @@ if (NOT _info_rv EQUAL 0)
 endif ()
 foreach (_needle IN ITEMS
         "Package: viper"
-        "Maintainer: Viper Project <noreply@example.invalid>"
+        "Maintainer: Viper Project <splanck@users.noreply.github.com>"
         "Depends:"
         "libc6"
         "libgcc-s1"
@@ -128,6 +128,63 @@ if (NOT _id_rv EQUAL 0 OR NOT _uid STREQUAL "0")
 endif ()
 
 execute_process(
+        COMMAND "${DPKG_BIN}" -s viper
+        RESULT_VARIABLE _preexisting_rv
+        OUTPUT_QUIET
+        ERROR_QUIET)
+if (_preexisting_rv EQUAL 0)
+    message(FATAL_ERROR
+            "Debian installer lifecycle smoke requires a clean host; remove the existing viper package first")
+endif ()
+
+set(_baseline_stage "${_tmp_root}/baseline-stage")
+set(_baseline_artifact "${_tmp_root}/viper-toolchain-baseline.deb")
+set(_stale_relative "share/viper/installer-upgrade-stale.txt")
+set(_stale_installed "/usr/${_stale_relative}")
+set(_unrelated_installed "/usr/share/viper/installer-upgrade-unrelated.txt")
+set(_baseline_install_cmd "${CMAKE_BIN}" --install "${VIPER_BUILD_DIR}" --prefix "${_baseline_stage}")
+if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
+    list(APPEND _baseline_install_cmd --config "${VIPER_CONFIG}")
+endif ()
+execute_process(
+        COMMAND ${_baseline_install_cmd}
+        RESULT_VARIABLE _baseline_stage_rv
+        OUTPUT_VARIABLE _baseline_stage_out
+        ERROR_VARIABLE _baseline_stage_err)
+if (NOT _baseline_stage_rv EQUAL 0)
+    message(FATAL_ERROR
+            "baseline cmake --install failed\nstdout:\n${_baseline_stage_out}\nstderr:\n${_baseline_stage_err}")
+endif ()
+file(MAKE_DIRECTORY "${_baseline_stage}/share/viper")
+file(WRITE "${_baseline_stage}/${_stale_relative}" "owned only by installer upgrade baseline\n")
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package
+                --stage-dir "${_baseline_stage}"
+                --target linux-deb
+                --output-file "${_baseline_artifact}"
+        RESULT_VARIABLE _baseline_build_rv
+        OUTPUT_VARIABLE _baseline_build_out
+        ERROR_VARIABLE _baseline_build_err)
+if (NOT _baseline_build_rv EQUAL 0)
+    message(FATAL_ERROR
+            "baseline .deb generation failed\nstdout:\n${_baseline_build_out}\nstderr:\n${_baseline_build_err}")
+endif ()
+
+execute_process(
+        COMMAND "${DPKG_BIN}" -i "${_baseline_artifact}"
+        RESULT_VARIABLE _baseline_install_rv
+        OUTPUT_VARIABLE _baseline_install_out
+        ERROR_VARIABLE _baseline_install_err)
+if (NOT _baseline_install_rv EQUAL 0)
+    message(FATAL_ERROR
+            "baseline dpkg -i failed\nstdout:\n${_baseline_install_out}\nstderr:\n${_baseline_install_err}")
+endif ()
+if (NOT EXISTS "${_stale_installed}")
+    message(FATAL_ERROR "baseline .deb did not install its upgrade-stale file: ${_stale_installed}")
+endif ()
+file(WRITE "${_unrelated_installed}" "preserve unrelated package-manager content\n")
+
+execute_process(
         COMMAND "${DPKG_BIN}" -i "${_artifact}"
         RESULT_VARIABLE _install_rv
         OUTPUT_VARIABLE _install_out
@@ -135,6 +192,12 @@ execute_process(
 )
 if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR "dpkg -i failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
+endif ()
+if (EXISTS "${_stale_installed}")
+    message(FATAL_ERROR "Debian package upgrade left a stale baseline-owned file: ${_stale_installed}")
+endif ()
+if (NOT EXISTS "${_unrelated_installed}")
+    message(FATAL_ERROR "Debian package upgrade removed unrelated content: ${_unrelated_installed}")
 endif ()
 
 viper_installer_smoke_verify_installed_tools("/usr/bin" "" "Debian installer smoke")
@@ -160,3 +223,10 @@ execute_process(
 if (NOT _remove_rv EQUAL 0)
     message(FATAL_ERROR "dpkg -r viper failed\nstdout:\n${_remove_out}\nstderr:\n${_remove_err}")
 endif ()
+if (EXISTS "/usr/bin/viper" OR IS_SYMLINK "/usr/bin/viper")
+    message(FATAL_ERROR "dpkg -r left the owned /usr/bin/viper command")
+endif ()
+if (NOT EXISTS "${_unrelated_installed}")
+    message(FATAL_ERROR "dpkg -r removed unrelated content: ${_unrelated_installed}")
+endif ()
+file(REMOVE "${_unrelated_installed}")

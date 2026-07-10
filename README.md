@@ -251,6 +251,10 @@ viper --dump-opcodes
 | `viper il-opt`                         | Run and inspect optimizer pipelines |
 | `viper bench`                          | IL benchmark runner |
 
+See the [installer and package release guide](docs/installer-release.md) for
+native signing, checksums, artifact inventories, release workflows, and clean-VM
+install/upgrade/uninstall validation.
+
 Common examples:
 
 ```sh

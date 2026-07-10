@@ -300,6 +300,7 @@ static void gl_submit_draw(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0) {
@@ -312,7 +313,7 @@ static void gl_submit_draw(void *ctx_ptr,
         ctx->stats.dropped_draws++;
         return;
     }
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo)) {
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact)) {
         ctx->stats.dropped_draws++;
         return;
     }
@@ -329,7 +330,7 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
     if (gl_debug_enabled()) {
         GLint draw_buffer = 0;
         GLint framebuffer = 0;
@@ -969,6 +970,7 @@ static void gl_shadow_begin(
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
@@ -982,9 +984,9 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     else
         gl.Enable(GL_CULL_FACE);
     gl_apply_depth_bias(cmd);
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact))
         return;
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
     gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
     gl.UniformMatrix4fv(
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
@@ -1091,6 +1093,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0 || !instance_matrices || instance_count <= 0) {
@@ -1103,7 +1106,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         ctx->stats.dropped_draws++;
         return;
     }
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo)) {
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact)) {
         ctx->stats.dropped_draws++;
         return;
     }
@@ -1120,7 +1123,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
-    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
+    configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
     if (!configure_instance_attributes(ctx,
                                        instance_matrices,
                                        cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices

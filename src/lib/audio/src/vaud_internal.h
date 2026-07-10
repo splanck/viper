@@ -266,6 +266,7 @@ struct vaud_music {
 struct vaud_context {
     // Mixer state
     float master_volume;                ///< Master volume (0.0 to 1.0)
+    int device_output_silent;           ///< Zero device-bound PCM after mixing when requested.
     vaud_voice voices[VAUD_MAX_VOICES]; ///< Voice pool
     int32_t next_voice_id;              ///< Counter for unique voice IDs
     int64_t frame_counter;              ///< Total frames rendered (for timing)
@@ -314,6 +315,14 @@ struct vaud_context {
 /// @param output Output buffer (interleaved stereo 16-bit PCM).
 /// @param frames Number of frames to render.
 void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames);
+
+/// @brief Render one device-bound audio buffer, applying the process-level
+///        silent-output policy after advancing normal mixer state.
+/// @details Unlike vaud_mixer_render(), this entry point zeros the completed PCM
+///          when VIPER_AUDIO_SILENT was enabled as the context was created.
+///          Platform backends must use this function; offline mixer tests should
+///          continue to call vaud_mixer_render() directly.
+void vaud_mixer_render_device(vaud_context_t ctx, int16_t *output, int32_t frames);
 
 /// @brief Allocate a voice for playback.
 /// @details Finds an inactive voice or steals the oldest if none available.

@@ -68,24 +68,24 @@ fi
 
 ctest "${CTEST_ARGS[@]}"
 
-OUT_DIR="$BUILD_DIR/tests/linux-toolchain-appimage-validate"
+OUT_DIR="$BUILD_DIR/tests/linux-toolchain-bundle-validate"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
-APPIMAGE="$OUT_DIR/Viper.AppImage"
+BUNDLE="$OUT_DIR/viper-toolchain.run"
 
 STAGE_ARGS=(--build-dir "$BUILD_DIR" --skip-build)
-CMD=("$VIPER_BIN" install-package "${STAGE_ARGS[@]}" --target appimage -o "$APPIMAGE")
+CMD=("$VIPER_BIN" install-package "${STAGE_ARGS[@]}" --target linux-bundle -o "$BUNDLE")
 if [[ -n "$CONFIG" && "${STAGE_ARGS[0]}" == "--build-dir" ]]; then
     CMD+=(--config "$CONFIG")
 fi
 "${CMD[@]}"
-"$VIPER_BIN" install-package --verify-only "$APPIMAGE"
-chmod +x "$APPIMAGE"
-APPIMAGE_CACHE="$OUT_DIR/cache"
-mkdir -p "$APPIMAGE_CACHE"
-XDG_CACHE_HOME="$APPIMAGE_CACHE" "$APPIMAGE" --version >/dev/null
-if [[ -z "$(find "$APPIMAGE_CACHE/viper" -name .payload.sha256 -type f -print -quit 2>/dev/null)" ]]; then
-    echo "AppImage did not create an XDG cache payload stamp" >&2
+"$VIPER_BIN" install-package --verify-only "$BUNDLE" --require-checksum
+chmod +x "$BUNDLE"
+BUNDLE_CACHE="$OUT_DIR/cache"
+mkdir -p "$BUNDLE_CACHE"
+XDG_CACHE_HOME="$BUNDLE_CACHE" VIPER_BUNDLE_QUIET=1 "$BUNDLE" --version >/dev/null
+if [[ -z "$(find "$BUNDLE_CACHE/viper" -name .payload.sha256 -type f -print -quit 2>/dev/null)" ]]; then
+    echo "Linux bundle did not create an XDG cache payload stamp" >&2
     exit 1
 fi
 

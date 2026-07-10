@@ -10,7 +10,7 @@ func fail(message: String) {
 }
 
 func start() {
-    var path = "tests/runtime/assets/gltf/load_asset_triangle.gltf";
+    var path = "src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf";
     Game3D.Assets3D.ClearCache();
 
     var entity: Game3D.Entity3D = Game3D.Assets3D.LoadEntity(path);

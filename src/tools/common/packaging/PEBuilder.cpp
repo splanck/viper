@@ -1023,14 +1023,31 @@ std::string generateManifestWithExecutionLevel(const std::string &level,
                                                const std::string &minOsWindows) {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" "
-           "manifestVersion=\"1.0\">\n"
+           "xmlns:asmv3=\"urn:schemas-microsoft-com:asm.v3\" manifestVersion=\"1.0\">\n"
            "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
            "    <security><requestedPrivileges>\n"
            "      <requestedExecutionLevel level=\"" +
            level +
            "\" uiAccess=\"false\"/>\n"
            "    </requestedPrivileges></security>\n"
-           "  </trustInfo>\n" +
+           "  </trustInfo>\n"
+           "  <dependency>\n"
+           "    <dependentAssembly>\n"
+           "      <assemblyIdentity type=\"win32\" "
+           "name=\"Microsoft.Windows.Common-Controls\" version=\"6.0.0.0\" "
+           "processorArchitecture=\"*\" publicKeyToken=\"6595b64144ccf1df\" language=\"*\"/>\n"
+           "    </dependentAssembly>\n"
+           "  </dependency>\n"
+           "  <asmv3:application>\n"
+           "    <asmv3:windowsSettings>\n"
+           "      <dpiAware xmlns=\"http://schemas.microsoft.com/SMI/2005/WindowsSettings\">"
+           "true/pm</dpiAware>\n"
+           "      <dpiAwareness xmlns=\"http://schemas.microsoft.com/SMI/2016/WindowsSettings\">"
+           "PerMonitorV2, PerMonitor</dpiAwareness>\n"
+           "      <longPathAware xmlns=\"http://schemas.microsoft.com/SMI/2016/WindowsSettings\">"
+           "true</longPathAware>\n"
+           "    </asmv3:windowsSettings>\n"
+           "  </asmv3:application>\n" +
            windowsCompatibilityXml(minOsWindows) + "</assembly>\n";
 }
 

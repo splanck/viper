@@ -57,9 +57,11 @@ struct MacOSToolchainBuildParams {
     std::string outputPath;                        ///< Output `.pkg` file path.
     std::string identifier{"org.viper.toolchain"}; ///< CFBundleIdentifier / pkg id.
     std::string displayName{"Viper Toolchain"};    ///< Human-readable package name.
-    std::string packageVersion;  ///< Optional dotted numeric package version override.
+    std::string packageVersion;      ///< Optional dotted numeric package version override.
+    std::string minimumMacOSVersion; ///< Optional minimum OS (default: 10.15/11.0 by arch).
     std::string licenseFilePath; ///< Optional license file shown in the installer (else generated).
-    std::string backgroundImagePath; ///< Optional installer background image (PNG).
+    std::string backgroundImagePath;     ///< Optional installer background image (PNG).
+    std::string applicationSignIdentity; ///< Developer ID Application identity for nested code.
 };
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.

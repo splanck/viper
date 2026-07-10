@@ -51,7 +51,7 @@ void buildDebPackage(const LinuxBuildParams &params);
 /// @throws std::runtime_error on failure.
 void buildTarball(const LinuxBuildParams &params);
 
-/// @brief Build a self-extracting Linux AppImage for an end-user application.
+/// @brief Build a self-extracting Linux `.run` bundle for an end-user application.
 /// @details Lays the payload out as a portable tree (app binary at `usr/bin/<exe>`
 ///          with an `AppRun` symlink entry point, bundled assets under
 ///          `usr/share/<pkg>/`, and a `.desktop` launcher plus icon at the payload
@@ -101,9 +101,9 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params);
 /// @throws std::runtime_error on failure.
 void buildToolchainTarball(const LinuxToolchainBuildParams &params);
 
-/// @brief Build a FUSE-less self-extracting Linux AppImage from a staged install manifest.
+/// @brief Build a self-extracting Linux `.run` bundle from a staged install manifest.
 /// @param params Manifest, output path, and package name.
 /// @throws std::runtime_error on failure.
-void buildToolchainAppImage(const LinuxToolchainBuildParams &params);
+void buildToolchainBundle(const LinuxToolchainBuildParams &params);
 
 } // namespace viper::pkg

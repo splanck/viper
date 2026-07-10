@@ -1074,8 +1074,12 @@ void addStoredOverlayFile(ZipWriter &zip,
                                  "compression: " +
                                  overlayName);
     }
-    layout.installFiles.push_back(WindowsPackageFileEntry{
-        root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
+    layout.installFiles.push_back(WindowsPackageFileEntry{root,
+                                                          installRelativePath,
+                                                          entry.localDataOffset,
+                                                          entry.uncompressedSize,
+                                                          entry.crc32,
+                                                          sha256Hex(data, len)});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
     registerInstalledFile(
         layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);

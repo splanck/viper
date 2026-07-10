@@ -106,7 +106,9 @@ typedef unsigned int GLbitfield;
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_INT 0x1405
 #define GL_UNSIGNED_BYTE 0x1401
+#define GL_SHORT 0x1402
 #define GL_FLOAT 0x1406
+#define GL_HALF_FLOAT 0x140B
 #define GL_ARRAY_BUFFER 0x8892
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #define GL_TEXTURE_BUFFER 0x8C2A
@@ -633,6 +635,7 @@ typedef struct {
     GLuint vbo;
     GLuint ibo;
     uint64_t last_used_frame;
+    int8_t compact; /* R20: VBO holds the packed 48-byte vertex encoding */
 } gl_mesh_cache_entry_t;
 
 typedef struct {

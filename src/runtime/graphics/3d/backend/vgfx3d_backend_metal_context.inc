@@ -40,6 +40,42 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
     return d;
 }
 
+/// @brief Build the MTLVertexDescriptor for the compact 48-byte static-cache vertex stream
+///   (R20). Attribute slots match create_vertex_descriptor(); fixed-function format
+///   conversion decodes the packed fields to the same float shader inputs, so every vertex
+///   function is shared between the full and compact pipeline variants.
+static MTLVertexDescriptor *create_vertex_descriptor_compact(void) {
+    MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
+    d.attributes[0].format = MTLVertexFormatFloat3; /* position */
+    d.attributes[0].offset = 0;
+    d.attributes[0].bufferIndex = 0;
+    d.attributes[1].format = MTLVertexFormatShort4Normalized; /* normal (w unused) */
+    d.attributes[1].offset = 12;
+    d.attributes[1].bufferIndex = 0;
+    d.attributes[2].format = MTLVertexFormatHalf2; /* uv */
+    d.attributes[2].offset = 20;
+    d.attributes[2].bufferIndex = 0;
+    d.attributes[7].format = MTLVertexFormatHalf2; /* uv1 */
+    d.attributes[7].offset = 24;
+    d.attributes[7].bufferIndex = 0;
+    d.attributes[3].format = MTLVertexFormatUChar4Normalized; /* color */
+    d.attributes[3].offset = 28;
+    d.attributes[3].bufferIndex = 0;
+    d.attributes[4].format = MTLVertexFormatShort4Normalized; /* tangent (+w handedness) */
+    d.attributes[4].offset = 32;
+    d.attributes[4].bufferIndex = 0;
+    d.attributes[5].format = MTLVertexFormatUChar4; /* bone indices */
+    d.attributes[5].offset = 40;
+    d.attributes[5].bufferIndex = 0;
+    d.attributes[6].format = MTLVertexFormatUChar4Normalized; /* bone weights */
+    d.attributes[6].offset = 44;
+    d.attributes[6].bufferIndex = 0;
+    d.layouts[0].stride = VGFX3D_COMPACT_VERTEX_STRIDE;
+    d.layouts[0].stepRate = 1;
+    d.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+    return d;
+}
+
 /// @brief Configure a pipeline color attachment's blend state for a material alpha mode.
 /// @details Sets the blend factors/equation for opaque, alpha-blend, or additive modes (and enables
 ///          or disables blending accordingly).
@@ -121,29 +157,61 @@ static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *
                                                               const vgfx3d_draw_cmd_t *cmd,
                                                               BOOL instanced) {
     vgfx3d_metal_blend_mode_t blend_mode;
+    BOOL compact;
 
     if (!ctx)
         return nil;
     blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
+    /* R20: compact-encoded cache buffers need the packed vertex descriptor. The
+     * flag is only ever set for static-cache draws, and the geometry cache
+     * consults the same readiness gate, so buffer encoding and pipeline layout
+     * always agree. */
+    compact = (cmd && cmd->compact_vertex_stream && ctx.compactPipelinesReady) ? YES : NO;
     if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE) {
-        if (instanced)
+        if (instanced) {
+            if (compact)
+                return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                           ? ctx.instancedPipelineStateAlphaCompact
+                           : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                                  ? ctx.instancedPipelineStateAdditiveCompact
+                                  : ctx.instancedPipelineStateCompact);
             return blend_mode == VGFX3D_METAL_BLEND_ALPHA
                        ? ctx.instancedPipelineStateAlpha
                        : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
                               ? ctx.instancedPipelineStateAdditive
                               : ctx.instancedPipelineState);
+        }
+        if (compact)
+            return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                       ? ctx.pipelineStateAlphaCompact
+                       : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                              ? ctx.pipelineStateAdditiveCompact
+                              : ctx.pipelineStateCompact);
         return blend_mode == VGFX3D_METAL_BLEND_ALPHA
                    ? ctx.pipelineStateAlpha
                    : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE ? ctx.pipelineStateAdditive
                                                                 : ctx.pipelineState);
     }
 
-    if (instanced)
+    if (instanced) {
+        if (compact)
+            return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                       ? ctx.instancedPipelineStateColorOnlyAlphaCompact
+                       : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                              ? ctx.instancedPipelineStateColorOnlyAdditiveCompact
+                              : ctx.instancedPipelineStateColorOnlyCompact);
         return blend_mode == VGFX3D_METAL_BLEND_ALPHA
                    ? ctx.instancedPipelineStateColorOnlyAlpha
                    : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
                           ? ctx.instancedPipelineStateColorOnlyAdditive
                           : ctx.instancedPipelineStateColorOnly);
+    }
+    if (compact)
+        return blend_mode == VGFX3D_METAL_BLEND_ALPHA
+                   ? ctx.pipelineStateColorOnlyAlphaCompact
+                   : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE
+                          ? ctx.pipelineStateColorOnlyAdditiveCompact
+                          : ctx.pipelineStateColorOnlyCompact);
     return blend_mode == VGFX3D_METAL_BLEND_ALPHA
                ? ctx.pipelineStateColorOnlyAlpha
                : (blend_mode == VGFX3D_METAL_BLEND_ADDITIVE ? ctx.pipelineStateColorOnlyAdditive
@@ -418,6 +486,145 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
     return YES;
 }
 
+/// @brief Build the compact-vertex-stream twins of every mesh pipeline (R20).
+/// @details The same vertex/fragment functions compile against the 48-byte compact
+///   vertex descriptor. Failure is non-fatal: compactPipelinesReady stays NO and the
+///   backend keeps uploading/drawing the full 92-byte layout.
+static void metal_create_compact_pipeline_states(VGFXMetalContext *ctx,
+                                                 id<MTLDevice> device,
+                                                 const metal_main_functions_t *funcs) {
+    NSError *error = nil;
+    ctx.compactPipelinesReady = NO;
+    ctx.pipelineStateCompact = metal_create_pipeline_state(device,
+                                                           funcs->vertex,
+                                                           funcs->fragment,
+                                                           create_vertex_descriptor_compact(),
+                                                           MTLPixelFormatRGBA16Float,
+                                                           VGFX3D_METAL_BLEND_OPAQUE,
+                                                           NO,
+                                                           &error);
+    ctx.pipelineStateAlphaCompact = metal_create_pipeline_state(device,
+                                                                funcs->vertex,
+                                                                funcs->fragment,
+                                                                create_vertex_descriptor_compact(),
+                                                                MTLPixelFormatRGBA16Float,
+                                                                VGFX3D_METAL_BLEND_ALPHA,
+                                                                YES,
+                                                                &error);
+    ctx.pipelineStateAdditiveCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertex,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatRGBA16Float,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    ctx.pipelineStateColorOnlyCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertex,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_OPAQUE,
+                                    NO,
+                                    &error);
+    ctx.pipelineStateColorOnlyAlphaCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertex,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ALPHA,
+                                    YES,
+                                    &error);
+    ctx.pipelineStateColorOnlyAdditiveCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertex,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatRGBA16Float,
+                                    VGFX3D_METAL_BLEND_OPAQUE,
+                                    NO,
+                                    &error);
+    ctx.instancedPipelineStateAlphaCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatRGBA16Float,
+                                    VGFX3D_METAL_BLEND_ALPHA,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateAdditiveCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatRGBA16Float,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateColorOnlyCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_OPAQUE,
+                                    NO,
+                                    &error);
+    ctx.instancedPipelineStateColorOnlyAlphaCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ALPHA,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateColorOnlyAdditiveCompact =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor_compact(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    {
+        MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
+        NSError *shadowErr = nil;
+        spd.vertexFunction = funcs->vertexShadow;
+        spd.fragmentFunction = funcs->fragmentShadow;
+        spd.vertexDescriptor = create_vertex_descriptor_compact();
+        spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+        spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
+        ctx.shadowPipelineCompact = [device newRenderPipelineStateWithDescriptor:spd
+                                                                           error:&shadowErr];
+    }
+    if (ctx.pipelineStateCompact && ctx.pipelineStateAlphaCompact &&
+        ctx.pipelineStateAdditiveCompact && ctx.pipelineStateColorOnlyCompact &&
+        ctx.pipelineStateColorOnlyAlphaCompact && ctx.pipelineStateColorOnlyAdditiveCompact &&
+        ctx.instancedPipelineStateCompact && ctx.instancedPipelineStateAlphaCompact &&
+        ctx.instancedPipelineStateAdditiveCompact && ctx.instancedPipelineStateColorOnlyCompact &&
+        ctx.instancedPipelineStateColorOnlyAlphaCompact &&
+        ctx.instancedPipelineStateColorOnlyAdditiveCompact && ctx.shadowPipelineCompact) {
+        ctx.compactPipelinesReady = YES;
+    } else {
+        NSLog(@ "Metal compact pipeline error (falling back to full vertex layout): %@", error);
+    }
+}
+
 /// @brief Create depth-stencil state variants used by opaque, transparent, disabled, and skybox
 /// draws.
 /// @details Reversed-Z: scene passes clear depth to 0 and compare Greater (near = 1,
@@ -569,6 +776,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         metal_create_default_texture_resources(ctx, device);
         metal_create_shared_sampler_resources(ctx, device);
         metal_create_shadow_resources(ctx, device, &funcs);
+        metal_create_compact_pipeline_states(ctx, device, &funcs);
 
         /* MTL-11: Post-processing fullscreen quad shader + pipeline */
         {

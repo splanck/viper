@@ -2908,7 +2908,7 @@ static bool test_phase3_world_presets_environment_and_debug() {
 
 static bool test_phase4_assets3d_model_templates() {
     TEST("Assets3D loads models and caches SceneTemplate objects");
-    rt_string path = test_fixture_path("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    rt_string path = test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
 
     rt_game3d_assets_clear_cache();
 
@@ -3369,7 +3369,7 @@ static bool test_phase4_assets3d_stale_async_publish_revalidates_generation() {
 
 static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
     TEST("Assets3D resident byte telemetry returns to baseline after churn");
-    rt_string path = test_fixture_path("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    rt_string path = test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
 
     rt_game3d_assets_set_residency_budget(-1);
     rt_game3d_assets_clear_cache();

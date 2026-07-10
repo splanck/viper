@@ -28,7 +28,7 @@ viper \- Viper project driver, IL tool, and native build frontend
 [\fB--arch\fR arm64|x64] [\fB-o\fR \fIoutput\fR]
 .br
 .B viper
-\fBinstall-package\fR [\fB--target\fR windows|macos|linux-deb|linux-rpm|appimage|tarball|all|all-available]
+\fBinstall-package\fR [\fB--target\fR windows|macos|linux-deb|linux-rpm|linux-bundle|tarball|all|all-available]
 [\fB--build-dir\fR \fIDIR\fR|\fB--stage-dir\fR \fIDIR\fR|\fB--verify-only\fR \fIFILE\fR]
 [\fB--arch\fR arm64|x64] [\fB--stage-only\fR] [\fB--keep-stage-dir\fR]
 [\fB--macos-pkg-version\fR \fIVERSION\fR] [\fB--macos-sign-identity\fR \fIIDENTITY\fR]
@@ -116,8 +116,9 @@ For staged toolchain packaging, \fBinstall-package\fR requires a detected Viper
 version, detects platform and architecture from the staged \fCviper\fR binary
 when possible, including \fCuniversal\fR for macOS fat32 and fat64 Mach-O payloads, and
 rejects native package targets that do not match that staged platform.
-\fB--target all\fR emits only the staged platform's native package type plus a
-portable tarball; on Linux it includes RPM and fails if \fCrpmbuild\fR is not
+\fB--target all\fR emits the staged platform's native package type plus a
+portable tarball; on Linux it emits Debian, RPM, and the self-extracting
+\fC.run\fR bundle, and fails if \fCrpmbuild\fR is not
 available so release builds do not silently skip an expected artifact.
 \fB--target all-available\fR skips Linux RPM when \fCrpmbuild\fR is absent. Use
 \fB--macos-pkg-version\fR when the Viper version has suffixes that cannot be
@@ -125,16 +126,18 @@ represented as a dotted numeric macOS package version. macOS toolchain packages
 are native XAR/CPIO product packages that install under \fC/usr/local/viper\fR,
 add receipt-owned command and manpage symlinks under \fC/usr/local\fR, install a
 LaunchServices handler app for \fC.zia\fR, \fC.bas\fR, and \fC.il\fR files, provide
-\fC/usr/local/viper/share/viper/uninstall.sh\fR for local cleanup, and can be signed with \fB--macos-sign-identity\fR, notarized with
+\fC/usr/local/viper/share/viper/uninstall.sh\fR for local cleanup, signs nested
+code with \fB--macos-app-sign-identity\fR, and can sign the product with \fB--macos-sign-identity\fR, notarize with
 \fB--macos-notary-profile\fR, and stapled with \fB--macos-staple\fR. With
 \fB--macos-dmg\fR, the generated DMG is verified and can be notarized/stapled
 with the same notary options. Generated
 Windows toolchain installers default to a per-user install under
 \fC%LocalAppData%\\Viper\fR, add the installed \fCbin\fR directory to the user
 \fCPath\fR, avoid duplicate Viper-owned PATH entries on reinstall, remove only
-that PATH token on uninstall, expand a DEFLATE-compressed inner payload with
-Windows PowerShell, compare the previous and next Viper install manifests to
-remove only stale Viper-owned files after extraction succeeds, and create Start
+that PATH token on uninstall, stage and verify a DEFLATE-compressed inner
+payload in a journaled transaction, reject reparse traversal and unowned
+collisions, restore files/PATH/registry on failure or interruption, remove only
+stale Viper-owned files after commit, and create Start
 Menu developer shortcuts and source/IL file associations by default. Use
 \fB--windows-install-scope machine\fR for a \fC%ProgramFiles%\\Viper\fR install,
 \fB--windows-no-path\fR to leave PATH untouched, \fB--windows-shortcuts off\fR
@@ -147,13 +150,18 @@ runtime DLLs are staged next to \fCbin\\viper.exe\fR or the toolchain is built
 with a static runtime. Linux toolchain
 packages include desktop/MIME association metadata, hicolor icons, preserve
 staged Unix modes, declare runtime package dependencies for libc/C++/libgcc and
-optional X11/ALSA support, and require CMake, make, a C++ compiler,
-\fCdesktop-file-utils\fR, \fCshared-mime-info\fR, and \fCman-db\fR for developer
-workflows.
+optional X11/ALSA support. CMake, make, a C++ compiler,
+\fCdesktop-file-utils\fR, \fCshared-mime-info\fR, and \fCman-db\fR are package
+recommendations for developer workflows rather than hard runtime dependencies.
 Linux toolchain tarballs include \fCinstall.sh\fR, \fCuninstall.sh\fR, and an install
 manifest; the scripts honor \fCPREFIX\fR and \fCDESTDIR\fR, remove stale files from
-the previous manifest before copying a new payload, and remove only files listed
-in the current manifest during uninstall.
+the previous manifest in a rollback-capable transaction, reject unowned
+conflicts, and remove only files listed in the current manifest during uninstall.
+Every successful toolchain package writes a SHA-256 sidecar and JSON inventory;
+multi-artifact output also writes \fCSHA256SUMS\fR. \fB--release\fR requires
+numeric \fCSOURCE_DATE_EPOCH\fR, verification, collision-free output, and the
+native platform trust chain. Use \fB--require-checksum\fR with
+\fB--verify-only\fR to enforce the sidecar.
 .SH BUILD AND RUN OPTIONS
 These options apply to \fBviper run\fR and \fBviper build\fR when relevant, and
 to legacy run modes where noted.

@@ -126,9 +126,14 @@ From a Developer PowerShell:
 
 By default this configures/builds Release, stages the full CMake install payload,
 and emits a per-user installer under `build\installers`. Run the generated
-`viper-*-win-*.exe`; it installs to `%LocalAppData%\Viper`, adds `bin` to the
+`viper-*-windows-*.exe`; it installs to `%LocalAppData%\Viper`, adds `bin` to the
 user `PATH`, and creates Start Menu developer shortcuts. Open a new terminal
 after installation so Windows reloads the updated environment.
+
+Upgrades are journaled: payload and registry/PATH state are backed up until the
+new files and metadata commit, unowned collisions and reparse-point traversal
+are rejected, stale owned files are removed, and an interrupted transaction is
+recovered by the next installer or uninstaller.
 
 Useful installer options:
 
@@ -138,6 +143,9 @@ Useful installer options:
 .\scripts\build_installer.cmd --windows-no-path
 .\scripts\build_installer.cmd --windows-shortcuts off
 ```
+
+See the [installer and package release guide](../installer-release.md) for
+Authenticode release mode, checksums, and clean-VM lifecycle validation.
 
 ---
 

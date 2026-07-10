@@ -1,9 +1,25 @@
 //===----------------------------------------------------------------------===//
-// Tests for SceneManager with transitions (Plan 08).
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/runtime/TestSceneManager.cpp
+// Purpose: Verifies named scene registration, switching, and timed transitions.
+// Key invariants:
+//   - Switching changes the active scene only when the target is registered.
+//   - Release-sized scene registries retain entries beyond the legacy 16-scene cap.
+// Ownership/Lifetime:
+//   - Each test owns its SceneManager for the duration of one test case.
+//   - Runtime strings passed to Add and Switch are copied or immutable.
+// Links: src/runtime/game/rt_scenemanager.c, docs/viperlib/game/scenemanager.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 extern "C" {
@@ -31,6 +47,19 @@ TEST(SceneManager, AddAndSwitch) {
 
     rt_scenemanager_switch(mgr, (void *)rt_const_cstr("game"));
     EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("game")));
+}
+
+TEST(SceneManager, SupportsReleaseSizedSceneRegistries) {
+    void *mgr = rt_scenemanager_new();
+    char name[32];
+    for (int i = 0; i < 24; ++i) {
+        std::snprintf(name, sizeof(name), "scene-%d", i);
+        rt_scenemanager_add(mgr, (void *)rt_const_cstr(name));
+    }
+
+    rt_scenemanager_switch(mgr, (void *)rt_const_cstr("scene-23"));
+
+    EXPECT_TRUE(rt_scenemanager_is_scene(mgr, (void *)rt_const_cstr("scene-23")));
 }
 
 TEST(SceneManager, JustEnteredOnSwitch) {

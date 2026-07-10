@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-27
+last-verified: 2026-07-10
 ---
 
 # Viper Documentation
@@ -15,6 +15,8 @@ Documentation for the Viper compiler toolchain: two language frontends ([Zia](zi
 - [Getting Started](getting-started.md) — Build, install, and run your first program
 - [macOS Setup](getting-started/macos.md) · [Linux Setup](getting-started/linux.md) · [Windows Setup](getting-started/windows.md)
 - [FAQ](faq.md) — Common questions answered
+- [Installer and Package Release Guide](installer-release.md) — Native artifacts, signing, verification, workflows, and lifecycle validation
+- [Cross-Platform Installer Review Report](installer-review-report.md) — 54 implemented findings and validation status
 
 ---
 
@@ -222,6 +224,7 @@ A comprehensive learning resource organized as a 5-part book covering the entire
 - [ADR-0043](adr/0043-random-chance-boolean-api.md) — Random Chance boolean API
 - [ADR-0044](adr/0044-crypto-module-process-policy-api.md) — Crypto module process policy API
 - [ADR-0045](adr/0045-boxed-value-type-unsafe-api.md) — Boxed value-type unsafe API
+- [ADR-0073](adr/0073-cross-platform-installer-release-pipeline.md) — Cross-platform installer release pipeline
 
 ---
 

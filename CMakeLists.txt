@@ -511,7 +511,7 @@ if(VIPER_BUILD_TESTING)
 
   # Exclude slow tests by default (run with: ctest -L slow to include)
   configure_file(
-    "${CMAKE_SOURCE_DIR}/CTestCustom.cmake.in"
+    "${CMAKE_SOURCE_DIR}/cmake/CTestCustom.cmake.in"
     "${CMAKE_BINARY_DIR}/CTestCustom.cmake"
     COPYONLY
   )
@@ -700,13 +700,13 @@ if(VIPER_INSTALL_VIPERIDE)
   set(_VIPERIDE_BINARY "${_VIPERIDE_OUTPUT_DIR}/viperide${CMAKE_EXECUTABLE_SUFFIX}")
   set(_VIPERIDE_BUILDINFO "${_VIPERIDE_OUTPUT_DIR}/viperide.buildinfo")
   file(GLOB_RECURSE _VIPERIDE_SOURCE_FILES CONFIGURE_DEPENDS
-       "${CMAKE_SOURCE_DIR}/viperide/src/*.zia"
-       "${CMAKE_SOURCE_DIR}/viperide/viper.project")
+       "${CMAKE_SOURCE_DIR}/src/viperide/src/*.zia"
+       "${CMAKE_SOURCE_DIR}/src/viperide/viper.project")
   add_custom_command(
     OUTPUT "${_VIPERIDE_BINARY}" "${_VIPERIDE_BUILDINFO}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_VIPERIDE_OUTPUT_DIR}"
     COMMAND ${CMAKE_COMMAND} -E env "VIPER_BUILD_DIR=${CMAKE_BINARY_DIR}"
-            "$<TARGET_FILE:viper>" build "${CMAKE_SOURCE_DIR}/viperide"
+            "$<TARGET_FILE:viper>" build "${CMAKE_SOURCE_DIR}/src/viperide"
             --arch "${_VIPER_IDE_ARCH}" -o "${_VIPERIDE_BINARY}"
     COMMAND ${CMAKE_COMMAND}
             "-DOUTPUT_FILE=${_VIPERIDE_BINARY}"

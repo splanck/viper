@@ -34,6 +34,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace viper::pkg {
@@ -53,11 +54,24 @@ struct WindowsPackageDirEntry {
 
 /// @brief A file to be extracted from the ZIP overlay by the installer.
 struct WindowsPackageFileEntry {
+    WindowsPackageFileEntry() = default;
+
+    WindowsPackageFileEntry(WindowsInstallRoot rootValue,
+                            std::string relativePathValue,
+                            uint64_t overlayDataOffsetValue,
+                            uint64_t sizeBytesValue,
+                            uint32_t crc32Value = 0,
+                            std::string sha256Value = {})
+        : root(rootValue), relativePath(std::move(relativePathValue)),
+          overlayDataOffset(overlayDataOffsetValue), sizeBytes(sizeBytesValue), crc32(crc32Value),
+          sha256(std::move(sha256Value)) {}
+
     WindowsInstallRoot root{WindowsInstallRoot::InstallDir}; ///< Base directory anchor
     std::string relativePath;                                ///< Destination path relative to root
     uint64_t overlayDataOffset{0}; ///< Byte offset of this file's data within the ZIP overlay
     uint64_t sizeBytes{0};         ///< Uncompressed file size in bytes
     uint32_t crc32{0};             ///< CRC-32 checksum of the uncompressed data
+    std::string sha256;            ///< Lowercase SHA-256 of stored overlay data when available
 };
 
 /// @brief A file-type association to register in the Windows registry.

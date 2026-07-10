@@ -90,6 +90,18 @@ bind "./palette";
 bind "./sprites";
 bind "./settings";
 
+// Authored title-panel geometry. The seven 8x8-font rows use a 40-pixel
+// cadence; their centers line up with the panel's circuit ticks at 3x scale.
+final TITLE_PANEL_X = 450;
+final TITLE_PANEL_Y = 205;
+final TITLE_PANEL_W = 440;
+final TITLE_PANEL_H = 330;
+final TITLE_MENU_X = 520;
+final TITLE_MENU_Y = 232;
+final TITLE_MENU_ROW_STEP = 40;
+final TITLE_MENU_HIGHLIGHT_X = 494;
+final TITLE_MENU_HIGHLIGHT_W = 360;
+
 /// @brief All non-gameplay screens: title, level select,
 ///        pause, game over, level complete, victory, high
 ///        scores, controls, save slots, settings, ability
@@ -167,7 +179,8 @@ class MenuSystem {
         titleBG.Add(MENU_CREDITS);
         titleBG.Add(MENU_QUIT);
         titleBG.Select(MENU_NEW_GAME);
-        titleList = MenuList.New(520, 244, 40);
+        titleList = MenuList.New(TITLE_MENU_X, TITLE_MENU_Y,
+                                 TITLE_MENU_ROW_STEP);
         titleList.AddItem("NEW GAME");
         titleList.AddItem("CONTINUE");
         titleList.AddItem("LOAD GAME");
@@ -271,7 +284,7 @@ class MenuSystem {
         titleTween = Tween.New();
         titleTween.StartI64(0, 100, 54, EASE_OUT_EXPO);
         backdropReady = 0;       // parallax layers built on first drawTitle
-        highlightY = SmoothValue.New(244.0, 0.6);
+        highlightY = SmoothValue.New(TITLE_MENU_Y + 0.0, 0.6);
         titleMoved = 0;
         continueAvailable = false;
         lcScoreTween = Tween.New();
@@ -403,7 +416,8 @@ class MenuSystem {
         if before == after { titleMoved = 0; } else { titleMoved = 1; }
 
         // Glide the selection highlight toward the focused option (#5).
-        highlightY.Target = (244 + after * 40) + 0.0;
+        highlightY.Target =
+            (TITLE_MENU_Y + after * TITLE_MENU_ROW_STEP) + 0.0;
         highlightY.Update();
 
         // Selection
@@ -505,9 +519,10 @@ class MenuSystem {
             canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H,
                             Color.RGB(1, 5, 12), 54);
             if authoredTitlePanelAvailable {
-                canvas.Blit(450, 205, titlePanelTexture);
+                canvas.Blit(TITLE_PANEL_X, TITLE_PANEL_Y, titlePanelTexture);
             } else {
-                canvas.BoxAlpha(450, 205, 440, 330,
+                canvas.BoxAlpha(TITLE_PANEL_X, TITLE_PANEL_Y,
+                                TITLE_PANEL_W, TITLE_PANEL_H,
                                 Color.RGB(2, 7, 16), 105);
             }
         } else {
@@ -557,23 +572,29 @@ class MenuSystem {
         // between options via SmoothValue, replacing the instant per-option box.
         var highlightAlpha = 150;
         if accessibilityHighContrast { highlightAlpha = 235; }
-        canvas.BoxAlpha(494, highlightY.ValueI64 - 4, 360, 32,
+        canvas.BoxAlpha(TITLE_MENU_HIGHLIGHT_X, highlightY.ValueI64 - 4,
+                        TITLE_MENU_HIGHLIGHT_W, 32,
                         pal.menuHighlight, highlightAlpha);
 
-        var menuY = 244;
+        var menuY = TITLE_MENU_Y;
         drawTitleOption(canvas, "NEW GAME", MENU_NEW_GAME, menuY, titleBG);
         if continueAvailable {
             drawTitleOption(canvas, "CONTINUE", MENU_CONTINUE,
-                            menuY + 40, titleBG);
+                            menuY + TITLE_MENU_ROW_STEP, titleBG);
         } else {
-            drawDisabledTitleOption(canvas, "CONTINUE  [NO SAVE]",
-                                    menuY + 40);
+            drawDisabledTitleOption(canvas, "CONTINUE",
+                                    menuY + TITLE_MENU_ROW_STEP);
         }
-        drawTitleOption(canvas, "LOAD GAME", MENU_LOAD_GAME, menuY + 80, titleBG);
-        drawTitleOption(canvas, "OPTIONS", MENU_OPTIONS, menuY + 120, titleBG);
-        drawTitleOption(canvas, "EXTRAS", MENU_EXTRAS, menuY + 160, titleBG);
-        drawTitleOption(canvas, "CREDITS", MENU_CREDITS, menuY + 200, titleBG);
-        drawTitleOption(canvas, "QUIT", MENU_QUIT, menuY + 240, titleBG);
+        drawTitleOption(canvas, "LOAD GAME", MENU_LOAD_GAME,
+                        menuY + TITLE_MENU_ROW_STEP * 2, titleBG);
+        drawTitleOption(canvas, "OPTIONS", MENU_OPTIONS,
+                        menuY + TITLE_MENU_ROW_STEP * 3, titleBG);
+        drawTitleOption(canvas, "EXTRAS", MENU_EXTRAS,
+                        menuY + TITLE_MENU_ROW_STEP * 4, titleBG);
+        drawTitleOption(canvas, "CREDITS", MENU_CREDITS,
+                        menuY + TITLE_MENU_ROW_STEP * 5, titleBG);
+        drawTitleOption(canvas, "QUIT", MENU_QUIT,
+                        menuY + TITLE_MENU_ROW_STEP * 6, titleBG);
 
         // Version + attribution
         canvas.TextCenteredScaled(SCREEN_H - 30, "Made with Viper + Zia", pal.hudGray, 2);
@@ -679,25 +700,26 @@ class MenuSystem {
     ///        the pause / game-over menus.
     hide func drawTitleOption(canvas: Canvas, label: String, index: Integer,
                               y: Integer, bg: ButtonGroup) {
-        var x = 520;
+        var x = TITLE_MENU_X;
+        var scale = menuTextScale(3);
         var col = pal.menuText;
         if bg.IsSelected(index) {
             col = pal.white;
-            canvas.TextScaled(x - 30, y, ">", menuTextScale(3),
+            canvas.TextScaled(x - (8 * scale + 8), y, ">", scale,
                               pal.titleOrange);
         }
-        canvas.TextScaled(x, y, label, menuTextScale(3), col);
+        canvas.TextScaled(x, y, label, scale, col);
     }
 
     /// @brief Draw a title action that currently has no valid target.
     ///
     /// @param canvas Borrowed frame canvas.
-    /// @param label Disabled row text including its reason.
+    /// @param label Disabled action label; state is conveyed by its subdued color.
     /// @param y Screen-space baseline matching the ordinary title list.
     /// @return Nothing. Uses subdued color and never draws the activation arrow.
     hide func drawDisabledTitleOption(canvas: Canvas, label: String,
                                       y: Integer) {
-        canvas.TextScaled(520, y, label, menuTextScale(3),
+        canvas.TextScaled(TITLE_MENU_X, y, label, menuTextScale(3),
                           Color.RGB(72, 78, 96));
     }
 

@@ -892,9 +892,9 @@ static void test_mesh_obj_loader() {
      * We must check with fopen BEFORE calling FromOBJ so missing fixtures
      * produce an actionable test failure instead of a recoverable loader error. */
     const char *found = NULL;
-    const char *paths[] = {"tests/runtime/test_cube.obj",
-                           "../tests/runtime/test_cube.obj",
-                           "src/tests/../../../tests/runtime/test_cube.obj",
+    const char *paths[] = {"src/tests/fixtures/runtime/test_cube.obj",
+                           "../src/tests/fixtures/runtime/test_cube.obj",
+                           "../../src/tests/fixtures/runtime/test_cube.obj",
                            NULL};
     for (int i = 0; paths[i]; i++) {
         FILE *f = fopen(paths[i], "r");
@@ -2505,6 +2505,71 @@ static void test_canvas3d_per_instance_skinning_chunking() {
         rt_obj_free(mat);
     if (rt_obj_release_check0(mesh))
         rt_obj_free(mesh);
+    PASS();
+}
+
+/// R20: Mesh3D.CompactStreams only affects GPU static-cache uploads — the software
+/// backend keeps sampling the full CPU vertex array, so output is identical, and
+/// toggling the flag must bump the geometry revision so backend caches re-encode.
+static void test_canvas3d_compact_streams_flag() {
+    TEST("Mesh3D.CompactStreams bumps geometry revision and leaves SW output unchanged");
+    rt_canvas3d canvas = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(8, 8);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -5.0, 0.0, 0.0, 0.0, 1.0);
+    uint8_t full_frame[8 * 8 * 4];
+    uint32_t revision_before;
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx((vgfx_window_t)0, 8, 8);
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "software backend context exists");
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 8;
+    canvas.height = 8;
+    if (!rt || !rt->target || !canvas.backend_ctx)
+        return;
+    rt_canvas3d_set_render_target(&canvas, rt);
+    rt_material3d_set_unlit(mat, 1);
+    rt_material3d_set_color(mat, 0.0, 1.0, 0.0);
+
+    EXPECT_EQ(rt_mesh3d_get_compact_streams(mesh), 0);
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    std::memcpy(full_frame, rt->target->color_buf, sizeof(full_frame));
+    EXPECT_TRUE(full_frame[(8 * 4 + 4) * 4 + 1] > 128, "reference draw renders the box");
+
+    revision_before = ((rt_mesh3d *)mesh)->geometry_revision;
+    rt_mesh3d_set_compact_streams(mesh, 1);
+    EXPECT_EQ(rt_mesh3d_get_compact_streams(mesh), 1);
+    EXPECT_TRUE(((rt_mesh3d *)mesh)->geometry_revision != revision_before,
+                "toggling CompactStreams bumps the geometry revision");
+    rt_mesh3d_set_compact_streams(mesh, 1); /* idempotent: same value keeps the revision */
+    EXPECT_EQ(((rt_mesh3d *)mesh)->geometry_revision, revision_before + 1);
+
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(std::memcmp(full_frame, rt->target->color_buf, sizeof(full_frame)) == 0,
+                "software output is bit-identical with CompactStreams enabled");
+
+    rt_canvas3d_set_render_target(&canvas, nullptr);
+    vgfx3d_software_backend.destroy_ctx(canvas.backend_ctx);
+    canvas.backend_ctx = nullptr;
+    if (rt_obj_release_check0(mat))
+        rt_obj_free(mat);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    if (rt_obj_release_check0(camera))
+        rt_obj_free(camera);
+    if (rt_obj_release_check0(xf))
+        rt_obj_free(xf);
+    if (rt_obj_release_check0(rt))
+        rt_obj_free(rt);
     PASS();
 }
 
@@ -9305,6 +9370,7 @@ int main() {
     test_canvas3d_texture_streaming_residency();
     test_canvas3d_per_instance_skinning_software_fallback();
     test_canvas3d_per_instance_skinning_chunking();
+    test_canvas3d_compact_streams_flag();
     test_textureasset3d_supercompressed_ktx2_loads();
     test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();

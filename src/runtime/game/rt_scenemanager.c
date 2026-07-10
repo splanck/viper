@@ -7,6 +7,14 @@
 //
 // File: src/runtime/game/rt_scenemanager.c
 // Purpose: Multi-scene manager — named scenes, switch, transitions, edge flags.
+// Key invariants:
+//   - Scene names are unique within one manager and switches never target unknown scenes.
+//   - Timed transitions publish edge flags only when the active scene changes.
+// Ownership/Lifetime:
+//   - Each manager owns its bounded inline scene registry for the manager lifetime.
+//   - Returned scene names are runtime-owned immutable strings.
+// Links: src/runtime/game/rt_scenemanager.h,
+//        src/tests/unit/runtime/TestSceneManager.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,7 +25,7 @@
 
 #include <string.h>
 
-#define SM_MAX_SCENES 16
+#define SM_MAX_SCENES 64
 #define SM_SCENE_NAME_MAX 128
 
 typedef struct {

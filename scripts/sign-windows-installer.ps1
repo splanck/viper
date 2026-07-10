@@ -8,6 +8,7 @@ param(
     [string]$Thumbprint = $env:VIPER_WINDOWS_SIGN_THUMBPRINT,
     [string]$TimestampUrl = $(if ($env:VIPER_WINDOWS_TIMESTAMP_URL) { $env:VIPER_WINDOWS_TIMESTAMP_URL } else { "https://timestamp.digicert.com" }),
     [string]$SignToolPath = "signtool.exe",
+    [switch]$AllowPasswordArgv,
     [switch]$NoVerify
 )
 
@@ -27,13 +28,31 @@ if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
 if ([string]::IsNullOrWhiteSpace($PfxPath) -and [string]::IsNullOrWhiteSpace($Thumbprint)) {
     throw "A PFX path or certificate thumbprint is required. Pass -PfxPath, -Thumbprint, or set VIPER_WINDOWS_SIGN_PFX/VIPER_WINDOWS_SIGN_THUMBPRINT."
 }
-if (-not [string]::IsNullOrWhiteSpace($PfxPath)) {
+$useThumbprint = -not [string]::IsNullOrWhiteSpace($Thumbprint)
+$normalizedThumbprint = $null
+if ($useThumbprint) {
+    $normalizedThumbprint = ($Thumbprint -replace '\s+', '').ToUpperInvariant()
+    if ($normalizedThumbprint -notmatch '^[0-9A-F]{40}$') {
+        throw "Thumbprint must contain exactly 40 hexadecimal SHA-1 characters."
+    }
+} else {
     if (-not (Test-Path -LiteralPath $PfxPath -PathType Leaf)) {
         throw "PFX file not found: $PfxPath"
     }
     if ($null -eq $PfxPassword) {
         throw "PFX password is required. Pass -PfxPassword or set VIPER_WINDOWS_SIGN_PASSWORD."
     }
+    $passwordArgvAcknowledged = $AllowPasswordArgv -or $env:VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK -in @("1", "true", "TRUE")
+    if (-not $passwordArgvAcknowledged) {
+        throw "PFX password signing exposes the password in signtool process arguments. Prefer -Thumbprint certificate-store signing, or pass -AllowPasswordArgv / set VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure."
+    }
+}
+
+$timestampUri = $null
+if (-not [System.Uri]::TryCreate($TimestampUrl, [System.UriKind]::Absolute, [ref]$timestampUri) -or
+    -not [string]::Equals($timestampUri.Scheme, "https", [System.StringComparison]::OrdinalIgnoreCase) -or
+    [string]::IsNullOrWhiteSpace($timestampUri.Host)) {
+    throw "TimestampUrl must be an absolute HTTPS URL with a host: $TimestampUrl"
 }
 
 $inputFull = Resolve-FullPath $InputPath
@@ -53,8 +72,8 @@ if (-not [string]::Equals($outputFull, $inputFull, [System.StringComparison]::Or
 }
 
 $signArgs = @("sign", "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256")
-if (-not [string]::IsNullOrWhiteSpace($Thumbprint)) {
-    $signArgs += @("/sha1", ($Thumbprint -replace '\s+', '').ToUpperInvariant())
+if ($useThumbprint) {
+    $signArgs += @("/sha1", $normalizedThumbprint)
 } else {
     $pfxFull = Resolve-FullPath $PfxPath
     $signArgs += @("/f", $pfxFull, "/p", $PfxPassword)
@@ -67,7 +86,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $NoVerify) {
-    & $SignToolPath verify /pa /all $outputFull
+    & $SignToolPath verify /pa /all /tw /v $outputFull
     if ($LASTEXITCODE -ne 0) {
         throw "signtool verify failed with exit code $LASTEXITCODE"
     }
@@ -79,7 +98,7 @@ $metadataPath = "$outputFull.sha256.txt"
     "unsigned_sha256 $unsignedHash"
     "signed_sha256 $signedHash"
     "timestamp_url $TimestampUrl"
-    "artifact $outputFull"
+    "artifact $([System.IO.Path]::GetFileName($outputFull))"
 ) | Set-Content -LiteralPath $metadataPath -Encoding ASCII
 
 Write-Output $outputFull

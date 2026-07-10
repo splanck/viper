@@ -491,6 +491,80 @@ if (NOT _verify_unknown_err MATCHES "cannot infer")
 endif ()
 
 execute_process(
+        COMMAND "${VIPER_BIN}" install-package --target appimage --stage-dir "${TEST_WORK_DIR}"
+        RESULT_VARIABLE _legacy_toolchain_target_rv
+        OUTPUT_VARIABLE _legacy_toolchain_target_out
+        ERROR_VARIABLE _legacy_toolchain_target_err)
+if (_legacy_toolchain_target_rv EQUAL 0)
+    message(FATAL_ERROR "install-package --target appimage must not remain a toolchain alias")
+endif ()
+if (NOT _legacy_toolchain_target_err MATCHES "unknown install-package target 'appimage'")
+    message(FATAL_ERROR
+            "removed toolchain alias produced the wrong diagnostic\nstdout:\n${_legacy_toolchain_target_out}\nstderr:\n${_legacy_toolchain_target_err}")
+endif ()
+
+file(WRITE "${TEST_WORK_DIR}/not-a-toolchain.AppImage" "not a toolchain bundle\n")
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-a-toolchain.AppImage"
+        RESULT_VARIABLE _legacy_toolchain_suffix_rv
+        OUTPUT_VARIABLE _legacy_toolchain_suffix_out
+        ERROR_VARIABLE _legacy_toolchain_suffix_err)
+if (_legacy_toolchain_suffix_rv EQUAL 0)
+    message(FATAL_ERROR "install-package verification must not retain the .AppImage alias")
+endif ()
+if (NOT _legacy_toolchain_suffix_err MATCHES "cannot infer")
+    message(FATAL_ERROR
+            "removed .AppImage inference alias produced the wrong diagnostic\nstdout:\n${_legacy_toolchain_suffix_out}\nstderr:\n${_legacy_toolchain_suffix_err}")
+endif ()
+
+execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
+                "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                --target tarball --release --no-verify
+        RESULT_VARIABLE _release_bypass_rv
+        OUTPUT_VARIABLE _release_bypass_out
+        ERROR_VARIABLE _release_bypass_err)
+if (_release_bypass_rv EQUAL 0 OR NOT _release_bypass_err MATCHES "--release forbids --no-verify")
+    message(FATAL_ERROR
+            "release verification bypass was not rejected\nstdout:\n${_release_bypass_out}\nstderr:\n${_release_bypass_err}")
+endif ()
+
+execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env --unset=SOURCE_DATE_EPOCH
+                "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                --target tarball --release
+        RESULT_VARIABLE _release_epoch_rv
+        OUTPUT_VARIABLE _release_epoch_out
+        ERROR_VARIABLE _release_epoch_err)
+if (_release_epoch_rv EQUAL 0 OR NOT _release_epoch_err MATCHES "numeric SOURCE_DATE_EPOCH")
+    message(FATAL_ERROR
+            "release without SOURCE_DATE_EPOCH was not rejected\nstdout:\n${_release_epoch_out}\nstderr:\n${_release_epoch_err}")
+endif ()
+
+execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
+                "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
+                --release
+        RESULT_VARIABLE _release_verify_rv
+        OUTPUT_VARIABLE _release_verify_out
+        ERROR_VARIABLE _release_verify_err)
+if (_release_verify_rv EQUAL 0 OR NOT _release_verify_err MATCHES "--release is a generation mode")
+    message(FATAL_ERROR
+            "release mode was incorrectly accepted for verify-only\nstdout:\n${_release_verify_out}\nstderr:\n${_release_verify_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --stage-dir "${TEST_WORK_DIR}"
+                --target tarball --require-checksum
+        RESULT_VARIABLE _generation_checksum_rv
+        OUTPUT_VARIABLE _generation_checksum_out
+        ERROR_VARIABLE _generation_checksum_err)
+if (_generation_checksum_rv EQUAL 0 OR NOT _generation_checksum_err MATCHES "--require-checksum requires --verify-only")
+    message(FATAL_ERROR
+            "generation silently accepted verify-only checksum semantics\nstdout:\n${_generation_checksum_out}\nstderr:\n${_generation_checksum_err}")
+endif ()
+
+execute_process(
         COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip" --windows-sign-thumbprint 1234
         RESULT_VARIABLE _install_bad_thumb_rv
         OUTPUT_VARIABLE _install_bad_thumb_out

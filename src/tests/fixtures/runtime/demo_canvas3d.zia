@@ -11,7 +11,7 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
     // Meshes
-    var cube = Mesh3D.FromOBJ("tests/runtime/test_cube.obj");
+    var cube = Mesh3D.FromOBJ("src/tests/fixtures/runtime/test_cube.obj");
     var sphere = Mesh3D.NewSphere(0.5, 20);
     var floor = Mesh3D.NewPlane(12.0, 12.0);
     var cylinder = Mesh3D.NewCylinder(0.3, 2.0, 12);

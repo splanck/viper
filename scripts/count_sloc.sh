@@ -18,7 +18,7 @@
 #                without a real lexer; treating them as code is the conservative
 #                choice and matches cloc/sloccount behavior for mixed lines).
 #   Zia:         same as C/C++ (// comments). The ViperIDE application is
-#                counted separately from viperide/src/ (not lumped with demos).
+#                counted separately from src/viperide/src/ (not lumped with demos).
 #   BASIC:       blank lines, or lines starting with REM or '
 #   Shell:       blank lines, or lines starting with #
 #   CMake:       blank lines, or lines starting with #
@@ -99,25 +99,25 @@ SUB_LIB=$(find_c_files src/lib | sloc_c)
 SUB_TOOLS=$(find_c_files src/tools | sloc_c)
 SUB_TESTS=$(find_c_files src/tests | sloc_c)
 
-# ViperIDE — the IDE application, written in Zia (viperide/src/*.zia)
-SLOC_VIPERIDE=$(find viperide/src -name '*.zia' 2>/dev/null | sloc_c)
+# ViperIDE — the IDE application, written in Zia (src/viperide/src/*.zia)
+SLOC_VIPERIDE=$(find src/viperide/src -name '*.zia' 2>/dev/null | sloc_c)
 
 # Non-production
-SLOC_ZIA=$(find examples tests -name '*.zia' 2>/dev/null | sloc_c)
-SLOC_BASIC=$(find examples tests -name '*.bas' 2>/dev/null | sloc_basic)
+SLOC_ZIA=$(find examples src/tests/fixtures -name '*.zia' 2>/dev/null | sloc_c)
+SLOC_BASIC=$(find examples src/tests/fixtures -name '*.bas' 2>/dev/null | sloc_basic)
 SLOC_CMAKE=$(find . -name 'CMakeLists.txt' -o -name '*.cmake' | grep -v build | sloc_shell)
 SLOC_SHELL=$(find scripts -name '*.sh' 2>/dev/null | sloc_shell)
 SLOC_BATCH=$(find scripts -name '*.cmd' 2>/dev/null | grep -cv '^\s*$\|^\s*REM\|^\s*::' 2>/dev/null || echo 0)
 SLOC_SCRIPTS=$((SLOC_SHELL + SLOC_BATCH))
 LOC_DOCS=$(find docs -name '*.md' 2>/dev/null | loc_any)
-SLOC_IL=$(find tests examples -name '*.il' 2>/dev/null | sloc_c)
+SLOC_IL=$(find src/tests/fixtures examples -name '*.il' 2>/dev/null | sloc_c)
 
 # File counts
 FILES_SRC=$(count_files src)
 FILES_ZIA=$(find . -name '*.zia' | grep -v build | wc -l | tr -d ' ')
-FILES_VIPERIDE=$(find viperide/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
+FILES_VIPERIDE=$(find src/viperide/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
 FILES_IL=$(find . -name '*.il' | grep -v build | wc -l | tr -d ' ')
-FILES_TOTAL=$(find src viperide/src examples tests scripts docs -type f 2>/dev/null | grep -v build | wc -l | tr -d ' ')
+FILES_TOTAL=$(find src examples scripts docs -type f 2>/dev/null | grep -v build | wc -l | tr -d ' ')
 
 # Overall SLOC
 SLOC_ALL=$((SLOC_SRC + SLOC_VIPERIDE + SLOC_ZIA + SLOC_BASIC + SLOC_IL + SLOC_SCRIPTS))
@@ -134,7 +134,7 @@ print_summary() {
     printf "  Production SLOC:    %'10d  (src/ minus tests)\n" "$SLOC_PROD"
     printf "  Test SLOC:          %'10d  (src/tests/)\n" "$SLOC_TESTS"
     printf "  All src/ SLOC:      %'10d\n" "$SLOC_SRC"
-    printf "  ViperIDE SLOC:      %'10d  (viperide/src, Zia)\n" "$SLOC_VIPERIDE"
+    printf "  ViperIDE SLOC:      %'10d  (src/viperide/src, Zia)\n" "$SLOC_VIPERIDE"
     printf "  Demo code SLOC:     %'10d  (Zia + BASIC + IL)\n" "$((SLOC_ZIA + SLOC_BASIC + SLOC_IL))"
     printf "  Overall SLOC:       %'10d  (all code)\n" "$SLOC_ALL"
     echo ""
@@ -188,7 +188,7 @@ print_all() {
 
     echo -e "${GREEN}Applications (Zia)${NC}"
     echo "─────────────────────────────────────────"
-    printf "  %-24s %'10d SLOC\n"  "ViperIDE (viperide/src)" "$SLOC_VIPERIDE"
+    printf "  %-24s %'10d SLOC\n"  "ViperIDE (src/viperide/src)" "$SLOC_VIPERIDE"
     printf "  %-24s %'10d files\n" "  source files"          "$FILES_VIPERIDE"
     echo ""
 

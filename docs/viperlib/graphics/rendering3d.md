@@ -67,7 +67,7 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
 | `SceneAsset.Load(path)` / `LoadAsset(path)` | Compatibility APIs: return `null` and set `AssetDiagnostics3D.LastLoadError` for routine content failures | Same warnings as the Result variants |
 | `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | Same failure behavior as `Load`/`LoadResult` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
-| `SceneAsset.LoadWithOptionsEx(path, options)` | Same failure behavior as `Load` | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`) |
+| `SceneAsset.LoadWithOptionsEx(path, options)` | Same failure behavior as `Load` | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`). `compactStreams` — every imported mesh opts into the compact 48-byte GPU static-cache vertex encoding (see `Mesh3D.CompactStreams`) |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
@@ -699,6 +699,19 @@ Canvas3D/SceneGraph draw paths.
 SceneGraph `.vscn` save/load persists each mesh's resident flag, so authored
 streaming state survives scene round trips while older files default to
 resident meshes.
+
+`Mesh3D.CompactStreams` (default false) opts a mesh into the compact GPU
+vertex-stream encoding: static-geometry-cache uploads on the Metal, Direct3D 11,
+and OpenGL backends pack each vertex into 48 bytes (snorm16 normals/tangents,
+half-float UVs, unorm8 colors and bone weights) instead of the full 92-byte
+record — roughly halving static vertex VRAM and fetch bandwidth on high-poly
+imports. Fixed-function vertex-attribute conversion decodes the packed fields,
+so shaders are unchanged, and the CPU payload, software rendering, CPU
+skinning, morphing, and physics all keep full precision. Transient (uncached)
+draws, morphing meshes, and CPU-skinned draws always use the full layout.
+Toggling the flag bumps the geometry revision so backend caches re-upload in
+the newly selected encoding. `SceneAsset.LoadWithOptionsEx(path,
+"compactStreams")` enables it for every imported mesh in one call.
 
 ### Viper.Graphics3D.SceneNode LOD
 

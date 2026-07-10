@@ -478,6 +478,49 @@ static void d3d11_fill_vertex_layout(D3D11_INPUT_ELEMENT_DESC layout[8]) {
     layout[7].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, bone_weights);
 }
 
+/// @brief Fill the compact 48-byte per-vertex input layout (R20).
+/// @details Same semantics and slots as d3d11_fill_vertex_layout; only formats and
+///   offsets differ. Fixed-function input-assembler conversion decodes the packed
+///   fields to the float shader inputs, so the same VS blobs validate both layouts.
+static void d3d11_fill_vertex_layout_compact(D3D11_INPUT_ELEMENT_DESC layout[8]) {
+    layout[0].SemanticName = "POSITION";
+    layout[0].SemanticIndex = 0;
+    layout[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    layout[0].InputSlot = 0;
+    layout[0].AlignedByteOffset = 0;
+    layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    layout[0].InstanceDataStepRate = 0;
+    layout[1] = layout[0];
+    layout[1].SemanticName = "NORMAL";
+    layout[1].Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    layout[1].AlignedByteOffset = 12;
+    layout[2] = layout[0];
+    layout[2].SemanticName = "TEXCOORD";
+    layout[2].Format = DXGI_FORMAT_R16G16_FLOAT;
+    layout[2].AlignedByteOffset = 20;
+    layout[3] = layout[0];
+    layout[3].SemanticName = "TEXCOORD";
+    layout[3].SemanticIndex = 1;
+    layout[3].Format = DXGI_FORMAT_R16G16_FLOAT;
+    layout[3].AlignedByteOffset = 24;
+    layout[4] = layout[0];
+    layout[4].SemanticName = "COLOR";
+    layout[4].Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    layout[4].AlignedByteOffset = 28;
+    layout[5] = layout[0];
+    layout[5].SemanticName = "TANGENT";
+    layout[5].Format = DXGI_FORMAT_R16G16B16A16_SNORM;
+    layout[5].AlignedByteOffset = 32;
+    layout[6] = layout[0];
+    layout[6].SemanticName = "BLENDINDICES";
+    layout[6].Format = DXGI_FORMAT_R8G8B8A8_UINT;
+    layout[6].AlignedByteOffset = 40;
+    layout[7] = layout[0];
+    layout[7].SemanticName = "BLENDWEIGHT";
+    layout[7].Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    layout[7].AlignedByteOffset = 44;
+}
+
 /// @brief Extend the base layout with model/normal/previous-model instance matrices.
 static void d3d11_fill_instanced_layout(D3D11_INPUT_ELEMENT_DESC instanced_layout[20],
                                         const D3D11_INPUT_ELEMENT_DESC layout[8]) {
@@ -561,9 +604,46 @@ static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
                                         ID3D10Blob_GetBufferPointer(blobs->vs_skybox),
                                         ID3D10Blob_GetBufferSize(blobs->vs_skybox),
                                         &ctx->input_layout_skybox);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         d3d11_log_hresult("CreateInputLayout(skybox)", hr);
-    return hr;
+        return hr;
+    }
+
+    /* R20 compact-vertex-stream layouts. Failure is non-fatal: both stay NULL
+     * and the mesh cache keeps uploading the full 92-byte layout. */
+    {
+        D3D11_INPUT_ELEMENT_DESC compact_layout[8];
+        D3D11_INPUT_ELEMENT_DESC compact_instanced_layout[20];
+        HRESULT compact_hr;
+        d3d11_fill_vertex_layout_compact(compact_layout);
+        compact_hr = ID3D11Device_CreateInputLayout(ctx->device,
+                                                    compact_layout,
+                                                    8,
+                                                    ID3D10Blob_GetBufferPointer(blobs->vs),
+                                                    ID3D10Blob_GetBufferSize(blobs->vs),
+                                                    &ctx->input_layout_compact);
+        if (FAILED(compact_hr)) {
+            d3d11_log_hresult("CreateInputLayout(compact)", compact_hr);
+            ctx->input_layout_compact = NULL;
+        }
+        d3d11_fill_instanced_layout(compact_instanced_layout, compact_layout);
+        compact_hr =
+            ID3D11Device_CreateInputLayout(ctx->device,
+                                           compact_instanced_layout,
+                                           20,
+                                           ID3D10Blob_GetBufferPointer(blobs->vs_instanced),
+                                           ID3D10Blob_GetBufferSize(blobs->vs_instanced),
+                                           &ctx->input_layout_instanced_compact);
+        if (FAILED(compact_hr)) {
+            d3d11_log_hresult("CreateInputLayout(compact instanced)", compact_hr);
+            ctx->input_layout_instanced_compact = NULL;
+        }
+        if (!ctx->input_layout_compact || !ctx->input_layout_instanced_compact) {
+            SAFE_RELEASE(ctx->input_layout_compact);
+            SAFE_RELEASE(ctx->input_layout_instanced_compact);
+        }
+    }
+    return S_OK;
 }
 
 /// @brief Create constant buffers and the dynamic vertex/index/instance buffers.
@@ -858,6 +938,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->input_layout_skybox);
     SAFE_RELEASE(ctx->input_layout_instanced);
     SAFE_RELEASE(ctx->input_layout);
+    SAFE_RELEASE(ctx->input_layout_compact);
+    SAFE_RELEASE(ctx->input_layout_instanced_compact);
     SAFE_RELEASE(ctx->ps_postfx);
     SAFE_RELEASE(ctx->ps_overlay_composite);
     SAFE_RELEASE(ctx->ps_bloom_down);

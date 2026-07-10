@@ -151,6 +151,12 @@ bool verifyMacOSPkgPayload(const std::vector<uint8_t> &data,
 /// @return true if the disk image has a valid UDIF trailer.
 bool verifyMacOSDmg(const std::vector<uint8_t> &data, std::ostream &err);
 
+/// @brief Verify RPM lead, signature/main header bounds, required metadata tags, and payload.
+/// @param data Complete `.rpm` bytes.
+/// @param err Stream for structural diagnostics.
+/// @return true when the RPM container is structurally plausible and non-empty.
+bool verifyRpm(const std::vector<uint8_t> &data, std::ostream &err);
+
 /// @brief Verify structural correctness of a PE32+ executable.
 ///
 /// Checks:

@@ -19,7 +19,7 @@
 // Thread model:
 // - AudioQueue runs its own real-time audio thread
 // - Our callback (audio_callback) is called on that thread
-// - We call vaud_mixer_render() to fill buffers, which is thread-safe
+// - We call vaud_mixer_render_device() to fill buffers, which is thread-safe
 //
 //===----------------------------------------------------------------------===//
 
@@ -89,7 +89,7 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
     } else {
         /* Render mixed audio into the buffer */
         int32_t frames = VAUD_BUFFER_FRAMES;
-        vaud_mixer_render(ctx, (int16_t *)buffer->mAudioData, frames);
+        vaud_mixer_render_device(ctx, (int16_t *)buffer->mAudioData, frames);
     }
 
     /* Set actual data size */

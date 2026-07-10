@@ -150,7 +150,7 @@ Counts via `scripts/count_sloc.sh` (production 761,859 / test 304,255 / demo 196
 
 - Convention detection scans real BASIC/Zia tokens, rejects sources that escape the project root through symlinks, and gates install hooks behind explicit manifest opt-ins.
 - Package and archive writers stage through same-directory temp files so a failed write leaves no partial artifact, hash assets with SHA-256, and detect a staged binary's OS/architecture from its object header rather than the host; ZIP archives stamp a fixed date by default for byte-identical output.
-- The Windows toolchain installer becomes a native dialog wizard (license display, user-vs-machine scope) with a native ARM64 bootstrap; Linux gains a self-extracting, FUSE-less AppImage toolchain package; and macOS packaging adds a styled `.dmg` wrapping the `.pkg`.
+- The Windows toolchain installer becomes a native dialog wizard (license display, user-vs-machine scope) with a native ARM64 bootstrap; Linux gains a self-extracting, FUSE-less `.run` toolchain bundle; and macOS packaging adds a styled `.dmg` wrapping the `.pkg`.
 - Packaged *applications* (not just the toolchain) now ship as first-class AppImage, RPM, and DMG targets: Debian and RPM builders share one FHS layout, the macOS bundle stages once for both ZIP and DMG, and every artifact is verified after creation. The Linux package builder derives its X11/ALSA/C++-runtime dependencies from the staged binary's ELF64 `DT_NEEDED` entries rather than a hand-kept list, the AppImage embeds and validates a payload SHA-256 and extracts through a `mktemp` workspace, and Linux application and toolchain packages can be GPG-signed via `dpkg-sig`/`rpmsign`.
 
 ### Windows and Linux builds

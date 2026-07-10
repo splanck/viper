@@ -124,6 +124,28 @@ for local cleanup.
 The package does not install Xcode Command Line Tools or CMake. Install those
 prerequisites first, then run the `.pkg` and verify `viper --version`.
 
+Public release packages sign every nested executable with a Developer ID
+Application identity, sign the product with a Developer ID Installer identity,
+and are notarized, stapled, and Gatekeeper-assessed. The optional DMG is also
+notarized/stapled and includes a styled Finder window. You can validate trust
+before installation with:
+
+```bash
+pkgutil --check-signature Viper.pkg
+spctl --assess --verbose=2 --type install Viper.pkg
+xcrun stapler validate Viper.pkg
+```
+
+To remove a package installed locally, run:
+
+```bash
+sudo /usr/local/viper/share/viper/uninstall.sh
+```
+
+See the [installer and package release guide](../installer-release.md) for
+package generation, minimum-OS controls, checksums, and disposable-host
+lifecycle validation.
+
 ---
 
 ## Your First Program

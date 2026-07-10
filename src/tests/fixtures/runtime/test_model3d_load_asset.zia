@@ -4,7 +4,7 @@ bind Viper.Graphics3D;
 bind Viper.Terminal;
 
 func start() {
-    var model = SceneAsset.LoadAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    var model = SceneAsset.LoadAsset("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
     if (model == null) {
         Say("FAIL: SceneAsset.LoadAsset should load glTF assets through filesystem fallback");
         return;

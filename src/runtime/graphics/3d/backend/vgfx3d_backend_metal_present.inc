@@ -508,7 +508,8 @@ static int metal_get_geometry_buffers(VGFXMetalContext *ctx,
         return 0;
 
     if (cmd->geometry_key && cmd->geometry_revision != 0) {
-        BOOL wants_compact = cmd->compact_vertex_stream ? YES : NO;
+        BOOL wants_compact =
+            (cmd->compact_vertex_stream && ctx.compactPipelinesReady) ? YES : NO;
         NSValue *key = [NSValue valueWithPointer:cmd->geometry_key];
         VGFXMetalGeometryCacheEntry *entry = ctx.geometryCache[key];
         if (!entry || entry.revision != cmd->geometry_revision ||

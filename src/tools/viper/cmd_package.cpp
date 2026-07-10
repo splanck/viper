@@ -30,6 +30,7 @@
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/LinuxRuntimeStubGen.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
+#include "tools/common/packaging/PkgHash.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
@@ -75,7 +76,8 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  [project]  Path to a directory or viper.project file (default: .)\n"
         << "\n"
         << "Options:\n"
-        << "  --target <platform>       macos, linux, windows, appimage, rpm, dmg, or tarball "
+        << "  --target <platform>       macos, linux, windows, linux-bundle, rpm, dmg, or "
+           "tarball "
            "(default: host)\n"
         << "  --target=<platform>       Inline form of --target\n"
         << "  --arch <arch>             Target architecture: x64 or arm64 (default: host)\n"
@@ -101,7 +103,7 @@ void packageUsage(std::ostream &out = std::cerr) {
         << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
         << "  DMG:      .app bundle in a .dmg with an /Applications drag-target (macOS host)\n"
         << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
-        << "  AppImage: self-extracting Linux .AppImage (portable, no install required)\n"
+        << "  Bundle:   self-extracting Linux .run bundle (portable, no install required)\n"
         << "  RPM:      .rpm package (dnf/yum) — requires rpmbuild on the build host\n"
         << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
         << "  Tarball:  .tar.gz portable archive\n"
@@ -185,7 +187,7 @@ bool parsePackageTargetValue(std::string_view value, PackageTarget &out) {
         out = PackageTarget::Windows;
     else if (value == "tarball")
         out = PackageTarget::Tarball;
-    else if (value == "appimage")
+    else if (value == "linux-bundle" || value == "appimage")
         out = PackageTarget::AppImage;
     else if (value == "rpm")
         out = PackageTarget::Rpm;
@@ -249,7 +251,7 @@ std::string platformExtension(PackageTarget t) {
         case PackageTarget::Tarball:
             return ".tar.gz";
         case PackageTarget::AppImage:
-            return ".AppImage";
+            return ".run";
         case PackageTarget::Rpm:
             return ".rpm";
         case PackageTarget::Dmg:
@@ -669,7 +671,7 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (timestampUrl.empty())
         timestampUrl = "https://timestamp.digicert.com";
     try {
-        viper::pkg::validatePackageUrl(timestampUrl, "Windows timestamp URL");
+        viper::pkg::validateHttpsPackageUrl(timestampUrl, "Windows timestamp URL");
     } catch (const std::exception &ex) {
         err << "error: " << ex.what() << "\n";
         return false;
@@ -702,7 +704,7 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
 
     if (!pkg.windowsSignNoVerify) {
         const RunResult verifyResult =
-            run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
+            run_process({signtool, "verify", "/pa", "/all", "/tw", "/v", artifactPath.string()});
         if (verifyResult.exit_code != 0) {
             err << "error: signtool verify failed with exit code " << verifyResult.exit_code << "\n"
                 << verifyResult.out << verifyResult.err;
@@ -779,8 +781,14 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 arg, "--target", i, argc, argv, val, "a value", false, matched)) {
             if (!parsePackageTargetValue(val, args.platformTarget)) {
                 std::cerr << "error: unknown target '" << val
-                          << "'; expected macos, linux, windows, appimage, rpm, dmg, or tarball\n";
+                          << "'; expected macos, linux, windows, linux-bundle, rpm, dmg, or "
+                             "tarball\n";
                 return false;
+            }
+            if (val == "appimage") {
+                std::cerr << "warning: --target appimage is a legacy alias for linux-bundle; "
+                             "Viper's self-extractor is emitted as .run, not the AppImage "
+                             "specification\n";
             }
         } else if (matched) {
             return false;
@@ -1194,7 +1202,8 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (!pkg.minOsWindows.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
                                                              "minimum Windows version");
-                viper::pkg::validatePackageUrl(pkg.windowsTimestampUrl, "Windows timestamp URL");
+                viper::pkg::validateHttpsPackageUrl(pkg.windowsTimestampUrl,
+                                                    "Windows timestamp URL");
                 viper::pkg::validateSingleLineField(pkg.windowsSigntoolPath,
                                                     "Windows signtool path");
                 viper::pkg::validateWindowsCertificateThumbprint(pkg.windowsSignThumbprint,
@@ -1223,7 +1232,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 break;
             case PackageTarget::AppImage: {
                 if (archStr != "x64" && archStr != "arm64") {
-                    throw std::runtime_error("AppImage architecture must be x64 or arm64: " +
+                    throw std::runtime_error("Linux bundle architecture must be x64 or arm64: " +
                                              archStr);
                 }
                 validatePortablePackageVersion(version);
@@ -1815,7 +1824,7 @@ int cmdPackage(int argc, char **argv) {
                 aparams.projectRoot = proj.rootDir;
                 aparams.pkgConfig = proj.packageConfig;
                 aparams.outputPath = args.outputPath;
-                aparams.archStr = archStr; // AppImage uses the portable x64/arm64 form
+                aparams.archStr = archStr; // Linux bundles use the portable x64/arm64 form.
                 viper::pkg::buildAppImage(aparams);
                 break;
             }
@@ -1939,22 +1948,22 @@ int cmdPackage(int argc, char **argv) {
                 break;
             }
             case PackageTarget::Rpm: {
-                // rpmbuild produces the artifact; confirm the RPM lead magic is present.
-                valid = pkgData.size() >= 4 && pkgData[0] == static_cast<uint8_t>(0xED) &&
-                        pkgData[1] == static_cast<uint8_t>(0xAB) &&
-                        pkgData[2] == static_cast<uint8_t>(0xEE) &&
-                        pkgData[3] == static_cast<uint8_t>(0xDB);
-                if (!valid)
-                    verifyErr << "rpm: missing RPM lead magic\n";
+                valid = viper::pkg::verifyRpm(pkgData, verifyErr);
                 break;
             }
             case PackageTarget::Dmg: {
-                // hdiutil produces a UDIF image; confirm the trailing "koly" block.
-                const size_t n = pkgData.size();
-                valid = n >= 512 && pkgData[n - 512] == 'k' && pkgData[n - 511] == 'o' &&
-                        pkgData[n - 510] == 'l' && pkgData[n - 509] == 'y';
-                if (!valid)
-                    verifyErr << "dmg: missing UDIF koly trailer\n";
+                valid = viper::pkg::verifyMacOSDmg(pkgData, verifyErr);
+#if VIPER_HOST_MACOS
+                if (valid) {
+                    const RunResult nativeResult =
+                        run_process({"hdiutil", "verify", args.outputPath});
+                    if (nativeResult.exit_code != 0) {
+                        valid = false;
+                        verifyErr << "dmg: hdiutil verification failed\n"
+                                  << nativeResult.out << nativeResult.err;
+                    }
+                }
+#endif
                 break;
             }
             default:
@@ -1976,6 +1985,51 @@ int cmdPackage(int argc, char **argv) {
     }
     if (args.verbose)
         std::cerr << "  Verification: passed\n";
+
+    try {
+        const std::string packageSha256 = viper::pkg::sha256Hex(pkgData.data(), pkgData.size());
+        const fs::path packagePath(args.outputPath);
+        viper::pkg::writeTextFileAtomic(args.outputPath + ".sha256",
+                                        packageSha256 + "  " + packagePath.filename().string() +
+                                            "\n");
+        std::string trust = "checksum-only";
+        if (args.platformTarget == PackageTarget::Windows)
+            trust = windowsSigningRequested(proj.packageConfig) ? "authenticode" : "unsigned";
+        else if (args.platformTarget == PackageTarget::Linux ||
+                 args.platformTarget == PackageTarget::Rpm)
+            trust = args.linuxSignKey.empty() ? "unsigned" : "openpgp";
+        else if (args.platformTarget == PackageTarget::MacOS ||
+                 args.platformTarget == PackageTarget::Dmg) {
+            const std::string signMode =
+                viper::pkg::resolveMacOSSignModeForHost(proj.packageConfig);
+            trust = signMode == "developer-id"
+                        ? (proj.packageConfig.macosNotaryProfile.empty() ? "developer-id"
+                                                                         : "developer-id+notarized")
+                        : signMode;
+        }
+        std::ostringstream artifactManifest;
+        artifactManifest << "{\n"
+                         << "  \"schema_version\": 1,\n"
+                         << "  \"artifact\": {\"file\": \""
+                         << jsonEscape(packagePath.filename().string()) << "\", \"format\": \""
+                         << jsonEscape(platformExtension(args.platformTarget))
+                         << "\", \"platform\": \"" << jsonEscape(platformName(args.platformTarget))
+                         << "\", \"arch\": \"" << jsonEscape(archStr) << "\", \"version\": \""
+                         << jsonEscape(resolvedVersion) << "\", \"size\": " << pkgData.size()
+                         << ", \"sha256\": \"" << packageSha256
+                         << "\", \"verified\": true, \"trust\": \"" << jsonEscape(trust) << "\"}\n"
+                         << "}\n";
+        viper::pkg::writeTextFileAtomic(args.outputPath + ".manifest.json", artifactManifest.str());
+    } catch (const std::exception &ex) {
+        std::cerr << "error: cannot write package checksum/manifest: " << ex.what() << "\n";
+        fs::remove(args.outputPath + ".sha256", ec);
+        ec.clear();
+        fs::remove(args.outputPath + ".manifest.json", ec);
+        removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
+        if (cleanupPackagedBinary)
+            removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
+        return 1;
+    }
 
     // Cleanup temp binary
     if (cleanupPackagedBinary) {

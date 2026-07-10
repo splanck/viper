@@ -262,7 +262,7 @@ static void *audio_thread_func(void *arg) {
             break;
 
         /* Render mixed audio */
-        vaud_mixer_render(ctx, buffer, VAUD_BUFFER_FRAMES);
+        vaud_mixer_render_device(ctx, buffer, VAUD_BUFFER_FRAMES);
 
         /* Write the whole period; ALSA may legally accept only part of it. */
         if (!alsa_write_all(ctx, plat, buffer, VAUD_BUFFER_FRAMES)) {

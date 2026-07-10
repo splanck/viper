@@ -401,6 +401,11 @@ vaud_context_t vaud_create(void) {
 
     /* Initialize state */
     ctx->master_volume = VAUD_DEFAULT_MASTER_VOLUME;
+    {
+        const char *silent = getenv("VIPER_AUDIO_SILENT");
+        ctx->device_output_silent =
+            silent && silent[0] != '\0' && !(silent[0] == '0' && silent[1] == '\0');
+    }
     ctx->next_voice_id = 1; /* Start at 1 so 0 is never valid */
     ctx->frame_counter = 0;
     vaud_atomic_store_i32(&ctx->running, 1);

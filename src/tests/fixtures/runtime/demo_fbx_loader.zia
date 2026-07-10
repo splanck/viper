@@ -11,7 +11,7 @@ func start() {
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 200.0);
 
     // Load complex binary FBX file (pyramob — multi-mesh model)
-    var asset = FBX.Load("tests/runtime/test_humanoid.fbx");
+    var asset = FBX.Load("src/tests/fixtures/runtime/test_humanoid.fbx");
 
     var floor_mesh = Mesh3D.NewPlane(20.0, 20.0);
     var floor_mat = Material3D.NewColor(0.2, 0.2, 0.25);

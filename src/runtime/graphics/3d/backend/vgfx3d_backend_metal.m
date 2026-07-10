@@ -129,6 +129,24 @@
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnly;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlpha;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAdditive;
+/* R20 compact-vertex-stream twins of the twelve mesh pipelines above plus the
+ * shadow pipeline. Same shader functions; only the vertex descriptor differs
+ * (48-byte packed layout). compactPipelinesReady gates both cache encoding and
+ * pipeline selection so a build failure degrades to the full layout. */
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateAlphaCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateAdditiveCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyAlphaCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> pipelineStateColorOnlyAdditiveCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAlphaCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAdditiveCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlphaCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAdditiveCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipelineCompact;
+@property(nonatomic) BOOL compactPipelinesReady;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthStateNoWrite;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthStateDisabled;

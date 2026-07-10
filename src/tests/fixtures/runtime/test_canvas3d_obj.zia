@@ -5,7 +5,7 @@ bind Viper.Terminal;
 
 func start() {
     // Test OBJ loading
-    var mesh = Viper.Graphics3D.Mesh3D.FromOBJ("tests/runtime/test_cube.obj");
+    var mesh = Viper.Graphics3D.Mesh3D.FromOBJ("src/tests/fixtures/runtime/test_cube.obj");
     var vc = Viper.Graphics3D.Mesh3D.get_VertexCount(mesh);
     var tc = Viper.Graphics3D.Mesh3D.get_TriangleCount(mesh);
 

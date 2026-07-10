@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -597,18 +598,20 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
         "libc6",
         cxxRuntime,
         "libgcc-s1",
-        "cmake",
-        "g++ | clang++",
-        "make",
-        "desktop-file-utils",
-        "shared-mime-info",
-        "man-db",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libx11-6");
     if (manifestNeedsAlsa(manifest))
         deps.push_back("libasound2 | libasound2t64");
     return joinCommaSeparated(deps);
+}
+
+/// @brief Return optional developer and desktop integration tools for Debian metadata.
+/// @details These improve native linking, CMake consumption, and system cache integration but are
+///          not required to execute the already-built Viper binaries.
+std::string toolchainDebRecommends() {
+    return joinCommaSeparated(
+        {"cmake", "g++ | clang", "make", "desktop-file-utils", "shared-mime-info", "man-db"});
 }
 
 /// @brief Build the Debian `Depends:` list for application packages.
@@ -732,18 +735,17 @@ std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &ma
         "glibc",
         cxxRuntime,
         "libgcc",
-        "cmake",
-        "gcc-c++",
-        "make",
-        "desktop-file-utils",
-        "shared-mime-info",
-        "man-db",
     };
     if (manifestNeedsX11(manifest))
         deps.push_back("libX11");
     if (manifestNeedsAlsa(manifest))
         deps.push_back("alsa-lib");
     return deps;
+}
+
+/// @brief Return optional developer and desktop integration tools for RPM metadata.
+std::vector<std::string> toolchainRpmRecommends() {
+    return {"cmake", "gcc-c++", "make", "desktop-file-utils", "shared-mime-info", "man-db"};
 }
 
 /// @brief Sort @p paths and remove exact duplicates (taken by value).
@@ -803,6 +805,19 @@ check_no_symlink_path() {
     done
 }
 
+check_no_symlink_parents() {
+    path=$1
+    case "$path" in
+        */*) parent=${path%/*} ;;
+        *) parent=. ;;
+    esac
+    check_no_symlink_path "$parent"
+}
+
+path_exists_or_link() {
+    [ -e "$1" ] || [ -L "$1" ]
+}
+
 )VIPER_SCRIPT";
 }
 
@@ -812,17 +827,45 @@ check_no_symlink_path() {
 std::string linuxTarballInstallScript() {
     return std::string(R"VIPER_SCRIPT(#!/bin/sh
 set -eu
+umask 022
+
+dry_run=0
+force=0
+quiet=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run) dry_run=1 ;;
+        --force) force=1 ;;
+        --quiet) quiet=1 ;;
+        --help|-h)
+            echo "Usage: ./install.sh [--dry-run] [--force] [--quiet]"
+            echo "Environment: PREFIX=/usr/local DESTDIR=... NO_COLOR=1"
+            exit 0 ;;
+        *) echo "Unknown install option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+info() {
+    [ "$quiet" = 1 ] && return
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        printf '\033[1;34mViper installer\033[0m  %s\n' "$*"
+    else
+        printf 'Viper installer: %s\n' "$*"
+    fi
+}
+fail() { printf 'Viper installer error: %s\n' "$*" >&2; exit 2; }
 
 prefix=${PREFIX:-/usr/local}
 destdir=${DESTDIR:-}
 
 case "$prefix" in
     /*) ;;
-    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
+    *) fail "PREFIX must be an absolute path" ;;
 esac
 case "$destdir" in
     ""|/*) ;;
-    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
+    *) fail "DESTDIR must be empty or an absolute path" ;;
 esac
 
 root=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -831,35 +874,151 @@ old_manifest="$install_root/share/viper/install_manifest.txt"
 new_manifest="$root/share/viper/install_manifest.txt"
 )VIPER_SCRIPT") +
            linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
+[ -f "$new_manifest" ] || fail "package install manifest is missing: $new_manifest"
+
 set --
-for dir in bin include lib share; do
-    if [ -e "$root/$dir" ]; then
-        set -- "$@" "$dir"
-    fi
+for item in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+    path_exists_or_link "$item" || continue
+    name=${item##*/}
+    case "$name" in install.sh|uninstall.sh|README.install) continue ;; esac
+    set -- "$@" "$name"
 done
 
 if [ "$#" -eq 0 ]; then
-    echo "No installable Viper payload directories were found" >&2
-    exit 1
+    fail "no installable Viper payload directories were found"
 fi
 
-if [ -f "$old_manifest" ] && [ -f "$new_manifest" ] && [ "$old_manifest" != "$new_manifest" ]; then
-    while IFS= read -r rel || [ -n "$rel" ]; do
-        validate_manifest_relpath "$rel" || continue
-        if ! grep -F -x -- "$rel" "$new_manifest" >/dev/null 2>&1; then
-            check_no_symlink_path "$install_root/$rel"
-            rm -f "$install_root/$rel"
+# Refuse to overwrite unrelated paths before making any changes. A prior Viper
+# manifest proves ownership; --force is required for all other existing files.
+conflicts=0
+changes=0
+while IFS= read -r rel || [ -n "$rel" ]; do
+    validate_manifest_relpath "$rel" || continue
+    destination="$install_root/$rel"
+    check_no_symlink_parents "$destination"
+    action=install
+    if path_exists_or_link "$destination"; then
+        if [ -d "$destination" ] && [ ! -L "$destination" ]; then
+            printf 'Conflict: expected a file but found a directory: %s\n' "$destination" >&2
+            conflicts=$((conflicts + 1))
+            continue
         fi
-    done < "$old_manifest"
+        owned=0
+        if [ -f "$old_manifest" ] && grep -F -x -- "$rel" "$old_manifest" >/dev/null 2>&1; then
+            owned=1
+        fi
+        if [ "$owned" != 1 ] && [ "$force" != 1 ]; then
+            printf 'Conflict: refusing to replace unowned path: %s\n' "$destination" >&2
+            conflicts=$((conflicts + 1))
+            continue
+        fi
+        action=replace
+    fi
+    changes=$((changes + 1))
+    if [ "$dry_run" = 1 ]; then printf '%s %s\n' "$action" "$destination"; fi
+done < "$new_manifest"
+
+[ "$conflicts" = 0 ] || fail "$conflicts path conflict(s); inspect them or rerun with --force"
+if [ "$dry_run" = 1 ]; then
+    info "dry run complete: $changes owned path(s) would be installed under $install_root"
+    exit 0
 fi
 
 check_no_symlink_path "$install_root"
-for dir do
-    check_no_symlink_path "$install_root/$dir"
-done
+install_parent=${install_root%/*}
+[ -n "$install_parent" ] || install_parent=/
+check_no_symlink_path "$install_parent"
+mkdir -p "$install_parent"
+work_dir=$(mktemp -d "$install_parent/.viper-install.XXXXXX")
+stage_dir=$work_dir/stage
+backup_dir=$work_dir/backup
+committed_file=$work_dir/committed
+stale_file=$work_dir/stale
+mkdir "$stage_dir" "$backup_dir"
+: > "$committed_file"
+: > "$stale_file"
+commit_complete=0
+rollback_install() {
+    status=$?
+    trap - EXIT HUP INT TERM
+    if [ "$commit_complete" != 1 ] && [ -f "$committed_file" ]; then
+        info "rolling back incomplete installation"
+        while IFS= read -r rel || [ -n "$rel" ]; do
+            validate_manifest_relpath "$rel" || continue
+            destination="$install_root/$rel"
+            rm -rf "$destination"
+            if path_exists_or_link "$backup_dir/$rel"; then
+                mkdir -p "$(dirname "$destination")"
+                mv "$backup_dir/$rel" "$destination" || true
+            fi
+        done < "$committed_file"
+        while IFS= read -r rel || [ -n "$rel" ]; do
+            validate_manifest_relpath "$rel" || continue
+            if path_exists_or_link "$backup_dir/stale/$rel"; then
+                destination="$install_root/$rel"
+                mkdir -p "$(dirname "$destination")"
+                mv "$backup_dir/stale/$rel" "$destination" || true
+            fi
+        done < "$stale_file"
+    fi
+    rm -rf "$work_dir"
+    exit "$status"
+}
+trap rollback_install EXIT HUP INT TERM
 
-mkdir -p "$install_root"
-(cd "$root" && tar cf - "$@") | (cd "$install_root" && tar xpf -)
+info "staging payload"
+(cd "$root" && tar cf - "$@") | (cd "$stage_dir" && tar xpf -)
+mkdir -p "$stage_dir/share/viper"
+cp "$root/uninstall.sh" "$stage_dir/share/viper/uninstall.sh"
+chmod 755 "$stage_dir/share/viper/uninstall.sh"
+{
+    printf '%s\n' "$prefix"
+    printf '%s\n' "$destdir"
+} > "$stage_dir/share/viper/install_metadata"
+chmod 644 "$stage_dir/share/viper/install_metadata"
+
+info "committing $changes owned path(s) to $install_root"
+while IFS= read -r rel || [ -n "$rel" ]; do
+    validate_manifest_relpath "$rel" || continue
+    source_path="$stage_dir/$rel"
+    destination="$install_root/$rel"
+    if ! path_exists_or_link "$source_path"; then
+        fail "staged payload is missing manifest path: $rel"
+    fi
+    check_no_symlink_parents "$destination"
+    mkdir -p "$(dirname "$destination")"
+    printf '%s\n' "$rel" >> "$committed_file"
+    if path_exists_or_link "$destination"; then
+        mkdir -p "$backup_dir/$(dirname "$rel")"
+        mv "$destination" "$backup_dir/$rel"
+    fi
+    mv "$source_path" "$destination"
+done < "$new_manifest"
+
+# Remove files owned by the previous Viper tarball only after the new payload
+# has committed successfully.
+old_snapshot="$backup_dir/share/viper/install_manifest.txt"
+if [ -f "$old_snapshot" ]; then
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        validate_manifest_relpath "$rel" || continue
+        if ! grep -F -x -- "$rel" "$new_manifest" >/dev/null 2>&1; then
+            destination="$install_root/$rel"
+            check_no_symlink_parents "$destination"
+            if [ -d "$destination" ] && [ ! -L "$destination" ]; then
+                fail "refusing to remove stale directory recorded as a file: $destination"
+            fi
+            if path_exists_or_link "$destination"; then
+                mkdir -p "$backup_dir/stale/$(dirname "$rel")"
+                printf '%s\n' "$rel" >> "$stale_file"
+                mv "$destination" "$backup_dir/stale/$rel"
+            fi
+        fi
+    done < "$old_snapshot"
+fi
+
+commit_complete=1
+rm -rf "$work_dir"
+trap - EXIT HUP INT TERM
 
 if [ -z "$destdir" ]; then
     if command -v mandb >/dev/null 2>&1; then
@@ -873,7 +1032,9 @@ if [ -z "$destdir" ]; then
     fi
 fi
 
-echo "Installed Viper toolchain under $install_root"
+info "installed Viper toolchain under $install_root"
+info "verify with: $install_root/bin/viper --version"
+info "uninstall with: $install_root/share/viper/uninstall.sh"
 )VIPER_SCRIPT";
 }
 
@@ -882,35 +1043,124 @@ echo "Installed Viper toolchain under $install_root"
 std::string linuxTarballUninstallScript() {
     return std::string(R"VIPER_SCRIPT(#!/bin/sh
 set -eu
+umask 022
+
+dry_run=0
+quiet=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run) dry_run=1 ;;
+        --quiet) quiet=1 ;;
+        --help|-h)
+            echo "Usage: uninstall.sh [--dry-run] [--quiet]"
+            echo "Use the same PREFIX and DESTDIR values supplied during installation."
+            exit 0 ;;
+        *) echo "Unknown uninstall option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+info() {
+    [ "$quiet" = 1 ] && return
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+        printf '\033[1;34mViper uninstaller\033[0m  %s\n' "$*"
+    else
+        printf 'Viper uninstaller: %s\n' "$*"
+    fi
+}
+fail() { printf 'Viper uninstaller error: %s\n' "$*" >&2; exit 2; }
 
 prefix=${PREFIX:-/usr/local}
 destdir=${DESTDIR:-}
 
 case "$prefix" in
     /*) ;;
-    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
+    *) fail "PREFIX must be an absolute path" ;;
 esac
 case "$destdir" in
     ""|/*) ;;
-    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
+    *) fail "DESTDIR must be empty or an absolute path" ;;
 esac
 
 install_root=${destdir%/}$prefix
 manifest="$install_root/share/viper/install_manifest.txt"
+metadata="$install_root/share/viper/install_metadata"
 )VIPER_SCRIPT") +
            linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
 if [ ! -f "$manifest" ]; then
-    echo "Viper install manifest not found: $manifest" >&2
-    exit 1
+    fail "Viper install manifest not found: $manifest"
 fi
 
+if [ -f "$metadata" ]; then
+    {
+        IFS= read -r installed_prefix || installed_prefix=
+        IFS= read -r installed_destdir || installed_destdir=
+    } < "$metadata"
+    if [ "$installed_prefix" != "$prefix" ] || [ "$installed_destdir" != "$destdir" ]; then
+        fail "this installation used PREFIX=$installed_prefix DESTDIR=$installed_destdir; rerun with matching values"
+    fi
+fi
+
+owned_count=0
 while IFS= read -r rel || [ -n "$rel" ]; do
     validate_manifest_relpath "$rel" || continue
-    check_no_symlink_path "$install_root/$rel"
-    rm -f "$install_root/$rel"
+    destination="$install_root/$rel"
+    check_no_symlink_parents "$destination"
+    if [ -d "$destination" ] && [ ! -L "$destination" ]; then
+        fail "refusing to remove directory recorded as a file: $destination"
+    fi
+    if path_exists_or_link "$destination"; then
+        owned_count=$((owned_count + 1))
+        if [ "$dry_run" = 1 ]; then printf 'remove %s\n' "$destination"; fi
+    fi
 done < "$manifest"
 
-rm -f "$manifest"
+if [ "$dry_run" = 1 ]; then
+    info "dry run complete: $owned_count owned path(s) would be removed from $install_root"
+    exit 0
+fi
+
+install_parent=${install_root%/*}
+[ -n "$install_parent" ] || install_parent=/
+check_no_symlink_path "$install_parent"
+work_dir=$(mktemp -d "$install_parent/.viper-uninstall.XXXXXX")
+moved_file=$work_dir/moved
+: > "$moved_file"
+collect_complete=0
+rollback_uninstall() {
+    status=$?
+    trap - EXIT HUP INT TERM
+    if [ "$collect_complete" != 1 ] && [ -f "$moved_file" ]; then
+        info "rolling back incomplete removal"
+        while IFS= read -r rel || [ -n "$rel" ]; do
+            validate_manifest_relpath "$rel" || continue
+            if path_exists_or_link "$work_dir/files/$rel"; then
+                destination="$install_root/$rel"
+                mkdir -p "$(dirname "$destination")"
+                mv "$work_dir/files/$rel" "$destination" || true
+            fi
+        done < "$moved_file"
+    fi
+    rm -rf "$work_dir"
+    exit "$status"
+}
+trap rollback_uninstall EXIT HUP INT TERM
+
+info "collecting $owned_count owned path(s) for removal"
+while IFS= read -r rel || [ -n "$rel" ]; do
+    validate_manifest_relpath "$rel" || continue
+    destination="$install_root/$rel"
+    check_no_symlink_parents "$destination"
+    if path_exists_or_link "$destination"; then
+        mkdir -p "$work_dir/files/$(dirname "$rel")"
+        printf '%s\n' "$rel" >> "$moved_file"
+        mv "$destination" "$work_dir/files/$rel"
+    fi
+done < "$manifest"
+
+collect_complete=1
+rm -rf "$work_dir"
+trap - EXIT HUP INT TERM
 
 for dir in \
     share/viper \
@@ -936,7 +1186,7 @@ if [ -z "$destdir" ]; then
     fi
 fi
 
-echo "Removed Viper toolchain files listed in $manifest"
+info "removed $owned_count Viper-owned path(s) from $install_root"
 )VIPER_SCRIPT";
 }
 
@@ -949,6 +1199,9 @@ from the extracted bin/ directory, or install the layout into a prefix.
 
 Install:
   sudo ./install.sh
+
+Preview without changing the filesystem:
+  ./install.sh --dry-run
 
 Install under a custom prefix:
   PREFIX=/opt/viper sudo ./install.sh
@@ -969,11 +1222,18 @@ Verify after install:
   viperide --version
 
 Uninstall:
-  sudo ./uninstall.sh
+  sudo /usr/local/share/viper/uninstall.sh
+
+For a custom prefix, invoke its installed helper with the same PREFIX value:
+  PREFIX=/opt/viper sudo /opt/viper/share/viper/uninstall.sh
 
 Before copying a new tarball payload, install.sh removes files listed in the
 currently installed manifest when those files are absent from the new manifest.
-The uninstaller removes only files listed in share/viper/install_manifest.txt.
+The installer refuses to overwrite paths not owned by a prior Viper manifest;
+review conflicts before using --force. Payloads are staged on the destination
+filesystem and committed with rollback backups. The chosen PREFIX and DESTDIR are
+recorded in share/viper/install_metadata. The uninstaller removes only files
+listed in share/viper/install_manifest.txt and supports --dry-run.
 Desktop, MIME, and manpage caches are refreshed when the relevant host tools are
 available.
 )VIPER_TEXT";
@@ -1020,6 +1280,39 @@ fs::path findGeneratedRpm(const fs::path &tmpRoot,
                                  matches.front().string());
     }
     return matches.front();
+}
+
+/// @brief Run rpmbuild with deterministic metadata controls when SOURCE_DATE_EPOCH is set.
+RunResult runRpmBuild(const fs::path &tmpRoot, const fs::path &specPath) {
+    std::vector<std::string> args = {"rpmbuild",
+                                     "--define",
+                                     "_topdir " + tmpRoot.string(),
+                                     "--define",
+                                     "_sourcedir " + (tmpRoot / "SOURCES").string(),
+                                     "--define",
+                                     "_specdir " + (tmpRoot / "SPECS").string()};
+    if (const char *epoch = std::getenv("SOURCE_DATE_EPOCH")) {
+        const std::string epochText(epoch);
+        if (epochText.empty() || !std::all_of(epochText.begin(), epochText.end(), [](char c) {
+                return c >= '0' && c <= '9';
+            })) {
+            throw std::runtime_error("SOURCE_DATE_EPOCH must be a non-negative integer");
+        }
+        args.insert(args.end(),
+                    {"--define",
+                     "_source_date_epoch " + epochText,
+                     "--define",
+                     "clamp_mtime_to_source_date_epoch 1",
+                     "--define",
+                     "use_source_date_epoch_as_buildtime 1",
+                     "--define",
+                     "_buildhost reproducible.viper.local",
+                     "--define",
+                     "_build_id_links none"});
+    }
+    args.push_back("-bb");
+    args.push_back(specPath.string());
+    return run_process(args);
 }
 
 /// @brief Map a freedesktop.org Category string to the closest Debian section name.
@@ -1107,8 +1400,8 @@ std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displa
 
 /// @brief Build the Debian/RPM maintainer string for a toolchain package from the manifest.
 /// @details Uses manifest.maintainer (default "Viper Project") and manifest.maintainerEmail,
-///          falling back to the RFC-2606 reserved `noreply@example.invalid` only when no email
-///          is configured. Always yields the required `Name <email>` form.
+///          falling back to the project's GitHub contact address when no email is configured.
+///          Always yields the required `Name <email>` form.
 std::string toolchainMaintainer(const ToolchainInstallManifest &manifest) {
     std::string name = trimAsciiWhitespace(manifest.maintainer);
     if (name.empty())
@@ -1120,7 +1413,7 @@ std::string toolchainMaintainer(const ToolchainInstallManifest &manifest) {
         return name;
     std::string email = trimAsciiWhitespace(manifest.maintainerEmail);
     if (email.empty())
-        email = "noreply@example.invalid";
+        email = "splanck@users.noreply.github.com";
     validateSingleLineField(email, "toolchain package maintainer email");
     return name + " <" + email + ">";
 }
@@ -1295,13 +1588,13 @@ std::string appTarballUninstallScript(const std::string &pkgName, const std::str
     return script.str();
 }
 
-/// @brief Return a small generated PNG used for toolchain AppImage desktop metadata.
+/// @brief Return a small generated PNG used for toolchain bundle desktop metadata.
 std::vector<uint8_t> defaultViperAppImageIconPng() {
     return pngEncode(imageResize(defaultViperToolchainIconImage(), 256, 256));
 }
 
-/// @brief Append AppImage desktop/icon metadata at the payload root.
-void addToolchainAppImageMetadata(TarWriter &tar, const std::string &packageName) {
+/// @brief Append Linux bundle desktop/icon metadata at the payload root.
+void addToolchainBundleMetadata(TarWriter &tar, const std::string &packageName) {
     DesktopEntryParams desktop;
     desktop.name = "Viper Toolchain";
     desktop.comment = "Viper source and IL tools";
@@ -1316,7 +1609,7 @@ void addToolchainAppImageMetadata(TarWriter &tar, const std::string &packageName
     tar.addFileVec(".DirIcon", icon, 0644);
 }
 
-/// @brief Return the AppImage AppRun launcher script for the Viper toolchain.
+/// @brief Return the self-extracting bundle AppRun launcher script for the Viper toolchain.
 /// @details When launched from a desktop shell with no arguments it starts
 ///          ViperIDE. When invoked from a terminal or file association with
 ///          arguments, it preserves CLI behavior by delegating to `bin/viper`.
@@ -1383,6 +1676,25 @@ std::string rpmSpecFilePath(const std::string &path) {
     if (!needsQuotes)
         return out;
     return "\"" + out + "\"";
+}
+
+/// @brief Return true when an RPM payload path represents license terms.
+bool isRpmLicensePath(const std::string &path) {
+    std::string leaf = fs::path(path).filename().string();
+    std::transform(leaf.begin(), leaf.end(), leaf.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return leaf == "license" || leaf == "license.txt" || leaf == "copying" || leaf == "copyright";
+}
+
+/// @brief Format a payload file with the appropriate RPM `%license`/`%doc` marker.
+std::string rpmSpecOwnedFileLine(const std::string &path) {
+    const std::string formatted = rpmSpecFilePath(path);
+    if (isRpmLicensePath(path))
+        return "%license " + formatted;
+    if (path.rfind("usr/share/doc/", 0) == 0)
+        return "%doc " + formatted;
+    return formatted;
 }
 
 /// @brief Validate that `path` can safely appear in an RPM spec `%files` section.
@@ -1551,6 +1863,22 @@ static std::vector<DataFile> collectAppLinuxDataFiles(const LinuxBuildParams &pa
         std::vector<uint8_t> adata(appstream.begin(), appstream.end());
         dataFiles.push_back({"usr/share/metainfo/" + pkgName + ".metainfo.xml", adata});
     }
+
+    const std::string readme =
+        pkg.readmeFilePath.empty()
+            ? appTarballReadme(
+                  displayName, params.version.empty() ? "0.0.0" : params.version, exeName, pkg)
+            : readPackageTextFile(params.projectRoot, pkg.readmeFilePath, "package readme");
+    dataFiles.emplace_back("usr/share/doc/" + pkgName + "/README",
+                           std::vector<uint8_t>(readme.begin(), readme.end()),
+                           0644);
+    const std::string license =
+        pkg.licenseFilePath.empty()
+            ? appTarballLicenseText(displayName, pkg)
+            : readPackageTextFile(params.projectRoot, pkg.licenseFilePath, "package license file");
+    dataFiles.emplace_back("usr/share/doc/" + pkgName + "/copyright",
+                           std::vector<uint8_t>(license.begin(), license.end()),
+                           0644);
     validateDataFilePaths(dataFiles);
     return dataFiles;
 }
@@ -1868,9 +2196,9 @@ void buildTarball(const LinuxBuildParams &params) {
     writeFileAtomic(params.outputPath, tarGz);
 }
 
-/// @brief Build a self-extracting Linux AppImage for an end-user application.
+/// @brief Build a self-extracting Linux `.run` bundle for an end-user application.
 /// @details Reuses the same runtime stub and gzip-tar payload format as the
-///          toolchain AppImage path (buildToolchainAppImage), but sources its
+///          toolchain bundle path (buildToolchainBundle), but sources its
 ///          single executable, bundled assets, `.desktop` launcher, and icon from
 ///          an application's `LinuxBuildParams`/`PackageConfig` rather than a
 ///          staged toolchain manifest.
@@ -1882,14 +2210,15 @@ void buildAppImage(const LinuxBuildParams &params) {
     const std::string version = params.version.empty() ? "0.0.0" : params.version;
     validatePortableMetadata(pkg, displayName, version);
     if (params.archStr != "x64" && params.archStr != "arm64")
-        throw std::runtime_error("AppImage architecture must be x64 or arm64: " + params.archStr);
+        throw std::runtime_error("Linux bundle architecture must be x64 or arm64: " +
+                                 params.archStr);
     if (!fs::is_regular_file(params.executablePath))
-        throw std::runtime_error("AppImage executable is not a regular file: " +
+        throw std::runtime_error("Linux bundle executable is not a regular file: " +
                                  params.executablePath);
 
     TarWriter tar;
     tar.addDirectory("./", 0755);
-    // Entry point: AppRun -> usr/bin/<exe>, matching the toolchain AppImage layout.
+    // Entry point: AppRun -> usr/bin/<exe>, matching the toolchain bundle layout.
     tar.addSymlink("AppRun", "usr/bin/" + exeName);
 
     // Application executable.
@@ -1989,6 +2318,7 @@ void buildAppImage(const LinuxBuildParams &params) {
     stub.cacheName =
         pkgName + "-" + portableArchiveVersionComponent(version) + "-linux-" + params.archStr;
     stub.entryPath = "AppRun";
+    stub.appImageInterface = true;
     const auto appImage = buildLinuxAppImage(stub, tarGz);
     writeFileAtomic(params.outputPath, appImage);
     std::error_code ec;
@@ -1997,7 +2327,7 @@ void buildAppImage(const LinuxBuildParams &params) {
                     fs::perm_options::add,
                     ec);
     if (ec)
-        throw std::runtime_error("cannot mark AppImage executable: " + ec.message());
+        throw std::runtime_error("cannot mark Linux bundle executable: " + ec.message());
 }
 
 /// @brief Build an RPM package for an end-user application using rpmbuild.
@@ -2063,6 +2393,7 @@ void buildRpmPackage(const LinuxBuildParams &params) {
         validateSingleLineField(summaryLine, "package summary");
         spec << "Summary: " << summaryLine << "\n";
     }
+    spec << "Packager: " << debMaintainerFor(pkg, displayName) << "\n";
     {
         std::string license = trimAsciiWhitespace(pkg.license);
         if (license.empty())
@@ -2110,7 +2441,7 @@ void buildRpmPackage(const LinuxBuildParams &params) {
         if (file.directory)
             spec << "%dir " << rpmSpecFilePath(file.installPath) << "\n";
         else
-            spec << rpmSpecFilePath(file.installPath) << "\n";
+            spec << rpmSpecOwnedFileLine(file.installPath) << "\n";
     }
 
     const fs::path specPath = tmpRoot / "SPECS" / (pkgName + ".spec");
@@ -2121,15 +2452,7 @@ void buildRpmPackage(const LinuxBuildParams &params) {
         out << spec.str();
     }
 
-    const RunResult rr = run_process({"rpmbuild",
-                                      "--define",
-                                      "_topdir " + tmpRoot.string(),
-                                      "--define",
-                                      "_sourcedir " + (tmpRoot / "SOURCES").string(),
-                                      "--define",
-                                      "_specdir " + (tmpRoot / "SPECS").string(),
-                                      "-bb",
-                                      specPath.string()});
+    const RunResult rr = runRpmBuild(tmpRoot, specPath);
     if (rr.exit_code != 0) {
         throw std::runtime_error("rpmbuild failed while generating application rpm:\n" + rr.out +
                                  rr.err);
@@ -2184,6 +2507,7 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Architecture: " << archStr << "\n";
         ctl << "Maintainer: " << toolchainMaintainer(manifest) << "\n";
         ctl << "Depends: " << toolchainDebDepends(manifest) << "\n";
+        ctl << "Recommends: " << toolchainDebRecommends() << "\n";
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
             checkedAddU64(totalBytes,
@@ -2306,6 +2630,8 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     }
     if (platform == "linux") {
         installManifestPaths.push_back("share/viper/install_manifest.txt");
+        installManifestPaths.push_back("share/viper/install_metadata");
+        installManifestPaths.push_back("share/viper/uninstall.sh");
         const std::string manifestText = renderInstallManifest(installManifestPaths);
         tar.addFile(topDir + "share/viper/install_manifest.txt",
                     reinterpret_cast<const uint8_t *>(manifestText.data()),
@@ -2334,10 +2660,10 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     writeFileAtomic(params.outputPath, tarGz);
 }
 
-/// @brief Build a FUSE-less self-extracting Linux AppImage from a staged install manifest.
-void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
+/// @brief Build a self-extracting Linux `.run` bundle from a staged install manifest.
+void buildToolchainBundle(const LinuxToolchainBuildParams &params) {
     const auto &manifest = params.manifest;
-    requireLinuxToolchainManifest(manifest, "Linux AppImage");
+    requireLinuxToolchainManifest(manifest, "Linux self-extracting bundle");
     const std::string packageName =
         params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
     if (manifest.version.empty())
@@ -2352,7 +2678,7 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
     tar.addFile("AppRun", reinterpret_cast<const uint8_t *>(appRun.data()), appRun.size(), 0755);
     for (const auto &file : manifest.files) {
         const std::string relPath = mapInstallPath(file, InstallPathPolicy::PortableArchive);
-        validatePortableArchivePath(relPath, "AppImage payload path");
+        validatePortableArchivePath(relPath, "Linux bundle payload path");
         if (file.symlink) {
             tar.addSymlink(relPath, file.symlinkTarget);
         } else {
@@ -2369,11 +2695,11 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
                 df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
-                "AppImage generated metadata path");
+                "Linux bundle generated metadata path");
             tar.addFile(portablePath, df.data.data(), df.data.size(), df.mode);
         }
     }
-    addToolchainAppImageMetadata(tar, packageName);
+    addToolchainBundleMetadata(tar, packageName);
 
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
@@ -2381,15 +2707,15 @@ void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
     stub.cacheName =
         packageName + "-" + portableArchiveVersionComponent(version) + "-linux-" + manifest.arch;
     stub.entryPath = "AppRun";
-    const auto appImage = buildLinuxAppImage(stub, tarGz);
-    writeFileAtomic(params.outputPath, appImage);
+    const auto bundle = buildLinuxAppImage(stub, tarGz);
+    writeFileAtomic(params.outputPath, bundle);
     std::error_code ec;
     fs::permissions(params.outputPath,
                     fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
                     fs::perm_options::add,
                     ec);
     if (ec)
-        throw std::runtime_error("cannot mark AppImage executable: " + ec.message());
+        throw std::runtime_error("cannot mark Linux bundle executable: " + ec.message());
 }
 
 /// @brief Build an RPM toolchain package from a staged install manifest using rpmbuild.
@@ -2448,6 +2774,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Version: " << version << "\n";
     spec << "Release: 1%{?dist}\n";
     spec << "Summary: Viper compiler toolchain\n";
+    spec << "Packager: " << toolchainMaintainer(manifest) << "\n";
     {
         std::string license = trimAsciiWhitespace(manifest.license);
         if (license.empty())
@@ -2463,6 +2790,8 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Source0: %{name}-%{version}.tar.gz\n";
     for (const auto &dep : toolchainRpmRequires(manifest))
         spec << "Requires: " << dep << "\n";
+    for (const auto &dep : toolchainRpmRecommends())
+        spec << "Recommends: " << dep << "\n";
     spec << "\n";
     spec << "%description\nViper compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
@@ -2503,7 +2832,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "%files\n";
     for (const auto &file : dataFiles) {
         validateRpmSpecPath(file.installPath);
-        spec << rpmSpecFilePath(file.installPath) << "\n";
+        spec << rpmSpecOwnedFileLine(file.installPath) << "\n";
     }
 
     const fs::path specPath = tmpRoot / "SPECS" / (packageName + ".spec");
@@ -2514,15 +2843,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
         out << spec.str();
     }
 
-    const RunResult rr = run_process({"rpmbuild",
-                                      "--define",
-                                      "_topdir " + tmpRoot.string(),
-                                      "--define",
-                                      "_sourcedir " + (tmpRoot / "SOURCES").string(),
-                                      "--define",
-                                      "_specdir " + (tmpRoot / "SPECS").string(),
-                                      "-bb",
-                                      specPath.string()});
+    const RunResult rr = runRpmBuild(tmpRoot, specPath);
     if (rr.exit_code != 0) {
         throw std::runtime_error("rpmbuild failed while generating toolchain rpm:\n" + rr.out +
                                  rr.err);
@@ -2562,6 +2883,35 @@ void signLinuxPackage(const std::string &packagePath, const std::string &gpgKeyI
         throw std::runtime_error(std::string(tool) + " failed to sign " + packagePath +
                                  " (check that GPG key '" + gpgKeyId + "' is available):\n" +
                                  rr.out + rr.err);
+    }
+
+    RunResult verifyResult;
+    std::string verifyTool;
+    if (isRpm) {
+        verifyTool = "rpmkeys";
+        verifyResult = run_process({"rpmkeys", "--checksig", "--verbose", packagePath});
+        if (verifyResult.launch_failed) {
+            verifyTool = "rpm";
+            verifyResult = run_process({"rpm", "--checksig", "--verbose", packagePath});
+        }
+    } else {
+        verifyTool = "dpkg-sig";
+        verifyResult = run_process({"dpkg-sig", "--verify", packagePath});
+    }
+    if (verifyResult.launch_failed) {
+        throw std::runtime_error("signed Linux package could not be verified because " +
+                                 verifyTool + " was not found on PATH");
+    }
+    std::string verificationText = verifyResult.out + verifyResult.err;
+    std::transform(verificationText.begin(),
+                   verificationText.end(),
+                   verificationText.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    const bool signatureReported = isRpm ? verificationText.find("OK") != std::string::npos
+                                         : verificationText.find("GOODSIG") != std::string::npos;
+    if (verifyResult.exit_code != 0 || !signatureReported) {
+        throw std::runtime_error(verifyTool + " did not confirm the signature on " + packagePath +
+                                 ":\n" + verifyResult.out + verifyResult.err);
     }
 }
 

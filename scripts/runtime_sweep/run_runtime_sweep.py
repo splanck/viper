@@ -240,8 +240,8 @@ def main() -> int:
         print(f"error: viper not found at {ilc_path}", file=sys.stderr)
         return 1
 
-    zia_dir = os.path.join(repo_root, "tests", "zia_runtime")
-    basic_dir = os.path.join(repo_root, "tests", "runtime_sweep", "basic")
+    zia_dir = os.path.join(repo_root, "src", "tests", "fixtures", "zia_runtime")
+    basic_dir = os.path.join(repo_root, "src", "tests", "fixtures", "runtime_sweep", "basic")
 
     tests = []
     for root, _, files in os.walk(zia_dir):

@@ -48,7 +48,7 @@ CPackSourceConfig.cmake
 # --- Compilers / Linkers ---
 *.o
 *.obj
-!tests/runtime/**/*.obj
+!src/tests/fixtures/runtime/**/*.obj
 !examples/games/3dbaseball/model.obj
 !src/tests/fuzz/corpus/**/*.obj
 *.lo
@@ -106,7 +106,7 @@ lcov.info
 **/tests/**/output/
 **/tests/**/out/
 **/build/test-out/
-/viperide/bin/
+/src/viperide/bin/
 *.s
 # Baseball franchise shell save root (created on first interactive run).
 baseball_saves/
@@ -151,7 +151,7 @@ examples/bin/
 # --- Large binary assets ---
 *.blend
 *.fbx
-!tests/runtime/**/*.fbx
+!src/tests/fixtures/runtime/**/*.fbx
 !src/tests/fuzz/corpus/**/*.fbx
 *.zip
 

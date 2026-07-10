@@ -741,6 +741,12 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 
         if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
             return;
+        /* R20: compact-cached geometry needs the packed-layout shadow pipeline. */
+        [ctx.encoder
+            setRenderPipelineState:(cmd->compact_vertex_stream && ctx.compactPipelinesReady &&
+                                    ctx.shadowPipelineCompact)
+                                       ? ctx.shadowPipelineCompact
+                                       : ctx.shadowPipeline];
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];

@@ -125,8 +125,10 @@ source ~/.bashrc
 
 Release `.deb` and `.rpm` toolchain packages install `viper`, headers, runtime archives,
 CMake package files, manpages, and desktop/MIME associations. Install them through the
-distribution package manager so hard dependencies such as CMake, `make`, and a C++
-compiler are resolved:
+distribution package manager so runtime dependencies are resolved and developer
+prerequisites are offered. CMake, `make`, a C++ compiler, and cache utilities are
+recommendations rather than hard dependencies, so minimal environments are not
+over-constrained:
 
 ```bash
 # Debian / Ubuntu
@@ -139,7 +141,12 @@ sudo dnf install ./viper-<version>-1.x86_64.rpm
 Portable `.tar.gz` packages include `install.sh`, `uninstall.sh`, and an install
 manifest. `install.sh` defaults to `/usr/local`, honors `PREFIX` and `DESTDIR`,
 and removes stale files from the previous Viper tarball manifest before copying
-the new payload.
+the new payload in a rollback-capable transaction. A FUSE-less `.run` bundle is
+also available through `viper install-package --target linux-bundle`; it verifies
+its payload and reuses a content-addressed private XDG cache.
+
+See the [installer and package release guide](../installer-release.md) for
+checksums, OpenPGP release signing, and disposable-host upgrade/uninstall tests.
 
 ---
 

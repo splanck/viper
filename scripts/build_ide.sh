@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${VIPER_BUILD_DIR:-$ROOT_DIR/build}"
-IDE_DIR="$ROOT_DIR/viperide"
+IDE_DIR="$ROOT_DIR/src/viperide"
 OUT_DIR="${VIPER_IDE_OUT_DIR:-$IDE_DIR/bin}"
 OUTPUT_FILE="${VIPER_IDE_OUTPUT:-$OUT_DIR/viperide}"
 COMPAT_OUTPUT_FILE="${VIPER_IDE_COMPAT_OUTPUT:-$BUILD_DIR/viperide/viperide}"
@@ -24,7 +24,7 @@ NC='\033[0m'
 usage() {
     echo "Usage: $0 [--clean] [--output PATH]"
     echo "  --clean        Remove the existing ViperIDE binary before building"
-    echo "  --output PATH  Write the binary to PATH (default: viperide/bin/viperide)"
+    echo "  --output PATH  Write the binary to PATH (default: src/viperide/bin/viperide)"
     echo "  Compatibility copy: build/viperide/viperide unless VIPER_IDE_SKIP_COMPAT_COPY=1"
     exit 1
 }

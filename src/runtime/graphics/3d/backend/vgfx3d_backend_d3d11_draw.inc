@@ -914,8 +914,15 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
                                         blend_factor,
                                         0xFFFFFFFF);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ID3D11DeviceContext_IASetInputLayout(
-        ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
+    if (d3d11_cmd_uses_compact_stream(ctx, cmd)) {
+        /* R20: compact-cached geometry decodes through the packed input layouts. */
+        ID3D11DeviceContext_IASetInputLayout(ctx->ctx,
+                                             instanced ? ctx->input_layout_instanced_compact
+                                                       : ctx->input_layout_compact);
+    } else {
+        ID3D11DeviceContext_IASetInputLayout(
+            ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
+    }
     ID3D11DeviceContext_VSSetShader(
         ctx->ctx, instanced ? ctx->vs_instanced : ctx->vs_main, NULL, 0);
     ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_main, NULL, 0);
@@ -1293,6 +1300,8 @@ static void d3d11_submit_draw(void *ctx_ptr,
         return;
     }
 
+    if (d3d11_cmd_uses_compact_stream(ctx, cmd))
+        stride = VGFX3D_COMPACT_VERTEX_STRIDE; /* R20 packed static-cache layout */
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 0);
@@ -1443,7 +1452,8 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         return;
     }
 
-    strides[0] = sizeof(vgfx3d_vertex_t);
+    strides[0] = d3d11_cmd_uses_compact_stream(ctx, cmd) ? VGFX3D_COMPACT_VERTEX_STRIDE
+                                                         : sizeof(vgfx3d_vertex_t);
     strides[1] = sizeof(d3d_instance_data_t);
     vertex_buffers[0] = mesh_vb;
     vertex_buffers[1] = ctx->instance_buffer;

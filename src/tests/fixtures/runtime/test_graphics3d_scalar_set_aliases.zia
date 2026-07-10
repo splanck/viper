@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/test_graphics3d_scalar_set_aliases.zia
+// File: src/tests/fixtures/runtime/test_graphics3d_scalar_set_aliases.zia
 // Purpose: Regression coverage for Graphics3D scalar property setter accessors.
 //
 //===----------------------------------------------------------------------===//

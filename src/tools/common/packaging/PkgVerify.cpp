@@ -1276,6 +1276,35 @@ bool verifyMacOSPkgInternal(const std::vector<uint8_t> &data,
             err << "macOS pkg: Distribution is missing installable component metadata\n";
             return false;
         }
+        for (const char *requiredMetadata : {"<welcome file=\"welcome.html\"",
+                                             "<readme file=\"readme.html\"",
+                                             "<license file=\"license.txt\"",
+                                             "<conclusion file=\"conclusion.html\"",
+                                             "<background file=\"background.png\"",
+                                             "<background-darkAqua file=\"background-dark.png\"",
+                                             "enable_localSystem=\"true\"",
+                                             "rootVolumeOnly=\"true\"",
+                                             "<allowed-os-versions>",
+                                             "hostArchitectures=\""}) {
+            if (distribution.find(requiredMetadata) == std::string::npos) {
+                err << "macOS pkg: Distribution is missing required installer metadata: "
+                    << requiredMetadata << "\n";
+                return false;
+            }
+        }
+        for (const char *requiredResource : {"welcome.html",
+                                             "readme.html",
+                                             "license.txt",
+                                             "conclusion.html",
+                                             "background.png",
+                                             "background-dark.png"}) {
+            const auto resourceIt = xar.files.find(requiredResource);
+            if (resourceIt == xar.files.end() || resourceIt->second.empty()) {
+                err << "macOS pkg: missing or empty Installer.app resource " << requiredResource
+                    << "\n";
+                return false;
+            }
+        }
         componentPrefix = "ViperToolchain.pkg/";
         payloadIt = xar.files.find(componentPrefix + "Payload");
         if (payloadIt == xar.files.end()) {
@@ -2064,6 +2093,95 @@ bool verifyMacOSDmg(const std::vector<uint8_t> &data, std::ostream &err) {
         data[trailer + 2u] != static_cast<uint8_t>('l') ||
         data[trailer + 3u] != static_cast<uint8_t>('y')) {
         err << "dmg: missing UDIF trailer signature\n";
+        return false;
+    }
+    return true;
+}
+
+/// @brief Verify an RPM header and return its aligned end plus observed tag ids.
+static bool verifyRpmHeader(const std::vector<uint8_t> &data,
+                            size_t offset,
+                            const char *name,
+                            size_t &endOffset,
+                            std::set<uint32_t> &tags,
+                            std::ostream &err) {
+    if (!hasRange(offset, 16u, data.size())) {
+        err << "rpm: missing " << name << " header\n";
+        return false;
+    }
+    if (data[offset] != 0x8E || data[offset + 1] != 0xAD || data[offset + 2] != 0xE8 ||
+        data[offset + 3] != 0x01) {
+        err << "rpm: missing " << name << " header magic\n";
+        return false;
+    }
+    const uint32_t indexCount = rdBE32(data.data() + offset + 8u);
+    const uint32_t storeSize = rdBE32(data.data() + offset + 12u);
+    const size_t entriesOffset = offset + 16u;
+    if (indexCount > (data.size() - entriesOffset) / 16u) {
+        err << "rpm: " << name << " header index extends past end of file\n";
+        return false;
+    }
+    const size_t storeOffset = entriesOffset + static_cast<size_t>(indexCount) * 16u;
+    if (storeSize > data.size() - storeOffset) {
+        err << "rpm: " << name << " header store extends past end of file\n";
+        return false;
+    }
+    tags.clear();
+    for (uint32_t index = 0; index < indexCount; ++index) {
+        const size_t entry = entriesOffset + static_cast<size_t>(index) * 16u;
+        const uint32_t tag = rdBE32(data.data() + entry);
+        const uint32_t valueOffset = rdBE32(data.data() + entry + 8u);
+        if (valueOffset > storeSize) {
+            err << "rpm: " << name << " header tag " << tag << " points past its store\n";
+            return false;
+        }
+        tags.insert(tag);
+    }
+    endOffset = storeOffset + storeSize;
+    return true;
+}
+
+bool verifyRpm(const std::vector<uint8_t> &data, std::ostream &err) {
+    if (data.size() < 112u || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
+        data[3] != 0xDB) {
+        err << "rpm: missing lead magic\n";
+        return false;
+    }
+    if (data[4] != 3u || rdBE16(data.data() + 78u) != 5u) {
+        err << "rpm: unsupported lead version or signature type\n";
+        return false;
+    }
+    size_t signatureEnd = 0;
+    std::set<uint32_t> signatureTags;
+    if (!verifyRpmHeader(data, 96u, "signature", signatureEnd, signatureTags, err))
+        return false;
+    if (signatureEnd > std::numeric_limits<size_t>::max() - 7u) {
+        err << "rpm: signature header alignment overflow\n";
+        return false;
+    }
+    const size_t mainOffset = (signatureEnd + 7u) & ~size_t{7u};
+    size_t mainEnd = 0;
+    std::set<uint32_t> mainTags;
+    if (!verifyRpmHeader(data, mainOffset, "main", mainEnd, mainTags, err))
+        return false;
+    for (const uint32_t requiredTag : {1000u, 1001u, 1002u, 1022u}) {
+        if (mainTags.find(requiredTag) == mainTags.end()) {
+            err << "rpm: main header is missing required tag " << requiredTag << "\n";
+            return false;
+        }
+    }
+    const bool hasFileList =
+        mainTags.find(5000u) != mainTags.end() || mainTags.find(1027u) != mainTags.end() ||
+        (mainTags.find(1116u) != mainTags.end() && mainTags.find(1117u) != mainTags.end() &&
+         mainTags.find(1118u) != mainTags.end());
+    if (!hasFileList) {
+        err << "rpm: main header is missing file-list tags\n";
+        return false;
+    }
+    if (mainEnd >= data.size() || std::all_of(data.begin() + static_cast<std::ptrdiff_t>(mainEnd),
+                                              data.end(),
+                                              [](uint8_t byte) { return byte == 0; })) {
+        err << "rpm: package payload is empty\n";
         return false;
     }
     return true;

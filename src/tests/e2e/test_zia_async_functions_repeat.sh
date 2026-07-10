@@ -19,7 +19,7 @@ repo_root_arg="${2:?repo root required}"
 zia_bin="$(to_shell_path "${zia_bin_arg}")"
 repo_root_for_child="${repo_root_arg//\\//}"
 iterations="${3:-25}"
-test_file="${repo_root_for_child}/tests/zia_runtime/34_async_functions.zia"
+test_file="${repo_root_for_child}/src/tests/fixtures/zia_runtime/34_async_functions.zia"
 
 for ((i = 1; i <= iterations; ++i)); do
     output="$("${zia_bin}" "${test_file}" 2>&1)" || {

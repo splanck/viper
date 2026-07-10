@@ -6,8 +6,8 @@ set(_game3d_common_files
         examples/3d/game3d_hello.zia
         examples/3d/game3d_starter/main.zia
         examples/3d/game3d_starter/test.zia
-        tests/runtime/test_game3d_world_probe.zia
-        tests/runtime/test_game3d_docs_snippets.zia)
+        src/tests/fixtures/runtime/test_game3d_world_probe.zia
+        src/tests/fixtures/runtime/test_game3d_docs_snippets.zia)
 
 foreach (_rel IN LISTS _game3d_common_files)
     set(_path "${VIPER_SOURCE_DIR}/${_rel}")

@@ -277,6 +277,7 @@ typedef struct {
     ID3D11Buffer *vb;
     ID3D11Buffer *ib;
     uint64_t last_used_frame;
+    int8_t compact; /* R20: VB holds the packed 48-byte vertex encoding */
 } d3d11_mesh_cache_entry_t;
 
 #define D3D11_MORPH_CACHE_CAPACITY 32
@@ -357,6 +358,11 @@ typedef struct {
     ID3D11InputLayout *input_layout;
     ID3D11InputLayout *input_layout_instanced;
     ID3D11InputLayout *input_layout_skybox;
+    /* R20 compact-vertex-stream twins (48-byte packed static-cache layout).
+     * NULL when creation failed; the cache and draw paths then keep the full
+     * layout, so availability is an all-or-nothing gate. */
+    ID3D11InputLayout *input_layout_compact;
+    ID3D11InputLayout *input_layout_instanced_compact;
 
     ID3D11Buffer *cb_per_object;
     ID3D11Buffer *cb_per_scene;
@@ -1488,6 +1494,16 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
 ///     (LRU-eviction) using immutable buffers and stash for next time.
 /// Caller must NOT release the returned buffers — they're owned by
 /// either the cache or the context-level dynamic buffers.
+/// @brief True when this draw's static-cache geometry uses the compact 48-byte encoding (R20).
+/// @details Availability of both compact input layouts is the single gate consulted by
+///   the mesh cache, the stride selection, and the layout binds, so buffer contents and
+///   input-assembler layout always agree.
+static int d3d11_cmd_uses_compact_stream(const d3d11_context_t *ctx,
+                                         const vgfx3d_draw_cmd_t *cmd) {
+    return ctx && cmd && cmd->compact_vertex_stream && cmd->geometry_key &&
+           ctx->input_layout_compact && ctx->input_layout_instanced_compact;
+}
+
 static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
                                       const vgfx3d_draw_cmd_t *cmd,
                                       ID3D11Buffer **out_vb,
@@ -1533,6 +1549,7 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
     {
         d3d11_mesh_cache_entry_t *slot = NULL;
         d3d11_mesh_cache_entry_t *oldest = NULL;
+        int8_t wants_compact = d3d11_cmd_uses_compact_stream(ctx, cmd) ? 1 : 0;
         HRESULT hr;
 
         for (int32_t i = 0; i < D3D11_MESH_CACHE_CAPACITY; i++) {
@@ -1553,10 +1570,23 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
 
         if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
             slot->vertex_count != cmd->vertex_count || slot->index_count != index_count ||
-            !slot->vb || !slot->ib) {
+            slot->compact != wants_compact || !slot->vb || !slot->ib) {
             d3d11_release_mesh_cache_entry(slot);
-            hr = d3d11_create_static_buffer(
-                ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &slot->vb);
+            if (wants_compact) {
+                /* R20: encode into the packed 48-byte layout; the compact input
+                 * layouts decode it via input-assembler format conversion. */
+                size_t compact_bytes = (size_t)cmd->vertex_count * VGFX3D_COMPACT_VERTEX_STRIDE;
+                uint8_t *packed = (uint8_t *)malloc(compact_bytes);
+                if (!packed)
+                    return 0;
+                vgfx3d_encode_compact_vertices(cmd->vertices, cmd->vertex_count, packed);
+                hr = d3d11_create_static_buffer(
+                    ctx, D3D11_BIND_VERTEX_BUFFER, packed, compact_bytes, &slot->vb);
+                free(packed);
+            } else {
+                hr = d3d11_create_static_buffer(
+                    ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &slot->vb);
+            }
             if (FAILED(hr)) {
                 d3d11_log_hresult("CreateBuffer(static vertex)", hr);
                 d3d11_release_mesh_cache_entry(slot);
@@ -1573,6 +1603,7 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
             slot->revision = cmd->geometry_revision;
             slot->vertex_count = cmd->vertex_count;
             slot->index_count = index_count;
+            slot->compact = wants_compact;
         }
 
         slot->last_used_frame = ctx->frame_serial;

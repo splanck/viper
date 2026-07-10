@@ -12,6 +12,7 @@
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/LinuxRuntimeStubGen.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
+#include "tools/common/packaging/PkgHash.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/ToolchainInstallManifest.hpp"
@@ -44,7 +45,7 @@ enum class InstallPackageTarget {
     MacOSDmg,
     LinuxDeb,
     LinuxRpm,
-    AppImage,
+    LinuxBundle,
     Tarball,
     All,
     AllAvailable
@@ -60,9 +61,12 @@ struct InstallPackageArgs {
     fs::path buildDir;
     std::string buildConfig;
     fs::path outputPath;
+    fs::path artifactManifestPath;
     fs::path verifyOnlyPath;
     std::string macosPackageVersion;
+    std::string macosMinimumVersion;
     std::string macosSignIdentity;
+    std::string macosApplicationSignIdentity;
     std::string macosNotaryProfile;
     bool macosStaple{false};
     int macosNotaryTimeoutSeconds{0};
@@ -89,6 +93,10 @@ struct InstallPackageArgs {
     bool windowsShortcuts{true};
     bool allowDebugToolchain{false};
     bool noVerify{false};
+    bool requireChecksum{false};
+    bool releaseMode{false};
+    bool outputAsDirectory{false};
+    bool outputAsFile{false};
     bool skipBuild{false};
     bool verbose{false};
     bool keepStageDir{false};
@@ -109,15 +117,17 @@ void installPackageUsage() {
         << "  Package the Viper toolchain from a staged install tree.\n"
         << "\n"
         << "Options:\n"
-        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | "
-           "all | all-available | macos-dmg\n"
+        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | linux-bundle | "
+           "tarball | all | all-available | macos-dmg\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
         << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
         << "  --macos-pkg-version <v> Dotted numeric package version override\n"
+        << "  --macos-min-version <v> Minimum supported macOS version (default: arch-based)\n"
         << "  --macos-sign-identity <id> Developer ID Installer identity for macOS .pkg signing\n"
+        << "  --macos-app-sign-identity <id> Developer ID Application identity for nested code\n"
         << "  --macos-notary-profile <profile> notarytool keychain profile for macOS .pkg "
            "notarization\n"
         << "  --macos-staple       Staple the notarization ticket after successful submission\n"
@@ -148,7 +158,12 @@ void installPackageUsage() {
         << "  --skip-build          With --build-dir, run cmake --install without rebuilding "
            "first\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
-        << "  -o <path>             Output file or directory\n"
+        << "  -o <path>             Output file, or an existing directory for multiple artifacts\n"
+        << "  --output-file <path>  Explicit single-artifact output path\n"
+        << "  --output-dir <dir>    Explicit artifact output directory\n"
+        << "  --artifact-manifest <path> JSON artifact inventory output override\n"
+        << "  --release             Enforce reproducible, verified, trusted release gates\n"
+        << "  --require-checksum    Require <artifact>.sha256 with --verify-only\n"
         << "  --no-verify           Skip post-build verification\n"
         << "  --verbose, -v         Verbose output\n"
         << "  --help, -h            Show this help\n";
@@ -227,12 +242,19 @@ std::string getenvOrEmpty(const char *name) {
 
 /// @brief Return true if the args request Windows Authenticode signing.
 bool windowsSigningRequested(const InstallPackageArgs &args) {
-    return args.windowsSign || !args.windowsSignPfx.empty() || !args.windowsSignThumbprint.empty();
+    return args.windowsSign || !args.windowsSignPfx.empty() ||
+           !args.windowsSignThumbprint.empty() ||
+           !getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX").empty() ||
+           !getenvOrEmpty("VIPER_WINDOWS_SIGN_THUMBPRINT").empty();
 }
 
 /// @brief Return true if the args request macOS package signing/notarization.
 bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
-    return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() || args.macosStaple;
+    return !args.macosSignIdentity.empty() || !args.macosApplicationSignIdentity.empty() ||
+           !args.macosNotaryProfile.empty() || args.macosStaple ||
+           !getenvOrEmpty("VIPER_MACOS_SIGN_IDENTITY").empty() ||
+           !getenvOrEmpty("VIPER_MACOS_APP_SIGN_IDENTITY").empty() ||
+           !getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE").empty();
 }
 
 /// @brief Locate the repository-provided Windows signing helper script.
@@ -307,7 +329,7 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
     if (timestampUrl.empty())
         timestampUrl = "https://timestamp.digicert.com";
     try {
-        viper::pkg::validatePackageUrl(timestampUrl, "Windows timestamp URL");
+        viper::pkg::validateHttpsPackageUrl(timestampUrl, "Windows timestamp URL");
     } catch (const std::exception &ex) {
         err << "error: " << ex.what() << "\n";
         return false;
@@ -473,6 +495,21 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
                     << stapleResult.out << stapleResult.err;
                 return false;
             }
+            const RunResult stapleValidateResult =
+                run_process({"xcrun", "stapler", "validate", artifactPath.string()});
+            if (stapleValidateResult.exit_code != 0) {
+                err << "error: stapler validation failed with exit code "
+                    << stapleValidateResult.exit_code << "\n"
+                    << stapleValidateResult.out << stapleValidateResult.err;
+                return false;
+            }
+        }
+        const RunResult gatekeeperResult = run_process(
+            {"spctl", "--assess", "--type", "install", "--verbose=2", artifactPath.string()});
+        if (gatekeeperResult.exit_code != 0) {
+            err << "error: Gatekeeper assessment failed for notarized macOS package\n"
+                << gatekeeperResult.out << gatekeeperResult.err;
+            return false;
         }
     }
     return true;
@@ -541,6 +578,27 @@ bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
                 << stapleResult.out << stapleResult.err;
             return false;
         }
+        const RunResult stapleValidateResult =
+            run_process({"xcrun", "stapler", "validate", dmgPath.string()});
+        if (stapleValidateResult.exit_code != 0) {
+            err << "error: stapler validation failed for .dmg with exit code "
+                << stapleValidateResult.exit_code << "\n"
+                << stapleValidateResult.out << stapleValidateResult.err;
+            return false;
+        }
+    }
+    const RunResult gatekeeperResult = run_process({"spctl",
+                                                    "--assess",
+                                                    "--type",
+                                                    "open",
+                                                    "--context",
+                                                    "context:primary-signature",
+                                                    "--verbose=2",
+                                                    dmgPath.string()});
+    if (gatekeeperResult.exit_code != 0) {
+        err << "error: Gatekeeper assessment failed for notarized macOS .dmg\n"
+            << gatekeeperResult.out << gatekeeperResult.err;
+        return false;
     }
     return true;
 #endif
@@ -720,8 +778,8 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
         out = InstallPackageTarget::LinuxDeb;
     else if (text == "linux-rpm")
         out = InstallPackageTarget::LinuxRpm;
-    else if (text == "appimage")
-        out = InstallPackageTarget::AppImage;
+    else if (text == "linux-bundle")
+        out = InstallPackageTarget::LinuxBundle;
     else if (text == "tarball")
         out = InstallPackageTarget::Tarball;
     else if (text == "all")
@@ -771,7 +829,8 @@ bool parsePositiveIntOption(std::string_view text, int &out) {
 bool installPackageOptionRequiresValue(const std::string &arg) {
     return arg == "--target" || arg == "--arch" || arg == "--stage-dir" || arg == "--build-dir" ||
            arg == "--config" || arg == "--verify-only" || arg == "--macos-pkg-version" ||
-           arg == "--macos-sign-identity" || arg == "--macos-notary-profile" ||
+           arg == "--macos-min-version" || arg == "--macos-sign-identity" ||
+           arg == "--macos-app-sign-identity" || arg == "--macos-notary-profile" ||
            arg == "--windows-sign-pfx" || arg == "--windows-sign-thumbprint" ||
            arg == "--windows-timestamp-url" || arg == "--windows-signtool" ||
            arg == "--windows-install-scope" || arg == "--windows-install-dir" ||
@@ -779,7 +838,8 @@ bool installPackageOptionRequiresValue(const std::string &arg) {
            arg == "--macos-notary-timeout" || arg == "--license" || arg == "--maintainer" ||
            arg == "--maintainer-email" || arg == "--homepage" || arg == "--macos-dmg-background" ||
            arg == "--macos-dmg-icon" || arg == "--macos-pkg-license" ||
-           arg == "--macos-pkg-background" || arg == "--linux-sign-key" || arg == "-o";
+           arg == "--macos-pkg-background" || arg == "--linux-sign-key" || arg == "--output-file" ||
+           arg == "--output-dir" || arg == "--artifact-manifest" || arg == "-o";
 }
 
 /// @brief Parse the `viper install-package` command line into @p args.
@@ -813,7 +873,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             std::cerr << "error: " << arg << " requires a value\n";
             return false;
         } else if (arg == "--target" && i + 1 < expandedArgs.size()) {
-            if (!parseTarget(expandedArgs[++i], args.target)) {
+            const std::string targetName = expandedArgs[++i];
+            if (!parseTarget(targetName, args.target)) {
                 std::cerr << "error: unknown install-package target '" << expandedArgs[i] << "'\n";
                 return false;
             }
@@ -841,8 +902,19 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                 std::cerr << "error: " << ex.what() << "\n";
                 return false;
             }
+        } else if (arg == "--macos-min-version" && i + 1 < expandedArgs.size()) {
+            args.macosMinimumVersion = expandedArgs[++i];
+            try {
+                viper::pkg::validateDottedNumericVersion(args.macosMinimumVersion,
+                                                         "minimum macOS version");
+            } catch (const std::exception &ex) {
+                std::cerr << "error: " << ex.what() << "\n";
+                return false;
+            }
         } else if (arg == "--macos-sign-identity" && i + 1 < expandedArgs.size()) {
             args.macosSignIdentity = expandedArgs[++i];
+        } else if (arg == "--macos-app-sign-identity" && i + 1 < expandedArgs.size()) {
+            args.macosApplicationSignIdentity = expandedArgs[++i];
         } else if (arg == "--macos-notary-profile" && i + 1 < expandedArgs.size()) {
             args.macosNotaryProfile = expandedArgs[++i];
         } else if (arg == "--macos-staple") {
@@ -928,6 +1000,18 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.allowDebugToolchain = true;
         } else if (arg == "-o" && i + 1 < expandedArgs.size()) {
             args.outputPath = expandedArgs[++i];
+        } else if (arg == "--output-file" && i + 1 < expandedArgs.size()) {
+            args.outputPath = expandedArgs[++i];
+            args.outputAsFile = true;
+        } else if (arg == "--output-dir" && i + 1 < expandedArgs.size()) {
+            args.outputPath = expandedArgs[++i];
+            args.outputAsDirectory = true;
+        } else if (arg == "--artifact-manifest" && i + 1 < expandedArgs.size()) {
+            args.artifactManifestPath = expandedArgs[++i];
+        } else if (arg == "--release") {
+            args.releaseMode = true;
+        } else if (arg == "--require-checksum") {
+            args.requireChecksum = true;
         } else if (arg == "--no-verify") {
             args.noVerify = true;
         } else if (arg == "--skip-build") {
@@ -955,18 +1039,48 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         std::cerr << "error: require exactly one of --stage-dir, --build-dir, or --verify-only\n";
         return false;
     }
+    if (args.outputAsFile && args.outputAsDirectory) {
+        std::cerr << "error: --output-file and --output-dir are mutually exclusive\n";
+        return false;
+    }
+    if (!args.verifyOnlyPath.empty() && args.releaseMode) {
+        std::cerr << "error: --release is a generation mode and cannot be combined with "
+                     "--verify-only; use --require-checksum plus the platform trust verifier\n";
+        return false;
+    }
+    if (args.verifyOnlyPath.empty() && args.requireChecksum) {
+        std::cerr << "error: --require-checksum requires --verify-only\n";
+        return false;
+    }
+    if (args.releaseMode &&
+        (args.noVerify || args.windowsSignNoVerify || args.allowDebugToolchain)) {
+        std::cerr << "error: --release forbids --no-verify, --windows-sign-no-verify, and "
+                     "--allow-debug-toolchain\n";
+        return false;
+    }
+    if (args.releaseMode) {
+        const std::string epoch = getenvOrEmpty("SOURCE_DATE_EPOCH");
+        if (epoch.empty() ||
+            !std::all_of(epoch.begin(), epoch.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+            std::cerr << "error: --release requires numeric SOURCE_DATE_EPOCH for reproducible "
+                         "metadata\n";
+            return false;
+        }
+    }
 #if VIPER_HOST_WINDOWS
     if (!args.buildDir.empty() && args.buildConfig.empty())
         args.buildConfig = "Release";
 #endif
     try {
-        viper::pkg::validatePackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
+        viper::pkg::validateHttpsPackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
         viper::pkg::validateSingleLineField(args.windowsSigntoolPath, "Windows signtool path");
         viper::pkg::validateWindowsFileName(args.windowsInstallDir, "Windows install directory");
         viper::pkg::validateWindowsCertificateThumbprint(args.windowsSignThumbprint,
                                                          "Windows signing thumbprint");
         viper::pkg::validateSingleLineField(args.macosSignIdentity,
                                             "macOS package signing identity");
+        viper::pkg::validateSingleLineField(args.macosApplicationSignIdentity,
+                                            "macOS application signing identity");
         viper::pkg::validateSingleLineField(args.macosNotaryProfile, "macOS notary profile");
     } catch (const std::exception &ex) {
         std::cerr << "error: " << ex.what() << "\n";
@@ -994,8 +1108,8 @@ std::string targetFileName(InstallPackageTarget target,
             return "viper_" + version + "_" + debArchFor(arch) + ".deb";
         case InstallPackageTarget::LinuxRpm:
             return "viper-" + version + "-1." + rpmArchFor(arch) + ".rpm";
-        case InstallPackageTarget::AppImage:
-            return "Viper-" + version + "-" + arch + ".AppImage";
+        case InstallPackageTarget::LinuxBundle:
+            return "viper-" + version + "-linux-" + arch + ".run";
         case InstallPackageTarget::Tarball:
             return "viper-" + version + "-" + platform + "-" + arch + ".tar.gz";
         case InstallPackageTarget::All:
@@ -1003,6 +1117,206 @@ std::string targetFileName(InstallPackageTarget target,
         default:
             return {};
     }
+}
+
+/// @brief Stable machine-readable format name for an installer artifact target.
+std::string artifactFormatName(InstallPackageTarget target) {
+    switch (target) {
+        case InstallPackageTarget::Windows:
+            return "windows-exe";
+        case InstallPackageTarget::MacOS:
+            return "macos-pkg";
+        case InstallPackageTarget::MacOSDmg:
+            return "macos-dmg";
+        case InstallPackageTarget::LinuxDeb:
+            return "debian";
+        case InstallPackageTarget::LinuxRpm:
+            return "rpm";
+        case InstallPackageTarget::LinuxBundle:
+            return "linux-bundle";
+        case InstallPackageTarget::Tarball:
+            return "tar-gzip";
+        default:
+            return "unknown";
+    }
+}
+
+/// @brief One verified release artifact and its immutable inventory metadata.
+struct ArtifactRecord {
+    fs::path path;
+    std::string format;
+    std::string platform;
+    std::string arch;
+    std::string version;
+    std::string sha256;
+    uint64_t sizeBytes{0};
+    bool verified{false};
+    std::string trust;
+};
+
+/// @brief Escape UTF-8 bytes for JSON strings without adding a dependency.
+std::string artifactJsonEscape(std::string_view text) {
+    std::ostringstream out;
+    static constexpr char hex[] = "0123456789abcdef";
+    for (const unsigned char c : text) {
+        switch (c) {
+            case '"':
+                out << "\\\"";
+                break;
+            case '\\':
+                out << "\\\\";
+                break;
+            case '\b':
+                out << "\\b";
+                break;
+            case '\f':
+                out << "\\f";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                if (c < 0x20u) {
+                    out << "\\u00" << hex[(c >> 4u) & 0x0Fu] << hex[c & 0x0Fu];
+                } else {
+                    out << static_cast<char>(c);
+                }
+                break;
+        }
+    }
+    return out.str();
+}
+
+/// @brief Hash an artifact and return its immutable inventory record.
+ArtifactRecord inventoryArtifact(const fs::path &path,
+                                 InstallPackageTarget target,
+                                 const viper::pkg::ToolchainInstallManifest &manifest,
+                                 bool verified,
+                                 std::string trust) {
+    const std::vector<uint8_t> bytes = viper::pkg::readFile(path.string());
+    ArtifactRecord record;
+    record.path = path;
+    record.format = artifactFormatName(target);
+    record.platform = manifest.platform;
+    record.arch = manifest.arch;
+    record.version = manifest.version;
+    record.sha256 = viper::pkg::sha256Hex(bytes.data(), bytes.size());
+    record.sizeBytes = bytes.size();
+    record.verified = verified;
+    record.trust = std::move(trust);
+    return record;
+}
+
+/// @brief Validate an adjacent SHA-256 sidecar when present or required.
+bool verifyArtifactChecksum(const fs::path &artifact, bool required, std::ostream &err) {
+    const fs::path sidecar(artifact.string() + ".sha256");
+    std::error_code ec;
+    if (!fs::is_regular_file(sidecar, ec)) {
+        if (required)
+            err << "checksum: required sidecar is missing: " << sidecar.string() << "\n";
+        return !required;
+    }
+    const std::vector<uint8_t> sidecarBytes = viper::pkg::readFile(sidecar.string());
+    const std::string text(sidecarBytes.begin(), sidecarBytes.end());
+    if (text.size() < 66u || text[64] != ' ' || text[65] != ' ' ||
+        !std::all_of(text.begin(), text.begin() + 64, [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        })) {
+        err << "checksum: invalid SHA-256 sidecar: " << sidecar.string() << "\n";
+        return false;
+    }
+    if (text.size() > 66u) {
+        const size_t newline = text.find_first_of("\r\n", 66u);
+        const std::string listedName = text.substr(66u, newline - 66u);
+        if (!listedName.empty() && listedName != artifact.filename().string()) {
+            err << "checksum: sidecar names '" << listedName << "' instead of '"
+                << artifact.filename().string() << "'\n";
+            return false;
+        }
+    }
+    const std::vector<uint8_t> artifactBytes = viper::pkg::readFile(artifact.string());
+    const std::string actual = viper::pkg::sha256Hex(artifactBytes.data(), artifactBytes.size());
+    if (actual != text.substr(0, 64u)) {
+        err << "checksum: SHA-256 mismatch for " << artifact.string() << "\n";
+        return false;
+    }
+    return true;
+}
+
+/// @brief Write consolidated checksums and the release artifact JSON inventory.
+fs::path writeArtifactInventory(std::vector<ArtifactRecord> records,
+                                bool directoryOutput,
+                                const fs::path &outputBase,
+                                const fs::path &manifestOverride) {
+    std::sort(records.begin(), records.end(), [](const auto &lhs, const auto &rhs) {
+        return lhs.path.filename().string() < rhs.path.filename().string();
+    });
+    const fs::path outputDirectory = directoryOutput ? outputBase
+                                                     : (records.front().path.parent_path().empty()
+                                                            ? fs::current_path()
+                                                            : records.front().path.parent_path());
+    const fs::path manifestPath =
+        !manifestOverride.empty()
+            ? manifestOverride
+            : (directoryOutput || records.size() > 1u
+                   ? outputDirectory / "viper-artifacts.json"
+                   : fs::path(records.front().path.string() + ".manifest.json"));
+    const fs::path normalizedManifest = fs::absolute(manifestPath).lexically_normal();
+    const fs::path checksumPath = outputDirectory / "SHA256SUMS";
+    if ((directoryOutput || records.size() > 1u) &&
+        normalizedManifest == fs::absolute(checksumPath).lexically_normal()) {
+        throw std::runtime_error("artifact manifest path collides with SHA256SUMS: " +
+                                 manifestPath.string());
+    }
+    for (const auto &record : records) {
+        const fs::path normalizedArtifact = fs::absolute(record.path).lexically_normal();
+        const fs::path normalizedSidecar =
+            fs::absolute(record.path.string() + ".sha256").lexically_normal();
+        if (normalizedManifest == normalizedArtifact || normalizedManifest == normalizedSidecar) {
+            throw std::runtime_error("artifact manifest path collides with artifact output: " +
+                                     manifestPath.string());
+        }
+        viper::pkg::writeTextFileAtomic(record.path.string() + ".sha256",
+                                        record.sha256 + "  " + record.path.filename().string() +
+                                            "\n");
+    }
+    if (directoryOutput || records.size() > 1u) {
+        std::ostringstream checksums;
+        for (const auto &record : records)
+            checksums << record.sha256 << "  " << record.path.filename().string() << "\n";
+        viper::pkg::writeTextFileAtomic(checksumPath, checksums.str());
+    }
+    std::ostringstream json;
+    json << "{\n  \"schema_version\": 1,\n  \"source_date_epoch\": ";
+    const std::string epoch = getenvOrEmpty("SOURCE_DATE_EPOCH");
+    if (epoch.empty())
+        json << "null";
+    else
+        json << "\"" << artifactJsonEscape(epoch) << "\"";
+    json << ",\n  \"artifacts\": [\n";
+    for (size_t index = 0; index < records.size(); ++index) {
+        const ArtifactRecord &record = records[index];
+        json << "    {\"file\": \"" << artifactJsonEscape(record.path.filename().string())
+             << "\", \"format\": \"" << artifactJsonEscape(record.format) << "\", \"platform\": \""
+             << artifactJsonEscape(record.platform) << "\", \"arch\": \""
+             << artifactJsonEscape(record.arch) << "\", \"version\": \""
+             << artifactJsonEscape(record.version) << "\", \"size\": " << record.sizeBytes
+             << ", \"sha256\": \"" << record.sha256
+             << "\", \"verified\": " << (record.verified ? "true" : "false") << ", \"trust\": \""
+             << artifactJsonEscape(record.trust) << "\"}";
+        if (index + 1u != records.size())
+            json << ',';
+        json << '\n';
+    }
+    json << "  ]\n}\n";
+    viper::pkg::writeTextFileAtomic(manifestPath, json.str());
+    return manifestPath;
 }
 
 /// @brief Compute the payload paths a built package of @p target must contain.
@@ -1062,7 +1376,7 @@ std::vector<std::string> requiredPayloadPaths(
             paths.push_back("usr/share/icons/hicolor/256x256/apps/viper.png");
             appendLinuxAssociationMetadata("", false);
             break;
-        case InstallPackageTarget::AppImage:
+        case InstallPackageTarget::LinuxBundle:
             for (const auto &file : manifest.files) {
                 paths.push_back(viper::pkg::mapInstallPath(
                     file, viper::pkg::InstallPathPolicy::PortableArchive));
@@ -1157,10 +1471,10 @@ bool requireListedPayloadPaths(const std::set<std::string> &actual,
     return true;
 }
 
-/// @brief Return the gzip tar payload appended to a Viper AppImage.
-/// @details Generated AppImages are shell stubs followed by
+/// @brief Return the gzip tar payload appended to a Viper Linux bundle.
+/// @details Generated bundles are shell stubs followed by
 ///          kLinuxRuntimePayloadMarker and a gzip-compressed tar tree.
-std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &data, std::ostream &err) {
+std::vector<uint8_t> linuxBundlePayloadBytes(const std::vector<uint8_t> &data, std::ostream &err) {
     const std::string marker = std::string(viper::pkg::kLinuxRuntimePayloadMarker) + "\n";
     const auto markerIt =
         std::search(data.begin(),
@@ -1168,12 +1482,12 @@ std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &data, std:
                     reinterpret_cast<const uint8_t *>(marker.data()),
                     reinterpret_cast<const uint8_t *>(marker.data()) + marker.size());
     if (markerIt == data.end()) {
-        err << "AppImage: missing payload marker\n";
+        err << "Linux bundle: missing payload marker\n";
         return {};
     }
     const auto payloadIt = markerIt + static_cast<std::ptrdiff_t>(marker.size());
     if (payloadIt == data.end()) {
-        err << "AppImage: missing appended payload\n";
+        err << "Linux bundle: missing appended payload\n";
         return {};
     }
     return std::vector<uint8_t>(payloadIt, data.end());
@@ -1472,13 +1786,36 @@ bool verifyArtifact(const fs::path &artifact,
                     data, requiredPayloadPaths(target, *manifest), err);
             }
             return viper::pkg::verifyTarGz(data, err);
-        case InstallPackageTarget::MacOS:
-            if (manifest)
-                return viper::pkg::verifyMacOSPkgPayload(
-                    data, requiredPayloadPaths(target, *manifest), err);
-            return viper::pkg::verifyMacOSPkg(data, err);
-        case InstallPackageTarget::MacOSDmg:
-            return viper::pkg::verifyMacOSDmg(data, err);
+        case InstallPackageTarget::MacOS: {
+            const bool structurallyValid =
+                manifest ? viper::pkg::verifyMacOSPkgPayload(
+                               data, requiredPayloadPaths(target, *manifest), err)
+                         : viper::pkg::verifyMacOSPkg(data, err);
+            if (!structurallyValid)
+                return false;
+#if VIPER_HOST_MACOS
+            const RunResult nativeResult =
+                run_process({"/usr/sbin/installer", "-pkginfo", "-pkg", artifact.string()});
+            if (nativeResult.exit_code != 0) {
+                err << "macOS pkg: Installer.app rejected package metadata\n"
+                    << nativeResult.out << nativeResult.err;
+                return false;
+            }
+#endif
+            return true;
+        }
+        case InstallPackageTarget::MacOSDmg: {
+            if (!viper::pkg::verifyMacOSDmg(data, err))
+                return false;
+#if VIPER_HOST_MACOS
+            const RunResult nativeResult = run_process({"hdiutil", "verify", artifact.string()});
+            if (nativeResult.exit_code != 0) {
+                err << "dmg: hdiutil verification failed\n" << nativeResult.out << nativeResult.err;
+                return false;
+            }
+#endif
+            return true;
+        }
         case InstallPackageTarget::LinuxRpm: {
             if (manifest) {
                 std::set<std::string> payloadPaths;
@@ -1487,17 +1824,17 @@ bool verifyArtifact(const fs::path &artifact,
                 return requireListedPayloadPaths(
                     payloadPaths, requiredPayloadPaths(target, *manifest), "rpm", err);
             }
-            return readRpmPayloadPaths(data, nullptr, err);
+            return viper::pkg::verifyRpm(data, err);
         }
-        case InstallPackageTarget::AppImage: {
-            std::string appImageErr;
-            if (!viper::pkg::verifyLinuxAppImage(data, &appImageErr)) {
-                err << appImageErr;
+        case InstallPackageTarget::LinuxBundle: {
+            std::string bundleErr;
+            if (!viper::pkg::verifyLinuxAppImage(data, &bundleErr)) {
+                err << bundleErr;
                 return false;
             }
             if (manifest) {
                 std::ostringstream payloadErr;
-                const auto payload = appImagePayloadBytes(data, payloadErr);
+                const auto payload = linuxBundlePayloadBytes(data, payloadErr);
                 if (payload.empty()) {
                     err << payloadErr.str();
                     return false;
@@ -1518,7 +1855,7 @@ bool verifyArtifact(const fs::path &artifact,
 }
 
 /// @brief Infer the package target from an artifact's filename extension.
-/// @details Maps .exe/.pkg/.dmg/.deb/.rpm/.AppImage/.tar.gz/.tgz to their targets for
+/// @details Maps .exe/.pkg/.dmg/.deb/.rpm/.run/.tar.gz/.tgz to their targets for
 ///          `--verify-only`. @return true on a recognized extension.
 bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
     const std::string name = lowerAscii(path.filename().string());
@@ -1532,8 +1869,8 @@ bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &targe
         target = InstallPackageTarget::LinuxDeb;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".rpm")
         target = InstallPackageTarget::LinuxRpm;
-    else if (name.size() >= 9 && name.substr(name.size() - 9) == ".appimage")
-        target = InstallPackageTarget::AppImage;
+    else if (name.size() >= 4 && name.substr(name.size() - 4) == ".run")
+        target = InstallPackageTarget::LinuxBundle;
     else if ((name.size() >= 7 && name.substr(name.size() - 7) == ".tar.gz") ||
              (name.size() >= 4 && name.substr(name.size() - 4) == ".tgz"))
         target = InstallPackageTarget::Tarball;
@@ -1566,6 +1903,78 @@ class AutoStageCleanup {
   private:
     fs::path path_;       ///< Staging directory to remove.
     bool enabled_{false}; ///< Whether the destructor should delete @c path_.
+};
+
+/// @brief Remove a partially generated release artifact set unless explicitly committed.
+class ReleaseArtifactCleanup {
+  public:
+    explicit ReleaseArtifactCleanup(bool enabled) : enabled_(enabled) {}
+
+    ~ReleaseArtifactCleanup() {
+        if (!enabled_)
+            return;
+        std::error_code ec;
+        for (const fs::path &path : paths_) {
+            fs::remove(path, ec);
+            ec.clear();
+            fs::remove(path.string() + ".sha256", ec);
+            ec.clear();
+            fs::remove(path.string() + ".sha256.txt", ec);
+            ec.clear();
+            fs::remove(path.string() + ".manifest.json", ec);
+            ec.clear();
+        }
+        for (const fs::path &path : auxiliaryPaths_) {
+            fs::remove(path, ec);
+            ec.clear();
+        }
+    }
+
+    void trackArtifact(const fs::path &path) {
+        if (enabled_)
+            paths_.push_back(path);
+    }
+
+    void trackAuxiliary(const fs::path &path) {
+        if (enabled_)
+            auxiliaryPaths_.push_back(path);
+    }
+
+    void dismiss() {
+        enabled_ = false;
+    }
+
+  private:
+    bool enabled_{false};
+    std::vector<fs::path> paths_;
+    std::vector<fs::path> auxiliaryPaths_;
+};
+
+/// @brief Serialize release writers targeting the same output directory.
+class ReleaseOutputLock {
+  public:
+    ReleaseOutputLock(const fs::path &directory, bool enabled) {
+        if (!enabled)
+            return;
+        path_ = directory / ".viper-release.lock";
+        std::error_code ec;
+        if (!fs::create_directory(path_, ec)) {
+            throw std::runtime_error("cannot acquire release output lock '" + path_.string() +
+                                     "' (another release may be running; remove a stale lock only "
+                                     "after confirming no writer is active)" +
+                                     (ec ? ": " + ec.message() : std::string{}));
+        }
+    }
+
+    ~ReleaseOutputLock() {
+        if (!path_.empty()) {
+            std::error_code ec;
+            fs::remove(path_, ec);
+        }
+    }
+
+  private:
+    fs::path path_;
 };
 
 /// @brief Return an existing staged install tree, or build/stage one on demand.
@@ -1630,7 +2039,7 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
             return platform == "macos";
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:
-        case InstallPackageTarget::AppImage:
+        case InstallPackageTarget::LinuxBundle:
             return platform == "linux";
         case InstallPackageTarget::Tarball:
             return true;
@@ -1658,7 +2067,7 @@ std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
         result.push_back(InstallPackageTarget::LinuxDeb);
         if (target == InstallPackageTarget::All || rpmbuildAvailable())
             result.push_back(InstallPackageTarget::LinuxRpm);
-        result.push_back(InstallPackageTarget::AppImage);
+        result.push_back(InstallPackageTarget::LinuxBundle);
     }
     result.push_back(InstallPackageTarget::Tarball);
     return result;
@@ -1678,6 +2087,8 @@ int cmdInstallPackage(int argc, char **argv) {
     InstallPackageArgs args;
     if (!parseInstallPackageArgs(argc, argv, args))
         return 1;
+    if (args.linuxSignKey.empty())
+        args.linuxSignKey = getenvOrEmpty("VIPER_LINUX_SIGN_KEY");
     if (args.target == InstallPackageTarget::MacOSDmg && args.verifyOnlyPath.empty()) {
         args.target = InstallPackageTarget::MacOS;
         args.macosDmg = true;
@@ -1696,6 +2107,11 @@ int cmdInstallPackage(int argc, char **argv) {
                 return 1;
             }
             if (!verifyArtifact(args.verifyOnlyPath, target, err)) {
+                std::cerr << err.str();
+                return 1;
+            }
+            if (!verifyArtifactChecksum(
+                    args.verifyOnlyPath, args.requireChecksum || args.releaseMode, err)) {
                 std::cerr << err.str();
                 return 1;
             }
@@ -1756,10 +2172,72 @@ int cmdInstallPackage(int argc, char **argv) {
         const auto targets = selectedTargets(args.target, manifest.platform);
         std::error_code outEc;
         const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
-        const bool outIsDirectoryLike = args.outputPath.empty() || outPathExistsAsDirectory ||
-                                        targets.size() > 1 || !outBase.has_extension();
+        if (args.outputAsFile && (targets.size() > 1u || args.macosDmg)) {
+            std::cerr << "error: --output-file cannot be used when the selected target emits "
+                         "multiple artifacts\n";
+            return 1;
+        }
+        if (args.outputAsFile && outPathExistsAsDirectory) {
+            std::cerr << "error: --output-file names an existing directory: " << outBase.string()
+                      << "\n";
+            return 1;
+        }
+        if (args.outputAsDirectory && fs::exists(outBase, outEc) && !outPathExistsAsDirectory) {
+            std::cerr << "error: --output-dir names an existing non-directory: " << outBase.string()
+                      << "\n";
+            return 1;
+        }
+        const bool outIsDirectoryLike = args.outputAsDirectory || args.outputPath.empty() ||
+                                        outPathExistsAsDirectory || targets.size() > 1u;
         if (outIsDirectoryLike)
             fs::create_directories(outBase);
+        const fs::path releaseOutputDirectory =
+            outIsDirectoryLike
+                ? outBase
+                : (outBase.parent_path().empty() ? fs::current_path() : outBase.parent_path());
+        if (args.releaseMode)
+            fs::create_directories(releaseOutputDirectory);
+        ReleaseOutputLock releaseOutputLock(releaseOutputDirectory, args.releaseMode);
+
+        if (args.releaseMode) {
+            const bool buildsWindows =
+                std::find(targets.begin(), targets.end(), InstallPackageTarget::Windows) !=
+                targets.end();
+            const bool buildsMacOS =
+                std::find(targets.begin(), targets.end(), InstallPackageTarget::MacOS) !=
+                targets.end();
+            const bool buildsSignedLinux =
+                std::find(targets.begin(), targets.end(), InstallPackageTarget::LinuxDeb) !=
+                    targets.end() ||
+                std::find(targets.begin(), targets.end(), InstallPackageTarget::LinuxRpm) !=
+                    targets.end();
+            if (buildsWindows && !windowsSigningRequested(args)) {
+                std::cerr << "error: --release requires Windows Authenticode signing\n";
+                return 1;
+            }
+            if (buildsSignedLinux && args.linuxSignKey.empty()) {
+                std::cerr << "error: --release requires --linux-sign-key or "
+                             "VIPER_LINUX_SIGN_KEY for Debian/RPM artifacts\n";
+                return 1;
+            }
+            if (buildsMacOS) {
+                const std::string installerIdentity =
+                    args.macosSignIdentity.empty() ? getenvOrEmpty("VIPER_MACOS_SIGN_IDENTITY")
+                                                   : args.macosSignIdentity;
+                const std::string appIdentity = args.macosApplicationSignIdentity.empty()
+                                                    ? getenvOrEmpty("VIPER_MACOS_APP_SIGN_IDENTITY")
+                                                    : args.macosApplicationSignIdentity;
+                const std::string notaryProfile = args.macosNotaryProfile.empty()
+                                                      ? getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE")
+                                                      : args.macosNotaryProfile;
+                if (installerIdentity.empty() || appIdentity.empty() || notaryProfile.empty() ||
+                    !args.macosStaple) {
+                    std::cerr << "error: --release macOS packages require Installer and "
+                                 "Application identities, a notary profile, and --macos-staple\n";
+                    return 1;
+                }
+            }
+        }
 
         const bool buildsWindows =
             std::find(targets.begin(), targets.end(), InstallPackageTarget::Windows) !=
@@ -1775,6 +2253,8 @@ int cmdInstallPackage(int argc, char **argv) {
             }
         }
 
+        std::vector<ArtifactRecord> artifactRecords;
+        ReleaseArtifactCleanup releaseCleanup(args.releaseMode);
         for (InstallPackageTarget target : targets) {
             if (!targetMatchesStagedPlatform(target, manifest.platform)) {
                 std::cerr << "error: target does not match staged viper binary platform "
@@ -1794,8 +2274,23 @@ int cmdInstallPackage(int argc, char **argv) {
             }
             fs::path artifactPath =
                 outIsDirectoryLike ? (outBase / targetFileName(target, manifest)) : outBase;
+            fs::path explicitMacOSDmgPath;
+            if (target == InstallPackageTarget::MacOS && args.macosDmg && !outIsDirectoryLike &&
+                lowerAscii(artifactPath.extension().string()) == ".dmg") {
+                explicitMacOSDmgPath = artifactPath;
+                artifactPath.replace_extension(".pkg");
+            }
             if (!outIsDirectoryLike && !artifactPath.parent_path().empty())
                 fs::create_directories(artifactPath.parent_path());
+            if (args.releaseMode &&
+                (fs::exists(artifactPath) || fs::exists(artifactPath.string() + ".sha256") ||
+                 fs::exists(artifactPath.string() + ".sha256.txt") ||
+                 fs::exists(artifactPath.string() + ".manifest.json"))) {
+                std::cerr << "error: --release refuses to overwrite an existing artifact set: "
+                          << artifactPath.string() << "\n";
+                return 1;
+            }
+            releaseCleanup.trackArtifact(artifactPath);
 
             switch (target) {
                 case InstallPackageTarget::Windows: {
@@ -1819,8 +2314,22 @@ int cmdInstallPackage(int argc, char **argv) {
                     params.manifest = manifest;
                     params.outputPath = artifactPath.string();
                     params.packageVersion = args.macosPackageVersion;
+                    params.minimumMacOSVersion = args.macosMinimumVersion.empty()
+                                                     ? getenvOrEmpty("VIPER_MACOS_MIN_VERSION")
+                                                     : args.macosMinimumVersion;
                     params.licenseFilePath = args.macosPkgLicense;
                     params.backgroundImagePath = args.macosPkgBackground;
+                    params.applicationSignIdentity =
+                        args.macosApplicationSignIdentity.empty()
+                            ? getenvOrEmpty("VIPER_MACOS_APP_SIGN_IDENTITY")
+                            : args.macosApplicationSignIdentity;
+                    if (macOSPackageSigningRequested(args) &&
+                        params.applicationSignIdentity.empty()) {
+                        throw std::runtime_error(
+                            "macOS package signing/notarization requires "
+                            "--macos-app-sign-identity or VIPER_MACOS_APP_SIGN_IDENTITY so nested "
+                            "executables can be hardened-signed");
+                    }
                     viper::pkg::buildMacOSToolchainPackage(params);
                     break;
                 }
@@ -1838,11 +2347,11 @@ int cmdInstallPackage(int argc, char **argv) {
                     viper::pkg::buildToolchainRpmPackage(params);
                     break;
                 }
-                case InstallPackageTarget::AppImage: {
+                case InstallPackageTarget::LinuxBundle: {
                     viper::pkg::LinuxToolchainBuildParams params;
                     params.manifest = manifest;
                     params.outputPath = artifactPath.string();
-                    viper::pkg::buildToolchainAppImage(params);
+                    viper::pkg::buildToolchainBundle(params);
                     break;
                 }
                 case InstallPackageTarget::Tarball: {
@@ -1899,14 +2408,44 @@ int cmdInstallPackage(int argc, char **argv) {
                 }
             }
 
+            std::string artifactTrust = "checksum-only";
+            if (target == InstallPackageTarget::Windows)
+                artifactTrust = windowsSigningRequested(args) ? "authenticode" : "unsigned";
+            else if (target == InstallPackageTarget::MacOS) {
+                const std::string notaryProfile = args.macosNotaryProfile.empty()
+                                                      ? getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE")
+                                                      : args.macosNotaryProfile;
+                artifactTrust =
+                    !notaryProfile.empty()
+                        ? "developer-id+notarized"
+                        : (macOSPackageSigningRequested(args) ? "developer-id" : "unsigned");
+            } else if (target == InstallPackageTarget::LinuxDeb ||
+                       target == InstallPackageTarget::LinuxRpm) {
+                artifactTrust = args.linuxSignKey.empty() ? "unsigned" : "openpgp";
+            }
+            artifactRecords.push_back(inventoryArtifact(
+                artifactPath, target, manifest, !args.noVerify, std::move(artifactTrust)));
+
             std::cout << artifactPath.string() << "\n";
 
             if (target == InstallPackageTarget::MacOS && args.macosDmg) {
                 viper::pkg::MacOSToolchainDmgParams dmgParams;
                 dmgParams.pkgPath = artifactPath.string();
-                dmgParams.outputPath = fs::path(artifactPath).replace_extension(".dmg").string();
+                dmgParams.outputPath =
+                    explicitMacOSDmgPath.empty()
+                        ? fs::path(artifactPath).replace_extension(".dmg").string()
+                        : explicitMacOSDmgPath.string();
                 dmgParams.backgroundPng = args.macosDmgBackground;
                 dmgParams.volumeIcns = args.macosDmgIcon;
+                if (args.releaseMode && (fs::exists(dmgParams.outputPath) ||
+                                         fs::exists(dmgParams.outputPath + ".sha256") ||
+                                         fs::exists(dmgParams.outputPath + ".sha256.txt") ||
+                                         fs::exists(dmgParams.outputPath + ".manifest.json"))) {
+                    std::cerr << "error: --release refuses to overwrite an existing artifact set: "
+                              << dmgParams.outputPath << "\n";
+                    return 1;
+                }
+                releaseCleanup.trackArtifact(dmgParams.outputPath);
                 viper::pkg::buildMacOSToolchainDmg(dmgParams);
                 std::error_code dmgEc;
                 if (!fs::exists(dmgParams.outputPath, dmgEc)) {
@@ -1923,6 +2462,11 @@ int cmdInstallPackage(int argc, char **argv) {
                     std::cerr << "\n";
                     return 1;
                 }
+                if (!notarizeMacOSDmgArtifact(args, dmgParams.outputPath, std::cerr)) {
+                    std::error_code removeEc;
+                    fs::remove(dmgParams.outputPath, removeEc);
+                    return 1;
+                }
                 if (!args.noVerify) {
                     std::ostringstream dmgErr;
                     if (!verifyArtifact(dmgParams.outputPath,
@@ -1937,18 +2481,54 @@ int cmdInstallPackage(int argc, char **argv) {
                         return 1;
                     }
                 }
-                if (!notarizeMacOSDmgArtifact(args, dmgParams.outputPath, std::cerr)) {
-                    std::error_code removeEc;
-                    fs::remove(dmgParams.outputPath, removeEc);
-                    return 1;
-                }
+                const std::string notaryProfile = args.macosNotaryProfile.empty()
+                                                      ? getenvOrEmpty("VIPER_MACOS_NOTARY_PROFILE")
+                                                      : args.macosNotaryProfile;
+                artifactRecords.push_back(
+                    inventoryArtifact(dmgParams.outputPath,
+                                      InstallPackageTarget::MacOSDmg,
+                                      manifest,
+                                      !args.noVerify,
+                                      notaryProfile.empty() ? "checksum-only" : "notarized"));
                 std::cout << dmgParams.outputPath << "\n";
             }
+        }
+
+        if (!artifactRecords.empty()) {
+            const fs::path inventoryDirectory =
+                outIsDirectoryLike ? outBase
+                                   : (artifactRecords.front().path.parent_path().empty()
+                                          ? fs::current_path()
+                                          : artifactRecords.front().path.parent_path());
+            const fs::path expectedInventory =
+                !args.artifactManifestPath.empty()
+                    ? args.artifactManifestPath
+                    : (outIsDirectoryLike || artifactRecords.size() > 1u
+                           ? inventoryDirectory / "viper-artifacts.json"
+                           : fs::path(artifactRecords.front().path.string() + ".manifest.json"));
+            if (args.releaseMode && fs::exists(expectedInventory)) {
+                std::cerr << "error: --release refuses to overwrite artifact manifest: "
+                          << expectedInventory.string() << "\n";
+                return 1;
+            }
+            if (args.releaseMode && (outIsDirectoryLike || artifactRecords.size() > 1u) &&
+                fs::exists(inventoryDirectory / "SHA256SUMS")) {
+                std::cerr << "error: --release refuses to overwrite existing SHA256SUMS in "
+                          << inventoryDirectory.string() << "\n";
+                return 1;
+            }
+            releaseCleanup.trackAuxiliary(expectedInventory);
+            if (outIsDirectoryLike || artifactRecords.size() > 1u)
+                releaseCleanup.trackAuxiliary(inventoryDirectory / "SHA256SUMS");
+            const fs::path inventoryPath = writeArtifactInventory(
+                artifactRecords, outIsDirectoryLike, outBase, args.artifactManifestPath);
+            std::cerr << "Artifact manifest: " << inventoryPath.string() << "\n";
         }
 
         if (!args.keepStageDir && args.stageDir.empty())
             fs::remove_all(stageDir);
         stageCleanup.dismiss();
+        releaseCleanup.dismiss();
 
         return 0;
     } catch (const std::exception &ex) {

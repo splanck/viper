@@ -67,8 +67,8 @@ struct ToolchainInstallManifest {
     std::string platform;                    ///< Target platform ("windows"/"macos"/"linux").
     std::string license{"GPL-3.0-only"};     ///< SPDX license id for package metadata.
     std::string maintainer{"Viper Project"}; ///< Maintainer/packager display name.
-    std::string maintainerEmail;             ///< Maintainer email (empty => RFC-2606 placeholder).
-    std::string homepage;                    ///< Project homepage URL (optional, for deb/rpm).
+    std::string maintainerEmail{"splanck@users.noreply.github.com"}; ///< Package contact email.
+    std::string homepage{"https://github.com/splanck/viper"};        ///< Project homepage URL.
     std::vector<ToolchainFileEntry> files;   ///< All staged files and symlinks.
     std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
 

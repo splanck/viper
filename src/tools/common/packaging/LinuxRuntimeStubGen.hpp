@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/common/packaging/LinuxRuntimeStubGen.hpp
-// Purpose: Generate the Linux self-extracting AppImage runtime stub.
+// Purpose: Generate the Viper self-extracting Linux bundle runtime stub.
 //
 // Key invariants:
 //   - The payload is appended after a marker line and is a gzip-compressed tar archive.
@@ -27,24 +27,25 @@
 
 namespace viper::pkg {
 
-/// Marker line separating the runtime stub from the appended AppImage payload.
+/// Marker line separating the runtime stub from the appended Linux bundle payload.
 constexpr const char *kLinuxRuntimePayloadMarker = "__VIPER_APPIMAGE_PAYLOAD_BELOW__";
 
-/// Parameters for the Linux AppImage runtime stub.
+/// Parameters for the self-extracting Linux bundle runtime stub.
 struct LinuxRuntimeStubParams {
-    std::string cacheName; ///< Stable cache directory name, e.g. "viper-1.2.3-x64".
-    std::string entryPath; ///< Payload-relative executable path, e.g. "bin/viper".
+    std::string cacheName;     ///< Stable bundle cache prefix, e.g. "viper-1.2.3-x64".
+    std::string entryPath;     ///< Payload-relative executable path, e.g. "bin/viper".
     std::string payloadSha256; ///< Optional 64-char SHA-256 digest for the appended tar.gz payload.
+    bool appImageInterface{false}; ///< Expose AppImage-named flags for real application AppImages.
 };
 
-/// Build the self-extracting Linux runtime stub bytes.
+/// Build the self-extracting Linux bundle runtime stub bytes.
 std::vector<uint8_t> buildLinuxRuntimeStub(const LinuxRuntimeStubParams &params);
 
-/// Build a complete self-extracting AppImage from a gzip-compressed tar payload.
+/// Build a complete self-extracting Linux bundle from a gzip-compressed tar payload.
 std::vector<uint8_t> buildLinuxAppImage(const LinuxRuntimeStubParams &params,
                                         const std::vector<uint8_t> &payloadTarGz);
 
-/// Verify the basic self-extracting AppImage layout.
+/// Verify the basic self-extracting Linux bundle layout.
 bool verifyLinuxAppImage(const std::vector<uint8_t> &data, std::string *err = nullptr);
 
 } // namespace viper::pkg

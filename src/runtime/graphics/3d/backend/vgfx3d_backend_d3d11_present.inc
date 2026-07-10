@@ -1511,6 +1511,13 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         return;
     }
 
+    /* R20: compact-cached geometry needs the packed input layout + stride. */
+    if (d3d11_cmd_uses_compact_stream(ctx, cmd)) {
+        stride = VGFX3D_COMPACT_VERTEX_STRIDE;
+        ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout_compact);
+    } else {
+        ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout);
+    }
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_per_object);

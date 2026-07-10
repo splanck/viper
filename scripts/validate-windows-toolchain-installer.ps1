@@ -6,6 +6,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Installer,
 
+    [string]$BaselineInstaller,
+    [string]$UpgradeStaleRelativePath = "share\viper\installer-upgrade-stale.txt",
+
     [string]$InstallRoot = "$env:LOCALAPPDATA\Viper",
     [string]$SignToolPath = "signtool.exe",
 
@@ -61,9 +64,15 @@ function Run-Checked {
 }
 
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
+$baselineInstallerPath = $null
+if ($BaselineInstaller) {
+    $baselineInstallerPath = (Resolve-Path -LiteralPath $BaselineInstaller).Path
+}
 $work = Join-Path $env:TEMP ("viper-installer-vm-" + [Guid]::NewGuid().ToString("N"))
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $originalPath = $env:Path
+$upgradeUnrelated = Join-Path $InstallRoot "share\viper\installer-upgrade-unrelated.txt"
+$upgradeUnrelatedExpected = $false
 New-Item -ItemType Directory -Path $work | Out-Null
 
 try {
@@ -78,7 +87,33 @@ try {
         Run-Checked -FilePath (Join-Path $InstallRoot "uninstall.exe") -Arguments @("/quiet", "/norestart") | Out-Null
     }
 
+    if ($baselineInstallerPath) {
+        Run-Checked -FilePath $baselineInstallerPath -Arguments @("/quiet", "/norestart") | Out-Null
+        if ($UpgradeStaleRelativePath) {
+            $stalePath = Join-Path $InstallRoot $UpgradeStaleRelativePath
+            if (-not (Test-Path -LiteralPath $stalePath -PathType Leaf)) {
+                throw "Baseline installer did not install the expected upgrade-stale file: $stalePath"
+            }
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $upgradeUnrelated) -Force | Out-Null
+        Set-Content -LiteralPath $upgradeUnrelated -Value "preserve-unowned-upgrade-content" -Encoding ASCII
+        $upgradeUnrelatedExpected = $true
+    }
+
     Run-Checked -FilePath $installerPath -Arguments @("/quiet", "/norestart") | Out-Null
+
+    if ($baselineInstallerPath) {
+        if ($UpgradeStaleRelativePath) {
+            $stalePath = Join-Path $InstallRoot $UpgradeStaleRelativePath
+            if (Test-Path -LiteralPath $stalePath) {
+                throw "Upgrade left a stale file owned only by the baseline package: $stalePath"
+            }
+        }
+        if ((Get-Content -LiteralPath $upgradeUnrelated -Raw).Trim() -ne
+            "preserve-unowned-upgrade-content") {
+            throw "Upgrade modified unrelated content in the install tree: $upgradeUnrelated"
+        }
+    }
 
     $requiredTools = @(
         "viper",
@@ -173,7 +208,28 @@ finally {
         $uninstaller = Join-Path $InstallRoot "uninstall.exe"
         Run-Checked -FilePath $uninstaller -Arguments @("/quiet", "/norestart") | Out-Null
         Remove-Item -LiteralPath $uninstaller -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
+        if ($upgradeUnrelatedExpected) {
+            if (-not (Test-Path -LiteralPath $upgradeUnrelated -PathType Leaf)) {
+                throw "Uninstaller removed unrelated upgrade-test content: $upgradeUnrelated"
+            }
+            Remove-Item -LiteralPath $upgradeUnrelated -Force
+        }
+        foreach ($ownedPath in @(
+            (Join-Path $InstallRoot "bin\viper.exe"),
+            (Join-Path $InstallRoot "share\viper\.viper-install-manifest.txt"),
+            (Join-Path $InstallRoot ".viper-install-manifest.txt")
+        )) {
+            if (Test-Path -LiteralPath $ownedPath) {
+                throw "Uninstaller left an owned path: $ownedPath"
+            }
+        }
+        Get-ChildItem -LiteralPath $InstallRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $InstallRoot) {
+            throw "Uninstaller left unexpected content under $InstallRoot"
+        }
     }
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

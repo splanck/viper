@@ -1451,6 +1451,22 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     }
 }
 
+/// @brief Validate a package URL and require encrypted HTTPS transport.
+/// @details Use for signing and timestamp endpoints where accepting cleartext HTTP would weaken
+///          the release trust chain. Empty URLs remain accepted so callers can apply defaults.
+inline void validateHttpsPackageUrl(const std::string &url, const char *fieldName) {
+    validatePackageUrl(url, fieldName);
+    if (url.empty())
+        return;
+    if (url.size() < 8 ||
+        !std::equal(url.begin(), url.begin() + 8, "https://", [](char lhs, char rhs) {
+            return std::tolower(static_cast<unsigned char>(lhs)) ==
+                   std::tolower(static_cast<unsigned char>(rhs));
+        })) {
+        throw std::runtime_error(std::string(fieldName) + " must use https://: '" + url + "'");
+    }
+}
+
 /// @brief Validate a filename for use on Windows.
 /// Rejects control characters, the characters <, >, :, ", /, \, |, ?, *,
 /// trailing spaces/dots, and Windows reserved device names (CON, NUL, COM1, etc.).

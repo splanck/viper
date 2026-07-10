@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Authored key art and procedural fallback both fill the 1280x720 frame.
 //   - Their sparse signatures differ, proving the feature toggle changes paths.
+//   - Every title row and focus rectangle stays inside the authored menu panel.
 // Ownership/Lifetime:
 //   - Probe owns one temporary Canvas, Palette, MenuSystem, and two screenshots.
 // Links: menu.zia, assets/art/title-key-art.png, src/tests/CMakeLists.txt
@@ -56,10 +57,36 @@ func sparseFrameSignature(pixels: Pixels) -> Integer {
     return signature;
 }
 
+/// @brief Verify the title rows fit the authored panel at one text scale.
+///
+/// The built-in font is 8x8 and LOAD GAME is the widest live title label.
+/// Checking both normal and accessibility scales prevents status text or row
+/// offsets from escaping the panel without relying on a fragile golden image.
+///
+/// @param scale Integer bitmap-font scale used for the bounds calculation.
+/// @return True when text, selection arrow, and focus rectangle all fit.
+func titleLayoutFits(scale: Integer) -> Boolean {
+    var panelRight = TITLE_PANEL_X + TITLE_PANEL_W;
+    var panelBottom = TITLE_PANEL_Y + TITLE_PANEL_H;
+    var lastRowY = TITLE_MENU_Y + TITLE_MENU_ROW_STEP * 6;
+    var textRight = TITLE_MENU_X + Canvas.TextWidth("LOAD GAME") * scale;
+    var textBottom = lastRowY + Canvas.TextHeight() * scale;
+    var arrowLeft = TITLE_MENU_X - (Canvas.TextWidth(">") * scale + 8);
+    var highlightRight = TITLE_MENU_HIGHLIGHT_X + TITLE_MENU_HIGHLIGHT_W;
+    var highlightBottom = lastRowY + 28;
+    return arrowLeft >= TITLE_PANEL_X and
+           TITLE_MENU_Y - 4 >= TITLE_PANEL_Y and
+           textRight <= panelRight and textBottom <= panelBottom and
+           highlightRight <= panelRight and highlightBottom <= panelBottom;
+}
+
 /// @brief Render and compare authored and procedural title paths.
 ///
 /// @return Nothing. Prints `RESULT: ok` only after both screenshots are valid.
 func main() {
+    if titleLayoutFits(3) == false or titleLayoutFits(4) == false {
+        fail("title menu exceeds authored panel bounds"); return;
+    }
     var canvas = Canvas.New("XENOSCAPE Render Probe", SCREEN_W, SCREEN_H);
     canvas.SetFps(60);
     if canvas.BeginFrame() == 0 {

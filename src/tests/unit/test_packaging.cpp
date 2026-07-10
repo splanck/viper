@@ -51,6 +51,7 @@
 #include "XarWriter.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
+#include "common/RunProcess.hpp"
 #include "viper/platform/Capabilities.hpp"
 #include "viper/runtime/RuntimeComponentManifest.hpp"
 
@@ -88,6 +89,18 @@ static void writeLE32(uint8_t *p, uint32_t value) {
     p[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
     p[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
     p[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+}
+
+static void writeBE32(uint8_t *p, uint32_t value) {
+    p[0] = static_cast<uint8_t>((value >> 24) & 0xFF);
+    p[1] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    p[2] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    p[3] = static_cast<uint8_t>(value & 0xFF);
+}
+
+static void writeBE64(uint8_t *p, uint64_t value) {
+    for (size_t i = 0; i < 8; ++i)
+        p[i] = static_cast<uint8_t>((value >> ((7 - i) * 8)) & 0xFF);
 }
 
 static uint64_t readLE64(const uint8_t *p) {
@@ -153,6 +166,46 @@ static std::vector<uint8_t> makeMockNativeExecutableHeader() {
     bytes[18] = 62;
 #endif
     return bytes;
+#endif
+}
+
+static std::vector<uint8_t> makeSyntheticFatMachO(bool fat64,
+                                                  const std::vector<uint32_t> &cpuTypes) {
+    const size_t entrySize = fat64 ? 32u : 20u;
+    const size_t headerSize = 8u + cpuTypes.size() * entrySize;
+    constexpr size_t kSliceSize = 32;
+    std::vector<uint8_t> bytes(headerSize + cpuTypes.size() * kSliceSize, 0);
+    bytes[0] = 0xCA;
+    bytes[1] = 0xFE;
+    bytes[2] = 0xBA;
+    bytes[3] = fat64 ? 0xBF : 0xBE;
+    writeBE32(bytes.data() + 4, static_cast<uint32_t>(cpuTypes.size()));
+    for (size_t i = 0; i < cpuTypes.size(); ++i) {
+        const size_t entry = 8u + i * entrySize;
+        const size_t sliceOffset = headerSize + i * kSliceSize;
+        writeBE32(bytes.data() + entry, cpuTypes[i]);
+        if (fat64) {
+            writeBE64(bytes.data() + entry + 8, sliceOffset);
+            writeBE64(bytes.data() + entry + 16, kSliceSize);
+        } else {
+            writeBE32(bytes.data() + entry + 8, static_cast<uint32_t>(sliceOffset));
+            writeBE32(bytes.data() + entry + 12, static_cast<uint32_t>(kSliceSize));
+        }
+        bytes[sliceOffset] = 0xCF;
+        bytes[sliceOffset + 1] = 0xFA;
+        bytes[sliceOffset + 2] = 0xED;
+        bytes[sliceOffset + 3] = 0xFE;
+        writeLE32(bytes.data() + sliceOffset + 4, cpuTypes[i]);
+    }
+    return bytes;
+}
+
+static std::filesystem::path mockToolchainBinaryPath(const std::filesystem::path &stage,
+                                                     std::string_view name) {
+#if defined(_WIN32)
+    return stage / "bin" / (std::string(name) + ".exe");
+#else
+    return stage / "bin" / std::string(name);
 #endif
 }
 
@@ -265,10 +318,42 @@ static bool zipContainsEntries(const std::vector<uint8_t> &zipData,
     return true;
 }
 
+static std::vector<uint8_t> extractZipEntry(const std::vector<uint8_t> &zipData,
+                                            const std::string &name) {
+    ZipReader reader(zipData.data(), zipData.size());
+    const ZipEntry *entry = reader.find(name);
+    return entry == nullptr ? std::vector<uint8_t>{} : reader.extract(*entry);
+}
+
 static bool zipEntryUsesDeflate(const std::vector<uint8_t> &zipData, const std::string &name) {
     ZipReader reader(zipData.data(), zipData.size());
     const ZipEntry *entry = reader.find(name);
     return entry != nullptr && entry->method == 8;
+}
+
+static bool zipEntryUnixMode(const std::vector<uint8_t> &zipData,
+                             const std::string &name,
+                             uint16_t &modeOut) {
+    for (size_t offset = 0; offset + 46 <= zipData.size();) {
+        if (readLE32(zipData.data() + offset) != 0x02014B50) {
+            ++offset;
+            continue;
+        }
+        const uint16_t nameLength = readLE16(zipData.data() + offset + 28);
+        const uint16_t extraLength = readLE16(zipData.data() + offset + 30);
+        const uint16_t commentLength = readLE16(zipData.data() + offset + 32);
+        const size_t recordSize = 46u + nameLength + extraLength + commentLength;
+        if (recordSize > zipData.size() - offset)
+            return false;
+        const std::string entryName(reinterpret_cast<const char *>(zipData.data() + offset + 46),
+                                    nameLength);
+        if (entryName == name) {
+            modeOut = static_cast<uint16_t>(readLE32(zipData.data() + offset + 38) >> 16);
+            return true;
+        }
+        offset += recordSize;
+    }
+    return false;
 }
 
 static uint32_t alignUpTest(uint32_t value, uint32_t alignment) {
@@ -1389,6 +1474,15 @@ TEST(PE, MachineARM64) {
     EXPECT_EQ(machine, static_cast<uint16_t>(0xAA64));
 }
 
+TEST(PE, InstallerManifestEnablesModernControlsAndDpi) {
+    const std::string manifest = generateUacManifest("10.0");
+    EXPECT_CONTAINS(manifest, "Microsoft.Windows.Common-Controls");
+    EXPECT_CONTAINS(manifest, "PerMonitorV2, PerMonitor");
+    EXPECT_CONTAINS(manifest, "<longPathAware");
+    EXPECT_CONTAINS(manifest, "requireAdministrator");
+    EXPECT_CONTAINS(manifest, "{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}");
+}
+
 TEST(PE, RejectsEmptyTextSection) {
     PEBuildParams params;
     EXPECT_THROWS(buildPE(params), std::runtime_error);
@@ -2012,6 +2106,20 @@ TEST(Verify, MacOSAppZipRequiresBundlePayload) {
     EXPECT_FALSE(verifyMacOSAppZip(data, "App.app", "missing", missingErr));
 }
 
+TEST(Verify, RpmRejectsLeadWithoutHeadersAndPayload) {
+    std::vector<uint8_t> rpm(112, 0);
+    rpm[0] = 0xED;
+    rpm[1] = 0xAB;
+    rpm[2] = 0xEE;
+    rpm[3] = 0xDB;
+    rpm[4] = 3;
+    rpm[78] = 0;
+    rpm[79] = 5;
+    std::ostringstream err;
+    EXPECT_FALSE(verifyRpm(rpm, err));
+    EXPECT_CONTAINS(err.str(), "signature header magic");
+}
+
 TEST(Verify, MacOSDmgRecognizesUdifTrailer) {
     std::vector<uint8_t> data(512, 0);
     data[0] = 'k';
@@ -2433,6 +2541,9 @@ TEST(PackageUtils, ValidatesPackageUrls) {
     EXPECT_THROWS(validatePackageUrl("https://bad host.example", "homepage"), std::runtime_error);
     EXPECT_THROWS(validatePackageUrl("1https://example.com", "homepage"), std::runtime_error);
     EXPECT_THROWS(validatePackageUrl("https://example.com:", "homepage"), std::runtime_error);
+    EXPECT_NO_THROW(validateHttpsPackageUrl("https://timestamp.example.com", "timestamp URL"));
+    EXPECT_THROWS(validateHttpsPackageUrl("http://timestamp.example.com", "timestamp URL"),
+                  std::runtime_error);
 }
 
 TEST(PackageUtils, ValidatesToolchainArchitecture) {
@@ -2904,9 +3015,12 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
     layout.licenseText = "TEST LICENSE TERMS";
+    layout.perUserInstall = true;
 
     auto installer = buildInstallerStub(layout, "x64");
     auto uninstaller = buildUninstallerStub(layout, "x64");
+    layout.perUserInstall = false;
+    auto machineInstaller = buildInstallerStub(layout, "x64");
 
     EXPECT_TRUE(stubHasImport(installer, "comctl32.dll", "InitCommonControlsEx"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "DialogBoxIndirectParamW"));
@@ -2914,14 +3028,18 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "GetDlgItem"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SendMessageW"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "EnableWindow"));
-    EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "CreateDIBSection"));
-    EXPECT_TRUE(stubHasImport(installer, "kernel32.dll", "CreateThread"));
+    EXPECT_FALSE(stubHasImport(installer, "gdi32.dll", "CreateDIBSection"));
+    EXPECT_FALSE(stubHasImport(installer, "kernel32.dll", "CreateThread"));
     EXPECT_TRUE(stubHasImport(uninstaller, "user32.dll", "DialogBoxIndirectParamW"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "I accept the license agreement"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "msctls_progress32"));
+    EXPECT_FALSE(containsUtf16LE(installer.stubData, "msctls_progress32"));
+    EXPECT_FALSE(containsUtf16LE(installer.stubData, "< Back"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "Install"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "TEST LICENSE TERMS"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "Current user"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "All users"));
+    EXPECT_TRUE(containsUtf16LEStringData(installer.stubData, "Current user"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "%LocalAppData%\\TestApp"));
+    EXPECT_TRUE(containsUtf16LEStringData(machineInstaller.stubData, "All users"));
+    EXPECT_TRUE(containsUtf16LE(machineInstaller.stubData, "%ProgramFiles%\\TestApp"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "I understand and want to continue"));
 }
 
@@ -3042,6 +3160,15 @@ TEST(InstallerStub, SupportsQuietAutomationFlags) {
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/silent"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/norestart"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "I understand and want to continue"));
+    const std::array<uint8_t, 5> cancelledExit{{0xB9, 0x42, 0x06, 0x00, 0x00}};
+    EXPECT_TRUE(std::search(installer.textSection.begin(),
+                            installer.textSection.end(),
+                            cancelledExit.begin(),
+                            cancelledExit.end()) != installer.textSection.end());
+    EXPECT_TRUE(std::search(uninstaller.textSection.begin(),
+                            uninstaller.textSection.end(),
+                            cancelledExit.begin(),
+                            cancelledExit.end()) != uninstaller.textSection.end());
 }
 
 TEST(InstallerStubGen, RejectsOutOfRangeIATSlotFixup) {
@@ -3111,8 +3238,13 @@ TEST(InstallerStub, ARM64UsesNativeBootstrap) {
     EXPECT_FALSE(stub.imports.empty());
     EXPECT_TRUE(stubHasImport(stub, "kernel32.dll", "CreateProcessW"));
     EXPECT_TRUE(stubHasImport(stub, "kernel32.dll", "WaitForSingleObject"));
+    EXPECT_TRUE(stubHasImport(stub, "kernel32.dll", "GetCommandLineW"));
+    EXPECT_TRUE(stubHasImport(stub, "shlwapi.dll", "StrStrIW"));
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "\\WindowsPowerShell\\v1.0\\powershell.exe"));
     EXPECT_TRUE(containsUtf16LEStringData(stub.stubData, "-EncodedCommand"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "/quiet"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "/silent"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "/norestart"));
 
     PEBuildParams pe;
     pe.arch = stub.peArch;
@@ -3170,6 +3302,42 @@ std::string utf16LeToAscii(const std::vector<uint8_t> &data) {
     return out;
 }
 
+/// @brief Recover the gzip-packed PowerShell source embedded in installer bytes.
+std::string decodedEmbeddedPowerShellSource(const std::vector<uint8_t> &bytes) {
+    const std::string ascii = utf16LeToAscii(bytes);
+    const std::string marker = "-EncodedCommand ";
+    const size_t markerPos = ascii.find(marker);
+    if (markerPos == std::string::npos)
+        return {};
+
+    std::string b64;
+    for (size_t pos = markerPos + marker.size(); pos < ascii.size(); ++pos) {
+        const char c = ascii[pos];
+        const bool isB64 = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                           (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=';
+        if (!isB64)
+            break;
+        b64.push_back(c);
+    }
+    const std::string bootstrap = utf16LeToAscii(decodeBase64Bytes(b64));
+    const std::string packedMarker = "FromBase64String('";
+    const size_t packedStart = bootstrap.find(packedMarker);
+    if (packedStart == std::string::npos)
+        return bootstrap;
+    const size_t dataStart = packedStart + packedMarker.size();
+    const size_t dataEnd = bootstrap.find("')", dataStart);
+    if (dataEnd == std::string::npos)
+        return {};
+    const auto packed = decodeBase64Bytes(bootstrap.substr(dataStart, dataEnd - dataStart));
+    const auto source = gunzip(packed.data(), packed.size());
+    return std::string(source.begin(), source.end());
+}
+
+/// @brief Recover the PowerShell source embedded in an ARM64 installer stub.
+std::string decodedArm64PowerShellSource(const StubResult &stub) {
+    return decodedEmbeddedPowerShellSource(stub.stubData);
+}
+
 } // namespace
 
 /// @brief The ARM64 installer is a PowerShell launcher; its -EncodedCommand must
@@ -3187,30 +3355,8 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x800, 16});
     const auto stub = buildInstallerStub(layout, "arm64");
 
-    // The stub embeds the launch command line as UTF-16LE; recover its ASCII view
-    // and pull the base64 token that follows -EncodedCommand.
-    const std::string ascii = utf16LeToAscii(stub.stubData);
-    const std::string marker = "-EncodedCommand ";
-    const size_t markerPos = ascii.find(marker);
-    ASSERT_TRUE(markerPos != std::string::npos);
-
-    size_t b = markerPos + marker.size();
-    std::string b64;
-    for (; b < ascii.size(); ++b) {
-        const char c = ascii[b];
-        const bool isB64 = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                           (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=';
-        if (!isB64)
-            break;
-        b64.push_back(c);
-    }
-    ASSERT_TRUE(b64.size() > 64); // a real script is far larger than any stray token
-
-    // base64 -> UTF-16LE -> PowerShell source.
-    const std::vector<uint8_t> utf16 = decodeBase64Bytes(b64);
-    ASSERT_TRUE(!utf16.empty());
-    EXPECT_TRUE(utf16.size() % 2 == 0); // well-formed UTF-16LE
-    const std::string script = utf16LeToAscii(utf16);
+    const std::string script = decodedArm64PowerShellSource(stub);
+    ASSERT_TRUE(!script.empty());
 
     // The decoded script must carry the install scaffolding and overlay-read loop,
     // proving the encoder produced a complete, uncorrupted program.
@@ -3219,12 +3365,64 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("$display=") != std::string::npos);
     EXPECT_TRUE(script.find(".Read(") != std::string::npos);      // overlay byte reader
     EXPECT_TRUE(script.find("testapp.exe") != std::string::npos); // payload file name
+    EXPECT_TRUE(script.find("Security.Cryptography.SHA256") != std::string::npos);
+    EXPECT_TRUE(script.find("installer overlay checksum mismatch") != std::string::npos);
     EXPECT_TRUE(script.find("RegisterAssoc") != std::string::npos);
     EXPECT_TRUE(script.find("UnregisterAssoc") != std::string::npos);
     EXPECT_TRUE(script.find("BroadcastEnv") != std::string::npos);
+    EXPECT_TRUE(script.find("$quiet=($env:VIPER_INSTALLER_QUIET -eq '1')") != std::string::npos);
+    EXPECT_TRUE(script.find("$noRestart=($env:VIPER_INSTALLER_NORESTART -eq '1')") !=
+                std::string::npos);
+    EXPECT_TRUE(script.find("if($quiet){return}") != std::string::npos);
+    EXPECT_TRUE(script.find("exit 1602") != std::string::npos);
+    EXPECT_TRUE(script.find("if(-not $entry){return}") != std::string::npos);
     EXPECT_TRUE(script.find("Remove-Item -LiteralPath $install -Recurse") == std::string::npos);
+    EXPECT_TRUE(script.find("function BeginTransaction") != std::string::npos);
+    EXPECT_TRUE(script.find("function RestoreTransaction") != std::string::npos);
+    EXPECT_TRUE(script.find("refusing to replace unowned path") != std::string::npos);
+    EXPECT_TRUE(script.find("refusing reparse-point installer parent") != std::string::npos);
+    EXPECT_TRUE(script.find("compressed installer payload contains an unmanifested file") !=
+                std::string::npos);
     // The layout's identifier must survive into the script (registry/uninstall key).
     EXPECT_TRUE(script.find("org.viper.testapp") != std::string::npos);
+}
+
+TEST(InstallerStub, ARM64LargeLicenseUsesCompactBootstrapNotice) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.version = "1.0.0";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.overlayFileOffset = 0x800;
+    layout.licenseText.assign(25000, 'L');
+    layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x800, 16});
+
+    const auto stub = buildInstallerStub(layout, "arm64");
+    const std::string script = decodedArm64PowerShellSource(stub);
+    ASSERT_TRUE(!script.empty());
+    EXPECT_TRUE(script.find("complete license terms are included") != std::string::npos);
+    EXPECT_TRUE(script.find(std::string(4096, 'L')) == std::string::npos);
+}
+
+TEST(InstallerStub, ARM64UninstallerUsesDetachedOwnedCleanup) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.version = "1.0.0";
+    layout.publisher = "Viper";
+    layout.identifier = "org.viper.testapp";
+    layout.installDate = "20000101";
+
+    const auto stub = buildUninstallerStub(layout, "arm64");
+    const std::string script = decodedArm64PowerShellSource(stub);
+    ASSERT_TRUE(!script.empty());
+    EXPECT_TRUE(script.find("$cleanupCommand=") != std::string::npos);
+    EXPECT_TRUE(script.find("Start-Process -FilePath $cleanupExe") != std::string::npos);
+    EXPECT_TRUE(script.find("RegistryValueKind]::None") != std::string::npos);
+    EXPECT_TRUE(script.find("Remove-Item -LiteralPath $install -Recurse") == std::string::npos);
 }
 
 TEST(InstallerStub, AllowsZeroBytePayloadFile) {
@@ -3396,6 +3594,9 @@ TEST(AppImage, BuildsVerifiableApplicationImage) {
     ASSERT_GT(appImage.size(), static_cast<size_t>(2));
     EXPECT_EQ(appImage[0], static_cast<uint8_t>('#'));
     EXPECT_EQ(appImage[1], static_cast<uint8_t>('!'));
+    const std::string appImageRuntime(appImage.begin(), appImage.end());
+    EXPECT_CONTAINS(appImageRuntime, "--appimage-help");
+    EXPECT_CONTAINS(appImageRuntime, "VIPER_APPIMAGE_CLEAN_CACHE");
 
     // The appended gzip payload must contain the expected portable layout.
     const auto payloadGz = appImagePayloadBytes(appImage);
@@ -3456,8 +3657,12 @@ TEST(LinuxAppPackage, DebUsesSharedAppFhsLayout) {
 
     auto debBytes = readFile(outPath.string());
     std::ostringstream err;
-    const bool ok = verifyDebPayload(
-        debBytes, {"usr/bin/spacegame", "usr/share/spacegame/data/levels/level1.dat"}, err);
+    const bool ok = verifyDebPayload(debBytes,
+                                     {"usr/bin/spacegame",
+                                      "usr/share/spacegame/data/levels/level1.dat",
+                                      "usr/share/doc/spacegame/README",
+                                      "usr/share/doc/spacegame/copyright"},
+                                     err);
     if (!ok)
         std::cerr << err.str();
     EXPECT_TRUE(ok);
@@ -3613,6 +3818,44 @@ TEST(MacOSAppDmg, BuildsVerifiableDiskImage) {
 
     fs::remove_all(tmpRoot);
 #endif
+}
+
+TEST(MacOSPackageBuilder, PreservesExecutableAssetModeInAppZip) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_macos_asset_mode";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "scripts");
+    {
+        std::ofstream app(tmpRoot / "app", std::ios::binary);
+        app << "mock executable";
+    }
+    {
+        std::ofstream helper(tmpRoot / "scripts" / "helper.sh");
+        helper << "#!/bin/sh\nexit 0\n";
+    }
+    fs::permissions(tmpRoot / "scripts" / "helper.sh",
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
+                        fs::perms::others_exec,
+                    fs::perm_options::replace);
+
+    MacOSBuildParams params;
+    params.projectName = "assetmode";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.outputPath = (tmpRoot / "assetmode.zip").string();
+    params.pkgConfig.displayName = "Asset Mode";
+    params.pkgConfig.identifier = "org.viper.assetmode";
+    params.pkgConfig.macosSignMode = "none";
+    params.pkgConfig.assets.push_back({"scripts", "tools"});
+
+    buildMacOSPackage(params);
+    const std::vector<uint8_t> zip = readFile(params.outputPath);
+    uint16_t mode = 0;
+    EXPECT_TRUE(zipEntryUnixMode(zip, "Asset Mode.app/Contents/Resources/tools/helper.sh", mode));
+    EXPECT_EQ(mode, static_cast<uint16_t>(0100755));
+    fs::remove_all(tmpRoot);
 }
 
 TEST(WindowsPackageBuilder, ImportedDllNamesFromPeReadsImportTableOnly) {
@@ -4321,6 +4564,67 @@ TEST(ToolchainInstallManifest, AllowsUniversalOnlyForMacOS) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(ToolchainInstallManifest, ParsesFat32AndFat64MachOSlices) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_macho";
+    for (const bool fat64 : {false, true}) {
+        fs::remove_all(tmpRoot);
+        const fs::path stage = createMockToolchainStage(tmpRoot);
+        writeBytes(mockToolchainBinaryPath(stage, "viper"),
+                   makeSyntheticFatMachO(fat64, {0x01000007, 0x0100000c}));
+
+        const auto manifest = gatherToolchainInstallManifest(stage);
+        EXPECT_EQ(manifest.platform, std::string("macos"));
+        EXPECT_EQ(manifest.arch, std::string("universal"));
+    }
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, DoesNotMislabelSingleSliceFatMachOAsUniversal) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_single";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    writeBytes(mockToolchainBinaryPath(stage, "viper"), makeSyntheticFatMachO(false, {0x01000007}));
+
+    const auto manifest = gatherToolchainInstallManifest(stage);
+    EXPECT_EQ(manifest.platform, std::string("macos"));
+    EXPECT_EQ(manifest.arch, std::string("x64"));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, RejectsMismatchedMacOSPayloadArchitecture) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_macho_mismatch";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    writeBytes(mockToolchainBinaryPath(stage, "viper"),
+               makeSyntheticFatMachO(false, {0x01000007, 0x0100000c}));
+    std::vector<uint8_t> thinX64(32, 0);
+    thinX64[0] = 0xCF;
+    thinX64[1] = 0xFA;
+    thinX64[2] = 0xED;
+    thinX64[3] = 0xFE;
+    writeLE32(thinX64.data() + 4, 0x01000007);
+    writeBytes(mockToolchainBinaryPath(stage, "zia"), thinX64);
+
+    EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, RejectsFatMachOSliceOutsideFile) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_fat_bounds";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto malformed = makeSyntheticFatMachO(false, {0x01000007, 0x0100000c});
+    malformed.resize(48);
+    writeBytes(mockToolchainBinaryPath(stage, "viper"), malformed);
+
+    EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(ToolchainInstallManifest, InstallPathMappingPreservesRelativeLayout) {
     ToolchainFileEntry file;
     file.kind = ToolchainFileKind::CMakeConfig;
@@ -4515,11 +4819,13 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     requiredDebPayload.push_back("usr/share/applications/viper-il.desktop");
     requiredDebPayload.push_back("usr/share/icons/hicolor/256x256/apps/viper.png");
     requiredDebPayload.push_back("usr/share/mime/packages/viper.xml");
+    requiredDebPayload.push_back("usr/share/doc/viper/LICENSE");
     EXPECT_TRUE(verifyDebPayload(debBytes, requiredDebPayload, payloadErr));
     const std::string control = debControlText(debBytes);
+    EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6 | libc++1, libgcc-s1");
     EXPECT_CONTAINS(control,
-                    "Depends: libc6, libstdc++6 | libc++1, libgcc-s1, cmake, "
-                    "g++ | clang++, make, desktop-file-utils, shared-mime-info, man-db");
+                    "Recommends: cmake, g++ | clang, make, desktop-file-utils, "
+                    "shared-mime-info, man-db");
 #if VIPER_BUILD_HAS_GRAPHICS || VIPER_BUILD_HAS_GUI
     EXPECT_CONTAINS(control, "libx11-6");
 #endif
@@ -4579,7 +4885,7 @@ TEST(ToolchainLinuxPackageBuilder, DebUsesConfiguredMaintainerAndHomepage) {
     fs::remove_all(tmpRoot);
 }
 
-TEST(ToolchainLinuxPackageBuilder, DebDefaultMaintainerUsesReservedPlaceholder) {
+TEST(ToolchainLinuxPackageBuilder, DebDefaultsToProjectContactAndHomepage) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_default_maint";
     fs::remove_all(tmpRoot);
@@ -4593,7 +4899,8 @@ TEST(ToolchainLinuxPackageBuilder, DebDefaultMaintainerUsesReservedPlaceholder) 
     buildToolchainDebPackage(params);
 
     const std::string control = debControlText(readFile(params.outputPath));
-    EXPECT_CONTAINS(control, "Maintainer: Viper Project <noreply@example.invalid>");
+    EXPECT_CONTAINS(control, "Maintainer: Viper Project <splanck@users.noreply.github.com>");
+    EXPECT_CONTAINS(control, "Homepage: https://github.com/splanck/viper");
     fs::remove_all(tmpRoot);
 }
 
@@ -4649,8 +4956,10 @@ TEST(MacOSToolchainDmgBuilder, WrapsPkgIntoValidUdifImage) {
 
     MacOSToolchainDmgParams params;
     params.pkgPath = pkgPath.string();
-    params.outputPath = (tmpRoot / "viper.dmg").string();
     params.volumeName = "Viper Toolchain Test";
+    params.outputPath = pkgPath.string();
+    EXPECT_THROWS(buildMacOSToolchainDmg(params), std::runtime_error);
+    params.outputPath = (tmpRoot / "viper.dmg").string();
     buildMacOSToolchainDmg(params);
 
     ASSERT_TRUE(fs::is_regular_file(params.outputPath));
@@ -4714,6 +5023,11 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "DESTDIR");
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
                     "validate_manifest_relpath");
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "--dry-run");
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "--force");
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "rollback_install");
+    EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
+                    "refusing to replace unowned path");
     uint32_t installMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "install.sh", installMode));
     EXPECT_EQ(installMode, static_cast<uint32_t>(0755));
@@ -4722,7 +5036,11 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
                     "install_manifest.txt");
     EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
-                    "check_no_symlink_path \"$install_root/$rel\"");
+                    "check_no_symlink_parents \"$destination\"");
+    EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
+                    "rollback_uninstall");
+    EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
+                    "install_metadata");
     uint32_t uninstallMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "uninstall.sh", uninstallMode));
     EXPECT_EQ(uninstallMode, static_cast<uint32_t>(0755));
@@ -4732,6 +5050,8 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     const std::string installManifestText(installManifest.begin(), installManifest.end());
     EXPECT_CONTAINS(installManifestText, "bin/viper\n");
     EXPECT_CONTAINS(installManifestText, "share/viper/install_manifest.txt\n");
+    EXPECT_CONTAINS(installManifestText, "share/viper/install_metadata\n");
+    EXPECT_CONTAINS(installManifestText, "share/viper/uninstall.sh\n");
     std::vector<uint8_t> sourceDesktop;
     ASSERT_TRUE(
         tarEntryData(tarBytes, topDir + "share/applications/viper-source.desktop", sourceDesktop));
@@ -4743,6 +5063,103 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "share/doc/viper/helper.sh", helperMode));
     EXPECT_EQ(helperMode, static_cast<uint32_t>(0750));
     fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, TarballScriptsProtectConflictsAndRemoveOwnedFiles) {
+#if VIPER_HOST_WINDOWS
+    return;
+#else
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_lifecycle";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    {
+        std::ofstream oldOnly(stage / "share" / "doc" / "viper" / "old-only.txt");
+        oldOnly << "removed by upgrade";
+    }
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain.tar.gz").string();
+    buildToolchainTarball(params);
+
+    const fs::path extractRoot = tmpRoot / "extract";
+    fs::create_directories(extractRoot);
+    const RunResult extract =
+        run_process({"tar", "xzf", params.outputPath, "-C", extractRoot.string()});
+    ASSERT_EQ(extract.exit_code, 0);
+    const fs::path topDir = extractRoot / ("viper-9.8.7-linux-" + manifest.arch);
+    const fs::path installScript = topDir / "install.sh";
+
+    const fs::path canonicalRoot = fs::weakly_canonical(tmpRoot) / "target-root";
+    fs::create_directories(canonicalRoot / "usr" / "bin");
+    {
+        std::ofstream conflict(canonicalRoot / "usr" / "bin" / "viper");
+        conflict << "unowned";
+    }
+    const std::vector<std::pair<std::string, std::string>> env = {
+        {"DESTDIR", canonicalRoot.string()}, {"PREFIX", "/usr"}, {"NO_COLOR", "1"}};
+    const RunResult conflict = run_process({installScript.string()}, topDir.string(), env);
+    EXPECT_NE(conflict.exit_code, 0);
+    EXPECT_CONTAINS(conflict.err, "refusing to replace unowned path");
+
+    const RunResult install =
+        run_process({installScript.string(), "--force"}, topDir.string(), env);
+    if (install.exit_code != 0)
+        std::cerr << install.out << install.err;
+    ASSERT_EQ(install.exit_code, 0);
+    EXPECT_TRUE(fs::is_regular_file(canonicalRoot / "usr" / "bin" / "viper"));
+    const fs::path uninstaller = canonicalRoot / "usr" / "share" / "viper" / "uninstall.sh";
+    EXPECT_TRUE(fs::is_regular_file(uninstaller));
+    EXPECT_TRUE(
+        fs::is_regular_file(canonicalRoot / "usr" / "share" / "viper" / "install_metadata"));
+    EXPECT_TRUE(
+        fs::is_regular_file(canonicalRoot / "usr" / "share" / "doc" / "viper" / "old-only.txt"));
+
+    const fs::path unrelated = canonicalRoot / "usr" / "share" / "viper" / "user.keep";
+    {
+        std::ofstream keep(unrelated);
+        keep << "preserve me";
+    }
+
+    fs::remove(stage / "share" / "doc" / "viper" / "old-only.txt");
+    auto upgradeManifest = gatherToolchainInstallManifest(stage);
+    upgradeManifest.platform = "linux";
+    LinuxToolchainBuildParams upgradeParams;
+    upgradeParams.manifest = upgradeManifest;
+    upgradeParams.outputPath = (tmpRoot / "viper-toolchain-upgrade.tar.gz").string();
+    buildToolchainTarball(upgradeParams);
+    const fs::path upgradeExtractRoot = tmpRoot / "upgrade-extract";
+    fs::create_directories(upgradeExtractRoot);
+    const RunResult extractUpgrade =
+        run_process({"tar", "xzf", upgradeParams.outputPath, "-C", upgradeExtractRoot.string()});
+    ASSERT_EQ(extractUpgrade.exit_code, 0);
+    const fs::path upgradeTopDir =
+        upgradeExtractRoot / ("viper-9.8.7-linux-" + upgradeManifest.arch);
+    const RunResult upgrade =
+        run_process({(upgradeTopDir / "install.sh").string()}, upgradeTopDir.string(), env);
+    if (upgrade.exit_code != 0)
+        std::cerr << upgrade.out << upgrade.err;
+    ASSERT_EQ(upgrade.exit_code, 0);
+    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "share" / "doc" / "viper" / "old-only.txt"));
+    EXPECT_TRUE(fs::is_regular_file(unrelated));
+
+    const RunResult dryUninstall =
+        run_process({uninstaller.string(), "--dry-run"}, upgradeTopDir.string(), env);
+    EXPECT_EQ(dryUninstall.exit_code, 0);
+    EXPECT_TRUE(fs::exists(canonicalRoot / "usr" / "bin" / "viper"));
+
+    const RunResult uninstall = run_process({uninstaller.string()}, upgradeTopDir.string(), env);
+    if (uninstall.exit_code != 0)
+        std::cerr << uninstall.out << uninstall.err;
+    EXPECT_EQ(uninstall.exit_code, 0);
+    EXPECT_FALSE(fs::exists(canonicalRoot / "usr" / "bin" / "viper"));
+    EXPECT_FALSE(fs::exists(uninstaller));
+    EXPECT_TRUE(fs::is_regular_file(unrelated));
+    fs::remove_all(tmpRoot);
+#endif
 }
 
 TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
@@ -4765,6 +5182,12 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
                             reinterpret_cast<const uint8_t *>(hashField.data()),
                             reinterpret_cast<const uint8_t *>(hashField.data()) +
                                 hashField.size()) != appImage.end());
+    EXPECT_TRUE(containsAscii(appImage, "cache_key=$cache_name-$payload_sha256"));
+    EXPECT_TRUE(containsAscii(appImage, "check_no_symlink_components"));
+    EXPECT_TRUE(containsAscii(appImage, "while ! mkdir \"$lock_dir\""));
+    EXPECT_TRUE(containsAscii(appImage, "VIPER_BUNDLE_REFRESH"));
+    EXPECT_TRUE(containsAscii(appImage, "--viper-bundle-extract"));
+    EXPECT_TRUE(containsAscii(appImage, "./viper-bundle-root"));
     const auto payload = appImagePayloadBytes(appImage);
     ASSERT_TRUE(payload.size() >= 2);
     EXPECT_EQ(payload[0], static_cast<uint8_t>(0x1F));
@@ -4785,11 +5208,69 @@ TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
     invalidHashParams.entryPath = "AppRun";
     invalidHashParams.payloadSha256 = "not-a-sha256";
     EXPECT_THROWS(buildLinuxRuntimeStub(invalidHashParams), std::runtime_error);
+    EXPECT_THROWS(buildLinuxAppImage(params, {0x1F, 0x8B, 0x00, 0x00}), std::runtime_error);
 }
 
-TEST(ToolchainLinuxPackageBuilder, BuildsAppImageFromManifest) {
+TEST(LinuxRuntimeStubGen, ExecutesFromContentAddressedPrivateCache) {
+#if VIPER_HOST_WINDOWS
+    return;
+#else
     namespace fs = std::filesystem;
-    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_appimage_stage";
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_linux_bundle_runtime_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    TarWriter tar;
+    tar.addDirectory("./", 0755);
+    tar.addFileString("AppRun", "#!/bin/sh\nprintf 'bundle-ok\\n'\n", 0755);
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+    LinuxRuntimeStubParams params;
+    params.cacheName = "viper-runtime-test";
+    params.entryPath = "AppRun";
+    const std::vector<uint8_t> bundle = buildLinuxAppImage(params, tarGz);
+    const fs::path bundlePath = tmpRoot / "viper-runtime-test.run";
+    writeBytes(bundlePath, bundle);
+    fs::permissions(bundlePath,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec,
+                    fs::perm_options::replace);
+
+    const fs::path cacheRoot = fs::weakly_canonical(tmpRoot) / "cache";
+    const std::vector<std::pair<std::string, std::string>> env = {
+        {"XDG_CACHE_HOME", cacheRoot.string()}, {"VIPER_BUNDLE_QUIET", "1"}};
+    const RunResult first = run_process({bundlePath.string()}, std::nullopt, env);
+    EXPECT_EQ(first.exit_code, 0);
+    EXPECT_CONTAINS(first.out, "bundle-ok");
+    const RunResult second = run_process({bundlePath.string()}, std::nullopt, env);
+    EXPECT_EQ(second.exit_code, 0);
+
+    size_t stampCount = 0;
+    for (const auto &entry : fs::recursive_directory_iterator(cacheRoot)) {
+        if (entry.path().filename() == ".payload.sha256")
+            ++stampCount;
+    }
+    EXPECT_EQ(stampCount, static_cast<size_t>(1));
+    const RunResult cachePath =
+        run_process({bundlePath.string(), "--viper-bundle-cache"}, std::nullopt, env);
+    EXPECT_EQ(cachePath.exit_code, 0);
+    EXPECT_CONTAINS(cachePath.out, "viper-runtime-test-");
+
+    fs::create_directories(tmpRoot / "real-cache");
+    fs::create_directory_symlink(tmpRoot / "real-cache", tmpRoot / "cache-link");
+    const RunResult symlinked = run_process(
+        {bundlePath.string()},
+        std::nullopt,
+        {{"XDG_CACHE_HOME", (tmpRoot / "cache-link").string()}, {"VIPER_BUNDLE_QUIET", "1"}});
+    EXPECT_NE(symlinked.exit_code, 0);
+    EXPECT_CONTAINS(symlinked.err, "symlinked cache path component");
+
+    fs::remove_all(tmpRoot);
+#endif
+}
+
+TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_bundle_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -4797,28 +5278,32 @@ TEST(ToolchainLinuxPackageBuilder, BuildsAppImageFromManifest) {
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
-    params.outputPath = (tmpRoot / "Viper-9.8.7-x64.AppImage").string();
-    buildToolchainAppImage(params);
+    params.outputPath = (tmpRoot / "viper-9.8.7-linux-x64.run").string();
+    buildToolchainBundle(params);
 
-    const auto appImage = readFile(params.outputPath);
+    const auto bundle = readFile(params.outputPath);
     std::string err;
-    EXPECT_TRUE(verifyLinuxAppImage(appImage, &err));
-    const auto payloadGz = appImagePayloadBytes(appImage);
+    EXPECT_TRUE(verifyLinuxAppImage(bundle, &err));
+    const std::string runtimeText(bundle.begin(), bundle.end());
+    EXPECT_TRUE(runtimeText.find("--viper-bundle-help") != std::string::npos);
+    EXPECT_TRUE(runtimeText.find("--appimage-help") == std::string::npos);
+    EXPECT_TRUE(runtimeText.find("VIPER_APPIMAGE_CLEAN_CACHE") == std::string::npos);
+    const auto payloadGz = appImagePayloadBytes(bundle);
     const auto payloadTar = inflateGzipPayload(payloadGz);
     std::ostringstream payloadErr;
-    std::vector<std::string> requiredAppImagePayload;
-    requiredAppImagePayload.push_back("AppRun");
+    std::vector<std::string> requiredBundlePayload;
+    requiredBundlePayload.push_back("AppRun");
     for (const std::string &binary : requiredToolchainBinaryNames())
-        requiredAppImagePayload.push_back("bin/" + binary);
-    requiredAppImagePayload.push_back("share/applications/viperide.desktop");
-    requiredAppImagePayload.push_back("share/applications/viper-source.desktop");
-    requiredAppImagePayload.push_back("share/applications/viper-il.desktop");
-    requiredAppImagePayload.push_back("share/icons/hicolor/256x256/apps/viper.png");
-    requiredAppImagePayload.push_back("share/mime/packages/viper.xml");
-    requiredAppImagePayload.push_back(".DirIcon");
-    requiredAppImagePayload.push_back("viper.desktop");
-    requiredAppImagePayload.push_back("viper.png");
-    EXPECT_TRUE(verifyTarGzPayload(payloadGz, requiredAppImagePayload, payloadErr));
+        requiredBundlePayload.push_back("bin/" + binary);
+    requiredBundlePayload.push_back("share/applications/viperide.desktop");
+    requiredBundlePayload.push_back("share/applications/viper-source.desktop");
+    requiredBundlePayload.push_back("share/applications/viper-il.desktop");
+    requiredBundlePayload.push_back("share/icons/hicolor/256x256/apps/viper.png");
+    requiredBundlePayload.push_back("share/mime/packages/viper.xml");
+    requiredBundlePayload.push_back(".DirIcon");
+    requiredBundlePayload.push_back("viper.desktop");
+    requiredBundlePayload.push_back("viper.png");
+    EXPECT_TRUE(verifyTarGzPayload(payloadGz, requiredBundlePayload, payloadErr));
     std::vector<uint8_t> appRun;
     ASSERT_TRUE(tarEntryData(payloadTar, "AppRun", appRun));
     const std::string appRunText(appRun.begin(), appRun.end());
@@ -4927,8 +5412,15 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(containsUtf16LE(pe, "VAPSPathEntry"));
     EXPECT_TRUE(containsUtf16LE(pe, "bin\\viper.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, "share\\viper\\viper.ico"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "Viper Developer Prompt"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "ViperIDE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_SELF"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_MODE"));
+    const std::string transactionScript = decodedEmbeddedPowerShellSource(pe);
+    EXPECT_CONTAINS(transactionScript, "function BeginTransaction");
+    EXPECT_CONTAINS(transactionScript, "Viper Developer Prompt.lnk");
+    EXPECT_CONTAINS(transactionScript, "refusing to replace unowned path");
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "install-files"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "commit"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "rollback"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     const std::string sendMessageImport = "SendMessageTimeoutW";
     EXPECT_TRUE(
@@ -4953,6 +5445,45 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     requiredWindowsPayload.push_back("uninstall.exe");
     requiredWindowsPayload.push_back(".viper-install-manifest.txt");
     EXPECT_TRUE(zipContainsEntries(payloadZip, requiredWindowsPayload));
+    const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
+    ASSERT_FALSE(uninstaller.empty());
+    std::ostringstream uninstallerErr;
+    EXPECT_TRUE(verifyPE(uninstaller, uninstallerErr));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "VIPER_INSTALLER_MODE"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "rollback"));
+    EXPECT_CONTAINS(decodedEmbeddedPowerShellSource(uninstaller), "function RestoreTransaction");
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, BuildsArm64InstallerWithFullLicensePayload) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "viper_toolchain_windows_arm64_license_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+    {
+        std::ofstream license(stage / "LICENSE", std::ios::binary | std::ios::trunc);
+        license << std::string(25000, 'L');
+    }
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "arm64";
+    manifest.platform = "windows";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain-arm64-setup.exe").string();
+    params.archStr = "arm64";
+    buildWindowsToolchainInstaller(params);
+
+    const auto pe = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0xAA64));
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    const auto installedLicense = extractZipEntry(payloadZip, "LICENSE");
+    EXPECT_EQ(installedLicense.size(), static_cast<size_t>(25000));
     fs::remove_all(tmpRoot);
 }
 
@@ -5060,6 +5591,24 @@ TEST(ToolchainMacOSPackageBuilder, RequiresFileHandlerForAssociations) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(ToolchainMacOSPackageBuilder, RejectsInvalidMinimumOSVersionBeforePackaging) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_bad_min_os";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    addMockMacOSFileHandler(stage);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "macos";
+    manifest.arch = "x64";
+
+    MacOSToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    params.minimumMacOSVersion = "not-a-version";
+    EXPECT_THROWS(buildMacOSToolchainPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 #if defined(__APPLE__)
 TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     namespace fs = std::filesystem;
@@ -5119,7 +5668,7 @@ TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
     params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
     buildMacOSToolchainPackage(params);
 
-    // The welcome + license panes are added as top-level xar members alongside Distribution;
+    // Installer panes and light/dark artwork are top-level XAR members alongside Distribution;
     // confirm they are present by decoding the archive's table of contents.
     const auto pkgBytes = readFile(params.outputPath);
     ASSERT_GE(pkgBytes.size(), static_cast<size_t>(28));
@@ -5131,7 +5680,11 @@ TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
                                     static_cast<size_t>(tocUncompressed));
     const std::string tocText(toc.begin(), toc.end());
     EXPECT_TRUE(tocText.find("<name>welcome.html</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<name>readme.html</name>") != std::string::npos);
     EXPECT_TRUE(tocText.find("<name>license.txt</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<name>conclusion.html</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<name>background.png</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<name>background-dark.png</name>") != std::string::npos);
     fs::remove_all(tmpRoot);
 }
 #endif

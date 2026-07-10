@@ -267,15 +267,15 @@ metric_value() {
             ;;
         ide_basic_capability_gates)
             rg_count 'basicService\.name|basic semantic commands disabled|format unsupported basic' \
-                viperide/src
+                src/viperide/src
             ;;
         ide_scheduler_capability_jobs)
             rg_count 'JOB_(DIAGNOSTIC|COMPLETION|HOVER|SIGNATURE)' \
-                viperide/src/editor
+                src/viperide/src/editor
             ;;
         debug_adapter_protocol_markers)
             rg_count '@@VDBG@@|setBreakpoints|callStack|locals|continue|stepOver' \
-                src/tools/viper viperide/src/build
+                src/tools/viper src/viperide/src/build
             ;;
         packaging_verifier_entrypoints)
             rg_count 'verify.*Payload|verifyPEZipOverlayNestedPayload|PkgVerify' \
@@ -404,7 +404,7 @@ need_file src/codegen/x86_64/LowerILToMIR.hpp
 need_file src/tests/fuzz/CMakeLists.txt
 need_file src/tests/fuzz/corpus
 need_file src/tools/common/packaging/PkgVerify.cpp
-need_file viperide/src/editor/language_service.zia
+need_file src/viperide/src/editor/language_service.zia
 
 if [[ "$MODE" == "self-test" ]]; then
     print_metrics >/dev/null

@@ -314,7 +314,7 @@ static void vaud_win32_render_to_buffer(vaud_context_t ctx,
 
     if (plat->render_channels == VAUD_CHANNELS && plat->render_sample_rate == VAUD_SAMPLE_RATE &&
         plat->render_sample_format == VAUD_WIN32_SAMPLE_S16 && plat->render_block_align == 4) {
-        vaud_mixer_render(ctx, (int16_t *)buffer, (int32_t)frames);
+        vaud_mixer_render_device(ctx, (int16_t *)buffer, (int32_t)frames);
         return;
     }
 
@@ -332,7 +332,7 @@ static void vaud_win32_render_to_buffer(vaud_context_t ctx,
     if (internal_frames == 0)
         internal_frames = 1;
 
-    vaud_mixer_render(ctx, plat->mix_buffer, (int32_t)internal_frames);
+    vaud_mixer_render_device(ctx, plat->mix_buffer, (int32_t)internal_frames);
 
     for (UINT32 i = 0; i < frames; i++) {
         int32_t left = vaud_win32_resampled_sample(

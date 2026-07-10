@@ -868,6 +868,36 @@ static double chunk_rms(const int16_t *buf, int32_t frames) {
     return sqrt(acc / (double)n);
 }
 
+static void test_device_render_silences_output_without_stalling_voice(void) {
+    char path[128];
+    make_temp_wav_path(path, sizeof(path), "silent_device");
+    EXPECT_TRUE(write_square_wav(path, 4096));
+
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+    vaud_sound_t sound = vaud_load_sound(ctx, path);
+    EXPECT_TRUE(sound != NULL);
+
+    vaud_voice_id id = vaud_play_loop(sound, 1.0f, 0.0f);
+    EXPECT_TRUE(id != VAUD_INVALID_VOICE);
+    ctx->device_output_silent = 1;
+
+    int16_t out[64 * VAUD_CHANNELS];
+    memset(out, 0x7F, sizeof(out));
+    vaud_mixer_render_device(ctx, out, 64);
+    for (size_t i = 0; i < sizeof(out) / sizeof(out[0]); i++)
+        EXPECT_TRUE(out[i] == 0);
+
+    vaud_voice *voice = find_voice_by_id(ctx, id);
+    EXPECT_TRUE(voice != NULL);
+    EXPECT_TRUE(voice->position == 64);
+
+    vaud_stop_voice(ctx, id);
+    vaud_destroy(ctx);
+    vaud_free_sound(sound);
+    remove(path);
+}
+
 static void test_voice_pitch_scales_consumption(void) {
     char path[128];
     make_temp_wav_path(path, sizeof(path), "pitch");
@@ -1037,6 +1067,7 @@ int main(void) {
     test_mixer_outputs_silence_when_state_lock_is_busy();
     test_vaud_get_stats_handles_nulls_and_counts_render();
     test_mixer_processes_effect_group_bus_only_once();
+    test_device_render_silences_output_without_stalling_voice();
     test_voice_pitch_scales_consumption();
     test_voice_lowpass_and_occlusion_attenuate();
     test_group_ducking_engages_and_releases();
