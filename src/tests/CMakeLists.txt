@@ -1662,12 +1662,21 @@ if (WIN32)
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
     set_tests_properties(zia_smoke_ridgebound_d3d11 PROPERTIES
-            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            PASS_REGULAR_EXPRESSION "RESULT: ok backend=d3d11"
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
             RESOURCE_LOCK viper_display
             PROCESSORS 8
             TIMEOUT 600)
+    add_test(NAME zia_smoke_d3d11_rtt_readback
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/3d/d3d11_rtt_readback_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(zia_smoke_d3d11_rtt_readback PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok backend=d3d11"
+            LABELS "zia;smoke;graphics3d;requires_display;d3d11"
+            ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
+            RESOURCE_LOCK viper_display
+            TIMEOUT 120)
 endif ()
 if (APPLE)
     add_test(NAME zia_smoke_ridgebound_software

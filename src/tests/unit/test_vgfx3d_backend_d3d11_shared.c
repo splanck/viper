@@ -58,6 +58,20 @@ static int contains_text(const char *haystack, const char *needle) {
     return haystack && needle && strstr(haystack, needle) != NULL;
 }
 
+static size_t count_text(const char *haystack, const char *needle) {
+    size_t count = 0;
+    size_t needle_len;
+
+    if (!haystack || !needle || !needle[0])
+        return 0;
+    needle_len = strlen(needle);
+    while ((haystack = strstr(haystack, needle)) != NULL) {
+        count++;
+        haystack += needle_len;
+    }
+    return count;
+}
+
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
         tests_run++;                                                                               \
@@ -610,6 +624,115 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-span validation rejects negative row cursors");
 }
 
+static void test_cluster_ibl_and_upload_budget_validation(void) {
+    vgfx3d_cluster_table_t table;
+    int32_t ibl_level = -1;
+
+    memset(&table, 0, sizeof(table));
+    table.lights_revision = 7;
+    table.global_light_count = 1;
+    table.binned_light_count = 2;
+    table.znear = 0.1f;
+    table.zfar = 1000.0f;
+    for (int32_t i = 1; i <= VGFX3D_CLUSTER_COUNT; i++)
+        table.offsets[i] = 2;
+    table.indices[0] = 1;
+    table.indices[1] = 2;
+
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 1,
+                "Cluster validation accepts a bounded revision-matched table");
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(NULL, 7, 3) == 0,
+                "Cluster validation rejects a missing table");
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 8, 3) == 0,
+                "Cluster validation rejects a stale light revision");
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 0, 3) == 0,
+                "Cluster validation rejects an unknown expected revision");
+
+    table.global_light_count = 4;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects a global prefix beyond uploaded lights");
+    table.global_light_count = 1;
+    table.binned_light_count = 3;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects an oversized binned-light count");
+    table.binned_light_count = 1;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects an incomplete binned-light suffix");
+    table.binned_light_count = 2;
+    table.overflow_count = -1;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects negative overflow telemetry");
+    table.overflow_count = 0;
+    table.zfar = table.znear;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects a degenerate depth range");
+    table.zfar = 1000.0f;
+    table.znear = NAN;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects a non-finite near plane");
+    table.znear = 0.1f;
+    table.zfar = NAN;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects a non-finite far plane");
+    table.zfar = 1000.0f;
+
+    table.offsets[0] = 1;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation requires the prefix sum to start at zero");
+    table.offsets[0] = 0;
+    table.offsets[2] = 1;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects descending offsets");
+    table.offsets[2] = 2;
+    table.offsets[VGFX3D_CLUSTER_COUNT] = VGFX3D_MAX_CLUSTER_LIGHT_INDICES + 1;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects offsets beyond the packed index buffer");
+    table.offsets[VGFX3D_CLUSTER_COUNT] = 2;
+    table.indices[0] = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects duplicated global-prefix indices");
+    table.indices[0] = 3;
+    EXPECT_TRUE(vgfx3d_d3d11_cluster_table_is_usable(&table, 7, 3) == 0,
+                "Cluster validation rejects indices beyond uploaded lights");
+
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(256, 64, 3, 6, &ibl_level) == 1,
+                "IBL validation accepts a reachable bounded mip chain");
+    EXPECT_TRUE(ibl_level == 2, "IBL validation reports the destination base mip");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(256, 64, 7, 6, &ibl_level) == 0,
+                "IBL validation rejects counts beyond the fixed payload array");
+    ibl_level = 99;
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(256, 48, 2, 6, &ibl_level) == 0,
+                "IBL validation rejects a base size absent from the destination chain");
+    EXPECT_TRUE(ibl_level == 0, "Rejected IBL layouts clear the destination base mip");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(8, 4, 4, 6, &ibl_level) == 0,
+                "IBL validation rejects a chain longer than remaining destination mips");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(256, 64, INT_MAX, 6, &ibl_level) == 0,
+                "IBL validation rejects huge counts without signed overflow");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_ibl_layout(256, 64, 2, 6, NULL) == 0,
+                "IBL validation requires an output base-mip destination");
+
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(UINT64_MAX, UINT64_MAX, 4096) == 1,
+                "Unlimited upload budgets admit complete temporary resources");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(1024, 256, 768) == 1,
+                "Upload budget admits a resource that exactly fits the remainder");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(1024, 256, 769) == 0,
+                "Upload budget rejects a resource larger than the remainder");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(0, 0, 1) == 0,
+                "Zero upload budget pauses new temporary resources");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(1024, 1024, 1) == 0,
+                "Exhausted upload budget pauses new temporary resources");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(UINT64_MAX - 1, UINT64_MAX - 2, 2) == 0,
+                "Bounded upload budget subtraction does not wrap near UINT64_MAX");
+    EXPECT_TRUE(vgfx3d_d3d11_upload_budget_allows(0, UINT64_MAX, 0) == 1,
+                "Zero-byte upload work is always admissible");
+    EXPECT_TRUE(vgfx3d_d3d11_cached_pending_texture_bytes(1, 4096, -1, -1, -1, 1) == 4096,
+                "Native texture telemetry uses its cache-owned byte count");
+    EXPECT_TRUE(vgfx3d_d3d11_cached_pending_texture_bytes(1, 4096, -1, -1, -1, 0) == 0,
+                "Completed native texture telemetry clears stale cached bytes");
+    EXPECT_TRUE(vgfx3d_d3d11_cached_pending_texture_bytes(0, 999, 8, 4, 3, 1) == 32,
+                "RGBA texture telemetry derives the remaining row bytes");
+}
+
 static void test_d3d11_sanitization_helpers(void) {
     size_t elements = 0;
     float znear = 0.0f;
@@ -796,14 +919,14 @@ static void test_d3d11_light_upload_sanitization_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(99) == 0,
                 "Light-type sanitizer falls back above range");
 
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(
-                    0, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
-                    VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
-                "Shadow projection sanitizer preserves perspective for shadowed lights");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(
-                    -1, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
-                    VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
-                "Shadow projection sanitizer disables perspective for unshadowed lights");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_sanitize_shadow_projection_type(0, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
+            VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
+        "Shadow projection sanitizer preserves perspective for shadowed lights");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_sanitize_shadow_projection_type(-1, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
+            VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
+        "Shadow projection sanitizer disables perspective for unshadowed lights");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(0, 99) ==
                     VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
                 "Shadow projection sanitizer rejects invalid projection ids");
@@ -1202,17 +1325,15 @@ static void test_postfx_readback_policy_helpers(void) {
     effect.snapshot.taa_enabled = 0;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 0,
                 "PostFX active-effect helper ignores disabled TAA entries");
-    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
-                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
-                    0,
-                "PostFX active-chain helper ignores disabled TAA entries");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_postfx_chain_has_active_effect(&chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA) == 0,
+        "PostFX active-chain helper ignores disabled TAA entries");
     effect.snapshot.taa_enabled = 1;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_effect_is_active(&effect) == 1,
                 "PostFX active-effect helper accepts enabled TAA entries");
-    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effect(&chain,
-                                                            (int32_t)VGFX3D_POSTFX_EFFECT_TAA) ==
-                    1,
-                "PostFX active-chain helper accepts enabled TAA entries");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_postfx_chain_has_active_effect(&chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA) == 1,
+        "PostFX active-chain helper accepts enabled TAA entries");
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_has_active_effects(&chain) == 1,
                 "PostFX active-chain helper reports any enabled effect");
     effect.snapshot.taa_enabled = 0;
@@ -1268,9 +1389,9 @@ static void test_postfx_readback_policy_helpers(void) {
                 "RTT load-existing passes do not preserve scene temporal history");
     EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SCENE, 0) == 0,
                 "Main scene passes refresh scene temporal history");
-    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
-                    (vgfx3d_d3d11_target_kind_t)99, 1) == 0,
-                "Invalid target kinds do not preserve scene temporal history as overlays");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_should_treat_begin_frame_as_overlay((vgfx3d_d3d11_target_kind_t)99, 1) == 0,
+        "Invalid target kinds do not preserve scene temporal history as overlays");
     EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 1) == 1,
                 "Overlay target passes mark the separate overlay target as used");
     EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 0,
@@ -1320,11 +1441,10 @@ static void test_postfx_readback_policy_helpers(void) {
                     0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
                     VGFX3D_D3D11_READBACK_BACKBUFFER,
                 "Readback falls back to the swapchain when the current target is the backbuffer");
-    EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
-                                          (vgfx3d_d3d11_target_kind_t)99) ==
-            VGFX3D_D3D11_READBACK_BACKBUFFER,
-        "Readback treats invalid target kinds as backbuffer state");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(
+                    0, 0, 0, 0, 0, 0, 0, 0, 1, (vgfx3d_d3d11_target_kind_t)99) ==
+                    VGFX3D_D3D11_READBACK_BACKBUFFER,
+                "Readback treats invalid target kinds as backbuffer state");
 }
 
 static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
@@ -1368,6 +1488,8 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
 }
 
 static void test_d3d11_shader_sources_keep_numeric_guards(void) {
+    const char *fog_write;
+
     EXPECT_TRUE(contains_text(d3d11_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "Main D3D11 shader bounds safeNormalize before rsqrt");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
@@ -1394,6 +1516,93 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                 "SSR D3D11 shader divides by guarded mid-sample W");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "float3 hndc = hc.xyz / hc.w;"),
                 "SSR D3D11 shader divides by guarded hit-sample W");
+    EXPECT_TRUE(
+        contains_text(d3d11_shader_source, "uint clusterOffsetAt(int i) {\n    i = clamp(i, 0, "),
+        "Cluster offset reads clamp their packed-buffer index");
+    EXPECT_TRUE(
+        contains_text(d3d11_shader_source, "uint clusterIndexAt(int i) {\n    i = clamp(i, 0, "),
+        "Cluster light-index reads clamp their packed-buffer index");
+    EXPECT_TRUE(
+        count_text(d3d11_shader_source, "clusterStart = clamp(int(clusterOffsetAt(cidx)), 0,") == 2,
+        "Both lighting workflows clamp cluster starts");
+    EXPECT_TRUE(count_text(d3d11_shader_source,
+                           "int clusterEnd = clamp(int(clusterOffsetAt(cidx + 1)), "
+                           "clusterStart,") == 2,
+                "Both lighting workflows clamp and order cluster ends");
+    EXPECT_TRUE(count_text(d3d11_shader_source,
+                           "lightLoopCount = min(lightCount, clusterGlobalCount + clusterEnd - "
+                           "clusterStart);") == 2,
+                "Both clustered loops stay within uploaded lights");
+    EXPECT_TRUE(count_text(d3d11_shader_source, "if (i < 0 || i >= lightCount)") == 2,
+                "Both clustered loops reject malformed light indices");
+    EXPECT_TRUE(contains_text(
+                    d3d11_shader_source,
+                    "float3 tangentProjected = input.tangent.xyz - N * dot(input.tangent.xyz, N);"),
+                "Normal mapping retains the projected tangent before normalization");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float tangentLengthSq = dot(tangentProjected, tangentProjected);"),
+                "Normal mapping measures the unfallback tangent");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "if (tangentLengthSq > 0.0001 && tangentLengthSq < 1e20)"),
+                "Normal mapping rejects degenerate and unbounded tangents");
+    EXPECT_TRUE(
+        !contains_text(d3d11_shader_source, "float3 T = safeNormalize3(input.tangent.xyz - N *"),
+        "Normal mapping no longer promotes a missing tangent to a fallback basis");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float opticalDepth = min(hd * max(viewDistance, 0.0), 80.0);"),
+                "Height fog bounds optical depth");
+    fog_write = strstr(d3d11_shader_source, "result = lerp(result, fogColor.rgb, fogFactor);");
+    EXPECT_TRUE(fog_write && strstr(fog_write, "if (any(isnan(result)) || any(isinf(result)))"),
+                "Scene shader validates results after height-fog evaluation");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "float3 accum = float3(0.0, 0.0, 0.0);\n"
+                              "    for (int i = 0; i < taps; i++)"),
+                "Motion blur samples a centered full kernel");
+    EXPECT_TRUE(!contains_text(d3d11_postfx_shader_source,
+                               "float3 accum = color;\n    for (int i = 1; i < taps; i++)"),
+                "Motion blur no longer double-weights its input color");
+    EXPECT_TRUE(
+        contains_text(d3d11_postfx_shader_source,
+                      "float blur = clamp(abs(dist - dofFocusDistance) * max(dofAperture, 0.0) * "
+                      "0.02, 0.0, max(dofMaxBlur, 0.0));"),
+        "DOF uses aperture as blur strength and honors zero aperture");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "float2 radius = invResolution * blur;"),
+                "DOF maximum blur directly bounds its sample radius");
+    EXPECT_TRUE(!contains_text(d3d11_postfx_shader_source, "* blur * 8.0"),
+                "DOF does not multiply the documented maximum radius");
+    EXPECT_TRUE(
+        contains_text(d3d11_postfx_shader_source, "abs(luminance(n) + luminance(s) - 2.0 * lumaM)"),
+        "FXAA detects symmetric horizontal edges against the center");
+    EXPECT_TRUE(
+        contains_text(d3d11_postfx_shader_source, "abs(luminance(e) + luminance(w) - 2.0 * lumaM)"),
+        "FXAA detects symmetric vertical edges against the center");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "return lerp(color, (n + s + e + w) * 0.25, 0.5);"),
+                "FXAA blends the center with the neighbor average");
+}
+
+static void test_d3d11_shader_chunk_join_validation(void) {
+    char *cache = NULL;
+    char *bad_cache = NULL;
+    char *empty_cache = NULL;
+    const char *chunks[] = {"alpha", "", "omega"};
+    const char *bad_chunks[] = {"alpha", NULL};
+    const char *joined = d3d11_join_shader_chunks(&cache, chunks, 3);
+
+    EXPECT_TRUE(joined && strcmp(joined, "alphaomega") == 0,
+                "Shader chunk join preserves order and empty chunks");
+    EXPECT_TRUE(d3d11_join_shader_chunks(&cache, chunks, 3) == joined,
+                "Shader chunk join reuses its cache");
+    EXPECT_TRUE(d3d11_join_shader_chunks(NULL, chunks, 3) == NULL,
+                "Shader chunk join rejects a missing cache");
+    EXPECT_TRUE(d3d11_join_shader_chunks(&bad_cache, NULL, 1) == NULL,
+                "Shader chunk join rejects missing chunks");
+    EXPECT_TRUE(d3d11_join_shader_chunks(&bad_cache, bad_chunks, 2) == NULL && !bad_cache,
+                "Shader chunk join rejects null chunk entries atomically");
+    EXPECT_TRUE(strcmp(d3d11_join_shader_chunks(&empty_cache, NULL, 0), "") == 0,
+                "Shader chunk join accepts an empty source");
+    free(cache);
+    free(empty_cache);
 }
 
 int main(void) {
@@ -1410,6 +1619,7 @@ int main(void) {
     test_upload_status_helpers_drop_stale_state();
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
+    test_cluster_ibl_and_upload_budget_validation();
     test_d3d11_sanitization_helpers();
     test_d3d11_light_upload_sanitization_helpers();
     test_sampler_anisotropy_helpers();
@@ -1420,6 +1630,7 @@ int main(void) {
     test_shadow_and_rtt_policy_helpers();
     test_postfx_readback_policy_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
+    test_d3d11_shader_chunk_join_validation();
     test_d3d11_shader_sources_keep_numeric_guards();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);

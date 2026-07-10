@@ -376,9 +376,10 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
         float cluster_znear;
         float cluster_zfar;
         scene_data->cluster_global_count =
-            cluster ? vgfx3d_d3d11_sanitize_cluster_global_count(cluster->global_light_count,
-                                                                 scene_data->light_count)
-                    : -1;
+            vgfx3d_d3d11_cluster_table_is_usable(
+                cluster, cmd ? cmd->lights_revision : 0, scene_data->light_count)
+                ? cluster->global_light_count
+                : -1;
         scene_data->cluster_params[0] = (float)(ctx->rtt_active ? ctx->rtt_width : ctx->width);
         scene_data->cluster_params[1] = (float)(ctx->rtt_active ? ctx->rtt_height : ctx->height);
         vgfx3d_d3d11_sanitize_cluster_depth_range(
@@ -403,9 +404,21 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
     if (!ctx || !ctx->ctx || !ctx->device)
         return;
     ctx->opaque_depth_valid = 0;
-    depth = ctx->rtt_active ? ctx->rtt_depth_tex : ctx->scene_depth_tex;
-    w = ctx->rtt_active ? ctx->rtt_width : ctx->width;
-    h = ctx->rtt_active ? ctx->rtt_height : ctx->height;
+    switch (ctx->current_target_kind) {
+        case VGFX3D_D3D11_TARGET_RTT:
+            depth = ctx->rtt_depth_tex;
+            break;
+        case VGFX3D_D3D11_TARGET_SCENE:
+            depth = ctx->scene_depth_tex;
+            break;
+        case VGFX3D_D3D11_TARGET_SWAPCHAIN:
+            depth = ctx->depth_tex;
+            break;
+        default:
+            return;
+    }
+    w = ctx->current_width;
+    h = ctx->current_height;
     if (!depth || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
     if (!ctx->opaque_depth_tex || ctx->opaque_depth_w != w || ctx->opaque_depth_h != h) {
@@ -457,9 +470,12 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
 ///        draw carries none; clusterGlobalCount = -1 keeps the shader on the
 ///        flat loop). u16 arrays are little-endian, matching the uint4 lanes.
 static HRESULT d3d11_upload_cluster_table(d3d11_context_t *ctx,
-                                          const vgfx3d_cluster_table_t *table) {
+                                          const vgfx3d_cluster_table_t *table,
+                                          uint32_t expected_revision,
+                                          int32_t light_count) {
     HRESULT hr;
-    if (!table || !ctx->cb_cluster_offsets || !ctx->cb_cluster_indices)
+    if (!vgfx3d_d3d11_cluster_table_is_usable(table, expected_revision, light_count) ||
+        !ctx->cb_cluster_offsets || !ctx->cb_cluster_indices)
         return S_OK;
     hr = d3d11_update_constant_buffer(
         ctx, ctx->cb_cluster_offsets, table->offsets, sizeof(table->offsets));
@@ -489,25 +505,27 @@ static int d3d11_cmd_ibl_draw(d3d11_context_t *ctx,
         env_cm->ibl_base_size <= 0 || env_cm->ibl_mip_count <= 0)
         return 0;
     {
-        int32_t face_size;
-        int64_t size;
-        int32_t level_base = 0;
-        int32_t total_mips;
+        int32_t level_base;
+        int ibl_resident = 0;
+
         if (env_cm->face_size <= 0 || env_cm->face_size > INT32_MAX ||
-            env_cm->ibl_mip_count > INT32_MAX)
+            env_cm->ibl_base_size > INT32_MAX || env_cm->ibl_mip_count > INT32_MAX ||
+            !vgfx3d_d3d11_validate_ibl_layout((int32_t)env_cm->face_size,
+                                              (int32_t)env_cm->ibl_base_size,
+                                              (int32_t)env_cm->ibl_mip_count,
+                                              RT_CUBEMAP3D_IBL_MAX_MIPS,
+                                              &level_base))
             return 0;
-        if (!vgfx3d_d3d11_is_valid_cubemap_extent((int32_t)env_cm->face_size))
-            return 0;
-        face_size = (int32_t)env_cm->face_size;
-        size = face_size;
-        while (size > env_cm->ibl_base_size && size > 1) {
-            size >>= 1;
-            level_base++;
+        for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+            const d3d_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[i];
+            if (entry->cubemap_ptr == env_cm &&
+                entry->generation == vgfx3d_get_cubemap_generation(env_cm) && entry->srv &&
+                !entry->upload_in_progress && entry->applied_ibl_identity == env_cm->ibl_identity) {
+                ibl_resident = 1;
+                break;
+            }
         }
-        if (size != env_cm->ibl_base_size)
-            return 0;
-        total_mips = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
-        if (level_base + env_cm->ibl_mip_count > total_mips)
+        if (!ibl_resident)
             return 0;
         *out_lod_base = (float)level_base;
     }
@@ -1215,7 +1233,10 @@ static void d3d11_submit_draw(void *ctx_ptr,
             d3d11_log_hresult("Map(cbPerLights)", hr);
             return;
         }
-        hr = d3d11_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        hr = d3d11_upload_cluster_table(ctx,
+                                        (const vgfx3d_cluster_table_t *)cmd->cluster_table,
+                                        cmd->lights_revision,
+                                        scene_data.light_count);
         if (FAILED(hr)) {
             d3d11_log_hresult("Map(cbCluster)", hr);
             return;
@@ -1355,7 +1376,10 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
             d3d11_log_hresult("Map(cbPerLights)", hr);
             return;
         }
-        hr = d3d11_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        hr = d3d11_upload_cluster_table(ctx,
+                                        (const vgfx3d_cluster_table_t *)cmd->cluster_table,
+                                        cmd->lights_revision,
+                                        scene_data.light_count);
         if (FAILED(hr)) {
             d3d11_log_hresult("Map(cbCluster)", hr);
             return;

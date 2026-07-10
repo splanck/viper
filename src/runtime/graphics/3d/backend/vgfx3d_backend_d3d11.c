@@ -85,6 +85,7 @@ typedef struct {
     void *texture_asset;
     uint64_t generation;
     uint64_t pending_generation;
+    uint64_t failed_generation;
     ID3D11Texture2D *tex;
     ID3D11ShaderResourceView *srv;
     int32_t width;
@@ -95,6 +96,7 @@ typedef struct {
     int64_t native_next_mip;
     int64_t native_mip_start;
     int64_t native_mip_count;
+    uint64_t pending_native_bytes;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
 } d3d_tex_cache_entry_t;
@@ -103,6 +105,7 @@ typedef struct {
     const void *cubemap_ptr;
     uint64_t generation;
     uint64_t pending_generation;
+    uint64_t failed_generation;
     ID3D11Texture2D *tex;
     ID3D11ShaderResourceView *srv;
     int32_t face_size;
@@ -111,6 +114,9 @@ typedef struct {
     int8_t upload_in_progress;
     uint64_t last_used_frame;
     uint64_t applied_ibl_identity; /* prefiltered-mips overlay applied for this IBL payload */
+    uint64_t failed_ibl_identity;
+    uint64_t pending_ibl_identity;
+    uint64_t pending_ibl_bytes;
 } d3d_cubemap_cache_entry_t;
 
 typedef struct {
@@ -621,6 +627,10 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
                                             int32_t height,
                                             DXGI_FORMAT format,
                                             ID3D11Texture2D **out_tex);
+static HRESULT d3d11_ensure_readback_staging_texture(d3d11_context_t *ctx,
+                                                     int32_t width,
+                                                     int32_t height,
+                                                     DXGI_FORMAT format);
 static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
                                          int32_t width,
                                          int32_t height,
@@ -638,6 +648,7 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
 static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int32_t height);
 static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
+                                                          ID3D11ShaderResourceView *source_srv,
                                                           int32_t width,
                                                           int32_t height,
                                                           float threshold);
@@ -774,30 +785,22 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
 }
 
 /// @brief Try to read the pending timestamp query into `frame_gpu_time_us`.
-static int d3d11_harvest_frame_timing(d3d11_context_t *ctx, int block) {
+static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
     D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint;
     UINT64 start_ticks = 0;
     UINT64 end_ticks = 0;
-    HRESULT hr = S_FALSE;
-    int attempts = block ? 100000 : 1;
-    UINT flags = block ? 0u : D3D11_ASYNC_GETDATA_DONOTFLUSH;
+    HRESULT hr;
+    const UINT flags = D3D11_ASYNC_GETDATA_DONOTFLUSH;
 
     if (!ctx || !ctx->ctx || !ctx->frame_time_pending || !ctx->frame_time_disjoint_query ||
         !ctx->frame_time_start_query || !ctx->frame_time_end_query)
         return 0;
     memset(&disjoint, 0, sizeof(disjoint));
-    while (attempts-- > 0) {
-        hr = ID3D11DeviceContext_GetData(ctx->ctx,
-                                         (ID3D11Asynchronous *)ctx->frame_time_disjoint_query,
-                                         &disjoint,
-                                         sizeof(disjoint),
-                                         flags);
-        if (hr != S_FALSE)
-            break;
-        if (!block)
-            return 0;
-        Sleep(0);
-    }
+    hr = ID3D11DeviceContext_GetData(ctx->ctx,
+                                     (ID3D11Asynchronous *)ctx->frame_time_disjoint_query,
+                                     &disjoint,
+                                     sizeof(disjoint),
+                                     flags);
     if (hr == S_FALSE)
         return 0;
     if (FAILED(hr)) {
@@ -844,7 +847,7 @@ static void d3d11_begin_frame_timing(d3d11_context_t *ctx) {
         !ctx->frame_time_end_query)
         return;
     if (ctx->frame_time_pending)
-        (void)d3d11_harvest_frame_timing(ctx, 0);
+        (void)d3d11_harvest_frame_timing(ctx);
     if (ctx->frame_time_pending)
         return;
     ID3D11DeviceContext_Begin(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_disjoint_query);
@@ -868,7 +871,7 @@ static uint64_t d3d11_get_frame_gpu_time_us(void *ctx_ptr) {
     if (!ctx)
         return 0;
     if (ctx->frame_time_pending)
-        (void)d3d11_harvest_frame_timing(ctx, 1);
+        (void)d3d11_harvest_frame_timing(ctx);
     return ctx->frame_gpu_time_us;
 }
 

@@ -9,16 +9,25 @@
 #include <string.h>
 
 static const char *d3d11_join_shader_chunks(char **cache, const char *const *chunks, size_t count) {
+    if (!cache || (!chunks && count != 0))
+        return NULL;
     if (*cache)
         return *cache;
 
     size_t total = 1u;
-    for (size_t i = 0; i < count; i++)
-        total += strlen(chunks[i]);
+    for (size_t i = 0; i < count; i++) {
+        size_t len;
+        if (!chunks[i])
+            return NULL;
+        len = strlen(chunks[i]);
+        if (len > SIZE_MAX - total)
+            return NULL;
+        total += len;
+    }
 
     char *joined = (char *)malloc(total);
     if (!joined)
-        return "";
+        return NULL;
 
     char *dst = joined;
     for (size_t i = 0; i < count; i++) {
@@ -152,10 +161,16 @@ static const char *const d3d11_shader_source_chunks[] = {
     "};\n"
     "\n"
     "uint clusterOffsetAt(int i) {\n"
+    "    i = clamp(i, 0, "
+    VGFX3D_STR(VGFX3D_CLUSTER_COUNT)
+    ");\n"
     "    uint pair = clusterOffsetsPacked[i >> 3][(i >> 1) & 3];\n"
     "    return ((i & 1) != 0) ? (pair >> 16) : (pair & 0xFFFF);\n"
     "}\n"
     "uint clusterIndexAt(int i) {\n"
+    "    i = clamp(i, 0, "
+    VGFX3D_STR(VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+    " - 1);\n"
     "    uint pair = clusterIndicesPacked[i >> 3][(i >> 1) & 3];\n"
     "    return ((i & 1) != 0) ? (pair >> 16) : (pair & 0xFFFF);\n"
     "}\n"
@@ -756,9 +771,10 @@ static const char *const d3d11_shader_source_chunks[] = {
     "    if (flags0.z != 0) {\n"
     "        float3 mapN = normalTex.Sample(normalSampler, materialUv(input, 1)).xyz * 2.0 - 1.0;\n"
     "        mapN.xy *= pbrScalars1.x;\n"
-    "        float3 T = safeNormalize3(input.tangent.xyz - N * dot(input.tangent.xyz, N), "
-    "float3(1.0, 0.0, 0.0));\n"
-    "        if (dot(T, T) > 0.0001) {\n"
+    "        float3 tangentProjected = input.tangent.xyz - N * dot(input.tangent.xyz, N);\n"
+    "        float tangentLengthSq = dot(tangentProjected, tangentProjected);\n"
+    "        if (tangentLengthSq > 0.0001 && tangentLengthSq < 1e20) {\n"
+    "            float3 T = tangentProjected * rsqrt(tangentLengthSq);\n"
     "            float3 B = safeNormalize3(cross(N, T), float3(0.0, 0.0, 1.0)) * "
     "(input.tangent.w < 0.0 ? -1.0 : 1.0);\n"
     "            N = safeNormalize3(mapN.x * T + mapN.y * B + mapN.z * N, N);\n"
@@ -841,14 +857,21 @@ static const char *const d3d11_shader_source_chunks[] = {
     "            int clusterStart = 0;\n"
     "            if (clusterGlobalCount >= 0) {\n"
     "                int cidx = clusterFragmentIndex(input.pos.xy, input.worldPos);\n"
-    "                clusterStart = int(clusterOffsetAt(cidx));\n"
-    "                lightLoopCount =\n"
-    "                    clusterGlobalCount + (int(clusterOffsetAt(cidx + 1)) - clusterStart);\n"
+    "                clusterStart = clamp(int(clusterOffsetAt(cidx)), 0, "
+    VGFX3D_STR(VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+    ");\n"
+    "                int clusterEnd = clamp(int(clusterOffsetAt(cidx + 1)), clusterStart, "
+    VGFX3D_STR(VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+    ");\n"
+    "                lightLoopCount = min(lightCount, clusterGlobalCount + clusterEnd - "
+    "clusterStart);\n"
     "            }\n"
     "            for (int k = 0; k < lightLoopCount; k++) {\n"
     "                int i = (clusterGlobalCount < 0 || k < clusterGlobalCount)\n"
     "                            ? k\n"
     "                            : int(clusterIndexAt(clusterStart + (k - clusterGlobalCount)));\n"
+    "                if (i < 0 || i >= lightCount)\n"
+    "                    continue;\n"
     "                float3 L = float3(0.0, 0.0, 0.0);\n"
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
@@ -907,14 +930,21 @@ static const char *const d3d11_shader_source_chunks[] = {
     "            int clusterStart = 0;\n"
     "            if (clusterGlobalCount >= 0) {\n"
     "                int cidx = clusterFragmentIndex(input.pos.xy, input.worldPos);\n"
-    "                clusterStart = int(clusterOffsetAt(cidx));\n"
-    "                lightLoopCount =\n"
-    "                    clusterGlobalCount + (int(clusterOffsetAt(cidx + 1)) - clusterStart);\n"
+    "                clusterStart = clamp(int(clusterOffsetAt(cidx)), 0, "
+    VGFX3D_STR(VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+    ");\n"
+    "                int clusterEnd = clamp(int(clusterOffsetAt(cidx + 1)), clusterStart, "
+    VGFX3D_STR(VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+    ");\n"
+    "                lightLoopCount = min(lightCount, clusterGlobalCount + clusterEnd - "
+    "clusterStart);\n"
     "            }\n"
     "            for (int k = 0; k < lightLoopCount; k++) {\n"
     "                int i = (clusterGlobalCount < 0 || k < clusterGlobalCount)\n"
     "                            ? k\n"
     "                            : int(clusterIndexAt(clusterStart + (k - clusterGlobalCount)));\n"
+    "                if (i < 0 || i >= lightCount)\n"
+    "                    continue;\n"
     "                float3 L = float3(0.0, 0.0, 0.0);\n"
     "                float atten = 1.0;\n"
     "                if (lights[i].type == 0) {\n"
@@ -987,12 +1017,17 @@ static const char *const d3d11_shader_source_chunks[] = {
     "        float fogFactor = saturate((viewDistance - fogNear) / max(fogFar - fogNear, 0.001));\n"
     "        if (fogColor.a <= 0.5) fogFactor = 0.0;\n"
     "        if (heightFog.z > 0.0) {\n"
-    "            float hd = heightFog.z * exp(-(input.worldPos.y - heightFog.x) * heightFog.y);\n"
-    "            float hf = saturate(1.0 - exp(-hd * viewDistance));\n"
+    "            float fogExponent = clamp(-(input.worldPos.y - heightFog.x) * heightFog.y, "
+    "-80.0, 80.0);\n"
+    "            float hd = min(max(heightFog.z, 0.0) * exp(fogExponent), 1e20);\n"
+    "            float opticalDepth = min(hd * max(viewDistance, 0.0), 80.0);\n"
+    "            float hf = saturate(1.0 - exp(-opticalDepth));\n"
     "            fogFactor = 1.0 - (1.0 - fogFactor) * (1.0 - hf);\n"
     "        }\n"
     "        result = lerp(result, fogColor.rgb, fogFactor);\n"
     "    }\n"
+    "    if (any(isnan(result)) || any(isinf(result)))\n"
+    "        result = ambientColor.rgb * baseColor + emissive;\n"
     "    output.color = float4(result, finalAlpha);\n"
     "    float currW = (input.currClip.w < 0.0 ? -1.0 : 1.0) * max(abs(input.currClip.w), 0.0001);\n"
     "    float prevW = (input.prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(input.prevClip.w), 0.0001);\n"
@@ -1228,8 +1263,8 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "    if (length(velocity) < 0.0005)\n"
     "        return color;\n"
     "    int taps = clamp(motionBlurSamples, 2, 8);\n"
-    "    float3 accum = color;\n"
-    "    for (int i = 1; i < taps; i++) {\n"
+    "    float3 accum = float3(0.0, 0.0, 0.0);\n"
+    "    for (int i = 0; i < taps; i++) {\n"
     "        float t = ((float)i / (float)(taps - 1)) - 0.5;\n"
     "        accum += sceneAt(uv + velocity * t);\n"
     "    }\n"
@@ -1240,17 +1275,17 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "        return color;\n"
     "    float3 worldPos = reconstructWorld(uv, depth);\n"
     "    float dist = length(worldPos - cameraPosition.xyz);\n"
-    "    float blur = saturate(abs(dist - dofFocusDistance) / max(dofAperture, 0.001)) * "
-    "dofMaxBlur;\n"
+    "    float blur = clamp(abs(dist - dofFocusDistance) * max(dofAperture, 0.0) * 0.02, 0.0, "
+    "max(dofMaxBlur, 0.0));\n"
     "    if (blur < 0.001)\n"
     "        return color;\n"
-    "    float2 radius = invResolution * blur * 8.0;\n"
-    "    float3 accum = color;\n"
-    "    accum += sceneAt(uv + float2(radius.x, 0.0));\n"
-    "    accum += sceneAt(uv + float2(-radius.x, 0.0));\n"
-    "    accum += sceneAt(uv + float2(0.0, radius.y));\n"
-    "    accum += sceneAt(uv + float2(0.0, -radius.y));\n"
-    "    return accum * 0.2;\n"
+    "    float2 radius = invResolution * blur;\n"
+    "    float3 accum = color * 0.4;\n"
+    "    accum += sceneAt(uv + float2(radius.x, 0.0)) * 0.15;\n"
+    "    accum += sceneAt(uv + float2(-radius.x, 0.0)) * 0.15;\n"
+    "    accum += sceneAt(uv + float2(0.0, radius.y)) * 0.15;\n"
+    "    accum += sceneAt(uv + float2(0.0, -radius.y)) * 0.15;\n"
+    "    return accum;\n"
     "}\n"
     "float3 applyBloom(float2 uv, float3 color) {\n"
     "    if (bloomEnabled == 0)\n"
@@ -1316,10 +1351,12 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "    float3 s = sceneAt(uv + float2(0.0, invResolution.y));\n"
     "    float3 e = sceneAt(uv + float2(invResolution.x, 0.0));\n"
     "    float3 w = sceneAt(uv + float2(-invResolution.x, 0.0));\n"
-    "    float edge = abs(luminance(n) - luminance(s)) + abs(luminance(e) - luminance(w));\n"
-    "    if (edge < 0.05)\n"
+    "    float lumaM = luminance(color);\n"
+    "    float edge = abs(luminance(n) + luminance(s) - 2.0 * lumaM) +\n"
+    "                 abs(luminance(e) + luminance(w) - 2.0 * lumaM);\n"
+    "    if (edge < 0.08)\n"
     "        return color;\n"
-    "    return (color + n + s + e + w) * 0.2;\n"
+    "    return lerp(color, (n + s + e + w) * 0.25, 0.5);\n"
     "}\n"
     "float4 PSPostFX(VS_OUTPUT input) : SV_Target {\n"
     "    float depth = depthAt(input.uv);\n"
