@@ -57,8 +57,19 @@
 extern "C" {
 #include "rt_canvas3d_clusters.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_skeleton3d.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
+
+/* R18 per-instance skinned crowds (declared in rt_skeleton3d_internal.h). */
+void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
+                                             void *mesh_obj,
+                                             void *material,
+                                             const float *instance_matrices,
+                                             int32_t instance_count,
+                                             const float *bone_palettes,
+                                             const float *prev_bone_palettes,
+                                             int32_t bone_count);
 }
 
 namespace {
@@ -2212,6 +2223,291 @@ static void test_textureasset3d_mip_residency() {
     PASS();
 }
 
+/// R23: opt-in automatic mip-residency streaming. A tiny on-screen draw must
+/// demote the texture's resident window one mip at a time on the demotion
+/// cadence, and a full-resolution demand must restore the window immediately.
+static void test_canvas3d_texture_streaming_residency() {
+    TEST("Canvas3D texture streaming demotes far textures and restores near ones");
+    const char *path = "/tmp/viper_canvas3d_texture_stream.ktx2";
+    const uint8_t valid_block[16] = {
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
+    };
+    std::vector<std::vector<uint8_t>> level_storage;
+    std::vector<const uint8_t *> levels;
+    std::vector<uint64_t> level_bytes;
+    for (uint32_t mip = 0; mip < 9; mip++) {
+        uint32_t dim = 256u >> mip;
+        if (dim == 0)
+            dim = 1;
+        uint32_t blocks = ((dim + 3u) / 4u) * ((dim + 3u) / 4u);
+        std::vector<uint8_t> data((size_t)blocks * 16u);
+        for (size_t i = 0; i < data.size(); i += 16u)
+            std::memcpy(&data[i], valid_block, 16u);
+        level_storage.push_back(std::move(data));
+    }
+    for (const auto &level : level_storage) {
+        levels.push_back(level.data());
+        level_bytes.push_back(level.size());
+    }
+    EXPECT_TRUE(
+        write_test_ktx2_mips(path, 145u, 256u, 256u, levels.data(), level_bytes.data(), 9u),
+        "streaming KTX2 fixture written");
+
+    rt_string path_s = rt_string_from_bytes(path, std::strlen(path));
+    void *asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+    EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 9);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 0);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 9);
+
+    rt_canvas3d canvas = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(8, 8);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 500.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *far_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -90.0, 0.0, 0.0, 0.0, 1.0);
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx((vgfx_window_t)0, 8, 8);
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "software backend context exists");
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 8;
+    canvas.height = 8;
+    if (!rt || !rt->target || !canvas.backend_ctx)
+        return;
+    rt_canvas3d_set_render_target(&canvas, rt);
+    rt_material3d_set_unlit(mat, 1);
+    rt_material3d_set_texture(mat, asset);
+    rt_canvas3d_set_texture_streaming(&canvas, 1);
+
+    /* A 1-unit box 90 units away covers well under a pixel of an 8x8 target,
+     * so the demand settles at the last mip. Demotions drop one level every
+     * CANVAS3D_TEXTURE_STREAM_DEMOTE_FRAMES decision frames: level k lands on
+     * frame 31 + 30*(k-1), so 260 frames reach the full 8-level demotion. */
+    for (int frame = 0; frame < 40; frame++) {
+        rt_canvas3d_begin(&canvas, camera);
+        rt_canvas3d_draw_mesh(&canvas, mesh, far_xf, mat);
+        rt_canvas3d_end(&canvas);
+    }
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 1);
+    EXPECT_EQ(rt_canvas3d_get_texture_streaming_demotions(&canvas), 1);
+    for (int frame = 40; frame < 260; frame++) {
+        rt_canvas3d_begin(&canvas, camera);
+        rt_canvas3d_draw_mesh(&canvas, mesh, far_xf, mat);
+        rt_canvas3d_end(&canvas);
+    }
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 8);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 1);
+    EXPECT_EQ(rt_canvas3d_get_texture_streaming_demotions(&canvas), 8);
+
+    /* A strong negative bias forces a full-resolution demand; the promotion
+     * applies at the asset's next first-touch, without demotion pacing. */
+    rt_canvas3d_set_texture_streaming_bias(&canvas, -16.0);
+    for (int frame = 0; frame < 2; frame++) {
+        rt_canvas3d_begin(&canvas, camera);
+        rt_canvas3d_draw_mesh(&canvas, mesh, far_xf, mat);
+        rt_canvas3d_end(&canvas);
+    }
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 0);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 9);
+    EXPECT_EQ(rt_canvas3d_get_texture_streaming_demotions(&canvas), 8);
+
+    rt_canvas3d_set_render_target(&canvas, nullptr);
+    vgfx3d_software_backend.destroy_ctx(canvas.backend_ctx);
+    canvas.backend_ctx = nullptr;
+    free(canvas.texture_stream_entries);
+    canvas.texture_stream_entries = nullptr;
+    if (rt_obj_release_check0(mat))
+        rt_obj_free(mat);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    if (rt_obj_release_check0(camera))
+        rt_obj_free(camera);
+    if (rt_obj_release_check0(far_xf))
+        rt_obj_free(far_xf);
+    if (rt_obj_release_check0(rt))
+        rt_obj_free(rt);
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+    PASS();
+}
+
+/// R18: no-op instanced submit used by the fake GPU backend in the chunking test.
+static void r18_dummy_submit_draw_instanced(void *ctx,
+                                            vgfx_window_t win,
+                                            const vgfx3d_draw_cmd_t *cmd,
+                                            const float *instance_matrices,
+                                            int32_t instance_count,
+                                            const vgfx3d_light_params_t *lights,
+                                            int32_t light_count,
+                                            const float *ambient,
+                                            int8_t wireframe,
+                                            int8_t backface_cull) {
+    (void)ctx;
+    (void)win;
+    (void)cmd;
+    (void)instance_matrices;
+    (void)instance_count;
+    (void)lights;
+    (void)light_count;
+    (void)ambient;
+    (void)wireframe;
+    (void)backface_cull;
+}
+
+/// R18: on the software backend, per-instance skinned draws take the CPU fallback,
+/// so each instance must render with its OWN palette — the zero-scale palette
+/// collapses its box while the identity palette keeps its box visible.
+static void test_canvas3d_per_instance_skinning_software_fallback() {
+    TEST("Per-instance skinned draw poses each instance from its own palette (SW)");
+    rt_canvas3d canvas = {};
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(16, 16);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.5, 1.5, 1.5);
+    void *mat = rt_material3d_new();
+    float instance_matrices[32] = {0};
+    float palettes[32] = {0};
+
+    EXPECT_TRUE(rt != nullptr && rt->target != nullptr, "RenderTarget3D fixture exists");
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx((vgfx_window_t)0, 16, 16);
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "software backend context exists");
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 16;
+    canvas.height = 16;
+    if (!rt || !rt->target || !canvas.backend_ctx)
+        return;
+    rt_canvas3d_set_render_target(&canvas, rt);
+    rt_material3d_set_unlit(mat, 1);
+    rt_material3d_set_color(mat, 1.0, 0.0, 0.0);
+
+    /* Every vertex fully weighted to bone 0. */
+    for (int64_t v = 0; v < rt_mesh3d_get_vertex_count(mesh); v++)
+        rt_mesh3d_set_bone_weights(mesh, v, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+
+    /* Camera default: origin looking down -Z. Instance 0 at (-2, 0, -6) with an
+     * identity palette; instance 1 at (+2, 0, -6) with a zero palette that
+     * collapses all of its vertices to a point. */
+    instance_matrices[0] = instance_matrices[5] = instance_matrices[10] =
+        instance_matrices[15] = 1.0f;
+    instance_matrices[3] = -2.0f;
+    instance_matrices[11] = -6.0f;
+    instance_matrices[16 + 0] = instance_matrices[16 + 5] = instance_matrices[16 + 10] =
+        instance_matrices[16 + 15] = 1.0f;
+    instance_matrices[16 + 3] = 2.0f;
+    instance_matrices[16 + 11] = -6.0f;
+    palettes[0] = palettes[5] = palettes[10] = palettes[15] = 1.0f; /* identity for instance 0 */
+    /* instance 1's palette stays all zeros */
+
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh_instanced_skinned(
+        &canvas, mesh, mat, instance_matrices, 2, palettes, nullptr, 1);
+    EXPECT_EQ(canvas.draw_count, 2); /* software fallback: one skinned draw per instance */
+    rt_canvas3d_end(&canvas);
+
+    {
+        /* Left box (identity palette) renders; right box (zero palette) collapses. */
+        const size_t left = ((size_t)8 * 16 + 3) * 4;
+        const size_t right = ((size_t)8 * 16 + 12) * 4;
+        EXPECT_TRUE(rt->target->color_buf[left + 0] > 128,
+                    "identity-palette instance renders its box");
+        EXPECT_TRUE(rt->target->color_buf[right + 0] < 32,
+                    "zero-palette instance collapses to nothing");
+    }
+
+    rt_canvas3d_set_render_target(&canvas, nullptr);
+    vgfx3d_software_backend.destroy_ctx(canvas.backend_ctx);
+    canvas.backend_ctx = nullptr;
+    if (rt_obj_release_check0(mat))
+        rt_obj_free(mat);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    if (rt_obj_release_check0(camera))
+        rt_obj_free(camera);
+    if (rt_obj_release_check0(rt))
+        rt_obj_free(rt);
+    PASS();
+}
+
+/// R18: GPU-skinning backends pack per-instance palettes into the shared 256-slot
+/// palette, so chunk counts follow VGFX3D_MAX_BONES / bone_count; backends without
+/// hardware instancing refuse and fall back to one draw per instance.
+static void test_canvas3d_per_instance_skinning_chunking() {
+    TEST("Per-instance skinned chunking packs the shared palette slot");
+    rt_canvas3d canvas = {};
+    vgfx3d_backend_t fake = {};
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    std::vector<float> matrices((size_t)5 * 16u, 0.0f);
+    std::vector<float> palettes_small((size_t)5 * 8u * 16u, 0.0f);
+    std::vector<float> palettes_large((size_t)3 * 200u * 16u, 0.0f);
+
+    fake.name = "metal";
+    fake.submit_draw_instanced = r18_dummy_submit_draw_instanced;
+    canvas.backend = &fake;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 8;
+    canvas.height = 8;
+    canvas.in_frame = 1;
+    rt_material3d_set_unlit(mat, 1);
+    for (int64_t v = 0; v < rt_mesh3d_get_vertex_count(mesh); v++)
+        rt_mesh3d_set_bone_weights(mesh, v, 0, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+    for (int i = 0; i < 5; i++) {
+        matrices[(size_t)i * 16u + 0] = 1.0f;
+        matrices[(size_t)i * 16u + 5] = 1.0f;
+        matrices[(size_t)i * 16u + 10] = 1.0f;
+        matrices[(size_t)i * 16u + 15] = 1.0f;
+    }
+    for (size_t i = 0; i < palettes_small.size(); i += 16)
+        palettes_small[i] = palettes_small[i + 5] = palettes_small[i + 10] =
+            palettes_small[i + 15] = 1.0f;
+    for (size_t i = 0; i < palettes_large.size(); i += 16)
+        palettes_large[i] = palettes_large[i + 5] = palettes_large[i + 10] =
+            palettes_large[i + 15] = 1.0f;
+
+    /* 5 instances x 8 bones: 256/8 = 32 instances fit one draw -> 1 chunk. */
+    rt_canvas3d_draw_mesh_instanced_skinned(
+        &canvas, mesh, mat, matrices.data(), 5, palettes_small.data(), nullptr, 8);
+    EXPECT_EQ(canvas.draw_count, 1);
+
+    /* 3 instances x 200 bones: 256/200 = 1 instance per draw -> 3 chunks. */
+    rt_canvas3d_draw_mesh_instanced_skinned(
+        &canvas, mesh, mat, matrices.data(), 3, palettes_large.data(), nullptr, 200);
+    EXPECT_EQ(canvas.draw_count, 4);
+
+    /* Without hardware instancing the queue refuses per-instance palettes and
+     * the draw falls back to one skinned draw per instance. */
+    fake.submit_draw_instanced = NULL;
+    rt_canvas3d_draw_mesh_instanced_skinned(
+        &canvas, mesh, mat, matrices.data(), 2, palettes_small.data(), nullptr, 8);
+    EXPECT_EQ(canvas.draw_count, 6);
+
+    if (rt_obj_release_check0(mat))
+        rt_obj_free(mat);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    PASS();
+}
+
 /// Load must fail recoverably: NULL result with the expected diagnostic
 /// available through the last-load-error query (no trap).
 static bool ktx2_load_fails_with(rt_string path_s, const char *expected_substring) {
@@ -3963,6 +4259,91 @@ static void test_material_alpha() {
 //=============================================================================
 // Phase 11 — Cube map tests
 //=============================================================================
+
+static void test_cubemap_load_hdr_panorama() {
+    TEST("CubeMap3D.LoadHdrPanorama — Radiance decode, projection, exposure");
+    /* Synthetic 32x16 flat-coded panorama: top half green (up), bottom half
+     * red (down); linear value 1.0 encodes as RGBE (128, 0, 0, 129). */
+    const char *path = "/tmp/viper_cubemap_pano.hdr";
+    {
+        FILE *f = fopen(path, "wb");
+        assert(f);
+        fprintf(f, "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 16 +X 32\n");
+        for (int y = 0; y < 16; y++) {
+            for (int x = 0; x < 32; x++) {
+                unsigned char px4[4] = {0, 0, 0, 129};
+                if (y < 8)
+                    px4[1] = 128; /* green up */
+                else
+                    px4[0] = 128; /* red down */
+                fwrite(px4, 1, 4, f);
+            }
+        }
+        fclose(f);
+    }
+    void *cm = rt_cubemap3d_load_hdr_panorama(rt_const_cstr(path), 1.0);
+    EXPECT_TRUE(cm != nullptr, "HDR panorama loads as a cube map");
+    if (!cm)
+        return;
+    rt_cubemap3d *cube = (rt_cubemap3d *)cm;
+    EXPECT_TRUE(cube->face_size >= 8, "HDR panorama faces have usable resolution");
+    {
+        /* Face order: +X,-X,+Y,-Y,+Z,-Z. +Y looks up (green), -Y down (red).
+         * Linear 1.0 at exposure 1 Reinhard-maps to 0.5 -> byte 128. */
+        int64_t c = cube->face_size / 2;
+        int64_t up = rt_pixels_get(cube->faces[2], c, c);
+        int64_t down = rt_pixels_get(cube->faces[3], c, c);
+        int up_g = (int)((up >> 8) & 0xFF);
+        int up_r = (int)(up & 0xFF);
+        int down_r = (int)(down & 0xFF);
+        int down_g = (int)((down >> 8) & 0xFF);
+        EXPECT_TRUE(up_g >= 120 && up_g <= 136 && up_r <= 8,
+                    "+Y face samples the panorama's upper hemisphere");
+        EXPECT_TRUE(down_r >= 120 && down_r <= 136 && down_g <= 8,
+                    "-Y face samples the panorama's lower hemisphere");
+    }
+    {
+        /* Exposure 4: Reinhard(4)/[0,1] = 0.8 -> byte 204. */
+        void *bright = rt_cubemap3d_load_hdr_panorama(rt_const_cstr(path), 4.0);
+        EXPECT_TRUE(bright != nullptr, "HDR panorama loads at raised exposure");
+        if (bright) {
+            rt_cubemap3d *bc = (rt_cubemap3d *)bright;
+            int64_t c = bc->face_size / 2;
+            int g = (int)((rt_pixels_get(bc->faces[2], c, c) >> 8) & 0xFF);
+            EXPECT_TRUE(g >= 196 && g <= 212, "Exposure scales the Reinhard mapping");
+        }
+    }
+    {
+        /* New-style RLE variant: 8x2, all red rows. */
+        const char *rle_path = "/tmp/viper_cubemap_pano_rle.hdr";
+        FILE *f = fopen(rle_path, "wb");
+        assert(f);
+        fprintf(f, "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 8\n");
+        for (int y = 0; y < 2; y++) {
+            unsigned char hdr4[4] = {2, 2, 0, 8};
+            unsigned char plane_r[2] = {128 + 8, 128};
+            unsigned char plane_zero[2] = {128 + 8, 0};
+            unsigned char plane_e[2] = {128 + 8, 129};
+            fwrite(hdr4, 1, 4, f);
+            fwrite(plane_r, 1, 2, f);
+            fwrite(plane_zero, 1, 2, f);
+            fwrite(plane_zero, 1, 2, f);
+            fwrite(plane_e, 1, 2, f);
+        }
+        fclose(f);
+        void *rle_cm = rt_cubemap3d_load_hdr_panorama(rt_const_cstr(rle_path), 1.0);
+        EXPECT_TRUE(rle_cm != nullptr, "RLE-coded Radiance rows decode");
+        if (rle_cm) {
+            rt_cubemap3d *rc = (rt_cubemap3d *)rle_cm;
+            int64_t c = rc->face_size / 2;
+            int r = (int)(rt_pixels_get(rc->faces[0], c, c) & 0xFF);
+            EXPECT_TRUE(r >= 120 && r <= 136, "RLE panorama decodes to the expected red");
+        }
+        std::remove(rle_path);
+    }
+    std::remove(path);
+    PASS();
+}
 
 static void test_cubemap_new() {
     TEST("CubeMap3D.New — 6 faces creates valid cube map");
@@ -8921,6 +9302,9 @@ int main() {
     test_textureasset3d_decode_failure_checker_fallback();
     test_textureasset3d_bc7_partial_mip_fallback();
     test_textureasset3d_mip_residency();
+    test_canvas3d_texture_streaming_residency();
+    test_canvas3d_per_instance_skinning_software_fallback();
+    test_canvas3d_per_instance_skinning_chunking();
     test_textureasset3d_supercompressed_ktx2_loads();
     test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();
@@ -8968,6 +9352,7 @@ int main() {
     test_material_alpha();
 
     /* Phase 11 — Cube maps */
+    test_cubemap_load_hdr_panorama();
     test_cubemap_new();
     test_canvas_set_skybox_repairs_stale_existing_slot();
     test_canvas_ibl_setters_defer_prefilter_work();

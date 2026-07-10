@@ -365,6 +365,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/gui/rt_videowidget.c
         graphics/3d/render/rt_texatlas3d.c
         graphics/3d/backend/vgfx3d_frustum.c
+        graphics/3d/backend/vgfx3d_brdf_lut.c
         graphics/3d/backend/vgfx3d_skinning.c
         graphics/3d/backend/vgfx3d_backend_utils.c
         graphics/3d/backend/vgfx3d_backend_d3d11_shared.c

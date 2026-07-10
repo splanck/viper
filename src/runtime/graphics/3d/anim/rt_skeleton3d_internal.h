@@ -19,8 +19,12 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #define VGFX3D_MAX_BONES 256
+/* Skeleton-level bone ceiling: rigs may exceed the 256-slot draw palette; meshes
+ * bound to such rigs are partitioned at import into sub-meshes whose bone sets fit
+ * VGFX3D_MAX_BONES, remapped through rt_mesh3d::bone_map. */
+#define VGFX3D_MAX_SKELETON_BONES 1024
 #define RT_ANIM_BLEND3D_MAX_STATES 8
-#define RT_ANIMATION3D_MAX_CHANNELS VGFX3D_MAX_BONES
+#define RT_ANIMATION3D_MAX_CHANNELS VGFX3D_MAX_SKELETON_BONES
 #define RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL 65536
 
 /// @brief One bone: name, parent index (-1 = root), local bind-pose matrix, and the
@@ -42,6 +46,16 @@ typedef struct {
     uint8_t position_mask;
     uint8_t rotation_mask;
     uint8_t scale_mask;
+    /* CUBICSPLINE support: per-channel Hermite tangents (value units per second).
+     * cubic_mask bit 0 = position, bit 1 = rotation, bit 2 = scale; a segment
+     * plays back cubic only when both bracketing keys carry the channel bit. */
+    uint8_t cubic_mask;
+    float pos_in_tangent[3];
+    float pos_out_tangent[3];
+    float rot_in_tangent[4];
+    float rot_out_tangent[4];
+    float scale_in_tangent[3];
+    float scale_out_tangent[3];
 } vgfx3d_keyframe_t;
 
 /// @brief A per-bone animation channel: the target bone index and its growable,
@@ -162,7 +176,7 @@ static inline int32_t skeleton3d_safe_bone_count(const rt_skeleton3d *skeleton) 
                                                               skeleton->bone_count,
                                                               skeleton->bone_capacity)
                              : 0;
-    return count < VGFX3D_MAX_BONES ? count : VGFX3D_MAX_BONES;
+    return count < VGFX3D_MAX_SKELETON_BONES ? count : VGFX3D_MAX_SKELETON_BONES;
 }
 
 /// @brief Return a valid parent index for @p bone, or -1 when the stored parent is unusable.
@@ -253,6 +267,18 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
                                                        const float *local_bounds_max,
                                                        int8_t conservative_bounds,
                                                        int8_t disable_occlusion);
+
+/// @brief Queue instance_count copies of a skinned mesh, each posed by its own packed palette
+///        (R18); GPU backends chunk palettes into shared-slot hardware draws, other paths fall
+///        back to one skinned draw per instance.
+void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
+                                             void *mesh_obj,
+                                             void *material,
+                                             const float *instance_matrices,
+                                             int32_t instance_count,
+                                             const float *bone_palettes,
+                                             const float *prev_bone_palettes,
+                                             int32_t bone_count);
 
 /// @brief Build global bone matrices from contiguous local matrices, tolerating non-topological
 ///        parent order and breaking parent cycles by treating the cycle edge as a root.

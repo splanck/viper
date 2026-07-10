@@ -1,0 +1,127 @@
+// ============================================================================
+// MODULE: release_upgrade_probe
+// PURPOSE: Deterministic contract probe for the commercial-quality gameplay
+//          systems that do not require a graphics or audio device.
+// ============================================================================
+
+module release_upgrade_probe;
+
+bind Viper.Terminal;
+bind "./content/ball_catalog";
+bind "./gameplay/release_meter";
+bind "./gameplay/leaves";
+bind "./progression/profile";
+bind "./scoring/scoring";
+bind "./engine/hud";
+bind "./effects/celebrations";
+bind "./config";
+bind "./menu";
+
+var failureCount: Integer = 0;
+
+func require(ok: Boolean, message: String) {
+    if (ok == false) {
+        Say("FAIL: " + message);
+        failureCount = failureCount + 1;
+    }
+}
+
+func main() {
+    menu.PERSISTENCE_ENABLED = false;
+    var catalog = new BallCatalog();
+    require(catalog.count() == 6, "release catalog must contain six tactical balls");
+    require(catalog.get(0).getName() == "House Control", "starter ball must remain stable");
+    require(catalog.get(5).getHook() > catalog.get(0).getHook(),
+        "advanced pearl ball must create more hook than starter ball");
+    require(catalog.firstUnlockedFrom(0, 1, 99) == 0,
+        "locked equipment must be skipped");
+    require(catalog.firstUnlockedFrom(0, 1, 100) == 1,
+        "equipment must unlock at its stated score");
+
+    var meter = new ReleaseMeter();
+    meter.reset(1.0);
+    meter.beginCharge();
+    meter.update(0.50);
+    require(meter.getPower() > 0.0, "charging must build power");
+    var firstAccuracy = meter.release();
+    require(firstAccuracy >= 0.0 && firstAccuracy <= 1.0,
+        "release accuracy must be normalized");
+    meter.reset(1.0);
+    require(meter.getPower() < 0.0001, "reset must clear the meter");
+
+    var leaves = new LeaveAnalyzer();
+    require(leaves.describe(1) == "Head pin", "pin-one leave name");
+    require(leaves.describe((1 << 6) + (1 << 9)) == "7-10 split", "7-10 split name");
+    require(leaves.difficulty((1 << 6) + (1 << 9)) == 3, "7-10 is elite difficulty");
+
+    var profile = new PlayerProfile("Player 1", 0, 0x56CFE1, false, 2);
+    profile.recordGame(187, 5, 2, 1);
+    require(profile.getBestScore() == 187, "profile best score");
+    require(profile.getGamesPlayed() == 1, "profile game count");
+    require(profile.getTotalStrikes() == 5, "profile strike count");
+
+    var hud = new HUD();
+    hud.initHUD();
+    hud.showMessage("primary", 0xFFFFFF, 0.5);
+    hud.queueMessage("achievement", 0xFFD166, 1.0);
+    require(hud.getQueuedMessageCount() == 2, "achievement toast must queue");
+    hud.update(0.6);
+    require(hud.getQueuedMessageCount() == 1, "toast queue must advance in order");
+
+    var celebration = new CelebrationManager();
+    celebration.initCelebrations();
+    celebration.onStrike(1);
+    celebration.onStrike(1);
+    require(celebration.getType() == celebrations.STRIKE,
+        "different players' strikes must not combine into a turkey");
+    celebration.onStrike(3);
+    require(celebration.getType() == celebrations.TURKEY,
+        "one player's three-strike streak must trigger turkey celebration");
+
+    var progression = new BowlingMenu();
+    require(progression.awardChallenge(0, 1), "first challenge medal must award");
+    require(progression.awardChallenge(0, 1) == false, "same medal must not award twice");
+    require(progression.awardChallenge(0, 3), "higher challenge medal must upgrade");
+    require(progression.getChallengeMedal(0) == 3, "highest medal tier must persist in memory");
+    require(progression.unlockAchievement(0), "first achievement must unlock");
+    require(progression.unlockAchievement(0) == false, "achievement unlock must be idempotent");
+
+    var clutch = new ScoreKeeper();
+    clutch.startAtTenthFrame();
+    require(clutch.getFrame() == 10, "clutch mode must begin in frame ten");
+    clutch.recordRoll(10);
+    require(clutch.wasStrike(), "opening tenth-frame strike classification");
+    require(clutch.wasSpare() == false, "opening tenth-frame strike is not a spare");
+    require(clutch.needsFullReset(), "tenth-frame strike needs a fresh bonus rack");
+    clutch.recordRoll(10);
+    require(clutch.needsFullReset(), "second tenth-frame strike needs a fresh rack");
+    clutch.recordRoll(10);
+    require(clutch.isGameOver(), "clutch mode must finish after tenth-frame bonuses");
+    require(clutch.getTotalScore() == 30, "clutch perfect frame is worth thirty");
+
+    var clutchSpare = new ScoreKeeper();
+    clutchSpare.startAtTenthFrame();
+    clutchSpare.recordRoll(9);
+    clutchSpare.recordRoll(1);
+    require(clutchSpare.wasSpare(), "tenth-frame spare classification");
+    require(clutchSpare.needsFullReset(), "tenth-frame spare needs a fresh bonus rack");
+    clutchSpare.recordRoll(10);
+    require(clutchSpare.getTotalScore() == 20, "tenth-frame spare plus strike scores twenty");
+
+    var perfect = new ScoreKeeper();
+    for (var roll: Integer = 0; roll < 12; roll = roll + 1) { perfect.recordRoll(10); }
+    require(perfect.isGameOver(), "twelve strikes must close a game");
+    require(perfect.getTotalScore() == 300, "perfect game scoring");
+
+    var opens = new ScoreKeeper();
+    for (var frame: Integer = 0; frame < 10; frame = frame + 1) {
+        opens.recordRoll(9); opens.recordRoll(0);
+    }
+    require(opens.getTotalScore() == 90, "ten open nine frames score ninety");
+
+    if (failureCount > 0) {
+        Say("RESULT: fail " + toString(failureCount));
+    } else {
+        Say("RESULT: ok");
+    }
+}

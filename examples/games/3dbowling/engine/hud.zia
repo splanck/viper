@@ -17,9 +17,8 @@
 //   * METER COLOR PROGRESSION. drawPowerMeter switches color through
 //     LOW (green) → MID (orange) → HIGH (red) at the threshold values
 //     in config — a visual "you're charging too much" signal.
-//   * TOAST QUEUE OF ONE. Single in-flight message + timer. Caller
-//     submits via showMessage; update decrements the timer; draw
-//     paints if active. Simpler than a real queue, fine for this app.
+//   * PRIORITIZED TOAST QUEUE. Gameplay coaching can replace immediately;
+//     achievements queue behind it so simultaneous unlocks are never lost.
 // ============================================================================
 
 // hud.zia — Bowling scoreboard, meters, player summary, and toast messages
@@ -27,39 +26,83 @@ module hud;
 
 bind Viper.Graphics3D;
 bind Viper.Core.Convert as Convert;
+bind Viper.Math;
 bind "../config";
 bind "../scoring/scoring";
+bind "../content/ball_catalog";
 
 /// @brief 2D HUD overlay (scoreboard + meters + toast).
 class HUD {
     hide Float messageTimer;
     hide List[String] messageText;
-    hide Integer messageColor;
+    hide List[Integer] messageColors;
+    hide List[Float] messageDurations;
+    hide BallCatalog ballCatalog;
+    hide Float releaseNeedle;
+    hide Float releaseAccuracy;
+    hide Float shotSpeed;
+    hide String activeName;
+    hide String leaveName;
+    hide Integer leaveDifficulty;
 
-    /// @brief Initialize empty toast state.
+    /// @brief Initialize empty prioritized-toast state.
     expose func initHUD() {
         messageTimer = 0.0;
         messageText = [];
-        messageText.add("");
-        messageColor = config.HUD_COLOR_WHITE;
+        messageColors = [];
+        messageDurations = [];
+        ballCatalog = new BallCatalog();
+        releaseNeedle = 0.5;
+        releaseAccuracy = 1.0;
+        shotSpeed = 0.0;
+        activeName = "Player";
+        leaveName = "Fresh rack";
+        leaveDifficulty = 0;
+    }
+
+    /// @brief Push transient release and leave context without widening draw().
+    expose func setShotContext(needle: Float, accuracy: Float, speed: Float, playerName: String,
+                               currentLeave: String, difficulty: Integer) {
+        releaseNeedle = needle;
+        releaseAccuracy = accuracy;
+        shotSpeed = speed;
+        activeName = playerName;
+        leaveName = currentLeave;
+        leaveDifficulty = difficulty;
     }
 
     /// @brief Show a centered toast message for `duration` seconds.
     expose func showMessage(msg: String, color: Integer, duration: Float) {
-        if (messageText.count() == 0) {
-            messageText.add(msg);
-        } else {
-            messageText.set(0, msg);
-        }
-        messageColor = color;
+        messageText.clear();
+        messageColors.clear();
+        messageDurations.clear();
+        messageText.add(msg);
+        messageColors.add(color);
+        messageDurations.add(duration);
         messageTimer = duration;
     }
 
+    /// @brief Queue a secondary toast without hiding the current gameplay cue.
+    expose func queueMessage(msg: String, color: Integer, duration: Float) {
+        if (messageText.count() >= 5) { return; }
+        messageText.add(msg);
+        messageColors.add(color);
+        messageDurations.add(duration);
+        if (messageText.count() == 1) { messageTimer = duration; }
+    }
+
+    expose func getQueuedMessageCount() -> Integer { return messageText.count(); }
+
     /// @brief Tick the toast message timer.
     expose func update(dt: Float) {
-        if (messageTimer > 0.0) {
-            messageTimer = messageTimer - dt;
-        }
+        if (messageText.count() == 0) { return; }
+        messageTimer = messageTimer - dt;
+        if (messageTimer > 0.0) { return; }
+        messageText.removeAt(0);
+        messageColors.removeAt(0);
+        messageDurations.removeAt(0);
+        if (messageText.count() > 0) { messageTimer = messageDurations.get(0); }
+        else { messageTimer = 0.0; }
     }
 
     /// @brief Render the full HUD overlay each frame.
@@ -67,67 +110,85 @@ class HUD {
                      power: Float, charging: Boolean,
                      spin: Float, aimX: Float,
                      ballType: Integer, gameState: Integer,
-                     fps: Integer, playerCount: Integer, activePlayer: Integer,
+                     playerCount: Integer, activePlayer: Integer,
                      scoreKeepers: List[ScoreKeeper],
                      oilName: String) {
         var cw: Integer = canvas.Width;
         var ch: Integer = canvas.Height;
 
-        drawScoreboard(canvas, scoreKeeper, cw);
-        drawStatusPanel(canvas, cw, playerCount, activePlayer, scoreKeepers, oilName, ballType);
+        if (cw < 1260) {
+            drawCompactScoreboard(canvas, scoreKeeper, cw, oilName, ballType);
+        } else {
+            drawScoreboard(canvas, scoreKeeper, cw);
+            drawStatusPanel(canvas, cw, playerCount, activePlayer, scoreKeepers, oilName, ballType);
+        }
 
         if (gameState == config.STATE_AIMING) {
-            drawControlPanel(canvas, power, charging, spin, aimX, ch);
+            if (ch < 360) { drawCompactControls(canvas, power, spin, cw, ch); }
+            else { drawControlPanel(canvas, power, charging, spin, aimX, ch); }
         }
 
-        if (messageTimer > 0.0) {
+        if (messageTimer > 0.0 && messageText.count() > 0) {
             var msg = messageText.get(0);
-            var msgX = cw / 2 - msg.Length * 4;
-            Canvas3D.DrawText2D(canvas, msgX, ch / 2 + 52, msg, messageColor);
+            var msgW = Canvas3D.MeasureText2D(canvas, msg, 1.25);
+            var msgX = cw / 2 - msgW / 2;
+            Canvas3D.DrawRoundRect2D(canvas, msgX - 22, ch / 2 + 38,
+                msgW + 44, 42, 12, config.HUD_COLOR_NAVY, 0.88);
+            Canvas3D.DrawText2DScaled(canvas, msgX, ch / 2 + 49, msg,
+                messageColors.get(0), 1.25);
         }
-
-        Canvas3D.DrawText2D(canvas, cw - 86, ch - 20, "FPS: " + toString(fps), config.HUD_COLOR_GRAY);
     }
 
     /// @brief Post-throw readout: the ball's entry angle plus a pocket-quality
     ///        cue, so players learn that angle (hook), not just power, is what
     ///        drives strikes.
     expose func drawShotFeedback(canvas: Canvas3D, entryAngle: Float, cw: Integer) {
-        var panelW = 224;
+        var panelW = 420;
         var px = cw / 2 - panelW / 2;
         var py = 74;
-        Canvas3D.DrawRect2D(canvas, px, py, panelW, 42, config.HUD_COLOR_FRAME_BG);
-        Canvas3D.DrawRect2D(canvas, px, py, panelW, 2, config.HUD_COLOR_MENU_ACCENT);
-        Canvas3D.DrawText2D(canvas, px + 12, py + 10,
-            "Entry angle  " + toString(Convert.NumToInt(entryAngle)) + " deg", config.HUD_COLOR_WHITE);
+        Canvas3D.DrawRoundRect2D(canvas, px, py, panelW, 70, 12, config.HUD_COLOR_NAVY, 0.90);
+        Canvas3D.DrawRect2D(canvas, px + 16, py, panelW - 32, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawText2DScaled(canvas, px + 16, py + 12,
+            "ENTRY " + toString(Convert.NumToInt(entryAngle)) + " deg", config.HUD_COLOR_WHITE, 1.05);
+        Canvas3D.DrawText2DScaled(canvas, px + 164, py + 12,
+            "RELEASE " + toString(Convert.NumToInt(releaseAccuracy * 100.0)) + "%",
+            config.HUD_COLOR_CYAN, 1.05);
+        Canvas3D.DrawText2DScaled(canvas, px + 310, py + 12,
+            "SPEED " + toString(Convert.NumToInt(shotSpeed)) + "m/s",
+            config.HUD_COLOR_AMBER, 0.88);
 
         var tag = "Straight-in - tough to strike";
         var tagColor = config.HUD_COLOR_GRAY;
-        if (entryAngle >= 4.0) {
+        var entryMagnitude = Abs(entryAngle);
+        if (entryMagnitude >= 4.0) {
             tag = "Strong pocket angle";
             tagColor = config.HUD_COLOR_GOLD;
-        } else if (entryAngle >= 2.0) {
+        } else if (entryMagnitude >= 2.0) {
             tag = "Shallow angle";
             tagColor = config.HUD_COLOR_WHITE;
         }
-        Canvas3D.DrawText2D(canvas, px + 12, py + 26, tag, tagColor);
+        var leaveColor = config.HUD_COLOR_WHITE;
+        if (leaveDifficulty >= 2) { leaveColor = config.HUD_COLOR_CORAL; }
+        Canvas3D.DrawText2DScaled(canvas, px + 16, py + 39, tag, tagColor, 0.92);
+        Canvas3D.DrawText2DScaled(canvas, px + 250, py + 39, leaveName, leaveColor, 0.92);
     }
 
     hide func drawControlPanel(canvas: Canvas3D, power: Float, charging: Boolean,
                                spin: Float, aimX: Float,
                                ch: Integer) {
         var panelW = 304;
-        var panelH = 92;
+        var panelH = 124;
         var panelX = 24;
         var panelY = ch - panelH - 22;
         if (panelY < 166) { panelY = 166; }
 
-        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, panelH, config.HUD_COLOR_FRAME_BG);
-        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawRoundRect2D(canvas, panelX, panelY, panelW, panelH, 14,
+            config.HUD_COLOR_NAVY, 0.90);
+        Canvas3D.DrawRect2D(canvas, panelX + 16, panelY, panelW - 32, 2, config.HUD_COLOR_MENU_ACCENT);
 
         var meterX = panelX + 18;
         var meterY = panelY + 30;
-        Canvas3D.DrawText2D(canvas, meterX, panelY + 12, "POWER", config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2DScaled(canvas, meterX, panelY + 12, "POWER", config.HUD_COLOR_WHITE, 1.0);
         Canvas3D.DrawRect2D(canvas, meterX - 1, meterY - 1,
             config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
 
@@ -149,11 +210,11 @@ class HUD {
         if (charging || power > 0.0) {
             pct = toString(Convert.NumToInt(displayPower * 100.0)) + "%";
         }
-        Canvas3D.DrawText2D(canvas, meterX + config.METER_W + 18, meterY + 2, pct, config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2DScaled(canvas, meterX + config.METER_W + 18, meterY + 1, pct, config.HUD_COLOR_WHITE, 0.9);
 
         var spinX = panelX + 18;
-        var spinY = panelY + 66;
-        Canvas3D.DrawText2D(canvas, spinX, spinY - 14, "CURVE", config.HUD_COLOR_GRAY);
+        var spinY = panelY + 68;
+        Canvas3D.DrawText2DScaled(canvas, spinX, spinY - 17, "CURVE", config.HUD_COLOR_GRAY, 0.88);
         var spinBarW = config.SPIN_INDICATOR_W + 34;
         var spinBarX = spinX + 66;
         Canvas3D.DrawRect2D(canvas, spinBarX, spinY - 3,
@@ -182,14 +243,64 @@ class HUD {
         var hookLabel = "STRAIGHT";
         if (spin > 0.02) { hookLabel = "HOOK R " + toString(Convert.NumToInt(spinPct * 100.0)) + "%"; }
         else if (spin < -0.02) { hookLabel = "HOOK L " + toString(Convert.NumToInt(-spinPct * 100.0)) + "%"; }
-        Canvas3D.DrawText2D(canvas, spinBarX, spinY + 11, hookLabel, markerColor);
+        Canvas3D.DrawText2DScaled(canvas, spinBarX, spinY + 11, hookLabel, markerColor, 0.76);
 
         var aimPct = aimX / config.AIM_MAX;
         var aimXPos = panelX + 232 + Convert.NumToInt(aimPct * 46.0);
-        Canvas3D.DrawText2D(canvas, panelX + 228, spinY - 14, "AIM", config.HUD_COLOR_GRAY);
+        Canvas3D.DrawText2DScaled(canvas, panelX + 228, spinY - 17, "AIM", config.HUD_COLOR_GRAY, 0.88);
         Canvas3D.DrawRect2D(canvas, panelX + 228, spinY - 3, 92, 2, config.HUD_COLOR_DARK);
         Canvas3D.DrawRect2D(canvas, panelX + 273, spinY - 7, 2, 10, config.HUD_COLOR_GRAY);
         Canvas3D.DrawRect2D(canvas, aimXPos - 2, spinY - 8, 4, 12, config.HUD_COLOR_WHITE);
+
+        // Release timing strip: center is perfect, cyan marker is live timing.
+        var timingX = panelX + 18;
+        var timingY = panelY + 108;
+        var timingW = panelW - 36;
+        Canvas3D.DrawText2DScaled(canvas, timingX, timingY - 13, "RELEASE", config.HUD_COLOR_GRAY, 0.78);
+        Canvas3D.DrawRect2D(canvas, timingX + 62, timingY - 4, timingW - 62, 7, 0x172A36);
+        var zoneX = timingX + 62 + (timingW - 62) / 2 - 18;
+        Canvas3D.DrawRect2D(canvas, zoneX, timingY - 4, 36, 7, 0x2B694F);
+        var needleX = timingX + 62 + Convert.NumToInt(releaseNeedle * ((timingW - 62) + 0.0));
+        Canvas3D.DrawRect2D(canvas, needleX - 2, timingY - 8, 4, 15, config.HUD_COLOR_CYAN);
+    }
+
+    hide func drawCompactScoreboard(canvas: Canvas3D, sk: ScoreKeeper, cw: Integer,
+                                    oilName: String, ballType: Integer) {
+        var panelW = cw - 24;
+        if (panelW > 520) { panelW = 520; }
+        var x = cw / 2 - panelW / 2;
+        Canvas3D.DrawRoundRect2D(canvas, x, 10, panelW, 64, 10, config.HUD_COLOR_NAVY, 0.92);
+        Canvas3D.DrawText2DScaled(canvas, x + 16, 20, activeName, config.HUD_COLOR_AMBER, 1.0);
+        Canvas3D.DrawText2DScaled(canvas, x + 16, 40,
+            "FRAME " + toString(sk.getFrame()) + "  ROLL " + toString(sk.getRollInFrame()),
+            0x91A8B6, 0.85);
+        Canvas3D.DrawText2DScaled(canvas, x + 16, 56,
+            oilName + "  /  " + getBallName(ballType), getBallColor(ballType), 0.66);
+        var score = "" + toString(sk.getTotalScore());
+        var sw = Canvas3D.MeasureText2D(canvas, score, 2.1);
+        Canvas3D.DrawText2DScaled(canvas, x + panelW - sw - 18, 18, score, 0xF7FBFF, 2.1);
+    }
+
+    hide func drawCompactControls(canvas: Canvas3D, power: Float, spin: Float,
+                                  cw: Integer, ch: Integer) {
+        var x = 12;
+        var y = ch - 42;
+        var width = cw - 24;
+        Canvas3D.DrawRoundRect2D(canvas, x, y, width, 32, 9, config.HUD_COLOR_NAVY, 0.92);
+        var powerPct = power / config.THROW_POWER_MAX;
+        if (powerPct < 0.0) { powerPct = 0.0; }
+        if (powerPct > 1.0) { powerPct = 1.0; }
+        Canvas3D.DrawText2DScaled(canvas, x + 12, y + 9,
+            "POWER " + toString(Convert.NumToInt(powerPct * 100.0)) + "%", 0xF7FBFF, 0.72);
+        var barX = x + 90;
+        var barW = width - 174;
+        Canvas3D.DrawRect2D(canvas, barX, y + 12, barW, 6, 0x17303D);
+        Canvas3D.DrawRect2D(canvas, barX, y + 12,
+            Convert.NumToInt(powerPct * (barW + 0.0)), 6, config.HUD_COLOR_CYAN);
+        var hook = "STRAIGHT";
+        if (spin > 0.02) { hook = "HOOK R"; }
+        if (spin < -0.02) { hook = "HOOK L"; }
+        Canvas3D.DrawText2DScaled(canvas, x + width - 72, y + 9, hook, config.HUD_COLOR_AMBER, 0.66);
     }
 
     hide func drawScoreboard(canvas: Canvas3D, sk: ScoreKeeper, cw: Integer) {
@@ -199,7 +310,7 @@ class HUD {
         var curFrame: Integer = sk.getFrame();
         var x: Integer = startX;
 
-        Canvas3D.DrawText2D(canvas, startX, startY - 2, "BOWLING", config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, startX, startY - 2, "NEON LANES", config.HUD_COLOR_GOLD);
 
         for (var f: Integer = 0; f < config.FRAMES_PER_GAME; f = f + 1) {
             var fw: Integer = config.SCORE_FRAME_W;
@@ -243,17 +354,20 @@ class HUD {
                               playerCount: Integer, activePlayer: Integer,
                               scoreKeepers: List[ScoreKeeper],
                               oilName: String, ballType: Integer) {
-        var panelX = cw - 244;
+        var panelX = cw - 216;
         // Grow the panel for a second score row when 3-4 players are in.
         var panelH = 104;
         if (playerCount > 2) { panelH = 126; }
-        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, panelH, config.HUD_COLOR_FRAME_BG);
-        Canvas3D.DrawRect2D(canvas, panelX, 42, 208, 2, config.HUD_COLOR_MENU_ACCENT);
-        Canvas3D.DrawText2D(canvas, panelX + 12, 56, oilName + " oil", config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, panelX + 12, 78, getBallName(ballType), getBallColor(ballType));
+        Canvas3D.DrawRoundRect2D(canvas, panelX, 42, 208, panelH, 12,
+            config.HUD_COLOR_NAVY, 0.90);
+        Canvas3D.DrawRect2D(canvas, panelX + 14, 42, 180, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawText2DScaled(canvas, panelX + 12, 56, activeName, config.HUD_COLOR_AMBER, 1.0);
+        Canvas3D.DrawText2DScaled(canvas, panelX + 12, 78,
+            oilName + "  /  " + getBallName(ballType), getBallColor(ballType), 0.88);
 
         if (playerCount <= 1) {
-            Canvas3D.DrawText2D(canvas, panelX + 12, 104, "Score " + toString(scoreKeepers.get(0).getTotalScore()), config.HUD_COLOR_CYAN);
+            Canvas3D.DrawText2DScaled(canvas, panelX + 12, 104,
+                "SCORE " + toString(scoreKeepers.get(0).getTotalScore()), config.HUD_COLOR_CYAN, 0.95);
         } else {
             // Up to four seats laid out in a 2x2 grid; the active seat glows gold.
             for (var i: Integer = 0; i < playerCount; i = i + 1) {
@@ -263,66 +377,17 @@ class HUD {
                 var ty = 104 + row * 20;
                 var seatColor = config.HUD_COLOR_WHITE;
                 if (i == activePlayer) { seatColor = config.HUD_COLOR_GOLD; }
-                Canvas3D.DrawText2D(canvas, tx, ty,
-                    "P" + toString(i + 1) + " " + toString(scoreKeepers.get(i).getTotalScore()), seatColor);
+                Canvas3D.DrawText2DScaled(canvas, tx, ty,
+                    "P" + toString(i + 1) + " " + toString(scoreKeepers.get(i).getTotalScore()), seatColor, 0.82);
             }
         }
     }
 
-    hide func drawPowerMeter(canvas: Canvas3D, power: Float, charging: Boolean,
-                             cw: Integer, ch: Integer) {
-        if (charging == false && power <= 0.0) { return; }
-
-        var mx = cw / 2 - config.METER_W / 2;
-        var my = ch - config.METER_Y_OFFSET;
-        Canvas3D.DrawText2D(canvas, mx, my - 18, "POWER", config.HUD_COLOR_WHITE);
-        Canvas3D.DrawRect2D(canvas, mx - 1, my - 1, config.METER_W + 2, config.METER_H + 2, config.HUD_COLOR_DARK);
-
-        var fillW = Convert.NumToInt(power * (config.METER_W + 0.0));
-        var meterColor = config.METER_COLOR_LOW;
-        if (power > config.METER_THRESHOLD_MID) { meterColor = config.METER_COLOR_MID; }
-        if (power > config.METER_THRESHOLD_HIGH) { meterColor = config.METER_COLOR_HIGH; }
-        Canvas3D.DrawRect2D(canvas, mx, my, fillW, config.METER_H, meterColor);
-
-        if (charging) {
-            Canvas3D.DrawText2D(canvas, mx + config.METER_W + 6, my,
-                toString(Convert.NumToInt(power * 100.0)) + "%", config.HUD_COLOR_WHITE);
-        }
-    }
-
-    hide func drawSpinIndicator(canvas: Canvas3D, spin: Float, cw: Integer, ch: Integer) {
-        var sx = cw / 2 - config.SPIN_INDICATOR_W / 2;
-        var sy = ch - config.SPIN_INDICATOR_Y_OFFSET;
-
-        Canvas3D.DrawText2D(canvas, sx, sy - 15, "CURVE", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawRect2D(canvas, sx, sy, config.SPIN_INDICATOR_W, config.SPIN_INDICATOR_H, config.HUD_COLOR_DARK);
-        var centerX = sx + config.SPIN_INDICATOR_W / 2;
-        Canvas3D.DrawRect2D(canvas, centerX, sy, 1, config.SPIN_INDICATOR_H, config.HUD_COLOR_GRAY);
-
-        var spinOffset = Convert.NumToInt(spin * ((config.SPIN_INDICATOR_W / 2) + 0.0));
-        var markerX = centerX + spinOffset;
-        var markerColor = config.HUD_COLOR_CYAN;
-        if (spin < 0.0) { markerColor = 0xFF8844; }
-        Canvas3D.DrawRect2D(canvas, markerX - 2, sy - 1, 4, config.SPIN_INDICATOR_H + 2, markerColor);
-    }
-
-    hide func drawAimGuide(canvas: Canvas3D, aimX: Float, cw: Integer, ch: Integer) {
-        var aimPct = aimX / config.AIM_MAX;
-        var arrowX = cw / 2 + Convert.NumToInt(aimPct * 60.0);
-        var arrowY = ch - 34;
-
-        Canvas3D.DrawText2D(canvas, arrowX - 2, arrowY, "^", config.HUD_COLOR_WHITE);
-    }
-
     hide func getBallName(ballType: Integer) -> String {
-        if (ballType == config.BALL_LIGHT) { return "Light 10lb"; }
-        if (ballType == config.BALL_HEAVY) { return "Heavy 16lb"; }
-        return "Medium 13lb";
+        return ballCatalog.get(ballType).getName();
     }
 
     hide func getBallColor(ballType: Integer) -> Integer {
-        if (ballType == config.BALL_LIGHT) { return 0x4488FF; }
-        if (ballType == config.BALL_HEAVY) { return 0xFF4444; }
-        return 0xA45BFF;
+        return ballCatalog.get(ballType).getColor();
     }
 }

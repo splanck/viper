@@ -187,6 +187,10 @@ static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_form
         return (textureasset3d_format_info){"bc5", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_BC7_UNORM_BLOCK || vk_format == VK_FORMAT_BC7_SRGB_BLOCK)
         return (textureasset3d_format_info){"bc7", 1, 4, 4, 16};
+    if (vk_format == VK_FORMAT_BC6H_UFLOAT_BLOCK)
+        return (textureasset3d_format_info){"bc6h", 1, 4, 4, 16};
+    if (vk_format == VK_FORMAT_BC6H_SFLOAT_BLOCK)
+        return (textureasset3d_format_info){"bc6hs", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK ||
         vk_format == VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK)
         return (textureasset3d_format_info){"etc2", 1, 4, 4, 16};

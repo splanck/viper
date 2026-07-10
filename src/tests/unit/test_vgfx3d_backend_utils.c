@@ -1116,6 +1116,123 @@ static void test_compute_normal_matrix_small_scale(void) {
     EXPECT_NEAR(nm[5], 500.0f, 1.0f, "Normal matrix inverts a small uniform scale (Y)");
 }
 
+/// @brief Decode IEEE binary16 bits back to float (test-local reference decoder).
+static float test_half_bits_to_float(uint16_t h) {
+    uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
+    uint32_t exponent = (h >> 10) & 0x1Fu;
+    uint32_t mantissa = h & 0x3FFu;
+    uint32_t bits;
+    float out;
+    if (exponent == 0) {
+        if (mantissa == 0) {
+            bits = sign;
+        } else {
+            /* subnormal: value = mantissa * 2^-24 */
+            float sub = (float)mantissa / 16777216.0f;
+            memcpy(&bits, &sub, sizeof(bits));
+            bits |= sign;
+        }
+    } else {
+        bits = sign | ((exponent - 15u + 127u) << 23) | (mantissa << 13);
+    }
+    memcpy(&out, &bits, sizeof(out));
+    return out;
+}
+
+static void test_compact_vertex_stream_round_trip(void) {
+    vgfx3d_vertex_t v;
+    uint8_t out[VGFX3D_COMPACT_VERTEX_STRIDE];
+    int16_t s16[4];
+    uint16_t h16[2];
+    float pos_back[3];
+
+    memset(&v, 0, sizeof(v));
+    v.pos[0] = 1.25f;
+    v.pos[1] = -37.5f;
+    v.pos[2] = 1024.0625f;
+    v.normal[0] = 0.267261f;
+    v.normal[1] = 0.534522f;
+    v.normal[2] = -0.801784f;
+    v.uv[0] = 0.375f;
+    v.uv[1] = 12.5f; /* tiled UV must survive half precision */
+    v.uv1[0] = -0.25f;
+    v.uv1[1] = 0.9990234375f; /* exactly representable in half */
+    v.color[0] = 1.0f;
+    v.color[1] = 0.5f;
+    v.color[2] = 0.0f;
+    v.color[3] = 0.2f;
+    v.tangent[0] = -1.0f;
+    v.tangent[1] = 0.0f;
+    v.tangent[2] = 0.0f;
+    v.tangent[3] = -1.0f; /* handedness must round-trip exactly */
+    v.bone_indices[0] = 3;
+    v.bone_indices[1] = 200;
+    v.bone_indices[2] = 0;
+    v.bone_indices[3] = 255;
+    v.bone_weights[0] = 0.7f;
+    v.bone_weights[1] = 0.3f;
+
+    vgfx3d_encode_compact_vertices(&v, 1u, out);
+
+    memcpy(pos_back, out + 0, sizeof(pos_back));
+    EXPECT_NEAR(pos_back[0], 1.25f, 0.0f, "Compact stream keeps full-precision positions (X)");
+    EXPECT_NEAR(pos_back[2], 1024.0625f, 0.0f,
+                "Compact stream keeps full-precision positions (Z)");
+
+    memcpy(s16, out + 12, sizeof(s16));
+    EXPECT_NEAR((float)s16[0] / 32767.0f, 0.267261f, 0.0001f, "Normal X survives snorm16");
+    EXPECT_NEAR((float)s16[2] / 32767.0f, -0.801784f, 0.0001f, "Normal Z survives snorm16");
+    EXPECT_TRUE(s16[3] == 0, "Normal W lane stays zero");
+
+    memcpy(h16, out + 20, sizeof(h16));
+    EXPECT_NEAR(test_half_bits_to_float(h16[0]), 0.375f, 0.0f, "UV0.x is exact in half");
+    EXPECT_NEAR(test_half_bits_to_float(h16[1]), 12.5f, 0.0f, "Tiled UV0.y is exact in half");
+    memcpy(h16, out + 24, sizeof(h16));
+    EXPECT_NEAR(test_half_bits_to_float(h16[0]), -0.25f, 0.0f, "UV1.x sign survives half");
+    EXPECT_NEAR(test_half_bits_to_float(h16[1]), 0.9990234375f, 0.0f, "UV1.y is exact in half");
+
+    EXPECT_TRUE(out[28] == 255 && out[30] == 0, "Color endpoints encode exactly in unorm8");
+    EXPECT_TRUE(out[29] == 128, "Color midpoint rounds to 128");
+
+    memcpy(s16, out + 32, sizeof(s16));
+    EXPECT_TRUE(s16[0] == -32767, "Tangent X = -1 encodes to snorm16 minimum");
+    EXPECT_TRUE(s16[3] == -32767, "Tangent handedness -1 round-trips exactly");
+
+    EXPECT_TRUE(out[40] == 3 && out[41] == 200 && out[43] == 255,
+                "Bone indices copy through untouched");
+    EXPECT_NEAR((float)out[44] / 255.0f, 0.7f, 0.003f, "Bone weight survives unorm8");
+    EXPECT_NEAR((float)out[44] / 255.0f + (float)out[45] / 255.0f, 1.0f, 0.006f,
+                "Weight pair stays renormalizable");
+}
+
+static void test_compact_vertex_stream_half_edge_cases(void) {
+    vgfx3d_vertex_t v;
+    uint8_t out[VGFX3D_COMPACT_VERTEX_STRIDE];
+    uint16_t h16[2];
+
+    memset(&v, 0, sizeof(v));
+    v.uv[0] = 1.0e9f;  /* beyond half range: clamps to 65504 */
+    v.uv[1] = -1.0e9f; /* clamps to -65504 */
+    vgfx3d_encode_compact_vertices(&v, 1u, out);
+    memcpy(h16, out + 20, sizeof(h16));
+    EXPECT_NEAR(test_half_bits_to_float(h16[0]), 65504.0f, 0.0f, "Half overflow clamps to max");
+    EXPECT_NEAR(test_half_bits_to_float(h16[1]), -65504.0f, 0.0f,
+                "Half overflow clamps to min");
+
+    v.uv[0] = 1.0e-9f; /* below subnormal range: flushes to zero */
+    vgfx3d_encode_compact_vertices(&v, 1u, out);
+    memcpy(h16, out + 20, sizeof(h16));
+    EXPECT_NEAR(test_half_bits_to_float(h16[0]), 0.0f, 0.0f, "Half underflow flushes to zero");
+
+    v.normal[0] = 5.0f; /* out-of-range normals clamp instead of wrapping */
+    vgfx3d_encode_compact_vertices(&v, 1u, out);
+    {
+        int16_t s16[4];
+        memcpy(s16, out + 12, sizeof(s16));
+        EXPECT_TRUE(s16[0] == 32767, "Out-of-range normal clamps to snorm16 max");
+    }
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -1146,6 +1263,8 @@ int main(void) {
     test_skinning_scratch_reuses_normal_palette_without_output_drift();
     test_frustum_valid_classifies_volumes();
     test_compute_normal_matrix_small_scale();
+    test_compact_vertex_stream_round_trip();
+    test_compact_vertex_stream_half_edge_cases();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

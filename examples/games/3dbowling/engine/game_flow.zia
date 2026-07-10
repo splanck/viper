@@ -49,8 +49,9 @@ class BowlingGameFlow extends BowlingGameSetup {
             }
 
             particleMgr.update(dt);
-            celebMgr.update(dt);
+            if (gameState == config.STATE_CELEBRATING) { celebMgr.update(dt); }
             hudObj.update(dt);
+            bowlerAvatar.update(dt, aimX, charging);
             updateAudioListener();
 
             render.beginFrame();
@@ -64,9 +65,11 @@ class BowlingGameFlow extends BowlingGameSetup {
     /// @brief Title-screen menu dispatch.
     hide func handleTitleInput() {
         var cmd = menuObj.updateTitle();
+        if (menuObj.consumeUiEvent()) { playSound("ui"); }
         if (cmd == menu.CMD_START_MATCH) {
-            startNewMatch(menuObj.getStartPlayerCount());
+            startNewMatchMode(menuObj.getStartPlayerCount(), menuObj.getStartMode());
         } else if (cmd == menu.CMD_OPEN_OPTIONS) {
+            optionsReturnScreen = config.SCREEN_TITLE;
             screenState = config.SCREEN_OPTIONS;
         } else if (cmd == menu.CMD_QUIT) {
             quitRequested = true;
@@ -76,19 +79,32 @@ class BowlingGameFlow extends BowlingGameSetup {
     /// @brief Options-screen menu dispatch.
     hide func handleOptionsInput() {
         var cmd = menuObj.updateOptions();
+        if (menuObj.consumeUiEvent()) { playSound("ui"); }
         applyMenuSettings();
+        pinMgr.applyHighContrast(menuObj.getHighContrast());
         if (cmd == menu.CMD_BACK) {
-            showTitleScreen();
+            setupActions();
+            if (optionsReturnScreen == config.SCREEN_PAUSED) {
+                refreshMusic(1);
+                screenState = config.SCREEN_PAUSED;
+            } else {
+                refreshMusic(0);
+                showTitleScreen();
+            }
         }
     }
 
     /// @brief Pause-screen menu dispatch (resume / restart / main menu).
     hide func handlePauseInput() {
         var cmd = menuObj.updatePause();
+        if (menuObj.consumeUiEvent()) { playSound("ui"); }
         if (cmd == menu.CMD_RESUME) {
             screenState = config.SCREEN_PLAYING;
         } else if (cmd == menu.CMD_RESTART) {
             restartCurrentMatch();
+        } else if (cmd == menu.CMD_OPEN_OPTIONS) {
+            optionsReturnScreen = config.SCREEN_PAUSED;
+            screenState = config.SCREEN_OPTIONS;
         } else if (cmd == menu.CMD_MAIN_MENU) {
             showTitleScreen();
         }
@@ -97,8 +113,9 @@ class BowlingGameFlow extends BowlingGameSetup {
     /// @brief Results-screen menu dispatch (play again / main menu).
     hide func handleResultsInput() {
         var cmd = menuObj.updateResults();
+        if (menuObj.consumeUiEvent()) { playSound("ui"); }
         if (cmd == menu.CMD_PLAY_AGAIN) {
-            startNewMatch(currentMode);
+            startNewMatchMode(playerCount, currentMode);
         } else if (cmd == menu.CMD_MAIN_MENU) {
             showTitleScreen();
         }
@@ -106,6 +123,12 @@ class BowlingGameFlow extends BowlingGameSetup {
 
     /// @brief In-game input handler (aim / spin / throw / camera / pause).
     hide func handlePlayingInput(dt: Float) {
+        if (gameState == config.STATE_CELEBRATING && Action.Pressed(config.ACT_CONFIRM)) {
+            pendingReplayDuration = 0.0;
+            replayRecorder.stop();
+            celebMgr.skip();
+            scoreTimer = 0.0;
+        }
         if (Action.Pressed(config.ACT_PAUSE) || Action.Pressed(config.ACT_BACK)) {
             screenState = config.SCREEN_PAUSED;
             return;
@@ -150,12 +173,18 @@ class BowlingGameFlow extends BowlingGameSetup {
 
         fixedStepAlpha = Physics3DWorld.get_FixedStepAlpha(physWorld);
         if (steps > 0 || fixedStepAlpha > 0.0) {
-            camCtrl.updateRoll(config.PHYSICS_DT * ((steps + 0.0) + fixedStepAlpha));
+            camCtrl.updateBallFollow(ballObj.getPosition(),
+                config.PHYSICS_DT * ((steps + 0.0) + fixedStepAlpha));
         }
     }
 
     /// @brief STATE_AIMING update: aim/spin axis input + power charge + throw.
     hide func updateAiming(dt: Float) {
+        if (isAiTurn()) {
+            updateAiAiming(dt);
+            return;
+        }
+
         aimX = aimX + Action.Axis(config.ACT_AIM_X) * config.AIM_SPEED * dt;
         if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
         if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
@@ -163,42 +192,100 @@ class BowlingGameFlow extends BowlingGameSetup {
         spin = spin + Action.Axis(config.ACT_SPIN_X) * config.SPIN_RATE * dt;
         if (spin < -config.SPIN_MAX) { spin = -config.SPIN_MAX; }
         if (spin > config.SPIN_MAX) { spin = config.SPIN_MAX; }
+        updateTutorialCoach();
 
         if (Action.Pressed(config.ACT_BALL_PREV)) {
             ballObj.cycleBall(-1);
+            playerProfiles.get(activePlayer).setSelectedBall(ballObj.getBallType());
+            menuObj.setSelectedBall(ballObj.getBallType());
             playSound("ui");
         }
         if (Action.Pressed(config.ACT_BALL_NEXT)) {
             ballObj.cycleBall(1);
+            playerProfiles.get(activePlayer).setSelectedBall(ballObj.getBallType());
+            menuObj.setSelectedBall(ballObj.getBallType());
             playSound("ui");
         }
 
         if (Action.Held(config.ACT_THROW)) {
             if (charging == false) {
                 charging = true;
-                power = 0.0;
+                releaseMeter.beginCharge();
             }
-            power = power + dt * config.THROW_POWER_RATE;
-            if (power > config.THROW_POWER_MAX) { power = config.THROW_POWER_MAX; }
+            releaseMeter.update(dt);
+            power = releaseMeter.getPower() * config.THROW_POWER_MAX;
         } else if (charging) {
             charging = false;
-            ballObj.setSpin(spin);
-            ballObj.doThrow(aimX, power);
-            particleMgr.startLaneDust(aimX, config.BALL_THROW_Z);
-            playSpatialSound("roll", ballObj.getPosition(), 12.0, 80);
-            gutterLatched = false;
-            ballHitPinsThisRoll = false;
-            entryCaptured = false;
-            hasLastEntry = false;
-            impactCooldown = 0.0;
-            skidMarkTimer = 0.0;
-            fixedStepAlpha = 0.0;
-            gameState = config.STATE_ROLLING;
-            camCtrl.setRollMode();
+            var needle = releaseMeter.getNeedle();
+            lastReleaseAccuracy = releaseMeter.release();
+            var releaseError = (needle - 0.5) * 2.0 *
+                (1.0 - lastReleaseAccuracy) * config.RELEASE_ERROR_X;
+            launchBall(aimX + releaseError, power);
         }
 
         ballObj.setAimPosition(aimX);
         camCtrl.updateAim(aimX, dt);
+    }
+
+    hide func updateTutorialCoach() {
+        if (tutorialStep == 0 && Abs(aimX) > 0.025) {
+            tutorialStep = 1;
+            hudObj.showMessage("GOOD  Add curve with Q / E or the bumpers.",
+                config.HUD_COLOR_CYAN, config.MSG_DURATION_LONG);
+        } else if (tutorialStep == 1 && Abs(spin) > 0.045) {
+            tutorialStep = 2;
+            hudObj.showMessage("NOW HOLD SPACE / A  Build power and watch release timing.",
+                config.HUD_COLOR_AMBER, config.MSG_DURATION_LONG);
+        } else if (tutorialStep == 2 && charging) {
+            tutorialStep = 3;
+            hudObj.showMessage("RELEASE near the green center zone for an accurate shot.",
+                config.HUD_COLOR_GREEN, config.MSG_DURATION_LONG);
+        }
+    }
+
+    /// @brief Championship rival uses the same ball physics and scoring path.
+    hide func updateAiAiming(dt: Float) {
+        aiThinkTimer = aiThinkTimer - dt;
+        var current = scoreKeepers.get(activePlayer);
+        var variation = ((current.getFrame() * 7 + current.getRollInFrame() * 3) % 5) - 2;
+        var spread = 0.011 - (careerTier + 0.0) * 0.002;
+        aimX = 0.035 + (variation + 0.0) * spread;
+        spin = -0.17 - (variation + 0.0) * (spread * 0.82);
+        ballObj.setAimPosition(aimX);
+        camCtrl.updateAim(aimX, dt);
+        power = config.THROW_POWER_MAX *
+            (0.74 + (careerTier + 0.0) * 0.055 + (variation + 0.0) * 0.014);
+        if (aiThinkTimer <= 0.0) {
+            lastReleaseAccuracy = 0.84 + (careerTier + 0.0) * 0.06;
+            launchBall(aimX, power);
+        }
+    }
+
+    hide func isAiTurn() -> Boolean {
+        return currentMode == config.MODE_CHAMPIONSHIP && activePlayer == 1;
+    }
+
+    /// @brief Commit one human or AI release and initialize roll feedback.
+    hide func launchBall(releaseAim: Float, releasePower: Float) {
+        ballObj.setSpin(spin);
+        ballObj.doThrow(releaseAim, releasePower);
+        bowlerAvatar.onRelease();
+        if (tutorialStep >= 0) { tutorialStep = -1; }
+        replayRecorder.beginCapture();
+        pendingReplayDuration = 0.0;
+        replayRecorder.capture(ballObj.getPosition());
+        particleMgr.startLaneDust(releaseAim, config.BALL_THROW_Z);
+        playSound("release");
+        playSpatialSound("roll", ballObj.getPosition(), 12.0, 72);
+        gutterLatched = false;
+        ballHitPinsThisRoll = false;
+        entryCaptured = false;
+        hasLastEntry = false;
+        impactCooldown = 0.0;
+        skidMarkTimer = 0.0;
+        fixedStepAlpha = 0.0;
+        gameState = config.STATE_ROLLING;
+        camCtrl.setRollMode();
     }
 
     /// @brief STATE_ROLLING per-step update: ball motion + dust + skids.
@@ -208,6 +295,8 @@ class BowlingGameFlow extends BowlingGameSetup {
 
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(dt, friction, laneObj.getOilEndZ());
+        laneObj.recordBallTrack(ballObj.getPosX(), ballObj.getPosZ(), Abs(ballObj.getSpin()), dt);
+        replayRecorder.capture(ballObj.getPosition());
         ballObj.stabilizeLaneRoll();
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
@@ -218,6 +307,7 @@ class BowlingGameFlow extends BowlingGameSetup {
         if (entryCaptured == false && ballObj.gutterBall() == false &&
             ballObj.getPosZ() >= config.ENTRY_CAPTURE_Z) {
             lastEntryAngle = ballObj.getTravelAngleDeg();
+            lastShotSpeed = ballObj.getSpeed();
             entryCaptured = true;
             hasLastEntry = true;
         }
@@ -379,7 +469,8 @@ class BowlingGameFlow extends BowlingGameSetup {
             }
             particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos), Vec3.get_Z(bestPos));
             playSpatialSound("crash", bestPos, 16.0, 90);
-            camCtrl.shake(config.SHAKE_PIN_INTENSITY, config.SHAKE_PIN_DURATION);
+            camCtrl.shake(config.SHAKE_PIN_INTENSITY *
+                (menuObj.getCameraShake() + 0.0) / 100.0, config.SHAKE_PIN_DURATION);
             render.flashPinLight(1.25 + bestStrength * 0.35);
             lightFlashTimer = 0.08;
         }

@@ -216,12 +216,13 @@ static const char *jstr(void *obj, const char *key);
 static int64_t jvalue_int(void *value, int64_t def);
 static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len);
 
-/// @brief Number of skin joints safe to read (clamped to VGFX3D_MAX_BONES); 0 when any backing
-///   array is absent.
+/// @brief Number of skin joints safe to read (clamped to VGFX3D_MAX_SKELETON_BONES);
+///   0 when any backing array is absent.
 static int32_t gltf_skin_safe_joint_count(const gltf_skin_t *skin) {
     if (!skin || skin->joint_count <= 0 || !skin->joint_nodes || !skin->joint_to_bone)
         return 0;
-    return skin->joint_count < VGFX3D_MAX_BONES ? skin->joint_count : VGFX3D_MAX_BONES;
+    return skin->joint_count < VGFX3D_MAX_SKELETON_BONES ? skin->joint_count
+                                                         : VGFX3D_MAX_SKELETON_BONES;
 }
 
 /// @brief Clamp a (count, capacity) pair to a safe element count (0 when invalid, else min).
@@ -555,7 +556,11 @@ static int gltf_used_extension_supported(const char *name) {
         return 0;
     return strcmp(name, "KHR_texture_basisu") == 0 ||
            strcmp(name, "KHR_materials_clearcoat") == 0 ||
-           strcmp(name, "KHR_materials_transmission") == 0;
+           strcmp(name, "KHR_materials_transmission") == 0 ||
+           strcmp(name, "KHR_materials_ior") == 0 ||
+           strcmp(name, "KHR_materials_volume") == 0 ||
+           strcmp(name, "KHR_materials_sheen") == 0 ||
+           strcmp(name, "KHR_materials_anisotropy") == 0;
 }
 
 /// @brief Append one unsupported extension name to a growable comma-separated diagnostic list.

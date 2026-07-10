@@ -465,6 +465,7 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_codegen_x64.cpp
         tools/viper/cmd_bench.cpp
         tools/viper/cmd_init.cpp
+        tools/viper/cmd_asset.cpp
         tools/viper/cmd_package.cpp
         tools/viper/cmd_install_package.cpp
         tools/viper/cmd_repl.cpp
@@ -496,6 +497,11 @@ if (WIN32)
 endif ()
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
 target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
+# The `viper asset` subcommand drives the graphics runtime's model import and
+# scene bake; mirror the runtime's graphics gate for its translation unit.
+if (NOT VIPER_GRAPHICS_MODE STREQUAL "OFF")
+    target_compile_definitions(viper PRIVATE VIPER_ENABLE_GRAPHICS)
+endif ()
 if (MSVC)
     target_link_options(viper PRIVATE /STACK:8388608)
 endif ()

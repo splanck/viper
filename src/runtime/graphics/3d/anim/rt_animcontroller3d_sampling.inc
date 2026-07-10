@@ -11,12 +11,11 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
                                                  float time,
                                                  int32_t bone_index,
                                                  float *out_global) {
-    /* ~32 KB of stack (two VGFX3D_MAX_BONES*16 matrices). This is a const single-bone query
-     * invoked from the main thread (e.g. root-motion / attachment lookups), not the parallel
-     * per-frame palette path, so the call depth is shallow and the default stack is ample; kept
-     * on the stack to preserve const-ness rather than threading mutable scratch through. */
-    float globals[VGFX3D_MAX_BONES * 16] = {0.0f};
-    float locals[VGFX3D_MAX_BONES * 16] = {0.0f};
+    /* Heap-allocated: two VGFX3D_MAX_SKELETON_BONES*16 matrices would need 128 KB
+     * of stack. This is a cold const single-bone query (root-motion / attachment
+     * lookups), so a transient allocation is fine. */
+    float *globals;
+    float *locals;
     int32_t state_count;
     int32_t bone_count;
     rt_animation3d *animation;
@@ -31,12 +30,17 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
     animation = controller->states[state_index].animation;
     if (!animation)
         return 0;
+    locals = (float *)calloc((size_t)bone_count * 32u, sizeof(float));
+    if (!locals)
+        return 0;
+    globals = locals + (size_t)bone_count * 16u;
     for (int32_t bone = 0; bone < bone_count; bone++) {
         controller_sample_animation_local_matrix(
             controller->skeleton, animation, bone, time, &locals[bone * 16]);
     }
     skeleton3d_compute_globals_from_locals(controller->skeleton, locals, globals, bone_count);
     memcpy(out_global, &globals[bone_index * 16], 16 * sizeof(float));
+    free(locals);
     return 1;
 }
 

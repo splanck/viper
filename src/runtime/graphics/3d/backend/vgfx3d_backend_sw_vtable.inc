@@ -244,6 +244,8 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->height_fog_density = cam->height_fog_density;
     ctx->height_fog_blend = cam->height_fog_blend;
     ctx->ibl_enabled = cam->ibl_enabled;
+    if (cam->ibl_enabled)
+        vgfx3d_brdf_lut_ensure(); /* single-threaded seam before parallel raster */
     ctx->ibl_intensity = cam->ibl_intensity;
     memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
     ctx->shadow_strength = cam->shadow_strength;

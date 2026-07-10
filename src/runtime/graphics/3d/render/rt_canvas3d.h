@@ -316,6 +316,12 @@ int64_t rt_canvas3d_get_backend_state_changes(void *obj);
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
 /// @brief Texture payload bytes still waiting for backend texture upload budget.
 int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj);
+/// @brief Enable or disable automatic TextureAsset3D mip-residency streaming (default off).
+void rt_canvas3d_set_texture_streaming(void *obj, int8_t enabled);
+/// @brief Bias streaming's desired mip level; positive drops more detail. Clamped to [-16, 16].
+void rt_canvas3d_set_texture_streaming_bias(void *obj, double bias);
+/// @brief Lifetime count of resident-window demotions applied by texture streaming.
+int64_t rt_canvas3d_get_texture_streaming_demotions(void *obj);
 /// @brief Successful draw calls emitted by the active backend since canvas creation.
 int64_t rt_canvas3d_get_backend_draw_calls(void *obj);
 /// @brief Draw commands rejected inside the active backend since canvas creation.
@@ -351,6 +357,10 @@ int8_t rt_canvas3d_get_frame_finalized(void *obj);
 
 /// @brief Build a cubemap from six Pixels faces (px = +X, nx = -X, etc.).
 void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz);
+/// @brief Load a Radiance .hdr equirectangular panorama as a CubeMap3D
+///   (linear decode, engine face projection, Reinhard range compression at
+///   @p exposure; exposure <= 0 defaults to 1).
+void *rt_cubemap3d_load_hdr_panorama(rt_string path, double exposure);
 /// @brief Bind a cubemap as the scene skybox (rendered behind opaque geometry).
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap);
 /// @brief Remove the skybox; subsequent clears use the regular clear color.
@@ -418,6 +428,10 @@ int8_t rt_mesh3d_get_resident(void *obj);
 void rt_mesh3d_set_resident(void *obj, int8_t resident);
 /// @brief Estimated bytes for the currently resident vertex/index payload.
 int64_t rt_mesh3d_get_resident_bytes(void *obj);
+/// @brief Opt the mesh into the compact 48-byte GPU static-cache vertex encoding (R20).
+void rt_mesh3d_set_compact_streams(void *obj, int8_t enabled);
+/// @brief Whether the mesh opted into the compact GPU vertex-stream encoding.
+int8_t rt_mesh3d_get_compact_streams(void *obj);
 /// @brief Estimated retained CPU vertex/index bytes regardless of resident draw state.
 int64_t rt_mesh3d_get_retained_bytes(void *obj);
 /// @brief Append a vertex with position, normal, and UV.

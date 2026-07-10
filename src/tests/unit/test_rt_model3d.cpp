@@ -3859,6 +3859,52 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     if (rt_obj_release_check0(asset))
         rt_obj_free(asset);
 
+    /* BC6H (vkFormat 143): four flat mode-3 blocks with mid-range HDR values;
+     * expectations are the validated decoder's own output (bit-exact against an
+     * independent reference across all 14 modes). */
+    const char *bc6h_path =
+        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
+                            "../examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2"
+#endif
+        });
+    EXPECT_TRUE(bc6h_path != nullptr, "BC6H KTX2 fixture is present");
+    if (bc6h_path) {
+        void *bc6h_asset = rt_textureasset3d_load_ktx2(rt_const_cstr(bc6h_path));
+        EXPECT_TRUE(bc6h_asset != nullptr, "BC6H KTX2 loads");
+        if (bc6h_asset) {
+            void *bc6h_pixels = rt_textureasset3d_get_pixels(bc6h_asset);
+            EXPECT_TRUE(bc6h_pixels != nullptr, "BC6H decodes to pixels");
+            if (bc6h_pixels) {
+                struct {
+                    int64_t x;
+                    int64_t y;
+                    int r;
+                    int g;
+                    int b;
+                } blocks[4] = {{1, 1, 64, 0, 0},
+                               {5, 1, 0, 24, 0},
+                               {1, 5, 0, 0, 4},
+                               {5, 5, 64, 24, 4}};
+                for (int q = 0; q < 4; q++) {
+                    uint32_t rgba =
+                        (uint32_t)rt_pixels_get_rgba(bc6h_pixels, blocks[q].x, blocks[q].y);
+                    int r = (int)((rgba >> 24) & 0xFF);
+                    int g = (int)((rgba >> 16) & 0xFF);
+                    int b = (int)((rgba >> 8) & 0xFF);
+                    EXPECT_TRUE(std::abs(r - blocks[q].r) <= 1 &&
+                                    std::abs(g - blocks[q].g) <= 1 &&
+                                    std::abs(b - blocks[q].b) <= 1,
+                                "BC6H block decodes to the expected clamped color");
+                }
+            }
+            if (rt_obj_release_check0(bc6h_asset))
+                rt_obj_free(bc6h_asset);
+        }
+    }
+
     /* UASTC twin (scheme 2 + UASTC DFD): same quadrants through the UASTC block decoder. */
     const char *uastc_path =
         find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
@@ -3931,9 +3977,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
 
 static void test_model3d_loads_draco_sequential_fixture() {
     /* Real gltf-pipeline output: KHR_draco_mesh_compression in extensionsRequired.
-     * The sequential-encoding fixture (compressionLevel 0) must decode; the
-     * edgebreaker fixture is expected to fail cleanly with a named diagnostic
-     * until edgebreaker connectivity lands. */
+     * Both encodings must decode: sequential (compressionLevel 0) and standard
+     * edgebreaker (compressionLevel 7). */
     const char *seq_path =
         find_existing_path({"examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
                             "../examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
@@ -3988,13 +4033,218 @@ static void test_model3d_loads_draco_sequential_fixture() {
     EXPECT_TRUE(eb_path != nullptr, "Draco edgebreaker fixture is present");
     if (eb_path) {
         void *eb_model = rt_model3d_load(rt_const_cstr(eb_path));
-        EXPECT_TRUE(eb_model == nullptr,
-                    "Draco edgebreaker assets fail until edgebreaker connectivity lands");
-        EXPECT_TRUE(std::strstr(rt_asset_error_get_message(), "edgebreaker") != nullptr,
-                    "Draco edgebreaker failure names the unsupported encoding");
-        if (eb_model && rt_obj_release_check0(eb_model))
-            rt_obj_free(eb_model);
+        EXPECT_TRUE(eb_model != nullptr, "Draco edgebreaker-encoded GLB loads");
+        if (eb_model) {
+            auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(eb_model, 0));
+            EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                        "Draco edgebreaker mesh decodes the triangle");
+            if (mesh && mesh->vertex_count == 3) {
+                float max_x = 0.0f;
+                float max_y = 0.0f;
+                float max_u = 0.0f;
+                float max_v = 0.0f;
+                for (uint32_t v = 0; v < 3; v++) {
+                    if (mesh->vertices[v].pos[0] > max_x)
+                        max_x = mesh->vertices[v].pos[0];
+                    if (mesh->vertices[v].pos[1] > max_y)
+                        max_y = mesh->vertices[v].pos[1];
+                    if (mesh->vertices[v].uv[0] > max_u)
+                        max_u = mesh->vertices[v].uv[0];
+                    if (mesh->vertices[v].uv[1] > max_v)
+                        max_v = mesh->vertices[v].uv[1];
+                }
+                EXPECT_NEAR(max_x, 1.0, 0.001, "edgebreaker decode dequantizes position X");
+                EXPECT_NEAR(max_y, 1.0, 0.001, "edgebreaker decode dequantizes position Y");
+                EXPECT_NEAR(max_u, 1.0, 0.001, "edgebreaker decode dequantizes texcoord U");
+                EXPECT_NEAR(max_v, 1.0, 0.001, "edgebreaker decode dequantizes texcoord V");
+            }
+            if (rt_obj_release_check0(eb_model))
+                rt_obj_free(eb_model);
+        }
     }
+}
+
+/// Validate a Draco-decoded unit sphere: exact point/face counts must match the
+/// reference decoder, positions sit on the unit sphere within quantization error,
+/// normals agree with the analytic direction, and UVs stay in range.
+static void expect_draco_unit_sphere(const char *label,
+                                     const char *path,
+                                     uint32_t expected_points,
+                                     uint32_t expected_faces) {
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, label);
+    if (!model)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr, "Draco sphere has a mesh");
+    if (mesh) {
+        EXPECT_TRUE((uint32_t)mesh->vertex_count == expected_points,
+                    "Draco sphere point count matches the reference decoder");
+        EXPECT_TRUE((uint32_t)mesh->index_count == expected_faces * 3u,
+                    "Draco sphere face count survives decode");
+        int bad_radius = 0;
+        int bad_normal = 0;
+        int bad_uv = 0;
+        for (uint32_t v = 0; v < (uint32_t)mesh->vertex_count; v++) {
+            const float *pos = mesh->vertices[v].pos;
+            const float *nrm = mesh->vertices[v].normal;
+            const float *uv = mesh->vertices[v].uv;
+            float radius = std::sqrt(pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2]);
+            if (radius < 0.995f || radius > 1.005f)
+                bad_radius++;
+            if (radius > 0.5f) {
+                float dot = (nrm[0] * pos[0] + nrm[1] * pos[1] + nrm[2] * pos[2]) / radius;
+                if (dot < 0.97f)
+                    bad_normal++;
+            }
+            if (uv[0] < -0.01f || uv[0] > 1.01f || uv[1] < -0.01f || uv[1] > 1.01f)
+                bad_uv++;
+        }
+        EXPECT_TRUE(bad_radius == 0, "every decoded position lies on the unit sphere");
+        EXPECT_TRUE(bad_normal == 0, "every decoded normal matches the analytic direction");
+        EXPECT_TRUE(bad_uv == 0, "every decoded texcoord stays in [0,1]");
+    }
+    if (rt_obj_release_check0(model))
+        rt_obj_free(model);
+}
+
+static void test_model3d_loads_draco_edgebreaker_spheres() {
+    /* Standard edgebreaker (gltf-pipeline -d, 256 faces): exercises C/R/L/S/E
+     * symbols, interior-edge completion, a corner-mapped TEXCOORD decoder with
+     * real seam bits, geometric-normal prediction, and multi-parallelogram. */
+    const char *eb_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb",
+         "../examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb",
+#ifdef VIPER_SOURCE_DIR
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb"
+#endif
+        });
+    EXPECT_TRUE(eb_path != nullptr, "standard-edgebreaker sphere fixture is present");
+    if (eb_path)
+        expect_draco_unit_sphere("standard-edgebreaker Draco sphere loads", eb_path, 168, 256);
+
+    /* Valence edgebreaker (reference draco_encoder -cl 7, 1104 faces so the
+     * encoder picks the valence traversal): exercises the context-modeled symbol
+     * path plus 23 S-symbol merges. */
+    const char *valence_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
+         "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
+#ifdef VIPER_SOURCE_DIR
+         VIPER_SOURCE_DIR
+         "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+#endif
+        });
+    EXPECT_TRUE(valence_path != nullptr, "valence-edgebreaker sphere fixture is present");
+    if (valence_path)
+        expect_draco_unit_sphere("valence-edgebreaker Draco sphere loads", valence_path, 623,
+                                 1104);
+
+    /* Reference draco_encoder -cl 10 (speed 0): valence traversal plus the
+     * prediction-degree position traverser. */
+    const char *pd_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb",
+         "../examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb",
+#ifdef VIPER_SOURCE_DIR
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_pd.glb"
+#endif
+        });
+    EXPECT_TRUE(pd_path != nullptr, "prediction-degree sphere fixture is present");
+    if (pd_path)
+        expect_draco_unit_sphere("prediction-degree Draco sphere loads", pd_path, 623, 1104);
+}
+
+static void test_model3d_vscn_v3_rig_roundtrip() {
+    /* Bake pipeline round-trip: load a skinned glTF, instantiate, save as .vscn
+     * (v3 adds skeletons + animation clips), reload through SceneAsset, and
+     * verify the rig survived. */
+    const char *src_path =
+        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+#ifdef VIPER_SOURCE_DIR
+                            VIPER_SOURCE_DIR
+                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+#endif
+        });
+    EXPECT_TRUE(src_path != nullptr, "skinned agent fixture is present");
+    if (!src_path)
+        return;
+    void *model = rt_model3d_load(rt_const_cstr(src_path));
+    EXPECT_TRUE(model != nullptr, "skinned agent loads");
+    if (!model)
+        return;
+    int64_t src_anims = rt_model3d_get_animation_count(model);
+    EXPECT_TRUE(src_anims > 0, "skinned agent carries animation clips");
+    void *scene = rt_model3d_instantiate_scene(model);
+    EXPECT_TRUE(scene != nullptr, "skinned agent instantiates");
+    const char *baked_path = "/tmp/viper_model3d_baked_rig.vscn";
+    if (scene) {
+        EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(baked_path)) != 0,
+                    "skinned scene saves as vscn");
+        if (rt_obj_release_check0(scene))
+            rt_obj_free(scene);
+    }
+    if (rt_obj_release_check0(model))
+        rt_obj_free(model);
+
+    void *baked = rt_model3d_load(rt_const_cstr(baked_path));
+    EXPECT_TRUE(baked != nullptr, "baked v3 vscn loads as a SceneAsset");
+    if (baked) {
+        EXPECT_TRUE(rt_model3d_get_animation_count(baked) == src_anims,
+                    "baked vscn preserves the animation clips");
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(baked, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->skeleton_ref != nullptr,
+                    "baked vscn rebinds the skeleton to the mesh");
+        EXPECT_TRUE(mesh != nullptr && mesh->bone_count > 0,
+                    "baked vscn keeps the mesh bone palette");
+        if (rt_obj_release_check0(baked))
+            rt_obj_free(baked);
+    }
+    std::remove(baked_path);
+}
+
+static void test_model3d_draco_corrupt_payloads_fail_cleanly() {
+    /* Byte-flip a sweep of positions inside the valence sphere's BIN chunk (the
+     * Draco payload). Every variant must either load or fail with a diagnostic —
+     * never crash or hang (exercises the decoder's bounds and iteration guards). */
+    const char *path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
+         "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
+#ifdef VIPER_SOURCE_DIR
+         VIPER_SOURCE_DIR
+         "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+#endif
+        });
+    if (!path)
+        return;
+    std::vector<uint8_t> glb;
+    if (!read_binary_file(path, glb) || glb.size() < 32)
+        return;
+    /* Locate the BIN chunk: GLB header (12) + JSON chunk header (8) + JSON. */
+    uint32_t json_len = 0;
+    std::memcpy(&json_len, glb.data() + 12, sizeof(json_len));
+    size_t bin_start = 12u + 8u + json_len + 8u;
+    if (bin_start >= glb.size())
+        return;
+    size_t bin_len = glb.size() - bin_start;
+    const char *tmp_path = "/tmp/viper_model3d_draco_corrupt.glb";
+    int survived = 0;
+    const int kVariants = 24;
+    for (int i = 0; i < kVariants; i++) {
+        std::vector<uint8_t> mutated = glb;
+        size_t at = bin_start + (bin_len * (size_t)i) / kVariants;
+        mutated[at] ^= 0xFFu;
+        if (!write_binary_file(tmp_path, mutated))
+            return;
+        void *model = rt_model3d_load(rt_const_cstr(tmp_path));
+        if (model) {
+            if (rt_obj_release_check0(model))
+                rt_obj_free(model);
+        }
+        survived++;
+    }
+    std::remove(tmp_path);
+    EXPECT_TRUE(survived == kVariants,
+                "corrupt Draco payload variants all return without crashing");
 }
 
 static rt_scene_node3d *find_first_mesh_node(rt_scene_node3d *node, int depth) {
@@ -4887,6 +5137,9 @@ int main() {
     test_model3d_loads_gltfpack_quantized_fixtures();
     test_textureasset3d_decodes_basislz_etc1s_ktx2();
     test_model3d_loads_draco_sequential_fixture();
+    test_model3d_loads_draco_edgebreaker_spheres();
+    test_model3d_vscn_v3_rig_roundtrip();
+    test_model3d_draco_corrupt_payloads_fail_cleanly();
     test_model3d_generate_lods_builds_chains();
     test_model3d_applies_material_variants();
     test_model3d_autoplays_gltf_node_and_morph_animation();

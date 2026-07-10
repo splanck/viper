@@ -4,14 +4,18 @@
 // not a standalone translation unit)
 // Purpose: KHR_draco_mesh_compression decoding — clean-room implementation from the
 //   published Draco Bitstream Specification (google.github.io/draco/spec). Covers the
-//   sequential mesh encoding (compressed and uncompressed indices) with the rANS
-//   entropy decoder, difference prediction, wrap and canonicalized-octahedron
-//   transforms, quantization and octahedral-normal dequantization.
+//   sequential mesh encoding (compressed and uncompressed indices) and the edgebreaker
+//   encoding (standard + valence traversal, topology splits, attribute seams,
+//   depth-first and prediction-degree traversers) with the rANS entropy decoder,
+//   difference/parallelogram/constrained-multi/tex-coords/geometric-normal prediction,
+//   wrap and canonicalized-octahedron transforms, quantization and octahedral-normal
+//   dequantization.
 // Key invariants:
-//   - Every read is bounds-checked; malformed payloads fail the primitive load with a
-//     recoverable diagnostic, never a trap.
-//   - Edgebreaker connectivity is not implemented yet and fails with a named
-//     UNSUPPORTED diagnostic.
+//   - Every read is bounds-checked and every traversal loop is iteration-capped;
+//     malformed payloads fail the primitive load with a recoverable diagnostic,
+//     never a trap or hang.
+//   - Edgebreaker output is remapped to point-indexed attribute arrays before
+//     returning, so consumers see the same identity layout as sequential meshes.
 //===----------------------------------------------------------------------===//
 
 #define DRACO_MAX_COMPONENTS 4
@@ -26,8 +30,26 @@
 /* Prediction schemes / transforms */
 #define DRACO_PREDICTION_NONE (-2)
 #define DRACO_PREDICTION_DIFFERENCE 0
+#define DRACO_PREDICTION_PARALLELOGRAM 1
+#define DRACO_PREDICTION_CONSTRAINED_MULTI 4
+#define DRACO_PREDICTION_TEX_COORDS_PORTABLE 5
+#define DRACO_PREDICTION_GEOMETRIC_NORMAL 6
 #define DRACO_TRANSFORM_WRAP 1
 #define DRACO_TRANSFORM_NORMAL_OCT_CANON 3
+
+/* Edgebreaker constants */
+#define DRACO_EB_STANDARD 0
+#define DRACO_EB_VALENCE 2
+#define DRACO_TOPOLOGY_C 0
+#define DRACO_TOPOLOGY_S 1
+#define DRACO_TOPOLOGY_L 3
+#define DRACO_TOPOLOGY_R 5
+#define DRACO_TOPOLOGY_E 7
+#define DRACO_EB_MAX_ATT_DATA 8
+#define DRACO_EB_MAX_DECODERS 8
+#define DRACO_EB_MAX_PARALLELOGRAMS 4
+#define DRACO_EB_MIN_VALENCE 2
+#define DRACO_EB_NUM_VALENCES 6
 
 /// @brief Bounded little-endian byte reader for one Draco payload.
 typedef struct {
@@ -153,11 +175,6 @@ static int draco_rans_read(draco_rans *ans,
 }
 
 /// @brief Binary rABS reader (spec RabsDescRead) for prediction/seam flag streams.
-/// @note Reserved for the edgebreaker path (attribute seams, constrained-multi
-///       parallelogram crease flags); unused while only sequential meshes decode.
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__((unused))
-#endif
 static int draco_rabs_read(draco_rans *ans, uint32_t prob_zero, uint32_t *out_val) {
     uint32_t p = 256u - prob_zero;
     uint32_t x;
@@ -370,6 +387,14 @@ typedef struct {
     uint8_t quantization_bits;
     float quant_min[DRACO_MAX_COMPONENTS];
     float quant_range;
+    /* mesh-prediction side data (edgebreaker schemes) */
+    uint8_t *crease_bits[DRACO_EB_MAX_PARALLELOGRAMS]; /* constrained-multi, per context */
+    uint32_t crease_count[DRACO_EB_MAX_PARALLELOGRAMS];
+    uint32_t crease_pos[DRACO_EB_MAX_PARALLELOGRAMS];
+    uint8_t *tex_orient; /* tex-coords orientations, consumed from the end */
+    uint32_t tex_orient_pos;
+    uint8_t *flip_bits; /* geometric-normal flip flags, consumed in order */
+    uint32_t flip_count;
     /* final output */
     float *out_floats;  /* dequantized / normal-decoded values, or NULL */
     int32_t *out_ints;  /* integer values, or NULL */
@@ -391,6 +416,10 @@ static void draco_mesh_free(draco_mesh *mesh) {
         free(mesh->attributes[i].values);
         free(mesh->attributes[i].out_floats);
         free(mesh->attributes[i].out_ints);
+        for (int c = 0; c < DRACO_EB_MAX_PARALLELOGRAMS; c++)
+            free(mesh->attributes[i].crease_bits[c]);
+        free(mesh->attributes[i].tex_orient);
+        free(mesh->attributes[i].flip_bits);
     }
     memset(mesh, 0, sizeof(*mesh));
 }
@@ -504,8 +533,10 @@ static int draco_skip_metadata(draco_buf *b) {
 }
 
 /// @brief Wrap-transform inverse (spec PredictionSchemeWrapDecodingTransform).
+/// @note Predictions arrive as int64 because parallelogram sums of extreme
+///       quantized values can exceed the int32 range before clamping.
 static void draco_wrap_compute_original(const draco_attribute *att,
-                                        const int32_t *pred,
+                                        const int64_t *pred,
                                         const int32_t *corr,
                                         int32_t *out,
                                         int components) {
@@ -662,54 +693,1930 @@ static void draco_normal_oct_compute_original(const draco_attribute *att,
 
 /// @brief Apply the parsed prediction transform to one value tuple.
 static void draco_transform_compute_original(const draco_attribute *att,
-                                             const int32_t *pred,
+                                             const int64_t *pred,
                                              const int32_t *corr,
                                              int32_t *out,
                                              int components) {
-    if (att->prediction_transform == DRACO_TRANSFORM_NORMAL_OCT_CANON)
-        draco_normal_oct_compute_original(att, pred, corr, out);
-    else
+    if (att->prediction_transform == DRACO_TRANSFORM_NORMAL_OCT_CANON) {
+        int32_t pred32[2];
+        pred32[0] = (int32_t)pred[0];
+        pred32[1] = (int32_t)pred[1];
+        draco_normal_oct_compute_original(att, pred32, corr, out);
+    } else {
         draco_wrap_compute_original(att, pred, corr, out, components);
+    }
 }
 
 /// @brief Difference prediction inverse (spec PredictionSchemeDifference).
-static void draco_difference_compute_original(draco_attribute *att, uint32_t num_values) {
-    int components = att->components;
-    int32_t zero_vals[DRACO_MAX_COMPONENTS] = {0, 0, 0, 0};
+/// @param components Portable component count (2 for octahedral normals).
+static void draco_difference_compute_original(draco_attribute *att,
+                                              uint32_t num_values,
+                                              int components) {
+    int64_t pred[DRACO_MAX_COMPONENTS] = {0, 0, 0, 0};
     if (num_values == 0)
         return;
-    draco_transform_compute_original(att, zero_vals, att->values, att->values, components);
+    draco_transform_compute_original(att, pred, att->values, att->values, components);
     for (uint32_t i = 1; i < num_values; i++) {
+        const int32_t *prev = att->values + (size_t)(i - 1) * components;
+        for (int c = 0; c < components; c++)
+            pred[c] = prev[c];
         draco_transform_compute_original(att,
-                                         att->values + (size_t)(i - 1) * components,
+                                         pred,
                                          att->values + (size_t)i * components,
                                          att->values + (size_t)i * components,
                                          components);
     }
 }
 
-/// @brief Decode one attribute's portable integer values (spec
-///        SequentialIntegerAttributeDecoder_DecodeIntegerValues, sequential meshes).
-static int draco_decode_portable_attribute(draco_buf *b, draco_attribute *att) {
-    uint32_t num_values = att->num_values * att->components;
+//===----------------------------------------------------------------------===//
+// Edgebreaker decoding (spec "EdgeBreaker Decoder")
+//===----------------------------------------------------------------------===//
+
+/// @brief Per-attribute-data seam and recomputed-vertex state (one entry per
+///        non-position attribute connectivity stream).
+typedef struct {
+    uint8_t prob_zero;
+    const uint8_t *buf; /* seam rABS stream (borrowed from the payload) */
+    size_t size;
+    uint8_t *edge_on_seam;     /* [corner_cap] */
+    uint8_t *vertex_on_seam;   /* [num_vertices] position vertex touches a seam edge */
+    int32_t *corner_to_vertex; /* [corner_cap] recomputed attribute vertices */
+    int32_t *face_to_vertex;   /* [corner_cap] attribute face->vertex table */
+    int32_t *leftmost_corner;  /* [corner_cap] per recomputed attribute vertex */
+    uint32_t vertex_count;
+} draco_eb_data;
+
+/// @brief Per-attributes-decoder traversal output.
+typedef struct {
+    uint8_t data_id;      /* 0xFF = none (position decoder) */
+    uint8_t decoder_type; /* 0 vertex-mapped, 1 corner-mapped */
+    uint8_t traversal;    /* 0 depth-first, 1 prediction degree */
+    uint32_t att_start;   /* first index into draco_mesh::attributes */
+    uint32_t att_count;
+    int32_t *value_to_corner; /* [corner_cap] encoded value index -> corner */
+    uint32_t value_count;
+    int32_t *vertex_to_value; /* [visit_cap] vertex -> encoded value index or -1 */
+    int32_t *indices_map;     /* [point_count] point -> encoded value index */
+} draco_eb_dec;
+
+/// @brief Whole-payload edgebreaker decode state.
+typedef struct {
+    uint8_t traversal_type;
+    uint32_t num_vertices; /* encoded vertices + split symbols */
+    uint32_t num_faces;
+    uint8_t num_att_data;
+    uint32_t num_symbols;
+    uint32_t num_split_symbols;
+    uint32_t corner_cap; /* 3 * num_faces */
+    uint32_t visit_cap;  /* max(num_vertices, corner_cap) */
+    /* connectivity */
+    int32_t *face_to_vertex; /* [corner_cap], corner-indexed */
+    uint32_t face_count;
+    int32_t *opposite;       /* [corner_cap] */
+    int32_t *vertex_corners; /* [num_vertices] */
+    uint8_t *is_vert_hole;   /* [num_vertices] */
+    int32_t last_vert_added;
+    int last_symbol;
+    int active_context;
+    /* active corner stack */
+    int32_t *stack;
+    uint32_t stack_size;
+    uint32_t stack_cap;
+    /* topology splits (consumed back to front) */
+    uint32_t *split_source_symbol;
+    uint32_t *split_symbol;
+    uint8_t *split_edge;
+    uint32_t split_count;
+    /* matched splits awaiting their S symbol */
+    int32_t *match_split_id;
+    int32_t *match_corner;
+    uint32_t match_count;
+    uint32_t match_cap;
+    /* standard-traversal symbol bits (LSB-first per byte) */
+    const uint8_t *sym_buf;
+    size_t sym_size;
+    uint64_t sym_bitpos;
+    /* start-face rABS stream */
+    uint8_t start_face_prob_zero;
+    const uint8_t *start_face_buf;
+    size_t start_face_size;
+    /* valence traversal */
+    uint32_t *valences; /* [num_vertices] */
+    uint32_t ctx_pos[DRACO_EB_NUM_VALENCES];
+    uint32_t *ctx_syms[DRACO_EB_NUM_VALENCES];
+    /* attribute data + decoders */
+    draco_eb_data att_data[DRACO_EB_MAX_ATT_DATA];
+    draco_eb_dec dec[DRACO_EB_MAX_DECODERS];
+    uint32_t num_decoders;
+    /* point mapping */
+    int32_t *corner_to_point; /* [corner_cap] */
+    uint32_t point_count;
+    /* traversal scratch */
+    uint8_t *face_visited;   /* [num_faces] */
+    uint8_t *vertex_visited; /* [visit_cap] */
+    int32_t *trav_stack;     /* [corner_cap + 2] */
+    uint32_t trav_size;
+    /* prediction-degree traversal */
+    uint32_t *pred_degree; /* [visit_cap] */
+    int32_t *pd_stack[3];  /* [corner_cap + 2] each */
+    uint32_t pd_size[3];
+    int pd_best;
+} draco_eb;
+
+static void draco_eb_free(draco_eb *eb) {
+    free(eb->face_to_vertex);
+    free(eb->opposite);
+    free(eb->vertex_corners);
+    free(eb->is_vert_hole);
+    free(eb->stack);
+    free(eb->split_source_symbol);
+    free(eb->split_symbol);
+    free(eb->split_edge);
+    free(eb->match_split_id);
+    free(eb->match_corner);
+    free(eb->valences);
+    for (int i = 0; i < DRACO_EB_NUM_VALENCES; i++)
+        free(eb->ctx_syms[i]);
+    for (int a = 0; a < DRACO_EB_MAX_ATT_DATA; a++) {
+        free(eb->att_data[a].edge_on_seam);
+        free(eb->att_data[a].vertex_on_seam);
+        free(eb->att_data[a].corner_to_vertex);
+        free(eb->att_data[a].face_to_vertex);
+        free(eb->att_data[a].leftmost_corner);
+    }
+    for (int d = 0; d < DRACO_EB_MAX_DECODERS; d++) {
+        free(eb->dec[d].value_to_corner);
+        free(eb->dec[d].vertex_to_value);
+        free(eb->dec[d].indices_map);
+    }
+    free(eb->corner_to_point);
+    free(eb->face_visited);
+    free(eb->vertex_visited);
+    free(eb->trav_stack);
+    free(eb->pred_degree);
+    for (int i = 0; i < 3; i++)
+        free(eb->pd_stack[i]);
+    memset(eb, 0, sizeof(*eb));
+}
+
+/// @brief Read @p nbits from the standard-traversal symbol buffer, LSB-first
+///        within each byte (verified against reference-encoder output).
+static uint32_t draco_eb_read_symbol_bits(draco_eb *eb, uint32_t nbits, int *ok) {
+    uint32_t val = 0;
+    for (uint32_t k = 0; k < nbits; k++) {
+        uint64_t idx = eb->sym_bitpos + k;
+        size_t byte = (size_t)(idx >> 3);
+        if (byte >= eb->sym_size) {
+            *ok = 0;
+            return 0;
+        }
+        val |= (uint32_t)((eb->sym_buf[byte] >> (idx & 7u)) & 1u) << k;
+    }
+    eb->sym_bitpos += nbits;
+    return val;
+}
+
+/* --- Corner-table helpers (spec Next/Previous/PosOpposite/Swing*) --- */
+
+static int32_t draco_eb_next(int32_t c) {
+    if (c < 0)
+        return c;
+    return ((c % 3) == 2) ? c - 2 : c + 1;
+}
+
+static int32_t draco_eb_prev(int32_t c) {
+    if (c < 0)
+        return c;
+    return ((c % 3) == 0) ? c + 2 : c - 1;
+}
+
+static int32_t draco_eb_pos_opposite(const draco_eb *eb, int32_t c) {
+    if (c < 0 || (uint32_t)c >= eb->corner_cap)
+        return -1;
+    return eb->opposite[c];
+}
+
+static int32_t draco_eb_attr_opposite(const draco_eb *eb, uint32_t a, int32_t c) {
+    if (c < 0 || (uint32_t)c >= eb->corner_cap || eb->att_data[a].edge_on_seam[c])
+        return -1;
+    return draco_eb_pos_opposite(eb, c);
+}
+
+/// @brief True when decoder @p d uses recomputed (seam-split) attribute vertices.
+static int draco_eb_dec_is_corner_mapped(const draco_eb *eb, uint32_t d) {
+    return d != 0 && eb->dec[d].decoder_type == 1 && eb->dec[d].data_id != 0xFF;
+}
+
+static int32_t draco_eb_opposite(const draco_eb *eb, uint32_t d, int32_t c) {
+    if (draco_eb_dec_is_corner_mapped(eb, d))
+        return draco_eb_attr_opposite(eb, eb->dec[d].data_id, c);
+    return draco_eb_pos_opposite(eb, c);
+}
+
+static int32_t draco_eb_swing_right(const draco_eb *eb, uint32_t d, int32_t c) {
+    return draco_eb_prev(draco_eb_opposite(eb, d, draco_eb_prev(c)));
+}
+
+static int32_t draco_eb_swing_left(const draco_eb *eb, uint32_t d, int32_t c) {
+    return draco_eb_next(draco_eb_opposite(eb, d, draco_eb_next(c)));
+}
+
+/// @brief Seam-gated swing used by seam vertex recomputation (always gated by
+///        attribute data @p a regardless of the owning decoder's type).
+static int32_t draco_eb_attr_swing_left(const draco_eb *eb, uint32_t a, int32_t c) {
+    return draco_eb_next(draco_eb_attr_opposite(eb, a, draco_eb_next(c)));
+}
+
+static const int32_t *draco_eb_ftv(const draco_eb *eb, uint32_t d) {
+    if (draco_eb_dec_is_corner_mapped(eb, d))
+        return eb->att_data[eb->dec[d].data_id].face_to_vertex;
+    return eb->face_to_vertex;
+}
+
+static void draco_eb_corner_to_verts(const draco_eb *eb,
+                                     uint32_t d,
+                                     int32_t corner,
+                                     int32_t *v,
+                                     int32_t *n,
+                                     int32_t *p) {
+    const int32_t *ftv = draco_eb_ftv(eb, d);
+    int32_t base;
+    int32_t local;
+    if (corner < 0 || (uint32_t)corner >= eb->face_count * 3u) {
+        *v = *n = *p = -1;
+        return;
+    }
+    base = (corner / 3) * 3;
+    local = corner % 3;
+    *v = ftv[base + local];
+    *n = ftv[base + (local + 1) % 3];
+    *p = ftv[base + (local + 2) % 3];
+}
+
+static int32_t draco_eb_corner_to_vert(const draco_eb *eb, uint32_t d, int32_t corner) {
+    int32_t v, n, p;
+    draco_eb_corner_to_verts(eb, d, corner, &v, &n, &p);
+    return v;
+}
+
+/// @brief spec MapCornerToVertex (the corner->vertex direction is carried by the
+///        face table itself; only the vertex->corner link is tracked here).
+static int draco_eb_map_corner(draco_eb *eb, int32_t corner, int32_t vert) {
+    if (corner < 0 || (uint32_t)corner >= eb->corner_cap)
+        return 0;
+    if (vert >= 0) {
+        if ((uint32_t)vert >= eb->num_vertices)
+            return 0;
+        eb->vertex_corners[vert] = corner;
+    }
+    return 1;
+}
+
+static int draco_eb_set_opposite(draco_eb *eb, int32_t c, int32_t oc) {
+    if (c < 0 || oc < 0 || (uint32_t)c >= eb->corner_cap || (uint32_t)oc >= eb->corner_cap)
+        return 0;
+    eb->opposite[c] = oc;
+    eb->opposite[oc] = c;
+    return 1;
+}
+
+static int draco_eb_push_face(draco_eb *eb, int32_t v, int32_t n, int32_t p) {
+    int32_t *ftv;
+    if (eb->face_count >= eb->num_faces)
+        return 0;
+    ftv = eb->face_to_vertex + (size_t)eb->face_count * 3u;
+    ftv[0] = v;
+    ftv[1] = n;
+    ftv[2] = p;
+    eb->face_count++;
+    return 1;
+}
+
+static void draco_eb_replace_verts(draco_eb *eb, int32_t from, int32_t to) {
+    uint32_t total = eb->face_count * 3u;
+    for (uint32_t i = 0; i < total; i++) {
+        if (eb->face_to_vertex[i] == from)
+            eb->face_to_vertex[i] = to;
+    }
+}
+
+/// @brief spec UpdateCornersAfterMerge — remap the swing fan opposite @p c to @p v.
+static int draco_eb_update_corners_after_merge(draco_eb *eb, int32_t c, int32_t v) {
+    int32_t opp = draco_eb_pos_opposite(eb, c);
+    uint32_t guard = 0;
+    if (opp >= 0) {
+        int32_t corner_n = draco_eb_next(opp);
+        while (corner_n >= 0) {
+            if (guard++ > eb->corner_cap)
+                return 0;
+            if (!draco_eb_map_corner(eb, corner_n, v))
+                return 0;
+            corner_n = draco_eb_swing_left(eb, 0, corner_n);
+        }
+    }
+    return 1;
+}
+
+/// @brief spec IsTopologySplit — consume a matching split event, back to front.
+static int draco_eb_is_topology_split(draco_eb *eb,
+                                      uint32_t encoder_symbol_id,
+                                      uint8_t *out_edge,
+                                      uint32_t *out_split_id) {
+    if (eb->split_count == 0 ||
+        eb->split_source_symbol[eb->split_count - 1] != encoder_symbol_id)
+        return 0;
+    eb->split_count--;
+    *out_edge = eb->split_edge[eb->split_count];
+    *out_split_id = eb->split_symbol[eb->split_count];
+    return 1;
+}
+
+/// @brief spec NewActiveCornerReached — apply one C/S/L/R/E symbol to the corner table.
+static int draco_eb_new_corner(draco_eb *eb, int32_t new_corner, uint32_t symbol_id) {
+    int check_topology_split = 0;
+    int32_t vert = -1;
+    int32_t next = -1;
+    int32_t prev = -1;
+    uint32_t guard;
+    if (new_corner != (int32_t)(eb->face_count * 3u))
+        return 0;
+    switch (eb->last_symbol) {
+    case DRACO_TOPOLOGY_C: {
+        int32_t corner_a, corner_b;
+        if (eb->stack_size == 0)
+            return 0;
+        corner_a = eb->stack[eb->stack_size - 1];
+        corner_b = draco_eb_prev(corner_a);
+        guard = 0;
+        while (draco_eb_pos_opposite(eb, corner_b) >= 0) {
+            if (guard++ > eb->corner_cap)
+                return 0;
+            corner_b = draco_eb_prev(draco_eb_pos_opposite(eb, corner_b));
+        }
+        if (!draco_eb_set_opposite(eb, corner_a, new_corner + 1) ||
+            !draco_eb_set_opposite(eb, corner_b, new_corner + 2))
+            return 0;
+        eb->stack[eb->stack_size - 1] = new_corner;
+        vert = draco_eb_corner_to_vert(eb, 0, draco_eb_next(corner_a));
+        next = draco_eb_corner_to_vert(eb, 0, draco_eb_next(corner_b));
+        prev = draco_eb_corner_to_vert(eb, 0, draco_eb_prev(corner_a));
+        if (vert < 0 || next < 0 || prev < 0 || (uint32_t)vert >= eb->num_vertices ||
+            (uint32_t)next >= eb->num_vertices || (uint32_t)prev >= eb->num_vertices)
+            return 0;
+        if (eb->traversal_type == DRACO_EB_VALENCE) {
+            eb->valences[next] += 1u;
+            eb->valences[prev] += 1u;
+        }
+        if (!draco_eb_push_face(eb, vert, next, prev))
+            return 0;
+        eb->is_vert_hole[vert] = 0;
+        if (!draco_eb_map_corner(eb, new_corner, vert) ||
+            !draco_eb_map_corner(eb, new_corner + 1, next) ||
+            !draco_eb_map_corner(eb, new_corner + 2, prev))
+            return 0;
+        break;
+    }
+    case DRACO_TOPOLOGY_S: {
+        int32_t corner_a, corner_b, corner_n, vertex_n;
+        if (eb->stack_size == 0)
+            return 0;
+        corner_b = eb->stack[--eb->stack_size];
+        for (uint32_t i = 0; i < eb->match_count; i++) {
+            if (eb->match_split_id[i] == (int32_t)symbol_id) {
+                if (eb->stack_size >= eb->stack_cap)
+                    return 0;
+                eb->stack[eb->stack_size++] = eb->match_corner[i];
+            }
+        }
+        if (eb->stack_size == 0)
+            return 0;
+        corner_a = eb->stack[eb->stack_size - 1];
+        if (!draco_eb_set_opposite(eb, corner_a, new_corner + 2) ||
+            !draco_eb_set_opposite(eb, corner_b, new_corner + 1))
+            return 0;
+        eb->stack[eb->stack_size - 1] = new_corner;
+        vert = draco_eb_corner_to_vert(eb, 0, draco_eb_prev(corner_a));
+        next = draco_eb_corner_to_vert(eb, 0, draco_eb_next(corner_a));
+        prev = draco_eb_corner_to_vert(eb, 0, draco_eb_prev(corner_b));
+        if (vert < 0 || next < 0 || prev < 0 || (uint32_t)vert >= eb->num_vertices ||
+            (uint32_t)next >= eb->num_vertices || (uint32_t)prev >= eb->num_vertices)
+            return 0;
+        if (!draco_eb_map_corner(eb, new_corner, vert) ||
+            !draco_eb_map_corner(eb, new_corner + 1, next) ||
+            !draco_eb_map_corner(eb, new_corner + 2, prev))
+            return 0;
+        corner_n = draco_eb_next(corner_b);
+        vertex_n = draco_eb_corner_to_vert(eb, 0, corner_n);
+        if (vertex_n < 0 || (uint32_t)vertex_n >= eb->num_vertices)
+            return 0;
+        if (eb->traversal_type == DRACO_EB_VALENCE)
+            eb->valences[vert] += eb->valences[vertex_n];
+        draco_eb_replace_verts(eb, vertex_n, vert);
+        if (eb->traversal_type == DRACO_EB_VALENCE) {
+            eb->valences[next] += 1u;
+            eb->valences[prev] += 1u;
+        }
+        if (!draco_eb_push_face(eb, vert, next, prev))
+            return 0;
+        if (!draco_eb_update_corners_after_merge(eb, new_corner + 1, vert))
+            return 0;
+        eb->vertex_corners[vertex_n] = -1;
+        break;
+    }
+    case DRACO_TOPOLOGY_R: {
+        int32_t corner_a;
+        if (eb->stack_size == 0)
+            return 0;
+        corner_a = eb->stack[eb->stack_size - 1];
+        if (!draco_eb_set_opposite(eb, new_corner + 2, corner_a))
+            return 0;
+        eb->stack[eb->stack_size - 1] = new_corner;
+        check_topology_split = 1;
+        vert = draco_eb_corner_to_vert(eb, 0, draco_eb_prev(corner_a));
+        next = draco_eb_corner_to_vert(eb, 0, draco_eb_next(corner_a));
+        prev = ++eb->last_vert_added;
+        if (vert < 0 || next < 0 || (uint32_t)vert >= eb->num_vertices ||
+            (uint32_t)next >= eb->num_vertices || (uint32_t)prev >= eb->num_vertices)
+            return 0;
+        if (eb->traversal_type == DRACO_EB_VALENCE) {
+            eb->valences[vert] += 1u;
+            eb->valences[next] += 1u;
+            eb->valences[prev] += 2u;
+        }
+        if (!draco_eb_push_face(eb, vert, next, prev))
+            return 0;
+        if (!draco_eb_map_corner(eb, new_corner + 2, prev) ||
+            !draco_eb_map_corner(eb, new_corner, vert) ||
+            !draco_eb_map_corner(eb, new_corner + 1, next))
+            return 0;
+        break;
+    }
+    case DRACO_TOPOLOGY_L: {
+        int32_t corner_a;
+        if (eb->stack_size == 0)
+            return 0;
+        corner_a = eb->stack[eb->stack_size - 1];
+        if (!draco_eb_set_opposite(eb, new_corner + 1, corner_a))
+            return 0;
+        eb->stack[eb->stack_size - 1] = new_corner;
+        check_topology_split = 1;
+        vert = draco_eb_corner_to_vert(eb, 0, draco_eb_next(corner_a));
+        next = ++eb->last_vert_added;
+        prev = draco_eb_corner_to_vert(eb, 0, draco_eb_prev(corner_a));
+        if (vert < 0 || prev < 0 || (uint32_t)vert >= eb->num_vertices ||
+            (uint32_t)next >= eb->num_vertices || (uint32_t)prev >= eb->num_vertices)
+            return 0;
+        if (eb->traversal_type == DRACO_EB_VALENCE) {
+            eb->valences[vert] += 1u;
+            eb->valences[next] += 2u;
+            eb->valences[prev] += 1u;
+        }
+        if (!draco_eb_push_face(eb, vert, next, prev))
+            return 0;
+        if (!draco_eb_map_corner(eb, new_corner + 2, prev) ||
+            !draco_eb_map_corner(eb, new_corner, vert) ||
+            !draco_eb_map_corner(eb, new_corner + 1, next))
+            return 0;
+        break;
+    }
+    case DRACO_TOPOLOGY_E: {
+        if (eb->stack_size >= eb->stack_cap)
+            return 0;
+        eb->stack[eb->stack_size++] = new_corner;
+        check_topology_split = 1;
+        vert = eb->last_vert_added + 1;
+        next = vert + 1;
+        prev = next + 1;
+        if ((uint32_t)prev >= eb->num_vertices)
+            return 0;
+        if (eb->traversal_type == DRACO_EB_VALENCE) {
+            eb->valences[vert] += 2u;
+            eb->valences[next] += 2u;
+            eb->valences[prev] += 2u;
+        }
+        if (!draco_eb_push_face(eb, vert, next, prev))
+            return 0;
+        eb->last_vert_added = prev;
+        if (!draco_eb_map_corner(eb, new_corner, vert) ||
+            !draco_eb_map_corner(eb, new_corner + 1, next) ||
+            !draco_eb_map_corner(eb, new_corner + 2, prev))
+            return 0;
+        break;
+    }
+    default:
+        return 0;
+    }
+    if (eb->traversal_type == DRACO_EB_VALENCE) {
+        uint32_t valence = eb->valences[next];
+        if (valence < DRACO_EB_MIN_VALENCE)
+            valence = DRACO_EB_MIN_VALENCE;
+        else if (valence > DRACO_EB_MIN_VALENCE + DRACO_EB_NUM_VALENCES - 1)
+            valence = DRACO_EB_MIN_VALENCE + DRACO_EB_NUM_VALENCES - 1;
+        eb->active_context = (int)(valence - DRACO_EB_MIN_VALENCE);
+    }
+    if (check_topology_split) {
+        uint32_t encoder_symbol_id = eb->num_symbols - symbol_id - 1u;
+        uint8_t split_edge;
+        uint32_t enc_split_id;
+        while (draco_eb_is_topology_split(eb, encoder_symbol_id, &split_edge, &enc_split_id)) {
+            int32_t act_top, new_active;
+            if (eb->stack_size == 0 || eb->match_count >= eb->match_cap ||
+                enc_split_id >= eb->num_symbols)
+                return 0;
+            act_top = eb->stack[eb->stack_size - 1];
+            new_active = (split_edge == 1 /* RIGHT_FACE_EDGE */) ? draco_eb_next(act_top)
+                                                                 : draco_eb_prev(act_top);
+            eb->match_split_id[eb->match_count] =
+                (int32_t)(eb->num_symbols - enc_split_id - 1u);
+            eb->match_corner[eb->match_count] = new_active;
+            eb->match_count++;
+        }
+    }
+    return 1;
+}
+
+/// @brief spec EdgebreakerDecodeSymbol (standard bit stream or valence contexts).
+static int draco_eb_decode_symbol(draco_eb *eb) {
+    if (eb->traversal_type == DRACO_EB_VALENCE) {
+        static const int topo[5] = {DRACO_TOPOLOGY_C, DRACO_TOPOLOGY_S, DRACO_TOPOLOGY_L,
+                                    DRACO_TOPOLOGY_R, DRACO_TOPOLOGY_E};
+        int ctx = eb->active_context;
+        uint32_t sym;
+        if (ctx < 0) {
+            eb->last_symbol = DRACO_TOPOLOGY_E;
+            return 1;
+        }
+        if (eb->ctx_pos[ctx] == 0)
+            return 0;
+        sym = eb->ctx_syms[ctx][--eb->ctx_pos[ctx]];
+        if (sym >= 5u)
+            return 0;
+        eb->last_symbol = topo[sym];
+        return 1;
+    }
+    {
+        int ok = 1;
+        uint32_t symbol = draco_eb_read_symbol_bits(eb, 1, &ok);
+        if (!ok)
+            return 0;
+        if (symbol != DRACO_TOPOLOGY_C) {
+            uint32_t suffix = draco_eb_read_symbol_bits(eb, 2, &ok);
+            if (!ok)
+                return 0;
+            symbol |= suffix << 1;
+        }
+        eb->last_symbol = (int)symbol;
+        return 1;
+    }
+}
+
+/// @brief spec ProcessInteriorEdges — close interior fans left by the symbol pass.
+static int draco_eb_process_interior_edges(draco_eb *eb) {
+    draco_rans ans;
+    int have_ans = 0;
+    if (eb->start_face_size > 0)
+        have_ans =
+            draco_rans_init(&ans, eb->start_face_buf, eb->start_face_size, 4096u);
+    while (eb->stack_size > 0) {
+        int32_t corner_a = eb->stack[--eb->stack_size];
+        uint32_t interior = 0;
+        uint32_t guard;
+        if (!have_ans)
+            return 0;
+        draco_rabs_read(&ans, eb->start_face_prob_zero, &interior);
+        if (!interior)
+            continue;
+        {
+            int32_t corner_b = draco_eb_prev(corner_a);
+            int32_t corner_c = draco_eb_next(corner_a);
+            int32_t new_corner;
+            int32_t tv, tp, next_a, next_b, next_c;
+            guard = 0;
+            while (draco_eb_pos_opposite(eb, corner_b) >= 0) {
+                if (guard++ > eb->corner_cap)
+                    return 0;
+                corner_b = draco_eb_prev(draco_eb_pos_opposite(eb, corner_b));
+            }
+            guard = 0;
+            while (draco_eb_pos_opposite(eb, corner_c) >= 0) {
+                if (guard++ > eb->corner_cap)
+                    return 0;
+                corner_c = draco_eb_next(draco_eb_pos_opposite(eb, corner_c));
+            }
+            new_corner = (int32_t)(eb->face_count * 3u);
+            if (!draco_eb_set_opposite(eb, new_corner, corner_a) ||
+                !draco_eb_set_opposite(eb, new_corner + 1, corner_b) ||
+                !draco_eb_set_opposite(eb, new_corner + 2, corner_c))
+                return 0;
+            draco_eb_corner_to_verts(eb, 0, corner_a, &tv, &next_a, &tp);
+            draco_eb_corner_to_verts(eb, 0, corner_b, &tv, &next_b, &tp);
+            draco_eb_corner_to_verts(eb, 0, corner_c, &tv, &next_c, &tp);
+            if (next_a < 0 || next_b < 0 || next_c < 0 ||
+                (uint32_t)next_a >= eb->num_vertices ||
+                (uint32_t)next_b >= eb->num_vertices ||
+                (uint32_t)next_c >= eb->num_vertices)
+                return 0;
+            if (!draco_eb_push_face(eb, next_b, next_c, next_a))
+                return 0;
+            if (!draco_eb_map_corner(eb, new_corner, next_b) ||
+                !draco_eb_map_corner(eb, new_corner + 1, next_c) ||
+                !draco_eb_map_corner(eb, new_corner + 2, next_a))
+                return 0;
+            eb->is_vert_hole[next_b] = 0;
+            eb->is_vert_hole[next_c] = 0;
+            eb->is_vert_hole[next_a] = 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Parse the edgebreaker connectivity header and allocate decode state.
+static int draco_eb_parse_and_alloc(draco_buf *b, draco_eb *eb) {
+    uint64_t nv, nf, ns, nss, total_verts;
+    eb->traversal_type = draco_read_u8(b);
+    nv = draco_read_varint(b);
+    nf = draco_read_varint(b);
+    eb->num_att_data = draco_read_u8(b);
+    ns = draco_read_varint(b);
+    nss = draco_read_varint(b);
+    if (b->failed)
+        return 0;
+    if (eb->traversal_type != DRACO_EB_STANDARD && eb->traversal_type != DRACO_EB_VALENCE)
+        return 0;
+    if (eb->num_att_data > DRACO_EB_MAX_ATT_DATA)
+        return 0;
+    if (nf == 0 || nf > (uint64_t)UINT32_MAX / 4u)
+        return 0;
+    if (ns > nf)
+        return 0;
+    total_verts = nv + nss;
+    if (total_verts == 0 || total_verts > 3u * nf + nss)
+        return 0;
+    eb->num_vertices = (uint32_t)total_verts;
+    eb->num_faces = (uint32_t)nf;
+    eb->num_symbols = (uint32_t)ns;
+    eb->num_split_symbols = (uint32_t)nss;
+    eb->corner_cap = eb->num_faces * 3u;
+    eb->visit_cap = eb->num_vertices > eb->corner_cap ? eb->num_vertices : eb->corner_cap;
+    eb->last_vert_added = -1;
+    eb->last_symbol = -1;
+    eb->active_context = -1;
+    eb->stack_cap = eb->num_symbols + eb->num_split_symbols + 4u;
+    eb->face_to_vertex = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+    eb->opposite = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+    eb->vertex_corners = (int32_t *)malloc((size_t)eb->num_vertices * sizeof(int32_t));
+    eb->is_vert_hole = (uint8_t *)malloc(eb->num_vertices);
+    eb->stack = (int32_t *)malloc((size_t)eb->stack_cap * sizeof(int32_t));
+    eb->corner_to_point = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+    eb->face_visited = (uint8_t *)malloc(eb->num_faces);
+    eb->vertex_visited = (uint8_t *)malloc(eb->visit_cap);
+    eb->trav_stack = (int32_t *)malloc(((size_t)eb->corner_cap + 2u) * sizeof(int32_t));
+    if (!eb->face_to_vertex || !eb->opposite || !eb->vertex_corners || !eb->is_vert_hole ||
+        !eb->stack || !eb->corner_to_point || !eb->face_visited || !eb->vertex_visited ||
+        !eb->trav_stack)
+        return 0;
+    memset(eb->face_to_vertex, 0xFF, (size_t)eb->corner_cap * sizeof(int32_t));
+    memset(eb->opposite, 0xFF, (size_t)eb->corner_cap * sizeof(int32_t));
+    memset(eb->vertex_corners, 0xFF, (size_t)eb->num_vertices * sizeof(int32_t));
+    memset(eb->is_vert_hole, 1, eb->num_vertices);
+    if (eb->traversal_type == DRACO_EB_VALENCE) {
+        eb->valences = (uint32_t *)calloc(eb->num_vertices, sizeof(uint32_t));
+        if (!eb->valences)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief spec ParseTopologySplitEvents + ProcessSplitData.
+static int draco_eb_parse_splits(draco_buf *b, draco_eb *eb) {
+    uint64_t n = draco_read_varint(b);
+    if (b->failed || n > eb->num_faces)
+        return 0;
+    eb->split_count = (uint32_t)n;
+    eb->match_cap = (uint32_t)n;
+    if (n == 0)
+        return 1;
+    eb->split_source_symbol = (uint32_t *)malloc((size_t)n * sizeof(uint32_t));
+    eb->split_symbol = (uint32_t *)malloc((size_t)n * sizeof(uint32_t));
+    eb->split_edge = (uint8_t *)malloc((size_t)n);
+    eb->match_split_id = (int32_t *)malloc((size_t)n * sizeof(int32_t));
+    eb->match_corner = (int32_t *)malloc((size_t)n * sizeof(int32_t));
+    if (!eb->split_source_symbol || !eb->split_symbol || !eb->split_edge ||
+        !eb->match_split_id || !eb->match_corner)
+        return 0;
+    {
+        uint32_t last_id = 0;
+        for (uint64_t i = 0; i < n; i++) {
+            uint64_t source_delta = draco_read_varint(b);
+            uint64_t split_delta = draco_read_varint(b);
+            uint64_t source_id = source_delta + last_id;
+            if (b->failed || source_id >= eb->num_symbols || split_delta > source_id)
+                return 0;
+            eb->split_source_symbol[i] = (uint32_t)source_id;
+            eb->split_symbol[i] = (uint32_t)(source_id - split_delta);
+            last_id = (uint32_t)source_id;
+        }
+    }
+    {
+        size_t base = b->pos;
+        size_t bytes = (size_t)((n + 7u) >> 3);
+        if (bytes > b->size - b->pos) {
+            b->failed = 1;
+            return 0;
+        }
+        for (uint64_t i = 0; i < n; i++)
+            eb->split_edge[i] = (b->data[base + (size_t)(i >> 3)] >> (i & 7u)) & 1u;
+        b->pos = base + bytes; /* ResetBitReader: realign to a byte boundary */
+    }
+    return 1;
+}
+
+/// @brief spec EdgebreakerTraversalStart — standard buffers or valence contexts.
+static int draco_eb_traversal_start(draco_buf *b, draco_eb *eb) {
+    if (eb->traversal_type == DRACO_EB_STANDARD) {
+        uint64_t sz = draco_read_varint(b);
+        if (b->failed || sz > b->size - b->pos)
+            return 0;
+        eb->sym_buf = b->data + b->pos;
+        eb->sym_size = (size_t)sz;
+        eb->sym_bitpos = 0;
+        b->pos += (size_t)sz;
+    }
+    eb->start_face_prob_zero = draco_read_u8(b);
+    {
+        uint64_t sz = draco_read_varint(b);
+        if (b->failed || sz > b->size - b->pos)
+            return 0;
+        eb->start_face_buf = b->data + b->pos;
+        eb->start_face_size = (size_t)sz;
+        b->pos += (size_t)sz;
+    }
+    for (uint32_t a = 0; a < eb->num_att_data; a++) {
+        uint64_t sz;
+        eb->att_data[a].prob_zero = draco_read_u8(b);
+        sz = draco_read_varint(b);
+        if (b->failed || sz > b->size - b->pos)
+            return 0;
+        eb->att_data[a].buf = b->data + b->pos;
+        eb->att_data[a].size = (size_t)sz;
+        b->pos += (size_t)sz;
+    }
+    if (eb->traversal_type == DRACO_EB_VALENCE) {
+        for (int i = 0; i < DRACO_EB_NUM_VALENCES; i++) {
+            uint64_t count = draco_read_varint(b);
+            if (b->failed || count > eb->num_symbols)
+                return 0;
+            eb->ctx_pos[i] = (uint32_t)count;
+            if (count > 0) {
+                eb->ctx_syms[i] = (uint32_t *)calloc((size_t)count, sizeof(uint32_t));
+                if (!eb->ctx_syms[i] ||
+                    !draco_decode_symbols(b, (uint32_t)count, 1, eb->ctx_syms[i]))
+                    return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/// @brief spec DecodeEdgebreakerConnectivityData + DecodeEdgeBreakerConnectivity.
+static int draco_eb_decode_connectivity(draco_buf *b, draco_eb *eb) {
+    if (!draco_eb_parse_and_alloc(b, eb))
+        return 0;
+    if (!draco_eb_parse_splits(b, eb))
+        return 0;
+    if (!draco_eb_traversal_start(b, eb))
+        return 0;
+    for (uint32_t i = 0; i < eb->num_symbols; i++) {
+        if (!draco_eb_decode_symbol(eb))
+            return 0;
+        if (!draco_eb_new_corner(eb, (int32_t)(3u * i), i))
+            return 0;
+    }
+    if (!draco_eb_process_interior_edges(eb))
+        return 0;
+    if (eb->face_count != eb->num_faces)
+        return 0;
+    return 1;
+}
+
+/// @brief spec UpdateVertexToCornerMap — rotate a hole vertex's corner link to
+///        the leftmost corner of its fan.
+static int draco_eb_update_vertex_corner(draco_eb *eb, uint32_t v) {
+    int32_t first_c = eb->vertex_corners[v];
+    int32_t act_c, c;
+    uint32_t guard = 0;
+    if (first_c < 0)
+        return 1;
+    act_c = draco_eb_swing_left(eb, 0, first_c);
+    c = first_c;
+    while (act_c >= 0 && act_c != first_c) {
+        if (guard++ > eb->corner_cap)
+            return 0;
+        c = act_c;
+        act_c = draco_eb_swing_left(eb, 0, act_c);
+    }
+    if (act_c != first_c)
+        eb->vertex_corners[v] = c;
+    return 1;
+}
+
+/// @brief spec DecodeAttributeSeams — one rABS stream per attribute data; boundary
+///        edges are seams unconditionally, interior edges consume one flag bit.
+static int draco_eb_decode_seams(draco_buf *b, draco_eb *eb) {
+    draco_rans ans[DRACO_EB_MAX_ATT_DATA];
+    int have[DRACO_EB_MAX_ATT_DATA];
+    (void)b;
+    for (uint32_t a = 0; a < eb->num_att_data; a++) {
+        draco_eb_data *ad = &eb->att_data[a];
+        ad->edge_on_seam = (uint8_t *)calloc(eb->corner_cap, 1);
+        ad->vertex_on_seam = (uint8_t *)calloc(eb->num_vertices, 1);
+        ad->corner_to_vertex = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+        ad->face_to_vertex = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+        ad->leftmost_corner = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+        if (!ad->edge_on_seam || !ad->vertex_on_seam || !ad->corner_to_vertex ||
+            !ad->face_to_vertex || !ad->leftmost_corner)
+            return 0;
+        have[a] = ad->size > 0 && draco_rans_init(&ans[a], ad->buf, ad->size, 4096u);
+    }
+    for (uint32_t corner = 0; corner < eb->face_count * 3u; corner++) {
+        int32_t v, n, p;
+        int32_t opp = draco_eb_pos_opposite(eb, (int32_t)corner);
+        draco_eb_corner_to_verts(eb, 0, (int32_t)corner, &v, &n, &p);
+        if (n < 0 || p < 0 || (uint32_t)n >= eb->num_vertices ||
+            (uint32_t)p >= eb->num_vertices)
+            return 0;
+        if (opp >= 0) {
+            if (opp < (int32_t)corner)
+                continue;
+            for (uint32_t a = 0; a < eb->num_att_data; a++) {
+                uint32_t val = 0;
+                if (!have[a])
+                    return 0;
+                draco_rabs_read(&ans[a], eb->att_data[a].prob_zero, &val);
+                if (val) {
+                    int32_t ov, on, op2;
+                    eb->att_data[a].edge_on_seam[corner] = 1;
+                    eb->att_data[a].vertex_on_seam[n] = 1;
+                    eb->att_data[a].vertex_on_seam[p] = 1;
+                    draco_eb_corner_to_verts(eb, 0, opp, &ov, &on, &op2);
+                    if (on >= 0 && (uint32_t)on < eb->num_vertices)
+                        eb->att_data[a].vertex_on_seam[on] = 1;
+                    if (op2 >= 0 && (uint32_t)op2 < eb->num_vertices)
+                        eb->att_data[a].vertex_on_seam[op2] = 1;
+                    eb->att_data[a].edge_on_seam[opp] = 1;
+                }
+            }
+        } else {
+            for (uint32_t a = 0; a < eb->num_att_data; a++) {
+                eb->att_data[a].edge_on_seam[corner] = 1;
+                eb->att_data[a].vertex_on_seam[n] = 1;
+                eb->att_data[a].vertex_on_seam[p] = 1;
+            }
+        }
+    }
+    return 1;
+}
+
+/// @brief spec RecomputeVerticesInternal — split position vertices along the seams
+///        of attribute data @p a into per-attribute vertices.
+static int draco_eb_recompute_vertices(draco_eb *eb, uint32_t a) {
+    draco_eb_data *ad = &eb->att_data[a];
+    uint32_t num_new = 0;
+    memcpy(ad->face_to_vertex,
+           eb->face_to_vertex,
+           (size_t)eb->face_count * 3u * sizeof(int32_t));
+    for (uint32_t i = 0; i < eb->corner_cap; i++) {
+        ad->corner_to_vertex[i] = -1;
+        ad->leftmost_corner[i] = -1;
+    }
+    for (uint32_t v = 0; v < eb->num_vertices; v++) {
+        int32_t c = eb->vertex_corners[v];
+        int32_t first_c, act_c, first_vert_id;
+        uint32_t guard = 0;
+        if (c < 0)
+            continue;
+        first_vert_id = (int32_t)num_new++;
+        first_c = c;
+        if (ad->vertex_on_seam[v]) {
+            act_c = draco_eb_attr_swing_left(eb, a, first_c);
+            while (act_c >= 0) {
+                if (guard++ > eb->corner_cap)
+                    return 0;
+                first_c = act_c;
+                act_c = draco_eb_attr_swing_left(eb, a, act_c);
+            }
+        }
+        ad->corner_to_vertex[first_c] = first_vert_id;
+        ad->leftmost_corner[first_vert_id] = first_c;
+        act_c = draco_eb_swing_right(eb, 0, first_c);
+        guard = 0;
+        while (act_c >= 0 && act_c != first_c) {
+            int32_t next_act_c;
+            if (guard++ > eb->corner_cap)
+                return 0;
+            next_act_c = draco_eb_next(act_c);
+            if (next_act_c >= 0 && ad->edge_on_seam[next_act_c]) {
+                first_vert_id = (int32_t)num_new++;
+                if (first_vert_id >= (int32_t)eb->corner_cap)
+                    return 0;
+                ad->leftmost_corner[first_vert_id] = act_c;
+            }
+            ad->corner_to_vertex[act_c] = first_vert_id;
+            act_c = draco_eb_swing_right(eb, 0, act_c);
+        }
+    }
+    ad->vertex_count = num_new;
+    for (uint32_t i = 0; i < eb->face_count * 3u; i++)
+        ad->face_to_vertex[i] = ad->corner_to_vertex[i];
+    return 1;
+}
+
+/// @brief spec Attribute_AssignPointsToCorners — dedup corners into output points,
+///        splitting wherever any attribute's recomputed vertex changes.
+static int draco_eb_assign_points(draco_eb *eb) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < eb->corner_cap; i++)
+        eb->corner_to_point[i] = -1;
+    for (uint32_t v = 0; v < eb->num_vertices; v++) {
+        int32_t c = eb->vertex_corners[v];
+        int32_t dedup_c;
+        uint32_t guard;
+        if (c < 0)
+            continue;
+        dedup_c = c;
+        if (!eb->is_vert_hole[v]) {
+            for (uint32_t a = 0; a < eb->num_att_data; a++) {
+                int32_t vert_id, act_c;
+                int seam_found = 0;
+                if (!eb->att_data[a].vertex_on_seam[v])
+                    continue;
+                vert_id = eb->att_data[a].corner_to_vertex[c];
+                act_c = draco_eb_swing_right(eb, 0, c);
+                guard = 0;
+                while (act_c >= 0 && act_c != c) {
+                    if (guard++ > eb->corner_cap)
+                        return 0;
+                    if (eb->att_data[a].corner_to_vertex[act_c] != vert_id) {
+                        dedup_c = act_c;
+                        seam_found = 1;
+                        break;
+                    }
+                    act_c = draco_eb_swing_right(eb, 0, act_c);
+                }
+                if (seam_found)
+                    break;
+            }
+        }
+        c = dedup_c;
+        eb->corner_to_point[c] = (int32_t)count++;
+        {
+            int32_t prev_c = c;
+            int32_t c2 = draco_eb_swing_right(eb, 0, c);
+            guard = 0;
+            while (c2 >= 0 && c2 != dedup_c) {
+                int attribute_seam = 0;
+                if (guard++ > eb->corner_cap)
+                    return 0;
+                for (uint32_t a = 0; a < eb->num_att_data; a++) {
+                    if (eb->att_data[a].corner_to_vertex[c2] !=
+                        eb->att_data[a].corner_to_vertex[prev_c]) {
+                        attribute_seam = 1;
+                        break;
+                    }
+                }
+                if (attribute_seam)
+                    eb->corner_to_point[c2] = (int32_t)count++;
+                else
+                    eb->corner_to_point[c2] = eb->corner_to_point[prev_c];
+                prev_c = c2;
+                c2 = draco_eb_swing_right(eb, 0, c2);
+            }
+        }
+    }
+    eb->point_count = count;
+    for (uint32_t i = 0; i < eb->face_count * 3u; i++) {
+        if (eb->corner_to_point[i] < 0)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Position-vertex boundary test (reference decoder CornerTable::IsOnBoundary:
+///        hole vertices remain marked after connectivity decode).
+static int draco_eb_pos_boundary(const draco_eb *eb, int32_t v) {
+    if (v < 0 || (uint32_t)v >= eb->num_vertices)
+        return 1;
+    if (eb->vertex_corners[v] < 0)
+        return 1;
+    return eb->is_vert_hole[v] ? 1 : 0;
+}
+
+/// @brief spec IsOnAttributeBoundary for corner-mapped decoders.
+static int draco_eb_attr_boundary(const draco_eb *eb, uint32_t a, int32_t v) {
+    const draco_eb_data *ad = &eb->att_data[a];
+    int32_t corner, pv;
+    if (v < 0 || (uint32_t)v >= ad->vertex_count)
+        return 1;
+    corner = ad->leftmost_corner[v];
+    if (corner < 0)
+        return 1;
+    pv = draco_eb_corner_to_vert(eb, 0, corner);
+    if (pv < 0 || (uint32_t)pv >= eb->num_vertices)
+        return 1;
+    return ad->vertex_on_seam[pv] ? 1 : 0;
+}
+
+/// @brief spec OnNewVertexVisited — record traversal order for decoder @p d.
+static int draco_eb_on_new_vertex(draco_eb *eb, uint32_t d, int32_t vertex, int32_t corner) {
+    draco_eb_dec *dec = &eb->dec[d];
+    if (vertex < 0 || (uint32_t)vertex >= eb->visit_cap || dec->value_count >= eb->corner_cap)
+        return 0;
+    dec->value_to_corner[dec->value_count] = corner;
+    dec->vertex_to_value[vertex] = (int32_t)dec->value_count;
+    dec->value_count++;
+    return 1;
+}
+
+/// @brief Depth-first traversal from one seed corner (spec EdgeBreakerTraverser /
+///        EdgeBreakerAttributeTraverser ProcessCorner). Vertex-mapped decoders use
+///        the position corner table with no seam gating, matching the reference
+///        decoder (is_connectivity_used = false); corner-mapped decoders gate the
+///        left/right steps on seam edges.
+static int draco_eb_traverse_dfs(draco_eb *eb, uint32_t d, int32_t corner_id) {
+    int corner_mapped = draco_eb_dec_is_corner_mapped(eb, d);
+    uint32_t a = corner_mapped ? eb->dec[d].data_id : 0u;
+    int32_t face = corner_id / 3;
+    int32_t v, next_vert, prev_vert;
+    uint32_t guard = 0;
+    if (corner_id < 0 || (uint32_t)face >= eb->face_count || eb->face_visited[face])
+        return 1;
+    eb->trav_size = 0;
+    eb->trav_stack[eb->trav_size++] = corner_id;
+    draco_eb_corner_to_verts(eb, d, corner_id, &v, &next_vert, &prev_vert);
+    if (next_vert < 0 || prev_vert < 0 || (uint32_t)next_vert >= eb->visit_cap ||
+        (uint32_t)prev_vert >= eb->visit_cap)
+        return 0;
+    if (!eb->vertex_visited[next_vert]) {
+        eb->vertex_visited[next_vert] = 1;
+        if (!draco_eb_on_new_vertex(eb, d, next_vert, draco_eb_next(corner_id)))
+            return 0;
+    }
+    if (!eb->vertex_visited[prev_vert]) {
+        eb->vertex_visited[prev_vert] = 1;
+        if (!draco_eb_on_new_vertex(eb, d, prev_vert, draco_eb_prev(corner_id)))
+            return 0;
+    }
+    while (eb->trav_size > 0) {
+        int32_t face_id;
+        corner_id = eb->trav_stack[eb->trav_size - 1];
+        face_id = corner_id < 0 ? -1 : corner_id / 3;
+        if (corner_id < 0 || face_id >= (int32_t)eb->face_count || eb->face_visited[face_id]) {
+            eb->trav_size--;
+            continue;
+        }
+        while (1) {
+            int32_t vert_id, right_corner, left_corner, right_face, left_face;
+            int right_visited, left_visited;
+            if (guard++ > eb->corner_cap * 4u + 64u)
+                return 0;
+            face_id = corner_id / 3;
+            eb->face_visited[face_id] = 1;
+            vert_id = draco_eb_corner_to_vert(eb, d, corner_id);
+            if (vert_id < 0 || (uint32_t)vert_id >= eb->visit_cap)
+                return 0;
+            if (!eb->vertex_visited[vert_id]) {
+                int on_boundary;
+                if (corner_mapped) {
+                    int on_seam = draco_eb_attr_boundary(eb, a, vert_id);
+                    on_boundary =
+                        on_seam
+                            ? 1
+                            : draco_eb_pos_boundary(eb,
+                                                    draco_eb_corner_to_vert(eb, 0, corner_id));
+                } else {
+                    on_boundary = draco_eb_pos_boundary(eb, vert_id);
+                }
+                eb->vertex_visited[vert_id] = 1;
+                if (!draco_eb_on_new_vertex(eb, d, vert_id, corner_id))
+                    return 0;
+                if (!on_boundary) {
+                    corner_id = draco_eb_pos_opposite(eb, draco_eb_next(corner_id));
+                    if (corner_id < 0)
+                        return 0;
+                    continue;
+                }
+            }
+            if (corner_mapped) {
+                int32_t next_c = draco_eb_next(corner_id);
+                int32_t prev_c = draco_eb_prev(corner_id);
+                right_corner = (next_c >= 0 && eb->att_data[a].edge_on_seam[next_c])
+                                   ? -1
+                                   : draco_eb_pos_opposite(eb, next_c);
+                left_corner = (prev_c >= 0 && eb->att_data[a].edge_on_seam[prev_c])
+                                  ? -1
+                                  : draco_eb_pos_opposite(eb, prev_c);
+            } else {
+                right_corner = draco_eb_pos_opposite(eb, draco_eb_next(corner_id));
+                left_corner = draco_eb_pos_opposite(eb, draco_eb_prev(corner_id));
+            }
+            right_face = right_corner < 0 ? -1 : right_corner / 3;
+            left_face = left_corner < 0 ? -1 : left_corner / 3;
+            right_visited = right_face < 0 || right_face >= (int32_t)eb->face_count ||
+                            eb->face_visited[right_face];
+            left_visited = left_face < 0 || left_face >= (int32_t)eb->face_count ||
+                           eb->face_visited[left_face];
+            if (right_visited) {
+                if (left_visited) {
+                    eb->trav_size--;
+                    break;
+                }
+                corner_id = left_corner;
+            } else {
+                if (left_visited) {
+                    corner_id = right_corner;
+                } else {
+                    if (eb->trav_size >= eb->corner_cap + 1u)
+                        return 0;
+                    eb->trav_stack[eb->trav_size - 1] = left_corner;
+                    eb->trav_stack[eb->trav_size++] = right_corner;
+                    break;
+                }
+            }
+        }
+    }
+    return 1;
+}
+
+/* --- Prediction-degree traversal (spec MESH_TRAVERSAL_PREDICTION_DEGREE) --- */
+
+static int draco_eb_pd_push(draco_eb *eb, int32_t ci, int priority) {
+    if (eb->pd_size[priority] >= eb->corner_cap + 1u)
+        return 0;
+    eb->pd_stack[priority][eb->pd_size[priority]++] = ci;
+    if (priority < eb->pd_best)
+        eb->pd_best = priority;
+    return 1;
+}
+
+static int draco_eb_pd_priority(draco_eb *eb, uint32_t d, int32_t ci) {
+    int32_t v, n, p;
+    int priority = 0;
+    draco_eb_corner_to_verts(eb, d, ci, &v, &n, &p);
+    if (v >= 0 && (uint32_t)v < eb->visit_cap && !eb->vertex_visited[v]) {
+        uint32_t degree = ++eb->pred_degree[v];
+        priority = degree > 1u ? 1 : 2;
+    }
+    if (priority >= 3)
+        priority = 2;
+    return priority;
+}
+
+static int32_t draco_eb_pd_pop(draco_eb *eb) {
+    for (int i = eb->pd_best; i < 3; i++) {
+        if (eb->pd_size[i] > 0) {
+            eb->pd_best = i;
+            return eb->pd_stack[i][--eb->pd_size[i]];
+        }
+    }
+    return -1;
+}
+
+/// @brief spec PredictionDegree_TraverseFromCorner.
+static int draco_eb_traverse_pd(draco_eb *eb, uint32_t d, int32_t corner_id) {
+    int32_t tip, next_vert, prev_vert;
+    uint32_t guard = 0;
+    if (corner_id < 0 || (uint32_t)(corner_id / 3) >= eb->face_count)
+        return 0;
+    if (!draco_eb_pd_push(eb, corner_id, 0))
+        return 0;
+    eb->pd_best = 0;
+    draco_eb_corner_to_verts(eb, d, corner_id, &tip, &next_vert, &prev_vert);
+    if (tip < 0 || next_vert < 0 || prev_vert < 0 || (uint32_t)tip >= eb->visit_cap ||
+        (uint32_t)next_vert >= eb->visit_cap || (uint32_t)prev_vert >= eb->visit_cap)
+        return 0;
+    if (!eb->vertex_visited[next_vert]) {
+        eb->vertex_visited[next_vert] = 1;
+        if (!draco_eb_on_new_vertex(eb, d, next_vert, draco_eb_next(corner_id)))
+            return 0;
+    }
+    if (!eb->vertex_visited[prev_vert]) {
+        eb->vertex_visited[prev_vert] = 1;
+        if (!draco_eb_on_new_vertex(eb, d, prev_vert, draco_eb_prev(corner_id)))
+            return 0;
+    }
+    if (!eb->vertex_visited[tip]) {
+        eb->vertex_visited[tip] = 1;
+        if (!draco_eb_on_new_vertex(eb, d, tip, corner_id))
+            return 0;
+    }
+    while ((corner_id = draco_eb_pd_pop(eb)) >= 0) {
+        int32_t face_id = corner_id / 3;
+        if ((uint32_t)face_id >= eb->face_count || eb->face_visited[face_id])
+            continue;
+        while (1) {
+            int32_t vert_id, right_c, left_c, right_f, left_f;
+            int right_vis, left_vis;
+            if (guard++ > eb->corner_cap * 8u + 64u)
+                return 0;
+            face_id = corner_id / 3;
+            eb->face_visited[face_id] = 1;
+            vert_id = draco_eb_corner_to_vert(eb, d, corner_id);
+            if (vert_id < 0 || (uint32_t)vert_id >= eb->visit_cap)
+                return 0;
+            if (!eb->vertex_visited[vert_id]) {
+                eb->vertex_visited[vert_id] = 1;
+                if (!draco_eb_on_new_vertex(eb, d, vert_id, corner_id))
+                    return 0;
+            }
+            right_c = draco_eb_pos_opposite(eb, draco_eb_next(corner_id));
+            left_c = draco_eb_pos_opposite(eb, draco_eb_prev(corner_id));
+            right_f = right_c < 0 ? -1 : right_c / 3;
+            left_f = left_c < 0 ? -1 : left_c / 3;
+            right_vis = right_f < 0 || right_f >= (int32_t)eb->face_count ||
+                        eb->face_visited[right_f];
+            left_vis =
+                left_f < 0 || left_f >= (int32_t)eb->face_count || eb->face_visited[left_f];
+            if (!left_vis) {
+                int priority = draco_eb_pd_priority(eb, d, left_c);
+                if (right_vis && priority <= eb->pd_best) {
+                    corner_id = left_c;
+                    continue;
+                }
+                if (!draco_eb_pd_push(eb, left_c, priority))
+                    return 0;
+            }
+            if (!right_vis) {
+                int priority = draco_eb_pd_priority(eb, d, right_c);
+                if (priority <= eb->pd_best) {
+                    corner_id = right_c;
+                    continue;
+                }
+                if (!draco_eb_pd_push(eb, right_c, priority))
+                    return 0;
+            }
+            break;
+        }
+    }
+    return 1;
+}
+
+/// @brief spec UpdatePointToAttributeIndexMapping — point -> encoded value index.
+static int draco_eb_update_indices_map(draco_eb *eb, uint32_t d) {
+    draco_eb_dec *dec = &eb->dec[d];
+    for (uint32_t p = 0; p < eb->point_count; p++)
+        dec->indices_map[p] = -1;
+    for (uint32_t corner = 0; corner < eb->face_count * 3u; corner++) {
+        int32_t point = eb->corner_to_point[corner];
+        int32_t vert = draco_eb_corner_to_vert(eb, d, (int32_t)corner);
+        int32_t entry;
+        if (point < 0 || (uint32_t)point >= eb->point_count || vert < 0 ||
+            (uint32_t)vert >= eb->visit_cap)
+            return 0;
+        entry = dec->vertex_to_value[vert];
+        if (entry < 0)
+            return 0;
+        dec->indices_map[point] = entry;
+    }
+    for (uint32_t p = 0; p < eb->point_count; p++) {
+        if (dec->indices_map[p] < 0)
+            return 0;
+    }
+    return 1;
+}
+
+/* --- Mesh prediction schemes (edgebreaker) --- */
+
+/// @brief spec ComputeParallelogramPrediction. Returns 1 when all three opposite
+///        entries are already decoded; predictions accumulate in int64.
+static int draco_eb_parallelogram_pred(const draco_eb *eb,
+                                       uint32_t d,
+                                       int32_t data_entry_id,
+                                       int32_t ci,
+                                       const int32_t *data,
+                                       int ncomp,
+                                       int64_t *out_pred) {
+    const draco_eb_dec *dec = &eb->dec[d];
+    int32_t oci = draco_eb_opposite(eb, d, ci);
+    int32_t vo, vn, vp;
+    int32_t eo, en, ep;
+    if (oci < 0)
+        return 0;
+    draco_eb_corner_to_verts(eb, d, oci, &vo, &vn, &vp);
+    if (vo < 0 || vn < 0 || vp < 0 || (uint32_t)vo >= eb->visit_cap ||
+        (uint32_t)vn >= eb->visit_cap || (uint32_t)vp >= eb->visit_cap)
+        return 0;
+    eo = dec->vertex_to_value[vo];
+    en = dec->vertex_to_value[vn];
+    ep = dec->vertex_to_value[vp];
+    if (eo < 0 || en < 0 || ep < 0 || eo >= data_entry_id || en >= data_entry_id ||
+        ep >= data_entry_id)
+        return 0;
+    for (int c = 0; c < ncomp; c++) {
+        out_pred[c] = (int64_t)data[(size_t)en * (size_t)ncomp + c] +
+                      (int64_t)data[(size_t)ep * (size_t)ncomp + c] -
+                      (int64_t)data[(size_t)eo * (size_t)ncomp + c];
+    }
+    return 1;
+}
+
+/// @brief spec MeshPredictionSchemeParallelogramDecoder_ComputeOriginalValues.
+static int draco_eb_parallelogram_compute(draco_eb *eb,
+                                          uint32_t d,
+                                          draco_attribute *att,
+                                          int ncomp) {
+    int64_t pred[DRACO_MAX_COMPONENTS] = {0, 0, 0, 0};
+    uint32_t num_values = att->num_values;
+    if (num_values == 0)
+        return 1;
+    draco_transform_compute_original(att, pred, att->values, att->values, ncomp);
+    for (uint32_t p = 1; p < num_values; p++) {
+        int32_t corner_id = eb->dec[d].value_to_corner[p];
+        int32_t *dst = att->values + (size_t)p * (size_t)ncomp;
+        if (!draco_eb_parallelogram_pred(eb, d, (int32_t)p, corner_id, att->values, ncomp,
+                                         pred)) {
+            const int32_t *src = att->values + (size_t)(p - 1) * (size_t)ncomp;
+            for (int c = 0; c < ncomp; c++)
+                pred[c] = src[c];
+        }
+        draco_transform_compute_original(att, pred, dst, dst, ncomp);
+    }
+    return 1;
+}
+
+/// @brief spec MeshPredictionSchemeConstrainedMultiParallelogramDecoder.
+static int draco_eb_multi_parallelogram_compute(draco_eb *eb,
+                                                uint32_t d,
+                                                draco_attribute *att,
+                                                int ncomp) {
+    int64_t pred[DRACO_EB_MAX_PARALLELOGRAMS][DRACO_MAX_COMPONENTS];
+    int64_t multi[DRACO_MAX_COMPONENTS];
+    uint32_t num_values = att->num_values;
+    if (num_values == 0)
+        return 1;
+    for (int c = 0; c < DRACO_MAX_COMPONENTS; c++)
+        multi[c] = 0;
+    draco_transform_compute_original(att, multi, att->values, att->values, ncomp);
+    for (uint32_t p = 1; p < num_values; p++) {
+        int32_t start_corner = eb->dec[d].value_to_corner[p];
+        int32_t corner_id = start_corner;
+        int num_para = 0;
+        int first_pass = 1;
+        int num_used = 0;
+        uint32_t guard = 0;
+        int32_t *dst = att->values + (size_t)p * (size_t)ncomp;
+        while (corner_id >= 0) {
+            if (guard++ > eb->corner_cap * 2u + 64u)
+                return 0;
+            if (draco_eb_parallelogram_pred(eb, d, (int32_t)p, corner_id, att->values, ncomp,
+                                            pred[num_para])) {
+                if (++num_para == DRACO_EB_MAX_PARALLELOGRAMS)
+                    break;
+            }
+            corner_id = first_pass ? draco_eb_swing_left(eb, d, corner_id)
+                                   : draco_eb_swing_right(eb, d, corner_id);
+            if (corner_id == start_corner)
+                break;
+            if (corner_id < 0 && first_pass) {
+                first_pass = 0;
+                corner_id = draco_eb_swing_right(eb, d, start_corner);
+            }
+        }
+        for (int c = 0; c < ncomp; c++)
+            multi[c] = 0;
+        if (num_para > 0) {
+            int context = num_para - 1;
+            for (int i = 0; i < num_para; i++) {
+                uint8_t is_crease;
+                if (att->crease_pos[context] >= att->crease_count[context])
+                    return 0;
+                is_crease = att->crease_bits[context][att->crease_pos[context]++];
+                if (!is_crease) {
+                    num_used++;
+                    for (int c = 0; c < ncomp; c++)
+                        multi[c] += pred[i][c];
+                }
+            }
+        }
+        if (num_used == 0) {
+            const int32_t *src = att->values + (size_t)(p - 1) * (size_t)ncomp;
+            for (int c = 0; c < ncomp; c++)
+                multi[c] = src[c];
+        } else {
+            for (int c = 0; c < ncomp; c++)
+                multi[c] /= num_used;
+        }
+        draco_transform_compute_original(att, multi, dst, dst, ncomp);
+    }
+    return 1;
+}
+
+/// @brief spec IntSqrt — integer Newton iteration.
+static uint64_t draco_int_sqrt(uint64_t number) {
+    uint64_t act_number = number;
+    uint64_t square_root = 1;
+    if (number == 0)
+        return 0;
+    while (act_number >= 2) {
+        square_root *= 2;
+        act_number /= 4;
+    }
+    do {
+        square_root = (square_root + number / square_root) / 2;
+    } while (square_root * square_root > number);
+    return square_root;
+}
+
+/// @brief spec GetPositionForEntryId — fetch the portable (quantized) position for
+///        an encoded value entry of decoder @p d via the point mapping.
+static int draco_eb_position_for_entry(const draco_eb *eb,
+                                       const draco_mesh *mesh,
+                                       uint32_t d,
+                                       int32_t entry_id,
+                                       int64_t *pos) {
+    const draco_eb_dec *dec = &eb->dec[d];
+    const draco_attribute *pos_att = &mesh->attributes[0];
+    int32_t corner, point, mapped;
+    if (entry_id < 0 || (uint32_t)entry_id >= dec->value_count)
+        return 0;
+    corner = dec->value_to_corner[entry_id];
+    if (corner < 0 || (uint32_t)corner >= eb->face_count * 3u)
+        return 0;
+    point = eb->corner_to_point[corner];
+    if (point < 0 || (uint32_t)point >= eb->point_count)
+        return 0;
+    mapped = eb->dec[0].indices_map[point];
+    if (mapped < 0 || (uint32_t)mapped >= eb->dec[0].value_count)
+        return 0;
+    if (pos_att->att_type != 0 || !pos_att->values || pos_att->components < 3)
+        return 0;
+    for (int i = 0; i < 3; i++)
+        pos[i] = pos_att->values[(size_t)mapped * pos_att->components + i];
+    return 1;
+}
+
+/// @brief spec GetPositionForCorner.
+static int draco_eb_position_for_corner(const draco_eb *eb,
+                                        const draco_mesh *mesh,
+                                        uint32_t d,
+                                        int32_t corner,
+                                        int64_t *pos) {
+    int32_t v = draco_eb_corner_to_vert(eb, d, corner);
+    if (v < 0 || (uint32_t)v >= eb->visit_cap)
+        return 0;
+    return draco_eb_position_for_entry(eb, mesh, d, eb->dec[d].vertex_to_value[v], pos);
+}
+
+/// @brief spec MeshPredictionSchemeTexCoordsPortableDecoder_ComputeOriginalValues.
+static int draco_eb_texcoords_compute(draco_eb *eb,
+                                      const draco_mesh *mesh,
+                                      uint32_t d,
+                                      draco_attribute *att) {
+    const draco_eb_dec *dec = &eb->dec[d];
+    uint32_t num_values = att->num_values;
+    for (uint32_t p = 0; p < num_values; p++) {
+        int32_t ci = dec->value_to_corner[p];
+        int64_t pred[2] = {0, 0};
+        int32_t v, nv, pv;
+        int32_t next_id = -1;
+        int32_t prev_id = -1;
+        int done = 0;
+        int32_t *dst = att->values + (size_t)p * 2u;
+        draco_eb_corner_to_verts(eb, d, ci, &v, &nv, &pv);
+        if (nv >= 0 && (uint32_t)nv < eb->visit_cap)
+            next_id = dec->vertex_to_value[nv];
+        if (pv >= 0 && (uint32_t)pv < eb->visit_cap)
+            prev_id = dec->vertex_to_value[pv];
+        if (prev_id >= 0 && next_id >= 0 && prev_id < (int32_t)p && next_id < (int32_t)p) {
+            int64_t n_uv[2];
+            int64_t p_uv[2];
+            n_uv[0] = att->values[(size_t)next_id * 2u];
+            n_uv[1] = att->values[(size_t)next_id * 2u + 1u];
+            p_uv[0] = att->values[(size_t)prev_id * 2u];
+            p_uv[1] = att->values[(size_t)prev_id * 2u + 1u];
+            if (p_uv[0] == n_uv[0] && p_uv[1] == n_uv[1]) {
+                pred[0] = p_uv[0];
+                pred[1] = p_uv[1];
+                done = 1;
+            } else {
+                int64_t tip_pos[3], next_pos[3], prev_pos[3];
+                if (!draco_eb_position_for_entry(eb, mesh, d, (int32_t)p, tip_pos) ||
+                    !draco_eb_position_for_entry(eb, mesh, d, next_id, next_pos) ||
+                    !draco_eb_position_for_entry(eb, mesh, d, prev_id, prev_pos))
+                    return 0;
+                {
+                    int64_t pn[3], cn[3];
+                    int64_t pn_norm2 = 0;
+                    int64_t cn_dot_pn = 0;
+                    for (int i = 0; i < 3; i++) {
+                        pn[i] = prev_pos[i] - next_pos[i];
+                        cn[i] = tip_pos[i] - next_pos[i];
+                        pn_norm2 += pn[i] * pn[i];
+                        cn_dot_pn += cn[i] * pn[i];
+                    }
+                    if (pn_norm2 != 0) {
+                        int64_t pn_uv[2];
+                        int64_t x_uv[2];
+                        int64_t x_pos[3];
+                        int64_t cx_norm2 = 0;
+                        int64_t cx_uv[2];
+                        uint64_t norm_squared;
+                        uint8_t orientation;
+                        pn_uv[0] = p_uv[0] - n_uv[0];
+                        pn_uv[1] = p_uv[1] - n_uv[1];
+                        x_uv[0] = pn_uv[0] * cn_dot_pn + n_uv[0] * pn_norm2;
+                        x_uv[1] = pn_uv[1] * cn_dot_pn + n_uv[1] * pn_norm2;
+                        for (int i = 0; i < 3; i++) {
+                            int64_t sub;
+                            x_pos[i] = next_pos[i] + (pn[i] * cn_dot_pn) / pn_norm2;
+                            sub = tip_pos[i] - x_pos[i];
+                            cx_norm2 += sub * sub;
+                        }
+                        norm_squared =
+                            draco_int_sqrt((uint64_t)cx_norm2 * (uint64_t)pn_norm2);
+                        cx_uv[0] = pn_uv[1] * (int64_t)norm_squared;
+                        cx_uv[1] = -pn_uv[0] * (int64_t)norm_squared;
+                        if (att->tex_orient_pos == 0)
+                            return 0;
+                        orientation = att->tex_orient[--att->tex_orient_pos];
+                        if (orientation) {
+                            pred[0] = (x_uv[0] + cx_uv[0]) / pn_norm2;
+                            pred[1] = (x_uv[1] + cx_uv[1]) / pn_norm2;
+                        } else {
+                            pred[0] = (x_uv[0] - cx_uv[0]) / pn_norm2;
+                            pred[1] = (x_uv[1] - cx_uv[1]) / pn_norm2;
+                        }
+                        done = 1;
+                    }
+                }
+            }
+        }
+        if (!done) {
+            /* spec fallback: reuse a previously decoded neighbour (or the previous
+             * entry), or predict zero for the very first value. */
+            int has_prev = prev_id >= 0 && prev_id < (int32_t)p;
+            int has_next = next_id >= 0 && next_id < (int32_t)p;
+            int32_t data_offset = 0;
+            int zero_pred = 0;
+            if (has_prev)
+                data_offset = prev_id * 2;
+            if (has_next) {
+                data_offset = next_id * 2;
+            } else if (!has_prev) {
+                if (p > 0)
+                    data_offset = ((int32_t)p - 1) * 2;
+                else
+                    zero_pred = 1;
+            }
+            if (!zero_pred) {
+                pred[0] = att->values[(size_t)data_offset];
+                pred[1] = att->values[(size_t)data_offset + 1u];
+            }
+        }
+        draco_transform_compute_original(att, pred, dst, dst, 2);
+    }
+    return 1;
+}
+
+/// @brief spec MeshPredictionSchemeGeometricNormalDecoder_ComputeOriginalValues —
+///        area-weighted one-ring normal, canonicalized to octahedral coordinates.
+static int draco_eb_geometric_normal_compute(draco_eb *eb,
+                                             const draco_mesh *mesh,
+                                             uint32_t d,
+                                             draco_attribute *att) {
+    int32_t max_q = (1 << (draco_msb((uint32_t)att->normal_max_q) + 1)) - 1;
+    int32_t max_value = max_q - 1;
+    int32_t center;
+    if (att->normal_max_q <= 0 || max_value <= 0)
+        return 0;
+    center = max_value / 2;
+    for (uint32_t data_id = 0; data_id < att->num_values; data_id++) {
+        int32_t ci = eb->dec[d].value_to_corner[data_id];
+        int64_t normal[3] = {0, 0, 0};
+        int64_t s, t;
+        int32_t pred_oct[2];
+        {
+            int64_t pos_cent[3];
+            int32_t corner = ci;
+            int32_t start = ci;
+            int left_traversal = 1;
+            uint32_t guard = 0;
+            if (!draco_eb_position_for_corner(eb, mesh, d, ci, pos_cent))
+                return 0;
+            while (corner >= 0) {
+                int64_t pos_next[3], pos_prev[3];
+                int64_t dn[3], dp[3];
+                if (guard++ > eb->corner_cap * 2u + 64u)
+                    return 0;
+                if (!draco_eb_position_for_corner(eb, mesh, d, draco_eb_next(corner),
+                                                  pos_next) ||
+                    !draco_eb_position_for_corner(eb, mesh, d, draco_eb_prev(corner),
+                                                  pos_prev))
+                    return 0;
+                for (int i = 0; i < 3; i++) {
+                    dn[i] = pos_next[i] - pos_cent[i];
+                    dp[i] = pos_prev[i] - pos_cent[i];
+                }
+                normal[0] += dn[1] * dp[2] - dn[2] * dp[1];
+                normal[1] += dn[2] * dp[0] - dn[0] * dp[2];
+                normal[2] += dn[0] * dp[1] - dn[1] * dp[0];
+                if (left_traversal) {
+                    corner = draco_eb_swing_left(eb, d, corner);
+                    if (corner < 0) {
+                        corner = draco_eb_swing_right(eb, d, start);
+                        left_traversal = 0;
+                    } else if (corner == start) {
+                        corner = -1;
+                    }
+                } else {
+                    corner = draco_eb_swing_right(eb, d, corner);
+                }
+            }
+        }
+        {
+            int64_t abs_sum = (normal[0] < 0 ? -normal[0] : normal[0]) +
+                              (normal[1] < 0 ? -normal[1] : normal[1]) +
+                              (normal[2] < 0 ? -normal[2] : normal[2]);
+            int64_t upper_bound = (int64_t)1 << 29;
+            if (abs_sum > upper_bound) {
+                int64_t quotient = abs_sum / upper_bound;
+                for (int i = 0; i < 3; i++)
+                    normal[i] /= quotient;
+            }
+        }
+        {
+            /* CanonicalizeIntegerVector */
+            int64_t abs_sum = (normal[0] < 0 ? -normal[0] : normal[0]) +
+                              (normal[1] < 0 ? -normal[1] : normal[1]) +
+                              (normal[2] < 0 ? -normal[2] : normal[2]);
+            if (abs_sum == 0) {
+                normal[0] = center;
+                normal[1] = 0;
+                normal[2] = 0;
+            } else {
+                int64_t a0, a1;
+                normal[0] = (normal[0] * center) / abs_sum;
+                normal[1] = (normal[1] * center) / abs_sum;
+                a0 = normal[0] < 0 ? -normal[0] : normal[0];
+                a1 = normal[1] < 0 ? -normal[1] : normal[1];
+                if (normal[2] >= 0)
+                    normal[2] = center - a0 - a1;
+                else
+                    normal[2] = -(center - a0 - a1);
+            }
+        }
+        if (att->flip_bits && data_id < att->flip_count && att->flip_bits[data_id]) {
+            for (int i = 0; i < 3; i++)
+                normal[i] = -normal[i];
+        }
+        /* IntegerVectorToQuantizedOctahedralCoords */
+        if (normal[0] >= 0) {
+            s = normal[1] + center;
+            t = normal[2] + center;
+        } else {
+            int64_t a1 = normal[1] < 0 ? -normal[1] : normal[1];
+            int64_t a2 = normal[2] < 0 ? -normal[2] : normal[2];
+            s = (normal[1] < 0) ? a2 : (max_value - a2);
+            t = (normal[2] < 0) ? a1 : (max_value - a1);
+        }
+        /* CanonicalizeOctahedralCoords */
+        if ((s == 0 && t == 0) || (s == 0 && t == max_value) || (s == max_value && t == 0)) {
+            s = max_value;
+            t = max_value;
+        } else if (s == 0 && t > center) {
+            t = center - (t - center);
+        } else if (s == max_value && t < center) {
+            t = center + (center - t);
+        } else if (t == max_value && s < center) {
+            s = center + (center - s);
+        } else if (t == 0 && s > center) {
+            s = center - (s - center);
+        }
+        pred_oct[0] = (int32_t)s;
+        pred_oct[1] = (int32_t)t;
+        {
+            int32_t *dst = att->values + (size_t)data_id * 2u;
+            draco_normal_oct_compute_original(att, pred_oct, dst, dst);
+        }
+    }
+    return 1;
+}
+
+/* --- Prediction side-data parsers (spec DecodePredictionData) --- */
+
+/// @brief spec ParsePredictionRansData — prob_zero byte + sized rABS buffer.
+static int draco_parse_prediction_rans(draco_buf *b,
+                                       uint8_t *out_prob,
+                                       const uint8_t **out_buf,
+                                       size_t *out_size) {
+    uint64_t sz;
+    *out_prob = draco_read_u8(b);
+    sz = draco_read_varint(b);
+    if (b->failed || sz > b->size - b->pos)
+        return 0;
+    *out_buf = b->data + b->pos;
+    *out_size = (size_t)sz;
+    b->pos += (size_t)sz;
+    return 1;
+}
+
+/// @brief spec DecodePredictionData — scheme-specific flag streams followed by the
+///        transform parameters (geometric normal reads its transform first).
+static int draco_decode_prediction_data(draco_buf *b, draco_attribute *att,
+                                        uint32_t num_entries) {
+    if (att->prediction_scheme == DRACO_PREDICTION_CONSTRAINED_MULTI) {
+        for (int i = 0; i < DRACO_EB_MAX_PARALLELOGRAMS; i++) {
+            uint64_t nflags = draco_read_varint(b);
+            if (b->failed ||
+                nflags > (uint64_t)num_entries * DRACO_EB_MAX_PARALLELOGRAMS + 64u)
+                return 0;
+            att->crease_count[i] = (uint32_t)nflags;
+            att->crease_pos[i] = 0;
+            if (nflags > 0) {
+                uint8_t prob;
+                const uint8_t *buf;
+                size_t size;
+                draco_rans ans;
+                att->crease_bits[i] = (uint8_t *)malloc((size_t)nflags);
+                if (!att->crease_bits[i] ||
+                    !draco_parse_prediction_rans(b, &prob, &buf, &size))
+                    return 0;
+                if (size == 0 || !draco_rans_init(&ans, buf, size, 4096u))
+                    return 0;
+                for (uint64_t j = 0; j < nflags; j++) {
+                    uint32_t val = 0;
+                    draco_rabs_read(&ans, prob, &val);
+                    att->crease_bits[i][j] = (uint8_t)(val > 0);
+                }
+            }
+        }
+    } else if (att->prediction_scheme == DRACO_PREDICTION_TEX_COORDS_PORTABLE) {
+        uint32_t n = draco_read_u32(b);
+        uint8_t prob;
+        const uint8_t *buf;
+        size_t size;
+        if (b->failed || n > num_entries)
+            return 0;
+        att->tex_orient_pos = n;
+        if (!draco_parse_prediction_rans(b, &prob, &buf, &size))
+            return 0;
+        if (n > 0) {
+            draco_rans ans;
+            int last_orientation = 1;
+            att->tex_orient = (uint8_t *)malloc(n);
+            if (!att->tex_orient || size == 0 || !draco_rans_init(&ans, buf, size, 4096u))
+                return 0;
+            for (uint32_t j = 0; j < n; j++) {
+                uint32_t val = 0;
+                draco_rabs_read(&ans, prob, &val);
+                if (val == 0)
+                    last_orientation = !last_orientation;
+                att->tex_orient[j] = (uint8_t)last_orientation;
+            }
+        }
+    } else if (att->prediction_scheme == DRACO_PREDICTION_GEOMETRIC_NORMAL) {
+        uint8_t prob;
+        const uint8_t *buf;
+        size_t size;
+        att->normal_max_q = (int32_t)draco_read_u32(b);
+        (void)draco_read_u32(b); /* unused center value */
+        if (b->failed || !draco_parse_prediction_rans(b, &prob, &buf, &size))
+            return 0;
+        att->flip_count = num_entries;
+        if (num_entries > 0) {
+            draco_rans ans;
+            att->flip_bits = (uint8_t *)malloc(num_entries);
+            if (!att->flip_bits || size == 0 || !draco_rans_init(&ans, buf, size, 4096u))
+                return 0;
+            for (uint32_t j = 0; j < num_entries; j++) {
+                uint32_t val = 0;
+                draco_rabs_read(&ans, prob, &val);
+                att->flip_bits[j] = (uint8_t)(val > 0);
+            }
+        }
+    }
+    if (att->prediction_scheme != DRACO_PREDICTION_GEOMETRIC_NORMAL) {
+        if (att->prediction_transform == DRACO_TRANSFORM_WRAP) {
+            att->wrap_min = (int32_t)draco_read_u32(b);
+            att->wrap_max = (int32_t)draco_read_u32(b);
+            if (att->wrap_min > att->wrap_max)
+                return 0;
+        } else {
+            att->normal_max_q = (int32_t)draco_read_u32(b);
+            (void)draco_read_u32(b); /* unused center value */
+        }
+    }
+    return b->failed ? 0 : 1;
+}
+
+/// @brief GENERIC attributes store raw little-endian values with no entropy coding
+///        (reference SequentialAttributeDecoder::DecodeValues).
+static int draco_decode_generic_attribute(draco_buf *b, draco_attribute *att) {
+    /* Draco data types: 1 INT8, 2 UINT8, 3 INT16, 4 UINT16, 5 INT32, 6 UINT32,
+     * 7 INT64, 8 UINT64, 9 FLOAT32, 10 FLOAT64, 11 BOOL. */
+    static const uint8_t dt_sizes[12] = {0, 1, 1, 2, 2, 4, 4, 8, 8, 4, 8, 1};
+    uint64_t total = (uint64_t)att->num_values * att->components;
+    uint32_t dt = att->data_type;
+    uint32_t esize;
+    if (dt >= 12 || dt_sizes[dt] == 0)
+        return 0;
+    esize = dt_sizes[dt];
+    if (total == 0)
+        return 1;
+    if (total > (uint64_t)(b->size - b->pos) / esize || total > SIZE_MAX / 8u)
+        return 0;
+    if (dt == 9) {
+        att->out_floats = (float *)calloc((size_t)total, sizeof(float));
+        if (!att->out_floats)
+            return 0;
+        for (uint64_t i = 0; i < total; i++)
+            att->out_floats[i] = draco_read_f32(b);
+    } else if (dt == 10) {
+        att->out_floats = (float *)calloc((size_t)total, sizeof(float));
+        if (!att->out_floats)
+            return 0;
+        for (uint64_t i = 0; i < total; i++) {
+            uint64_t bits = draco_read_u32(b);
+            double dv;
+            bits |= (uint64_t)draco_read_u32(b) << 32;
+            memcpy(&dv, &bits, sizeof(dv));
+            att->out_floats[i] = (float)dv;
+        }
+    } else {
+        att->out_ints = (int32_t *)calloc((size_t)total, sizeof(int32_t));
+        if (!att->out_ints)
+            return 0;
+        for (uint64_t i = 0; i < total; i++) {
+            switch (dt) {
+            case 1:
+                att->out_ints[i] = (int8_t)draco_read_u8(b);
+                break;
+            case 2:
+            case 11:
+                att->out_ints[i] = draco_read_u8(b);
+                break;
+            case 3:
+                att->out_ints[i] = (int16_t)draco_read_u16(b);
+                break;
+            case 4:
+                att->out_ints[i] = draco_read_u16(b);
+                break;
+            case 7:
+            case 8: {
+                uint64_t lo = draco_read_u32(b);
+                uint64_t hi = draco_read_u32(b);
+                att->out_ints[i] = (int32_t)(lo | (hi << 32));
+                break;
+            }
+            default:
+                att->out_ints[i] = (int32_t)draco_read_u32(b);
+                break;
+            }
+        }
+    }
+    return b->failed ? 0 : 1;
+}
+
+/// @brief Decode one attribute's portable values (spec DecodePortableAttributes +
+///        SequentialIntegerAttributeDecoder_DecodeIntegerValues). @p eb is NULL for
+///        sequential meshes, where only NONE/DIFFERENCE prediction is legal.
+static int draco_decode_portable_attribute(draco_buf *b,
+                                           draco_mesh *mesh,
+                                           draco_attribute *att,
+                                           draco_eb *eb,
+                                           uint32_t dec_idx) {
+    int eff_comps = (att->decoder_type == DRACO_SEQ_NORMALS) ? 2 : att->components;
+    uint32_t num_values = att->num_values * (uint32_t)eff_comps;
     uint32_t *symbols;
+    uint8_t compressed;
+    if (att->decoder_type == DRACO_SEQ_GENERIC)
+        return draco_decode_generic_attribute(b, att);
     att->prediction_scheme = (int8_t)draco_read_u8(b);
     if (b->failed)
         return 0;
     if (att->prediction_scheme != DRACO_PREDICTION_NONE) {
-        uint8_t compressed;
         att->prediction_transform = (int8_t)draco_read_u8(b);
-        compressed = draco_read_u8(b);
-        if (b->failed || compressed == 0)
-            return 0; /* raw (uncompressed) integer storage is not emitted by encoders */
-        if (att->prediction_scheme != DRACO_PREDICTION_DIFFERENCE)
-            return 0; /* mesh prediction schemes need edgebreaker traversal state */
+        if (b->failed)
+            return 0;
         if (att->prediction_transform != DRACO_TRANSFORM_WRAP &&
             att->prediction_transform != DRACO_TRANSFORM_NORMAL_OCT_CANON)
             return 0;
-    } else {
-        return 0; /* PREDICTION_NONE carries no value payload per the spec */
+        switch (att->prediction_scheme) {
+        case DRACO_PREDICTION_DIFFERENCE:
+            break;
+        case DRACO_PREDICTION_PARALLELOGRAM:
+        case DRACO_PREDICTION_CONSTRAINED_MULTI:
+        case DRACO_PREDICTION_TEX_COORDS_PORTABLE:
+        case DRACO_PREDICTION_GEOMETRIC_NORMAL:
+            if (!eb)
+                return 0; /* mesh schemes need edgebreaker traversal state */
+            break;
+        default:
+            return 0;
+        }
     }
+    compressed = draco_read_u8(b);
+    if (b->failed || compressed == 0)
+        return 0; /* raw (uncompressed) integer storage is not emitted by mesh encoders */
     if (num_values == 0)
         return 1;
     if ((uint64_t)num_values > SIZE_MAX / sizeof(uint32_t))
@@ -720,11 +2627,12 @@ static int draco_decode_portable_attribute(draco_buf *b, draco_attribute *att) {
         free(symbols);
         return 0;
     }
-    if (!draco_decode_symbols(b, num_values, att->components, symbols)) {
+    if (!draco_decode_symbols(b, num_values, (uint32_t)eff_comps, symbols)) {
         free(symbols);
         return 0;
     }
-    if (att->prediction_transform == DRACO_TRANSFORM_NORMAL_OCT_CANON) {
+    if (att->prediction_scheme != DRACO_PREDICTION_NONE &&
+        att->prediction_transform == DRACO_TRANSFORM_NORMAL_OCT_CANON) {
         for (uint32_t i = 0; i < num_values; i++)
             att->values[i] = (int32_t)symbols[i];
     } else {
@@ -739,18 +2647,29 @@ static int draco_decode_portable_attribute(draco_buf *b, draco_attribute *att) {
         }
     }
     free(symbols);
-    /* prediction data: transform parameters follow the symbol payload */
-    if (att->prediction_transform == DRACO_TRANSFORM_WRAP) {
-        att->wrap_min = (int32_t)draco_read_u32(b);
-        att->wrap_max = (int32_t)draco_read_u32(b);
-    } else {
-        att->normal_max_q = (int32_t)draco_read_u32(b);
-        (void)draco_read_u32(b); /* unused center value */
-    }
-    if (b->failed)
+    if (att->prediction_scheme == DRACO_PREDICTION_NONE)
+        return 1;
+    if (!draco_decode_prediction_data(b, att, att->num_values))
         return 0;
-    draco_difference_compute_original(att, att->num_values);
-    return 1;
+    switch (att->prediction_scheme) {
+    case DRACO_PREDICTION_DIFFERENCE:
+        draco_difference_compute_original(att, att->num_values, eff_comps);
+        return 1;
+    case DRACO_PREDICTION_PARALLELOGRAM:
+        return draco_eb_parallelogram_compute(eb, dec_idx, att, eff_comps);
+    case DRACO_PREDICTION_CONSTRAINED_MULTI:
+        return draco_eb_multi_parallelogram_compute(eb, dec_idx, att, eff_comps);
+    case DRACO_PREDICTION_TEX_COORDS_PORTABLE:
+        if (eff_comps != 2)
+            return 0;
+        return draco_eb_texcoords_compute(eb, mesh, dec_idx, att);
+    case DRACO_PREDICTION_GEOMETRIC_NORMAL:
+        if (eff_comps != 2)
+            return 0;
+        return draco_eb_geometric_normal_compute(eb, mesh, dec_idx, att);
+    default:
+        return 0;
+    }
 }
 
 /// @brief Dequantize one attribute (spec SequentialQuantizationAttributeDecoder).
@@ -780,11 +2699,18 @@ static int draco_dequantize_attribute(draco_attribute *att) {
 
 /// @brief Convert octahedral normal coordinates to unit vectors (spec
 ///        OctaherdalCoordsToUnitVector and callers).
+/// @details Falls back to the decoder-level quantization bits when the prediction
+///          carried no octahedral transform data (PREDICTION_NONE normals).
 static int draco_decode_normals_attribute(draco_attribute *att) {
-    int32_t max_q = (1 << (draco_msb((uint32_t)att->normal_max_q) + 1)) - 1;
+    int32_t max_q_src = att->normal_max_q > 0
+                            ? att->normal_max_q
+                            : (att->quantization_bits > 0 && att->quantization_bits <= 30
+                                   ? (int32_t)((1u << att->quantization_bits) - 1u)
+                                   : 0);
+    int32_t max_q = (1 << (draco_msb((uint32_t)max_q_src) + 1)) - 1;
     int32_t max_value = max_q - 1;
     float scale;
-    if (att->normal_max_q <= 0 || max_value <= 0)
+    if (max_q_src <= 0 || max_value <= 0)
         return 0;
     scale = 1.0f / (float)max_value;
     att->out_floats = (float *)calloc((size_t)att->num_values * 3u, sizeof(float));
@@ -848,9 +2774,240 @@ static int draco_decode_normals_attribute(draco_attribute *att) {
     return 1;
 }
 
-/// @brief Decode a complete Draco payload (sequential meshes; spec Decode()).
-/// @return 1 on success, 0 with @p out_unsupported set when the payload uses the
-///         edgebreaker encoding (not yet implemented) rather than being corrupt.
+/// @brief spec DecodeDataNeededByPortableTransforms — quantization parameters.
+static int draco_read_transform_data(draco_buf *b, draco_attribute *att) {
+    if (att->decoder_type == DRACO_SEQ_NORMALS) {
+        att->quantization_bits = draco_read_u8(b);
+        if (b->failed)
+            return 0;
+    } else if (att->decoder_type == DRACO_SEQ_QUANTIZATION) {
+        for (int c = 0; c < att->components; c++)
+            att->quant_min[c] = draco_read_f32(b);
+        att->quant_range = draco_read_f32(b);
+        att->quantization_bits = draco_read_u8(b);
+        if (b->failed)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief spec TransformAttributesToOriginalFormat for one attribute.
+static int draco_transform_attribute_to_original(draco_attribute *att) {
+    if (att->decoder_type == DRACO_SEQ_GENERIC)
+        return 1; /* raw values are already final */
+    if (att->decoder_type == DRACO_SEQ_NORMALS)
+        return draco_decode_normals_attribute(att);
+    if (att->decoder_type == DRACO_SEQ_QUANTIZATION)
+        return draco_dequantize_attribute(att);
+    if (att->num_values > 0) {
+        att->out_ints =
+            (int32_t *)calloc((size_t)att->num_values * att->components, sizeof(int32_t));
+        if (!att->out_ints || !att->values)
+            return 0;
+        memcpy(att->out_ints,
+               att->values,
+               (size_t)att->num_values * att->components * sizeof(int32_t));
+    }
+    return 1;
+}
+
+/// @brief Decode an edgebreaker payload (spec DecodeEdgebreakerConnectivityData +
+///        DecodeAttributeData) and remap the result to point-indexed arrays so the
+///        caller sees the same layout as a sequential mesh.
+static int draco_decode_edgebreaker(draco_buf *b, draco_mesh *mesh) {
+    draco_eb ebs;
+    draco_eb *eb = &ebs;
+    int ok = 0;
+    memset(eb, 0, sizeof(*eb));
+    if (!draco_eb_decode_connectivity(b, eb))
+        goto done;
+
+    /* ParseAttributeDecodersData (edgebreaker layout). */
+    {
+        uint8_t num_decoders = draco_read_u8(b);
+        uint32_t total_atts = 0;
+        if (b->failed || num_decoders == 0 || num_decoders > DRACO_EB_MAX_DECODERS)
+            goto done;
+        eb->num_decoders = num_decoders;
+        for (uint32_t i = 0; i < num_decoders; i++) {
+            eb->dec[i].data_id = draco_read_u8(b);
+            eb->dec[i].decoder_type = draco_read_u8(b);
+            eb->dec[i].traversal = draco_read_u8(b);
+            if (b->failed || eb->dec[i].decoder_type > 1 || eb->dec[i].traversal > 1)
+                goto done;
+            if (eb->dec[i].data_id != 0xFF && eb->dec[i].data_id >= eb->num_att_data)
+                goto done;
+            if (eb->dec[i].decoder_type == 1 &&
+                (eb->dec[i].data_id == 0xFF || eb->dec[i].traversal != 0))
+                goto done; /* corner-mapped decoders need seams + depth-first order */
+        }
+        for (uint32_t i = 0; i < num_decoders; i++) {
+            uint64_t natts = draco_read_varint(b);
+            if (b->failed || natts == 0 || total_atts + natts > DRACO_MAX_ATTRIBUTES)
+                goto done;
+            eb->dec[i].att_start = total_atts;
+            eb->dec[i].att_count = (uint32_t)natts;
+            for (uint64_t j = 0; j < natts; j++) {
+                draco_attribute *att = &mesh->attributes[total_atts + j];
+                att->att_type = draco_read_u8(b);
+                att->data_type = draco_read_u8(b);
+                att->components = draco_read_u8(b);
+                att->normalized = draco_read_u8(b);
+                att->unique_id = (uint32_t)draco_read_varint(b);
+                if (b->failed || att->components == 0 ||
+                    att->components > DRACO_MAX_COMPONENTS)
+                    goto done;
+            }
+            for (uint64_t j = 0; j < natts; j++)
+                mesh->attributes[total_atts + j].decoder_type = draco_read_u8(b);
+            if (b->failed)
+                goto done;
+            total_atts += (uint32_t)natts;
+        }
+        mesh->num_attributes = total_atts;
+    }
+
+    /* DecodeAttributeData preamble: seams, hole-corner rotation, recomputed
+     * attribute vertices, point assignment. */
+    if (!draco_eb_decode_seams(b, eb))
+        goto done;
+    for (uint32_t v = 0; v < eb->num_vertices; v++) {
+        if (eb->is_vert_hole[v]) {
+            if (!draco_eb_update_vertex_corner(eb, v))
+                goto done;
+        }
+    }
+    for (uint32_t a = 0; a < eb->num_att_data; a++) {
+        if (!draco_eb_recompute_vertices(eb, a))
+            goto done;
+    }
+    if (!draco_eb_assign_points(eb) || eb->point_count == 0)
+        goto done;
+
+    /* GenerateSequence + UpdatePointToAttributeIndexMapping per decoder. */
+    for (uint32_t d = 0; d < eb->num_decoders; d++) {
+        draco_eb_dec *dec = &eb->dec[d];
+        dec->value_to_corner = (int32_t *)malloc((size_t)eb->corner_cap * sizeof(int32_t));
+        dec->vertex_to_value = (int32_t *)malloc((size_t)eb->visit_cap * sizeof(int32_t));
+        dec->indices_map = (int32_t *)malloc((size_t)eb->point_count * sizeof(int32_t));
+        if (!dec->value_to_corner || !dec->vertex_to_value || !dec->indices_map)
+            goto done;
+        memset(dec->vertex_to_value, 0xFF, (size_t)eb->visit_cap * sizeof(int32_t));
+        memset(eb->face_visited, 0, eb->num_faces);
+        memset(eb->vertex_visited, 0, eb->visit_cap);
+        if (dec->traversal == 1) {
+            if (!eb->pred_degree) {
+                eb->pred_degree = (uint32_t *)malloc((size_t)eb->visit_cap * sizeof(uint32_t));
+                for (int i = 0; i < 3; i++)
+                    eb->pd_stack[i] =
+                        (int32_t *)malloc(((size_t)eb->corner_cap + 2u) * sizeof(int32_t));
+                if (!eb->pred_degree || !eb->pd_stack[0] || !eb->pd_stack[1] ||
+                    !eb->pd_stack[2])
+                    goto done;
+            }
+            memset(eb->pred_degree, 0, (size_t)eb->visit_cap * sizeof(uint32_t));
+            eb->pd_size[0] = eb->pd_size[1] = eb->pd_size[2] = 0;
+            eb->pd_best = 0;
+            for (uint32_t f = 0; f < eb->num_faces; f++) {
+                if (!draco_eb_traverse_pd(eb, d, (int32_t)(3u * f)))
+                    goto done;
+            }
+        } else {
+            for (uint32_t f = 0; f < eb->num_faces; f++) {
+                if (!draco_eb_traverse_dfs(eb, d, (int32_t)(3u * f)))
+                    goto done;
+            }
+        }
+        if (dec->value_count == 0 || !draco_eb_update_indices_map(eb, d))
+            goto done;
+    }
+
+    /* Attribute decode per decoder: portable values, transform parameters, then
+     * conversion to the original format (spec order). */
+    for (uint32_t d = 0; d < eb->num_decoders; d++) {
+        draco_eb_dec *dec = &eb->dec[d];
+        for (uint32_t j = 0; j < dec->att_count; j++)
+            mesh->attributes[dec->att_start + j].num_values = dec->value_count;
+        for (uint32_t j = 0; j < dec->att_count; j++) {
+            if (!draco_decode_portable_attribute(b, mesh,
+                                                 &mesh->attributes[dec->att_start + j], eb, d))
+                goto done;
+        }
+        for (uint32_t j = 0; j < dec->att_count; j++) {
+            if (!draco_read_transform_data(b, &mesh->attributes[dec->att_start + j]))
+                goto done;
+        }
+        for (uint32_t j = 0; j < dec->att_count; j++) {
+            if (!draco_transform_attribute_to_original(&mesh->attributes[dec->att_start + j]))
+                goto done;
+        }
+    }
+
+    /* Remap decoded values and faces to point indices so downstream consumers see
+     * the sequential layout (identity mapping). */
+    mesh->num_points = eb->point_count;
+    mesh->num_faces = eb->num_faces;
+    mesh->face_to_vertex = (uint32_t *)malloc((size_t)eb->corner_cap * sizeof(uint32_t));
+    if (!mesh->face_to_vertex)
+        goto done;
+    for (uint32_t c = 0; c < eb->corner_cap; c++)
+        mesh->face_to_vertex[c] = (uint32_t)eb->corner_to_point[c];
+    for (uint32_t d = 0; d < eb->num_decoders; d++) {
+        draco_eb_dec *dec = &eb->dec[d];
+        for (uint32_t j = 0; j < dec->att_count; j++) {
+            draco_attribute *att = &mesh->attributes[dec->att_start + j];
+            uint32_t out_comps =
+                (att->decoder_type == DRACO_SEQ_NORMALS) ? 3u : (uint32_t)att->components;
+            if (att->out_floats) {
+                float *pf = (float *)calloc((size_t)eb->point_count * out_comps,
+                                            sizeof(float));
+                if (!pf)
+                    goto done;
+                for (uint32_t p = 0; p < eb->point_count; p++) {
+                    int32_t src = dec->indices_map[p];
+                    if (src < 0 || (uint32_t)src >= att->num_values) {
+                        free(pf);
+                        goto done;
+                    }
+                    memcpy(pf + (size_t)p * out_comps,
+                           att->out_floats + (size_t)src * out_comps,
+                           out_comps * sizeof(float));
+                }
+                free(att->out_floats);
+                att->out_floats = pf;
+            } else if (att->out_ints) {
+                int32_t *pi = (int32_t *)calloc((size_t)eb->point_count * out_comps,
+                                                sizeof(int32_t));
+                if (!pi)
+                    goto done;
+                for (uint32_t p = 0; p < eb->point_count; p++) {
+                    int32_t src = dec->indices_map[p];
+                    if (src < 0 || (uint32_t)src >= att->num_values) {
+                        free(pi);
+                        goto done;
+                    }
+                    memcpy(pi + (size_t)p * out_comps,
+                           att->out_ints + (size_t)src * out_comps,
+                           out_comps * sizeof(int32_t));
+                }
+                free(att->out_ints);
+                att->out_ints = pi;
+            } else {
+                goto done;
+            }
+            att->num_values = eb->point_count;
+        }
+    }
+    ok = 1;
+done:
+    draco_eb_free(eb);
+    return ok;
+}
+
+/// @brief Decode a complete Draco payload (spec Decode()) — sequential and
+///        edgebreaker triangular meshes.
+/// @return 1 on success, 0 with @p out_unsupported set when the payload uses an
+///         encoding Viper does not handle (point clouds) rather than being corrupt.
 static int draco_decode_mesh(const uint8_t *data,
                              size_t size,
                              draco_mesh *mesh,
@@ -873,10 +3030,19 @@ static int draco_decode_mesh(const uint8_t *data,
     encoder_type = draco_read_u8(&b);
     encoder_method = draco_read_u8(&b);
     flags = draco_read_u16(&b);
-    if (b.failed || encoder_type != 1 /* TRIANGULAR_MESH */)
+    if (b.failed)
         return 0;
+    if (encoder_type != 1 /* TRIANGULAR_MESH */) {
+        *out_unsupported = 1; /* point clouds */
+        return 0;
+    }
     if ((flags & 0x8000u) && !draco_skip_metadata(&b))
         return 0;
+    if (encoder_method == 1 /* MESH_EDGEBREAKER_ENCODING */) {
+        if (!draco_decode_edgebreaker(&b, mesh))
+            goto fail;
+        return 1;
+    }
     if (encoder_method != 0 /* MESH_SEQUENTIAL_ENCODING */) {
         *out_unsupported = 1;
         return 0;
@@ -917,46 +3083,16 @@ static int draco_decode_mesh(const uint8_t *data,
         /* DecodePortableAttributes + DecodeDataNeededByPortableTransforms +
          * TransformAttributesToOriginalFormat, in spec order. */
         for (uint32_t j = 0; j < total_attributes; j++) {
-            if (!draco_decode_portable_attribute(&b, &mesh->attributes[j]))
+            if (!draco_decode_portable_attribute(&b, mesh, &mesh->attributes[j], NULL, 0))
                 goto fail;
         }
         for (uint32_t j = 0; j < total_attributes; j++) {
-            draco_attribute *att = &mesh->attributes[j];
-            if (att->decoder_type == DRACO_SEQ_NORMALS) {
-                att->quantization_bits = draco_read_u8(&b);
-                if (b.failed)
-                    goto fail;
-            } else if (att->decoder_type == DRACO_SEQ_QUANTIZATION) {
-                for (int c = 0; c < att->components; c++)
-                    att->quant_min[c] = draco_read_f32(&b);
-                att->quant_range = draco_read_f32(&b);
-                att->quantization_bits = draco_read_u8(&b);
-                if (b.failed)
-                    goto fail;
-            }
+            if (!draco_read_transform_data(&b, &mesh->attributes[j]))
+                goto fail;
         }
         for (uint32_t j = 0; j < total_attributes; j++) {
-            draco_attribute *att = &mesh->attributes[j];
-            if (att->decoder_type == DRACO_SEQ_NORMALS) {
-                if (att->prediction_transform == DRACO_TRANSFORM_NORMAL_OCT_CANON) {
-                    if (!draco_decode_normals_attribute(att))
-                        goto fail;
-                } else {
-                    goto fail;
-                }
-            } else if (att->decoder_type == DRACO_SEQ_QUANTIZATION) {
-                if (!draco_dequantize_attribute(att))
-                    goto fail;
-            } else {
-                att->out_ints =
-                    (int32_t *)calloc((size_t)att->num_values * att->components,
-                                      sizeof(int32_t));
-                if (!att->out_ints)
-                    goto fail;
-                memcpy(att->out_ints,
-                       att->values,
-                       (size_t)att->num_values * att->components * sizeof(int32_t));
-            }
+            if (!draco_transform_attribute_to_original(&mesh->attributes[j]))
+                goto fail;
         }
     }
     return 1;

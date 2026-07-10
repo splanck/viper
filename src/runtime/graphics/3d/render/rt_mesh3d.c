@@ -823,6 +823,8 @@ static void mesh3d_clear_transient_animation_payloads(rt_mesh3d *m) {
     m->bone_palette = NULL;
     m->prev_bone_palette = NULL;
     m->bone_count = 0;
+    m->bone_map = NULL;
+    m->extra_influences = NULL;
     m->morph_deltas = NULL;
     m->morph_normal_deltas = NULL;
     m->morph_weights = NULL;
@@ -852,6 +854,10 @@ static void rt_mesh3d_finalize(void *obj) {
     m->physics_bvh_nodes = NULL;
     free(m->physics_bvh_tri_indices);
     m->physics_bvh_tri_indices = NULL;
+    free(m->bone_map);
+    m->bone_map = NULL;
+    free(m->extra_influences);
+    m->extra_influences = NULL;
     mesh_release_skeleton_slot(&m->skeleton_ref);
     mesh_release_morph_slot(&m->morph_targets_ref);
 }
@@ -1165,6 +1171,29 @@ void rt_mesh3d_set_resident(void *obj, int8_t resident) {
     m->resident = resident ? 1 : 0;
 }
 
+/// @brief Opt a mesh into (or out of) the compact GPU vertex-stream encoding (R20).
+/// @details Affects only static-geometry-cache uploads on GPU backends: cached vertices
+///          upload in the packed 48-byte layout instead of the full 92-byte record. The
+///          CPU payload, software rendering, skinning, morphing, and physics are
+///          unchanged. Toggling bumps the geometry revision so backend caches re-upload
+///          in the newly selected encoding.
+void rt_mesh3d_set_compact_streams(void *obj, int8_t enabled) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
+        return;
+    enabled = enabled ? 1 : 0;
+    if (m->compact_streams == enabled)
+        return;
+    m->compact_streams = enabled;
+    rt_mesh3d_touch_geometry(m);
+}
+
+/// @brief Whether the mesh opted into the compact GPU vertex-stream encoding.
+int8_t rt_mesh3d_get_compact_streams(void *obj) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    return (m && m->compact_streams) ? 1 : 0;
+}
+
 /// @brief Active resident vertex/index byte estimate.
 /// @details `Mesh3D.Resident` controls draw/upload eligibility, not payload
 ///          ownership: the geometry remains retained so a later `SetResident(true)`
@@ -1431,6 +1460,19 @@ void *rt_mesh3d_clone(void *obj) {
     dst->prev_bone_palette = NULL;
     mesh_repair_animation_refs(src);
     dst->bone_count = (src->skeleton_ref || mesh3d_has_bone_weights(src)) ? src->bone_count : 0;
+    if (src->bone_map && dst->bone_count > 0) {
+        dst->bone_map = (int32_t *)malloc((size_t)dst->bone_count * sizeof(int32_t));
+        if (dst->bone_map)
+            memcpy(dst->bone_map, src->bone_map, (size_t)dst->bone_count * sizeof(int32_t));
+    }
+    if (src->extra_influences && dst->vertex_count > 0) {
+        dst->extra_influences = (vgfx3d_extra_influences_t *)malloc(
+            (size_t)dst->vertex_count * sizeof(vgfx3d_extra_influences_t));
+        if (dst->extra_influences)
+            memcpy(dst->extra_influences,
+                   src->extra_influences,
+                   (size_t)dst->vertex_count * sizeof(vgfx3d_extra_influences_t));
+    }
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;

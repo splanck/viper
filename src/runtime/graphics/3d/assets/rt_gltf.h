@@ -35,7 +35,13 @@ typedef struct rt_gltf_load_options {
     /// Generate tangents for every UV0-mapped primitive even when its material has
     /// no normal map yet (for materials that gain normal maps after import).
     int8_t force_tangents;
-    int8_t reserved[7];
+    /// Keep up to 8 bone influences per vertex: the strongest 4 stay in the vertex
+    /// record and influences 5-8 ride a per-mesh side stream applied by the CPU
+    /// skinning path (GPU fast path is bypassed for such meshes).
+    int8_t eight_bone_influences;
+    /// Tolerance-based keyframe reduction for imported animation clips.
+    int8_t compress_animations;
+    int8_t reserved[5];
 } rt_gltf_load_options;
 
 /// @brief Default-initialized import options (all zero — current loader behavior).

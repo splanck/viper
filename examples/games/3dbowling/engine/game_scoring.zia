@@ -8,6 +8,8 @@ module game_scoring;
 
 bind Viper.Graphics3D;
 bind Viper.Terminal;
+bind Viper.Core.Convert as Convert;
+bind Viper.Math;
 bind "../config";
 bind "./camera";
 bind "./game_flow";
@@ -22,35 +24,90 @@ class BowlingGameScoring extends BowlingGameFlow {
         var newlyKnocked = pinMgr.countNewlyKnocked();
         var scoredKnocked = newlyKnocked;
         var trueGutter = ballObj.gutterBall() && ballHitPinsThisRoll == false;
+        var convertedLeaveDifficulty = lastLeaveDifficulty;
         if (trueGutter) {
             scoredKnocked = 0;
             if (newlyKnocked > 0) {
                 pinMgr.restoreSavedPinState();
             }
         }
+        // In Low Ball a miss is penalized as ten, preventing deliberate gutters.
+        if (currentMode == config.MODE_PARTY && partyId == 1 && trueGutter) {
+            scoredKnocked = 10;
+        }
+        if (currentMode == config.MODE_PRACTICE && practiceId > 0) {
+            updatePracticeScoring(scoredKnocked, trueGutter, convertedLeaveDifficulty);
+            return;
+        }
         var frameComplete = current.recordRoll(scoredKnocked);
+        var earnedStrike = current.wasStrike();
+        if (currentMode == config.MODE_PARTY && partyId == 1 && trueGutter) {
+            earnedStrike = false;
+        }
+        var standingMask = pinMgr.getStandingMask();
+        lastLeaveName = leaveAnalyzer.describe(standingMask);
+        lastLeaveDifficulty = leaveAnalyzer.difficulty(standingMask);
+        if (current.wasSpare()) { lastLeaveName = "Spare converted"; }
 
         if (trueGutter) {
             celebMgr.onGutter();
-        } else if (current.wasStrike()) {
-            celebMgr.onStrike();
+        } else if (earnedStrike) {
+            celebMgr.onStrike(current.getConsecutiveStrikes());
+            bowlerAvatar.celebrate();
             particleMgr.spawnFireworks();
-            camCtrl.shake(config.SHAKE_STRIKE_INTENSITY, config.SHAKE_STRIKE_DURATION);
+            camCtrl.shake(config.SHAKE_STRIKE_INTENSITY *
+                (menuObj.getCameraShake() + 0.0) / 100.0, config.SHAKE_STRIKE_DURATION);
             render.flashPinLight(3.0);
             lightFlashTimer = 0.40;
             playSound("strike");
+            playSound("crowd_strike");
+            if (menuObj.getReplayMode() != 0) { pendingReplayDuration = 2.15; }
             if (current.isGameOver() && current.getTotalScore() == config.MAX_SCORE) {
                 celebMgr.onPerfectGame();
+                playSound("perfect");
             }
         } else if (current.wasSpare()) {
             celebMgr.onSpare();
+            bowlerAvatar.celebrate();
             playSound("spare");
+            playSound("crowd_spare");
+            if (menuObj.getReplayMode() != 0 && convertedLeaveDifficulty >= 1) {
+                pendingReplayDuration = 1.35;
+            }
         } else {
             celebMgr.onOpenFrame();
         }
 
+        if (activePlayer == 0) {
+            var statsPins = scoredKnocked;
+            if (trueGutter) { statsPins = 0; }
+            menuObj.recordRollStats(statsPins, earnedStrike, current.wasSpare(), trueGutter);
+        }
+        if (currentMode == config.MODE_PARTY && partyId == 2 && trueGutter == false) {
+            var precision = Convert.NumToInt(lastReleaseAccuracy * 10.0);
+            var pocket = 0;
+            var angleMagnitude = Abs(lastEntryAngle);
+            if (angleMagnitude >= 2.0 && angleMagnitude <= 6.5) { pocket = 10; }
+            partyScores.set(activePlayer,
+                partyScores.get(activePlayer) + scoredKnocked + precision + pocket);
+        }
+        if (earnedStrike) { matchStrikes = matchStrikes + 1; }
+        if (current.wasSpare()) { matchSpares = matchSpares + 1; }
+        if (trueGutter) { matchGutters = matchGutters + 1; }
+        if (activePlayer == 0) {
+            if (earnedStrike) { unlockAchievement(0, "FIRST STRIKE"); }
+            if (current.wasSpare()) { unlockAchievement(1, "SPARE ARTIST"); }
+            if (current.getConsecutiveStrikes() >= 3) { unlockAchievement(2, "TURKEY TIME"); }
+            if (current.getTotalScore() >= 100) { unlockAchievement(3, "CENTURY CLUB"); }
+            if (current.wasSpare() && convertedLeaveDifficulty >= 2) {
+                unlockAchievement(4, "SPLIT DECISION");
+            }
+        }
+
         pinMgr.savePinState();
-        pendingFrameAdvance = frameComplete;
+        // Bonus balls after a tenth-frame strike or spare require a fresh rack
+        // even though the frame itself remains active.
+        pendingFrameAdvance = frameComplete || current.needsFullReset();
         pendingPlayerSwitch = frameComplete && playerCount > 1;
         pendingResults = frameComplete && allPlayersFinished();
         scoreTimer = 0.75;
@@ -59,6 +116,44 @@ class BowlingGameScoring extends BowlingGameFlow {
         Say(getPlayerLabel(activePlayer) + "  Frame " + toString(current.getFrame())
             + "  Total " + toString(current.getTotalScore()));
 
+        pinMgr.startSweep();
+        gameState = config.STATE_SWEEPING;
+    }
+
+    /// @brief Resolve one repeatable spare drill without advancing ten-frame scoring.
+    hide func updatePracticeScoring(pinsDown: Integer, gutter: Boolean,
+                                    drillDifficulty: Integer) {
+        var target = 2;
+        if (practiceId == 2) { target = 1; }
+        if (practiceId == 3) { target = 3; }
+        var converted = gutter == false && pinsDown >= target;
+        if (converted) {
+            celebMgr.onSpare();
+            bowlerAvatar.celebrate();
+            playSound("spare");
+            playSound("crowd_spare");
+            hudObj.showMessage("DRILL CONVERTED  " + lastLeaveName,
+                config.HUD_COLOR_GREEN, config.MSG_DURATION_LONG);
+            if (menuObj.getReplayMode() != 0 && drillDifficulty >= 2) {
+                pendingReplayDuration = 1.55;
+            }
+            if (drillDifficulty >= 2) { unlockAchievement(4, "SPLIT DECISION"); }
+            matchSpares = matchSpares + 1;
+        } else if (gutter) {
+            celebMgr.onGutter();
+        } else {
+            celebMgr.onOpenFrame();
+            hudObj.showMessage("RESETTING DRILL  adjust the spare line",
+                config.HUD_COLOR_GRAY, config.MSG_DURATION_SHORT);
+        }
+        if (activePlayer == 0) {
+            menuObj.recordRollStats(pinsDown, false, converted, gutter);
+        }
+        pendingFrameAdvance = true;
+        pendingPlayerSwitch = false;
+        pendingResults = false;
+        scoreTimer = 0.55;
+        cinematicStarted = false;
         pinMgr.startSweep();
         gameState = config.STATE_SWEEPING;
     }
@@ -79,12 +174,18 @@ class BowlingGameScoring extends BowlingGameFlow {
     /// @brief STATE_RESETTING update: rack-drop animation.
     override expose func updateResetting(dt: Float) {
         if (pinMgr.updateReset(dt)) {
+            applyPracticeLeave();
             gameState = config.STATE_CELEBRATING;
         }
     }
 
     /// @brief STATE_CELEBRATING update: tick celebration manager + cinematic camera.
     override expose func updateCelebrating(dt: Float) {
+        if (pendingReplayDuration > 0.0) {
+            replayRecorder.start(pendingReplayDuration);
+            pendingReplayDuration = 0.0;
+        }
+        replayRecorder.update(dt);
         if (celebMgr.isActive()) {
             var ctype = celebMgr.getType();
             if (cinematicStarted == false &&
@@ -115,14 +216,18 @@ class BowlingGameScoring extends BowlingGameFlow {
     /// @brief Reset ball + camera + per-throw flags for the next roll.
     hide func prepareNextTurn() {
         ballObj.resetBall();
+        applyPracticeLeave();
         aimX = 0.0;
         power = 0.0;
         spin = 0.0;
         charging = false;
+        releaseMeter.reset(getReleaseAssist());
+        aiThinkTimer = 0.75;
         fixedStepAlpha = 0.0;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
         cinematicStarted = false;
+        pendingReplayDuration = 0.0;
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;
         pendingResults = false;
@@ -148,6 +253,9 @@ class BowlingGameScoring extends BowlingGameFlow {
             var candidate = (activePlayer + step) % playerCount;
             if (scoreKeepers.get(candidate).isGameOver() == false) {
                 activePlayer = candidate;
+                ballObj.selectBall(playerProfiles.get(activePlayer).getSelectedBall());
+                bowlerAvatar.setColor(playerProfiles.get(activePlayer).getColor());
+                bowlerAvatar.setLeftHanded(playerProfiles.get(activePlayer).getLeftHanded());
                 return;
             }
         }
@@ -170,7 +278,11 @@ class BowlingGameScoring extends BowlingGameFlow {
     hide func openResultsScreen() {
         resultsScores = [];
         for (var i: Integer = 0; i < playerCount; i = i + 1) {
-            resultsScores.add(scoreKeepers.get(i).getTotalScore());
+            if (currentMode == config.MODE_PARTY && partyId == 2) {
+                resultsScores.add(partyScores.get(i));
+            } else {
+                resultsScores.add(scoreKeepers.get(i).getTotalScore());
+            }
         }
 
         // Selection-sort seat indices into best-first order via a used mask.
@@ -180,8 +292,12 @@ class BowlingGameScoring extends BowlingGameFlow {
         for (var r: Integer = 0; r < playerCount; r = r + 1) {
             var bestIdx = -1;
             var bestScore = -1;
+            var lowBall = currentMode == config.MODE_PARTY && partyId == 1;
+            if (lowBall) { bestScore = 10000; }
             for (var i: Integer = 0; i < playerCount; i = i + 1) {
-                if (used.get(i) == false && resultsScores.get(i) > bestScore) {
+                var better = resultsScores.get(i) > bestScore;
+                if (lowBall) { better = resultsScores.get(i) < bestScore; }
+                if (used.get(i) == false && better) {
                     bestScore = resultsScores.get(i);
                     bestIdx = i;
                 }
@@ -197,6 +313,27 @@ class BowlingGameScoring extends BowlingGameFlow {
 
         menuObj.recordFinishedMatch(p1Score, currentMode);
         resultsNewHigh = (currentMode == config.MODE_SINGLE) && (p1Score > previousBest);
+        if (p1Score == config.MAX_SCORE) { unlockAchievement(5, "PERFECT 300"); }
+
+        resultsChallengeTier = 0;
+        if (currentMode == config.MODE_CHALLENGE) {
+            if (challengeId == 0) {
+                if (p1Score >= 140) { resultsChallengeTier = 1; }
+                if (p1Score >= 180) { resultsChallengeTier = 2; }
+                if (p1Score >= 220) { resultsChallengeTier = 3; }
+            } else if (challengeId == 1) {
+                if (matchSpares >= 3) { resultsChallengeTier = 1; }
+                if (matchSpares >= 5) { resultsChallengeTier = 2; }
+                if (matchSpares >= 7) { resultsChallengeTier = 3; }
+            } else {
+                if (p1Score >= 20) { resultsChallengeTier = 1; }
+                if (p1Score >= 25) { resultsChallengeTier = 2; }
+                if (p1Score >= 30) { resultsChallengeTier = 3; }
+            }
+            if (menuObj.awardChallenge(challengeId, resultsChallengeTier)) {
+                unlockAchievement(6, "CHALLENGE MEDAL");
+            }
+        }
 
         // Winner is the top seat unless it ties the runner-up.
         resultsWinner = topPlayer;
@@ -214,6 +351,20 @@ class BowlingGameScoring extends BowlingGameFlow {
         } else if (resultsNewHigh) {
             resultsToast = "New high score";
         }
+        if (currentMode == config.MODE_CHAMPIONSHIP && resultsWinner == 0) {
+            menuObj.recordCareerWin();
+            unlockAchievement(7, "TOUR VICTORY");
+        }
+
+        var positiveResult = true;
+        if (currentMode == config.MODE_CHAMPIONSHIP && resultsWinner != 0) {
+            positiveResult = false;
+        }
+        if (currentMode == config.MODE_CHALLENGE && resultsChallengeTier == 0) {
+            positiveResult = false;
+        }
+        if (positiveResult) { playSound("victory"); }
+        else { playSound("defeat"); }
 
         screenState = config.SCREEN_RESULTS;
         camCtrl.setTitleMode();
@@ -241,6 +392,13 @@ class BowlingGameScoring extends BowlingGameFlow {
                 camCtrl.setOverheadMode();
                 hudObj.showMessage("Overhead camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
             }
+        }
+    }
+
+    hide func unlockAchievement(id: Integer, title: String) {
+        if (menuObj.unlockAchievement(id)) {
+            hudObj.queueMessage("ACHIEVEMENT  " + title,
+                config.HUD_COLOR_AMBER, config.MSG_DURATION_LONG);
         }
     }
 

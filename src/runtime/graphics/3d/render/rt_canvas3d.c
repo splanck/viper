@@ -1432,6 +1432,7 @@ static int canvas3d_track_material_resources(rt_canvas3d *c,
 #include "rt_canvas3d_deferred.inc"
 #include "rt_canvas3d_occlusion.inc"
 #include "rt_canvas3d_shadow.inc"
+#include "rt_canvas3d_texture_stream.inc"
 
 /// @brief Drop the cached CPU-rasterized skybox so the next frame re-renders it.
 /// @details The CPU skybox is an expensive per-pixel raycast through the
@@ -1526,6 +1527,10 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->shadow_draw_indices);
     c->shadow_draw_indices = NULL;
     c->shadow_draw_index_capacity = 0;
+    free(c->texture_stream_entries);
+    c->texture_stream_entries = NULL;
+    c->texture_stream_capacity = 0;
+    c->texture_stream_live = 0;
     /* Free any leftover temp buffers (e.g., from skinned draws) */
     canvas3d_clear_temp_buffers(c);
     free(c->temp_buffers);

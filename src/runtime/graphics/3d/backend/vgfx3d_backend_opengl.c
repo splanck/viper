@@ -35,6 +35,7 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_opengl_shared.h"
 #include "vgfx3d_backend_utils.h"
+#include "vgfx3d_brdf_lut.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -71,6 +72,12 @@ typedef unsigned int GLbitfield;
 #define GL_TU_AO 15
 #define GL_TU_MORPH_DELTAS 16
 #define GL_TU_MORPH_NORMAL_DELTAS 17
+/* Fragment units 0-15 are the GL 3.3 min-spec budget and the main FS already
+ * assigns all of them; the BRDF LUT aliases the last splat layer unit, bound
+ * per draw. Splat terrain draws that also run IBL sample the splat layer as
+ * their environment-BRDF instead (bounded error; resolved by the planned
+ * array-texture shadow/splat consolidation). */
+#define GL_TU_BRDF_LUT (GL_TU_SPLAT_LAYER0 + 3)
 
 #define GL_TRUE 1
 #define GL_FALSE 0
@@ -647,6 +654,7 @@ typedef struct {
     GLuint skybox_vao;
     GLuint skybox_vbo;
     GLuint default_white_tex;
+    GLuint brdf_lut_tex;
     GLuint default_white_cubemap;
 
     GLuint mesh_vbo;
@@ -832,10 +840,11 @@ typedef struct {
     GLint uClusterGlobalCount, uClusterParams;
     GLint uOpaqueDepthTex;
     GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
+    GLint uInstanceBoneStride;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
     GLint uDiffuseTex, uNormalTex, uSpecularTex, uEmissiveTex, uShadowTex[VGFX3D_MAX_SHADOW_LIGHTS],
-        uEnvMap;
+        uEnvMap, uBrdfLut;
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],

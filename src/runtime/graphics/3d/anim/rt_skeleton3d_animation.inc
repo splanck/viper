@@ -193,7 +193,7 @@ void *rt_animation3d_new(rt_string name, double duration) {
 void rt_animation3d_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
-    if (!a || bone_index < 0 || bone_index >= VGFX3D_MAX_BONES || !isfinite(time) ||
+    if (!a || bone_index < 0 || bone_index >= VGFX3D_MAX_SKELETON_BONES || !isfinite(time) ||
         fabs(time) > FLT_MAX)
         return;
     if (time < 0.0)
@@ -343,6 +343,142 @@ void rt_animation3d_add_keyframe(
     }
     ch->keyframes[insert] = new_kf;
     ch->keyframe_count++;
+}
+
+/// @brief True when @p mid is reproduced within tolerance by interpolating between
+///   @p a and @p b at @p mid's time (lerp for position/scale, slerp for rotation).
+static int animation3d_keyframe_is_redundant(const vgfx3d_keyframe_t *a,
+                                             const vgfx3d_keyframe_t *mid,
+                                             const vgfx3d_keyframe_t *b,
+                                             float pos_tolerance,
+                                             float rot_tolerance,
+                                             float scl_tolerance) {
+    float span = b->time - a->time;
+    float alpha;
+    if (a->cubic_mask || mid->cubic_mask || b->cubic_mask)
+        return 0; /* never reduce across Hermite segments */
+    if (a->position_mask != mid->position_mask || mid->position_mask != b->position_mask ||
+        a->rotation_mask != mid->rotation_mask || mid->rotation_mask != b->rotation_mask ||
+        a->scale_mask != mid->scale_mask || mid->scale_mask != b->scale_mask)
+        return 0;
+    if (!(span > 0.0f))
+        return 0;
+    alpha = (mid->time - a->time) / span;
+    if (!(alpha >= 0.0f && alpha <= 1.0f))
+        return 0;
+    for (int i = 0; i < 3; i++) {
+        float lp = a->position[i] + alpha * (b->position[i] - a->position[i]);
+        float ls = a->scale_xyz[i] + alpha * (b->scale_xyz[i] - a->scale_xyz[i]);
+        if (fabsf(lp - mid->position[i]) > pos_tolerance)
+            return 0;
+        if (fabsf(ls - mid->scale_xyz[i]) > scl_tolerance)
+            return 0;
+    }
+    {
+        float blended[4];
+        float dot;
+        quat_slerp_float(a->rotation, b->rotation, alpha, blended);
+        dot = blended[0] * mid->rotation[0] + blended[1] * mid->rotation[1] +
+              blended[2] * mid->rotation[2] + blended[3] * mid->rotation[3];
+        if (fabsf(dot) < 1.0f - rot_tolerance)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Tolerance-based keyframe reduction: drop keys whose values are
+///   reconstructible by interpolating their kept neighbours. Cubic (Hermite)
+///   keys and keys with mismatched presence masks are always kept, as are the
+///   first and last key of every channel.
+/// @return The number of keyframes dropped across all channels.
+int64_t rt_animation3d_compress_keyframes(void *obj,
+                                          double pos_tolerance,
+                                          double rot_tolerance,
+                                          double scl_tolerance) {
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    int64_t dropped = 0;
+    float pos_tol = (float)pos_tolerance;
+    float rot_tol = (float)rot_tolerance;
+    float scl_tol = (float)scl_tolerance;
+    if (!a)
+        return 0;
+    for (int32_t c = 0, count = animation3d_safe_channel_count(a); c < count; c++) {
+        vgfx3d_anim_channel_t *ch = &a->channels[c];
+        int32_t n = animation3d_safe_keyframe_count(ch);
+        int32_t kept;
+        if (n < 3)
+            continue;
+        kept = 1; /* first key always survives */
+        for (int32_t i = 1; i < n; i++) {
+            if (i < n - 1 && animation3d_keyframe_is_redundant(&ch->keyframes[kept - 1],
+                                                              &ch->keyframes[i],
+                                                              &ch->keyframes[i + 1],
+                                                              pos_tol,
+                                                              rot_tol,
+                                                              scl_tol)) {
+                dropped++;
+                continue;
+            }
+            if (kept != i)
+                ch->keyframes[kept] = ch->keyframes[i];
+            kept++;
+        }
+        ch->keyframe_count = kept;
+    }
+    return dropped;
+}
+
+/// @brief Attach CUBICSPLINE Hermite tangents to the keyframe at (@p bone_index,
+///   @p time). Each in/out pair may be NULL to leave that channel linear; passing
+///   tangents marks the channel cubic in the keyframe's cubic_mask.
+/// @details Import-facing: the glTF loader emits keyframes first (time-sorted) and
+///   then decorates them with the sampler's authored or derived tangents so
+///   skeletal playback reproduces the source spline exactly per segment.
+void rt_animation3d_set_keyframe_tangents(void *obj,
+                                          int64_t bone_index,
+                                          double time,
+                                          const float *pos_in,
+                                          const float *pos_out,
+                                          const float *rot_in,
+                                          const float *rot_out,
+                                          const float *scl_in,
+                                          const float *scl_out) {
+    rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    vgfx3d_anim_channel_t *ch = NULL;
+    vgfx3d_keyframe_t *kf = NULL;
+    if (!a || !isfinite(time))
+        return;
+    for (int32_t c = 0, count = animation3d_safe_channel_count(a); c < count; c++) {
+        if (a->channels[c].bone_index == (int32_t)bone_index) {
+            ch = &a->channels[c];
+            break;
+        }
+    }
+    if (!ch)
+        return;
+    for (int32_t k = 0, count = animation3d_safe_keyframe_count(ch); k < count; k++) {
+        if (skeleton3d_key_time_equal(ch->keyframes[k].time, (float)time)) {
+            kf = &ch->keyframes[k];
+            break;
+        }
+    }
+    if (!kf)
+        return;
+    if (pos_in && pos_out) {
+        memcpy(kf->pos_in_tangent, pos_in, 3 * sizeof(float));
+        memcpy(kf->pos_out_tangent, pos_out, 3 * sizeof(float));
+        kf->cubic_mask |= 1u;
+    }
+    if (rot_in && rot_out) {
+        memcpy(kf->rot_in_tangent, rot_in, 4 * sizeof(float));
+        memcpy(kf->rot_out_tangent, rot_out, 4 * sizeof(float));
+        kf->cubic_mask |= 2u;
+    }
+    if (scl_in && scl_out) {
+        memcpy(kf->scale_in_tangent, scl_in, 3 * sizeof(float));
+        memcpy(kf->scale_out_tangent, scl_out, 3 * sizeof(float));
+        kf->cubic_mask |= 4u;
+    }
 }
 
 /// @brief Mark this clip as looping (wraps back to t=0 at end) or one-shot (stops at end).
@@ -751,11 +887,56 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
     keyframe_effective_trs(key0, fallback_pos, fallback_rot, fallback_scl, pos0, rot0, scl0);
     keyframe_effective_trs(key1, fallback_pos, fallback_rot, fallback_scl, pos1, rot1, scl1);
 
-    for (int i = 0; i < 3; i++) {
-        out_pos[i] = pos0[i] + alpha * (pos1[i] - pos0[i]);
-        out_scl[i] = scl0[i] + alpha * (scl1[i] - scl0[i]);
+    {
+        /* glTF CUBICSPLINE Hermite basis; a channel plays cubic only when both
+         * bracketing keys carry its tangents. Tangents are stored in value units
+         * per second, so they scale by the segment duration. */
+        float dt = t1 - t0;
+        float a2 = alpha * alpha;
+        float a3 = a2 * alpha;
+        float h00 = 2.0f * a3 - 3.0f * a2 + 1.0f;
+        float h10 = a3 - 2.0f * a2 + alpha;
+        float h01 = -2.0f * a3 + 3.0f * a2;
+        float h11 = a3 - a2;
+        uint8_t both_cubic = (uint8_t)(key0->cubic_mask & key1->cubic_mask);
+        int pos_cubic = (both_cubic & 1u) && dt > 0.0f;
+        int rot_cubic = (both_cubic & 2u) && dt > 0.0f;
+        int scl_cubic = (both_cubic & 4u) && dt > 0.0f;
+        for (int i = 0; i < 3; i++) {
+            if (pos_cubic) {
+                out_pos[i] = h00 * pos0[i] + h10 * dt * key0->pos_out_tangent[i] +
+                             h01 * pos1[i] + h11 * dt * key1->pos_in_tangent[i];
+            } else {
+                out_pos[i] = pos0[i] + alpha * (pos1[i] - pos0[i]);
+            }
+            if (scl_cubic) {
+                out_scl[i] = h00 * scl0[i] + h10 * dt * key0->scale_out_tangent[i] +
+                             h01 * scl1[i] + h11 * dt * key1->scale_in_tangent[i];
+            } else {
+                out_scl[i] = scl0[i] + alpha * (scl1[i] - scl0[i]);
+            }
+        }
+        if (rot_cubic && (rot0[0] * rot1[0] + rot0[1] * rot1[1] + rot0[2] * rot1[2] +
+                          rot0[3] * rot1[3]) >= 0.0f) {
+            /* Componentwise Hermite + renormalize (glTF spec); hemisphere flips
+             * between stored keys fall back to slerp below. */
+            float sum = 0.0f;
+            for (int i = 0; i < 4; i++) {
+                out_rot[i] = h00 * rot0[i] + h10 * dt * key0->rot_out_tangent[i] +
+                             h01 * rot1[i] + h11 * dt * key1->rot_in_tangent[i];
+                sum += out_rot[i] * out_rot[i];
+            }
+            if (sum > 1e-12f) {
+                float inv = 1.0f / sqrtf(sum);
+                for (int i = 0; i < 4; i++)
+                    out_rot[i] *= inv;
+            } else {
+                quat_slerp_float(rot0, rot1, alpha, out_rot);
+            }
+        } else {
+            quat_slerp_float(rot0, rot1, alpha, out_rot);
+        }
     }
-    quat_slerp_float(rot0, rot1, alpha, out_rot);
     animation3d_sanitize_trs(out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
 }
 

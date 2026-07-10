@@ -38,7 +38,10 @@ void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
     mesh3d_assign_skeleton_ref(&m->skeleton_ref, s);
     if (s) {
         skeleton3d_freeze(s);
-        m->bone_count = s->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : s->bone_count;
+        /* Partitioned sub-meshes (bone_map set) keep their local palette size;
+         * their vertices index the map, not the skeleton. */
+        if (!m->bone_map)
+            m->bone_count = s->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : s->bone_count;
     } else {
         m->bone_count = 0;
     }
@@ -148,8 +151,6 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
 
     if (!canvas || !mesh_obj || !model_matrix || !material || !bone_palette || bone_count <= 0)
         return;
-    if (bone_count > VGFX3D_MAX_BONES)
-        bone_count = VGFX3D_MAX_BONES;
     mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
 #if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
@@ -166,7 +167,46 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
         return;
     if (rt_heap_is_payload(mesh_obj) && !rt_canvas3d_add_temp_object(canvas, mesh_obj))
         return;
-    if (c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
+    if (mesh->bone_map && mesh->bone_count > 0) {
+        /* Partitioned sub-mesh: gather the skeleton-wide palette (possibly larger
+         * than VGFX3D_MAX_BONES) down to the slots this sub-mesh references. The
+         * gathered copies live in frame-owned temp buffers so deferred draws
+         * never observe a later animation tick. */
+        int32_t local_count =
+            mesh->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : mesh->bone_count;
+        size_t lanes = (size_t)local_count * 16u;
+        float *gathered = (float *)malloc(lanes * sizeof(float));
+        float *gathered_prev =
+            prev_bone_palette ? (float *)malloc(lanes * sizeof(float)) : NULL;
+        if (!gathered || !rt_canvas3d_add_temp_buffer(canvas, gathered)) {
+            free(gathered);
+            free(gathered_prev);
+            return;
+        }
+        if (gathered_prev && !rt_canvas3d_add_temp_buffer(canvas, gathered_prev)) {
+            free(gathered_prev);
+            gathered_prev = NULL;
+        }
+        for (int32_t i = 0; i < local_count; i++) {
+            int32_t src = mesh->bone_map[i];
+            if (src < 0 || src >= bone_count)
+                src = 0;
+            memcpy(gathered + (size_t)i * 16u,
+                   bone_palette + (size_t)src * 16u,
+                   16u * sizeof(float));
+            if (gathered_prev)
+                memcpy(gathered_prev + (size_t)i * 16u,
+                       prev_bone_palette + (size_t)src * 16u,
+                       16u * sizeof(float));
+        }
+        bone_palette = gathered;
+        prev_bone_palette = gathered_prev;
+        bone_count = local_count;
+    }
+    if (bone_count > VGFX3D_MAX_BONES)
+        bone_count = VGFX3D_MAX_BONES;
+    if (c->backend && !mesh->extra_influences &&
+        vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
         rt_mesh3d tmp = *mesh;
         tmp.bone_palette = bone_palette;
         tmp.prev_bone_palette = prev_bone_palette;
@@ -193,12 +233,13 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
     if (!skinned)
         return;
 
-    vgfx3d_skin_vertices(mesh->vertices,
-                         skinned,
-                         mesh->vertex_count,
-                         bone_palette,
-                         bone_count,
-                         &c->skinning_scratch);
+    vgfx3d_skin_vertices_extra(mesh->vertices,
+                               skinned,
+                               mesh->vertex_count,
+                               bone_palette,
+                               bone_count,
+                               mesh->extra_influences,
+                               &c->skinning_scratch);
 
     rt_mesh3d tmp = *mesh;
     tmp.vertices = skinned;
@@ -311,4 +352,246 @@ void rt_canvas3d_draw_mesh_skinned(
                                                p->bone_palette,
                                                prev_palette,
                                                skeleton3d_safe_bone_count(skel));
+}
+
+/*==========================================================================
+ * Canvas3D extension — per-instance skinned crowds (R18)
+ *=========================================================================*/
+
+/// @brief Queue @p instance_count copies of a skinned mesh, each posed by its own palette.
+/// @details GPU-skinning backends pack chunks of `VGFX3D_MAX_BONES / bone_count` instances
+///   into the existing per-draw palette slot (the vertex shader indexes
+///   `palette[instance_id * stride + bone]`), so a 32-bone crowd rides one hardware draw per
+///   32 characters instead of one per character. Palettes are snapshotted into frame-owned
+///   buffers before queueing so later animation ticks cannot repose queued draws. Draws that
+///   cannot take the hardware path (software backend, blending materials, extra influences,
+///   partitioned bone maps) fall back to one skinned draw per instance, which preserves the
+///   exact single-draw pose semantics on every backend.
+/// @param bone_palettes Packed palettes: instance_count * bone_count * 16 floats.
+/// @param prev_bone_palettes Optional previous-frame palettes with the same layout, or NULL.
+void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
+                                             void *mesh_obj,
+                                             void *material,
+                                             const float *instance_matrices,
+                                             int32_t instance_count,
+                                             const float *bone_palettes,
+                                             const float *prev_bone_palettes,
+                                             int32_t bone_count) {
+    rt_canvas3d *c;
+    rt_mesh3d *mesh;
+    int gpu_ok;
+
+    if (!canvas || !mesh_obj || !material || !instance_matrices || !bone_palettes ||
+        instance_count <= 0 || bone_count <= 0)
+        return;
+    c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c || !c->in_frame || !c->backend)
+        return;
+    if (bone_count > VGFX3D_MAX_BONES) {
+        rt_trap("Canvas3D.DrawMeshInstancedSkinned: bone count exceeds the palette limit");
+        return;
+    }
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
+    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
+        mesh = (rt_mesh3d *)mesh_obj;
+#endif
+    if (!mesh)
+        return;
+
+    gpu_ok = !mesh->extra_influences && !mesh->bone_map &&
+             vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count);
+    if (gpu_ok) {
+        int32_t per_draw = VGFX3D_MAX_BONES / bone_count;
+        size_t palette_lanes = (size_t)instance_count * (size_t)bone_count * 16u;
+        float *palette_snapshot = NULL;
+        float *prev_snapshot = NULL;
+        int32_t start;
+
+        if (palette_lanes / 16u / (size_t)bone_count != (size_t)instance_count ||
+            palette_lanes > SIZE_MAX / sizeof(float))
+            return;
+        palette_snapshot = (float *)malloc(palette_lanes * sizeof(float));
+        if (!palette_snapshot || !rt_canvas3d_add_temp_buffer(canvas, palette_snapshot)) {
+            free(palette_snapshot);
+            return;
+        }
+        memcpy(palette_snapshot, bone_palettes, palette_lanes * sizeof(float));
+        if (prev_bone_palettes) {
+            prev_snapshot = (float *)malloc(palette_lanes * sizeof(float));
+            if (prev_snapshot && !rt_canvas3d_add_temp_buffer(canvas, prev_snapshot)) {
+                free(prev_snapshot);
+                prev_snapshot = NULL;
+            }
+            if (prev_snapshot)
+                memcpy(prev_snapshot, prev_bone_palettes, palette_lanes * sizeof(float));
+        }
+        for (start = 0; start < instance_count; start += per_draw) {
+            int32_t len = instance_count - start;
+            if (len > per_draw)
+                len = per_draw;
+            if (!rt_canvas3d_queue_instanced_batch_skinned(
+                    canvas,
+                    mesh_obj,
+                    material,
+                    instance_matrices + (size_t)start * 16u,
+                    len,
+                    palette_snapshot + (size_t)start * (size_t)bone_count * 16u,
+                    prev_snapshot ? prev_snapshot + (size_t)start * (size_t)bone_count * 16u
+                                  : NULL,
+                    len * bone_count,
+                    bone_count)) {
+                /* Hardware refusal is batch-invariant (same mesh/material), so nothing
+                 * was queued yet; drop to the per-instance path for the whole batch. */
+                gpu_ok = 0;
+                break;
+            }
+        }
+        if (gpu_ok)
+            return;
+    }
+
+    for (int32_t i = 0; i < instance_count; i++) {
+        double model_d[16];
+        const float *m = instance_matrices + (size_t)i * 16u;
+        const float *palette_i = bone_palettes + (size_t)i * (size_t)bone_count * 16u;
+        const float *prev_i =
+            prev_bone_palettes ? prev_bone_palettes + (size_t)i * (size_t)bone_count * 16u : NULL;
+        for (int j = 0; j < 16; j++)
+            model_d[j] = (double)m[j];
+        rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(canvas,
+                                                          mesh_obj,
+                                                          model_d,
+                                                          material,
+                                                          (const void *)palette_i,
+                                                          palette_i,
+                                                          prev_i,
+                                                          bone_count,
+                                                          NULL,
+                                                          NULL,
+                                                          0,
+                                                          0);
+    }
+}
+
+/// @brief Zia entry: draw an InstanceBatch3D with one animator palette per instance.
+/// @details @p players is a Seq holding one AnimPlayer3D or AnimController3D per batch
+///   instance; every animator must drive a skeleton with the same bone count. Palettes are
+///   packed into one contiguous block and submitted through
+///   rt_canvas3d_draw_mesh_instanced_skinned.
+void rt_canvas3d_draw_instanced_skinned(void *canvas, void *batch, void *players) {
+    rt_canvas3d *c;
+    void *mesh;
+    void *material;
+    const float *transforms;
+    int32_t instance_count = 0;
+    int64_t player_count;
+    int32_t bone_count = 0;
+    float *packed = NULL;
+    float *packed_prev = NULL;
+    int has_all_prev = 1;
+    size_t lanes;
+
+    if (!canvas || !batch || !players)
+        return;
+    c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c || !c->in_frame)
+        return;
+    mesh = rt_instbatch3d_borrow_mesh(batch);
+    material = rt_instbatch3d_borrow_material(batch);
+    transforms = rt_instbatch3d_borrow_transforms(batch, &instance_count);
+    if (!mesh || !material || !transforms || instance_count <= 0)
+        return;
+    player_count = rt_seq_len(players);
+    if (player_count != (int64_t)instance_count) {
+        rt_trap("Canvas3D.DrawInstancedSkinned: player count must match the batch instance "
+                "count");
+        return;
+    }
+
+    /* First pass: agree on one bone count across every animator. */
+    for (int32_t i = 0; i < instance_count; i++) {
+        void *item = rt_seq_get(players, i);
+        int32_t item_bones = 0;
+        if (rt_g3d_has_class(item, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+            if (!rt_anim_controller3d_get_final_palette_data(item, &item_bones))
+                item_bones = 0;
+        } else {
+            rt_anim_player3d *p =
+                (rt_anim_player3d *)rt_g3d_checked_or_null(item, RT_G3D_ANIMPLAYER3D_CLASS_ID);
+            rt_skeleton3d *skel = p ? animation3d_skeleton_slot((void **)&p->skeleton) : NULL;
+            if (p && p->bone_palette && skel)
+                item_bones = skeleton3d_safe_bone_count(skel);
+        }
+        if (item_bones <= 0) {
+            rt_trap("Canvas3D.DrawInstancedSkinned: every instance needs an AnimPlayer3D or "
+                    "AnimController3D with an active palette");
+            return;
+        }
+        if (bone_count == 0)
+            bone_count = item_bones;
+        else if (bone_count != item_bones) {
+            rt_trap("Canvas3D.DrawInstancedSkinned: instance palettes must share one skeleton "
+                    "bone count");
+            return;
+        }
+    }
+    if (bone_count <= 0 || bone_count > VGFX3D_MAX_BONES) {
+        rt_trap("Canvas3D.DrawInstancedSkinned: bone count exceeds the palette limit");
+        return;
+    }
+
+    lanes = (size_t)instance_count * (size_t)bone_count * 16u;
+    if (lanes > SIZE_MAX / sizeof(float) / 2u)
+        return;
+    packed = (float *)malloc(lanes * sizeof(float));
+    packed_prev = (float *)malloc(lanes * sizeof(float));
+    if (!packed || !packed_prev) {
+        free(packed);
+        free(packed_prev);
+        rt_trap("Canvas3D.DrawInstancedSkinned: palette allocation failed");
+        return;
+    }
+
+    for (int32_t i = 0; i < instance_count; i++) {
+        void *item = rt_seq_get(players, i);
+        const float *palette = NULL;
+        const float *prev = NULL;
+        if (rt_g3d_has_class(item, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+            int32_t item_bones = 0;
+            palette = rt_anim_controller3d_get_final_palette_data(item, &item_bones);
+            prev = rt_anim_controller3d_get_previous_palette_data(item, NULL);
+        } else {
+            rt_anim_player3d *p =
+                (rt_anim_player3d *)rt_g3d_checked_or_null(item, RT_G3D_ANIMPLAYER3D_CLASS_ID);
+            palette = p ? p->bone_palette : NULL;
+            prev = p ? anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas))
+                     : NULL;
+        }
+        if (!palette) {
+            free(packed);
+            free(packed_prev);
+            return;
+        }
+        memcpy(packed + (size_t)i * (size_t)bone_count * 16u,
+               palette,
+               (size_t)bone_count * 16u * sizeof(float));
+        if (prev)
+            memcpy(packed_prev + (size_t)i * (size_t)bone_count * 16u,
+                   prev,
+                   (size_t)bone_count * 16u * sizeof(float));
+        else
+            has_all_prev = 0;
+    }
+
+    rt_canvas3d_draw_mesh_instanced_skinned(canvas,
+                                            mesh,
+                                            material,
+                                            transforms,
+                                            instance_count,
+                                            packed,
+                                            has_all_prev ? packed_prev : NULL,
+                                            bone_count);
+    free(packed);
+    free(packed_prev);
 }

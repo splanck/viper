@@ -353,6 +353,13 @@ rt_string rt_assets3d_get_import_report(void) {
         g_asset_import_stats[RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS],
         1);
     asset_report_append_counter(
+        report,
+        sizeof(report),
+        &used,
+        "compressedAnimationKeysDropped",
+        g_asset_import_stats[RT_ASSET_IMPORT_STAT_COMPRESSED_ANIMATION_KEYS_DROPPED],
+        1);
+    asset_report_append_counter(
         report, sizeof(report), &used, "suppressedWarnings", g_asset_warning_suppressed, 1);
     asset_report_append(report, sizeof(report), &used, ",\"warnings\":[");
     for (int64_t i = 0; i < count; i++) {

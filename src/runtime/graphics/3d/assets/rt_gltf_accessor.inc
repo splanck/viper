@@ -591,16 +591,17 @@ static void gltf_emit_skin_import_warnings(int mesh_index,
 /// @param out_weights 4-element weight array, mutated in place.
 /// @param truncated_io Optional flag set to 1 when a meaningful influence is folded away.
 /// @param out_of_range_io Optional flag set to 1 when a meaningful joint is out of range.
-static void gltf_add_top_joint_influence(uint32_t joint,
-                                         float weight,
-                                         uint32_t *out_joints,
-                                         float *out_weights,
-                                         int *truncated_io,
-                                         int *out_of_range_io) {
+static void gltf_add_top_joint_influence_limit(uint32_t joint,
+                                               float weight,
+                                               uint32_t *out_joints,
+                                               float *out_weights,
+                                               int *truncated_io,
+                                               int *out_of_range_io,
+                                               uint32_t joint_limit) {
     int replace = -1;
     if (!out_joints || !out_weights || !isfinite(weight) || weight <= 1e-8f)
         return;
-    if (joint >= VGFX3D_MAX_BONES) {
+    if (joint >= joint_limit) {
         if (out_of_range_io)
             *out_of_range_io = 1;
         return;
@@ -626,6 +627,17 @@ static void gltf_add_top_joint_influence(uint32_t joint,
     }
     out_joints[replace] = joint;
     out_weights[replace] = weight;
+}
+
+/// @brief Back-compat wrapper: merge one influence with the draw-palette bone limit.
+static void gltf_add_top_joint_influence(uint32_t joint,
+                                         float weight,
+                                         uint32_t *out_joints,
+                                         float *out_weights,
+                                         int *truncated_io,
+                                         int *out_of_range_io) {
+    gltf_add_top_joint_influence_limit(
+        joint, weight, out_joints, out_weights, truncated_io, out_of_range_io, VGFX3D_MAX_BONES);
 }
 
 /// @brief Clamp negatives and renormalize a 4-element vertex weight tuple to sum 1.

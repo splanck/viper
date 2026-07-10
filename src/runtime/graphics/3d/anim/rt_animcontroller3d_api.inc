@@ -91,7 +91,7 @@ void *rt_anim_controller3d_new(void *skeleton) {
     controller_quat_identity(controller->root_motion_rotation);
 
     {
-        size_t palette_size = (size_t)VGFX3D_MAX_BONES * 16 * sizeof(float);
+        size_t palette_size = (size_t)VGFX3D_MAX_SKELETON_BONES * 16 * sizeof(float);
         controller->final_palette = (float *)calloc(1, palette_size);
         controller->final_globals = (float *)calloc(1, palette_size);
         controller->prev_final_palette = (float *)calloc(1, palette_size);

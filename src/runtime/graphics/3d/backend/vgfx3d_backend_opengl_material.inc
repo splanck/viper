@@ -366,7 +366,7 @@ static void upload_main_uniforms(gl_context_t *ctx,
             ctx->uTextureUvTransform1, RT_MATERIAL3D_TEXTURE_SLOT_COUNT, &uv_transform1[0][0]);
     }
     gl.Uniform1i(ctx->uCameraIsOrtho, ctx->cam_is_ortho ? 1 : 0);
-    gl.Uniform1fv(ctx->uCustomParams, 8, cmd->custom_params);
+    gl.Uniform1fv(ctx->uCustomParams, 12, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevInstanceMatrices, cmd->has_prev_instance_matrices ? 1 : 0);
@@ -403,6 +403,7 @@ static void upload_main_uniforms(gl_context_t *ctx,
     bind_morph_payload(ctx,
                        cmd,
                        ctx->uHasSkinning,
+                       ctx->uInstanceBoneStride,
                        ctx->uMorphShapeCount,
                        ctx->uVertexCount,
                        ctx->uMorphWeights,
@@ -537,6 +538,7 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
     bind_texture_unit(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3, GL_TEXTURE_2D, splat_layer3);
     bind_texture_unit(ctx->uEnvMap, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, env_tex);
+    bind_texture_unit(ctx->uBrdfLut, GL_TU_BRDF_LUT, GL_TEXTURE_2D, ctx->brdf_lut_tex);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uMetallicRoughnessTex,
                                    GL_TU_METALLIC_ROUGHNESS,
@@ -565,6 +567,7 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     bind_morph_payload(ctx,
                        cmd,
                        ctx->shadow_uHasSkinning,
+                       -1, /* shadow program has no per-instance palette stride */
                        ctx->shadow_uMorphShapeCount,
                        ctx->shadow_uVertexCount,
                        ctx->shadow_uMorphWeights,
@@ -747,6 +750,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uHasPrevInstanceMatrices);
     U(uHasSkinning);
     U(uHasPrevSkinning);
+    U(uInstanceBoneStride);
     U(uMorphShapeCount);
     U(uVertexCount);
     U(uHasPrevMorphWeights);
@@ -760,6 +764,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uSpecularTex);
     U(uEmissiveTex);
     U(uEnvMap);
+    U(uBrdfLut);
     U(uMetallicRoughnessTex);
     U(uAOTex);
     U(uSplatTex);

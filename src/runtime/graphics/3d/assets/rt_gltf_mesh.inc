@@ -273,34 +273,38 @@ static int gltf_mesh_import_vertex_is_finite(const gltf_mesh_primitive_views_t *
 static void gltf_mesh_merge_extra_joint_influences(gltf_mesh_import_vertex_t *vertex,
                                                    int has_primary_skin,
                                                    int *truncated_io,
-                                                   int *out_of_range_io) {
+                                                   int *out_of_range_io,
+                                                   uint32_t joint_limit) {
     uint32_t merged_joints[4] = {0u, 0u, 0u, 0u};
     float merged_weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     if (has_primary_skin) {
         for (int j = 0; j < 4; j++)
-            gltf_add_top_joint_influence(vertex->joints[j],
-                                         vertex->weights[j],
-                                         merged_joints,
-                                         merged_weights,
-                                         truncated_io,
-                                         out_of_range_io);
+            gltf_add_top_joint_influence_limit(vertex->joints[j],
+                                               vertex->weights[j],
+                                               merged_joints,
+                                               merged_weights,
+                                               truncated_io,
+                                               out_of_range_io,
+                                               joint_limit);
     }
     for (int j = 0; j < 4; j++)
-        gltf_add_top_joint_influence(vertex->joints1[j],
-                                     vertex->weights1[j],
-                                     merged_joints,
-                                     merged_weights,
-                                     truncated_io,
-                                     out_of_range_io);
+        gltf_add_top_joint_influence_limit(vertex->joints1[j],
+                                           vertex->weights1[j],
+                                           merged_joints,
+                                           merged_weights,
+                                           truncated_io,
+                                           out_of_range_io,
+                                           joint_limit);
     gltf_normalize_joint_influences(merged_weights);
     memcpy(vertex->joints, merged_joints, sizeof(vertex->joints));
     memcpy(vertex->weights, merged_weights, sizeof(vertex->weights));
 }
 
 static void gltf_mesh_clip_joint_influences(gltf_mesh_import_vertex_t *vertex,
-                                            int *out_of_range_io) {
+                                            int *out_of_range_io,
+                                            uint32_t joint_limit) {
     for (int j = 0; j < 4; j++) {
-        if (vertex->joints[j] >= VGFX3D_MAX_BONES) {
+        if (vertex->joints[j] >= joint_limit) {
             if (out_of_range_io && isfinite(vertex->weights[j]) && vertex->weights[j] > 1e-8f)
                 *out_of_range_io = 1;
             vertex->joints[j] = 0u;
@@ -314,7 +318,8 @@ static int gltf_mesh_read_import_vertex(const gltf_mesh_primitive_views_t *views
                                         gltf_mesh_import_vertex_t *vertex,
                                         int *invalid_authored_normals_io,
                                         int *invalid_authored_tangents_io,
-                                        gltf_skin_import_stats_t *skin_stats_io) {
+                                        gltf_skin_import_stats_t *skin_stats_io,
+                                        uint32_t joint_limit) {
     gltf_mesh_import_vertex_init(vertex);
     gltf_accessor_read_f32(&views->pos, vertex_index, vertex->pos, 3);
     if (views->has_normals)
@@ -362,20 +367,25 @@ static int gltf_mesh_read_import_vertex(const gltf_mesh_primitive_views_t *views
         vertex->tangent[2] = 0.0f;
         vertex->tangent[3] = 1.0f;
     }
-    if (views->has_skin1) {
+    if (views->has_skin1 && !(rt_gltf_active_load_options()->eight_bone_influences &&
+                              joint_limit == (uint32_t)VGFX3D_MAX_BONES)) {
         int truncated = 0;
         int out_of_range = 0;
         gltf_mesh_merge_extra_joint_influences(
-            vertex, views->has_skin0, &truncated, &out_of_range);
+            vertex, views->has_skin0, &truncated, &out_of_range, joint_limit);
         if (skin_stats_io) {
             if (truncated)
                 skin_stats_io->truncated_vertices++;
             if (out_of_range)
                 skin_stats_io->out_of_range_vertices++;
         }
+    } else if (views->has_skin1) {
+        /* Eight-influence import: both sets stay raw; the apply step distributes
+         * the strongest four into the vertex record and the next four into the
+         * mesh's extra-influence side stream. */
     } else if (views->has_skin0) {
         int out_of_range = 0;
-        gltf_mesh_clip_joint_influences(vertex, &out_of_range);
+        gltf_mesh_clip_joint_influences(vertex, &out_of_range, joint_limit);
         gltf_normalize_joint_influences(vertex->weights);
         if (skin_stats_io && out_of_range)
             skin_stats_io->out_of_range_vertices++;
@@ -404,6 +414,117 @@ static void gltf_mesh_apply_vertex_skin(rt_mesh3d *mesh,
     }
 }
 
+/// @brief Distribute up to eight influences across the vertex record (strongest
+///        four) and the mesh's extra-influence side stream (next four), with the
+///        combined weight set normalized to sum 1.
+static void gltf_mesh_apply_vertex_skin8(rt_mesh3d *mesh,
+                                         int32_t vertex_index,
+                                         const gltf_mesh_import_vertex_t *vertex,
+                                         gltf_skin_import_stats_t *skin_stats_io) {
+    uint32_t joints[8];
+    float weights[8];
+    int count = 0;
+    int truncated = 0;
+    int out_of_range = 0;
+    float sum = 0.0f;
+    /* Merge the two source sets, deduplicating joints and dropping out-of-range
+     * or negligible influences. */
+    for (int set = 0; set < 2; set++) {
+        const uint32_t *sj = set == 0 ? vertex->joints : vertex->joints1;
+        const float *sw = set == 0 ? vertex->weights : vertex->weights1;
+        for (int j = 0; j < 4; j++) {
+            float w = sw[j];
+            int found = -1;
+            if (!isfinite(w) || w <= 1e-8f)
+                continue;
+            if (sj[j] >= VGFX3D_MAX_BONES) {
+                out_of_range = 1;
+                continue;
+            }
+            for (int q = 0; q < count; q++) {
+                if (joints[q] == sj[j]) {
+                    found = q;
+                    break;
+                }
+            }
+            if (found >= 0) {
+                weights[found] += w;
+            } else if (count < 8) {
+                joints[count] = sj[j];
+                weights[count] = w;
+                count++;
+            } else {
+                /* ninth meaningful influence: evict the weakest if smaller */
+                int weakest = 0;
+                for (int q = 1; q < 8; q++) {
+                    if (weights[q] < weights[weakest])
+                        weakest = q;
+                }
+                truncated = 1;
+                if (w > weights[weakest]) {
+                    joints[weakest] = sj[j];
+                    weights[weakest] = w;
+                }
+            }
+        }
+    }
+    /* Sort descending by weight (insertion sort over at most 8 entries). */
+    for (int i = 1; i < count; i++) {
+        uint32_t jt = joints[i];
+        float wt = weights[i];
+        int k = i - 1;
+        while (k >= 0 && weights[k] < wt) {
+            joints[k + 1] = joints[k];
+            weights[k + 1] = weights[k];
+            k--;
+        }
+        joints[k + 1] = jt;
+        weights[k + 1] = wt;
+    }
+    for (int i = 0; i < count; i++)
+        sum += weights[i];
+    if (sum > 1e-8f) {
+        for (int i = 0; i < count; i++)
+            weights[i] /= sum;
+    }
+    rt_mesh3d_set_bone_weights(mesh,
+                               vertex_index,
+                               count > 0 ? (int64_t)joints[0] : 0,
+                               count > 0 ? weights[0] : 0.0,
+                               count > 1 ? (int64_t)joints[1] : 0,
+                               count > 1 ? weights[1] : 0.0,
+                               count > 2 ? (int64_t)joints[2] : 0,
+                               count > 2 ? weights[2] : 0.0,
+                               count > 3 ? (int64_t)joints[3] : 0,
+                               count > 3 ? weights[3] : 0.0);
+    if (mesh->extra_influences && vertex_index >= 0 &&
+        (uint32_t)vertex_index < mesh->vertex_count) {
+        /* rt_mesh3d_set_bone_weights renormalizes the four vertex weights to sum
+         * 1, so scale the side-stream weights by the same factor; the skinner
+         * divides by the combined weight, preserving the authored proportions. */
+        vgfx3d_extra_influences_t *extra = &mesh->extra_influences[vertex_index];
+        float primary_sum = 0.0f;
+        int primary_count = count < 4 ? count : 4;
+        for (int i = 0; i < primary_count; i++)
+            primary_sum += weights[i];
+        memset(extra, 0, sizeof(*extra));
+        for (int i = 4; i < count; i++) {
+            extra->indices[i - 4] = (uint16_t)joints[i];
+            extra->weights[i - 4] = primary_sum > 1e-8f ? weights[i] / primary_sum : weights[i];
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (weights[i] > 0.0001f && (int32_t)(joints[i] + 1u) > mesh->bone_count)
+            mesh->bone_count = (int32_t)(joints[i] + 1u);
+    }
+    if (skin_stats_io) {
+        if (truncated)
+            skin_stats_io->truncated_vertices++;
+        if (out_of_range)
+            skin_stats_io->out_of_range_vertices++;
+    }
+}
+
 static int gltf_mesh_import_vertices(rt_mesh3d *mesh,
                                      const gltf_mesh_primitive_views_t *views,
                                      int *invalid_authored_normals_io,
@@ -416,12 +537,15 @@ static int gltf_mesh_import_vertices(rt_mesh3d *mesh,
                                           &vertex,
                                           invalid_authored_normals_io,
                                           invalid_authored_tangents_io,
-                                          skin_stats_io))
+                                          skin_stats_io,
+                                          VGFX3D_MAX_BONES))
             return 0;
         if (!gltf_mesh_append_import_vertex(
                 mesh, vertex.pos, vertex.nrm, vertex.uv, vertex.uv1, vertex.color, vertex.tangent))
             return 0;
-        if (views->has_skin0 || views->has_skin1)
+        if (views->has_skin1 && mesh->extra_influences)
+            gltf_mesh_apply_vertex_skin8(mesh, vi, &vertex, skin_stats_io);
+        else if (views->has_skin0 || views->has_skin1)
             gltf_mesh_apply_vertex_skin(mesh, vi, &vertex);
     }
     return 1;
@@ -484,7 +608,58 @@ typedef struct {
     int32_t **primitive_variant_mappings;
     void **default_material_io;
     int *load_failed_io;
+    /* Current size of the per-mesh-slot tables above; grows past the pre-counted
+     * primitive total when oversized skins partition into extra sub-meshes. */
+    int primitive_table_capacity;
 } gltf_mesh_load_context_t;
+
+/// @brief Ensure the asset mesh array and the per-mesh-slot side tables can hold
+///        @p extra additional meshes beyond the current asset->mesh_count.
+/// @details Partitioned skins are the only path that outgrows the pre-counted
+///          primitive total, so this stays a no-op for ordinary assets.
+static int gltf_mesh_grow_output_tables(gltf_mesh_load_context_t *ctx, int extra) {
+    rt_gltf_asset *asset = ctx->asset;
+    int needed;
+    int old_cap;
+    int new_cap;
+    if (extra <= 0)
+        return 1;
+    if (asset->mesh_count > INT32_MAX - extra)
+        return 0;
+    needed = asset->mesh_count + extra;
+    old_cap = ctx->primitive_table_capacity;
+    if (needed <= old_cap)
+        return 1;
+    new_cap = old_cap > INT32_MAX / 2 ? needed : old_cap * 2;
+    if (new_cap < needed)
+        new_cap = needed;
+    {
+        void **nm = (void **)realloc(asset->meshes, (size_t)new_cap * sizeof(void *));
+        if (!nm)
+            return 0;
+        memset(nm + old_cap, 0, (size_t)(new_cap - old_cap) * sizeof(void *));
+        asset->meshes = nm;
+        asset->mesh_capacity = new_cap;
+    }
+    {
+        void **pm =
+            (void **)realloc(ctx->primitive_materials, (size_t)new_cap * sizeof(void *));
+        if (!pm)
+            return 0;
+        memset(pm + old_cap, 0, (size_t)(new_cap - old_cap) * sizeof(void *));
+        ctx->primitive_materials = pm;
+    }
+    {
+        int32_t **pv = (int32_t **)realloc(ctx->primitive_variant_mappings,
+                                           (size_t)new_cap * sizeof(int32_t *));
+        if (!pv)
+            return 0;
+        memset(pv + old_cap, 0, (size_t)(new_cap - old_cap) * sizeof(int32_t *));
+        ctx->primitive_variant_mappings = pv;
+    }
+    ctx->primitive_table_capacity = new_cap;
+    return 1;
+}
 
 /// @brief Parse a primitive's `extensions.KHR_materials_variants.mappings` into a
 ///        variant-indexed material-index table (-1 = variant unmapped for this primitive).
@@ -604,6 +779,363 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
                                         void *prim_material,
                                         int *mesh_idx_io);
 
+/// @brief Highest joint index carrying meaningful weight across a primitive's
+///        JOINTS_0/JOINTS_1 accessors (-1 when the primitive is unskinned).
+static int32_t gltf_mesh_scan_max_joint(const gltf_mesh_primitive_views_t *views) {
+    int32_t max_joint = -1;
+    if (!views->has_skin0 && !views->has_skin1)
+        return -1;
+    for (int32_t vi = 0; vi < views->pos.count; vi++) {
+        uint32_t joints[4];
+        float weights[4];
+        if (views->has_skin0) {
+            gltf_accessor_read_u32(&views->joints, vi, joints, 4);
+            gltf_accessor_read_f32(&views->weights, vi, weights, 4);
+            for (int j = 0; j < 4; j++) {
+                if (isfinite(weights[j]) && weights[j] > 1e-8f &&
+                    (int32_t)joints[j] > max_joint)
+                    max_joint = (int32_t)joints[j];
+            }
+        }
+        if (views->has_skin1) {
+            gltf_accessor_read_u32(&views->joints1, vi, joints, 4);
+            gltf_accessor_read_f32(&views->weights1, vi, weights, 4);
+            for (int j = 0; j < 4; j++) {
+                if (isfinite(weights[j]) && weights[j] > 1e-8f &&
+                    (int32_t)joints[j] > max_joint)
+                    max_joint = (int32_t)joints[j];
+            }
+        }
+    }
+    return max_joint;
+}
+
+/// @brief Should this skinned primitive take the partitioning path?
+/// @details True only when the meaningful joint set exceeds the draw palette AND
+///          the document declares a skin large enough to own those joints —
+///          out-of-range garbage (joints past every skin) keeps the historical
+///          clip-and-warn behavior instead of manufacturing phantom palettes.
+static int gltf_mesh_primitive_needs_partition(void *root,
+                                               const gltf_mesh_primitive_views_t *views) {
+    int32_t max_joint = gltf_mesh_scan_max_joint(views);
+    void *skins = jarr(root, "skins");
+    int64_t skin_count = jarr_len(skins);
+    int64_t largest_skin = 0;
+    if (max_joint < VGFX3D_MAX_BONES)
+        return 0;
+    for (int64_t i = 0; i < skin_count; i++) {
+        int64_t joints = jarr_len(jarr(rt_seq_get(skins, i), "joints"));
+        if (joints > largest_skin)
+            largest_skin = joints;
+    }
+    return (int64_t)max_joint < largest_skin &&
+           largest_skin <= (int64_t)VGFX3D_MAX_SKELETON_BONES;
+}
+
+/// @brief Import a skinned primitive whose joint set exceeds the 256-slot draw
+///        palette by splitting its triangles into sub-meshes whose bone sets fit.
+/// @details Standard skin-partitioning: triangles are bucketed greedily; each
+///          bucket becomes an independent Mesh3D whose vertex bone indices are
+///          bucket-local and whose `bone_map` translates palette slots back to
+///          skeleton bone indices at draw time. Morph targets cannot survive the
+///          vertex reordering and are skipped with a warning.
+static void gltf_mesh_import_partitioned_primitive(gltf_mesh_load_context_t *ctx,
+                                                   void *prim,
+                                                   const gltf_mesh_primitive_views_t *views,
+                                                   int mesh_json_index,
+                                                   int primitive_index,
+                                                   int64_t mode,
+                                                   int64_t material_idx,
+                                                   void *prim_material,
+                                                   int *mesh_idx_io) {
+    int32_t vertex_count = views->pos.count;
+    gltf_mesh_import_vertex_t *raw = NULL;
+    uint32_t *tris = NULL; /* flat triangle list (source vertex indices) */
+    int32_t tri_count = 0;
+    int32_t *bucket_of_tri = NULL;
+    int32_t bucket_count = 0;
+    int32_t *joint_bucket = NULL; /* per-joint last-seen bucket id */
+    int32_t *joint_local = NULL;  /* per-joint local slot for the current bucket */
+    int32_t *vertex_local = NULL; /* per-vertex local index for the current bucket */
+    int invalid_authored_normals = 0;
+    int invalid_authored_tangents = 0;
+    int emitted_meshes = 0;
+    gltf_skin_import_stats_t skin_stats = {0u, 0u};
+    if (vertex_count <= 0)
+        return;
+
+    raw = (gltf_mesh_import_vertex_t *)malloc((size_t)vertex_count * sizeof(*raw));
+    if (!raw)
+        goto fail;
+    for (int32_t vi = 0; vi < vertex_count; vi++) {
+        if (!gltf_mesh_read_import_vertex(views,
+                                          vi,
+                                          &raw[vi],
+                                          &invalid_authored_normals,
+                                          &invalid_authored_tangents,
+                                          &skin_stats,
+                                          VGFX3D_MAX_SKELETON_BONES))
+            goto fail;
+    }
+
+    /* Expand the primitive into a flat triangle list (same modes as
+     * gltf_append_primitive_indices; out-of-range indices drop the triangle). */
+    {
+        const gltf_accessor_view_t *index_view = views->has_indices ? &views->idx : NULL;
+        int32_t count = index_view ? index_view->count : vertex_count;
+        int32_t max_tris = count;
+        if (count < 3)
+            goto fail;
+        tris = (uint32_t *)malloc((size_t)max_tris * 3u * sizeof(uint32_t));
+        if (!tris)
+            goto fail;
+        if (mode == 4) {
+            for (int32_t i = 0; i + 2 < count; i += 3) {
+                uint32_t a = gltf_read_index(index_view, i);
+                uint32_t b = gltf_read_index(index_view, i + 1);
+                uint32_t c = gltf_read_index(index_view, i + 2);
+                if (a >= (uint32_t)vertex_count || b >= (uint32_t)vertex_count ||
+                    c >= (uint32_t)vertex_count || a == b || b == c || a == c)
+                    continue;
+                tris[tri_count * 3 + 0] = a;
+                tris[tri_count * 3 + 1] = b;
+                tris[tri_count * 3 + 2] = c;
+                tri_count++;
+            }
+        } else if (mode == 5) {
+            for (int32_t i = 0; i + 2 < count; i++) {
+                uint32_t a = gltf_read_index(index_view, i);
+                uint32_t b = gltf_read_index(index_view, i + 1);
+                uint32_t c = gltf_read_index(index_view, i + 2);
+                if ((i & 1) != 0) {
+                    uint32_t tmp = a;
+                    a = b;
+                    b = tmp;
+                }
+                if (a >= (uint32_t)vertex_count || b >= (uint32_t)vertex_count ||
+                    c >= (uint32_t)vertex_count || a == b || b == c || a == c)
+                    continue;
+                tris[tri_count * 3 + 0] = a;
+                tris[tri_count * 3 + 1] = b;
+                tris[tri_count * 3 + 2] = c;
+                tri_count++;
+            }
+        } else if (mode == 6) {
+            uint32_t a = gltf_read_index(index_view, 0);
+            for (int32_t i = 1; i + 1 < count; i++) {
+                uint32_t b = gltf_read_index(index_view, i);
+                uint32_t c = gltf_read_index(index_view, i + 1);
+                if (a >= (uint32_t)vertex_count || b >= (uint32_t)vertex_count ||
+                    c >= (uint32_t)vertex_count || a == b || b == c || a == c)
+                    continue;
+                tris[tri_count * 3 + 0] = a;
+                tris[tri_count * 3 + 1] = b;
+                tris[tri_count * 3 + 2] = c;
+                tri_count++;
+            }
+        }
+        if (tri_count == 0) {
+            rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_SKIPPED_PRIMITIVES, 1);
+            rt_asset_error_add_warning(
+                "glTF primitive skipped: its indices form no valid triangles");
+            free(raw);
+            free(tris);
+            return;
+        }
+    }
+
+    /* Greedy triangle bucketing: keep adding triangles while the bucket's bone
+     * set stays within the draw palette. */
+    bucket_of_tri = (int32_t *)malloc((size_t)tri_count * sizeof(int32_t));
+    joint_bucket = (int32_t *)malloc((size_t)VGFX3D_MAX_SKELETON_BONES * sizeof(int32_t));
+    joint_local = (int32_t *)malloc((size_t)VGFX3D_MAX_SKELETON_BONES * sizeof(int32_t));
+    vertex_local = (int32_t *)malloc((size_t)vertex_count * sizeof(int32_t));
+    if (!bucket_of_tri || !joint_bucket || !joint_local || !vertex_local)
+        goto fail;
+    for (int32_t j = 0; j < VGFX3D_MAX_SKELETON_BONES; j++)
+        joint_bucket[j] = -1;
+    {
+        int32_t bucket_joint_count = 0;
+        bucket_count = 1;
+        for (int32_t t = 0; t < tri_count; t++) {
+            int32_t fresh = 0;
+            int32_t tri_joints[12];
+            int32_t tri_joint_count = 0;
+            for (int k = 0; k < 3; k++) {
+                const gltf_mesh_import_vertex_t *v = &raw[tris[t * 3 + k]];
+                for (int j = 0; j < 4; j++) {
+                    if (v->weights[j] > 1e-8f &&
+                        v->joints[j] < (uint32_t)VGFX3D_MAX_SKELETON_BONES) {
+                        int32_t joint = (int32_t)v->joints[j];
+                        int seen = 0;
+                        for (int32_t q = 0; q < tri_joint_count; q++) {
+                            if (tri_joints[q] == joint) {
+                                seen = 1;
+                                break;
+                            }
+                        }
+                        if (!seen)
+                            tri_joints[tri_joint_count++] = joint;
+                    }
+                }
+            }
+            for (int32_t q = 0; q < tri_joint_count; q++) {
+                if (joint_bucket[tri_joints[q]] != bucket_count - 1)
+                    fresh++;
+            }
+            if (bucket_joint_count + fresh > VGFX3D_MAX_BONES) {
+                bucket_count++;
+                bucket_joint_count = 0;
+                fresh = tri_joint_count;
+            }
+            for (int32_t q = 0; q < tri_joint_count; q++) {
+                if (joint_bucket[tri_joints[q]] != bucket_count - 1) {
+                    joint_bucket[tri_joints[q]] = bucket_count - 1;
+                    bucket_joint_count++;
+                }
+            }
+            bucket_of_tri[t] = bucket_count - 1;
+        }
+    }
+
+    if (!gltf_mesh_grow_output_tables(ctx, bucket_count))
+        goto fail;
+
+    /* Build one sub-mesh per bucket. */
+    for (int32_t bucket = 0; bucket < bucket_count; bucket++) {
+        rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new();
+        int32_t local_joint_count = 0;
+        int32_t local_vertex_count = 0;
+        int emitted = 0;
+        if (!mesh)
+            goto fail;
+        for (int32_t j = 0; j < VGFX3D_MAX_SKELETON_BONES; j++)
+            joint_local[j] = -1;
+        for (int32_t vi = 0; vi < vertex_count; vi++)
+            vertex_local[vi] = -1;
+        rt_mesh3d_begin_geometry_batch(mesh);
+        rt_mesh3d_reserve(mesh, vertex_count, tri_count);
+        if (mesh->build_failed) {
+            gltf_release_local(mesh);
+            goto fail;
+        }
+        for (int32_t t = 0; t < tri_count; t++) {
+            uint32_t local_idx[3];
+            if (bucket_of_tri[t] != bucket)
+                continue;
+            for (int k = 0; k < 3; k++) {
+                uint32_t src_vi = tris[t * 3 + k];
+                if (vertex_local[src_vi] < 0) {
+                    const gltf_mesh_import_vertex_t *v = &raw[src_vi];
+                    int64_t local_joints[4] = {0, 0, 0, 0};
+                    double local_weights[4] = {0.0, 0.0, 0.0, 0.0};
+                    if (!gltf_mesh_append_import_vertex(
+                            mesh, v->pos, v->nrm, v->uv, v->uv1, v->color, v->tangent)) {
+                        gltf_release_local(mesh);
+                        goto fail;
+                    }
+                    for (int j = 0; j < 4; j++) {
+                        int32_t joint;
+                        if (v->weights[j] <= 1e-8f ||
+                            v->joints[j] >= (uint32_t)VGFX3D_MAX_SKELETON_BONES)
+                            continue;
+                        joint = (int32_t)v->joints[j];
+                        if (joint_local[joint] < 0)
+                            joint_local[joint] = local_joint_count++;
+                        local_joints[j] = joint_local[joint];
+                        local_weights[j] = v->weights[j];
+                    }
+                    rt_mesh3d_set_bone_weights(mesh,
+                                               local_vertex_count,
+                                               local_joints[0],
+                                               local_weights[0],
+                                               local_joints[1],
+                                               local_weights[1],
+                                               local_joints[2],
+                                               local_weights[2],
+                                               local_joints[3],
+                                               local_weights[3]);
+                    vertex_local[src_vi] = local_vertex_count++;
+                }
+                local_idx[k] = (uint32_t)vertex_local[src_vi];
+            }
+            emitted += gltf_emit_triangle(mesh,
+                                          (uint32_t)local_vertex_count,
+                                          local_idx[0],
+                                          local_idx[1],
+                                          local_idx[2]);
+            if (mesh->build_failed) {
+                gltf_release_local(mesh);
+                goto fail;
+            }
+        }
+        rt_mesh3d_end_geometry_batch(mesh);
+        if (!emitted || local_joint_count <= 0) {
+            gltf_release_local(mesh);
+            continue;
+        }
+        /* Palette slot -> skeleton bone map. */
+        mesh->bone_map = (int32_t *)malloc((size_t)local_joint_count * sizeof(int32_t));
+        if (!mesh->bone_map) {
+            gltf_release_local(mesh);
+            goto fail;
+        }
+        for (int32_t j = 0; j < VGFX3D_MAX_SKELETON_BONES; j++) {
+            if (joint_local[j] >= 0)
+                mesh->bone_map[joint_local[j]] = j;
+        }
+        mesh->bone_count = local_joint_count;
+        if ((!views->has_normals || invalid_authored_normals) && mesh->vertex_count > 0)
+            rt_mesh3d_recalc_normals(mesh);
+        if ((!views->has_tangents || invalid_authored_tangents) && views->has_uv0 &&
+            material_idx >= 0 && material_idx < ctx->asset->material_count) {
+            rt_material3d *tangent_material = (rt_material3d *)prim_material;
+            if (rt_gltf_active_load_options()->force_tangents ||
+                (tangent_material && tangent_material->normal_map))
+                rt_mesh3d_calc_tangents(mesh);
+        }
+        ctx->asset->meshes[*mesh_idx_io] = mesh;
+        (*mesh_idx_io)++;
+        ctx->asset->mesh_count = *mesh_idx_io;
+        if (ctx->primitive_materials)
+            ctx->primitive_materials[*mesh_idx_io - 1] = prim_material;
+        gltf_mesh_store_primitive_variant_mapping(ctx, prim, *mesh_idx_io - 1);
+        emitted_meshes++;
+    }
+
+    gltf_emit_skin_import_warnings(mesh_json_index, primitive_index, &skin_stats);
+    if (jarr_len(jarr(prim, "targets")) > 0)
+        rt_asset_error_add_warningf(
+            "glTF mesh %d primitive %d: morph targets dropped (primitive was partitioned "
+            "across bone palettes)",
+            mesh_json_index,
+            primitive_index);
+    if (emitted_meshes > 0)
+        rt_asset_error_add_warningf(
+            "glTF mesh %d primitive %d: skin exceeds %d bones; partitioned into %d "
+            "sub-meshes",
+            mesh_json_index,
+            primitive_index,
+            (int)VGFX3D_MAX_BONES,
+            emitted_meshes);
+    free(raw);
+    free(tris);
+    free(bucket_of_tri);
+    free(joint_bucket);
+    free(joint_local);
+    free(vertex_local);
+    return;
+fail:
+    free(raw);
+    free(tris);
+    free(bucket_of_tri);
+    free(joint_bucket);
+    free(joint_local);
+    free(vertex_local);
+    if (ctx->load_failed_io)
+        *ctx->load_failed_io = 1;
+}
+
 static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
                                        void *mesh_json,
                                        void *prim,
@@ -638,7 +1170,8 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
                                     mesh_idx_io);
         return;
     }
-    if (gltf_mesh_take_preloaded_primitive(ctx->asset,
+    if (!(rt_gltf_active_load_options()->eight_bone_influences && jget(attrs, "JOINTS_1")) &&
+        gltf_mesh_take_preloaded_primitive(ctx->asset,
                                            ctx->preload_bundle,
                                            mesh_json_index,
                                            primitive_index,
@@ -658,6 +1191,20 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
                                         ctx->load_failed_io))
         return;
 
+    if ((views.has_skin0 || views.has_skin1) &&
+        gltf_mesh_primitive_needs_partition(ctx->root, &views)) {
+        gltf_mesh_import_partitioned_primitive(ctx,
+                                               prim,
+                                               &views,
+                                               mesh_json_index,
+                                               primitive_index,
+                                               mode,
+                                               material_idx,
+                                               prim_material,
+                                               mesh_idx_io);
+        return;
+    }
+
     mesh = rt_mesh3d_new();
     if (!mesh)
         return;
@@ -668,6 +1215,17 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
         if (ctx->load_failed_io)
             *ctx->load_failed_io = 1;
         return;
+    }
+    if (rt_gltf_active_load_options()->eight_bone_influences && views.has_skin1 &&
+        views.pos.count > 0) {
+        ((rt_mesh3d *)mesh)->extra_influences = (vgfx3d_extra_influences_t *)calloc(
+            (size_t)views.pos.count, sizeof(vgfx3d_extra_influences_t));
+        if (!((rt_mesh3d *)mesh)->extra_influences) {
+            gltf_release_local(mesh);
+            if (ctx->load_failed_io)
+                *ctx->load_failed_io = 1;
+            return;
+        }
     }
 
     primitive_failed = !gltf_mesh_import_vertices((rt_mesh3d *)mesh,
@@ -759,11 +1317,12 @@ static float gltf_draco_attribute_float(const draco_attribute *att, uint32_t val
 }
 
 /// @brief Build a Mesh3D from a KHR_draco_mesh_compression primitive payload.
-/// @details Decodes the extension's bufferView through the Draco decoder, then maps
-///          the extension's attribute ids onto the decoded attributes (POSITION is
-///          required; NORMAL/TEXCOORD_0/TEXCOORD_1/COLOR_0/JOINTS_0/WEIGHTS_0 are
-///          optional). Unsupported encodings (edgebreaker) and corrupt payloads set
-///          load_failed with a named diagnostic.
+/// @details Decodes the extension's bufferView through the Draco decoder (sequential
+///          and edgebreaker encodings), then maps the extension's attribute ids onto
+///          the decoded attributes (POSITION is required; NORMAL/TEXCOORD_0/
+///          TEXCOORD_1/COLOR_0/JOINTS_0/WEIGHTS_0 are optional). Unsupported
+///          encodings (point clouds) and corrupt payloads set load_failed with a
+///          named diagnostic.
 static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
                                         void *mesh_json,
                                         void *prim,
@@ -796,8 +1355,8 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
     if (!draco_decode_mesh(payload, payload_len, &draco, &unsupported)) {
         if (unsupported)
             rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
-                                "GLTF.Load: mesh %d primitive %d uses Draco edgebreaker "
-                                "connectivity (unsupported)",
+                                "GLTF.Load: mesh %d primitive %d uses an unsupported Draco "
+                                "encoding (point cloud)",
                                 mesh_json_index,
                                 primitive_index);
         else
@@ -1037,11 +1596,16 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
             ctx.primitive_variant_mappings = primitive_variant_mappings;
             ctx.default_material_io = &default_material;
             ctx.load_failed_io = load_failed_io;
+            ctx.primitive_table_capacity = total_prims;
             int mesh_idx = 0;
             for (int mi = 0; mi < mesh_json_count && asset->meshes; mi++) {
                 gltf_mesh_import_mesh_primitives(
                     &ctx, meshes_arr, mi, mesh_prim_start, mesh_prim_count, &mesh_idx);
             }
+            /* Partitioned skins may have grown (reallocated) the side tables. */
+            primitive_materials = ctx.primitive_materials;
+            primitive_variant_mappings = ctx.primitive_variant_mappings;
+            primitive_variant_mapping_count = ctx.primitive_table_capacity;
         }
     }
 finish:

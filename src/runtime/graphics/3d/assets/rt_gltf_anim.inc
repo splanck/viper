@@ -293,7 +293,7 @@ static int gltf_parse_skin_entry(rt_gltf_asset *asset,
     int32_t joint_count;
     if (joint_count64 <= 0)
         return 0;
-    if (joint_count64 > INT32_MAX || joint_count64 > VGFX3D_MAX_BONES)
+    if (joint_count64 > INT32_MAX || joint_count64 > VGFX3D_MAX_SKELETON_BONES)
         return -1;
     joint_count = (int32_t)joint_count64;
     if (!gltf_skin_init_entry(skin, joint_count))
@@ -873,6 +873,88 @@ static void gltf_slerp_quat(const float *a, const float *b, double alpha, float 
     }
 }
 
+/// @brief Produce per-second Hermite tangents for a CUBICSPLINE curve at @p time.
+/// @details At authored key times the exported in/out tangents are returned (they
+///          may legitimately differ, giving velocity discontinuities); between keys
+///          the spline's derivative is returned for both, so re-emitting keys at
+///          union times reproduces the source spline exactly per segment.
+/// @return 1 when tangents were produced (curve is CUBICSPLINE and valid), else 0.
+static int gltf_sample_curve_tangents(const gltf_anim_curve_t *curve,
+                                      double time,
+                                      float *out_in_tangent,
+                                      float *out_out_tangent,
+                                      int32_t components) {
+    int32_t key_count;
+    int32_t lo;
+    int32_t hi;
+    double t0;
+    double t1;
+    if (!curve || !curve->valid || !curve->interpolation ||
+        strcmp(curve->interpolation, "CUBICSPLINE") != 0 || components <= 0 ||
+        components > 4 || curve->input.count <= 0 || !isfinite(time))
+        return 0;
+    key_count = curve->input.count;
+    if (key_count > INT32_MAX / 3 || curve->output.count < key_count * 3)
+        key_count = curve->output.count / 3;
+    if (key_count <= 0)
+        return 0;
+    memset(out_in_tangent, 0, (size_t)components * sizeof(float));
+    memset(out_out_tangent, 0, (size_t)components * sizeof(float));
+    /* Clamp regions and exact key hits use the authored tangents. */
+    for (int32_t edge = 0; edge < 2; edge++) {
+        int32_t k = edge == 0 ? 0 : key_count - 1;
+        double kt = gltf_curve_time(&curve->input, k);
+        if ((edge == 0 && time <= kt) || (edge == 1 && time >= kt)) {
+            gltf_curve_read_output_value(curve, k * 3, out_in_tangent, components);
+            gltf_curve_read_output_value(curve, k * 3 + 2, out_out_tangent, components);
+            return 1;
+        }
+    }
+    lo = 0;
+    hi = key_count - 1;
+    while (hi - lo > 1) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (gltf_curve_time(&curve->input, mid) <= time)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    t0 = gltf_curve_time(&curve->input, lo);
+    t1 = gltf_curve_time(&curve->input, hi);
+    if (fabs(time - t0) < 1e-6 || fabs(time - t1) < 1e-6) {
+        int32_t k = fabs(time - t0) < 1e-6 ? lo : hi;
+        gltf_curve_read_output_value(curve, k * 3, out_in_tangent, components);
+        gltf_curve_read_output_value(curve, k * 3 + 2, out_out_tangent, components);
+        return 1;
+    }
+    {
+        /* Interior derivative of the Hermite segment, in value units per second. */
+        double dt = t1 - t0;
+        double alpha = dt > 0.0 ? (time - t0) / dt : 0.0;
+        double a2 = alpha * alpha;
+        double d00 = (6.0 * a2 - 6.0 * alpha) / dt;
+        double d10 = 3.0 * a2 - 4.0 * alpha + 1.0;
+        double d01 = (-6.0 * a2 + 6.0 * alpha) / dt;
+        double d11 = 3.0 * a2 - 2.0 * alpha;
+        float p0[4] = {0, 0, 0, 0};
+        float p1[4] = {0, 0, 0, 0};
+        float m0[4] = {0, 0, 0, 0};
+        float m1[4] = {0, 0, 0, 0};
+        if (lo > (INT32_MAX - 2) / 3 || hi > INT32_MAX / 3)
+            return 0;
+        gltf_curve_read_output_value(curve, lo * 3 + 1, p0, components);
+        gltf_curve_read_output_value(curve, hi * 3 + 1, p1, components);
+        gltf_curve_read_output_value(curve, lo * 3 + 2, m0, components);
+        gltf_curve_read_output_value(curve, hi * 3, m1, components);
+        for (int32_t c = 0; c < components; c++) {
+            double deriv = d00 * p0[c] + d10 * m0[c] + d01 * p1[c] + d11 * m1[c];
+            out_in_tangent[c] = (float)deriv;
+            out_out_tangent[c] = (float)deriv;
+        }
+        return 1;
+    }
+}
+
 /// @brief Sample an animation curve at an arbitrary time, respecting its interpolation.
 /// @details Handles clamping (before first / after last key), STEP interpolation (hold
 ///          previous value), LINEAR interpolation, and glTF CUBICSPLINE Hermite sampling
@@ -1143,11 +1225,9 @@ static int gltf_skin_anim_collect_bone_curves(const gltf_anim_curve_t *curves,
             curve_r = &curves[ci];
         else if (curves[ci].path == 2)
             curve_s = &curves[ci];
-        /* Skeletal playback stores discrete keys (linear/slerp interpolation), so a
-         * CUBICSPLINE channel is Hermite-sampled at import and baked to sampled keys.
-         * Report the bake — the node-animation path keeps true cubic tangents. */
-        if (curves[ci].interpolation && strcmp(curves[ci].interpolation, "CUBICSPLINE") == 0)
-            rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS, 1);
+        /* CUBICSPLINE channels keep their Hermite tangents on the emitted keys
+         * (values at union times plus authored/derived tangents reproduce the
+         * source spline exactly per segment), so no bake is reported here. */
         if (!gltf_anim_insert_curve_times(&times, &time_count, &time_capacity, &curves[ci])) {
             free(times);
             return 0;
@@ -1197,7 +1277,22 @@ static int gltf_skin_anim_emit_bone_samples(void *anim,
         rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
         scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
         if (pos_obj && rot_obj && scl_obj) {
+            float pin[3], pout[3], rin[4], rout[4], sin_[3], sout[3];
+            int pos_cubic = gltf_sample_curve_tangents(curve_t, times[ti], pin, pout, 3);
+            int rot_cubic = gltf_sample_curve_tangents(curve_r, times[ti], rin, rout, 4);
+            int scl_cubic = gltf_sample_curve_tangents(curve_s, times[ti], sin_, sout, 3);
             rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+            if (pos_cubic || rot_cubic || scl_cubic) {
+                rt_animation3d_set_keyframe_tangents(anim,
+                                                     bone,
+                                                     times[ti],
+                                                     pos_cubic ? pin : NULL,
+                                                     pos_cubic ? pout : NULL,
+                                                     rot_cubic ? rin : NULL,
+                                                     rot_cubic ? rout : NULL,
+                                                     scl_cubic ? sin_ : NULL,
+                                                     scl_cubic ? sout : NULL);
+            }
             emitted = 1;
         }
         gltf_release_ref(&pos_obj);
@@ -1367,6 +1462,13 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 asset->animation_count >= asset->animation_capacity) {
                 gltf_release_ref(&anim);
                 continue;
+            }
+            if (rt_gltf_active_load_options()->compress_animations) {
+                int64_t dropped =
+                    rt_animation3d_compress_keyframes(anim, 1e-4, 1e-5, 1e-4);
+                if (dropped > 0)
+                    rt_asset_error_add_import_stat(
+                        RT_ASSET_IMPORT_STAT_COMPRESSED_ANIMATION_KEYS_DROPPED, dropped);
             }
             asset->animations[asset->animation_count++] = anim;
         }

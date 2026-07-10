@@ -33,8 +33,8 @@ static int8_t anim_player_current_looping(rt_anim_player3d *p);
 static int32_t skeleton3d_pose_capacity_for_count(int32_t bone_count) {
     if (bone_count <= 0)
         return 1;
-    if (bone_count > VGFX3D_MAX_BONES)
-        return VGFX3D_MAX_BONES;
+    if (bone_count > VGFX3D_MAX_SKELETON_BONES)
+        return VGFX3D_MAX_SKELETON_BONES;
     return bone_count;
 }
 
@@ -268,9 +268,10 @@ static void compute_bone_palette(rt_anim_player3d *p) {
          * blend below resolves channels with an O(1) lookup instead of the prior
          * O(channels) scan per bone (turning O(bones*channels) into O(bones+channels)).
          * A NULL channel reproduces the original find-miss bind-pose fallback exactly. */
-        int32_t from_ch[VGFX3D_MAX_BONES];
-        int32_t to_ch[VGFX3D_MAX_BONES];
-        int32_t mapped = bone_count < VGFX3D_MAX_BONES ? bone_count : VGFX3D_MAX_BONES;
+        int32_t from_ch[VGFX3D_MAX_SKELETON_BONES];
+        int32_t to_ch[VGFX3D_MAX_SKELETON_BONES];
+        int32_t mapped =
+            bone_count < VGFX3D_MAX_SKELETON_BONES ? bone_count : VGFX3D_MAX_SKELETON_BONES;
         int32_t from_count = animation3d_safe_channel_count(crossfade_from);
         int32_t to_count = animation3d_safe_channel_count(current);
         for (int32_t b = 0; b < mapped; b++) {

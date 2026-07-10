@@ -43,7 +43,7 @@ typedef struct {
     float weight;
     int32_t mask_root_bone;
     int32_t mask_bone_count_seen;
-    uint8_t mask_bits[VGFX3D_MAX_BONES];
+    uint8_t mask_bits[VGFX3D_MAX_SKELETON_BONES];
 } anim_controller3d_layer_t;
 
 typedef struct {
@@ -606,8 +606,8 @@ static void controller_set_all_mask_bits(anim_controller3d_layer_t *layer, int32
         return;
     if (bone_count < 0)
         bone_count = 0;
-    if (bone_count > VGFX3D_MAX_BONES)
-        bone_count = VGFX3D_MAX_BONES;
+    if (bone_count > VGFX3D_MAX_SKELETON_BONES)
+        bone_count = VGFX3D_MAX_SKELETON_BONES;
     memset(layer->mask_bits, 0, sizeof(layer->mask_bits));
     for (int32_t bone = 0; bone < bone_count; bone++)
         layer->mask_bits[bone] = 1;
@@ -727,12 +727,16 @@ static void controller_mat4f_mul(const float *a, const float *b, float *out) {
 /// @brief Reset final globals to bind pose and final palette to skinning identity.
 static void controller_bind_pose_palette(rt_anim_controller3d *controller) {
     int32_t bone_count;
-    float bind_locals[VGFX3D_MAX_BONES * 16];
+    float *bind_locals;
     if (!controller || !controller->final_palette || !controller->final_globals ||
         !controller->skeleton)
         return;
     bone_count = controller_safe_bone_count(controller->skeleton);
     if (bone_count <= 0)
+        return;
+    /* Heap-allocated: a 1024-bone rig would need 64 KB of stack here. */
+    bind_locals = (float *)malloc((size_t)bone_count * 16u * sizeof(float));
+    if (!bind_locals)
         return;
     for (int32_t bone = 0; bone < bone_count; bone++)
         memcpy(&bind_locals[bone * 16],
@@ -745,6 +749,7 @@ static void controller_bind_pose_palette(rt_anim_controller3d *controller) {
                              controller->skeleton->bones[bone].inverse_bind,
                              &controller->final_palette[bone * 16]);
     }
+    free(bind_locals);
 }
 
 static void controller_quat_from_matrix_rows(double m00,

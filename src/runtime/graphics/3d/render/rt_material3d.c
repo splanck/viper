@@ -486,7 +486,7 @@ static void material_sanitize_state(rt_material3d *mat) {
     mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->anisotropy = mat->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 12; i++)
         mat->custom_params[i] = clamp_range(mat->custom_params[i],
                                             -MATERIAL3D_CUSTOM_PARAM_ABS_MAX,
                                             MATERIAL3D_CUSTOM_PARAM_ABS_MAX);
@@ -904,10 +904,10 @@ int64_t rt_material3d_get_shading_model(void *obj) {
     return mat->shading_model;
 }
 
-/// @brief Set a custom shader parameter by index (0–7) for advanced shading effects.
+/// @brief Set a custom shader parameter by index (0–11) for advanced shading effects.
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
     rt_material3d *mat = material_checked(obj);
-    if (!mat || index < 0 || index >= 8)
+    if (!mat || index < 0 || index >= 12)
         return;
     mat->custom_params[index] =
         clamp_range(value, -MATERIAL3D_CUSTOM_PARAM_ABS_MAX, MATERIAL3D_CUSTOM_PARAM_ABS_MAX);

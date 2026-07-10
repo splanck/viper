@@ -37,9 +37,9 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_BONES 256
 #define VGFX3D_D3D11_BONE_PALETTE_FLOATS (VGFX3D_D3D11_MAX_BONES * 16u)
 #define VGFX3D_D3D11_BONE_PALETTE_BYTES (sizeof(float) * VGFX3D_D3D11_BONE_PALETTE_FLOATS)
-#define VGFX3D_D3D11_MAX_MORPH_SHAPES 32
+#define VGFX3D_D3D11_MAX_MORPH_SHAPES 64
 #define VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS (VGFX3D_D3D11_MAX_MORPH_SHAPES / 4)
-#define VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS 2
+#define VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS 3
 #define VGFX3D_D3D11_TEXTURE_SLOT_COUNT RT_MATERIAL3D_TEXTURE_SLOT_COUNT
 #define VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION 16384
 #define VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION 16384
@@ -113,6 +113,10 @@ typedef struct {
     int32_t vertex_count;
     int32_t has_prev_morph_weights;
     int32_t has_prev_instance_matrices;
+    /* R18 per-instance bone-palette stride (0 = shared palette); padded to a
+     * full float4 row so the HLSL cbuffer layout stays 16-byte aligned. */
+    int32_t instance_bone_stride;
+    int32_t _pad_stride[3];
     float morph_weights_packed[VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS][4];
     float prev_morph_weights_packed[VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS][4];
 } vgfx3d_d3d11_per_object_t;

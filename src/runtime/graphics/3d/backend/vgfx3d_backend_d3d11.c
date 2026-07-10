@@ -36,6 +36,7 @@
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
+#include "vgfx3d_brdf_lut.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <limits.h>
@@ -328,6 +329,8 @@ typedef struct {
     ID3D11ShaderResourceView *fallback_white_srv;
     ID3D11Texture2D *fallback_white_cube_tex;
     ID3D11ShaderResourceView *fallback_white_cube_srv;
+    ID3D11Texture2D *brdf_lut_tex;
+    ID3D11ShaderResourceView *brdf_lut_srv;
 
     ID3D11VertexShader *vs_main;
     ID3D11VertexShader *vs_instanced;
@@ -1749,6 +1752,41 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
         SAFE_RELEASE(ctx->fallback_white_cube_tex);
         SAFE_RELEASE(ctx->fallback_white_srv);
         SAFE_RELEASE(ctx->fallback_white_tex);
+        return hr;
+    }
+
+    /* Split-sum environment BRDF table (shared CPU precomputation, immutable). */
+    if (!ctx->brdf_lut_srv) {
+        memset(&desc, 0, sizeof(desc));
+        desc.Width = VGFX3D_BRDF_LUT_SIZE;
+        desc.Height = VGFX3D_BRDF_LUT_SIZE;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R32G32_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_IMMUTABLE;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        memset(&init_data, 0, sizeof(init_data));
+        init_data.pSysMem = vgfx3d_brdf_lut_data();
+        init_data.SysMemPitch = (UINT)(VGFX3D_BRDF_LUT_SIZE * 2u * sizeof(float));
+        init_data.SysMemSlicePitch = 0;
+        hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, &init_data, &ctx->brdf_lut_tex);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("CreateTexture2D(brdfLut)", hr);
+            return hr;
+        }
+        memset(&srv_desc, 0, sizeof(srv_desc));
+        srv_desc.Format = desc.Format;
+        srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Texture2D.MipLevels = 1;
+        hr = ID3D11Device_CreateShaderResourceView(ctx->device,
+                                                   (ID3D11Resource *)ctx->brdf_lut_tex,
+                                                   &srv_desc,
+                                                   &ctx->brdf_lut_srv);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("CreateShaderResourceView(brdfLut)", hr);
+            SAFE_RELEASE(ctx->brdf_lut_tex);
+        }
     }
     return hr;
 }

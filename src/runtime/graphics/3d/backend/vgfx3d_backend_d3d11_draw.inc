@@ -289,6 +289,9 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
         cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
+    object_data->instance_bone_stride =
+        (object_data->has_skinning && cmd->instance_bone_stride > 0) ? cmd->instance_bone_stride
+                                                                     : 0;
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
         morph_count =
@@ -587,7 +590,7 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
                                     VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
                                     cmd->custom_params,
-                                    8);
+                                    12);
     for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         if (slot < 4)
             material_data->texture_uv_sets0[slot] =
@@ -1035,7 +1038,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                                      const vgfx3d_draw_cmd_t *cmd,
                                      d3d_draw_resources_t *resources) {
-    ID3D11ShaderResourceView *srvs[18];
+    ID3D11ShaderResourceView *srvs[19];
 
     if (!ctx || !cmd || !resources)
         return 0;
@@ -1137,9 +1140,13 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         srvs[12] = NULL;
     }
 
-    /* Bind 0..15 and t17 (atlas) while leaving t16 (opaque depth) alone. */
+    srvs[18] = ctx->brdf_lut_srv;
+
+    /* Bind 0..15 and t17 (atlas) + t18 (BRDF LUT), leaving t16 (opaque depth)
+     * alone. */
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, srvs);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 17, 1, &srvs[17]);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 18, 1, &srvs[18]);
     return resources->has_splat;
 }
 

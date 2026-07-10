@@ -18,6 +18,7 @@
 ///          such as pass management or VM execution is delegated to subcommands.
 
 #include "cli.hpp"
+#include "cmd_asset.hpp"
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
 #include "common/PlatformCapabilities.hpp"
@@ -1379,6 +1380,7 @@ void printTopLevelUsage(std::ostream &out) {
         << "       viper eval [options] [code]\n"
         << "       viper explain <diagnostic-code>\n"
         << "       viper package [target] [--target macos|linux|windows|tarball] [-o output]\n"
+        << "       viper asset bake|validate <model> [output.vscn] [options]\n"
         << "\n"
         << "Developer commands:\n"
         << "       viper front zia|basic ...\n"
@@ -1506,6 +1508,9 @@ int main(int argc, char **argv) {
     if (cmd == "init") {
         return cmdInit(argc - 2, argv + 2);
     }
+    if (cmd == "asset") {
+        return cmdAsset(argc - 2, argv + 2);
+    }
     if (cmd == "package") {
         return cmdPackage(argc - 2, argv + 2);
     }
@@ -1541,6 +1546,8 @@ int main(int argc, char **argv) {
             return invokeHelp(cmdInstallPackage);
         if (topic == "repl")
             return invokeHelp(cmdRepl);
+        if (topic == "asset")
+            return cmdAssetHelp(stdout);
         if (topic == "eval")
             return invokeHelp(cmdEval);
         if (topic == "explain")

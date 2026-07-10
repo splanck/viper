@@ -64,6 +64,42 @@ void *rt_model3d_load_with_options(rt_string path, int8_t force_tangents) {
     return model;
 }
 
+/// @brief Extensible options-string variant of `SceneAsset.Load`.
+/// @details @p options is a comma/space-separated flag list. Recognized flags:
+///          "forceTangents" (tangents for every UV0 primitive), "eightInfluences"
+///          (keep up to 8 bone influences per vertex; influences 5-8 ride a mesh
+///          side stream applied by CPU skinning), "compressAnimations"
+///          (tolerance-based keyframe reduction on imported clips),
+///          "compactStreams" (every imported mesh opts into the compact 48-byte
+///          GPU static-cache vertex encoding). Unknown flags are ignored so
+///          future options stay backward-compatible.
+void *rt_model3d_load_with_options_ex(rt_string path, rt_string options) {
+    rt_gltf_load_options opts = rt_gltf_load_options_default();
+    rt_gltf_load_options saved;
+    void *model;
+    int compact_streams = 0;
+    const char *text = rt_string_cstr(options);
+    if (text) {
+        if (strstr(text, "forceTangents"))
+            opts.force_tangents = 1;
+        if (strstr(text, "eightInfluences"))
+            opts.eight_bone_influences = 1;
+        if (strstr(text, "compressAnimations"))
+            opts.compress_animations = 1;
+        if (strstr(text, "compactStreams"))
+            compact_streams = 1;
+    }
+    saved = rt_gltf_set_thread_load_options(&opts);
+    model = rt_model3d_load(path);
+    (void)rt_gltf_set_thread_load_options(&saved);
+    if (model && compact_streams) {
+        int64_t mesh_count = rt_model3d_get_mesh_count(model);
+        for (int64_t i = 0; i < mesh_count; i++)
+            rt_mesh3d_set_compact_streams(rt_model3d_get_mesh(model, i), 1);
+    }
+    return model;
+}
+
 /// @brief Options-aware Result variant of `SceneAsset.Load` (Plan 09).
 void *rt_model3d_load_result_with_options(rt_string path, int8_t force_tangents) {
     return model3d_load_value_to_result(rt_model3d_load_with_options(path, force_tangents),
@@ -723,5 +759,18 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index) {
     }
     model_bind_default_animator(model, scene->root);
     model_bind_default_node_animator(model, scene->root);
+    /* Carry the model's clips on the scene so a baked .vscn save (v3) can
+     * serialize the full rig; the handles are retained per-slot. */
+    if (model->animation_count > 0 && model->animations) {
+        scene->baked_animations =
+            (void **)calloc((size_t)model->animation_count, sizeof(void *));
+        if (scene->baked_animations) {
+            for (int32_t i = 0; i < model->animation_count; i++) {
+                scene->baked_animations[i] = model->animations[i];
+                rt_obj_retain_maybe(model->animations[i]);
+            }
+            scene->baked_animation_count = model->animation_count;
+        }
+    }
     return scene;
 }

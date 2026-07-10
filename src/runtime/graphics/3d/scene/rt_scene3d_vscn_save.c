@@ -61,6 +61,11 @@ typedef struct {
     vscn_ptr_table_t materials;
     vscn_ptr_table_t textures;
     vscn_ptr_table_t cubemaps;
+    /* v3 rig payload: skeletons referenced by collected meshes, plus optional
+     * animation clips supplied by the baking caller (scene graphs own no clips). */
+    vscn_ptr_table_t skeletons;
+    void **animations; /* borrowed rt_animation3d handles, not owned */
+    int32_t animation_count;
 } vscn_save_context_t;
 
 /// @brief Base64 alphabet table used by the encoder.
@@ -390,10 +395,17 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
         rt_scene_node3d *current = stack[--count];
         if (!current)
             continue;
-        if (rt_g3d_has_class(current->mesh, RT_G3D_MESH3D_CLASS_ID) &&
-            vscn_ptr_table_index_or_add(&ctx->meshes, current->mesh) < 0) {
-            free(stack);
-            return 0;
+        if (rt_g3d_has_class(current->mesh, RT_G3D_MESH3D_CLASS_ID)) {
+            rt_mesh3d *node_mesh = (rt_mesh3d *)current->mesh;
+            if (vscn_ptr_table_index_or_add(&ctx->meshes, current->mesh) < 0) {
+                free(stack);
+                return 0;
+            }
+            if (rt_g3d_has_class(node_mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID) &&
+                vscn_ptr_table_index_or_add(&ctx->skeletons, node_mesh->skeleton_ref) < 0) {
+                free(stack);
+                return 0;
+            }
         }
         if (rt_g3d_has_class(current->material, RT_G3D_MATERIAL3D_CLASS_ID)) {
             if (vscn_ptr_table_index_or_add(&ctx->materials, current->material) < 0 ||
@@ -653,7 +665,12 @@ static int vscn_serialize_material(rt_material3d *material,
 }
 
 /// @brief Emit a mesh as JSON: vertex/index buffers as base64 + the layout descriptor.
-static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t *cap, int depth) {
+static int vscn_serialize_mesh(rt_mesh3d *mesh,
+                               vscn_save_context_t *ctx,
+                               char **buf,
+                               size_t *len,
+                               size_t *cap,
+                               int depth) {
     char indent[64];
     size_t vertex_bytes_len;
     size_t index_bytes_len;
@@ -681,6 +698,15 @@ static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t 
     }
 
     {
+        int32_t skeleton_index = -1;
+        if (ctx && rt_g3d_has_class(mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID)) {
+            for (int32_t i = 0; i < ctx->skeletons.count; i++) {
+                if (ctx->skeletons.items[i] == mesh->skeleton_ref) {
+                    skeleton_index = i;
+                    break;
+                }
+            }
+        }
         int ok = vscn_append(buf,
                              len,
                              cap,
@@ -688,20 +714,49 @@ static int vscn_serialize_mesh(rt_mesh3d *mesh, char **buf, size_t *len, size_t 
                              "\"vertexCount\": %u, "
                              "\"indexCount\": %u, "
                              "\"boneCount\": %d, "
+                             "\"skeletonIndex\": %d, "
                              "\"resident\": %s, "
                              "\"verticesBase64\": ",
                              indent,
                              mesh->vertex_count,
                              mesh->index_count,
                              mesh->bone_count,
+                             skeleton_index,
                              rt_mesh3d_get_resident(mesh) ? "true" : "false") &&
                  vscn_append_json_string(buf, len, cap, vertex_base64) &&
                  vscn_append(buf, len, cap, ", \"indicesBase64\": ") &&
-                 vscn_append_json_string(buf, len, cap, index_base64) &&
-                 vscn_append(buf, len, cap, "}");
+                 vscn_append_json_string(buf, len, cap, index_base64);
         free(vertex_base64);
         free(index_base64);
-        return ok;
+        if (!ok)
+            return 0;
+        /* Optional v3 rig side streams. */
+        if (mesh->bone_map && mesh->bone_count > 0) {
+            char *map64 = vscn_base64_encode((const uint8_t *)mesh->bone_map,
+                                             (size_t)mesh->bone_count * sizeof(int32_t),
+                                             NULL);
+            if (!map64)
+                return 0;
+            ok = vscn_append(buf, len, cap, ", \"boneMapBase64\": ") &&
+                 vscn_append_json_string(buf, len, cap, map64);
+            free(map64);
+            if (!ok)
+                return 0;
+        }
+        if (mesh->extra_influences && mesh->vertex_count > 0) {
+            char *extra64 = vscn_base64_encode(
+                (const uint8_t *)mesh->extra_influences,
+                (size_t)mesh->vertex_count * sizeof(vgfx3d_extra_influences_t),
+                NULL);
+            if (!extra64)
+                return 0;
+            ok = vscn_append(buf, len, cap, ", \"extraInfluencesBase64\": ") &&
+                 vscn_append_json_string(buf, len, cap, extra64);
+            free(extra64);
+            if (!ok)
+                return 0;
+        }
+        return vscn_append(buf, len, cap, "}");
     }
 }
 
@@ -896,6 +951,7 @@ static void vscn_save_free_ctx(vscn_save_context_t *ctx) {
     vscn_free_ptr_table(&ctx->materials);
     vscn_free_ptr_table(&ctx->textures);
     vscn_free_ptr_table(&ctx->cubemaps);
+    vscn_free_ptr_table(&ctx->skeletons);
 }
 
 /// @brief Emit the `"textures": [ ... ],` array. @return 1 on success, 0 on append failure.
@@ -942,12 +998,108 @@ static int vscn_save_emit_materials(char **buf,
     return vscn_append(buf, len, cap, "  ],\n");
 }
 
+/// @brief Emit the v3 `"skeletons": [ ... ],` array (structured JSON per bone so
+///   the file survives internal struct changes). Empty table emits nothing.
+static int vscn_save_emit_skeletons(char **buf, size_t *len, size_t *cap,
+                                    vscn_save_context_t *ctx) {
+    if (ctx->skeletons.count <= 0)
+        return 1;
+    if (!vscn_append(buf, len, cap, "  \"skeletons\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->skeletons.count; i++) {
+        rt_skeleton3d *skel = (rt_skeleton3d *)ctx->skeletons.items[i];
+        int32_t bone_count = skeleton3d_safe_bone_count(skel);
+        if (!vscn_append(buf, len, cap, "    {\"bones\": [\n"))
+            return 0;
+        for (int32_t b = 0; b < bone_count; b++) {
+            const vgfx3d_bone_t *bone = &skel->bones[b];
+            if (!vscn_append(buf, len, cap, "      {\"name\": ") ||
+                !vscn_append_json_string(buf, len, cap, bone->name) ||
+                !vscn_append(buf, len, cap, ", \"parent\": %d, \"bindLocal\": [",
+                             bone->parent_index))
+                return 0;
+            for (int k = 0; k < 16; k++) {
+                if (!vscn_append(buf, len, cap, k ? ",%.9g" : "%.9g",
+                                 (double)bone->bind_pose_local[k]))
+                    return 0;
+            }
+            if (!vscn_append(buf, len, cap, "], \"inverseBind\": ["))
+                return 0;
+            for (int k = 0; k < 16; k++) {
+                if (!vscn_append(buf, len, cap, k ? ",%.9g" : "%.9g",
+                                 (double)bone->inverse_bind[k]))
+                    return 0;
+            }
+            if (!vscn_append(buf, len, cap, b < bone_count - 1 ? "]},\n" : "]}\n"))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, i < ctx->skeletons.count - 1 ? "    ]},\n" : "    ]}\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the v3 `"animations": [ ... ],` array. Channels serialize their
+///   keyframe arrays as raw little-endian structs tagged with a format name so
+///   the loader can reject layout drift.
+static int vscn_save_emit_animations(char **buf, size_t *len, size_t *cap,
+                                     vscn_save_context_t *ctx) {
+    if (!ctx->animations || ctx->animation_count <= 0)
+        return 1;
+    if (!vscn_append(buf, len, cap, "  \"animations\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->animation_count; i++) {
+        rt_animation3d *anim = (rt_animation3d *)ctx->animations[i];
+        int32_t channel_count;
+        if (!rt_g3d_has_class(anim, RT_G3D_ANIMATION3D_CLASS_ID))
+            continue;
+        channel_count = animation3d_safe_channel_count(anim);
+        if (!vscn_append(buf, len, cap, "    {\"name\": ") ||
+            !vscn_append_json_string(buf, len, cap, anim->name) ||
+            !vscn_append(buf,
+                         len,
+                         cap,
+                         ", \"duration\": %.9g, \"looping\": %s, "
+                         "\"keyframeFormat\": \"vgfx3d_keyframe_le_v2\", "
+                         "\"channels\": [\n",
+                         (double)anim->duration,
+                         anim->looping ? "true" : "false"))
+            return 0;
+        for (int32_t c = 0; c < channel_count; c++) {
+            const vgfx3d_anim_channel_t *ch = &anim->channels[c];
+            int32_t key_count = animation3d_safe_keyframe_count(ch);
+            char *keys64 = vscn_base64_encode((const uint8_t *)ch->keyframes,
+                                              (size_t)key_count * sizeof(vgfx3d_keyframe_t),
+                                              NULL);
+            int ok;
+            if (!keys64)
+                return 0;
+            ok = vscn_append(buf,
+                             len,
+                             cap,
+                             "      {\"bone\": %d, \"keyCount\": %d, "
+                             "\"keyframesBase64\": ",
+                             ch->bone_index,
+                             key_count) &&
+                 vscn_append_json_string(buf, len, cap, keys64) &&
+                 vscn_append(buf, len, cap, c < channel_count - 1 ? "},\n" : "}\n");
+            free(keys64);
+            if (!ok)
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap,
+                         i < ctx->animation_count - 1 ? "    ]},\n" : "    ]}\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
 /// @brief Emit the `"meshes": [ ... ],` array. @return 1 on success, 0 on append failure.
 static int vscn_save_emit_meshes(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
     if (!vscn_append(buf, len, cap, "  \"meshes\": [\n"))
         return 0;
     for (int32_t i = 0; i < ctx->meshes.count; i++) {
-        if (!vscn_serialize_mesh((rt_mesh3d *)ctx->meshes.items[i], buf, len, cap, 2) ||
+        if (!vscn_serialize_mesh((rt_mesh3d *)ctx->meshes.items[i], ctx, buf, len, cap, 2) ||
             (i < ctx->meshes.count - 1 && !vscn_append(buf, len, cap, ",")) ||
             !vscn_append(buf, len, cap, "\n"))
             return 0;
@@ -1012,12 +1164,25 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         }
     }
 
+    ctx.animations = scene->baked_animations;
+    ctx.animation_count = scene->baked_animation_count;
+
+    /* Rig data (skeletons/animations/side streams) promotes the file to v3;
+     * plain scenes keep emitting v2 so existing consumers see no change. */
+    int has_rig = ctx.skeletons.count > 0 || ctx.animation_count > 0;
+    for (int32_t i = 0; !has_rig && i < ctx.meshes.count; i++) {
+        const rt_mesh3d *m = (const rt_mesh3d *)ctx.meshes.items[i];
+        if (m->bone_map || m->extra_influences)
+            has_rig = 1;
+    }
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"version\": 2,\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": %d,\n", has_rig ? 3 : 2) ||
         !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
+        (has_rig && !vscn_save_emit_skeletons(&buf, &len, &cap, &ctx)) ||
+        (has_rig && !vscn_save_emit_animations(&buf, &len, &cap, &ctx)) ||
         !vscn_save_emit_meshes(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_nodes(&buf, &len, &cap, &ctx, scene->root) ||
         !vscn_append(&buf, &len, &cap, "}\n")) {

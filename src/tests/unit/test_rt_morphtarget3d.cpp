@@ -82,6 +82,12 @@ struct MorphTarget3DTestLayout {
     int32_t vertex_count;
 };
 
+extern "C" {
+int32_t vgfx3d_metal_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
+int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
+int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
+}
+
 static void test_create() {
     void *mt = rt_morphtarget3d_new(10);
     EXPECT_TRUE(mt != nullptr, "MorphTarget3D.New returns non-null");
@@ -308,6 +314,24 @@ static void test_packed_payload_keeps_shapes_beyond_32() {
     }
 }
 
+static void test_gpu_morph_budget_is_64() {
+    /* All three GPU backends budget 64 shader-side morph weights; requests past
+     * the budget clamp (the dispatch layer routes such meshes to CPU blending).
+     * ARKit-scale 52-blendshape rigs must stay inside the GPU budget. */
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(100, 52) == 52,
+                "Metal keeps 52-shape rigs on the GPU path");
+    EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(100, 128) == 64,
+                "Metal clamps morph shapes at the 64-slot budget");
+    EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count(100, 52) == 52,
+                "OpenGL keeps 52-shape rigs on the GPU path");
+    EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count(100, 128) == 64,
+                "OpenGL clamps morph shapes at the 64-slot budget");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(100, 52) == 52,
+                "D3D11 keeps 52-shape rigs on the GPU path");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(100, 128) == 64,
+                "D3D11 clamps morph shapes at the 64-slot budget");
+}
+
 static void test_clone_copies_delta_payloads_and_weights() {
     void *mt = rt_morphtarget3d_new(2);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("raise"));
@@ -417,6 +441,7 @@ static void test_mesh_clone_deep_copy_releases_original_morph_target_on_clear() 
 
 int main() {
     test_create();
+    test_gpu_morph_budget_is_64();
     test_add_shape();
     test_weight_zero();
     test_weight_set_get();

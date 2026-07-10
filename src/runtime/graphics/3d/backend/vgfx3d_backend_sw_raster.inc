@@ -708,13 +708,34 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
     float lit_r;
     float lit_g;
     float lit_b;
+    /* KHR_materials_ior / clearcoat / volume ride the PBR custom params
+     * (1 = coat factor, 2 = coat roughness, 4 = ior, 5 = thickness,
+     * 6 = folded Beer-Lambert absorption). Toon and Fresnel models own
+     * params 0/1 for their controls, so the lobes gate on the model. */
+    int pbr_param_model = cmd->shading_model != 1 && cmd->shading_model != 5;
+    float dielectric_f0 = 0.04f;
+    float coat = 0.0f;
+    float coat_roughness = 0.045f;
+    if (pbr_param_model) {
+        if (cmd->custom_params[4] > 0.0f) {
+            float ior = cmd->custom_params[4];
+            float root = (ior - 1.0f) / (ior + 1.0f);
+            dielectric_f0 = clamp01f(root * root);
+        }
+        coat = clamp01f(cmd->custom_params[1]);
+        coat_roughness = cmd->custom_params[2] < 0.045f ? 0.045f
+                                                        : clamp01f(cmd->custom_params[2]);
+    }
+    float sheen = pbr_param_model ? clamp01f(cmd->custom_params[0]) : 0.0f;
+    float sheen_roughness = cmd->custom_params[7] < 0.07f ? 0.07f
+                                                          : clamp01f(cmd->custom_params[7]);
     if (cmd->ibl_env && cmd->env_map && fog_ctx && fog_ctx->ibl_enabled) {
         /* Image-based ambient: SH diffuse + prefiltered specular (split-sum).
          * Replaces the flat ambient term; direct lights below are unchanged. */
         float irr[3];
-        float f0_r = 0.04f + (base_r - 0.04f) * metallic;
-        float f0_g = 0.04f + (base_g - 0.04f) * metallic;
-        float f0_b = 0.04f + (base_b - 0.04f) * metallic;
+        float f0_r = dielectric_f0 + (base_r - dielectric_f0) * metallic;
+        float f0_g = dielectric_f0 + (base_g - dielectric_f0) * metallic;
+        float f0_b = dielectric_f0 + (base_b - dielectric_f0) * metallic;
         float gloss = 1.0f - roughness;
         float w = pow5f_fast(1.0f - ndv);
         /* Roughness-aware Schlick: rough surfaces lose grazing Fresnel gain. */
@@ -733,23 +754,51 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         float pre_b;
         rt_cubemap_sample_ibl(
             (const rt_cubemap3d *)cmd->env_map, rvx, rvy, rvz, roughness, &pre_r, &pre_g, &pre_b);
-        /* Karis analytic split-sum environment BRDF. */
-        float br_x = roughness * -1.0f + 1.0f;
-        float br_y = roughness * -0.0275f + 0.0425f;
-        float br_z = roughness * -0.572f + 1.04f;
-        float br_w = roughness * 0.022f - 0.04f;
-        float a004 = br_x * br_x;
-        float e9 = exp2f(-9.28f * ndv);
-        if (e9 < a004)
-            a004 = e9;
-        a004 = a004 * br_x + br_y;
-        float ab_x = -1.04f * a004 + br_z;
-        float ab_y = 1.04f * a004 + br_w;
+        /* Precomputed split-sum environment BRDF (64x64 CPU-integrated table;
+         * shared with the GPU backends' LUT texture). */
+        float env_ab[2];
+        vgfx3d_brdf_lut_sample(ndv, roughness, env_ab);
+        float ab_x = env_ab[0];
+        float ab_y = env_ab[1];
         float intensity = fog_ctx->ibl_intensity;
         rt_sh9_eval_irradiance(fog_ctx->ibl_sh, pnx, pny, pnz, irr);
         lit_r = (kd_r * irr[0] * base_r + pre_r * (f0_r * ab_x + ab_y)) * ao * intensity;
         lit_g = (kd_g * irr[1] * base_g + pre_g * (f0_g * ab_x + ab_y)) * ao * intensity;
         lit_b = (kd_b * irr[2] * base_b + pre_b * (f0_b * ab_x + ab_y)) * ao * intensity;
+        if (coat > 0.0f) {
+            /* Clearcoat ambient lobe: dielectric F0 0.04 at the coat roughness;
+             * the base layer loses the energy the coat reflects. */
+            float coat_pre_r;
+            float coat_pre_g;
+            float coat_pre_b;
+            float coat_ab[2];
+            float coat_fresnel;
+            rt_cubemap_sample_ibl((const rt_cubemap3d *)cmd->env_map,
+                                  rvx,
+                                  rvy,
+                                  rvz,
+                                  coat_roughness,
+                                  &coat_pre_r,
+                                  &coat_pre_g,
+                                  &coat_pre_b);
+            vgfx3d_brdf_lut_sample(ndv, coat_roughness, coat_ab);
+            coat_fresnel = 0.04f + 0.96f * w;
+            {
+                float coat_spec = 0.04f * coat_ab[0] + coat_ab[1];
+                float keep = 1.0f - coat * coat_fresnel;
+                lit_r = lit_r * keep + coat_pre_r * coat_spec * coat * ao * intensity;
+                lit_g = lit_g * keep + coat_pre_g * coat_spec * coat * ao * intensity;
+                lit_b = lit_b * keep + coat_pre_b * coat_spec * coat * ao * intensity;
+            }
+        }
+        if (sheen > 0.0f) {
+            /* Ambient sheen: irradiance-scaled rim energy (quarter-strength
+             * matches the direct lobe's average reflectance). */
+            float sheen_amb = sheen * 0.25f * ao * intensity;
+            lit_r += irr[0] * sheen_amb;
+            lit_g += irr[1] * sheen_amb;
+            lit_b += irr[2] * sheen_amb;
+        }
     } else {
         lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
         lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
@@ -785,9 +834,9 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         float ndh = clamp01f(dot3f(pnx, pny, pnz, hx, hy, hz));
         float vdh = clamp01f(dot3f(vdx, vdy, vdz, hx, hy, hz));
 
-        float f0_r = 0.04f + (base_r - 0.04f) * metallic;
-        float f0_g = 0.04f + (base_g - 0.04f) * metallic;
-        float f0_b = 0.04f + (base_b - 0.04f) * metallic;
+        float f0_r = dielectric_f0 + (base_r - dielectric_f0) * metallic;
+        float f0_g = dielectric_f0 + (base_g - dielectric_f0) * metallic;
+        float f0_b = dielectric_f0 + (base_b - dielectric_f0) * metallic;
         float fresnel_w = pow5f_fast(1.0f - vdh);
         float f_r = f0_r + (1.0f - f0_r) * fresnel_w;
         float f_g = f0_g + (1.0f - f0_g) * fresnel_w;
@@ -811,6 +860,36 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         float radiance_r = lt->color[0] * lt->intensity * la;
         float radiance_g = lt->color[1] * lt->intensity * la;
         float radiance_b = lt->color[2] * lt->intensity * la;
+        if (sheen > 0.0f) {
+            /* Charlie sheen lobe (KHR_materials_sheen): inverted-GGX style
+             * distribution with the Neubelt-Pettineo visibility term. */
+            float alpha_s = sheen_roughness * sheen_roughness;
+            float inv_alpha = 1.0f / alpha_s;
+            float sin2 = 1.0f - ndh * ndh;
+            float d_charlie = (2.0f + inv_alpha) *
+                              powf(sin2 > 0.0f ? sin2 : 0.0f, inv_alpha * 0.5f) *
+                              0.15915494309f; /* 1 / (2 pi) */
+            float vis_sheen = 1.0f / (4.0f * (ndl + ndv - ndl * ndv) + 1e-4f);
+            float sheen_spec = sheen * d_charlie * vis_sheen;
+            spec_r += sheen_spec;
+            spec_g += sheen_spec;
+            spec_b += sheen_spec;
+        }
+        if (coat > 0.0f) {
+            /* Second specular lobe: GGX D at the coat roughness, Schlick F at
+             * F0 0.04, Kelemen visibility; base layer attenuated by the coat. */
+            float coat_d = pbr_distribution_ggx(ndh, coat_roughness);
+            float coat_f = 0.04f + 0.96f * fresnel_w;
+            float coat_vis = 0.25f / (vdh * vdh + 1e-4f);
+            float coat_spec = coat * coat_d * coat_f * coat_vis;
+            float keep = 1.0f - coat * coat_f;
+            diff_r *= keep;
+            diff_g *= keep;
+            diff_b *= keep;
+            spec_r = spec_r * keep + coat_spec;
+            spec_g = spec_g * keep + coat_spec;
+            spec_b = spec_b * keep + coat_spec;
+        }
         lit_r += (diff_r + spec_r) * radiance_r * ndl;
         lit_g += (diff_g + spec_g) * radiance_g * ndl;
         lit_b += (diff_b + spec_b) * radiance_b * ndl;
@@ -837,6 +916,17 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
     lit_r += emissive_r;
     lit_g += emissive_g;
     lit_b += emissive_b;
+
+    if (pbr_param_model && cmd->custom_params[3] > 0.0f && cmd->custom_params[6] > 0.0f &&
+        cmd->custom_params[5] > 0.0f) {
+        /* KHR_materials_volume: Beer-Lambert absorption through the folded
+         * scalar coefficient over the thickness, scaled by transmission. */
+        float absorb = expf(-cmd->custom_params[6] * cmd->custom_params[5]);
+        float tint = 1.0f + clamp01f(cmd->custom_params[3]) * (absorb - 1.0f);
+        lit_r *= tint;
+        lit_g *= tint;
+        lit_b *= tint;
+    }
 
     if (cmd->shading_model == 1) {
         float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;

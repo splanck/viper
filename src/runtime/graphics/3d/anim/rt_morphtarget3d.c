@@ -382,20 +382,19 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
 }
 
 /// @brief Report the maximum morph shape count the named backend can handle on-GPU.
-/// @details The limits reflect each backend's uniform/constant-buffer budget
-///   for blend-shape coefficients: Metal can bind full buffers as arguments
-///   (essentially unlimited), OpenGL's default uniform storage caps around
-///   32 shapes, and D3D11 uses the hard-coded `VGFX3D_D3D11_MAX_MORPH_SHAPES`
-///   tuned to fit alongside other per-frame constants. Unknown backends
-///   (software renderer, disabled builds) return 0 so the caller falls
-///   back to CPU deformation.
+/// @details The limits mirror each backend's shader-side weight-array budget
+///   (`VGFX3D_*_MAX_MORPH_SHAPES`, 64 shapes) so any mesh beyond the budget takes
+///   the CPU blending fallback instead of silently dropping overflow shapes —
+///   the Metal draw path clamps to its constant, so reporting a larger limit
+///   here would lose shapes past the clamp. Unknown backends (software renderer,
+///   disabled builds) return 0 so the caller falls back to CPU deformation.
 static int32_t vgfx3d_backend_morph_shape_limit(const char *backend_name) {
     if (!backend_name)
         return 0;
     if (strcmp(backend_name, "metal") == 0)
-        return INT32_MAX;
+        return 64; /* VGFX3D_METAL_MAX_MORPH_SHAPES */
     if (strcmp(backend_name, "opengl") == 0)
-        return 32;
+        return 64; /* VGFX3D_OPENGL_MAX_MORPH_SHAPES */
     if (strcmp(backend_name, "d3d11") == 0)
         return VGFX3D_D3D11_MAX_MORPH_SHAPES;
     return 0;

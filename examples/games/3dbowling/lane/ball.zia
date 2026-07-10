@@ -10,10 +10,9 @@
 //          each frame via draw.
 //
 // KEY-DESIGN-CHOICES:
-//   * THREE WEIGHTS, ONE BALL TYPE. BALL_LIGHT/MEDIUM/HEAVY each carry
-//     mass, max throw speed, hook strength, and colour. Selecting a
-//     weight (selectBall / cycleBall) recreates the physics body and
-//     repaints the material — no aliasing of stats.
+//   * SIX TACTICAL BALLS. The release catalog carries mass, speed, hook,
+//     control, lane fit, unlock score, and colour. Selecting equipment
+//     recreates the physics body and repaints its material.
 //   * HOOK MODEL. The ball curves toward the pins as it travels: spin
 //     creates a sideways force `hookForce = spin * multiplier *
 //     (early + backend)` scaled by friction. Oiled portion gives
@@ -45,42 +44,8 @@ bind Viper.Math;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
+bind "../content/ball_catalog";
 bind "../util/mathutil";
-
-/// @brief One row of per-weight ball stats. Keeping mass / speed / hook /
-///        colour together turns weight selection into a single table lookup
-///        instead of three parallel field-assignment branches.
-struct BallWeightSpec {
-    expose Float mass;
-    expose Float maxSpeed;
-    expose Float hook;
-    expose Float colorR;
-    expose Float colorG;
-    expose Float colorB;
-
-    expose func init(m: Float, spd: Float, hk: Float, r: Float, g: Float, b: Float) {
-        mass = m;
-        maxSpeed = spd;
-        hook = hk;
-        colorR = r;
-        colorG = g;
-        colorB = b;
-    }
-}
-
-/// @brief The ball-weight table: one row per weight class.
-func ballSpecFor(ballType: Integer) -> BallWeightSpec {
-    if (ballType == config.BALL_LIGHT) {
-        return new BallWeightSpec(config.BALL_MASS_LIGHT, config.BALL_SPEED_MAX_LIGHT, config.BALL_HOOK_LIGHT,
-            config.BALL_COLOR_LIGHT_R, config.BALL_COLOR_LIGHT_G, config.BALL_COLOR_LIGHT_B);
-    }
-    if (ballType == config.BALL_HEAVY) {
-        return new BallWeightSpec(config.BALL_MASS_HEAVY, config.BALL_SPEED_MAX_HEAVY, config.BALL_HOOK_HEAVY,
-            config.BALL_COLOR_HEAVY_R, config.BALL_COLOR_HEAVY_G, config.BALL_COLOR_HEAVY_B);
-    }
-    return new BallWeightSpec(config.BALL_MASS_MEDIUM, config.BALL_SPEED_MAX_MEDIUM, config.BALL_HOOK_MEDIUM,
-        config.BALL_COLOR_MEDIUM_R, config.BALL_COLOR_MEDIUM_G, config.BALL_COLOR_MEDIUM_B);
-}
 
 /// @brief Bowling ball entity with hook physics and weight-class stats.
 class Ball {
@@ -95,6 +60,8 @@ class Ball {
     hide Float colorG;
     hide Float colorB;
     hide Integer ballType;
+    hide Integer unlockScore;
+    hide BallCatalog catalog;
 
     hide Mesh3D ballMesh;
     hide Mesh3D ballHoleMesh;
@@ -126,7 +93,9 @@ class Ball {
         isInGutter = false;
         hasBeenThrown = false;
 
-        ballType = config.BALL_MEDIUM;
+        catalog = new BallCatalog();
+        unlockScore = 0;
+        ballType = 0;
         applyBallStats();
 
         ballMesh = Mesh3D.Sphere(config.BALL_RADIUS, 16);
@@ -152,13 +121,14 @@ class Ball {
     /// @brief Copy weight-class stats (mass, max speed, hook, colour)
     ///        into the live `mass`/`maxSpeed`/etc. fields.
     hide func applyBallStats() {
-        var spec = ballSpecFor(ballType);
-        mass = spec.mass;
-        maxSpeed = spec.maxSpeed;
-        hookMultiplier = spec.hook;
-        colorR = spec.colorR;
-        colorG = spec.colorG;
-        colorB = spec.colorB;
+        var spec = catalog.get(ballType);
+        mass = spec.getMass();
+        maxSpeed = spec.getMaxSpeed();
+        hookMultiplier = spec.getHook();
+        var packed = spec.getColor();
+        colorR = (((packed >> 16) & 255) + 0.0) / 255.0;
+        colorG = (((packed >> 8) & 255) + 0.0) / 255.0;
+        colorB = ((packed & 255) + 0.0) / 255.0;
     }
 
     /// @brief Tear down + rebuild the physics body. Called on weight
@@ -184,19 +154,29 @@ class Ball {
 
     /// @brief Switch to a specific weight (LIGHT/MEDIUM/HEAVY).
     expose func selectBall(btype: Integer) {
-        ballType = btype;
+        var selected = btype;
+        if (selected < 0) { selected = 0; }
+        if (selected >= catalog.count()) { selected = catalog.count() - 1; }
+        if (catalog.isUnlocked(selected, unlockScore) == false) { selected = 0; }
+        ballType = selected;
         applyBallStats();
         Material3D.SetColor(ballMat, colorR, colorG, colorB);
         recreateBody();
     }
 
-    /// @brief Cycle through the three weights; wraps at boundaries.
+    /// @brief Cycle through every currently unlocked release ball.
     expose func cycleBall(dir: Integer) {
-        var nextType = ballType + dir;
-        if (nextType < config.BALL_LIGHT) { nextType = config.BALL_HEAVY; }
-        if (nextType > config.BALL_HEAVY) { nextType = config.BALL_LIGHT; }
+        var nextType = catalog.firstUnlockedFrom(ballType, dir, unlockScore);
         selectBall(nextType);
     }
+
+    /// @brief Set the progression score used by equipment unlock checks.
+    expose func setUnlockScore(score: Integer) { unlockScore = score; }
+
+    expose func getBallName() -> String { return catalog.get(ballType).getName(); }
+    expose func getBallFamily() -> String { return catalog.get(ballType).getFamily(); }
+    expose func getBallControl() -> Integer { return catalog.get(ballType).getControl(); }
+    expose func getBallColor() -> Integer { return catalog.get(ballType).getColor(); }
 
     /// @brief Set spin amount, clamped to ±SPIN_MAX. Positive = right-curve.
     expose func setSpin(amount: Float) {
@@ -499,7 +479,7 @@ class Ball {
         return hasBeenThrown;
     }
 
-    /// @brief Current ball weight (BALL_LIGHT/MEDIUM/HEAVY).
+    /// @brief Current release-catalog ball index.
     expose func getBallType() -> Integer {
         return ballType;
     }
@@ -514,9 +494,6 @@ class Ball {
 
     /// @brief Snap back to the spawn position; clear all per-throw state.
     expose func resetBall() {
-        if (inWorld) {
-            Physics3DWorld.Remove(world, body);
-        }
         recreateBody();
         isInGutter = false;
         hasBeenThrown = false;

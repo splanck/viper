@@ -38,6 +38,7 @@
 #include "rt_threadpool.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
+#include "vgfx3d_brdf_lut.h"
 
 #include <errno.h>
 #include <float.h>

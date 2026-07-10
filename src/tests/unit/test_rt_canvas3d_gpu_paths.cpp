@@ -28,6 +28,9 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+extern "C" {
+#include "vgfx3d_brdf_lut.h"
+}
 #include "rt_heap.h"
 #include "rt_input.h"
 #include "rt_instbatch3d.h"
@@ -1126,6 +1129,48 @@ static void test_attached_morph_targets_route_through_draw_mesh(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_brdf_lut_matches_split_sum_reference(void) {
+    /* The precomputed split-sum table must behave like the physical integral:
+     * energy-bounded, near-total reflectance for smooth head-on viewing, and
+     * within loose range of the Karis analytic fit it replaced. */
+    float ab[2];
+    vgfx3d_brdf_lut_sample(1.0f, 0.02f, ab);
+    EXPECT_TRUE(ab[0] > 0.9f && ab[0] <= 1.01f,
+                "BRDF LUT scale approaches 1 for smooth head-on viewing");
+    EXPECT_TRUE(ab[1] >= 0.0f && ab[1] < 0.1f,
+                "BRDF LUT bias stays small for smooth head-on viewing");
+    for (int yi = 0; yi < 8; yi++) {
+        for (int xi = 0; xi < 8; xi++) {
+            float ndv = (float)(xi + 1) / 8.0f;
+            float rough = (float)(yi + 1) / 8.0f;
+            vgfx3d_brdf_lut_sample(ndv, rough, ab);
+            EXPECT_TRUE(ab[0] >= 0.0f && ab[1] >= 0.0f && ab[0] + ab[1] <= 1.05f,
+                        "BRDF LUT stays energy-bounded across the domain");
+        }
+    }
+    /* Mid-domain agreement with the Karis fit (the fit is accurate to a few
+     * percent there, so a wide tolerance still catches axis swaps / garbage). */
+    vgfx3d_brdf_lut_sample(0.5f, 0.5f, ab);
+    {
+        float r = 0.5f, ndv = 0.5f;
+        float bx = r * -1.0f + 1.0f;
+        float by = r * -0.0275f + 0.0425f;
+        float bz = r * -0.572f + 1.04f;
+        float bw = r * 0.022f - 0.04f;
+        float a004 = bx * bx;
+        float e9 = exp2f(-9.28f * ndv);
+        if (e9 < a004)
+            a004 = e9;
+        a004 = a004 * bx + by;
+        float ref_a = -1.04f * a004 + bz;
+        float ref_b = 1.04f * a004 + bw;
+        EXPECT_TRUE(fabsf(ab[0] - ref_a) < 0.08f,
+                    "BRDF LUT scale tracks the analytic fit mid-domain");
+        EXPECT_TRUE(fabsf(ab[1] - ref_b) < 0.08f,
+                    "BRDF LUT bias tracks the analytic fit mid-domain");
+    }
+}
+
 static void test_large_morph_payload_falls_back_to_cpu_for_opengl(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -1134,10 +1179,10 @@ static void test_large_morph_payload_falls_back_to_cpu_for_opengl(void) {
     void *material = rt_material3d_new();
     void *transform = rt_mat4_identity();
     void *morph = rt_morphtarget3d_new(3);
-    for (int i = 0; i < 33; i++)
+    for (int i = 0; i < 65; i++)
         rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
-    rt_morphtarget3d_set_delta(morph, 32, 0, 4.0, 0.0, 0.0);
-    rt_morphtarget3d_set_weight(morph, 32, 1.0);
+    rt_morphtarget3d_set_delta(morph, 64, 0, 4.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 64, 1.0);
 
     rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
 
@@ -1151,7 +1196,7 @@ static void test_large_morph_payload_falls_back_to_cpu_for_opengl(void) {
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 0 && draws[0].cmd.morph_deltas == nullptr,
                 "OpenGL oversize morph payload leaves GPU morph bindings empty");
     EXPECT_TRUE(draws[0].cmd.vertices[0].pos[0] == 4.0f,
-                "OpenGL CPU morph fallback still applies shapes beyond slot 31");
+                "OpenGL CPU morph fallback still applies shapes beyond slot 63");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1164,10 +1209,10 @@ static void test_large_morph_payload_falls_back_to_cpu_for_d3d11(void) {
     void *material = rt_material3d_new();
     void *transform = rt_mat4_identity();
     void *morph = rt_morphtarget3d_new(3);
-    for (int i = 0; i < 33; i++)
+    for (int i = 0; i < 65; i++)
         rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
-    rt_morphtarget3d_set_delta(morph, 32, 0, 5.0, 0.0, 0.0);
-    rt_morphtarget3d_set_weight(morph, 32, 1.0);
+    rt_morphtarget3d_set_delta(morph, 64, 0, 5.0, 0.0, 0.0);
+    rt_morphtarget3d_set_weight(morph, 64, 1.0);
 
     rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
 
@@ -1181,7 +1226,7 @@ static void test_large_morph_payload_falls_back_to_cpu_for_d3d11(void) {
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 0 && draws[0].cmd.morph_deltas == nullptr,
                 "D3D11 oversize morph payload leaves GPU morph bindings empty");
     EXPECT_TRUE(draws[0].cmd.vertices[0].pos[0] == 5.0f,
-                "D3D11 CPU morph fallback still applies shapes beyond slot 31");
+                "D3D11 CPU morph fallback still applies shapes beyond slot 63");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -3680,6 +3725,7 @@ int main() {
     test_gpu_morph_rejects_nonfinite_position_payload();
     test_gpu_morph_drops_nonfinite_normal_payload();
     test_attached_morph_targets_route_through_draw_mesh();
+    test_brdf_lut_matches_split_sum_reference();
     test_large_morph_payload_falls_back_to_cpu_for_opengl();
     test_large_morph_payload_falls_back_to_cpu_for_d3d11();
     test_large_morph_payload_stays_on_gpu_for_metal();

@@ -66,7 +66,7 @@ void skeleton3d_compute_globals_from_locals(const rt_skeleton3d *skeleton,
                                             const float *locals,
                                             float *globals,
                                             int32_t bone_count) {
-    uint8_t state[VGFX3D_MAX_BONES];
+    uint8_t state[VGFX3D_MAX_SKELETON_BONES];
     int32_t safe_count;
     if (!skeleton || !locals || !globals)
         return;

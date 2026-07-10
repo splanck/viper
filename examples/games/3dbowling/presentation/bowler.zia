@@ -1,0 +1,116 @@
+// ============================================================================
+// MODULE: presentation/bowler
+// PURPOSE: Lightweight animated bowler silhouette that makes the approach and
+//          release visible without requiring a skeletal asset dependency.
+// ============================================================================
+
+module bowler;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+
+class BowlerAvatar {
+    hide Mesh3D torsoMesh;
+    hide Mesh3D limbMesh;
+    hide Mesh3D headMesh;
+    hide Mesh3D shoeMesh;
+    hide Material3D shirtMat;
+    hide Material3D skinMat;
+    hide Material3D pantsMat;
+    hide Material3D shoeMat;
+    hide Float aimX;
+    hide Float phase;
+    hide Float releaseTimer;
+    hide Float celebrateTimer;
+    hide Boolean charging;
+    hide Boolean leftHanded;
+
+    expose func init() {
+        torsoMesh = Mesh3D.Box(0.34, 0.48, 0.20);
+        limbMesh = Mesh3D.Cylinder(0.065, 0.50, 10);
+        headMesh = Mesh3D.Sphere(0.12, 14);
+        shoeMesh = Mesh3D.Box(0.13, 0.09, 0.28);
+        shirtMat = Material3D.PBR(0.12, 0.70, 0.78);
+        shirtMat.Roughness = 0.68;
+        skinMat = Material3D.PBR(0.72, 0.50, 0.36);
+        skinMat.Roughness = 0.86;
+        Material3D.SetEmissiveColor(skinMat, 0.055, 0.026, 0.014);
+        pantsMat = Material3D.PBR(0.055, 0.075, 0.11);
+        pantsMat.Roughness = 0.82;
+        Material3D.SetEmissiveColor(shirtMat, 0.012, 0.060, 0.070);
+        shoeMat = Material3D.PBR(0.025, 0.03, 0.04);
+        shoeMat.Roughness = 0.48;
+        aimX = 0.0;
+        phase = 0.0;
+        releaseTimer = 0.0;
+        celebrateTimer = 0.0;
+        charging = false;
+        leftHanded = false;
+    }
+
+    expose func setColor(packed: Integer) {
+        var r = (((packed >> 16) & 255) + 0.0) / 255.0;
+        var g = (((packed >> 8) & 255) + 0.0) / 255.0;
+        var b = ((packed & 255) + 0.0) / 255.0;
+        Material3D.SetColor(shirtMat, r, g, b);
+    }
+
+    expose func setLeftHanded(enabled: Boolean) { leftHanded = enabled; }
+
+    expose func update(dt: Float, stanceX: Float, isCharging: Boolean) {
+        aimX = stanceX;
+        charging = isCharging;
+        phase = phase + dt;
+        if (releaseTimer > 0.0) { releaseTimer = releaseTimer - dt; }
+        if (celebrateTimer > 0.0) { celebrateTimer = celebrateTimer - dt; }
+    }
+
+    expose func onRelease() { releaseTimer = 0.82; }
+    expose func celebrate() { celebrateTimer = 1.55; }
+
+    expose func draw(canvas: Canvas3D) {
+        var baseZ = -1.28;
+        var stride = 0.0;
+        var armSwing = -0.20;
+        if (charging) {
+            stride = Sin(phase * 8.0) * 0.10;
+            armSwing = -0.55 - Sin(phase * 5.0) * 0.34;
+        }
+        if (releaseTimer > 0.0) {
+            var progress = 1.0 - releaseTimer / 0.82;
+            stride = Sin(progress * 3.14159265) * 0.16;
+            armSwing = -0.65 + progress * 2.25;
+        }
+        var jump = 0.0;
+        var cheer = 0.0;
+        if (celebrateTimer > 0.0) {
+            jump = Abs(Sin(celebrateTimer * 8.0)) * 0.08;
+            cheer = 2.25;
+        }
+
+        var sideOffset = -0.42;
+        if (leftHanded) { sideOffset = 0.42; }
+        var root = Mat4.Mul(Mat4.Translate(aimX + sideOffset, jump, baseZ + 0.18 + stride),
+            Mat4.ScaleUniform(0.78));
+        Canvas3D.DrawMesh(canvas, torsoMesh,
+            Mat4.Mul(root, Mat4.Translate(0.0, 1.10, 0.0)), shirtMat);
+        Canvas3D.DrawMesh(canvas, headMesh,
+            Mat4.Mul(root, Mat4.Translate(0.0, 1.52, 0.0)), skinMat);
+
+        drawLimb(canvas, root, -0.12, 0.64, -0.02, -stride * 2.4, pantsMat);
+        drawLimb(canvas, root, 0.12, 0.64, 0.02, stride * 2.4, pantsMat);
+        Canvas3D.DrawMesh(canvas, shoeMesh,
+            Mat4.Mul(root, Mat4.Translate(-0.12, 0.34, -0.10)), shoeMat);
+        Canvas3D.DrawMesh(canvas, shoeMesh,
+            Mat4.Mul(root, Mat4.Translate(0.12, 0.34, 0.10)), shoeMat);
+
+        drawLimb(canvas, root, -0.24, 1.16, 0.0, -armSwing - cheer, skinMat);
+        drawLimb(canvas, root, 0.24, 1.16, 0.0, armSwing + cheer, skinMat);
+    }
+
+    hide func drawLimb(canvas: Canvas3D, root: Mat4, x: Float, y: Float, z: Float,
+                       angle: Float, material: Material3D) {
+        var local = Mat4.Mul(Mat4.Translate(x, y, z), Mat4.RotateX(angle));
+        Canvas3D.DrawMesh(canvas, limbMesh, Mat4.Mul(root, local), material);
+    }
+}

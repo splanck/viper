@@ -251,6 +251,14 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         decode_failure_detail = "corrupt BC3 block payload";
         mip_pixels = textureasset3d_decode_bc3_mips(level_data, level_size, mips, mip_count);
     }
+    /* BC6H decodes to an RGBA8 fallback only (halves clamp to [0, 1]); no
+     * native retention until the backends grow an HDR block upload path. */
+    if (strcmp(format.name, "bc6h") == 0 || strcmp(format.name, "bc6hs") == 0) {
+        attempted_cpu_decode = 1;
+        decode_failure_detail = "corrupt BC6H block payload";
+        mip_pixels = textureasset3d_decode_bc6h_mips(
+            level_data, level_size, mips, mip_count, format.name[4] != 0);
+    }
     /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
     if (strcmp(format.name, "bc7") == 0) {
         attempted_cpu_decode = 1;
@@ -634,6 +642,16 @@ uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
     signature ^= (uint64_t)asset->resident_mip_count + 0x9e3779b97f4a7c15ull + (signature << 6) +
                  (signature >> 2);
     return signature ? signature : 1;
+}
+
+/// @brief Return the asset's process-unique cache identity (0 for a non-asset handle).
+/// @details Unlike `rt_textureasset3d_get_native_cache_key`, the identity is stable across
+///          resident-window and revision changes, so callers tracking per-asset state over
+///          time (e.g., Canvas3D texture streaming) can key on it without losing history
+///          every time they move the window themselves.
+uint64_t rt_textureasset3d_get_cache_identity(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return asset ? asset->cache_identity : 0;
 }
 
 /// @brief Map the asset's compressed format to a native format id for the backend (NONE if

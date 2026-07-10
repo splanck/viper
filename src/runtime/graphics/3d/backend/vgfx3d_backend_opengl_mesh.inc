@@ -610,6 +610,7 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
 static void bind_morph_payload(gl_context_t *ctx,
                                const vgfx3d_draw_cmd_t *cmd,
                                GLint uHasSkinning,
+                               GLint uInstanceBoneStride,
                                GLint uMorphShapeCount,
                                GLint uVertexCount,
                                GLint uMorphWeights,
@@ -627,6 +628,10 @@ static void bind_morph_payload(gl_context_t *ctx,
             : 0;
 
     gl.Uniform1i(uHasSkinning, use_skinning);
+    /* R18 per-instance palette stride; 0 keeps the shared-palette indexing and
+     * the location is -1 (silent no-op) for programs without the uniform. */
+    gl.Uniform1i(uInstanceBoneStride,
+                 (use_skinning && cmd->instance_bone_stride > 0) ? cmd->instance_bone_stride : 0);
 
     if (use_skinning)
         upload_active_bone_palettes(ctx, cmd);

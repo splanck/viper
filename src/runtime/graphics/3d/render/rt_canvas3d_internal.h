@@ -58,6 +58,14 @@ typedef struct {
     float bone_weights[4];   /* blend weights (Phase 14) */
 } vgfx3d_vertex_t;           /* 92 bytes */
 
+/// @brief Optional per-vertex bone influences 5-8 (palette-slot indices + weights),
+///   carried as a mesh side stream so the fixed vertex record stays 92 bytes.
+///   Applied by the CPU skinning path; meshes with this stream bypass GPU skinning.
+typedef struct {
+    uint16_t indices[4];
+    float weights[4];
+} vgfx3d_extra_influences_t;
+
 //=============================================================================
 // Mesh3D
 //=============================================================================
@@ -79,6 +87,13 @@ typedef struct {
     const float *bone_palette;      /* bone_count * 16 floats (4x4 row-major) */
     const float *prev_bone_palette; /* previous-frame palette for motion blur */
     int32_t bone_count;             /* 0 = not skinned */
+    /* Skin partitioning: palette slot -> skeleton bone index for sub-meshes split
+     * from skins larger than VGFX3D_MAX_BONES. Owned (bone_count entries); NULL
+     * means identity mapping (vertex indices address the skeleton directly). */
+    int32_t *bone_map;
+    /* Optional influences 5-8 per vertex (owned, vertex-count entries at import
+     * time); NULL for standard 4-influence meshes. */
+    vgfx3d_extra_influences_t *extra_influences;
     /* Transient: set by DrawMeshMorphed GPU path before draw, zero otherwise */
     const float *morph_deltas;        /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas; /* shape_count * vertex_count * 3 floats */
@@ -107,6 +122,8 @@ typedef struct {
         positions64_rebase_revision;  /* geometry_revision for cached double-position rebase test */
     int8_t positions64_rebase_needed; /* cached result for camera-relative vertex rebasing */
     int8_t resident;                  /* false when stream draw residency should skip this mesh */
+    int8_t compact_streams;           /* opt-in: GPU static-cache uploads use the 48-byte
+                                         compact vertex encoding (R20); CPU payload unchanged */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
     void *physics_bvh_nodes;           /* rt_physics_mesh_bvh_node[], owned by mesh */
@@ -450,7 +467,7 @@ typedef struct {
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
-    double custom_params[8]; /* user-defined parameters per shading model */
+    double custom_params[12]; /* user-defined parameters per shading model */
     double depth_bias;       /* constant depth offset; negative pulls coplanar geometry forward */
     double slope_scaled_depth_bias; /* additional slope-scaled depth offset for decals/overlays */
     double soft_fade;               /* soft-particle fade distance in world units (0 = off) */
@@ -1107,6 +1124,19 @@ typedef struct {
     int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
     int64_t last_frame_gpu_time_us;
+
+    /* Automatic texture mip-residency streaming (opt-in; default off). The
+     * table tracks per-TextureAsset3D screen-space texel demand aggregated per
+     * frame; decisions move each asset's resident mip window through
+     * rt_textureasset3d_set_resident_mip_range at the asset's first draw-time
+     * touch of a frame, before any draw command snapshots the window. Entries
+     * hold identities and counters only — never object references. */
+    void *texture_stream_entries; /* canvas3d_texture_stream_entry_t array */
+    int32_t texture_stream_capacity;
+    int32_t texture_stream_live;
+    int8_t texture_stream_enabled;
+    double texture_stream_bias;       /* added to the desired mip; >0 drops more detail */
+    int64_t texture_stream_demotions; /* lifetime applied window demotions (diagnostics) */
     int64_t frame_draws_submitted;
     int64_t frame_aabb_transforms;
     int64_t frame_sort_passes;
@@ -1344,6 +1374,20 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                               const float *local_bounds_max,
                                               int8_t conservative_bounds,
                                               int8_t disable_occlusion);
+/// @brief Internal: queue one per-instance-skinned hardware-instanced chunk (R18).
+/// @details bone_palettes packs instance_count consecutive palettes of instance_bone_stride
+///   bones each (total_bone_count matrices, <= VGFX3D_MAX_BONES); storage must outlive the
+///   frame flush. Returns 1 when queued, 0 when the draw cannot take the hardware path and
+///   the caller must fall back to individual skinned draws.
+int rt_canvas3d_queue_instanced_batch_skinned(void *canvas_obj,
+                                              void *mesh_obj,
+                                              void *material_obj,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *bone_palettes,
+                                              const float *prev_bone_palettes,
+                                              int32_t total_bone_count,
+                                              int32_t instance_bone_stride);
 /// @brief Internal: get the monotonic per-frame counter (used to seed motion-blur history).
 int64_t rt_canvas3d_get_frame_serial(void *obj);
 /// @brief Internal: begin a HUD/overlay sub-pass; @p preserve_existing_color skips the initial

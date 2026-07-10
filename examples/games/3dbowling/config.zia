@@ -20,7 +20,7 @@
 //     celebrations / input action names / save / sound. Easy to find
 //     the constant you want.
 //   * ENUM-LIKE GROUPS. SCREEN_*, STATE_*, MODE_*, QUALITY_*, OIL_*,
-//     BALL_LIGHT/MEDIUM/HEAVY etc. are integer ID groups. The naming
+//     screen, mode, quality, and oil identifiers are integer ID groups. The naming
 //     convention (UPPER_SNAKE prefix) makes them stand out as enum
 //     values rather than tuneables.
 //   * UNITS COMMENTED INLINE WHERE NON-OBVIOUS. PHYSICS_DT in seconds,
@@ -56,6 +56,10 @@ var STATE_CELEBRATING: Integer = 6;
 // =========================================================================
 var MODE_SINGLE: Integer = 0;
 var MODE_VERSUS: Integer = 1;
+var MODE_CHAMPIONSHIP: Integer = 2;
+var MODE_CHALLENGE: Integer = 3;
+var MODE_PRACTICE: Integer = 4;
+var MODE_PARTY: Integer = 5;
 
 // Hot-seat player count bounds (1 = single game, 2-4 = versus).
 var MAX_PLAYERS: Integer = 4;
@@ -68,7 +72,7 @@ var QUALITY_CINEMATIC: Integer = 1;
 // =========================================================================
 var WINDOW_WIDTH: Integer = 1280;
 var WINDOW_HEIGHT: Integer = 720;
-var WINDOW_TITLE: String = "3D Bowling";
+var WINDOW_TITLE: String = "Neon Lanes Championship";
 
 // =========================================================================
 // Camera
@@ -171,36 +175,13 @@ var RESET_DROP_HEIGHT: Float = 2.6;
 // =========================================================================
 // Ball
 // =========================================================================
-var BALL_MASS_LIGHT: Float = 4.5;
-var BALL_SPEED_MAX_LIGHT: Float = 6.25;
-var BALL_HOOK_LIGHT: Float = 1.16;
-var BALL_COLOR_LIGHT_R: Float = 0.07;
-var BALL_COLOR_LIGHT_G: Float = 0.52;
-var BALL_COLOR_LIGHT_B: Float = 0.92;
-
-var BALL_MASS_MEDIUM: Float = 6.0;
-var BALL_SPEED_MAX_MEDIUM: Float = 5.95;
-var BALL_HOOK_MEDIUM: Float = 0.98;
-var BALL_COLOR_MEDIUM_R: Float = 0.10;
-var BALL_COLOR_MEDIUM_G: Float = 0.66;
-var BALL_COLOR_MEDIUM_B: Float = 0.54;
-
-var BALL_MASS_HEAVY: Float = 7.3;
-var BALL_SPEED_MAX_HEAVY: Float = 5.70;
-var BALL_HOOK_HEAVY: Float = 0.82;
-var BALL_COLOR_HEAVY_R: Float = 0.88;
-var BALL_COLOR_HEAVY_G: Float = 0.18;
-var BALL_COLOR_HEAVY_B: Float = 0.28;
-
 var BALL_RADIUS: Float = 0.109;
 var BALL_RESTITUTION: Float = 0.12;
 var BALL_FRICTION: Float = 0.38;
 var BALL_SHININESS: Float = 200.0;
 var BALL_REFLECTIVITY: Float = 0.42;
 
-var BALL_LIGHT: Integer = 0;
-var BALL_MEDIUM: Integer = 1;
-var BALL_HEAVY: Integer = 2;
+var BALL_CATALOG_COUNT: Integer = 6;
 
 // =========================================================================
 // Throw Mechanics
@@ -208,6 +189,10 @@ var BALL_HEAVY: Integer = 2;
 var THROW_SPEED_MIN: Float = 3.15;
 var THROW_POWER_RATE: Float = 0.34;
 var THROW_POWER_MAX: Float = 0.72;
+var RELEASE_ERROR_X: Float = 0.052;
+var RELEASE_ASSIST_OFF: Float = 0.08;
+var RELEASE_ASSIST_STANDARD: Float = 0.38;
+var RELEASE_ASSIST_FULL: Float = 0.72;
 var AIM_SPEED: Float = 0.46;
 var AIM_MAX: Float = 0.16;
 var AIM_RELEASE_ANGLE: Float = 0.11;
@@ -311,57 +296,57 @@ var LIGHT_SPOT_ATTENUATION: Float = 0.045;
 var LIGHT_SPOT_INNER_ANGLE: Float = 22.0;
 var LIGHT_SPOT_OUTER_ANGLE: Float = 42.0;
 
-var AMBIENT_R: Float = 0.20;
-var AMBIENT_G: Float = 0.23;
-var AMBIENT_B: Float = 0.26;
+var AMBIENT_R: Float = 0.07;
+var AMBIENT_G: Float = 0.09;
+var AMBIENT_B: Float = 0.12;
 
 // =========================================================================
 // Materials / Colors
 // =========================================================================
-var LANE_COLOR_R: Float = 0.58;
-var LANE_COLOR_G: Float = 0.43;
-var LANE_COLOR_B: Float = 0.25;
-var LANE_BOARD_LIGHT_R: Float = 0.86;
-var LANE_BOARD_LIGHT_G: Float = 0.64;
-var LANE_BOARD_LIGHT_B: Float = 0.34;
-var LANE_BOARD_DARK_R: Float = 0.68;
-var LANE_BOARD_DARK_G: Float = 0.46;
-var LANE_BOARD_DARK_B: Float = 0.24;
-var LANE_OIL_COLOR_R: Float = 0.58;
-var LANE_OIL_COLOR_G: Float = 0.76;
-var LANE_OIL_COLOR_B: Float = 0.88;
+var LANE_COLOR_R: Float = 0.34;
+var LANE_COLOR_G: Float = 0.18;
+var LANE_COLOR_B: Float = 0.055;
+var LANE_BOARD_LIGHT_R: Float = 0.48;
+var LANE_BOARD_LIGHT_G: Float = 0.27;
+var LANE_BOARD_LIGHT_B: Float = 0.075;
+var LANE_BOARD_DARK_R: Float = 0.42;
+var LANE_BOARD_DARK_G: Float = 0.22;
+var LANE_BOARD_DARK_B: Float = 0.050;
+var LANE_OIL_COLOR_R: Float = 0.44;
+var LANE_OIL_COLOR_G: Float = 0.29;
+var LANE_OIL_COLOR_B: Float = 0.12;
 var LANE_SHININESS: Float = 96.0;
 var LANE_OIL_SHININESS: Float = 180.0;
 var LANE_REFLECTIVITY: Float = 0.12;
 var LANE_OIL_REFLECTIVITY: Float = 0.42;
 
-var APPROACH_COLOR_R: Float = 0.30;
-var APPROACH_COLOR_G: Float = 0.34;
-var APPROACH_COLOR_B: Float = 0.36;
+var APPROACH_COLOR_R: Float = 0.018;
+var APPROACH_COLOR_G: Float = 0.035;
+var APPROACH_COLOR_B: Float = 0.070;
 
-var GUTTER_COLOR_R: Float = 0.10;
-var GUTTER_COLOR_G: Float = 0.12;
-var GUTTER_COLOR_B: Float = 0.16;
+var GUTTER_COLOR_R: Float = 0.025;
+var GUTTER_COLOR_G: Float = 0.04;
+var GUTTER_COLOR_B: Float = 0.07;
 
-var WALL_COLOR_R: Float = 0.20;
-var WALL_COLOR_G: Float = 0.24;
-var WALL_COLOR_B: Float = 0.30;
+var WALL_COLOR_R: Float = 0.008;
+var WALL_COLOR_G: Float = 0.020;
+var WALL_COLOR_B: Float = 0.045;
 
-var BACKWALL_COLOR_R: Float = 0.06;
-var BACKWALL_COLOR_G: Float = 0.09;
-var BACKWALL_COLOR_B: Float = 0.12;
-var ROOM_FLOOR_R: Float = 0.09;
-var ROOM_FLOOR_G: Float = 0.11;
-var ROOM_FLOOR_B: Float = 0.13;
-var ROOM_SIDE_LANE_R: Float = 0.24;
-var ROOM_SIDE_LANE_G: Float = 0.28;
-var ROOM_SIDE_LANE_B: Float = 0.30;
-var ROOM_SIDE_GUTTER_R: Float = 0.08;
-var ROOM_SIDE_GUTTER_G: Float = 0.10;
-var ROOM_SIDE_GUTTER_B: Float = 0.14;
-var ROOM_WALL_R: Float = 0.13;
-var ROOM_WALL_G: Float = 0.17;
-var ROOM_WALL_B: Float = 0.22;
+var BACKWALL_COLOR_R: Float = 0.003;
+var BACKWALL_COLOR_G: Float = 0.010;
+var BACKWALL_COLOR_B: Float = 0.025;
+var ROOM_FLOOR_R: Float = 0.005;
+var ROOM_FLOOR_G: Float = 0.012;
+var ROOM_FLOOR_B: Float = 0.028;
+var ROOM_SIDE_LANE_R: Float = 0.085;
+var ROOM_SIDE_LANE_G: Float = 0.11;
+var ROOM_SIDE_LANE_B: Float = 0.14;
+var ROOM_SIDE_GUTTER_R: Float = 0.004;
+var ROOM_SIDE_GUTTER_G: Float = 0.012;
+var ROOM_SIDE_GUTTER_B: Float = 0.030;
+var ROOM_WALL_R: Float = 0.004;
+var ROOM_WALL_G: Float = 0.014;
+var ROOM_WALL_B: Float = 0.038;
 
 var PIN_DECK_COLOR_R: Float = 0.16;
 var PIN_DECK_COLOR_G: Float = 0.19;
@@ -428,7 +413,6 @@ var SCORE_FRAME_10_W: Integer = 110;
 
 var METER_W: Integer = 160;
 var METER_H: Integer = 18;
-var METER_Y_OFFSET: Integer = 72;
 var METER_COLOR_LOW: Integer = 0x2EDB9B;
 var METER_COLOR_MID: Integer = 0xFFD166;
 var METER_COLOR_HIGH: Integer = 0xEF476F;
@@ -437,7 +421,6 @@ var METER_THRESHOLD_HIGH: Float = 0.9;
 
 var SPIN_INDICATOR_W: Integer = 96;
 var SPIN_INDICATOR_H: Integer = 12;
-var SPIN_INDICATOR_Y_OFFSET: Integer = 104;
 
 var MSG_DURATION_SHORT: Float = 2.0;
 var MSG_DURATION_LONG: Float = 3.5;
@@ -456,6 +439,9 @@ var HUD_COLOR_FRAME_BORDER: Integer = 0x4B6472;
 var HUD_COLOR_MENU_BG: Integer = 0x0E171D;
 var HUD_COLOR_MENU_CARD: Integer = 0x182630;
 var HUD_COLOR_MENU_ACCENT: Integer = 0x56CFE1;
+var HUD_COLOR_CORAL: Integer = 0xFF6B6B;
+var HUD_COLOR_NAVY: Integer = 0x0B1B2B;
+var HUD_COLOR_AMBER: Integer = 0xFFB547;
 
 // =========================================================================
 // Particles / Decals
@@ -524,20 +510,27 @@ var ACT_CAMERA: String = "camera_cycle";
 // Save Keys
 // =========================================================================
 var SAVE_NAME: String = "3dbowling";
-var SAVE_VERSION: Integer = 2;
+var SAVE_VERSION: Integer = 3;
 var SAVE_KEY_BEST_SCORE: String = "best_score";
 var SAVE_KEY_GAMES_PLAYED: String = "games_played";
 var SAVE_KEY_OIL_PATTERN: String = "oil_pattern";
 var SAVE_KEY_QUALITY: String = "quality";
 var SAVE_KEY_LAST_MODE: String = "last_mode";
 var SAVE_KEY_SETTINGS_VERSION: String = "settings_version";
-
-// =========================================================================
-// Sound Effects
-// =========================================================================
-var SFX_JUMP: Integer = 0;
-var SFX_COIN: Integer = 1;
-var SFX_HIT: Integer = 2;
-var SFX_EXPLODE: Integer = 3;
-var SFX_POWERUP: Integer = 4;
-var SFX_LASER: Integer = 5;
+var SAVE_KEY_PLAYER_COUNT: String = "player_count";
+var SAVE_KEY_MASTER_VOLUME: String = "master_volume";
+var SAVE_KEY_MUSIC_VOLUME: String = "music_volume";
+var SAVE_KEY_EFFECTS_VOLUME: String = "effects_volume";
+var SAVE_KEY_CAMERA_SHAKE: String = "camera_shake";
+var SAVE_KEY_REPLAY_MODE: String = "replay_mode";
+var SAVE_KEY_HIGH_CONTRAST: String = "high_contrast";
+var SAVE_KEY_ASSIST_LEVEL: String = "assist_level";
+var SAVE_KEY_CONTROL_PRESET: String = "control_preset";
+var SAVE_KEY_SELECTED_BALL: String = "selected_ball";
+var SAVE_KEY_CHALLENGE_MEDALS: String = "challenge_medals";
+var SAVE_KEY_CAREER_POINTS: String = "career_points";
+var SAVE_KEY_ACHIEVEMENT_MASK: String = "achievement_mask";
+var SAVE_KEY_TOTAL_STRIKES: String = "total_strikes";
+var SAVE_KEY_TOTAL_SPARES: String = "total_spares";
+var SAVE_KEY_TOTAL_GUTTERS: String = "total_gutters";
+var SAVE_KEY_TOTAL_PINS: String = "total_pins";

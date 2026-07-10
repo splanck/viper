@@ -52,7 +52,7 @@ typedef struct {
     int32_t pbrFlags[4];
     float splatScales[4];
     int32_t shadingModel;
-    float customParams[8];
+    float customParams[12];
     /* MSL aligns the following int4 to 16 bytes; shadingModel + customParams
      * occupy 36, so pad 12 to keep the C layout byte-identical to PerMaterial
      * in the shader (a mismatch here shifts the UV-set/transform block and

@@ -32,6 +32,16 @@
 
 /// @brief Apply skeletal skinning on the CPU.
 /// Transforms position and normal of each vertex by the weighted bone matrices.
+/// @brief CPU-skin @p vertex_count vertices applying both the vertex record's 4
+///   influences and the optional per-vertex influences 5-8 side stream.
+void vgfx3d_skin_vertices_extra(const vgfx3d_vertex_t *src,
+                                vgfx3d_vertex_t *dst,
+                                uint32_t vertex_count,
+                                const float *palette,
+                                int32_t bone_count,
+                                const vgfx3d_extra_influences_t *extra,
+                                vgfx3d_skinning_scratch_t *scratch);
+
 void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,

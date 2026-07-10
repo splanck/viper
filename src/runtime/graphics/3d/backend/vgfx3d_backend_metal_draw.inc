@@ -100,6 +100,7 @@ static void metal_submit_draw(void *ctx_ptr,
         obj.flags1[1] = morph_status.has_prev_weights;
         obj.flags1[2] = 0;
         obj.flags1[3] = morph_status.has_normal_deltas;
+        obj.flags2[0] = cmd->instance_bone_stride;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* Image-based lighting resolution for this draw (also used at env bind). */
@@ -216,7 +217,7 @@ static void metal_submit_draw(void *ctx_ptr,
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
         }
         mat.shadingModel = cmd->shading_model;
-        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
+        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 12);
         for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
             if (slot < 4)
                 mat.textureUvSets0[slot] = cmd->texture_slot_uv_set[slot];
@@ -243,6 +244,7 @@ static void metal_submit_draw(void *ctx_ptr,
                 [ctx.encoder setFragmentTexture:opaqueDepth atIndex:16];
         }
         [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:13];
+        [ctx.encoder setFragmentTexture:ctx.brdfLutTexture atIndex:18];
         for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_CSM_SLOTS; slot++) {
             if (ctx->_shadowDepthTexture[slot])
                 [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[slot] atIndex:4 + slot];
@@ -948,6 +950,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         obj.flags1[1] = morph_status.has_prev_weights;
         obj.flags1[2] = cmd->has_prev_instance_matrices ? 1 : 0;
         obj.flags1[3] = morph_status.has_normal_deltas;
+        obj.flags2[0] = cmd->instance_bone_stride;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* Image-based lighting resolution for this draw (also used at env bind). */
@@ -1060,7 +1063,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
         }
         mat.shadingModel = cmd->shading_model;
-        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 8);
+        memcpy(mat.customParams, cmd->custom_params, sizeof(float) * 12);
         for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
             if (slot < 4)
                 mat.textureUvSets0[slot] = cmd->texture_slot_uv_set[slot];

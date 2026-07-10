@@ -475,6 +475,21 @@ static void metal_create_default_texture_resources(VGFXMetalContext *ctx, id<MTL
                               bytesPerRow:4
                             bytesPerImage:4];
     }
+
+    /* Split-sum environment BRDF table (shared CPU precomputation). */
+    MTLTextureDescriptor *lutDesc =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG32Float
+                                                           width:VGFX3D_BRDF_LUT_SIZE
+                                                          height:VGFX3D_BRDF_LUT_SIZE
+                                                       mipmapped:NO];
+    lutDesc.usage = MTLTextureUsageShaderRead;
+    lutDesc.storageMode = MTLStorageModeShared;
+    ctx.brdfLutTexture = [device newTextureWithDescriptor:lutDesc];
+    [ctx.brdfLutTexture
+        replaceRegion:MTLRegionMake2D(0, 0, VGFX3D_BRDF_LUT_SIZE, VGFX3D_BRDF_LUT_SIZE)
+          mipmapLevel:0
+            withBytes:vgfx3d_brdf_lut_data()
+          bytesPerRow:(NSUInteger)VGFX3D_BRDF_LUT_SIZE * 2 * sizeof(float)];
 }
 
 /// @brief Create shared texture and cubemap samplers.

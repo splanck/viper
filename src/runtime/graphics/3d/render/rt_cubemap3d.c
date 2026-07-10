@@ -33,10 +33,12 @@
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
+#include "rt_asset.h"
 
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -476,6 +478,333 @@ static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, fl
 /// @param pz Positive-Z face (front).
 /// @param nz Negative-Z face (back).
 /// @return Opaque cube map handle, or NULL on validation failure.
+//=============================================================================
+// Radiance .hdr panorama loading (from-scratch RGBE decoder)
+//=============================================================================
+
+/// @brief Exact power of two via IEEE-754 bit construction (no ldexpf: the
+///   native-link runtime symbol set excludes it).
+static float cubemap_hdr_exp2i(int n) {
+    uint32_t bits;
+    float f;
+    if (n < -149)
+        return 0.0f;
+    if (n < -126) {
+        bits = 1u << (uint32_t)(n + 149); /* denormal */
+    } else {
+        if (n > 127)
+            n = 127;
+        bits = (uint32_t)(n + 127) << 23;
+    }
+    memcpy(&f, &bits, sizeof(f));
+    return f;
+}
+
+/// @brief One RGBE quadruple to linear float RGB (Radiance shared-exponent form).
+static void cubemap_hdr_rgbe_to_float(const uint8_t rgbe[4], float *out_rgb) {
+    if (rgbe[3] == 0) {
+        out_rgb[0] = out_rgb[1] = out_rgb[2] = 0.0f;
+        return;
+    }
+    {
+        float scale = cubemap_hdr_exp2i((int)rgbe[3] - 136); /* 2^(e-128) / 256 */
+        out_rgb[0] = (float)rgbe[0] * scale;
+        out_rgb[1] = (float)rgbe[1] * scale;
+        out_rgb[2] = (float)rgbe[2] * scale;
+    }
+}
+
+/// @brief Parse the Radiance header; returns the offset of the pixel data and
+///   the image dimensions, or 0 on malformed input. Only the standard "-Y H +X W"
+///   row order is accepted (top-down rows, left-to-right columns).
+static size_t cubemap_hdr_parse_header(const uint8_t *data, size_t size, int *out_w, int *out_h) {
+    size_t pos = 0;
+    int saw_format = 0;
+    if (size < 11 || data[0] != '#' || data[1] != '?')
+        return 0;
+    while (pos < size) {
+        size_t line_start = pos;
+        size_t line_len;
+        while (pos < size && data[pos] != '\n')
+            pos++;
+        if (pos >= size)
+            return 0;
+        line_len = pos - line_start;
+        pos++; /* consume newline */
+        if (line_len == 0) {
+            /* Blank line ends the header; the resolution line follows. */
+            break;
+        }
+        if (line_len >= 7 && memcmp(data + line_start, "FORMAT=", 7) == 0) {
+            if (line_len >= 22 &&
+                memcmp(data + line_start + 7, "32-bit_rle_rgbe", 15) == 0)
+                saw_format = 1;
+            else
+                return 0;
+        }
+    }
+    if (!saw_format || pos >= size)
+        return 0;
+    {
+        /* Resolution line, e.g. "-Y 512 +X 1024". */
+        char line[96];
+        size_t line_start = pos;
+        size_t line_len;
+        int h = 0;
+        int w = 0;
+        while (pos < size && data[pos] != '\n')
+            pos++;
+        if (pos >= size)
+            return 0;
+        line_len = pos - line_start;
+        pos++;
+        if (line_len == 0 || line_len >= sizeof(line))
+            return 0;
+        memcpy(line, data + line_start, line_len);
+        line[line_len] = 0;
+        if (sscanf(line, "-Y %d +X %d", &h, &w) != 2)
+            return 0;
+        if (w <= 0 || h <= 0 || w > 16384 || h > 16384)
+            return 0;
+        *out_w = w;
+        *out_h = h;
+    }
+    return pos;
+}
+
+/// @brief Decode the RGBE scanlines (new RLE, old RLE, and flat forms) into a
+///   linear float RGB image. @return malloc-owned w*h*3 floats, or NULL.
+static float *cubemap_hdr_decode(const uint8_t *data, size_t size, int *out_w, int *out_h) {
+    int w = 0;
+    int h = 0;
+    size_t pos = cubemap_hdr_parse_header(data, size, &w, &h);
+    float *rgb;
+    uint8_t *row;
+    if (pos == 0)
+        return NULL;
+    if ((size_t)w > SIZE_MAX / (size_t)h / (3u * sizeof(float)))
+        return NULL;
+    rgb = (float *)malloc((size_t)w * (size_t)h * 3u * sizeof(float));
+    row = (uint8_t *)malloc((size_t)w * 4u);
+    if (!rgb || !row) {
+        free(rgb);
+        free(row);
+        return NULL;
+    }
+    for (int y = 0; y < h; y++) {
+        if (pos + 4 > size)
+            goto fail;
+        if (data[pos] == 2 && data[pos + 1] == 2 &&
+            (((int)data[pos + 2] << 8) | data[pos + 3]) == w && w >= 8 && w <= 32767) {
+            /* New-style RLE: four independent component planes. */
+            pos += 4;
+            for (int c = 0; c < 4; c++) {
+                int x = 0;
+                while (x < w) {
+                    uint8_t count;
+                    if (pos >= size)
+                        goto fail;
+                    count = data[pos++];
+                    if (count > 128) {
+                        uint8_t value;
+                        int run = count - 128;
+                        if (pos >= size || x + run > w)
+                            goto fail;
+                        value = data[pos++];
+                        for (int i = 0; i < run; i++)
+                            row[(size_t)(x + i) * 4u + (size_t)c] = value;
+                        x += run;
+                    } else {
+                        if (count == 0 || x + count > w || pos + count > size)
+                            goto fail;
+                        for (int i = 0; i < count; i++)
+                            row[(size_t)(x + i) * 4u + (size_t)c] = data[pos + (size_t)i];
+                        pos += count;
+                        x += count;
+                    }
+                }
+            }
+        } else {
+            /* Flat / old-style RLE rows. */
+            int x = 0;
+            int shift = 0;
+            while (x < w) {
+                uint8_t px[4];
+                if (pos + 4 > size)
+                    goto fail;
+                memcpy(px, data + pos, 4);
+                pos += 4;
+                if (px[0] == 1 && px[1] == 1 && px[2] == 1) {
+                    int run = (int)px[3] << shift;
+                    if (x == 0 || x + run > w)
+                        goto fail;
+                    for (int i = 0; i < run; i++)
+                        memcpy(&row[(size_t)(x + i) * 4u], &row[(size_t)(x - 1) * 4u], 4u);
+                    x += run;
+                    shift += 8;
+                    if (shift > 24)
+                        goto fail;
+                } else {
+                    memcpy(&row[(size_t)x * 4u], px, 4u);
+                    x++;
+                    shift = 0;
+                }
+            }
+        }
+        for (int x = 0; x < w; x++)
+            cubemap_hdr_rgbe_to_float(&row[(size_t)x * 4u],
+                                      &rgb[((size_t)y * (size_t)w + (size_t)x) * 3u]);
+    }
+    free(row);
+    *out_w = w;
+    *out_h = h;
+    return rgb;
+fail:
+    free(rgb);
+    free(row);
+    return NULL;
+}
+
+/// @brief Bilinear sample of the equirectangular panorama along @p dir
+///   (u wraps around the seam, v clamps at the poles).
+static void cubemap_hdr_sample_panorama(
+    const float *rgb, int w, int h, const float dir[3], float *out_rgb) {
+    float u = 0.5f + atan2f(dir[0], dir[2]) * (float)(1.0 / (2.0 * 3.14159265358979323846));
+    float dy = dir[1] < -1.0f ? -1.0f : (dir[1] > 1.0f ? 1.0f : dir[1]);
+    float v = acosf(dy) * (float)(1.0 / 3.14159265358979323846);
+    float fx = u * (float)w - 0.5f;
+    float fy = v * (float)h - 0.5f;
+    int x0 = (int)floorf(fx);
+    int y0 = (int)floorf(fy);
+    float tx = fx - (float)x0;
+    float ty = fy - (float)y0;
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+    int xs[2];
+    int ys[2];
+    xs[0] = ((x0 % w) + w) % w;
+    xs[1] = ((x1 % w) + w) % w;
+    ys[0] = y0 < 0 ? 0 : (y0 > h - 1 ? h - 1 : y0);
+    ys[1] = y1 < 0 ? 0 : (y1 > h - 1 ? h - 1 : y1);
+    for (int c = 0; c < 3; c++) {
+        float c00 = rgb[((size_t)ys[0] * (size_t)w + (size_t)xs[0]) * 3u + (size_t)c];
+        float c10 = rgb[((size_t)ys[0] * (size_t)w + (size_t)xs[1]) * 3u + (size_t)c];
+        float c01 = rgb[((size_t)ys[1] * (size_t)w + (size_t)xs[0]) * 3u + (size_t)c];
+        float c11 = rgb[((size_t)ys[1] * (size_t)w + (size_t)xs[1]) * 3u + (size_t)c];
+        float top = c00 + (c10 - c00) * tx;
+        float bot = c01 + (c11 - c01) * tx;
+        out_rgb[c] = top + (bot - top) * ty;
+    }
+}
+
+/// @brief Load a Radiance .hdr equirectangular panorama as a CubeMap3D.
+/// @details The panorama decodes to linear float RGB, projects onto the six
+///   cube faces through the engine's own face basis, and range-compresses with
+///   `x' = e*x / (1 + e*x)` (Reinhard, e = @p exposure) into the 8-bit face
+///   storage the IBL pipeline consumes. Exposure defaults to 1 when
+///   non-positive. Asset resolution follows the asset manager (embedded ->
+///   mounted packs -> filesystem).
+/// @brief Read an entire file from the plain filesystem (LoadHdrPanorama accepts
+///   direct paths like SceneAsset.Load; the asset manager is the fallback).
+static uint8_t *cubemap_hdr_read_file(const char *path, size_t *out_size) {
+    FILE *f = fopen(path, "rb");
+    long len;
+    uint8_t *data;
+    *out_size = 0;
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0 || (len = ftell(f)) < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    data = (uint8_t *)malloc((size_t)len ? (size_t)len : 1u);
+    if (!data) {
+        fclose(f);
+        return NULL;
+    }
+    if (len > 0 && fread(data, 1, (size_t)len, f) != (size_t)len) {
+        free(data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+    *out_size = (size_t)len;
+    return data;
+}
+
+void *rt_cubemap3d_load_hdr_panorama(rt_string path, double exposure) {
+    size_t size = 0;
+    const char *cpath = rt_string_cstr(path);
+    uint8_t *data = cpath ? cubemap_hdr_read_file(cpath, &size) : NULL;
+    if (!data)
+        data = rt_asset_load_raw(path, &size);
+    float *rgb = NULL;
+    int w = 0;
+    int h = 0;
+    int face_size;
+    void *faces[6] = {NULL, NULL, NULL, NULL, NULL, NULL};
+    void *cubemap = NULL;
+    float e = (float)exposure;
+    if (!isfinite(e) || e <= 0.0f)
+        e = 1.0f;
+    if (!data) {
+        rt_trap("CubeMap3D.LoadHdrPanorama: asset not found");
+        return NULL;
+    }
+    rgb = cubemap_hdr_decode(data, size, &w, &h);
+    free(data);
+    if (!rgb) {
+        rt_trap("CubeMap3D.LoadHdrPanorama: not a valid Radiance .hdr image");
+        return NULL;
+    }
+    face_size = 16;
+    while (face_size * 2 <= w / 4 && face_size < 512)
+        face_size *= 2;
+    for (int f = 0; f < 6; f++) {
+        faces[f] = rt_pixels_new((int64_t)face_size, (int64_t)face_size);
+        if (!faces[f])
+            goto done;
+    }
+    for (int f = 0; f < 6; f++) {
+        for (int y = 0; y < face_size; y++) {
+            for (int x = 0; x < face_size; x++) {
+                float dir[3];
+                float sample[3];
+                uint32_t texel = 0xFF000000u;
+                cubemap_face_uv_to_direction(f,
+                                             ((float)x + 0.5f) / (float)face_size,
+                                             ((float)y + 0.5f) / (float)face_size,
+                                             &dir[0],
+                                             &dir[1],
+                                             &dir[2]);
+                cubemap_hdr_sample_panorama(rgb, w, h, dir, sample);
+                for (int c = 0; c < 3; c++) {
+                    float scaled = sample[c] * e;
+                    float mapped;
+                    if (!(scaled > 0.0f))
+                        scaled = 0.0f;
+                    mapped = scaled / (1.0f + scaled);
+                    {
+                        int b = (int)(mapped * 255.0f + 0.5f);
+                        if (b > 255)
+                            b = 255;
+                        texel |= (uint32_t)b << (c * 8);
+                    }
+                }
+                rt_pixels_set(faces[f], (int64_t)x, (int64_t)y, (int64_t)texel);
+            }
+        }
+    }
+    cubemap = rt_cubemap3d_new(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
+done:
+    for (int f = 0; f < 6; f++) {
+        if (faces[f] && rt_obj_release_check0(faces[f]))
+            rt_obj_free(faces[f]);
+    }
+    free(rgb);
+    return cubemap;
+}
+
 void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) {
     void *faces[6] = {px, nx, py, ny, pz, nz};
 

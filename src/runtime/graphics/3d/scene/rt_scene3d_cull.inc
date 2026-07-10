@@ -544,8 +544,13 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
         submit_max[2] += pad;
     }
     if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
+        /* Partitioned sub-meshes (bone_map set) need the full skeleton palette so
+         * the draw path can gather their local slots; clamping to the sub-mesh
+         * count would truncate the source palette before the gather. */
         int32_t draw_bone_count =
-            anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
+            ((rt_mesh3d *)draw_mesh)->bone_map
+                ? anim_bone_count
+                : (anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count);
         if (rt_canvas3d_add_temp_object(canvas3d, effective_animator)) {
             rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(
                 canvas3d,

@@ -254,6 +254,7 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->uMorphDeltas, GL_TU_MORPH_DELTAS);
     gl.Uniform1i(ctx->uMorphNormalDeltas, GL_TU_MORPH_NORMAL_DELTAS);
     gl.Uniform1i(ctx->uEnvMap, GL_TU_ENV_MAP);
+    gl.Uniform1i(ctx->uBrdfLut, GL_TU_BRDF_LUT);
     gl.Uniform1i(ctx->uMetallicRoughnessTex, GL_TU_METALLIC_ROUGHNESS);
     gl.Uniform1i(ctx->uAOTex, GL_TU_AO);
     gl.UseProgram(ctx->shadow_program);
@@ -431,6 +432,41 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
     if (!gl_upload_ok()) {
         gl.DeleteTextures(1, &ctx->default_white_tex);
         ctx->default_white_tex = 0;
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Create the context-owned split-sum environment-BRDF lookup texture
+/// from the shared CPU precomputation (RG32F, clamped bilinear).
+/// @return Non-zero when the table texture is available.
+static int gl_create_brdf_lut_texture(gl_context_t *ctx) {
+    if (!ctx)
+        return 0;
+    if (ctx->brdf_lut_tex)
+        return 1;
+    gl.GenTextures(1, &ctx->brdf_lut_tex);
+    if (!ctx->brdf_lut_tex)
+        return 0;
+    gl.BindTexture(GL_TEXTURE_2D, ctx->brdf_lut_tex);
+    gl.TexImage2D(GL_TEXTURE_2D,
+                  0,
+                  GL_RG32F,
+                  VGFX3D_BRDF_LUT_SIZE,
+                  VGFX3D_BRDF_LUT_SIZE,
+                  0,
+                  GL_RG,
+                  GL_FLOAT,
+                  vgfx3d_brdf_lut_data());
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    if (!gl_upload_ok()) {
+        gl.DeleteTextures(1, &ctx->brdf_lut_tex);
+        ctx->brdf_lut_tex = 0;
         return 0;
     }
     return 1;
@@ -729,6 +765,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_bind_context_uniform_blocks(ctx);
     if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
         !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx) ||
+        !gl_create_brdf_lut_texture(ctx) ||
         !gl_create_default_white_cubemap(ctx)) {
         gl_release_fixed_context_objects(ctx);
         gl_delete_context_programs(ctx);

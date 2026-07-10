@@ -37,9 +37,14 @@
 module lane;
 
 bind Viper.Graphics3D;
+bind Viper.Graphics;
 bind Viper.Math;
+bind Viper.Core.Convert as Convert;
+bind Viper.IO;
 bind "../config";
 bind "../util/mathutil";
+
+var sharedLaneTexture: Pixels = null;
 
 /// @brief Builds and owns every static lane mesh / body / trigger.
 class LaneBuilder {
@@ -62,6 +67,20 @@ class LaneBuilder {
     hide Mesh3D arrowMesh;
     hide Mesh3D dotMesh;
     hide Mesh3D lightMesh;
+    hide Mesh3D monitorMesh;
+    hide Mesh3D ballReturnMesh;
+    hide Mesh3D ballReturnHoodMesh;
+    hide Mesh3D seatMesh;
+    hide Mesh3D tableMesh;
+    hide Mesh3D neonStripMesh;
+    hide Mesh3D spectatorBodyMesh;
+    hide Mesh3D spectatorHeadMesh;
+    hide Mesh3D venueSignMesh;
+    hide Mesh3D venueSignBarMesh;
+    hide Mesh3D decorPinBodyMesh;
+    hide Mesh3D decorPinHeadMesh;
+    hide Mesh3D decorPinBandMesh;
+    hide Mesh3D rackBallMesh;
 
     hide Material3D laneMat;
     hide Material3D boardLightMat;
@@ -83,6 +102,22 @@ class LaneBuilder {
     hide Material3D arrowMat;
     hide Material3D dotMat;
     hide Material3D lightMat;
+    hide Material3D monitorMat;
+    hide Material3D ballReturnMat;
+    hide Material3D ballReturnHoodMat;
+    hide Material3D seatMat;
+    hide Material3D tableMat;
+    hide Material3D neonCyanMat;
+    hide Material3D neonCoralMat;
+    hide Material3D spectatorMat;
+    hide Material3D venueSignMat;
+    hide Material3D decorPinMat;
+    hide Material3D decorPinBandMat;
+    hide Material3D rackBallCyanMat;
+    hide Material3D rackBallCoralMat;
+    hide Pixels laneTexture;
+    hide Integer lanePreviewLight;
+    hide Integer lanePreviewDark;
 
     hide Mat4 laneXform;
     hide Mat4 oilXform;
@@ -103,14 +138,34 @@ class LaneBuilder {
     hide Mat4 pinsetterXform;
     hide Mat4 approachXform;
     hide Mat4 foulLineXform;
+    hide Mat4 venueSignXform;
 
     hide InstanceBatch3D arrowBatch;
     hide InstanceBatch3D dotBatch;
     hide InstanceBatch3D lightBatch;
+    hide InstanceBatch3D monitorBatch;
+    hide InstanceBatch3D ballReturnBatch;
+    hide InstanceBatch3D ballReturnHoodBatch;
+    hide InstanceBatch3D seatBatch;
+    hide InstanceBatch3D tableBatch;
+    hide InstanceBatch3D neonCyanBatch;
+    hide InstanceBatch3D neonCoralBatch;
+    hide InstanceBatch3D spectatorBodyBatch;
+    hide InstanceBatch3D spectatorHeadBatch;
+    hide InstanceBatch3D boardLightBatch;
+    hide InstanceBatch3D boardDarkBatch;
+    hide InstanceBatch3D signCyanBatch;
+    hide InstanceBatch3D signAmberBatch;
+    hide InstanceBatch3D decorPinBodyBatch;
+    hide InstanceBatch3D decorPinHeadBatch;
+    hide InstanceBatch3D decorPinBandBatch;
+    hide InstanceBatch3D rackBallCyanBatch;
+    hide InstanceBatch3D rackBallCoralBatch;
 
     hide Float oilEndZ;
     hide Integer oilPattern;
     hide Float laneCenterZ;
+    hide List[Float] oilWear;
 
     hide Physics3DBody laneFloorBody;
     hide Physics3DBody gutterFloorL;
@@ -136,6 +191,10 @@ class LaneBuilder {
         }
 
         laneCenterZ = (config.LANE_LENGTH - config.LANE_APPROACH) / 2.0;
+        oilWear = [];
+        for (var wi: Integer = 0; wi < 9; wi = wi + 1) { oilWear.add(0.0); }
+        lanePreviewLight = 0xD6A353;
+        lanePreviewDark = 0xB97B35;
         buildMeshes();
         buildTransforms();
         buildBatches();
@@ -170,7 +229,8 @@ class LaneBuilder {
         oilMesh = Mesh3D.Box(config.LANE_WIDTH - 0.02, 0.005, oilLen);
         oilMat = Material3D.FromColor(config.LANE_OIL_COLOR_R, config.LANE_OIL_COLOR_G, config.LANE_OIL_COLOR_B);
         Material3D.SetShininess(oilMat, config.LANE_OIL_SHININESS);
-        oilMat.Alpha = 0.34;
+        oilMat.Alpha = 0.11;
+        oilMat.AlphaMode = 2;
         oilMat.SsrEnabled = true;
 
         pinDeckMesh = Mesh3D.Box(config.LANE_WIDTH - 0.02, 0.008, 1.9);
@@ -199,7 +259,7 @@ class LaneBuilder {
         backWallMat = Material3D.FromColor(config.ROOM_WALL_R, config.ROOM_WALL_G, config.ROOM_WALL_B);
 
         ceilingMesh = Mesh3D.Box(8.8, 0.08, totalLen + 2.8);
-        ceilingMat = Material3D.FromColor(0.18, 0.20, 0.25);
+        ceilingMat = Material3D.FromColor(0.012, 0.024, 0.055);
         Material3D.SetShininess(ceilingMat, 10.0);
 
         sidePanelMesh = Mesh3D.Box(0.26, 3.8, totalLen + 2.8);
@@ -207,7 +267,7 @@ class LaneBuilder {
         Material3D.SetShininess(sidePanelMat, 8.0);
 
         pinsetterMesh = Mesh3D.Box(backW, 0.34, 0.72);
-        pinsetterMat = Material3D.FromColor(0.22, 0.20, 0.18);
+        pinsetterMat = Material3D.FromColor(0.018, 0.032, 0.050);
         Material3D.SetShininess(pinsetterMat, 22.0);
 
         approachMesh = Mesh3D.Box(config.LANE_WIDTH + 1.0, 0.04, config.LANE_APPROACH);
@@ -230,7 +290,92 @@ class LaneBuilder {
         lightMesh = Mesh3D.Box(0.3, 0.06, 0.16);
         lightMat = Material3D.FromColor(config.LIGHT_FIXTURE_R, config.LIGHT_FIXTURE_G, config.LIGHT_FIXTURE_B);
         Material3D.SetEmissiveColor(lightMat, 0.25, 0.23, 0.18);
+
+        monitorMesh = Mesh3D.Box(1.15, 0.58, 0.10);
+        monitorMat = Material3D.PBR(0.035, 0.085, 0.12);
+        monitorMat.Roughness = 0.28;
+        Material3D.SetEmissiveColor(monitorMat, 0.05, 0.34, 0.42);
+
+        ballReturnMesh = Mesh3D.Box(0.46, 0.42, 1.55);
+        ballReturnMat = Material3D.PBR(0.09, 0.12, 0.15);
+        ballReturnMat.Metallic = 0.62;
+        ballReturnMat.Roughness = 0.32;
+        ballReturnHoodMesh = Mesh3D.Sphere(0.34, 14);
+        ballReturnHoodMat = Material3D.PBR(0.06, 0.09, 0.12);
+        ballReturnHoodMat.Metallic = 0.44;
+        ballReturnHoodMat.Roughness = 0.26;
+
+        seatMesh = Mesh3D.Box(0.54, 0.48, 0.58);
+        seatMat = Material3D.PBR(0.10, 0.24, 0.29);
+        seatMat.Roughness = 0.78;
+        tableMesh = Mesh3D.Cylinder(0.40, 0.52, 16);
+        tableMat = Material3D.PBR(0.16, 0.13, 0.11);
+        tableMat.Metallic = 0.18;
+        tableMat.Roughness = 0.50;
+
+        neonStripMesh = Mesh3D.Box(0.055, 0.055, 3.2);
+        neonCyanMat = Material3D.FromColor(0.12, 0.82, 0.92);
+        Material3D.SetEmissiveColor(neonCyanMat, 0.04, 0.38, 0.48);
+        neonCoralMat = Material3D.FromColor(1.0, 0.23, 0.18);
+        Material3D.SetEmissiveColor(neonCoralMat, 0.46, 0.035, 0.020);
+
+        spectatorBodyMesh = Mesh3D.Cylinder(0.12, 0.52, 10);
+        spectatorHeadMesh = Mesh3D.Sphere(0.12, 10);
+        spectatorMat = Material3D.FromColor(0.004, 0.010, 0.024);
+
+        venueSignMesh = Mesh3D.Box(4.40, 0.86, 0.08);
+        venueSignMat = Material3D.PBR(0.012, 0.030, 0.050);
+        venueSignMat.Metallic = 0.18;
+        venueSignMat.Roughness = 0.28;
+        Material3D.SetEmissiveColor(venueSignMat, 0.015, 0.055, 0.080);
+        venueSignBarMesh = Mesh3D.Box(0.72, 0.065, 0.035);
+
+        decorPinBodyMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.72,
+            config.PIN_HEIGHT * 0.72, 14);
+        decorPinHeadMesh = Mesh3D.Sphere(config.PIN_RADIUS * 0.78, 12);
+        decorPinBandMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.78, 0.018, 12);
+        decorPinMat = Material3D.PBR(0.92, 0.94, 0.95);
+        decorPinMat.Roughness = 0.32;
+        decorPinBandMat = Material3D.FromColor(0.92, 0.025, 0.045);
+        Material3D.SetEmissiveColor(decorPinBandMat, 0.16, 0.002, 0.004);
+
+        rackBallMesh = Mesh3D.Sphere(0.13, 12);
+        rackBallCyanMat = Material3D.PBR(0.025, 0.58, 0.68);
+        rackBallCyanMat.Metallic = 0.12;
+        rackBallCyanMat.Roughness = 0.20;
+        rackBallCoralMat = Material3D.PBR(0.72, 0.045, 0.11);
+        rackBallCoralMat.Metallic = 0.10;
+        rackBallCoralMat.Roughness = 0.22;
     }
+
+    hide func loadLaneTexture() {
+        if (sharedLaneTexture != null) {
+            laneTexture = sharedLaneTexture;
+            var sharedLight = laneTexture.Get(laneTexture.Width / 4, laneTexture.Height / 2);
+            var sharedDark = laneTexture.Get(laneTexture.Width / 8, laneTexture.Height / 2);
+            lanePreviewLight = (sharedLight >> 8) & 0xFFFFFF;
+            lanePreviewDark = (sharedDark >> 8) & 0xFFFFFF;
+            return;
+        }
+        var path = "assets/textures/lane-maple.png";
+        if (File.Exists(path) == false) {
+            path = "examples/games/3dbowling/assets/textures/lane-maple.png";
+        }
+        if (File.Exists(path) == false) {
+            path = "../games/3dbowling/assets/textures/lane-maple.png";
+        }
+        if (File.Exists(path)) {
+            laneTexture = Pixels.Load(path);
+            sharedLaneTexture = laneTexture;
+            var lightSample = laneTexture.Get(laneTexture.Width / 4, laneTexture.Height / 2);
+            var darkSample = laneTexture.Get(laneTexture.Width / 8, laneTexture.Height / 2);
+            lanePreviewLight = (lightSample >> 8) & 0xFFFFFF;
+            lanePreviewDark = (darkSample >> 8) & 0xFFFFFF;
+        }
+    }
+
+    /// @brief Enable the authored maple surface once gameplay leaves the title.
+    expose func enableAuthoredSurface() { loadLaneTexture(); }
 
     /// @brief Pre-compute Mat4 transforms for every static mesh.
     hide func buildTransforms() {
@@ -265,6 +410,7 @@ class LaneBuilder {
         pinsetterXform = Mat4.Translate(0.0, 2.34, config.PIN_Z_OFFSET + 1.85);
         approachXform = Mat4.Translate(0.0, -0.02, -config.LANE_APPROACH / 2.0);
         foulLineXform = Mat4.Translate(0.0, 0.0, 0.0);
+        venueSignXform = Mat4.Translate(0.0, 2.92, config.PIN_Z_OFFSET + 2.25);
     }
 
     /// @brief Build instance batches for the repeating arrows / dots / lights.
@@ -272,6 +418,62 @@ class LaneBuilder {
         arrowBatch = InstanceBatch3D.New(arrowMesh, arrowMat);
         dotBatch = InstanceBatch3D.New(dotMesh, dotMat);
         lightBatch = InstanceBatch3D.New(lightMesh, lightMat);
+        monitorBatch = InstanceBatch3D.New(monitorMesh, monitorMat);
+        ballReturnBatch = InstanceBatch3D.New(ballReturnMesh, ballReturnMat);
+        ballReturnHoodBatch = InstanceBatch3D.New(ballReturnHoodMesh, ballReturnHoodMat);
+        seatBatch = InstanceBatch3D.New(seatMesh, seatMat);
+        tableBatch = InstanceBatch3D.New(tableMesh, tableMat);
+        neonCyanBatch = InstanceBatch3D.New(neonStripMesh, neonCyanMat);
+        neonCoralBatch = InstanceBatch3D.New(neonStripMesh, neonCoralMat);
+        spectatorBodyBatch = InstanceBatch3D.New(spectatorBodyMesh, spectatorMat);
+        spectatorHeadBatch = InstanceBatch3D.New(spectatorHeadMesh, spectatorMat);
+        boardLightBatch = InstanceBatch3D.New(boardMesh, boardLightMat);
+        boardDarkBatch = InstanceBatch3D.New(boardMesh, boardDarkMat);
+        signCyanBatch = InstanceBatch3D.New(venueSignBarMesh, neonCyanMat);
+        signAmberBatch = InstanceBatch3D.New(venueSignBarMesh, neonCoralMat);
+        decorPinBodyBatch = InstanceBatch3D.New(decorPinBodyMesh, decorPinMat);
+        decorPinHeadBatch = InstanceBatch3D.New(decorPinHeadMesh, decorPinMat);
+        decorPinBandBatch = InstanceBatch3D.New(decorPinBandMesh, decorPinBandMat);
+        rackBallCyanBatch = InstanceBatch3D.New(rackBallMesh, rackBallCyanMat);
+        rackBallCoralBatch = InstanceBatch3D.New(rackBallMesh, rackBallCoralMat);
+
+        var sideLaneCenter = config.LANE_WIDTH + config.LANE_GUTTER_W * 2.0 + 0.92;
+        var boardW = config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0);
+        for (var laneIndex: Integer = -1; laneIndex <= 1; laneIndex = laneIndex + 1) {
+            var laneOffset = (laneIndex + 0.0) * sideLaneCenter;
+            for (var bi: Integer = 0; bi < config.LANE_BOARD_COUNT; bi = bi + 1) {
+                var bx = laneOffset - config.LANE_WIDTH / 2.0 + boardW / 2.0 +
+                    (bi + 0.0) * boardW;
+                var boardXform = Mat4.Translate(bx, 0.006, laneCenterZ);
+                if (bi % 2 == 0) { boardLightBatch.Add(boardXform); }
+                else { boardDarkBatch.Add(boardXform); }
+            }
+        }
+
+        // A compact geometric NL monogram keeps the pin-deck facade branded
+        // without relying on another texture or font upload.
+        var signZ = config.PIN_Z_OFFSET + 2.20;
+        signCyanBatch.Add(Mat4.Mul(Mat4.Translate(-0.96, 2.94, signZ), Mat4.RotateZ(1.5707963)));
+        signCyanBatch.Add(Mat4.Mul(Mat4.Translate(-0.26, 2.94, signZ), Mat4.RotateZ(1.5707963)));
+        signCyanBatch.Add(Mat4.Mul(Mat4.Translate(-0.61, 2.94, signZ), Mat4.RotateZ(-0.78)));
+        signAmberBatch.Add(Mat4.Mul(Mat4.Translate(0.42, 2.94, signZ), Mat4.RotateZ(1.5707963)));
+        signAmberBatch.Add(Mat4.Translate(0.76, 2.62, signZ));
+        signAmberBatch.Add(Mat4.Translate(1.34, 2.62, signZ));
+
+        for (var decorSide: Integer = -1; decorSide <= 1; decorSide = decorSide + 2) {
+            var rackCenter = (decorSide + 0.0) * sideLaneCenter;
+            for (var row: Integer = 0; row < 4; row = row + 1) {
+                for (var col: Integer = 0; col <= row; col = col + 1) {
+                    var pinX = rackCenter + ((col + 0.0) - (row + 0.0) * 0.5) * config.PIN_SPACING;
+                    var pinZ = config.PIN_Z_OFFSET + (row + 0.0) * config.PIN_SPACING * 0.866;
+                    decorPinBodyBatch.Add(Mat4.Translate(pinX, 0.15, pinZ));
+                    decorPinHeadBatch.Add(Mat4.Translate(pinX, 0.34, pinZ));
+                    decorPinBandBatch.Add(Mat4.Translate(pinX, 0.28, pinZ));
+                }
+            }
+            rackBallCyanBatch.Add(Mat4.Translate((decorSide + 0.0) * 1.18, 0.72, -1.46));
+            rackBallCoralBatch.Add(Mat4.Translate((decorSide + 0.0) * 1.18, 0.72, -1.15));
+        }
         var halfArrows = config.LANE_ARROW_COUNT / 2;
         for (var ai: Integer = -halfArrows; ai <= halfArrows; ai = ai + 1) {
             var ax = (ai + 0.0) * config.LANE_ARROW_SPACING;
@@ -288,6 +490,35 @@ class LaneBuilder {
         for (var li: Integer = 0; li < 7; li = li + 1) {
             var lz = -1.0 + (li + 0.0) * 2.8;
             lightBatch.Add(Mat4.Translate(0.0, 4.8, lz));
+        }
+
+        monitorBatch.Add(Mat4.Translate(-1.60, 3.25, 1.7));
+        monitorBatch.Add(Mat4.Translate(0.0, 3.25, 1.7));
+        monitorBatch.Add(Mat4.Translate(1.60, 3.25, 1.7));
+
+        ballReturnBatch.Add(Mat4.Translate(-1.18, 0.20, -1.55));
+        ballReturnBatch.Add(Mat4.Translate(1.18, 0.20, -1.55));
+        ballReturnHoodBatch.Add(Mat4.Translate(-1.18, 0.55, -1.02));
+        ballReturnHoodBatch.Add(Mat4.Translate(1.18, 0.55, -1.02));
+        for (var sideIndex: Integer = -1; sideIndex <= 1; sideIndex = sideIndex + 2) {
+            for (var si: Integer = 0; si < 3; si = si + 1) {
+                var sx = (sideIndex + 0.0) * (2.25 + (si + 0.0) * 0.62);
+                seatBatch.Add(Mat4.Translate(sx, 0.22, -2.20 + (si % 2) * 0.64));
+            }
+            tableBatch.Add(Mat4.Translate((sideIndex + 0.0) * 2.72, 0.22, -1.20));
+        }
+
+        neonCyanBatch.Add(Mat4.Translate(-4.28, 2.25, 2.6));
+        neonCyanBatch.Add(Mat4.Translate(4.28, 2.25, 9.0));
+        neonCoralBatch.Add(Mat4.Translate(-4.28, 2.25, 10.6));
+        neonCoralBatch.Add(Mat4.Translate(4.28, 2.25, 3.8));
+        for (var ci: Integer = 0; ci < 8; ci = ci + 1) {
+            var crowdSide = -1.0;
+            if (ci % 2 == 1) { crowdSide = 1.0; }
+            var cx = crowdSide * (2.65 + ((ci / 2) % 2) * 0.46);
+            var cz = 11.4 + (ci / 4) * 0.72;
+            spectatorBodyBatch.Add(Mat4.Translate(cx, 0.32, cz));
+            spectatorHeadBatch.Add(Mat4.Translate(cx, 0.72, cz));
         }
     }
 
@@ -367,8 +598,13 @@ class LaneBuilder {
         Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterLeftXform, sideGutterMat);
         Canvas3D.DrawMesh(canvas, sideGutterMesh, sideGutterRightXform, sideGutterMat);
         Canvas3D.DrawMesh(canvas, laneMesh, laneXform, laneMat);
+        // Procedural boards remain a first-frame and missing-asset fallback;
+        // narrow gaps let the authored grain read once its texture is resident.
         drawLaneBoards(canvas);
-        Canvas3D.DrawMesh(canvas, oilMesh, oilXform, oilMat);
+        // NL-VIPER-003: submitting this correctly configured AlphaMode=2
+        // surface intermittently corrupts Metal final-overlay composition.
+        // Keep oil gameplay/SSR on the glossy boards and the live HUD map
+        // until the documented runtime issue can be fixed and verified.
         drawLaneBoardSeams(canvas);
         Canvas3D.DrawMesh(canvas, pinDeckMesh, pinDeckXform, pinDeckMat);
         Canvas3D.DrawMesh(canvas, gutterMesh, gutterLeftXform, gutterMat);
@@ -379,25 +615,34 @@ class LaneBuilder {
         Canvas3D.DrawMesh(canvas, sidePanelMesh, sidePanelLeftXform, sidePanelMat);
         Canvas3D.DrawMesh(canvas, sidePanelMesh, sidePanelRightXform, sidePanelMat);
         Canvas3D.DrawMesh(canvas, backWallMesh, backWallXform, backWallMat);
+        Canvas3D.DrawMesh(canvas, venueSignMesh, venueSignXform, venueSignMat);
         Canvas3D.DrawMesh(canvas, pinsetterMesh, pinsetterXform, pinsetterMat);
         Canvas3D.DrawMesh(canvas, approachMesh, approachXform, approachMat);
         Canvas3D.DrawMesh(canvas, foulLineMesh, foulLineXform, foulLineMat);
         Canvas3D.DrawInstanced(canvas, arrowBatch);
         Canvas3D.DrawInstanced(canvas, dotBatch);
         Canvas3D.DrawInstanced(canvas, lightBatch);
+        Canvas3D.DrawInstanced(canvas, monitorBatch);
+        Canvas3D.DrawInstanced(canvas, ballReturnBatch);
+        Canvas3D.DrawInstanced(canvas, ballReturnHoodBatch);
+        Canvas3D.DrawInstanced(canvas, seatBatch);
+        Canvas3D.DrawInstanced(canvas, tableBatch);
+        Canvas3D.DrawInstanced(canvas, neonCyanBatch);
+        Canvas3D.DrawInstanced(canvas, neonCoralBatch);
+        Canvas3D.DrawInstanced(canvas, spectatorBodyBatch);
+        Canvas3D.DrawInstanced(canvas, spectatorHeadBatch);
+        Canvas3D.DrawInstanced(canvas, signCyanBatch);
+        Canvas3D.DrawInstanced(canvas, signAmberBatch);
+        Canvas3D.DrawInstanced(canvas, decorPinBodyBatch);
+        Canvas3D.DrawInstanced(canvas, decorPinHeadBatch);
+        Canvas3D.DrawInstanced(canvas, decorPinBandBatch);
+        Canvas3D.DrawInstanced(canvas, rackBallCyanBatch);
+        Canvas3D.DrawInstanced(canvas, rackBallCoralBatch);
     }
 
     hide func drawLaneBoards(canvas: Canvas3D) {
-        var boardW = config.LANE_WIDTH / (config.LANE_BOARD_COUNT + 0.0);
-        for (var bi: Integer = 0; bi < config.LANE_BOARD_COUNT; bi = bi + 1) {
-            var bx = -config.LANE_WIDTH / 2.0 + boardW / 2.0 + (bi + 0.0) * boardW;
-            var xform = Mat4.Translate(bx, 0.006, laneCenterZ);
-            if (bi % 2 == 0) {
-                Canvas3D.DrawMesh(canvas, boardMesh, xform, boardLightMat);
-            } else {
-                Canvas3D.DrawMesh(canvas, boardMesh, xform, boardDarkMat);
-            }
-        }
+        Canvas3D.DrawInstanced(canvas, boardLightBatch);
+        Canvas3D.DrawInstanced(canvas, boardDarkBatch);
     }
 
     hide func drawLaneBoardSeams(canvas: Canvas3D) {
@@ -455,6 +700,22 @@ class LaneBuilder {
 
         Material3D.SetEnvMap(foulLineMat, env);
         foulLineMat.Reflectivity = 0.18;
+        Material3D.SetEnvMap(monitorMat, env);
+        monitorMat.Reflectivity = 0.16;
+        Material3D.SetEnvMap(ballReturnMat, env);
+        ballReturnMat.Reflectivity = 0.28;
+        Material3D.SetEnvMap(ballReturnHoodMat, env);
+        ballReturnHoodMat.Reflectivity = 0.34;
+        Material3D.SetEnvMap(tableMat, env);
+        tableMat.Reflectivity = 0.08;
+        Material3D.SetEnvMap(venueSignMat, env);
+        venueSignMat.Reflectivity = 0.16;
+        Material3D.SetEnvMap(decorPinMat, env);
+        decorPinMat.Reflectivity = 0.10;
+        Material3D.SetEnvMap(rackBallCyanMat, env);
+        rackBallCyanMat.Reflectivity = 0.30;
+        Material3D.SetEnvMap(rackBallCoralMat, env);
+        rackBallCoralMat.Reflectivity = 0.30;
     }
 
     /// @brief Sample friction at a 2D lane position.
@@ -494,6 +755,15 @@ class LaneBuilder {
             var backend = (z - oilEndZ) / 3.0;
             if (backend > 1.0) { backend = 1.0; }
             friction = friction + (config.OIL_FRICTION_DRY - friction) * backend;
+        }
+
+        // Repeated shots open a slightly earlier friction window on their line;
+        // carried oil just behind the pattern delays hook by the inverse amount.
+        var wear = wearAtX(x);
+        if (z <= oilEndZ) {
+            friction = friction + wear * 0.10;
+        } else if (z < oilEndZ + 2.0) {
+            friction = friction - wear * 0.055 * (1.0 - (z - oilEndZ) / 2.0);
         }
 
         return mathutil.clampf(friction, config.OIL_FRICTION_OILED, config.OIL_FRICTION_DRY);
@@ -536,7 +806,35 @@ class LaneBuilder {
             center = (1.0 - boardPct) * 0.6;
         }
         if (center < 0.0) { center = 0.0; }
-        return center * lengthwise;
+        var visibleWear = wearAtX(x);
+        return center * lengthwise * (1.0 - visibleWear * 0.62);
+    }
+
+    /// @brief Accumulate gradual breakdown along the live ball track.
+    expose func recordBallTrack(x: Float, z: Float, spinMagnitude: Float, dt: Float) {
+        if (z < config.OIL_START_Z || z > oilEndZ + 1.2 || dt <= 0.0) { return; }
+        var index = wearIndex(x);
+        var value = oilWear.get(index) + dt * (0.012 + spinMagnitude * 0.020);
+        if (value > 0.55) { value = 0.55; }
+        oilWear.set(index, value);
+    }
+
+    expose func getOilWearPercent() -> Integer {
+        var total = 0.0;
+        for (var i: Integer = 0; i < oilWear.count(); i = i + 1) { total = total + oilWear.get(i); }
+        return Convert.NumToInt(total / (oilWear.count() + 0.0) * 100.0);
+    }
+
+    hide func wearAtX(x: Float) -> Float { return oilWear.get(wearIndex(x)); }
+
+    hide func wearIndex(x: Float) -> Integer {
+        var pct = (x + config.LANE_WIDTH / 2.0) / config.LANE_WIDTH;
+        if (pct < 0.0) { pct = 0.0; }
+        if (pct > 0.999) { pct = 0.999; }
+        var index = Convert.NumToInt(pct * 9.0);
+        if (index < 0) { index = 0; }
+        if (index > 8) { index = 8; }
+        return index;
     }
 
     /// @brief Draw a top-down oil map in a HUD rect (px,py,w,h). Rows run down
@@ -544,6 +842,15 @@ class LaneBuilder {
     ///        tracks getOilConcentration so the active pattern is legible.
     expose func drawOilPreview(canvas: Canvas3D, px: Integer, py: Integer, w: Integer, h: Integer) {
         Canvas3D.DrawRect2D(canvas, px - 2, py - 2, w + 4, h + 4, config.HUD_COLOR_FRAME_BG);
+        Canvas3D.DrawRect2D(canvas, px, py, w, h, lanePreviewLight);
+        var previewBoards = 13;
+        var previewBoardW = w / previewBoards;
+        for (var board: Integer = 0; board < previewBoards; board = board + 1) {
+            if (board % 2 == 1) {
+                Canvas3D.DrawRect2D(canvas, px + board * previewBoardW, py,
+                    previewBoardW, h, lanePreviewDark);
+            }
+        }
         var cols = 9;
         var rows = 6;
         var laneHalf = config.LANE_WIDTH / 2.0;
@@ -554,10 +861,15 @@ class LaneBuilder {
             for (var c: Integer = 0; c < cols; c = c + 1) {
                 var x = -laneHalf + config.LANE_WIDTH * ((c + 0.5) / (cols + 0.0));
                 var dens = getOilConcentration(x, z);
-                var blue = 40 + Convert.NumToInt(dens * 200.0);
-                var green = 30 + Convert.NumToInt(dens * 150.0);
+                var blue = 64 + Convert.NumToInt(dens * 180.0);
+                var green = 42 + Convert.NumToInt(dens * 138.0);
                 var cell = (18 << 16) + (green << 8) + blue;
-                Canvas3D.DrawRect2D(canvas, px + c * cellW, py + r * cellH, cellW - 1, cellH - 1, cell);
+                if (dens > 0.025) {
+                    var barW = 2 + Convert.NumToInt(dens * ((cellW - 4) + 0.0));
+                    Canvas3D.DrawRect2D(canvas,
+                        px + c * cellW + (cellW - barW) / 2,
+                        py + r * cellH + cellH / 2 - 2, barW, 4, cell);
+                }
             }
         }
         Canvas3D.DrawText2D(canvas, px, py + h + 3, getOilPatternName() + " oil", config.HUD_COLOR_CYAN);

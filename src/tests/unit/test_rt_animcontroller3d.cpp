@@ -108,7 +108,7 @@ struct AnimController3DLayerTestLayout {
     float weight;
     int32_t mask_root_bone;
     int32_t mask_bone_count_seen;
-    uint8_t mask_bits[256];
+    uint8_t mask_bits[1024]; /* VGFX3D_MAX_SKELETON_BONES */
 };
 
 struct AnimController3DTestLayout {
@@ -970,6 +970,38 @@ static void test_controller_bone_count_lod_freezes_distal_bones() {
                 "Bone LOD: frozen bones still follow their animated ancestors");
 }
 
+static void test_cubic_spline_keyframe_playback() {
+    /* Two keys both at x=0 with symmetric Hermite tangents (+4 out / -4 in):
+     * linear playback stays at 0; cubic playback arcs to x=1 at the midpoint
+     * (h10*4 + h11*(-4) = 0.125*4 + 0.125*4 = 1). */
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *anim = make_anim("arc", 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    const float out_tan[3] = {4.0f, 0.0f, 0.0f};
+    const float in_tan[3] = {-4.0f, 0.0f, 0.0f};
+    rt_animation3d_set_keyframe_tangents(
+        anim, 0, 0.0, out_tan, out_tan, nullptr, nullptr, nullptr, nullptr);
+    rt_animation3d_set_keyframe_tangents(
+        anim, 0, 1.0, in_tan, in_tan, nullptr, nullptr, nullptr, nullptr);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("arc"), anim);
+    rt_anim_controller3d_play(controller, rt_const_cstr("arc"));
+    rt_anim_controller3d_update(controller, 0.5);
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3),
+                1.0,
+                0.001,
+                "CUBICSPLINE keyframe tangents drive Hermite playback");
+    rt_anim_controller3d_update(controller, 0.25);
+    /* t = 0.75: h10 = 0.75^3 - 2*0.5625 + 0.75 = -0.140625? compute: 0.421875 - 1.125
+     * + 0.75 = 0.046875; h11 = 0.421875 - 0.5625 = -0.140625.
+     * x = 0.046875*4 + (-0.140625)*(-4) = 0.1875 + 0.5625 = 0.75. */
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3),
+                0.75,
+                0.001,
+                "Hermite playback tracks the spline off-center too");
+}
+
 static void test_animation_objects_repair_corrupt_private_counts() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -1294,6 +1326,7 @@ int main() {
     test_controller_rejects_wrong_animation_handles();
     test_controller_rejects_wrong_string_handles();
     test_controller_long_state_names_use_canonical_lookup();
+    test_cubic_spline_keyframe_playback();
     test_animation_objects_repair_corrupt_private_counts();
     test_anim_controller_private_refs_clear_wrong_class_without_release();
 

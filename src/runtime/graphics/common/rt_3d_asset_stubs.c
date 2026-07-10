@@ -208,6 +208,22 @@ void rt_mesh3d_set_resident(void *o, int8_t resident) {
     (void)resident;
 }
 
+/// @brief Stub for `Mesh3D.CompactStreams` setter.
+///
+/// Silent no-op stub.
+void rt_mesh3d_set_compact_streams(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+}
+
+/// @brief Stub for `Mesh3D.CompactStreams` getter.
+///
+/// Silent stub returning `0`.
+int8_t rt_mesh3d_get_compact_streams(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Mesh3D.ResidentBytes`.
 ///
 /// Silent stub returning `0`.

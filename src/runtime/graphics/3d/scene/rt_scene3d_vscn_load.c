@@ -1002,9 +1002,165 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     rt_mesh3d_set_resident(mesh, vjson_bool(mesh_obj, "resident", 1));
     rt_mesh3d_refresh_bounds(mesh);
 
+    /* Optional v3 rig side streams (absent in v1/v2 files). */
+    {
+        const char *map64 = vjson_cstr(mesh_obj, "boneMapBase64");
+        const char *extra64 = vjson_cstr(mesh_obj, "extraInfluencesBase64");
+        if (map64 && mesh->bone_count > 0) {
+            size_t map_len = 0;
+            size_t map_err = SIZE_MAX;
+            uint8_t *map_raw =
+                vscn_base64_decode_ex(map64, strlen(map64), &map_len, &map_err);
+            if (map_raw && map_len == (size_t)mesh->bone_count * sizeof(int32_t)) {
+                mesh->bone_map = (int32_t *)map_raw;
+            } else {
+                free(map_raw);
+            }
+        }
+        if (extra64 && mesh->vertex_count > 0) {
+            size_t extra_len = 0;
+            size_t extra_err = SIZE_MAX;
+            uint8_t *extra_raw =
+                vscn_base64_decode_ex(extra64, strlen(extra64), &extra_len, &extra_err);
+            if (extra_raw &&
+                extra_len == (size_t)mesh->vertex_count * sizeof(vgfx3d_extra_influences_t)) {
+                mesh->extra_influences = (vgfx3d_extra_influences_t *)extra_raw;
+            } else {
+                free(extra_raw);
+            }
+        }
+    }
+
     free(vertices_raw);
     free(indices_raw);
     return mesh;
+}
+
+/// @brief Parse one v3 skeleton object ({"bones": [{name,parent,bindLocal[16],
+///   inverseBind[16]}...]}) into a retained Skeleton3D. Bones write directly into
+///   the runtime struct so the serialized inverse-bind matrices round-trip exactly.
+static void *vscn_parse_skeleton(void *skel_obj) {
+    void *bones_arr;
+    int64_t bone_count;
+    rt_skeleton3d *skel;
+    if (!vjson_is_map(skel_obj))
+        return NULL;
+    bones_arr = vjson_get(skel_obj, "bones");
+    bone_count = vjson_len(bones_arr);
+    if (bone_count <= 0 || bone_count > VGFX3D_MAX_SKELETON_BONES)
+        return NULL;
+    skel = (rt_skeleton3d *)rt_skeleton3d_new();
+    if (!skel)
+        return NULL;
+    skel->bones = (vgfx3d_bone_t *)calloc((size_t)bone_count, sizeof(vgfx3d_bone_t));
+    if (!skel->bones) {
+        scene3d_release_ref((void **)&skel);
+        return NULL;
+    }
+    skel->bone_capacity = (int32_t)bone_count;
+    for (int64_t b = 0; b < bone_count; b++) {
+        void *bone_obj = rt_seq_get(bones_arr, b);
+        vgfx3d_bone_t *bone = &skel->bones[b];
+        const char *name;
+        void *bind_arr;
+        void *inv_arr;
+        int64_t parent;
+        if (!vjson_is_map(bone_obj) ||
+            !vjson_i64_exact(bone_obj, "parent", -1, &parent) || parent < -1 ||
+            parent >= bone_count)
+            goto fail;
+        name = vjson_cstr(bone_obj, "name");
+        if (name) {
+            size_t n = strlen(name);
+            if (n >= sizeof(bone->name))
+                n = sizeof(bone->name) - 1u;
+            memcpy(bone->name, name, n);
+        }
+        bone->parent_index = (int32_t)parent;
+        bind_arr = vjson_get(bone_obj, "bindLocal");
+        inv_arr = vjson_get(bone_obj, "inverseBind");
+        if (vjson_len(bind_arr) != 16 || vjson_len(inv_arr) != 16)
+            goto fail;
+        for (int k = 0; k < 16; k++) {
+            double bv = 0.0;
+            double iv = 0.0;
+            bv = vjson_arr_f64(bind_arr, k, 0.0);
+            iv = vjson_arr_f64(inv_arr, k, 0.0);
+            bone->bind_pose_local[k] = (float)bv;
+            bone->inverse_bind[k] = (float)iv;
+        }
+    }
+    skel->bone_count = (int32_t)bone_count;
+    return skel;
+fail:
+    scene3d_release_ref((void **)&skel);
+    return NULL;
+}
+
+/// @brief Parse one v3 animation clip ({name,duration,looping,keyframeFormat,
+///   channels:[{bone,keyCount,keyframesBase64}...]}) into a retained Animation3D.
+static void *vscn_parse_animation(void *anim_obj) {
+    const char *name;
+    const char *format;
+    void *channels_arr;
+    int64_t channel_count;
+    rt_animation3d *anim;
+    if (!vjson_is_map(anim_obj))
+        return NULL;
+    format = vjson_cstr(anim_obj, "keyframeFormat");
+    if (!format || strcmp(format, "vgfx3d_keyframe_le_v2") != 0)
+        return NULL; /* layout drift: refuse rather than misread */
+    name = vjson_cstr(anim_obj, "name");
+    channels_arr = vjson_get(anim_obj, "channels");
+    channel_count = vjson_len(channels_arr);
+    if (channel_count < 0 || channel_count > RT_ANIMATION3D_MAX_CHANNELS)
+        return NULL;
+    anim = (rt_animation3d *)rt_animation3d_new(rt_const_cstr(name ? name : "baked"),
+                                                vjson_f64(anim_obj, "duration", 0.0));
+    if (!anim)
+        return NULL;
+    rt_animation3d_set_looping(anim, vjson_bool(anim_obj, "looping", 1));
+    if (channel_count > 0) {
+        anim->channels =
+            (vgfx3d_anim_channel_t *)calloc((size_t)channel_count,
+                                            sizeof(vgfx3d_anim_channel_t));
+        if (!anim->channels)
+            goto fail;
+        anim->channel_capacity = (int32_t)channel_count;
+    }
+    for (int64_t c = 0; c < channel_count; c++) {
+        void *ch_obj = rt_seq_get(channels_arr, c);
+        vgfx3d_anim_channel_t *ch = &anim->channels[c];
+        const char *keys64;
+        int64_t bone_index;
+        int64_t key_count;
+        size_t raw_len = 0;
+        size_t raw_err = SIZE_MAX;
+        uint8_t *raw;
+        if (!vjson_is_map(ch_obj) ||
+            !vjson_i64_exact(ch_obj, "bone", 0, &bone_index) || bone_index < 0 ||
+            bone_index >= VGFX3D_MAX_SKELETON_BONES ||
+            !vjson_i64_exact(ch_obj, "keyCount", 0, &key_count) || key_count < 0 ||
+            key_count > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
+            goto fail;
+        keys64 = vjson_cstr(ch_obj, "keyframesBase64");
+        if (!keys64)
+            goto fail;
+        raw = vscn_base64_decode_ex(keys64, strlen(keys64), &raw_len, &raw_err);
+        if (!raw || raw_len != (size_t)key_count * sizeof(vgfx3d_keyframe_t)) {
+            free(raw);
+            goto fail;
+        }
+        ch->bone_index = (int32_t)bone_index;
+        ch->keyframes = (vgfx3d_keyframe_t *)raw;
+        ch->keyframe_count = (int32_t)key_count;
+        ch->keyframe_capacity = (int32_t)key_count;
+        anim->channel_count = (int32_t)(c + 1);
+    }
+    return anim;
+fail:
+    scene3d_release_ref((void **)&anim);
+    return NULL;
 }
 
 /// @brief Parse a JSON light object from a VSCN file into an `rt_light3d` struct.
@@ -1433,7 +1589,7 @@ static void *rt_scene3d_load_impl(rt_string path) {
         int64_t version = 1;
         if (version_value && !vjson_value_i64_exact(version_value, &version))
             goto fail;
-        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 2)
+        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 3)
             goto fail;
         if ((textures_arr && !vjson_is_seq(textures_arr)) ||
             (cubemaps_arr && !vjson_is_seq(cubemaps_arr)) ||
@@ -1493,6 +1649,52 @@ static void *rt_scene3d_load_impl(rt_string path) {
     scene = (rt_scene3d *)rt_scene3d_new();
     if (!scene)
         goto fail;
+
+    /* v3 rig blocks: skeletons bind to meshes by index; animation clips ride the
+     * scene so the SceneAsset wrapper can claim them. Absent blocks no-op. */
+    {
+        void *skeletons_arr = vjson_get(root, "skeletons");
+        void *animations_arr = vjson_get(root, "animations");
+        int64_t skeleton_count = vjson_len(skeletons_arr);
+        int64_t animation_count = vjson_len(animations_arr);
+        if (skeleton_count > 0) {
+            void **skeletons =
+                (void **)calloc((size_t)skeleton_count, sizeof(void *));
+            if (!skeletons)
+                goto fail;
+            for (int64_t i = 0; i < skeleton_count; i++) {
+                skeletons[i] = vscn_parse_skeleton(rt_seq_get(skeletons_arr, i));
+                if (!skeletons[i]) {
+                    for (int64_t j = 0; j < i; j++)
+                        scene3d_release_ref(&skeletons[j]);
+                    free(skeletons);
+                    goto fail;
+                }
+            }
+            for (int i = 0; i < mesh_count; i++) {
+                int64_t skeleton_index = -1;
+                void *mesh_obj = rt_seq_get(meshes_arr, (int64_t)i);
+                if (vjson_i64_exact(mesh_obj, "skeletonIndex", -1, &skeleton_index) &&
+                    skeleton_index >= 0 && skeleton_index < skeleton_count)
+                    rt_mesh3d_set_skeleton(meshes[i], skeletons[skeleton_index]);
+            }
+            for (int64_t i = 0; i < skeleton_count; i++)
+                scene3d_release_ref(&skeletons[i]); /* meshes retain their refs */
+            free(skeletons);
+        }
+        if (animation_count > 0) {
+            scene->baked_animations =
+                (void **)calloc((size_t)animation_count, sizeof(void *));
+            if (!scene->baked_animations)
+                goto fail;
+            for (int64_t i = 0; i < animation_count; i++) {
+                void *anim = vscn_parse_animation(rt_seq_get(animations_arr, i));
+                if (!anim)
+                    goto fail; /* finalize releases the clips parsed so far */
+                scene->baked_animations[scene->baked_animation_count++] = anim;
+            }
+        }
+    }
 
     if (!vscn_load_nodes(scene, nodes_arr, meshes, mesh_count, materials, material_count))
         goto fail;

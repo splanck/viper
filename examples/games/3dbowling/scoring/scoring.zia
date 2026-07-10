@@ -54,6 +54,9 @@ class ScoreKeeper {
     hide Integer pinsStanding;           // Pins remaining this turn
     hide Integer consecutiveStrikes;     // For turkey tracking
     hide Boolean gameComplete;
+    hide Boolean lastRollStrike;
+    hide Boolean lastRollSpare;
+    hide Boolean lastRollGutter;
 
     /// @brief Initialize an empty scoreboard; pre-allocate 10 frame slots.
     expose func init() {
@@ -68,6 +71,9 @@ class ScoreKeeper {
         pinsStanding = 10;
         consecutiveStrikes = 0;
         gameComplete = false;
+        lastRollStrike = false;
+        lastRollSpare = false;
+        lastRollGutter = false;
 
         for (var i: Integer = 0; i < config.FRAMES_PER_GAME; i = i + 1) {
             frameTotals.add(-1);
@@ -75,6 +81,22 @@ class ScoreKeeper {
             frameRoll2.add("");
             frameRoll3.add("");
         }
+    }
+
+    /// @brief Configure a one-frame clutch/party game beginning in the tenth.
+    expose func startAtTenthFrame() {
+        init();
+        for (var f: Integer = 0; f < 9; f = f + 1) {
+            rolls.add(0);
+            rolls.add(0);
+            frameRoll1.set(f, "-");
+            frameRoll2.set(f, "-");
+            frameTotals.set(f, 0);
+        }
+        rollCount = 18;
+        currentFrame = 10;
+        currentRollInFrame = 1;
+        pinsStanding = 10;
     }
 
     /// @brief Record a roll result. @return true when the frame closes.
@@ -86,6 +108,9 @@ class ScoreKeeper {
         var clampedPinsDown = pinsDown;
         if (clampedPinsDown < 0) { clampedPinsDown = 0; }
         if (clampedPinsDown > pinsStanding) { clampedPinsDown = pinsStanding; }
+        lastRollStrike = false;
+        lastRollSpare = false;
+        lastRollGutter = clampedPinsDown == 0;
 
         rolls.add(clampedPinsDown);
         rollCount = rollCount + 1;
@@ -97,6 +122,7 @@ class ScoreKeeper {
             if (currentRollInFrame == 1) {
                 if (clampedPinsDown == 10) {
                     // Strike
+                    lastRollStrike = true;
                     frameRoll1.set(frameIdx, "X");
                     frameRoll2.set(frameIdx, "");
                     consecutiveStrikes = consecutiveStrikes + 1;
@@ -116,6 +142,7 @@ class ScoreKeeper {
                 var total: Integer = rolls.get(rollCount - 2) + clampedPinsDown;
                 if (total == 10) {
                     // Spare
+                    lastRollSpare = true;
                     frameRoll2.set(frameIdx, "/");
                 } else if (clampedPinsDown == 0) {
                     frameRoll2.set(frameIdx, "-");
@@ -138,6 +165,7 @@ class ScoreKeeper {
             // ─── 10th Frame (special rules) ───
             if (currentRollInFrame == 1) {
                 if (clampedPinsDown == 10) {
+                    lastRollStrike = true;
                     frameRoll1.set(frameIdx, "X");
                     consecutiveStrikes = consecutiveStrikes + 1;
                     pinsStanding = 10; // Reset for bonus roll
@@ -159,6 +187,7 @@ class ScoreKeeper {
                 if (firstWasStrike) {
                     // After a strike, full rack reset
                     if (clampedPinsDown == 10) {
+                        lastRollStrike = true;
                         frameRoll2.set(frameIdx, "X");
                         consecutiveStrikes = consecutiveStrikes + 1;
                         pinsStanding = 10; // Reset again for 3rd roll
@@ -177,6 +206,7 @@ class ScoreKeeper {
                     var total: Integer = firstRollPins + clampedPinsDown;
                     if (total == 10) {
                         // Spare
+                        lastRollSpare = true;
                         frameRoll2.set(frameIdx, "/");
                         pinsStanding = 10; // Reset for bonus roll
                         currentRollInFrame = 3;
@@ -197,9 +227,11 @@ class ScoreKeeper {
                 // 3rd roll (bonus)
                 // Check if we're on a fresh rack or remaining pins
                 if (clampedPinsDown == pinsStanding && clampedPinsDown == 10) {
+                    lastRollStrike = true;
                     frameRoll3.set(frameIdx, "X");
                     consecutiveStrikes = consecutiveStrikes + 1;
                 } else if (clampedPinsDown == pinsStanding) {
+                    lastRollSpare = true;
                     frameRoll3.set(frameIdx, "/");
                 } else if (clampedPinsDown == 0) {
                     frameRoll3.set(frameIdx, "-");
@@ -356,27 +388,18 @@ class ScoreKeeper {
 
     /// @brief True if the most recently recorded roll was a strike (10 down).
     expose func wasStrike() -> Boolean {
-        if (rollCount == 0) { return false; }
-        var lastRoll: Integer = rolls.get(rollCount - 1);
-        // Strike if 10 pins on first roll, or in 10th frame on fresh rack
-        return lastRoll == 10;
+        return lastRollStrike;
     }
 
     /// @brief True if the last roll closed a spare (frame total = 10
     ///        without being a strike).
     expose func wasSpare() -> Boolean {
-        if (rollCount < 2) { return false; }
-        // Check if we just completed a spare (not a strike)
-        var lastRoll: Integer = rolls.get(rollCount - 1);
-        var prevRoll: Integer = rolls.get(rollCount - 2);
-        if (prevRoll == 10) { return false; } // That was a strike, not spare
-        return prevRoll + lastRoll == 10;
+        return lastRollSpare;
     }
 
     /// @brief True if the last roll was a gutter ball (0 pins down).
     expose func wasGutter() -> Boolean {
-        if (rollCount == 0) { return false; }
-        return rolls.get(rollCount - 1) == 0;
+        return lastRollGutter;
     }
 
     /// @brief Reset all per-game state for a new round.
@@ -388,6 +411,9 @@ class ScoreKeeper {
         pinsStanding = 10;
         consecutiveStrikes = 0;
         gameComplete = false;
+        lastRollStrike = false;
+        lastRollSpare = false;
+        lastRollGutter = false;
 
         for (var i: Integer = 0; i < config.FRAMES_PER_GAME; i = i + 1) {
             frameTotals.set(i, -1);

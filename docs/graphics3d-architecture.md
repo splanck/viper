@@ -464,7 +464,7 @@ The glTF loader enforces the following importer contract before renderer-facing 
 4. External `.gltf` buffers and images are relative-only after URI decoding. `./` relative paths are accepted; absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files.
 5. Valid primitives without authored materials get a shared default white PBR material so scene-graph rendering does not silently skip them.
 6. Accessors used by positions, normals, UVs, colors, tangents, joints, weights, and indices must match the component/type/count contract expected by the runtime importer before any mesh is emitted.
-7. Runtime skin import respects the 256-bone palette limit. Skins above the supported limit are skipped instead of overflowing the fixed backend palette.
+7. Runtime skin import accepts skeletons up to 1024 bones. Meshes bound to skins larger than the 256-slot draw palette are partitioned at import into sub-meshes whose bone sets fit, each carrying a palette-slot-to-skeleton-bone map that the draw path gathers against the animator's full palette; skins above 1024 bones are rejected.
 8. Node hierarchies are validated for invalid child references, duplicate parents, and cycles before a scene root is built.
 
 glTF material import maps core metallic-roughness PBR plus selected extensions onto `Material3D`. The vertex format carries `TEXCOORD_0` and `TEXCOORD_1`; each material texture slot stores its own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filter state. Canvas draw commands forward that per-slot metadata to software, Metal, D3D11, and OpenGL. OpenGL uses sampler objects so one uploaded texture can be reused by multiple material slots without sampler-state aliasing.

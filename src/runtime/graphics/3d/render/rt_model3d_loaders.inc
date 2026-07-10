@@ -737,6 +737,17 @@ static void *rt_model3d_load_impl(rt_string path,
             model_release_local(scene);
             goto fail;
         }
+        /* v3 baked files carry animation clips on the scene; the SceneAsset owns
+         * them from here (the scene's slots are cleared so its release skips them). */
+        if (scene->baked_animation_count > 0 && scene->baked_animations &&
+            model->animation_count == 0) {
+            free(model->animations);
+            model->animations = scene->baked_animations;
+            model->animation_count = scene->baked_animation_count;
+            model->animation_capacity = scene->baked_animation_count;
+            scene->baked_animations = NULL;
+            scene->baked_animation_count = 0;
+        }
         model_release_local(scene);
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
         int gltf_ok = model3d_load_from_gltf(model,

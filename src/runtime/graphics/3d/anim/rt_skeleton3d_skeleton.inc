@@ -78,10 +78,10 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     s->bone_count = skeleton3d_safe_bone_count(s);
     if (!s->bones)
         s->bone_capacity = 0;
-    if (s->bone_capacity < s->bone_count || s->bone_capacity > VGFX3D_MAX_BONES)
+    if (s->bone_capacity < s->bone_count || s->bone_capacity > VGFX3D_MAX_SKELETON_BONES)
         s->bone_capacity = s->bone_count;
-    if (s->bone_count >= VGFX3D_MAX_BONES) {
-        rt_trap("Skeleton3D.AddBone: max 256 bones exceeded");
+    if (s->bone_count >= VGFX3D_MAX_SKELETON_BONES) {
+        rt_trap("Skeleton3D.AddBone: max 1024 bones exceeded");
         return -1;
     }
     // parent_index == -1 denotes a root bone. Any other negative value is
@@ -98,8 +98,8 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
         vgfx3d_bone_t *nb;
         if (new_capacity < s->bone_count + 1)
             new_capacity = s->bone_count + 1;
-        if (new_capacity > VGFX3D_MAX_BONES)
-            new_capacity = VGFX3D_MAX_BONES;
+        if (new_capacity > VGFX3D_MAX_SKELETON_BONES)
+            new_capacity = VGFX3D_MAX_SKELETON_BONES;
         nb = (vgfx3d_bone_t *)realloc(s->bones, (size_t)new_capacity * sizeof(vgfx3d_bone_t));
         if (!nb)
             return -1;
@@ -153,14 +153,19 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
 /// animated pose. Call this once after all bones are added.
 void rt_skeleton3d_compute_inverse_bind(void *obj) {
     rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
-    float bind_locals[VGFX3D_MAX_BONES * 16];
-    float globals[VGFX3D_MAX_BONES * 16];
+    float *bind_locals;
+    float *globals;
     if (!s)
         return;
     s->bone_count = skeleton3d_safe_bone_count(s);
     if (s->bone_count <= 0)
         return;
 
+    /* Heap-allocated: 1024-bone skeletons would need 128 KB of stack here. */
+    bind_locals = (float *)malloc((size_t)s->bone_count * 16u * sizeof(float) * 2u);
+    if (!bind_locals)
+        return;
+    globals = bind_locals + (size_t)s->bone_count * 16u;
     for (int32_t i = 0; i < s->bone_count; i++)
         memcpy(&bind_locals[i * 16], s->bones[i].bind_pose_local, 16 * sizeof(float));
     skeleton3d_compute_globals_from_locals(s, bind_locals, globals, s->bone_count);
@@ -169,6 +174,7 @@ void rt_skeleton3d_compute_inverse_bind(void *obj) {
         if (mat4f_invert(&globals[i * 16], s->bones[i].inverse_bind) != 0)
             mat4f_identity(s->bones[i].inverse_bind);
     }
+    free(bind_locals);
 }
 
 /// @brief Number of bones in the skeleton (0 for NULL).

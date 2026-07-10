@@ -514,6 +514,24 @@ class PinManager {
         pinNeckMat.Reflectivity = config.PIN_NECK_REFLECTIVITY;
     }
 
+    /// @brief Increase pin/deck separation for the accessibility preset.
+    expose func applyHighContrast(enabled: Boolean) {
+        if (enabled) {
+            Material3D.SetColor(pinMat, 1.0, 1.0, 0.88);
+            Material3D.SetEmissiveColor(pinMat, 0.20, 0.20, 0.12);
+            Material3D.SetColor(pinNeckMat, 1.0, 0.02, 0.02);
+            Material3D.SetEmissiveColor(pinNeckMat, 0.38, 0.01, 0.01);
+        } else {
+            Material3D.SetColor(pinMat, config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
+            Material3D.SetEmissiveColor(pinMat,
+                config.PIN_EMISSIVE, config.PIN_EMISSIVE, config.PIN_EMISSIVE * 0.9);
+            Material3D.SetColor(pinNeckMat, config.PIN_NECK_R, config.PIN_NECK_G, config.PIN_NECK_B);
+            Material3D.SetEmissiveColor(pinNeckMat,
+                config.PIN_NECK_EMISSIVE, config.PIN_NECK_EMISSIVE * 0.18,
+                config.PIN_NECK_EMISSIVE * 0.18);
+        }
+    }
+
     /// @brief Render every pin. Knocked pins draw with their tilt
     ///        rotation; standing pins also draw the red neck mesh.
     expose func draw(canvas: Canvas3D) {
@@ -566,5 +584,35 @@ class PinManager {
     /// @brief Knock-down state for a specific pin.
     expose func isKnocked(index: Integer) -> Boolean {
         return knocked.get(index);
+    }
+
+    /// @brief Ten-bit mask of pins still standing (bit zero is the head pin).
+    expose func getStandingMask() -> Integer {
+        var mask = 0;
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            if (knocked.get(i) == false) { mask = mask | (1 << i); }
+        }
+        return mask;
+    }
+
+    /// @brief Replace the rack with a deterministic standing-pin practice mask.
+    expose func setStandingMask(mask: Integer) {
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            var standing = (mask & (1 << i)) != 0;
+            knocked.set(i, standing == false);
+            previousKnocked.set(i, standing == false);
+            impacted.set(i, false);
+            tiltAngle.set(i, 0.0);
+            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            if (standing) {
+                Physics3DBody.SetPosition(bodies.get(i), homeX.get(i),
+                    config.PIN_BODY_CENTER_Y, homeZ.get(i));
+            } else {
+                Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), -4.0, homeZ.get(i));
+            }
+            Physics3DBody.Sleep(bodies.get(i));
+        }
+        savePinState();
     }
 }

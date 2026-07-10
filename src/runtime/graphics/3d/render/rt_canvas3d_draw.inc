@@ -1648,12 +1648,14 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
             ? mesh_obj
             : NULL;
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
+    dd->cmd.compact_vertex_stream = (dd->cmd.geometry_key && mesh->compact_streams) ? 1 : 0;
     memcpy(dd->cmd.model_matrix, validated_model_matrix, sizeof(dd->cmd.model_matrix));
     canvas3d_resolve_previous_model(c,
                                     (uintptr_t)motion_key,
                                     dd->cmd.model_matrix,
                                     dd->cmd.prev_model_matrix,
                                     &dd->cmd.has_prev_model_matrix);
+    canvas3d_texture_stream_touch_material(c, mat);
     canvas3d_fill_material_cmd(mat, &dd->cmd);
     canvas3d_apply_ibl_env(c, &dd->cmd);
     if (suppress_normal_map)
@@ -1696,6 +1698,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
             mesh, queued_vertices, dd->local_bounds_min, dd->local_bounds_max);
     }
     canvas3d_finalize_deferred_visibility_flags(dd, conservative_bounds, disable_occlusion);
+    canvas3d_texture_stream_record_cmd(c, &dd->cmd, dd->local_bounds_min, dd->local_bounds_max);
 
     dd->sort_key = canvas3d_sanitize_sort_key(canvas3d_compute_sort_key(c,
                                                                         dd->cmd.model_matrix,

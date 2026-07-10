@@ -1,0 +1,87 @@
+// ============================================================================
+// MODULE: release_visual_probe
+// PURPOSE: Capture release-scale title and gameplay frames exercising authored
+//          assets, venue dressing, responsive HUD, and animated bowler geometry.
+// ============================================================================
+
+module release_visual_probe;
+
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
+bind Viper.Terminal;
+bind "./config";
+bind "./menu";
+bind "./engine/renderer";
+bind "./engine/camera";
+bind "./engine/hud";
+bind "./lane/lane";
+bind "./lane/pins";
+bind "./lane/ball";
+bind "./scoring/scoring";
+bind "./presentation/bowler";
+bind "./smoke_checks";
+
+func main() {
+    smoke_checks.ResetDiagnostics();
+    var captureW = config.WINDOW_WIDTH;
+    var captureH = config.WINDOW_HEIGHT;
+    var renderer = new Renderer();
+    renderer.initRendererWithSize(config.QUALITY_CINEMATIC, captureW, captureH);
+    var camera = new CameraController();
+    camera.initCamera(renderer.getCamera());
+    var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+    var lane = new LaneBuilder(); lane.initLane(world, config.OIL_HOUSE);
+    var pins = new PinManager(); pins.initPins(world);
+    var ball = new Ball(); ball.initBall(world);
+    var env = renderer.getSkybox();
+    lane.applyEnvironment(env); pins.applyEnvironment(env); ball.applyEnvironment(env);
+    var menuObj = new BowlingMenu();
+    if (menuObj.hasTitleArt() == false) { Say("RESULT: fail menu title art"); return; }
+
+    var titleShot: Pixels = null;
+    for (var frame: Integer = 0; frame < 8; frame = frame + 1) {
+        renderer.poll(); renderer.beginFrame();
+        lane.draw(renderer.getCanvas()); pins.draw(renderer.getCanvas()); ball.draw(renderer.getCanvas());
+        renderer.endFrame(); menuObj.drawTitle(renderer.getCanvas(), captureW, captureH);
+        titleShot = renderer.getCanvas().ScreenshotFinal();
+        renderer.flip();
+    }
+    if (Pixels.SavePng(titleShot, Path.Join(TempFile.Dir(), "3dbowling_release_title.png")) != 1) {
+        Say("RESULT: fail title capture"); return;
+    }
+
+    camera.setAimMode(0.045);
+    lane.enableAuthoredSurface();
+    ball.setAimPosition(0.045);
+    var avatar = new BowlerAvatar(); avatar.setColor(config.HUD_COLOR_CYAN);
+    avatar.update(0.35, 0.045, true);
+    var keeper = new ScoreKeeper();
+    var keepers: List[ScoreKeeper] = []; keepers.add(keeper);
+    var hud = new HUD();
+    hud.initHUD();
+    hud.setShotContext(0.48, 0.94, 5.6, "Avery", "Fresh rack", 0);
+    var gameShot: Pixels = null;
+    for (var gameFrame: Integer = 0; gameFrame < 5; gameFrame = gameFrame + 1) {
+        renderer.poll(); renderer.beginFrame();
+        lane.draw(renderer.getCanvas()); avatar.draw(renderer.getCanvas());
+        ball.drawAimPreview(renderer.getCanvas(), 0.045, -0.16, lane.getOilEndZ());
+        pins.draw(renderer.getCanvas()); ball.draw(renderer.getCanvas()); renderer.endFrame();
+        hud.draw(renderer.getCanvas(), keeper, 0.58, true, -0.16, 0.045,
+            ball.getBallType(), config.STATE_AIMING, 1, 0, keepers, "House oil  0% wear");
+        lane.drawOilPreview(renderer.getCanvas(), captureW - 232, 182, 132, 60);
+        gameShot = renderer.getCanvas().ScreenshotFinal();
+        if (gameFrame < 4) { renderer.flip(); }
+    }
+    if (Pixels.SavePng(gameShot, Path.Join(TempFile.Dir(), "3dbowling_release_gameplay.png")) != 1) {
+        Say("RESULT: fail gameplay capture"); return;
+    }
+    if (smoke_checks.HasVisible3DScene(gameShot, captureW, captureH) == false ||
+        smoke_checks.IsMostlyBlack(gameShot, captureW, captureH) ||
+        smoke_checks.DiagnosticsClean() == false) {
+        Say("RESULT: fail release frame"); return;
+    }
+    renderer.flip();
+    Say("RESULT: ok");
+}

@@ -1,0 +1,90 @@
+// ============================================================================
+// MODULE: presentation/replay
+// PURPOSE: Bounded transform recorder and stylized instant-replay ghost for
+//          notable shots without mutating live physics state.
+// ============================================================================
+
+module replay;
+
+bind Viper.Graphics3D;
+bind Viper.Core.Convert as Convert;
+
+/// @brief Records a decimated ball path and replays it as a cinematic ghost.
+class ReplayRecorder {
+    hide List[Float] xs;
+    hide List[Float] ys;
+    hide List[Float] zs;
+    hide Integer sampleCounter;
+    hide Boolean active;
+    hide Float timer;
+    hide Float duration;
+    hide Mesh3D ballMesh;
+    hide Material3D ballMat;
+
+    expose func init() {
+        xs = []; ys = []; zs = [];
+        sampleCounter = 0;
+        active = false;
+        timer = 0.0;
+        duration = 2.0;
+        ballMesh = Mesh3D.Sphere(0.125, 14);
+        ballMat = Material3D.PBR(0.10, 0.88, 0.98);
+        ballMat.Metallic = 0.18;
+        ballMat.Roughness = 0.20;
+        ballMat.Alpha = 0.82;
+        Material3D.SetEmissiveColor(ballMat, 0.08, 0.48, 0.58);
+    }
+
+    expose func beginCapture() {
+        xs.clear(); ys.clear(); zs.clear();
+        sampleCounter = 0;
+        active = false;
+    }
+
+    expose func capture(position: Vec3) {
+        sampleCounter = sampleCounter + 1;
+        if (sampleCounter % 3 != 0) { return; }
+        if (xs.count() >= 220) { return; }
+        xs.add(Vec3.get_X(position));
+        ys.add(Vec3.get_Y(position));
+        zs.add(Vec3.get_Z(position));
+    }
+
+    expose func start(seconds: Float) -> Boolean {
+        if (xs.count() < 5) { return false; }
+        duration = seconds;
+        if (duration < 0.5) { duration = 0.5; }
+        timer = duration;
+        active = true;
+        return true;
+    }
+
+    expose func update(dt: Float) {
+        if (active == false) { return; }
+        timer = timer - dt;
+        if (timer <= 0.0) { timer = 0.0; active = false; }
+    }
+
+    expose func isActive() -> Boolean { return active; }
+    expose func stop() { active = false; timer = 0.0; }
+
+    expose func draw(canvas: Canvas3D) {
+        if (active == false || xs.count() < 2) { return; }
+        var progress = 1.0 - timer / duration;
+        if (progress < 0.0) { progress = 0.0; }
+        if (progress > 1.0) { progress = 1.0; }
+        var index = Convert.NumToInt(progress * ((xs.count() - 1) + 0.0));
+        if (index < 0) { index = 0; }
+        if (index >= xs.count()) { index = xs.count() - 1; }
+
+        var start = index - 18;
+        if (start < 1) { start = 1; }
+        for (var i: Integer = start; i <= index; i = i + 1) {
+            Canvas3D.DrawLine3D(canvas,
+                new Vec3(xs.get(i - 1), 0.048, zs.get(i - 1)),
+                new Vec3(xs.get(i), 0.048, zs.get(i)), 0x3DE0F0);
+        }
+        Canvas3D.DrawMesh(canvas, ballMesh,
+            Mat4.Translate(xs.get(index), ys.get(index), zs.get(index)), ballMat);
+    }
+}

@@ -920,6 +920,44 @@ int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *o) {
     return 0;
 }
 
+/// @brief Stub for `Canvas3D.SetTextureStreaming` — would normally enable
+///        automatic TextureAsset3D mip-residency streaming.
+///
+/// Trapping stub in disabled-graphics builds.
+///
+/// @param o       Canvas3D handle (ignored).
+/// @param enabled Streaming toggle (ignored).
+void rt_canvas3d_set_texture_streaming(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetTextureStreaming: graphics support not compiled in");
+}
+
+/// @brief Stub for `Canvas3D.SetTextureStreamingBias` — would normally bias
+///        streaming's desired mip level.
+///
+/// Trapping stub in disabled-graphics builds.
+///
+/// @param o    Canvas3D handle (ignored).
+/// @param bias Mip bias (ignored).
+void rt_canvas3d_set_texture_streaming_bias(void *o, double bias) {
+    (void)o;
+    (void)bias;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetTextureStreamingBias: graphics support not compiled in");
+}
+
+/// @brief Stub for `Canvas3D.TextureStreamingDemotions` — streaming telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_texture_streaming_demotions(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.Screenshot` — would normally read back the
 ///        current 3D framebuffer into a fresh Pixels surface.
 ///
@@ -1903,6 +1941,21 @@ void rt_canvas3d_draw_instanced(void *c, void *b) {
     (void)c;
     (void)b;
     RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawInstanced: graphics support not compiled in");
+}
+
+/// @brief Stub for `Canvas3D.DrawInstancedSkinned` — render the batch with one
+///        animator palette per instance.
+///
+/// Trapping stub.
+///
+/// @param c Canvas3D handle (ignored).
+/// @param b InstanceBatch3D handle (ignored).
+/// @param p Seq of AnimPlayer3D/AnimController3D handles (ignored).
+void rt_canvas3d_draw_instanced_skinned(void *c, void *b, void *p) {
+    (void)c;
+    (void)b;
+    (void)p;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawInstancedSkinned: graphics support not compiled in");
 }
 
 /// @brief Stub for `Canvas3D.DrawTerrain` — render the Terrain3D using

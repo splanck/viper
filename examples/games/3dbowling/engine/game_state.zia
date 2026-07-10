@@ -23,6 +23,11 @@ bind "../lane/ball";
 bind "../effects/particles";
 bind "../effects/celebrations";
 bind "../scoring/scoring";
+bind "../gameplay/release_meter";
+bind "../gameplay/leaves";
+bind "../presentation/replay";
+bind "../progression/profile";
+bind "../presentation/bowler";
 
 /// @brief Shared state for the bowling controller layers.
 class BowlingGameState {
@@ -36,11 +41,17 @@ class BowlingGameState {
     hide Ball ballObj;
     hide ParticleManager particleMgr;
     hide CelebrationManager celebMgr;
+    hide ReleaseMeter releaseMeter;
+    hide LeaveAnalyzer leaveAnalyzer;
+    hide ReplayRecorder replayRecorder;
+    hide BowlerAvatar bowlerAvatar;
 
     hide Physics3DWorld physWorld;
 
     hide List[ScoreKeeper] scoreKeepers;
     hide List[String] playerNames;
+    hide List[PlayerProfile] playerProfiles;
+    hide List[Integer] partyScores;
 
     hide Integer screenState;
     hide Integer gameState;
@@ -54,6 +65,8 @@ class BowlingGameState {
     hide Float aimX;
     hide Float power;
     hide Float spin;
+    hide Float lastReleaseAccuracy;
+    hide Float lastShotSpeed;
     hide Boolean charging;
     hide Boolean gutterLatched;
     hide Boolean ballHitPinsThisRoll;
@@ -62,12 +75,26 @@ class BowlingGameState {
     hide Float lastEntryAngle;
     hide Boolean entryCaptured;
     hide Boolean hasLastEntry;
+    hide String lastLeaveName;
+    hide Integer lastLeaveDifficulty;
 
     hide Integer oilPattern;
     hide Integer qualityMode;
     hide Integer currentMode;
     hide Integer playerCount;
     hide Integer activePlayer;
+    hide Integer challengeId;
+    hide Integer partyId;
+    hide Integer practiceId;
+    hide Integer optionsReturnScreen;
+    hide Float aiThinkTimer;
+    hide Integer matchStrikes;
+    hide Integer matchSpares;
+    hide Integer matchGutters;
+    hide Integer resultsChallengeTier;
+    hide Integer tutorialStep;
+    hide Integer careerTier;
+    hide Float pendingReplayDuration;
 
     hide Boolean pendingFrameAdvance;
     hide Boolean pendingPlayerSwitch;
@@ -75,6 +102,7 @@ class BowlingGameState {
 
     hide SoundBank soundBank;
     hide Boolean soundReady;
+    hide Integer musicState;
     hide Boolean quitRequested;
 
     hide List[Integer] resultsScores;
@@ -95,6 +123,8 @@ class BowlingGameState {
         aimX = 0.0;
         power = 0.0;
         spin = 0.0;
+        lastReleaseAccuracy = 1.0;
+        lastShotSpeed = 0.0;
         charging = false;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
@@ -102,17 +132,34 @@ class BowlingGameState {
         lastEntryAngle = 0.0;
         entryCaptured = false;
         hasLastEntry = false;
+        lastLeaveName = "Fresh rack";
+        lastLeaveDifficulty = 0;
         oilPattern = config.OIL_HOUSE;
         qualityMode = config.QUALITY_CINEMATIC;
         currentMode = config.MODE_SINGLE;
         playerCount = 1;
         activePlayer = 0;
+        challengeId = 0;
+        partyId = 0;
+        practiceId = 0;
+        optionsReturnScreen = config.SCREEN_TITLE;
+        aiThinkTimer = 0.0;
+        matchStrikes = 0;
+        matchSpares = 0;
+        matchGutters = 0;
+        resultsChallengeTier = 0;
+        tutorialStep = -1;
+        careerTier = 0;
+        pendingReplayDuration = 0.0;
         scoreKeepers = [];
         playerNames = [];
+        playerProfiles = [];
+        partyScores = [];
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;
         pendingResults = false;
         soundReady = false;
+        musicState = -1;
         quitRequested = false;
         resultsScores = [];
         resultsRanking = [];

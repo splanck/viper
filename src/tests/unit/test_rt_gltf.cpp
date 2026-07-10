@@ -33,6 +33,9 @@
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_textureasset3d.h"
+extern "C" {
+#include "vgfx3d_skinning.h"
+}
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -2427,6 +2430,457 @@ static void test_gltf_applies_matrix_nodes_in_column_major_order() {
                 "GLTF.Load decodes matrix scale.z correctly");
 }
 
+static void test_gltf_eight_influence_import() {
+    /* 3-vertex triangle where every vertex carries six meaningful influences
+     * split across JOINTS_0 (0..3) and JOINTS_1 (4,5). Loading with the
+     * eightInfluences option must keep all six: the strongest four in the vertex
+     * record and joints 4/5 in the extra-influence side stream. */
+    std::vector<uint8_t> buffer;
+    auto push_f32 = [&buffer](float v) {
+        uint8_t bytes[4];
+        std::memcpy(bytes, &v, 4);
+        buffer.insert(buffer.end(), bytes, bytes + 4);
+    };
+    auto push_u8 = [&buffer](uint8_t v) { buffer.push_back(v); };
+    size_t pos_off = 0;
+    const float tri[3][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
+    for (int v = 0; v < 3; v++) {
+        push_f32(tri[v][0]);
+        push_f32(tri[v][1]);
+        push_f32(tri[v][2]);
+    }
+    size_t j0_off = buffer.size();
+    for (int v = 0; v < 3; v++) {
+        push_u8(0);
+        push_u8(1);
+        push_u8(2);
+        push_u8(3);
+    }
+    size_t w0_off = buffer.size();
+    for (int v = 0; v < 3; v++) {
+        push_f32(0.4f);
+        push_f32(0.25f);
+        push_f32(0.15f);
+        push_f32(0.1f);
+    }
+    size_t j1_off = buffer.size();
+    for (int v = 0; v < 3; v++) {
+        push_u8(4);
+        push_u8(5);
+        push_u8(0);
+        push_u8(0);
+    }
+    size_t w1_off = buffer.size();
+    for (int v = 0; v < 3; v++) {
+        push_f32(0.06f);
+        push_f32(0.04f);
+        push_f32(0.0f);
+        push_f32(0.0f);
+    }
+    std::string b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
+        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(pos_off) + ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(j0_off) + ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(w0_off) + ",\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(j1_off) + ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(w1_off) + ",\"byteLength\":48}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":3,\"componentType\":5121,\"count\":3,\"type\":\"VEC4\"},"
+        "{\"bufferView\":4,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
+        "\"WEIGHTS_0\":2,\"JOINTS_1\":3,\"WEIGHTS_1\":4}}]}]"
+        "}";
+    const char *gltf_path = "/tmp/viper_gltf_eight_influences.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "eight-influence fixture writes");
+
+    rt_gltf_load_options opts = rt_gltf_load_options_default();
+    opts.eight_bone_influences = 1;
+    rt_gltf_load_options saved = rt_gltf_set_thread_load_options(&opts);
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    (void)rt_gltf_set_thread_load_options(&saved);
+    EXPECT_TRUE(asset != nullptr, "eightInfluences load succeeds");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3, "eight-influence mesh imports");
+    if (!mesh)
+        return;
+    EXPECT_TRUE(mesh->extra_influences != nullptr,
+                "eightInfluences keeps an extra-influence side stream");
+    EXPECT_TRUE(!load_warnings_contain("more than 4 bone influences"),
+                "eightInfluences does not warn about influence truncation");
+    if (mesh->extra_influences) {
+        const vgfx3d_extra_influences_t *extra = &mesh->extra_influences[0];
+        EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 0 &&
+                        mesh->vertices[0].bone_indices[1] == 1 &&
+                        mesh->vertices[0].bone_indices[2] == 2 &&
+                        mesh->vertices[0].bone_indices[3] == 3,
+                    "strongest four influences stay in the vertex record");
+        EXPECT_TRUE(extra->indices[0] == 4 && extra->indices[1] == 5,
+                    "influences five and six land in the side stream");
+        /* Vertex weights renormalize to the primary 4-set (sum 0.9); side-stream
+         * weights carry the same scale so the total blend keeps the authored
+         * 0.4/0.25/0.15/0.1/0.06/0.04 proportions. */
+        EXPECT_NEAR(extra->weights[0], 0.06 / 0.9, 0.001, "fifth weight survives in scale");
+        EXPECT_NEAR(extra->weights[1], 0.04 / 0.9, 0.001, "sixth weight survives in scale");
+        EXPECT_NEAR(mesh->vertices[0].bone_weights[0], 0.4 / 0.9, 0.001,
+                    "primary weights renormalize to the vertex record");
+        EXPECT_TRUE(mesh->bone_count == 6,
+                    "bone palette covers the side-stream influences");
+        /* Functional: bone 4 translated by (8,0,0); all other bones identity.
+         * Skinned x = src.x + w4 * 8. */
+        {
+            float palette[6 * 16];
+            for (int b = 0; b < 6; b++) {
+                float *m = &palette[b * 16];
+                std::memset(m, 0, 16 * sizeof(float));
+                m[0] = m[5] = m[10] = m[15] = 1.0f;
+            }
+            palette[4 * 16 + 3] = 8.0f;
+            vgfx3d_vertex_t skinned[3];
+            vgfx3d_skin_vertices_extra(mesh->vertices,
+                                       skinned,
+                                       mesh->vertex_count,
+                                       palette,
+                                       6,
+                                       mesh->extra_influences,
+                                       nullptr);
+            EXPECT_NEAR(skinned[0].pos[0], 0.0 + 0.06 * 8.0, 0.005,
+                        "CPU skinning applies side-stream influences");
+        }
+    }
+
+    /* Same asset without the option: classic top-4 merge with truncation warning. */
+    void *asset4 = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset4 != nullptr, "default load of the 6-influence fixture succeeds");
+    if (asset4) {
+        auto *mesh4 = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset4, 0));
+        EXPECT_TRUE(mesh4 && mesh4->extra_influences == nullptr,
+                    "default load keeps the 4-influence layout");
+        EXPECT_TRUE(load_warnings_contain("more than 4 bone influences"),
+                    "default load still warns about dropped influences");
+    }
+}
+
+static void test_gltf_compress_animations_option() {
+    /* 11 collinear LINEAR keys (x = t over [0,1] on a 2-joint skin's root): with
+     * compressAnimations the interior nine reconstruct exactly by lerp and drop,
+     * leaving the two endpoint keys and identical playback. */
+    std::vector<uint8_t> buffer;
+    auto push_f32 = [&buffer](float v) {
+        uint8_t bytes[4];
+        std::memcpy(bytes, &v, 4);
+        buffer.insert(buffer.end(), bytes, bytes + 4);
+    };
+    const int kKeys = 11;
+    size_t times_off = 0;
+    for (int i = 0; i < kKeys; i++)
+        push_f32((float)i / (kKeys - 1));
+    size_t values_off = buffer.size();
+    for (int i = 0; i < kKeys; i++) {
+        push_f32((float)i / (kKeys - 1));
+        push_f32(0.0f);
+        push_f32(0.0f);
+    }
+    std::string b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"nodes\":[{\"children\":[1]},{}],"
+        "\"skins\":[{\"joints\":[0,1]}],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
+        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(times_off) +
+        ",\"byteLength\":" + std::to_string(values_off - times_off) + "},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(values_off) +
+        ",\"byteLength\":" + std::to_string(buffer.size() - values_off) + "}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":" + std::to_string(kKeys) +
+        ",\"type\":\"SCALAR\",\"min\":[0.0],\"max\":[1.0]},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":" + std::to_string(kKeys) +
+        ",\"type\":\"VEC3\"}"
+        "],"
+        "\"animations\":[{\"channels\":[{\"sampler\":0,"
+        "\"target\":{\"node\":0,\"path\":\"translation\"}}],"
+        "\"samplers\":[{\"input\":0,\"interpolation\":\"LINEAR\",\"output\":1}]}]"
+        "}";
+    const char *gltf_path = "/tmp/viper_gltf_compress_anim.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "compressAnimations fixture writes");
+
+    void *asset_raw = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset_raw != nullptr, "uncompressed clip loads");
+    if (asset_raw) {
+        auto *anim = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset_raw, 0));
+        EXPECT_TRUE(anim && anim->channel_count == 1 &&
+                        anim->channels[0].keyframe_count == kKeys,
+                    "default load keeps every authored key");
+    }
+
+    rt_gltf_load_options opts = rt_gltf_load_options_default();
+    opts.compress_animations = 1;
+    rt_gltf_load_options saved = rt_gltf_set_thread_load_options(&opts);
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    (void)rt_gltf_set_thread_load_options(&saved);
+    EXPECT_TRUE(asset != nullptr, "compressAnimations load succeeds");
+    if (!asset)
+        return;
+    auto *anim = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset, 0));
+    EXPECT_TRUE(anim != nullptr && anim->channel_count == 1, "compressed clip imports");
+    if (!anim)
+        return;
+    EXPECT_TRUE(anim->channels[0].keyframe_count == 2,
+                "collinear keys reduce to the two endpoints");
+    EXPECT_NEAR(anim->channels[0].keyframes[0].position[0], 0.0, 1e-5,
+                "first key survives compression");
+    EXPECT_NEAR(anim->channels[0].keyframes[1].position[0], 1.0, 1e-5,
+                "last key survives compression");
+    EXPECT_TRUE(import_report_contains("\"compressedAnimationKeysDropped\":9"),
+                "import report counts dropped animation keys");
+}
+
+static void test_gltf_ior_and_volume_extensions() {
+    /* KHR_materials_ior + KHR_materials_volume ride the PBR custom params:
+     * [4] = ior, [5] = thickness, [6] = folded Beer-Lambert absorption
+     * (-ln(avg(attenuationColor)) / attenuationDistance). */
+    const char *gltf_path = "/tmp/viper_gltf_ior_volume.gltf";
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"materials\":[{"
+        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+        "\"extensions\":{"
+        "\"KHR_materials_ior\":{\"ior\":1.33},"
+        "\"KHR_materials_transmission\":{\"transmissionFactor\":0.9},"
+        "\"KHR_materials_volume\":{\"thicknessFactor\":0.5,"
+        "\"attenuationDistance\":2.0,\"attenuationColor\":[0.5,0.5,0.5]}"
+        "}}]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "ior/volume fixture writes");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "ior/volume material loads");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "material imports");
+    if (!mat)
+        return;
+    EXPECT_NEAR(mat->custom_params[4], 1.33, 0.001, "KHR_materials_ior lands in param 4");
+    EXPECT_NEAR(mat->custom_params[3], 0.9, 0.001, "transmission factor lands in param 3");
+    EXPECT_NEAR(mat->custom_params[5], 0.5, 0.001, "volume thickness lands in param 5");
+    /* sigma = -ln(0.5) / 2 = 0.3466 */
+    EXPECT_NEAR(mat->custom_params[6], 0.34657, 0.001,
+                "volume attenuation folds to the Beer-Lambert coefficient");
+
+    /* KHR_materials_sheen: luminance-folded intensity + roughness. */
+    const char *sheen_path = "/tmp/viper_gltf_sheen.gltf";
+    std::string sheen_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"materials\":[{"
+        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+        "\"extensions\":{\"KHR_materials_sheen\":{"
+        "\"sheenColorFactor\":[1.0,1.0,1.0],\"sheenRoughnessFactor\":0.4}}}]}";
+    EXPECT_TRUE(write_text_file(sheen_path, sheen_json), "sheen fixture writes");
+    void *sheen_asset = rt_gltf_load(rt_const_cstr(sheen_path));
+    EXPECT_TRUE(sheen_asset != nullptr, "sheen material loads");
+    if (sheen_asset) {
+        auto *sm = static_cast<rt_material3d *>(rt_gltf_get_material(sheen_asset, 0));
+        EXPECT_TRUE(sm != nullptr, "sheen material imports");
+        if (sm) {
+            EXPECT_NEAR(sm->custom_params[0], 1.0, 0.001,
+                        "sheen color folds to a luminance intensity in param 0");
+            EXPECT_NEAR(sm->custom_params[7], 0.4, 0.001,
+                        "sheen roughness lands in param 7");
+        }
+    }
+
+    /* KHR_materials_anisotropy: strength + rotation params. */
+    const char *aniso_path = "/tmp/viper_gltf_aniso.gltf";
+    std::string aniso_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"materials\":[{"
+        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+        "\"extensions\":{\"KHR_materials_anisotropy\":{"
+        "\"anisotropyStrength\":0.8,\"anisotropyRotation\":0.5}}}]}";
+    EXPECT_TRUE(write_text_file(aniso_path, aniso_json), "anisotropy fixture writes");
+    void *aniso_asset = rt_gltf_load(rt_const_cstr(aniso_path));
+    EXPECT_TRUE(aniso_asset != nullptr, "anisotropy material loads");
+    if (aniso_asset) {
+        auto *am = static_cast<rt_material3d *>(rt_gltf_get_material(aniso_asset, 0));
+        EXPECT_TRUE(am != nullptr, "anisotropy material imports");
+        if (am) {
+            EXPECT_NEAR(am->custom_params[8], 0.8, 0.001,
+                        "anisotropy strength lands in param 8");
+            EXPECT_NEAR(am->custom_params[9], 0.5, 0.001,
+                        "anisotropy rotation lands in param 9");
+        }
+    }
+}
+
+static void test_gltf_partitions_oversized_skins() {
+    /* 300-joint skin: 300 unit quads, quad i rigidly bound to joint i. The joint
+     * set exceeds the 256-slot draw palette, so the importer must partition the
+     * primitive into sub-meshes with bucket-local bone indices + bone_map. */
+    const int kJoints = 300;
+    const int kVertsPerQuad = 4;
+    const int vert_count = kJoints * kVertsPerQuad;
+    std::vector<uint8_t> buffer;
+    auto push_f32 = [&buffer](float v) {
+        uint8_t bytes[4];
+        std::memcpy(bytes, &v, 4);
+        buffer.insert(buffer.end(), bytes, bytes + 4);
+    };
+    auto push_u16 = [&buffer](uint16_t v) {
+        buffer.push_back((uint8_t)(v & 0xFF));
+        buffer.push_back((uint8_t)(v >> 8));
+    };
+    size_t pos_off = buffer.size();
+    for (int q = 0; q < kJoints; q++) {
+        const float x = (float)q * 2.0f;
+        const float quad[4][3] = {
+            {x, 0.0f, 0.0f}, {x + 1.0f, 0.0f, 0.0f}, {x + 1.0f, 1.0f, 0.0f}, {x, 1.0f, 0.0f}};
+        for (int v = 0; v < 4; v++) {
+            push_f32(quad[v][0]);
+            push_f32(quad[v][1]);
+            push_f32(quad[v][2]);
+        }
+    }
+    size_t joints_off = buffer.size();
+    for (int q = 0; q < kJoints; q++) {
+        for (int v = 0; v < 4; v++) {
+            push_u16((uint16_t)q);
+            push_u16(0);
+            push_u16(0);
+            push_u16(0);
+        }
+    }
+    size_t weights_off = buffer.size();
+    for (int q = 0; q < kJoints; q++) {
+        for (int v = 0; v < 4; v++) {
+            push_f32(1.0f);
+            push_f32(0.0f);
+            push_f32(0.0f);
+            push_f32(0.0f);
+        }
+    }
+    size_t idx_off = buffer.size();
+    for (int q = 0; q < kJoints; q++) {
+        uint16_t base = (uint16_t)(q * 4);
+        const uint16_t tri[6] = {base,
+                                 (uint16_t)(base + 1),
+                                 (uint16_t)(base + 2),
+                                 base,
+                                 (uint16_t)(base + 2),
+                                 (uint16_t)(base + 3)};
+        for (int i = 0; i < 6; i++)
+            push_u16(tri[i]);
+    }
+    std::string b64 = base64_encode(buffer.data(), buffer.size());
+
+    std::string nodes = "{\"skin\":0,\"mesh\":0}";
+    std::string joints;
+    for (int j = 0; j < kJoints; j++) {
+        nodes += ",{\"translation\":[" + std::to_string((double)j * 2.0) + ",0,0]}";
+        if (j)
+            joints += ",";
+        joints += std::to_string(j + 1);
+    }
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"nodes\":[" + nodes + "],"
+        "\"skins\":[{\"joints\":[" + joints + "]}],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
+        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(pos_off) +
+        ",\"byteLength\":" + std::to_string(joints_off - pos_off) + "},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(joints_off) +
+        ",\"byteLength\":" + std::to_string(weights_off - joints_off) + "},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(weights_off) +
+        ",\"byteLength\":" + std::to_string(idx_off - weights_off) + "},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(idx_off) +
+        ",\"byteLength\":" + std::to_string(buffer.size() - idx_off) + "}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":" + std::to_string(vert_count) +
+        ",\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":" + std::to_string(vert_count) +
+        ",\"type\":\"VEC4\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":" + std::to_string(vert_count) +
+        ",\"type\":\"VEC4\"},"
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":" + std::to_string(kJoints * 6) +
+        ",\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
+        "\"WEIGHTS_0\":2},\"indices\":3}]}]"
+        "}";
+    const char *gltf_path = "/tmp/viper_gltf_oversized_skin.gltf";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "oversized-skin glTF fixture writes");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load imports a 300-joint skin");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 1, "300-joint skin builds one skeleton");
+    void *skeleton = rt_gltf_get_skeleton(asset, 0);
+    EXPECT_TRUE(skeleton != nullptr && rt_skeleton3d_get_bone_count(skeleton) == kJoints,
+                "Skeleton3D holds all 300 bones past the draw-palette cap");
+    int64_t mesh_count = rt_gltf_mesh_count(asset);
+    EXPECT_TRUE(mesh_count == 2, "oversized skin partitions into two sub-meshes");
+    int total_vertices = 0;
+    int total_indices = 0;
+    for (int64_t i = 0; i < mesh_count; i++) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, i));
+        EXPECT_TRUE(mesh != nullptr, "partitioned sub-mesh exists");
+        if (!mesh)
+            continue;
+        EXPECT_TRUE(mesh->bone_count > 0 && mesh->bone_count <= 256,
+                    "sub-mesh bone palette fits the draw limit");
+        EXPECT_TRUE(mesh->bone_map != nullptr, "sub-mesh carries a bone map");
+        if (mesh->bone_map) {
+            for (int32_t b = 0; b < mesh->bone_count; b++) {
+                EXPECT_TRUE(mesh->bone_map[b] >= 0 && mesh->bone_map[b] < kJoints,
+                            "bone map entries reference skeleton bones");
+            }
+        }
+        total_vertices += (int)mesh->vertex_count;
+        total_indices += (int)mesh->index_count;
+        /* Every vertex is rigidly bound: local index 0..bone_count-1, weight 1. */
+        for (uint32_t v = 0; v < mesh->vertex_count && v < 8; v++) {
+            EXPECT_TRUE(mesh->vertices[v].bone_weights[0] > 0.999f,
+                        "partitioned vertices keep full weights");
+            EXPECT_TRUE(mesh->vertices[v].bone_indices[0] < mesh->bone_count,
+                        "partitioned vertex indices stay palette-local");
+        }
+    }
+    EXPECT_TRUE(total_vertices == vert_count, "partitioning preserves every vertex");
+    EXPECT_TRUE(total_indices == kJoints * 6, "partitioning preserves every triangle");
+    {
+        auto *m0 = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+        auto *m1 = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 1));
+        if (m0 && m1) {
+            EXPECT_TRUE(m0->bone_count == 256 && m1->bone_count == kJoints - 256,
+                        "greedy bucketing fills the first palette before splitting");
+            if (m0->bone_map && m1->bone_map) {
+                EXPECT_TRUE(m0->bone_map[0] == 0 && m0->bone_map[255] == 255,
+                            "first bucket maps palette slots to joints 0..255");
+                EXPECT_TRUE(m1->bone_map[0] == 256,
+                            "second bucket starts at joint 256");
+            }
+        }
+    }
+    EXPECT_TRUE(load_warnings_contain("partitioned into 2 sub-meshes"),
+                "partitioning reports a load warning");
+}
+
 static void test_gltf_imports_skins_and_animation_clips() {
     const char *gltf_path = "/tmp/viper_gltf_skinned_anim.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -2618,8 +3072,10 @@ static void test_gltf_imports_skins_and_animation_clips() {
         EXPECT_TRUE(anim->channel_count == 1, "GLTF animation targets the imported root bone");
         EXPECT_TRUE(anim->channels[0].keyframe_count == 3,
                     "GLTF animation merges CUBICSPLINE and scale sample times");
-        EXPECT_TRUE(import_report_contains("\"bakedCubicSplineChannels\":1"),
-                    "Import report counts skeletal CUBICSPLINE channels baked to sampled keys");
+        EXPECT_TRUE(import_report_contains("\"bakedCubicSplineChannels\":0"),
+                    "Skeletal CUBICSPLINE channels keep Hermite tangents (no bake reported)");
+        EXPECT_TRUE((anim->channels[0].keyframes[0].cubic_mask & 1u) != 0,
+                    "Imported CUBICSPLINE keys carry position tangents");
         EXPECT_NEAR(anim->channels[0].keyframes[1].position[0],
                     1.25,
                     0.001,
@@ -4744,10 +5200,12 @@ static void test_gltf_matrix_shear_does_not_leak_into_rotation() {
 }
 
 static void test_gltf_rejects_skins_over_runtime_bone_limit() {
-    const char *gltf_path = "/tmp/viper_gltf_oversized_skin.gltf";
+    /* Skeletons accept up to VGFX3D_MAX_SKELETON_BONES (1024); rejection begins
+     * past that. Draw palettes stay at 256 via mesh partitioning. */
+    const char *gltf_path = "/tmp/viper_gltf_rejected_skin.gltf";
     std::string nodes;
     std::string joints;
-    for (int i = 0; i < 257; i++) {
+    for (int i = 0; i < 1025; i++) {
         if (i > 0) {
             nodes += ",";
             joints += ",";
@@ -4762,7 +5220,7 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
                 "Oversized-skin glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset == nullptr,
-                "GLTF.Load rejects skins above the runtime 256-bone palette limit");
+                "GLTF.Load rejects skins above the 1024-bone skeleton limit");
 }
 
 static void test_gltf_rejects_unsupported_required_extensions() {
@@ -5075,6 +5533,10 @@ int main() {
     test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
     test_gltf_applies_matrix_nodes_in_column_major_order();
     test_gltf_imports_skins_and_animation_clips();
+    test_gltf_partitions_oversized_skins();
+    test_gltf_eight_influence_import();
+    test_gltf_compress_animations_option();
+    test_gltf_ior_and_volume_extensions();
     test_gltf_skips_duplicate_skeletal_animation_channels();
     test_gltf_imports_step_skeletal_animation_as_hold_keys();
     test_gltf_rejects_skeletal_trs_animation_output_count_mismatch();

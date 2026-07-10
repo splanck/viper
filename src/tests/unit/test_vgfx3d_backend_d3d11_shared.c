@@ -227,9 +227,9 @@ static void test_finite_copy_helpers(void) {
 }
 
 static void test_constant_buffer_struct_sizes_match_expected_layout(void) {
-    EXPECT_TRUE(sizeof(vgfx3d_d3d11_per_object_t) == 480u,
+    EXPECT_TRUE(sizeof(vgfx3d_d3d11_per_object_t) == 752u,
                 "PerObject C struct matches the packed HLSL cbuffer size");
-    EXPECT_TRUE(sizeof(vgfx3d_d3d11_per_material_t) == 432u,
+    EXPECT_TRUE(sizeof(vgfx3d_d3d11_per_material_t) == 448u,
                 "PerMaterial C struct matches the packed HLSL cbuffer size");
 }
 

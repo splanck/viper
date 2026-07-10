@@ -39,6 +39,14 @@ void rt_instbatch3d_clear(void *batch);
 int64_t rt_instbatch3d_count(void *batch);
 /// @brief Submit the batch as a single GPU-instanced draw call.
 void rt_canvas3d_draw_instanced(void *canvas, void *batch);
+/// @brief Submit the batch with one AnimPlayer3D/AnimController3D palette per instance (R18).
+void rt_canvas3d_draw_instanced_skinned(void *canvas, void *batch, void *players);
+/// @brief Internal bridge: borrow the batch's retained mesh (NULL for invalid handles).
+void *rt_instbatch3d_borrow_mesh(void *batch);
+/// @brief Internal bridge: borrow the batch's retained material (NULL for invalid handles).
+void *rt_instbatch3d_borrow_material(void *batch);
+/// @brief Internal bridge: borrow the batch's sanitized float transform array (N * 16 values).
+const float *rt_instbatch3d_borrow_transforms(void *batch, int32_t *out_count);
 
 #ifdef __cplusplus
 }

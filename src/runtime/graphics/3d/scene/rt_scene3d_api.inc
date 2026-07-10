@@ -21,6 +21,11 @@ static void rt_scene3d_finalize(void *obj) {
         root->parent = NULL;
     }
     scene3d_release_ref((void **)&scene->root);
+    for (int32_t i = 0; i < scene->baked_animation_count; ++i)
+        scene3d_release_ref(&scene->baked_animations[i]);
+    free(scene->baked_animations);
+    scene->baked_animations = NULL;
+    scene->baked_animation_count = 0;
     free(scene->spatial_index.entries);
     free(scene->spatial_index.entry_indices);
     free(scene->spatial_index.nodes);

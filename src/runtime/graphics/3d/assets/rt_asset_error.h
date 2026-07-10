@@ -76,6 +76,7 @@ typedef enum rt_asset_import_stat {
     RT_ASSET_IMPORT_STAT_IGNORED_EXTENSIONS,
     /// Skeletal CUBICSPLINE channels baked to sampled keys (playback is linear/slerp).
     RT_ASSET_IMPORT_STAT_BAKED_CUBIC_SPLINE_CHANNELS,
+    RT_ASSET_IMPORT_STAT_COMPRESSED_ANIMATION_KEYS_DROPPED,
     RT_ASSET_IMPORT_STAT_COUNT
 } rt_asset_import_stat;
 

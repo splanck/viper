@@ -50,6 +50,10 @@ typedef struct {
      * geometry is transient and should use the streaming upload path. */
     const void *geometry_key;
     uint32_t geometry_revision;
+    /* R20: upload this draw's cached static geometry in the compact 48-byte
+     * vertex encoding (only meaningful when geometry_key is non-NULL; the
+     * software backend and transient uploads ignore it). */
+    int8_t compact_vertex_stream;
     float model_matrix[16];      /* row-major float */
     float prev_model_matrix[16]; /* previous-frame row-major float */
     float diffuse_color[4];      /* RGBA material color */
@@ -117,6 +121,12 @@ typedef struct {
     const float *bone_palette;      /* bone_count * 16 floats (4x4 row-major) */
     const float *prev_bone_palette; /* previous-frame palette or NULL */
     int32_t bone_count;             /* number of bones (0 = no skinning) */
+    /* R18 per-instance skinning: when nonzero for an instanced draw, bone_palette
+     * holds instance_count consecutive palettes of this many bones each
+     * (bone_count = instance_count * stride, still <= VGFX3D_MAX_BONES) and the
+     * vertex shader indexes palette[instance_id * stride + bone]. 0 keeps the
+     * shared-palette behavior; non-instanced draws ignore it (instance_id = 0). */
+    int32_t instance_bone_stride;
     /* GPU morph targets (MTL-10): set by rt_morphtarget3d.c for GPU path */
     const float *morph_deltas;           /* shape_count * vertex_count * 3 floats */
     const float *morph_normal_deltas;    /* shape_count * vertex_count * 3 floats or NULL */
@@ -129,7 +139,7 @@ typedef struct {
     int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
     int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
-    float custom_params[8]; /* user-defined shader parameters */
+    float custom_params[12]; /* user-defined shader parameters */
     /* Plan 10: soft-particle fade distance in world units (0 = hard edges).
      * Blend-mode fragments fade out as they approach the opaque depth
      * snapshot; backends without resolve_opaque_targets ignore it. */
@@ -141,6 +151,28 @@ typedef struct {
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
     int8_t has_alpha_texture;      /* draw-time texture scan found non-opaque alpha */
 } vgfx3d_draw_cmd_t;
+
+/* R20 compact static-mesh vertex stream: an opt-in 48-byte packed twin of the
+ * 92-byte vgfx3d_vertex_t used only for GPU static-geometry-cache uploads.
+ * Fixed-function vertex-attribute conversion (Metal stage_in, D3D11 input
+ * layouts, GL glVertexAttribPointer) decodes the packed fields to the same
+ * float attributes the shaders already consume, so no shader changes.
+ * Layout (offsets are the per-backend vertex-descriptor contract):
+ *   0  float3   position
+ *   12 snorm16x4 normal            (w unused)
+ *   20 half2    uv (TEXCOORD_0)
+ *   24 half2    uv1 (TEXCOORD_1)
+ *   28 unorm8x4 color
+ *   32 snorm16x4 tangent           (w = handedness, +-1 exact)
+ *   40 uint8x4  bone indices
+ *   44 unorm8x4 bone weights       (shaders renormalize by total weight)
+ * The software backend never uses this encoding; it samples the full CPU
+ * vertex array and remains the golden reference. */
+#define VGFX3D_COMPACT_VERTEX_STRIDE 48u
+
+/// @brief Encode @p count full vertices into the compact 48-byte stream layout.
+/// @details @p dst must hold count * VGFX3D_COMPACT_VERTEX_STRIDE bytes.
+void vgfx3d_encode_compact_vertices(const vgfx3d_vertex_t *src, uint32_t count, uint8_t *dst);
 
 #define VGFX3D_MAX_DRAW_INDEX_COUNT ((uint32_t)INT_MAX)
 /* Renderer depth-bias units are NDC-scale offsets (the software rasterizer adds them to the

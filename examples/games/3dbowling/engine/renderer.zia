@@ -50,6 +50,7 @@ class Renderer {
     hide Light3D lanePractical;
     hide Light3D deckFill;
     hide Integer qualityMode;
+    hide Boolean qualityApplied;
 
     /// @brief Pack 0..255 RGBA into a single 32-bit pixel int.
     hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
@@ -65,6 +66,7 @@ class Renderer {
     expose func initRendererWithSize(startQuality: Integer, width: Integer, height: Integer) {
         canvas = Canvas3D.New(config.WINDOW_TITLE, width, height);
         Canvas3D.SetMaxDeltaTime(canvas, 50);
+        Canvas3D.SetTextureUploadBudget(canvas, 16777216);
         Canvas3D.SetOcclusionCulling(canvas, true);
         Say("Backend: " + canvas.Backend);
 
@@ -76,13 +78,13 @@ class Renderer {
         var mainDir = new Vec3(config.LIGHT_MAIN_DIR_X, config.LIGHT_MAIN_DIR_Y, config.LIGHT_MAIN_DIR_Z);
         sunLight = Light3D.Directional(mainDir,
             config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
-        Light3D.SetIntensity(sunLight, 1.08);
+        Light3D.SetIntensity(sunLight, 0.76);
         Canvas3D.SetLight(canvas, 0, sunLight);
 
         var fillDir = new Vec3(config.LIGHT_FILL_DIR_X, config.LIGHT_FILL_DIR_Y, config.LIGHT_FILL_DIR_Z);
         fillLight = Light3D.Directional(fillDir,
             config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
-        Light3D.SetIntensity(fillLight, 0.84);
+        Light3D.SetIntensity(fillLight, 0.46);
         Canvas3D.SetLight(canvas, 1, fillLight);
 
         var spotPos = new Vec3(config.LIGHT_SPOT_X, config.LIGHT_SPOT_Y, config.LIGHT_SPOT_Z);
@@ -91,17 +93,17 @@ class Renderer {
             config.LIGHT_SPOT_R, config.LIGHT_SPOT_G, config.LIGHT_SPOT_B,
             config.LIGHT_SPOT_ATTENUATION,
             config.LIGHT_SPOT_INNER_ANGLE, config.LIGHT_SPOT_OUTER_ANGLE);
-        Light3D.SetIntensity(pinSpot, 2.05);
+        Light3D.SetIntensity(pinSpot, 1.86);
         Canvas3D.SetLight(canvas, 2, pinSpot);
 
         var laneGlowPos = new Vec3(0.0, 4.35, 6.2);
         lanePractical = Light3D.Point(laneGlowPos, 0.92, 0.96, 1.0, 0.035);
-        Light3D.SetIntensity(lanePractical, 0.78);
+        Light3D.SetIntensity(lanePractical, 0.58);
         Canvas3D.SetLight(canvas, 3, lanePractical);
 
         var deckFillPos = new Vec3(-0.78, 2.9, 16.2);
         deckFill = Light3D.Point(deckFillPos, 0.78, 0.90, 1.0, 0.045);
-        Light3D.SetIntensity(deckFill, 1.22);
+        Light3D.SetIntensity(deckFill, 1.06);
         Canvas3D.SetLight(canvas, 4, deckFill);
 
         Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
@@ -110,12 +112,14 @@ class Renderer {
         Canvas3D.SetFog(canvas, 25.0, 80.0, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
 
         postfx = PostFX3D.New();
+        qualityApplied = false;
         applyQuality(startQuality);
     }
 
     /// @brief Rebuild the post-FX chain for QUALITY_PERFORMANCE or
     ///        QUALITY_CINEMATIC. Safe to call mid-game.
     expose func applyQuality(mode: Integer) {
+        if (qualityApplied && mode == qualityMode) { return; }
         qualityMode = mode;
         PostFX3D.Clear(postfx);
 
@@ -151,6 +155,7 @@ class Renderer {
         }
 
         Canvas3D.SetPostFX(canvas, postfx);
+        qualityApplied = true;
     }
 
     /// @brief Active quality mode.
@@ -187,6 +192,7 @@ class Renderer {
     /// @brief End scene (post-FX, etc.).
     expose func endFrame() {
         Canvas3D.End(canvas);
+        Canvas3D.ClearOverlay(canvas);
     }
 
     /// @brief Swap to front buffer.
@@ -230,8 +236,39 @@ class Renderer {
 
     /// @brief Restore pin spotlight to default intensity.
     expose func resetPinLight() {
-        Light3D.SetIntensity(pinSpot, 2.05);
+        Light3D.SetIntensity(pinSpot, 1.86);
         Canvas3D.SetLight(canvas, 2, pinSpot);
+    }
+
+    /// @brief Apply warm championship or cyan/coral cosmic venue lighting.
+    expose func applyVenueTheme(mode: Integer) {
+        if (mode == config.MODE_PARTY) {
+            Light3D.SetColor(sunLight, 0.38, 0.62, 1.0);
+            Light3D.SetIntensity(sunLight, 0.72);
+            Light3D.SetColor(fillLight, 1.0, 0.20, 0.34);
+            Light3D.SetIntensity(fillLight, 0.66);
+            Light3D.SetColor(lanePractical, 0.12, 0.92, 1.0);
+            Light3D.SetIntensity(lanePractical, 1.45);
+            Light3D.SetColor(deckFill, 0.92, 0.20, 0.78);
+            Light3D.SetIntensity(deckFill, 1.65);
+            Canvas3D.SetAmbient(canvas, 0.08, 0.11, 0.19);
+            Canvas3D.SetFog(canvas, 20.0, 66.0, 0.025, 0.045, 0.095);
+        } else {
+            Light3D.SetColor(sunLight, config.LIGHT_MAIN_R, config.LIGHT_MAIN_G, config.LIGHT_MAIN_B);
+            Light3D.SetIntensity(sunLight, 0.76);
+            Light3D.SetColor(fillLight, config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
+            Light3D.SetIntensity(fillLight, 0.46);
+            Light3D.SetColor(lanePractical, 0.92, 0.96, 1.0);
+            Light3D.SetIntensity(lanePractical, 0.58);
+            Light3D.SetColor(deckFill, 0.78, 0.90, 1.0);
+            Light3D.SetIntensity(deckFill, 1.06);
+            Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
+            Canvas3D.SetFog(canvas, 25.0, 80.0, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
+        }
+        Canvas3D.SetLight(canvas, 0, sunLight);
+        Canvas3D.SetLight(canvas, 1, fillLight);
+        Canvas3D.SetLight(canvas, 3, lanePractical);
+        Canvas3D.SetLight(canvas, 4, deckFill);
     }
 
     hide func createAlleySkybox() -> CubeMap3D {

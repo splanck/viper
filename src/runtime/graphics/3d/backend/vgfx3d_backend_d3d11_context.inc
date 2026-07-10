@@ -889,6 +889,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->linear_wrap_sampler);
     SAFE_RELEASE(ctx->fallback_white_cube_srv);
     SAFE_RELEASE(ctx->fallback_white_cube_tex);
+    SAFE_RELEASE(ctx->brdf_lut_srv);
+    SAFE_RELEASE(ctx->brdf_lut_tex);
     SAFE_RELEASE(ctx->fallback_white_srv);
     SAFE_RELEASE(ctx->fallback_white_tex);
     SAFE_RELEASE(ctx->rs_wire_no_cull);

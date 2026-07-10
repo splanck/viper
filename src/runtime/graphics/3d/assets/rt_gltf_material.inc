@@ -847,6 +847,10 @@ static int gltf_material_apply_extensions(void *mat_json,
     void *specular = extensions ? jget(extensions, "KHR_materials_specular") : NULL;
     void *clearcoat = extensions ? jget(extensions, "KHR_materials_clearcoat") : NULL;
     void *transmission = extensions ? jget(extensions, "KHR_materials_transmission") : NULL;
+    void *ior_ext = extensions ? jget(extensions, "KHR_materials_ior") : NULL;
+    void *volume_ext = extensions ? jget(extensions, "KHR_materials_volume") : NULL;
+    void *sheen_ext = extensions ? jget(extensions, "KHR_materials_sheen") : NULL;
+    void *aniso_ext = extensions ? jget(extensions, "KHR_materials_anisotropy") : NULL;
     int load_failed = 0;
     if (emissive_strength)
         rt_material3d_set_emissive_intensity(
@@ -868,6 +872,76 @@ static int gltf_material_apply_extensions(void *mat_json,
         clearcoat, material, texture_images, texture_supported, texture_samplers, texture_count);
     load_failed |= gltf_material_apply_transmission_extension(
         transmission, material, texture_images, texture_supported, texture_samplers, texture_count);
+    /* KHR_materials_ior: index of refraction drives the PBR branch's F0
+     * (custom param 4; 0 = unset, shaders fall back to 1.5). */
+    if (ior_ext) {
+        double ior = gltf_clamp_double(jnum(ior_ext, "ior", 1.5), 1.0, 4.0, 1.5);
+        rt_material3d_set_custom_param(material, 4, ior);
+    }
+    /* KHR_materials_volume: thickness (param 5) plus a folded Beer-Lambert
+     * absorption coefficient (param 6) derived from attenuationColor and
+     * attenuationDistance; the RGB attenuation folds to a per-channel-average
+     * scalar so it rides the existing custom-parameter plumbing. */
+    if (volume_ext) {
+        double thickness =
+            gltf_clamp_double(jnum(volume_ext, "thicknessFactor", 0.0), 0.0, DBL_MAX, 0.0);
+        double att_distance =
+            gltf_clamp_double(jnum(volume_ext, "attenuationDistance", 0.0), 0.0, DBL_MAX, 0.0);
+        void *att_color = jarr(volume_ext, "attenuationColor");
+        double sigma = 0.0;
+        rt_material3d_set_custom_param(material, 5, thickness);
+        if (att_distance > 0.0) {
+            double avg = 1.0;
+            if (jarr_len(att_color) >= 3) {
+                double r = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 0), 1.0), 1e-4,
+                                             1.0, 1.0);
+                double g = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 1), 1.0), 1e-4,
+                                             1.0, 1.0);
+                double b = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 2), 1.0), 1e-4,
+                                             1.0, 1.0);
+                avg = (r + g + b) / 3.0;
+            }
+            sigma = -log(avg) / att_distance;
+        }
+        rt_material3d_set_custom_param(material, 6, sigma);
+    }
+    /* KHR_materials_sheen: the RGB sheen color folds to a luminance intensity
+     * (param 0) with the roughness in param 7 — the Charlie lobe renders from
+     * these on all four backends. Params 0/7 are safe inside the PBR gate
+     * because Toon/Fresnel own params 0/1 only in their own shading models. */
+    if (sheen_ext) {
+        void *sheen_color = jarr(sheen_ext, "sheenColorFactor");
+        double sheen_rough =
+            gltf_clamp_double(jnum(sheen_ext, "sheenRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
+        double intensity = 0.0;
+        if (jarr_len(sheen_color) >= 3) {
+            double r = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 0), 0.0), 0.0, 1.0,
+                                         0.0);
+            double g = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 1), 0.0), 0.0, 1.0,
+                                         0.0);
+            double b = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 2), 0.0), 0.0, 1.0,
+                                         0.0);
+            intensity = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        }
+        if (intensity > 0.0) {
+            rt_material3d_set_custom_param(material, 0, intensity);
+            rt_material3d_set_custom_param(material, 7, sheen_rough);
+        }
+    }
+    /* KHR_materials_anisotropy: strength (param 8) and rotation in radians
+     * (param 9) drive the anisotropic GGX lobe; the tangent frame comes from
+     * the mesh tangents. The anisotropy texture is validated but not sampled
+     * (same GL fragment-unit constraint as the clearcoat textures). */
+    if (aniso_ext) {
+        double strength =
+            gltf_clamp_double(jnum(aniso_ext, "anisotropyStrength", 0.0), 0.0, 1.0, 0.0);
+        double rotation = gltf_clamp_double(
+            jnum(aniso_ext, "anisotropyRotation", 0.0), -6.2831853, 6.2831853, 0.0);
+        if (strength > 0.0) {
+            rt_material3d_set_custom_param(material, 8, strength);
+            rt_material3d_set_custom_param(material, 9, rotation);
+        }
+    }
     return load_failed;
 }
 

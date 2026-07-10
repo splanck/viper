@@ -1884,6 +1884,23 @@ set_tests_properties(xenoscape_package_dry_run PROPERTIES
         LABELS "zia;smoke;package"
         TIMEOUT 60)
 
+add_test(NAME viper_asset_bake_roundtrip
+        COMMAND $<TARGET_FILE:viper> asset bake
+        "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice/assets/models/sphere_draco_eb.glb"
+        "${CMAKE_BINARY_DIR}/asset_bake_test.vscn" --lods 2)
+set_tests_properties(viper_asset_bake_roundtrip PROPERTIES
+        PASS_REGULAR_EXPRESSION "baked "
+        LABELS "tools;graphics3d;smoke"
+        TIMEOUT 60)
+
+add_test(NAME viper_asset_validate_report
+        COMMAND $<TARGET_FILE:viper> asset validate
+        "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb")
+set_tests_properties(viper_asset_validate_report PROPERTIES
+        PASS_REGULAR_EXPRESSION "skippedPrimitives"
+        LABELS "tools;graphics3d;smoke"
+        TIMEOUT 60)
+
 if (NOT WIN32)
     foreach (probe IN ITEMS mechanics campaign)
         add_test(NAME native_xenoscape_${probe}

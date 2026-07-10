@@ -105,6 +105,8 @@ int8_t rt_textureasset3d_alpha_metadata_known(void *obj);
 int8_t rt_textureasset3d_has_alpha_texels(void *obj);
 /// @brief Internal bridge: stable key that changes when native mip residency changes.
 uint64_t rt_textureasset3d_get_native_cache_key(void *obj);
+/// @brief Internal bridge: process-unique identity, stable across residency/revision changes.
+uint64_t rt_textureasset3d_get_cache_identity(void *obj);
 /// @brief Internal bridge: normalized native compressed format id.
 int32_t rt_textureasset3d_get_native_format_id(void *obj);
 /// @brief Internal bridge: borrow one retained native-compressed mip payload, if available.

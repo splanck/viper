@@ -175,6 +175,16 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           const float *palette,
                           int32_t bone_count,
                           vgfx3d_skinning_scratch_t *scratch) {
+    vgfx3d_skin_vertices_extra(src, dst, vertex_count, palette, bone_count, NULL, scratch);
+}
+
+void vgfx3d_skin_vertices_extra(const vgfx3d_vertex_t *src,
+                                vgfx3d_vertex_t *dst,
+                                uint32_t vertex_count,
+                                const float *palette,
+                                int32_t bone_count,
+                                const vgfx3d_extra_influences_t *extra,
+                                vgfx3d_skinning_scratch_t *scratch) {
     if (!src || !dst || vertex_count == 0)
         return;
     if (!palette || bone_count <= 0) {
@@ -250,6 +260,50 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                 tangent_influences++;
             }
             total_w += w;
+        }
+
+        if (extra) {
+            for (int b = 0; b < 4; b++) {
+                double w = skin_weight_or_skip(extra[v].weights[b]);
+                int idx;
+                if (w <= 0.0)
+                    continue;
+                idx = (int)extra[v].indices[b];
+                if (idx >= bone_count)
+                    continue;
+                {
+                    const float *m = &palette[(size_t)idx * 16u];
+                    float nm_local[16];
+                    const float *nm;
+                    if (!skin_matrix4_is_finite(m))
+                        continue;
+                    if (normal_palette && idx < normal_bone_count) {
+                        nm = &normal_palette[(size_t)idx * 16u];
+                    } else {
+                        vgfx3d_compute_normal_matrix4(m, nm_local);
+                        nm = nm_local;
+                    }
+                    for (int i = 0; i < 3; i++) {
+                        pos[i] += w * ((double)m[i * 4 + 0] * (double)base.pos[0] +
+                                       (double)m[i * 4 + 1] * (double)base.pos[1] +
+                                       (double)m[i * 4 + 2] * (double)base.pos[2] +
+                                       (double)m[i * 4 + 3]);
+                    }
+                    if (skin_matrix4_is_finite(nm)) {
+                        for (int i = 0; i < 3; i++) {
+                            nrm[i] += w * ((double)nm[i * 4 + 0] * (double)base.normal[0] +
+                                           (double)nm[i * 4 + 1] * (double)base.normal[1] +
+                                           (double)nm[i * 4 + 2] * (double)base.normal[2]);
+                            tan[i] += w * ((double)nm[i * 4 + 0] * (double)base.tangent[0] +
+                                           (double)nm[i * 4 + 1] * (double)base.tangent[1] +
+                                           (double)nm[i * 4 + 2] * (double)base.tangent[2]);
+                        }
+                        normal_influences++;
+                        tangent_influences++;
+                    }
+                    total_w += w;
+                }
+            }
         }
 
         /* Copy all attributes, then overwrite position and normal */

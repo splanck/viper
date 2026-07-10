@@ -165,6 +165,31 @@ class CameraController {
         applyLookAt();
     }
 
+    /// @brief Broadcast follow camera that advances with the ball, then settles
+    ///        into a readable pin-deck composition for impact.
+    expose func updateBallFollow(ballPosition: Vec3, dt: Float) {
+        if (mode != MODE_ROLL) { return; }
+        var bx = Vec3.get_X(ballPosition);
+        var bz = Vec3.get_Z(ballPosition);
+        var desiredEyeZ = bz - 3.6;
+        if (desiredEyeZ < -config.CAM_ROLL_BEHIND) { desiredEyeZ = -config.CAM_ROLL_BEHIND; }
+        if (desiredEyeZ > 10.8) { desiredEyeZ = 10.8; }
+        var desiredTargetZ = bz + 3.8;
+        if (desiredTargetZ < 8.0) { desiredTargetZ = 8.0; }
+        if (desiredTargetZ > config.PIN_Z_OFFSET + 0.35) {
+            desiredTargetZ = config.PIN_Z_OFFSET + 0.35;
+        }
+        var desiredHeight = config.CAM_ROLL_HEIGHT;
+        if (bz > config.PIN_Z_OFFSET - 2.8) { desiredHeight = 1.12; }
+        eyeX = lerp(eyeX, bx * 0.28, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeY = lerp(eyeY, desiredHeight, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeZ = lerp(eyeZ, desiredEyeZ, dt * config.CAM_FOLLOW_SMOOTH);
+        targetX = lerp(targetX, bx * 0.16, dt * config.CAM_FOLLOW_SMOOTH);
+        targetY = lerp(targetY, config.CAM_ROLL_LOOK_Y, dt * config.CAM_FOLLOW_SMOOTH);
+        targetZ = lerp(targetZ, desiredTargetZ, dt * config.CAM_FOLLOW_SMOOTH);
+        applyLookAt();
+    }
+
     /// @brief Per-frame cinematic Bezier-path sampling. @return true when finished.
     expose func updateCinematic(dt: Float) -> Boolean {
         if (mode != MODE_CINEMATIC) { return true; }

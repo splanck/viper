@@ -50,13 +50,19 @@ func main() {
 
     var menuObj = new BowlingMenu();
 
-    render.poll();
-    render.beginFrame();
-    laneObj.draw(render.getCanvas());
-    pinMgr.draw(render.getCanvas());
-    ballObj.draw(render.getCanvas());
-    render.endFrame();
-    menuObj.drawTitle(render.getCanvas(), render.getWidth(), render.getHeight());
+    // Loaded PNGs enter Canvas3D through the bounded upload queue. Render a
+    // few warm-up frames so the capture observes the same resident texture as
+    // the interactive title loop instead of its procedural first-frame fallback.
+    for (var frame: Integer = 0; frame < 8; frame = frame + 1) {
+        render.poll();
+        render.beginFrame();
+        laneObj.draw(render.getCanvas());
+        pinMgr.draw(render.getCanvas());
+        ballObj.draw(render.getCanvas());
+        render.endFrame();
+        menuObj.drawTitle(render.getCanvas(), render.getWidth(), render.getHeight());
+        if (frame < 7) { render.flip(); }
+    }
 
     var snap = render.getCanvas().ScreenshotFinal();
     if Pixels.SavePng(snap, Path.Join(TempFile.Dir(), "3dbowling_title_postfx.png")) != 1 {

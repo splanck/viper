@@ -40,6 +40,9 @@ void *rt_model3d_load_result(rt_string path);
 /// @brief Load with explicit import options: `force_tangents` generates tangents for
 ///        every UV0-mapped glTF primitive even without a normal map bound at load.
 void *rt_model3d_load_with_options(rt_string path, int8_t force_tangents);
+/// @brief Options-string variant: comma-separated flags "forceTangents",
+///   "eightInfluences", "compressAnimations"; unknown flags are ignored.
+void *rt_model3d_load_with_options_ex(rt_string path, rt_string options);
 /// @brief Options-aware Result variant of @ref rt_model3d_load_with_options.
 void *rt_model3d_load_result_with_options(rt_string path, int8_t force_tangents);
 /// @brief Load a 3D model asset through the runtime asset manager.

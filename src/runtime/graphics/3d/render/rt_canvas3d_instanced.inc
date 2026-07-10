@@ -45,10 +45,13 @@ static void canvas3d_build_instanced_base_cmd(rt_mesh3d *mesh,
     canvas3d_mark_cmd_validated_indices(base_cmd, mesh);
     base_cmd->model_matrix[0] = base_cmd->model_matrix[5] = base_cmd->model_matrix[10] =
         base_cmd->model_matrix[15] = 1.0f;
+    canvas3d_texture_stream_touch_material(canvas, mat);
     canvas3d_fill_material_cmd(mat, base_cmd);
     canvas3d_apply_ibl_env(canvas, base_cmd);
     canvas3d_bind_skinning_cmd(canvas, base_cmd, mesh, NULL);
     canvas3d_bind_morph_cmd(canvas, base_cmd, mesh, NULL);
+    /* Instanced batches span many transforms; keep their textures full-res. */
+    canvas3d_texture_stream_record_cmd_full(canvas, base_cmd);
 }
 
 /// @brief Choose local bounds for an instanced draw, preferring caller-provided conservative data.
@@ -554,19 +557,32 @@ static int canvas3d_queue_instanced_split(const canvas3d_instanced_batch_t *b,
     return 1;
 }
 
-/// @brief Queue an instanced-mesh draw (mesh + material + @p instance_count transforms, with
-///   optional previous-frame matrices for motion vectors) into the canvas's deferred draw queue.
-void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
-                                              void *mesh_obj,
-                                              void *material_obj,
-                                              const float *instance_matrices,
-                                              int32_t instance_count,
-                                              const float *prev_instance_matrices,
-                                              int8_t has_prev_instance_matrices,
-                                              const float *explicit_local_bounds_min,
-                                              const float *explicit_local_bounds_max,
-                                              int8_t conservative_bounds,
-                                              int8_t disable_occlusion) {
+/// @brief Common instanced-mesh queueing body shared by the plain and per-instance-skinned
+///   entries.
+/// @details When @p override_palette is non-NULL, the base command's skinning binding is
+///   replaced with the caller's packed palette block (@p override_bone_count total matrices,
+///   @p instance_bone_stride bones per instance) after the mesh-shared binding, and the draw
+///   must take the hardware-instanced path: the per-instance fallback replays one command per
+///   instance with instance id 0, which would pose every copy from the first palette. In that
+///   case the function queues nothing and returns 0 so the caller can fall back to individual
+///   skinned draws.
+/// @return 1 when the draw was queued (or legitimately dropped), 0 when a per-instance-skinned
+///   draw could not take the hardware path.
+static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
+                                                 void *mesh_obj,
+                                                 void *material_obj,
+                                                 const float *instance_matrices,
+                                                 int32_t instance_count,
+                                                 const float *prev_instance_matrices,
+                                                 int8_t has_prev_instance_matrices,
+                                                 const float *explicit_local_bounds_min,
+                                                 const float *explicit_local_bounds_max,
+                                                 int8_t conservative_bounds,
+                                                 int8_t disable_occlusion,
+                                                 const float *override_palette,
+                                                 const float *override_prev_palette,
+                                                 int32_t override_bone_count,
+                                                 int32_t instance_bone_stride) {
     canvas3d_instanced_batch_t batch = {0};
     rt_canvas3d *c;
     rt_mesh3d *mesh;
@@ -581,10 +597,10 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     int32_t requested_instance_count;
 
     if (!instance_matrices || instance_count <= 0)
-        return;
+        return 1;
     if (instance_count > CANVAS3D_MAX_INSTANCES) {
         rt_trap("Canvas3D.DrawMeshInstanced: instance count exceeds limit");
-        return;
+        return 1;
     }
     c = rt_canvas3d_checked_or_stack(canvas_obj);
     mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
@@ -594,21 +610,21 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
 #endif
     mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!c || !mesh || !mat)
-        return;
+        return 1;
     rt_mesh3d_repair_geometry_counts(mesh);
     if (!c->in_frame || !c->backend || !mesh->resident || rt_mesh3d_safe_vertex_count(mesh) == 0 ||
         rt_mesh3d_validated_index_count(mesh) == 0)
-        return;
+        return 1;
     if (has_prev_instance_matrices && !prev_instance_matrices) {
         rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
-        return;
+        return 1;
     }
     requested_instance_count = instance_count;
     if (!canvas3d_matrices_f32_are_finite(instance_matrices, requested_instance_count) ||
         (has_prev_instance_matrices && prev_instance_matrices &&
          !canvas3d_matrices_f32_are_finite(prev_instance_matrices, requested_instance_count))) {
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
-        return;
+        return 1;
     }
 
     rebase_positions64_instances = canvas3d_uses_camera_relative_upload(c) &&
@@ -616,10 +632,23 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     canvas3d_build_instanced_base_cmd(mesh, mat, c, &base_cmd);
+    if (override_palette && override_bone_count > 0) {
+        if (!canvas3d_palette_finite(override_palette, override_bone_count))
+            return 1; /* invalid palettes: drop the draw like the shared-palette path would */
+        base_cmd.bone_palette = override_palette;
+        base_cmd.prev_bone_palette =
+            canvas3d_palette_finite(override_prev_palette, override_bone_count)
+                ? override_prev_palette
+                : NULL;
+        base_cmd.bone_count = override_bone_count;
+        base_cmd.instance_bone_stride = instance_bone_stride;
+    }
 
     use_fallback_instances = rebase_positions64_instances ||
                              canvas3d_cmd_requires_blend(&base_cmd) ||
                              !c->backend->submit_draw_instanced;
+    if (override_palette && (use_fallback_instances || instance_bone_stride <= 0))
+        return 0; /* per-instance palettes require the hardware-instanced path */
     if (use_fallback_instances) {
         /* Per-instance queueing is bounded to keep the deferred queue sane;
          * overflow clamps but is now observable via get_InstancedFallbackDroppedCount
@@ -644,7 +673,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                           batch.new_refs,
                                           &batch.new_ref_count,
                                           CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP))
-            return;
+            return 1;
     }
     if (!canvas3d_track_draw_resource(c,
                                       material_obj,
@@ -652,12 +681,12 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                       &batch.new_ref_count,
                                       CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_instanced_release_refs(&batch);
-        return;
+        return 1;
     }
     if (!canvas3d_track_material_resources(
             c, mat, batch.new_refs, &batch.new_ref_count, CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_instanced_release_refs(&batch);
-        return;
+        return 1;
     }
 
     queued_vertices = mesh->vertices;
@@ -669,7 +698,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                 if (!canvas3d_snapshot_mesh_geometry_cached(
                         c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
                     canvas3d_instanced_release_refs(&batch);
-                    return;
+                    return 1;
                 }
             } else {
                 queued_vertices = mesh->vertices;
@@ -682,7 +711,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                !canvas3d_snapshot_mesh_geometry_cached(
                    c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         canvas3d_instanced_release_refs(&batch);
-        return;
+        return 1;
     }
     base_cmd.vertices = queued_vertices;
     base_cmd.indices = queued_indices;
@@ -691,6 +720,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
             ? mesh_obj
             : NULL;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
+    base_cmd.compact_vertex_stream = (base_cmd.geometry_key && mesh->compact_streams) ? 1 : 0;
     if (suppress_normal_map)
         canvas3d_disable_cmd_normal_map(&base_cmd);
 
@@ -707,9 +737,9 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                           explicit_local_bounds_max,
                                           conservative_bounds,
                                           disable_occlusion);
-        return;
+        return 1;
     }
-    if (canvas3d_queue_instanced_split(&batch,
+    if (!override_palette && canvas3d_queue_instanced_split(&batch,
                                        &base_cmd,
                                        instance_matrices,
                                        instance_count,
@@ -719,7 +749,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                        explicit_local_bounds_max,
                                        conservative_bounds,
                                        disable_occlusion))
-        return;
+        return 1;
     canvas3d_queue_instanced_hardware(&batch,
                                       &base_cmd,
                                       instance_matrices,
@@ -733,6 +763,70 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                       NULL,
                                       instance_matrices,
                                       instance_count);
+    return 1;
+}
+
+/// @brief Queue an instanced-mesh draw (mesh + material + @p instance_count transforms, with
+///   optional previous-frame matrices for motion vectors) into the canvas's deferred draw queue.
+void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
+                                              void *mesh_obj,
+                                              void *material_obj,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *prev_instance_matrices,
+                                              int8_t has_prev_instance_matrices,
+                                              const float *explicit_local_bounds_min,
+                                              const float *explicit_local_bounds_max,
+                                              int8_t conservative_bounds,
+                                              int8_t disable_occlusion) {
+    (void)canvas3d_queue_instanced_batch_common(canvas_obj,
+                                                mesh_obj,
+                                                material_obj,
+                                                instance_matrices,
+                                                instance_count,
+                                                prev_instance_matrices,
+                                                has_prev_instance_matrices,
+                                                explicit_local_bounds_min,
+                                                explicit_local_bounds_max,
+                                                conservative_bounds,
+                                                disable_occlusion,
+                                                NULL,
+                                                NULL,
+                                                0,
+                                                0);
+}
+
+/// @brief Queue one per-instance-skinned hardware chunk (R18).
+/// @details @p bone_palettes holds @p instance_count consecutive palettes of
+///   @p instance_bone_stride bones each (total_bone_count matrices overall, at most
+///   VGFX3D_MAX_BONES). Palette storage must stay valid until the frame flushes —
+///   callers snapshot into canvas temp buffers.
+/// @return 1 when queued, 0 when the draw cannot take the hardware-instanced path
+///   (the caller must fall back to individual skinned draws).
+int rt_canvas3d_queue_instanced_batch_skinned(void *canvas_obj,
+                                              void *mesh_obj,
+                                              void *material_obj,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *bone_palettes,
+                                              const float *prev_bone_palettes,
+                                              int32_t total_bone_count,
+                                              int32_t instance_bone_stride) {
+    return canvas3d_queue_instanced_batch_common(canvas_obj,
+                                                 mesh_obj,
+                                                 material_obj,
+                                                 instance_matrices,
+                                                 instance_count,
+                                                 NULL,
+                                                 0,
+                                                 NULL,
+                                                 NULL,
+                                                 0,
+                                                 0,
+                                                 bone_palettes,
+                                                 prev_bone_palettes,
+                                                 total_bone_count,
+                                                 instance_bone_stride);
 }
 
 /// @brief Queue an instanced-mesh draw using the mesh's authored local bounds.

@@ -48,6 +48,23 @@ func IsMostlyMagenta(img: Pixels, width: Integer, height: Integer) -> Bool {
     return total > 0 && magenta * 4 > total * 3;
 }
 
+/// @brief Catch backend failures that replace most scene/overlay draws with black quads.
+func IsMostlyBlack(img: Pixels, width: Integer, height: Integer) -> Bool {
+    var total: Integer = 0;
+    var black: Integer = 0;
+    for (var y: Integer = 0; y < height; y = y + 8) {
+        for (var x: Integer = 0; x < width; x = x + 8) {
+            var px = Pixels.Get(img, x, y);
+            var r = Bits.And(px >> 24, 0xFF);
+            var g = Bits.And(px >> 16, 0xFF);
+            var b = Bits.And(px >> 8, 0xFF);
+            if (r + g + b < 18) { black = black + 1; }
+            total = total + 1;
+        }
+    }
+    return total > 0 && black * 2 > total;
+}
+
 /// @brief Return true when the central/lower scene area contains enough visible 3D content.
 func HasVisible3DScene(img: Pixels, width: Integer, height: Integer) -> Bool {
     var total: Integer = 0;

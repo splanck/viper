@@ -61,7 +61,7 @@ func main() {
     ballObj.draw(render.getCanvas());
     render.endFrame();
     hudObj.draw(render.getCanvas(), scoreKeeper, 0.62, true, spin, aimX,
-        ballObj.getBallType(), config.STATE_AIMING, render.getFps(),
+        ballObj.getBallType(), config.STATE_AIMING,
         1, 0, keepers, laneObj.getOilPatternName());
 
     var snap = render.getCanvas().ScreenshotFinal();

@@ -433,6 +433,23 @@ AppImage artifacts are Viper's FUSE-less self-extracting runtime format. They su
 
 Built artifacts are structurally and payload-verified by default: macOS ZIPs must contain the `.app` Info.plist and executable, `.deb` packages must contain the expected `usr/bin` payload, Windows installers verify the PE structure plus required ZIP overlay entries including `meta/manifest.sha256`, and tarballs verify gzip framing, USTAR headers, duplicate-free paths, and the expected executable. ZIP verification normalizes paths before duplicate checks and rejects central-directory/local-header disagreements. Failed verification removes the generated artifact. On macOS, signing failures are fatal before ZIP output, and the staged app bundle is checked with `codesign --verify --deep --strict`.
 
+### viper asset
+
+Offline 3D asset conditioning. `viper asset bake <input> <output.vscn>` loads a
+model (glTF/GLB/FBX/OBJ/STL) through the full runtime import pipeline —
+including the meshopt, Draco, and Basis Universal decoders and the import
+options — optionally generates LOD chains, and saves the instantiated scene as
+a versioned `.vscn` for near-instant loading. Options: `--force-tangents`,
+`--eight-influences`, `--compress-anims`, `--lods N` (0-8, halving ratio).
+
+`viper asset validate <input>` loads a model and prints the
+`AssetDiagnostics3D` import report as JSON (skipped primitives, truncated
+influences, ignored extensions, compressed animation keys, warnings). Exit
+codes: 0 success, 1 usage, 2 load failure.
+
+Requires a graphics-enabled runtime build; other configurations report that
+constraint and exit.
+
 ### viper install-package
 
 Package a staged Viper developer-tools install tree. A valid toolchain

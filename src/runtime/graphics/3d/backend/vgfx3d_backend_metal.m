@@ -26,6 +26,7 @@
 #include "rt_textureasset3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_brdf_lut.h"
 #include "vgfx3d_backend_metal_shared.h"
 #include "vgfx3d_backend_utils.h"
 
@@ -170,6 +171,7 @@
 @property(nonatomic, strong) id<MTLSamplerState> sharedSampler;
 @property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
 @property(nonatomic, strong) id<MTLTexture> defaultCubemap;
+@property(nonatomic, strong) id<MTLTexture> brdfLutTexture;
 /* MTL-12: Shadow mapping state */
 @property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipeline;
 @property(nonatomic, strong) id<MTLSamplerState> shadowSampler;
@@ -282,6 +284,8 @@
 @property(nonatomic) uint32_t vertexCount;
 @property(nonatomic) uint32_t indexCount;
 @property(nonatomic) uint64_t lastUsedFrame;
+/* R20: vertex buffer holds the compact 48-byte encoding (vs the full 92-byte record). */
+@property(nonatomic) BOOL compactStream;
 @end
 
 @implementation VGFXMetalGeometryCacheEntry

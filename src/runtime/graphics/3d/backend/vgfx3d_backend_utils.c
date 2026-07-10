@@ -25,6 +25,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include "rt_canvas3d.h"
+#include "vgfx3d_backend.h"
 #include "rt_textureasset3d.h"
 
 #include <limits.h>
@@ -1010,4 +1011,111 @@ int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
     for (int i = 0; i < 16; i++)
         out_matrix[i] = inv[i] * det;
     return 0;
+}
+
+/*==========================================================================
+ * R20 compact static-mesh vertex stream encoding
+ *=========================================================================*/
+
+/// @brief Convert a float to IEEE 754 binary16 bits (round-to-nearest-even).
+/// @details Deterministic bit-level conversion: no fenv dependence. Values
+///          beyond half range clamp to +-65504; NaN maps to a quiet NaN.
+static uint16_t vgfx3d_float_to_half_bits(float value) {
+    uint32_t bits;
+    uint32_t sign;
+    int32_t exponent;
+    uint32_t mantissa;
+
+    memcpy(&bits, &value, sizeof(bits));
+    sign = (bits >> 16) & 0x8000u;
+    exponent = (int32_t)((bits >> 23) & 0xFFu) - 127 + 15;
+    mantissa = bits & 0x7FFFFFu;
+
+    if (((bits >> 23) & 0xFFu) == 0xFFu) {
+        /* Inf/NaN: keep Inf as the max finite value (GPU-friendly), NaN quiet. */
+        if (mantissa != 0)
+            return (uint16_t)(sign | 0x7E00u);
+        return (uint16_t)(sign | 0x7BFFu);
+    }
+    if (exponent >= 0x1F)
+        return (uint16_t)(sign | 0x7BFFu); /* overflow: clamp to 65504 */
+    if (exponent <= 0) {
+        uint32_t shift;
+        uint32_t sub;
+        uint32_t rest;
+        if (exponent < -10)
+            return (uint16_t)sign; /* underflow to signed zero */
+        mantissa |= 0x800000u;
+        shift = (uint32_t)(14 - exponent);
+        sub = mantissa >> shift;
+        rest = mantissa & ((1u << shift) - 1u);
+        if (rest > (1u << (shift - 1u)) || (rest == (1u << (shift - 1u)) && (sub & 1u)))
+            sub++;
+        return (uint16_t)(sign | sub);
+    }
+    {
+        uint32_t half = (uint32_t)(exponent << 10) | (mantissa >> 13);
+        uint32_t rest = mantissa & 0x1FFFu;
+        if (rest > 0x1000u || (rest == 0x1000u && (half & 1u)))
+            half++;
+        if ((half & 0x7C00u) == 0x7C00u)
+            return (uint16_t)(sign | 0x7BFFu); /* rounding overflowed to Inf: clamp */
+        return (uint16_t)(sign | half);
+    }
+}
+
+/// @brief Encode a [-1, 1] float as snorm16 (round-half-away-from-zero, deterministic).
+static int16_t vgfx3d_float_to_snorm16(float value) {
+    float clamped = value;
+    float scaled;
+    if (!(clamped >= -1.0f))
+        clamped = clamped < -1.0f ? -1.0f : (clamped == clamped ? clamped : 0.0f);
+    if (clamped > 1.0f)
+        clamped = 1.0f;
+    scaled = clamped * 32767.0f;
+    return (int16_t)(scaled >= 0.0f ? (int32_t)(scaled + 0.5f) : -(int32_t)(0.5f - scaled));
+}
+
+void vgfx3d_encode_compact_vertices(const vgfx3d_vertex_t *src, uint32_t count, uint8_t *dst) {
+    if (!src || !dst)
+        return;
+    for (uint32_t i = 0; i < count; i++) {
+        const vgfx3d_vertex_t *v = &src[i];
+        uint8_t *out = dst + (size_t)i * VGFX3D_COMPACT_VERTEX_STRIDE;
+        int16_t packed16[4];
+        uint16_t half_bits[2];
+
+        memcpy(out + 0, v->pos, sizeof(float) * 3u);
+
+        packed16[0] = vgfx3d_float_to_snorm16(v->normal[0]);
+        packed16[1] = vgfx3d_float_to_snorm16(v->normal[1]);
+        packed16[2] = vgfx3d_float_to_snorm16(v->normal[2]);
+        packed16[3] = 0;
+        memcpy(out + 12, packed16, sizeof(packed16));
+
+        half_bits[0] = vgfx3d_float_to_half_bits(v->uv[0]);
+        half_bits[1] = vgfx3d_float_to_half_bits(v->uv[1]);
+        memcpy(out + 20, half_bits, sizeof(half_bits));
+        half_bits[0] = vgfx3d_float_to_half_bits(v->uv1[0]);
+        half_bits[1] = vgfx3d_float_to_half_bits(v->uv1[1]);
+        memcpy(out + 24, half_bits, sizeof(half_bits));
+
+        out[28] = vgfx3d_float_to_unorm8(v->color[0]);
+        out[29] = vgfx3d_float_to_unorm8(v->color[1]);
+        out[30] = vgfx3d_float_to_unorm8(v->color[2]);
+        out[31] = vgfx3d_float_to_unorm8(v->color[3]);
+
+        packed16[0] = vgfx3d_float_to_snorm16(v->tangent[0]);
+        packed16[1] = vgfx3d_float_to_snorm16(v->tangent[1]);
+        packed16[2] = vgfx3d_float_to_snorm16(v->tangent[2]);
+        packed16[3] = vgfx3d_float_to_snorm16(v->tangent[3]);
+        memcpy(out + 32, packed16, sizeof(packed16));
+
+        memcpy(out + 40, v->bone_indices, 4u);
+
+        out[44] = vgfx3d_float_to_unorm8(v->bone_weights[0]);
+        out[45] = vgfx3d_float_to_unorm8(v->bone_weights[1]);
+        out[46] = vgfx3d_float_to_unorm8(v->bone_weights[2]);
+        out[47] = vgfx3d_float_to_unorm8(v->bone_weights[3]);
+    }
 }

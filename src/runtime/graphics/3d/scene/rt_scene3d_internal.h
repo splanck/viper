@@ -259,6 +259,11 @@ typedef struct rt_scene3d {
     int32_t query_candidate_capacity;
     size_t query_traversal_stack_capacity;
     size_t world_matrix_stack_capacity;
+    /* Baked animation clips carried by v3 .vscn files: the loader fills these,
+     * the SceneAsset wrapper drains them into the model's clip list, and any
+     * leftovers release with the scene. Retained rt_animation3d handles. */
+    void **baked_animations;
+    int32_t baked_animation_count;
 } rt_scene3d;
 
 /// @brief Bound a private dynamic-array count by the pointer and recorded capacity.

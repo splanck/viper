@@ -72,6 +72,8 @@
 #define VK_FORMAT_BC3_SRGB_BLOCK 138u
 #define VK_FORMAT_BC4_UNORM_BLOCK 139u
 #define VK_FORMAT_BC5_UNORM_BLOCK 141u
+#define VK_FORMAT_BC6H_UFLOAT_BLOCK 143u
+#define VK_FORMAT_BC6H_SFLOAT_BLOCK 144u
 #define VK_FORMAT_BC7_UNORM_BLOCK 145u
 #define VK_FORMAT_BC7_SRGB_BLOCK 146u
 #define VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK 151u
@@ -82,6 +84,7 @@
 // clang-format off
 #include "rt_textureasset3d_core.inc"
 #include "rt_textureasset3d_codecs.inc"
+#include "rt_textureasset3d_bc6h.inc"
 #include "rt_textureasset3d_basislz.inc"
 #include "rt_textureasset3d_uastc.inc"
 #include "rt_textureasset3d_ktx2.inc"

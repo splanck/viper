@@ -61,9 +61,10 @@ class CelebrationManager {
 
     // ─── Trigger Celebrations ───
 
-    /// @brief Strike just rolled. Bumps streak, picks STRIKE or TURKEY.
-    expose func onStrike() {
-        strikeStreak = strikeStreak + 1;
+    /// @brief Strike just rolled. Uses the active player's scorecard streak.
+    expose func onStrike(playerStreak: Integer) {
+        strikeStreak = playerStreak;
+        if (strikeStreak < 1) { strikeStreak = 1; }
 
         if (strikeStreak >= 3) {
             triggerCelebration(TURKEY, config.HUD_COLOR_GOLD, config.CELEBRATE_TURKEY_DURATION);
@@ -127,6 +128,13 @@ class CelebrationManager {
     /// @brief True while a celebration is in progress.
     expose func isActive() -> Boolean {
         return active;
+    }
+
+    expose func skip() {
+        active = false;
+        activeType = NONE;
+        timer = 0.0;
+        flashTimer = 0.0;
     }
 
     /// @brief Display string for the active celebration type.

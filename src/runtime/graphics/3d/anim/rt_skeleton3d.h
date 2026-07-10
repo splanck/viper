@@ -12,7 +12,8 @@
 //
 // Key invariants:
 //   - Bones must be added in topological order (parent before child).
-//   - Max 256 bones per skeleton (VGFX3D_MAX_BONES).
+//   - Max 1024 bones per skeleton (VGFX3D_MAX_SKELETON_BONES); draw palettes
+//     stay capped at 256 (VGFX3D_MAX_BONES) via per-mesh bone maps.
 //   - Bone palette = global_transform * inverse_bind_pose per bone.
 //   - Keyframe rotation uses SLERP; position/scale use linear interpolation.
 //
@@ -61,6 +62,24 @@ void *rt_animation3d_new(rt_string name, double duration);
 /// NULL).
 void rt_animation3d_add_keyframe(
     void *anim, int64_t bone_index, double time, void *position, void *rotation, void *scale);
+
+/// @brief Tolerance-based keyframe reduction; returns the number of dropped keys.
+int64_t rt_animation3d_compress_keyframes(void *anim,
+                                          double pos_tolerance,
+                                          double rot_tolerance,
+                                          double scl_tolerance);
+
+/// @brief Attach CUBICSPLINE Hermite tangents (value units per second) to the
+///   keyframe at (@p bone_index, @p time); NULL pairs leave that channel linear.
+void rt_animation3d_set_keyframe_tangents(void *anim,
+                                          int64_t bone_index,
+                                          double time,
+                                          const float *pos_in,
+                                          const float *pos_out,
+                                          const float *rot_in,
+                                          const float *rot_out,
+                                          const float *scl_in,
+                                          const float *scl_out);
 /// @brief Set whether the animation loops automatically when it reaches its duration.
 void rt_animation3d_set_looping(void *anim, int8_t loop);
 /// @brief Get the looping flag.

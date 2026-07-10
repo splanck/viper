@@ -67,6 +67,7 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
 | `SceneAsset.Load(path)` / `LoadAsset(path)` | Compatibility APIs: return `null` and set `AssetDiagnostics3D.LastLoadError` for routine content failures | Same warnings as the Result variants |
 | `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | Same failure behavior as `Load`/`LoadResult` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
+| `SceneAsset.LoadWithOptionsEx(path, options)` | Same failure behavior as `Load` | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`) |
 | `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
@@ -99,9 +100,13 @@ glTF extension support is explicit:
 | `EXT_meshopt_compression` | Supported | Supported | Compressed bufferViews decode transparently (ATTRIBUTES/TRIANGLES/INDICES modes plus OCTAHEDRAL/QUATERNION/EXPONENTIAL filters); data-less placeholder fallback buffers are accepted; malformed streams fail the load with a named Corrupt diagnostic |
 | `KHR_mesh_quantization` | Supported | Supported | Quantized POSITION (any 8/16-bit integer type), NORMAL/TANGENT (normalized signed byte/short), and TEXCOORD (any 8/16-bit integer type) attributes — including morph-target deltas — decode to floats per the accessor rules; dequantization node scales apply through the scene hierarchy as authored |
 | `KHR_texture_basisu` | Supported | Supported | KTX2 textures decode fully on the CPU: BasisLZ/ETC1S (supercompression scheme 1) and UASTC LDR 4x4 (scheme 0/Zstd/ZLIB) both decode to RGBA8 pixels |
-| `KHR_materials_clearcoat` | Not supported as required | Optional approximation supported | Clearcoat values map to reflectivity/custom material params |
-| `KHR_materials_transmission` | Not supported as required | Optional approximation supported | Transmission factor is recorded; material remains opaque |
-| `KHR_draco_mesh_compression` | Partial | Partial | Sequential-encoded meshes decode fully (rANS entropy coding, difference prediction, wrap/octahedron transforms, quantized positions/texcoords/normals, skinning attributes). Edgebreaker-encoded meshes fail the load with a named diagnostic (`uses Draco edgebreaker connectivity (unsupported)`) |
+| `KHR_materials_clearcoat` | Not supported as required | Optional, factor-level lobe | A real second specular lobe (GGX at the coat roughness, Schlick F0 0.04, Kelemen visibility, energy-conserving base attenuation) renders on all four backends from `clearcoatFactor`/`clearcoatRoughnessFactor`; the coat textures are validated but not sampled (the GL fragment stage is at its 16-unit floor) |
+| `KHR_materials_transmission` | Not supported as required | Optional approximation supported | Transmission factor is recorded (custom param 3) and drives the volume absorption tint; the surface remains opaque (no refraction pass) |
+| `KHR_materials_ior` | Not supported as required | Optional, applied | The index of refraction replaces the fixed 0.04 dielectric F0 in the PBR branch on all four backends (custom param 4) |
+| `KHR_materials_sheen` | Not supported as required | Optional, factor-level lobe | The RGB sheen color folds to a luminance intensity (custom param 0) with roughness in param 7; a Charlie-distribution lobe with Neubelt-Pettineo visibility renders on all four backends plus an irradiance-scaled ambient term |
+| `KHR_materials_anisotropy` | Not supported as required | Optional, factor-level lobe | `anisotropyStrength`/`anisotropyRotation` (custom params 8/9) drive an elliptical GGX distribution along the rotated tangent direction on the GPU backends; the software rasterizer renders isotropic (its lighting path has no tangent frame) and the anisotropy texture is validated but not sampled |
+| `KHR_materials_volume` | Not supported as required | Optional approximation supported | `thicknessFactor` plus a Beer-Lambert absorption coefficient folded from `attenuationColor`/`attenuationDistance` tint transmitted light on all four backends (custom params 5/6) |
+| `KHR_draco_mesh_compression` | Supported | Supported | Sequential and edgebreaker encodings decode fully: rANS entropy coding, standard + valence traversal, topology splits, attribute seams, depth-first and prediction-degree traversers, difference/parallelogram/constrained-multi/tex-coords/geometric-normal prediction, wrap/octahedron transforms, quantized positions/texcoords/normals, skinning attributes. Draco point clouds fail the load with a named diagnostic |
 | Other extensions | Not supported | Ignored with a load warning | Visual result may miss extension-specific material, geometry, animation, lighting, or texture behavior |
 
 Unsupported required extensions fail the load and name the extension list, for
@@ -229,6 +234,8 @@ compares against `examples/3d/baselines/walk_min_software.png`.
 - **Skinned draw** — `Canvas3D.DrawMeshSkinned(canvas, mesh, transform, material, animator)` accepts
   an `AnimController3D` as well as an `AnimPlayer3D`, so a state-machine pose (idle/walk crossfades)
   can skin the mesh directly.
+- **Skinned crowds** — `Canvas3D.DrawInstancedSkinned(batch, players)` draws an `InstanceBatch3D`
+  with one animator per instance; see the InstanceBatch3D section for the palette-packing details.
 
 ### Canvas3D Synthetic Input and Clock
 
@@ -355,7 +362,7 @@ lights.
 Image-based lighting (`IblEnabled`) replaces the flat ambient term on PBR
 materials with real environment lighting derived from the canvas skybox:
 diffuse comes from an SH-9 irradiance projection and specular from a
-GGX-prefiltered mip chain sampled by roughness (split-sum approximation).
+GGX-prefiltered mip chain sampled by roughness, combined with a CPU-precomputed 64x64 split-sum environment-BRDF table (identical on every backend; the GPU backends sample it as a texture, the software rasterizer reads it directly).
 Enabling IBL and setting a skybox are cheap state changes. The environment
 payload is computed lazily by the first eligible PBR draw and then reused.
 Materials with an explicit `SetEnvMap` keep the legacy reflectivity-mix
@@ -455,6 +462,7 @@ it and reports false.
 | BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | Device-dependent `native-texture:bc3` key | Load fails on malformed bytes |
 | BC4/BC5 KTX2 | Single/two-channel decode to `Pixels` (R replicated / RG) | Device-dependent `native-texture:bc4`/`native-texture:bc5` keys | Load fails on malformed bytes |
 | BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `native-texture:bc7` key | 8x8 magenta/black checker + load warning |
+| BC6H KTX2 (signed + unsigned) | All 14 HDR block modes decode to `Pixels` (half floats clamped to [0, 1]; validated bit-exact against an independent reference decoder) | Software fallback only (no native HDR block upload yet) | Load fails on malformed bytes |
 | ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `native-texture:etc2` key | 8x8 magenta/black checker + load warning |
 | ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `native-texture:astc` key | 8x8 magenta/black checker + load warning |
 
@@ -467,6 +475,21 @@ Materials retain the texture asset and resolve that active fallback at draw
 time, so already-bound materials follow later residency changes; when no
 fallback exists, capable GPU backends receive the resident compressed blocks
 through the same upload-budget telemetry path.
+
+`Canvas3D.SetTextureStreaming(true)` automates that window management: each
+frame, the canvas estimates the on-screen texel coverage of every draw that
+binds a multi-mip `TextureAsset3D` (from the draw's bounds, transform, and the
+frame camera) and aggregates a per-asset minimum desired mip. Resolution
+promotions apply immediately at the asset's next draw; demotions require the
+lower demand to hold for ~30 consecutive frames and drop one mip level at a
+time, so a panning camera never pops. Textures smaller than 128 pixels on
+their longest axis, single-mip assets, and instanced batches (whose
+per-instance distances are unknown) always keep full resolution. Streaming decisions ride
+the existing `SetTextureUploadBudget` row-sliced upload path, and
+`SetTextureStreamingBias` shifts the quality/memory trade in either direction.
+While enabled, streaming overrides manual `SetResidentMipRange` calls for
+assets that are drawn; disabling stops further changes without restoring
+earlier windows.
 
 | Backend | `BackendSupports("anisotropy")` | Sampler behavior |
 |---------|---------------------------------|------------------|
@@ -492,6 +515,9 @@ existing sampler objects once created.
 | `SortPasses` | `Integer` property | Stable deferred sort passes run since the latest public `Begin`/`Begin2D` |
 | `BackendStateChanges` | `Integer` property | Material/backend state runs observed in Canvas3D submission order |
 | `SetTextureUploadBudget(bytes)` | `Void(Integer)` method | Set the backend material-texture/cubemap upload byte budget per frame; negative means unlimited, `0` pauses new upload rows |
+| `SetTextureStreaming(enabled)` | `Void(Boolean)` method | Enable automatic `TextureAsset3D` mip-residency streaming (default off) |
+| `SetTextureStreamingBias(bias)` | `Void(Number)` method | Bias streaming's desired mip; positive drops more detail, clamped to `[-16, 16]` |
+| `TextureStreamingDemotions` | `Integer` property | Lifetime count of resident-window demotions applied by streaming |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
 Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps
@@ -803,6 +829,12 @@ Cubemap texture resource for environment mapping and skyboxes. Use `Canvas3D.Loa
 
 **Type:** Instance (obj)
 **Constructor:** `CubeMap3D.New(size)`
+**Static:** `CubeMap3D.LoadHdrPanorama(path, exposure)` — loads a Radiance `.hdr`
+equirectangular panorama (flat, old-RLE, and new-RLE scanlines), projects it onto
+the six cube faces through the engine's cubemap basis, and range-compresses with
+Reinhard `e*x / (1 + e*x)` at the given exposure (values <= 0 default to 1) into
+the 8-bit faces the IBL pipeline consumes. Resolves plain file paths first, then
+the asset manager (embedded/mounted packs).
 
 ---
 
@@ -1921,6 +1953,19 @@ per-instance queueing or trap. `BackendSupports("instancing")` reports the hook;
 Blended-material and floating-origin-rebased batches still route per instance
 (clamped at 65,536 queued instances, with overflow visible through
 `Canvas3D.InstancedFallbackDroppedCount`).
+
+**Per-instance skinned crowds.** `Canvas3D.DrawInstancedSkinned(batch, players)`
+renders the batch with one animator per instance: `players` is a `Seq` holding
+one `AnimPlayer3D` or `AnimController3D` per batch entry (counts must match, and
+every animator must drive a skeleton with the same bone count). On GPU-skinning
+backends the palettes are packed into the shared 256-bone palette slot and the
+vertex shader indexes `palette[instanceId * boneCount + bone]`, so
+`256 / boneCount` uniquely-posed characters ride each hardware draw — a 32-bone
+crowd costs one draw per 32 characters instead of one per character. The
+software backend, blending materials, eight-influence meshes, and partitioned
+(>256-bone) skins fall back to one skinned draw per instance with identical
+posing. Skeletons over 256 bones are rejected; palettes are snapshotted at
+submission so later animation ticks cannot repose queued draws.
 
 ---
 

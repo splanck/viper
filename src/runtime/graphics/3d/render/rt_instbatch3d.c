@@ -624,6 +624,34 @@ int64_t rt_instbatch3d_count(void *obj) {
     return b->instance_count;
 }
 
+/// @brief Internal bridge: borrow the batch's retained mesh (NULL for invalid handles).
+void *rt_instbatch3d_borrow_mesh(void *batch) {
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(batch, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    return b ? rt_g3d_checked_or_null(b->mesh, RT_G3D_MESH3D_CLASS_ID) : NULL;
+}
+
+/// @brief Internal bridge: borrow the batch's retained material (NULL for invalid handles).
+void *rt_instbatch3d_borrow_material(void *batch) {
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(batch, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    return b ? rt_g3d_checked_or_null(b->material, RT_G3D_MATERIAL3D_CLASS_ID) : NULL;
+}
+
+/// @brief Internal bridge: borrow the batch's float transform array (N * 16, sanitized).
+const float *rt_instbatch3d_borrow_transforms(void *batch, int32_t *out_count) {
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(batch, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (out_count)
+        *out_count = 0;
+    if (!b || !instbatch_repair_state(b) || !b->transforms || b->instance_count <= 0)
+        return NULL;
+    instbatch_sanitize_active_matrices(b);
+    if (out_count)
+        *out_count = b->instance_count;
+    return b->transforms;
+}
+
 /// @brief Draw all visible instances. Falls back to N individual draw calls
 /// since the software backend doesn't have a native instanced path.
 void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
