@@ -15,7 +15,7 @@ func start() {
     Say("ESC to quit");
 
     // Try Big Buck Bunny MJPEG first, fallback to abstract art
-    var player = VideoPlayer.Open("tests/runtime/assets/test_video.avi");
+    var player = VideoPlayer.Open("src/tests/fixtures/runtime/assets/test_video.avi");
     if (player == null) {
         Say("FAIL: could not open test_video.avi");
         return;

@@ -25,9 +25,9 @@ CHECK_DIRS=(
 
 # Allowed exceptions (built-in library examples showing Track B syntax)
 ALLOWED_FILES=(
-  "tests/golden/basic/viper_root_example.bas"
-  "tests/golden/basic_errors/reserved_root_user_decl.bas"
-  "tests/golden/basic_errors/reserved_root_user_using.bas"
+  "src/tests/golden/basic/viper_root_example.bas"
+  "src/tests/golden/basic_errors/reserved_root_user_decl.bas"
+  "src/tests/golden/basic_errors/reserved_root_user_using.bas"
 )
 
 VIOLATIONS=0

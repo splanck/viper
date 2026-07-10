@@ -13,7 +13,7 @@ func start() {
     var app = App.New("Video Player", 720, 540);
     var root = App.get_Root(app);
 
-    var video = VideoWidget.New(root, "tests/runtime/assets/test_video.avi");
+    var video = VideoWidget.New(root, "src/tests/fixtures/runtime/assets/test_video.avi");
     if (video == null) {
         Say("FAIL: could not create VideoWidget");
         return;

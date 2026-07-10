@@ -149,7 +149,7 @@ func runScenario(title: String, render: Boolean) -> Float {
     spawnProp(world, "MetalCrate", crateMesh, metalMat, -2.2, 0.55, -1.4, 1.0);
     spawnProp(world, "Beacon", crateMesh, glowMat, 1.8, 0.65, -1.0, 0.35);
 
-    var imported: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    var imported: Game3D.Entity3D = Game3D.Assets3D.LoadEntityAsset("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
     if (imported != null) {
         imported.Name = "PackagedTriangle";
         imported.SetPosition(2.8, 0.08, 1.5);
