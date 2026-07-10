@@ -1,4 +1,4 @@
-// Part of the Viper project, under the GNU GPL v3.
+ // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // Purpose: Bytecode opcode name table and encoding utilities for the Viper

@@ -108,9 +108,7 @@ int vgfx3d_d3d11_vec3_direction_is_usable(const float *values) {
 }
 
 /// @brief Copy a direction vector with a stable default for zero/non-finite/huge sources.
-void vgfx3d_d3d11_copy_vec3_direction_or(float *dst,
-                                         const float *src,
-                                         const float fallback[3]) {
+void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]) {
     static const float default_forward[3] = {0.0f, 0.0f, -1.0f};
     const float *chosen;
 
@@ -395,9 +393,9 @@ int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_in
 
 /// @brief Clamp and order spot-light cone cosines before shader upload.
 void vgfx3d_d3d11_sanitize_spot_cone(float requested_inner,
-                                      float requested_outer,
-                                      float *out_inner,
-                                      float *out_outer) {
+                                     float requested_outer,
+                                     float *out_inner,
+                                     float *out_outer) {
     float inner = vgfx3d_d3d11_clamp_float_param(requested_inner, -1.0f, 1.0f, 1.0f);
     float outer = vgfx3d_d3d11_clamp_float_param(requested_outer, -1.0f, 1.0f, 0.0f);
 
@@ -420,8 +418,8 @@ void vgfx3d_d3d11_sanitize_shadow_cascade_splits(float *dst, const float *src, s
         return;
     for (size_t i = 0; i < count; i++) {
         float split = src ? src[i] : 0.0f;
-        split = vgfx3d_d3d11_clamp_float_param(
-            split, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, previous);
+        split =
+            vgfx3d_d3d11_clamp_float_param(split, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, previous);
         if (split < previous)
             split = previous;
         dst[i] = split;
@@ -437,6 +435,38 @@ int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t li
         return -1;
     max_count = vgfx3d_d3d11_clamp_int_param(light_count, 0, VGFX3D_MAX_LIGHTS);
     return requested > max_count ? max_count : requested;
+}
+
+/// @brief Validate a clustered-light table before uploading it to fixed-size HLSL arrays.
+int vgfx3d_d3d11_cluster_table_is_usable(const vgfx3d_cluster_table_t *table,
+                                         uint32_t expected_revision,
+                                         int32_t light_count) {
+    uint16_t previous_offset;
+    uint16_t final_offset;
+
+    if (!table || expected_revision == 0 || table->lights_revision != expected_revision ||
+        light_count <= 0 || light_count > VGFX3D_MAX_LIGHTS || table->global_light_count < 0 ||
+        table->global_light_count > light_count || table->binned_light_count < 0 ||
+        table->binned_light_count != light_count - table->global_light_count ||
+        table->overflow_count < 0 || !isfinite(table->znear) || !isfinite(table->zfar) ||
+        table->znear <= 0.0f || table->zfar <= table->znear || table->offsets[0] != 0)
+        return 0;
+
+    previous_offset = table->offsets[0];
+    for (int32_t i = 1; i <= VGFX3D_CLUSTER_COUNT; i++) {
+        uint16_t offset = table->offsets[i];
+        if (offset < previous_offset || offset > VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+            return 0;
+        previous_offset = offset;
+    }
+
+    final_offset = table->offsets[VGFX3D_CLUSTER_COUNT];
+    for (uint32_t i = 0; i < (uint32_t)final_offset; i++) {
+        uint16_t light_index = table->indices[i];
+        if ((int32_t)light_index < table->global_light_count || light_index >= light_count)
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Sanitize the clustered-light logarithmic Z range before shader upload.
@@ -514,11 +544,11 @@ int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested) {
 
 /// @brief Sanitize fog near/far distances before scene constant upload.
 void vgfx3d_d3d11_sanitize_fog_range(float requested_near,
-                                      float requested_far,
-                                      float *out_near,
-                                      float *out_far) {
-    float fog_near = vgfx3d_d3d11_clamp_float_param(
-        requested_near, 0.0f, VGFX3D_D3D11_FOG_DISTANCE_MAX, 10.0f);
+                                     float requested_far,
+                                     float *out_near,
+                                     float *out_far) {
+    float fog_near =
+        vgfx3d_d3d11_clamp_float_param(requested_near, 0.0f, VGFX3D_D3D11_FOG_DISTANCE_MAX, 10.0f);
     float min_far = fog_near + 1.0f;
     float fog_far;
 
@@ -558,28 +588,28 @@ int vgfx3d_d3d11_postfx_effect_is_active(const vgfx3d_postfx_effect_desc_t *effe
         return 0;
     snapshot = &effect->snapshot;
     switch (effect->type) {
-    case VGFX3D_POSTFX_EFFECT_BLOOM:
-        return snapshot->bloom_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_TONEMAP:
-        return snapshot->tonemap_explicit ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_FXAA:
-        return snapshot->fxaa_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_COLOR_GRADE:
-        return snapshot->color_grade_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_VIGNETTE:
-        return snapshot->vignette_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_SSAO:
-        return snapshot->ssao_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_DOF:
-        return snapshot->dof_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_MOTION_BLUR:
-        return snapshot->motion_blur_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_TAA:
-        return snapshot->taa_enabled ? 1 : 0;
-    case VGFX3D_POSTFX_EFFECT_SSR:
-        return snapshot->ssr_enabled ? 1 : 0;
-    default:
-        return 0;
+        case VGFX3D_POSTFX_EFFECT_BLOOM:
+            return snapshot->bloom_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_TONEMAP:
+            return snapshot->tonemap_explicit ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_FXAA:
+            return snapshot->fxaa_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_COLOR_GRADE:
+            return snapshot->color_grade_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_VIGNETTE:
+            return snapshot->vignette_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_SSAO:
+            return snapshot->ssao_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_DOF:
+            return snapshot->dof_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_MOTION_BLUR:
+            return snapshot->motion_blur_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_TAA:
+            return snapshot->taa_enabled ? 1 : 0;
+        case VGFX3D_POSTFX_EFFECT_SSR:
+            return snapshot->ssr_enabled ? 1 : 0;
+        default:
+            return 0;
     }
 }
 
@@ -729,11 +759,8 @@ int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
 }
 
 /// @brief Compute a bloom mip extent using the backend's bounded half-res policy.
-int vgfx3d_d3d11_compute_bloom_mip_extent(int32_t width,
-                                          int32_t height,
-                                          int32_t mip_level,
-                                          int32_t *out_width,
-                                          int32_t *out_height) {
+int vgfx3d_d3d11_compute_bloom_mip_extent(
+    int32_t width, int32_t height, int32_t mip_level, int32_t *out_width, int32_t *out_height) {
     int32_t mip_width;
     int32_t mip_height;
 
@@ -771,6 +798,60 @@ int vgfx3d_d3d11_validate_ibl_mip_extent(int32_t face_size,
     if (!vgfx3d_d3d11_expected_square_mip_extent(face_size, mip_level, &expected_extent))
         return 0;
     return width == expected_extent && height == expected_extent;
+}
+
+/// @brief Validate an IBL mip chain against a concrete D3D11 cubemap mip layout.
+int vgfx3d_d3d11_validate_ibl_layout(int32_t face_size,
+                                     int32_t ibl_base_size,
+                                     int32_t ibl_mip_count,
+                                     int32_t max_ibl_mips,
+                                     int32_t *out_level_base) {
+    int32_t level_base = 0;
+    int32_t size;
+    int32_t total_mips;
+
+    if (out_level_base)
+        *out_level_base = 0;
+    if (!out_level_base || !vgfx3d_d3d11_is_valid_cubemap_extent(face_size) || ibl_base_size <= 0 ||
+        ibl_mip_count <= 0 || max_ibl_mips <= 0 || ibl_mip_count > max_ibl_mips)
+        return 0;
+
+    size = face_size;
+    while (size > ibl_base_size && size > 1) {
+        size >>= 1;
+        level_base++;
+    }
+    if (size != ibl_base_size)
+        return 0;
+
+    total_mips = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
+    if (level_base < 0 || level_base >= total_mips || ibl_mip_count > total_mips - level_base)
+        return 0;
+    *out_level_base = level_base;
+    return 1;
+}
+
+/// @brief Check a whole-resource upload against a saturating per-frame byte budget.
+int vgfx3d_d3d11_upload_budget_allows(uint64_t budget, uint64_t used, uint64_t requested) {
+    if (requested == 0)
+        return 1;
+    if (budget == UINT64_MAX)
+        return 1;
+    if (used >= budget)
+        return 0;
+    return requested <= budget - used;
+}
+
+/// @brief Select cache-owned native telemetry or compute pending RGBA row bytes.
+uint64_t vgfx3d_d3d11_cached_pending_texture_bytes(int has_native_asset,
+                                                   uint64_t cached_native_bytes,
+                                                   int32_t width,
+                                                   int32_t height,
+                                                   int32_t next_row,
+                                                   int upload_in_progress) {
+    if (has_native_asset)
+        return upload_in_progress ? cached_native_bytes : 0;
+    return vgfx3d_pending_rgba_upload_bytes(width, height, next_row, upload_in_progress ? 1 : 0);
 }
 
 /// @brief Compute a checked per-instance vertex-buffer upload size.

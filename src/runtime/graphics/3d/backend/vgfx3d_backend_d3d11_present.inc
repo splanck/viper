@@ -159,6 +159,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     if (!ctx->current_pass_is_overlay) {
         ctx->texture_upload_bytes = 0;
         ctx->shadow_count = 0;
+        memset(ctx->shadow_slot_complete, 0, sizeof(ctx->shadow_slot_complete));
         ctx->overlay_used_this_frame = 0;
     }
 
@@ -539,9 +540,9 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         d3d11_log_hresult("Map(sceneStaging)", hr);
         goto cleanup;
     }
+    mapped_ok = 1;
     if (!mapped.pData)
         goto cleanup;
-    mapped_ok = 1;
 
     copy_w = (int32_t)desc.Width < w ? (int32_t)desc.Width : w;
     copy_h = (int32_t)desc.Height < h ? (int32_t)desc.Height : h;
@@ -653,13 +654,14 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
 ///          state, leaving mip 0 with the summed octaves.
 /// @return Mip 0's SRV, or NULL when resources are unavailable.
 static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
+                                                          ID3D11ShaderResourceView *source_srv,
                                                           int32_t width,
                                                           int32_t height,
                                                           float threshold) {
     ID3D11ShaderResourceView *null_srv = NULL;
     float blend_factor[4] = {0, 0, 0, 0};
 
-    if (!ctx || !ctx->scene_color_srv || !ctx->ps_bloom_down || !ctx->ps_bloom_up ||
+    if (!ctx || !source_srv || !ctx->ps_bloom_down || !ctx->ps_bloom_up ||
         FAILED(d3d11_ensure_bloom_targets(ctx, width, height)))
         return NULL;
 
@@ -677,7 +679,7 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
     for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
-        ID3D11ShaderResourceView *src = (i == 0) ? ctx->scene_color_srv : ctx->bloom_mip_srv[i - 1];
+        ID3D11ShaderResourceView *src = (i == 0) ? source_srv : ctx->bloom_mip_srv[i - 1];
         int32_t src_w = (i == 0) ? width : ctx->bloom_mip_w[i - 1];
         int32_t src_h = (i == 0) ? height : ctx->bloom_mip_h[i - 1];
         d3d_bloom_cb_t bloom_data;
@@ -1006,26 +1008,22 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
         return 0;
     }
 
-    /* Plan 05: prefilter the bloom mip chain once from the scene color when any chain
-     * entry uses bloom; passes composite mip 0 via slot t4 while the SRV is non-NULL. */
-    ctx->postfx_current_bloom_srv = NULL;
-    for (int32_t i = 0; i < chain->effect_count; i++) {
-        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM &&
-            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i])) {
-            ctx->postfx_current_bloom_srv =
-                d3d11_encode_bloom_chain(ctx,
-                                         ctx->scene_width,
-                                         ctx->scene_height,
-                                         chain->effects[i].snapshot.bloom_threshold);
-            break;
-        }
-    }
-
     source_srv = ctx->scene_color_srv;
     result_tex = ctx->scene_color_tex;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
         const vgfx3d_postfx_snapshot_t *pass_snapshot = &chain->effects[i].snapshot;
+
+        ctx->postfx_current_bloom_srv = NULL;
+        if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM &&
+            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i])) {
+            ctx->postfx_current_bloom_srv =
+                d3d11_encode_bloom_chain(ctx,
+                                         source_srv,
+                                         ctx->scene_width,
+                                         ctx->scene_height,
+                                         chain->effects[i].snapshot.bloom_threshold);
+        }
 
         /* Plan 05: a TAA entry resolves into its own history target, which then feeds
          * the remaining chain; the regular pass below turns into a plain copy so the

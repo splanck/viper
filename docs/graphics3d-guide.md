@@ -292,9 +292,13 @@ positive values cap per-frame upload bytes while preserving progress for sub-row
 and software/unsupported backends report `0`; non-overlay frame begin resets the counter. D3D11
 validates row slices, native block rows, block layouts, and D3D11-sized upload byte fields before
 issuing texture updates. If a D3D11 texture/cubemap cache table cannot grow, a valid upload may
-still render through a one-draw temporary SRV that is released after the draw.
+still render through a one-draw temporary SRV that is released after the draw, but that fallback
+must fit the remaining upload budget. Prefiltered IBL cubemap mips are validated as one atomic
+payload before any destination mip changes; zero or exhausted budgets defer the payload without
+decoding it, and a positive sub-payload budget may admit one indivisible IBL upload on an otherwise
+empty frame so streaming cannot stall forever.
 `TextureUploadPendingBytes` returns to `0` once all material/cubemap row slices
-and native compressed mip submissions drain. Use it
+native compressed mip submissions, and validated IBL mip payloads drain. Use it
 to correlate async asset commits and streaming movement with GPU texture upload pressure.
 
 `Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
@@ -854,6 +858,7 @@ GPU backends cull point and spot lights against a 16×9×24 view-space froxel gr
 - Clustering is on by default wherever `canvas.BackendSupports("clustered-lighting")` is true. Toggle it with the strict `ClusteredLighting` property when lack of support should trap, or call `canvas.TrySetClusteredLighting(true)` to opt in and receive `false` on unsupported or disabled builds.
 - Per-cluster light lists are capped at 8192 total entries per frame; pathological scenes (many unbounded point lights covering the whole view) truncate later lights per cluster deterministically rather than failing.
 - Point/spot lights with zero attenuation are clamped to a small default falloff floor so clustered culling can still bound their influence.
+- D3D11 verifies the light revision, global/binned counts, depth range, every prefix offset, and every referenced light index before upload. A malformed or stale table uses the bounded flat-light loop, and HLSL clamps packed-buffer reads as a second line of defense.
 - The environment variable `VIPER_3D_CLUSTERS=0` disables clustering process-wide (bisection escape hatch).
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
@@ -1740,7 +1745,7 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 | `AddSSR(intensity, maxRoughness)` | `void(f64, f64)` | Screen-space reflections for `SsrEnabled` materials (Water3D opts in automatically); ray misses fall back to the material's environment map |
 | `Clear()` | `void()` | Remove all effects from chain |
 
-Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
+Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Each D3D11 bloom entry builds its thresholded mip chain from that entry's current input, so effects before bloom and repeated bloom entries are preserved. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
 
 PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, color-grade brightness offsets clamp to `-1.0..1.0`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
 
@@ -3530,7 +3535,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting uses the real-time backend payload when the control map and all four layer textures are resident and falls back to CPU baking only for incomplete sets, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, clamps clustered-light prefix/depth constants before shader upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and IBL mip payload extents before GPU upload, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting uses the real-time backend payload when the control map and all four layer textures are resident and falls back to CPU baking only for incomplete sets, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes in the current frame, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, validates complete clustered-light tables before upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and complete IBL layouts before GPU upload, keeps deferred native-texture and IBL payload metadata independent of runtime-object lifetime, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
 
 ## Performance Tips
 

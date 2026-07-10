@@ -377,7 +377,8 @@ func main() {
         game.destroy();
         return;
     }
+    var activeBackend = game.getCanvas().Backend;
     game.getWorld().Present();
     game.destroy();
-    Terminal.Say("RESULT: ok");
+    Terminal.Say("RESULT: ok backend=" + activeBackend);
 }

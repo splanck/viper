@@ -1,0 +1,81 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/3d/d3d11_rtt_readback_probe.zia
+// Purpose: Verify repeated D3D11 render-target readback observes newly rendered contents.
+//
+// Key invariants:
+//   - Reusing a RenderTarget3D must preserve the dirty CPU-mirror marker.
+//   - Every successful staging Map is paired with Unmap by the backend.
+//
+// Ownership/Lifetime:
+//   - Probe objects live until process exit; no references escape the test.
+//
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_targets.inc
+//
+//===----------------------------------------------------------------------===//
+
+module d3d11_rtt_readback_probe;
+
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Terminal as Terminal;
+
+func channelR(color: Integer) -> Integer {
+    return color / 16777216;
+}
+
+func channelG(color: Integer) -> Integer {
+    return (color / 65536) % 256;
+}
+
+func renderClear(canvas: Canvas3D,
+                 camera: Camera3D,
+                 target: RenderTarget3D,
+                 r: Float,
+                 g: Float,
+                 b: Float) -> Pixels {
+    Canvas3D.SetRenderTarget(canvas, target);
+    Canvas3D.Clear(canvas, r, g, b);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.End(canvas);
+    return RenderTarget3D.AsPixels(target);
+}
+
+func main() {
+    var canvas = Canvas3D.New("D3D11 RTT Readback Probe", 96, 64);
+    var camera = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    var target = RenderTarget3D.New(32, 32);
+
+    if canvas.Backend != "d3d11" {
+        Terminal.Say("RESULT: fail backend=" + canvas.Backend);
+        return;
+    }
+
+    var first = renderClear(canvas, camera, target, 0.9, 0.05, 0.05);
+    var firstColor = Pixels.Get(first, 16, 16);
+    Canvas3D.ResetRenderTarget(canvas);
+
+    var second = renderClear(canvas, camera, target, 0.05, 0.9, 0.05);
+    var secondColor = Pixels.Get(second, 16, 16);
+    Canvas3D.ResetRenderTarget(canvas);
+
+    if channelR(firstColor) < 180 || channelR(firstColor) <= channelG(firstColor) {
+        Terminal.Say("RESULT: fail first_readback");
+        return;
+    }
+    if channelG(secondColor) < 180 || channelG(secondColor) <= channelR(secondColor) {
+        Terminal.Say("RESULT: fail reused_readback");
+        return;
+    }
+    if firstColor == secondColor {
+        Terminal.Say("RESULT: fail stale_readback");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok backend=d3d11");
+}

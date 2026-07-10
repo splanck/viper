@@ -564,9 +564,7 @@ static int navagent_build_velocity_candidates(double pref_x,
 
 /// @brief Penalty for choosing candidate velocity (`cand_x`,`cand_z`) against one peer.
 /// @details This is a reciprocal velocity-obstacle test: it predicts relative motion over the
-///   bounded time horizon and penalizes candidates that enter the combined avoidance disk. The
-///   score uses sqrt-free squared-overlap ratios so the candidate x neighbor loop avoids a square
-///   root on every near miss while still pushing strongly for real penetration.
+///   bounded time horizon and penalizes candidates that enter the combined avoidance disk.
 static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
                                         rt_navagent3d *other,
                                         double agent_radius,
@@ -605,11 +603,15 @@ static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
     rel_speed_sq = rel_vx * rel_vx + rel_vz * rel_vz;
 
     if (dist_sq < combined_sq) {
-        double penetration = (combined_sq - dist_sq) / combined_sq;
-        double closing = rel_px * rel_vx + rel_pz * rel_vz;
-        double closing_penalty =
-            closing < 0.0 ? (-closing / fmax(combined * combined / horizon, 1e-9)) : 0.0;
-        return 3500.0 * penetration * penetration + 50.0 * closing_penalty;
+        double dist = dist_sq > 1e-12 ? sqrt(dist_sq) : 0.0;
+        double penetration = (combined - dist) / combined;
+        double sep_rate = 0.0;
+        if (dist > 1e-9)
+            sep_rate = (rel_px * rel_vx + rel_pz * rel_vz) / dist;
+        else
+            sep_rate = -sqrt(cand_x * cand_x + cand_z * cand_z);
+        return 2500.0 * penetration * penetration +
+               50.0 * fmax(0.0, (combined / horizon) - sep_rate);
     }
     if (rel_speed_sq <= 1e-10)
         return 0.0;
@@ -623,9 +625,10 @@ static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
     if (closest_sq >= combined_sq)
         return 0.0;
     {
-        double risk = (combined_sq - closest_sq) / combined_sq;
+        double closest = closest_sq > 1e-12 ? sqrt(closest_sq) : 0.0;
+        double risk = (combined - closest) / combined;
         double time_weight = 1.0 + (horizon - t) / horizon;
-        return 1600.0 * risk * risk * time_weight;
+        return 1000.0 * risk * risk * time_weight;
     }
 }
 

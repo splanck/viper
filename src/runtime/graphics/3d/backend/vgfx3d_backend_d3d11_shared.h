@@ -99,6 +99,13 @@ typedef enum {
     VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT = 3,
 } vgfx3d_d3d11_readback_kind_t;
 
+/// @brief Outcome of one budgeted texture-upload continuation step.
+typedef enum {
+    VGFX3D_D3D11_UPLOAD_FAILED = -1,
+    VGFX3D_D3D11_UPLOAD_PENDING = 0,
+    VGFX3D_D3D11_UPLOAD_COMPLETE = 1,
+} vgfx3d_d3d11_upload_result_t;
+
 /// @brief Per-object HLSL constant buffer: model/prev-model/normal matrices plus skinning,
 ///   morph, and instancing flags and packed morph weights.
 typedef struct {
@@ -225,13 +232,17 @@ int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_in
                                                      int32_t requested_projection_type);
 /// @brief Clamp and order spot-light cone cosines before shader upload.
 void vgfx3d_d3d11_sanitize_spot_cone(float requested_inner,
-                                      float requested_outer,
-                                      float *out_inner,
-                                      float *out_outer);
+                                     float requested_outer,
+                                     float *out_inner,
+                                     float *out_outer);
 /// @brief Sanitize shadow cascade split distances into a finite nondecreasing sequence.
 void vgfx3d_d3d11_sanitize_shadow_cascade_splits(float *dst, const float *src, size_t count);
 /// @brief Clamp a clustered-light global prefix to the uploaded light-array range.
 int32_t vgfx3d_d3d11_sanitize_cluster_global_count(int32_t requested, int32_t light_count);
+/// @brief Validate every count, offset, and light index before a cluster table reaches HLSL.
+int vgfx3d_d3d11_cluster_table_is_usable(const vgfx3d_cluster_table_t *table,
+                                         uint32_t expected_revision,
+                                         int32_t light_count);
 /// @brief Sanitize the clustered-light logarithmic Z range before shader upload.
 void vgfx3d_d3d11_sanitize_cluster_depth_range(float requested_near,
                                                float requested_far,
@@ -247,9 +258,7 @@ void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
 /// @brief Validate a finite, non-degenerate direction vector for CPU/shader upload.
 int vgfx3d_d3d11_vec3_direction_is_usable(const float *values);
 /// @brief Copy a direction vector or a stable fallback when the source is unusable.
-void vgfx3d_d3d11_copy_vec3_direction_or(float *dst,
-                                         const float *src,
-                                         const float fallback[3]);
+void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]);
 /// @brief Copy a matrix when finite, otherwise write the identity matrix.
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
 /// @brief Copy a matrix when finite, otherwise copy @p fallback or identity.
@@ -266,9 +275,9 @@ int32_t vgfx3d_d3d11_sanitize_shading_model(int32_t requested);
 int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested);
 /// @brief Sanitize fog near/far distances before scene constant upload.
 void vgfx3d_d3d11_sanitize_fog_range(float requested_near,
-                                      float requested_far,
-                                      float *out_near,
-                                      float *out_far);
+                                     float requested_far,
+                                     float *out_near,
+                                     float *out_far);
 /// @brief Sanitize D3D11 shader-facing shadow depth bias.
 float vgfx3d_d3d11_sanitize_shadow_bias(float requested);
 /// @brief Validate a backend-facing post-FX chain before indexed iteration.
@@ -301,16 +310,28 @@ int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
                                             int32_t mip_level,
                                             int32_t *out_extent);
 /// @brief Compute one bloom mip extent for a scene-sized D3D11 post-FX chain.
-int vgfx3d_d3d11_compute_bloom_mip_extent(int32_t width,
-                                          int32_t height,
-                                          int32_t mip_level,
-                                          int32_t *out_width,
-                                          int32_t *out_height);
+int vgfx3d_d3d11_compute_bloom_mip_extent(
+    int32_t width, int32_t height, int32_t mip_level, int32_t *out_width, int32_t *out_height);
 /// @brief Validate an IBL mip payload extent against the destination cubemap mip.
 int vgfx3d_d3d11_validate_ibl_mip_extent(int32_t face_size,
                                          int32_t mip_level,
                                          int32_t width,
                                          int32_t height);
+/// @brief Validate a prefiltered IBL chain and return its destination base mip.
+int vgfx3d_d3d11_validate_ibl_layout(int32_t face_size,
+                                     int32_t ibl_base_size,
+                                     int32_t ibl_mip_count,
+                                     int32_t max_ibl_mips,
+                                     int32_t *out_level_base);
+/// @brief Return non-zero when one complete upload fits the remaining frame budget.
+int vgfx3d_d3d11_upload_budget_allows(uint64_t budget, uint64_t used, uint64_t requested);
+/// @brief Report pending texture bytes without dereferencing a cache-owned source identity.
+uint64_t vgfx3d_d3d11_cached_pending_texture_bytes(int has_native_asset,
+                                                   uint64_t cached_native_bytes,
+                                                   int32_t width,
+                                                   int32_t height,
+                                                   int32_t next_row,
+                                                   int upload_in_progress);
 /// @brief Compute a bounded morph-delta float count for D3D11 float SRV uploads.
 int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
                                            int32_t requested_shape_count,

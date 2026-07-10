@@ -714,9 +714,9 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
         d3d11_log_hresult("Map(rttStaging)", hr);
         goto cleanup;
     }
+    mapped_ok = 1;
     if (!mapped.pData)
         goto cleanup;
-    mapped_ok = 1;
 
     if (vgfx3d_rendertarget_is_hdr(target)) {
         size_t hdr_row_bytes;
@@ -825,7 +825,6 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
             ctx->current_pass_is_overlay = 0;
             ctx->current_load_existing_color = 0;
             ctx->overlay_used_this_frame = 0;
-            rt->color_dirty = 0;
             rt->sync_color = d3d11_sync_render_target_color;
             rt->sync_color_userdata = ctx;
             return S_OK;
@@ -928,7 +927,8 @@ static void d3d11_recompute_shadow_count(d3d11_context_t *ctx) {
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         if (slot < VGFX3D_CSM_SLOTS) {
-            if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot])
+            if (ctx->shadow_srv[slot] && ctx->shadow_dsv[slot] && ctx->shadow_depth_tex[slot] &&
+                ctx->shadow_slot_complete[slot])
                 complete[slot] = 1;
         } else if (ctx->shadow_atlas_srv && ctx->shadow_slot_complete[slot]) {
             /* Atlas tiles have no per-slot resources; completeness is stamped
