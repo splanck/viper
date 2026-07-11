@@ -177,7 +177,7 @@ class HUD {
         scoreLabel.set_Scale(2);
 
         // Coin label
-        coinLabel = HudLabel.New(440, 6, "x0", pal.coinGold);
+        coinLabel = HudLabel.New(630, 6, "x0", pal.coinGold);
         coinLabel.set_Scale(2);
 
         // Campaign status replaces the retired arcade lives counter.
@@ -286,22 +286,15 @@ class HUD {
         scoreLabel.Draw(canvas);
 
         // Coins with mini icon
-        canvas.Disc(430, 14, 7, pal.coinGold);
-        canvas.Disc(430, 14, 4, pal.coinDark);
-        canvas.Disc(429, 12, 2, 0xFFEE88);
+        canvas.Disc(620, 14, 7, pal.coinGold);
+        canvas.Disc(620, 14, 4, pal.coinDark);
+        canvas.Disc(619, 12, 2, 0xFFEE88);
         coinLabel.SetText("x${coins}");
         coinLabel.Draw(canvas);
 
-        // Campaign mode uses checkpoint retries instead of finite lives.
-        expeditionLabel.SetText("EXPEDITION");
-        expeditionLabel.Draw(canvas);
-
-        // Level name
-        // Xenoscape: biome name from level number
-        // For single-level "Descent", always show the game name
-        var levelName = "XENOSCAPE";
-        levelLabel.SetText(levelName);
-        levelLabel.Draw(canvas);
+        // Region identity and expedition details live in the compact extended
+        // HUD. Keeping this strip to health/score/currency guarantees a stable
+        // top-right status zone at every supported text scale.
 
         // Power-up indicator bars
         var pxStart = 12;
@@ -396,18 +389,21 @@ class HUD {
     expose func drawExtendedHud(canvas: Canvas, _pal: Palette,
                                  gems: Integer, loreCollected: Integer, loreTotal: Integer,
                                  currentLevel: Integer, biomeName: String) {
-        // Gem counter (top-right area)
-        var gemX = SCREEN_W - 180;
-        var gemY = 32;
+        // Salvage is the only spendable campaign currency. Arcade coins and
+        // score remain left-side performance counters and never buy upgrades.
+        var gemX = SCREEN_W - 330;
+        var gemY = 8;
         // Gem icon (small diamond shape)
         canvas.Triangle(gemX, gemY + 6, gemX - 6, gemY, gemX + 6, gemY,
                         Color.RGB(100, 200, 255));
         canvas.Triangle(gemX, gemY + 6, gemX - 6, gemY + 12, gemX + 6, gemY + 12,
                         Color.RGB(60, 150, 220));
-        canvas.Text(gemX + 10, gemY, "x${gems}", Color.RGB(200, 220, 255));
+        canvas.Text(gemX + 10, gemY, "SALVAGE ${gems}",
+                    Color.RGB(200, 220, 255));
 
         // Lore progress (small text below gems)
-        canvas.Text(gemX, gemY + 18, "Lore: ${loreCollected}/${loreTotal}",
+        canvas.Text(SCREEN_W - 158, gemY,
+                    "LORE ${loreCollected}/${loreTotal}",
                     Color.RGB(120, 130, 160));
 
         // Biome name (bottom-left, faded)
@@ -430,7 +426,7 @@ class HUD {
                              levelW: Integer, levelH: Integer) {
         // Small rectangle in top-right corner showing level overview
         var mapX = SCREEN_W - 120;
-        var mapY = 52;
+        var mapY = 84;
         var mapW = 110;
         var mapH = 30;
 
@@ -462,7 +458,7 @@ class HUD {
         var text = Int(amount);
         if amount >= 5 {
             // Critical hit — larger, gold text
-            canvas.TextScaled(sx, sy, text, Color.RGB(255, 220, 50), 2);
+            canvas.TextScaled(sx, sy, text, 2, Color.RGB(255, 220, 50));
         } else {
             canvas.Text(sx, sy, text, Color.RGB(255, 255, 255));
         }

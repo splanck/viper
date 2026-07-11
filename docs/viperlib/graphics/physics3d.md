@@ -5,7 +5,7 @@ last-verified: 2026-05-26
 ---
 
 # 3D Physics
-> Physics3DWorld, PhysicsHit3D, PhysicsHitList3D, CollisionEvent3D, ContactPoint3D, Collider3D, Physics3DBody, Character3D, DistanceJoint3D, SpringJoint3D
+> Physics3DWorld, PhysicsHit3D, PhysicsHitList3D, LedgeHit3D, Ragdoll3D, CollisionEvent3D, ContactPoint3D, Collider3D, Physics3DBody, Character3D, DistanceJoint3D, SpringJoint3D
 
 **Part of [Viper Runtime Library](../README.md) › [Graphics](README.md)**
 
@@ -67,6 +67,9 @@ and joint integration.
 | `SweepSphere(center, radius, delta, mask)` | `PhysicsHit3D(Object, Double, Object, Integer)` | Sweep a sphere and return the first `PhysicsHit3D` or `Nothing` |
 | `SweepCapsule(a, b, radius, delta, mask)` | `Object(Object, Object, Double, Object, Integer)` | Sweep a capsule segment and return the first `PhysicsHit3D` or `Nothing` |
 | `OverlapSphere(center, radius, mask)` | `PhysicsHitList3D(Object, Double, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
+| `ProbeClearance(position, radius, height, mask)` | `Boolean(Object, Double, Double, Integer)` | `true` when a capsule of the given dims fits at `position` without solid overlap |
+| `ProbeLedge(origin, forward, radius, maxHeight, maxDepth, mask)` | `LedgeHit3D(Object, Object, Double, Double, Double, Integer)` | Find a grabbable ledge ahead of a foot-level origin; `Nothing` when no valid ledge exists |
+| `ProbeVault(origin, forward, radius, maxHeight, maxThickness, mask)` | `LedgeHit3D(Object, Object, Double, Double, Double, Integer)` | Like `ProbeLedge` but also requires a near-origin-level landing on the far side |
 
 `PhysicsHit3D.Body` returns a typed `Physics3DBody`; `Point`/`Normal` return `Vec3`; `PhysicsHitList3D.Get` returns a `PhysicsHit3D` — so hit results flow into typed bindings without casts.
 | `OverlapAABB(min, max, mask)` | `Object(Object, Object, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
@@ -179,6 +182,45 @@ List of `PhysicsHit3D` results returned by `RaycastAll`, `OverlapSphere`, and `O
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Get(i)` | `Object(Integer)` | Return hit `i` as a `PhysicsHit3D` |
+
+---
+
+## Viper.Graphics3D.LedgeHit3D
+
+Traversal-probe result returned by `Physics3DWorld.ProbeLedge` and `ProbeVault`.
+A plain snapshot handle (the `PhysicsHit3D` pattern): vectors are world-space at
+probe time and are not live — re-probe after movement.
+
+**Type:** Instance (obj), no public constructor
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `GrabPoint` | Object (`Vec3`) | Read | Ledge edge point (wall contact XZ at the ledge-top height) |
+| `SurfaceNormal` | Object (`Vec3`) | Read | Ledge top surface normal (`y >= 0.6` guaranteed) |
+| `WallNormal` | Object (`Vec3`) | Read | Front wall surface normal |
+| `LandingPoint` | Object (`Vec3`) | Read | Far-side vault landing point; `Nothing` for ledge probes |
+| `Height` | Double | Read | Ledge top height above the probe origin |
+| `HasStandingRoom` | Boolean | Read | A capsule of the probe dims fits above the ledge top |
+| `HasLanding` | Boolean | Read | A vault landing was found (always `false` for ledge probes) |
+
+### Traversal probe recipe
+
+Probes take a **foot-level** origin (the capsule is skin-lifted internally so
+standing on the ground never reads as an initial penetration) and reason in the
+horizontal plane of `forward`. `ProbeLedge` runs a wall sweep, then drops a
+sphere onto the candidate top (rejecting overhangs whose normal has `y < 0.6`),
+then reports standing room for a capsule of the probe radius and `maxHeight`.
+`ProbeVault` additionally requires walkable ground on the far side of the
+obstacle between roughly `0.3` above and `2.0` below the origin level — a thick
+wall whose top is the only "landing" is rejected. Probes cost 2–3 sweeps per
+call; use them event-driven (on jump press near a wall), not per-frame.
+
+A minimal mantle: on jump press, `ProbeLedge`, check `HasStandingRoom`, then
+either play a root-motion mantle clip toward `GrabPoint` (see the Game3D
+guide's Animator3D root-motion section) or teleport the character so its feet
+land on the ledge top and let the ground probe settle it.
 
 ---
 
@@ -462,6 +504,10 @@ Controller-based character movement with slide-and-step collision against a `Phy
 | `Grounded` | Boolean | Read | Character is grounded |
 | `JustLanded` | Boolean | Read | Character landed during the latest move |
 | `Position` | Object (`Vec3`) | Read | Current world position |
+| `Height` | Double | Read/Write | Capsule height including caps; the setter is `TrySetHeight` with the result ignored |
+| `PushStrength` | Double | Read/Write | Impulse scale applied to blocking dynamic bodies (default `1.0`; `0` blocks without pushing) |
+| `CollideDynamic` | Boolean | Read/Write | Dynamic bodies block and can be pushed (default `true`; `false` restores legacy ghost-through) |
+| `RidePlatforms` | Boolean | Read/Write | Track moving kinematic/static ground each move (default `true`) |
 
 ### Methods
 
@@ -470,6 +516,56 @@ Controller-based character movement with slide-and-step collision against a `Phy
 | `Move(direction, dt)` | `Void(Object, Double)` | Move with collision response using a `Vec3` direction |
 | `SetSlopeLimit(degrees)` | `Void(Double)` | Set the maximum climbable slope angle |
 | `SetPosition(x, y, z)` | `Void(Double, Double, Double)` | Teleport the character |
+| `TrySetHeight(height)` | `Boolean(Double)` | Crouch/stand capsule resize: shrinking always succeeds with the feet planted; growing tests the stand pose first and returns `false` when blocked |
+| `IsSliding()` | `Boolean()` | `true` while resting against a surface steeper than the slope limit (the controller slides instead of grounding) |
+| `GetGroundBody()` | `Object()` | Body under the controller's feet, or `null` while airborne — the hook for conveyor logic and surface queries |
+
+Dynamic-body interaction: blocking dynamic bodies receive one impulse per body
+per move along the contact normal, proportional to the approach speed and
+scaled by `min(1, controllerMass / bodyMass)` — light props yield and heavy
+props wall the controller. Moving platforms: while grounded on a kinematic or
+static body with velocity, the controller pre-displaces by the platform's step
+displacement (linear plus yaw about the platform origin) *before* the swept
+move, so walls on the platform still block. Platform rotation rides yaw only.
+
+---
+
+## Viper.Graphics3D.Ragdoll3D
+
+Auto-built ragdoll rigs: capsule bodies and limited 6-DoF joints fitted to a
+`Skeleton3D`'s bind pose, with animation handoff and blend-back.
+
+**Type:** Instance (obj)
+**Constructor:** `Ragdoll3D.New(skeleton)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `TotalMass` | Double | Read/Write | Mass distributed across bodies by relative volume (default 70; configure before `Activate`) |
+| `RadiusScale` | Double | Read/Write | Capsule radius as a fraction of bone length (default 0.22) |
+| `MinBoneLength` | Double | Read/Write | Bones shorter than this collapse into their parent body (default 0.12) |
+| `BodyCount` | Integer | Read | Number of rig bodies (builds the rig on first read) |
+| `Active` | Boolean | Read | True between `Activate` and `Deactivate` |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetJointLimits(boneName, swingDeg, twistDeg)` | `Void(String, Double, Double)` | Per-bone 6-DoF limit override (defaults ±30° swing / ±20° twist, relative to bind) |
+| `Activate(world, controller, node)` | `Void(Object, Object, Object)` | Anim→ragdoll handoff: bodies posed from the current pose with finite-difference velocities, then added to the world with their joints |
+| `Deactivate(blendSeconds)` | `Void(Double)` | Remove the rig and blend the palette back to live animation (play the get-up state at the same time) |
+| `SetPowered(boneMask, stiffness)` | `Void(Integer, Double)` | PD-drive masked bodies (bit per rig slot; -1 = all) toward the animated pose — powered hit reactions |
+| `Step(dt)` | `Void(Double)` | Per-step sync (palette write-back, root-follow, powered drive). Game3D worlds call this automatically between physics and scene sync; raw users call it manually |
+| `GetBody(boneName)` | `Object(String)` | Per-bone body escape hatch (cameras, impulses) |
+
+Rig bodies share a dedicated collision layer that excludes rig-vs-rig contacts
+(joint anchors overlap by construction) while colliding with all world
+geometry. The node root-follows the corpse: the entity origin tracks the root
+body while skinned vertices stay world-stable. Requires an (approximately)
+uniformly scaled entity. Game3D sugar: `Entity3D.EnableRagdoll()` builds and
+activates from the entity's animator (cached), `DisableRagdoll(blendSeconds)`
+blends out — the natural pairing with `Health3D.JustDied()`.
 
 ---
 
@@ -578,6 +674,39 @@ relative orientation as the zero pose.
 | `SetLinearMotor(enabled, velocity, maxForce)` | `Void(Boolean, Object, Double)` | Drive relative linear velocity along unlocked axes toward a `Vec3` target, bounded by a maximum force |
 
 ---
+
+## Viper.Graphics3D.Cloth3D
+
+From-scratch verlet cloth for secondary motion: **chains** (capes, hair
+tails) and **patches** (banners, flags). Fixed 1/120 substeps behind an
+accumulator (max 8/step, remainder carried) make replay bit-identical; the
+same simulated time sliced into different frame dts produces identical
+states.
+
+```zia
+var cape = Cloth3D.NewChain(8, 1.6).Pin(0);         // segments, total length
+var flag = Cloth3D.NewPatch(6, 4, 1.2, 0.6);        // grid w,h, size w,h
+flag.Pin(0).Pin(1).Pin(2).Pin(3).Pin(4).Pin(5);     // pin the top row
+flag.SetWind(Viper.Math.Vec3.New(0.0, 0.0, 1.0), 6.0);
+flag.BindMesh(mesh);                                 // rewritten in place per step
+cape.BindBoneChain(controller, "cape_root");         // linear bone chain
+world.AddCloth(cape);
+world.AddCloth(flag);
+```
+
+- Knobs: `Damping` (0..1), `Iterations` (default 4), `GravityScale`,
+  `WindResponse`; tune stiffness in that order. `GetPoint(i)` inspects the
+  simulation; `Step(dt)` drives an unregistered cloth manually.
+- Colliders: `AddSphere(center, r)` / `AddCapsule(a, b, r)` (≤16, static).
+  Bone-bound chains simulate in the skeleton's **model space**, so a static
+  torso capsule is exactly right for a cape.
+- `BindBoneChain` walks single-child links from the root bone (branching
+  traps), pins point 0 to the animated root pose each step, and writes
+  simulated directions back as aim rotations through the same masked
+  pose-override slot ragdolls use (positions preserved — length-safe).
+  Anchor jumps beyond half the rest length rigid-translate the whole cloth,
+  so teleports never inject phantom velocity.
+- One-way coupling by design: cloth never feeds back into rigid physics.
 
 ## See Also
 

@@ -802,7 +802,9 @@ typedef struct {
     float fog_near;
     float fog_far;
     float fog_color[3];
-    float height_fog[4]; /* base, falloff, density*blend (0 = off), pad */
+    float height_fog[4];         /* base, falloff, density*blend (0 = off), pad */
+    float height_fog_sun[4];     /* sun tint rgb + amount (0 = off) */
+    float height_fog_sun_dir[4]; /* direction toward the sun + power */
     int8_t ibl_enabled;
     float ibl_intensity;
     float ibl_sh[27];
@@ -835,6 +837,7 @@ typedef struct {
         uHasAOMap, uCameraIsOrtho;
     GLint uCustomParams;
     GLint uHasSplat, uFogEnabled, uFogNear, uFogFar, uFogColor, uHeightFog;
+    GLint uHeightFogSun, uHeightFogSunDir;
     GLint uIblEnabled, uIblIntensity, uEnvLodBase, uShIrradiance;
     GLint uTextureUvSets0, uTextureUvSets1;
     GLint uTextureUvTransform0, uTextureUvTransform1;

@@ -1781,6 +1781,11 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->height_fog_falloff = 0.1f;
     c->height_fog_density = 0.02f;
     c->height_fog_blend = 1.0f;
+    c->height_fog_sun_color[0] = 1.0f;
+    c->height_fog_sun_color[1] = 1.0f;
+    c->height_fog_sun_color[2] = 1.0f;
+    c->height_fog_sun_power = 8.0f;
+    c->height_fog_sun_amount = 0.0f;
     c->cached_cam_near = 0.1f;
     c->cached_cam_far = 1000.0f;
     c->shadows_enabled = 0;
@@ -2681,6 +2686,41 @@ void rt_canvas3d_set_height_fog(
     if (b > 1.0f)
         b = 1.0f;
     c->height_fog_blend = b;
+}
+
+/// @brief Configure height-fog sun inscattering: fog tints toward @p r,@p g,@p b by
+///   @p amount * pow(max(dot(viewDir, sunDir), 0), @p power). The sun direction is
+///   resolved per frame from the first enabled directional light; amount 0 (the
+///   default) disables the term so legacy height fog renders unchanged.
+void rt_canvas3d_set_height_fog_sun(
+    void *obj, double r, double g, double b, double power, double amount) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->height_fog_sun_color[0] = canvas3d_sanitize_nonnegative_f64(r, 1.0f);
+    c->height_fog_sun_color[1] = canvas3d_sanitize_nonnegative_f64(g, 1.0f);
+    c->height_fog_sun_color[2] = canvas3d_sanitize_nonnegative_f64(b, 1.0f);
+    c->height_fog_sun_power = canvas3d_sanitize_nonnegative_f64(power, 8.0f);
+    float a = (float)(isfinite(amount) ? amount : 0.0);
+    if (a < 0.0f)
+        a = 0.0f;
+    if (a > 1.0f)
+        a = 1.0f;
+    c->height_fog_sun_amount = a;
+}
+
+/// @brief Disable height fog only (distance fog, if set, remains active).
+void rt_canvas3d_clear_height_fog(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->height_fog_enabled = 0;
+}
+
+/// @brief True while exponential height fog is enabled on this canvas.
+int8_t rt_canvas3d_get_height_fog_enabled(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->height_fog_enabled ? 1 : 0;
 }
 
 /// @brief Disable distance AND height fog on the canvas.

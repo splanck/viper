@@ -60,7 +60,7 @@ func main() {
 
     var graph = new WorldGraph();
     var route = [0, 1, 2, 5, 4, 3, 6, 7, 8, 9];
-    var abilities = ABILITY_WALL_JUMP;
+    var abilities = ABILITY_WALL_JUMP + ABILITY_DOUBLE_JUMP;
     var completion = 0;
     var previous = route.get(0);
     completion = campaignMaskAdd(completion, previous);

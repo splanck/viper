@@ -68,9 +68,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
-                                                   rt_game3d_world *world,
-                                                   const char *api_name);
+int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
+                                            rt_game3d_world *world,
+                                            const char *api_name);
 
 /// @brief Compute walking-controller X/Z input without Space/Shift/Ctrl vertical keys.
 static void game3d_input_planar_move_axis_components(rt_game3d_input *input,
@@ -313,6 +313,10 @@ void *rt_game3d_character_controller_new(
     controller->jump_speed = RT_GAME3D_DEFAULT_JUMP_SPEED;
     controller->gravity = RT_GAME3D_DEFAULT_GRAVITY;
     controller->eye_height = height * 0.45;
+    controller->stand_height = height;
+    controller->crouch_height = height * 0.5;
+    controller->capsule_radius = radius;
+    controller->crouching = 0;
 
     void *pos = rt_game3d_entity_world_position(entity);
     if (pos) {
@@ -397,19 +401,16 @@ void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
             game3d_clamp_abs_or(gravity, RT_GAME3D_DEFAULT_GRAVITY, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
-/// @brief Advance the character one frame from input and camera orientation.
-/// @details Builds a camera-relative X/Z move vector from WASD/arrow keys
-///   (clamped to unit length), integrates jump/downward gravity against the grounded
-///   state, moves the Character3D by `dt` (itself clamped), and syncs the result
-///   back onto the entity. Traps on invalid input or a non-Camera3D camera.
-void rt_game3d_character_controller_update(void *obj, void *input_obj, void *camera, double dt) {
-    rt_game3d_character_controller *controller = game3d_character_controller_checked(
-        obj, "Game3D.CharacterController3D.update: invalid controller");
-    (void)game3d_input_checked(input_obj, "Game3D.CharacterController3D.update: invalid input");
-    if (!rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID)) {
-        rt_trap("Game3D.CharacterController3D.update: camera must be Camera3D");
-        return;
-    }
+/// @brief Shared planar drive core: integrate jump/gravity against the grounded state
+///   and move the wrapped Character3D along the caller-supplied normalized XZ basis.
+///   See rt_game3d_internal.h.
+void game3d_character_controller_drive(rt_game3d_character_controller *controller,
+                                       void *input_obj,
+                                       double fx,
+                                       double fz,
+                                       double rx,
+                                       double rz,
+                                       double dt) {
     void *character = game3d_character_controller_character_ref(controller);
     if (!controller || !character)
         return;
@@ -420,8 +421,6 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     double move_x = 0.0;
     double move_z = 0.0;
     game3d_input_planar_move_axis_components((rt_game3d_input *)input_obj, &move_x, &move_z);
-    void *forward = rt_camera3d_get_forward(camera);
-    void *right = rt_camera3d_get_right(camera);
 
     move_x = game3d_finite_or(move_x, 0.0);
     move_z = game3d_finite_or(move_z, 0.0);
@@ -431,10 +430,6 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
         move_z /= move_len;
     }
 
-    double fx = forward ? rt_vec3_x(forward) : 0.0;
-    double fz = forward ? rt_vec3_z(forward) : -1.0;
-    double rx = right ? rt_vec3_x(right) : 1.0;
-    double rz = right ? rt_vec3_z(right) : 0.0;
     game3d_normalize_xz(&fx, &fz, 0.0, -1.0);
     game3d_normalize_xz(&rx, &rz, 1.0, 0.0);
 
@@ -463,9 +458,35 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     if (rt_character3d_is_grounded(character) && controller->vertical_velocity < 0.0)
         controller->vertical_velocity = -0.5;
     game3d_character_controller_sync_entity(controller);
+}
 
+/// @brief Advance the character one frame from input and camera orientation.
+/// @details Builds a camera-relative X/Z move vector from WASD/arrow keys
+///   (clamped to unit length), integrates jump/downward gravity against the grounded
+///   state, moves the Character3D by `dt` (itself clamped), and syncs the result
+///   back onto the entity. Traps on invalid input or a non-Camera3D camera.
+void rt_game3d_character_controller_update(void *obj, void *input_obj, void *camera, double dt) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.update: invalid controller");
+    (void)game3d_input_checked(input_obj, "Game3D.CharacterController3D.update: invalid input");
+    if (!rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID)) {
+        rt_trap("Game3D.CharacterController3D.update: camera must be Camera3D");
+        return;
+    }
+    void *character = game3d_character_controller_character_ref(controller);
+    if (!controller || !character)
+        return;
+
+    void *forward = rt_camera3d_get_forward(camera);
+    void *right = rt_camera3d_get_right(camera);
+    double fx = forward ? rt_vec3_x(forward) : 0.0;
+    double fz = forward ? rt_vec3_z(forward) : -1.0;
+    double rx = right ? rt_vec3_x(right) : 1.0;
+    double rz = right ? rt_vec3_z(right) : 0.0;
     game3d_release_ref(&right);
     game3d_release_ref(&forward);
+
+    game3d_character_controller_drive(controller, input_obj, fx, fz, rx, rz, dt);
 }
 
 /// @brief Teleport the character to an absolute position (NaN-scrubbed), clearing
@@ -492,6 +513,210 @@ int8_t rt_game3d_character_controller_grounded(void *obj) {
     return character ? rt_character3d_is_grounded(character) : 0;
 }
 
+/// @brief Get the crouch capsule height applied by SetCrouching(true).
+double rt_game3d_character_controller_get_crouch_height(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_crouchHeight: invalid controller");
+    return controller ? controller->crouch_height : 0.0;
+}
+
+/// @brief Set the crouch capsule height (positive; applied on the next SetCrouching).
+void rt_game3d_character_controller_set_crouch_height(void *obj, double height) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_crouchHeight: invalid controller");
+    if (controller)
+        controller->crouch_height = game3d_positive_clamped_or(
+            height, controller->stand_height * 0.5, RT_GAME3D_SCALE_ABS_MAX);
+}
+
+/// @brief Toggle crouch: true swaps to CrouchHeight (always succeeds), false tries
+///   to stand back up and returns false when blocked by a ceiling (TryStand).
+int8_t rt_game3d_character_controller_set_crouching(void *obj, int8_t crouching) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.setCrouching: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    if (!controller || !character)
+        return 0;
+    if (crouching) {
+        if (rt_character3d_try_set_height(character, controller->crouch_height)) {
+            controller->crouching = 1;
+            game3d_character_controller_sync_entity(controller);
+            return 1;
+        }
+        return 0;
+    }
+    if (rt_character3d_try_set_height(character, controller->stand_height)) {
+        controller->crouching = 0;
+        game3d_character_controller_sync_entity(controller);
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief True while the crouch state is engaged.
+int8_t rt_game3d_character_controller_is_crouching(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.isCrouching: invalid controller");
+    return controller ? controller->crouching : 0;
+}
+
+/// @brief Get the dynamic push impulse scale (delegates to Character3D).
+double rt_game3d_character_controller_get_push_strength(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_pushStrength: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    return character ? rt_character3d_get_push_strength(character) : 0.0;
+}
+
+/// @brief Set the dynamic push impulse scale (delegates to Character3D).
+void rt_game3d_character_controller_set_push_strength(void *obj, double strength) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_pushStrength: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    if (character)
+        rt_character3d_set_push_strength(character, strength);
+}
+
+/// @brief Get whether the controller rides moving platforms.
+int8_t rt_game3d_character_controller_get_ride_platforms(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.get_ridePlatforms: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    return character ? rt_character3d_get_ride_platforms(character) : 0;
+}
+
+/// @brief Set whether the controller rides moving platforms.
+void rt_game3d_character_controller_set_ride_platforms(void *obj, int8_t enabled) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.set_ridePlatforms: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    if (character)
+        rt_character3d_set_ride_platforms(character, enabled);
+}
+
+/// @brief True while the character rests on a too-steep surface.
+int8_t rt_game3d_character_controller_is_sliding(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.isSliding: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    return character ? rt_character3d_is_sliding(character) : 0;
+}
+
+/// @brief Build the probe basis (physics world, origin, planar forward, radius)
+///   for the traversal-probe sugar. Forward comes from the entity node's world
+///   rotation applied to -Z (identity rotation faces -Z). Returns 0 when the
+///   controller lacks a world, character, or entity node.
+static int game3d_character_controller_probe_basis(rt_game3d_character_controller *controller,
+                                                   void **out_physics,
+                                                   double origin[3],
+                                                   double forward[3],
+                                                   double *out_radius) {
+    rt_game3d_world *world =
+        controller ? (rt_game3d_world *)rt_g3d_checked_or_null(controller->world,
+                                                               RT_G3D_GAME3D_WORLD_CLASS_ID)
+                   : NULL;
+    void *character = game3d_character_controller_character_ref(controller);
+    rt_game3d_entity *entity = game3d_character_controller_entity_ref(controller);
+    void *node = entity ? game3d_entity_node_ref(entity) : NULL;
+    if (!world || !world->physics || !character)
+        return 0;
+    void *pos = rt_character3d_get_position(character);
+    if (!pos)
+        return 0;
+    /* World probes take a FOOT-level origin; the character position is the
+     * capsule center, so drop by half the current height. */
+    double half_height = rt_character3d_get_height(character) * 0.5;
+    origin[0] = game3d_clamp_coord_or(rt_vec3_x(pos), 0.0);
+    origin[1] = game3d_clamp_coord_or(rt_vec3_y(pos) - half_height, 0.0);
+    origin[2] = game3d_clamp_coord_or(rt_vec3_z(pos), 0.0);
+    game3d_release_ref(&pos);
+    forward[0] = 0.0;
+    forward[1] = 0.0;
+    forward[2] = -1.0;
+    if (node) {
+        double qx = 0.0;
+        double qy = 0.0;
+        double qz = 0.0;
+        double qw = 1.0;
+        if (rt_scene_node3d_get_world_rotation_components(node, &qx, &qy, &qz, &qw)) {
+            /* v' = v + 2*w*(q×v) + 2*(q×(q×v)) for v = (0,0,-1). */
+            double cx = qy * -1.0 - qz * 0.0; /* q × v */
+            double cy = qz * 0.0 - qx * -1.0;
+            double cz = qx * 0.0 - qy * 0.0;
+            double ccx = qy * cz - qz * cy; /* q × (q × v) */
+            double ccy = qz * cx - qx * cz;
+            double ccz = qx * cy - qy * cx;
+            forward[0] = 0.0 + 2.0 * (qw * cx + ccx);
+            forward[1] = 0.0 + 2.0 * (qw * cy + ccy);
+            forward[2] = -1.0 + 2.0 * (qw * cz + ccz);
+        }
+    }
+    *out_physics = world->physics;
+    *out_radius = controller->capsule_radius > 0.0 ? controller->capsule_radius : 0.3;
+    return 1;
+}
+
+/// @brief Probe for a grabbable ledge ahead of the character (see
+///   Physics3DWorld.ProbeLedge). Sweep depth defaults to 1.0 unit; mask all.
+void *rt_game3d_character_controller_probe_ledge(void *obj, double max_height) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.probeLedge: invalid controller");
+    void *physics = NULL;
+    double origin[3];
+    double forward[3];
+    double radius = 0.3;
+    if (!game3d_character_controller_probe_basis(controller, &physics, origin, forward, &radius))
+        return NULL;
+    void *origin_vec = rt_vec3_new(origin[0], origin[1], origin[2]);
+    void *forward_vec = rt_vec3_new(forward[0], forward[1], forward[2]);
+    void *result = rt_world3d_probe_ledge(
+        physics, origin_vec, forward_vec, radius, max_height, 1.0, -1);
+    game3d_release_ref(&forward_vec);
+    game3d_release_ref(&origin_vec);
+    return result;
+}
+
+/// @brief Probe for a vaultable obstacle ahead of the character (see
+///   Physics3DWorld.ProbeVault). Mask all.
+void *rt_game3d_character_controller_probe_vault(void *obj,
+                                                 double max_height,
+                                                 double max_thickness) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.probeVault: invalid controller");
+    void *physics = NULL;
+    double origin[3];
+    double forward[3];
+    double radius = 0.3;
+    if (!game3d_character_controller_probe_basis(controller, &physics, origin, forward, &radius))
+        return NULL;
+    void *origin_vec = rt_vec3_new(origin[0], origin[1], origin[2]);
+    void *forward_vec = rt_vec3_new(forward[0], forward[1], forward[2]);
+    void *result = rt_world3d_probe_vault(
+        physics, origin_vec, forward_vec, radius, max_height, max_thickness, -1);
+    game3d_release_ref(&forward_vec);
+    game3d_release_ref(&origin_vec);
+    return result;
+}
+
+/// @brief Resolve the ground body under the character to its owning Entity3D
+///   through the world registry (NULL when airborne or unmanaged).
+void *rt_game3d_character_controller_ground_entity(void *obj) {
+    rt_game3d_character_controller *controller = game3d_character_controller_checked(
+        obj, "Game3D.CharacterController3D.groundEntity: invalid controller");
+    void *character = game3d_character_controller_character_ref(controller);
+    rt_game3d_world *world =
+        controller ? (rt_game3d_world *)rt_g3d_checked_or_null(controller->world,
+                                                               RT_G3D_GAME3D_WORLD_CLASS_ID)
+                   : NULL;
+    if (!character || !world)
+        return NULL;
+    void *body = rt_character3d_get_ground_body(character);
+    if (!body)
+        return NULL;
+    rt_game3d_entity *entity = game3d_world_find_entity_by_body(world, body);
+    return game3d_entity_alive_or_record(entity) ? entity : NULL;
+}
+
 /// @brief True if `controller` is NULL or one of the four Game3D camera-controller
 ///   classes — the set accepted by World3D.SetCameraController.
 int game3d_camera_controller_is_valid(void *controller) {
@@ -499,7 +724,8 @@ int game3d_camera_controller_is_valid(void *controller) {
         return 1;
     int64_t cid = rt_obj_class_id(controller);
     return cid == RT_G3D_GAME3D_FIRSTPERSON_CLASS_ID || cid == RT_G3D_GAME3D_FREEFLY_CLASS_ID ||
-           cid == RT_G3D_GAME3D_ORBIT_CLASS_ID || cid == RT_G3D_GAME3D_FOLLOW_CLASS_ID;
+           cid == RT_G3D_GAME3D_ORBIT_CLASS_ID || cid == RT_G3D_GAME3D_FOLLOW_CLASS_ID ||
+           cid == RT_G3D_GAME3D_THIRDPERSON_CLASS_ID || cid == RT_G3D_GAME3D_RAILCAMERA_CLASS_ID;
 }
 
 /// @brief Return the world currently retained by a camera controller, or NULL.
@@ -516,6 +742,10 @@ void *game3d_camera_controller_get_world_ref(void *controller) {
         world = ((rt_game3d_orbit_controller *)controller)->world;
     else if (cid == RT_G3D_GAME3D_FOLLOW_CLASS_ID)
         world = ((rt_game3d_follow_controller *)controller)->world;
+    else if (cid == RT_G3D_GAME3D_THIRDPERSON_CLASS_ID)
+        world = ((rt_game3d_thirdperson_controller *)controller)->world;
+    else if (cid == RT_G3D_GAME3D_RAILCAMERA_CLASS_ID)
+        world = ((rt_game3d_rail_camera *)controller)->world;
     return rt_g3d_checked_or_null(world, RT_G3D_GAME3D_WORLD_CLASS_ID);
 }
 
@@ -540,6 +770,16 @@ void game3d_camera_controller_bind_world_ref(void *controller, void *world) {
         game3d_assign_typed_ref(&((rt_game3d_follow_controller *)controller)->world,
                                 world,
                                 RT_G3D_GAME3D_WORLD_CLASS_ID);
+    } else if (cid == RT_G3D_GAME3D_RAILCAMERA_CLASS_ID) {
+        game3d_assign_typed_ref(&((rt_game3d_rail_camera *)controller)->world,
+                                world,
+                                RT_G3D_GAME3D_WORLD_CLASS_ID);
+    } else if (cid == RT_G3D_GAME3D_THIRDPERSON_CLASS_ID) {
+        rt_game3d_thirdperson_controller *third =
+            (rt_game3d_thirdperson_controller *)controller;
+        if (!world)
+            game3d_thirdperson_reset_fades(third);
+        game3d_assign_typed_ref(&third->world, world, RT_G3D_GAME3D_WORLD_CLASS_ID);
     }
 }
 
@@ -559,9 +799,9 @@ void game3d_camera_controller_clear_world_ref_if(void *controller, void *world) 
 ///   camera changes to one World3D while retained controller state belongs to another.
 ///   A NULL bound world is allowed for detached controllers so explicit update calls
 ///   remain possible after clearing a world slot.
-static int game3d_camera_controller_validate_world(void *controller,
-                                                   rt_game3d_world *world,
-                                                   const char *api_name) {
+int game3d_camera_controller_validate_world(void *controller,
+                                            rt_game3d_world *world,
+                                            const char *api_name) {
     void *bound_world = game3d_camera_controller_get_world_ref(controller);
     if (bound_world && world && bound_world != world) {
         rt_trap(api_name ? api_name
@@ -575,9 +815,9 @@ static int game3d_camera_controller_validate_world(void *controller,
 /// @details First-person controllers can wrap a separately-created character
 ///   controller. This prevents one world's FPS controller from moving a character
 ///   registered in another world's physics simulation.
-static int game3d_character_controller_validate_world(rt_game3d_character_controller *controller,
-                                                      rt_game3d_world *world,
-                                                      const char *api_name) {
+int game3d_character_controller_validate_world(rt_game3d_character_controller *controller,
+                                               rt_game3d_world *world,
+                                               const char *api_name) {
     void *bound_world =
         controller ? rt_g3d_checked_or_null(controller->world, RT_G3D_GAME3D_WORLD_CLASS_ID) : NULL;
     if (bound_world && world && bound_world != world) {
@@ -593,9 +833,9 @@ static int game3d_character_controller_validate_world(rt_game3d_character_contro
 /// @details Unspawned entities remain assignable because they can be spawned into
 ///   the target world later. Spawned entities must match to avoid controllers reading
 ///   transforms from one World3D while writing cameras or physics state in another.
-static int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
-                                                   rt_game3d_world *world,
-                                                   const char *api_name) {
+int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
+                                            rt_game3d_world *world,
+                                            const char *api_name) {
     if (entity && !game3d_entity_alive_or_record(entity))
         return 0;
     if (entity && entity->spawned && entity->world && world && entity->world != world) {

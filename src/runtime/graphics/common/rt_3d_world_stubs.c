@@ -506,6 +506,83 @@ void rt_terrain3d_set_splat_map(void *t, void *p) {
     (void)p;
 }
 
+/// @brief Stub for `Terrain3D.SetSplatMapAt` — indexed splat map bind. Silent no-op stub.
+void rt_terrain3d_set_splat_map_at(void *t, int64_t index, void *p) {
+    (void)t;
+    (void)index;
+    (void)p;
+}
+
+/// @brief Silent stub for `Terrain3D.SetHole` — no-op; returns -1 (no hole).
+int64_t rt_terrain3d_set_hole(void *t, double x, double z, double width, double depth) {
+    (void)t;
+    (void)x;
+    (void)z;
+    (void)width;
+    (void)depth;
+    return -1;
+}
+
+/// @brief Silent stub for `Terrain3D.RemoveHole` — no-op; returns 0.
+int8_t rt_terrain3d_remove_hole(void *t, int64_t index) {
+    (void)t;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub for `Terrain3D.ClearHoles`. Silent no-op stub.
+void rt_terrain3d_clear_holes(void *t) {
+    (void)t;
+}
+
+/// @brief Silent stub for `Terrain3D.get_HoleCount` — no-op; returns 0.
+int64_t rt_terrain3d_get_hole_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Silent stub for the internal hole-mask handoff — no-op; returns NULL.
+const uint8_t *rt_terrain3d_get_hole_mask_raw(void *t, int32_t *out_cells_x, int32_t *out_cells_z) {
+    (void)t;
+    if (out_cells_x)
+        *out_cells_x = 0;
+    if (out_cells_z)
+        *out_cells_z = 0;
+    return 0;
+}
+
+/// @brief Stub for `Terrain3D.SetSlopeLayer`. Silent no-op stub.
+void rt_terrain3d_set_slope_layer(
+    void *t, int64_t layer, double min_slope_deg, double max_slope_deg, double sharpness) {
+    (void)t;
+    (void)layer;
+    (void)min_slope_deg;
+    (void)max_slope_deg;
+    (void)sharpness;
+}
+
+/// @brief Stub for `Terrain3D.SetHeightLayer`. Silent no-op stub.
+void rt_terrain3d_set_height_layer(
+    void *t, int64_t layer, double min_y, double max_y, double sharpness) {
+    (void)t;
+    (void)layer;
+    (void)min_y;
+    (void)max_y;
+    (void)sharpness;
+}
+
+/// @brief Stub for `Terrain3D.RebuildSplatWeights`. Silent no-op stub.
+void rt_terrain3d_rebuild_splat_weights(void *t) {
+    (void)t;
+}
+
+/// @brief Silent stub for the internal splat-map inspection hook — no-op; returns NULL.
+void *rt_terrain3d_get_splat_map_raw(void *t, int64_t index) {
+    (void)t;
+    (void)index;
+    return 0;
+}
+
 /// @brief Stub for `Terrain3D.SetLayerTexture` — bind a Pixels texture
 ///        as one of the 4 splat-map layers (`l = 0..3`). Each layer is
 ///        sampled independently with its own UV scale.

@@ -1,0 +1,50 @@
+module test_game3d_surfaces_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    // Registry: idempotent ids from 1, name/id round-trip.
+    var stone = Game3D.Surfaces.Register("stone");
+    var ice = Game3D.Surfaces.Register("ice");
+    if (stone < 1 || ice != stone + 1 || Game3D.Surfaces.Register("stone") != stone) {
+        Terminal.Say("FAIL: surface registry ids not stable/idempotent");
+        return;
+    }
+    if (Game3D.Surfaces.NameOf(ice) != "ice" || Game3D.Surfaces.IdOf("stone") != stone ||
+        Game3D.Surfaces.IdOf("mud") != 0) {
+        Terminal.Say("FAIL: surface name/id lookups wrong");
+        return;
+    }
+
+    // Tagged floor: raycast reads the surface through the hit collider.
+    var world = Game3D.World3D.New("Surfaces Probe", 64, 48);
+    var floorEnt = Game3D.Entity3D.New();
+    floorEnt.SetPosition(0.0, 0.0, 0.0);
+    world.Spawn(floorEnt);
+    var shape = Collider3D.NewBox(10.0, 0.5, 10.0);
+    shape.SurfaceType = ice;
+    shape.Friction = 0.02;
+    var body = Physics3DBody.New(0.0);
+    body.Static = true;
+    body.Collider = shape;
+    body.UserData = 4242;
+    floorEnt.AttachBody(body);
+
+    var hit = world.Physics.Raycast(Vec3.New(0.0, 5.0, 0.0), Vec3.New(0.0, -1.0, 0.0), 20.0, -1);
+    if (hit == null) {
+        Terminal.Say("FAIL: raycast missed the tagged floor");
+        return;
+    }
+    if (hit.SurfaceType != ice) {
+        Terminal.Say("FAIL: hit surface tag mismatch");
+        return;
+    }
+    if (hit.Body.UserData != 4242) {
+        Terminal.Say("FAIL: body user data did not round-trip");
+        return;
+    }
+    world.Destroy();
+    Terminal.Say("PASS");
+}

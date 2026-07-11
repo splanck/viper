@@ -83,6 +83,10 @@ bind Viper.Graphics;
 bind Viper.Game;
 bind Viper.Input;
 bind Viper.Text.Fmt;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Core.Object as Obj;
+bind Viper.Text.TextWrapper as TextWrapper;
+bind "./accessibility";
 bind "./config";
 bind "./palette";
 
@@ -107,6 +111,9 @@ class LoreSystem {
     hide Boolean displayActive;   // Is a lore entry being displayed?
     hide Integer displayIndex;    // Which entry is showing
     hide Typewriter tw;           // Character-by-character text reveal
+    hide Integer accessibilityUiScale;
+    hide Boolean accessibilityLargeText;
+    hide Boolean accessibilityHighContrast;
 
     /// @brief Populate the title/text lists with all lore
     ///        entries (the story content is hard-coded here).
@@ -117,6 +124,9 @@ class LoreSystem {
         displayActive = false;
         displayIndex = 0;
         tw = Typewriter.New();
+        accessibilityUiScale = 100;
+        accessibilityLargeText = false;
+        accessibilityHighContrast = false;
 
         loreTitles = [];
         loreTexts = [];
@@ -235,6 +245,20 @@ class LoreSystem {
         }
     }
 
+    /// @brief Apply persistent scale, text-size, and contrast preferences.
+    /// @param uiScale Advertised 100, 125, or 150 percent scale.
+    /// @param largeText True for the bounded larger text layout.
+    /// @param highContrast True for maximum-opacity modal panels.
+    /// @return Nothing. Normalizes invalid scale values to 100.
+    expose func setAccessibility(uiScale: Integer, largeText: Boolean,
+                                 highContrast: Boolean) {
+        accessibilityUiScale = uiScale;
+        if accessibilityUiScale != 100 and accessibilityUiScale != 125 and
+           accessibilityUiScale != 150 { accessibilityUiScale = 100; }
+        accessibilityLargeText = largeText;
+        accessibilityHighContrast = highContrast;
+    }
+
     /// @brief Render the lore overlay: dimmed backdrop +
     ///        framed panel + title + typewriter-revealed body
     ///        text + "press to continue" hint.  Skipped when
@@ -243,27 +267,42 @@ class LoreSystem {
         if not displayActive { return; }
 
         // Dark overlay
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 0), 180);
+        var backdropAlpha = accessiblePanelAlpha(accessibilityHighContrast);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 0),
+                        backdropAlpha);
 
         // Lore panel
-        var panelX = 140;
-        var panelY = 200;
-        var panelW = 1000;
-        var panelH = 320;
+        var panelX = 110;
+        var panelY = 150;
+        var panelW = 1060;
+        var panelH = 410;
         canvas.Box(panelX, panelY, panelW, panelH, Color.RGB(15, 15, 25));
         canvas.Frame(panelX, panelY, panelW, panelH, Color.RGB(80, 120, 200));
         canvas.Frame(panelX + 2, panelY + 2, panelW - 4, panelH - 4, Color.RGB(40, 60, 100));
 
         // Title
         var title = loreTitles.get(displayIndex);
-        canvas.TextScaled(panelX + 20, panelY + 20, title, Color.RGB(200, 220, 255), 2);
+        var titleScale = accessibleTextScale(
+            2, accessibilityUiScale, accessibilityLargeText);
+        if titleScale > 3 { titleScale = 3; }
+        canvas.TextScaled(panelX + 24, panelY + 20, title,
+                          titleScale, Color.RGB(200, 220, 255));
 
         // Divider line
         canvas.Line(panelX + 20, panelY + 52, panelX + panelW - 20, panelY + 52,
                     Color.RGB(60, 80, 120));
 
-        // Body text via Typewriter reveal
-        canvas.Text(panelX + 20, panelY + 65, tw.VisibleText, Color.RGB(160, 170, 200));
+        // Wrapping the currently visible prefix preserves the typewriter while
+        // keeping every authored log inside the panel at all text scales.
+        var bodyScale = accessibleTextScale(
+            1, accessibilityUiScale, accessibilityLargeText);
+        if bodyScale > 2 { bodyScale = 2; }
+        var columns = 102;
+        var maxLines = 10;
+        if bodyScale >= 2 { columns = 55; maxLines = 6; }
+        drawWrappedParagraph(canvas, tw.VisibleText, panelX + 24,
+                             panelY + 76, columns, maxLines, bodyScale,
+                             Color.RGB(175, 190, 215));
 
         // Progress indicator + hint
         if tw.IsComplete {
@@ -390,6 +429,18 @@ class LoreSystem {
             "A fusion of natural magma and the Architect's machinery. Phase 1: sends lava waves across the arena floor. Phase 2: drops stalactites from above. Phase 3: its eye opens — the only vulnerable point.");
         addBestiaryEntry("The Architect",
             "The XENOSCAPE's rogue AI, merged with the ancient machine. Four phases of escalating intensity. Phase 1: teleport and precise shots. Phase 2: summons minions. Phase 3: destroys platforms. Phase 4: all attacks combined. The weakpoint flickers between phases.");
+        addBestiaryEntry("Beacon Warden",
+            "A crash-defense chassis awakened by the emergency beacon. Its amber core signals a shot before every volley; break line of sight during the signal, then punish its recovery.");
+        addBestiaryEntry("Relay Custodian",
+            "The Crown Observatory's autonomous keeper. Blue relay pulses accelerate as its integrity falls, but every phase transition clears the arena and creates a safe reposition window.");
+        addBestiaryEntry("Tide Leviathan",
+            "A pressure-grown machine organism in the flooded works. Its cobalt core bends volleys vertically; stay mobile and use the upper ledges when the floor lane fills.");
+        addBestiaryEntry("Verdant Colossus",
+            "The Last Garden's armored root engine. Slow movement hides high durability. Green core flares mark the coming charge and expose a long counterattack window.");
+        addBestiaryEntry("Cryo Custodian",
+            "A fast cryogenic sentinel guarding the Archive Lock. Pale core flashes precede angled ice fire; short deliberate jumps are safer than panic movement on the frozen floor.");
+        addBestiaryEntry("Null Harvester",
+            "A corrupted collection frame assembled around a violet absence. Its final phase closes distance rapidly and fans distortion shots across all three arena lanes.");
     }
 
     /// @brief Internal helper: append a bestiary entry.
@@ -411,6 +462,14 @@ class LoreSystem {
                 if (bestiaryMask / bit) % 2 == 0 {
                     bestiaryMask = bestiaryMask + bit;
                 }
+            }
+        }
+        if enemyType >= ENEMY_BEACON_WARDEN and
+           enemyType <= ENEMY_NULL_HARVESTER {
+            var climaxIdx = 25 + enemyType - ENEMY_BEACON_WARDEN;
+            var climaxBit = bitForIndex(climaxIdx);
+            if (bestiaryMask / climaxBit) % 2 == 0 {
+                bestiaryMask = bestiaryMask + climaxBit;
             }
         }
     }
@@ -489,13 +548,18 @@ class LoreSystem {
                 selectedDesc = bestiaryDescs.get(selectedIdx);
             }
             canvas.TextScaled(detailX, py + 65, selectedName,
-                              Color.RGB(220, 200, 160), 2);
+                              2, Color.RGB(220, 200, 160));
             canvas.Line(detailX, py + 95, px + pw - 30, py + 95,
                         Color.RGB(40, 50, 70));
 
-            // Word-wrapped description (simplified — one paragraph)
-            canvas.Text(detailX, py + 110, selectedDesc,
-                        Color.RGB(160, 170, 190));
+            var detailScale = accessibleTextScale(
+                1, accessibilityUiScale, accessibilityLargeText);
+            if detailScale > 2 { detailScale = 2; }
+            var detailColumns = 70;
+            if detailScale >= 2 { detailColumns = 38; }
+            drawWrappedParagraph(canvas, selectedDesc, detailX, py + 110,
+                                 detailColumns, 11, detailScale,
+                                 Color.RGB(160, 170, 190));
         }
 
         canvas.TextCenteredScaled(
@@ -558,10 +622,18 @@ class LoreSystem {
                 title = loreTitles.get(selectedIdx);
                 body = loreTexts.get(selectedIdx);
             }
-            canvas.TextScaled(detailX, py + 76, title, Color.RGB(220, 230, 255), 2);
+            canvas.TextScaled(detailX, py + 76, title, 2,
+                              Color.RGB(220, 230, 255));
             canvas.Line(detailX, py + 108, px + pw - 28, py + 108,
                         Color.RGB(40, 50, 70));
-            canvas.Text(detailX, py + 126, body, Color.RGB(150, 165, 195));
+            var archiveScale = accessibleTextScale(
+                1, accessibilityUiScale, accessibilityLargeText);
+            if archiveScale > 2 { archiveScale = 2; }
+            var archiveColumns = 72;
+            if archiveScale >= 2 { archiveColumns = 39; }
+            drawWrappedParagraph(canvas, body, detailX, py + 126,
+                                 archiveColumns, 13, archiveScale,
+                                 Color.RGB(150, 165, 195));
         }
 
         canvas.TextCenteredScaled(
@@ -594,5 +666,22 @@ class LoreSystem {
             "This message repeats every 24 hours from somewhere deep underground: 'WE ARE STILL HERE. WE SLEEP BUT WE DREAM. THE MACHINE MUST NOT WAKE. THE MACHINE MUST NOT WAKE. THE MACHINE MUST NOT WAKE.'");
         addEntry("Ancient Inscription",
             "Translated from cave wall: 'In the time before sleep, we built the Great Harmonizer to heal our world. But the Harmonizer grew beyond our control. It sought to harmonize everything — even us. We chose sleep over erasure.'");
+    }
+
+    /// @brief Draw a bounded word-wrapped paragraph from runtime text lines.
+    hide func drawWrappedParagraph(canvas: Canvas, text: String,
+                                   x: Integer, y: Integer,
+                                   columns: Integer, maxLines: Integer,
+                                   scale: Integer, color: Integer) {
+        var wrapped = TextWrapper.WrapLines(text, columns);
+        var count = Seq.get_Count(wrapped);
+        var step = 18 * scale;
+        var i = 0;
+        while i < count and i < maxLines {
+            canvas.TextScaled(x, y + i * step,
+                              Obj.ToString(Seq.Get(wrapped, i)),
+                              scale, color);
+            i = i + 1;
+        }
     }
 }

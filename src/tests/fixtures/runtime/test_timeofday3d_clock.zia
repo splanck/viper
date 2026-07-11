@@ -1,0 +1,51 @@
+module test_timeofday3d_clock;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var tod = TimeOfDay3D.New();
+    var sky = Sky3D.New();
+    var sun = Light3D.NewDirectional(Vec3.New(0.0, -1.0, 0.0), 1.0, 1.0, 1.0);
+    tod.SetSunLight(sun);
+    tod.SetSky(sky);
+
+    // Noon: sun high, intensity full.
+    tod.Hours = 12.0;
+    tod.Advance(0.0, null);
+    var noon = tod.SunDirection;
+    if (Vec3.get_Y(noon) < 0.5) {
+        Terminal.Say("FAIL: noon sun should be high");
+        return;
+    }
+    if (Light3D.get_Intensity(sun) < 0.9) {
+        Terminal.Say("FAIL: noon sun should be full intensity");
+        return;
+    }
+    // Midnight: below horizon, light off.
+    tod.Hours = 0.0;
+    tod.Advance(0.0, null);
+    if (Vec3.get_Y(tod.SunDirection) > 0.0) {
+        Terminal.Say("FAIL: midnight sun should be below the horizon");
+        return;
+    }
+    if (Light3D.get_Intensity(sun) != 0.0) {
+        Terminal.Say("FAIL: midnight sun should be off");
+        return;
+    }
+    // Running clock: a 24-second day advances one hour in one second.
+    tod.Hours = 6.0;
+    tod.DayLengthSeconds = 24.0;
+    tod.Advance(1.0, null);
+    var h = tod.Hours;
+    if (h < 6.99 || h > 7.01) {
+        Terminal.Say("FAIL: 24s day should advance 1h per second");
+        return;
+    }
+    // Sky refresh throttle: the sky was regenerated at least once (not dirty).
+    if (sky.Dirty) {
+        Terminal.Say("FAIL: bound sky should have refreshed");
+        return;
+    }
+    Terminal.Say("PASS");
+}

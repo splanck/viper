@@ -394,6 +394,18 @@ void rt_soundsource3d_set_occlusion(void *s, double amount) {
     (void)amount;
 }
 
+/// @brief Silent stub: SoundSource3D mix-group routing is a no-op without graphics.
+void rt_soundsource3d_set_mix_group(void *s, int64_t group) {
+    (void)s;
+    (void)group;
+}
+
+/// @brief Silent stub: reports the default SFX group without graphics.
+int64_t rt_soundsource3d_get_mix_group(void *s) {
+    (void)s;
+    return 1;
+}
+
 /// @brief Stub for `SoundSource3D.Looping` — get the looping flag.
 ///
 /// Silent stub returning `0`.

@@ -40,6 +40,12 @@ int64_t rt_game3d_diagnostics_get_audio_voices_evicted(void);
 int64_t rt_game3d_diagnostics_get_nav_grid_fallbacks(void);
 int64_t rt_game3d_diagnostics_get_stale_entity_calls(void);
 int64_t rt_game3d_diagnostics_get_stale_async_loads_dropped(void);
+
+/// @brief Process-wide count of streaming cell/tile staging failures (missing/corrupt payloads).
+int64_t rt_game3d_diagnostics_get_stream_staging_errors(void);
+
+/// @brief Process-wide count of worker-staged streaming payloads dropped as stale/undesired.
+int64_t rt_game3d_diagnostics_get_stream_stale_stages_dropped(void);
 void rt_game3d_diagnostics_reset(void);
 rt_string rt_game3d_diagnostics_summary(void);
 
@@ -50,6 +56,12 @@ void rt_game3d_diag_record_audio_voice_evicted(void);
 void rt_game3d_diag_record_nav_grid_fallback(void);
 void rt_game3d_diag_record_stale_entity_call(void);
 void rt_game3d_diag_record_stale_async_load_dropped(void);
+
+/// @brief Record a streaming staging failure (worker could not read/parse a payload).
+void rt_game3d_diag_record_stream_staging_error(void);
+
+/// @brief Record a worker-staged streaming payload dropped without being committed.
+void rt_game3d_diag_record_stream_stale_stage_dropped(void);
 
 #ifdef __cplusplus
 }

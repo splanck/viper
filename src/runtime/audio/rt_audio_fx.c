@@ -78,6 +78,7 @@ typedef struct rt_audio_fx {
     int64_t id;
     rt_audio_fx_kind kind;
     int8_t bypass;
+
     union {
         rt_biquad_state biquad;
         rt_delay_state delay;
@@ -184,11 +185,7 @@ static void free_fx(rt_audio_fx *fx) {
     free(fx);
 }
 
-static void biquad_set(rt_biquad_state *bq,
-                       int mode,
-                       double freq_hz,
-                       double q,
-                       double gain_db) {
+static void biquad_set(rt_biquad_state *bq, int mode, double freq_hz, double q, double gain_db) {
     if (!bq)
         return;
     if (!isfinite(freq_hz) || freq_hz < 10.0)
@@ -265,10 +262,7 @@ static void process_biquad(rt_biquad_state *bq, float *samples, int32_t frames, 
     }
 }
 
-static void process_delay(rt_delay_state *delay,
-                          float *samples,
-                          int32_t frames,
-                          int32_t channels) {
+static void process_delay(rt_delay_state *delay, float *samples, int32_t frames, int32_t channels) {
     if (!delay || !delay->buffer || !samples || delay->frames <= 0 || channels < 1)
         return;
     for (int32_t i = 0; i < frames; i++) {
@@ -428,6 +422,26 @@ int64_t rt_audio_fx_add_reverb(int64_t group, double room_size, double damping, 
     return append_fx(group, fx);
 }
 
+/// @brief Update a reverb insert's parameters in place.
+/// @details Same clamps as rt_audio_fx_add_reverb; the delay lines are kept so
+///   eased parameter sweeps (reverb zones) stay click-free and allocation-free.
+void rt_audio_fx_set_reverb_params(
+    int64_t group, int64_t fx_id, double room_size, double damping, double wet) {
+    if (!group_valid(group) || fx_id <= 0)
+        return;
+    fx_lock();
+    for (rt_audio_fx *fx = g_group_fx[group]; fx; fx = fx->next) {
+        if (fx->id == fx_id && fx->kind == RT_AUDIO_FX_REVERB) {
+            fx->u.reverb.room = 0.55f + clampf_range((float)room_size, 0.0f, 1.0f) * 0.4f;
+            fx->u.reverb.damp = clampf_range((float)damping, 0.0f, 1.0f) * 0.8f;
+            fx->u.reverb.wet = clampf_range((float)wet, 0.0f, 1.0f);
+            fx->u.reverb.dry = 1.0f - fx->u.reverb.wet;
+            break;
+        }
+    }
+    fx_unlock();
+}
+
 void rt_audio_fx_set_bypass(int64_t group, int64_t fx_id, int8_t bypass) {
     if (!group_valid(group) || fx_id <= 0)
         return;
@@ -494,11 +508,8 @@ int rt_audio_fx_group_has_effects(int64_t group) {
     return result;
 }
 
-void rt_audio_fx_process_group(int64_t group,
-                               float *samples,
-                               int32_t frames,
-                               int32_t channels,
-                               int32_t sample_rate) {
+void rt_audio_fx_process_group(
+    int64_t group, float *samples, int32_t frames, int32_t channels, int32_t sample_rate) {
     (void)sample_rate;
     if (!group_valid(group) || !samples || frames <= 0 || channels <= 0)
         return;

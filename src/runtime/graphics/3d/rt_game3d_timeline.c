@@ -1,0 +1,762 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/rt_game3d_timeline.c
+// Purpose: Viper.Game3D.Timeline3D — the in-engine cutscene sequencer: camera
+//   cuts and spline moves, FOV ramps, entity animation, audio, subtitles,
+//   letterbox/fade overlays, and polled event markers, ticked by the world's
+//   scaled time with skip/stop semantics and camera-controller suspension.
+// Key invariants:
+//   - Tracks are immutable after play(): sorted once, ticked allocation-free.
+//   - Fire-once tracks fire exactly once per play regardless of step size;
+//     skip() past-fires anims (final state), silences audio, fires markers.
+//   - While any camera track exists, the installed camera controller is
+//     suspended (not detached); the timeline writes the camera in the
+//     late-update slot so look targets read post-physics poses.
+// Ownership/Lifetime:
+//   - GC-managed; finalizer releases retained track objects and the world ref.
+//     The world retains the active timeline; stop()/replacement releases it.
+// Links: misc/plans/thirdpersonupgrade/09-cutscene-sequencer.md,
+//   rt_game3d_internal.h, rt_path3d.h
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_animcontroller3d.h"
+#include "rt_canvas3d.h"
+#include "rt_game3d.h"
+#include "rt_game3d_internal.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_object.h"
+#include "rt_path3d.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+//=========================================================================
+// Lifecycle
+//=========================================================================
+
+/// @brief GC finalizer: release retained track objects, buffers, and world ref.
+static void game3d_timeline_finalize(void *obj) {
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)obj;
+    if (!timeline)
+        return;
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        game3d_release_ref(&timeline->tracks[i].obj_a);
+        game3d_release_ref(&timeline->tracks[i].obj_b);
+    }
+    free(timeline->tracks);
+    timeline->tracks = NULL;
+    timeline->track_count = 0;
+    timeline->track_capacity = 0;
+    game3d_release_ref(&timeline->world);
+}
+
+/// @brief Create an empty timeline bound to @p world (installed via playTimeline).
+void *rt_game3d_timeline_new(void *world_obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.Timeline3D.New: invalid world");
+    if (!world)
+        return NULL;
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)rt_obj_new_i64(
+        RT_G3D_GAME3D_TIMELINE_CLASS_ID, (int64_t)sizeof(*timeline));
+    if (!timeline) {
+        rt_trap("Game3D.Timeline3D.New: allocation failed");
+        return NULL;
+    }
+    memset(timeline, 0, sizeof(*timeline));
+    rt_obj_set_finalizer(timeline, game3d_timeline_finalize);
+    game3d_assign_ref(&timeline->world, world);
+    timeline->skippable = 1;
+    return timeline;
+}
+
+/// @brief Append a zeroed track (grows the array); NULL on failure/while playing.
+static rt_game3d_tl_track *game3d_timeline_append(
+    rt_game3d_timeline *timeline, int8_t type, double t0, double t1, const char *api_name) {
+    if (!timeline)
+        return NULL;
+    if (timeline->playing) {
+        rt_trap(api_name);
+        return NULL;
+    }
+    if (timeline->track_count >= timeline->track_capacity) {
+        int32_t new_cap = timeline->track_capacity ? timeline->track_capacity * 2 : 8;
+        rt_game3d_tl_track *grown =
+            (rt_game3d_tl_track *)realloc(timeline->tracks, (size_t)new_cap * sizeof(*grown));
+        if (!grown)
+            return NULL;
+        timeline->tracks = grown;
+        timeline->track_capacity = new_cap;
+    }
+    rt_game3d_tl_track *track = &timeline->tracks[timeline->track_count++];
+    memset(track, 0, sizeof(*track));
+    track->type = type;
+    t0 = game3d_nonnegative_clamped_or(t0, 0.0, 86400.0);
+    t1 = game3d_nonnegative_clamped_or(t1, t0, 86400.0);
+    if (t1 < t0)
+        t1 = t0;
+    track->t0 = t0;
+    track->t1 = t1;
+    if (t1 > timeline->duration)
+        timeline->duration = t1;
+    timeline->sorted = 0;
+    return track;
+}
+
+/// @brief Copy a snapshot of an rt_string into a bounded track text field.
+static void game3d_timeline_copy_text(char *dst, rt_string text) {
+    dst[0] = '\0';
+    const char *src = text ? rt_string_cstr(text) : NULL;
+    if (src) {
+        strncpy(dst, src, RT_GAME3D_TL_TEXT_MAX - 1);
+        dst[RT_GAME3D_TL_TEXT_MAX - 1] = '\0';
+    }
+}
+
+//=========================================================================
+// Track add-API (fluent)
+//=========================================================================
+
+/// @brief Camera cut: pose applied at t, held until the next camera key.
+void *rt_game3d_timeline_add_camera_cut(void *obj, double t, void *pos, void *look, double fov) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addCameraCut: invalid timeline");
+    if (!rt_g3d_is_vec3(pos) || !rt_g3d_is_vec3(look)) {
+        rt_trap("Game3D.Timeline3D.addCameraCut: pos and lookAt must be Vec3");
+        return obj;
+    }
+    rt_game3d_tl_track *track = game3d_timeline_append(
+        timeline,
+        RT_GAME3D_TL_CAMERA_CUT,
+        t,
+        t,
+        "Game3D.Timeline3D.addCameraCut: tracks are immutable while playing");
+    if (track) {
+        track->vec_a[0] = game3d_clamp_coord_or(rt_vec3_x(pos), 0.0);
+        track->vec_a[1] = game3d_clamp_coord_or(rt_vec3_y(pos), 0.0);
+        track->vec_a[2] = game3d_clamp_coord_or(rt_vec3_z(pos), 0.0);
+        track->vec_b[0] = game3d_clamp_coord_or(rt_vec3_x(look), 0.0);
+        track->vec_b[1] = game3d_clamp_coord_or(rt_vec3_y(look), 0.0);
+        track->vec_b[2] = game3d_clamp_coord_or(rt_vec3_z(look), 0.0);
+        track->scalar_a = game3d_clamp(game3d_finite_or(fov, 60.0), 1.0, 179.0);
+        timeline->has_camera_tracks = 1;
+    }
+    return obj;
+}
+
+/// @brief Camera spline move over [t0,t1]; look = Vec3 | Entity3D | Path3D | NULL.
+void *rt_game3d_timeline_add_camera_move(
+    void *obj, double t0, double t1, void *path, void *look_target, int64_t ease) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addCameraMove: invalid timeline");
+    if (!rt_g3d_has_class(path, RT_G3D_PATH3D_CLASS_ID)) {
+        rt_trap("Game3D.Timeline3D.addCameraMove: path must be Path3D");
+        return obj;
+    }
+    if (look_target && !rt_g3d_is_vec3(look_target) &&
+        !rt_g3d_has_class(look_target, RT_G3D_GAME3D_ENTITY_CLASS_ID) &&
+        !rt_g3d_has_class(look_target, RT_G3D_PATH3D_CLASS_ID)) {
+        rt_trap("Game3D.Timeline3D.addCameraMove: look target must be Vec3, Entity3D, or Path3D");
+        return obj;
+    }
+    rt_game3d_tl_track *track = game3d_timeline_append(
+        timeline,
+        RT_GAME3D_TL_CAMERA_MOVE,
+        t0,
+        t1,
+        "Game3D.Timeline3D.addCameraMove: tracks are immutable while playing");
+    if (track) {
+        game3d_assign_ref(&track->obj_a, path);
+        game3d_assign_ref(&track->obj_b, look_target);
+        track->ease = (int8_t)game3d_clamp((double)ease, 0.0, 3.0);
+        timeline->has_camera_tracks = 1;
+    }
+    return obj;
+}
+
+/// @brief FOV ramp lerped over [t0,t1].
+void *rt_game3d_timeline_add_fov_ramp(
+    void *obj, double t0, double t1, double fov0, double fov1, int64_t ease) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addFovRamp: invalid timeline");
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_FOV_RAMP,
+                               t0,
+                               t1,
+                               "Game3D.Timeline3D.addFovRamp: tracks are immutable while playing");
+    if (track) {
+        track->scalar_a = game3d_clamp(game3d_finite_or(fov0, 60.0), 1.0, 179.0);
+        track->scalar_b = game3d_clamp(game3d_finite_or(fov1, 60.0), 1.0, 179.0);
+        track->ease = (int8_t)game3d_clamp((double)ease, 0.0, 3.0);
+        timeline->has_camera_tracks = 1;
+    }
+    return obj;
+}
+
+/// @brief Fire Animator3D.crossfade on a named entity at t.
+void *rt_game3d_timeline_add_anim(
+    void *obj, double t, rt_string entity_name, rt_string state_name, double crossfade_seconds) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addAnim: invalid timeline");
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_ANIM,
+                               t,
+                               t,
+                               "Game3D.Timeline3D.addAnim: tracks are immutable while playing");
+    if (track) {
+        game3d_timeline_copy_text(track->text_a, entity_name);
+        game3d_timeline_copy_text(track->text_b, state_name);
+        track->scalar_a = game3d_nonnegative_clamped_or(crossfade_seconds, 0.0, 60.0);
+    }
+    return obj;
+}
+
+/// @brief Fire an audio clip at t (2D, or positional at @p position).
+void *rt_game3d_timeline_add_audio(
+    void *obj, double t, void *clip, int8_t positional, void *position) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addAudio: invalid timeline");
+    if (!clip) {
+        rt_trap("Game3D.Timeline3D.addAudio: clip must be non-null");
+        return obj;
+    }
+    if (positional && !rt_g3d_is_vec3(position)) {
+        rt_trap("Game3D.Timeline3D.addAudio: positional audio needs a Vec3 position");
+        return obj;
+    }
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_AUDIO,
+                               t,
+                               t,
+                               "Game3D.Timeline3D.addAudio: tracks are immutable while playing");
+    if (track) {
+        game3d_assign_ref(&track->obj_a, clip);
+        track->positional = positional ? 1 : 0;
+        if (positional) {
+            track->vec_a[0] = game3d_clamp_coord_or(rt_vec3_x(position), 0.0);
+            track->vec_a[1] = game3d_clamp_coord_or(rt_vec3_y(position), 0.0);
+            track->vec_a[2] = game3d_clamp_coord_or(rt_vec3_z(position), 0.0);
+        }
+    }
+    return obj;
+}
+
+/// @brief Subtitle text shown over [t0,t1].
+void *rt_game3d_timeline_add_subtitle(void *obj, double t0, double t1, rt_string text) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addSubtitle: invalid timeline");
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_SUBTITLE,
+                               t0,
+                               t1,
+                               "Game3D.Timeline3D.addSubtitle: tracks are immutable while playing");
+    if (track)
+        game3d_timeline_copy_text(track->text_a, text);
+    return obj;
+}
+
+/// @brief Letterbox bars covering @p amount of the height over [t0,t1].
+void *rt_game3d_timeline_add_letterbox(void *obj, double t0, double t1, double amount) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addLetterbox: invalid timeline");
+    rt_game3d_tl_track *track = game3d_timeline_append(
+        timeline,
+        RT_GAME3D_TL_LETTERBOX,
+        t0,
+        t1,
+        "Game3D.Timeline3D.addLetterbox: tracks are immutable while playing");
+    if (track)
+        track->scalar_a = game3d_clamp(game3d_finite_or(amount, 0.1), 0.0, 0.45);
+    return obj;
+}
+
+/// @brief Full-screen fade from alpha a0 to a1 over [t0,t1].
+void *rt_game3d_timeline_add_fade(void *obj, double t0, double t1, double a0, double a1) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addFade: invalid timeline");
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_FADE,
+                               t0,
+                               t1,
+                               "Game3D.Timeline3D.addFade: tracks are immutable while playing");
+    if (track) {
+        track->scalar_a = game3d_clamp(game3d_finite_or(a0, 0.0), 0.0, 1.0);
+        track->scalar_b = game3d_clamp(game3d_finite_or(a1, 0.0), 0.0, 1.0);
+    }
+    return obj;
+}
+
+/// @brief Polled event marker fired when the playhead crosses t.
+void *rt_game3d_timeline_add_marker(void *obj, double t, int64_t id) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.addMarker: invalid timeline");
+    rt_game3d_tl_track *track =
+        game3d_timeline_append(timeline,
+                               RT_GAME3D_TL_MARKER,
+                               t,
+                               t,
+                               "Game3D.Timeline3D.addMarker: tracks are immutable while playing");
+    if (track)
+        track->marker_id = id;
+    return obj;
+}
+
+//=========================================================================
+// Properties and polling
+//=========================================================================
+
+double rt_game3d_timeline_get_duration(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.get_duration: invalid timeline");
+    return timeline ? timeline->duration : 0.0;
+}
+
+double rt_game3d_timeline_get_time(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.get_time: invalid timeline");
+    return timeline ? timeline->time : 0.0;
+}
+
+int8_t rt_game3d_timeline_get_playing(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.get_playing: invalid timeline");
+    return timeline ? timeline->playing : 0;
+}
+
+int8_t rt_game3d_timeline_get_finished(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.get_finished: invalid timeline");
+    return timeline ? timeline->finished : 0;
+}
+
+int8_t rt_game3d_timeline_get_skippable(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.get_skippable: invalid timeline");
+    return timeline ? timeline->skippable : 0;
+}
+
+void rt_game3d_timeline_set_skippable(void *obj, int8_t skippable) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.set_skippable: invalid timeline");
+    if (timeline)
+        timeline->skippable = skippable ? 1 : 0;
+}
+
+/// @brief One-shot: true for the step after the timeline reached its end.
+int8_t rt_game3d_timeline_just_finished(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.justFinished: invalid timeline");
+    return timeline ? timeline->just_finished : 0;
+}
+
+int64_t rt_game3d_timeline_events_fired_count(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.eventsFiredCount: invalid timeline");
+    return timeline ? timeline->fired_marker_count : 0;
+}
+
+int64_t rt_game3d_timeline_event_fired_id(void *obj, int64_t index) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.eventFiredId: invalid timeline");
+    if (!timeline || index < 0 || index >= timeline->fired_marker_count)
+        return 0;
+    return timeline->fired_markers[index];
+}
+
+/// @brief Currently displayed subtitle ("" when none) — plan 25's hook point.
+rt_string rt_game3d_timeline_active_subtitle(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.activeSubtitle: invalid timeline");
+    return rt_const_cstr(timeline ? timeline->active_subtitle : "");
+}
+
+//=========================================================================
+// Playback engine
+//=========================================================================
+
+/// @brief qsort comparator: by t0, stable-ish via type then marker id.
+static int game3d_timeline_track_cmp(const void *a, const void *b) {
+    const rt_game3d_tl_track *ta = (const rt_game3d_tl_track *)a;
+    const rt_game3d_tl_track *tb = (const rt_game3d_tl_track *)b;
+    if (ta->t0 < tb->t0)
+        return -1;
+    if (ta->t0 > tb->t0)
+        return 1;
+    if (ta->type != tb->type)
+        return ta->type < tb->type ? -1 : 1;
+    return 0;
+}
+
+/// @brief Reset the playhead and fire-once latches; sort tracks once.
+static void game3d_timeline_reset(rt_game3d_timeline *timeline) {
+    if (!timeline->sorted) {
+        qsort(timeline->tracks,
+              (size_t)timeline->track_count,
+              sizeof(rt_game3d_tl_track),
+              game3d_timeline_track_cmp);
+        timeline->sorted = 1;
+    }
+    for (int32_t i = 0; i < timeline->track_count; ++i)
+        timeline->tracks[i].fired = 0;
+    timeline->time = 0.0;
+    timeline->playing = 1;
+    timeline->finished = 0;
+    timeline->just_finished = 0;
+    timeline->fired_marker_count = 0;
+    timeline->active_subtitle[0] = '\0';
+    timeline->letterbox_amount = 0.0;
+    timeline->fade_alpha = 0.0;
+}
+
+/// @brief Apply an ease curve to a normalized fraction.
+static double game3d_timeline_ease(double frac, int8_t ease) {
+    frac = game3d_clamp(frac, 0.0, 1.0);
+    switch (ease) {
+        case 1:
+            return frac * frac * (3.0 - 2.0 * frac);
+        case 2:
+            return frac * frac;
+        case 3:
+            return 1.0 - (1.0 - frac) * (1.0 - frac);
+        default:
+            return frac;
+    }
+}
+
+/// @brief Fire one point track (anim / audio / marker). @p silent skips audio.
+static void game3d_timeline_fire(rt_game3d_world *world,
+                                 rt_game3d_timeline *timeline,
+                                 rt_game3d_tl_track *track,
+                                 int silent) {
+    track->fired = 1;
+    switch (track->type) {
+        case RT_GAME3D_TL_ANIM: {
+            void *entity = rt_game3d_world_find_entity(world, rt_const_cstr(track->text_a));
+            void *animator = entity ? game3d_entity_anim_ref((rt_game3d_entity *)entity) : NULL;
+            void *controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
+            if (controller)
+                (void)rt_anim_controller3d_crossfade(
+                    controller, rt_const_cstr(track->text_b), silent ? 0.0 : track->scalar_a);
+            break;
+        }
+        case RT_GAME3D_TL_AUDIO: {
+            if (silent || !world->audio || !track->obj_a)
+                break;
+            if (track->positional) {
+                void *position = rt_vec3_new(track->vec_a[0], track->vec_a[1], track->vec_a[2]);
+                void *voice = rt_game3d_audio_play_at(world->audio, track->obj_a, position);
+                game3d_release_ref(&voice);
+                game3d_release_ref(&position);
+            } else {
+                (void)rt_game3d_audio_play2d(world->audio, track->obj_a);
+            }
+            break;
+        }
+        case RT_GAME3D_TL_MARKER: {
+            if (timeline->fired_marker_count < RT_GAME3D_TL_MAX_MARKERS_PER_STEP)
+                timeline->fired_markers[timeline->fired_marker_count++] = track->marker_id;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+/// @brief Pre-physics tick. See internal header.
+int game3d_world_timeline_pre(rt_game3d_world *world, double dt) {
+    if (!world)
+        return 0;
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)rt_g3d_checked_or_null(
+        world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (!timeline)
+        return 0;
+    timeline->fired_marker_count = 0;
+    timeline->just_finished = 0;
+    if (!timeline->playing)
+        return 0;
+
+    double prev = timeline->time;
+    timeline->time += game3d_clamp_dt(dt);
+    if (timeline->time >= timeline->duration) {
+        timeline->time = timeline->duration;
+    }
+
+    /* Fire point tracks the playhead crossed this step: prev < t0 <= time,
+     * including t0 == 0 on the first step. */
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        rt_game3d_tl_track *track = &timeline->tracks[i];
+        if (track->fired)
+            continue;
+        if (track->type != RT_GAME3D_TL_ANIM && track->type != RT_GAME3D_TL_AUDIO &&
+            track->type != RT_GAME3D_TL_MARKER)
+            continue;
+        int crossed = (track->t0 <= timeline->time) &&
+                      (track->t0 > prev || (prev == 0.0 && track->t0 == 0.0));
+        if (crossed)
+            game3d_timeline_fire(world, timeline, track, 0);
+    }
+
+    /* Overlay state (letterbox / fade / subtitle) for the render pass. */
+    timeline->letterbox_amount = 0.0;
+    timeline->fade_alpha = 0.0;
+    timeline->active_subtitle[0] = '\0';
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        rt_game3d_tl_track *track = &timeline->tracks[i];
+        if (timeline->time < track->t0 || timeline->time > track->t1)
+            continue;
+        double span = track->t1 - track->t0;
+        double frac = span > 1e-12 ? (timeline->time - track->t0) / span : 1.0;
+        if (track->type == RT_GAME3D_TL_LETTERBOX) {
+            if (track->scalar_a > timeline->letterbox_amount)
+                timeline->letterbox_amount = track->scalar_a;
+        } else if (track->type == RT_GAME3D_TL_FADE) {
+            double alpha = track->scalar_a + (track->scalar_b - track->scalar_a) * frac;
+            if (alpha > timeline->fade_alpha)
+                timeline->fade_alpha = alpha;
+        } else if (track->type == RT_GAME3D_TL_SUBTITLE) {
+            strncpy(timeline->active_subtitle, track->text_a, RT_GAME3D_TL_TEXT_MAX - 1);
+            timeline->active_subtitle[RT_GAME3D_TL_TEXT_MAX - 1] = '\0';
+        }
+    }
+
+    if (timeline->time >= timeline->duration && timeline->playing) {
+        timeline->playing = 0;
+        timeline->finished = 1;
+        timeline->just_finished = 1;
+    }
+    return timeline->has_camera_tracks && (timeline->playing || timeline->finished);
+}
+
+/// @brief Camera application in the late-update slot. See internal header.
+void game3d_world_timeline_camera(rt_game3d_world *world) {
+    if (!world || !world->camera)
+        return;
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)rt_g3d_checked_or_null(
+        world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (!timeline || !timeline->has_camera_tracks)
+        return;
+    double now = timeline->time;
+
+    /* Latest camera key at or before the playhead wins; an active move
+     * overrides an earlier cut. */
+    rt_game3d_tl_track *cut = NULL;
+    rt_game3d_tl_track *move = NULL;
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        rt_game3d_tl_track *track = &timeline->tracks[i];
+        if (track->t0 > now)
+            break; /* sorted by t0 */
+        if (track->type == RT_GAME3D_TL_CAMERA_CUT) {
+            if (!move || track->t0 >= move->t1)
+                cut = track;
+        } else if (track->type == RT_GAME3D_TL_CAMERA_MOVE) {
+            move = track;
+            cut = NULL;
+        }
+    }
+    if (move && (now <= move->t1 || !cut)) {
+        void *path = rt_g3d_checked_or_null(move->obj_a, RT_G3D_PATH3D_CLASS_ID);
+        if (path) {
+            double span = move->t1 - move->t0;
+            double frac = span > 1e-12 ? (now - move->t0) / span : 1.0;
+            frac = game3d_timeline_ease(frac, move->ease);
+            double eye[3];
+            double tangent[3];
+            rt_path3d_eval_spline_raw(path, frac, eye, tangent);
+            double look[3] = {eye[0] + tangent[0], eye[1] + tangent[1], eye[2] + tangent[2]};
+            if (move->obj_b) {
+                if (rt_g3d_is_vec3(move->obj_b)) {
+                    look[0] = rt_vec3_x(move->obj_b);
+                    look[1] = rt_vec3_y(move->obj_b);
+                    look[2] = rt_vec3_z(move->obj_b);
+                } else if (rt_g3d_has_class(move->obj_b, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+                    rt_game3d_entity *entity = (rt_game3d_entity *)move->obj_b;
+                    double pos[3];
+                    if (game3d_entity_alive_or_record(entity) &&
+                        game3d_entity_world_position_components(entity, pos)) {
+                        look[0] = pos[0];
+                        look[1] = pos[1];
+                        look[2] = pos[2];
+                    }
+                } else if (rt_g3d_has_class(move->obj_b, RT_G3D_PATH3D_CLASS_ID)) {
+                    double lp[3];
+                    rt_path3d_eval_spline_raw(move->obj_b, frac, lp, NULL);
+                    look[0] = lp[0];
+                    look[1] = lp[1];
+                    look[2] = lp[2];
+                }
+            }
+            rt_camera3d_look_at_components(world->camera,
+                                           game3d_clamp_coord_or(eye[0], 0.0),
+                                           game3d_clamp_coord_or(eye[1], 0.0),
+                                           game3d_clamp_coord_or(eye[2], 0.0),
+                                           game3d_clamp_coord_or(look[0], 0.0),
+                                           game3d_clamp_coord_or(look[1], 0.0),
+                                           game3d_clamp_coord_or(look[2], 0.0),
+                                           0.0,
+                                           1.0,
+                                           0.0);
+        }
+    } else if (cut) {
+        rt_camera3d_look_at_components(world->camera,
+                                       cut->vec_a[0],
+                                       cut->vec_a[1],
+                                       cut->vec_a[2],
+                                       cut->vec_b[0],
+                                       cut->vec_b[1],
+                                       cut->vec_b[2],
+                                       0.0,
+                                       1.0,
+                                       0.0);
+        rt_camera3d_set_fov(world->camera, cut->scalar_a);
+    }
+
+    /* FOV ramps override cut FOV while active. */
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        rt_game3d_tl_track *track = &timeline->tracks[i];
+        if (track->type != RT_GAME3D_TL_FOV_RAMP)
+            continue;
+        if (now < track->t0 || now > track->t1)
+            continue;
+        double span = track->t1 - track->t0;
+        double frac = span > 1e-12 ? (now - track->t0) / span : 1.0;
+        frac = game3d_timeline_ease(frac, track->ease);
+        rt_camera3d_set_fov(world->camera,
+                            track->scalar_a + (track->scalar_b - track->scalar_a) * frac);
+    }
+}
+
+/// @brief Overlay pass: letterbox bars, fade quad, subtitle. See internal header.
+void game3d_world_timeline_overlay(rt_game3d_world *world) {
+    if (!world || !world->canvas)
+        return;
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)rt_g3d_checked_or_null(
+        world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (!timeline)
+        return;
+    int64_t width = world->width > 0 ? world->width : 0;
+    int64_t height = world->height > 0 ? world->height : 0;
+    if (width <= 0 || height <= 0)
+        return;
+    if (timeline->letterbox_amount > 0.0) {
+        int64_t bar = (int64_t)((double)height * timeline->letterbox_amount);
+        if (bar > 0) {
+            rt_canvas3d_draw_rect2d(world->canvas, 0, 0, width, bar, 0x000000);
+            rt_canvas3d_draw_rect2d(world->canvas, 0, height - bar, width, bar, 0x000000);
+        }
+    }
+    if (timeline->fade_alpha > 0.0)
+        rt_canvas3d_draw_rect2d_alpha(
+            world->canvas, 0, 0, width, height, 0x000000, timeline->fade_alpha);
+    if (timeline->active_subtitle[0] != '\0') {
+        rt_string text = rt_const_cstr(timeline->active_subtitle);
+        int64_t text_x = width / 2 - (int64_t)(strlen(timeline->active_subtitle) * 4);
+        if (text_x < 8)
+            text_x = 8;
+        rt_canvas3d_draw_text2d(
+            world->canvas, text_x, (int64_t)((double)height * 0.85), text, 0xFFFFFF);
+    }
+}
+
+//=========================================================================
+// Play / skip / stop and world installation
+//=========================================================================
+
+/// @brief Install and start a timeline (one per world; replacing stops the old).
+void rt_game3d_world_play_timeline(void *world_obj, void *timeline_obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.World3D.playTimeline: invalid world");
+    rt_game3d_timeline *timeline = game3d_timeline_checked(
+        timeline_obj, "Game3D.World3D.playTimeline: timeline must be Timeline3D");
+    if (!world || !timeline)
+        return;
+    void *bound_world = rt_g3d_checked_or_null(timeline->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (bound_world && bound_world != world) {
+        rt_trap("Game3D.World3D.playTimeline: timeline belongs to another world");
+        return;
+    }
+    rt_game3d_timeline *previous = (rt_game3d_timeline *)rt_g3d_checked_or_null(
+        world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (previous && previous != timeline)
+        previous->playing = 0;
+    game3d_assign_typed_ref(&world->active_timeline, timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    game3d_timeline_reset(timeline);
+}
+
+/// @brief The world's active timeline (NULL when none).
+void *rt_game3d_world_active_timeline(void *world_obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.World3D.activeTimeline: invalid world");
+    return world ? rt_g3d_checked_or_null(world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID)
+                 : NULL;
+}
+
+/// @brief Stop and uninstall the world's active timeline (controller resumes).
+void rt_game3d_world_stop_timeline(void *world_obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.World3D.stopTimeline: invalid world");
+    if (!world)
+        return;
+    rt_game3d_timeline *timeline = (rt_game3d_timeline *)rt_g3d_checked_or_null(
+        world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (timeline)
+        timeline->playing = 0;
+    game3d_release_typed_ref(&world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+}
+
+/// @brief Skip to the end: past-fire pending tracks in order (anims apply their
+///   final state instantly, audio stays silent, markers fire), apply the end
+///   camera, and finish. Gated by `skippable`.
+void rt_game3d_timeline_skip(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.skip: invalid timeline");
+    if (!timeline || !timeline->playing || !timeline->skippable)
+        return;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(timeline->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (!world)
+        return;
+    for (int32_t i = 0; i < timeline->track_count; ++i) {
+        rt_game3d_tl_track *track = &timeline->tracks[i];
+        if (track->fired)
+            continue;
+        if (track->type == RT_GAME3D_TL_ANIM || track->type == RT_GAME3D_TL_MARKER)
+            game3d_timeline_fire(world, timeline, track, 1);
+        else if (track->type == RT_GAME3D_TL_AUDIO)
+            track->fired = 1; /* silent past-fire */
+    }
+    timeline->time = timeline->duration;
+    timeline->playing = 0;
+    timeline->finished = 1;
+    timeline->just_finished = 1;
+    timeline->letterbox_amount = 0.0;
+    timeline->fade_alpha = 0.0;
+    timeline->active_subtitle[0] = '\0';
+    /* Apply the end-of-timeline camera immediately. */
+    game3d_world_timeline_camera(world);
+}
+
+/// @brief Stop playback (controller resumes next step); keeps the playhead.
+void rt_game3d_timeline_stop(void *obj) {
+    rt_game3d_timeline *timeline =
+        game3d_timeline_checked(obj, "Game3D.Timeline3D.stop: invalid timeline");
+    if (!timeline)
+        return;
+    timeline->playing = 0;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(timeline->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (world && world->active_timeline == (void *)timeline)
+        game3d_release_typed_ref(&world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+}

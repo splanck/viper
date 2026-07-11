@@ -97,6 +97,7 @@ typedef struct {
     float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     const void *metallic_roughness_map; /* Pixels fallback (glTF metallic/roughness map) or NULL */
     const void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
+    const void *lightmap; /* baked GI atlas (Pixels, TEXCOORD_1) or NULL: replaces flat ambient */
     void *metallic_roughness_map_asset;
     void *ao_map_asset;
     const void *env_map;       /* CubeMap3D (environment reflections) or NULL */
@@ -138,7 +139,7 @@ typedef struct {
     const float *prev_instance_matrices; /* N * 16 floats for instanced motion blur */
     int8_t has_prev_model_matrix;        /* 1 when prev_model_matrix is valid */
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
-    int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[12]; /* user-defined shader parameters */
     /* Plan 10: soft-particle fade distance in world units (0 = hard edges).
      * Blend-mode fragments fade out as they approach the opaque depth
@@ -300,6 +301,15 @@ typedef struct {
     float height_fog_falloff;
     float height_fog_density;
     float height_fog_blend;
+    /* Height-fog sun inscattering: fog color shifts toward sun_color by
+     * amount * pow(max(dot(viewDir, sun_dir), 0), power). amount 0 disables
+     * (default), keeping legacy height-fog output bit-identical. sun_dir is
+     * the world-space direction TOWARD the sun, resolved per frame from the
+     * first enabled directional light. */
+    float height_fog_sun_color[3];
+    float height_fog_sun_dir[3];
+    float height_fog_sun_power;
+    float height_fog_sun_amount;
     /* Secondary passes can preserve the previous scene color while resetting
      * depth for overlays or UI. */
     int8_t load_existing_color;

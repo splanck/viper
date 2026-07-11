@@ -136,6 +136,7 @@ set(RT_GAME_SOURCES
         game/rt_lighting2d.c
         game/rt_platformer_ctrl.c
         game/rt_achievement.c
+        game/rt_quests.c
         game/rt_typewriter.c
         game/rt_entity.c
         game/rt_behavior.c
@@ -264,6 +265,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_physics2d.c
         graphics/2d/rt_physics2d_collision.c
         graphics/2d/rt_physics2d_joint.c
+        graphics/3d/physics/rt_cloth3d.c
         graphics/3d/physics/rt_collider3d.c
         graphics/3d/physics/rt_quickhull3d.c
         graphics/3d/assets/rt_mesh_simplify.c
@@ -306,6 +308,13 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/rt_game3d.c
         graphics/3d/rt_game3d_enums.c
         graphics/3d/rt_game3d_controllers.c
+        graphics/3d/rt_game3d_thirdperson.c
+        graphics/3d/rt_game3d_targetlock.c
+        graphics/3d/rt_game3d_combat.c
+        graphics/3d/rt_game3d_railcamera.c
+        graphics/3d/rt_game3d_timeline.c
+        graphics/3d/rt_game3d_dialogue.c
+        graphics/3d/rt_game3d_facial.c
         graphics/3d/rt_game3d_bodydef.c
         graphics/3d/rt_game3d_audio.c
         graphics/3d/rt_game3d_effects.c
@@ -315,6 +324,12 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/rt_game3d_input.c
         graphics/3d/rt_game3d_presets.c
         graphics/3d/rt_game3d_diagnostics.c
+        graphics/3d/rt_game3d_surfaces.c
+        graphics/3d/rt_game3d_footsteps.c
+        graphics/3d/rt_game3d_interact.c
+        graphics/3d/rt_game3d_persistence.c
+        graphics/3d/rt_game3d_minimap.c
+        graphics/3d/rt_game3d_ai.c
         graphics/3d/render/rt_mesh3d.c
         graphics/3d/render/rt_camera3d.c
         graphics/3d/render/rt_material3d.c
@@ -337,9 +352,15 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/anim/rt_morphtarget3d.c
         graphics/3d/world/rt_particles3d.c
         graphics/3d/render/rt_postfx3d.c
+        graphics/3d/render/rt_lightbaker3d.c
+        graphics/3d/render/rt_reflectionprobe3d.c
+        graphics/3d/world/rt_sky3d.c
+        graphics/3d/world/rt_timeofday3d.c
         graphics/3d/scene/rt_raycast3d.c
         graphics/3d/physics/rt_physics3d.c
         graphics/3d/physics/rt_physics3d_character.c
+        graphics/3d/physics/rt_physics3d_probes.c
+        graphics/3d/physics/rt_ragdoll3d.c
         graphics/3d/physics/rt_physics3d_collision.c
         graphics/3d/physics/rt_physics3d_query.c
         graphics/3d/physics/rt_physics3d_raycast.c
@@ -435,6 +456,13 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/3d/rt_game3d.c
         graphics/3d/rt_game3d_enums.c
         graphics/3d/rt_game3d_controllers.c
+        graphics/3d/rt_game3d_thirdperson.c
+        graphics/3d/rt_game3d_targetlock.c
+        graphics/3d/rt_game3d_combat.c
+        graphics/3d/rt_game3d_railcamera.c
+        graphics/3d/rt_game3d_timeline.c
+        graphics/3d/rt_game3d_dialogue.c
+        graphics/3d/rt_game3d_facial.c
         graphics/3d/rt_game3d_bodydef.c
         graphics/3d/rt_game3d_audio.c
         graphics/3d/rt_game3d_effects.c
@@ -666,6 +694,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_lighting2d.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_platformer_ctrl.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_achievement.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_quests.h
         ${CMAKE_CURRENT_SOURCE_DIR}/game/rt_typewriter.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/localization/rt_timezone.h

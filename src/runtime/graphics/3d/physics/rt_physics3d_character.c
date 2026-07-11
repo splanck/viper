@@ -39,7 +39,8 @@
 #include <string.h>
 
 /// @brief Character3D controller payload: the kinematic body it drives, its
-///   owning world, step-up height, walkable-slope cosine, and grounded state.
+///   owning world, step-up height, walkable-slope cosine, grounded/sliding state,
+///   dynamic-body interaction tuning, and the retained ground body (platforms).
 typedef struct {
     void *vptr;
     rt_body3d *body;
@@ -48,6 +49,12 @@ typedef struct {
     double slope_limit_cos;
     int8_t is_grounded;
     int8_t was_grounded;
+    int8_t is_sliding;      /* standing on a non-walkable surface this step */
+    int8_t collide_dynamic; /* dynamic bodies block/push (default on) */
+    int8_t ride_platforms;  /* pre-displace with kinematic ground motion */
+    double push_strength;   /* dynamic push impulse scale (0 = block only) */
+    rt_body3d *ground_body; /* retained body under our feet, NULL airborne */
+    rt_body3d *pushed_body; /* impulse-once-per-step guard, weak in-step ref */
 } rt_character3d;
 
 /// @brief Validate @p obj as a Character3D handle (NULL on mismatch).
@@ -136,6 +143,17 @@ static double character3d_sanitize_step_height(double value) {
 // resolution: kinematic-style sweeps + slide along surfaces, optional
 // step-up over small obstacles, ground probing for "is grounded" state.
 
+/// @brief Retain @p body into the controller's ground slot (NULL clears).
+static void character3d_retain_ground_body(rt_character3d *ctrl, rt_body3d *body) {
+    if (!ctrl || ctrl->ground_body == body)
+        return;
+    if (body)
+        rt_obj_retain_maybe(body);
+    if (ctrl->ground_body && rt_obj_release_check0(ctrl->ground_body))
+        rt_obj_free(ctrl->ground_body);
+    ctrl->ground_body = body;
+}
+
 /// @brief Update the controller's grounded flag and store the latest ground normal.
 ///
 /// Negates the contact normal because the contact normal points from
@@ -147,6 +165,8 @@ static void character3d_set_ground_state(rt_character3d *ctrl,
         return;
     ctrl->is_grounded = grounded;
     ctrl->body->is_grounded = grounded;
+    if (!grounded)
+        character3d_retain_ground_body(ctrl, NULL);
     if (grounded && normal) {
         double contact_normal[3];
         if (character3d_sanitize_contact_normal(contact_normal, normal)) {
@@ -177,15 +197,18 @@ static int character3d_normal_is_walkable(const rt_character3d *ctrl, const doub
 
 /// @brief Filter for which world bodies the controller should slide against.
 ///
-/// Excludes self, triggers, and dynamic bodies (the controller is
-/// kinematic so we don't want it pushing dynamics around as solid
-/// blockers). Honors the standard layer/mask filter.
+/// Excludes self and triggers. Dynamic bodies block (and are pushed via
+/// `push_strength`) by default; `rt_character3d_set_collide_dynamic(ctrl, 0)`
+/// restores the legacy ghost-through behavior. Honors the standard
+/// layer/mask filter.
 static int character3d_candidate_body(const rt_character3d *ctrl, const rt_body3d *other) {
     if (!ctrl || !ctrl->body || !ctrl->world || !other)
         return 0;
     if (other == ctrl->body)
         return 0;
-    if (other->is_trigger || other->motion_mode == PH3D_MODE_DYNAMIC)
+    if (other->is_trigger)
+        return 0;
+    if (other->motion_mode == PH3D_MODE_DYNAMIC && !ctrl->collide_dynamic)
         return 0;
     return bodies_can_collide(ctrl->body, other);
 }
@@ -363,10 +386,14 @@ static int character3d_probe_ground(rt_character3d *ctrl) {
     double probe_pos[3] = {
         ctrl->body->position[0], ctrl->body->position[1] - 0.05, ctrl->body->position[2]};
     rt_character_hit3d hit;
-    if (character3d_test_position(ctrl, probe_pos, &hit) &&
-        character3d_normal_is_walkable(ctrl, hit.normal)) {
-        character3d_set_ground_state(ctrl, 1, hit.normal);
-        return 1;
+    if (character3d_test_position(ctrl, probe_pos, &hit)) {
+        if (character3d_normal_is_walkable(ctrl, hit.normal)) {
+            character3d_set_ground_state(ctrl, 1, hit.normal);
+            character3d_retain_ground_body(ctrl, hit.body);
+            return 1;
+        }
+        /* Resting against a too-steep surface: not grounded, but sliding. */
+        ctrl->is_sliding = 1;
     }
     character3d_set_ground_state(ctrl, 0, NULL);
     return 0;
@@ -412,6 +439,7 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
         if (character3d_sweep(ctrl, down, &hit) &&
             character3d_normal_is_walkable(ctrl, hit.normal)) {
             character3d_set_ground_state(ctrl, 1, hit.normal);
+            character3d_retain_ground_body(ctrl, hit.body);
             return 1;
         }
     }
@@ -420,6 +448,50 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
     ctrl->body->position[1] = start[1];
     ctrl->body->position[2] = start[2];
     return 0;
+}
+
+/// @brief Push a blocking dynamic body once per step: impulse along the contact
+///   normal proportional to the approach speed, mass-ratio scaled so light props
+///   yield and heavy props wall the controller. Applied only on the resolved
+///   contact (never inside sweep bisection) so bodies cannot gain energy.
+static void character3d_push_dynamic(rt_character3d *ctrl,
+                                     const rt_character_hit3d *hit,
+                                     const double *attempted_delta,
+                                     double dt) {
+    if (!ctrl || !ctrl->body || !hit || !hit->hit || !hit->body)
+        return;
+    if (hit->body->motion_mode != PH3D_MODE_DYNAMIC)
+        return;
+    if (ctrl->push_strength <= 0.0 || !isfinite(dt) || dt <= 1e-9)
+        return;
+    if (ctrl->pushed_body == hit->body)
+        return; /* once per contact per step */
+    double v_into = vec3_dot(attempted_delta, hit->normal) / dt;
+    if (!isfinite(v_into) || v_into <= 0.0)
+        return;
+    double other_mass = hit->body->mass > 1e-9 ? hit->body->mass : 1e-9;
+    double ratio = ctrl->body->mass / other_mass;
+    if (!isfinite(ratio) || ratio > 1.0)
+        ratio = 1.0;
+    double mag = ctrl->push_strength * ratio * v_into;
+    if (!isfinite(mag) || mag <= 0.0)
+        return;
+    /* Approximate contact point: capsule surface along the contact normal. */
+    double px = character3d_saturate_coord(ctrl->body->position[0] +
+                                           hit->normal[0] * ctrl->body->radius);
+    double py = character3d_saturate_coord(ctrl->body->position[1] +
+                                           hit->normal[1] * ctrl->body->radius);
+    double pz = character3d_saturate_coord(ctrl->body->position[2] +
+                                           hit->normal[2] * ctrl->body->radius);
+    rt_body3d_apply_impulse_at_point(hit->body,
+                                     hit->normal[0] * mag,
+                                     hit->normal[1] * mag,
+                                     hit->normal[2] * mag,
+                                     px,
+                                     py,
+                                     pz);
+    rt_body3d_wake(hit->body);
+    ctrl->pushed_body = hit->body;
 }
 
 /// @brief Slide-and-iterate motion solver — the heart of the controller's `Move`.
@@ -432,7 +504,8 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
 /// so gravity stops compounding.
 static void character3d_move_axis(rt_character3d *ctrl,
                                   const double *initial_delta,
-                                  int allow_step) {
+                                  int allow_step,
+                                  double dt) {
     double remaining[3];
     if (character3d_sanitize_delta(initial_delta, remaining) <= 1e-12)
         return;
@@ -447,6 +520,8 @@ static void character3d_move_axis(rt_character3d *ctrl,
         if (!character3d_sweep(ctrl, remaining, &hit))
             return;
 
+        character3d_push_dynamic(ctrl, &hit, remaining, dt);
+
         leftover[0] = remaining[0] * (1.0 - hit.fraction);
         leftover[1] = remaining[1] * (1.0 - hit.fraction);
         leftover[2] = remaining[2] * (1.0 - hit.fraction);
@@ -458,8 +533,11 @@ static void character3d_move_axis(rt_character3d *ctrl,
 
         if (remaining[1] < 0.0 && character3d_normal_is_walkable(ctrl, hit.normal)) {
             character3d_set_ground_state(ctrl, 1, hit.normal);
+            character3d_retain_ground_body(ctrl, hit.body);
             return;
         }
+        if (remaining[1] < 0.0 && fabs(remaining[0]) + fabs(remaining[2]) < 1e-12)
+            ctrl->is_sliding = 1; /* descending onto a too-steep surface */
 
         {
             double into = vec3_dot(leftover, hit.normal);
@@ -476,7 +554,7 @@ static void character3d_move_axis(rt_character3d *ctrl,
     }
 }
 
-/// @brief GC finalizer for `Character3D` — release the body and the world ref.
+/// @brief GC finalizer for `Character3D` — release the body, world, and ground refs.
 static void character3d_finalizer(void *obj) {
     rt_character3d *c = (rt_character3d *)obj;
     if (!c)
@@ -487,6 +565,9 @@ static void character3d_finalizer(void *obj) {
     if (c->world && rt_obj_release_check0(c->world))
         rt_obj_free(c->world);
     c->world = NULL;
+    if (c->ground_body && rt_obj_release_check0(c->ground_body))
+        rt_obj_free(c->ground_body);
+    c->ground_body = NULL;
 }
 
 /// @brief `Physics3D.Character.New(radius, height, mass)` — make a capsule character.
@@ -514,6 +595,12 @@ void *rt_character3d_new(double radius, double height, double mass) {
     c->slope_limit_cos = cos(45.0 * 3.14159265358979323846 / 180.0);
     c->is_grounded = 0;
     c->was_grounded = 0;
+    c->is_sliding = 0;
+    c->collide_dynamic = 1;
+    c->ride_platforms = 1;
+    c->push_strength = 1.0;
+    c->ground_body = NULL;
+    c->pushed_body = NULL;
     rt_obj_set_finalizer(c, character3d_finalizer);
     return c;
 }
@@ -541,6 +628,35 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     character3d_sanitize_vec3(velocity);
 
     ctrl->was_grounded = ctrl->is_grounded;
+    ctrl->pushed_body = NULL;
+    ctrl->is_sliding = 0;
+
+    /* Moving platforms: while grounded on a kinematic/static body that is
+     * moving, pre-displace by the platform's step displacement (linear plus
+     * yaw about the platform origin) BEFORE the swept move, so a wall on the
+     * platform still blocks the ride. */
+    if (ctrl->ride_platforms && ctrl->is_grounded && ctrl->ground_body &&
+        ctrl->ground_body->motion_mode != PH3D_MODE_DYNAMIC) {
+        rt_body3d *platform = ctrl->ground_body;
+        double lin[3] = {ph3d_finite_or(platform->velocity[0], 0.0) * dt,
+                         ph3d_finite_or(platform->velocity[1], 0.0) * dt,
+                         ph3d_finite_or(platform->velocity[2], 0.0) * dt};
+        double yaw = ph3d_finite_or(platform->angular_velocity[1], 0.0) * dt;
+        double px = body->position[0];
+        double pz = body->position[2];
+        if (fabs(yaw) > 1e-12) {
+            double ox = px - platform->position[0];
+            double oz = pz - platform->position[2];
+            double c = cos(yaw);
+            double s = sin(yaw);
+            px = platform->position[0] + ox * c - oz * s;
+            pz = platform->position[2] + ox * s + oz * c;
+        }
+        body->position[0] = character3d_saturate_coord(px + lin[0]);
+        body->position[1] = character3d_saturate_coord(body->position[1] + lin[1]);
+        body->position[2] = character3d_saturate_coord(pz + lin[2]);
+    }
+
     character3d_set_ground_state(ctrl, 0, NULL);
 
     {
@@ -550,8 +666,8 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
         double vertical[3] = {0.0, velocity[1] * dt, 0.0};
 
         character3d_resolve_penetration(ctrl);
-        character3d_move_axis(ctrl, horizontal, 1);
-        character3d_move_axis(ctrl, vertical, 0);
+        character3d_move_axis(ctrl, horizontal, 1, dt);
+        character3d_move_axis(ctrl, vertical, 0, dt);
         character3d_resolve_penetration(ctrl);
         if (!ctrl->is_grounded)
             character3d_probe_ground(ctrl);
@@ -653,6 +769,128 @@ void rt_character3d_set_position(void *o, double x, double y, double z) {
     rt_character3d *c = character3d_checked(o);
     if (c)
         rt_body3d_set_position(c->body, x, y, z);
+}
+
+/// @brief `Character3D.TrySetHeight(h)` — crouch/stand capsule resize.
+///
+/// Shrinking always succeeds and keeps the feet planted (the capsule center
+/// drops by half the height delta). Growing first tests the stand pose with
+/// the enlarged capsule and fails (returns 0) when blocked — `TryStand`
+/// semantics come free. The capsule bounds revision is bumped so the
+/// broadphase re-inserts the body.
+int8_t rt_character3d_try_set_height(void *o, double height) {
+    rt_character3d *c = character3d_checked(o);
+    if (!c || !c->body || !c->body->collider)
+        return 0;
+    if (!isfinite(height) || height <= 0.0)
+        return 0;
+    double radius = c->body->radius > 0.0 ? c->body->radius
+                                          : rt_collider3d_get_radius_raw(c->body->collider);
+    if (radius <= 0.0)
+        return 0;
+    if (height < radius * 2.0)
+        height = radius * 2.0;
+    double old_height = rt_collider3d_get_height_raw(c->body->collider);
+    if (old_height <= 0.0)
+        old_height = c->body->height;
+    if (!isfinite(old_height) || old_height <= 0.0)
+        return 0;
+    if (fabs(height - old_height) < 1e-12)
+        return 1;
+    /* Feet stay planted: center shifts by half the height delta. */
+    double new_center_y =
+        character3d_saturate_coord(c->body->position[1] + (height - old_height) * 0.5);
+    if (height < old_height) {
+        rt_collider3d_reset_capsule_raw(c->body->collider, radius, height);
+        body3d_update_shape_cache_from_collider(c->body);
+        c->body->position[1] = new_center_y;
+        body3d_touch_broadphase(c->body);
+        return 1;
+    }
+    /* Growing: probe the stand pose (lifted 1 cm so resting ground contact
+     * does not read as a blocker) before committing. */
+    rt_collider3d_reset_capsule_raw(c->body->collider, radius, height);
+    body3d_update_shape_cache_from_collider(c->body);
+    {
+        rt_character_hit3d hit;
+        double stand_pos[3] = {c->body->position[0], new_center_y + 0.01, c->body->position[2]};
+        if (character3d_test_position(c, stand_pos, &hit)) {
+            rt_collider3d_reset_capsule_raw(c->body->collider, radius, old_height);
+            body3d_update_shape_cache_from_collider(c->body);
+            return 0;
+        }
+    }
+    c->body->position[1] = new_center_y;
+    body3d_touch_broadphase(c->body);
+    return 1;
+}
+
+/// @brief `Character3D.set_Height(h)` — property form of TrySetHeight (result ignored).
+void rt_character3d_set_height(void *o, double height) {
+    (void)rt_character3d_try_set_height(o, height);
+}
+
+/// @brief `Character3D.get_Height` — current capsule height including caps.
+double rt_character3d_get_height(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    if (!c || !c->body)
+        return 0.0;
+    double height = c->body->collider ? rt_collider3d_get_height_raw(c->body->collider) : 0.0;
+    return height > 0.0 ? height : c->body->height;
+}
+
+/// @brief `Character3D.set_PushStrength(s)` — dynamic push impulse scale (0 = block only).
+void rt_character3d_set_push_strength(void *o, double strength) {
+    rt_character3d *c = character3d_checked(o);
+    if (c)
+        c->push_strength = (isfinite(strength) && strength > 0.0) ? clampd(strength, 0.0, 1000.0)
+                                                                  : 0.0;
+}
+
+/// @brief `Character3D.get_PushStrength` — dynamic push impulse scale.
+double rt_character3d_get_push_strength(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->push_strength : 0.0;
+}
+
+/// @brief `Character3D.set_CollideDynamic(on)` — dynamic bodies block/push (default)
+///   or ghost through (legacy compatibility).
+void rt_character3d_set_collide_dynamic(void *o, int8_t enabled) {
+    rt_character3d *c = character3d_checked(o);
+    if (c)
+        c->collide_dynamic = enabled ? 1 : 0;
+}
+
+/// @brief `Character3D.get_CollideDynamic` — whether dynamic bodies block the controller.
+int8_t rt_character3d_get_collide_dynamic(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->collide_dynamic : 0;
+}
+
+/// @brief `Character3D.set_RidePlatforms(on)` — track kinematic ground motion.
+void rt_character3d_set_ride_platforms(void *o, int8_t enabled) {
+    rt_character3d *c = character3d_checked(o);
+    if (c)
+        c->ride_platforms = enabled ? 1 : 0;
+}
+
+/// @brief `Character3D.get_RidePlatforms` — whether the controller rides platforms.
+int8_t rt_character3d_get_ride_platforms(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->ride_platforms : 0;
+}
+
+/// @brief `Character3D.IsSliding` — true while resting on a too-steep surface.
+int8_t rt_character3d_is_sliding(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->is_sliding : 0;
+}
+
+/// @brief `Character3D.GetGroundBody` — borrowed body under the controller's feet
+///   (NULL while airborne). Gameplay uses it for conveyors and surface queries.
+void *rt_character3d_get_ground_body(void *o) {
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->ground_body : NULL;
 }
 
 /*==========================================================================

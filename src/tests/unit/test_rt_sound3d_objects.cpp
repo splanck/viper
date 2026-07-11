@@ -56,6 +56,9 @@ struct SoundSource3DTestLayout {
     int64_t volume;
     int64_t voice_id;
     int8_t looping;
+    double pitch;
+    double occlusion;
+    int64_t mix_group;
     void *prev;
     void *next;
 };
@@ -263,8 +266,7 @@ static void test_listener_up_vector_round_trips_to_active_state() {
 }
 
 static void test_object_getters_sanitize_corrupt_private_state() {
-    auto *listener =
-        (SoundListener3DTestLayout *)rt_soundlistener3d_new();
+    auto *listener = (SoundListener3DTestLayout *)rt_soundlistener3d_new();
     auto *source = (SoundSource3DTestLayout *)rt_soundsource3d_new(nullptr);
     EXPECT_TRUE(listener != nullptr && source != nullptr,
                 "Sound3D object corrupt getter test creates objects");
@@ -289,16 +291,14 @@ static void test_object_getters_sanitize_corrupt_private_state() {
     void *listener_forward = rt_soundlistener3d_get_forward(listener);
     void *listener_up = rt_soundlistener3d_get_up(listener);
     void *listener_velocity = rt_soundlistener3d_get_velocity(listener);
-    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_pos)) &&
-                    std::isfinite(rt_vec3_y(listener_pos)) &&
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_pos)) && std::isfinite(rt_vec3_y(listener_pos)) &&
                     std::isfinite(rt_vec3_z(listener_pos)),
                 "SoundListener3D.GetPosition sanitizes corrupt coordinates");
     EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_forward)) &&
                     std::isfinite(rt_vec3_y(listener_forward)) &&
                     std::isfinite(rt_vec3_z(listener_forward)),
                 "SoundListener3D.GetForward sanitizes corrupt basis");
-    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_up)) &&
-                    std::isfinite(rt_vec3_y(listener_up)) &&
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_up)) && std::isfinite(rt_vec3_y(listener_up)) &&
                     std::isfinite(rt_vec3_z(listener_up)),
                 "SoundListener3D.GetUp sanitizes corrupt basis");
     EXPECT_TRUE(std::fabs(rt_vec3_x(listener_velocity)) <= 1000000.0 &&

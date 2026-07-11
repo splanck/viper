@@ -76,6 +76,7 @@ typedef struct {
     double height;
     rt_mesh3d *mesh;
     float *heightfield_heights;
+    uint8_t *heightfield_holes; /* optional bitmask over (w-1)*(d-1) cells */
     int32_t heightfield_width;
     int32_t heightfield_depth;
     double heightfield_scale[3];
@@ -89,6 +90,10 @@ typedef struct {
     double bounds_max[3];
     uint64_t bounds_revision;
     uint32_t mesh_bounds_revision;
+    /* Physics material overrides (appended; -1 = unset, body value applies). */
+    double material_friction;
+    double material_restitution;
+    int64_t surface_type; /* Game3D.Surfaces registry id; 0 = untyped */
 } rt_collider3d;
 
 /// @brief Safe-cast an opaque handle to rt_collider3d, or NULL if not one.
@@ -358,9 +363,11 @@ static void collider3d_finalizer(void *obj) {
     free(collider->children);
     free(collider->child_transforms);
     free(collider->heightfield_heights);
+    free(collider->heightfield_holes);
     collider->children = NULL;
     collider->child_transforms = NULL;
     collider->heightfield_heights = NULL;
+    collider->heightfield_holes = NULL;
 }
 
 /// @brief Allocate a zeroed collider, set its type, and install the finalizer.
@@ -382,6 +389,9 @@ static rt_collider3d *collider3d_alloc(int32_t type) {
     collider->type = type;
     collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] = 0.0;
     collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] = 0.0;
+    collider->material_friction = -1.0;    /* unset: body friction applies */
+    collider->material_restitution = -1.0; /* unset: body restitution applies */
+    collider->surface_type = 0;
     rt_obj_set_finalizer(collider, collider3d_finalizer);
     return collider;
 }
@@ -1102,6 +1112,20 @@ void rt_collider3d_reset_sphere_raw(void *collider, double radius) {
     collider3d_recompute_bounds(shape);
 }
 
+/// @brief Reset an existing capsule collider's radius/height and cached bounds
+///        (crouch/stand resizes and reusable internal query shapes). Height
+///        includes both hemispherical caps and is floored to 2*radius.
+void rt_collider3d_reset_capsule_raw(void *collider, double radius, double height) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape || shape->type != RT_COLLIDER3D_TYPE_CAPSULE)
+        return;
+    shape->radius = collider3d_extent_or_unit(radius);
+    shape->height = collider3d_extent_or_unit(height);
+    if (shape->height < shape->radius * 2.0)
+        shape->height = shape->radius * 2.0;
+    collider3d_recompute_bounds(shape);
+}
+
 /// @brief Internal: capsule total height including hemispherical caps. 0 for non-capsule.
 double rt_collider3d_get_height_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
@@ -1203,6 +1227,99 @@ static double collider3d_heightfield_height_at(const rt_collider3d *collider,
 /// the world-Y height (scaled) and surface normal (central difference) to the out-pointers.
 /// Returns 1 if the sample was inside the field, 0 otherwise (out-pointers default to safe
 /// fallback values: y=0, normal=(0,1,0)).
+/// @brief Install (or clear) a heightfield hole bitmask (bit per cell, row-major).
+/// @details The mask is copied. Cell dimensions must match the heightfield's
+///   (width-1) x (depth-1) grid; a NULL mask clears holes. Internal handoff from
+///   Terrain3D.SetHole via rt_terrain3d_get_hole_mask_raw.
+/// @return 1 on success, 0 for a non-heightfield collider or dimension mismatch.
+int8_t rt_collider3d_heightfield_set_holes_raw(void *collider,
+                                               const uint8_t *mask,
+                                               int32_t cells_x,
+                                               int32_t cells_z) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape || shape->type != RT_COLLIDER3D_TYPE_HEIGHTFIELD)
+        return 0;
+    if (!mask) {
+        free(shape->heightfield_holes);
+        shape->heightfield_holes = NULL;
+        return 1;
+    }
+    if (cells_x != shape->heightfield_width - 1 || cells_z != shape->heightfield_depth - 1 ||
+        cells_x <= 0 || cells_z <= 0)
+        return 0;
+    size_t mask_bytes = ((size_t)cells_x * (size_t)cells_z + 7u) / 8u;
+    uint8_t *copy = (uint8_t *)malloc(mask_bytes);
+    if (!copy)
+        return 0;
+    memcpy(copy, mask, mask_bytes);
+    free(shape->heightfield_holes);
+    shape->heightfield_holes = copy;
+    return 1;
+}
+
+/// @brief Per-collider friction override (-1 = unset: the body's friction applies).
+void rt_collider3d_set_friction(void *obj, double friction) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    if (!shape)
+        return;
+    if (!isfinite(friction) || friction < 0.0)
+        shape->material_friction = -1.0;
+    else
+        shape->material_friction = friction > 16.0 ? 16.0 : friction;
+}
+
+/// @brief Per-collider friction override, or -1 when unset.
+double rt_collider3d_get_friction(void *obj) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    return shape ? shape->material_friction : -1.0;
+}
+
+/// @brief Per-collider restitution override (-1 = unset: the body's value applies).
+void rt_collider3d_set_restitution(void *obj, double restitution) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    if (!shape)
+        return;
+    if (!isfinite(restitution) || restitution < 0.0)
+        shape->material_restitution = -1.0;
+    else
+        shape->material_restitution = restitution > 1.0 ? 1.0 : restitution;
+}
+
+/// @brief Per-collider restitution override, or -1 when unset.
+double rt_collider3d_get_restitution(void *obj) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    return shape ? shape->material_restitution : -1.0;
+}
+
+/// @brief Surface-type tag (Game3D.Surfaces registry id; 0 = untyped).
+void rt_collider3d_set_surface_type(void *obj, int64_t surface_type) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    if (shape)
+        shape->surface_type = surface_type < 0 ? 0 : surface_type;
+}
+
+/// @brief Surface-type tag, 0 when untyped or invalid.
+int64_t rt_collider3d_get_surface_type(void *obj) {
+    rt_collider3d *shape = collider3d_checked(obj);
+    return shape ? shape->surface_type : 0;
+}
+
+/// @brief Internal: effective friction for one contact side (collider override or body).
+double rt_collider3d_effective_friction_raw(void *collider, double body_friction) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (shape && shape->material_friction >= 0.0)
+        return shape->material_friction;
+    return body_friction;
+}
+
+/// @brief Internal: effective restitution for one contact side.
+double rt_collider3d_effective_restitution_raw(void *collider, double body_restitution) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (shape && shape->material_restitution >= 0.0)
+        return shape->material_restitution;
+    return body_restitution;
+}
+
 int8_t rt_collider3d_sample_heightfield_raw(
     void *collider, double local_x, double local_z, double *height_out, double *normal_out) {
     rt_collider3d *shape = collider3d_checked(collider);
@@ -1257,6 +1374,18 @@ int8_t rt_collider3d_sample_heightfield_raw(
 
     x0 = (int32_t)floor(grid_x);
     z0 = (int32_t)floor(grid_z);
+    if (shape->heightfield_holes) {
+        /* Holed cells report no surface: physics falls through the carved pit. */
+        int32_t cells_x = shape->heightfield_width - 1;
+        int32_t cells_z = shape->heightfield_depth - 1;
+        int32_t hx = x0 < 0 ? 0 : (x0 >= cells_x ? cells_x - 1 : x0);
+        int32_t hz = z0 < 0 ? 0 : (z0 >= cells_z ? cells_z - 1 : z0);
+        if (cells_x > 0 && cells_z > 0) {
+            int64_t bit = (int64_t)hz * cells_x + hx;
+            if ((shape->heightfield_holes[bit >> 3] >> (bit & 7)) & 1)
+                return 0;
+        }
+    }
     x1 = x0 + 1;
     z1 = z0 + 1;
     if (x1 >= shape->heightfield_width)

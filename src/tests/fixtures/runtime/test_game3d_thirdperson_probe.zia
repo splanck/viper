@@ -1,0 +1,128 @@
+module test_game3d_thirdperson_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Third-Person Probe", 64, 48);
+    var canvas = world.Canvas;
+    var camera = world.Camera;
+
+    var ground = Game3D.Entity3D.New();
+    var groundBody = G3D.Physics3DBody.NewAABB(50.0, 0.5, 50.0, 0.0);
+    ground.AttachBody(groundBody);
+    ground.SetPosition(0.0, -0.5, 0.0);
+    world.Spawn(ground);
+
+    var player = Game3D.Entity3D.New();
+    player.SetPosition(0.0, 0.9, 0.0);
+    world.Spawn(player);
+    var character = Game3D.CharacterController3D.New(world, player, 0.3, 1.8, 70.0);
+
+    var tp = Game3D.ThirdPersonController.New(world, player);
+    tp.Character = character;
+    tp.Yaw = 90.0;
+    world.SetCameraController(tp);
+
+    // Third-person camera-relative drive: yaw 90 + forward => player moves -X.
+    G3D.Canvas3D.PushSyntheticKey(canvas, Game3D.Keys.get_KeyW(), true);
+    world.RunFramesOnly(30, 0.016666666666666666);
+    G3D.Canvas3D.ClearSyntheticInput(canvas);
+    var pos = player.Position;
+    if (Math.Vec3.get_X(pos) >= 0.0 - 0.5) {
+        fail("third-person drive under yaw 90 did not move the player along -X");
+        return;
+    }
+
+    // Spring arm keeps the boom near the configured distance in open space.
+    var camPos = camera.Position;
+    var pivotX = Math.Vec3.get_X(pos);
+    var pivotY = Math.Vec3.get_Y(pos) + tp.PivotHeight;
+    var pivotZ = Math.Vec3.get_Z(pos);
+    var dx = Math.Vec3.get_X(camPos) - pivotX;
+    var dy = Math.Vec3.get_Y(camPos) - pivotY;
+    var dz = Math.Vec3.get_Z(camPos) - pivotZ;
+    var boom = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+    if (near(boom, tp.Distance, 0.6) == false) {
+        fail("spring-arm boom is not near the configured distance");
+        return;
+    }
+
+    // Crouch: SetCrouching(true) always works, height halves, stand restores.
+    if (character.SetCrouching(true) == false) {
+        fail("SetCrouching(true) failed in the open");
+        return;
+    }
+    if (character.IsCrouching() == false) {
+        fail("IsCrouching did not latch");
+        return;
+    }
+    if (character.SetCrouching(false) == false) {
+        fail("standing back up failed in the open");
+        return;
+    }
+
+    // Lock-on: a target crate ahead on a dedicated layer.
+    var target = Game3D.Entity3D.New();
+    var targetBody = G3D.Physics3DBody.NewAABB(0.4, 0.4, 0.4, 1.0);
+    target.AttachBody(targetBody);
+    target.SetPosition(Math.Vec3.get_X(pos) - 5.0, 1.0, Math.Vec3.get_Z(pos));
+    world.Spawn(target);
+    target.Layer = 8;
+
+    var lock = Game3D.TargetLock3D.New(world, player);
+    lock.CandidateMask = 8;
+    lock.RequireLineOfSight = false;
+    if (lock.Acquire() == false) {
+        fail("TargetLock3D.Acquire found no candidate");
+        return;
+    }
+    if (lock.JustAcquired() == false) {
+        fail("JustAcquired did not fire");
+        return;
+    }
+    tp.LockTarget = lock;
+    world.RunFramesOnly(30, 0.016666666666666666);
+    lock.Clear();
+
+    // Traversal probes: 1 m wall ahead of a foot-level origin.
+    var wall = Game3D.Entity3D.New();
+    var wallBody = G3D.Physics3DBody.NewAABB(2.0, 0.5, 0.25, 0.0);
+    wall.AttachBody(wallBody);
+    wall.SetPosition(20.0, 0.5, 20.0);
+    world.Spawn(wall);
+
+    var physics = world.Physics;
+    var origin = Math.Vec3.New(20.0, 0.0, 18.0);
+    var fwd = Math.Vec3.New(0.0, 0.0, 1.0);
+    var ledge = physics.ProbeLedge(origin, fwd, 0.3, 2.0, 2.5, -1);
+    if (near(G3D.LedgeHit3D.get_Height(ledge), 1.0, 0.15) == false) {
+        fail("ProbeLedge height is not near the 1 m wall top");
+        return;
+    }
+    if (G3D.LedgeHit3D.get_HasStandingRoom(ledge) == false) {
+        fail("open wall top should report standing room");
+        return;
+    }
+
+    var openPos = Math.Vec3.New(30.0, 1.0, 30.0);
+    if (physics.ProbeClearance(openPos, 0.3, 1.8, -1) == false) {
+        fail("open space should have capsule clearance");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

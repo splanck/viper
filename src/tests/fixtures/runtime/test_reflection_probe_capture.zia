@@ -1,0 +1,49 @@
+module probe_test;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var canvas = Canvas3D.New("probe", 64, 64);
+    var scene = SceneGraph.New();
+    // Red wall on +X side of the probe.
+    var mesh = Mesh3D.New();
+    mesh.AddVertex(2.0, -4.0, -4.0, -1.0, 0.0, 0.0, 0.0, 0.0);
+    mesh.AddVertex(2.0, -4.0, 4.0, -1.0, 0.0, 0.0, 1.0, 0.0);
+    mesh.AddVertex(2.0, 4.0, 4.0, -1.0, 0.0, 0.0, 1.0, 1.0);
+    mesh.AddTriangle(0, 1, 2);
+    mesh.AddVertex(2.0, 4.0, -4.0, -1.0, 0.0, 0.0, 0.0, 1.0);
+    mesh.AddTriangle(0, 2, 3);
+    var node = SceneNode.New();
+    node.Mesh = mesh;
+    var mat = Material3D.NewColor(1.0, 0.1, 0.1);
+    Material3D.SetUnlit(mat, true);
+    node.Material = mat;
+    scene.Add(node);
+
+    var probe = ReflectionProbe3D.New(Vec3.New(0.0, 0.0, 0.0),
+                                      Vec3.New(-3.0, -3.0, -3.0),
+                                      Vec3.New(3.0, 3.0, 3.0));
+    if (probe.CaptureDirty == false) {
+        Terminal.Say("FAIL: new probe should be capture-dirty");
+        return;
+    }
+    if (probe.Contains(Vec3.New(0.0, 1.0, 0.0)) == false ||
+        probe.Contains(Vec3.New(9.0, 0.0, 0.0))) {
+        Terminal.Say("FAIL: influence containment wrong");
+        return;
+    }
+    if (probe.Capture(canvas, scene) == false) {
+        Terminal.Say("FAIL: capture failed");
+        return;
+    }
+    if (probe.CaptureDirty) {
+        Terminal.Say("FAIL: capture should clear the dirty flag");
+        return;
+    }
+    if (probe.Cubemap == null) {
+        Terminal.Say("FAIL: capture produced no cubemap");
+        return;
+    }
+    Terminal.Say("PASS");
+}

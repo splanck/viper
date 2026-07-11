@@ -1612,6 +1612,28 @@ void rt_voice_set_occlusion(int64_t voice_id, double amount) {
     audio_state_unlock();
 }
 
+/// @brief Enable/disable per-voice RMS metering (lip sync level tap).
+void rt_voice_enable_metering(int64_t voice_id, int8_t enabled) {
+    if (voice_id < 0)
+        return;
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_voice_metering(g_audio_ctx, (vaud_voice_id)voice_id, enabled ? 1 : 0);
+    audio_state_unlock();
+}
+
+/// @brief RMS source level (0..~1) of the last mixed block; 0 when unmetered.
+double rt_voice_get_level(int64_t voice_id) {
+    double level = 0.0;
+    if (voice_id < 0)
+        return 0.0;
+    audio_state_lock();
+    if (g_audio_ctx)
+        level = (double)vaud_get_voice_level(g_audio_ctx, (vaud_voice_id)voice_id);
+    audio_state_unlock();
+    return level;
+}
+
 /// @brief Play a sound with volume (0-100), pan (-100..100), and pitch.
 /// @details PlayEx plus a playback-rate multiplier applied atomically at
 ///          start so the first rendered chunk is already pitch-shifted.
@@ -2237,6 +2259,12 @@ int64_t rt_snd_group_add_delay(int64_t group, double delay_ms, double feedback, 
     return rt_audio_fx_add_delay(group, delay_ms, feedback, wet);
 }
 
+/// @brief Update a group reverb insert's parameters in place (zone easing).
+void rt_snd_group_set_reverb(
+    int64_t group, int64_t fx_id, double room_size, double damping, double wet) {
+    rt_audio_fx_set_reverb_params(group, fx_id, room_size, damping, wet);
+}
+
 int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping, double wet) {
     if (!rt_audio_fx_group_valid(group))
         return -1;
@@ -2753,6 +2781,16 @@ void rt_voice_set_occlusion(int64_t voice_id, double amount) {
     (void)amount;
 }
 
+void rt_voice_enable_metering(int64_t voice_id, int8_t enabled) {
+    (void)voice_id;
+    (void)enabled;
+}
+
+double rt_voice_get_level(int64_t voice_id) {
+    (void)voice_id;
+    return 0.0;
+}
+
 /// @brief Audio-disabled stub for `Sound.PlayEx2`. Returns `-1` for a null
 ///        sound; otherwise traps so the absence of audio surfaces clearly.
 int64_t rt_sound_play_ex2(void *sound, int64_t volume, int64_t pan, double pitch) {
@@ -3165,6 +3203,17 @@ int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping,
     (void)wet;
     rt_audio_unavailable_("Audio.GroupAddReverb: audio support not compiled in");
     return -1;
+}
+
+/// @brief Audio-disabled stub for `Audio.GroupSetReverb`. Silent no-op.
+void rt_snd_group_set_reverb(
+    int64_t group, int64_t fx_id, double room_size, double damping, double wet) {
+    (void)group;
+    (void)fx_id;
+    (void)room_size;
+    (void)damping;
+    (void)wet;
+    rt_audio_unavailable_("Audio.GroupSetReverb: audio support not compiled in");
 }
 
 void rt_snd_group_fx_bypass(int64_t group, int64_t fx_id, int8_t bypass) {

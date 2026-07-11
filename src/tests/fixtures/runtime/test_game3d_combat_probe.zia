@@ -1,0 +1,109 @@
+module test_game3d_combat_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Combat Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    var attacker = Game3D.Entity3D.New();
+    attacker.SetPosition(0.0, 1.0, 0.0);
+    world.Spawn(attacker);
+    var victim = Game3D.Entity3D.New();
+    victim.SetPosition(0.0, 1.0, -1.0);
+    world.Spawn(victim);
+
+    // Hit volume on the attacker reaching toward the victim; hurt volume on the victim.
+    var hitShape = G3D.Collider3D.NewSphere(0.4);
+    var hit = Game3D.Hitbox3D.New(attacker, hitShape);
+    hit.Kind = Game3D.HitboxKind.get_Hit();
+    hit.Team = 1;
+    hit.SetLocalOffset(0.0, 0.0, -0.7);
+
+    var hurtShape = G3D.Collider3D.NewSphere(0.5);
+    var hurt = Game3D.Hitbox3D.New(victim, hurtShape);
+    hurt.Team = 2;
+
+    var health = Game3D.Health3D.New(100.0);
+    victim.AttachHealth(health);
+
+    // Swing: one activation produces exactly one hit event.
+    hit.Active = true;
+    world.StepSimulation(0.016666666666666666);
+    if (world.HitEventCount() != 1) {
+        fail("expected exactly one hit event on the first swing step");
+        return;
+    }
+    var hitEvent = world.HitEvent(0);
+    var eventVictim = Game3D.HitEvent3D.get_Victim(hitEvent);
+    var victimHealth = Game3D.Entity3D.get_Health(eventVictim);
+    var applied = victimHealth.Damage(25.0, attacker, 3);
+    if (near(applied, 25.0, 0.0001) == false) {
+        fail("damage did not apply the full amount");
+        return;
+    }
+    if (near(health.Current, 75.0, 0.0001) == false) {
+        fail("victim health did not drop to 75");
+        return;
+    }
+    if (world.DamageEventCount() != 1) {
+        fail("expected one buffered damage event");
+        return;
+    }
+    var damageEvent = world.DamageEvent(0);
+    if (Game3D.DamageEvent3D.get_Tag(damageEvent) != 3) {
+        fail("damage event tag mismatch");
+        return;
+    }
+
+    // Rehit suppression across steps while the swing stays live.
+    world.StepSimulation(0.016666666666666666);
+    if (world.HitEventCount() != 0) {
+        fail("rehit suppression failed while the swing stayed live");
+        return;
+    }
+
+    // Time control: hit-stop freezes simulated time; pause freezes Elapsed.
+    world.HitStop(0.05);
+    var elapsedBefore = world.Elapsed;
+    world.StepSimulation(0.016666666666666666);
+    if (near(world.Elapsed, elapsedBefore, 0.0000001) == false) {
+        fail("hit-stop frame advanced simulated time");
+        return;
+    }
+    world.StepSimulation(0.016666666666666666);
+    world.StepSimulation(0.016666666666666666);
+    world.StepSimulation(0.016666666666666666);
+
+    world.Paused = true;
+    var frozen = world.Elapsed;
+    world.StepSimulation(0.016666666666666666);
+    if (near(world.Elapsed, frozen, 0.0000001) == false) {
+        fail("paused step advanced Elapsed");
+        return;
+    }
+    world.Paused = false;
+    world.TimeScale = 0.5;
+    world.StepSimulation(0.016666666666666666);
+    if (near(world.Dt, 0.008333333333333333, 0.0001) == false) {
+        fail("TimeScale 0.5 did not halve the world dt");
+        return;
+    }
+    world.TimeScale = 1.0;
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

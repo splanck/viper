@@ -1551,7 +1551,7 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
     EXPECT_TRUE(contains_text(d3d11_shader_source,
                               "float opticalDepth = min(hd * max(viewDistance, 0.0), 80.0);"),
                 "Height fog bounds optical depth");
-    fog_write = strstr(d3d11_shader_source, "result = lerp(result, fogColor.rgb, fogFactor);");
+    fog_write = strstr(d3d11_shader_source, "result = lerp(result, fogTint, fogFactor);");
     EXPECT_TRUE(fog_write && strstr(fog_write, "if (any(isnan(result)) || any(isinf(result)))"),
                 "Scene shader validates results after height-fog evaluation");
     EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,

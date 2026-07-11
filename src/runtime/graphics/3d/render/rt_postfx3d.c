@@ -2642,6 +2642,26 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
     e->p.dof.max_blur = sanitize_range_f32(max_blur, 8.0f, 0.0f, 128.0f);
 }
 
+/// @brief Live focus-distance mutation for an existing DOF effect (focus pulls).
+/// @details Walks the chain for the first enabled DOF entry and rewrites its
+///          focus parameter — no topology change, no reallocation. Returns 0
+///          (recoverable) when the chain has no DOF effect.
+int8_t rt_postfx3d_set_dof_focus(void *obj, double distance) {
+    rt_postfx3d *fx = postfx3d_checked(obj);
+    if (!fx)
+        return 0;
+    int32_t count = postfx3d_safe_effect_count(fx);
+    for (int32_t i = 0; i < count; ++i) {
+        postfx_entry_t *e = &fx->effects[i];
+        if (e->type == POSTFX_DOF && e->enabled) {
+            e->p.dof.focus_distance =
+                sanitize_range_f32(distance, e->p.dof.focus_distance, 0.0f, POSTFX3D_FOCUS_MAX);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /// @brief Append per-pixel motion blur. `intensity` controls the blur length; `samples` is
 /// the per-pixel sample count along the motion vector (more = smoother but slower).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {

@@ -598,7 +598,20 @@ depth texels back asynchronously (one frame of latency, never a pipeline
 stall), with per-flare temporal smoothing hiding both the latency and the
 probe quantization.
 `BackendSupports("hlod")` reports support for runtime-authored LOD/impostor
-proxies. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
+proxies. `BackendSupports("gpu-skinning")` reports whether skinned draws route
+their bone palettes to the vertex shader (true on the Metal/OpenGL/D3D11
+production backends; false on software, which stays the bit-exact CPU-skinned
+reference, and false while `Canvas3D.SetForceCpuSkinning(true)` is active so
+capability reports always match actual routing). GPU-skinned draws skip the
+per-frame CPU vertex transform and re-upload entirely: static vertex buffers
+carry bone indices/weights and only the `bone_count x 16` float palette (plus
+the previous-frame palette when motion vectors are active) uploads per draw.
+Telemetry: `Canvas3D.GpuSkinnedDrawCount` (lifetime GPU-routed skinned draws)
+and `Canvas3D.SkinningUploadBytes` (lifetime palette bytes). Skinned draws
+with extra bone influences, per-submesh bone remaps on the instanced path, or
+CPU-applied morph streams stay on the CPU path — morph-then-skin ordering is
+preserved by construction because morphs are applied before the routing
+decision. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
 query/Hi-Z/portal acceleration can advertise the same capability once added.
 The unit lane includes a dense covered-draw fixture that queues 65 opaque draws,
 submits only the front occluder, and reports 64 occlusion skips. The SceneGraph
@@ -726,6 +739,8 @@ skips nonresident meshes and falls back to the next resident choice.
 | `GenerateLODs(levels, ratio)` | `Void(Integer, Double)` | Synthesize up to 4 simplified LOD meshes from the base mesh via `Mesh3D.Simplify` (level *k* targets `ratio^k` of the base triangle count), register them with distance thresholds derived from the mesh radius, and enable auto LOD |
 | `SetAutoLOD(enabled, screenErrorPx)` | `Void(Boolean, Double)` | Select authored LODs by projected screen size instead of distance thresholds |
 | `SetImpostor(distance, pixels)` | `Void(Double, Object)` | Generate an unlit textured quad proxy used at or beyond `distance`; pass `null` pixels to clear |
+| `SetImpostorFrames(distance, pixels, frames)` | `Void(Double, Object, Integer)` | Multi-frame impostor: `pixels` is a horizontal strip of `frames` views captured at yaw `i*2pi/frames`; the draw path picks the frame nearest the camera bearing |
+| `GetImpostorFrameIndex()` | `Integer()` | Last impostor frame index the draw path selected (0 for single-frame impostors) |
 | `ClearLOD()` | `Void()` | Remove authored LOD entries |
 | `LodCount` | `Integer` | Number of registered LOD entries |
 | `GetLodMesh(index)` | `Object(Integer)` | Borrow the mesh for an LOD entry |
@@ -1094,6 +1109,27 @@ compatibility with existing `null` checks. Mutating an instantiated node does no
 mutate the immutable template node returned by either lookup API.
 
 ---
+
+## Baked Lighting
+
+`LightBaker3D.New(scene)` is the offline lightmap baker: flag static geometry
+with `SceneNode.SetStatic(true)`, register bake lights with `AddLight`, tune
+`TexelsPerUnit`/`Samples`/`Bounces`/`SetSkyColor`, then loop `BakeStep()`
+until it returns `true` (chunked; `Progress` reads [0,1]). The bake is
+deterministic — identical scenes and options produce identical atlases.
+`Apply()` installs the atlas on each baked node via material instances and
+`Material3D.SetLightmap` (TEXCOORD_1 charts are written into the meshes);
+`Atlas` exposes the page. The software renderer replaces the flat-ambient
+term with `lightmap x albedo` for lightmapped draws (GPU backends keep flat
+ambient until the follow-up shader batch). Bake at authoring time — never
+per frame.
+
+`LightProbeGrid3D.New(min, max, spacing)` + `Bake(baker)` bakes an SH-9
+irradiance probe grid with the same tracer so dynamic objects agree with the
+lightmaps; probes inside geometry are detected and in-filled from neighbors.
+`Sample(position, normal)` returns trilinear-interpolated irradiance as a
+Vec3 (drive character ambient or fill lights from it), and `Save`/`Load`
+round-trip `.vlpg` files.
 
 ## Skeletal Animation
 
@@ -1767,7 +1803,15 @@ Heightmap terrain with multi-layer splat texturing, LOD, and normal generation.
 | `SetMaterial(material)` | `Void(Object)` | Assign a base `Material3D` |
 | `SetScale(x, y, z)` | `Void(Double, Double, Double)` | Set horizontal and vertical scale |
 | `GeneratePerlin(pixels, frequency, octaves, persistence)` | `Void(Object, Double, Integer, Double)` | Generate a Perlin heightmap into `pixels` |
-| `SetSplatMap(pixels)` | `Void(Object)` | Set a splat map for multi-layer texture blending |
+| `SetSplatMap(pixels)` | `Void(Object)` | Set splat map 0 (weights layers 0-3) for multi-layer texture blending |
+| `SetSplatMapAt(index, pixels)` | `Void(Integer, Object)` | Set splat map `index`: 0 weights layers 0-3, 1 weights layers 4-7 |
+| `SetHole(x, z, width, depth)` | `Integer(Double, Double, Double, Double)` | Carve a rectangular hole (terrain-local units); render, nav meshes, and heightfield collision all skip the carved cells. Returns the hole index |
+| `RemoveHole(index)` | `Boolean(Integer)` | Remove a hole by index (later holes shift down) |
+| `ClearHoles()` | `Void()` | Remove every authored hole |
+| `HoleCount` (property) | `Integer` | Number of authored holes |
+| `SetSlopeLayer(layer, minDeg, maxDeg, sharpness)` | `Void(Integer, Double, Double, Double)` | Rule: weight `layer` where surface slope falls in the band (degrees) |
+| `SetHeightLayer(layer, minY, maxY, sharpness)` | `Void(Integer, Double, Double, Double)` | Rule: weight `layer` where world height falls in the band |
+| `RebuildSplatWeights()` | `Void()` | Regenerate both splat maps from the configured slope/height rules (deterministic CPU pass; painting afterwards overrides) |
 | `SetLayerTexture(layer, pixels)` | `Void(Integer, Object)` | Set the texture for splat layer `[0–3]` |
 | `SetLayerScale(layer, scale)` | `Void(Integer, Double)` | Set UV tiling scale for a splat layer |
 | `GetHeightAt(worldX, worldZ)` | `Double(Double, Double)` | Sample interpolated terrain height |
@@ -1775,8 +1819,24 @@ Heightmap terrain with multi-layer splat texturing, LOD, and normal generation.
 | `SetLODDistances(near, far)` | `Void(Double, Double)` | Set LOD transition distances |
 | `SetSkirtDepth(depth)` | `Void(Double)` | Set the tile skirt depth to hide LOD seams |
 
-Terrain splatting is enabled only when the splat map and all four layer textures are present.
-Incomplete splat sets render with the base material/fallback texture.
+Terrain supports up to **8 splat layers**: `SetLayerTexture`/`SetLayerScale`
+accept indices 0-7, splat map 0 weighs layers 0-3 and splat map 1 weighs
+layers 4-7, and weights normalize across all populated channels. The realtime
+per-pixel splat path carries 4 layers; content using layers 4-7 (or a second
+splat map) automatically routes through the baked composite, which renders
+identically on every backend. Incomplete splat sets render with the base
+material/fallback texture.
+
+Holes carve through every consumer from one rasterized cell bitmask: chunk
+meshes skip carved cells at all LOD levels (conservatively — a coarse
+triangle disappears when any covered fine cell is holed), `BuildNavMesh`
+omits carved cells, and heightfield colliders built from the terrain report
+no surface inside the footprint so physics falls through. Streamed terrain
+tiles accept an optional manifest `"holes": [[x, z, width, depth], ...]`
+array applied at payload instantiation (tile-local units), and the streamed
+collider/nav entities pick the carve-through up automatically. Skirts at
+chunk borders are unaffected by interior holes; a hole touching a chunk
+border can leave a visible skirt wall inside the pit at LOD seams.
 
 ```rust
 bind Viper.Graphics3D.Terrain3D as Terrain3D;

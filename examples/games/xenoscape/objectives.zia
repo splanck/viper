@@ -27,15 +27,15 @@ final REGION_OPTIONAL_TARGET = 4;
 /// @param region Zero-based stable region id.
 /// @return Authored objective title, or `Survey the Unknown` when invalid.
 func regionObjectiveTitle(region: Integer) -> String {
-    if region == 0 { return "Stabilize the Crash Site"; }
+    if region == 0 { return "Disable the Beacon Warden"; }
     if region == 1 { return "Silence the Spore Mother"; }
     if region == 2 { return "Break the Crystal Wyrm"; }
-    if region == 3 { return "Restore the Surface Relay"; }
-    if region == 4 { return "Recover the Capacitor Shrine"; }
+    if region == 3 { return "Override the Relay Custodian"; }
+    if region == 4 { return "Survive the Tide Leviathan"; }
     if region == 5 { return "Quench the Magma Core"; }
-    if region == 6 { return "Awaken the Grapple Shrine"; }
-    if region == 7 { return "Open Cryogenic Storage"; }
-    if region == 8 { return "Breach the Corruption Seal"; }
+    if region == 6 { return "Topple the Verdant Colossus"; }
+    if region == 7 { return "Defeat the Cryo Custodian"; }
+    if region == 8 { return "Destroy the Null Harvester"; }
     if region == 9 { return "Defeat the Architect"; }
     return "Survey the Unknown";
 }

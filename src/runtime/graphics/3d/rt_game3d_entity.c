@@ -34,6 +34,7 @@
 #include "rt_g3d_commit_queue.h"
 #include "rt_game3d.h"
 #include "rt_game3d_internal.h"
+#include "rt_ragdoll3d.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_input.h"
@@ -126,6 +127,21 @@ static void game3d_entity_finalize(void *obj) {
     game3d_release_typed_ref(&entity->body, RT_G3D_BODY3D_CLASS_ID);
     game3d_release_typed_ref(&entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID);
     game3d_release_typed_ref(&entity->behavior, RT_G3D_GAME3D_BEHAVIOR3D_CLASS_ID);
+    game3d_entity_release_combat_slots(entity);
+    game3d_release_typed_ref(&entity->ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID);
+    {
+        rt_game3d_lipsync *lipsync_slot = (rt_game3d_lipsync *)rt_g3d_checked_or_null(
+            entity->lipsync, RT_G3D_GAME3D_LIPSYNC_CLASS_ID);
+        if (lipsync_slot)
+            lipsync_slot->entity = NULL;
+    }
+    game3d_release_typed_ref(&entity->lipsync, RT_G3D_GAME3D_LIPSYNC_CLASS_ID);
+    game3d_release_typed_ref(&entity->footsteps, RT_G3D_GAME3D_FOOTSTEPS_CLASS_ID);
+    game3d_release_typed_ref(&entity->interactable, RT_G3D_GAME3D_INTERACTABLE_CLASS_ID);
+    game3d_release_typed_ref(&entity->interactor, RT_G3D_GAME3D_INTERACTOR_CLASS_ID);
+    game3d_release_typed_ref(&entity->perception, RT_G3D_GAME3D_PERCEPTION_CLASS_ID);
+    game3d_release_typed_ref(&entity->btree, RT_G3D_GAME3D_BTINSTANCE_CLASS_ID);
+    game3d_release_ref((void **)&entity->persistent_key);
     game3d_release_ref((void **)&entity->name);
 }
 
@@ -929,6 +945,61 @@ void *rt_game3d_entity_attach_to_bone_offset(void *obj,
 /// @brief Attach a child entity to a named bone with no offset.
 void *rt_game3d_entity_attach_to_bone(void *obj, void *child_obj, rt_string bone_name) {
     return rt_game3d_entity_attach_to_bone_offset(obj, child_obj, bone_name, 0.0, 0.0, 0.0);
+}
+
+/// @brief Build (lazily, cached) and activate a ragdoll from the entity's
+///   animator skeleton against the owning world's physics. Returns the
+///   Ragdoll3D handle, or NULL when the entity lacks an animator/skeleton,
+///   node, or spawned world.
+void *rt_game3d_entity_enable_ragdoll(void *obj) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.enableRagdoll: invalid entity");
+    if (!entity)
+        return NULL;
+    rt_game3d_world *world = (rt_game3d_world *)rt_g3d_checked_or_null(
+        entity->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    void *animator = game3d_entity_anim_ref(entity);
+    void *controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
+    void *skeleton = controller ? rt_anim_controller3d_get_skeleton(controller) : NULL;
+    void *node = game3d_entity_node_ref(entity);
+    if (!world || !world->physics || !controller || !skeleton || !node) {
+        rt_trap("Game3D.Entity3D.enableRagdoll: entity needs a spawned world, an animator "
+                "with a skeleton, and a scene node");
+        return NULL;
+    }
+    void *ragdoll = rt_g3d_checked_or_null(entity->ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID);
+    if (!ragdoll) {
+        ragdoll = rt_ragdoll3d_from_skeleton(skeleton);
+        if (!ragdoll)
+            return NULL;
+        game3d_assign_typed_ref(&entity->ragdoll, ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID);
+        game3d_release_ref(&ragdoll);
+        ragdoll = entity->ragdoll;
+    }
+    if (!rt_ragdoll3d_get_active(ragdoll))
+        rt_ragdoll3d_activate(ragdoll, world->physics, controller, node);
+    return ragdoll;
+}
+
+/// @brief Deactivate the entity's ragdoll (if any), blending back to animation
+///   over @p blend_seconds. Returns true when a ragdoll was active.
+int8_t rt_game3d_entity_disable_ragdoll(void *obj, double blend_seconds) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.disableRagdoll: invalid entity");
+    if (!entity)
+        return 0;
+    void *ragdoll = rt_g3d_checked_or_null(entity->ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID);
+    if (!ragdoll || !rt_ragdoll3d_get_active(ragdoll))
+        return 0;
+    rt_ragdoll3d_deactivate(ragdoll, blend_seconds);
+    return 1;
+}
+
+/// @brief Get the entity's cached Ragdoll3D (NULL before enableRagdoll).
+void *rt_game3d_entity_get_ragdoll(void *obj) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.get_ragdoll: invalid entity");
+    return entity ? rt_g3d_checked_or_null(entity->ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID) : NULL;
 }
 
 /// @brief Remove this entity's bone-socket binding (installed by a parent's

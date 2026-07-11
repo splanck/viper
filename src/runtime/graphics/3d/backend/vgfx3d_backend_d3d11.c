@@ -36,8 +36,8 @@
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
-#include "vgfx3d_brdf_lut.h"
 #include "vgfx3d_backend_utils.h"
+#include "vgfx3d_brdf_lut.h"
 
 #include <limits.h>
 #include <math.h>
@@ -167,6 +167,11 @@ typedef struct {
     float cluster_params[4];
     int32_t cluster_global_count;
     float _cluster_pad1[3];
+    /* Height-fog sun inscattering (appended; earlier offsets unchanged):
+     * height_fog_sun = tint rgb + amount (0 = off);
+     * height_fog_sun_dir = direction toward the sun + power. */
+    float height_fog_sun[4];
+    float height_fog_sun_dir[4];
 } d3d_per_scene_t;
 
 _Static_assert(offsetof(d3d_per_scene_t, sh) == offsetof(d3d_per_scene_t, ibl_intensity) + 16,
@@ -556,7 +561,9 @@ typedef struct {
     float clear_g;
     float clear_b;
     int8_t fog_enabled;
-    float height_fog[4]; /* base, falloff, density*blend (0 = off), pad */
+    float height_fog[4];         /* base, falloff, density*blend (0 = off), pad */
+    float height_fog_sun[4];     /* sun tint rgb + amount (0 = off) */
+    float height_fog_sun_dir[4]; /* direction toward the sun + power */
     float fog_near;
     float fog_far;
     float fog_color[3];
@@ -1498,8 +1505,7 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
 /// @details Availability of both compact input layouts is the single gate consulted by
 ///   the mesh cache, the stride selection, and the layout binds, so buffer contents and
 ///   input-assembler layout always agree.
-static int d3d11_cmd_uses_compact_stream(const d3d11_context_t *ctx,
-                                         const vgfx3d_draw_cmd_t *cmd) {
+static int d3d11_cmd_uses_compact_stream(const d3d11_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     return ctx && cmd && cmd->compact_vertex_stream && cmd->geometry_key &&
            ctx->input_layout_compact && ctx->input_layout_instanced_compact;
 }
@@ -1813,10 +1819,8 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = 1;
-        hr = ID3D11Device_CreateShaderResourceView(ctx->device,
-                                                   (ID3D11Resource *)ctx->brdf_lut_tex,
-                                                   &srv_desc,
-                                                   &ctx->brdf_lut_srv);
+        hr = ID3D11Device_CreateShaderResourceView(
+            ctx->device, (ID3D11Resource *)ctx->brdf_lut_tex, &srv_desc, &ctx->brdf_lut_srv);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateShaderResourceView(brdfLut)", hr);
             SAFE_RELEASE(ctx->brdf_lut_tex);

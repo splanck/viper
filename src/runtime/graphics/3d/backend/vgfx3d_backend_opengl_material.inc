@@ -380,6 +380,16 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  ctx->height_fog[1],
                  ctx->height_fog[2],
                  ctx->height_fog[3]);
+    gl.Uniform4f(ctx->uHeightFogSun,
+                 ctx->height_fog_sun[0],
+                 ctx->height_fog_sun[1],
+                 ctx->height_fog_sun[2],
+                 ctx->height_fog_sun[3]);
+    gl.Uniform4f(ctx->uHeightFogSunDir,
+                 ctx->height_fog_sun_dir[0],
+                 ctx->height_fog_sun_dir[1],
+                 ctx->height_fog_sun_dir[2],
+                 ctx->height_fog_sun_dir[3]);
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
     gl.Uniform3f(ctx->uFogColor, ctx->fog_color[0], ctx->fog_color[1], ctx->fog_color[2]);
     gl.Uniform1f(ctx->uShadowBias, ctx->shadow_bias);
@@ -731,6 +741,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uFogEnabled);
     U(uFogNear);
     U(uHeightFog);
+    U(uHeightFogSun);
+    U(uHeightFogSunDir);
     U(uFogFar);
     U(uFogColor);
     U(uIblEnabled);

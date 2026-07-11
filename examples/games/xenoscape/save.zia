@@ -8,7 +8,8 @@
 // File: examples/games/xenoscape/save.zia
 // Purpose: Persists and migrates three Xenoscape expedition-slot snapshots.
 // Key invariants:
-//   - Missing version-1 keys migrate to deterministic release defaults.
+//   - Older schemas migrate to deterministic development-preview defaults.
+//   - Every populated schema-v4 slot carries a checksum over its full snapshot.
 //   - Cache and SaveData keys are updated together before a single flush result.
 // Ownership/Lifetime:
 //   - Game owns one SaveManager; it owns one runtime SaveData store and caches.
@@ -55,8 +56,8 @@
 //   * Backward-compat: removing a field just orphans a key;
 //     `SaveData` tolerates unknown keys.
 //
-//   * No schema version: unlike a binary blob, there's no
-//     "save format version mismatch" path to handle.
+//   * Additive migration: the explicit schema and checksum let
+//     old key sets move forward while rejecting partial writes.
 //
 // Per-field writes *are* chattier on disk, but `SaveData.Save()`
 // batches them, so the overhead is cosmetic.
@@ -84,7 +85,9 @@ bind "./config";
 /// @brief Maximum concurrent save slots.  Three is a classic
 ///        number (fits most menu layouts on a small screen).
 final MAX_SAVE_SLOTS = 3;
-final XENOSCAPE_SAVE_SCHEMA = 2;
+final XENOSCAPE_SAVE_SCHEMA = 4;
+final XENOSCAPE_BASELINE_ABILITY_MASK = 3;
+final XENOSCAPE_CHECKSUM_MODULUS = 2147483629;
 
 //=============================================================================
 // SAVE MANAGER
@@ -133,6 +136,7 @@ class SaveManager {
     hide List[Integer] slotNgPlus;          // active New Game+ mode flag
     hide List[Integer] slotBestTimes;       // flattened slot*10 + region times
     hide List[Integer] slotLastWrite;       // Unix milliseconds, zero for legacy
+    hide List[Integer] slotChecksums;       // schema-v4 full-slot integrity hash
     hide Integer lastObservedWrite;         // monotonic within this manager
 
     /// @brief Open the "xenoscape_saves" store and load every
@@ -147,7 +151,9 @@ class SaveManager {
         store = SaveData.New(name);
         recoveredCorrupt = false;
         slotLevel = [0, 0, 0];
-        slotAbilities = [1, 1, 1]; // default: wall-jump unlocked
+        slotAbilities = [XENOSCAPE_BASELINE_ABILITY_MASK,
+                         XENOSCAPE_BASELINE_ABILITY_MASK,
+                         XENOSCAPE_BASELINE_ABILITY_MASK];
         slotMaxHp = [5, 5, 5];
         slotGems = [0, 0, 0];
         slotTime = [0, 0, 0];
@@ -175,6 +181,7 @@ class SaveManager {
         slotNgPlus = [0, 0, 0];
         slotBestTimes = [];
         slotLastWrite = [0, 0, 0];
+        slotChecksums = [0, 0, 0];
         lastObservedWrite = 0;
         var roomFill = 0;
         while roomFill < MAX_SAVE_SLOTS * LEVEL_COUNT {
@@ -199,6 +206,7 @@ class SaveManager {
             recoveredCorrupt = true;
             return;
         }
+        var anyMigrated = false;
         var i = 0;
         while i < MAX_SAVE_SLOTS {
             var lv = store.GetInt("s" + Int(i) + "lv", 0);
@@ -226,30 +234,43 @@ class SaveManager {
             var rk = store.GetInt("s" + Int(i) + "rk", 0);
             var ng = store.GetInt("s" + Int(i) + "ng", 0);
             var wr = store.GetInt("s" + Int(i) + "wr", 0);
+            var storedChecksum = store.GetInt("s" + Int(i) + "ck", 0);
             var used = ab > 0 or lv > 0;
             var valid = slotCoreIsValid(lv, ab, hp, gm, tm, sv,
                                         bs, lr, be, cp, de, cl, cx, cy);
+            if used and valid and sv >= 4 {
+                if storedChecksum != checksumStoredSlot(i) { valid = false; }
+            }
             if used and valid == false {
                 if recoveredCorrupt == false { backupCorruptStore(); }
                 recoveredCorrupt = true;
                 store.SetInt("s" + Int(i) + "lv", 0);
                 store.SetInt("s" + Int(i) + "ab", 0);
                 store.SetInt("s" + Int(i) + "sv", XENOSCAPE_SAVE_SCHEMA);
+                store.SetInt("s" + Int(i) + "ck", 0);
             }
             if used and valid {
-                if up < 0 { up = 0; }
-                if up > 255 { up = 255; }
-                if df < 0 or df > 2 { df = 1; }
-                if ky < 0 { ky = 0; }
-                if sw < 0 { sw = 0; }
-                if dr < 0 { dr = 0; }
-                if sh < 0 { sh = 0; }
-                if tp < 0 { tp = 0; }
-                if tu < 0 { tu = 0; }
-                if tu > 4095 { tu = 4095; }
-                if rk < 0 { rk = 0; }
-                if ng != 0 { ng = 1; }
-                if wr < 0 { wr = 0; }
+                var slotMigrated = sv < XENOSCAPE_SAVE_SCHEMA;
+                // Schema 1/2/3 profiles predate the traversal repair and may
+                // contain only Wall Jump. Double Jump is now a baseline suit
+                // module, so migrate the bit in memory and persist it below.
+                if (ab / 2) % 2 == 0 {
+                    ab = ab + 2;
+                    slotMigrated = true;
+                }
+                if up < 0 { up = 0; slotMigrated = true; }
+                if up > 255 { up = 255; slotMigrated = true; }
+                if df < 0 or df > 2 { df = 1; slotMigrated = true; }
+                if ky < 0 { ky = 0; slotMigrated = true; }
+                if sw < 0 { sw = 0; slotMigrated = true; }
+                if dr < 0 { dr = 0; slotMigrated = true; }
+                if sh < 0 { sh = 0; slotMigrated = true; }
+                if tp < 0 { tp = 0; slotMigrated = true; }
+                if tu < 0 { tu = 0; slotMigrated = true; }
+                if tu > 4095 { tu = 4095; slotMigrated = true; }
+                if rk < 0 { rk = 0; slotMigrated = true; }
+                if ng != 0 and ng != 1 { ng = 1; slotMigrated = true; }
+                if wr < 0 { wr = 0; slotMigrated = true; }
                 slotLevel.set(i, lv);
                 slotAbilities.set(i, ab);
                 slotMaxHp.set(i, hp);
@@ -261,7 +282,7 @@ class SaveManager {
                 slotBestiary.set(i, be);
                 slotComplete.set(i, cp);
                 slotDeaths.set(i, de);
-                slotSchema.set(i, sv);
+                slotSchema.set(i, XENOSCAPE_SAVE_SCHEMA);
                 slotKeys.set(i, ky);
                 slotSwitches.set(i, sw);
                 slotDoors.set(i, dr);
@@ -276,28 +297,188 @@ class SaveManager {
                 slotRankPacks.set(i, rk);
                 slotNgPlus.set(i, ng);
                 slotLastWrite.set(i, wr);
+                slotChecksums.set(i, storedChecksum);
                 if wr > lastObservedWrite { lastObservedWrite = wr; }
                 var region = 0;
                 while region < LEVEL_COUNT {
                     var rooms = store.GetInt("s" + Int(i) + "r" + Int(region), 0);
-                    if rooms < 0 { rooms = 0; }
-                    if rooms > 255 { rooms = 255; }
+                    if rooms < 0 { rooms = 0; slotMigrated = true; }
+                    if rooms > 255 { rooms = 255; slotMigrated = true; }
                     slotRooms.set(i * LEVEL_COUNT + region, rooms);
                     var bestTime = store.GetInt(
                         "s" + Int(i) + "t" + Int(region), 0);
-                    if bestTime < 0 { bestTime = 0; }
+                    if bestTime < 0 { bestTime = 0; slotMigrated = true; }
                     slotBestTimes.set(i * LEVEL_COUNT + region, bestTime);
                     region = region + 1;
+                }
+                if slotMigrated {
+                    stageCachedSlotSnapshot(i);
+                    anyMigrated = true;
                 }
             }
             i = i + 1;
         }
-        if recoveredCorrupt { store.Save(); }
+        if recoveredCorrupt or anyMigrated { store.Save(); }
+    }
+
+    /// @brief Fold one signed value into the bounded slot checksum.
+    ///
+    /// The rolling checksum is intended to detect truncated, partially updated,
+    /// or manually damaged snapshots. It is not an authentication mechanism.
+    /// Reducing before multiplication keeps arithmetic inside signed 64-bit
+    /// range even when the source store contains hostile integer values.
+    ///
+    /// @param hash Existing bounded rolling value.
+    /// @param value Signed serialized field to incorporate.
+    /// @return New nonnegative checksum below `XENOSCAPE_CHECKSUM_MODULUS`.
+    hide func checksumAppend(hash: Integer, value: Integer) -> Integer {
+        var normalized = value % XENOSCAPE_CHECKSUM_MODULUS;
+        if normalized < 0 {
+            normalized = normalized + XENOSCAPE_CHECKSUM_MODULUS;
+        }
+        return (hash * 131 + normalized + 17) %
+               XENOSCAPE_CHECKSUM_MODULUS;
+    }
+
+    /// @brief Calculate the checksum directly from one serialized slot.
+    ///
+    /// Schema-v4 loading uses the store, not sanitized cache values, so a
+    /// damaged optional field cannot be silently clamped past integrity checks.
+    ///
+    /// @param slot Valid zero-based serialized slot.
+    /// @return Checksum calculated from every stored snapshot field.
+    hide func checksumStoredSlot(slot: Integer) -> Integer {
+        var prefix = "s" + Int(slot);
+        var hash = 97;
+        hash = checksumAppend(hash, store.GetInt(prefix + "lv", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "ab", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "hp", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "gm", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "tm", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "bs", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "lr", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "be", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "cp", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "de", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "sv", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "ky", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "sw", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "dr", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "sh", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "tp", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "up", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "df", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "cl", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "cx", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "cy", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "tu", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "rk", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "ng", 0));
+        hash = checksumAppend(hash, store.GetInt(prefix + "wr", 0));
+        var region = 0;
+        while region < LEVEL_COUNT {
+            hash = checksumAppend(
+                hash, store.GetInt(prefix + "r" + Int(region), 0));
+            hash = checksumAppend(
+                hash, store.GetInt(prefix + "t" + Int(region), 0));
+            region = region + 1;
+        }
+        return hash;
+    }
+
+    /// @brief Calculate the full schema-v4 checksum from sanitized cache state.
+    /// @param slot Valid zero-based cached slot.
+    /// @return Checksum calculated from every cached snapshot field.
+    hide func checksumCachedSlot(slot: Integer) -> Integer {
+        var hash = 97;
+        hash = checksumAppend(hash, slotLevel.get(slot));
+        hash = checksumAppend(hash, slotAbilities.get(slot));
+        hash = checksumAppend(hash, slotMaxHp.get(slot));
+        hash = checksumAppend(hash, slotGems.get(slot));
+        hash = checksumAppend(hash, slotTime.get(slot));
+        hash = checksumAppend(hash, slotBosses.get(slot));
+        hash = checksumAppend(hash, slotLore.get(slot));
+        hash = checksumAppend(hash, slotBestiary.get(slot));
+        hash = checksumAppend(hash, slotComplete.get(slot));
+        hash = checksumAppend(hash, slotDeaths.get(slot));
+        hash = checksumAppend(hash, XENOSCAPE_SAVE_SCHEMA);
+        hash = checksumAppend(hash, slotKeys.get(slot));
+        hash = checksumAppend(hash, slotSwitches.get(slot));
+        hash = checksumAppend(hash, slotDoors.get(slot));
+        hash = checksumAppend(hash, slotShrines.get(slot));
+        hash = checksumAppend(hash, slotTeleporters.get(slot));
+        hash = checksumAppend(hash, slotUpgrades.get(slot));
+        hash = checksumAppend(hash, slotDifficulty.get(slot));
+        hash = checksumAppend(hash, slotCheckpointLevel.get(slot));
+        hash = checksumAppend(hash, slotCheckpointX.get(slot));
+        hash = checksumAppend(hash, slotCheckpointY.get(slot));
+        hash = checksumAppend(hash, slotTutorials.get(slot));
+        hash = checksumAppend(hash, slotRankPacks.get(slot));
+        hash = checksumAppend(hash, slotNgPlus.get(slot));
+        hash = checksumAppend(hash, slotLastWrite.get(slot));
+        var region = 0;
+        while region < LEVEL_COUNT {
+            hash = checksumAppend(
+                hash, slotRooms.get(slot * LEVEL_COUNT + region));
+            hash = checksumAppend(
+                hash, slotBestTimes.get(slot * LEVEL_COUNT + region));
+            region = region + 1;
+        }
+        return hash;
+    }
+
+    /// @brief Stage every cached field plus its checksum in one SaveData batch.
+    ///
+    /// Callers perform the single final `Save()` after all cache mutations. The
+    /// checksum is deliberately written last so an interrupted pre-flush batch
+    /// cannot validate against a previous snapshot.
+    ///
+    /// @param slot Valid zero-based cached slot to stage.
+    /// @return Nothing. Does not flush the SaveData batch.
+    hide func stageCachedSlotSnapshot(slot: Integer) {
+        var prefix = "s" + Int(slot);
+        slotSchema.set(slot, XENOSCAPE_SAVE_SCHEMA);
+        store.SetInt(prefix + "lv", slotLevel.get(slot));
+        store.SetInt(prefix + "ab", slotAbilities.get(slot));
+        store.SetInt(prefix + "hp", slotMaxHp.get(slot));
+        store.SetInt(prefix + "gm", slotGems.get(slot));
+        store.SetInt(prefix + "tm", slotTime.get(slot));
+        store.SetInt(prefix + "bs", slotBosses.get(slot));
+        store.SetInt(prefix + "lr", slotLore.get(slot));
+        store.SetInt(prefix + "be", slotBestiary.get(slot));
+        store.SetInt(prefix + "cp", slotComplete.get(slot));
+        store.SetInt(prefix + "de", slotDeaths.get(slot));
+        store.SetInt(prefix + "sv", XENOSCAPE_SAVE_SCHEMA);
+        store.SetInt(prefix + "ky", slotKeys.get(slot));
+        store.SetInt(prefix + "sw", slotSwitches.get(slot));
+        store.SetInt(prefix + "dr", slotDoors.get(slot));
+        store.SetInt(prefix + "sh", slotShrines.get(slot));
+        store.SetInt(prefix + "tp", slotTeleporters.get(slot));
+        store.SetInt(prefix + "up", slotUpgrades.get(slot));
+        store.SetInt(prefix + "df", slotDifficulty.get(slot));
+        store.SetInt(prefix + "cl", slotCheckpointLevel.get(slot));
+        store.SetInt(prefix + "cx", slotCheckpointX.get(slot));
+        store.SetInt(prefix + "cy", slotCheckpointY.get(slot));
+        store.SetInt(prefix + "tu", slotTutorials.get(slot));
+        store.SetInt(prefix + "rk", slotRankPacks.get(slot));
+        store.SetInt(prefix + "ng", slotNgPlus.get(slot));
+        store.SetInt(prefix + "wr", slotLastWrite.get(slot));
+        var region = 0;
+        while region < LEVEL_COUNT {
+            store.SetInt(prefix + "r" + Int(region),
+                         slotRooms.get(slot * LEVEL_COUNT + region));
+            store.SetInt(prefix + "t" + Int(region),
+                         slotBestTimes.get(slot * LEVEL_COUNT + region));
+            region = region + 1;
+        }
+        var checksum = checksumCachedSlot(slot);
+        slotChecksums.set(slot, checksum);
+        store.SetInt(prefix + "ck", checksum);
     }
 
     /// @brief Validate the mandatory core of one populated expedition slot.
     ///
-    /// Optional additive schema-v2 fields are clamped separately. Core values
+    /// Optional additive fields are clamped separately. Core values
     /// outside representable campaign bounds indicate a structurally corrupt slot
     /// that must not be offered by Continue or Load Game.
     ///
@@ -371,8 +552,8 @@ class SaveManager {
                      slotDeaths.get(slot));
     }
 
-    /// @brief Write a release-quality slot snapshot with
-    ///        campaign metadata used by Continue/Load Game.
+    /// @brief Write a complete development-preview slot snapshot with campaign
+    ///        metadata used by Continue/Load Game.
     expose func saveSlotFull(slot: Integer, level: Integer, abilities: Integer,
                              maxHp: Integer, gems: Integer, time: Integer,
                              bosses: Integer, lore: Integer,
@@ -381,6 +562,7 @@ class SaveManager {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
         writeSlotCore(slot, level, abilities, maxHp, gems, time,
                       bosses, lore, bestiary, completion, deaths);
+        stageCachedSlotSnapshot(slot);
         store.Save();
     }
 
@@ -388,7 +570,7 @@ class SaveManager {
     ///
     /// This helper deliberately does not flush. Public writers append any
     /// schema-specific fields and perform exactly one `Save()` at their batch
-    /// boundary, keeping release snapshots internally consistent.
+    /// boundary, keeping snapshots internally consistent.
     ///
     /// @param slot Validated zero-based destination slot.
     /// @param level One-based current area.
@@ -452,7 +634,7 @@ class SaveManager {
         store.SetInt("s" + Int(slot) + "wr", writeTimestamp);
     }
 
-    /// @brief Write a schema-v2 release snapshot including persistent world state.
+    /// @brief Write a schema-v4 snapshot including persistent world state.
     ///
     /// Core campaign fields use the same keys as version 1. New interaction masks
     /// are additive, so loading an old slot produces zero/default masks and the
@@ -567,6 +749,7 @@ class SaveManager {
             store.SetInt("s" + Int(slot) + "t" + Int(region), bestTime);
             region = region + 1;
         }
+        stageCachedSlotSnapshot(slot);
         return store.Save();
     }
 
@@ -585,17 +768,18 @@ class SaveManager {
     }
 
     /// @brief Accessor for the slot's level index.  Out-of-range
-    ///        returns 0 (the first level) as a safe default.
+    ///        returns 0 (no loaded level) as a safe default.
     expose func getSlotLevel(slot: Integer) -> Integer {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return 0; }
         return slotLevel.get(slot);
     }
 
     /// @brief Ability-bitset accessor.  See `abilities.zia` for
-    ///        the bit layout.  Default `1` means "wall jump
-    ///        unlocked" (every run starts with that).
+    ///        the bit layout. Default `3` is Wall Jump plus Double Jump.
     expose func getSlotAbilities(slot: Integer) -> Integer {
-        if slot < 0 or slot >= MAX_SAVE_SLOTS { return 1; }
+        if slot < 0 or slot >= MAX_SAVE_SLOTS {
+            return XENOSCAPE_BASELINE_ABILITY_MASK;
+        }
         return slotAbilities.get(slot);
     }
 
@@ -852,7 +1036,7 @@ class SaveManager {
     expose func deleteSlot(slot: Integer) {
         if slot < 0 or slot >= MAX_SAVE_SLOTS { return; }
         slotLevel.set(slot, 0);
-        slotAbilities.set(slot, 1);
+        slotAbilities.set(slot, XENOSCAPE_BASELINE_ABILITY_MASK);
         slotMaxHp.set(slot, 5);
         slotGems.set(slot, 0);
         slotTime.set(slot, 0);
@@ -877,6 +1061,7 @@ class SaveManager {
         slotRankPacks.set(slot, 0);
         slotNgPlus.set(slot, 0);
         slotLastWrite.set(slot, 0);
+        slotChecksums.set(slot, 0);
         var region = 0;
         while region < LEVEL_COUNT {
             slotRooms.set(slot * LEVEL_COUNT + region, 0);
@@ -905,6 +1090,7 @@ class SaveManager {
         store.SetInt("s" + Int(slot) + "rk", 0);
         store.SetInt("s" + Int(slot) + "ng", 0);
         store.SetInt("s" + Int(slot) + "wr", 0);
+        store.SetInt("s" + Int(slot) + "ck", 0);
         region = 0;
         while region < LEVEL_COUNT {
             store.SetInt("s" + Int(slot) + "r" + Int(region), 0);
@@ -914,7 +1100,7 @@ class SaveManager {
         store.Save();
     }
 
-    /// @brief Build a compact commercial profile-card summary.
+    /// @brief Build a compact profile-card summary.
     ///
     /// Empty slots remain explicit. Populated slots expose area, checkpoint,
     /// playtime, completion, difficulty, max HP, ability count, and salvage in a

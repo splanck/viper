@@ -147,7 +147,51 @@ func enemyDisplayName(enemyType: Integer) -> String {
     if enemyType == ENEMY_ARCHITECT { return "The Architect"; }
     if enemyType == ENEMY_PATROL_DRONE { return "Patrol Drone"; }
     if enemyType == ENEMY_BOMB_CARRIER { return "Bomb Carrier"; }
+    if enemyType == ENEMY_BEACON_WARDEN { return "Beacon Warden"; }
+    if enemyType == ENEMY_RELAY_CUSTODIAN { return "Relay Custodian"; }
+    if enemyType == ENEMY_TIDE_LEVIATHAN { return "Tide Leviathan"; }
+    if enemyType == ENEMY_VERDANT_COLOSSUS { return "Verdant Colossus"; }
+    if enemyType == ENEMY_CRYO_CUSTODIAN { return "Cryo Custodian"; }
+    if enemyType == ENEMY_NULL_HARVESTER { return "Null Harvester"; }
     return "Unknown Lifeform";
+}
+
+/// @brief Identify one of the six distinct regional climax controllers.
+/// @param enemyType Candidate `ENEMY_*` id.
+/// @return True only for a new regional climax archetype.
+func isRegionalClimaxBoss(enemyType: Integer) -> Boolean {
+    return enemyType == ENEMY_BEACON_WARDEN or
+           enemyType == ENEMY_RELAY_CUSTODIAN or
+           enemyType == ENEMY_TIDE_LEVIATHAN or
+           enemyType == ENEMY_VERDANT_COLOSSUS or
+           enemyType == ENEMY_CRYO_CUSTODIAN or
+           enemyType == ENEMY_NULL_HARVESTER;
+}
+
+/// @brief Return authored base HP for a regional climax.
+/// @param enemyType Candidate `ENEMY_*` id.
+/// @return Positive authored HP, or generic boss HP for other ids.
+func regionalClimaxHp(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_BEACON_WARDEN { return BEACON_WARDEN_HP; }
+    if enemyType == ENEMY_RELAY_CUSTODIAN { return RELAY_CUSTODIAN_HP; }
+    if enemyType == ENEMY_TIDE_LEVIATHAN { return TIDE_LEVIATHAN_HP; }
+    if enemyType == ENEMY_VERDANT_COLOSSUS { return VERDANT_COLOSSUS_HP; }
+    if enemyType == ENEMY_CRYO_CUSTODIAN { return CRYO_CUSTODIAN_HP; }
+    if enemyType == ENEMY_NULL_HARVESTER { return NULL_HARVESTER_HP; }
+    return BOSS_HP;
+}
+
+/// @brief Return authored movement speed for a regional climax.
+/// @param enemyType Candidate `ENEMY_*` id.
+/// @return Positive centipixel speed, or generic boss speed for other ids.
+func regionalClimaxSpeed(enemyType: Integer) -> Integer {
+    if enemyType == ENEMY_BEACON_WARDEN { return 260; }
+    if enemyType == ENEMY_RELAY_CUSTODIAN { return 220; }
+    if enemyType == ENEMY_TIDE_LEVIATHAN { return 330; }
+    if enemyType == ENEMY_VERDANT_COLOSSUS { return 180; }
+    if enemyType == ENEMY_CRYO_CUSTODIAN { return 350; }
+    if enemyType == ENEMY_NULL_HARVESTER { return 380; }
+    return BOSS_SPEED;
 }
 
 /// @brief Return the visual death-effect family for an enemy archetype.
@@ -177,6 +221,11 @@ func enemyDeathEffectForType(enemyType: Integer) -> Integer {
     if enemyType == ENEMY_CORRUPTION { return 5; }
     if enemyType == ENEMY_ARCHITECT { return 5; }
     if enemyType == ENEMY_BOMB_CARRIER { return 6; }
+    if enemyType == ENEMY_BEACON_WARDEN { return 6; }
+    if enemyType == ENEMY_TIDE_LEVIATHAN { return 2; }
+    if enemyType == ENEMY_VERDANT_COLOSSUS { return 1; }
+    if enemyType == ENEMY_CRYO_CUSTODIAN { return 4; }
+    if enemyType == ENEMY_NULL_HARVESTER { return 5; }
     return 0;
 }
 
@@ -214,6 +263,12 @@ func enemyScoreForType(enemyType: Integer) -> Integer {
     if enemyType == ENEMY_MAGMA_CORE { return 4000; }
     if enemyType == ENEMY_ARCHITECT { return 10000; }
     if enemyType == ENEMY_BOSS { return 5000; }
+    if enemyType == ENEMY_BEACON_WARDEN { return 2200; }
+    if enemyType == ENEMY_RELAY_CUSTODIAN { return 2600; }
+    if enemyType == ENEMY_TIDE_LEVIATHAN { return 3200; }
+    if enemyType == ENEMY_VERDANT_COLOSSUS { return 3600; }
+    if enemyType == ENEMY_CRYO_CUSTODIAN { return 3800; }
+    if enemyType == ENEMY_NULL_HARVESTER { return 4800; }
     return ENEMY_SCORE;
 }
 
@@ -230,6 +285,7 @@ func enemyContactDamageForType(enemyType: Integer) -> Integer {
     if enemyType == ENEMY_RUIN_GUARDIAN { return 2; }
     if enemyType == ENEMY_CRYSTAL_GOLEM { return 2; }
     if enemyType == ENEMY_BOMB_CARRIER { return 3; }
+    if isRegionalClimaxBoss(enemyType) { return 2; }
     return 1;
 }
 
@@ -412,7 +468,12 @@ class EnemyManager {
         if t == ENEMY_SLIME { ehp.set(handle, SLIME_HP); evx.set(handle, SLIME_SPEED); }
         else if t == ENEMY_BAT { ehp.set(handle, BAT_HP); }
         else if t == ENEMY_TURRET { ehp.set(handle, TURRET_HP); }
-        else if t == ENEMY_BOSS { ehp.set(handle, BOSS_HP); bossIndex = handle; bossPhase = 0; }
+        else if t == ENEMY_BOSS or isRegionalClimaxBoss(t) {
+            ehp.set(handle, regionalClimaxHp(t));
+            bossIndex = handle;
+            bossPhase = 0;
+            bossMaxHp = regionalClimaxHp(t);
+        }
         else if t == ENEMY_SPOREWALKER { ehp.set(handle, SPOREWALKER_HP); evx.set(handle, SPOREWALKER_SPEED); }
         else if t == ENEMY_GLOWMOTH { ehp.set(handle, GLOWMOTH_HP); }
         else if t == ENEMY_FUNGAL_TURRET { ehp.set(handle, FUNGAL_TURRET_HP); }
@@ -579,7 +640,9 @@ class EnemyManager {
     /// @param enemyType One `ENEMY_*` id from authored spawn data.
     /// @return True for a boss archetype and false for regular enemies/invalid ids.
     hide func isBossType(enemyType: Integer) -> Boolean {
-        if enemyType == ENEMY_BOSS { return true; }
+        if enemyType == ENEMY_BOSS or isRegionalClimaxBoss(enemyType) {
+            return true;
+        }
         if enemyType == ENEMY_SPORE_MOTHER { return true; }
         if enemyType == ENEMY_CRYSTAL_WYRM { return true; }
         if enemyType == ENEMY_MAGMA_CORE { return true; }
@@ -658,7 +721,9 @@ class EnemyManager {
                 if t == ENEMY_SLIME { updateSlime(i, level, dt); }
                 if t == ENEMY_BAT { updateBat(i, playerPx, playerPy, dt); }
                 if t == ENEMY_TURRET { updateTurret(i, level, playerPx, playerPy, dt); }
-                if t == ENEMY_BOSS { updateBoss(i, level, playerPx, playerPy, dt); }
+                if t == ENEMY_BOSS or isRegionalClimaxBoss(t) {
+                    updateBoss(i, level, playerPx, playerPy, dt);
+                }
                 if t == ENEMY_SPOREWALKER { updateSporewalker(i, level, dt); }
                 if t == ENEMY_GLOWMOTH { updateGlowmoth(i, playerPx, playerPy, dt); }
                 if t == ENEMY_FUNGAL_TURRET { updateFungalTurret(i, playerPx, playerPy, dt); }
@@ -1028,6 +1093,10 @@ class EnemyManager {
     ///        update methods (Architect, MagmaCoreBoss,
     ///        CrystalWyrm, SporeMother).
     hide func updateBoss(i: Integer, level: Level, playerPx: Integer, _playerPy: Integer, dt: Integer) {
+        var bossType = etype.get(i);
+        var bossSpeed = regionalClimaxSpeed(bossType);
+        var bossW = getEnemyW(bossType);
+        var bossH = getEnemyH(bossType);
         // Skip AI logic during hurt state (etimer is shared with hurt handler)
         if estate.get(i) == 1 {
             // Still apply gravity during hurt so boss doesn't float — but
@@ -1040,7 +1109,8 @@ class EnemyManager {
             if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
             var dispY = curVy * dt / DT_BASE;
-            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0, dispY, BOSS_W, BOSS_H, level);
+            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0,
+                                             dispY, bossW, bossH, level);
             ey.set(i, result.y);
             if result.hitFloor { evy.set(i, 0); }
             if result.hitCeiling { evy.set(i, 0); }
@@ -1050,10 +1120,10 @@ class EnemyManager {
         var hp = ehp.get(i);
 
         // Determine phase based on HP
-        if hp > BOSS_HP * 2 / 3 {
+        if hp > bossMaxHp * 2 / 3 {
             bossPhase = 0;
         } else {
-            if hp > BOSS_HP / 3 {
+            if hp > bossMaxHp / 3 {
                 bossPhase = 1;
             } else {
                 bossPhase = 2;
@@ -1095,23 +1165,24 @@ class EnemyManager {
         if bossPhase == 0 {
             // Phase 0: Slow patrol, shoot periodically
             var d = edir.get(i);
-            evx.set(i, d * BOSS_SPEED / 2);
+            evx.set(i, d * bossSpeed / 2);
 
             if tm >= BOSS_SHOOT0_MS {
                 etimer.set(i, 0);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 8, 0);
+                spawnRegionalBossVolley(
+                    bossType, 0, cx, cy, bossW, bossH, d);
             }
         }
 
         if bossPhase == 1 {
             // Phase 1: Faster, shoots more, jumps occasionally
             var d = edir.get(i);
-            evx.set(i, d * BOSS_SPEED);
+            evx.set(i, d * bossSpeed);
 
             if tm >= BOSS_SHOOT1_MS {
                 etimer.set(i, tm - BOSS_SHOOT1_MS);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 9, 0);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 8, -3);
+                spawnRegionalBossVolley(
+                    bossType, 1, cx, cy, bossW, bossH, d);
             }
 
             // Jump uses secondary timer
@@ -1131,9 +1202,9 @@ class EnemyManager {
             if adx > 150 {
                 // Charge
                 if dx > 0 {
-                    evx.set(i, BOSS_SPEED * 3 / 2);
+                    evx.set(i, bossSpeed * 3 / 2);
                 } else {
-                    evx.set(i, 0 - BOSS_SPEED * 3 / 2);
+                    evx.set(i, 0 - bossSpeed * 3 / 2);
                 }
             } else {
                 evx.set(i, 0);
@@ -1142,9 +1213,8 @@ class EnemyManager {
             if tm >= BOSS_SHOOT2_MS {
                 etimer.set(i, tm - BOSS_SHOOT2_MS);
                 var d = edir.get(i);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 30, d * 10, 0);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 15, d * 9, -5);
-                spawnEnemyBullet(cx + BOSS_W / 2, cy + 45, d * 9, 3);
+                spawnRegionalBossVolley(
+                    bossType, 2, cx, cy, bossW, bossH, d);
             }
 
             var jt = etimer2.get(i) + dt;
@@ -1162,7 +1232,8 @@ class EnemyManager {
         var dispY = curVy * dt / DT_BASE;
 
         // Move with collision
-        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY, BOSS_W, BOSS_H, level);
+        var result = phys.moveAndCollide(ex.get(i), ey.get(i), dispX, dispY,
+                                         bossW, bossH, level);
 
         ex.set(i, result.x);
         ey.set(i, result.y);
@@ -1177,6 +1248,71 @@ class EnemyManager {
         var hitRight = result.hitRight;
         if hitLeft { edir.set(i, 1); }
         if hitRight { edir.set(i, -1); }
+    }
+
+    /// @brief Spawn the readable projectile signature for one regional climax.
+    ///
+    /// Every shared-controller boss keeps the same three-phase cadence and
+    /// 160-millisecond wind-up, but direction and spread communicate identity:
+    /// Beacon fires fast lanes, Relay brackets, Tide descends, Verdant arcs,
+    /// Cryo crosses, and Null attacks from both directions.
+    ///
+    /// @param bossType Active boss archetype.
+    /// @param phase Current health phase in 0..2.
+    /// @param cx Boss left edge in world pixels.
+    /// @param cy Boss top edge in world pixels.
+    /// @param bossW Collision width in pixels.
+    /// @param bossH Collision height in pixels.
+    /// @param direction Facing direction, negative left or positive right.
+    /// @return Nothing. May fill available enemy-projectile pool slots.
+    hide func spawnRegionalBossVolley(bossType: Integer, phase: Integer,
+                                      cx: Integer, cy: Integer,
+                                      bossW: Integer, bossH: Integer,
+                                      direction: Integer) {
+        var bx = cx + bossW / 2;
+        var by = cy + bossH / 3;
+        if bossType == ENEMY_BEACON_WARDEN {
+            spawnEnemyBullet(bx, by, direction * (10 + phase), 0);
+            if phase >= 1 { spawnEnemyBullet(bx, by - 14, direction * 9, -2); }
+            if phase >= 2 { spawnEnemyBullet(bx, by + 14, direction * 9, 2); }
+            return;
+        }
+        if bossType == ENEMY_RELAY_CUSTODIAN {
+            spawnEnemyBullet(bx, by - 12, direction * 8, -4);
+            spawnEnemyBullet(bx, by + 12, direction * 8, 4);
+            if phase >= 2 { spawnEnemyBullet(bx, by, direction * 10, 0); }
+            return;
+        }
+        if bossType == ENEMY_TIDE_LEVIATHAN {
+            spawnEnemyBullet(bx, by - 18, direction * 7, 3 + phase);
+            if phase >= 1 { spawnEnemyBullet(bx, by, direction * 8, 5); }
+            if phase >= 2 { spawnEnemyBullet(bx, by + 18, direction * 9, 7); }
+            return;
+        }
+        if bossType == ENEMY_VERDANT_COLOSSUS {
+            spawnEnemyBullet(bx, by + 16, direction * 7, -5);
+            if phase >= 1 { spawnEnemyBullet(bx, by, direction * 8, -3); }
+            if phase >= 2 { spawnEnemyBullet(bx, by - 16, direction * 9, 1); }
+            return;
+        }
+        if bossType == ENEMY_CRYO_CUSTODIAN {
+            spawnEnemyBullet(bx, by - 10, direction * 9, -3);
+            spawnEnemyBullet(bx, by + 10, direction * 9, 3);
+            if phase >= 2 { spawnEnemyBullet(bx, by, direction * 11, 0); }
+            return;
+        }
+        if bossType == ENEMY_NULL_HARVESTER {
+            spawnEnemyBullet(bx, by, direction * 10, 0);
+            spawnEnemyBullet(bx, by - 16, 0 - direction * 6, -4);
+            if phase >= 1 { spawnEnemyBullet(bx, by + 16, 0 - direction * 7, 4); }
+            if phase >= 2 { spawnEnemyBullet(bx, by, direction * 8, -6); }
+            return;
+        }
+
+        // Legacy generic boss fallback preserves its established fan.
+        spawnEnemyBullet(bx, by, direction * (8 + phase), 0);
+        if phase >= 1 { spawnEnemyBullet(bx, cy + bossH / 5, direction * 8, -3); }
+        if phase >= 2 { spawnEnemyBullet(bx, cy + bossH / 2, direction * 9, 3); }
     }
 
     // =========================================================================
@@ -1821,7 +1957,7 @@ class EnemyManager {
     //=========================================================
 
     /// @brief Spore Mother boss: spawns minions + arc spore
-    ///        attacks.  Drops the double-jump ability on
+    ///        attacks. Drops the Dash ability on
     ///        defeat.
     hide func updateSporeMother(i: Integer, level: Level, playerPx: Integer, _playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
@@ -2272,7 +2408,7 @@ class EnemyManager {
     expose func isEnemyBoss(i: Integer) -> Boolean {
         if i < 0 or pool.IsActive(i) == false { return false; }
         var t = etype.get(i);
-        if t == ENEMY_BOSS { return true; }
+        if t == ENEMY_BOSS or isRegionalClimaxBoss(t) { return true; }
         if t == ENEMY_SPORE_MOTHER { return true; }
         if t == ENEMY_CRYSTAL_WYRM { return true; }
         if t == ENEMY_MAGMA_CORE { return true; }
@@ -2315,6 +2451,18 @@ class EnemyManager {
     expose func getEnemyPixelY(i: Integer) -> Integer {
         if i < 0 or pool.IsActive(i) == false { return 0; }
         return ey.get(i) / 100;
+    }
+
+    /// @brief Read current HP for hit-confirm feedback before/after damage.
+    expose func getEnemyHp(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        return ehp.get(i);
+    }
+
+    /// @brief Read the active archetype's collision height in pixels.
+    expose func getEnemyHeight(i: Integer) -> Integer {
+        if i < 0 or pool.IsActive(i) == false { return 0; }
+        return getEnemyH(etype.get(i));
     }
 
     hide func clearBulletsNear(cx: Integer, cy: Integer) {
@@ -2387,7 +2535,7 @@ class EnemyManager {
         if t == ENEMY_SLIME { return SLIME_W; }
         if t == ENEMY_BAT { return BAT_W; }
         if t == ENEMY_TURRET { return TURRET_W; }
-        if t == ENEMY_BOSS { return BOSS_W; }
+        if t == ENEMY_BOSS or isRegionalClimaxBoss(t) { return BOSS_W; }
         if t == ENEMY_SPOREWALKER { return SPOREWALKER_W; }
         if t == ENEMY_GLOWMOTH { return GLOWMOTH_W; }
         if t == ENEMY_FUNGAL_TURRET { return FUNGAL_TURRET_W; }
@@ -2421,7 +2569,7 @@ class EnemyManager {
         if t == ENEMY_SLIME { return SLIME_H; }
         if t == ENEMY_BAT { return BAT_H; }
         if t == ENEMY_TURRET { return TURRET_H; }
-        if t == ENEMY_BOSS { return BOSS_H; }
+        if t == ENEMY_BOSS or isRegionalClimaxBoss(t) { return BOSS_H; }
         if t == ENEMY_SPOREWALKER { return SPOREWALKER_H; }
         if t == ENEMY_GLOWMOTH { return GLOWMOTH_H; }
         if t == ENEMY_FUNGAL_TURRET { return FUNGAL_TURRET_H; }
@@ -2497,7 +2645,10 @@ class EnemyManager {
         if t == ENEMY_BAT { canvas.BlitAlpha(sx, sy, sprites.getBatFrame(f)); return; }
         if t == ENEMY_DRONE { canvas.BlitAlpha(sx, sy, sprites.getDroneFrame(f)); return; }
         if t == ENEMY_TURRET { canvas.BlitAlpha(sx, sy, sprites.getTurretBase()); return; }
-        if t == ENEMY_BOSS { canvas.BlitAlpha(sx, sy, sprites.getBossFrame(f)); return; }
+        if t == ENEMY_BOSS or isRegionalClimaxBoss(t) {
+            drawRegionalClimax(canvas, t, f, sx, sy, sprites);
+            return;
+        }
         if t == ENEMY_SPOREWALKER { canvas.BlitAlpha(sx, sy, sprites.getSporewalkerFrame(f)); return; }
         if t == ENEMY_GLOWMOTH { canvas.BlitAlpha(sx, sy, sprites.getGlowmothFrame(f)); return; }
         if t == ENEMY_FUNGAL_TURRET { canvas.BlitAlpha(sx, sy, sprites.getFungalTurretFrame(f)); return; }
@@ -2531,6 +2682,49 @@ class EnemyManager {
         else { canvas.Box(sx, sy, w, h, Color.RGB(255, 0, 255)); } // Fallback: magenta
     }
 
+    /// @brief Draw a shared mechanical silhouette with a unique readable core.
+    hide func drawRegionalClimax(canvas: Canvas, t: Integer, f: Integer,
+                                 sx: Integer, sy: Integer,
+                                 sprites: SpriteFactory) {
+        canvas.BlitAlpha(sx, sy, sprites.getBossFrame(f));
+        var accent = Color.RGB(240, 190, 70);
+        if t == ENEMY_RELAY_CUSTODIAN { accent = Color.RGB(90, 210, 235); }
+        if t == ENEMY_TIDE_LEVIATHAN { accent = Color.RGB(70, 150, 255); }
+        if t == ENEMY_VERDANT_COLOSSUS { accent = Color.RGB(90, 225, 105); }
+        if t == ENEMY_CRYO_CUSTODIAN { accent = Color.RGB(185, 235, 255); }
+        if t == ENEMY_NULL_HARVESTER { accent = Color.RGB(210, 80, 240); }
+        var cx = sx + BOSS_W / 2;
+        var cy = sy + BOSS_H / 2;
+        canvas.DiscAlpha(cx, cy, 22, accent, 65);
+        canvas.Ring(cx, cy, 18, accent);
+        if t == ENEMY_BEACON_WARDEN {
+            canvas.Line(cx, cy - 15, cx, cy + 15, accent);
+            canvas.Disc(cx, cy, 5, accent);
+        }
+        if t == ENEMY_RELAY_CUSTODIAN {
+            canvas.Triangle(cx, cy - 14, cx - 14, cy + 11,
+                            cx + 14, cy + 11, accent);
+        }
+        if t == ENEMY_TIDE_LEVIATHAN {
+            canvas.Line(cx - 16, cy - 7, cx + 16, cy - 7, accent);
+            canvas.Line(cx - 16, cy + 7, cx + 16, cy + 7, accent);
+        }
+        if t == ENEMY_VERDANT_COLOSSUS {
+            canvas.Disc(cx - 8, cy, 7, accent);
+            canvas.Disc(cx + 8, cy, 7, accent);
+        }
+        if t == ENEMY_CRYO_CUSTODIAN {
+            canvas.Triangle(cx, cy - 16, cx - 13, cy,
+                            cx + 13, cy, accent);
+            canvas.Triangle(cx, cy + 16, cx - 13, cy,
+                            cx + 13, cy, accent);
+        }
+        if t == ENEMY_NULL_HARVESTER {
+            canvas.Line(cx - 14, cy - 14, cx + 14, cy + 14, accent);
+            canvas.Line(cx + 14, cy - 14, cx - 14, cy + 14, accent);
+        }
+    }
+
     hide func drawEnemyBullets(canvas: Canvas, camX: Integer, camY: Integer,
                                 sprites: SpriteFactory) {
         var i = 0;
@@ -2551,7 +2745,6 @@ class EnemyManager {
     // Accessors
     expose func getEnemyType(i: Integer) -> Integer { return etype.get(i); }
     expose func isActive(i: Integer) -> Integer { if pool.IsActive(i) { return 1; } return 0; }
-    expose func getEnemyHp(i: Integer) -> Integer { return ehp.get(i); }
     expose func activeCount() -> Integer { return pool.get_ActiveCount(); }
 
     /// @brief Report whether any live hostile is near a world-space listener.

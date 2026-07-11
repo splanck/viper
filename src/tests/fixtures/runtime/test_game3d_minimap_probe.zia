@@ -1,0 +1,76 @@
+module test_game3d_minimap_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("Minimap Probe", 320, 240);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    var minimap = Game3D.Minimap3D.New(world, 128);
+    minimap.SetViewport(10.0, 10.0, 100.0, 100.0);
+    // World rect: X in [-50, 50], Z in [-50, 50].
+    minimap.SetMapImage(null, -50.0, -50.0, 50.0, 50.0);
+
+    // Affine: world corners map to viewport corners, center to center.
+    if (minimap.MapX(-50.0, 0.0) < 9.9 || minimap.MapX(-50.0, 0.0) > 10.1) {
+        Terminal.Say("FAIL: west edge should map to the viewport left");
+        return;
+    }
+    if (minimap.MapX(50.0, 0.0) < 109.9 || minimap.MapX(50.0, 0.0) > 110.1) {
+        Terminal.Say("FAIL: east edge should map to the viewport right");
+        return;
+    }
+    if (minimap.MapY(0.0, 0.0) < 59.9 || minimap.MapY(0.0, 0.0) > 60.1) {
+        Terminal.Say("FAIL: world center should map to the viewport middle");
+        return;
+    }
+    if (minimap.MapX(200.0, 0.0) < 250.0) {
+        Terminal.Say("FAIL: far-off points map outside the viewport (pre-clamp)");
+        return;
+    }
+
+    // Markers: entity-bound, point-bound, and stale-entity drop.
+    var player = Game3D.Entity3D.New();
+    player.SetPosition(0.0, 0.0, 0.0);
+    world.Spawn(player);
+    minimap.SetTrackedEntity(player);
+
+    var chest = Game3D.Entity3D.New();
+    chest.SetPosition(25.0, 0.0, -25.0);
+    world.Spawn(chest);
+    var chestMark = minimap.AddMarker(chest, null, 16766720);
+    var homeMark = minimap.AddMarkerAt(Math.Vec3.New(-40.0, 0.0, 40.0), null, 65280);
+    var farMark = minimap.AddMarkerAt(Math.Vec3.New(500.0, 0.0, 0.0), null, 16711680);
+    minimap.SetMarkerOnCompass(chestMark, true);
+    minimap.SetObjectiveIndicator(homeMark, true);
+    minimap.SetMarkerScale(farMark, 2.0);
+    minimap.SetCompass(true, 200.0);
+    if (minimap.MarkerCount != 3) {
+        Terminal.Say("FAIL: three markers should be registered");
+        return;
+    }
+
+    // Draw renders the map panel, markers (far one rim-clamped), compass,
+    // and the objective indicator without trapping.
+    world.StepSimulation(1.0 / 60.0);
+    minimap.Draw();
+
+    // Stale entities drop their markers fail-closed on the next draw.
+    world.Despawn(chest);
+    minimap.Draw();
+    if (minimap.MarkerCount != 2) {
+        Terminal.Say("FAIL: a despawned entity should drop its marker");
+        return;
+    }
+
+    minimap.RemoveMarker(homeMark);
+    if (minimap.MarkerCount != 1) {
+        Terminal.Say("FAIL: RemoveMarker should release the slot");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

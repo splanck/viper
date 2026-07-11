@@ -45,19 +45,18 @@ func fail(message: String) {
     Terminal.Say("RESULT: fail " + message);
 }
 
-/// @brief Verify ability ownership survives reset while locked moves stay locked.
+/// @brief Verify baseline traversal survives reset while later moves stay locked.
 ///
-/// @return True when wall jump is initially available, double jump is initially
-///         unavailable, granting Double Jump enables it, and reset preserves the
-///         synchronized ability mask.
+/// @return True when Wall Jump and Double Jump are initially available, reset
+///         preserves them, and later campaign abilities remain gated.
 func verifyAbilityGates() -> Boolean {
     var p = new Player();
     if p.canUseWallJump() == false {
         fail("starting wall jump unavailable");
         return false;
     }
-    if p.canUseDoubleJump() {
-        fail("double jump leaked before acquisition");
+    if p.canUseDoubleJump() == false {
+        fail("baseline double jump unavailable");
         return false;
     }
 
@@ -72,6 +71,9 @@ func verifyAbilityGates() -> Boolean {
         return false;
     }
 
+    // Player still obeys an explicitly supplied restricted mask. This keeps
+    // the low-level ability contract testable even though campaign profiles
+    // always supply both baseline movement bits.
     p.setAbilityMask(ABILITY_WALL_JUMP);
     p.spawn(64, 64);
     if p.canUseDoubleJump() {
@@ -210,6 +212,29 @@ func verifyEnemyTraits() -> Boolean {
     if enemyFreezeDurationForType(ENEMY_SLIME) != 0 {
         fail("ordinary slime freeze status");
         return false;
+    }
+    var regionalTypes: List[Integer] = [
+        ENEMY_BEACON_WARDEN, ENEMY_RELAY_CUSTODIAN,
+        ENEMY_TIDE_LEVIATHAN, ENEMY_VERDANT_COLOSSUS,
+        ENEMY_CRYO_CUSTODIAN, ENEMY_NULL_HARVESTER
+    ];
+    var regionalNames: List[String] = [
+        "Beacon Warden", "Relay Custodian", "Tide Leviathan",
+        "Verdant Colossus", "Cryo Custodian", "Null Harvester"
+    ];
+    var regional = 0;
+    while regional < regionalTypes.length() {
+        var regionalType: Integer = regionalTypes.get(regional);
+        if isRegionalClimaxBoss(regionalType) == false or
+           enemyDisplayName(regionalType) != regionalNames.get(regional) or
+           regionalClimaxHp(regionalType) <= 0 or
+           regionalClimaxSpeed(regionalType) <= 0 or
+           enemyScoreForType(regionalType) <= 0 or
+           enemyContactDamageForType(regionalType) != 2 {
+            fail("regional climax trait " + Int(regional));
+            return false;
+        }
+        regional = regional + 1;
     }
     return true;
 }

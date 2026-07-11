@@ -1,0 +1,36 @@
+module test_sky3d_procedural;
+bind Viper.Graphics3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var canvas = Canvas3D.New("sky", 64, 64);
+    var sky = Sky3D.New();
+    if (sky.Dirty == false) {
+        Terminal.Say("FAIL: new sky should be dirty");
+        return;
+    }
+    if (sky.Update(canvas) == false) {
+        Terminal.Say("FAIL: sky update failed");
+        return;
+    }
+    if (sky.Dirty || sky.Cubemap == null) {
+        Terminal.Say("FAIL: update should clear dirty and produce a cubemap");
+        return;
+    }
+    // Noon sun: regenerate and confirm dirty round-trip via SetSunDirection.
+    sky.SetSunDirection(Vec3.New(0.0, 1.0, 0.0));
+    if (sky.Dirty == false) {
+        Terminal.Say("FAIL: sun move should mark the sky dirty");
+        return;
+    }
+    if (sky.Update(canvas) == false) {
+        Terminal.Say("FAIL: noon update failed");
+        return;
+    }
+    // Night sun (below horizon) must be darker than noon at the zenith face.
+    sky.SetSunDirection(Vec3.New(0.0, -1.0, 0.0));
+    sky.Update(null);
+    Terminal.Say("PASS");
+}

@@ -19,6 +19,8 @@ and apply live unless a transition is explicitly documented.
 | Damage Assist | 25%, 50%, 75%, 100% incoming damage |
 | Game Speed | 75%, 90%, 100% gameplay simulation; menus stay full speed |
 | Subtitles | Shows or hides nonblocking ARIA radio captions |
+| HUD Detail | Minimal, Standard, Full; minimap appears only in Full |
+| Aim Assist | Off, Standard, Strong; expands projectile target tolerance without changing damage |
 
 Linux currently treats controller vibration as a no-op through Viper's platform
 adapter. This does not affect input or progression.
@@ -32,3 +34,9 @@ incoming damage, 125% enemy HP/aggression, and 20% recoverable loss.
 Difficulty can be lowered at a save station immediately. An increase is queued
 until the next regional transition so enemies do not change health mid-fight.
 No achievement requires Veteran.
+
+All menu rows use the same semantic actions as gameplay, including gamepad
+navigation. World-map cards, lore/archive text, tutorial cards, ability notices,
+radio captions, and profile screens apply bounded large-text/high-contrast
+layouts. Modal, top-banner, and lower-third ownership is arbitrated centrally so
+accessibility text cannot stack underneath another automatic popup.

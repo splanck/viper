@@ -289,9 +289,9 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
         cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
-    object_data->instance_bone_stride =
-        (object_data->has_skinning && cmd->instance_bone_stride > 0) ? cmd->instance_bone_stride
-                                                                     : 0;
+    object_data->instance_bone_stride = (object_data->has_skinning && cmd->instance_bone_stride > 0)
+                                            ? cmd->instance_bone_stride
+                                            : 0;
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
         morph_count =
@@ -373,6 +373,10 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->shadow_filter[2] =
         (float)(ctx->shadow_quality <= 0 ? 4 : (ctx->shadow_quality == 1 ? 8 : 16));
     memcpy(scene_data->height_fog, ctx->height_fog, sizeof(scene_data->height_fog));
+    memcpy(scene_data->height_fog_sun, ctx->height_fog_sun, sizeof(scene_data->height_fog_sun));
+    memcpy(scene_data->height_fog_sun_dir,
+           ctx->height_fog_sun_dir,
+           sizeof(scene_data->height_fog_sun_dir));
     {
         const vgfx3d_cluster_table_t *cluster =
             (const vgfx3d_cluster_table_t *)(cmd ? cmd->cluster_table : NULL);
@@ -916,9 +920,8 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     if (d3d11_cmd_uses_compact_stream(ctx, cmd)) {
         /* R20: compact-cached geometry decodes through the packed input layouts. */
-        ID3D11DeviceContext_IASetInputLayout(ctx->ctx,
-                                             instanced ? ctx->input_layout_instanced_compact
-                                                       : ctx->input_layout_compact);
+        ID3D11DeviceContext_IASetInputLayout(
+            ctx->ctx, instanced ? ctx->input_layout_instanced_compact : ctx->input_layout_compact);
     } else {
         ID3D11DeviceContext_IASetInputLayout(
             ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);

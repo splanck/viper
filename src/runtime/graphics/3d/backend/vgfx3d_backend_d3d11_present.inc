@@ -110,6 +110,15 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             ? vgfx3d_d3d11_finite_or(cam->height_fog_density * cam->height_fog_blend, 0.0f)
             : 0.0f;
     ctx->height_fog[3] = 0.0f;
+    ctx->height_fog_sun[0] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[0], 1.0f);
+    ctx->height_fog_sun[1] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[1], 1.0f);
+    ctx->height_fog_sun[2] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[2], 1.0f);
+    ctx->height_fog_sun[3] =
+        cam->height_fog_enabled ? vgfx3d_d3d11_finite_or(cam->height_fog_sun_amount, 0.0f) : 0.0f;
+    ctx->height_fog_sun_dir[0] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[0], 0.0f);
+    ctx->height_fog_sun_dir[1] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[1], 1.0f);
+    ctx->height_fog_sun_dir[2] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[2], 0.0f);
+    ctx->height_fog_sun_dir[3] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_power, 8.0f);
     vgfx3d_d3d11_sanitize_fog_range(cam->fog_near, cam->fog_far, &ctx->fog_near, &ctx->fog_far);
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);

@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: examples/games/xenoscape/render_probe.zia
-// Purpose: Verifies authored and fallback title presentation on a real Canvas.
+// Purpose: Verifies key authored, fallback, profile, pause, and debrief surfaces.
 // Key invariants:
 //   - Authored key art and procedural fallback both fill the 1280x720 frame.
 //   - Their sparse signatures differ, proving the feature toggle changes paths.
 //   - Every title row and focus rectangle stays inside the authored menu panel.
+//   - Large-text profile, pause, ability, and debrief surfaces render safely.
 // Ownership/Lifetime:
 //   - Probe owns one temporary Canvas, Palette, MenuSystem, and two screenshots.
 // Links: menu.zia, assets/art/title-key-art.png, src/tests/CMakeLists.txt
@@ -22,8 +23,11 @@ module render_probe;
 bind Viper.Graphics;
 bind Viper.Terminal as Terminal;
 bind "./config";
+bind "./hud";
 bind "./menu";
 bind "./palette";
+bind "./profile_flow";
+bind "./tutorials";
 
 /// @brief Emit one deterministic render-probe failure.
 ///
@@ -119,10 +123,64 @@ func main() {
         fail("fallback title screenshot dimensions"); return;
     }
     var fallbackSignature = sparseFrameSignature(fallback);
-    canvas.Close();
     if authoredSignature <= 0 or fallbackSignature <= 0 or
        authoredSignature == fallbackSignature {
+        canvas.Close();
         fail("authored/fallback title signatures"); return;
     }
+
+    // Render the highest-risk text surfaces at the largest supported scale.
+    // These calls also exercise the `(scale, color)` TextScaled contract that
+    // previously made several labels explode beyond their panels.
+    var profiles = new ProfileFlow();
+    profiles.setAccessibility(150, true, true);
+    profiles.refreshSlots(
+        "Area 2 | CP A2 | 18m04s | Standard | Salvage 14",
+        "Empty", "Area 8 | Entrance | 2h11m | Explorer | Salvage 77",
+        true, false, true);
+    profiles.beginLoad();
+    profiles.draw(canvas, pal);
+    var profileFrame = canvas.Screenshot();
+    if profileFrame == null or profileFrame.get_Width() != SCREEN_W or
+       profileFrame.get_Height() != SCREEN_H {
+        canvas.Close(); fail("large-text profile frame"); return;
+    }
+
+    menu.setAccessibility(150, true, true, true);
+    menu.drawEnhancedPause(canvas, pal, 8, 7865000, 77, 7, 9, 14320, 6);
+    var pauseFrame = canvas.Screenshot();
+    if pauseFrame == null or pauseFrame.get_Width() != SCREEN_W or
+       pauseFrame.get_Height() != SCREEN_H {
+        canvas.Close(); fail("enhanced pause frame"); return;
+    }
+    menu.drawAbilityScreen(canvas, pal, 63);
+    var abilityFrame = canvas.Screenshot();
+    if abilityFrame == null or abilityFrame.get_Width() != SCREEN_W or
+       abilityFrame.get_Height() != SCREEN_H {
+        canvas.Close(); fail("ability frame"); return;
+    }
+    menu.drawEnhancedLevelComplete(canvas, pal, 8, 546321, 2, 4, "A",
+                                   873, 24, 31, 7, 14320, 900);
+    var debriefFrame = canvas.Screenshot();
+    if debriefFrame == null or debriefFrame.get_Width() != SCREEN_W or
+       debriefFrame.get_Height() != SCREEN_H {
+        canvas.Close(); fail("regional debrief frame"); return;
+    }
+
+    var hud = new HUD(pal);
+    hud.setAccessibility(150, true, true);
+    hud.update(9999999, 9999, 16);
+    hud.drawHUD(canvas, 9, 12, 9999999, 9999, 8, 1200, 1, 2200);
+    var tutorial = new TutorialSystem();
+    tutorial.setAccessibility(150, true, true);
+    tutorial.replay(TUTORIAL_INTERACT);
+    tutorial.update(300);
+    tutorial.draw(canvas, pal);
+    var guidanceFrame = canvas.Screenshot();
+    if guidanceFrame == null or guidanceFrame.get_Width() != SCREEN_W or
+       guidanceFrame.get_Height() != SCREEN_H {
+        canvas.Close(); fail("large-text HUD or tutorial frame"); return;
+    }
+    canvas.Close();
     Terminal.Say("RESULT: ok");
 }

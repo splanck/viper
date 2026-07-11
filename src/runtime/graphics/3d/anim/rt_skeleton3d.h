@@ -54,6 +54,11 @@ void *rt_skeleton3d_find_bone_option(void *skel, rt_string name);
 rt_string rt_skeleton3d_get_bone_name(void *skel, int64_t index);
 /// @brief Get the bind-pose matrix (Mat4) of the bone at @p index.
 void *rt_skeleton3d_get_bone_bind_pose(void *skel, int64_t index);
+/// @brief Internal: parent index of the bone at @p index (-1 for roots/out of range).
+int64_t rt_skeleton3d_get_bone_parent_raw(void *skel, int64_t index);
+/// @brief Internal: copy the bone's parent-relative bind matrix (row-major 16
+///        doubles) into @p out16; returns 0 on out-of-range.
+int8_t rt_skeleton3d_get_bone_bind_local_raw(void *skel, int64_t index, double *out16);
 
 /* Animation3D */
 /// @brief Create a named animation clip with the given duration in seconds.

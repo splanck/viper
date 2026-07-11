@@ -354,6 +354,7 @@ typedef struct {
     const sw_pixels_view *specular_map;
     const sw_pixels_view *metallic_roughness_map;
     const sw_pixels_view *ao_map;
+    const sw_pixels_view *lightmap_tex; /* baked GI atlas view (TEXCOORD_1) or NULL */
     const vgfx3d_draw_cmd_t *cmd;
     const vgfx3d_light_params_t *lights;
     int32_t light_count;
@@ -377,6 +378,7 @@ typedef struct {
     float emissive_u, emissive_v;
     float mr_u, mr_v;
     float ao_u, ao_v;
+    float lm_u, lm_v; /* raw TEXCOORD_1 for the baked lightmap atlas */
 } sw_slot_uvs;
 
 /// @brief Per-fragment geometric inputs shared by the PBR and Phong lighting
@@ -723,12 +725,10 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
             dielectric_f0 = clamp01f(root * root);
         }
         coat = clamp01f(cmd->custom_params[1]);
-        coat_roughness = cmd->custom_params[2] < 0.045f ? 0.045f
-                                                        : clamp01f(cmd->custom_params[2]);
+        coat_roughness = cmd->custom_params[2] < 0.045f ? 0.045f : clamp01f(cmd->custom_params[2]);
     }
     float sheen = pbr_param_model ? clamp01f(cmd->custom_params[0]) : 0.0f;
-    float sheen_roughness = cmd->custom_params[7] < 0.07f ? 0.07f
-                                                          : clamp01f(cmd->custom_params[7]);
+    float sheen_roughness = cmd->custom_params[7] < 0.07f ? 0.07f : clamp01f(cmd->custom_params[7]);
     if (cmd->ibl_env && cmd->env_map && fog_ctx && fog_ctx->ibl_enabled) {
         /* Image-based ambient: SH diffuse + prefiltered specular (split-sum).
          * Replaces the flat ambient term; direct lights below are unchanged. */
@@ -799,6 +799,15 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
             lit_g += irr[1] * sheen_amb;
             lit_b += irr[2] * sheen_amb;
         }
+    } else if (fc->lightmap_tex) {
+        /* Baked GI: lightmap radiance (stored with 2x headroom) x albedo replaces
+         * the flat ambient term; analytic lights below still add direct light. */
+        float lmr, lmg, lmb, lma;
+        sample_texture_slot_ex(
+            fc->lightmap_tex, cmd, -1, uv->lm_u, uv->lm_v, &lmr, &lmg, &lmb, &lma);
+        lit_r = lmr * 2.0f * base_r * ao;
+        lit_g = lmg * 2.0f * base_g * ao;
+        lit_b = lmb * 2.0f * base_b * ao;
     } else {
         lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
         lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
@@ -1077,6 +1086,9 @@ static void sw_shade_apply_fog(const sw_context_t *fog_ctx,
         fog_f = (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
         fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
     }
+    float fog_r = fog_ctx->fog_color[0];
+    float fog_g = fog_ctx->fog_color[1];
+    float fog_b = fog_ctx->fog_color[2];
     if (fog_ctx->height_fog_enabled) {
         /* Exponential height fog: density pools below the base height; combine
          * with distance fog via combined transmittance. */
@@ -1087,10 +1099,35 @@ static void sw_shade_apply_fog(const sw_context_t *fog_ctx,
             hf = 1.0f;
         hf = (hf < 0.0f ? 0.0f : (hf > 1.0f ? 1.0f : hf)) * fog_ctx->height_fog_blend;
         fog_f = 1.0f - (1.0f - fog_f) * (1.0f - hf);
+        if (fog_ctx->height_fog_sun_amount > 0.0f) {
+            /* Sun inscattering: shift the fog color toward the sun tint by
+             * view-sun alignment (silver lining looking toward the sun). */
+            float vx = wx - fog_ctx->cam_pos[0];
+            float vy = wy - fog_ctx->cam_pos[1];
+            float vz = wz - fog_ctx->cam_pos[2];
+            float vlen = sqrtf(vx * vx + vy * vy + vz * vz);
+            if (vlen > 1e-6f) {
+                float align =
+                    (vx * fog_ctx->height_fog_sun_dir[0] + vy * fog_ctx->height_fog_sun_dir[1] +
+                     vz * fog_ctx->height_fog_sun_dir[2]) /
+                    vlen;
+                if (align > 0.0f) {
+                    float sun_w =
+                        fog_ctx->height_fog_sun_amount * powf(align, fog_ctx->height_fog_sun_power);
+                    if (!isfinite(sun_w))
+                        sun_w = 0.0f;
+                    if (sun_w > 1.0f)
+                        sun_w = 1.0f;
+                    fog_r += (fog_ctx->height_fog_sun_color[0] - fog_r) * sun_w;
+                    fog_g += (fog_ctx->height_fog_sun_color[1] - fog_g) * sun_w;
+                    fog_b += (fog_ctx->height_fog_sun_color[2] - fog_b) * sun_w;
+                }
+            }
+        }
     }
-    *fr = *fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
-    *fg = *fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;
-    *fb_c = *fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
+    *fr = *fr * (1.0f - fog_f) + fog_r * fog_f;
+    *fg = *fg * (1.0f - fog_f) + fog_g * fog_f;
+    *fb_c = *fb_c * (1.0f - fog_f) + fog_b * fog_f;
 }
 
 /// @brief Convert an interpolated NDC depth (sz, GL-style [-1,1]) to view-space
@@ -1281,6 +1318,11 @@ static int sw_shade_fragment(
             if (ao_map)
                 sw_interpolate_uv_for_slot(
                     cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO, b0, b1, b2, v0, v1, v2, &uv.ao_u, &uv.ao_v);
+            if (cmd->lightmap) {
+                /* Raw TEXCOORD_1 (perspective-correct), no slot transform. */
+                uv.lm_u = (b0 * v0->u1_over_w + b1 * v1->u1_over_w + b2 * v2->u1_over_w) / pp_iw;
+                uv.lm_v = (b0 * v0->v1_over_w + b1 * v1->v1_over_w + b2 * v2->v1_over_w) / pp_iw;
+            }
 
             sw_shade_geom geom;
             sw_shade_perturb_normal(
@@ -1518,6 +1560,7 @@ static void raster_triangle_scissored(uint8_t *pixels,
                                       const sw_pixels_view *specular_map,
                                       const sw_pixels_view *metallic_roughness_map,
                                       const sw_pixels_view *ao_map,
+                                      const sw_pixels_view *lightmap,
                                       const vgfx3d_draw_cmd_t *cmd,
                                       const vgfx3d_light_params_t *lights,
                                       int32_t light_count,
@@ -1599,6 +1642,7 @@ static void raster_triangle_scissored(uint8_t *pixels,
                           .specular_map = specular_map,
                           .metallic_roughness_map = metallic_roughness_map,
                           .ao_map = ao_map,
+                          .lightmap_tex = lightmap,
                           .cmd = cmd,
                           .lights = lights,
                           .light_count = light_count,
@@ -1687,6 +1731,7 @@ static void raster_triangle(uint8_t *pixels,
                             const sw_pixels_view *specular_map,
                             const sw_pixels_view *metallic_roughness_map,
                             const sw_pixels_view *ao_map,
+                            const sw_pixels_view *lightmap,
                             const vgfx3d_draw_cmd_t *cmd,
                             const vgfx3d_light_params_t *lights,
                             int32_t light_count,
@@ -1708,6 +1753,7 @@ static void raster_triangle(uint8_t *pixels,
                               specular_map,
                               metallic_roughness_map,
                               ao_map,
+                              lightmap,
                               cmd,
                               lights,
                               light_count,

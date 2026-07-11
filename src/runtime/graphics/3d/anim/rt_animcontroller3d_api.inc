@@ -1017,6 +1017,106 @@ void *rt_anim_controller3d_get_skeleton(void *obj) {
     return controller_skeleton_ref(controller);
 }
 
+/// @brief 4x4 row-major affine inverse (rotation/scale block + translation row).
+static void controller_mat4f_affine_inverse(const float *m, float *out) {
+    /* Invert the upper-left 3x3 via cofactors, then the translation row. */
+    double a00 = m[0], a01 = m[1], a02 = m[2];
+    double a10 = m[4], a11 = m[5], a12 = m[6];
+    double a20 = m[8], a21 = m[9], a22 = m[10];
+    double det = a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) +
+                 a02 * (a10 * a21 - a11 * a20);
+    if (!isfinite(det) || fabs(det) < 1e-12) {
+        memset(out, 0, 16 * sizeof(float));
+        out[0] = out[5] = out[10] = out[15] = 1.0f;
+        return;
+    }
+    double inv = 1.0 / det;
+    double i00 = (a11 * a22 - a12 * a21) * inv;
+    double i01 = (a02 * a21 - a01 * a22) * inv;
+    double i02 = (a01 * a12 - a02 * a11) * inv;
+    double i10 = (a12 * a20 - a10 * a22) * inv;
+    double i11 = (a00 * a22 - a02 * a20) * inv;
+    double i12 = (a02 * a10 - a00 * a12) * inv;
+    double i20 = (a10 * a21 - a11 * a20) * inv;
+    double i21 = (a01 * a20 - a00 * a21) * inv;
+    double i22 = (a00 * a11 - a01 * a10) * inv;
+    double tx = m[12], ty = m[13], tz = m[14];
+    out[0] = (float)i00;
+    out[1] = (float)i01;
+    out[2] = (float)i02;
+    out[3] = 0.0f;
+    out[4] = (float)i10;
+    out[5] = (float)i11;
+    out[6] = (float)i12;
+    out[7] = 0.0f;
+    out[8] = (float)i20;
+    out[9] = (float)i21;
+    out[10] = (float)i22;
+    out[11] = 0.0f;
+    out[12] = (float)-(tx * i00 + ty * i10 + tz * i20);
+    out[13] = (float)-(tx * i01 + ty * i11 + tz * i21);
+    out[14] = (float)-(tx * i02 + ty * i12 + tz * i22);
+    out[15] = 1.0f;
+}
+
+/// @brief Internal (ragdoll write-back): overwrite masked bones' model-space
+///        globals after evaluation, propagate the pose delta to unmasked
+///        descendants, and refresh the skinning palette for changed bones.
+///        Runs between the animation update and scene sync; see Ragdoll3D.
+void rt_anim_controller3d_apply_pose_override(void *obj,
+                                              const int8_t *mask,
+                                              const float *globals) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_skeleton3d *skeleton = controller_skeleton_ref(controller);
+    if (!controller || !skeleton || !mask || !globals || !controller->final_globals ||
+        !controller->final_palette)
+        return;
+    int32_t bone_count = controller_safe_bone_count(skeleton);
+    if (bone_count <= 0)
+        return;
+    float *old_globals = (float *)malloc((size_t)bone_count * 16 * sizeof(float));
+    int8_t *changed = (int8_t *)calloc((size_t)bone_count, 1);
+    if (!old_globals || !changed) {
+        free(old_globals);
+        free(changed);
+        return;
+    }
+    memcpy(old_globals, controller->final_globals, (size_t)bone_count * 16 * sizeof(float));
+    for (int32_t bone = 0; bone < bone_count; ++bone) {
+        if (mask[bone]) {
+            memcpy(&controller->final_globals[bone * 16],
+                   &globals[bone * 16],
+                   16 * sizeof(float));
+            changed[bone] = 1;
+        }
+    }
+    /* Parent-first order: unmasked children of changed bones ride the delta. */
+    for (int32_t bone = 0; bone < bone_count; ++bone) {
+        if (mask[bone])
+            continue;
+        int32_t parent = skeleton3d_valid_parent_index(skeleton, bone, bone_count);
+        if (parent < 0 || !changed[parent])
+            continue;
+        float inv_old_parent[16];
+        float delta[16];
+        float updated[16];
+        controller_mat4f_affine_inverse(&old_globals[parent * 16], inv_old_parent);
+        controller_mat4f_mul(&controller->final_globals[parent * 16], inv_old_parent, delta);
+        controller_mat4f_mul(delta, &old_globals[bone * 16], updated);
+        memcpy(&controller->final_globals[bone * 16], updated, sizeof(updated));
+        changed[bone] = 1;
+    }
+    for (int32_t bone = 0; bone < bone_count; ++bone) {
+        if (!changed[bone])
+            continue;
+        controller_mat4f_mul(&controller->final_globals[bone * 16],
+                             skeleton->bones[bone].inverse_bind,
+                             &controller->final_palette[bone * 16]);
+    }
+    free(changed);
+    free(old_globals);
+}
+
 /// @brief Direct pointer to the final-palette float buffer (no copy).
 /// @details Used by the renderer's GPU-upload path which needs to upload
 ///          the entire palette in one call. The caller does not own the

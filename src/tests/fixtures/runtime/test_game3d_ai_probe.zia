@@ -1,0 +1,128 @@
+module test_game3d_ai_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("AI Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    // Sentry at origin facing -Z (default orientation), with eyes and ears.
+    var sentry = Game3D.Entity3D.New();
+    sentry.SetPosition(0.0, 0.0, 0.0);
+    world.Spawn(sentry);
+    var sense = Game3D.Perception3D.New(sentry);
+    sense.SetSight(30.0, 120.0, 1.6);
+    sense.SetHearing(20.0);
+
+    // Player straight ahead inside the sight cone.
+    var player = Game3D.Entity3D.New();
+    player.SetPosition(0.0, 0.0, -8.0);
+    world.Spawn(player);
+
+    // Brain: chase the target while it is seen.
+    var tree = Game3D.BehaviorTree3D.New();
+    var root = tree.Sequence();
+    tree.AddChild(root, tree.TargetVisible());
+    tree.AddChild(root, tree.MoveToTarget(6.0, 1.5));
+    tree.SetRoot(root);
+    var brain = Game3D.BehaviorTreeInstance3D.New(sentry, tree);
+    brain.SetTarget(player);
+
+    // One step (1/60 s) is below the 0.3 s time-to-see hysteresis.
+    world.StepSimulation(1.0 / 60.0);
+    if (sense.SeenCount() != 0) {
+        Terminal.Say("FAIL: time-to-see hysteresis should gate instant detection");
+        return;
+    }
+
+    // Half a second of visibility flips the track to seen.
+    var tick = 0;
+    while (tick < 30) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    if (sense.SeenCount() != 1) {
+        Terminal.Say("FAIL: sentry should see the player after 0.5 s");
+        return;
+    }
+    if (sense.SeenChanged() == false) {
+        Terminal.Say("FAIL: seen transition should raise the one-shot");
+        return;
+    }
+    if (sense.SeenChanged() == true) {
+        Terminal.Say("FAIL: SeenChanged must reset after being read");
+        return;
+    }
+    if (sense.SeenTarget(0) == null) {
+        Terminal.Say("FAIL: SeenTarget(0) should be the player");
+        return;
+    }
+    var known = sense.LastKnownPosition(player);
+    if (known.Z > -7.5) {
+        Terminal.Say("FAIL: last-known position should track the player");
+        return;
+    }
+
+    // Chase: one more second of stepping closes most of the 8 m gap.
+    tick = 0;
+    while (tick < 60) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    var guardPos = sentry.Position;
+    if (guardPos.Z > -4.0) {
+        Terminal.Say("FAIL: MoveToTarget should drive the sentry toward the player");
+        return;
+    }
+
+    // Hearing: a sound behind the sentry (outside the cone) is still heard.
+    world.ReportSound(Math.Vec3.New(0.0, 0.0, 6.0), 1.0, 7);
+    if (sense.HeardCount() != 1) {
+        Terminal.Say("FAIL: ReportSound in range should deliver a heard event");
+        return;
+    }
+    if (sense.HeardTag(0) != 7) {
+        Terminal.Say("FAIL: heard event should carry its tag");
+        return;
+    }
+    var heardAt = sense.HeardPosition(0);
+    if (heardAt.Z < 5.9) {
+        Terminal.Say("FAIL: heard event should carry its position");
+        return;
+    }
+    // Heard events expire on the next perception step.
+    world.StepSimulation(1.0 / 60.0);
+    if (sense.HeardCount() != 0) {
+        Terminal.Say("FAIL: heard events must expire after one step");
+        return;
+    }
+
+    // Custom leaf: parks as pending, script resolves, node re-parks later.
+    var npc = Game3D.Entity3D.New();
+    npc.SetPosition(5.0, 0.0, 5.0);
+    world.Spawn(npc);
+    var tree2 = Game3D.BehaviorTree3D.New();
+    tree2.SetRoot(tree2.Custom(42));
+    var brain2 = Game3D.BehaviorTreeInstance3D.New(npc, tree2);
+    world.StepSimulation(1.0 / 60.0);
+    if (brain2.PendingCustom != 42) {
+        Terminal.Say("FAIL: Custom leaf should park with its id");
+        return;
+    }
+    brain2.Resolve(true);
+    if (brain2.PendingCustom != 0) {
+        Terminal.Say("FAIL: Resolve should clear the pending id");
+        return;
+    }
+    world.StepSimulation(1.0 / 60.0);
+    world.StepSimulation(1.0 / 60.0);
+    if (brain2.PendingCustom != 42) {
+        Terminal.Say("FAIL: Custom leaf should re-park after resolution");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

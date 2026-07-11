@@ -56,10 +56,12 @@ static void *game3d_world_new_with_camera_impl(rt_string title,
     world->height = height;
     world->next_entity_id = 1;
     world->dt = RT_GAME3D_DEFAULT_DT;
+    world->time_scale = 1.0;
     world->fixed_interpolation_alpha = 0.0;
     world->worker_count = game3d_default_worker_count();
     world->jobs_enabled = world->worker_count > 1 ? 1 : 0;
     world->origin_rebase_threshold = RT_GAME3D_DEFAULT_REBASE_THRESHOLD;
+    world->hitch_threshold_ms = 25.0;
     world->clear_r = 0.04;
     world->clear_g = 0.055;
     world->clear_b = 0.065;
@@ -175,6 +177,9 @@ static rt_game3d_world_stream *game3d_world_stream_create(rt_game3d_world *world
     stream->load_radius = 0.0;
     stream->unload_radius = 0.0;
     stream->residency_budget_bytes = -1;
+    stream->async_streaming = 1;
+    stream->commit_budget_bytes = -1;
+    stream->prefetch_lookahead = 2.0;
     stream->retains_world = retain_world ? 1 : 0;
     if (stream->retains_world)
         game3d_assign_ref(&stream->world, world);
@@ -579,7 +584,93 @@ void rt_game3d_world_stream_update(void *obj, double dt) {
         return;
     }
     dt = game3d_finite_or(dt, 0.0);
+    game3d_stream_stage_drain(); /* land worker staging results before reconciling */
+    game3d_world_stream_update_velocity(stream, dt);
     game3d_world_stream_recompute(stream, game3d_world_stream_update_load_budget(dt));
+    game3d_world_stream_prefetch(stream);
+}
+
+/// @brief Toggle worker-backed streaming (on by default); off restores inline loads.
+void rt_game3d_world_stream_set_async_streaming(void *obj, int8_t enabled) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.setAsyncStreaming: invalid stream");
+    if (!stream)
+        return;
+    stream->async_streaming = enabled ? 1 : 0;
+}
+
+/// @brief True when worker-backed streaming is enabled.
+int8_t rt_game3d_world_stream_get_async_streaming(void *obj) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getAsyncStreaming: invalid stream");
+    return stream ? stream->async_streaming : 0;
+}
+
+/// @brief Cap the staged bytes committed per update (-1 unlimited, 0 holds commits).
+void rt_game3d_world_stream_set_commit_budget(void *obj, int64_t bytes) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.setCommitBudget: invalid stream");
+    if (!stream)
+        return;
+    stream->commit_budget_bytes = bytes < 0 ? -1 : bytes;
+}
+
+/// @brief Set how many seconds of center velocity to prefetch along (0 disables).
+void rt_game3d_world_stream_set_prefetch_lookahead(void *obj, double seconds) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.setPrefetchLookahead: invalid stream");
+    if (!stream)
+        return;
+    stream->prefetch_lookahead = game3d_nonnegative_clamped_or(seconds, 0.0, 60.0);
+}
+
+/// @brief Worst single staged-commit slice in wall milliseconds since mount.
+double rt_game3d_world_stream_get_stream_stall_ms(void *obj) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.get_streamStallMs: invalid stream");
+    return stream && isfinite(stream->stream_stall_ms) && stream->stream_stall_ms > 0.0
+               ? stream->stream_stall_ms
+               : 0.0;
+}
+
+/// @brief Set the HLOD proxy ring radius (<= 0 restores the 4x-load-radius default).
+void rt_game3d_world_stream_set_proxy_radius(void *obj, double radius) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.setProxyRadius: invalid stream");
+    if (!stream)
+        return;
+    stream->proxy_radius = game3d_nonnegative_clamped_or(radius, 0.0, RT_GAME3D_COORD_ABS_MAX);
+}
+
+/// @brief The cell's manifest/baked proxy path ("" when the cell has no proxy).
+rt_string rt_game3d_world_stream_get_cell_proxy(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellProxy: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    if (cell && cell->proxy_path)
+        return rt_string_ref(cell->proxy_path);
+    return rt_str_empty();
+}
+
+/// @brief Number of cells currently holding only their HLOD proxy subtree.
+int64_t rt_game3d_world_stream_get_proxy_resident_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_proxyResidentCount: invalid stream");
+    return stream ? game3d_world_stream_nonnegative_i64(stream->proxy_resident_count) : 0;
+}
+
+/// @brief Measured bytes of resident proxy subtrees (also included in ResidentBytes).
+int64_t rt_game3d_world_stream_get_proxy_resident_bytes(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_proxyResidentBytes: invalid stream");
+    return stream ? game3d_world_stream_nonnegative_i64(stream->proxy_resident_bytes) : 0;
+}
+
+/// @brief Number of cells currently staged/staging purely from velocity prefetch.
+int64_t rt_game3d_world_stream_get_prefetched_cell_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_prefetchedCellCount: invalid stream");
+    return stream ? game3d_world_stream_nonnegative_i64(stream->prefetched_cell_count) : 0;
 }
 
 /// @brief Tear down the world's runtime (despawn entities, release subsystems) and mark
@@ -662,6 +753,73 @@ void *rt_game3d_world_get_stream(void *obj) {
 }
 
 /// @brief Get the most recent frame delta in seconds (0 if invalid).
+/// @brief Live DOF focus pull: forwards to the effect chain's DOF entry.
+///   Returns false when the world has no post-FX chain or no DOF effect.
+int8_t rt_game3d_world_set_dof_focus(void *obj, double distance) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setDofFocus: invalid world");
+    if (!world || !world->effects)
+        return 0;
+    void *postfx = rt_game3d_effects_get_postfx(world->effects);
+    if (!postfx)
+        return 0;
+    return rt_postfx3d_set_dof_focus(postfx, distance);
+}
+
+/// @brief Get the world time multiplier (default 1.0).
+double rt_game3d_world_get_time_scale(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_TimeScale: invalid world");
+    return world ? (isfinite(world->time_scale) ? game3d_clamp(world->time_scale, 0.0, 4.0) : 1.0)
+                 : 0.0;
+}
+
+/// @brief Set the world time multiplier (clamped [0, 4]; non-finite ignored).
+void rt_game3d_world_set_time_scale(void *obj, double scale) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.set_TimeScale: invalid world");
+    if (world && isfinite(scale))
+        world->time_scale = game3d_clamp(scale, 0.0, 4.0);
+}
+
+/// @brief Get the latched pause state.
+int8_t rt_game3d_world_get_paused(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.get_Paused: invalid world");
+    return world ? world->paused : 0;
+}
+
+/// @brief Set the latched pause state (effective time scale 0 while set).
+void rt_game3d_world_set_paused(void *obj, int8_t paused) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.set_Paused: invalid world");
+    if (world)
+        world->paused = paused ? 1 : 0;
+}
+
+/// @brief One-shot hit-stop: freeze simulated time for @p seconds of REAL time.
+///   Max-latched so repeated hits never extend past the longest request.
+void rt_game3d_world_hit_stop(void *obj, double seconds) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.hitStop: invalid world");
+    if (!world || !isfinite(seconds) || seconds <= 0.0)
+        return;
+    if (seconds > 10.0)
+        seconds = 10.0;
+    if (seconds > world->hitstop_remaining)
+        world->hitstop_remaining = seconds;
+}
+
+/// @brief Real (unscaled) clamped frame step for UI/menus.
+double rt_game3d_world_get_unscaled_dt(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_UnscaledDt: invalid world");
+    return world ? world->unscaled_dt : 0.0;
+}
+
+/// @brief Real (unscaled) elapsed seconds for UI/menus.
+double rt_game3d_world_get_unscaled_elapsed(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_UnscaledElapsed: invalid world");
+    return world ? world->unscaled_elapsed : 0.0;
+}
+
 double rt_game3d_world_get_dt(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.get_Dt: invalid world");
     return world ? game3d_nonnegative_clamped_or(world->dt, 0.0, RT_GAME3D_MAX_DT) : 0.0;
@@ -955,6 +1113,7 @@ void rt_game3d_world_despawn(void *world_obj, void *entity_obj) {
         rt_trap("Game3D.World3D.despawn: entity is not spawned in this world");
         return;
     }
+    game3d_persistence_on_despawn(world, entity);
     game3d_world_despawn_entity_tree(world, entity, 1);
 }
 

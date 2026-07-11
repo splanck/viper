@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/abilities.zia
+// Purpose: Owns traversal unlock state, runtime ability state, and acquisition UI.
+// Key invariants:
+//   - Wall Jump and Double Jump are baseline modules for every valid profile.
+//   - Ability grants are idempotent and one manager owns acquisition presentation.
+// Ownership/Lifetime:
+//   - Game owns one AbilityManager and synchronizes its mask into Player and saves.
+// Links: player.zia, game.zia, world_graph.zia, save.zia
+//
+//===----------------------------------------------------------------------===//
 // =============================================================================
 // abilities.zia — Metroidvania progression: ability bitmask + gating
 // Part of Xenoscape  (the 2D sidescroller platformer demo)
@@ -11,12 +28,11 @@
 //
 // That mechanic has two pieces:
 //
-//   1. **Ability acquisition** — the player gains a new power
-//      (double-jump, dash, ground-pound, ...) at specific
-//      boss rooms or secret chambers.
+//   1. **Ability acquisition** — the baseline suit starts with
+//      wall-jump and double-jump; later powers (dash,
+//      ground-pound, ...) come from bosses or shrines.
 //   2. **Gating** — level content tagged with "this passage
-//      requires double-jump" opens only to players who have
-//      that ability.
+//      requires dash" opens only to players who have it.
 //
 // This file provides the data model for both.  Abilities are
 // stored as a single integer treated as a bitmask:
@@ -39,7 +55,7 @@
 // GATING
 // ------
 // Gates use the *same* bitmask values.  A world-map edge
-// tagged `GATE_DOUBLE_JUMP` opens to any player whose ability
+// tagged `GATE_DASH` opens to any player whose ability
 // mask ANDs non-zero with that flag.  A door in the level
 // can reuse the same constant.  One vocabulary, one check.
 //
@@ -66,17 +82,19 @@
 module abilities;
 
 bind Viper.Graphics;
+bind Viper.Input;
 bind "./config";
 bind "./palette";
+bind "./accessibility";
 
 // =============================================================================
 // Ability flags (bitmask)
 // =============================================================================
 final ABILITY_NONE        = 0;
-final ABILITY_WALL_JUMP   = 1;    // Acquired in Level 1 (tutorial)
-final ABILITY_DOUBLE_JUMP = 2;    // Acquired from Spore Mother (Level 2 boss)
-final ABILITY_DASH        = 4;    // Acquired from Crystal Wyrm (Level 3 boss)
-final ABILITY_CHARGE_SHOT = 8;    // Found in Level 5 secret area
+final ABILITY_WALL_JUMP   = 1;    // Baseline suit module
+final ABILITY_DOUBLE_JUMP = 2;    // Baseline suit module
+final ABILITY_DASH        = 4;    // Acquired from Spore Mother (Level 2 boss)
+final ABILITY_CHARGE_SHOT = 8;    // Crystal Wyrm or Level 5 alternate shrine
 final ABILITY_GROUND_POUND = 16;  // Acquired from Magma Core (Level 6 boss)
 final ABILITY_GRAPPLE     = 32;   // Found in Level 7 secret area
 
@@ -136,8 +154,8 @@ final GATE_GRAPPLE = 32;      // Need grapple (anchor point swings)
 /// One instance lives on `Game`; player.zia consults it
 /// every frame via `has(flag)` to decide whether to enable
 /// the corresponding action.  When a boss/secret grants a
-/// new ability, `grant(flag)` flips the bit AND triggers a
-/// 2-second freeze-frame UI pop-up.
+    /// new ability, `grant(flag)` flips the bit and triggers a
+    /// bounded, dismissible acquisition card.
 class AbilityManager {
     /// @brief Stub.  `initAbilities(palette)` does the real
     ///        construction; the two-phase pattern matches
@@ -145,9 +163,12 @@ class AbilityManager {
     expose func init() {}
     hide Integer acquired;     // Bitmask of acquired abilities
     hide Integer justGotAbility; // Flag for acquisition animation
-    hide Integer acquireTimer;   // Frames to show acquisition UI
+    hide Integer acquireTimer;   // Milliseconds to show acquisition UI
     hide Integer lastAcquired;   // Which ability was just acquired
     hide Palette pal;
+    hide Integer accessibilityUiScale;
+    hide Boolean accessibilityLargeText;
+    hide Boolean accessibilityHighContrast;
 
     // Dash state
     hide Boolean isDashing;
@@ -172,11 +193,16 @@ class AbilityManager {
 
     /// @brief Real construction — wires the palette reference
     ///        and resets every per-ability runtime field.
-    ///        Starts the player with `ABILITY_WALL_JUMP` (the
-    ///        tutorial gives it for free).
+    ///        Starts the player with the two baseline suit movement modules.
+    ///        Double Jump is deliberately baseline: every authored regional
+    ///        layout was authored around its vertical reach, so withholding it
+    ///        can make the campaign impossible before the first boss reward.
     expose func initAbilities(p: Palette) {
         pal = p;
-        acquired = ABILITY_WALL_JUMP; // Start with wall jump
+        accessibilityUiScale = 100;
+        accessibilityLargeText = false;
+        accessibilityHighContrast = false;
+        acquired = ABILITY_WALL_JUMP + ABILITY_DOUBLE_JUMP;
         justGotAbility = 0;
         acquireTimer = 0;
         lastAcquired = 0;
@@ -205,13 +231,12 @@ class AbilityManager {
 
     /// @brief Unlock an ability.  Idempotent — re-granting an
     ///        already-owned ability is a no-op (no extra
-    ///        popup).  Triggers the 2-second acquisition
-    ///        animation by setting `acquireTimer = 120`.
+    ///        card). Triggers the 1.8-second acquisition presentation.
     expose func grant(flag: Integer) {
         if has(flag) { return; } // Already have it
         acquired = acquired + flag;
         justGotAbility = 1;
-        acquireTimer = 120; // 2 seconds display
+        acquireTimer = 1800;
         lastAcquired = flag;
     }
 
@@ -343,40 +368,82 @@ class AbilityManager {
     /// @brief Per-frame: tick down the acquisition popup
     ///        timer.  When it hits 0, the popup vanishes and
     ///        gameplay resumes.
-    expose func updateUI() {
+    expose func updateUI(dt: Integer) {
         if acquireTimer > 0 {
-            acquireTimer = acquireTimer - 1;
+            var elapsed = dt;
+            if elapsed < 0 { elapsed = 0; }
+            if elapsed > DT_MAX { elapsed = DT_MAX; }
+            acquireTimer = acquireTimer - elapsed;
             if acquireTimer <= 0 {
+                acquireTimer = 0;
                 justGotAbility = 0;
             }
         }
     }
 
+    /// @brief Report whether the single acquisition modal owns presentation.
+    /// @return True while its bounded millisecond timer remains positive.
+    expose func isAcquisitionActive() -> Boolean { return acquireTimer > 0; }
+
+    /// @brief Close the acquisition modal early after explicit player input.
+    /// @return Nothing. Ability ownership remains unchanged.
+    expose func dismissAcquisition() {
+        acquireTimer = 0;
+        justGotAbility = 0;
+    }
+
+    /// @brief Apply live acquisition-card accessibility preferences.
+    /// @param uiScale Advertised 100, 125, or 150 percent scale.
+    /// @param largeText True for a bounded heading/name scale increase.
+    /// @param highContrast True for maximum backdrop opacity.
+    /// @return Nothing. Mutates presentation state only.
+    expose func setAccessibility(uiScale: Integer, largeText: Boolean,
+                                 highContrast: Boolean) {
+        accessibilityUiScale = uiScale;
+        accessibilityLargeText = largeText;
+        accessibilityHighContrast = highContrast;
+    }
+
     /// @brief Render the freeze-frame "NEW ABILITY" popup
-    ///        when `acquireTimer > 0`.  Three layers: dim
+    ///        when `acquireTimer > 0`. Three layers: dim
     ///        backdrop, centred title + name + description,
     ///        pulsing glow disc.  No-op outside the window.
     expose func drawAcquisitionUI(canvas: Canvas) {
         if acquireTimer <= 0 { return; }
 
         // Freeze frame effect: dark overlay
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 0), 120);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 0),
+                        accessiblePanelAlpha(accessibilityHighContrast));
 
         // Ability icon and name centered on screen
         var name = abilityName(lastAcquired);
         var desc = abilityDescription(lastAcquired);
 
         // Title: "NEW ABILITY"
-        canvas.TextCenteredScaled(HALF_H - 60, "NEW ABILITY", Color.RGB(255, 221, 34), 3);
+        var titleScale = accessibleTextScale(
+            3, accessibilityUiScale, accessibilityLargeText);
+        if titleScale > 4 { titleScale = 4; }
+        var nameScale = accessibleTextScale(
+            2, accessibilityUiScale, accessibilityLargeText);
+        if nameScale > 3 { nameScale = 3; }
+        canvas.TextCenteredScaled(HALF_H - 60, "NEW ABILITY",
+                                  Color.RGB(255, 221, 34), titleScale);
 
         // Ability name
-        canvas.TextCenteredScaled(HALF_H - 10, name, Color.RGB(255, 255, 255), 2);
+        canvas.TextCenteredScaled(HALF_H - 10, name,
+                                  Color.RGB(255, 255, 255), nameScale);
 
         // Description
         canvas.TextCenteredScaled(HALF_H + 30, desc, Color.RGB(180, 180, 200), 1);
 
+        canvas.TextCenteredScaled(
+            HALF_H + 88,
+            Action.BindingsStr(ACT_CONFIRM) + " / " +
+            Action.BindingsStr(ACT_BACK) + " continue",
+            Color.RGB(125, 145, 175), 1);
+
         // Pulsing glow behind icon
-        var pulse = acquireTimer % 30;
+        var pulse = (acquireTimer / 30) % 30;
         var glowR = 40 + pulse * 2;
         canvas.DiscAlpha(HALF_W, HALF_H - 35, glowR,
                          Color.RGB(255, 200, 50), 60);
@@ -387,8 +454,8 @@ class AbilityManager {
     ///        ability draws as a small icon; locked ones show
     ///        as a dim outline.
     expose func drawHUD(canvas: Canvas) {
-        var startX = SCREEN_W - 200;
-        var y = 8;
+        var startX = SCREEN_W - 174;
+        var y = 54;
         var iconSize = 20;
         var spacing = 26;
 

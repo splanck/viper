@@ -168,6 +168,7 @@ bind "./settings";
 bind "./objectives";
 bind "./tutorials";
 bind "./meta_modes";
+bind "./ui_coordinator";
 
 final EXPEDITION_MODE_CAMPAIGN = 0;
 final EXPEDITION_MODE_TIME_TRIAL = 1;
@@ -232,6 +233,7 @@ class Game {
     hide TutorialSystem tutorialSystem;
     hide MetaProgression metaProgression;
     hide RadioSystem radioSystem;
+    hide UiCoordinator uiCoordinator;
 
     // Expansion state
     hide Integer gems;
@@ -249,6 +251,7 @@ class Game {
     hide Boolean controlsReturnToPause;
     hide Integer bossCueTimer;
     hide Boolean bossIntroPlayed;
+    hide Boolean bossCameraLocked;
     hide Integer openingIntroTimer;
     hide Integer achBrowse;
     hide Integer bestiaryBrowse;
@@ -257,9 +260,11 @@ class Game {
     hide Integer hubLaunchLevel;
     hide Integer hubRouteSelection;
     hide Integer currentRoomIndex;
+    hide Integer pendingEntryFromRegion;
     hide Integer roomTitleTimer;
     hide String interactionMessage;
     hide Integer interactionMessageTimer;
+    hide Integer nearInteractionIndex;
     hide Boolean expeditionActive;
     hide Integer lastRegionRank;
     hide Integer lastRegionRankScore;
@@ -315,9 +320,6 @@ class Game {
     hide Integer jetFlameTimer;    // ms accumulator for jetpack flame
     hide Integer footstepTimer;    // ms until the next surface-specific step
 
-    // Level intro splash
-    hide Integer introTimer;       // ms countdown for level name splash
-
     /// @brief Construct every subsystem (palette, sprites,
     ///        sound, level, player, camera, hud, menu,
     ///        renderer, ...), wire them up, register input
@@ -369,12 +371,12 @@ class Game {
         wallSparkTimer = 0;
         jetFlameTimer = 0;
         footstepTimer = 0;
-        introTimer = 0;
         fullscreenOn = false;
         optionsReturnToPause = false;
         controlsReturnToPause = false;
         bossCueTimer = 0;
         bossIntroPlayed = false;
+        bossCameraLocked = false;
         openingIntroTimer = 0;
         achBrowse = 0;
         bestiaryBrowse = 0;
@@ -481,10 +483,11 @@ class Game {
         Action.BindPadButton(ACT_INTERACT, PAD_IDX, PAD_BTN_Y);
         Action.Define(ACT_GRAPPLE);
         Action.BindKey(ACT_GRAPPLE, KEY_C);
+        Action.BindPadButton(ACT_GRAPPLE, PAD_IDX, PAD_BTN_LB);
         Action.BindPadButton(ACT_GRAPPLE, PAD_IDX, PAD_BTN_SELECT);
         Action.Define(ACT_DASH);
         Action.BindKey(ACT_DASH, KEY_X);
-        Action.BindPadButton(ACT_DASH, PAD_IDX, 4);
+        Action.BindPadButton(ACT_DASH, PAD_IDX, PAD_BTN_X);
         Action.Define(ACT_MAP);
         Action.BindKey(ACT_MAP, KEY_M);
         Action.BindPadButton(ACT_MAP, PAD_IDX, PAD_BTN_UP);
@@ -863,7 +866,6 @@ class Game {
             deathTimer = 0;
             player.reset();
             loadLevel(currentLevel);
-            introTimer = tuning.getInt("presentation.introSplashMs", 1200);
             sm.Switch("playing");
             sfx.playGameMusic();
         }
@@ -896,6 +898,25 @@ class Game {
     ///             save stations, lore)
     ///         11. level-end + game-over checks
     hide func updatePlaying() {
+        // Blocking overlays get first refusal over map/pause input. This keeps
+        // Back from opening a second screen over lore or an ability reward.
+        syncPlayerAbilities();
+        if updateNewSystems() {
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            return;
+        }
+        if tutorialSystem.getActiveTutorial() >= 0 and
+           Action.Pressed(ACT_BACK) {
+            tutorialSystem.dismiss();
+            renderObj.renderPlaying(canvas, camera, level, player, enemies,
+                                    bullets, pickups, particles, hudObj, sprites,
+                                    score, coins, currentLevel);
+            drawNewSystems(canvas, camera.x, camera.y);
+            return;
+        }
         if Action.Pressed(ACT_MAP) {
             tutorialSystem.acknowledge(TUTORIAL_MAP);
             showWorldMap = true;
@@ -915,17 +936,6 @@ class Game {
                                     bullets, pickups, particles, hudObj, sprites,
                                     score, coins, currentLevel);
             menus.drawPause(canvas);
-            return;
-        }
-
-        // Synchronize campaign-owned abilities before any input can activate a
-        // traversal move. Modal overlays then get first refusal over simulation.
-        syncPlayerAbilities();
-        if updateNewSystems() {
-            renderObj.renderPlaying(canvas, camera, level, player, enemies,
-                                    bullets, pickups, particles, hudObj, sprites,
-                                    score, coins, currentLevel);
-            drawNewSystems(canvas, camera.x, camera.y);
             return;
         }
         if hitStopTimer > 0 {
@@ -1143,39 +1153,6 @@ class Game {
 
         drawNewSystems(canvas, camera.x, camera.y);
 
-        // Level intro splash overlay
-        if introTimer > 0 {
-            introTimer = introTimer - dt;
-            if introTimer < 0 { introTimer = 0; }
-            drawLevelIntro(currentLevel);
-        }
-    }
-
-    /// @brief Brief biome-name banner shown for the first
-    ///        ~2 seconds of a level.
-    hide func drawLevelIntro(levelNum: Integer) {
-        var levelName = "THE DESCENT";
-        if levelNum == 2 { levelName = "FUNGAL CAVERNS"; }
-        if levelNum == 3 { levelName = "CRYSTAL DEPTHS"; }
-        if levelNum == 4 { levelName = "SURFACE RUINS"; }
-        if levelNum == 5 { levelName = "UNDERGROUND LAKE"; }
-        if levelNum == 6 { levelName = "THERMAL VENTS"; }
-        if levelNum == 7 { levelName = "OVERGROWTH"; }
-        if levelNum == 8 { levelName = "FROZEN ABYSS"; }
-        if levelNum == 9 { levelName = "CORRUPTED RUINS"; }
-        if levelNum == 10 { levelName = "THE CORE"; }
-
-        // Fade: moderate opacity at start, fading out near end
-        var alpha = introTimer * 150 / 1200;
-        if alpha > 150 { alpha = 150; }
-        if alpha < 20 { alpha = 20; }
-
-        // Dark banner across center
-        canvas.BoxAlpha(0, 280, SCREEN_W, 120, pal.black, alpha);
-
-        // Level number + name
-        canvas.TextCenteredScaled(300, "LEVEL ${levelNum}", pal.hudGray, 3);
-        canvas.TextCenteredScaled(340, levelName, pal.white, 4);
     }
 
     // =========================================================================
@@ -1217,11 +1194,15 @@ class Game {
             var freezeDuration = enemies.getFreezeDuration(hit);
 
             if player.vy > 0 {
-                if etype != ENEMY_TURRET {
+                var enemyTop = enemies.getEnemyPixelY(hit);
+                var enemyMid = enemyTop + enemies.getEnemyHeight(hit) / 2;
+                var playerFeet = player.pixelY() + PLAYER_H;
+                if etype != ENEMY_TURRET and playerFeet <= enemyMid + 12 {
                     var ex = enemies.getEnemyPixelX(hit);
                     var ey = enemies.getEnemyPixelY(hit);
                     var defeatedScore = enemies.getEnemyScore(hit);
                     var deathEffect = enemies.getDeathEffectType(hit);
+                    var hpBeforeStomp = enemies.getEnemyHp(hit);
                     enemies.damageEnemy(hit, 10);
                     player.vy = PLAYER_JUMP / 2;
                     player.syncVelocity();
@@ -1243,6 +1224,10 @@ class Game {
                         killFlashTimer = 15;
                         startHitStop(killHitStopDurationMs(0));
                     } else {
+                        var stompDamage = hpBeforeStomp - enemies.getEnemyHp(hit);
+                        if stompDamage > 0 {
+                            hudObj.spawnPopup(ex, ey, 0 - stompDamage);
+                        }
                         particles.burstSpark(ex, ey, pal.sparkYellow);
                         renderObj.shake(4, 2);
                     }
@@ -1324,7 +1309,10 @@ class Game {
                 var bx = bullets.getBulletX(i);
                 var by = bullets.getBulletY(i);
 
-                var hit = enemies.checkBulletHit(bx, by, BULLET_W, BULLET_H);
+                var assistPad = settings.getValue(SETTING_AIM_ASSIST) * 6;
+                var hit = enemies.checkBulletHit(
+                    bx - assistPad, by - assistPad,
+                    BULLET_W + assistPad * 2, BULLET_H + assistPad * 2);
                 if hit >= 0 {
                     var etype2 = enemies.getEnemyType(hit);
                     if enemies.isProjectileImmune(hit) {
@@ -1343,6 +1331,7 @@ class Game {
                         var enemyX = enemies.getEnemyPixelX(hit);
                         var enemyY = enemies.getEnemyPixelY(hit);
                         var wasBoss = enemies.isEnemyBoss(hit);
+                        var hpBefore = enemies.getEnemyHp(hit);
 
                         bullets.deactivate(i);
                         enemies.damageEnemy(hit, damage);
@@ -1365,6 +1354,14 @@ class Game {
                             hudObj.spawnPopup(enemyX, enemyY, defeatedScore);
                             killFlashTimer = 15;
                             startHitStop(killHitStopDurationMs(charge));
+                        } else {
+                            var applied = hpBefore - enemies.getEnemyHp(hit);
+                            if applied > 0 {
+                                hudObj.spawnPopup(enemyX, enemyY, 0 - applied);
+                                if charge > 0 { startHitStop(18 + charge * 7); }
+                            } else {
+                                particles.burstSpark(bx, by, pal.stoneLight);
+                            }
                         }
                     }
                 }
@@ -1578,6 +1575,8 @@ class Game {
         if dx < SCREEN_W {
             bossIntroPlayed = true;
             bossCueTimer = 1800;
+            bossCameraLocked = true;
+            camera.setFocusWindow(level.bossX, SCREEN_W / 2 + TILE_SIZE * 3);
             renderObj.shake(5, 2);
             radioSystem.queueBossWarning(currentLevel - 1);
             sfx.playRadioCue();
@@ -1591,14 +1590,15 @@ class Game {
     /// @param canvas Active gameplay canvas.
     /// @param camX Camera world X.
     /// @param camY Camera world Y.
-    hide func drawBossCue(canvas: Canvas, camX: Integer, camY: Integer) {
+    hide func drawBossCue(canvas: Canvas, camX: Integer, camY: Integer,
+                          showBanner: Boolean) {
         if level.hasBoss == false { return; }
         if enemies.isBossAlive() == false { return; }
 
         var bossScreenX = level.bossX - camX;
         var bossScreenY = level.bossY - camY;
 
-        if bossCueTimer > 0 {
+        if bossCueTimer > 0 and showBanner {
             canvas.BoxAlpha(360, 92, 560, 54, Color.RGB(0, 0, 10), 190);
             canvas.Frame(360, 92, 560, 54, Color.RGB(120, 210, 240));
             canvas.TextCenteredScaled(106, "BOSS SIGNATURE DETECTED",
@@ -1607,12 +1607,13 @@ class Game {
 
         if bossScreenX > SCREEN_W - 96 {
             canvas.BoxAlpha(SCREEN_W - 142, 308, 120, 56, Color.RGB(0, 0, 10), 150);
-            canvas.TextScaled(SCREEN_W - 122, 320, ">>", Color.RGB(255, 180, 80), 3);
+            canvas.TextScaled(SCREEN_W - 122, 320, ">>", 3,
+                              Color.RGB(255, 180, 80));
             canvas.Text(SCREEN_W - 118, 348, "BOSS", Color.RGB(255, 220, 160));
         }
         if bossScreenX < 64 {
             canvas.BoxAlpha(22, 308, 120, 56, Color.RGB(0, 0, 10), 150);
-            canvas.TextScaled(40, 320, "<<", Color.RGB(255, 180, 80), 3);
+            canvas.TextScaled(40, 320, "<<", 3, Color.RGB(255, 180, 80));
             canvas.Text(48, 348, "BOSS", Color.RGB(255, 220, 160));
         }
         if bossScreenX >= 64 {
@@ -1960,8 +1961,8 @@ class Game {
         particles.reset();
 
         reachedCheckpoint = useCheckpoint;
-        currentRoomIndex = worldGraph.roomIndexForColumn(
-            player.pixelX() / TILE_SIZE, level.levelWidth);
+        currentRoomIndex = worldGraph.authoredRoomIndexForColumn(
+            currentLevel - 1, player.pixelX() / TILE_SIZE, level.levelWidth);
         worldState.discoverRoom(currentLevel - 1, currentRoomIndex);
         roomTitleTimer = 0;
         footstepTimer = 0;
@@ -2032,6 +2033,13 @@ class Game {
         if result == MENU_ACTION_SAVE {
             saveProgress();
             sfx.playSave();
+        }
+        if result == MENU_ACTION_RECOVER {
+            sfx.playMenuSelect();
+            respawnAfterDeath();
+            setInteractionMessage(
+                "Returned to the latest safe point. No salvage was lost.");
+            sm.Switch("playing");
         }
         if result == STATE_OPTIONS {
             sfx.playMenuSelect();
@@ -2141,6 +2149,7 @@ class Game {
             var destination = worldGraph.getAvailableNeighbor(
                 currentLevel - 1, routeSelection, abilities.getMask());
             if destination < 0 { destination = currentLevel - 1; }
+            pendingEntryFromRegion = currentLevel - 1;
             loadLevel(destination + 1);
             levelCompleteTimer = 0;
             sm.Switch("playing");
@@ -2679,6 +2688,20 @@ class Game {
     /// @brief Per-frame: controls-screen state input.
     hide func updateControls() {
         renderObj.update(dt);
+        if expeditionActive and Action.Pressed(ACT_INTERACT) {
+            tutorialSystem.reset();
+            saveProgress();
+            setInteractionMessage(
+                "Suit guidance reset. Context cards will replay in the field.");
+            sfx.playMenuSelect();
+            if controlsReturnToPause {
+                controlsReturnToPause = false;
+                sm.Switch("paused");
+            } else {
+                sm.Switch("menu");
+            }
+            return;
+        }
         var result = menus.updateControls();
         menus.drawControls(canvas);
         renderObj.drawTransition(canvas);
@@ -2824,6 +2847,10 @@ class Game {
         hudObj.setAccessibility(uiScale, highContrast, largeText);
         profileFlow.setAccessibility(uiScale, highContrast, largeText);
         hub.setAccessibility(uiScale, highContrast, largeText);
+        loreSystem.setAccessibility(uiScale, largeText, highContrast);
+        tutorialSystem.setAccessibility(uiScale, largeText, highContrast);
+        abilities.setAccessibility(uiScale, largeText, highContrast);
+        worldMap.setAccessibility(uiScale, largeText, highContrast);
     }
 
     // =========================================================================
@@ -3124,6 +3151,7 @@ class Game {
         if saveSlot < 0 or saveSlot >= MAX_SAVE_SLOTS { saveSlot = 0; }
         expeditionActive = true;
         expeditionMode = EXPEDITION_MODE_CAMPAIGN;
+        pendingEntryFromRegion = -1;
         score = 0;
         coins = 0;
         currentLevel = tuning.getInt("game.startLevel", 1);
@@ -3145,7 +3173,7 @@ class Game {
         totalPlaytime = 0;
         upgrades.reset();
         difficulty.setProfile(profile);
-        abilities.setMask(ABILITY_WALL_JUMP);
+        abilities.setMask(ABILITY_WALL_JUMP + ABILITY_DOUBLE_JUMP);
         syncPlayerAbilities();
         loreSystem.setCollectedMask(0);
         loreSystem.setBestiaryMask(0);
@@ -3185,6 +3213,7 @@ class Game {
         saveSlot = slot;
         expeditionActive = true;
         expeditionMode = EXPEDITION_MODE_CAMPAIGN;
+        pendingEntryFromRegion = -1;
         currentLevel = saveManager.getSlotLevel(slot);
         if currentLevel < 1 { currentLevel = 1; }
         if currentLevel > LEVEL_COUNT { currentLevel = LEVEL_COUNT; }
@@ -3238,13 +3267,12 @@ class Game {
             player.spawn(checkpointX, checkpointY);
             camera.snapTo(player.centerX(), player.centerY());
         }
-        introTimer = tuning.getInt("presentation.introSplashMs", 1200);
         sm.Switch("playing");
         sfx.playGameMusic();
         return true;
     }
 
-    /// @brief Persist the active slot using the schema-v2 release snapshot.
+    /// @brief Persist the active slot using the schema-v4 full snapshot.
     ///
     /// Core progression and every persistent interaction mask are staged in one
     /// SaveData batch. Callers use the result for user-facing save confirmation
@@ -3272,7 +3300,7 @@ class Game {
 
     /// @brief Load level `num` — wipes pools, builds the
     ///        new tilemap + spawn lists, snaps the camera,
-    ///        triggers the intro banner.
+    ///        triggers the coordinated room-title toast.
     hide func loadLevel(num: Integer) {
         difficulty.applyPendingOnTransition();
         hitStopTimer = 0;
@@ -3287,9 +3315,22 @@ class Game {
                                               worldState.getShrineMask());
         camera.setLevelSize(level.levelWidth, level.levelHeight);
 
-        player.spawn(level.playerStartX, level.playerStartY);
-        currentRoomIndex = worldGraph.roomIndexForColumn(
-            player.pixelX() / TILE_SIZE, level.levelWidth);
+        var spawnX = level.playerStartX;
+        var spawnY = level.playerStartY;
+        if pendingEntryFromRegion >= 0 {
+            var entryEdge = worldGraph.findEdge(
+                pendingEntryFromRegion, num - 1);
+            var entryRecord = level.findInteractionRecord(
+                INTERACTION_REGION_GATE, entryEdge);
+            if entryRecord >= 0 {
+                spawnX = level.interactionCols.get(entryRecord) * TILE_SIZE;
+                spawnY = level.interactionRows.get(entryRecord) * TILE_SIZE;
+            }
+        }
+        pendingEntryFromRegion = -1;
+        player.spawn(spawnX, spawnY);
+        currentRoomIndex = worldGraph.authoredRoomIndexForColumn(
+            num - 1, player.pixelX() / TILE_SIZE, level.levelWidth);
         worldState.discoverRoom(num - 1, currentRoomIndex);
         roomTitleTimer = 1800;
         footstepTimer = 0;
@@ -3322,7 +3363,10 @@ class Game {
         deathTimer = 0;
         bossCueTimer = 0;
         bossIntroPlayed = false;
-        introTimer = tuning.getInt("presentation.introSplashMs", 1200);
+        bossCameraLocked = false;
+        camera.clearFocusWindow();
+        // Room-title arbitration owns arrivals; the retired centered splash
+        // used to stack over ARIA subtitles and contextual guidance.
         radioSystem.queueRegionArrival(num - 1);
         sfx.playRadioCue();
         sfx.setCombatIntensity(0);
@@ -3361,6 +3405,7 @@ class Game {
         tutorialSystem = new TutorialSystem();
         metaProgression = new MetaProgression();
         radioSystem = new RadioSystem();
+        uiCoordinator = new UiCoordinator();
 
         hub = new HubSystem();
         hub.initHub(pal);
@@ -3398,8 +3443,10 @@ class Game {
         killFlashTimer = 0;
         interactionMessage = "";
         interactionMessageTimer = 0;
+        nearInteractionIndex = -1;
         routeSelection = 0;
         currentRoomIndex = 0;
+        pendingEntryFromRegion = -1;
         roomTitleTimer = 0;
         if saveManager.didRecoverCorruptSave() {
             setInteractionMessage(
@@ -3434,8 +3481,8 @@ class Game {
             if roomTitleTimer < 0 { roomTitleTimer = 0; }
         }
         var previousRoom = currentRoomIndex;
-        var nextRoom = worldGraph.roomIndexForColumn(
-            player.pixelX() / TILE_SIZE, level.levelWidth);
+        var nextRoom = worldGraph.authoredRoomIndexForColumn(
+            currentLevel - 1, player.pixelX() / TILE_SIZE, level.levelWidth);
         currentRoomIndex = nextRoom;
         var newlyDiscovered = worldState.discoverRoom(
             currentLevel - 1, currentRoomIndex);
@@ -3581,8 +3628,8 @@ class Game {
     /// @brief Resolve one interact-button press against stable authored records.
     ///
     /// Interaction priority is lore, save station, shrine, switch, keyed door,
-    /// then teleporter. Every path reads stable ids/payloads from Level rather
-    /// than deriving content from coordinates. Persistent mutations immediately
+    /// regional gateway, then teleporter. Every path reads stable ids/payloads
+    /// from Level rather than deriving content from coordinates. Persistent mutations immediately
     /// update the active level and save slot; lore, shrine acquisition, and fast
     /// travel return true so ordinary simulation remains frozen this frame.
     ///
@@ -3646,7 +3693,6 @@ class Game {
                 saveProgress();
                 particles.burstAbilityAcquired(wx, wy);
                 sfx.playAbilityGet();
-                transitions.startAbility(abilityName(ability));
                 if abilities.getMask() == 63 { achSys.onAllAbilities(); }
                 return true;
             }
@@ -3693,6 +3739,38 @@ class Game {
         }
 
         idx = level.findNearbyInteraction(
+            INTERACTION_REGION_GATE, wx, wy, scanRange);
+        if idx >= 0 {
+            var edgeId = level.interactionIds.get(idx);
+            var destinationRegion = level.interactionPayloads.get(idx);
+            if worldGraph.canTraverse(
+                currentLevel - 1, destinationRegion,
+                abilities.getMask()) == false {
+                var required = level.interactionChannels.get(idx);
+                setInteractionMessage(
+                    "ROUTE LOCKED // requires " + abilityName(required));
+                return false;
+            }
+            var completedBit = bitForLevel(currentLevel);
+            if completedBit <= 0 or
+               (completionMask / completedBit) % 2 == 0 {
+                setInteractionMessage(
+                    "ROUTE UNSTABLE // complete this region's objective first.");
+                return false;
+            }
+            if worldGraph.getOtherRegion(edgeId, currentLevel - 1) !=
+               destinationRegion {
+                setInteractionMessage("ROUTE ERROR // gateway link is invalid.");
+                return false;
+            }
+            saveProgress();
+            pendingEntryFromRegion = currentLevel - 1;
+            transitions.startLevelExit(destinationRegion + 1);
+            sfx.playCheckpoint();
+            return true;
+        }
+
+        idx = level.findNearbyInteraction(
             INTERACTION_TELEPORTER, wx, wy, scanRange);
         if idx >= 0 {
             var padId = level.interactionIds.get(idx);
@@ -3713,6 +3791,7 @@ class Game {
                 return false;
             }
             saveProgress();
+            pendingEntryFromRegion = currentLevel - 1;
             transitions.startLevelExit(destination + 1);
             return true;
         }
@@ -3740,19 +3819,33 @@ class Game {
     /// @return True when a modal system consumed the frame; false when ordinary
     ///         gameplay simulation should continue.
     hide func updateNewSystems() -> Boolean {
-        abilities.updateUI();
+        abilities.updateUI(dt);
         lighting.update();
         achSys.update(dt);
-        radioSystem.update(dt);
+        if tutorialSystem.getActiveTutorial() < 0 {
+            radioSystem.update(dt);
+        }
+        sfx.setNarrativeFocus(radioSystem.isActive());
         if interactionMessageTimer > 0 {
             interactionMessageTimer = interactionMessageTimer - dt;
             if interactionMessageTimer < 0 { interactionMessageTimer = 0; }
         }
 
+        // AbilityManager is the sole acquisition presenter. The duplicate
+        // TransitionManager ability overlay is intentionally no longer used.
+        if abilities.isAcquisitionActive() {
+            if Action.Pressed(ACT_CONFIRM) or Action.Pressed(ACT_BACK) or
+               Action.Pressed(ACT_INTERACT) {
+                abilities.dismissAcquisition();
+            }
+            return true;
+        }
+
         // Lore display (Typewriter-based text reveal)
         if loreSystem.isDisplayActive() {
             loreSystem.update(dt);
-            if Action.Pressed("jump") {
+            if Action.Pressed(ACT_JUMP) or Action.Pressed(ACT_CONFIRM) or
+               Action.Pressed(ACT_BACK) or Action.Pressed(ACT_INTERACT) {
                 loreSystem.dismiss(); // First press skips text, second dismisses
             }
             return true;
@@ -3793,6 +3886,8 @@ class Game {
             poundImpactTimer = poundImpactTimer - 1;
         }
 
+        nearInteractionIndex = level.findNearestInteraction(
+            player.centerX(), player.centerY(), upgrades.getScannerRange());
         if handleAuthoredInteraction() { return true; }
 
         // Environmental tile effects
@@ -3854,6 +3949,10 @@ class Game {
                 b = b + 1;
             }
             if (bossesDefeated / bossBit) % 2 == 0 {
+                if bossCameraLocked {
+                    camera.clearFocusWindow();
+                    bossCameraLocked = false;
+                }
                 bossesDefeated = bossesDefeated + bossBit;
                 achSys.onBossDefeated(level.bossType);
                 loreSystem.unlockBestiaryEntry(level.bossType);
@@ -3861,7 +3960,6 @@ class Game {
                 if bossReward > 0 and abilities.has(bossReward) == false {
                     abilities.grant(bossReward);
                     player.startAcquisitionAnimation();
-                    transitions.startAbility(abilityName(bossReward));
                     sfx.playAbilityGet();
                 }
                 syncPlayerAbilities();
@@ -3905,6 +4003,17 @@ class Game {
     ///        achievement popups).  Always last so they
     ///        composite over gameplay.
     hide func drawNewSystems(canvas: Canvas, camX: Integer, camY: Integer) {
+        var tutorialVisible = tutorialSystem.getActiveTutorial() >= 0 and
+            settings.getValue(SETTING_NAVIGATION_HINTS) != NAV_HINTS_OFF;
+        var radioVisible = radioSystem.isActive() and
+            settings.getValue(SETTING_SUBTITLES) == 1;
+        uiCoordinator.resolve(
+            showWorldMap, loreSystem.isDisplayActive(),
+            abilities.isAcquisitionActive(), transitions.isActive(),
+            bossCueTimer > 0, interactionMessageTimer > 0,
+            roomTitleTimer > 0, achSys.hasNotification(),
+            tutorialVisible, radioVisible);
+
         // Biome ambient particles
         renderObj.drawBiomeAmbient(canvas, camX, camY, currentLevel, levelTimer);
 
@@ -3923,6 +4032,9 @@ class Game {
 
         // Recoverable campaign salvage remains at the latest death site.
         drawDeathMarker(canvas, camX, camY);
+        if uiCoordinator.hasModal() == false {
+            drawInteractionPrompt(canvas, camX, camY);
+        }
 
         // Environmental overlays
         var hazard = phys.checkHazardTile(player.x, player.y,
@@ -3936,76 +4048,124 @@ class Game {
                       player.pixelX() - camX + PLAYER_W / 2,
                       player.pixelY() - camY + PLAYER_H / 2);
 
-        // Ability icons on HUD
-        abilities.drawHUD(canvas);
+        if uiCoordinator.hasModal() == false {
+            var hudDetail = settings.getValue(SETTING_HUD_DETAIL);
+            if hudDetail > 0 and uiCoordinator.showAchievement() == false {
+                abilities.drawHUD(canvas);
+                var biomeName = menus.getBiomeName(currentLevel);
+                hudObj.drawExtendedHud(
+                    canvas, pal, gems, loreSystem.getCollectedCount(),
+                    loreSystem.getTotalCount(), currentLevel, biomeName);
+                if enemies.isBossAlive() == false and
+                   uiCoordinator.hasTop() == false {
+                    drawObjectiveHud(canvas);
+                }
+            }
+            if hudDetail >= 2 {
+                var playerCol = player.pixelX() / TILE_SIZE;
+                var playerRow = player.pixelY() / TILE_SIZE;
+                hudObj.drawMiniMap(canvas, pal, playerCol, playerRow,
+                                   level.levelWidth, level.levelHeight);
+            }
+            hudObj.drawPowerupTimers(
+                canvas, pal, player.speedTimer, player.rapidFireTimer,
+                player.shieldHits > 0);
+        }
 
-        // Extended HUD
-        var biomeName = menus.getBiomeName(currentLevel);
-        hudObj.drawExtendedHud(canvas, pal, gems,
-                                loreSystem.getCollectedCount(), loreSystem.getTotalCount(),
-                                currentLevel, biomeName);
-        canvas.BoxAlpha(18, 96, 360, 26, Color.RGB(5, 10, 20), 150);
-        canvas.Text(28, 103,
-                    worldGraph.getRoomName(currentLevel - 1,
-                                           currentRoomIndex),
-                    Color.RGB(150, 205, 230));
-        drawRoomTitleToast(canvas);
-        drawObjectiveHud(canvas);
-
-        // Mini-map
-        var playerCol = player.pixelX() / TILE_SIZE;
-        var playerRow = player.pixelY() / TILE_SIZE;
-        hudObj.drawMiniMap(canvas, pal, playerCol, playerRow,
-                           level.levelWidth, level.levelHeight);
-
-        // Power-up timers
-        hudObj.drawPowerupTimers(canvas, pal, player.speedTimer, player.rapidFireTimer,
-                                 player.shieldHits > 0);
+        if uiCoordinator.showRoom() { drawRoomTitleToast(canvas); }
 
         // Floating damage/score popups (#14) — world-space, over the scene.
         hudObj.drawPopups(canvas, camX, camY);
 
-        // Boss discovery/direction cue.
-        drawBossCue(canvas, camX, camY);
+        // Boss direction remains visible; only its banner competes for top lane.
+        drawBossCue(canvas, camX, camY, uiCoordinator.showBoss());
 
         // Nonblocking interaction success/failure feedback.
-        renderObj.drawNotification(canvas, interactionMessage,
-                                   interactionMessageTimer, 2400);
+        if uiCoordinator.showMessage() {
+            renderObj.drawNotificationAt(canvas, interactionMessage,
+                                         interactionMessageTimer, 2400, 96);
+        }
 
         // Transition overlay (on top of everything)
-        if transitions.isActive() {
+        if uiCoordinator.getModalOwner() == UI_MODAL_TRANSITION {
             transitions.draw(canvas,
                               player.pixelX() - camX + PLAYER_W / 2,
                               player.pixelY() - camY + PLAYER_H / 2);
         }
 
         // Ability acquisition UI
-        abilities.drawAcquisitionUI(canvas);
+        if uiCoordinator.getModalOwner() == UI_MODAL_ABILITY {
+            abilities.drawAcquisitionUI(canvas);
+        }
 
         // Lore display (on top of everything)
-        if loreSystem.isDisplayActive() {
+        if uiCoordinator.getModalOwner() == UI_MODAL_LORE {
             loreSystem.draw(canvas);
         }
 
         // Achievement notification popup
-        achSys.drawNotification(canvas);
+        if uiCoordinator.showAchievement() { achSys.drawNotification(canvas); }
 
         // Contextual onboarding is persistent per profile and uses live bindings.
-        if settings.getValue(SETTING_NAVIGATION_HINTS) != NAV_HINTS_OFF {
+        if uiCoordinator.showTutorial() {
             tutorialSystem.draw(canvas, pal);
         }
 
-        radioSystem.draw(
-            canvas, pal, settings.getValue(SETTING_SUBTITLES) == 1,
-            settings.getValue(SETTING_UI_SCALE),
-            settings.getValue(SETTING_LARGE_TEXT) == 1,
-            settings.getValue(SETTING_HIGH_CONTRAST) == 1);
+        if uiCoordinator.showRadio() {
+            radioSystem.draw(
+                canvas, pal, true, settings.getValue(SETTING_UI_SCALE),
+                settings.getValue(SETTING_LARGE_TEXT) == 1,
+                settings.getValue(SETTING_HIGH_CONTRAST) == 1);
+        }
 
         // World map (if open)
-        if showWorldMap {
+        if uiCoordinator.getModalOwner() == UI_MODAL_MAP {
             worldMap.draw(canvas, currentLevel, bossesDefeated,
                           worldState.getTeleporterMask(), abilities);
         }
+    }
+
+    /// @brief Draw one world-anchored semantic interaction prompt.
+    hide func drawInteractionPrompt(canvas: Canvas,
+                                    camX: Integer, camY: Integer) {
+        if nearInteractionIndex < 0 or
+           nearInteractionIndex >= level.interactionTypes.length() { return; }
+        var kind = level.interactionTypes.get(nearInteractionIndex);
+        var label = "INTERACT";
+        if kind == INTERACTION_SAVE_STATION { label = "SAVE / RESTORE"; }
+        if kind == INTERACTION_LORE_TERMINAL { label = "DECODE LOG"; }
+        if kind == INTERACTION_ABILITY_SHRINE { label = "TRANSFER MODULE"; }
+        if kind == INTERACTION_SWITCH { label = "TOGGLE LINK"; }
+        if kind == INTERACTION_LOCKED_DOOR { label = "USE KEYCARD"; }
+        if kind == INTERACTION_TELEPORTER { label = "FAST TRAVEL"; }
+        if kind == INTERACTION_REGION_GATE {
+            var destination = level.interactionPayloads.get(nearInteractionIndex);
+            label = "ROUTE: " + worldGraph.getRegionName(destination);
+        }
+
+        var sx = level.interactionCols.get(nearInteractionIndex) * TILE_SIZE +
+                 TILE_SIZE / 2 - camX;
+        var sy = level.interactionRows.get(nearInteractionIndex) * TILE_SIZE -
+                 camY;
+        if sx < -160 or sx > SCREEN_W + 160 or sy < -80 or sy > SCREEN_H + 80 {
+            return;
+        }
+        var prompt = Action.BindingsStr(ACT_INTERACT) + "  " + label;
+        var width = 190;
+        if kind == INTERACTION_REGION_GATE { width = 300; }
+        var measuredWidth = Canvas.TextWidth(prompt) + 20;
+        if measuredWidth > width { width = measuredWidth; }
+        if width > 420 { width = 420; }
+        canvas.DiscAlpha(sx, sy + TILE_SIZE / 2, 34,
+                         Color.RGB(70, 205, 235), 45);
+        canvas.Ring(sx, sy + TILE_SIZE / 2, 30,
+                    Color.RGB(120, 225, 245));
+        canvas.BoxAlpha(sx - width / 2, sy - 34, width, 26,
+                        Color.RGB(2, 8, 16), 215);
+        canvas.Frame(sx - width / 2, sy - 34, width, 26,
+                     Color.RGB(70, 150, 185));
+        canvas.Text(sx - width / 2 + 10, sy - 29, prompt,
+                    Color.RGB(205, 240, 250));
     }
 
     /// @brief Draw the current region's recoverable salvage marker in world space.
@@ -4092,7 +4252,7 @@ class Game {
     ///         bounded vertical settle.
     hide func drawRoomTitleToast(canvas: Canvas) {
         if roomTitleTimer <= 0 { return; }
-        var y = 86;
+        var y = 96;
         if settings.getValue(SETTING_REDUCED_MOTION) == 0 and
            roomTitleTimer > 1500 {
             y = y - (roomTitleTimer - 1500) / 30;

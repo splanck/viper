@@ -162,10 +162,17 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_enabled = cam->fog_enabled;
     ctx->height_fog[0] = cam->height_fog_base;
     ctx->height_fog[1] = cam->height_fog_falloff;
-    ctx->height_fog[2] = cam->height_fog_enabled
-                             ? cam->height_fog_density * cam->height_fog_blend
-                             : 0.0f;
+    ctx->height_fog[2] =
+        cam->height_fog_enabled ? cam->height_fog_density * cam->height_fog_blend : 0.0f;
     ctx->height_fog[3] = 0.0f;
+    ctx->height_fog_sun[0] = cam->height_fog_sun_color[0];
+    ctx->height_fog_sun[1] = cam->height_fog_sun_color[1];
+    ctx->height_fog_sun[2] = cam->height_fog_sun_color[2];
+    ctx->height_fog_sun[3] = cam->height_fog_enabled ? cam->height_fog_sun_amount : 0.0f;
+    ctx->height_fog_sun_dir[0] = cam->height_fog_sun_dir[0];
+    ctx->height_fog_sun_dir[1] = cam->height_fog_sun_dir[1];
+    ctx->height_fog_sun_dir[2] = cam->height_fog_sun_dir[2];
+    ctx->height_fog_sun_dir[3] = cam->height_fog_sun_power;
     ctx->fog_near = cam->fog_near;
     ctx->fog_far = cam->fog_far;
     ctx->fog_color[0] = cam->fog_color[0];
@@ -432,13 +439,8 @@ static void gl_issue_depth_probes(gl_context_t *ctx) {
             px = ctx->scene_width - 1;
         if (py >= ctx->scene_height)
             py = ctx->scene_height - 1;
-        gl.ReadPixels(px,
-                      py,
-                      1,
-                      1,
-                      GL_DEPTH_COMPONENT,
-                      GL_FLOAT,
-                      (void *)((size_t)i * sizeof(float)));
+        gl.ReadPixels(
+            px, py, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, (void *)((size_t)i * sizeof(float)));
     }
     gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);

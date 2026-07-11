@@ -87,6 +87,14 @@ This is intentionally free of common-case `Mat4` calls. `Entity3D` owns the raw
 | `FirstPersonController` | FPS camera controller that can either move the camera directly or drive a `CharacterController3D` |
 | `OrbitController` | Target-orbit camera with drag orbit, wheel zoom, distance clamp, and pitch clamp |
 | `FollowController` | Late-update camera follower that tracks an entity's post-physics pose with an offset and damping |
+| `ThirdPersonController` | Collision-aware spring-arm over-the-shoulder camera with camera-relative character drive, aim mode, occluder fade, and lock-on framing |
+| `TargetLock3D` | Lock-on target acquisition, cycling, auto-release, and soft input magnetism for third-person combat |
+| `Hitbox3D` / `HitEvent3D` | Bone/entity-attached combat volumes with animation-window activation and a polled hit-event buffer |
+| `Health3D` / `DamageEvent3D` | Per-entity hp with damage/i-frames/death lifecycle, knockback helper, and polled damage events |
+| `RailCamera3D` | Constant-speed spline camera with FOV/roll keys, look modes, and damped progress |
+| `Timeline3D` | Multi-track cutscene sequencer: cuts, spline moves, anim/audio/subtitle/letterbox/fade/marker tracks with skip semantics |
+| `Dialogue3D` | Typewriter conversations with speaker anchoring, localization keys, and blocking choices |
+| `LipSync3D` | Amplitude-envelope lip sync, seeded blinks, and LookAt-IK gaze |
 | `CharacterController3D` | Game3D wrapper around `Viper.Graphics3D.Character3D` with camera-relative movement, gravity, jump speed, grounding, and entity sync |
 | `Lighting` | One-call readable lighting rigs: studio, outdoor, night, interior, and clear |
 | `Materials` | PBR-oriented material presets for plastic, metal, rubber, glass, emissive, unlit, and albedo-map workflows |
@@ -277,7 +285,18 @@ var env = Game3D.Environment.Outdoor(world);
 Game3D.EnvHandle.withTerrain(env, 96.0, 0.0);
 Game3D.EnvHandle.withWater(env, -0.05);
 Game3D.EnvHandle.withFog(env, 20.0, 160.0);
+Game3D.EnvHandle.withHeightFog(env, 0.05, 2.0, 0.25); // density, base height, falloff
 ```
+
+`withHeightFog` enables exponential **height fog** on the world's canvas:
+density pools below the base height and thins above it (dense valleys, clear
+peaks), combining with distance fog through joint transmittance. For
+atmosphere looking toward the sun, `Canvas3D.SetHeightFogSun(r, g, b, power,
+amount)` tints the fog toward a sun color by view-sun alignment (the
+"silver lining" term; the sun direction follows the first enabled directional
+light, and `amount` `0` — the default — keeps legacy fog output unchanged).
+`Canvas3D.ClearHeightFog()` disables height fog alone;
+`Canvas3D.HeightFogEnabled` reports the state.
 
 Terrain is represented as a spawnable ground entity with a static body in this
 phase, so character/physics samples get a useful floor without manual collider
@@ -771,9 +790,67 @@ payloads unload immediately, one or more new payloads are admitted by the frame
 budget, any payload whose measured post-load size exceeds the active residency
 budget is evicted before telemetry is published, and
 `pendingRequestCount` reports deferred desired payloads until later updates
-drain them. A budget of `0` unloads cells and reports no resident cells or
-tiles; a negative budget is unlimited. Worker-backed decode/upload remains a
-future streaming layer.
+drain them (including cells that are staging or staged but not yet committed).
+A budget of `0` unloads cells and reports no resident cells or tiles; a
+negative budget is unlimited.
+
+### Worker-backed streaming
+
+Streaming is worker-backed by default: `update(dt)` never does cell/tile file
+IO on the main thread. Workers read `.vscn` text, sidecar bytes, and heightmap
+text (parsed to a plain height grid off-thread), and the main thread commits
+staged payloads — VSCN parse, scene spawn, `Terrain3D` build, collider/nav
+registration, seam stitching — inside the deterministic nearest-first
+recompute pass. Commits are **order-gated**: a farther cell never becomes
+resident before a nearer desired cell, so the resident sequence matches
+blocking mode at any worker count; async merely spreads the work across
+updates. Configuration and telemetry:
+
+| Member | Description |
+|--------|-------------|
+| `setAsyncStreaming(on)` / `getAsyncStreaming()` | Toggle worker staging (default on). Off restores single-update inline loads for bisection and determinism debugging. |
+| `setCommitBudget(bytes)` | Max staged bytes committed per `update` (`-1` unlimited, `0` holds all commits pending; an oversized first payload commits alone). |
+| `setPrefetchLookahead(seconds)` | Stage cells/tiles along the smoothed center velocity this far ahead (default 2 s; `0` disables). Teleports — jumps larger than the unload radius — reset the velocity estimate so nothing prefetches along the jump vector. |
+| `streamStallMs` | Worst single staged-commit slice in wall milliseconds since mount (budget-tuning observability). |
+| `prefetchedCellCount` | Cells currently staged/staging purely from prefetch. |
+
+Worker staging failures are recoverable: a missing or corrupt cell payload is
+skipped with a reload cooldown and counts
+`Game3D.Diagnostics3D.StreamStagingErrors`; staged payloads dropped without
+committing (center reversed, remount) count `StreamStaleStagesDropped`. A
+missing tile heightmap still loads a blank tile, matching the blocking loader.
+Because staging is asynchronous, code that needs settled residency should loop
+`update(dt)` until `pendingRequestCount` reaches `0` rather than assuming one
+update suffices.
+
+### HLOD proxies and impostors
+
+Cells may carry an optional `"proxy"` manifest field (plus `"proxyBytes"`)
+naming a merged low-poly `.vscn` stand-in. Proxy-bearing cells add a third
+residency ring: inside `setProxyRadius` (default 4x the load radius) but
+outside the load radius, the stream attaches only the proxy subtree
+(render-only — no colliders or nav sources); crossing the load radius swaps
+proxy→full, and receding swaps back, with **no gap frame in either
+direction** — the outgoing representation stays attached until the incoming
+one commits. Proxy payloads ride the same worker staging pipeline as cells.
+Telemetry: `proxyResidentCount` / `proxyResidentBytes` (also included in
+`residentBytes`); `getCellProxy(i)` inspects the resolved path.
+
+`bakeCellProxy(i)` is the authoring hook (run it after editing a cell, like a
+navmesh bake — never during play): it merges the resident cell's drawable
+meshes in cell-local space, simplifies to an 800-triangle budget, bakes each
+source material's diffuse color into a small block atlas (flat-shaded, unlit),
+and saves `<cell>_proxy.vscn` next to the cell (or at the authored `proxy`
+path), updating the session's cell record so the ring works immediately.
+
+`generateImpostors(distance)` renders each proxy-resident cell's proxy mesh
+from 8 yaw angles into a horizontal strip (off-screen `RenderTarget3D`) and
+installs it via `SceneNode.SetImpostorFrames(distance, strip, 8)` — beyond
+`distance` the cell degrades to a single yaw-selected textured quad
+(`GetImpostorFrameIndex` exposes the last frame the draw path picked). This
+gives three rings: full cell → proxy mesh → impostor quad. Impostor strips
+capture against the canvas background, so they read best at distances where
+fog and sky dominate.
 
 Editor/debug inspection uses method-style lower/camel calls:
 `getCellCount()`, `getCellName(i)`, `getCellCenter(i)`,
@@ -1188,6 +1265,206 @@ wheel input changes distance, and `lateUpdate` places the camera on the orbit.
 Set `damping` to `0.0` for a snap follow, or a positive value for exponential
 smoothing.
 
+`ThirdPersonController.New(world, targetEntity)` is the over-the-shoulder camera
+for third-person games: a collision-aware spring arm that orbits the target and
+optionally drives a `CharacterController3D` camera-relatively. During `update`
+it consumes `Input3D.lookAxis()` into `Yaw`/`Pitch` (pitch clamps to
+-60..75 by default; positive pitch places the camera above the pivot), advances
+the aim blend, and — when `Character` is set — moves the character along the
+yaw basis (yaw `0` faces `-Z`, yaw `90` faces `-X`). During `lateUpdate` it
+sphere-sweeps the camera boom from the pivot (entity position + `PivotHeight` +
+yaw-rotated `ShoulderOffset`): hits pull the camera in instantly (it never
+clips), release smooths back at `Damping`. `MinDistance`/`MaxDistance` bound the
+boom, and a sweep that starts inside geometry snaps to `MinDistance`.
+
+```zia
+var tp = Game3D.ThirdPersonController.New(world, player);
+tp.Character = character;      // camera-relative WASD drive
+tp.CollisionMask = 1;          // boom collides with static scenery only
+tp.OcclusionFade = true;       // fade props that block the view
+world.SetCameraController(tp);
+```
+
+Aim mode: setting `Aiming = true` blends the boom toward `AimDistance` and the
+camera FOV toward `AimFov` (the pre-aim FOV is captured and restored when the
+blend releases). `OcclusionFade` raycasts pivot→camera each late update across
+**all** layers — fadeable props are typically excluded from `CollisionMask` so
+the boom ignores them while they still fade to a translucent material instance;
+originals are restored when clear, on disable, on detach, and at finalization.
+
+`TargetLock3D.New(world, ownerEntity)` adds lock-on targeting. `Acquire()`
+scores overlap candidates inside `MaxDistance` and the `ConeDegrees` half-angle
+around the camera forward (angle-weighted 2:1 over distance, sticky toward the
+current target), gated by origin-to-origin line of sight when
+`RequireLineOfSight` is set. `Cycle(±1)` steps to the nearest candidate left or
+right in the camera basis. `Update(dt)` (ticked automatically while installed as
+a `ThirdPersonController.LockTarget`) auto-releases on death, `BreakDistance`,
+or line of sight broken longer than `LosGraceSeconds` (set `0` for instant
+break). Poll `JustAcquired()`/`JustLost()` for one-shot transitions, and use
+`LockedMoveBias(move)` to bend a planar move vector up to 12° toward the target
+for melee approach assist. Only entities managed through `Entity3D.attachBody`
+resolve as candidates, and layer policy is entity-owned — use `Entity3D.Layer`
+to place targetables on a dedicated bit and match it with `CandidateMask`.
+
+While a lock target is engaged, the third-person controller ignores look input,
+eases yaw/pitch onto the player→target bearing, and pulls the look point 40%
+toward the target; releasing resumes free look from the framed angles.
+
+`CharacterController3D` also exposes crouch and environment interaction:
+`SetCrouching(true)` swaps the capsule to `CrouchHeight` (feet stay planted;
+always succeeds) and `SetCrouching(false)` stands back up only when the
+headroom test passes (returns `false` under a low ceiling). `PushStrength`
+scales the impulse applied to blocking dynamic bodies (0 = block without
+pushing), `RidePlatforms` keeps the character tracking moving kinematic ground,
+`IsSliding()` reports too-steep-slope descent, `GroundEntity()` resolves the
+body underfoot to its owning entity, and `ProbeLedge(maxHeight)` /
+`ProbeVault(maxHeight, maxThickness)` forward to the world traversal probes
+using the character pose and entity facing (see the Physics3D guide's
+Traversal Probes section).
+
+---
+
+## Cinematics
+
+`RailCamera3D.New(world, path)` is the gameplay-installable spline camera:
+`Progress` [0,1] rides the path at **constant speed** (an arclength-normalized
+centripetal Catmull-Rom evaluation — `Path3D.GetPositionAt` keeps its
+historical uniform parameterization), `Speed` auto-advances in units/sec, and
+`PositionDamping` smooths progress jumps. Look modes: `SetLookEntity`
+(post-physics pose), `SetLookPoint`, `SetLookPath` (second path at the same t),
+or tangent-facing by default. `AddFovKey(t, fov)` / `AddRollKey(t, degrees)`
+add piecewise keys (`KeyEase` selects smoothstep); roll composes an explicit
+up vector into the look-at basis.
+
+`Timeline3D.New(world)` is the cutscene sequencer. Build tracks fluently —
+`AddCameraCut`, `AddCameraMove` (spline over a `Path3D` with a Vec3/Entity3D/
+Path3D look target and an ease), `AddFovRamp`, `AddAnim(entityName, state,
+crossfade)`, `AddAudio`, `AddSubtitle`, `AddLetterbox`, `AddFade`,
+`AddMarker(t, id)` — then `World3D.PlayTimeline(tl)`. While any camera track
+exists, the installed camera controller is suspended (not detached) and the
+timeline writes the camera in the late-update slot; `StopTimeline()` (or the
+end of playback plus `StopTimeline`) restores it. Fire-once tracks fire exactly
+once per play regardless of step size; `Skip()` applies final anim states,
+never replays audio, fires pending markers, and applies the end camera
+(`Skippable` gates it). Poll markers via `EventsFiredCount()`/`EventFiredId(i)`
+and completion via `Finished`/`JustFinished()`. Letterbox/fade/subtitle draw
+after user overlays, and timelines advance by the world's **scaled** time, so
+pause and hit-stop behave sensibly inside cutscenes.
+`World3D.SetDofFocus(distance)` drives a live DOF focus pull through the
+post-FX chain (false when the chain has no DOF effect).
+
+## Dialogue And Facial
+
+`Dialogue3D.New(world)` queues typewriter conversations over the world
+overlay: `Say(speaker, textOrKey)` / `SayVoiced(speaker, textOrKey, clip)`,
+`Show()`, then `Advance()` on the interact key — the first press completes the
+reveal, the next moves on (two-stage skip). Bind a `MessageBundle` with
+`SetLocale`: strings that resolve as keys are localized, otherwise the literal
+is used (missing keys never trap). `SetSpeakerEntity` + `SetAnchored(true)`
+float a compact bubble above the speaker via `Camera3D.WorldToScreen`, falling
+back to the bottom panel when off-screen. `AskChoice(options)` blocks advance
+until `MoveChoice(±1)` + `ConfirmChoice()`; poll `ChoiceMade()` (one-shot) and
+`LastChoice`. Dialogue input is game-mapped — gate gameplay interactions on
+`Dialogue3D.Active`.
+
+`LipSync3D.New(entity)` makes speakers look alive: bind a `MorphTarget3D`
+(`BindMorph`) plus up to four mouth shapes (`BindMouthShape(name, scale)`),
+then `Drive(voiceId)` — the mixer's per-voice RMS meter
+(`Viper.Sound.Voice.EnableMetering/GetLevel`, pre-attenuation so distance
+never closes the mouth) feeds an envelope follower (0.04 s attack / 0.12 s
+release, soft-knee curve). `DriveLevel(level)` injects levels directly.
+`SetBlink(true, shape, minInterval, maxInterval)` adds seeded-deterministic
+blinks (additive-max with same-shape lip sync); `BindHeadBone(name)` +
+`SetGaze(entityOrVec3)` ease conversational eye contact through LookAt IK.
+Amplitude sync reads best at conversation camera distance — that is the
+design target, not close-ups.
+
+---
+
+## Combat Volumes And Health
+
+`Hitbox3D` gives melee combat first-class hit detection without physics bodies:
+combat volumes are collider shapes posed on entities (or bones) and tested by a
+dedicated world combat pass each step — raycasts and sweeps never see them.
+`Hitbox3D.New(entity, collider)` registers an entity-space volume (default kind
+`HitboxKind.Hurt`); `Hitbox3D.NewOnBone(entity, boneName, collider)` poses the
+volume from the animator's bone palette after animation updates. `Kind` selects
+attack (`Hit`) or damageable (`Hurt`); `Team` pairs are skipped when equal
+unless the attacker sets `FriendlyFire`; `Channel` bitmasks must overlap.
+
+Activation is manual (`Active = true` for scripted swings) or bound to
+animation windows: `BindWindow(stateName, t0, t1)` (up to four) makes the
+volume live while the owner's animator plays that state within the time range.
+Each activation reports **one hit per victim** — rehit suppression resets when
+the volume goes inactive, so multi-hit moves are modeled as multiple windows.
+
+The combat pass runs after animation and scene sync inside `stepSimulation` and
+buffers polled events, cleared at the next step:
+
+```zia
+var n = world.HitEventCount();
+for (var i = 0; i < n; i = i + 1) {
+    var hit = world.HitEvent(i);
+    var victimHealth = Game3D.Entity3D.get_Health(Game3D.HitEvent3D.get_Victim(hit));
+    victimHealth.Damage(25.0, Game3D.HitEvent3D.get_Attacker(hit), DMG_SLASH);
+}
+```
+
+`Health3D.New(maxHp)` + `Entity3D.AttachHealth(h)` add the bookkeeping half:
+`Damage(amount, source, tag)` returns the applied amount (0 while dead or
+inside `InvulnSeconds` i-frames, which each applied hit grants), latches
+`IsDead` when hp crosses zero, and buffers a `DamageEvent3D`
+(victim/source/amount/tag/`WasLethal`) on the world. `Heal`/`Revive` restore;
+`JustDamaged()`/`JustDied()` are one-shot flags cleared at the next step.
+`ApplyKnockback(direction, strength, point)` impulses the entity's dynamic body
+and returns `false` for kinematic/character entities so gameplay can route the
+push through its controller instead. Damage amounts are game data — the runtime
+never auto-damages from hit events. Death does not despawn: pair `JustDied()`
+with `Entity3D.EnableRagdoll()` for corpse handoff.
+
+---
+
+## Time Control
+
+`World3D.TimeScale` (clamped 0–4, default 1) scales simulated time at one choke
+point: controllers, behaviors, animation, physics, scene sync, and effects all
+see the scaled `Dt`, while `UnscaledDt`/`UnscaledElapsed` keep real time for
+menus and UI. `Paused = true` latches the effective scale to zero: bodies,
+animators, particles, and `Elapsed` freeze while rendering continues (the
+camera late-update still runs so resize/aspect stays live). `HitStop(seconds)`
+freezes simulated time for a real-time window — max-latched, so repeated hits
+never extend past the longest request — the standard combat-impact feel.
+
+In the fixed-step loop (`runFixed`) the accumulator gains scaled time, so at
+`TimeScale 0.5` fixed steps fire half as often while the fixed step *size*
+never changes — simulation determinism is unaffected. Raw `Physics3DWorld`
+users are untouched: scaling lives entirely in the Game3D facade. Audio voices
+keep playing under pause (menu music continues; positional one-shots finish).
+
+---
+
+## Gameplay Systems (Surfaces, Interaction, AI, Persistence, HUD)
+
+The adventure-game systems layer (ADRs 0091–0100). Each component is polled
+state — no VM callbacks — and every world-registered piece ticks inside
+`StepSimulation` in a fixed, deterministic order.
+
+| Class | Purpose |
+|---|---|
+| `Game3D.Surfaces` | Process-global surface-tag registry: `Register(name)` → stable id (1-based, 255 budget), `NameOf`/`IdOf`/`Count`. Colliders carry `SurfaceType` plus per-side `MaterialFriction`/`MaterialRestitution`; raycast hits and contact events report the tag. |
+| `SurfaceTable3D` / `Footsteps3D` | Per-surface footstep clip sets (≤8 variants, deterministic LCG pick) consumed by animator events (prefix match, 1.5 m ground probe resolves the surface, 0.12 s cooldown). `StepCount`/`LastSurface` telemetry. |
+| `Interactable3D` / `Interactor3D` | Focus-and-use loop: fluent prompt/kind/radius on targets; the scanner scores candidates in the owner's view cone (distance + alignment + priority, 10% focus hysteresis, optional LoS). `Focused`, `FocusChanged()` one-shot, `Interact()`, `LastInteracted`. |
+| `Perception3D` | Sight cones with LoS raycasts and reaction hysteresis (0.3 s to see, 2.0 s to lose), plus hearing via `World3D.ReportSound(pos, loudness, tag)` (heard events live one step). `SeenCount/SeenTarget/LastKnownPosition/SeenChanged`. |
+| `BehaviorTree3D` / `BehaviorTreeInstance3D` | Shared immutable node arena (`Sequence`/`Selector`/`Inverter`, `TargetVisible`, `Wait`, `MoveToTarget`, `MoveToLastKnown`, `Custom(id)`); per-entity instances hold all mutable state. `Custom` leaves park the tree and expose `PendingCustom` for the script to `Resolve(success)`. |
+| `ReverbZone3D` / `AmbientBed3D` | Listener-selected AABB reverb zones easing a dedicated `"g3d_reverb"` group insert (`Sound3D.get_ReverbWet` telemetry); zone ambient beds crossfade looping clips on `"g3d_ambience"`. `Sound3D.SetOcclusion` runs budgeted listener→source raycasts into the mixer's smoothed per-voice occlusion tap; `PlayDialogue` routes speech to the `"g3d_dialogue"` ducking trigger group. |
+| `Cloth3D` | Verlet chains/patches for capes and banners — see the Physics3D page. Registered via `World3D.AddCloth`, ticked after the facial pass. |
+| Persistence | `Entity3D.SetPersistent(key)` + `StateTag` opt into the world's delta store (alive/pose/tag, refreshed per step, killed on despawn); `WorldStream3D.SetCellFlag/GetCellFlag` + `LoadedCellEvent*` cover authored-cell state; `World3D.SaveState/LoadState(app, slot)` snapshot everything as validated `VW3DSAV1` under the per-user SaveData dir. `GetPersistentAlive/Position(key)` steer respawn logic. |
+| `Minimap3D` | Authored north-up map with world-rect affine (`MapX/MapY` exposed), ≤64 entity/point markers with rim clamping, compass strip, and `WorldToScreen` objective indicators. Explicit `Draw()` from the HUD pass. |
+| Profiling | `Canvas3D.PassDrawCount/PassInstanceCount(Game3D.RenderPass.*)` per-pass attribution plus the `World3D` hitch ring (`SetHitchThresholdMs`, `HitchCount/HitchFrame/HitchSource/HitchMs`, `Game3D.HitchSource` constants: StreamCommit, FrameTotal). |
+
+Quest/objective tracking is 2D/3D-agnostic and lives at `Viper.Game.Quests`
+(see the Game library docs).
+
 ---
 
 ## Troubleshooting
@@ -1220,6 +1497,15 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_double_despawn_reject` | Interpreted Zia double-despawn stale-handle no-op diagnostic |
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
+| `g3d_test_game3d_thirdperson_probe` | Zia third-person spring-arm drive, crouch, lock-on acquire, and traversal probes |
+| `test_rt_game3d_thirdperson` | ThirdPersonController boom/aim/fade, TargetLock3D scoring/cycling, Character3D crouch/push/platform/slide, and traversal probes |
+| `g3d_test_game3d_combat_probe` | Zia hitbox swing → hit event → damage → hit-stop/pause/time-scale |
+| `test_rt_game3d_combat` | Hitbox overlap/rehit/filters/windows, Health3D lifecycle/i-frames/knockback, stale safety |
+| `test_rt_game3d_ragdoll_time` | Ragdoll3D builder/settle/blend + World3D time-scale/pause/hit-stop |
+| `test_rt_game3d_cinematics` | Spline evaluator constant-speed/continuity, RailCamera3D, DOF focus, Timeline3D firing/ownership/skip |
+| `test_rt_game3d_dialogue_facial` | WorldToScreen projection, Dialogue3D reveal/choices/localization, LipSync3D envelope + blink determinism |
+| `test_rt_game3d_streaming_async` | Worker-backed streaming: async/blocking parity, staging-error recovery, cancellation drops, commit-budget pacing, prefetch + teleport reset |
+| `test_rt_game3d_hlod` | HLOD: proxy bake (merge/simplify/atlas + round-trip), no-gap proxy ring swaps (blocking + async), multi-frame impostor install and generation |
 | `g3d_test_game3d_presets_probe` | Zia material/prefab presets, lighting, quality fallback, post-FX, environment chaining, physics body setup, and final-overlay debug capture |
 | `g3d_test_game3d_assets_probe` | Zia `Assets3D` filesystem/asset loading, imported-group spawn/despawn churn without registry retention, cached templates, cache clear/reload, missing package-asset error handles, and model-template instantiation |
 | `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |

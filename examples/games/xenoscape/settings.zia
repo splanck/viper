@@ -40,13 +40,15 @@ final SETTING_DAMAGE_ASSIST = 14;
 final SETTING_GAME_SPEED = 15;
 final SETTING_VOICE_VOLUME = 16;
 final SETTING_SUBTITLES = 17;
-final SETTING_COUNT = 18;
+final SETTING_HUD_DETAIL = 18;
+final SETTING_AIM_ASSIST = 19;
+final SETTING_COUNT = 20;
 
 final NAV_HINTS_OFF = 0;
 final NAV_HINTS_CONTEXTUAL = 1;
 final NAV_HINTS_ALWAYS = 2;
 
-/// @brief Return the release-facing label for one settings row.
+/// @brief Return the player-facing label for one settings row.
 ///
 /// @param setting One `SETTING_*` id.
 /// @return Stable UI label, or `Unknown Setting` for invalid ids.
@@ -69,17 +71,19 @@ func settingName(setting: Integer) -> String {
     if setting == SETTING_GAME_SPEED { return "Game Speed"; }
     if setting == SETTING_VOICE_VOLUME { return "ARIA / Voice"; }
     if setting == SETTING_SUBTITLES { return "Subtitles"; }
+    if setting == SETTING_HUD_DETAIL { return "HUD Detail"; }
+    if setting == SETTING_AIM_ASSIST { return "Aim Assist"; }
     return "Unknown Setting";
 }
 
-/// @brief Persistent application-wide settings with exact release defaults.
+/// @brief Persistent application-wide settings with exact supported defaults.
 class GameSettings {
     hide SaveData store;
     hide List[Integer] values;
 
     /// @brief Open the production settings store and load normalized values.
     ///
-    /// @return Nothing. Missing keys use the release defaults.
+    /// @return Nothing. Missing keys use the supported defaults.
     expose func init() { initWithName("xenoscape_settings"); }
 
     /// @brief Open a named settings store for production or isolated probes.
@@ -97,7 +101,7 @@ class GameSettings {
         load();
     }
 
-    /// @brief Restore every in-memory setting to its commercial release default.
+    /// @brief Restore every in-memory setting to its supported default.
     ///
     /// @return Nothing. Persistence is unchanged until `save()` is called.
     expose func restoreDefaults() {
@@ -200,6 +204,12 @@ class GameSettings {
                 else if oldValue == 90 { nextValue = 100; }
                 else { nextValue = 75; }
             }
+        } else if setting == SETTING_HUD_DETAIL or
+                  setting == SETTING_AIM_ASSIST {
+            if direction < 0 { nextValue = oldValue - 1; }
+            else { nextValue = oldValue + 1; }
+            if nextValue < 0 { nextValue = 2; }
+            if nextValue > 2 { nextValue = 0; }
         } else {
             if direction < 0 { nextValue = oldValue - 5; }
             else { nextValue = oldValue + 5; }
@@ -228,10 +238,20 @@ class GameSettings {
             if value == NAV_HINTS_ALWAYS { return "ALWAYS"; }
             return "CONTEXTUAL";
         }
+        if setting == SETTING_HUD_DETAIL {
+            if value == 0 { return "MINIMAL"; }
+            if value == 2 { return "FULL"; }
+            return "STANDARD";
+        }
+        if setting == SETTING_AIM_ASSIST {
+            if value == 0 { return "OFF"; }
+            if value == 2 { return "STRONG"; }
+            return "STANDARD";
+        }
         return Int(value) + "%";
     }
 
-    /// @brief Return one setting's exact release default.
+    /// @brief Return one setting's exact supported default.
     ///
     /// @param setting One `SETTING_*` id.
     /// @return Default integer value, or zero for invalid ids.
@@ -249,6 +269,8 @@ class GameSettings {
         if setting == SETTING_GAME_SPEED { return 100; }
         if setting == SETTING_VOICE_VOLUME { return 85; }
         if setting == SETTING_SUBTITLES { return 1; }
+        if setting == SETTING_HUD_DETAIL { return 1; }
+        if setting == SETTING_AIM_ASSIST { return 1; }
         return 0;
     }
 
@@ -274,6 +296,8 @@ class GameSettings {
         if setting == SETTING_DAMAGE_ASSIST { return "damage_assist"; }
         if setting == SETTING_GAME_SPEED { return "game_speed"; }
         if setting == SETTING_VOICE_VOLUME { return "voice_volume"; }
+        if setting == SETTING_HUD_DETAIL { return "hud_detail"; }
+        if setting == SETTING_AIM_ASSIST { return "aim_assist"; }
         return "subtitles";
     }
 
@@ -307,6 +331,11 @@ class GameSettings {
             if value < 83 { return 75; }
             if value < 96 { return 90; }
             return 100;
+        }
+        if setting == SETTING_HUD_DETAIL or setting == SETTING_AIM_ASSIST {
+            if value < 0 { return 0; }
+            if value > 2 { return 2; }
+            return value;
         }
         if value < 0 { return 0; }
         if value > 100 { return 100; }

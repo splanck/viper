@@ -655,6 +655,12 @@ void *rt_game3d_entity_attach_animator(void *entity, void *animator_or_controlle
 /// @brief Fluent: parent @p child under this entity and drive it from the named
 ///   bone of this entity's animated skeleton (world = bone pose each step).
 void *rt_game3d_entity_attach_to_bone(void *entity, void *child, rt_string bone_name);
+/// @brief Build (cached) and activate a ragdoll from the entity's animator skeleton.
+void *rt_game3d_entity_enable_ragdoll(void *entity);
+/// @brief Deactivate the entity's ragdoll with a blend back to animation.
+int8_t rt_game3d_entity_disable_ragdoll(void *entity, double blend_seconds);
+/// @brief Get the entity's cached Ragdoll3D (NULL before enableRagdoll).
+void *rt_game3d_entity_get_ragdoll(void *entity);
 /// @brief Fluent: bone attachment with a positional offset in bone space.
 void *rt_game3d_entity_attach_to_bone_offset(void *entity,
                                              void *child,
@@ -1009,6 +1015,12 @@ void *rt_game3d_env_handle_with_water(void *env, double level);
 /// @brief Fluent: add distance fog between near/far planes and return the handle.
 void *rt_game3d_env_handle_with_fog(void *env, double near_plane, double far_plane);
 
+/// @brief Fluent: enable exponential height fog (density pools below @p height).
+void *rt_game3d_env_handle_with_height_fog(void *obj,
+                                           double density,
+                                           double height,
+                                           double falloff);
+
 //=========================================================================
 // Debug3D — debug visualization toggles (Viper.Game3D.Debug3D)
 //=========================================================================
@@ -1053,6 +1065,161 @@ void rt_game3d_character_controller_update(void *controller, void *input, void *
 void rt_game3d_character_controller_teleport(void *controller, double x, double y, double z);
 /// @brief True if the character is currently standing on ground.
 int8_t rt_game3d_character_controller_grounded(void *controller);
+/// @brief Get the crouch capsule height applied by SetCrouching(true).
+double rt_game3d_character_controller_get_crouch_height(void *controller);
+/// @brief Set the crouch capsule height.
+void rt_game3d_character_controller_set_crouch_height(void *controller, double height);
+/// @brief Toggle crouch; standing back up returns false when blocked by a ceiling.
+int8_t rt_game3d_character_controller_set_crouching(void *controller, int8_t crouching);
+/// @brief True while the crouch state is engaged.
+int8_t rt_game3d_character_controller_is_crouching(void *controller);
+/// @brief Get the dynamic push impulse scale (0 = block only).
+double rt_game3d_character_controller_get_push_strength(void *controller);
+/// @brief Set the dynamic push impulse scale.
+void rt_game3d_character_controller_set_push_strength(void *controller, double strength);
+/// @brief Whether the controller rides moving kinematic platforms.
+int8_t rt_game3d_character_controller_get_ride_platforms(void *controller);
+/// @brief Enable/disable riding moving platforms.
+void rt_game3d_character_controller_set_ride_platforms(void *controller, int8_t enabled);
+/// @brief True while the character rests on a too-steep surface.
+int8_t rt_game3d_character_controller_is_sliding(void *controller);
+/// @brief Entity owning the body under the character's feet (NULL if unmanaged).
+void *rt_game3d_character_controller_ground_entity(void *controller);
+/// @brief Probe for a grabbable ledge ahead (LedgeHit3D or NULL); defaults
+///   origin/forward/radius from the character pose and entity facing.
+void *rt_game3d_character_controller_probe_ledge(void *controller, double max_height);
+/// @brief Probe for a vaultable obstacle ahead (LedgeHit3D or NULL).
+void *rt_game3d_character_controller_probe_vault(void *controller,
+                                                 double max_height,
+                                                 double max_thickness);
+
+//=========================================================================
+// Combat volumes and health (Viper.Game3D.Hitbox3D / Health3D / events)
+//=========================================================================
+
+/// @brief Create an entity-space combat volume (kind Hurt, team 0, channel 1).
+void *rt_game3d_hitbox_new(void *entity, void *collider);
+/// @brief Create a bone-attached combat volume; traps on unknown bone names.
+void *rt_game3d_hitbox_new_on_bone(void *entity, rt_string bone_name, void *collider);
+/// @brief Get the volume kind (HitboxKind.Hurt = 0, HitboxKind.Hit = 1).
+int64_t rt_game3d_hitbox_get_kind(void *hitbox);
+/// @brief Set the volume kind (Hurt or Hit).
+void rt_game3d_hitbox_set_kind(void *hitbox, int64_t kind);
+/// @brief Get the team id (same-team pairs are skipped unless friendly fire).
+int64_t rt_game3d_hitbox_get_team(void *hitbox);
+/// @brief Set the team id.
+void rt_game3d_hitbox_set_team(void *hitbox, int64_t team);
+/// @brief Get the channel bitmask (hit and hurt channels must overlap).
+int64_t rt_game3d_hitbox_get_channel(void *hitbox);
+/// @brief Set the channel bitmask.
+void rt_game3d_hitbox_set_channel(void *hitbox, int64_t channel);
+/// @brief Get the manual activation switch.
+int8_t rt_game3d_hitbox_get_active(void *hitbox);
+/// @brief Set the manual activation switch (scripted attacks).
+void rt_game3d_hitbox_set_active(void *hitbox, int8_t active);
+/// @brief Get the friendly-fire flag.
+int8_t rt_game3d_hitbox_get_friendly_fire(void *hitbox);
+/// @brief Set the friendly-fire flag (allow same-team hits from this attacker).
+void rt_game3d_hitbox_set_friendly_fire(void *hitbox, int8_t enabled);
+/// @brief Fluent: bind an animation activation window (state name + time range).
+void *rt_game3d_hitbox_bind_window(void *hitbox, rt_string state_name, double t0, double t1);
+/// @brief Fluent: set the shape offset in bone/entity space.
+void *rt_game3d_hitbox_set_local_offset(void *hitbox, double x, double y, double z);
+/// @brief HitboxKind.Hurt constant (0).
+int64_t rt_game3d_hitbox_kind_hurt(void);
+/// @brief HitboxKind.Hit constant (1).
+int64_t rt_game3d_hitbox_kind_hit(void);
+
+/// @brief Create a health component with the given maximum hit points.
+void *rt_game3d_health_new(double max_hp);
+/// @brief Fluent: attach a Health3D component (one per entity; reattach replaces).
+void *rt_game3d_entity_attach_health(void *entity, void *health);
+/// @brief Get the entity's Health3D component (NULL when none).
+void *rt_game3d_entity_get_health(void *entity);
+/// @brief Current hit points.
+double rt_game3d_health_get_current(void *health);
+/// @brief Maximum hit points.
+double rt_game3d_health_get_max(void *health);
+/// @brief Set maximum hit points.
+void rt_game3d_health_set_max(void *health, double max_hp);
+/// @brief True once hp reached 0 (until Revive).
+int8_t rt_game3d_health_is_dead(void *health);
+/// @brief I-frame duration granted per applied damage.
+double rt_game3d_health_get_invuln_seconds(void *health);
+/// @brief Set the i-frame duration granted per applied damage.
+void rt_game3d_health_set_invuln_seconds(void *health, double seconds);
+/// @brief True while i-frames are active.
+int8_t rt_game3d_health_get_invulnerable(void *health);
+/// @brief Apply damage; returns the applied amount (0 while invulnerable/dead).
+double rt_game3d_health_damage(void *health, double amount, void *source_entity, int64_t tag);
+/// @brief Heal (clamped to max; no effect while dead).
+void rt_game3d_health_heal(void *health, double amount);
+/// @brief Clear the death latch and restore hp.
+void rt_game3d_health_revive(void *health, double hp);
+/// @brief One-shot: true for the step after hp crossed to 0.
+int8_t rt_game3d_health_just_died(void *health);
+/// @brief One-shot: true for the step after damage applied.
+int8_t rt_game3d_health_just_damaged(void *health);
+/// @brief Most recent applied damage amount.
+double rt_game3d_health_last_damage(void *health);
+/// @brief Most recent caller-supplied damage tag.
+int64_t rt_game3d_health_last_tag(void *health);
+/// @brief Impulse knockback on the owner's dynamic body (false for kinematic/none).
+int8_t rt_game3d_health_apply_knockback(void *health,
+                                        void *direction,
+                                        double strength,
+                                        void *point);
+
+/// @brief Get the world time multiplier (default 1.0, clamped [0, 4]).
+double rt_game3d_world_get_time_scale(void *world);
+/// @brief Set the world time multiplier.
+void rt_game3d_world_set_time_scale(void *world, double scale);
+/// @brief Get the latched pause state.
+int8_t rt_game3d_world_get_paused(void *world);
+/// @brief Set the latched pause state (simulation freezes; rendering continues).
+void rt_game3d_world_set_paused(void *world, int8_t paused);
+/// @brief One-shot hit-stop for @p seconds of real time (max-latched).
+void rt_game3d_world_hit_stop(void *world, double seconds);
+/// @brief Real (unscaled) clamped frame step for UI/menus.
+double rt_game3d_world_get_unscaled_dt(void *world);
+/// @brief Real (unscaled) elapsed seconds for UI/menus.
+double rt_game3d_world_get_unscaled_elapsed(void *world);
+/// @brief Live DOF focus pull through the world post-FX chain; false when the
+///   chain has no DOF effect.
+int8_t rt_game3d_world_set_dof_focus(void *world, double distance);
+
+/// @brief Number of hit events buffered by the most recent step.
+int64_t rt_game3d_world_hit_event_count(void *world);
+/// @brief Get a buffered hit event as a boxed HitEvent3D (NULL out of range).
+void *rt_game3d_world_hit_event(void *world, int64_t index);
+/// @brief Clear buffered hit and damage events without stepping.
+void rt_game3d_world_clear_hit_events(void *world);
+/// @brief Number of damage events buffered since the last step.
+int64_t rt_game3d_world_damage_event_count(void *world);
+/// @brief Get a buffered damage event as a boxed DamageEvent3D.
+void *rt_game3d_world_damage_event(void *world, int64_t index);
+/// @brief HitEvent3D.Attacker accessor.
+void *rt_game3d_hit_event_get_attacker(void *event);
+/// @brief HitEvent3D.Victim accessor.
+void *rt_game3d_hit_event_get_victim(void *event);
+/// @brief HitEvent3D.Hitbox accessor (attacking volume).
+void *rt_game3d_hit_event_get_hitbox(void *event);
+/// @brief HitEvent3D.Hurtbox accessor (victim volume).
+void *rt_game3d_hit_event_get_hurtbox(void *event);
+/// @brief HitEvent3D.Point — witness point (fresh Vec3).
+void *rt_game3d_hit_event_point(void *event);
+/// @brief HitEvent3D.Normal — contact normal (fresh Vec3, +Y fallback).
+void *rt_game3d_hit_event_normal(void *event);
+/// @brief DamageEvent3D.Victim accessor.
+void *rt_game3d_damage_event_get_victim(void *event);
+/// @brief DamageEvent3D.Source accessor (NULL when absent/stale).
+void *rt_game3d_damage_event_get_source(void *event);
+/// @brief DamageEvent3D.Amount accessor.
+double rt_game3d_damage_event_get_amount(void *event);
+/// @brief DamageEvent3D.Tag accessor.
+int64_t rt_game3d_damage_event_get_tag(void *event);
+/// @brief DamageEvent3D.WasLethal accessor.
+int8_t rt_game3d_damage_event_get_was_lethal(void *event);
 
 //=========================================================================
 // FirstPersonController — FPS camera/movement rig (Viper.Game3D.FirstPersonController)
@@ -1153,6 +1320,312 @@ void rt_game3d_follow_controller_set_damping(void *controller, double damping);
 void rt_game3d_follow_controller_update(void *controller, void *world, double dt);
 /// @brief Late-update the camera pose after physics over `dt` seconds.
 void rt_game3d_follow_controller_late_update(void *controller, void *world, double dt);
+
+//=========================================================================
+// ThirdPersonController — collision-aware spring-arm over-the-shoulder camera
+// with camera-relative character drive (Viper.Game3D.ThirdPersonController)
+//=========================================================================
+
+/// @brief Create a third-person spring-arm controller orbiting the target entity.
+void *rt_game3d_thirdperson_controller_new(void *world, void *target_entity);
+/// @brief Get the orbited target entity.
+void *rt_game3d_thirdperson_controller_get_target(void *controller);
+/// @brief Set the orbited target entity.
+void rt_game3d_thirdperson_controller_set_target(void *controller, void *target_entity);
+/// @brief Get the optional CharacterController3D drive slot.
+void *rt_game3d_thirdperson_controller_get_character(void *controller);
+/// @brief Set the CharacterController3D driven camera-relatively each Update.
+void rt_game3d_thirdperson_controller_set_character(void *controller, void *character_controller);
+/// @brief Get the desired (pre-collision) boom length.
+double rt_game3d_thirdperson_controller_get_distance(void *controller);
+/// @brief Set the desired boom length (clamped to [MinDistance, MaxDistance]).
+void rt_game3d_thirdperson_controller_set_distance(void *controller, double distance);
+/// @brief Get the boom pull-in floor.
+double rt_game3d_thirdperson_controller_get_min_distance(void *controller);
+/// @brief Set the boom pull-in floor.
+void rt_game3d_thirdperson_controller_set_min_distance(void *controller, double min_distance);
+/// @brief Get the boom length ceiling.
+double rt_game3d_thirdperson_controller_get_max_distance(void *controller);
+/// @brief Set the boom length ceiling.
+void rt_game3d_thirdperson_controller_set_max_distance(void *controller, double max_distance);
+/// @brief Get the local-space shoulder offset as a Vec3.
+void *rt_game3d_thirdperson_controller_get_shoulder_offset(void *controller);
+/// @brief Set the local-space shoulder offset (x = lateral, y = up, z = forward).
+void rt_game3d_thirdperson_controller_set_shoulder_offset(void *controller, void *offset);
+/// @brief Get the pivot height above the target entity origin.
+double rt_game3d_thirdperson_controller_get_pivot_height(void *controller);
+/// @brief Set the pivot height above the target entity origin.
+void rt_game3d_thirdperson_controller_set_pivot_height(void *controller, double height);
+/// @brief Get the boom-release smoothing factor.
+double rt_game3d_thirdperson_controller_get_damping(void *controller);
+/// @brief Set the boom-release smoothing factor (pull-in stays instant).
+void rt_game3d_thirdperson_controller_set_damping(void *controller, double damping);
+/// @brief Get the camera orbit yaw in degrees (yaw 0 looks down -Z, 90 down -X).
+double rt_game3d_thirdperson_controller_get_yaw(void *controller);
+/// @brief Set the camera orbit yaw in degrees.
+void rt_game3d_thirdperson_controller_set_yaw(void *controller, double yaw);
+/// @brief Get the camera orbit pitch in degrees (positive = camera above pivot).
+double rt_game3d_thirdperson_controller_get_pitch(void *controller);
+/// @brief Set the camera orbit pitch in degrees (clamped to the pitch range).
+void rt_game3d_thirdperson_controller_set_pitch(void *controller, double pitch);
+/// @brief Get the boom sweep sphere radius.
+double rt_game3d_thirdperson_controller_get_collision_radius(void *controller);
+/// @brief Set the boom sweep sphere radius.
+void rt_game3d_thirdperson_controller_set_collision_radius(void *controller, double radius);
+/// @brief Get the boom collision layer mask.
+int64_t rt_game3d_thirdperson_controller_get_collision_mask(void *controller);
+/// @brief Set the boom collision layer mask (exclude character/projectile layers).
+void rt_game3d_thirdperson_controller_set_collision_mask(void *controller, int64_t mask);
+/// @brief Get whether occluder fading is enabled.
+int8_t rt_game3d_thirdperson_controller_get_occlusion_fade(void *controller);
+/// @brief Enable/disable occluder fading (disable restores faded materials).
+void rt_game3d_thirdperson_controller_set_occlusion_fade(void *controller, int8_t enabled);
+/// @brief Get the aim-mode request flag.
+int8_t rt_game3d_thirdperson_controller_get_aiming(void *controller);
+/// @brief Set the aim-mode request flag (distance/FOV blend animates smoothly).
+void rt_game3d_thirdperson_controller_set_aiming(void *controller, int8_t aiming);
+/// @brief Get the aim-mode boom length.
+double rt_game3d_thirdperson_controller_get_aim_distance(void *controller);
+/// @brief Set the aim-mode boom length.
+void rt_game3d_thirdperson_controller_set_aim_distance(void *controller, double distance);
+/// @brief Get the aim-mode camera FOV in degrees.
+double rt_game3d_thirdperson_controller_get_aim_fov(void *controller);
+/// @brief Set the aim-mode camera FOV in degrees.
+void rt_game3d_thirdperson_controller_set_aim_fov(void *controller, double fov);
+/// @brief Get the installed TargetLock3D framing source (NULL if none).
+void *rt_game3d_thirdperson_controller_get_lock_target(void *controller);
+/// @brief Install a TargetLock3D framing source (NULL to clear).
+void rt_game3d_thirdperson_controller_set_lock_target(void *controller, void *lock);
+/// @brief Pre-physics update: look input, aim blend, character drive.
+void rt_game3d_thirdperson_controller_update(void *controller, void *world, double dt);
+/// @brief Post-sync late update: swept spring-arm camera, aim FOV, occluder fade.
+void rt_game3d_thirdperson_controller_late_update(void *controller, void *world, double dt);
+
+//=========================================================================
+// RailCamera3D — spline camera on a Path3D (Viper.Game3D.RailCamera3D)
+//=========================================================================
+
+/// @brief Create a rail camera riding a Path3D (arclength-constant traversal).
+void *rt_game3d_rail_camera_new(void *world, void *path);
+/// @brief Get the requested arclength-normalized progress [0,1].
+double rt_game3d_rail_camera_get_progress(void *controller);
+/// @brief Set the requested progress (damped when PositionDamping > 0).
+void rt_game3d_rail_camera_set_progress(void *controller, double progress);
+/// @brief Get the auto-advance speed in units/sec along arclength (0 = manual).
+double rt_game3d_rail_camera_get_speed(void *controller);
+/// @brief Set the auto-advance speed.
+void rt_game3d_rail_camera_set_speed(void *controller, double speed);
+/// @brief Get the progress damping factor (0 = snap).
+double rt_game3d_rail_camera_get_position_damping(void *controller);
+/// @brief Set the progress damping factor.
+void rt_game3d_rail_camera_set_position_damping(void *controller, double damping);
+/// @brief Look at an entity's post-physics position (clears other look modes).
+void rt_game3d_rail_camera_set_look_entity(void *controller, void *entity);
+/// @brief Look at a fixed Vec3 point (clears other look modes).
+void rt_game3d_rail_camera_set_look_point(void *controller, void *point);
+/// @brief Look along a second path evaluated at the same t (clears other modes).
+void rt_game3d_rail_camera_set_look_path(void *controller, void *path);
+/// @brief Fluent: add an FOV key at arclength t.
+void *rt_game3d_rail_camera_add_fov_key(void *controller, double t, double fov);
+/// @brief Fluent: add a roll key (degrees about the view axis) at arclength t.
+void *rt_game3d_rail_camera_add_roll_key(void *controller, double t, double degrees);
+/// @brief Whether keys interpolate with smoothstep instead of linearly.
+int8_t rt_game3d_rail_camera_get_key_ease(void *controller);
+/// @brief Choose smoothstep (true) or linear (false) key interpolation.
+void rt_game3d_rail_camera_set_key_ease(void *controller, int8_t smooth);
+/// @brief Pre-physics update: auto-advance and damp progress.
+void rt_game3d_rail_camera_update(void *controller, void *world, double dt);
+/// @brief Post-sync late update: evaluate the spline + keys, write the camera.
+void rt_game3d_rail_camera_late_update(void *controller, void *world, double dt);
+
+//=========================================================================
+// TargetLock3D — lock-on target acquisition, cycling, and framing source
+// (Viper.Game3D.TargetLock3D)
+//=========================================================================
+
+/// @brief Create a lock-on helper scoring candidates around the owner entity.
+void *rt_game3d_targetlock_new(void *world, void *owner_entity);
+/// @brief Get the currently locked entity (NULL when unlocked).
+void *rt_game3d_targetlock_get_target(void *lock);
+/// @brief Get the acquisition radius.
+double rt_game3d_targetlock_get_max_distance(void *lock);
+/// @brief Set the acquisition radius.
+void rt_game3d_targetlock_set_max_distance(void *lock, double distance);
+/// @brief Get the half-angle acquisition cone in degrees.
+double rt_game3d_targetlock_get_cone_degrees(void *lock);
+/// @brief Set the half-angle acquisition cone in degrees.
+void rt_game3d_targetlock_set_cone_degrees(void *lock, double degrees);
+/// @brief Get the targetable layer mask.
+int64_t rt_game3d_targetlock_get_candidate_mask(void *lock);
+/// @brief Set the targetable layer mask.
+void rt_game3d_targetlock_set_candidate_mask(void *lock, int64_t mask);
+/// @brief Get whether candidates must have line of sight.
+int8_t rt_game3d_targetlock_get_require_los(void *lock);
+/// @brief Set whether candidates must have line of sight.
+void rt_game3d_targetlock_set_require_los(void *lock, int8_t require);
+/// @brief Get the current-target score multiplier.
+double rt_game3d_targetlock_get_stickiness(void *lock);
+/// @brief Set the current-target score multiplier.
+void rt_game3d_targetlock_set_stickiness(void *lock, double stickiness);
+/// @brief Get the auto-release distance.
+double rt_game3d_targetlock_get_break_distance(void *lock);
+/// @brief Set the auto-release distance.
+void rt_game3d_targetlock_set_break_distance(void *lock, double distance);
+/// @brief Get the LoS-break grace period in seconds.
+double rt_game3d_targetlock_get_los_grace_seconds(void *lock);
+/// @brief Set the LoS-break grace period in seconds (0 = instant release).
+void rt_game3d_targetlock_set_los_grace_seconds(void *lock, double seconds);
+/// @brief Acquire the best candidate in view; true when a target is locked.
+int8_t rt_game3d_targetlock_acquire(void *lock);
+/// @brief Release the current target without firing JustLost.
+void rt_game3d_targetlock_clear(void *lock);
+/// @brief Cycle to the nearest candidate left (-1) / right (+1); true on change.
+int8_t rt_game3d_targetlock_cycle(void *lock, int64_t direction);
+/// @brief Per-step maintenance: auto-release on death/distance/LoS-grace.
+void rt_game3d_targetlock_update(void *lock, double dt);
+/// @brief One-shot: true for the frame after a target was acquired.
+int8_t rt_game3d_targetlock_just_acquired(void *lock);
+/// @brief One-shot: true for the frame after the target was auto-released.
+int8_t rt_game3d_targetlock_just_lost(void *lock);
+/// @brief Rotate a planar move vector up to 12° toward the target bearing.
+void *rt_game3d_targetlock_locked_move_bias(void *lock, void *move);
+
+//=========================================================================
+// Timeline3D — in-engine cutscene sequencer (Viper.Game3D.Timeline3D)
+//=========================================================================
+
+/// @brief Create an empty timeline bound to a world (start via playTimeline).
+void *rt_game3d_timeline_new(void *world);
+/// @brief Fluent: camera cut (pose applied at t, held until the next camera key).
+void *rt_game3d_timeline_add_camera_cut(void *tl, double t, void *pos, void *look, double fov);
+/// @brief Fluent: camera spline move over [t0,t1] (look = Vec3|Entity3D|Path3D|NULL).
+void *rt_game3d_timeline_add_camera_move(
+    void *tl, double t0, double t1, void *path, void *look_target, int64_t ease);
+/// @brief Fluent: FOV ramp lerped over [t0,t1].
+void *rt_game3d_timeline_add_fov_ramp(
+    void *tl, double t0, double t1, double fov0, double fov1, int64_t ease);
+/// @brief Fluent: fire Animator3D.crossfade on a named entity at t.
+void *rt_game3d_timeline_add_anim(
+    void *tl, double t, rt_string entity_name, rt_string state_name, double crossfade_seconds);
+/// @brief Fluent: fire an audio clip at t (2D, or positional at a Vec3).
+void *rt_game3d_timeline_add_audio(void *tl, double t, void *clip, int8_t positional, void *pos);
+/// @brief Fluent: subtitle text shown over [t0,t1].
+void *rt_game3d_timeline_add_subtitle(void *tl, double t0, double t1, rt_string text);
+/// @brief Fluent: letterbox bars covering a height fraction over [t0,t1].
+void *rt_game3d_timeline_add_letterbox(void *tl, double t0, double t1, double amount);
+/// @brief Fluent: full-screen fade from alpha a0 to a1 over [t0,t1].
+void *rt_game3d_timeline_add_fade(void *tl, double t0, double t1, double a0, double a1);
+/// @brief Fluent: polled event marker fired when the playhead crosses t.
+void *rt_game3d_timeline_add_marker(void *tl, double t, int64_t id);
+/// @brief Total duration (max track end time).
+double rt_game3d_timeline_get_duration(void *tl);
+/// @brief Current playhead time.
+double rt_game3d_timeline_get_time(void *tl);
+/// @brief True while playing.
+int8_t rt_game3d_timeline_get_playing(void *tl);
+/// @brief True once the playhead reached the end (until re-play).
+int8_t rt_game3d_timeline_get_finished(void *tl);
+/// @brief Whether skip() is allowed (default true).
+int8_t rt_game3d_timeline_get_skippable(void *tl);
+/// @brief Gate skip().
+void rt_game3d_timeline_set_skippable(void *tl, int8_t skippable);
+/// @brief One-shot: true for the step after the timeline finished.
+int8_t rt_game3d_timeline_just_finished(void *tl);
+/// @brief Markers fired during the most recent step.
+int64_t rt_game3d_timeline_events_fired_count(void *tl);
+/// @brief Marker id at index within the most recent step's fired set.
+int64_t rt_game3d_timeline_event_fired_id(void *tl, int64_t index);
+/// @brief Currently displayed subtitle text ("" when none).
+rt_string rt_game3d_timeline_active_subtitle(void *tl);
+/// @brief Skip to the end (final anim states, silent audio, markers fire).
+void rt_game3d_timeline_skip(void *tl);
+/// @brief Stop playback and uninstall from the world (controller resumes).
+void rt_game3d_timeline_stop(void *tl);
+/// @brief Install and start a timeline on the world (one at a time).
+void rt_game3d_world_play_timeline(void *world, void *tl);
+/// @brief The world's active timeline (NULL when none).
+void *rt_game3d_world_active_timeline(void *world);
+/// @brief Stop and uninstall the world's active timeline.
+void rt_game3d_world_stop_timeline(void *world);
+
+//=========================================================================
+// Dialogue3D — 3D conversation surface (Viper.Game3D.Dialogue3D)
+//=========================================================================
+
+/// @brief Create a conversation bound to a world (shown via Show).
+void *rt_game3d_dialogue_new(void *world);
+/// @brief Fluent: queue a line (text may be a localization key).
+void *rt_game3d_dialogue_say(void *dialogue, rt_string speaker, rt_string text);
+/// @brief Fluent: queue a voiced line (clip plays when the line starts).
+void *rt_game3d_dialogue_say_voiced(void *dialogue, rt_string speaker, rt_string text, void *clip);
+/// @brief Fluent: queue a blocking choice prompt (seq<str> of 1..8 options).
+void *rt_game3d_dialogue_ask_choice(void *dialogue, void *options_seq);
+/// @brief Show: install as the world's active conversation.
+void rt_game3d_dialogue_show(void *dialogue);
+/// @brief Hide: release the world slot without clearing queued lines.
+void rt_game3d_dialogue_hide(void *dialogue);
+/// @brief Advance (or complete the reveal first — two-stage skip).
+void rt_game3d_dialogue_advance(void *dialogue);
+/// @brief Complete the current line's reveal instantly.
+void rt_game3d_dialogue_skip_reveal(void *dialogue);
+/// @brief Move the choice highlight (clamped).
+void rt_game3d_dialogue_move_choice(void *dialogue, int64_t delta);
+/// @brief Confirm the highlighted choice (latches choiceMade/lastChoice).
+void rt_game3d_dialogue_confirm_choice(void *dialogue);
+/// @brief True while shown.
+int8_t rt_game3d_dialogue_get_active(void *dialogue);
+/// @brief Queued line count.
+int64_t rt_game3d_dialogue_get_line_count(void *dialogue);
+/// @brief True while a choice prompt blocks advance.
+int8_t rt_game3d_dialogue_get_choice_pending(void *dialogue);
+/// @brief One-shot: a choice was confirmed since the last query.
+int8_t rt_game3d_dialogue_choice_made(void *dialogue);
+/// @brief Index confirmed by the last choice prompt (-1 when none).
+int64_t rt_game3d_dialogue_last_choice(void *dialogue);
+/// @brief Currently revealed text of the active line.
+rt_string rt_game3d_dialogue_current_text(void *dialogue);
+/// @brief Anchor bubbles above this entity (NULL clears).
+void rt_game3d_dialogue_set_speaker_entity(void *dialogue, void *entity);
+/// @brief Anchored-bubble mode (falls back to the bottom panel off-screen).
+void rt_game3d_dialogue_set_anchored(void *dialogue, int8_t anchored);
+/// @brief Auto-advance lines after the reveal completes plus a hold.
+void rt_game3d_dialogue_set_auto_advance(void *dialogue, int8_t enabled);
+/// @brief Typewriter speed in characters/second (default 40).
+void rt_game3d_dialogue_set_reveal_speed(void *dialogue, double chars_per_second);
+/// @brief Bind a MessageBundle for localization-key resolution (NULL unbinds).
+void rt_game3d_dialogue_set_locale(void *dialogue, void *bundle);
+/// @brief Style knobs: panel alpha and speaker-name color.
+void rt_game3d_dialogue_set_style(void *dialogue, double panel_alpha, int64_t name_color);
+
+//=========================================================================
+// LipSync3D — amplitude visemes + blink/gaze layer (Viper.Game3D.LipSync3D)
+//=========================================================================
+
+/// @brief Create and attach a facial component to an entity (one per entity).
+void *rt_game3d_lipsync_new(void *entity);
+/// @brief Entity accessor for the attached LipSync3D (NULL when none).
+void *rt_game3d_entity_get_lipsync(void *entity);
+/// @brief Fluent: bind the MorphTarget3D the shape bindings drive.
+void *rt_game3d_lipsync_bind_morph(void *lipsync, void *morph);
+/// @brief Fluent: bind a mouth shape (up to 4) with a per-shape weight scale.
+void *rt_game3d_lipsync_bind_mouth_shape(void *lipsync, rt_string shape_name, double scale);
+/// @brief Fluent: create the gaze LookAt solver for a named head bone.
+void *rt_game3d_lipsync_bind_head_bone(void *lipsync, rt_string bone_name);
+/// @brief Drive from a playing voice (enables per-voice metering).
+void rt_game3d_lipsync_drive(void *lipsync, int64_t voice_id);
+/// @brief Drive from an explicit level 0..1 (dialogue/tests).
+void rt_game3d_lipsync_drive_level(void *lipsync, double level);
+/// @brief Release the drive (mouth eases closed).
+void rt_game3d_lipsync_stop(void *lipsync);
+/// @brief Configure the seeded procedural blink layer.
+void rt_game3d_lipsync_set_blink(
+    void *lipsync, int8_t enabled, rt_string shape_name, double min_interval, double max_interval);
+/// @brief Ease gaze toward an Entity3D/Vec3 target (NULL clears).
+void rt_game3d_lipsync_set_gaze(void *lipsync, void *target);
+/// @brief True while a voice drive is active.
+int8_t rt_game3d_lipsync_get_driving(void *lipsync);
+/// @brief Current smoothed envelope level.
+double rt_game3d_lipsync_get_level(void *lipsync);
 
 //=========================================================================
 // World3D — top-level game world bundling all subsystems (Viper.Game3D.World3D)
@@ -1454,6 +1927,206 @@ void rt_game3d_world_stream_mount_tiled_terrain(void *stream, rt_string manifest
 void rt_game3d_world_stream_mount_cells(void *stream, rt_string manifest_path);
 /// @brief Advance stream scheduling/telemetry.
 void rt_game3d_world_stream_update(void *stream, double dt);
+
+/* Game3D.Surfaces — process-global surface-tag registry (plan 20). */
+/// @brief Register (or look up) a surface name; ids stable from 1; idempotent.
+int64_t rt_game3d_surfaces_register(rt_string name);
+/// @brief Name for a surface id, or "" when unknown.
+rt_string rt_game3d_surfaces_name_of(int64_t id);
+/// @brief Id for a surface name, or 0 when unregistered.
+int64_t rt_game3d_surfaces_id_of(rt_string name);
+/// @brief Number of registered surfaces.
+int64_t rt_game3d_surfaces_count(void);
+
+/* Footsteps — SurfaceTable3D + Footsteps3D (plan 23). */
+/// @brief Create an empty per-surface footstep table (row 0 = untyped default).
+void *rt_game3d_surface_table_new(void);
+/// @brief Append a clip variant for a surface id (fluent; up to 8 per row).
+void *rt_game3d_surface_table_add_clip(void *table, int64_t surface_id, void *clip);
+/// @brief Hearing-stimulus loudness scale for a surface row (fluent; default 1).
+void *rt_game3d_surface_table_set_loudness(void *table, int64_t surface_id, double loudness);
+/// @brief Configured clip count for a surface row.
+int64_t rt_game3d_surface_table_clip_count(void *table, int64_t surface_id);
+/// @brief Bind footsteps to an entity (requires an animator for event mode).
+void *rt_game3d_footsteps_new(void *entity, void *table);
+/// @brief Animator event-name prefix consumed as steps (fluent; default "footstep").
+void *rt_game3d_footsteps_set_event_prefix(void *steps, rt_string prefix);
+/// @brief Ground raycast mask (fluent; default -1 = everything).
+void *rt_game3d_footsteps_set_ground_mask(void *steps, int64_t mask);
+/// @brief Playback volume scale (fluent; default 1).
+void *rt_game3d_footsteps_set_volume_scale(void *steps, double scale);
+/// @brief Lifetime steps fired (telemetry/tests).
+int64_t rt_game3d_footsteps_get_step_count(void *steps);
+/// @brief Surface id resolved by the most recent step (0 = untyped).
+int64_t rt_game3d_footsteps_get_last_surface(void *steps);
+
+/* Interaction — Interactable3D + Interactor3D (plan 21). */
+void *rt_game3d_interactable_new(void *entity);
+void *rt_game3d_interactable_with_prompt(void *item, rt_string prompt);
+rt_string rt_game3d_interactable_get_prompt(void *item);
+void *rt_game3d_interactable_with_kind(void *item, int64_t kind);
+int64_t rt_game3d_interactable_get_kind(void *item);
+void *rt_game3d_interactable_with_radius(void *item, double radius);
+double rt_game3d_interactable_get_radius(void *item);
+void rt_game3d_interactable_set_enabled(void *item, int8_t enabled);
+int8_t rt_game3d_interactable_get_enabled(void *item);
+void rt_game3d_interactable_set_focus_priority(void *item, double priority);
+double rt_game3d_interactable_get_focus_priority(void *item);
+void *rt_game3d_interactor_new(void *entity);
+void rt_game3d_interactor_set_cone_degrees(void *scanner, double degrees);
+double rt_game3d_interactor_get_cone_degrees(void *scanner);
+void rt_game3d_interactor_set_require_los(void *scanner, int8_t required);
+int8_t rt_game3d_interactor_get_require_los(void *scanner);
+void rt_game3d_interactor_set_los_mask(void *scanner, int64_t mask);
+int64_t rt_game3d_interactor_get_los_mask(void *scanner);
+void *rt_game3d_interactor_get_focused(void *scanner);
+int8_t rt_game3d_interactor_focus_changed(void *scanner);
+int8_t rt_game3d_interactor_interact(void *scanner);
+int64_t rt_game3d_interactor_get_interact_count(void *scanner);
+void *rt_game3d_interactor_get_last_interacted(void *scanner);
+
+/* AI — Perception3D + BehaviorTree3D (plan 22). */
+void *rt_game3d_perception_new(void *entity);
+void rt_game3d_perception_set_sight(void *sense,
+                                    double range,
+                                    double fov_degrees,
+                                    double eye_height);
+void rt_game3d_perception_set_hearing(void *sense, double range_at_loudness1);
+void rt_game3d_perception_set_target_mask(void *sense, int64_t mask);
+void rt_game3d_perception_set_los_mask(void *sense, int64_t mask);
+int64_t rt_game3d_perception_seen_count(void *sense);
+void *rt_game3d_perception_seen_target(void *sense, int64_t index);
+void *rt_game3d_perception_last_known_position(void *sense, void *target);
+int8_t rt_game3d_perception_seen_changed(void *sense);
+int64_t rt_game3d_perception_heard_count(void *sense);
+void *rt_game3d_perception_heard_position(void *sense, int64_t index);
+int64_t rt_game3d_perception_heard_tag(void *sense, int64_t index);
+void rt_game3d_world_report_sound(void *world, void *position, double loudness, int64_t tag);
+void *rt_game3d_btree_new(void);
+int64_t rt_game3d_btree_sequence(void *tree);
+int64_t rt_game3d_btree_selector(void *tree);
+int64_t rt_game3d_btree_inverter(void *tree);
+int64_t rt_game3d_btree_can_see(void *tree);
+int64_t rt_game3d_btree_wait(void *tree, double seconds);
+int64_t rt_game3d_btree_move_to_target(void *tree, double speed, double arrive_distance);
+int64_t rt_game3d_btree_move_to_last_known(void *tree, double speed, double arrive_distance);
+int64_t rt_game3d_btree_custom(void *tree, int64_t id);
+void rt_game3d_btree_add_child(void *tree, int64_t parent, int64_t child);
+void rt_game3d_btree_set_root(void *tree, int64_t node);
+void *rt_game3d_bt_instance_new(void *entity, void *tree);
+void rt_game3d_bt_instance_set_target(void *instance, void *target_entity);
+int64_t rt_game3d_bt_instance_pending_custom(void *instance);
+void rt_game3d_bt_instance_resolve(void *instance, int8_t success);
+
+/* Audio immersion — reverb zones, occlusion, ambient beds, dialogue (plan 24). */
+void *rt_game3d_reverbzone_new(void *min, void *max);
+void *rt_game3d_reverbzone_set_reverb(void *zone, double room, double damping, double wet);
+void rt_game3d_reverbzone_set_priority(void *zone, int64_t priority);
+int64_t rt_game3d_reverbzone_get_priority(void *zone);
+void rt_game3d_audio_add_reverb_zone(void *audio, void *zone);
+void rt_game3d_audio_set_reverb_blend(void *audio, double seconds);
+double rt_game3d_audio_get_reverb_wet(void *audio);
+void rt_game3d_audio_set_reverb_routing(void *audio, int8_t enabled);
+void rt_game3d_audio_set_occlusion(void *audio, int8_t enabled, int64_t mask, double amount);
+void rt_game3d_audio_set_occlusion_budget(void *audio, int64_t budget);
+int64_t rt_game3d_audio_play_dialogue(void *audio, void *clip);
+void *rt_game3d_ambientbed_new(void *world);
+void *rt_game3d_ambientbed_add_zone(void *bed, void *min, void *max, void *clip, int64_t volume);
+void *rt_game3d_ambientbed_set_default(void *bed, void *clip, int64_t volume);
+void rt_game3d_ambientbed_set_crossfade(void *bed, double seconds);
+double rt_game3d_ambientbed_get_crossfade(void *bed);
+int64_t rt_game3d_ambientbed_get_active_zone(void *bed);
+
+/* World persistence — entity-state deltas, cell flags, VW3DSAV1 (plan 17). */
+void *rt_game3d_entity_set_persistent(void *entity, rt_string key);
+rt_string rt_game3d_entity_get_persistent_key(void *entity);
+void rt_game3d_entity_set_state_tag(void *entity, int64_t tag);
+int64_t rt_game3d_entity_get_state_tag(void *entity);
+int8_t rt_game3d_world_get_persistent_alive(void *world, rt_string key);
+void *rt_game3d_world_get_persistent_position(void *world, rt_string key);
+int8_t rt_game3d_world_save_state(void *world, rt_string app_name, rt_string slot);
+int8_t rt_game3d_world_load_state(void *world, rt_string app_name, rt_string slot);
+void rt_game3d_world_stream_set_cell_flag(void *stream,
+                                          rt_string cell,
+                                          rt_string key,
+                                          int64_t value);
+int64_t rt_game3d_world_stream_get_cell_flag(void *stream, rt_string cell, rt_string key);
+int64_t rt_game3d_world_stream_loaded_event_count(void *stream);
+rt_string rt_game3d_world_stream_loaded_event(void *stream, int64_t index);
+void rt_game3d_world_stream_clear_loaded_events(void *stream);
+/// @brief Validate a VW3DSAV1 buffer without applying it (fuzz/test surface).
+int8_t rt_game3d_persistence_validate(const void *data, int64_t size);
+
+/* Minimap3D — authored-map minimap, markers, compass, indicators (plan 28). */
+void *rt_game3d_minimap_new(void *world, int64_t size_px);
+void rt_game3d_minimap_set_map_image(
+    void *minimap, void *pixels, double min_x, double min_z, double max_x, double max_z);
+void rt_game3d_minimap_set_tracked_entity(void *minimap, void *entity);
+void rt_game3d_minimap_set_viewport(void *minimap, double x, double y, double w, double h);
+void rt_game3d_minimap_set_compass(void *minimap, int8_t enabled, double width_px);
+int64_t rt_game3d_minimap_add_marker(void *minimap, void *entity, void *icon, int64_t color);
+int64_t rt_game3d_minimap_add_marker_at(void *minimap, void *point, void *icon, int64_t color);
+void rt_game3d_minimap_remove_marker(void *minimap, int64_t id);
+void rt_game3d_minimap_set_marker_edge_clamp(void *minimap, int64_t id, int8_t clamp);
+void rt_game3d_minimap_set_marker_scale(void *minimap, int64_t id, double scale);
+void rt_game3d_minimap_set_marker_on_compass(void *minimap, int64_t id, int8_t enabled);
+void rt_game3d_minimap_set_objective_indicator(void *minimap, int64_t id, int8_t enabled);
+int64_t rt_game3d_minimap_get_marker_count(void *minimap);
+double rt_game3d_minimap_map_x(void *minimap, double world_x, double world_z);
+double rt_game3d_minimap_map_y(void *minimap, double world_x, double world_z);
+void rt_game3d_minimap_draw(void *minimap);
+
+/* Profiling depth — hitch tracer + pass/hitch constants (plan 30). */
+void rt_game3d_world_set_hitch_threshold(void *world, double ms);
+int64_t rt_game3d_world_hitch_count(void *world);
+int64_t rt_game3d_world_hitch_frame(void *world, int64_t index);
+int64_t rt_game3d_world_hitch_source(void *world, int64_t index);
+double rt_game3d_world_hitch_ms(void *world, int64_t index);
+void rt_game3d_world_clear_hitches(void *world);
+int64_t rt_game3d_renderpass_shadow(void);
+int64_t rt_game3d_renderpass_opaque(void);
+int64_t rt_game3d_renderpass_transparent(void);
+int64_t rt_game3d_renderpass_postfx(void);
+int64_t rt_game3d_renderpass_overlay(void);
+int64_t rt_game3d_renderpass_present(void);
+int64_t rt_game3d_hitchsource_stream_commit(void);
+int64_t rt_game3d_hitchsource_frame_total(void);
+
+/// @brief Toggle worker-backed streaming (default on); off restores blocking inline loads.
+void rt_game3d_world_stream_set_async_streaming(void *stream, int8_t enabled);
+
+/// @brief True when worker-backed streaming is enabled for this stream.
+int8_t rt_game3d_world_stream_get_async_streaming(void *stream);
+
+/// @brief Cap staged bytes committed per update (-1 = unlimited, 0 = hold commits).
+void rt_game3d_world_stream_set_commit_budget(void *stream, int64_t bytes);
+
+/// @brief Seconds of smoothed center velocity to prefetch along (0 disables prefetch).
+void rt_game3d_world_stream_set_prefetch_lookahead(void *stream, double seconds);
+
+/// @brief Worst single staged-commit slice in wall milliseconds since mount.
+double rt_game3d_world_stream_get_stream_stall_ms(void *stream);
+
+/// @brief Cells currently staged or staging purely from velocity prefetch.
+int64_t rt_game3d_world_stream_get_prefetched_cell_count(void *stream);
+
+/// @brief Set the HLOD proxy ring radius (<= 0 restores the 4x-load-radius default).
+void rt_game3d_world_stream_set_proxy_radius(void *stream, double radius);
+
+/// @brief The cell's manifest/baked proxy path ("" when the cell has no proxy).
+rt_string rt_game3d_world_stream_get_cell_proxy(void *stream, int64_t index);
+
+/// @brief Number of cells currently holding only their HLOD proxy subtree.
+int64_t rt_game3d_world_stream_get_proxy_resident_count(void *stream);
+
+/// @brief Measured bytes of resident proxy subtrees (also included in ResidentBytes).
+int64_t rt_game3d_world_stream_get_proxy_resident_bytes(void *stream);
+
+/// @brief Bake a merged low-poly proxy .vscn for a resident cell (authoring hook).
+int8_t rt_game3d_world_stream_bake_cell_proxy(void *stream, int64_t index);
+
+/// @brief Generate yaw-strip impostors for cells holding proxies; returns count.
+int64_t rt_game3d_world_stream_generate_impostors(void *stream, double distance);
 
 #ifdef __cplusplus
 }

@@ -121,6 +121,7 @@ static void rt_material3d_finalize(void *obj) {
     material_release_texture_slot(&mat->emissive_map);
     material_release_texture_slot(&mat->metallic_roughness_map);
     material_release_texture_slot(&mat->ao_map);
+    material_release_texture_slot(&mat->lightmap);
     material_release_env_map_slot(&mat->env_map);
 }
 
@@ -388,6 +389,7 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->emissive_map = NULL;
     mat->metallic_roughness_map = NULL;
     mat->ao_map = NULL;
+    mat->lightmap = NULL;
     mat->emissive[0] = mat->emissive[1] = mat->emissive[2] = 0.0;
     mat->metallic = 0.0;
     mat->roughness = 0.5;
@@ -571,6 +573,7 @@ static void *material_clone_like(void *obj) {
     material_assign_ref(&dst->emissive_map, src->emissive_map);
     material_assign_ref(&dst->metallic_roughness_map, src->metallic_roughness_map);
     material_assign_ref(&dst->ao_map, src->ao_map);
+    material_assign_ref(&dst->lightmap, src->lightmap);
     material_assign_ref(&dst->env_map, src->env_map);
     return dst;
 }
@@ -1063,6 +1066,25 @@ void rt_material3d_set_ao_map(void *obj, void *pixels) {
         &mat->ao_map,
         pixels,
         "Material3D.SetAOMap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
+}
+
+/// @brief Assign a baked lightmap atlas sampled with TEXCOORD_1. When present, the
+///   draw's flat-ambient term is replaced by lightmap radiance x albedo (values are
+///   stored with 2x headroom by the baker: texel 255 = radiance 2.0). Pass NULL to clear.
+void rt_material3d_set_lightmap(void *obj, void *pixels) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    (void)material_assign_texture_ref_checked(
+        &mat->lightmap,
+        pixels,
+        "Material3D.SetLightmap: texture must be Pixels, TextureAsset3D, or RenderTarget3D");
+}
+
+/// @brief Return whether the baked lightmap slot is populated.
+int8_t rt_material3d_get_has_lightmap(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    return (mat && material_texture_slot_has_drawable_source(&mat->lightmap)) ? 1 : 0;
 }
 
 /// @brief Return whether the ambient-occlusion texture slot is populated.

@@ -81,7 +81,7 @@ extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 #define TERRAIN3D_MAX_DIM 4096
 #define TERRAIN3D_MAX_CHUNKS 65536
 
-#define TERRAIN_MAX_SPLAT_LAYERS 4
+#define TERRAIN_MAX_SPLAT_LAYERS 8
 #define TERRAIN_LOD_LEVELS 3
 
 #if RT_COMPILER_GCC_LIKE
@@ -109,13 +109,31 @@ typedef struct {
     float lod_dist2;      /* distance beyond which LOD 2 is used */
     float lod_hysteresis; /* distance band that prevents LOD threshold flicker */
     float skirt_depth;    /* depth of crack-hiding skirts (0 = disabled) */
-    /* Splat map: RGBA Pixels where R/G/B/A = weight for layers 0-3 */
+    /* Splat maps: RGBA Pixels; map 0 weights layers 0-3, map 1 weights layers 4-7 */
     void *splat_map;
+    void *splat_map2;
     void *layer_textures[TERRAIN_MAX_SPLAT_LAYERS];
     double layer_scales[TERRAIN_MAX_SPLAT_LAYERS]; /* UV tiling per layer */
     void *base_texture;
     void *baked_texture;
     int8_t splat_dirty;
+
+    /* Procedural slope/height splat rules (RebuildSplatWeights) */
+    struct {
+        int8_t mode; /* 0 = none, 1 = slope band (degrees), 2 = height band (world Y) */
+        double min_value;
+        double max_value;
+        double sharpness;
+    } layer_rules[TERRAIN_MAX_SPLAT_LAYERS];
+
+    /* Hole carving: authored XZ rects (terrain-local units) rasterized to a
+     * per-cell bitmask consumed by chunk builds, nav meshes, and (via the raw
+     * mask getter) heightfield colliders. */
+    double (*holes)[4]; /* x, z, width, depth per hole */
+    int32_t hole_count;
+    int32_t hole_capacity;
+    uint8_t *hole_mask; /* bitmask over (width-1)*(depth-1) cells, or NULL */
+    int8_t holes_dirty;
     int8_t lod_prewarm_dirty; /* true when missing chunk LOD meshes should be rebuilt */
     float *chunk_aabbs_lod1;  /* 6 floats per chunk for LOD 1 generated geometry */
     float *chunk_aabbs_lod2;  /* 6 floats per chunk for LOD 2 generated geometry */

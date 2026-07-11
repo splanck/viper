@@ -558,6 +558,7 @@ static void terrain3d_finalizer(void *obj) {
     terrain_release_chunk_meshes(t);
     terrain_release_material_slot(&t->material);
     terrain_release_texture_slot(&t->splat_map);
+    terrain_release_texture_slot(&t->splat_map2);
     for (int i = 0; i < TERRAIN_MAX_SPLAT_LAYERS; i++)
         terrain_release_texture_slot(&t->layer_textures[i]);
     terrain_release_texture_slot(&t->base_texture);
@@ -571,6 +572,12 @@ static void terrain3d_finalizer(void *obj) {
     free(t->chunk_aabbs_lod2);
     free(t->chunk_aabbs_union);
     free(t->chunk_lod_state);
+    free(t->holes);
+    free(t->hole_mask);
+    t->holes = NULL;
+    t->hole_mask = NULL;
+    t->hole_count = 0;
+    t->hole_capacity = 0;
     t->heights = NULL;
     t->chunk_meshes = NULL;
     t->chunk_meshes_lod1 = NULL;

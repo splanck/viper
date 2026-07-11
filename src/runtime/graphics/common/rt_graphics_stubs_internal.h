@@ -44,6 +44,7 @@
 
 #include "rt_blendtree3d.h"
 #include "rt_canvas3d.h"
+#include "rt_cloth3d.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
 #include "rt_error.h"

@@ -1,0 +1,755 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/game/rt_quests.c
+// Purpose: Viper.Game.Quests implementation — quest/stage/objective state
+//   machine, polled event ring, one-shot completion flags, and SaveData
+//   round-trip. Pure state; no clock or randomness (deterministic).
+// Key invariants:
+//   - Stage auto-advances when all of its objectives complete; the quest
+//     completes after its final stage; every transition emits one event.
+//   - Mutations on Hidden/Complete/Failed quests are safe no-op false.
+// Ownership/Lifetime:
+//   - GC handle; retained id/title/text strings released by the finalizer.
+// Links: rt_quests.h, misc/plans/thirdpersonupgrade/29-quest-tracker.md
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_quests.h"
+
+#include "rt_savedata.h"
+#include "rt_trap.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int64_t rt_obj_class_id(void *obj);
+
+#define QUESTS_MAX_QUESTS 32
+#define QUESTS_MAX_STAGES 16
+#define QUESTS_MAX_OBJECTIVES 8
+#define QUESTS_MAX_EVENTS 64
+#define QUESTS_MAX_ID 64
+#define QUESTS_SAVE_KEY "viper.quests.v1"
+
+typedef struct quest_objective {
+    rt_string id;
+    rt_string text;
+    int8_t is_counter; /* 0 = flag, 1 = counter */
+    int64_t target;    /* counter target (flags: 1) */
+    int64_t progress;  /* current progress (flags: 0/1) */
+} quest_objective;
+
+typedef struct quest_stage {
+    rt_string id;
+    rt_string text;
+    quest_objective objectives[QUESTS_MAX_OBJECTIVES];
+    int32_t objective_count;
+} quest_stage;
+
+typedef struct quest_entry {
+    rt_string id;
+    rt_string title;
+    quest_stage stages[QUESTS_MAX_STAGES];
+    int32_t stage_count;
+    int64_t state; /* RT_QUEST_STATE_* */
+    int32_t current_stage;
+    int8_t just_completed; /* one-shot */
+} quest_entry;
+
+typedef struct quest_event {
+    rt_string quest_id; /* borrowed from the quest entry (not retained) */
+    int64_t kind;
+} quest_event;
+
+typedef struct rt_quests_impl {
+    quest_entry quests[QUESTS_MAX_QUESTS];
+    int32_t quest_count;
+    quest_event events[QUESTS_MAX_EVENTS];
+    int32_t event_count;
+} rt_quests_impl;
+
+static void quests_release_string(rt_string *slot) {
+    extern void rt_string_unref(rt_string s);
+    if (slot && *slot) {
+        rt_string_unref(*slot);
+        *slot = NULL;
+    }
+}
+
+/// @brief GC finalizer: release every retained id/title/text string.
+static void quests_finalize(void *obj) {
+    rt_quests_impl *tracker = (rt_quests_impl *)obj;
+    if (!tracker)
+        return;
+    for (int32_t q = 0; q < tracker->quest_count; ++q) {
+        quest_entry *quest = &tracker->quests[q];
+        quests_release_string(&quest->id);
+        quests_release_string(&quest->title);
+        for (int32_t s = 0; s < quest->stage_count; ++s) {
+            quest_stage *stage = &quest->stages[s];
+            quests_release_string(&stage->id);
+            quests_release_string(&stage->text);
+            for (int32_t o = 0; o < stage->objective_count; ++o) {
+                quests_release_string(&stage->objectives[o].id);
+                quests_release_string(&stage->objectives[o].text);
+            }
+        }
+    }
+    tracker->quest_count = 0;
+    tracker->event_count = 0;
+}
+
+static rt_quests_impl *quests_checked(void *obj, const char *api) {
+    if (!obj)
+        return NULL;
+    if (rt_obj_class_id(obj) != RT_QUESTS_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_quests_impl *)obj;
+}
+
+/// @brief Validate a registration id: 1..64 chars of [A-Za-z0-9._-].
+static int quests_valid_id(const char *id) {
+    if (!id || !*id)
+        return 0;
+    size_t len = strlen(id);
+    if (len > QUESTS_MAX_ID)
+        return 0;
+    for (const char *p = id; *p; ++p) {
+        char c = *p;
+        int ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                 c == '-' || c == '_' || c == '.';
+        if (!ok)
+            return 0;
+    }
+    return 1;
+}
+
+static quest_entry *quests_find(rt_quests_impl *tracker, const char *quest_id) {
+    for (int32_t q = 0; q < tracker->quest_count; ++q) {
+        const char *have = tracker->quests[q].id ? rt_string_cstr(tracker->quests[q].id) : NULL;
+        if (have && strcmp(have, quest_id) == 0)
+            return &tracker->quests[q];
+    }
+    return NULL;
+}
+
+static quest_stage *quests_find_stage(quest_entry *quest, const char *stage_id) {
+    for (int32_t s = 0; s < quest->stage_count; ++s) {
+        const char *have = quest->stages[s].id ? rt_string_cstr(quest->stages[s].id) : NULL;
+        if (have && strcmp(have, stage_id) == 0)
+            return &quest->stages[s];
+    }
+    return NULL;
+}
+
+static quest_objective *quests_find_objective(quest_stage *stage, const char *obj_id) {
+    for (int32_t o = 0; o < stage->objective_count; ++o) {
+        const char *have = stage->objectives[o].id ? rt_string_cstr(stage->objectives[o].id) : NULL;
+        if (have && strcmp(have, obj_id) == 0)
+            return &stage->objectives[o];
+    }
+    return NULL;
+}
+
+static void quests_emit(rt_quests_impl *tracker, quest_entry *quest, int64_t kind) {
+    if (tracker->event_count >= QUESTS_MAX_EVENTS) {
+        /* Drop the oldest event; the ring is generous for per-frame polling. */
+        memmove(&tracker->events[0],
+                &tracker->events[1],
+                (QUESTS_MAX_EVENTS - 1) * sizeof(quest_event));
+        tracker->event_count = QUESTS_MAX_EVENTS - 1;
+    }
+    tracker->events[tracker->event_count].quest_id = quest->id;
+    tracker->events[tracker->event_count].kind = kind;
+    tracker->event_count += 1;
+}
+
+/// @brief Create an empty quest tracker.
+void *rt_quests_new(void) {
+    rt_quests_impl *tracker =
+        (rt_quests_impl *)rt_obj_new_i64(RT_QUESTS_CLASS_ID, (int64_t)sizeof(*tracker));
+    if (!tracker) {
+        rt_trap("Game.Quests.New: allocation failed");
+        return NULL;
+    }
+    memset(tracker, 0, sizeof(*tracker));
+    rt_obj_set_finalizer(tracker, quests_finalize);
+    return tracker;
+}
+
+/// @brief Fluent: register (or re-register) a quest. Idempotent on id.
+void *rt_quests_add_quest(void *obj, rt_string quest_id, rt_string title) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.AddQuest: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    if (!tracker)
+        return obj;
+    if (!quests_valid_id(cid)) {
+        rt_trap("Game.Quests.AddQuest: id must be 1..64 chars of [A-Za-z0-9._-]");
+        return obj;
+    }
+    quest_entry *quest = quests_find(tracker, cid);
+    if (!quest) {
+        if (tracker->quest_count >= QUESTS_MAX_QUESTS) {
+            rt_trap("Game.Quests.AddQuest: quest budget (32) exceeded");
+            return obj;
+        }
+        quest = &tracker->quests[tracker->quest_count++];
+        memset(quest, 0, sizeof(*quest));
+        quest->id = rt_string_ref(quest_id);
+        quest->state = RT_QUEST_STATE_HIDDEN;
+    }
+    quests_release_string(&quest->title);
+    quest->title = title ? rt_string_ref(title) : NULL;
+    return obj;
+}
+
+/// @brief Fluent: register (or re-register) a stage on a quest.
+void *rt_quests_add_stage(void *obj, rt_string quest_id, rt_string stage_id, rt_string text) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.AddStage: invalid tracker");
+    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cs = stage_id ? rt_string_cstr(stage_id) : NULL;
+    if (!tracker)
+        return obj;
+    quest_entry *quest = cq ? quests_find(tracker, cq) : NULL;
+    if (!quest) {
+        rt_trap("Game.Quests.AddStage: unknown quest id (AddQuest first)");
+        return obj;
+    }
+    if (!quests_valid_id(cs)) {
+        rt_trap("Game.Quests.AddStage: id must be 1..64 chars of [A-Za-z0-9._-]");
+        return obj;
+    }
+    quest_stage *stage = quests_find_stage(quest, cs);
+    if (!stage) {
+        if (quest->stage_count >= QUESTS_MAX_STAGES) {
+            rt_trap("Game.Quests.AddStage: stage budget (16) exceeded");
+            return obj;
+        }
+        stage = &quest->stages[quest->stage_count++];
+        memset(stage, 0, sizeof(*stage));
+        stage->id = rt_string_ref(stage_id);
+    }
+    quests_release_string(&stage->text);
+    stage->text = text ? rt_string_ref(text) : NULL;
+    return obj;
+}
+
+static void *quests_add_objective(void *obj,
+                                  rt_string quest_id,
+                                  rt_string stage_id,
+                                  rt_string obj_id,
+                                  rt_string text,
+                                  int8_t is_counter,
+                                  int64_t target,
+                                  const char *api_unknown,
+                                  const char *api_id,
+                                  const char *api_budget) {
+    rt_quests_impl *tracker = quests_checked(obj, api_unknown);
+    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *cs = stage_id ? rt_string_cstr(stage_id) : NULL;
+    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    if (!tracker)
+        return obj;
+    quest_entry *quest = cq ? quests_find(tracker, cq) : NULL;
+    quest_stage *stage = quest && cs ? quests_find_stage(quest, cs) : NULL;
+    if (!stage) {
+        rt_trap(api_unknown);
+        return obj;
+    }
+    if (!quests_valid_id(co)) {
+        rt_trap(api_id);
+        return obj;
+    }
+    quest_objective *objective = quests_find_objective(stage, co);
+    if (!objective) {
+        if (stage->objective_count >= QUESTS_MAX_OBJECTIVES) {
+            rt_trap(api_budget);
+            return obj;
+        }
+        objective = &stage->objectives[stage->objective_count++];
+        memset(objective, 0, sizeof(*objective));
+        objective->id = rt_string_ref(obj_id);
+    }
+    quests_release_string(&objective->text);
+    objective->text = text ? rt_string_ref(text) : NULL;
+    objective->is_counter = is_counter;
+    objective->target = is_counter ? (target > 0 ? target : 1) : 1;
+    return obj;
+}
+
+/// @brief Fluent: register a boolean flag objective.
+void *rt_quests_add_flag(
+    void *obj, rt_string quest_id, rt_string stage_id, rt_string obj_id, rt_string text) {
+    return quests_add_objective(obj,
+                                quest_id,
+                                stage_id,
+                                obj_id,
+                                text,
+                                0,
+                                1,
+                                "Game.Quests.AddFlag: unknown quest/stage id",
+                                "Game.Quests.AddFlag: id must be 1..64 chars of [A-Za-z0-9._-]",
+                                "Game.Quests.AddFlag: objective budget (8) exceeded");
+}
+
+/// @brief Fluent: register a counter objective with a positive target.
+void *rt_quests_add_counter(void *obj,
+                            rt_string quest_id,
+                            rt_string stage_id,
+                            rt_string obj_id,
+                            rt_string text,
+                            int64_t target) {
+    return quests_add_objective(obj,
+                                quest_id,
+                                stage_id,
+                                obj_id,
+                                text,
+                                1,
+                                target,
+                                "Game.Quests.AddCounter: unknown quest/stage id",
+                                "Game.Quests.AddCounter: id must be 1..64 chars of [A-Za-z0-9._-]",
+                                "Game.Quests.AddCounter: objective budget (8) exceeded");
+}
+
+static int quests_objective_done(const quest_objective *objective) {
+    return objective->progress >= objective->target;
+}
+
+static int quests_stage_done(const quest_stage *stage) {
+    for (int32_t o = 0; o < stage->objective_count; ++o)
+        if (!quests_objective_done(&stage->objectives[o]))
+            return 0;
+    return 1;
+}
+
+/// @brief Advance auto-completing stages after an objective change.
+static void quests_check_advance(rt_quests_impl *tracker, quest_entry *quest) {
+    while (quest->state == RT_QUEST_STATE_ACTIVE && quest->current_stage < quest->stage_count &&
+           quests_stage_done(&quest->stages[quest->current_stage])) {
+        quests_emit(tracker, quest, RT_QUEST_EVENT_STAGE_COMPLETE);
+        quest->current_stage += 1;
+        if (quest->current_stage >= quest->stage_count) {
+            quest->state = RT_QUEST_STATE_COMPLETE;
+            quest->just_completed = 1;
+            quests_emit(tracker, quest, RT_QUEST_EVENT_QUEST_COMPLETE);
+        }
+    }
+}
+
+/// @brief Activate a hidden quest. Returns false for unknown/non-hidden.
+int8_t rt_quests_activate(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Activate: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    if (!quest || quest->state != RT_QUEST_STATE_HIDDEN)
+        return 0;
+    quest->state = RT_QUEST_STATE_ACTIVE;
+    quest->current_stage = 0;
+    quests_emit(tracker, quest, RT_QUEST_EVENT_ACTIVATED);
+    /* A quest registered with zero stages completes on activation. */
+    quests_check_advance(tracker, quest);
+    return 1;
+}
+
+/// @brief Fail an active quest. Returns false for unknown/non-active.
+int8_t rt_quests_fail(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Fail: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    if (!quest || quest->state != RT_QUEST_STATE_ACTIVE)
+        return 0;
+    quest->state = RT_QUEST_STATE_FAILED;
+    quests_emit(tracker, quest, RT_QUEST_EVENT_QUEST_FAILED);
+    return 1;
+}
+
+static quest_objective *quests_active_objective(quest_entry *quest, const char *obj_id) {
+    if (quest->state != RT_QUEST_STATE_ACTIVE || quest->current_stage >= quest->stage_count)
+        return NULL;
+    return quests_find_objective(&quest->stages[quest->current_stage], obj_id);
+}
+
+/// @brief Complete a flag objective in the active stage. Safe no-op false.
+int8_t rt_quests_set_flag(void *obj, rt_string quest_id, rt_string obj_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.SetFlag: invalid tracker");
+    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    quest_entry *quest = tracker && cq ? quests_find(tracker, cq) : NULL;
+    quest_objective *objective = quest && co ? quests_active_objective(quest, co) : NULL;
+    if (!objective || quests_objective_done(objective))
+        return 0;
+    objective->progress = objective->target;
+    quests_emit(tracker, quest, RT_QUEST_EVENT_OBJECTIVE_COMPLETE);
+    quests_check_advance(tracker, quest);
+    return 1;
+}
+
+/// @brief Add progress to a counter objective in the active stage.
+int8_t rt_quests_progress(void *obj, rt_string quest_id, rt_string obj_id, int64_t amount) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Progress: invalid tracker");
+    const char *cq = quest_id ? rt_string_cstr(quest_id) : NULL;
+    const char *co = obj_id ? rt_string_cstr(obj_id) : NULL;
+    quest_entry *quest = tracker && cq ? quests_find(tracker, cq) : NULL;
+    quest_objective *objective = quest && co ? quests_active_objective(quest, co) : NULL;
+    if (!objective || amount <= 0 || quests_objective_done(objective))
+        return 0;
+    objective->progress += amount;
+    if (objective->progress > objective->target)
+        objective->progress = objective->target;
+    quests_emit(tracker,
+                quest,
+                quests_objective_done(objective) ? RT_QUEST_EVENT_OBJECTIVE_COMPLETE
+                                                 : RT_QUEST_EVENT_OBJECTIVE_PROGRESS);
+    quests_check_advance(tracker, quest);
+    return 1;
+}
+
+/// @brief Number of active quests.
+int64_t rt_quests_active_count(void *obj) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.get_ActiveCount: invalid tracker");
+    int64_t count = 0;
+    if (tracker)
+        for (int32_t q = 0; q < tracker->quest_count; ++q)
+            if (tracker->quests[q].state == RT_QUEST_STATE_ACTIVE)
+                count++;
+    return count;
+}
+
+/// @brief Id of the i-th active quest ("" out of range).
+rt_string rt_quests_active_quest(void *obj, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ActiveQuest: invalid tracker");
+    if (tracker) {
+        int64_t seen = 0;
+        for (int32_t q = 0; q < tracker->quest_count; ++q) {
+            if (tracker->quests[q].state != RT_QUEST_STATE_ACTIVE)
+                continue;
+            if (seen == index)
+                return rt_string_ref(tracker->quests[q].id);
+            seen++;
+        }
+    }
+    return rt_str_empty();
+}
+
+/// @brief Quest title ("" when unknown).
+rt_string rt_quests_quest_title(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.QuestTitle: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    return quest && quest->title ? rt_string_ref(quest->title) : rt_str_empty();
+}
+
+/// @brief Quest state constant (Hidden when unknown — safe HUD polling).
+int64_t rt_quests_quest_state(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.QuestState: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    return quest ? quest->state : RT_QUEST_STATE_HIDDEN;
+}
+
+/// @brief Text of the quest's current stage ("" when not active).
+rt_string rt_quests_current_stage_text(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.CurrentStageText: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    if (!quest || quest->state != RT_QUEST_STATE_ACTIVE ||
+        quest->current_stage >= quest->stage_count)
+        return rt_str_empty();
+    quest_stage *stage = &quest->stages[quest->current_stage];
+    return stage->text ? rt_string_ref(stage->text) : rt_str_empty();
+}
+
+static quest_stage *quests_current_stage(quest_entry *quest) {
+    if (!quest || quest->state != RT_QUEST_STATE_ACTIVE ||
+        quest->current_stage >= quest->stage_count)
+        return NULL;
+    return &quest->stages[quest->current_stage];
+}
+
+/// @brief Objective count of the quest's current stage (0 when not active).
+int64_t rt_quests_objective_count(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveCount: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
+    return stage ? stage->objective_count : 0;
+}
+
+/// @brief Objective text by index in the current stage ("" out of range).
+rt_string rt_quests_objective_text(void *obj, rt_string quest_id, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveText: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
+    if (!stage || index < 0 || index >= stage->objective_count)
+        return rt_str_empty();
+    quest_objective *objective = &stage->objectives[index];
+    return objective->text ? rt_string_ref(objective->text) : rt_str_empty();
+}
+
+/// @brief Objective progress by index in the current stage.
+int64_t rt_quests_objective_progress(void *obj, rt_string quest_id, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveProgress: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
+    if (!stage || index < 0 || index >= stage->objective_count)
+        return 0;
+    return stage->objectives[index].progress;
+}
+
+/// @brief Objective target by index in the current stage.
+int64_t rt_quests_objective_target(void *obj, rt_string quest_id, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveTarget: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
+    if (!stage || index < 0 || index >= stage->objective_count)
+        return 0;
+    return stage->objectives[index].target;
+}
+
+/// @brief Objective completion by index in the current stage.
+int8_t rt_quests_objective_complete(void *obj, rt_string quest_id, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ObjectiveComplete: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_stage *stage = tracker && cid ? quests_current_stage(quests_find(tracker, cid)) : NULL;
+    if (!stage || index < 0 || index >= stage->objective_count)
+        return 0;
+    return quests_objective_done(&stage->objectives[index]) ? 1 : 0;
+}
+
+/// @brief Buffered event count.
+int64_t rt_quests_event_count(void *obj) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.EventCount: invalid tracker");
+    return tracker ? tracker->event_count : 0;
+}
+
+/// @brief Quest id of event @p index ("" out of range).
+rt_string rt_quests_event_quest_id(void *obj, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.EventQuestId: invalid tracker");
+    if (!tracker || index < 0 || index >= tracker->event_count || !tracker->events[index].quest_id)
+        return rt_str_empty();
+    return rt_string_ref(tracker->events[index].quest_id);
+}
+
+/// @brief Kind of event @p index (-1 out of range).
+int64_t rt_quests_event_kind(void *obj, int64_t index) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.EventKind: invalid tracker");
+    if (!tracker || index < 0 || index >= tracker->event_count)
+        return -1;
+    return tracker->events[index].kind;
+}
+
+/// @brief Clear the buffered events (games poll then clear each frame).
+void rt_quests_clear_events(void *obj) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.ClearEvents: invalid tracker");
+    if (tracker)
+        tracker->event_count = 0;
+}
+
+/// @brief One-shot: true once after the quest completes, then resets.
+int8_t rt_quests_just_completed(void *obj, rt_string quest_id) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.JustCompleted: invalid tracker");
+    const char *cid = quest_id ? rt_string_cstr(quest_id) : NULL;
+    quest_entry *quest = tracker && cid ? quests_find(tracker, cid) : NULL;
+    if (!quest || !quest->just_completed)
+        return 0;
+    quest->just_completed = 0;
+    return 1;
+}
+
+/*==========================================================================
+ * SaveData persistence
+ *
+ * One string value under "viper.quests.v1". Ids are [A-Za-z0-9._-] by
+ * registration contract, so the compact format needs no escaping:
+ *   q=<id>;s=<state>;g=<stage>{;o=<objId>:<progress>}*  records joined by '|'
+ *=========================================================================*/
+
+/// @brief Serialize state (not registration data) into @p savedata.
+int8_t rt_quests_save(void *obj, void *savedata) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Save: invalid tracker");
+    if (!tracker || !savedata)
+        return 0;
+    size_t capacity = 256;
+    char *out = (char *)malloc(capacity);
+    if (!out)
+        return 0;
+    size_t used = 0;
+    for (int32_t q = 0; q < tracker->quest_count; ++q) {
+        quest_entry *quest = &tracker->quests[q];
+        char chunk[512];
+        int written = snprintf(chunk,
+                               sizeof(chunk),
+                               "%sq=%s;s=%lld;g=%d",
+                               q > 0 ? "|" : "",
+                               rt_string_cstr(quest->id),
+                               (long long)quest->state,
+                               quest->current_stage);
+        if (written < 0 || (size_t)written >= sizeof(chunk)) {
+            free(out);
+            return 0;
+        }
+        for (int32_t s = 0; s < quest->stage_count; ++s) {
+            for (int32_t o = 0; o < quest->stages[s].objective_count; ++o) {
+                quest_objective *objective = &quest->stages[s].objectives[o];
+                if (objective->progress <= 0)
+                    continue;
+                int more = snprintf(chunk + written,
+                                    sizeof(chunk) - (size_t)written,
+                                    ";o=%s.%s:%lld",
+                                    rt_string_cstr(quest->stages[s].id),
+                                    rt_string_cstr(objective->id),
+                                    (long long)objective->progress);
+                if (more < 0 || (size_t)(written + more) >= sizeof(chunk)) {
+                    free(out);
+                    return 0;
+                }
+                written += more;
+            }
+        }
+        if (used + (size_t)written + 1 > capacity) {
+            while (used + (size_t)written + 1 > capacity)
+                capacity *= 2;
+            char *grown = (char *)realloc(out, capacity);
+            if (!grown) {
+                free(out);
+                return 0;
+            }
+            out = grown;
+        }
+        memcpy(out + used, chunk, (size_t)written);
+        used += (size_t)written;
+    }
+    out[used] = '\0';
+    rt_savedata_set_string(savedata, rt_const_cstr(QUESTS_SAVE_KEY), rt_const_cstr(out));
+    free(out);
+    return 1;
+}
+
+/// @brief Apply saved state onto already-registered quests. Unknown saved
+///   ids are tolerated (data patches stay safe); returns false when the
+///   tracker has no registrations or the key is absent.
+int8_t rt_quests_load(void *obj, void *savedata) {
+    rt_quests_impl *tracker = quests_checked(obj, "Game.Quests.Load: invalid tracker");
+    if (!tracker || !savedata || tracker->quest_count == 0)
+        return 0;
+    rt_string blob =
+        rt_savedata_get_string(savedata, rt_const_cstr(QUESTS_SAVE_KEY), rt_str_empty());
+    const char *text = blob ? rt_string_cstr(blob) : NULL;
+    if (!text || !*text)
+        return 0;
+    char *copy = (char *)malloc(strlen(text) + 1);
+    if (!copy)
+        return 0;
+    strcpy(copy, text);
+    char *cursor = copy;
+    while (cursor && *cursor) {
+        char *next = strchr(cursor, '|');
+        if (next)
+            *next++ = '\0';
+        /* Parse one record: q=<id>;s=<state>;g=<stage>{;o=<sid>.<oid>:<n>}* */
+        quest_entry *quest = NULL;
+        char *field = cursor;
+        while (field && *field) {
+            char *field_next = strchr(field, ';');
+            if (field_next)
+                *field_next++ = '\0';
+            if (strncmp(field, "q=", 2) == 0) {
+                quest = quests_find(tracker, field + 2);
+            } else if (quest && strncmp(field, "s=", 2) == 0) {
+                long long state = atoll(field + 2);
+                if (state >= RT_QUEST_STATE_HIDDEN && state <= RT_QUEST_STATE_FAILED)
+                    quest->state = (int64_t)state;
+            } else if (quest && strncmp(field, "g=", 2) == 0) {
+                long long stage = atoll(field + 2);
+                if (stage >= 0 && stage <= quest->stage_count)
+                    quest->current_stage = (int32_t)stage;
+            } else if (quest && strncmp(field, "o=", 2) == 0) {
+                char *sep = strrchr(field + 2, ':');
+                char *dot = strchr(field + 2, '.');
+                if (sep && dot && dot < sep) {
+                    *sep = '\0';
+                    *dot = '\0';
+                    quest_stage *stage = quests_find_stage(quest, field + 2);
+                    quest_objective *objective =
+                        stage ? quests_find_objective(stage, dot + 1) : NULL;
+                    if (objective) {
+                        long long progress = atoll(sep + 1);
+                        if (progress < 0)
+                            progress = 0;
+                        if (progress > objective->target)
+                            progress = objective->target;
+                        objective->progress = (int64_t)progress;
+                    }
+                }
+            }
+            field = field_next;
+        }
+        cursor = next;
+    }
+    free(copy);
+    return 1;
+}
+
+/*==========================================================================
+ * Constant accessors (QuestState / QuestEventKind static classes)
+ *=========================================================================*/
+
+/// @brief QuestState.Hidden constant.
+int64_t rt_quests_state_hidden(void) {
+    return RT_QUEST_STATE_HIDDEN;
+}
+
+/// @brief QuestState.Active constant.
+int64_t rt_quests_state_active(void) {
+    return RT_QUEST_STATE_ACTIVE;
+}
+
+/// @brief QuestState.Complete constant.
+int64_t rt_quests_state_complete(void) {
+    return RT_QUEST_STATE_COMPLETE;
+}
+
+/// @brief QuestState.Failed constant.
+int64_t rt_quests_state_failed(void) {
+    return RT_QUEST_STATE_FAILED;
+}
+
+/// @brief QuestEventKind.Activated constant.
+int64_t rt_quests_event_activated(void) {
+    return RT_QUEST_EVENT_ACTIVATED;
+}
+
+/// @brief QuestEventKind.ObjectiveProgress constant.
+int64_t rt_quests_event_objective_progress(void) {
+    return RT_QUEST_EVENT_OBJECTIVE_PROGRESS;
+}
+
+/// @brief QuestEventKind.ObjectiveComplete constant.
+int64_t rt_quests_event_objective_complete(void) {
+    return RT_QUEST_EVENT_OBJECTIVE_COMPLETE;
+}
+
+/// @brief QuestEventKind.StageComplete constant.
+int64_t rt_quests_event_stage_complete(void) {
+    return RT_QUEST_EVENT_STAGE_COMPLETE;
+}
+
+/// @brief QuestEventKind.QuestComplete constant.
+int64_t rt_quests_event_quest_complete(void) {
+    return RT_QUEST_EVENT_QUEST_COMPLETE;
+}
+
+/// @brief QuestEventKind.QuestFailed constant.
+int64_t rt_quests_event_quest_failed(void) {
+    return RT_QUEST_EVENT_QUEST_FAILED;
+}

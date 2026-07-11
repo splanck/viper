@@ -34,6 +34,7 @@ last-verified: 2026-05-15
 | [UI Menus](ui-menu.md) | MenuList, GameButton — game menu widgets |
 | [Debug Overlay](debug.md) | DebugOverlay — FPS, dt, custom watch variables |
 | [Persistence](persistence.md) | SaveData — cross-platform key-value save/load |
+| [Quests](quests.md) | Quests — quest/stage/objective tracker with events and SaveData round-trip |
 | [UI Widgets](ui.md) | Label, Bar, Panel, NineSlice — in-game HUD widgets |
 | [Pathfinding](pathfinding.md) | A* grid pathfinding for AI navigation |
 

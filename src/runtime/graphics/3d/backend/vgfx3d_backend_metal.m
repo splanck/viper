@@ -59,6 +59,8 @@
     float _fogNear, _fogFar;
     BOOL _fogEnabled;
     float _heightFog[4]; /* base, falloff, density (0 = off, folds blend), pad */
+    float _heightFogSun[4];    /* sun tint rgb + amount (0 = off) */
+    float _heightFogSunDir[4]; /* direction toward the sun + power */
     /* Image-based lighting (stored per-frame from begin_frame) */
     BOOL _iblEnabled;
     float _iblIntensity;

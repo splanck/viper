@@ -57,6 +57,10 @@ void rt_soundsource3d_set_pitch(void *source, double pitch);
 double rt_soundsource3d_get_occlusion(void *source);
 /// @brief Set the occlusion amount (game-driven; the mixer smooths ~80 ms).
 void rt_soundsource3d_set_occlusion(void *source, double amount);
+/// @brief Route future playback voices to a mix group (applies from next play).
+void rt_soundsource3d_set_mix_group(void *source, int64_t group);
+/// @brief Get the mix group future playback voices route to.
+int64_t rt_soundsource3d_get_mix_group(void *source);
 
 /// @brief True if the source loops automatically when its sound finishes.
 int8_t rt_soundsource3d_get_looping(void *source);

@@ -1,0 +1,566 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/rt_game3d_minimap.c
+// Purpose: Minimap3D (plan 28) — authored-map minimap with entity/point
+//   markers and rim clamping, a compass strip, and off-screen objective
+//   indicators, all drawn through the existing Canvas3D overlay primitives.
+// Key invariants:
+//   - The map is a north-up authored image with a world-rect affine; all
+//     marker math is pure arithmetic over that affine (deterministic).
+//   - Stale marker entities drop their markers fail-closed at draw time.
+// Ownership/Lifetime:
+//   - GC handle; retains the world, map image, tracked entity, and marker
+//     entities/icons; finalizer releases everything.
+// Links: misc/plans/thirdpersonupgrade/28-minimap-markers.md, ADR 0098
+//
+//===----------------------------------------------------------------------===//
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_canvas3d.h"
+#include "rt_game3d.h"
+#include "rt_game3d_internal.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_object.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MINIMAP3D_MAX_MARKERS 64
+#define MINIMAP3D_PI 3.14159265358979323846
+
+typedef struct rt_game3d_minimap_marker {
+    int8_t used;
+    void *entity;    /* retained Entity3D, or NULL for point markers */
+    double point[3]; /* world point when entity == NULL */
+    void *icon;      /* retained Pixels icon, or NULL for a color chip */
+    int64_t color;   /* packed 0xRRGGBB chip color */
+    double scale;    /* icon/chip scale (default 1) */
+    int8_t edge_clamp;
+    int8_t on_compass;
+    int8_t objective;
+} rt_game3d_minimap_marker;
+
+/// @brief Minimap3D payload: map source, viewport, markers, compass state.
+typedef struct rt_game3d_minimap {
+    void *world;     /* retained World3D (the minimap is game-owned; no cycle) */
+    void *map_image; /* retained Pixels authored map, or NULL */
+    double world_min_x, world_min_z, world_max_x, world_max_z;
+    void *tracked; /* retained Entity3D centered/arrowed, or NULL */
+    int64_t size_px;
+    double view_x, view_y, view_w, view_h;
+    int8_t compass_enabled;
+    double compass_width;
+    rt_game3d_minimap_marker markers[MINIMAP3D_MAX_MARKERS];
+    int64_t next_marker_id; /* monotonically increasing handle base */
+    int64_t marker_ids[MINIMAP3D_MAX_MARKERS];
+} rt_game3d_minimap;
+
+static rt_game3d_minimap *game3d_minimap_checked(void *obj, const char *method) {
+    rt_game3d_minimap *map =
+        (rt_game3d_minimap *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_MINIMAP_CLASS_ID);
+    if (!map)
+        rt_trap(method);
+    return map;
+}
+
+/// @brief GC finalizer: release the world, map image, and marker refs.
+static void game3d_minimap_finalize(void *obj) {
+    rt_game3d_minimap *map = (rt_game3d_minimap *)obj;
+    if (!map)
+        return;
+    game3d_release_typed_ref(&map->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    game3d_release_ref(&map->map_image);
+    game3d_release_typed_ref(&map->tracked, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+        game3d_release_typed_ref(&map->markers[i].entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        game3d_release_ref(&map->markers[i].icon);
+        map->markers[i].used = 0;
+    }
+}
+
+/// @brief Create a minimap bound to @p world with a square default viewport.
+void *rt_game3d_minimap_new(void *world_obj, int64_t size_px) {
+    rt_game3d_world *world = game3d_world_checked(world_obj, "Game3D.Minimap3D.New: invalid world");
+    if (!world)
+        return NULL;
+    if (size_px < 32 || size_px > 2048) {
+        rt_trap("Game3D.Minimap3D.New: sizePx must be 32..2048");
+        return NULL;
+    }
+    rt_game3d_minimap *map =
+        (rt_game3d_minimap *)rt_obj_new_i64(RT_G3D_GAME3D_MINIMAP_CLASS_ID, (int64_t)sizeof(*map));
+    if (!map) {
+        rt_trap("Game3D.Minimap3D.New: allocation failed");
+        return NULL;
+    }
+    memset(map, 0, sizeof(*map));
+    rt_obj_set_finalizer(map, game3d_minimap_finalize);
+    game3d_assign_typed_ref(&map->world, world_obj, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    map->size_px = size_px;
+    map->view_x = 20.0;
+    map->view_y = 20.0;
+    map->view_w = (double)size_px;
+    map->view_h = (double)size_px;
+    map->world_min_x = -100.0;
+    map->world_min_z = -100.0;
+    map->world_max_x = 100.0;
+    map->world_max_z = 100.0;
+    map->compass_width = 360.0;
+    map->next_marker_id = 1;
+    return map;
+}
+
+/// @brief Set the authored north-up map image and its world-rect affine.
+void rt_game3d_minimap_set_map_image(
+    void *obj, void *pixels, double min_x, double min_z, double max_x, double max_z) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetMapImage: invalid minimap");
+    if (!map)
+        return;
+    if (!isfinite(min_x) || !isfinite(min_z) || !isfinite(max_x) || !isfinite(max_z) ||
+        max_x <= min_x || max_z <= min_z) {
+        rt_trap("Game3D.Minimap3D.SetMapImage: world rect must be finite and non-empty");
+        return;
+    }
+    game3d_assign_ref(&map->map_image, pixels);
+    map->world_min_x = min_x;
+    map->world_min_z = min_z;
+    map->world_max_x = max_x;
+    map->world_max_z = max_z;
+}
+
+/// @brief Track an entity (player): centered arrow + objective reference point.
+void rt_game3d_minimap_set_tracked_entity(void *obj, void *entity) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetTrackedEntity: invalid minimap");
+    if (!map)
+        return;
+    if (entity && !rt_g3d_has_class(entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+        rt_trap("Game3D.Minimap3D.SetTrackedEntity: expected Entity3D");
+        return;
+    }
+    if (entity)
+        game3d_assign_typed_ref(&map->tracked, entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    else
+        game3d_release_typed_ref(&map->tracked, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+}
+
+/// @brief Place the minimap viewport on screen.
+void rt_game3d_minimap_set_viewport(void *obj, double x, double y, double w, double h) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetViewport: invalid minimap");
+    if (!map)
+        return;
+    if (!isfinite(x) || !isfinite(y) || !isfinite(w) || !isfinite(h) || w <= 0.0 || h <= 0.0) {
+        rt_trap("Game3D.Minimap3D.SetViewport: viewport must be finite and positive");
+        return;
+    }
+    map->view_x = x;
+    map->view_y = y;
+    map->view_w = w;
+    map->view_h = h;
+}
+
+/// @brief Enable the top-center compass strip.
+void rt_game3d_minimap_set_compass(void *obj, int8_t enabled, double width_px) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetCompass: invalid minimap");
+    if (!map)
+        return;
+    map->compass_enabled = enabled ? 1 : 0;
+    if (isfinite(width_px) && width_px >= 64.0)
+        map->compass_width = width_px;
+}
+
+static rt_game3d_minimap_marker *game3d_minimap_marker_by_id(rt_game3d_minimap *map, int64_t id) {
+    for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i)
+        if (map->markers[i].used && map->marker_ids[i] == id)
+            return &map->markers[i];
+    return NULL;
+}
+
+static int64_t game3d_minimap_add_marker_slot(
+    rt_game3d_minimap *map, void *entity, const double point[3], void *icon, int64_t color) {
+    for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+        rt_game3d_minimap_marker *marker = &map->markers[i];
+        if (marker->used)
+            continue;
+        memset(marker, 0, sizeof(*marker));
+        marker->used = 1;
+        marker->edge_clamp = 1;
+        marker->scale = 1.0;
+        marker->color = color;
+        if (entity)
+            game3d_assign_typed_ref(&marker->entity, entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        else
+            memcpy(marker->point, point, 3 * sizeof(double));
+        if (icon)
+            game3d_assign_ref(&marker->icon, icon);
+        map->marker_ids[i] = map->next_marker_id++;
+        return map->marker_ids[i];
+    }
+    rt_trap("Game3D.Minimap3D.AddMarker: marker budget (64) exceeded");
+    return 0;
+}
+
+/// @brief Add a marker following an entity. Returns a marker id.
+int64_t rt_game3d_minimap_add_marker(void *obj, void *entity, void *icon, int64_t color) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.AddMarker: invalid minimap");
+    if (!map)
+        return 0;
+    if (!rt_g3d_has_class(entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+        rt_trap("Game3D.Minimap3D.AddMarker: expected Entity3D");
+        return 0;
+    }
+    return game3d_minimap_add_marker_slot(map, entity, NULL, icon, color);
+}
+
+/// @brief Add a marker at a fixed world point. Returns a marker id.
+int64_t rt_game3d_minimap_add_marker_at(void *obj, void *point, void *icon, int64_t color) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.AddMarkerAt: invalid minimap");
+    double p[3];
+    if (!map)
+        return 0;
+    if (!game3d_read_vec3(point, p, "Game3D.Minimap3D.AddMarkerAt: point must be Vec3"))
+        return 0;
+    return game3d_minimap_add_marker_slot(map, NULL, p, icon, color);
+}
+
+/// @brief Remove a marker by id (unknown ids are a safe no-op).
+void rt_game3d_minimap_remove_marker(void *obj, int64_t id) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.RemoveMarker: invalid minimap");
+    if (!map)
+        return;
+    for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+        if (!map->markers[i].used || map->marker_ids[i] != id)
+            continue;
+        game3d_release_typed_ref(&map->markers[i].entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        game3d_release_ref(&map->markers[i].icon);
+        map->markers[i].used = 0;
+        return;
+    }
+}
+
+/// @brief Toggle rim clamping for off-map markers (default on).
+void rt_game3d_minimap_set_marker_edge_clamp(void *obj, int64_t id, int8_t clamp) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetMarkerEdgeClamp: invalid minimap");
+    rt_game3d_minimap_marker *marker = map ? game3d_minimap_marker_by_id(map, id) : NULL;
+    if (marker)
+        marker->edge_clamp = clamp ? 1 : 0;
+}
+
+/// @brief Scale a marker's icon/chip (default 1).
+void rt_game3d_minimap_set_marker_scale(void *obj, int64_t id, double scale) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetMarkerScale: invalid minimap");
+    rt_game3d_minimap_marker *marker = map ? game3d_minimap_marker_by_id(map, id) : NULL;
+    if (marker && isfinite(scale) && scale > 0.0)
+        marker->scale = scale > 8.0 ? 8.0 : scale;
+}
+
+/// @brief Project this marker onto the compass strip by bearing.
+void rt_game3d_minimap_set_marker_on_compass(void *obj, int64_t id, int8_t enabled) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetMarkerOnCompass: invalid minimap");
+    rt_game3d_minimap_marker *marker = map ? game3d_minimap_marker_by_id(map, id) : NULL;
+    if (marker)
+        marker->on_compass = enabled ? 1 : 0;
+}
+
+/// @brief Draw this marker as a screen-space objective indicator.
+void rt_game3d_minimap_set_objective_indicator(void *obj, int64_t id, int8_t enabled) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.SetObjectiveIndicator: invalid minimap");
+    rt_game3d_minimap_marker *marker = map ? game3d_minimap_marker_by_id(map, id) : NULL;
+    if (marker)
+        marker->objective = enabled ? 1 : 0;
+}
+
+/// @brief Number of live markers (telemetry/tests).
+int64_t rt_game3d_minimap_get_marker_count(void *obj) {
+    rt_game3d_minimap *map =
+        game3d_minimap_checked(obj, "Game3D.Minimap3D.get_MarkerCount: invalid minimap");
+    int64_t count = 0;
+    if (map)
+        for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i)
+            if (map->markers[i].used)
+                count++;
+    return count;
+}
+
+/// @brief World X/Z to minimap viewport X (affine; unclamped).
+double rt_game3d_minimap_map_x(void *obj, double world_x, double world_z) {
+    rt_game3d_minimap *map = game3d_minimap_checked(obj, "Game3D.Minimap3D.MapX: invalid minimap");
+    (void)world_z;
+    if (!map)
+        return 0.0;
+    double span = map->world_max_x - map->world_min_x;
+    double u = span > 1e-12 ? (world_x - map->world_min_x) / span : 0.5;
+    return map->view_x + u * map->view_w;
+}
+
+/// @brief World X/Z to minimap viewport Y (affine; unclamped).
+double rt_game3d_minimap_map_y(void *obj, double world_x, double world_z) {
+    rt_game3d_minimap *map = game3d_minimap_checked(obj, "Game3D.Minimap3D.MapY: invalid minimap");
+    (void)world_x;
+    if (!map)
+        return 0.0;
+    double span = map->world_max_z - map->world_min_z;
+    double v = span > 1e-12 ? (world_z - map->world_min_z) / span : 0.5;
+    return map->view_y + v * map->view_h;
+}
+
+/// @brief Wrap an angle to [-pi, pi].
+static double game3d_minimap_wrap_angle(double angle) {
+    while (angle > MINIMAP3D_PI)
+        angle -= 2.0 * MINIMAP3D_PI;
+    while (angle < -MINIMAP3D_PI)
+        angle += 2.0 * MINIMAP3D_PI;
+    return angle;
+}
+
+/// @brief Clamp a map-space point to the viewport border along the ray from
+///   the viewport center (the rim-bearing clamp).
+static void game3d_minimap_clamp_to_rim(rt_game3d_minimap *map, double *px, double *py) {
+    double cx = map->view_x + map->view_w * 0.5;
+    double cy = map->view_y + map->view_h * 0.5;
+    double dx = *px - cx;
+    double dy = *py - cy;
+    double half_w = map->view_w * 0.5;
+    double half_h = map->view_h * 0.5;
+    double sx = dx != 0.0 ? half_w / fabs(dx) : 1e30;
+    double sy = dy != 0.0 ? half_h / fabs(dy) : 1e30;
+    double s = sx < sy ? sx : sy;
+    if (s < 1.0) {
+        *px = cx + dx * s;
+        *py = cy + dy * s;
+    }
+}
+
+/// @brief Resolve a marker's current world position; 0 = drop (stale entity).
+static int game3d_minimap_marker_world(rt_game3d_minimap *map,
+                                       rt_game3d_minimap_marker *marker,
+                                       int32_t slot,
+                                       double out[3]) {
+    if (marker->entity) {
+        rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+            marker->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (!entity || !entity->alive) {
+            game3d_release_typed_ref(&marker->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+            game3d_release_ref(&marker->icon);
+            marker->used = 0;
+            map->marker_ids[slot] = 0;
+            return 0;
+        }
+        return game3d_entity_world_position_components(entity, out);
+    }
+    memcpy(out, marker->point, 3 * sizeof(double));
+    return 1;
+}
+
+/// @brief Draw one marker glyph (icon or color chip) centered at px/py.
+static void game3d_minimap_draw_glyph(void *canvas,
+                                      rt_game3d_minimap_marker *marker,
+                                      double px,
+                                      double py) {
+    double size = 8.0 * marker->scale;
+    if (marker->icon) {
+        rt_canvas3d_draw_image2d(canvas,
+                                 (int64_t)(px - size),
+                                 (int64_t)(py - size),
+                                 (int64_t)(size * 2.0),
+                                 (int64_t)(size * 2.0),
+                                 marker->icon);
+    } else {
+        rt_canvas3d_draw_rect2d(canvas,
+                                (int64_t)(px - size * 0.5),
+                                (int64_t)(py - size * 0.5),
+                                (int64_t)size,
+                                (int64_t)size,
+                                marker->color);
+    }
+}
+
+/// @brief Render the minimap, compass, and objective indicators through the
+///   Canvas3D overlay primitives. Games call this from their HUD pass.
+void rt_game3d_minimap_draw(void *obj) {
+    rt_game3d_minimap *map = game3d_minimap_checked(obj, "Game3D.Minimap3D.Draw: invalid minimap");
+    if (!map)
+        return;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(map->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    void *canvas = world ? rt_g3d_checked_or_null(world->canvas, RT_G3D_CANVAS3D_CLASS_ID) : NULL;
+    void *camera = world ? rt_g3d_checked_or_null(world->camera, RT_G3D_CAMERA3D_CLASS_ID) : NULL;
+    if (!world || !canvas)
+        return;
+
+    /* Map backdrop: authored image, or a dark panel when none is set. */
+    if (map->map_image)
+        rt_canvas3d_draw_image2d(canvas,
+                                 (int64_t)map->view_x,
+                                 (int64_t)map->view_y,
+                                 (int64_t)map->view_w,
+                                 (int64_t)map->view_h,
+                                 map->map_image);
+    else
+        rt_canvas3d_draw_rect2d(canvas,
+                                (int64_t)map->view_x,
+                                (int64_t)map->view_y,
+                                (int64_t)map->view_w,
+                                (int64_t)map->view_h,
+                                0x10241C);
+
+    /* Camera yaw from the forward vector (bearing convention: -Z = north). */
+    double yaw = 0.0;
+    if (camera) {
+        void *forward = rt_camera3d_get_forward(camera);
+        if (forward) {
+            yaw = atan2(rt_vec3_x(forward), -rt_vec3_z(forward));
+            game3d_release_ref(&forward);
+        }
+    }
+
+    /* Markers on the map. */
+    for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+        rt_game3d_minimap_marker *marker = &map->markers[i];
+        if (!marker->used)
+            continue;
+        double world_pos[3];
+        if (!game3d_minimap_marker_world(map, marker, i, world_pos))
+            continue;
+        double px = rt_game3d_minimap_map_x(map, world_pos[0], world_pos[2]);
+        double py = rt_game3d_minimap_map_y(map, world_pos[0], world_pos[2]);
+        int inside = px >= map->view_x && px <= map->view_x + map->view_w && py >= map->view_y &&
+                     py <= map->view_y + map->view_h;
+        if (!inside) {
+            if (!marker->edge_clamp)
+                continue;
+            game3d_minimap_clamp_to_rim(map, &px, &py);
+        }
+        game3d_minimap_draw_glyph(canvas, marker, px, py);
+    }
+
+    /* Tracked-entity arrow: a chip plus a heading tick along the camera yaw. */
+    if (map->tracked) {
+        rt_game3d_entity *tracked =
+            (rt_game3d_entity *)rt_g3d_checked_or_null(map->tracked, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        double world_pos[3];
+        if (tracked && tracked->alive &&
+            game3d_entity_world_position_components(tracked, world_pos)) {
+            double px = rt_game3d_minimap_map_x(map, world_pos[0], world_pos[2]);
+            double py = rt_game3d_minimap_map_y(map, world_pos[0], world_pos[2]);
+            game3d_minimap_clamp_to_rim(map, &px, &py);
+            rt_canvas3d_draw_rect2d(canvas, (int64_t)(px - 4), (int64_t)(py - 4), 8, 8, 0xFFFFFF);
+            double tx = px + sin(yaw) * 8.0;
+            double ty = py - cos(yaw) * 8.0;
+            rt_canvas3d_draw_rect2d(canvas, (int64_t)(tx - 2), (int64_t)(ty - 2), 4, 4, 0xFFFFFF);
+        }
+    }
+
+    /* Compass strip: cardinal letters + on-compass markers by bearing. */
+    if (map->compass_enabled) {
+        double screen_w = (double)(world->width > 0 ? world->width : 640);
+        double cx = screen_w * 0.5;
+        double top = 12.0;
+        double half = map->compass_width * 0.5;
+        rt_canvas3d_draw_rect2d(canvas,
+                                (int64_t)(cx - half),
+                                (int64_t)(top - 2),
+                                (int64_t)map->compass_width,
+                                18,
+                                0x101820);
+        static const char *kCardinals[4] = {"N", "E", "S", "W"};
+        for (int c = 0; c < 4; ++c) {
+            double bearing = (double)c * MINIMAP3D_PI * 0.5;
+            double rel = game3d_minimap_wrap_angle(bearing - yaw);
+            if (fabs(rel) > MINIMAP3D_PI * 0.5)
+                continue;
+            double x = cx + rel / (MINIMAP3D_PI * 0.5) * half;
+            rt_canvas3d_draw_text_3d(
+                canvas, (int64_t)(x - 4), (int64_t)top, rt_const_cstr(kCardinals[c]), 0xE8E8E8);
+        }
+        double center[3] = {0.0, 0.0, 0.0};
+        rt_game3d_entity *tracked =
+            (rt_game3d_entity *)rt_g3d_checked_or_null(map->tracked, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (tracked)
+            (void)game3d_entity_world_position_components(tracked, center);
+        for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+            rt_game3d_minimap_marker *marker = &map->markers[i];
+            if (!marker->used || !marker->on_compass)
+                continue;
+            double world_pos[3];
+            if (!game3d_minimap_marker_world(map, marker, i, world_pos))
+                continue;
+            double bearing = atan2(world_pos[0] - center[0], -(world_pos[2] - center[2]));
+            double rel = game3d_minimap_wrap_angle(bearing - yaw);
+            if (fabs(rel) > MINIMAP3D_PI * 0.5)
+                continue;
+            double x = cx + rel / (MINIMAP3D_PI * 0.5) * half;
+            rt_canvas3d_draw_rect2d(
+                canvas, (int64_t)(x - 2), (int64_t)(top + 12), 4, 4, marker->color);
+        }
+    }
+
+    /* Objective indicators: on-screen at the projected point, else edge-clamped. */
+    if (camera) {
+        double screen_w = (double)(world->width > 0 ? world->width : 640);
+        double screen_h = (double)(world->height > 0 ? world->height : 480);
+        for (int32_t i = 0; i < MINIMAP3D_MAX_MARKERS; ++i) {
+            rt_game3d_minimap_marker *marker = &map->markers[i];
+            if (!marker->used || !marker->objective)
+                continue;
+            double world_pos[3];
+            if (!game3d_minimap_marker_world(map, marker, i, world_pos))
+                continue;
+            double sx = 0.0, sy = 0.0;
+            int8_t visible = rt_camera3d_world_to_screen(camera,
+                                                         world_pos[0],
+                                                         world_pos[1],
+                                                         world_pos[2],
+                                                         (int64_t)screen_w,
+                                                         (int64_t)screen_h,
+                                                         &sx,
+                                                         &sy);
+            if (!visible) {
+                /* Clamp along the horizontal bearing to the screen border. */
+                double center[3] = {0.0, 0.0, 0.0};
+                rt_game3d_entity *tracked = (rt_game3d_entity *)rt_g3d_checked_or_null(
+                    map->tracked, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+                if (tracked)
+                    (void)game3d_entity_world_position_components(tracked, center);
+                double bearing = atan2(world_pos[0] - center[0], -(world_pos[2] - center[2]));
+                double rel = game3d_minimap_wrap_angle(bearing - yaw);
+                sx = screen_w * 0.5 + sin(rel) * (screen_w * 0.5 - 24.0);
+                sy = screen_h * 0.5 - cos(rel) * (screen_h * 0.5 - 24.0);
+            }
+            if (sx < 16.0)
+                sx = 16.0;
+            if (sx > screen_w - 16.0)
+                sx = screen_w - 16.0;
+            if (sy < 16.0)
+                sy = 16.0;
+            if (sy > screen_h - 16.0)
+                sy = screen_h - 16.0;
+            game3d_minimap_draw_glyph(canvas, marker, sx, sy);
+        }
+    }
+}
+
+#else
+typedef int rt_game3d_minimap_disabled_tu_guard;
+#endif /* VIPER_ENABLE_GRAPHICS */

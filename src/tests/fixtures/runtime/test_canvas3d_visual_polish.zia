@@ -197,6 +197,39 @@ func start() {
         return;
     }
 
+    // --- Plan 19: height-fog sun inscattering ---------------------------------
+    // Camera looks down -Z. Sun shining FROM behind the wall (view aligned with
+    // the sun direction) must tint the fog green (sumAll reads the green channel);
+    // sun behind the camera must not.
+    Canvas3D.SetHeightFog(canvas, 15.0, 0.2, 0.5, 1.0);
+    if (Canvas3D.get_HeightFogEnabled(canvas) == false) {
+        Say("FAIL: HeightFogEnabled should report true after SetHeightFog");
+        return;
+    }
+    Canvas3D.SetHeightFogSun(canvas, 0.1, 1.0, 0.1, 2.0, 1.0);
+    var towardSun = Light3D.NewDirectional(new Vec3(0.0, 0.0, 1.0), 1.0, 1.0, 1.0);
+    Canvas3D.SetLight(canvas, 0, towardSun);
+    drawDim(canvas, cam, wall, dimMat);
+    var sunFacing = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    var awaySun = Light3D.NewDirectional(new Vec3(0.0, 0.0, -1.0), 1.0, 1.0, 1.0);
+    Canvas3D.SetLight(canvas, 0, awaySun);
+    drawDim(canvas, cam, wall, dimMat);
+    var antiSun = sumAll(Canvas3D.ScreenshotFinal(canvas));
+    Canvas3D.Flip(canvas);
+    if (sunFacing <= antiSun) {
+        Say("FAIL: sun-facing height fog should tint green vs anti-sun view");
+        return;
+    }
+    Canvas3D.SetHeightFogSun(canvas, 1.0, 1.0, 1.0, 8.0, 0.0);
+    Canvas3D.ClearHeightFog(canvas);
+    if (Canvas3D.get_HeightFogEnabled(canvas)) {
+        Say("FAIL: ClearHeightFog should disable height fog");
+        return;
+    }
+    Canvas3D.ClearFog(canvas);
+    Canvas3D.SetLight(canvas, 0, null);
+
     // --- E42: AA text + nine-slice --------------------------------------------
     Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
     Canvas3D.Begin(canvas, cam);

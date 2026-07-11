@@ -177,11 +177,51 @@ void *rt_world3d_overlap_sphere(void *world, void *center, double radius, int64_
 /// @brief Find all bodies overlapping an axis-aligned bounding box (PhysicsHitList3D).
 void *rt_world3d_overlap_aabb(void *world, void *min_corner, void *max_corner, int64_t mask);
 
+/* Traversal probes (rt_physics3d_probes.c) */
+/// @brief True when a capsule (radius, height) fits at @p position without solid overlap.
+int8_t rt_world3d_probe_clearance(
+    void *world, void *position, double radius, double height, int64_t mask);
+/// @brief Find a grabbable ledge ahead: wall sweep + top down-sweep + standing room.
+///   Returns a LedgeHit3D or NULL. Results are world-space snapshots at probe time.
+void *rt_world3d_probe_ledge(void *world,
+                             void *origin,
+                             void *forward,
+                             double radius,
+                             double max_height,
+                             double max_depth,
+                             int64_t mask);
+/// @brief Like ProbeLedge but also requires a near-origin-level far-side landing.
+void *rt_world3d_probe_vault(void *world,
+                             void *origin,
+                             void *forward,
+                             double radius,
+                             double max_height,
+                             double max_thickness,
+                             int64_t mask);
+
+/* LedgeHit3D result accessors */
+/// @brief World-space ledge edge point (wall contact XZ at ledge-top height).
+void *rt_ledge_hit3d_get_grab_point(void *hit);
+/// @brief Ledge top surface normal.
+void *rt_ledge_hit3d_get_surface_normal(void *hit);
+/// @brief Front wall surface normal.
+void *rt_ledge_hit3d_get_wall_normal(void *hit);
+/// @brief Far-side vault landing point (NULL for ledge probes).
+void *rt_ledge_hit3d_get_landing_point(void *hit);
+/// @brief Ledge top height above the probe origin.
+double rt_ledge_hit3d_get_height(void *hit);
+/// @brief True when a capsule of the probe dims fits above the ledge top.
+int8_t rt_ledge_hit3d_get_has_standing_room(void *hit);
+/// @brief True when a vault landing was found (always false for ledge probes).
+int8_t rt_ledge_hit3d_get_has_landing(void *hit);
+
 /* PhysicsHit3D */
 /// @brief Get the body that was hit.
 void *rt_physics_hit3d_get_body(void *hit);
 /// @brief Get the specific collider on the body that was hit (compound bodies).
 void *rt_physics_hit3d_get_collider(void *hit);
+/// @brief Surface tag of the hit (leaf) collider; 0 when untyped.
+int64_t rt_physics_hit3d_get_surface_type(void *hit);
 /// @brief Get the world-space hit point as a Vec3.
 void *rt_physics_hit3d_get_point(void *hit);
 /// @brief Get the surface normal at the hit point as a Vec3.
@@ -214,6 +254,9 @@ void *rt_collision_event3d_get_body_b(void *event);
 void *rt_collision_event3d_get_collider_a(void *event);
 /// @brief Get the specific collider on body B.
 void *rt_collision_event3d_get_collider_b(void *event);
+/// @brief Surface tags of each side's leaf collider; 0 when untyped.
+int64_t rt_collision_event3d_get_surface_type_a(void *event);
+int64_t rt_collision_event3d_get_surface_type_b(void *event);
 /// @brief True if either body in the pair is a trigger volume.
 int8_t rt_collision_event3d_get_is_trigger(void *event);
 /// @brief Number of contact points generated for this collision (typically 1–4).
@@ -299,6 +342,9 @@ void rt_body3d_set_restitution(void *body, double r);
 double rt_body3d_get_restitution(void *body);
 /// @brief Set the friction coefficient (typical range 0.0–1.0).
 void rt_body3d_set_friction(void *body, double f);
+/// @brief Opaque gameplay handle on the body (0 default); never read by the runtime.
+void rt_body3d_set_user_data(void *body, int64_t value);
+int64_t rt_body3d_get_user_data(void *body);
 /// @brief Get the friction coefficient.
 double rt_body3d_get_friction(void *body);
 /// @brief Set linear damping (per-second velocity decay multiplier).
@@ -388,6 +434,29 @@ int8_t rt_character3d_just_landed(void *ctrl);
 void *rt_character3d_get_position(void *ctrl);
 /// @brief Teleport the controller (no swept collision; use Move for normal motion).
 void rt_character3d_set_position(void *ctrl, double x, double y, double z);
+/// @brief Crouch/stand capsule resize: shrinking always succeeds (feet planted);
+///   growing fails (returns 0) when the stand pose is blocked (TryStand semantics).
+int8_t rt_character3d_try_set_height(void *ctrl, double height);
+/// @brief Property form of TrySetHeight (result ignored).
+void rt_character3d_set_height(void *ctrl, double height);
+/// @brief Current capsule height including both hemispherical caps.
+double rt_character3d_get_height(void *ctrl);
+/// @brief Set the dynamic-body push impulse scale (0 = dynamics block without push).
+void rt_character3d_set_push_strength(void *ctrl, double strength);
+/// @brief Get the dynamic-body push impulse scale.
+double rt_character3d_get_push_strength(void *ctrl);
+/// @brief Enable/disable dynamic bodies as blockers (default on; off = legacy ghosting).
+void rt_character3d_set_collide_dynamic(void *ctrl, int8_t enabled);
+/// @brief Whether dynamic bodies block/push the controller.
+int8_t rt_character3d_get_collide_dynamic(void *ctrl);
+/// @brief Enable/disable riding moving kinematic/static platforms (default on).
+void rt_character3d_set_ride_platforms(void *ctrl, int8_t enabled);
+/// @brief Whether the controller rides moving platforms.
+int8_t rt_character3d_get_ride_platforms(void *ctrl);
+/// @brief True while the controller rests on a surface steeper than the slope limit.
+int8_t rt_character3d_is_sliding(void *ctrl);
+/// @brief Borrowed body under the controller's feet (NULL while airborne).
+void *rt_character3d_get_ground_body(void *ctrl);
 
 #ifdef __cplusplus
 }

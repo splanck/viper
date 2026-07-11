@@ -1,6 +1,8 @@
 module openworld_slice_visibility_dense_probe;
 
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Game3D as Game3D;
+bind Viper.IO as IO;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -240,5 +242,85 @@ func start() {
                  " no_missing_geometry=1" +
                  " baseline_us=" + Fmt.Int(baselineUs) +
                  " optimized_us=" + Fmt.Int(optimizedUs));
+    // --- HLOD proxy ring: baked proxies replace unloaded cells at distance ---
+    // The stock openworld cells are marker-only, so author a dense geometry cell
+    // for the bake evidence: a 20x20 grid (800 tris) the budget must hold.
+    var denseScene = SceneGraph.New();
+    var denseMesh = Mesh3D.New();
+    var seg = 24;
+    var fseg = 24.0;
+    var vz = 0;
+    var fvz = 0.0;
+    while (vz <= seg) {
+        var vx = 0;
+        var fvx = 0.0;
+        while (vx <= seg) {
+            var fx = (fvx / fseg - 0.5) * 40.0;
+            var fz = (fvz / fseg - 0.5) * 40.0;
+            denseMesh.AddVertex(fx, 0.0, fz, 0.0, 1.0, 0.0, 0.0, 0.0);
+            vx = vx + 1;
+            fvx = fvx + 1.0;
+        }
+        vz = vz + 1;
+        fvz = fvz + 1.0;
+    }
+    var tz = 0;
+    while (tz < seg) {
+        var tx = 0;
+        while (tx < seg) {
+            var a = tz * (seg + 1) + tx;
+            denseMesh.AddTriangle(a, a + 1, a + seg + 1);
+            denseMesh.AddTriangle(a + 1, a + seg + 2, a + seg + 1);
+            tx = tx + 1;
+        }
+        tz = tz + 1;
+    }
+    var denseNode = SceneNode.New();
+    denseNode.Name = "dense_proxy_cell_geo";
+    denseNode.Mesh = denseMesh;
+    denseNode.Material = Material3D.NewColor(0.4, 0.5, 0.3);
+    denseScene.Add(denseNode);
+    if (denseScene.Save("/tmp/viper_dense_proxy_cell.vscn") != 1) {
+        fail("dense proxy cell fixture did not save");
+        return;
+    }
+    IO.File.WriteAllText("/tmp/viper_dense_proxy_cells.json",
+        "{\"cells\":[{\"name\":\"dense\",\"path\":\"/tmp/viper_dense_proxy_cell.vscn\"," +
+        "\"center\":[0,0,0],\"radius\":8,\"bytes\":65536}]}");
+
+    var proxyWorld = Game3D.World3D.New("Dense Proxy Ring", 64, 48);
+    var proxyStream = proxyWorld.Stream;
+    proxyStream.SetAsyncStreaming(false);
+    proxyStream.SetCenter(Vec3.New(0.0, 0.0, 0.0));
+    proxyStream.SetRadii(360.0, 520.0);
+    proxyStream.MountCells("/tmp/viper_dense_proxy_cells.json");
+    proxyStream.Update(1.0 / 60.0);
+    if (proxyStream.ResidentCellCount != 1) {
+        fail("proxy ring fixture did not load the dense cell");
+        return;
+    }
+    if (proxyStream.BakeCellProxy(0) == false) {
+        fail("BakeCellProxy failed for the resident cell");
+        return;
+    }
+    if (proxyStream.GetCellProxy(0) == "") {
+        fail("baked proxy path was not recorded");
+        return;
+    }
+    // Step out of the load radius but stay inside the proxy ring (4x load radius).
+    proxyStream.SetCenter(Vec3.New(900.0, 0.0, 0.0));
+    proxyStream.Update(1.0 / 60.0);
+    proxyStream.Update(1.0 / 60.0);
+    if (proxyStream.ProxyResidentCount != 1 || proxyStream.ResidentCellCount != 0) {
+        fail("proxy ring did not hold the baked proxy outside the load radius");
+        return;
+    }
+    if (proxyStream.ProxyResidentBytes <= 0) {
+        fail("proxy residency bytes were not measured");
+        return;
+    }
+    proxyWorld.Destroy();
+    Terminal.Say("PROXY_RING: proxy_resident=1 full_resident=0");
+
     Terminal.Say("PASS: openworld_slice_visibility_dense_probe");
 }

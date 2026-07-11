@@ -54,9 +54,15 @@ func ariaRegionArrivalLine(region: Integer) -> String {
 /// @param region Zero-based stable campaign region id.
 /// @return Short warning tailored to the regional climax.
 func ariaBossWarningLine(region: Integer) -> String {
+    if region == 0 { return "The Beacon Warden has sealed the distress array."; }
     if region == 1 { return "Brood chamber ahead. The Spore Mother is awake."; }
     if region == 2 { return "Massive resonance shift. Crystal Wyrm inbound."; }
+    if region == 3 { return "Relay Custodian active. Its firing lattice is charging."; }
+    if region == 4 { return "Tide Leviathan surfacing. Watch the descending volleys."; }
     if region == 5 { return "The magma eye has acquired your suit signature."; }
+    if region == 6 { return "Verdant Colossus movement detected beneath the canopy."; }
+    if region == 7 { return "Cryo Custodian online. Expect crossing frost fire."; }
+    if region == 8 { return "Null Harvester is bending projectiles around the seal."; }
     if region == 9 { return "Architect handshake rejected. Defensive lattice online."; }
     return "High-energy lifeform ahead. Prepare for contact.";
 }
@@ -125,10 +131,10 @@ class RadioSystem {
         var alpha = accessiblePanelAlpha(highContrast);
         var scale = accessibleTextScale(1, uiScale, largeText);
         if scale > 2 { scale = 2; }
-        var panelX = 150;
-        var panelY = SCREEN_H - 154;
-        var panelW = 980;
-        var panelH = 104;
+        var panelX = 170;
+        var panelY = SCREEN_H - 134;
+        var panelW = 940;
+        var panelH = 88;
         canvas.BoxAlpha(panelX, panelY, panelW, panelH,
                         Color.RGB(2, 7, 14), alpha);
         canvas.Frame(panelX, panelY, panelW, panelH, pal.crystalBlue);
@@ -137,9 +143,9 @@ class RadioSystem {
         } else {
             drawFallbackPortrait(canvas, panelX + 10, panelY + 9, pal);
         }
-        canvas.Line(panelX + 108, panelY + 8, panelX + 108,
+        canvas.Line(panelX + 90, panelY + 8, panelX + 90,
                     panelY + panelH - 8, Color.RGB(40, 110, 145));
-        canvas.TextScaled(panelX + 126, panelY + 12, speaker, scale,
+        canvas.TextScaled(panelX + 108, panelY + 8, speaker, scale,
                           pal.crystalBlue);
         var wrapColumns = 88;
         if scale >= 2 { wrapColumns = 48; }
@@ -147,7 +153,7 @@ class RadioSystem {
         var count = Seq.get_Count(wrapped);
         var i = 0;
         while i < count and i < 2 {
-            canvas.TextScaled(panelX + 126, panelY + 45 + i * 25,
+            canvas.TextScaled(panelX + 108, panelY + 35 + i * 22,
                               Obj.ToString(Seq.Get(wrapped, i)),
                               scale, pal.white);
             i = i + 1;
@@ -182,7 +188,7 @@ class RadioSystem {
     /// diagnostic and retains the procedural portrait fallback; gameplay and
     /// subtitle delivery never fail because presentation art is unavailable.
     ///
-    /// @return Nothing. Stores one retained 86x86 portrait when decoding succeeds.
+    /// @return Nothing. Stores one retained 70x70 portrait when decoding succeeds.
     hide func loadPortrait() {
         var path = "";
         if File.Exists("assets/art/aria-portrait.png") {
@@ -204,7 +210,7 @@ class RadioSystem {
             Terminal.Say("XENOSCAPE asset fallback: " + path);
             return;
         }
-        portrait = Pixels.Scale(decoded, 86, 86);
+        portrait = Pixels.Scale(decoded, 70, 70);
         portraitAvailable = portrait != null;
     }
 
@@ -217,12 +223,12 @@ class RadioSystem {
     /// @return Nothing. Draws a readable ARIA silhouette without asset access.
     hide func drawFallbackPortrait(canvas: Canvas, x: Integer, y: Integer,
                                    pal: Palette) {
-        canvas.Box(x, y, 86, 86, Color.RGB(4, 16, 28));
-        canvas.Frame(x, y, 86, 86, pal.crystalBlue);
-        canvas.DiscAlpha(x + 43, y + 34, 23, pal.crystalBlue, 80);
-        canvas.Disc(x + 43, y + 31, 15, Color.RGB(28, 110, 145));
-        canvas.Triangle(x + 19, y + 76, x + 43, y + 48,
-                        x + 67, y + 76, Color.RGB(18, 82, 112));
-        canvas.Ring(x + 43, y + 43, 34, Color.RGB(65, 190, 220));
+        canvas.Box(x, y, 70, 70, Color.RGB(4, 16, 28));
+        canvas.Frame(x, y, 70, 70, pal.crystalBlue);
+        canvas.DiscAlpha(x + 35, y + 28, 19, pal.crystalBlue, 80);
+        canvas.Disc(x + 35, y + 25, 12, Color.RGB(28, 110, 145));
+        canvas.Triangle(x + 15, y + 62, x + 35, y + 40,
+                        x + 55, y + 62, Color.RGB(18, 82, 112));
+        canvas.Ring(x + 35, y + 35, 28, Color.RGB(65, 190, 220));
     }
 }

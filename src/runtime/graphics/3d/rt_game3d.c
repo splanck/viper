@@ -55,6 +55,7 @@
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_mat4.h"
+#include "rt_mesh_simplify.h"
 #include "rt_model3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_object.h"
@@ -78,6 +79,7 @@
 #include "rt_terrain3d.h"
 #include "rt_textureasset3d.h"
 #include "rt_threadpool.h"
+#include "rt_time.h"
 #include "rt_trap.h"
 #include "rt_untrusted_count.h"
 #include "rt_vec2.h"
@@ -120,6 +122,7 @@ extern void rt_trap_clear_recovery(void);
 extern const char *rt_trap_get_error(void);
 
 #include "rt_game3d_internal.h"
+#include "rt_ragdoll3d.h"
 
 rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void *body);
 static void game3d_world_rebuild_name_index(rt_game3d_world *world);
@@ -1532,6 +1535,39 @@ void rt_game3d_world_set_gravity(void *obj, double x, double y, double z) {
 
 /// @brief Begin a frame: poll the window, refresh input, advance timing/frame counters,
 ///   and sync the camera aspect; returns 0 when the window should close. See header.
+/// @brief Decay the hit-stop latch by REAL dt and return the effective time
+///   scale for this frame: 0 while paused or in hit-stop, else timeScale.
+static double game3d_world_effective_scale_tick(rt_game3d_world *world, double real_dt) {
+    if (!world)
+        return 1.0;
+    if (world->hitstop_remaining > 0.0) {
+        world->hitstop_remaining -= real_dt;
+        /* Epsilon clamp so N frames of 1/N-second decay expire exactly. */
+        if (world->hitstop_remaining < 1e-9)
+            world->hitstop_remaining = 0.0;
+        if (!world->paused)
+            return 0.0;
+    }
+    if (world->paused)
+        return 0.0;
+    double scale = world->time_scale;
+    if (!isfinite(scale) || scale < 0.0)
+        scale = 1.0;
+    if (scale > 4.0)
+        scale = 4.0;
+    return scale;
+}
+
+/// @brief Frozen-time frame (pause / hit-stop): pure re-render. Drains async
+///   asset commits and runs the camera late update with dt 0 so resize/aspect
+///   stays live; animation, physics, effects, and audio sync are all skipped.
+static void game3d_world_paused_frame(rt_game3d_world *world) {
+    if (!world)
+        return;
+    game3d_asset_async_drain_commits();
+    game3d_world_late_update_controller(world, 0.0);
+}
+
 int8_t rt_game3d_world_tick(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.tick: invalid world");
     if (!world || !world->canvas)
@@ -1547,8 +1583,14 @@ int8_t rt_game3d_world_tick(void *obj) {
     if (rt_canvas3d_should_close(world->canvas))
         return 0;
     rt_game3d_input_update(world->input);
-    world->dt = game3d_clamp_dt(rt_canvas3d_get_delta_time_sec(world->canvas));
-    world->elapsed += world->dt;
+    {
+        double real_dt = game3d_clamp_dt(rt_canvas3d_get_delta_time_sec(world->canvas));
+        double effective = game3d_world_effective_scale_tick(world, real_dt);
+        world->unscaled_dt = real_dt;
+        world->unscaled_elapsed += real_dt;
+        world->dt = real_dt * effective;
+        world->elapsed += world->dt;
+    }
     world->frame += 1;
     if (world->camera && world->width > 0 && world->height > 0)
         game3d_camera_sync_render_aspect(world->camera,
@@ -1708,6 +1750,23 @@ static void game3d_world_restore_render_interpolation(rt_game3d_world *world) {
     }
 }
 
+/// @brief Advance every spawned entity's active/blending ragdoll: powered drive,
+///   palette write-back, and node root-follow. Runs after the physics step and
+///   before scene sync so skinning consumes the ragdoll pose this frame.
+static void game3d_world_step_ragdolls(rt_game3d_world *world, double dt) {
+    if (!world)
+        return;
+    int32_t entity_count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (!entity || !entity->alive || !entity->spawned || !entity->ragdoll)
+            continue;
+        void *ragdoll = rt_g3d_checked_or_null(entity->ragdoll, RT_G3D_RAGDOLL3D_CLASS_ID);
+        if (ragdoll)
+            rt_ragdoll3d_step(ragdoll, dt);
+    }
+}
+
 static void game3d_world_step_simulation_impl(rt_game3d_world *world,
                                               double step_sec,
                                               int8_t advance_time_counters) {
@@ -1721,18 +1780,57 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
         world->elapsed += dt;
         world->frame += 1;
     }
-    game3d_world_update_controller(world, dt);
+    int timeline_owns_camera = game3d_world_timeline_pre(world, dt);
+    game3d_world_dialogue_tick(world, dt);
+    {
+        /* AI (perception then behavior trees) runs before controllers so
+         * decisions feed the same step's movement. */
+        int32_t ai_count = world->entity_count;
+        if (ai_count < 0 || ai_count > world->entity_capacity)
+            ai_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
+        for (int32_t ai = 0; ai < ai_count; ++ai) {
+            rt_game3d_entity *ai_entity = world->entities ? world->entities[ai] : NULL;
+            if (ai_entity && ai_entity->alive && (ai_entity->perception || ai_entity->btree))
+                game3d_ai_tick(world, ai_entity, dt);
+        }
+    }
+    if (!timeline_owns_camera)
+        game3d_world_update_controller(world, dt);
     game3d_world_update_behaviors(world, dt);
     game3d_world_update_animations(world, dt);
     if (world->physics)
         rt_world3d_step(world->physics, dt);
+    game3d_world_step_ragdolls(world, dt);
+    game3d_world_facial_tick(world, dt);
+    game3d_cloth_tick(world, dt);
+    game3d_persistence_tick(world);
+    {
+        /* Footsteps consume this frame's animator events (after animation, before
+         * scene sync so decals/audio land on the current pose). */
+        int32_t fs_count = world->entity_count;
+        if (fs_count < 0 || fs_count > world->entity_capacity)
+            fs_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
+        for (int32_t fs = 0; fs < fs_count; ++fs) {
+            rt_game3d_entity *fs_entity = world->entities ? world->entities[fs] : NULL;
+            if (fs_entity && fs_entity->alive && fs_entity->footsteps)
+                game3d_footsteps_tick(world, fs_entity, dt);
+            if (fs_entity && fs_entity->alive && fs_entity->interactor)
+                game3d_interactor_tick(world, fs_entity, dt);
+        }
+    }
     if (world->scene)
         rt_scene3d_sync_bindings(world->scene, dt);
-    if (world->audio)
+    game3d_world_update_combat(world, dt);
+    if (world->audio) {
         game3d_audio_prune_sources((rt_game3d_audio *)world->audio);
+        game3d_audio_immersion_tick(world, dt);
+    }
     if (world->effects)
         rt_game3d_effects_update(world->effects, dt);
-    game3d_world_late_update_controller(world, dt);
+    if (timeline_owns_camera)
+        game3d_world_timeline_camera(world);
+    else
+        game3d_world_late_update_controller(world, dt);
     game3d_world_rebase_if_needed(world);
 }
 
@@ -1742,7 +1840,21 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
 void rt_game3d_world_step_simulation(void *obj, double step_sec) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.stepSimulation: invalid world");
-    game3d_world_step_simulation_impl(world, step_sec, 1);
+    if (!world)
+        return;
+    double real_dt = game3d_clamp_dt(step_sec);
+    double effective = game3d_world_effective_scale_tick(world, real_dt);
+    world->unscaled_dt = real_dt;
+    world->unscaled_elapsed += real_dt;
+    if (effective <= 0.0) {
+        world->dt = 0.0;
+        world->frame += 1;
+        game3d_world_paused_frame(world);
+        return;
+    }
+    int64_t hitch_t0 = rt_clock_ticks_us();
+    game3d_world_step_simulation_impl(world, real_dt * effective, 1);
+    game3d_world_note_hitches(world, (double)(rt_clock_ticks_us() - hitch_t0) / 1000.0);
 }
 
 /// @brief Draw a yellow wireframe AABB around each spawned entity's collider for the
@@ -2177,6 +2289,8 @@ static void game3d_world_render_once(rt_game3d_world *world, rt_game3d_overlay_f
         game3d_world_restore_render_interpolation(world);
     if (overlay_fn)
         game3d_world_draw_overlay_fn(world, overlay_fn);
+    game3d_world_dialogue_overlay(world);
+    game3d_world_timeline_overlay(world);
     rt_game3d_world_present(world);
 }
 
@@ -2202,7 +2316,10 @@ void rt_game3d_world_run(void *obj, void *update) {
             fn(world->dt);
         if (!game3d_world_is_live(world))
             break;
-        game3d_world_step_simulation_impl(world, world->dt, 0);
+        if (world->dt <= 0.0)
+            game3d_world_paused_frame(world);
+        else
+            game3d_world_step_simulation_impl(world, world->dt, 0);
         if (!game3d_world_is_live(world))
             break;
         game3d_world_render_once(world, NULL);
@@ -2391,14 +2508,22 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
             if (canvas_obj)
                 rt_canvas3d_advance_synthetic_frame(world->canvas);
             rt_game3d_input_update(world->input);
-            world->dt = fixed;
-            world->elapsed += fixed;
+            {
+                double effective = game3d_world_effective_scale_tick(world, fixed);
+                world->unscaled_dt = fixed;
+                world->unscaled_elapsed += fixed;
+                world->dt = fixed * effective;
+            }
+            world->elapsed += world->dt;
             world->frame += 1;
             if (fn)
-                fn(fixed);
+                fn(world->dt);
             if (!game3d_world_is_live(world))
                 break;
-            game3d_world_step_simulation_impl(world, fixed, 0);
+            if (world->dt <= 0.0)
+                game3d_world_paused_frame(world);
+            else
+                game3d_world_step_simulation_impl(world, world->dt, 0);
             if (!game3d_world_is_live(world))
                 break;
             world->fixed_interpolation_alpha = 0.0;
@@ -2421,4 +2546,96 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
 ///   See header.
 void rt_game3d_world_run_frames_only(void *obj, int64_t frame_count, double step_sec) {
     rt_game3d_world_run_frames(obj, frame_count, step_sec, NULL);
+}
+
+/*==========================================================================
+ * Hitch tracer (plan 30) — wall-clock telemetry only; never sim state.
+ *=========================================================================*/
+
+/// @brief Append one hitch entry, overwriting the oldest once the ring fills.
+static void game3d_world_push_hitch(rt_game3d_world *world, int64_t source, double ms) {
+    int32_t slot;
+    if (world->hitch_count < RT_GAME3D_MAX_HITCHES) {
+        slot = (world->hitch_head + world->hitch_count) % RT_GAME3D_MAX_HITCHES;
+        world->hitch_count += 1;
+    } else {
+        slot = world->hitch_head;
+        world->hitch_head = (world->hitch_head + 1) % RT_GAME3D_MAX_HITCHES;
+    }
+    world->hitches[slot].frame = world->frame;
+    world->hitches[slot].source = source;
+    world->hitches[slot].ms = ms;
+}
+
+/// @brief Post-step hook: log stream-commit stalls and over-threshold frames.
+/// @details A stream commit inside a slow frame logs once as StreamCommit;
+///   FrameTotal fires only when no attributed source was logged this step.
+void game3d_world_note_hitches(struct rt_game3d_world *world, double step_wall_ms) {
+    int attributed = 0;
+    if (!world)
+        return;
+    rt_game3d_world_stream *stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+        world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
+    if (stream && stream->stream_stall_ms > world->hitch_last_stream_stall_ms + 1e-9) {
+        if (stream->stream_stall_ms > world->hitch_threshold_ms) {
+            game3d_world_push_hitch(
+                world, RT_GAME3D_HITCH_SOURCE_STREAM_COMMIT, stream->stream_stall_ms);
+            attributed = 1;
+        }
+        world->hitch_last_stream_stall_ms = stream->stream_stall_ms;
+    }
+    if (!attributed && isfinite(step_wall_ms) && step_wall_ms > world->hitch_threshold_ms)
+        game3d_world_push_hitch(world, RT_GAME3D_HITCH_SOURCE_FRAME_TOTAL, step_wall_ms);
+}
+
+/// @brief Set the FrameTotal hitch threshold in milliseconds (default 25).
+void rt_game3d_world_set_hitch_threshold(void *obj, double ms) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.SetHitchThresholdMs: invalid world");
+    if (world && isfinite(ms) && ms >= 0.0)
+        world->hitch_threshold_ms = ms;
+}
+
+/// @brief Number of buffered hitch entries (ring caps at 256).
+int64_t rt_game3d_world_hitch_count(void *obj) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.HitchCount: invalid world");
+    return world ? world->hitch_count : 0;
+}
+
+/// @brief Chronological hitch entry accessor helpers (0 = oldest buffered).
+static const rt_game3d_hitch_entry *game3d_world_hitch_at(rt_game3d_world *world, int64_t index) {
+    if (!world || index < 0 || index >= world->hitch_count)
+        return NULL;
+    return &world->hitches[(world->hitch_head + index) % RT_GAME3D_MAX_HITCHES];
+}
+
+/// @brief World frame of hitch @p index (-1 out of range).
+int64_t rt_game3d_world_hitch_frame(void *obj, int64_t index) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.HitchFrame: invalid world");
+    const rt_game3d_hitch_entry *entry = world ? game3d_world_hitch_at(world, index) : NULL;
+    return entry ? entry->frame : -1;
+}
+
+/// @brief HitchSource constant of hitch @p index (-1 out of range).
+int64_t rt_game3d_world_hitch_source(void *obj, int64_t index) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.HitchSource: invalid world");
+    const rt_game3d_hitch_entry *entry = world ? game3d_world_hitch_at(world, index) : NULL;
+    return entry ? entry->source : -1;
+}
+
+/// @brief Milliseconds of hitch @p index (0 out of range).
+double rt_game3d_world_hitch_ms(void *obj, int64_t index) {
+    rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.HitchMs: invalid world");
+    const rt_game3d_hitch_entry *entry = world ? game3d_world_hitch_at(world, index) : NULL;
+    return entry ? entry->ms : 0.0;
+}
+
+/// @brief Clear the hitch ring.
+void rt_game3d_world_clear_hitches(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.ClearHitches: invalid world");
+    if (world) {
+        world->hitch_count = 0;
+        world->hitch_head = 0;
+    }
 }

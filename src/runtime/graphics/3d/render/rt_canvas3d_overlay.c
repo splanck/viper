@@ -1280,6 +1280,18 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
         rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
         return (c && c->backend && c->backend->set_render_scale) ? 1 : 0;
     }
+    if (strcmp(name, "gpu-skinning") == 0 || strcmp(name, "gpu_skinning") == 0) {
+        /* GPU backends consume bone palettes in the vertex shader; software stays
+         * the CPU-skinned reference. ForceCpuSkinning reports the override too so
+         * capability checks match actual routing. */
+        rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+        if (!c || !c->backend || !c->backend->name || c->force_cpu_skinning)
+            return 0;
+        return (strcmp(c->backend->name, "metal") == 0 || strcmp(c->backend->name, "opengl") == 0 ||
+                strcmp(c->backend->name, "d3d11") == 0)
+                   ? 1
+                   : 0;
+    }
     native_texture_flag = canvas3d_native_texture_capability_from_name(name);
     if (native_texture_flag)
         return (rt_canvas3d_get_backend_capabilities(obj) & native_texture_flag) ? 1 : 0;
@@ -1294,6 +1306,43 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
     if (!flag)
         return 0;
     return (rt_canvas3d_get_backend_capabilities(obj) & flag) ? 1 : 0;
+}
+
+/// @brief Force all skinned draws through the CPU path (bisection/debug override).
+void rt_canvas3d_set_force_cpu_skinning(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (c)
+        c->force_cpu_skinning = enabled ? 1 : 0;
+}
+
+/// @brief Lifetime count of skinned draws routed to GPU vertex-shader skinning.
+int64_t rt_canvas3d_get_gpu_skinned_draw_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->gpu_skinned_draw_count > 0 ? c->gpu_skinned_draw_count : 0;
+}
+
+/// @brief Lifetime bone-palette bytes handed to the backend for GPU skinning.
+int64_t rt_canvas3d_get_skinning_upload_bytes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->skinning_upload_bytes > 0 ? c->skinning_upload_bytes : 0;
+}
+
+/// @brief Per-pass draw submissions for the latest frame (plan 30).
+/// @details Pass ids follow Game3D.RenderPass; PostFX/Present report 0 in
+///   v1 (no per-draw work is attributed to them yet).
+int64_t rt_canvas3d_pass_draw_count(void *obj, int64_t pass) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || pass < 0 || pass > 5)
+        return 0;
+    return c->last_pass_draw_count[pass];
+}
+
+/// @brief Per-pass instances (instanced draws expanded) for the latest frame.
+int64_t rt_canvas3d_pass_instance_count(void *obj, int64_t pass) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || pass < 0 || pass > 5)
+        return 0;
+    return c->last_pass_instance_count[pass];
 }
 
 /// @brief Number of main 3D draw submissions queued by the latest ended frame.

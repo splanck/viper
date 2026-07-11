@@ -1,0 +1,91 @@
+module test_game3d_cloth_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("Cloth Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    // Hanging chain: settles straight down under gravity.
+    var chain = Cloth3D.NewChain(8, 1.6).Pin(0);
+    world.AddCloth(chain);
+    var tick = 0;
+    while (tick < 180) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    var chainTip = chain.GetPoint(8);
+    if (chainTip.Y > -1.55) {
+        Terminal.Say("FAIL: chain should hang to nearly full length");
+        return;
+    }
+    if (chain.PointCount != 9) {
+        Terminal.Say("FAIL: chain point count should be segments + 1");
+        return;
+    }
+
+    // Banner patch: top row pinned, wind billows the free edge along +Z.
+    var banner = Cloth3D.NewPatch(6, 4, 1.2, 0.6);
+    var i = 0;
+    while (i < 6) {
+        banner.Pin(i);
+        i = i + 1;
+    }
+    banner.SetWind(Math.Vec3.New(0.0, 0.0, 1.0), 6.0);
+    var mesh = Mesh3D.New();
+    banner.BindMesh(mesh);
+    world.AddCloth(banner);
+    tick = 0;
+    while (tick < 240) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    var freeCorner = banner.GetPoint(21);
+    if (freeCorner.Z < 0.15) {
+        Terminal.Say("FAIL: wind should billow the free edge along +Z");
+        return;
+    }
+
+    // Cape: bone-chain binding anchors point 0 to the animated root bone.
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "cape_root", -1, Math.Mat4.Identity());
+    var mid = Skeleton3D.AddBone(skel, "cape_mid", rootBone, Math.Mat4.Identity());
+    Skeleton3D.AddBone(skel, "cape_tip", mid, Math.Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+    var rot = Math.Quat.Identity();
+    var scl = Math.Vec3.One();
+    var idle = Animation3D.New("idle", 1.0);
+    Animation3D.set_Looping(idle, true);
+    Animation3D.AddKeyframe(idle, rootBone, 0.0, Math.Vec3.New(0.0, 2.0, 0.0), rot, scl);
+    Animation3D.AddKeyframe(idle, rootBone, 1.0, Math.Vec3.New(0.0, 2.0, 0.0), rot, scl);
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "idle", idle);
+    var wearer = Game3D.Entity3D.New();
+    world.Spawn(wearer);
+    var animator = Game3D.Animator3D.New(controller);
+    wearer.AttachAnimator(animator);
+    animator.Play("idle");
+
+    var cape = Cloth3D.NewChain(2, 0.8).BindBoneChain(controller, "cape_root");
+    world.AddCloth(cape);
+    tick = 0;
+    while (tick < 90) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    var anchor = cape.GetPoint(0);
+    if (anchor.Y < 1.9) {
+        Terminal.Say("FAIL: cape anchor should follow the animated root bone");
+        return;
+    }
+    var capeTip = cape.GetPoint(2);
+    if (capeTip.Y > anchor.Y - 0.5) {
+        Terminal.Say("FAIL: cape should hang below its animated anchor");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

@@ -24,7 +24,7 @@ final DIFFICULTY_STANDARD = 1;
 final DIFFICULTY_VETERAN = 2;
 final DIFFICULTY_COUNT = 3;
 
-/// @brief Map a difficulty profile id to its release-facing name.
+/// @brief Map a difficulty profile id to its player-facing name.
 ///
 /// @param profile One `DIFFICULTY_*` id.
 /// @return Profile name, or `Unknown` for invalid input.

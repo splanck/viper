@@ -328,6 +328,10 @@ void vaud_set_voice_lowpass(vaud_context_t ctx, vaud_voice_id voice, float cutof
 ///          up to -6 dB of gain reduction. Changes are smoothed inside the
 ///          mixer (~80 ms) so gameplay-driven toggles never zipper.
 void vaud_set_voice_occlusion(vaud_context_t ctx, vaud_voice_id voice, float amount);
+/// @brief Enable/disable per-voice RMS metering (zero mixing cost when off).
+void vaud_set_voice_metering(vaud_context_t ctx, vaud_voice_id voice, int enabled);
+/// @brief RMS source level (pre-gain) of the last mixed block; 0 when unmetered.
+float vaud_get_voice_level(vaud_context_t ctx, vaud_voice_id voice);
 
 /// @brief Register, replace, or remove a sidechain-style group ducking rule.
 /// @details While any voice in @p trigger_group is audible, the gain of

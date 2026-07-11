@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/scene/rt_scene3d_cull.inc  (#included from rt_scene3d.c; not a standalone translation unit)
-// Purpose: Scene3D culling, PVS, visibility, draw traversal, and animation propagation
+// File: src/runtime/graphics/3d/scene/rt_scene3d_cull.inc  (#included from rt_scene3d.c; not a
+// standalone translation unit) Purpose: Scene3D culling, PVS, visibility, draw traversal, and
+// animation propagation
 //===----------------------------------------------------------------------===//
 typedef struct {
     rt_scene_node3d *node;
@@ -345,6 +346,26 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
         scene3d_mesh_resident(impostor_mesh)) {
         draw_mesh = impostor_mesh;
         draw_material = impostor_material;
+        if (current->impostor_frame_count > 1 && current->impostor_frame_meshes && cam_pos) {
+            /* Pick the strip frame whose capture yaw is nearest the camera bearing.
+             * Frames were captured at yaw i * 2*pi/N with frame 0 looking down -Z. */
+            double wx = current->world_matrix[3];
+            double wz = current->world_matrix[11];
+            double dx = cam_pos[0] - wx;
+            double dz = cam_pos[2] - wz;
+            double yaw = atan2(dx, dz);
+            double step = 6.283185307179586 / (double)current->impostor_frame_count;
+            int32_t frame = (int32_t)floor((yaw + step * 0.5) / step);
+            frame %= current->impostor_frame_count;
+            if (frame < 0)
+                frame += current->impostor_frame_count;
+            void *frame_mesh = rt_g3d_checked_or_null(current->impostor_frame_meshes[frame],
+                                                      RT_G3D_MESH3D_CLASS_ID);
+            if (frame_mesh && scene3d_mesh_resident(frame_mesh)) {
+                draw_mesh = frame_mesh;
+                current->impostor_frame_index = frame;
+            }
+        }
     } else if (!current->has_impostor || !impostor_mesh || !impostor_material ||
                !scene3d_mesh_resident(impostor_mesh)) {
         current->impostor_selected = 0;

@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/xenoscape/main.zia
+// Purpose: Selects package smoke mode or starts the Xenoscape game loop.
+// Key invariants:
+//   - Package smoke resolves files relative to both working and executable dirs.
+//   - Normal startup delegates ownership and lifetime to one Game instance.
+// Ownership/Lifetime:
+//   - Entry point owns its Game or short-lived RuntimeTuning object until exit.
+// Links: game.zia, tuning.zia, viper.project, xenoscape.runtime.json
+//
+//===----------------------------------------------------------------------===//
 // =============================================================================
 // main.zia — The whole game in nine lines
 // Part of Xenoscape  (the 2D sidescroller platformer demo)
@@ -75,7 +92,8 @@ func runPackageSmoke() {
     }
 
     var tuning = new RuntimeTuning(tuningPath);
-    if tuning.getInt("presentation.introSplashMs", -1) != 1200 {
+    if tuning.getInt("presentation.sceneTransitionMs", -1) != 350 or
+       tuning.getBool("presentation.authoredArtEnabled", false) == false {
         Terminal.Say("RESULT: bad_runtime_json");
         Env.EndProgram(4);
         return;

@@ -139,8 +139,9 @@ typedef struct {
     float lod_hysteresis;
     float skirt_depth;
     void *splat_map;
-    void *layer_textures[4];
-    double layer_scales[4];
+    void *splat_map2;
+    void *layer_textures[8];
+    double layer_scales[8];
     void *base_texture;
     void *baked_texture;
     int8_t splat_dirty;

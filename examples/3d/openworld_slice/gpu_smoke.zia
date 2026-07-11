@@ -298,6 +298,31 @@ func start() {
         return;
     }
 
+    // GPU vertex-shader skinning: capable backends must route the skinned agent
+    // through the palette path and account the palette upload bytes.
+    if (Canvas3D.BackendSupports(canvas, "gpu-skinning")) {
+        if (canvas.GpuSkinnedDrawCount <= 0 || canvas.SkinningUploadBytes <= 0) {
+            game.destroy();
+            fail("gpu-skinning capability reported but no skinned draw routed to the GPU");
+            return;
+        }
+        // Force-CPU override flips both the capability report and the routing.
+        var gpuDrawsBefore = canvas.GpuSkinnedDrawCount;
+        canvas.SetForceCpuSkinning(true);
+        if (Canvas3D.BackendSupports(canvas, "gpu-skinning")) {
+            game.destroy();
+            fail("ForceCpuSkinning did not flip the gpu-skinning capability report");
+            return;
+        }
+        game.renderFrame();
+        if (canvas.GpuSkinnedDrawCount != gpuDrawsBefore) {
+            game.destroy();
+            fail("ForceCpuSkinning still routed skinned draws to the GPU");
+            return;
+        }
+        canvas.SetForceCpuSkinning(false);
+    }
+
     if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
         var snap = game.getWorld().CaptureFinalFrame();
         if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {

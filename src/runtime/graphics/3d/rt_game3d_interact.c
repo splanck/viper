@@ -1,0 +1,422 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/rt_game3d_interact.c
+// Purpose: Focus-and-use interaction — Interactable3D components on entities
+//   plus an Interactor3D scanner (distance + view-cone + optional line of
+//   sight + hysteresis) ticked in the world step, with polled focus/interact
+//   state.
+// Key invariants:
+//   - Scanning walks the world entity list (no physics query): deterministic
+//     candidate order, stale/despawned entities fail closed.
+//   - The current focus keeps a 10% score bonus so ties never flicker.
+// Ownership/Lifetime:
+//   - Components hold plain backrefs to their owner entity (NULLed at entity
+//     teardown); the interactor retains its focused interactable.
+// Links: misc/plans/thirdpersonupgrade/21-interaction-system.md, ADR 0093.
+//
+//===----------------------------------------------------------------------===//
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_game3d.h"
+#include "rt_game3d_internal.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_object.h"
+#include "rt_physics3d.h"
+#include "rt_scene3d.h"
+#include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct rt_game3d_interactable {
+    void *vptr;
+    void *entity; /* plain backref; NULLed at teardown */
+    rt_string prompt;
+    int64_t kind;
+    double radius;
+    double focus_priority;
+    int8_t enabled;
+} rt_game3d_interactable;
+
+typedef struct rt_game3d_interactor {
+    void *vptr;
+    void *entity; /* owner backref; NULLed at teardown */
+    double cone_degrees;
+    int64_t los_mask;
+    int8_t require_los;
+    void *focused; /* retained Interactable3D or NULL */
+    int8_t focus_changed;
+    int8_t interact_requested;
+    int64_t interact_count;
+    void *last_interacted; /* retained Interactable3D from the last interact */
+} rt_game3d_interactor;
+
+/*==========================================================================
+ * Interactable3D
+ *=========================================================================*/
+
+static void game3d_interactable_finalize(void *obj) {
+    rt_game3d_interactable *item = (rt_game3d_interactable *)obj;
+    if (!item)
+        return;
+    item->entity = NULL;
+    game3d_release_ref((void **)&item->prompt);
+}
+
+void *rt_game3d_interactable_new(void *entity_obj) {
+    rt_game3d_entity *entity =
+        (rt_game3d_entity *)rt_g3d_checked_or_null(entity_obj, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    if (!entity) {
+        rt_trap("Game3D.Interactable3D.New: invalid entity");
+        return NULL;
+    }
+    rt_game3d_interactable *item = (rt_game3d_interactable *)rt_obj_new_i64(
+        RT_G3D_GAME3D_INTERACTABLE_CLASS_ID, (int64_t)sizeof(rt_game3d_interactable));
+    if (!item) {
+        rt_trap("Game3D.Interactable3D.New: allocation failed");
+        return NULL;
+    }
+    memset(item, 0, sizeof(*item));
+    rt_obj_set_finalizer(item, game3d_interactable_finalize);
+    item->entity = entity;
+    item->prompt = rt_string_ref(rt_const_cstr("Use"));
+    item->radius = 2.0;
+    item->enabled = 1;
+    {
+        rt_game3d_interactable *previous = (rt_game3d_interactable *)rt_g3d_checked_or_null(
+            entity->interactable, RT_G3D_GAME3D_INTERACTABLE_CLASS_ID);
+        if (previous && previous != item)
+            previous->entity = NULL;
+        game3d_assign_typed_ref(&entity->interactable, item, RT_G3D_GAME3D_INTERACTABLE_CLASS_ID);
+    }
+    return item;
+}
+
+static rt_game3d_interactable *game3d_interactable_checked(void *obj, const char *method) {
+    rt_game3d_interactable *item =
+        (rt_game3d_interactable *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_INTERACTABLE_CLASS_ID);
+    if (!item)
+        rt_trap(method);
+    return item;
+}
+
+void *rt_game3d_interactable_with_prompt(void *obj, rt_string prompt) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.withPrompt: invalid component");
+    if (item && prompt)
+        game3d_assign_ref((void **)&item->prompt, prompt);
+    return obj;
+}
+
+rt_string rt_game3d_interactable_get_prompt(void *obj) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.get_Prompt: invalid component");
+    if (!item || !item->prompt)
+        return rt_str_empty();
+    return rt_string_ref(item->prompt);
+}
+
+void *rt_game3d_interactable_with_kind(void *obj, int64_t kind) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.withKind: invalid component");
+    if (item)
+        item->kind = kind;
+    return obj;
+}
+
+int64_t rt_game3d_interactable_get_kind(void *obj) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.get_Kind: invalid component");
+    return item ? item->kind : 0;
+}
+
+void *rt_game3d_interactable_with_radius(void *obj, double radius) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.withRadius: invalid component");
+    if (item && isfinite(radius) && radius > 0.0)
+        item->radius = radius > 64.0 ? 64.0 : radius;
+    return obj;
+}
+
+double rt_game3d_interactable_get_radius(void *obj) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.get_Radius: invalid component");
+    return item ? item->radius : 0.0;
+}
+
+void rt_game3d_interactable_set_enabled(void *obj, int8_t enabled) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.set_Enabled: invalid component");
+    if (item)
+        item->enabled = enabled ? 1 : 0;
+}
+
+int8_t rt_game3d_interactable_get_enabled(void *obj) {
+    rt_game3d_interactable *item =
+        game3d_interactable_checked(obj, "Game3D.Interactable3D.get_Enabled: invalid component");
+    return item ? item->enabled : 0;
+}
+
+void rt_game3d_interactable_set_focus_priority(void *obj, double priority) {
+    rt_game3d_interactable *item = game3d_interactable_checked(
+        obj, "Game3D.Interactable3D.set_FocusPriority: invalid component");
+    if (item && isfinite(priority))
+        item->focus_priority = priority;
+}
+
+double rt_game3d_interactable_get_focus_priority(void *obj) {
+    rt_game3d_interactable *item = game3d_interactable_checked(
+        obj, "Game3D.Interactable3D.get_FocusPriority: invalid component");
+    return item ? item->focus_priority : 0.0;
+}
+
+/*==========================================================================
+ * Interactor3D
+ *=========================================================================*/
+
+static void game3d_interactor_finalize(void *obj) {
+    rt_game3d_interactor *scanner = (rt_game3d_interactor *)obj;
+    if (!scanner)
+        return;
+    scanner->entity = NULL;
+    game3d_release_ref(&scanner->focused);
+    game3d_release_ref(&scanner->last_interacted);
+}
+
+void *rt_game3d_interactor_new(void *entity_obj) {
+    rt_game3d_entity *entity =
+        (rt_game3d_entity *)rt_g3d_checked_or_null(entity_obj, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    if (!entity) {
+        rt_trap("Game3D.Interactor3D.New: invalid entity");
+        return NULL;
+    }
+    rt_game3d_interactor *scanner = (rt_game3d_interactor *)rt_obj_new_i64(
+        RT_G3D_GAME3D_INTERACTOR_CLASS_ID, (int64_t)sizeof(rt_game3d_interactor));
+    if (!scanner) {
+        rt_trap("Game3D.Interactor3D.New: allocation failed");
+        return NULL;
+    }
+    memset(scanner, 0, sizeof(*scanner));
+    rt_obj_set_finalizer(scanner, game3d_interactor_finalize);
+    scanner->entity = entity;
+    scanner->cone_degrees = 70.0;
+    scanner->los_mask = -1;
+    scanner->require_los = 1;
+    {
+        rt_game3d_interactor *previous = (rt_game3d_interactor *)rt_g3d_checked_or_null(
+            entity->interactor, RT_G3D_GAME3D_INTERACTOR_CLASS_ID);
+        if (previous && previous != scanner)
+            previous->entity = NULL;
+        game3d_assign_typed_ref(&entity->interactor, scanner, RT_G3D_GAME3D_INTERACTOR_CLASS_ID);
+    }
+    return scanner;
+}
+
+static rt_game3d_interactor *game3d_interactor_checked(void *obj, const char *method) {
+    rt_game3d_interactor *scanner =
+        (rt_game3d_interactor *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_INTERACTOR_CLASS_ID);
+    if (!scanner)
+        rt_trap(method);
+    return scanner;
+}
+
+void rt_game3d_interactor_set_cone_degrees(void *obj, double degrees) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.set_ConeDegrees: invalid scanner");
+    if (scanner && isfinite(degrees) && degrees > 1.0)
+        scanner->cone_degrees = degrees > 180.0 ? 180.0 : degrees;
+}
+
+double rt_game3d_interactor_get_cone_degrees(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.get_ConeDegrees: invalid scanner");
+    return scanner ? scanner->cone_degrees : 0.0;
+}
+
+void rt_game3d_interactor_set_require_los(void *obj, int8_t required) {
+    rt_game3d_interactor *scanner = game3d_interactor_checked(
+        obj, "Game3D.Interactor3D.set_RequireLineOfSight: invalid scanner");
+    if (scanner)
+        scanner->require_los = required ? 1 : 0;
+}
+
+int8_t rt_game3d_interactor_get_require_los(void *obj) {
+    rt_game3d_interactor *scanner = game3d_interactor_checked(
+        obj, "Game3D.Interactor3D.get_RequireLineOfSight: invalid scanner");
+    return scanner ? scanner->require_los : 0;
+}
+
+void rt_game3d_interactor_set_los_mask(void *obj, int64_t mask) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.set_LosMask: invalid scanner");
+    if (scanner)
+        scanner->los_mask = mask;
+}
+
+int64_t rt_game3d_interactor_get_los_mask(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.get_LosMask: invalid scanner");
+    return scanner ? scanner->los_mask : 0;
+}
+
+void *rt_game3d_interactor_get_focused(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.get_Focused: invalid scanner");
+    if (!scanner || !scanner->focused)
+        return NULL;
+    rt_obj_retain_maybe(scanner->focused);
+    return scanner->focused;
+}
+
+/// @brief One-shot: true when the focused target changed since the last call.
+int8_t rt_game3d_interactor_focus_changed(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.FocusChanged: invalid scanner");
+    if (!scanner)
+        return 0;
+    int8_t changed = scanner->focus_changed;
+    scanner->focus_changed = 0;
+    return changed;
+}
+
+/// @brief Request an interaction with the current focus (resolved next tick).
+/// @return 1 when a target is currently focused.
+int8_t rt_game3d_interactor_interact(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.Interact: invalid scanner");
+    if (!scanner || !scanner->focused)
+        return 0;
+    scanner->interact_count++;
+    game3d_assign_ref(&scanner->last_interacted, scanner->focused);
+    return 1;
+}
+
+int64_t rt_game3d_interactor_get_interact_count(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.get_InteractCount: invalid scanner");
+    return scanner ? scanner->interact_count : 0;
+}
+
+void *rt_game3d_interactor_get_last_interacted(void *obj) {
+    rt_game3d_interactor *scanner =
+        game3d_interactor_checked(obj, "Game3D.Interactor3D.get_LastInteracted: invalid scanner");
+    if (!scanner || !scanner->last_interacted)
+        return NULL;
+    rt_obj_retain_maybe(scanner->last_interacted);
+    return scanner->last_interacted;
+}
+
+/// @brief Owner-forward vector: the entity node's world rotation applied to -Z.
+static void game3d_interactor_forward(rt_game3d_entity *entity, double out_fwd[3]) {
+    out_fwd[0] = 0.0;
+    out_fwd[1] = 0.0;
+    out_fwd[2] = -1.0;
+    if (!entity || !entity->node)
+        return;
+    double qx, qy, qz, qw;
+    if (!rt_scene_node3d_get_world_rotation_components(entity->node, &qx, &qy, &qz, &qw))
+        return;
+    /* Rotate (0,0,-1) by the quaternion. */
+    double x = 0.0, y = 0.0, z = -1.0;
+    double tx = 2.0 * (qy * z - qz * y);
+    double ty = 2.0 * (qz * x - qx * z);
+    double tz = 2.0 * (qx * y - qy * x);
+    out_fwd[0] = x + qw * tx + (qy * tz - qz * ty);
+    out_fwd[1] = y + qw * ty + (qz * tx - qx * tz);
+    out_fwd[2] = z + qw * tz + (qx * ty - qy * tx);
+    double len = sqrt(out_fwd[0] * out_fwd[0] + out_fwd[1] * out_fwd[1] + out_fwd[2] * out_fwd[2]);
+    if (isfinite(len) && len > 1e-9) {
+        out_fwd[0] /= len;
+        out_fwd[1] /= len;
+        out_fwd[2] /= len;
+    }
+}
+
+/// @brief Per-step scan: pick the best focused interactable (hysteresis-stable).
+void game3d_interactor_tick(rt_game3d_world *world, rt_game3d_entity *owner, double dt) {
+    (void)dt;
+    rt_game3d_interactor *scanner = (rt_game3d_interactor *)rt_g3d_checked_or_null(
+        owner->interactor, RT_G3D_GAME3D_INTERACTOR_CLASS_ID);
+    if (!scanner)
+        return;
+    double origin[3];
+    if (!game3d_entity_world_position_components(owner, origin))
+        return;
+    double forward[3];
+    game3d_interactor_forward(owner, forward);
+    double cone_cos = cos(scanner->cone_degrees * 0.5 * (3.14159265358979323846 / 180.0));
+
+    void *best = NULL;
+    double best_score = -1e30;
+    int32_t count = world->entity_count;
+    if (count < 0 || count > world->entity_capacity)
+        count = world->entity_capacity > 0 ? world->entity_capacity : 0;
+    for (int32_t i = 0; i < count; ++i) {
+        rt_game3d_entity *candidate = world->entities ? world->entities[i] : NULL;
+        if (!candidate || !candidate->alive || candidate == owner || !candidate->interactable)
+            continue;
+        rt_game3d_interactable *item = (rt_game3d_interactable *)rt_g3d_checked_or_null(
+            candidate->interactable, RT_G3D_GAME3D_INTERACTABLE_CLASS_ID);
+        if (!item || !item->enabled)
+            continue;
+        double target[3];
+        if (!game3d_entity_world_position_components(candidate, target))
+            continue;
+        double to[3] = {target[0] - origin[0], target[1] - origin[1], target[2] - origin[2]};
+        double dist = sqrt(to[0] * to[0] + to[1] * to[1] + to[2] * to[2]);
+        if (!isfinite(dist) || dist > item->radius)
+            continue;
+        double align = 1.0;
+        if (dist > 1e-6) {
+            align = (to[0] * forward[0] + to[1] * forward[1] + to[2] * forward[2]) / dist;
+            if (align < cone_cos)
+                continue;
+        }
+        if (scanner->require_los && world->physics && dist > 1e-3) {
+            void *o = rt_vec3_new(origin[0], origin[1], origin[2]);
+            void *d = rt_vec3_new(to[0] / dist, to[1] / dist, to[2] / dist);
+            int blocked = 0;
+            if (o && d) {
+                void *hit =
+                    rt_world3d_raycast(world->physics, o, d, dist - 0.05, scanner->los_mask);
+                if (hit) {
+                    /* A hit on any body other than the target's blocks focus. */
+                    void *hit_body = rt_physics_hit3d_get_body(hit);
+                    blocked = hit_body != candidate->body;
+                    game3d_release_ref(&hit_body);
+                    game3d_release_ref(&hit);
+                }
+            }
+            game3d_release_ref(&o);
+            game3d_release_ref(&d);
+            if (blocked)
+                continue;
+        }
+        double score = (1.0 - dist / item->radius) +
+                       0.5 * ((align - cone_cos) / (1.0 - cone_cos + 1e-9)) + item->focus_priority;
+        if ((void *)item == scanner->focused)
+            score *= 1.10; /* hysteresis: the current focus wins ties */
+        if (score > best_score) {
+            best_score = score;
+            best = item;
+        }
+    }
+    if (best != scanner->focused) {
+        game3d_assign_ref(&scanner->focused, best);
+        scanner->focus_changed = 1;
+    }
+}
+
+#else
+typedef int rt_game3d_interact_disabled_tu_guard;
+#endif /* VIPER_ENABLE_GRAPHICS */

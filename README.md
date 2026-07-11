@@ -301,7 +301,6 @@ Useful iteration knobs:
 | `VIPER_SKIP_CLEAN=1` | Incremental rebuild |
 | `VIPER_SKIP_TESTS=1` | Build only |
 | `VIPER_TEST_LABEL=<label>` | Run one CTest label |
-| `VIPER_CMAKE_GENERATOR=Ninja` | Select Ninja |
 
 Targeted checks after a build:
 

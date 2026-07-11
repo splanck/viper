@@ -377,6 +377,50 @@ func start() {
     }
     Game3D.Assets3D.SetUploadBudget(-1);
 
+    // --- WorldStream3D async staging: a quadrant teleport must not load inline ---
+    var streamWorld = Game3D.World3D.New("Hitch Stream Probe", 64, 48);
+    var stream = streamWorld.Stream;
+    stream.SetAsyncStreaming(false);
+    stream.SetCenter(Vec3.New(-1100.0, 0.0, -1100.0));
+    stream.SetRadii(360.0, 520.0);
+    stream.MountCells("assets/world/cells.vscn");
+    stream.MountTiledTerrain("assets/world/terrain.vscn");
+    stream.Update(1.0 / 60.0);
+    if (stream.ResidentCellCount != 1) {
+        fail("blocking stream did not load the quadrant cell in a single update");
+        return;
+    }
+
+    // Teleport with async on: the very next update stages off-thread instead of
+    // paying file IO + parse + spawn inline, so the new quadrant cannot be resident
+    // yet and the request shows as pending.
+    stream.SetAsyncStreaming(true);
+    stream.SetCenter(Vec3.New(1100.0, 0.0, 1100.0));
+    stream.Update(1.0 / 60.0);
+    if (stream.GetCellResident(3)) {
+        fail("async teleport update loaded the far cell inline");
+        return;
+    }
+    if (stream.PendingRequestCount == 0) {
+        fail("async teleport update reported no pending stream work");
+        return;
+    }
+    var streamSpins = 0;
+    while (stream.PendingRequestCount > 0 && streamSpins < 2000) {
+        stream.Update(1.0 / 60.0);
+        if (streamSpins % 8 == 0) { Clock.Sleep(1); }
+        streamSpins = streamSpins + 1;
+    }
+    if (stream.GetCellResident(3) == false || stream.ResidentCellCount != 1) {
+        fail("async stream did not converge to the blocking resident set");
+        return;
+    }
+    if (stream.StreamStallMs < 0.0) {
+        fail("stream stall telemetry is negative");
+        return;
+    }
+    streamWorld.Destroy();
+
     Terminal.Say("HITCH: blocking_us=" + Fmt.Int(blockingUs) +
                  " async_create_us=" + Fmt.Int(asyncCreateUs) +
                  " first_observe_us=" + Fmt.Int(firstObserveUs) +

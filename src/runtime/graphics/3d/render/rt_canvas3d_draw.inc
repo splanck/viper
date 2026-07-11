@@ -1322,6 +1322,31 @@ static void canvas3d_begin_camera_pass(void *obj,
     params.height_fog_falloff = c->height_fog_falloff;
     params.height_fog_density = c->height_fog_density;
     params.height_fog_blend = c->height_fog_blend;
+    params.height_fog_sun_color[0] = c->height_fog_sun_color[0];
+    params.height_fog_sun_color[1] = c->height_fog_sun_color[1];
+    params.height_fog_sun_color[2] = c->height_fog_sun_color[2];
+    params.height_fog_sun_power = c->height_fog_sun_power;
+    params.height_fog_sun_amount = 0.0f;
+    if (c->height_fog_enabled && c->height_fog_sun_amount > 0.0f) {
+        /* Sun inscattering follows the first enabled directional light; without
+         * one the term stays off for this frame. Direction points TOWARD the sun. */
+        for (int li = 0; li < VGFX3D_MAX_LIGHTS; ++li) {
+            rt_light3d *sun = c->lights[li];
+            if (!sun || !sun->enabled || sun->type != 0)
+                continue;
+            double dx = -sun->direction[0];
+            double dy = -sun->direction[1];
+            double dz = -sun->direction[2];
+            double len = sqrt(dx * dx + dy * dy + dz * dz);
+            if (isfinite(len) && len > 1e-9) {
+                params.height_fog_sun_dir[0] = (float)(dx / len);
+                params.height_fog_sun_dir[1] = (float)(dy / len);
+                params.height_fog_sun_dir[2] = (float)(dz / len);
+                params.height_fog_sun_amount = c->height_fog_sun_amount;
+            }
+            break;
+        }
+    }
     params.load_existing_color = view_model_pass ? 1 : 0;
     params.load_existing_depth = 0;
     if (c->ibl_enabled && c->skybox && !c->skybox->ibl_ready)
@@ -1373,6 +1398,8 @@ static void canvas3d_begin_camera_pass(void *obj,
     c->last_instanced_fallback_count = 0;
     c->last_instanced_fallback_dropped_count = 0;
     c->last_draw_count = 0;
+    memset(c->last_pass_draw_count, 0, sizeof(c->last_pass_draw_count));
+    memset(c->last_pass_instance_count, 0, sizeof(c->last_pass_instance_count));
     c->last_occluded_draw_count = 0;
     c->last_frustum_culled_draw_count = 0;
     c->last_cpu_occluded_draw_count = 0;

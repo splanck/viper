@@ -62,6 +62,7 @@ struct StubMaterial {
     void *emissive_map = nullptr;
     void *metallic_roughness_map = nullptr;
     void *ao_map = nullptr;
+    void *lightmap = nullptr;
     double emissive[3] = {0.0, 0.0, 0.0};
     double metallic = 0.0;
     double roughness = 0.0;

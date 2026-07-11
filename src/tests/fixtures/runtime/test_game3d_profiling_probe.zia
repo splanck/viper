@@ -1,0 +1,116 @@
+module test_game3d_profiling_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func makeBoxMesh() -> Mesh3D {
+    var mesh = Mesh3D.New();
+    mesh.AddVertex(-0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    mesh.AddVertex(0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    mesh.AddVertex(0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+    mesh.AddTriangle(0, 1, 2);
+    return mesh;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Profiling Probe", 160, 120);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    // Pass id constants are stable and distinct.
+    if (Game3D.RenderPass.Shadow != 0 || Game3D.RenderPass.Opaque != 1) {
+        Terminal.Say("FAIL: RenderPass constants must be stable");
+        return;
+    }
+    if (Game3D.RenderPass.Transparent != 2 || Game3D.RenderPass.Overlay != 4) {
+        Terminal.Say("FAIL: RenderPass constants must be stable");
+        return;
+    }
+    if (Game3D.HitchSource.StreamCommit != 0 || Game3D.HitchSource.FrameTotal != 3) {
+        Terminal.Say("FAIL: HitchSource constants must be stable");
+        return;
+    }
+
+    // Scene: 3 opaque triangles + 1 blended one.
+    var opaqueMat = Material3D.New();
+    var depth = -2.0;
+    var i = 0;
+    while (i < 3) {
+        var node = SceneNode.New();
+        node.Mesh = makeBoxMesh();
+        node.Material = opaqueMat;
+        node.SetPosition(0.0, 0.0, depth);
+        world.Scene.Add(node);
+        depth = depth - 1.0;
+        i = i + 1;
+    }
+    var blendMat = Material3D.New();
+    blendMat.AlphaMode = Game3D.AlphaMode.Blend;
+    blendMat.Alpha = 0.5;
+    var blendNode = SceneNode.New();
+    blendNode.Mesh = makeBoxMesh();
+    blendNode.Material = blendMat;
+    blendNode.SetPosition(0.0, 0.0, -1.5);
+    world.Scene.Add(blendNode);
+
+    world.StepSimulation(1.0 / 60.0);
+    world.BeginFrame();
+    world.DrawScene();
+    world.EndScene();
+    var canvas = world.Canvas;
+    var opaqueDraws = canvas.PassDrawCount(Game3D.RenderPass.Opaque);
+    var transDraws = canvas.PassDrawCount(Game3D.RenderPass.Transparent);
+    if (opaqueDraws < 3) {
+        Terminal.Say("FAIL: three opaque draws should attribute to the opaque pass");
+        return;
+    }
+    if (transDraws < 1) {
+        Terminal.Say("FAIL: the blended draw should attribute to the transparent pass");
+        return;
+    }
+    if (canvas.PassInstanceCount(Game3D.RenderPass.Opaque) < opaqueDraws) {
+        Terminal.Say("FAIL: instance tallies cover at least one instance per draw");
+        return;
+    }
+    if (canvas.PassDrawCount(99) != 0 || canvas.PassDrawCount(-1) != 0) {
+        Terminal.Say("FAIL: out-of-range pass ids must read 0");
+        return;
+    }
+
+    // Hitch tracer: threshold 0 logs a FrameTotal entry every step.
+    if (world.HitchCount() != 0) {
+        Terminal.Say("FAIL: the hitch ring starts empty");
+        return;
+    }
+    world.SetHitchThresholdMs(0.0);
+    world.StepSimulation(1.0 / 60.0);
+    world.StepSimulation(1.0 / 60.0);
+    var hitches = world.HitchCount();
+    if (hitches < 2) {
+        Terminal.Say("FAIL: a zero threshold should log every stepped frame");
+        return;
+    }
+    if (world.HitchSource(hitches - 1) != Game3D.HitchSource.FrameTotal) {
+        Terminal.Say("FAIL: unattributed slow frames log as FrameTotal");
+        return;
+    }
+    if (world.HitchFrame(hitches - 1) < world.HitchFrame(0)) {
+        Terminal.Say("FAIL: hitch entries stay in chronological order");
+        return;
+    }
+    if (world.HitchMs(hitches - 1) < 0.0) {
+        Terminal.Say("FAIL: hitch milliseconds are non-negative");
+        return;
+    }
+    world.ClearHitches();
+    if (world.HitchCount() != 0) {
+        Terminal.Say("FAIL: ClearHitches should empty the ring");
+        return;
+    }
+    // Back to the default threshold: normal probe steps stay quiet.
+    world.SetHitchThresholdMs(25.0);
+    world.StepSimulation(1.0 / 60.0);
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

@@ -88,6 +88,21 @@ double rt_collider3d_get_radius_raw(void *collider);
 void rt_collider3d_reset_sphere_raw(void *collider, double radius);
 /// @brief Capsule collider: total height including caps.
 double rt_collider3d_get_height_raw(void *collider);
+/// @brief Reset an existing capsule collider's radius/height and cached bounds
+///        (crouch/stand resizes and internal query reuse). Height floors to 2*radius.
+void rt_collider3d_reset_capsule_raw(void *collider, double radius, double height);
+/// @brief Overlap two colliders at explicit poses (position + quaternion) through
+///        the standard narrow-phase; writes normal/depth/witness point on hit.
+///        Combat-volume primitive — no bodies are registered in any world.
+int8_t rt_collider3d_overlap_at_raw(void *collider_a,
+                                    const double *pos_a,
+                                    const double *quat_a,
+                                    void *collider_b,
+                                    const double *pos_b,
+                                    const double *quat_b,
+                                    double *out_normal,
+                                    double *out_depth,
+                                    double *out_point);
 /// @brief Mesh collider: the backing triangle-mesh handle (NULL if not a mesh).
 void *rt_collider3d_get_mesh_raw(void *collider);
 /// @brief Compound collider: number of child colliders.
@@ -100,6 +115,23 @@ void rt_collider3d_get_child_transform_raw(
     void *compound, int64_t index, double *position_out, double *rotation_out, double *scale_out);
 /// @brief Heightfield collider: sample the height and surface normal at
 ///        local (local_x, local_z). @return non-zero if the sample is in range.
+/// @brief Per-collider friction override (-1 = unset: body friction applies).
+void rt_collider3d_set_friction(void *collider, double friction);
+double rt_collider3d_get_friction(void *collider);
+/// @brief Per-collider restitution override (-1 = unset: body value applies).
+void rt_collider3d_set_restitution(void *collider, double restitution);
+double rt_collider3d_get_restitution(void *collider);
+/// @brief Surface-type tag (Game3D.Surfaces registry id; 0 = untyped).
+void rt_collider3d_set_surface_type(void *collider, int64_t surface_type);
+int64_t rt_collider3d_get_surface_type(void *collider);
+/// @brief Internal: effective per-side contact material resolution.
+double rt_collider3d_effective_friction_raw(void *collider, double body_friction);
+double rt_collider3d_effective_restitution_raw(void *collider, double body_restitution);
+/// @brief Install (or clear) a heightfield hole bitmask (bit per cell); 1 on success.
+int8_t rt_collider3d_heightfield_set_holes_raw(void *collider,
+                                               const uint8_t *mask,
+                                               int32_t cells_x,
+                                               int32_t cells_z);
 int8_t rt_collider3d_sample_heightfield_raw(
     void *collider, double local_x, double local_z, double *height_out, double *normal_out);
 /// @brief Heightfield collider: expose grid dimensions and local cell scale to physics queries.

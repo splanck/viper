@@ -36,6 +36,8 @@ typedef struct {
     int64_t nav_grid_fallbacks;
     int64_t stale_entity_calls;
     int64_t stale_async_loads_dropped;
+    int64_t stream_staging_errors;
+    int64_t stream_stale_stages_dropped;
 } rt_game3d_diagnostics_state;
 
 static rt_game3d_diagnostics_state g_game3d_diagnostics;
@@ -106,6 +108,14 @@ int64_t rt_game3d_diagnostics_get_stale_async_loads_dropped(void) {
     return diag_nonnegative(g_game3d_diagnostics.stale_async_loads_dropped);
 }
 
+int64_t rt_game3d_diagnostics_get_stream_staging_errors(void) {
+    return diag_nonnegative(g_game3d_diagnostics.stream_staging_errors);
+}
+
+int64_t rt_game3d_diagnostics_get_stream_stale_stages_dropped(void) {
+    return diag_nonnegative(g_game3d_diagnostics.stream_stale_stages_dropped);
+}
+
 void rt_game3d_diagnostics_reset(void) {
     memset(&g_game3d_diagnostics, 0, sizeof(g_game3d_diagnostics));
     rt_audio_diagnostics_reset_spatial_voice_evictions();
@@ -155,6 +165,16 @@ rt_string rt_game3d_diagnostics_summary(void) {
                      &offset,
                      "StaleAsyncLoadsDropped",
                      g_game3d_diagnostics.stale_async_loads_dropped);
+    diag_append_line(buffer,
+                     sizeof(buffer),
+                     &offset,
+                     "StreamStagingErrors",
+                     g_game3d_diagnostics.stream_staging_errors);
+    diag_append_line(buffer,
+                     sizeof(buffer),
+                     &offset,
+                     "StreamStaleStagesDropped",
+                     g_game3d_diagnostics.stream_stale_stages_dropped);
     if (offset == 0)
         return rt_str_empty();
     return rt_string_from_bytes(buffer, offset);
@@ -187,4 +207,12 @@ void rt_game3d_diag_record_stale_entity_call(void) {
 
 void rt_game3d_diag_record_stale_async_load_dropped(void) {
     diag_increment(&g_game3d_diagnostics.stale_async_loads_dropped, 1);
+}
+
+void rt_game3d_diag_record_stream_staging_error(void) {
+    diag_increment(&g_game3d_diagnostics.stream_staging_errors, 1);
+}
+
+void rt_game3d_diag_record_stream_stale_stage_dropped(void) {
+    diag_increment(&g_game3d_diagnostics.stream_stale_stages_dropped, 1);
 }

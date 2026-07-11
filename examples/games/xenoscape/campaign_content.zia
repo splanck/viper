@@ -29,8 +29,8 @@ final CAMPAIGN_ROOM_TARGET = 8;
 /// @param region Zero-based stable campaign region id.
 /// @return One `ABILITY_*` flag, or `ABILITY_NONE` when no ability is awarded.
 func regionAbilityReward(region: Integer) -> Integer {
-    if region == 1 { return ABILITY_DOUBLE_JUMP; }
-    if region == 2 { return ABILITY_DASH; }
+    if region == 1 { return ABILITY_DASH; }
+    if region == 2 { return ABILITY_CHARGE_SHOT; }
     if region == 4 { return ABILITY_CHARGE_SHOT; }
     if region == 5 { return ABILITY_GROUND_POUND; }
     if region == 6 { return ABILITY_GRAPPLE; }
@@ -96,15 +96,15 @@ func regionMasteryName(region: Integer) -> String {
 /// @param region Zero-based stable campaign region id.
 /// @return Authored climax name, or `Unknown Climax` for invalid ids.
 func regionClimaxName(region: Integer) -> String {
-    if region == 0 { return "Beacon Defense"; }
+    if region == 0 { return "Beacon Warden"; }
     if region == 1 { return "Spore Mother"; }
     if region == 2 { return "Crystal Wyrm"; }
-    if region == 3 { return "Relay Crown Siege"; }
-    if region == 4 { return "Leviathan Cut Ambush"; }
+    if region == 3 { return "Relay Custodian"; }
+    if region == 4 { return "Tide Leviathan"; }
     if region == 5 { return "Magma Core"; }
-    if region == 6 { return "Last Garden Pursuit"; }
-    if region == 7 { return "Archive Lockdown"; }
-    if region == 8 { return "Corruption Seal Assault"; }
+    if region == 6 { return "Verdant Colossus"; }
+    if region == 7 { return "Cryo Custodian"; }
+    if region == 8 { return "Null Harvester"; }
     if region == 9 { return "The Architect"; }
     return "Unknown Climax";
 }

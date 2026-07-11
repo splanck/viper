@@ -140,6 +140,7 @@ typedef struct {
     double height;
     void *mesh;
     float *heightfield_heights;
+    uint8_t *heightfield_holes;
     int32_t heightfield_width;
     int32_t heightfield_depth;
     double heightfield_scale[3];

@@ -296,6 +296,13 @@ func runSliceReplay() -> Float {
         game.destroy();
         return fail("frame was not finalized");
     }
+    // Software is the CPU-skinned reference: the gpu-skinning capability must be
+    // false and no skinned draw may route through the GPU palette path.
+    if (Canvas3D.BackendSupports(game.getCanvas(), "gpu-skinning") ||
+        game.getCanvas().GpuSkinnedDrawCount != 0) {
+        game.destroy();
+        return fail("software backend routed skinned draws to the GPU path");
+    }
     if (game.getCharacter().Grounded() == false) {
         game.destroy();
         return fail("character did not remain grounded");

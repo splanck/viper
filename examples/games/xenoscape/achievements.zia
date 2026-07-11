@@ -413,6 +413,10 @@ class AchievementSystem {
         tracker.Draw(canvas);
     }
 
+    /// @brief Report whether the runtime tracker currently owns a toast.
+    /// @return True while an unlocked-achievement notification is active.
+    expose func hasNotification() -> Boolean { return tracker.HasNotification; }
+
     // Draw full achievements screen
     /// @brief Draw the full achievements page (pause-menu
     ///        tab).  Grid of icons grouped by category;

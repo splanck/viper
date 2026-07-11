@@ -259,6 +259,7 @@ final INTERACTION_SAVE_STATION = 4;
 final INTERACTION_ABILITY_SHRINE = 5;
 final INTERACTION_TELEPORTER = 6;
 final INTERACTION_LORE_TERMINAL = 7;
+final INTERACTION_REGION_GATE = 8;
 final INTERACTION_RADIUS = TILE_SIZE + TILE_SIZE / 2;
 
 // =============================================================================
@@ -269,7 +270,9 @@ enum EnemyType {
     Mycelium, SporeMother, CrystalGolem, ShardBat, ResonanceOrb, MirrorSlime,
     CrystalWyrm, MagmaSlug, EmberWasp, ForgeSentinel, PistonTrap, MagmaCore,
     IceWraith, FrostBeetle, StalactiteBat, VineWhip, MossGolem, RuinGuardian,
-    ShadowClone, Corruption, Architect, PatrolDrone, BombCarrier
+    ShadowClone, Corruption, Architect, PatrolDrone, BombCarrier,
+    BeaconWarden, RelayCustodian, TideLeviathan, VerdantColossus,
+    CryoCustodian, NullHarvester
 }
 final ENEMY_SLIME = EnemyType.Slime;
 final ENEMY_BAT = EnemyType.Bat;
@@ -301,6 +304,21 @@ final BOSS_HP = 20;
 final BOSS_W = 112;
 final BOSS_H = 112;
 final BOSS_SPEED = 300;       // x100
+
+// Regional climax bosses use the shared production boss controller with
+// distinct health, silhouette, speed, score, and elemental feedback.
+final ENEMY_BEACON_WARDEN = EnemyType.BeaconWarden;
+final ENEMY_RELAY_CUSTODIAN = EnemyType.RelayCustodian;
+final ENEMY_TIDE_LEVIATHAN = EnemyType.TideLeviathan;
+final ENEMY_VERDANT_COLOSSUS = EnemyType.VerdantColossus;
+final ENEMY_CRYO_CUSTODIAN = EnemyType.CryoCustodian;
+final ENEMY_NULL_HARVESTER = EnemyType.NullHarvester;
+final BEACON_WARDEN_HP = 24;
+final RELAY_CUSTODIAN_HP = 28;
+final TIDE_LEVIATHAN_HP = 32;
+final VERDANT_COLOSSUS_HP = 36;
+final CRYO_CUSTODIAN_HP = 34;
+final NULL_HARVESTER_HP = 44;
 
 // Maintenance drone (Level 2 bat-equivalent)
 final DRONE_HP = 1;
@@ -544,6 +562,7 @@ final PAD_BTN_A = 0;
 final PAD_BTN_B = 1;
 final PAD_BTN_X = 2;
 final PAD_BTN_Y = 3;
+final PAD_BTN_LB = 4;
 final PAD_BTN_RB = 5;
 final PAD_BTN_SELECT = 6;
 final PAD_BTN_START = 7;
@@ -594,6 +613,7 @@ final MENU_LEVELSELECT = MENU_LOAD_GAME; // legacy alias for older call sites
 final MENU_ACTION_WORLD_MAP = -20;
 final MENU_ACTION_SAVE = -21;
 final MENU_ACTION_CONTINUE = -22;
+final MENU_ACTION_RECOVER = -23;
 final MENU_ACTION_LOAD_SLOT0 = -40;
 final MENU_ACTION_LOAD_SLOT1 = -41;
 final MENU_ACTION_LOAD_SLOT2 = -42;

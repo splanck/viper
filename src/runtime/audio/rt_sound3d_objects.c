@@ -36,6 +36,7 @@
 #include "rt_canvas3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
+#include "rt_mixgroup.h"
 #include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_sound3d.h"
@@ -92,8 +93,9 @@ typedef struct rt_soundsource3d {
     int64_t volume;
     int64_t voice_id;
     int8_t looping;
-    double pitch;     ///< User playback-rate multiplier (composes with Doppler).
-    double occlusion; ///< Occlusion amount 0..1 (game-driven, mixer-smoothed).
+    double pitch;      ///< User playback-rate multiplier (composes with Doppler).
+    double occlusion;  ///< Occlusion amount 0..1 (game-driven, mixer-smoothed).
+    int64_t mix_group; ///< Mix group for the underlying voice (default SFX).
     struct rt_soundsource3d *prev;
     struct rt_soundsource3d *next;
 } rt_soundsource3d;
@@ -962,6 +964,7 @@ void *rt_soundsource3d_new(void *sound) {
     source->doppler_factor = 1.0;
     source->pitch = 1.0;
     source->occlusion = 0.0;
+    source->mix_group = RT_MIXGROUP_SFX;
     source->ref_distance = 1.0;
     source->max_distance = 50.0;
     source->volume = 100;
@@ -1194,8 +1197,10 @@ int64_t rt_soundsource3d_play(void *obj) {
     if (source->voice_id > 0)
         rt_voice_stop(source->voice_id);
     source->voice_id = source->looping
-                           ? rt_sound_play_loop(source->sound, spatial_volume, spatial_pan)
-                           : rt_sound_play_ex(source->sound, spatial_volume, spatial_pan);
+                           ? rt_sound_play_loop_in_group(
+                                 source->sound, spatial_volume, spatial_pan, source->mix_group)
+                           : rt_sound_play_ex_in_group(
+                                 source->sound, spatial_volume, spatial_pan, source->mix_group);
     if (source->voice_id <= 0)
         source->voice_id = 0;
     else
@@ -1238,6 +1243,22 @@ void rt_soundsource3d_clear_node_binding(void *obj) {
     if (!source)
         return;
     sound3d_release_class_ref(&source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
+}
+
+/// @brief Route the source's future playback voices to a mix group.
+/// @details Applies from the next play; a live voice keeps its group. Invalid
+///   group ids fall back to the SFX group.
+void rt_soundsource3d_set_mix_group(void *obj, int64_t group) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    if (!source)
+        return;
+    source->mix_group = (group >= 0 && group < RT_MIXGROUP_MAX_GROUPS) ? group : RT_MIXGROUP_SFX;
+}
+
+/// @brief Mix group future playback voices route to.
+int64_t rt_soundsource3d_get_mix_group(void *obj) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    return source ? source->mix_group : RT_MIXGROUP_SFX;
 }
 
 #else

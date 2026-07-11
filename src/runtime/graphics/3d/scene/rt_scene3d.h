@@ -78,6 +78,9 @@ int64_t rt_scene3d_save(void *scene, rt_string path);
 /// @brief Deserialize a scene from a `.vscn` (JSON) file. NULL on failure.
 ///   (glTF/FBX scenes load through Viper.Graphics3D.GLTF.Load / FBX.Load.)
 void *rt_scene3d_load(rt_string path);
+/// @brief Deserialize a scene from already-read `.vscn` JSON text (internal streaming path).
+///   @p path is diagnostics-only; the caller keeps ownership of @p text. NULL on failure.
+void *rt_scene3d_load_from_memory(rt_string path, const char *text, size_t len);
 /// @brief Push physics body, animator root-motion, and other bindings into node transforms.
 /// Call once per frame after physics step but before draw.
 void rt_scene3d_sync_bindings(void *scene, double dt);
@@ -254,7 +257,15 @@ void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
 /// @brief Enable screen-size-driven selection across authored LOD meshes.
 void rt_scene_node3d_set_auto_lod(void *node, int8_t enabled, double screen_error_px);
 /// @brief Bind a generated textured impostor proxy used at or beyond @p distance.
+/// @brief Mark a node as static bake input (lightmaps/probes/reflection captures).
+void rt_scene_node3d_set_static(void *node, int8_t is_static);
+/// @brief True when the node is flagged static for baking.
+int8_t rt_scene_node3d_get_static(void *node);
 void rt_scene_node3d_set_impostor(void *node, double distance, void *pixels);
+/// @brief Bind a yaw-selected multi-frame impostor from an N-frame horizontal strip.
+void rt_scene_node3d_set_impostor_frames(void *node, double distance, void *pixels, int64_t frames);
+/// @brief Last impostor frame index selected by the draw path (0 for single-frame).
+int64_t rt_scene_node3d_get_impostor_frame_index(void *node);
 /// @brief Remove all LOD entries (revert to the base mesh at all distances).
 void rt_scene_node3d_clear_lod(void *node);
 /// @brief Number of LOD entries registered on this node.

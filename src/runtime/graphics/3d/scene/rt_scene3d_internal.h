@@ -222,12 +222,16 @@ typedef struct rt_scene_node3d {
     void **variant_materials;
     int32_t variant_material_count;
 
+    int8_t is_static; /* bake hint: node participates in lightmap/probe bakes */
     int8_t has_impostor;
     int8_t impostor_selected;
     double impostor_distance;
     void *impostor_pixels;
     void *impostor_mesh;
     void *impostor_material;
+    int32_t impostor_frame_count; /* >1 = yaw-selected multi-frame impostor strip */
+    int32_t impostor_frame_index; /* last frame selected by the draw path */
+    void **impostor_frame_meshes; /* per-frame UV-windowed quads (retained), or NULL */
     /* Allocation generation: draw submission salts the node's motion-history key with
      * this so a destroyed node's same-address successor never inherits its previous
      * transform (which would flash a bogus motion vector on its first frame). */

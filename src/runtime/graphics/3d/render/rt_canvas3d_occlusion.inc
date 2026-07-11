@@ -316,6 +316,15 @@ static int canvas3d_enqueue_final_overlay_draw(rt_canvas3d *c,
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) {
     if (!c || !dd)
         return;
+    {
+        /* Plan 30 pass attribution: 1 = Opaque, 2 = Transparent, 4 = Overlay. */
+        int pass = dd->pass_kind != DEFERRED_PASS_MAIN ? 4 : (dd->requires_blend ? 2 : 1);
+        int64_t instances = dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_count > 0
+                                ? dd->instance_count
+                                : 1;
+        c->last_pass_draw_count[pass] += 1;
+        c->last_pass_instance_count[pass] += instances;
+    }
     if (dd->kind == DEFERRED_DRAW_INSTANCED) {
         if (c->backend->submit_draw_instanced && dd->instance_count > 0) {
             canvas3d_note_backend_submission(c,
@@ -365,6 +374,9 @@ static void canvas3d_shadow_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
 
     if (!c || !dd || !c->backend || !c->backend->shadow_draw)
         return;
+    c->last_pass_draw_count[0] += 1; /* Plan 30: Shadow pass tally. */
+    c->last_pass_instance_count[0] +=
+        dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_count > 0 ? dd->instance_count : 1;
     if (dd->kind == DEFERRED_DRAW_INSTANCED) {
         canvas3d_submit_instanced_as_meshes(c, dd, 1);
         return;

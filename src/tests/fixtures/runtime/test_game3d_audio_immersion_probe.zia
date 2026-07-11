@@ -1,0 +1,138 @@
+module test_game3d_audio_immersion_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Sound as Sound;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("Audio Immersion Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+    var audio = world.Audio;
+
+    // Listener parked at the origin under explicit control.
+    audio.SetListenerPose(Math.Vec3.New(0.0, 1.0, 0.0),
+                          Math.Vec3.New(0.0, 0.0, -1.0),
+                          Math.Vec3.New(0.0, 1.0, 0.0));
+
+    // Cave reverb zone off to the +X side.
+    var cave = Game3D.ReverbZone3D.New(Math.Vec3.New(10.0, -5.0, -5.0),
+                                       Math.Vec3.New(20.0, 5.0, 5.0))
+                   .WithReverb(0.8, 0.3, 0.6);
+    audio.AddReverbZone(cave);
+    audio.SetReverbBlendSeconds(0.5);
+
+    world.StepSimulation(1.0 / 60.0);
+    if (audio.ReverbWet > 0.001) {
+        Terminal.Say("FAIL: outside the zone the wet mix must stay dry");
+        return;
+    }
+
+    // Walk into the cave: wet ramps up over the blend window.
+    audio.SetListenerPose(Math.Vec3.New(15.0, 1.0, 0.0),
+                          Math.Vec3.New(0.0, 0.0, -1.0),
+                          Math.Vec3.New(0.0, 1.0, 0.0));
+    var tick = 0;
+    var lastWet = 0.0;
+    var monotonic = true;
+    while (tick < 20) {
+        world.StepSimulation(1.0 / 60.0);
+        var wet = audio.ReverbWet;
+        if (wet < lastWet - 0.0001) {
+            monotonic = false;
+        }
+        lastWet = wet;
+        tick = tick + 1;
+    }
+    if (monotonic == false) {
+        Terminal.Say("FAIL: entering a zone must ramp the wet mix monotonically");
+        return;
+    }
+    if (lastWet < 0.3) {
+        Terminal.Say("FAIL: 20 ticks over a 0.5 s blend should be near the zone wet");
+        return;
+    }
+
+    // Walk back out: wet eases back toward dry.
+    audio.SetListenerPose(Math.Vec3.New(0.0, 1.0, 0.0),
+                          Math.Vec3.New(0.0, 0.0, -1.0),
+                          Math.Vec3.New(0.0, 1.0, 0.0));
+    tick = 0;
+    while (tick < 45) {
+        world.StepSimulation(1.0 / 60.0);
+        tick = tick + 1;
+    }
+    if (audio.ReverbWet > 0.05) {
+        Terminal.Say("FAIL: leaving the zone must ease the wet mix back to dry");
+        return;
+    }
+
+    // Occlusion: a source behind a wall gets the occlusion amount applied.
+    var clip = Sound.Synth.Tone(440, 200, 40);
+    if (clip == null) {
+        Terminal.Say("FAIL: Synth.Tone should produce a clip");
+        return;
+    }
+    var wallEnt = Game3D.Entity3D.New();
+    wallEnt.SetPosition(0.0, 1.0, -4.0);
+    world.Spawn(wallEnt);
+    var wallShape = Collider3D.NewBox(6.0, 6.0, 0.5);
+    var wallBody = Physics3DBody.New(0.0);
+    wallBody.Static = true;
+    wallBody.Collider = wallShape;
+    wallEnt.AttachBody(wallBody);
+
+    var source = audio.PlayAt(clip, Math.Vec3.New(0.0, 1.0, -8.0));
+    if (source == null) {
+        Terminal.Say("FAIL: PlayAt should return a tracked source");
+        return;
+    }
+    audio.SetOcclusion(true, -1, 1.0);
+    world.StepSimulation(1.0 / 60.0);
+    if (SoundSource3D.get_Occlusion(source) < 0.9) {
+        Terminal.Say("FAIL: the wall must occlude the source");
+        return;
+    }
+    // Move the source beside the listener: the ray clears.
+    SoundSource3D.set_Position(source, Math.Vec3.New(2.0, 1.0, 0.0));
+    world.StepSimulation(1.0 / 60.0);
+    if (SoundSource3D.get_Occlusion(source) > 0.1) {
+        Terminal.Say("FAIL: a clear path must release the occlusion");
+        return;
+    }
+
+    // Ambient bed: zone selection follows the listener.
+    var bedClip = Sound.Synth.Tone(220, 200, 30);
+    var bed = Game3D.AmbientBed3D.New(world)
+                  .AddZone(Math.Vec3.New(10.0, -5.0, -5.0),
+                           Math.Vec3.New(20.0, 5.0, 5.0), bedClip, 70)
+                  .SetDefault(Sound.Synth.Tone(110, 200, 20), 40);
+    if (bed.CrossfadeSeconds < 1.9) {
+        Terminal.Say("FAIL: default bed crossfade should be 2 s");
+        return;
+    }
+    world.StepSimulation(1.0 / 60.0);
+    if (bed.ActiveZone != -1) {
+        Terminal.Say("FAIL: outside all zones the default bed is active");
+        return;
+    }
+    audio.SetListenerPose(Math.Vec3.New(15.0, 1.0, 0.0),
+                          Math.Vec3.New(0.0, 0.0, -1.0),
+                          Math.Vec3.New(0.0, 1.0, 0.0));
+    world.StepSimulation(1.0 / 60.0);
+    if (bed.ActiveZone != 0) {
+        Terminal.Say("FAIL: entering the zone must activate its bed");
+        return;
+    }
+
+    // Dialogue routes onto the ducking-trigger group.
+    var voice = audio.PlayDialogue(clip);
+    if (voice <= 0) {
+        Terminal.Say("FAIL: PlayDialogue should return a live voice id");
+        return;
+    }
+    Sound.Audio.SetGroupDucking("g3d_dialogue", "music", 0.6, 50.0, 200.0);
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

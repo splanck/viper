@@ -4,6 +4,7 @@ bind Viper.Game3D;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
+bind Viper.Time.Clock as Clock;
 
 class OpenWorldSlice {
     hide World3D world;
@@ -248,6 +249,14 @@ class OpenWorldSlice {
         while (i < frames) {
             stream.Update(1.0 / 60.0);
             i = i + 1;
+        }
+        // Worker-backed streaming stages payloads off-thread: keep updating until
+        // the pending set drains so callers still observe settled residency.
+        var spins = 0;
+        while (stream.PendingRequestCount > 0 && spins < 2000) {
+            stream.Update(1.0 / 60.0);
+            if (spins % 8 == 0) { Clock.Sleep(1); }
+            spins = spins + 1;
         }
     }
 

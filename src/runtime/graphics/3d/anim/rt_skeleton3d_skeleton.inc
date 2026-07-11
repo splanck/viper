@@ -225,6 +225,32 @@ rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
 }
 
 /// @brief Read the bind-pose Mat4 of bone at `index` (identity for out-of-range / NULL).
+/// @brief Internal: parent index of the bone at @p index (-1 for roots/out of range).
+int64_t rt_skeleton3d_get_bone_parent_raw(void *obj, int64_t index) {
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s)
+        return -1;
+    s->bone_count = skeleton3d_safe_bone_count(s);
+    if (index < 0 || index >= s->bone_count)
+        return -1;
+    return skeleton3d_valid_parent_index(s, (int32_t)index, s->bone_count);
+}
+
+/// @brief Internal: copy the bone's parent-relative bind matrix (row-major 16
+///        doubles) into @p out16; returns 0 on out-of-range.
+int8_t rt_skeleton3d_get_bone_bind_local_raw(void *obj, int64_t index, double *out16) {
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s || !out16)
+        return 0;
+    s->bone_count = skeleton3d_safe_bone_count(s);
+    if (index < 0 || index >= s->bone_count)
+        return 0;
+    const float *m = s->bones[index].bind_pose_local;
+    for (int i = 0; i < 16; ++i)
+        out16[i] = (double)m[i];
+    return 1;
+}
+
 void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
     rt_skeleton3d *s = (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
     if (!s)

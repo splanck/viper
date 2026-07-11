@@ -203,7 +203,7 @@ class MenuSystem {
         levelSelectBG.Select(1);
         selectedLevel = 1;
 
-        // Pause menu: Resume, World Map, Save, Options, Controls, Quit
+        // Pause menu: Resume, World Map, Save, Recovery, Options, Controls, Quit
         pauseBG = ButtonGroup.New();
         pauseBG.Add(0);
         pauseBG.Add(1);
@@ -211,11 +211,13 @@ class MenuSystem {
         pauseBG.Add(3);
         pauseBG.Add(4);
         pauseBG.Add(5);
+        pauseBG.Add(6);
         pauseBG.Select(0);
         pauseList = MenuList.New(520, 260, 44);
         pauseList.AddItem("RESUME");
         pauseList.AddItem("WORLD MAP");
         pauseList.AddItem("SAVE GAME");
+        pauseList.AddItem("RETURN TO CHECKPOINT");
         pauseList.AddItem("OPTIONS");
         pauseList.AddItem("CONTROLS");
         pauseList.AddItem("QUIT TO MENU");
@@ -857,9 +859,10 @@ class MenuSystem {
             if chosen == 0 { return STATE_PLAYING; }
             if chosen == 1 { return MENU_ACTION_WORLD_MAP; }
             if chosen == 2 { return MENU_ACTION_SAVE; }
-            if chosen == 3 { return STATE_OPTIONS; }
-            if chosen == 4 { return STATE_CONTROLS; }
-            if chosen == 5 { return STATE_MENU; }
+            if chosen == 3 { return MENU_ACTION_RECOVER; }
+            if chosen == 4 { return STATE_OPTIONS; }
+            if chosen == 5 { return STATE_CONTROLS; }
+            if chosen == 6 { return STATE_MENU; }
         }
 
         return STATE_PAUSED;
@@ -974,9 +977,10 @@ class MenuSystem {
         drawMenuOption(canvas, "RESUME", 0, y, pauseBG);
         drawMenuOption(canvas, "WORLD MAP", 1, y + 44, pauseBG);
         drawMenuOption(canvas, "SAVE GAME", 2, y + 88, pauseBG);
-        drawMenuOption(canvas, "OPTIONS", 3, y + 132, pauseBG);
-        drawMenuOption(canvas, "CONTROLS", 4, y + 176, pauseBG);
-        drawMenuOption(canvas, "QUIT TO MENU", 5, y + 220, pauseBG);
+        drawMenuOption(canvas, "RETURN TO CHECKPOINT", 3, y + 132, pauseBG);
+        drawMenuOption(canvas, "OPTIONS", 4, y + 176, pauseBG);
+        drawMenuOption(canvas, "CONTROLS", 5, y + 220, pauseBG);
+        drawMenuOption(canvas, "QUIT TO MENU", 6, y + 264, pauseBG);
     }
 
     // =========================================================================
@@ -1306,7 +1310,12 @@ class MenuSystem {
         drawControlCard(canvas, 693, y + gap * 5, "FULLSCREEN", ACT_FULLSCREEN);
 
         canvas.TextCenteredScaled(
-            SCREEN_H - 54,
+            SCREEN_H - 70,
+            Action.BindingsStr(ACT_INTERACT) +
+            " replay suit guidance (active expedition)",
+            pal.crystalBlue, 1);
+        canvas.TextCenteredScaled(
+            SCREEN_H - 46,
             Action.BindingsStr(ACT_CONFIRM) + " / " +
             Action.BindingsStr(ACT_BACK) + " return",
             pal.hudGray, 1);
@@ -1377,14 +1386,14 @@ class MenuSystem {
             canvas.Frame(cardX, cardY, cardW, cardH, Color.RGB(70, 70, 100));
 
             // Slot number
-            canvas.TextScaled(cardX + 20, cardY + 15, "Slot ${i + 1}", pal.white, 2);
+            canvas.TextScaled(cardX + 20, cardY + 15, "Slot ${i + 1}", 2, pal.white);
 
             // Slot info
-            canvas.TextScaled(cardX + 20, cardY + 50, slotTexts.get(i), pal.hudGray, 2);
+            canvas.TextScaled(cardX + 20, cardY + 50, slotTexts.get(i), 2, pal.hudGray);
 
             // Arrow indicator for selected
             if i == selectedSlot {
-                canvas.TextScaled(cardX - 30, cardY + 30, ">", pal.menuHighlight, 3);
+                canvas.TextScaled(cardX - 30, cardY + 30, ">", 3, pal.menuHighlight);
             }
 
             i = i + 1;
@@ -1530,7 +1539,7 @@ class MenuSystem {
         var secs = totalTime % 60;
         canvas.TextCenteredScaled(statsY + 50, "Total Time: ${mins}:${secs}",
                                   pal.white, 2);
-        canvas.TextCenteredScaled(statsY + 90, "Gems Collected: ${totalGems}",
+        canvas.TextCenteredScaled(statsY + 90, "Salvage Recovered: ${totalGems}",
                                   Color.RGB(100, 200, 255), 2);
         canvas.TextCenteredScaled(statsY + 130, "Lore Discovered: ${lorePercent}%",
                                   Color.RGB(200, 180, 255), 2);
@@ -1630,9 +1639,11 @@ class MenuSystem {
         canvas.Text(barX + barW + 8, statsY + 48, "${hp}/${maxHp}",
                     Color.RGB(180, 190, 210));
 
-        // Score and gems
+        // Arcade score and permanent upgrade currency are deliberately named
+        // separately so players do not mistake score for spendable progress.
         canvas.Text(statsX, statsY + 72, "Score: ${score}", Color.RGB(255, 221, 34));
-        canvas.Text(statsX + 200, statsY + 72, "Gems: ${gems}", Color.RGB(100, 200, 255));
+        canvas.Text(statsX + 200, statsY + 72, "Salvage: ${gems}",
+                    Color.RGB(100, 200, 255));
 
         // Divider
         canvas.Line(panelX + 20, statsY + 100, panelX + panelW - 20, statsY + 100,
@@ -1640,19 +1651,22 @@ class MenuSystem {
 
         // Menu options
         var optY = statsY + 120;
-        var options = ["Resume", "World Map", "Save Game", "Options", "Controls", "Quit to Title"];
+        var options = ["Resume", "World Map", "Save Game",
+                       "Return to Checkpoint", "Options", "Controls",
+                       "Quit to Title"];
         var optColors = [
             Color.RGB(100, 255, 150),  // Resume: green
             Color.RGB(100, 180, 255),  // Map: blue
             Color.RGB(255, 221, 34),   // Save: gold
+            Color.RGB(100, 220, 220),  // Recovery: cyan
             Color.RGB(180, 180, 255),  // Options: lavender
             Color.RGB(180, 180, 200),  // Controls: gray
             Color.RGB(255, 100, 100)   // Quit: red
         ];
 
         var i = 0;
-        while i < 6 {
-            var y = optY + i * 44;
+        while i < 7 {
+            var y = optY + i * 40;
             if i == selectedOption {
                 // Selected: highlighted background
                 canvas.Box(panelX + 20, y - 4, panelW - 40, 36,
@@ -1660,10 +1674,10 @@ class MenuSystem {
                 canvas.Frame(panelX + 20, y - 4, panelW - 40, 36,
                              Color.RGB(80, 120, 200));
                 canvas.TextScaled(panelX + 50, y, "> " + options.get(i),
-                                  optColors.get(i), 2);
+                                  2, optColors.get(i));
             } else {
                 canvas.TextScaled(panelX + 50, y, "  " + options.get(i),
-                                  Color.RGB(100, 110, 130), 2);
+                                  2, Color.RGB(100, 110, 130));
             }
             i = i + 1;
         }
@@ -1776,11 +1790,14 @@ class MenuSystem {
         // Total score
         canvas.Line(px + 30, statY + 228, px + pw - 30, statY + 228,
                     Color.RGB(60, 80, 120));
-        canvas.TextScaled(labelX, statY + 246, "ARCADE SCORE", Color.RGB(255, 221, 34), 2);
-        canvas.TextScaled(valueX, statY + 246, Int(score), Color.RGB(255, 255, 200), 2);
-        canvas.TextScaled(labelX, statY + 282, "PERFORMANCE", Color.RGB(140, 150, 170), 2);
+        canvas.TextScaled(labelX, statY + 246, "ARCADE SCORE", 2,
+                          Color.RGB(255, 221, 34));
+        canvas.TextScaled(valueX, statY + 246, Int(score), 2,
+                          Color.RGB(255, 255, 200));
+        canvas.TextScaled(labelX, statY + 282, "PERFORMANCE", 2,
+                          Color.RGB(140, 150, 170));
         canvas.TextScaled(valueX, statY + 282, Int(rankScore) + " / 1000",
-                          Color.RGB(180, 220, 255), 2);
+                          2, Color.RGB(180, 220, 255));
 
         // Rank
         canvas.TextCenteredScaled(statY + 326, "RANK: " + rank,
@@ -1838,8 +1855,8 @@ class MenuSystem {
     ///        complete/victory screens.
     hide func drawStatRow(canvas: Canvas, labelX: Integer, y: Integer,
                            label: String, value: String, color: Integer) {
-        canvas.TextScaled(labelX, y, label, Color.RGB(140, 150, 170), 2);
-        canvas.TextScaled(labelX + 400, y, value, color, 2);
+        canvas.TextScaled(labelX, y, label, 2, Color.RGB(140, 150, 170));
+        canvas.TextScaled(labelX + 400, y, value, 2, color);
     }
 
     /// @brief "M:SS" formatter for play-time displays.
@@ -2087,7 +2104,8 @@ class MenuSystem {
                 canvas.Disc(cardX + 25, cardY + 30, 15, colors.get(i));
                 canvas.Text(cardX + 18, cardY + 24, Int(i + 1), Color.RGB(0, 0, 0));
                 // Name
-                canvas.TextScaled(cardX + 55, cardY + 8, abilities.get(i), colors.get(i), 2);
+                canvas.TextScaled(cardX + 55, cardY + 8, abilities.get(i),
+                                  2, colors.get(i));
                 // Description
                 canvas.Text(cardX + 55, cardY + 34, descriptions.get(i),
                             Color.RGB(140, 150, 170));
@@ -2098,7 +2116,8 @@ class MenuSystem {
                 canvas.Disc(cardX + 25, cardY + 30, 15, Color.RGB(40, 40, 55));
                 canvas.Text(cardX + 20, cardY + 24, "?", Color.RGB(60, 60, 80));
                 // Locked text
-                canvas.TextScaled(cardX + 55, cardY + 16, "???", Color.RGB(60, 60, 80), 2);
+                canvas.TextScaled(cardX + 55, cardY + 16, "???", 2,
+                                  Color.RGB(60, 60, 80));
             }
             i = i + 1;
         }

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: examples/games/xenoscape/profile_flow.zia
-// Purpose: Implements release-quality New Game and Load Game profile menus.
+// Purpose: Implements New Game and Load Game profile menus.
 // Key invariants:
 //   - New Game cannot start without an explicit slot and difficulty selection.
 //   - Occupied-slot overwrite and deletion each require a separate confirmation.
@@ -336,10 +336,10 @@ class ProfileFlow {
         canvas.Frame(x, y, 900, 104, border);
         if selected {
             canvas.Frame(x - 4, y - 4, 908, 112, pal.menuHighlight);
-            canvas.TextScaled(x - 34, y + 34, ">", pal.titleOrange, 3);
+            canvas.TextScaled(x - 34, y + 34, ">", 3, pal.titleOrange);
         }
         canvas.TextScaled(x + 24, y + 15, "SLOT " + Int(slot + 1),
-                          pal.white, 2);
+                          2, pal.white);
         var status = "AVAILABLE";
         var statusColor = pal.hudGreen;
         if slotUsed.get(slot) == 1 {
@@ -348,7 +348,7 @@ class ProfileFlow {
         }
         canvas.Text(x + 690, y + 20, status, statusColor);
         canvas.TextScaled(x + 24, y + 57, slotSummaries.get(slot),
-                          pal.hudGray, 1);
+                          1, pal.hudGray);
     }
 
     /// @brief Draw the Explorer/Standard/Veteran decision panel.
@@ -376,16 +376,16 @@ class ProfileFlow {
         var gemLoss = difficultyGemLossPercent(selectedDifficulty);
         canvas.TextScaled(x + 90, y + 140,
                           "Incoming damage        " + Int(incoming) + "%",
-                          pal.menuText, 2);
+                          2, pal.menuText);
         canvas.TextScaled(x + 90, y + 185,
                           "Enemy integrity        " + Int(enemyHp) + "%",
-                          pal.menuText, 2);
+                          2, pal.menuText);
         canvas.TextScaled(x + 90, y + 230,
                           "Enemy aggression       " + Int(aggression) + "%",
-                          pal.menuText, 2);
+                          2, pal.menuText);
         canvas.TextScaled(x + 90, y + 275,
                           "Unbanked salvage loss  " + Int(gemLoss) + "%",
-                          pal.menuText, 2);
+                          2, pal.menuText);
         canvas.TextCenteredScaled(y + 340,
                                   Action.BindingsStr(ACT_LEFT) + " / " +
                                   Action.BindingsStr(ACT_RIGHT) +
@@ -422,8 +422,8 @@ class ProfileFlow {
             cancelColor = pal.hudGray;
             confirmColor = pal.hudRed;
         }
-        canvas.TextScaled(x + 105, y + 160, "CANCEL", cancelColor, 2);
-        canvas.TextScaled(x + 385, y + 160, "CONFIRM", confirmColor, 2);
+        canvas.TextScaled(x + 105, y + 160, "CANCEL", 2, cancelColor);
+        canvas.TextScaled(x + 385, y + 160, "CONFIRM", 2, confirmColor);
     }
 
     /// @brief Draw a deterministic low-cost star field behind profile cards.

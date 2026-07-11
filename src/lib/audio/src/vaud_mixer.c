@@ -343,6 +343,11 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     int32_t left_gain_fp = vaud_mixer_gain_to_fixed(left_gain);
     int32_t right_gain_fp = vaud_mixer_gain_to_fixed(right_gain);
 
+    /* Per-voice RMS metering: pre-gain source level so distance attenuation
+     * never closes a lip-synced mouth. Accumulated only when enabled. */
+    float meter_sum_sq = 0.0f;
+    int32_t meter_samples = 0;
+
     if (!needs_general_path) {
         for (int32_t i = 0; i < frames; i++) {
             if (pos >= sound_frames) {
@@ -366,9 +371,18 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
             output[i * 2 + 1] =
                 vaud_mixer_saturating_add_i32(output[i * 2 + 1], (src_right * right_gain_fp) >> 8);
 
+            if (voice->metering) {
+                float nl = (float)src_left * (1.0f / 32768.0f);
+                float nr = (float)src_right * (1.0f / 32768.0f);
+                meter_sum_sq += nl * nl + nr * nr;
+                meter_samples += 2;
+            }
             pos++;
         }
 
+        if (voice->metering)
+            voice->level =
+                meter_samples > 0 ? sqrtf(meter_sum_sq / (float)meter_samples) : 0.0f;
         voice->position = pos;
         /* Keep the fractional cursor trailing the integer one so a later
          * pitch/filter change resumes from the right place. */
@@ -427,9 +441,17 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
         output[i * 2 + 1] = vaud_mixer_saturating_add_i32(
             output[i * 2 + 1], ((int32_t)src_right * right_gain_fp) >> 8);
 
+        if (voice->metering) {
+            float nl = src_left * (1.0f / 32768.0f);
+            float nr = src_right * (1.0f / 32768.0f);
+            meter_sum_sq += nl * nl + nr * nr;
+            meter_samples += 2;
+        }
         fpos += step;
     }
 
+    if (voice->metering)
+        voice->level = meter_samples > 0 ? sqrtf(meter_sum_sq / (float)meter_samples) : 0.0f;
     voice->frac_pos = fpos;
     voice->position = (int64_t)fpos;
     voice->lp_state_l = lp_l;

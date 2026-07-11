@@ -128,6 +128,8 @@ typedef struct {
     float occlusion_smooth; ///< Smoothed occlusion actually applied (anti-zipper)
     float lp_state_l;       ///< One-pole lowpass filter state, left channel
     float lp_state_r;       ///< One-pole lowpass filter state, right channel
+    int metering;           ///< Per-voice RMS metering enabled (zero cost when off)
+    float level;            ///< RMS of the last mixed block (pre-gain source level)
 } vaud_voice;
 
 //===----------------------------------------------------------------------===//
@@ -147,6 +149,8 @@ static inline void vaud_voice_reset_dsp(vaud_voice *voice) {
     voice->lowpass_cutoff = 0.0f;
     voice->occlusion_target = 0.0f;
     voice->occlusion_smooth = 0.0f;
+    voice->metering = 0;
+    voice->level = 0.0f;
     voice->lp_state_l = 0.0f;
     voice->lp_state_r = 0.0f;
 }

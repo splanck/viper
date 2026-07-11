@@ -314,6 +314,14 @@ void *rt_terrain3d_build_nav_mesh(void *terrain_obj, int64_t step64) {
 
     for (int32_t rz = 0; rz < rows - 1; ++rz) {
         for (int32_t rx = 0; rx < cols - 1; ++rx) {
+            if (t->hole_mask) {
+                int32_t cz0 = terrain_nav_sample_coord(rz, rows, t->depth - 1, step);
+                int32_t cz1 = terrain_nav_sample_coord(rz + 1, rows, t->depth - 1, step);
+                int32_t cx0 = terrain_nav_sample_coord(rx, cols, t->width - 1, step);
+                int32_t cx1 = terrain_nav_sample_coord(rx + 1, cols, t->width - 1, step);
+                if (terrain_cell_range_holed(t, cx0, cz0, cx1, cz1))
+                    continue;
+            }
             int64_t base = (int64_t)(rz * cols + rx);
             rt_mesh3d_add_triangle(mesh, base, base + cols, base + 1);
             rt_mesh3d_add_triangle(mesh, base + 1, base + cols, base + cols + 1);
@@ -344,8 +352,9 @@ void rt_canvas3d_draw_terrain_at(
         (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
     int32_t chunk_count;
     void *splat_map;
-    void *splat_layers[TERRAIN_MAX_SPLAT_LAYERS] = {NULL, NULL, NULL, NULL};
-    float splat_layer_scales[TERRAIN_MAX_SPLAT_LAYERS] = {1.0f, 1.0f, 1.0f, 1.0f};
+    void *splat_layers[TERRAIN_MAX_SPLAT_LAYERS] = {0};
+    float splat_layer_scales[TERRAIN_MAX_SPLAT_LAYERS] = {
+        1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     int complete_splat_layers = 0;
     double camera_relative_origin[3] = {0.0, 0.0, 0.0};
     int use_camera_relative_bounds = 0;
@@ -368,8 +377,14 @@ void rt_canvas3d_draw_terrain_at(
         terrain_clear_invalid_splat_state(t);
     if (splat_map) {
         int any_invalid = 0;
-        complete_splat_layers = 1;
-        for (int si = 0; si < TERRAIN_MAX_SPLAT_LAYERS; si++) {
+        int uses_extended_layers = t->splat_map2 != NULL;
+        for (int si = 4; si < TERRAIN_MAX_SPLAT_LAYERS; si++)
+            if (t->layer_textures[si])
+                uses_extended_layers = 1;
+        /* The realtime per-pixel splat path carries 4 layers; 8-layer content
+         * always routes through the baked composite (uniform on every backend). */
+        complete_splat_layers = uses_extended_layers ? 0 : 1;
+        for (int si = 0; si < 4; si++) {
             splat_layers[si] = terrain_valid_pixels_or_null(t->layer_textures[si]);
             splat_layer_scales[si] = (float)terrain_layer_scale_or(t, si);
             if (!splat_layers[si])

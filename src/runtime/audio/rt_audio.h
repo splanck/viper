@@ -162,6 +162,10 @@ void rt_voice_set_lowpass(int64_t voice_id, double cutoff_hz);
 
 /// @brief Set a voice's occlusion amount (0 open .. 1 occluded, smoothed).
 void rt_voice_set_occlusion(int64_t voice_id, double amount);
+/// @brief Enable/disable per-voice RMS metering (lip-sync level tap).
+void rt_voice_enable_metering(int64_t voice_id, int8_t enabled);
+/// @brief RMS source level (pre-gain) of the last mixed block; 0 when unmetered.
+double rt_voice_get_level(int64_t voice_id);
 
 /// @brief Register/replace/remove a sidechain ducking rule between mix groups.
 /// @details amount <= 0 removes the (trigger, target) rule.

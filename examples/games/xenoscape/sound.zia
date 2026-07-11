@@ -128,6 +128,7 @@ class SoundManager {
     hide Integer ambienceVolume;
     hide Integer voiceVolume;
     hide Integer combatIntensity;
+    hide Boolean narrativeFocus;
 
     /// @brief Construct in "not-ready" state.  Real init is
     ///        `setup(basePath)`; until then every `play*`
@@ -144,6 +145,7 @@ class SoundManager {
         ambienceVolume = 70;
         voiceVolume = 85;
         combatIntensity = 0;
+        narrativeFocus = false;
     }
 
     // Initialize audio system and register all sounds.
@@ -483,6 +485,13 @@ class SoundManager {
         applyVolumeSettings();
     }
 
+    /// @brief Duck music/ambience beneath active ARIA narrative subtitles.
+    expose func setNarrativeFocus(active: Boolean) {
+        if active == narrativeFocus { return; }
+        narrativeFocus = active;
+        applyVolumeSettings();
+    }
+
     /// @brief Clamp a user-facing volume value into the audio API range.
     ///
     /// @param value Candidate volume.
@@ -504,8 +513,13 @@ class SoundManager {
         Audio.SetGroupVolume(1, sfxVolume);
         var adaptiveMusicVolume =
             musicVolume * (85 + combatIntensity * 15 / 100) / 100;
+        var adaptiveAmbienceVolume = ambienceVolume;
+        if narrativeFocus {
+            adaptiveMusicVolume = adaptiveMusicVolume * 60 / 100;
+            adaptiveAmbienceVolume = adaptiveAmbienceVolume * 70 / 100;
+        }
         Audio.SetGroupVolume(2, adaptiveMusicVolume);
-        Audio.SetGroupVolume(3, ambienceVolume);
+        Audio.SetGroupVolume(3, adaptiveAmbienceVolume);
         Audio.SetGroupVolume(4, voiceVolume);
     }
 

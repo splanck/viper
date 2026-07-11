@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: examples/games/xenoscape/progression_probe.zia
-// Purpose: Verifies isolated schema-v2 save and progression round trips.
+// Purpose: Verifies schema-v4 save integrity, migration, and progression round trips.
 // Key invariants:
 //   - Probe stores never touch the production Xenoscape save-data name.
 //   - Reopened caches match every staged permanent progression mask.
@@ -40,7 +40,7 @@ func fail(message: String) {
     Terminal.Say("RESULT: " + message);
 }
 
-/// @brief Verify schema-v2 round-trip, migration defaults, and corrupt backup.
+/// @brief Verify schema-v4 round-trip, migration, integrity, and corrupt backup.
 ///
 /// @return Nothing. Prints `RESULT: ok` only after every assertion and cleanup.
 func main() {
@@ -144,6 +144,50 @@ func main() {
         return;
     }
 
+    // A schema-3 profile with only Wall Jump must migrate to the repaired
+    // baseline and receive a schema-4 checksum without losing its core state.
+    var legacyRaw = SaveData.New("xenoscape_legacy_save_probe");
+    legacyRaw.Clear();
+    legacyRaw.SetInt("s0lv", 1);
+    legacyRaw.SetInt("s0ab", 1);
+    legacyRaw.SetInt("s0hp", 5);
+    legacyRaw.SetInt("s0sv", 3);
+    legacyRaw.Save();
+    var migrated = new SaveManager();
+    migrated.initSaveWithName("xenoscape_legacy_save_probe");
+    if migrated.getSlotAbilities(0) != XENOSCAPE_BASELINE_ABILITY_MASK or
+       migrated.getSlotSchema(0) != XENOSCAPE_SAVE_SCHEMA {
+        fail("legacy_migration_bad");
+        return;
+    }
+    legacyRaw.Load();
+    if legacyRaw.GetInt("s0ck", 0) == 0 or
+       legacyRaw.GetInt("s0sv", 0) != XENOSCAPE_SAVE_SCHEMA {
+        fail("legacy_checksum_bad");
+        return;
+    }
+    migrated.deleteSlot(0);
+
+    // A syntactically valid store with one changed field must fail the full-slot
+    // checksum, preserve a backup, and retire only the damaged slot.
+    var tamperedRaw = SaveData.New("xenoscape_progression_probe");
+    tamperedRaw.Load();
+    var tamperedPath = tamperedRaw.get_Path();
+    var tamperedBackup = tamperedPath + ".corrupt.bak";
+    if File.Exists(tamperedBackup) { File.Delete(tamperedBackup); }
+    tamperedRaw.SetInt("s1gm", 12);
+    tamperedRaw.Save();
+    var integrityRecovered = new SaveManager();
+    integrityRecovered.initSaveWithName("xenoscape_progression_probe");
+    if integrityRecovered.didRecoverCorruptSave() == false or
+       integrityRecovered.isSlotUsed(1) or
+       integrityRecovered.isSlotUsed(0) == false or
+       File.Exists(tamperedBackup) == false {
+        fail("checksum_recovery_bad");
+        return;
+    }
+    if File.Exists(tamperedBackup) { File.Delete(tamperedBackup); }
+
     var corruptRaw = SaveData.New("xenoscape_corrupt_save_probe");
     corruptRaw.Clear();
     corruptRaw.Save();
@@ -162,8 +206,8 @@ func main() {
     }
     if File.Exists(corruptBackup) { File.Delete(corruptBackup); }
 
-    loaded.deleteSlot(0);
-    loaded.deleteSlot(1);
-    loaded.deleteSlot(2);
+    integrityRecovered.deleteSlot(0);
+    integrityRecovered.deleteSlot(1);
+    integrityRecovered.deleteSlot(2);
     Terminal.Say("RESULT: ok");
 }

@@ -42,6 +42,10 @@ int64_t rt_path3d_get_point_count(void *path);
 void rt_path3d_set_looping(void *path, int8_t loop);
 /// @brief Remove all control points.
 void rt_path3d_clear(void *path);
+/// @brief Internal: arclength-normalized spline evaluation (constant-speed t in
+///        [0,1] along the same Catmull-Rom curve GetPositionAt samples). Writes
+///        the position and, when non-NULL, the unit tangent.
+void rt_path3d_eval_spline_raw(void *path, double t, double *pos_out, double *tan_out);
 
 #ifdef __cplusplus
 }

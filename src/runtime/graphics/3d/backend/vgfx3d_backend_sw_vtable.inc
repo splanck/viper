@@ -53,13 +53,12 @@ static void sw_destroy_ctx(void *ctx_ptr) {
 
 /// @brief True when window-backed frames should rasterize at reduced resolution.
 static int sw_render_scale_active(const sw_context_t *ctx) {
-    return ctx && !ctx->render_target && isfinite(ctx->render_scale) &&
-           ctx->render_scale < 0.999f;
+    return ctx && !ctx->render_target && isfinite(ctx->render_scale) && ctx->render_scale < 0.999f;
 }
 
 /// @brief Compute the scaled rasterization dimensions for a framebuffer size.
-static void sw_scaled_dims(const sw_context_t *ctx, int32_t fb_w, int32_t fb_h,
-                           int32_t *out_w, int32_t *out_h) {
+static void sw_scaled_dims(
+    const sw_context_t *ctx, int32_t fb_w, int32_t fb_h, int32_t *out_w, int32_t *out_h) {
     int32_t w = (int32_t)((float)fb_w * ctx->render_scale);
     int32_t h = (int32_t)((float)fb_h * ctx->render_scale);
     *out_w = w > 0 ? w : 1;
@@ -194,13 +193,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                 if (!sw_ensure_scaled_color(ctx, sw_w, sw_h) ||
                     !sw_ensure_zbuf_capacity(ctx, sw_w, sw_h))
                     return;
-                sw_fill_rgba_rows((uint8_t *)ctx->scaled_color,
-                                  sw_w,
-                                  sw_h,
-                                  sw_w * 4,
-                                  cr,
-                                  cg,
-                                  cb);
+                sw_fill_rgba_rows((uint8_t *)ctx->scaled_color, sw_w, sw_h, sw_w * 4, cr, cg, cb);
                 ctx->scaled_frame_active = 1;
             } else {
                 if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
@@ -243,6 +236,14 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->height_fog_falloff = cam->height_fog_falloff;
     ctx->height_fog_density = cam->height_fog_density;
     ctx->height_fog_blend = cam->height_fog_blend;
+    ctx->height_fog_sun_color[0] = cam->height_fog_sun_color[0];
+    ctx->height_fog_sun_color[1] = cam->height_fog_sun_color[1];
+    ctx->height_fog_sun_color[2] = cam->height_fog_sun_color[2];
+    ctx->height_fog_sun_dir[0] = cam->height_fog_sun_dir[0];
+    ctx->height_fog_sun_dir[1] = cam->height_fog_sun_dir[1];
+    ctx->height_fog_sun_dir[2] = cam->height_fog_sun_dir[2];
+    ctx->height_fog_sun_power = cam->height_fog_sun_power;
+    ctx->height_fog_sun_amount = cam->height_fog_sun_amount;
     ctx->ibl_enabled = cam->ibl_enabled;
     if (cam->ibl_enabled)
         vgfx3d_brdf_lut_ensure(); /* single-threaded seam before parallel raster */
@@ -327,6 +328,8 @@ typedef struct {
     sw_pixels_view *specular_ptr;
     sw_pixels_view *metallic_roughness_ptr;
     sw_pixels_view *ao_ptr;
+    sw_pixels_view lightmap_view;
+    sw_pixels_view *lightmap_ptr;
 } sw_material_views;
 
 /// @brief Copy each present material map (base color, emissive, normal, specular,
@@ -339,6 +342,7 @@ static void sw_resolve_material_views(const vgfx3d_draw_cmd_t *cmd, sw_material_
     mv->specular_ptr = NULL;
     mv->metallic_roughness_ptr = NULL;
     mv->ao_ptr = NULL;
+    mv->lightmap_ptr = NULL;
     if (cmd->texture) {
         const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
         mv->tex_view = *pv;
@@ -375,6 +379,12 @@ static void sw_resolve_material_views(const vgfx3d_draw_cmd_t *cmd, sw_material_
         mv->ao_view = *pv;
         if (mv->ao_view.width > 0 && mv->ao_view.height > 0 && mv->ao_view.data)
             mv->ao_ptr = &mv->ao_view;
+    }
+    if (cmd->lightmap) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->lightmap;
+        mv->lightmap_view = *pv;
+        if (mv->lightmap_view.width > 0 && mv->lightmap_view.height > 0 && mv->lightmap_view.data)
+            mv->lightmap_ptr = &mv->lightmap_view;
     }
 }
 
@@ -740,6 +750,7 @@ typedef struct {
     const sw_pixels_view *specular_map;
     const sw_pixels_view *metallic_roughness_map;
     const sw_pixels_view *ao_map;
+    const sw_pixels_view *lightmap;
     const vgfx3d_draw_cmd_t *cmd;
     const vgfx3d_light_params_t *lights;
     int32_t light_count;
@@ -1141,6 +1152,7 @@ static void sw_raster_task_run(void *arg) {
                                       task->specular_map,
                                       task->metallic_roughness_map,
                                       task->ao_map,
+                                      task->lightmap,
                                       task->cmd,
                                       task->lights,
                                       task->light_count,
@@ -1194,6 +1206,7 @@ static int sw_raster_tiles_parallel(sw_context_t *ctx,
         tasks[i].specular_map = mv->specular_ptr;
         tasks[i].metallic_roughness_map = mv->metallic_roughness_ptr;
         tasks[i].ao_map = mv->ao_ptr;
+        tasks[i].lightmap = mv->lightmap_ptr;
         tasks[i].cmd = cmd;
         tasks[i].lights = lights;
         tasks[i].light_count = light_count;
@@ -1427,6 +1440,7 @@ static void sw_submit_draw_serial_prepared(sw_context_t *ctx,
                                 setup->material_views.specular_ptr,
                                 setup->material_views.metallic_roughness_ptr,
                                 setup->material_views.ao_ptr,
+                                setup->material_views.lightmap_ptr,
                                 cmd,
                                 lights,
                                 light_count,

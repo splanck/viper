@@ -1009,8 +1009,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         if (map64 && mesh->bone_count > 0) {
             size_t map_len = 0;
             size_t map_err = SIZE_MAX;
-            uint8_t *map_raw =
-                vscn_base64_decode_ex(map64, strlen(map64), &map_len, &map_err);
+            uint8_t *map_raw = vscn_base64_decode_ex(map64, strlen(map64), &map_len, &map_err);
             if (map_raw && map_len == (size_t)mesh->bone_count * sizeof(int32_t)) {
                 mesh->bone_map = (int32_t *)map_raw;
             } else {
@@ -1065,9 +1064,8 @@ static void *vscn_parse_skeleton(void *skel_obj) {
         void *bind_arr;
         void *inv_arr;
         int64_t parent;
-        if (!vjson_is_map(bone_obj) ||
-            !vjson_i64_exact(bone_obj, "parent", -1, &parent) || parent < -1 ||
-            parent >= bone_count)
+        if (!vjson_is_map(bone_obj) || !vjson_i64_exact(bone_obj, "parent", -1, &parent) ||
+            parent < -1 || parent >= bone_count)
             goto fail;
         name = vjson_cstr(bone_obj, "name");
         if (name) {
@@ -1122,8 +1120,7 @@ static void *vscn_parse_animation(void *anim_obj) {
     rt_animation3d_set_looping(anim, vjson_bool(anim_obj, "looping", 1));
     if (channel_count > 0) {
         anim->channels =
-            (vgfx3d_anim_channel_t *)calloc((size_t)channel_count,
-                                            sizeof(vgfx3d_anim_channel_t));
+            (vgfx3d_anim_channel_t *)calloc((size_t)channel_count, sizeof(vgfx3d_anim_channel_t));
         if (!anim->channels)
             goto fail;
         anim->channel_capacity = (int32_t)channel_count;
@@ -1137,9 +1134,8 @@ static void *vscn_parse_animation(void *anim_obj) {
         size_t raw_len = 0;
         size_t raw_err = SIZE_MAX;
         uint8_t *raw;
-        if (!vjson_is_map(ch_obj) ||
-            !vjson_i64_exact(ch_obj, "bone", 0, &bone_index) || bone_index < 0 ||
-            bone_index >= VGFX3D_MAX_SKELETON_BONES ||
+        if (!vjson_is_map(ch_obj) || !vjson_i64_exact(ch_obj, "bone", 0, &bone_index) ||
+            bone_index < 0 || bone_index >= VGFX3D_MAX_SKELETON_BONES ||
             !vjson_i64_exact(ch_obj, "keyCount", 0, &key_count) || key_count < 0 ||
             key_count > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
             goto fail;
@@ -1517,11 +1513,11 @@ static int vscn_load_nodes(rt_scene3d *scene,
 ///   dependency order (textures, then cubemaps, then materials, then meshes), and finally walks the
 ///   node tree wiring index references back to the freshly-loaded objects. All partially-loaded
 ///   refs are released on any failure. glTF/FBX scenes load through rt_gltf_load / rt_fbx_load.
-static void *rt_scene3d_load_impl(rt_string path) {
-    const char *filepath;
-    char *json = NULL;
+/// @details Owns @p json (a NUL-terminated malloc buffer of @p file_size bytes) and frees it
+///   on every path. @p filepath is used for diagnostics only — no file IO happens here, which
+///   lets streaming commit worker-staged VSCN bytes without touching the disk on the main thread.
+static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, size_t file_size) {
     rt_string json_text = NULL;
-    size_t file_size;
     void *root = NULL;
     void *textures_arr;
     void *cubemaps_arr;
@@ -1538,15 +1534,10 @@ static void *rt_scene3d_load_impl(rt_string path) {
     rt_mesh3d **meshes = NULL;
     rt_scene3d *scene = NULL;
 
-    if (!path)
-        return NULL;
-    filepath = rt_string_cstr(path);
-    if (!filepath)
-        return NULL;
-
-    json = vscn_read_file(filepath, &file_size);
     if (!json)
         return NULL;
+    if (!filepath)
+        filepath = "<memory>";
 
     json_text = rt_string_from_bytes(json, file_size);
     free(json);
@@ -1658,8 +1649,7 @@ static void *rt_scene3d_load_impl(rt_string path) {
         int64_t skeleton_count = vjson_len(skeletons_arr);
         int64_t animation_count = vjson_len(animations_arr);
         if (skeleton_count > 0) {
-            void **skeletons =
-                (void **)calloc((size_t)skeleton_count, sizeof(void *));
+            void **skeletons = (void **)calloc((size_t)skeleton_count, sizeof(void *));
             if (!skeletons)
                 goto fail;
             for (int64_t i = 0; i < skeleton_count; i++) {
@@ -1683,8 +1673,7 @@ static void *rt_scene3d_load_impl(rt_string path) {
             free(skeletons);
         }
         if (animation_count > 0) {
-            scene->baked_animations =
-                (void **)calloc((size_t)animation_count, sizeof(void *));
+            scene->baked_animations = (void **)calloc((size_t)animation_count, sizeof(void *));
             if (!scene->baked_animations)
                 goto fail;
             for (int64_t i = 0; i < animation_count; i++) {
@@ -1722,7 +1711,6 @@ static void *rt_scene3d_load_impl(rt_string path) {
 fail:
     if (json_text)
         rt_string_unref(json_text);
-    free(json);
     vscn_release_loaded_refs((void **)meshes, mesh_count);
     vscn_release_loaded_refs((void **)materials, material_count);
     vscn_release_loaded_refs((void **)cubemaps, cubemap_count);
@@ -1730,6 +1718,57 @@ fail:
     scene3d_release_ref((void **)&scene);
     scene3d_release_ref(&root);
     return NULL;
+}
+
+static void *rt_scene3d_load_impl(rt_string path) {
+    const char *filepath;
+    char *json = NULL;
+    size_t file_size;
+
+    if (!path)
+        return NULL;
+    filepath = rt_string_cstr(path);
+    if (!filepath)
+        return NULL;
+
+    json = vscn_read_file(filepath, &file_size);
+    if (!json)
+        return NULL;
+    return rt_scene3d_load_impl_from_buffer(filepath, json, file_size);
+}
+
+/// @brief Deserialize a Scene3D from already-read `.vscn` JSON text (streaming staging path).
+/// @details Copies @p text so the caller keeps ownership of its buffer. @p path is used for
+///   diagnostics only. Returns NULL on parse failure with the asset-error state populated —
+///   never traps, matching the recoverable-cell contract of the streaming loader.
+void *rt_scene3d_load_from_memory(rt_string path, const char *text, size_t len) {
+    rt_asset_error_begin_load();
+    if (!text || len == 0) {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, "Scene3D.Load: empty scene payload");
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    if (len > VSCN_MAX_FILE_BYTES || len > SIZE_MAX - 1) {
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: scene payload is too large");
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    char *copy = (char *)malloc(len + 1);
+    if (!copy) {
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+    void *scene =
+        rt_scene3d_load_impl_from_buffer(path ? rt_string_cstr(path) : "<memory>", copy, len);
+    if (scene) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "Scene3D.Load: failed to load scene");
+        rt_asset_error_end_load_failure();
+    }
+    return scene;
 }
 
 void *rt_scene3d_load(rt_string path) {

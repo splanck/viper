@@ -1218,6 +1218,80 @@ static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_i
 ///          forward), so the projection-inversion path is skipped and
 ///          the normalized forward axis is returned directly.
 ///          Returns (0,0,-1) on degenerate inputs (zero size, singular VP).
+/// @brief Project a world-space point to pixel coordinates.
+/// @details Builds the same projection×view the picking path uses (perspective
+///          or ortho, sanitized clip planes) and projects @p x/y/z. Writes the
+///          pixel position and returns 1 when the point is in front of the
+///          camera (clip w > 0); 0 means behind (outputs still written from
+///          the mirrored projection — callers should hide anchored UI).
+int8_t rt_camera3d_world_to_screen(void *obj,
+                                   double x,
+                                   double y,
+                                   double z,
+                                   int64_t sw,
+                                   int64_t sh,
+                                   double *out_sx,
+                                   double *out_sy) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (out_sx)
+        *out_sx = 0.0;
+    if (out_sy)
+        *out_sy = 0.0;
+    if (!cam || sw <= 0 || sh <= 0)
+        return 0;
+    double near_plane = cam->near_plane;
+    double far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    double aspect = sanitize_aspect((double)sw / (double)sh);
+    double projection[16];
+    if (cam->is_ortho) {
+        double ortho_size = sanitize_ortho_size(cam->ortho_size);
+        double half_w = ortho_size * aspect;
+        build_ortho(projection, -half_w, half_w, -ortho_size, ortho_size, near_plane, far_plane);
+    } else {
+        build_perspective(projection, sanitize_fov(cam->fov), aspect, near_plane, far_plane);
+    }
+    if (!camera_matrix_is_finite(cam->view)) {
+        camera_rebuild_fps_view(cam);
+        camera_apply_shake_to_view(cam);
+    }
+    if (!camera_matrix_is_finite(cam->view))
+        return 0;
+    /* view-space then clip-space (column-vector convention, matches picking). */
+    double p[4] = {x, y, z, 1.0};
+    double view_pt[4];
+    for (int r = 0; r < 4; ++r)
+        view_pt[r] = cam->view[r * 4 + 0] * p[0] + cam->view[r * 4 + 1] * p[1] +
+                     cam->view[r * 4 + 2] * p[2] + cam->view[r * 4 + 3] * p[3];
+    double clip[4];
+    for (int r = 0; r < 4; ++r)
+        clip[r] = projection[r * 4 + 0] * view_pt[0] + projection[r * 4 + 1] * view_pt[1] +
+                  projection[r * 4 + 2] * view_pt[2] + projection[r * 4 + 3] * view_pt[3];
+    if (!isfinite(clip[3]) || fabs(clip[3]) <= 1e-12)
+        return 0;
+    double inv_w = 1.0 / clip[3];
+    double ndc_x = clip[0] * inv_w;
+    double ndc_y = clip[1] * inv_w;
+    if (out_sx)
+        *out_sx = (ndc_x + 1.0) * 0.5 * (double)sw;
+    if (out_sy)
+        *out_sy = (1.0 - ndc_y) * 0.5 * (double)sh;
+    return clip[3] > 0.0 ? 1 : 0;
+}
+
+/// @brief VM-facing WorldToScreen: returns Vec3(pixelX, pixelY, visible ? 1 : 0).
+void *rt_camera3d_world_to_screen_vec(void *obj, void *point, int64_t sw, int64_t sh) {
+    if (!rt_g3d_is_vec3(point)) {
+        rt_trap("Camera3D.WorldToScreen: point must be Vec3");
+        return rt_vec3_new(0.0, 0.0, 0.0);
+    }
+    double sx = 0.0;
+    double sy = 0.0;
+    int8_t visible = rt_camera3d_world_to_screen(
+        obj, rt_vec3_x(point), rt_vec3_y(point), rt_vec3_z(point), sw, sh, &sx, &sy);
+    return rt_vec3_new(sx, sy, visible ? 1.0 : 0.0);
+}
+
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam || sw <= 0 || sh <= 0)

@@ -48,10 +48,11 @@ TARGETS=(
     test_rt_g3d_commit_queue
     test_rt_gltf
     test_rt_game3d
+    test_rt_game3d_streaming_async
     g3d_3dnext2_surface_probe
 )
 
-TEST_REGEX='^(test_rt_threadpool|test_rt_parallel|test_rt_parallel_reduce|test_rt_concurrency|test_rt_g3d_commit_queue|test_rt_gltf|test_rt_game3d|g3d_3dnext2_surface_probe|g3d_openworld_slice_streaming_hitch_probe)$'
+TEST_REGEX='^(test_rt_threadpool|test_rt_parallel|test_rt_parallel_reduce|test_rt_concurrency|test_rt_g3d_commit_queue|test_rt_gltf|test_rt_game3d|test_rt_game3d_streaming_async|g3d_3dnext2_surface_probe|g3d_openworld_slice_streaming_hitch_probe)$'
 
 if ${CONFIGURE}; then
     cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" \

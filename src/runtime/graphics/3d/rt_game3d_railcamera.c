@@ -1,0 +1,369 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/rt_game3d_railcamera.c
+// Purpose: Viper.Game3D.RailCamera3D — a gameplay-installable spline camera:
+//   arclength-constant progress along a Path3D (manual or auto-advance), look
+//   targets (entity / point / second path / tangent), piecewise FOV and roll
+//   keys, and damped progress jumps. Rides the Path3D arclength evaluator
+//   shared with Timeline3D camera-move tracks.
+// Key invariants:
+//   - Update advances progress; LateUpdate writes the camera post-physics so
+//     look-entity targets use final poses (FollowController convention).
+//   - Roll composes an explicit up vector into the look-at basis; the camera
+//     itself needs no roll state.
+// Ownership/Lifetime:
+//   - GC-managed; finalizer releases the retained world/path/look references.
+// Links: misc/plans/thirdpersonupgrade/10-camera-rails.md, rt_path3d.h
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_canvas3d.h"
+#include "rt_game3d.h"
+#include "rt_game3d_internal.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_object.h"
+#include "rt_path3d.h"
+#include "rt_trap.h"
+#include "rt_vec3.h"
+#include <math.h>
+#include <string.h>
+
+/// @brief GC finalizer: release retained references.
+static void game3d_rail_camera_finalize(void *obj) {
+    rt_game3d_rail_camera *rail = (rt_game3d_rail_camera *)obj;
+    if (!rail)
+        return;
+    game3d_release_ref(&rail->world);
+    game3d_release_ref(&rail->path);
+    game3d_release_ref(&rail->look_entity);
+    game3d_release_ref(&rail->look_point);
+    game3d_release_ref(&rail->look_path);
+}
+
+/// @brief Create a rail camera riding @p path in @p world. Defaults: manual
+///   progress, damping 0 (snap), linear keys, tangent-facing.
+void *rt_game3d_rail_camera_new(void *world_obj, void *path) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.RailCamera3D.New: invalid world");
+    if (!world)
+        return NULL;
+    if (!rt_g3d_has_class(path, RT_G3D_PATH3D_CLASS_ID)) {
+        rt_trap("Game3D.RailCamera3D.New: path must be Path3D");
+        return NULL;
+    }
+    rt_game3d_rail_camera *rail = (rt_game3d_rail_camera *)rt_obj_new_i64(
+        RT_G3D_GAME3D_RAILCAMERA_CLASS_ID, (int64_t)sizeof(*rail));
+    if (!rail) {
+        rt_trap("Game3D.RailCamera3D.New: allocation failed");
+        return NULL;
+    }
+    memset(rail, 0, sizeof(*rail));
+    rt_obj_set_finalizer(rail, game3d_rail_camera_finalize);
+    game3d_assign_ref(&rail->world, world);
+    game3d_assign_typed_ref(&rail->path, path, RT_G3D_PATH3D_CLASS_ID);
+    return rail;
+}
+
+/// @brief Get the requested arclength-normalized progress [0,1].
+double rt_game3d_rail_camera_get_progress(void *obj) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.get_progress: invalid rail");
+    return rail ? rail->progress : 0.0;
+}
+
+/// @brief Set the requested progress (clamped [0,1]; damped when Damping > 0).
+void rt_game3d_rail_camera_set_progress(void *obj, double progress) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.set_progress: invalid rail");
+    if (rail)
+        rail->progress = game3d_clamp(game3d_finite_or(progress, 0.0), 0.0, 1.0);
+}
+
+/// @brief Get the auto-advance speed (units/sec along arclength; 0 = manual).
+double rt_game3d_rail_camera_get_speed(void *obj) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.get_speed: invalid rail");
+    return rail ? rail->speed : 0.0;
+}
+
+/// @brief Set the auto-advance speed.
+void rt_game3d_rail_camera_set_speed(void *obj, double speed) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.set_speed: invalid rail");
+    if (rail)
+        rail->speed = game3d_nonnegative_clamped_or(speed, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX);
+}
+
+/// @brief Get the progress damping factor (0 = snap).
+double rt_game3d_rail_camera_get_position_damping(void *obj) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.get_positionDamping: invalid rail");
+    return rail ? rail->position_damping : 0.0;
+}
+
+/// @brief Set the progress damping factor.
+void rt_game3d_rail_camera_set_position_damping(void *obj, double damping) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.set_positionDamping: invalid rail");
+    if (rail)
+        rail->position_damping = game3d_nonnegative_clamped_or(damping, 0.0, RT_GAME3D_DAMPING_MAX);
+}
+
+/// @brief Look at an entity's post-physics position (clears other look modes).
+void rt_game3d_rail_camera_set_look_entity(void *obj, void *entity) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.setLookEntity: invalid rail");
+    if (entity && !rt_g3d_has_class(entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+        rt_trap("Game3D.RailCamera3D.setLookEntity: target must be Entity3D");
+        return;
+    }
+    if (rail) {
+        game3d_assign_ref(&rail->look_entity, entity);
+        game3d_release_ref(&rail->look_point);
+        game3d_release_ref(&rail->look_path);
+    }
+}
+
+/// @brief Look at a fixed point (clears other look modes).
+void rt_game3d_rail_camera_set_look_point(void *obj, void *point) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.setLookPoint: invalid rail");
+    if (point && !rt_g3d_is_vec3(point)) {
+        rt_trap("Game3D.RailCamera3D.setLookPoint: target must be Vec3");
+        return;
+    }
+    if (rail) {
+        game3d_assign_ref(&rail->look_point, point);
+        game3d_release_ref(&rail->look_entity);
+        game3d_release_ref(&rail->look_path);
+    }
+}
+
+/// @brief Look along a second path evaluated at the same t (clears other modes).
+void rt_game3d_rail_camera_set_look_path(void *obj, void *path) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.setLookPath: invalid rail");
+    if (path && !rt_g3d_has_class(path, RT_G3D_PATH3D_CLASS_ID)) {
+        rt_trap("Game3D.RailCamera3D.setLookPath: target must be Path3D");
+        return;
+    }
+    if (rail) {
+        game3d_assign_ref(&rail->look_path, path);
+        game3d_release_ref(&rail->look_entity);
+        game3d_release_ref(&rail->look_point);
+    }
+}
+
+/// @brief Sorted-insert a key into a bounded key array.
+static void game3d_rail_add_key(
+    rt_game3d_rail_key *keys, int32_t *count, double t, double value, const char *full_message) {
+    if (*count >= RT_GAME3D_RAIL_MAX_KEYS) {
+        rt_trap(full_message);
+        return;
+    }
+    t = game3d_clamp(game3d_finite_or(t, 0.0), 0.0, 1.0);
+    value = game3d_finite_or(value, 0.0);
+    int32_t i = *count;
+    while (i > 0 && keys[i - 1].t > t) {
+        keys[i] = keys[i - 1];
+        --i;
+    }
+    keys[i].t = t;
+    keys[i].value = value;
+    *count += 1;
+}
+
+/// @brief Fluent: add an FOV key at arclength t.
+void *rt_game3d_rail_camera_add_fov_key(void *obj, double t, double fov) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.addFovKey: invalid rail");
+    if (rail)
+        game3d_rail_add_key(rail->fov_keys,
+                            &rail->fov_key_count,
+                            t,
+                            game3d_clamp(game3d_finite_or(fov, 60.0), 1.0, 179.0),
+                            "Game3D.RailCamera3D.addFovKey: key limit reached (16)");
+    return obj;
+}
+
+/// @brief Fluent: add a roll key (degrees about the view axis) at arclength t.
+void *rt_game3d_rail_camera_add_roll_key(void *obj, double t, double degrees) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.addRollKey: invalid rail");
+    if (rail)
+        game3d_rail_add_key(rail->roll_keys,
+                            &rail->roll_key_count,
+                            t,
+                            game3d_clamp_abs_or(degrees, 0.0, 720.0),
+                            "Game3D.RailCamera3D.addRollKey: key limit reached (16)");
+    return obj;
+}
+
+/// @brief Get whether keys interpolate with smoothstep instead of linearly.
+int8_t rt_game3d_rail_camera_get_key_ease(void *obj) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.get_keyEase: invalid rail");
+    return rail ? rail->key_ease : 0;
+}
+
+/// @brief Choose smoothstep (true) or linear (false) key interpolation.
+void rt_game3d_rail_camera_set_key_ease(void *obj, int8_t smooth) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.set_keyEase: invalid rail");
+    if (rail)
+        rail->key_ease = smooth ? 1 : 0;
+}
+
+/// @brief Evaluate a sorted key array at @p t (clamped ends, linear/smoothstep).
+static int game3d_rail_eval_keys(
+    const rt_game3d_rail_key *keys, int32_t count, double t, int8_t smooth, double *out_value) {
+    if (count <= 0)
+        return 0;
+    if (t <= keys[0].t) {
+        *out_value = keys[0].value;
+        return 1;
+    }
+    if (t >= keys[count - 1].t) {
+        *out_value = keys[count - 1].value;
+        return 1;
+    }
+    for (int32_t i = 0; i + 1 < count; ++i) {
+        if (t >= keys[i].t && t <= keys[i + 1].t) {
+            double span = keys[i + 1].t - keys[i].t;
+            double frac = span > 1e-12 ? (t - keys[i].t) / span : 0.0;
+            if (smooth)
+                frac = frac * frac * (3.0 - 2.0 * frac);
+            *out_value = keys[i].value + (keys[i + 1].value - keys[i].value) * frac;
+            return 1;
+        }
+    }
+    *out_value = keys[count - 1].value;
+    return 1;
+}
+
+/// @brief Pre-physics update: auto-advance and damp the progress value.
+void rt_game3d_rail_camera_update(void *obj, void *world_obj, double dt) {
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.update: invalid rail");
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.RailCamera3D.update: invalid world");
+    if (!rail || !world)
+        return;
+    if (!game3d_camera_controller_validate_world(
+            rail, world, "Game3D.RailCamera3D.update: controller belongs to another world"))
+        return;
+    dt = game3d_clamp_dt(dt);
+    void *path = rt_g3d_checked_or_null(rail->path, RT_G3D_PATH3D_CLASS_ID);
+    if (rail->speed > 0.0 && path) {
+        double length = rt_path3d_get_length(path);
+        if (isfinite(length) && length > 1e-9) {
+            rail->progress += rail->speed * dt / length;
+            if (rail->progress > 1.0)
+                rail->progress = 1.0;
+        }
+    }
+    if (rail->position_damping > 0.0) {
+        double alpha = 1.0 - exp(-rail->position_damping * dt);
+        rail->smoothed += (rail->progress - rail->smoothed) * game3d_clamp(alpha, 0.0, 1.0);
+    } else {
+        rail->smoothed = rail->progress;
+    }
+}
+
+/// @brief Post-sync late update: evaluate the spline + keys and write the camera.
+void rt_game3d_rail_camera_late_update(void *obj, void *world_obj, double dt) {
+    (void)dt;
+    rt_game3d_rail_camera *rail =
+        game3d_rail_camera_checked(obj, "Game3D.RailCamera3D.lateUpdate: invalid rail");
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.RailCamera3D.lateUpdate: invalid world");
+    if (!rail || !world || !world->camera)
+        return;
+    if (!game3d_camera_controller_validate_world(
+            rail, world, "Game3D.RailCamera3D.lateUpdate: controller belongs to another world"))
+        return;
+    void *path = rt_g3d_checked_or_null(rail->path, RT_G3D_PATH3D_CLASS_ID);
+    if (!path)
+        return;
+    double t = game3d_clamp(rail->smoothed, 0.0, 1.0);
+    double eye[3];
+    double tangent[3];
+    rt_path3d_eval_spline_raw(path, t, eye, tangent);
+
+    /* Look target resolution: entity > point > path > tangent. */
+    double look[3] = {eye[0] + tangent[0], eye[1] + tangent[1], eye[2] + tangent[2]};
+    rt_game3d_entity *look_entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+        rail->look_entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    if (look_entity && game3d_entity_alive_or_record(look_entity)) {
+        double pos[3];
+        if (game3d_entity_world_position_components(look_entity, pos)) {
+            look[0] = pos[0];
+            look[1] = pos[1];
+            look[2] = pos[2];
+        }
+    } else if (rail->look_point && rt_g3d_is_vec3(rail->look_point)) {
+        look[0] = rt_vec3_x(rail->look_point);
+        look[1] = rt_vec3_y(rail->look_point);
+        look[2] = rt_vec3_z(rail->look_point);
+    } else {
+        void *look_path = rt_g3d_checked_or_null(rail->look_path, RT_G3D_PATH3D_CLASS_ID);
+        if (look_path) {
+            double lp[3];
+            rt_path3d_eval_spline_raw(look_path, t, lp, NULL);
+            look[0] = lp[0];
+            look[1] = lp[1];
+            look[2] = lp[2];
+        }
+    }
+
+    /* Roll: rotate the base up vector about the view direction. */
+    double up[3] = {0.0, 1.0, 0.0};
+    double view[3] = {look[0] - eye[0], look[1] - eye[1], look[2] - eye[2]};
+    double view_len = sqrt(view[0] * view[0] + view[1] * view[1] + view[2] * view[2]);
+    if (isfinite(view_len) && view_len > 1e-9) {
+        view[0] /= view_len;
+        view[1] /= view_len;
+        view[2] /= view_len;
+        if (fabs(view[1]) > 0.99) {
+            /* View nearly parallel to +Y: fall back to +X as the base up. */
+            up[0] = 1.0;
+            up[1] = 0.0;
+            up[2] = 0.0;
+        }
+        double roll_deg = 0.0;
+        if (game3d_rail_eval_keys(
+                rail->roll_keys, rail->roll_key_count, t, rail->key_ease, &roll_deg) &&
+            fabs(roll_deg) > 1e-9) {
+            double angle = roll_deg * (RT_GAME3D_PI / 180.0);
+            double c = cos(angle);
+            double s = sin(angle);
+            /* Rodrigues rotation of up about the view axis. */
+            double cross[3] = {view[1] * up[2] - view[2] * up[1],
+                               view[2] * up[0] - view[0] * up[2],
+                               view[0] * up[1] - view[1] * up[0]};
+            double dot = view[0] * up[0] + view[1] * up[1] + view[2] * up[2];
+            for (int i = 0; i < 3; ++i)
+                up[i] = up[i] * c + cross[i] * s + view[i] * dot * (1.0 - c);
+        }
+    }
+
+    rt_camera3d_look_at_components(world->camera,
+                                   game3d_clamp_coord_or(eye[0], 0.0),
+                                   game3d_clamp_coord_or(eye[1], 0.0),
+                                   game3d_clamp_coord_or(eye[2], 0.0),
+                                   game3d_clamp_coord_or(look[0], 0.0),
+                                   game3d_clamp_coord_or(look[1], 0.0),
+                                   game3d_clamp_coord_or(look[2], 0.0),
+                                   up[0],
+                                   up[1],
+                                   up[2]);
+
+    double fov = 0.0;
+    if (game3d_rail_eval_keys(rail->fov_keys, rail->fov_key_count, t, rail->key_ease, &fov))
+        rt_camera3d_set_fov(world->camera, fov);
+}

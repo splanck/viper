@@ -783,6 +783,383 @@ void rt_scene_node3d_set_impostor(void *n, double d, void *p) {
     (void)p;
 }
 
+/// @brief Silent stub for `SceneNode.SetImpostorFrames` — no-op.
+void rt_scene_node3d_set_impostor_frames(void *node,
+                                         double distance,
+                                         void *pixels,
+                                         int64_t frames) {
+    (void)node;
+    (void)distance;
+    (void)pixels;
+    (void)frames;
+}
+
+/// @brief Silent stub for `SceneNode.GetImpostorFrameIndex` — no-op; returns 0.
+int64_t rt_scene_node3d_get_impostor_frame_index(void *node) {
+    (void)node;
+    return 0;
+}
+
+/// @brief Silent stub for `SceneNode.SetStatic` — no-op.
+void rt_scene_node3d_set_static(void *node, int8_t is_static) {
+    (void)node;
+    (void)is_static;
+}
+
+/// @brief Silent stub for `SceneNode.GetStatic` — no-op; returns 0.
+int8_t rt_scene_node3d_get_static(void *node) {
+    (void)node;
+    return 0;
+}
+
+/// @brief Silent stub for `LightBaker3D.New` — no-op; returns NULL.
+void *rt_lightbaker3d_new(void *scene) {
+    (void)scene;
+    return 0;
+}
+
+/// @brief Silent stub for `LightBaker3D.set_TexelsPerUnit` — no-op.
+void rt_lightbaker3d_set_texels_per_unit(void *baker, double texels) {
+    (void)baker;
+    (void)texels;
+}
+
+/// @brief Silent stub for `LightBaker3D.get_TexelsPerUnit` — no-op; returns 0.
+double rt_lightbaker3d_get_texels_per_unit(void *baker) {
+    (void)baker;
+    return 0.0;
+}
+
+/// @brief Silent stub for `LightBaker3D.set_Samples` — no-op.
+void rt_lightbaker3d_set_samples(void *baker, int64_t samples) {
+    (void)baker;
+    (void)samples;
+}
+
+/// @brief Silent stub for `LightBaker3D.get_Samples` — no-op; returns 0.
+int64_t rt_lightbaker3d_get_samples(void *baker) {
+    (void)baker;
+    return 0;
+}
+
+/// @brief Silent stub for `LightBaker3D.set_Bounces` — no-op.
+void rt_lightbaker3d_set_bounces(void *baker, int64_t bounces) {
+    (void)baker;
+    (void)bounces;
+}
+
+/// @brief Silent stub for `LightBaker3D.get_Bounces` — no-op; returns 0.
+int64_t rt_lightbaker3d_get_bounces(void *baker) {
+    (void)baker;
+    return 0;
+}
+
+/// @brief Silent stub for `LightBaker3D.SetSkyColor` — no-op.
+void rt_lightbaker3d_set_sky_color(void *baker, double r, double g, double b) {
+    (void)baker;
+    (void)r;
+    (void)g;
+    (void)b;
+}
+
+/// @brief Silent stub for `LightBaker3D.get_Progress` — no-op; returns 0.
+double rt_lightbaker3d_get_progress(void *baker) {
+    (void)baker;
+    return 0.0;
+}
+
+/// @brief Silent stub for `LightBaker3D.AddLight` — no-op.
+void rt_lightbaker3d_add_light(void *baker, void *light) {
+    (void)baker;
+    (void)light;
+}
+
+/// @brief Silent stub for `LightBaker3D.BakeStep` — no-op; reports done.
+int8_t rt_lightbaker3d_bake_step(void *baker) {
+    (void)baker;
+    return 1;
+}
+
+/// @brief Silent stub for `LightBaker3D.Apply` — no-op.
+void rt_lightbaker3d_apply(void *baker) {
+    (void)baker;
+}
+
+/// @brief Silent stub for `LightBaker3D.get_Atlas` — no-op; returns NULL.
+void *rt_lightbaker3d_get_atlas(void *baker) {
+    (void)baker;
+    return 0;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.New` — no-op; returns NULL.
+void *rt_lightprobegrid3d_new(void *min_v, void *max_v, double spacing) {
+    (void)min_v;
+    (void)max_v;
+    (void)spacing;
+    return 0;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.get_ProbeCount` — no-op; returns 0.
+int64_t rt_lightprobegrid3d_get_probe_count(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.Bake` — no-op.
+void rt_lightprobegrid3d_bake(void *grid, void *baker) {
+    (void)grid;
+    (void)baker;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.Sample` — no-op; returns NULL.
+void *rt_lightprobegrid3d_sample(void *grid, void *position, void *normal) {
+    (void)grid;
+    (void)position;
+    (void)normal;
+    return 0;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.Save` — no-op; returns 0.
+int8_t rt_lightprobegrid3d_save(void *grid, rt_string path) {
+    (void)grid;
+    (void)path;
+    return 0;
+}
+
+/// @brief Silent stub for `LightProbeGrid3D.Load` — no-op; returns 0.
+int8_t rt_lightprobegrid3d_load(void *grid, rt_string path) {
+    (void)grid;
+    (void)path;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.New` — no-op; returns NULL.
+void *rt_reflectionprobe3d_new(void *position, void *box_min, void *box_max) {
+    (void)position;
+    (void)box_min;
+    (void)box_max;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.get_Position` — no-op; returns NULL.
+void *rt_reflectionprobe3d_get_position(void *probe) {
+    (void)probe;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.set_InfluenceScale` — no-op.
+void rt_reflectionprobe3d_set_influence_scale(void *probe, double scale) {
+    (void)probe;
+    (void)scale;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.get_InfluenceScale` — no-op; returns 0.
+double rt_reflectionprobe3d_get_influence_scale(void *probe) {
+    (void)probe;
+    return 0.0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.set_Resolution` — no-op.
+void rt_reflectionprobe3d_set_resolution(void *probe, int64_t resolution) {
+    (void)probe;
+    (void)resolution;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.get_Resolution` — no-op; returns 0.
+int64_t rt_reflectionprobe3d_get_resolution(void *probe) {
+    (void)probe;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.set_CaptureDirty` — no-op.
+void rt_reflectionprobe3d_set_capture_dirty(void *probe, int8_t dirty) {
+    (void)probe;
+    (void)dirty;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.get_CaptureDirty` — no-op; returns 0.
+int8_t rt_reflectionprobe3d_get_capture_dirty(void *probe) {
+    (void)probe;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.Contains` — no-op; returns 0.
+int8_t rt_reflectionprobe3d_contains(void *probe, void *position) {
+    (void)probe;
+    (void)position;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.get_Cubemap` — no-op; returns NULL.
+void *rt_reflectionprobe3d_get_cubemap(void *probe) {
+    (void)probe;
+    return 0;
+}
+
+/// @brief Silent stub for `ReflectionProbe3D.Capture` — no-op; returns 0.
+int8_t rt_reflectionprobe3d_capture(void *probe, void *canvas, void *scene) {
+    (void)probe;
+    (void)canvas;
+    (void)scene;
+    return 0;
+}
+
+/// @brief Silent stub for `Sky3D.New` — no-op; returns NULL.
+void *rt_sky3d_new(void) {
+    return 0;
+}
+
+/// @brief Silent stub for `Sky3D.SetSunDirection` — no-op.
+void rt_sky3d_set_sun_direction(void *sky, void *direction) {
+    (void)sky;
+    (void)direction;
+}
+
+/// @brief Silent stub for `Sky3D.set_Turbidity` — no-op.
+void rt_sky3d_set_turbidity(void *sky, double turbidity) {
+    (void)sky;
+    (void)turbidity;
+}
+
+/// @brief Silent stub for `Sky3D.get_Turbidity` — no-op; returns 0.
+double rt_sky3d_get_turbidity(void *sky) {
+    (void)sky;
+    return 0.0;
+}
+
+/// @brief Silent stub for `Sky3D.SetGroundAlbedo` — no-op.
+void rt_sky3d_set_ground_albedo(void *sky, double r, double g, double b) {
+    (void)sky;
+    (void)r;
+    (void)g;
+    (void)b;
+}
+
+/// @brief Silent stub for `Sky3D.set_Resolution` — no-op.
+void rt_sky3d_set_resolution(void *sky, int64_t resolution) {
+    (void)sky;
+    (void)resolution;
+}
+
+/// @brief Silent stub for `Sky3D.get_Resolution` — no-op; returns 0.
+int64_t rt_sky3d_get_resolution(void *sky) {
+    (void)sky;
+    return 0;
+}
+
+/// @brief Silent stub for `Sky3D.get_Dirty` — no-op; returns 0.
+int8_t rt_sky3d_get_dirty(void *sky) {
+    (void)sky;
+    return 0;
+}
+
+/// @brief Silent stub for `Sky3D.Update` — no-op; returns 0.
+int8_t rt_sky3d_update(void *sky, void *canvas) {
+    (void)sky;
+    (void)canvas;
+    return 0;
+}
+
+/// @brief Silent stub for `Sky3D.get_Cubemap` — no-op; returns NULL.
+void *rt_sky3d_get_cubemap(void *sky) {
+    (void)sky;
+    return 0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.New` — no-op; returns NULL.
+void *rt_timeofday3d_new(void) {
+    return 0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.set_Hours` — no-op.
+void rt_timeofday3d_set_hours(void *tod, double hours) {
+    (void)tod;
+    (void)hours;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.get_Hours` — no-op; returns 0.
+double rt_timeofday3d_get_hours(void *tod) {
+    (void)tod;
+    return 0.0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.set_DayLengthSeconds` — no-op.
+void rt_timeofday3d_set_day_length_seconds(void *tod, double seconds) {
+    (void)tod;
+    (void)seconds;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.get_DayLengthSeconds` — no-op; returns 0.
+double rt_timeofday3d_get_day_length_seconds(void *tod) {
+    (void)tod;
+    return 0.0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.set_LatitudeDegrees` — no-op.
+void rt_timeofday3d_set_latitude_degrees(void *tod, double degrees) {
+    (void)tod;
+    (void)degrees;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.get_LatitudeDegrees` — no-op; returns 0.
+double rt_timeofday3d_get_latitude_degrees(void *tod) {
+    (void)tod;
+    return 0.0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.set_RefreshDegrees` — no-op.
+void rt_timeofday3d_set_refresh_degrees(void *tod, double degrees) {
+    (void)tod;
+    (void)degrees;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.get_RefreshDegrees` — no-op; returns 0.
+double rt_timeofday3d_get_refresh_degrees(void *tod) {
+    (void)tod;
+    return 0.0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.SetSunLight` — no-op.
+void rt_timeofday3d_set_sun_light(void *tod, void *light) {
+    (void)tod;
+    (void)light;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.SetSky` — no-op.
+void rt_timeofday3d_set_sky(void *tod, void *sky) {
+    (void)tod;
+    (void)sky;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.SetReflectionProbe` — no-op.
+void rt_timeofday3d_set_reflection_probe(void *tod, void *probe) {
+    (void)tod;
+    (void)probe;
+}
+
+/// @brief Silent stub for the raw sun-direction query — no-op; writes up.
+void rt_timeofday3d_get_sun_direction_raw(void *tod, double out_dir[3]) {
+    (void)tod;
+    if (out_dir) {
+        out_dir[0] = 0.0;
+        out_dir[1] = 1.0;
+        out_dir[2] = 0.0;
+    }
+}
+
+/// @brief Silent stub for `TimeOfDay3D.get_SunDirection` — no-op; returns NULL.
+void *rt_timeofday3d_get_sun_direction(void *tod) {
+    (void)tod;
+    return 0;
+}
+
+/// @brief Silent stub for `TimeOfDay3D.Advance` — no-op.
+void rt_timeofday3d_advance(void *tod, double dt, void *canvas) {
+    (void)tod;
+    (void)dt;
+    (void)canvas;
+}
+
 /// @brief Stub for `SceneNode3D.ClearLOD` — remove all LOD entries.
 ///        After this the node always renders its primary mesh regardless
 ///        of camera distance.

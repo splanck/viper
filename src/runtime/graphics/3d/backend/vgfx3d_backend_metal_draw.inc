@@ -2,7 +2,8 @@
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_draw.inc
 //   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Draw submission (mesh/instanced/shadow), end-frame/present/resize/readback, GPU post-FX encoding, skybox, and backend hook implementations
+// Purpose: Draw submission (mesh/instanced/shadow), end-frame/present/resize/readback, GPU post-FX
+// encoding, skybox, and backend hook implementations
 //===----------------------------------------------------------------------===//
 
 /// @brief Encode and submit a single 3D draw command (the backend's main draw entry point).
@@ -132,6 +133,9 @@ static void metal_submit_draw(void *ctx_ptr,
             scene.fog_params[1] = ctx->_fogFar;
             scene.fog_params[2] = ctx->_shadowBias;
             memcpy(scene.height_fog, ctx->_heightFog, sizeof(scene.height_fog));
+            memcpy(scene.height_fog_sun, ctx->_heightFogSun, sizeof(scene.height_fog_sun));
+            memcpy(
+                scene.height_fog_sun_dir, ctx->_heightFogSunDir, sizeof(scene.height_fog_sun_dir));
             scene.counts[0] = light_count < 0 ? 0
                                               : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
                                                                                  : light_count);
@@ -742,11 +746,10 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
             return;
         /* R20: compact-cached geometry needs the packed-layout shadow pipeline. */
-        [ctx.encoder
-            setRenderPipelineState:(cmd->compact_vertex_stream && ctx.compactPipelinesReady &&
-                                    ctx.shadowPipelineCompact)
-                                       ? ctx.shadowPipelineCompact
-                                       : ctx.shadowPipeline];
+        [ctx.encoder setRenderPipelineState:(cmd->compact_vertex_stream &&
+                                             ctx.compactPipelinesReady && ctx.shadowPipelineCompact)
+                                                ? ctx.shadowPipelineCompact
+                                                : ctx.shadowPipeline];
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
@@ -893,13 +896,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
          * last: the encoder records a reference, so the GPU read whatever the final memcpy
          * left behind — all batches rendered with the last batch's transforms. */
         NSUInteger instance_offset = 0;
-        id<MTLBuffer> instance_buffer =
-            metal_upload_transient_buffer(ctx,
-                                          VGFX3D_METAL_TRANSIENT_INSTANCE,
-                                          instance_data,
-                                          (size_t)instance_count *
-                                              sizeof(vgfx3d_metal_instance_data_t),
-                                          &instance_offset);
+        id<MTLBuffer> instance_buffer = metal_upload_transient_buffer(
+            ctx,
+            VGFX3D_METAL_TRANSIENT_INSTANCE,
+            instance_data,
+            (size_t)instance_count * sizeof(vgfx3d_metal_instance_data_t),
+            &instance_offset);
         if (!instance_buffer)
             return;
 
@@ -987,6 +989,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             scene.fog_params[1] = ctx->_fogFar;
             scene.fog_params[2] = ctx->_shadowBias;
             memcpy(scene.height_fog, ctx->_heightFog, sizeof(scene.height_fog));
+            memcpy(scene.height_fog_sun, ctx->_heightFogSun, sizeof(scene.height_fog_sun));
+            memcpy(
+                scene.height_fog_sun_dir, ctx->_heightFogSunDir, sizeof(scene.height_fog_sun_dir));
             scene.counts[0] = light_count < 0 ? 0
                                               : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS
                                                                                  : light_count);
@@ -1934,8 +1939,8 @@ static int32_t metal_queue_depth_probe(void *backend_ctx, float ndc_x, float ndc
         return -1;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
-        if (!ctx || ctx->_depthProbeRequestCount >= VGFX3D_DEPTH_PROBE_MAX ||
-            !isfinite(ndc_x) || !isfinite(ndc_y))
+        if (!ctx || ctx->_depthProbeRequestCount >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
+            !isfinite(ndc_y))
             return -1;
         int32_t slot = ctx->_depthProbeRequestCount++;
         ctx->_depthProbeRequests[slot][0] = ndc_x;
@@ -1960,4 +1965,3 @@ static float metal_read_depth_probe(void *backend_ctx, int32_t slot) {
         return value;
     }
 }
-

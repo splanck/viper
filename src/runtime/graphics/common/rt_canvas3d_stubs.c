@@ -1703,6 +1703,28 @@ void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double
     RT_GRAPHICS_TRAP_VOID("Canvas3D.SetFog: graphics support not compiled in");
 }
 
+/// @brief Silent stub for `Canvas3D.SetHeightFogSun` — no-op.
+void rt_canvas3d_set_height_fog_sun(
+    void *obj, double r, double g, double b, double power, double amount) {
+    (void)obj;
+    (void)r;
+    (void)g;
+    (void)b;
+    (void)power;
+    (void)amount;
+}
+
+/// @brief Silent stub for `Canvas3D.ClearHeightFog` — no-op.
+void rt_canvas3d_clear_height_fog(void *obj) {
+    (void)obj;
+}
+
+/// @brief Silent stub for `Canvas3D.get_HeightFogEnabled` — no-op; returns 0.
+int8_t rt_canvas3d_get_height_fog_enabled(void *obj) {
+    (void)obj;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.ClearFog` — disable linear distance fog
 ///        for subsequent draws.
 ///

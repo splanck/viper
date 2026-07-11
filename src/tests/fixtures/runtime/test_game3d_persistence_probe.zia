@@ -1,0 +1,123 @@
+module test_game3d_persistence_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.IO as IO;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("Persistence Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    // Persistent crate: moved, then captured by the per-step refresh.
+    var crate = Game3D.Entity3D.New();
+    crate.SetPosition(1.0, 0.0, 2.0);
+    world.Spawn(crate);
+    crate.SetPersistent("crate_01");
+    crate.StateTag = 7;
+    if (crate.PersistentKey != "crate_01") {
+        Terminal.Say("FAIL: persistence key should round-trip");
+        return;
+    }
+    crate.SetPosition(4.0, 0.0, -3.0);
+    world.StepSimulation(1.0 / 60.0);
+
+    // Persistent enemy: despawn marks its record dead.
+    var enemy = Game3D.Entity3D.New();
+    enemy.SetPosition(0.0, 0.0, -6.0);
+    world.Spawn(enemy);
+    enemy.SetPersistent("enemy_01");
+    world.StepSimulation(1.0 / 60.0);
+    world.Despawn(enemy);
+    if (world.GetPersistentAlive("enemy_01") == true) {
+        Terminal.Say("FAIL: despawn should mark the record dead");
+        return;
+    }
+    if (world.GetPersistentAlive("crate_01") == false) {
+        Terminal.Say("FAIL: the crate record should stay alive");
+        return;
+    }
+    var recorded = world.GetPersistentPosition("crate_01");
+    if (recorded.X < 3.9 || recorded.Z > -2.9) {
+        Terminal.Say("FAIL: the record should capture the moved pose");
+        return;
+    }
+
+    // Cell flags persist alongside the entity records.
+    var stream = world.Stream;
+    stream.SetCellFlag("cell_a", "door_open", 1);
+    stream.SetCellFlag("cell_a", "chest_looted", 3);
+    if (stream.GetCellFlag("cell_a", "door_open") != 1) {
+        Terminal.Say("FAIL: cell flag should read back");
+        return;
+    }
+    if (stream.GetCellFlag("cell_b", "door_open") != 0) {
+        Terminal.Say("FAIL: unset cell flag should read 0");
+        return;
+    }
+    if (stream.LoadedCellEventCount() != 0) {
+        Terminal.Say("FAIL: no cells were streamed in this probe");
+        return;
+    }
+    stream.ClearLoadedCellEvents();
+
+    // Snapshot round-trip: save, mutate, load restores the saved state.
+    if (world.SaveState("viper-persistence-probe", "slot1") == false) {
+        Terminal.Say("FAIL: SaveState should succeed");
+        return;
+    }
+    crate.SetPosition(50.0, 0.0, 50.0);
+    crate.StateTag = 99;
+    stream.SetCellFlag("cell_a", "door_open", 42);
+    world.StepSimulation(1.0 / 60.0);
+    if (world.LoadState("viper-persistence-probe", "slot1") == false) {
+        Terminal.Say("FAIL: LoadState should succeed");
+        return;
+    }
+    var restored = crate.Position;
+    if (restored.X > 4.1 || restored.X < 3.9) {
+        Terminal.Say("FAIL: LoadState should re-pose the resident crate");
+        return;
+    }
+    if (crate.StateTag != 7) {
+        Terminal.Say("FAIL: LoadState should restore the state tag");
+        return;
+    }
+    if (stream.GetCellFlag("cell_a", "door_open") != 1) {
+        Terminal.Say("FAIL: LoadState should restore cell flags");
+        return;
+    }
+    if (world.GetPersistentAlive("enemy_01") == true) {
+        Terminal.Say("FAIL: the dead record should survive the round trip");
+        return;
+    }
+
+    // Missing and corrupt snapshots recover false without touching state.
+    if (world.LoadState("viper-persistence-probe", "no-such-slot") == true) {
+        Terminal.Say("FAIL: a missing slot must load false");
+        return;
+    }
+    var corruptPath = IO.Path.DataDir("viper-persistence-probe") + "/corrupt.vw3dsav";
+    IO.File.WriteAllText(corruptPath, "this is not a save file at all");
+    if (world.LoadState("viper-persistence-probe", "corrupt") == true) {
+        Terminal.Say("FAIL: a corrupt slot must load false");
+        return;
+    }
+    if (stream.GetCellFlag("cell_a", "door_open") != 1) {
+        Terminal.Say("FAIL: a failed load must leave state untouched");
+        return;
+    }
+
+    // Second save of identical state produces an identical loadable file.
+    if (world.SaveState("viper-persistence-probe", "slot2") == false) {
+        Terminal.Say("FAIL: second SaveState should succeed");
+        return;
+    }
+    if (world.LoadState("viper-persistence-probe", "slot2") == false) {
+        Terminal.Say("FAIL: second slot should load");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

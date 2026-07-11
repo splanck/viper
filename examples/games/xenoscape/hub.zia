@@ -334,8 +334,8 @@ class HubSystem {
             var marker = "  ";
             if i == selection { color = pal.titleYellow; marker = "> "; }
             canvas.BoxAlpha(410, y - 8, 460, 42, Color.RGB(8, 16, 26), 180);
-            canvas.TextScaled(455, y, marker + labels.get(i), color,
-                              hubTextScale(2, 3));
+            canvas.TextScaled(455, y, marker + labels.get(i),
+                              hubTextScale(2, 3), color);
             i = i + 1;
         }
         canvas.TextCenteredScaled(

@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_body.inc  (#included from rt_physics3d.c; not a standalone translation unit)
-// Purpose: Physics3D Body3D construction and property accessors
+// File: src/runtime/graphics/3d/physics/rt_physics3d_body.inc  (#included from rt_physics3d.c; not
+// a standalone translation unit) Purpose: Physics3D Body3D construction and property accessors
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Body3D
@@ -154,8 +154,7 @@ void rt_body3d_set_collider(void *o, void *collider) {
     rt_body3d *b = body3d_checked(o);
     if (!b)
         return;
-    body3d_assign_collider(
-        b, collider, "Physics3DBody.Collider: collider requires a static body");
+    body3d_assign_collider(b, collider, "Physics3DBody.Collider: collider requires a static body");
 }
 
 /// @brief `Body3D.GetCollider` — borrowed reference to the body's collider.
@@ -486,6 +485,19 @@ void rt_body3d_set_friction(void *o, double f) {
 double rt_body3d_get_friction(void *o) {
     rt_body3d *b = body3d_checked(o);
     return b ? ph3d_clamp_nonnegative_finite(b->friction, 0.0) : 0;
+}
+
+/// @brief `Body3D.SetUserData(v)` — opaque gameplay handle; never read by the runtime.
+void rt_body3d_set_user_data(void *o, int64_t value) {
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->user_data = value;
+}
+
+/// @brief `Body3D.GetUserData` — the opaque gameplay handle (0 by default).
+int64_t rt_body3d_get_user_data(void *o) {
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->user_data : 0;
 }
 
 /// @brief `Body3D.SetLinearDamping(d)` — per-second linear velocity decay.

@@ -791,7 +791,7 @@ class Renderer {
     }
 
     // =========================================================================
-    // Commercial-quality vignette effect (darkened screen edges)
+    // Bounded vignette effect (darkened screen edges)
     // =========================================================================
     /// @brief Soft dark vignette around screen edges.
     ///        Focuses attention on the centre during boss
@@ -931,17 +931,39 @@ class Renderer {
     ///        elsewhere; this just composites the box.
     expose func drawNotification(canvas: Canvas, text: String,
                                   timer: Integer, maxTimer: Integer) {
+        drawNotificationAt(canvas, text, timer, maxTimer, 10);
+    }
+
+    /// @brief Draw a bounded notification at an authored resting Y coordinate.
+    ///
+    /// Gameplay uses a below-HUD lane while menus retain the original top edge.
+    /// Width follows the live message so storage and route errors do not spill
+    /// outside a fixed 300-pixel panel.
+    ///
+    /// @param canvas Borrowed destination canvas.
+    /// @param text Player-facing notification text.
+    /// @param timer Remaining visibility milliseconds.
+    /// @param maxTimer Initial visibility duration used for entrance timing.
+    /// @param targetY Resting top edge after the slide-in.
+    /// @return Nothing. Draws no panel for an expired timer.
+    expose func drawNotificationAt(canvas: Canvas, text: String,
+                                    timer: Integer, maxTimer: Integer,
+                                    targetY: Integer) {
         if timer <= 0 { return; }
         // Slide in from top
-        var slideY = -40;
+        var hiddenY = -40;
+        var slideY = hiddenY;
+        var travel = targetY - hiddenY;
         if timer > maxTimer - 300 {
-            slideY = -40 + (maxTimer - timer) * 50 / 300;
+            slideY = hiddenY + (maxTimer - timer) * travel / 300;
         } else if timer < 300 {
-            slideY = 10 - (300 - timer) * 50 / 300;
+            slideY = targetY - (300 - timer) * travel / 300;
         } else {
-            slideY = 10;
+            slideY = targetY;
         }
-        var nw = 300;
+        var nw = Canvas.TextWidth(text) + 32;
+        if nw < 300 { nw = 300; }
+        if nw > 900 { nw = 900; }
         var nx = SCREEN_W / 2 - nw / 2;
         canvas.BoxAlpha(nx, slideY, nw, 30, Color.RGB(20, 25, 40), 200);
         canvas.Frame(nx, slideY, nw, 30, Color.RGB(80, 120, 200));

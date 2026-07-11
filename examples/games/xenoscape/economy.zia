@@ -34,7 +34,7 @@ final PURCHASE_INVALID_BRANCH = -1;
 final PURCHASE_MAX_TIER = -2;
 final PURCHASE_INSUFFICIENT_GEMS = -3;
 
-/// @brief Map an upgrade branch to its release-facing name.
+/// @brief Map an upgrade branch to its player-facing name.
 ///
 /// @param branch One `UPGRADE_*` branch id.
 /// @return Stable display name, or `Unknown Upgrade` for invalid input.

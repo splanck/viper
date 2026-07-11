@@ -89,6 +89,10 @@ typedef struct {
     float height_fog_falloff;
     float height_fog_density;
     float height_fog_blend;
+    float height_fog_sun_color[3];
+    float height_fog_sun_dir[3];
+    float height_fog_sun_power;
+    float height_fog_sun_amount;
     /* Image-based lighting (copied from Canvas3D each begin_frame) */
     int8_t ibl_enabled;
     float ibl_intensity;

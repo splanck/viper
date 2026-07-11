@@ -118,6 +118,7 @@ typedef struct rt_body3d {
     double friction;
     double linear_damping;
     double angular_damping;
+    int64_t user_data; /* opaque gameplay handle; the runtime never reads it */
     int64_t collision_layer;
     int64_t collision_mask;
     int32_t shape;

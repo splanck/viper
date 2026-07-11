@@ -103,9 +103,11 @@ bind Viper.Graphics2D.Tilemap as Tilemap;
 bind Viper.Game;
 bind "./abilities";
 bind "./config";
+bind "./world_graph";
 bind "./world_state";
 
 class Level {
+    hide WorldGraph graph;
     expose Tilemap tilemap;
     expose Integer levelWidth;
     expose Integer levelHeight;
@@ -164,6 +166,7 @@ class Level {
     hide List[Integer] crumbleTouched;
 
     expose func init() {
+        graph = new WorldGraph();
         levelWidth = 0;
         levelHeight = 0;
         levelTheme = 0;
@@ -243,6 +246,7 @@ class Level {
         else { buildTheCore(); } // Level 10: The Core — final level
 
         authorReleaseInteractions(num);
+        authorWorldGateways(num);
         authorRegionalMechanics(num);
         authorCampaignContent(num);
     }
@@ -294,6 +298,44 @@ class Level {
             if interactionTypes.get(i) == interactionType {
                 var dx = interactionCols.get(i) * TILE_SIZE + TILE_SIZE / 2 - worldX;
                 var dy = interactionRows.get(i) * TILE_SIZE + TILE_SIZE / 2 - worldY;
+                if dx < 0 { dx = 0 - dx; }
+                if dy < 0 { dy = 0 - dy; }
+                var distance = dx + dy;
+                if distance <= radius and distance < bestDistance {
+                    best = i;
+                    bestDistance = distance;
+                }
+            }
+            i = i + 1;
+        }
+        return best;
+    }
+
+    /// @brief Find a stable interaction record by type and authored id.
+    expose func findInteractionRecord(interactionType: Integer,
+                                      interactionId: Integer) -> Integer {
+        var i = 0;
+        while i < interactionTypes.length() {
+            if interactionTypes.get(i) == interactionType and
+               interactionIds.get(i) == interactionId { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Find the nearest player-action interaction of any visible type.
+    expose func findNearestInteraction(worldX: Integer, worldY: Integer,
+                                       radius: Integer) -> Integer {
+        var best = -1;
+        var bestDistance = radius + 1;
+        var i = 0;
+        while i < interactionTypes.length() {
+            var kind = interactionTypes.get(i);
+            if kind != INTERACTION_SWITCH_TARGET {
+                var dx = interactionCols.get(i) * TILE_SIZE + TILE_SIZE / 2 -
+                         worldX;
+                var dy = interactionRows.get(i) * TILE_SIZE + TILE_SIZE / 2 -
+                         worldY;
                 if dx < 0 { dx = 0 - dx; }
                 if dy < 0 { dy = 0 - dy; }
                 var distance = dx + dy;
@@ -718,7 +760,7 @@ class Level {
         tilemap.SetTileProperty(TILE_GRAPPLE_ANCHOR, "grapple", 1);
     }
 
-    /// @brief Add the commercial-release interaction set for one campaign area.
+    /// @brief Add the complete authored interaction set for one campaign area.
     ///
     /// Every region receives stable save, lore, switch, optional-platform,
     /// keycard, keyed-door, and teleporter records. Underground Lake and
@@ -731,6 +773,14 @@ class Level {
     hide func authorReleaseInteractions(levelNum: Integer) {
         var regionId = levelNum - 1;
         var loreBase = primaryLoreIdForLevel(levelNum);
+        var saveCol = graph.getRoomCenterColumn(regionId, 3, levelWidth);
+        var firstLoreCol = graph.getRoomCenterColumn(regionId, 2, levelWidth);
+        var secondLoreCol = graph.getRoomCenterColumn(regionId, 6, levelWidth);
+        var switchCol = graph.getRoomCenterColumn(regionId, 3, levelWidth);
+        var targetCol = graph.getRoomCenterColumn(regionId, 4, levelWidth);
+        var keyCol = graph.getRoomCenterColumn(regionId, 4, levelWidth);
+        var doorCol = graph.getRoomStartColumn(regionId, 5, levelWidth);
+        var transitCol = graph.getRoomCenterColumn(regionId, 0, levelWidth);
 
         // Preserve the original Core fixtures by assigning stable records to
         // their authored coordinates; every other placement uses floor search.
@@ -739,43 +789,70 @@ class Level {
                                  158, levelHeight - 3, regionId, 0);
         } else {
             placeAuthoredInteraction(INTERACTION_SAVE_STATION, regionId,
-                                     levelWidth / 5, regionId, 0,
+                                     saveCol, regionId, 0,
                                      TILE_SAVE_STATION);
         }
 
         placeAuthoredInteraction(INTERACTION_LORE_TERMINAL, loreBase,
-                                 levelWidth * 7 / 20, regionId, loreBase,
+                                 firstLoreCol, regionId, loreBase,
                                  TILE_LORE_TERMINAL);
         if levelNum == 10 and getTile(162, levelHeight - 3) == TILE_LORE_TERMINAL {
             addInteractionRecord(INTERACTION_LORE_TERMINAL, loreBase + 1,
                                  162, levelHeight - 3, regionId, loreBase + 1);
         } else {
             placeAuthoredInteraction(INTERACTION_LORE_TERMINAL, loreBase + 1,
-                                     levelWidth * 4 / 5, regionId, loreBase + 1,
+                                     secondLoreCol, regionId, loreBase + 1,
                                      TILE_LORE_TERMINAL);
         }
 
         placeAuthoredInteraction(INTERACTION_SWITCH, regionId,
-                                 levelWidth * 2 / 5, regionId, 0,
+                                 switchCol, regionId, 0,
                                  TILE_SWITCH);
-        placeSwitchTarget(regionId, levelWidth * 9 / 20);
-        addKeyPickupNearFloor(levelWidth / 2);
-        placeLockedDoor(regionId, levelWidth * 3 / 5);
+        placeSwitchTarget(regionId, targetCol);
+        addKeyPickupNearFloor(keyCol);
+        placeLockedDoor(regionId, doorCol);
         placeAuthoredInteraction(INTERACTION_TELEPORTER, regionId,
-                                 levelWidth / 10, regionId, levelNum,
+                                 transitCol, regionId, levelNum,
                                  TILE_TELEPORTER);
-        placeGrappleAnchors(levelWidth * 3 / 10,
-                            levelWidth * 7 / 10);
+        placeGrappleAnchors(
+            graph.getRoomCenterColumn(regionId, 2, levelWidth),
+            graph.getRoomCenterColumn(regionId, 5, levelWidth));
 
         if levelNum == 5 {
             placeAuthoredInteraction(INTERACTION_ABILITY_SHRINE, 0,
-                                     levelWidth * 11 / 20, regionId,
+                                     graph.getRoomCenterColumn(regionId, 4,
+                                                               levelWidth),
+                                     regionId,
                                      ABILITY_CHARGE_SHOT, TILE_ABILITY_SHRINE);
         }
         if levelNum == 7 {
             placeAuthoredInteraction(INTERACTION_ABILITY_SHRINE, 1,
-                                     levelWidth * 11 / 20, regionId,
+                                     graph.getRoomCenterColumn(regionId, 4,
+                                                               levelWidth),
+                                     regionId,
                                      ABILITY_GRAPPLE, TILE_ABILITY_SHRINE);
+        }
+    }
+
+    /// @brief Place every incident WorldGraph edge in its named endpoint room.
+    ///
+    /// Records persist the edge id, ability gate, and destination region. The
+    /// visible teleporter tile is shared with fast travel, while interaction type
+    /// keeps physical regional traversal distinct from the hub transit network.
+    hide func authorWorldGateways(levelNum: Integer) {
+        var region = levelNum - 1;
+        var edge = 0;
+        while edge < graph.getEdgeCount() {
+            var room = graph.getEdgeRoom(edge, region);
+            if room >= 0 {
+                var destination = graph.getOtherRegion(edge, region);
+                var preferred = graph.getRoomCenterColumn(
+                    region, room, levelWidth);
+                placeAuthoredInteraction(
+                    INTERACTION_REGION_GATE, edge, preferred,
+                    graph.getEdgeGate(edge), destination, TILE_TELEPORTER);
+            }
+            edge = edge + 1;
         }
     }
 
@@ -790,49 +867,69 @@ class Level {
     /// @return Nothing. Replaces bounded surface tiles and adds optional platforms.
     hide func authorRegionalMechanics(levelNum: Integer) {
         if levelNum == 1 {
-            placeSurfaceStrip(levelWidth / 4, 4, TILE_CONVEYOR_R);
-            placeOneWayBridge(levelWidth * 7 / 20, 4);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 1), 4,
+                              TILE_CONVEYOR_R);
+            placeOneWayBridge(authoredRoomCenter(levelNum, 2), 4);
             authorGoldSliceLandmark(levelNum);
         }
         if levelNum == 2 {
-            placeSurfaceStrip(levelWidth / 3, 5, TILE_QUICKSAND);
-            placeSurfaceStrip(levelWidth * 2 / 3, 4, TILE_CRUMBLE);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 5,
+                              TILE_QUICKSAND);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 5), 4,
+                              TILE_CRUMBLE);
             authorGoldSliceLandmark(levelNum);
         }
         if levelNum == 3 {
-            placeSurfaceStrip(levelWidth / 3, 5, TILE_CRUMBLE);
-            placeDestructibleColumn(levelWidth * 3 / 4);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 5,
+                              TILE_CRUMBLE);
+            placeDestructibleColumn(authoredRoomCenter(levelNum, 6));
         }
         if levelNum == 4 {
-            placeOneWayBridge(levelWidth / 3, 5);
-            placeSurfaceStrip(levelWidth * 2 / 3, 5, TILE_CONVEYOR_L);
+            placeOneWayBridge(authoredRoomCenter(levelNum, 2), 5);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 5), 5,
+                              TILE_CONVEYOR_L);
         }
         if levelNum == 5 {
-            placeSurfaceStrip(levelWidth / 3, 6, TILE_QUICKSAND);
-            placeOneWayBridge(levelWidth * 2 / 3, 5);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 6,
+                              TILE_QUICKSAND);
+            placeOneWayBridge(authoredRoomCenter(levelNum, 5), 5);
         }
         if levelNum == 6 {
-            placeSurfaceStrip(levelWidth / 3, 2, TILE_STEAM_VENT);
-            placeSurfaceStrip(levelWidth * 2 / 3, 4, TILE_CONVEYOR_R);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 2,
+                              TILE_STEAM_VENT);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 5), 4,
+                              TILE_CONVEYOR_R);
         }
         if levelNum == 7 {
-            placeSurfaceStrip(levelWidth / 3, 5, TILE_CRUMBLE);
-            placeOneWayBridge(levelWidth * 2 / 3, 6);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 5,
+                              TILE_CRUMBLE);
+            placeOneWayBridge(authoredRoomCenter(levelNum, 5), 6);
         }
         if levelNum == 8 {
-            placeSurfaceStrip(levelWidth / 3, 7, TILE_ICE_FLOOR);
-            placeSurfaceStrip(levelWidth * 2 / 3, 7, TILE_ICE_FLOOR);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 2), 7,
+                              TILE_ICE_FLOOR);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 5), 7,
+                              TILE_ICE_FLOOR);
         }
         if levelNum == 9 {
-            placeDestructibleColumn(levelWidth / 2);
-            placeSurfaceStrip(levelWidth * 3 / 4, 5, TILE_CRUMBLE);
+            placeDestructibleColumn(authoredRoomCenter(levelNum, 4));
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 6), 5,
+                              TILE_CRUMBLE);
         }
         if levelNum == 10 {
-            placeSurfaceStrip(levelWidth / 4, 5, TILE_ICE_FLOOR);
-            placeSurfaceStrip(levelWidth / 2, 4, TILE_CONVEYOR_L);
-            placeSurfaceStrip(levelWidth * 3 / 4, 2, TILE_STEAM_VENT);
-            placeOneWayBridge(levelWidth * 2 / 3, 5);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 1), 5,
+                              TILE_ICE_FLOOR);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 4), 4,
+                              TILE_CONVEYOR_L);
+            placeSurfaceStrip(authoredRoomCenter(levelNum, 6), 2,
+                              TILE_STEAM_VENT);
+            placeOneWayBridge(authoredRoomCenter(levelNum, 5), 5);
         }
+    }
+
+    /// @brief Resolve one stable named-room center for authoring helpers.
+    hide func authoredRoomCenter(levelNum: Integer, room: Integer) -> Integer {
+        return graph.getRoomCenterColumn(levelNum - 1, room, levelWidth);
     }
 
     /// @brief Add unmistakable Crash Site and Fungal Caverns landmark silhouettes.
@@ -879,14 +976,16 @@ class Level {
     /// @param levelNum One-based campaign region just built by `loadLevel`.
     /// @return Nothing. Adds visible content and stable structural metadata.
     hide func authorCampaignContent(levelNum: Integer) {
-        landmarkCol = levelWidth / 2;
-        tutorialStartCol = levelWidth / 4;
-        masteryStartCol = levelWidth * 2 / 3;
-        setPieceCol = levelWidth * 3 / 4;
+        landmarkCol = authoredRoomCenter(levelNum, 4);
+        tutorialStartCol = graph.getRoomStartColumn(
+            levelNum - 1, 1, levelWidth);
+        masteryStartCol = graph.getRoomStartColumn(
+            levelNum - 1, 5, levelWidth);
+        setPieceCol = authoredRoomCenter(levelNum, 6);
         if levelNum > 2 { authorCampaignLandmark(levelNum); }
 
-        var firstSecret = placeSecretCache(levelWidth * 5 / 16);
-        var secondSecret = placeSecretCache(levelWidth * 13 / 16);
+        var firstSecret = placeSecretCache(authoredRoomCenter(levelNum, 2));
+        var secondSecret = placeSecretCache(authoredRoomCenter(levelNum, 6));
         if firstSecret >= 0 { secretCols.add(firstSecret); }
         if secondSecret >= 0 { secretCols.add(secondSecret); }
         authorRegionalSetPiece(levelNum);
@@ -939,6 +1038,12 @@ class Level {
         if levelNum == 9 or levelNum == 10 {
             tilemap.SetTile(center - 5, baseRow - 3, TILE_GRAPPLE_ANCHOR);
             tilemap.SetTile(center + 5, baseRow - 3, TILE_GRAPPLE_ANCHOR);
+        }
+        if levelNum == 9 {
+            // Keep the Fracture Monolith above a readable lower bypass. The
+            // former overlay landed directly on the legacy cloud chain and
+            // converted a reachable jump into a solid route blocker.
+            addPlatformTile(center - 6, 13, 13, TILE_ONE_WAY);
         }
     }
 
@@ -1656,6 +1761,7 @@ class Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_BEACON_WARDEN;
         // End sign (after boss area)
         tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
@@ -1978,6 +2084,7 @@ class Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_CRYO_CUSTODIAN;
         tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
@@ -2115,6 +2222,7 @@ class Level {
         bossX = 140 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
+        bossType = ENEMY_RELAY_CUSTODIAN;
         tilemap.SetTile(148, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
@@ -2277,6 +2385,10 @@ class Level {
         addEnemy(ENEMY_TURRET, 182, 14);
 
         // End sign
+        bossX = 184 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        bossType = ENEMY_TIDE_LEVIATHAN;
         tilemap.SetTile(195, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
@@ -2437,8 +2549,9 @@ class Level {
         hasBoss = true;
         bossType = ENEMY_CRYSTAL_WYRM;
 
-        // End sign (after boss)
-        tilemap.SetTile(215, GROUND_ROW - 1, TILE_SIGN_END);
+        // End sign stays inside the arena's right containment wall so defeating
+        // the Wyrm can never leave the player sealed away from progression.
+        tilemap.SetTile(211, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
     // =========================================================================
@@ -2496,6 +2609,10 @@ class Level {
         fillArea(50, 6, 51, 14, TILE_OBSIDIAN);
         fillArea(55, 4, 56, 14, TILE_OBSIDIAN);
         fillArea(60, 2, 61, 14, TILE_OBSIDIAN);
+        // The final pillar touches the ceiling, so its base needs a deliberate
+        // two-tile doorway. Without this opening the room is sealed even with
+        // perfect Wall Jump and Double Jump execution.
+        fillArea(60, 13, 61, 14, TILE_EMPTY);
 
         addPickup(PICKUP_COIN, 53, 5);
         addPickup(PICKUP_COIN, 58, 3);
@@ -2687,6 +2804,11 @@ class Level {
         addEnemy(ENEMY_TURRET, 76, 14);
 
         // --- Section 3: Checkpoint + cloud hop (cols 85-130) ---
+        // A recovery bridge closes the former nine-column blind void between
+        // the tower landing and an otherwise unsupported checkpoint.
+        fillArea(82, 13, 84, 13, TILE_CLOUD);
+        fillRow(GROUND_ROW, 86, 89, TILE_CLOUD);
+        fillRow(FLOOR_ROW, 86, 89, TILE_SKY_BRICK);
         tilemap.SetTile(87, GROUND_ROW - 1, TILE_CHECKPOINT);
         checkpointX = 87 * TILE_SIZE;
         checkpointY = (GROUND_ROW - 2) * TILE_SIZE;
@@ -2743,6 +2865,10 @@ class Level {
         addEnemy(ENEMY_SLIME, 165, 14);
 
         // End sign
+        bossX = 178 * TILE_SIZE;
+        bossY = (GROUND_ROW - 3) * TILE_SIZE;
+        hasBoss = true;
+        bossType = ENEMY_NULL_HARVESTER;
         tilemap.SetTile(190, GROUND_ROW - 1, TILE_SIGN_END);
     }
 
@@ -2797,6 +2923,9 @@ class Level {
         fillArea(50, 2, 51, 14, TILE_RUIN_STONE);
         tilemap.SetTile(50, 3, TILE_VINE);
         tilemap.SetTile(51, 5, TILE_VINE);
+        // Preserve the temple silhouette while keeping its ground entrance
+        // physically connected to the exterior room.
+        fillArea(50, 13, 51, 14, TILE_EMPTY);
 
         fillRow(GROUND_ROW, 52, 95, TILE_RUIN_STONE);
         fillRow(FLOOR_ROW, 52, 95, TILE_RUIN_STONE);
@@ -2917,7 +3046,7 @@ class Level {
         bossX = 210 * TILE_SIZE;
         bossY = (GROUND_ROW - 3) * TILE_SIZE;
         hasBoss = true;
-        bossType = ENEMY_MAGMA_CORE;
+        bossType = ENEMY_VERDANT_COLOSSUS;
 
         // End sign
         tilemap.SetTile(245, GROUND_ROW - 1, TILE_SIGN_END);

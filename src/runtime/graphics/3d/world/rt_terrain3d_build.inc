@@ -745,6 +745,8 @@ static void bake_splat_texture(rt_terrain3d *t) {
 
     void *splat_obj = terrain_valid_splat_pixels_or_null(t->splat_map);
     rt_pixels_impl *splat = rt_pixels_checked_impl_or_null(splat_obj);
+    void *splat2_obj = terrain_valid_splat_pixels_or_null(t->splat_map2);
+    rt_pixels_impl *splat2 = rt_pixels_checked_impl_or_null(splat2_obj);
     if (!splat)
         return;
 
@@ -768,21 +770,34 @@ static void bake_splat_texture(rt_terrain3d *t) {
 
             /* Sample splat weights (RGBA → 4 layer weights) */
             uint32_t sp = splat->data[(int64_t)y * tw + x];
-            double w0 = (double)((sp >> 24) & 0xFF) / 255.0;
-            double w1 = (double)((sp >> 16) & 0xFF) / 255.0;
-            double w2 = (double)((sp >> 8) & 0xFF) / 255.0;
-            double w3 = (double)(sp & 0xFF) / 255.0;
+            double weights[TERRAIN_MAX_SPLAT_LAYERS];
+            weights[0] = (double)((sp >> 24) & 0xFF) / 255.0;
+            weights[1] = (double)((sp >> 16) & 0xFF) / 255.0;
+            weights[2] = (double)((sp >> 8) & 0xFF) / 255.0;
+            weights[3] = (double)(sp & 0xFF) / 255.0;
+            weights[4] = weights[5] = weights[6] = weights[7] = 0.0;
+            if (splat2) {
+                /* Map 1 weights layers 4-7; sampled with wraparound when sizes differ. */
+                uint32_t sp2 =
+                    splat2
+                        ->data[(int64_t)(y % splat2->height) * splat2->width + (x % splat2->width)];
+                weights[4] = (double)((sp2 >> 24) & 0xFF) / 255.0;
+                weights[5] = (double)((sp2 >> 16) & 0xFF) / 255.0;
+                weights[6] = (double)((sp2 >> 8) & 0xFF) / 255.0;
+                weights[7] = (double)(sp2 & 0xFF) / 255.0;
+            }
 
             /* Normalize weights */
-            double wsum = w0 + w1 + w2 + w3;
+            double wsum = 0.0;
+            for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; layer++)
+                wsum += weights[layer];
             if (wsum > 0.001) {
-                w0 /= wsum;
-                w1 /= wsum;
-                w2 /= wsum;
-                w3 /= wsum;
+                for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; layer++)
+                    weights[layer] /= wsum;
             } else {
-                w0 = 1.0;
-                w1 = w2 = w3 = 0.0;
+                weights[0] = 1.0;
+                for (int layer = 1; layer < TERRAIN_MAX_SPLAT_LAYERS; layer++)
+                    weights[layer] = 0.0;
             }
 
             uint32_t fallback = t->base_texture ? sample_pixels_uv(t->base_texture, u, v)
@@ -791,7 +806,6 @@ static void bake_splat_texture(rt_terrain3d *t) {
             /* Sample each layer texture at its UV scale and blend. Missing layer textures
              * fall back to the base material texture (or white when absent) so partial
              * splat setups do not bake black texels. */
-            double weights[4] = {w0, w1, w2, w3};
             double br = 0, bg = 0, bb = 0, ba = 0;
             for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; layer++) {
                 if (weights[layer] < 0.001)
@@ -825,6 +839,354 @@ static void bake_splat_texture(rt_terrain3d *t) {
     if (rt_obj_release_check0(baked))
         rt_obj_free(baked);
     t->splat_dirty = 0;
+}
+
+/*==========================================================================
+ * Holes — authored XZ rectangles carved out of render/collision/nav
+ *=========================================================================*/
+
+/// @brief Test whether cell (cx, cz) is holed. NULL/absent mask means solid.
+static int terrain_cell_holed(const rt_terrain3d *t, int32_t cx, int32_t cz) {
+    int32_t cells_x;
+    int32_t cells_z;
+    int64_t bit;
+    if (!t || !t->hole_mask)
+        return 0;
+    cells_x = t->width - 1;
+    cells_z = t->depth - 1;
+    if (cells_x <= 0 || cells_z <= 0 || cx < 0 || cz < 0 || cx >= cells_x || cz >= cells_z)
+        return 0;
+    bit = (int64_t)cz * cells_x + cx;
+    return (t->hole_mask[bit >> 3] >> (bit & 7)) & 1;
+}
+
+/// @brief True when any fine cell in [cx0,cx1) x [cz0,cz1) is holed (LOD-conservative).
+static int terrain_cell_range_holed(
+    const rt_terrain3d *t, int32_t cx0, int32_t cz0, int32_t cx1, int32_t cz1) {
+    if (!t || !t->hole_mask)
+        return 0;
+    if (cx1 <= cx0)
+        cx1 = cx0 + 1;
+    if (cz1 <= cz0)
+        cz1 = cz0 + 1;
+    for (int32_t cz = cz0; cz < cz1; ++cz)
+        for (int32_t cx = cx0; cx < cx1; ++cx)
+            if (terrain_cell_holed(t, cx, cz))
+                return 1;
+    return 0;
+}
+
+/// @brief Rasterize the authored hole rects into the per-cell bitmask.
+static void terrain_rebuild_hole_mask(rt_terrain3d *t) {
+    int32_t cells_x;
+    int32_t cells_z;
+    size_t mask_bytes;
+    double sx;
+    double sz;
+    if (!t)
+        return;
+    t->holes_dirty = 0;
+    free(t->hole_mask);
+    t->hole_mask = NULL;
+    cells_x = t->width - 1;
+    cells_z = t->depth - 1;
+    if (t->hole_count <= 0 || cells_x <= 0 || cells_z <= 0)
+        return;
+    mask_bytes = ((size_t)cells_x * (size_t)cells_z + 7u) / 8u;
+    t->hole_mask = (uint8_t *)calloc(1, mask_bytes);
+    if (!t->hole_mask)
+        return;
+    sx = terrain_scale_axis_or(t, 0, 1.0);
+    sz = terrain_scale_axis_or(t, 2, 1.0);
+    if (sx <= 1e-12)
+        sx = 1.0;
+    if (sz <= 1e-12)
+        sz = 1.0;
+    for (int32_t h = 0; h < t->hole_count; ++h) {
+        double hx = t->holes[h][0];
+        double hz = t->holes[h][1];
+        double hw = t->holes[h][2];
+        double hd = t->holes[h][3];
+        int32_t cx0 = (int32_t)floor(hx / sx);
+        int32_t cz0 = (int32_t)floor(hz / sz);
+        int32_t cx1 = (int32_t)ceil((hx + hw) / sx);
+        int32_t cz1 = (int32_t)ceil((hz + hd) / sz);
+        if (cx0 < 0)
+            cx0 = 0;
+        if (cz0 < 0)
+            cz0 = 0;
+        if (cx1 > cells_x)
+            cx1 = cells_x;
+        if (cz1 > cells_z)
+            cz1 = cells_z;
+        for (int32_t cz = cz0; cz < cz1; ++cz) {
+            for (int32_t cx = cx0; cx < cx1; ++cx) {
+                int64_t bit = (int64_t)cz * cells_x + cx;
+                t->hole_mask[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+            }
+        }
+    }
+}
+
+/// @brief Ensure the hole mask reflects the current hole list.
+static void terrain_refresh_hole_mask(rt_terrain3d *t) {
+    if (t && t->holes_dirty)
+        terrain_rebuild_hole_mask(t);
+}
+
+/// @brief Carve a rectangular hole (terrain-local units, corner origin) into the terrain.
+/// @details Holes propagate to chunk meshes at every LOD (conservatively — a coarse
+///   triangle is skipped when any covered fine cell is holed), to nav meshes built via
+///   BuildNavMesh, and to heightfield colliders through the raw hole-mask handoff.
+/// @return The hole's index for RemoveHole, or -1 on failure.
+int64_t rt_terrain3d_set_hole(void *obj, double x, double z, double width, double depth) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return -1;
+    if (!isfinite(x) || !isfinite(z) || !isfinite(width) || !isfinite(depth) || width <= 0.0 ||
+        depth <= 0.0)
+        return -1;
+    if (t->hole_count >= t->hole_capacity) {
+        int32_t new_cap = t->hole_capacity < 8 ? 8 : t->hole_capacity * 2;
+        double (*grown)[4] = (double (*)[4])realloc(t->holes, (size_t)new_cap * sizeof(*grown));
+        if (!grown)
+            return -1;
+        t->holes = grown;
+        t->hole_capacity = new_cap;
+    }
+    t->holes[t->hole_count][0] = x;
+    t->holes[t->hole_count][1] = z;
+    t->holes[t->hole_count][2] = width;
+    t->holes[t->hole_count][3] = depth;
+    t->hole_count++;
+    t->holes_dirty = 1;
+    terrain_refresh_hole_mask(t);
+    invalidate_all_chunks(t);
+    return t->hole_count - 1;
+}
+
+/// @brief Remove the hole at @p index (later holes shift down). 1 on success.
+int8_t rt_terrain3d_remove_hole(void *obj, int64_t index) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || index < 0 || index >= t->hole_count)
+        return 0;
+    for (int32_t i = (int32_t)index; i + 1 < t->hole_count; ++i) {
+        t->holes[i][0] = t->holes[i + 1][0];
+        t->holes[i][1] = t->holes[i + 1][1];
+        t->holes[i][2] = t->holes[i + 1][2];
+        t->holes[i][3] = t->holes[i + 1][3];
+    }
+    t->hole_count--;
+    t->holes_dirty = 1;
+    terrain_refresh_hole_mask(t);
+    invalidate_all_chunks(t);
+    return 1;
+}
+
+/// @brief Remove every authored hole.
+void rt_terrain3d_clear_holes(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (t->hole_count == 0 && !t->hole_mask)
+        return;
+    t->hole_count = 0;
+    t->holes_dirty = 1;
+    terrain_refresh_hole_mask(t);
+    invalidate_all_chunks(t);
+}
+
+/// @brief Number of authored holes.
+int64_t rt_terrain3d_get_hole_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? t->hole_count : 0;
+}
+
+/// @brief Internal: borrow the rasterized hole bitmask for heightfield-collider handoff.
+/// @return The bitmask (row-major, bit per cell) or NULL when no holes exist.
+const uint8_t *rt_terrain3d_get_hole_mask_raw(void *obj,
+                                              int32_t *out_cells_x,
+                                              int32_t *out_cells_z) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (out_cells_x)
+        *out_cells_x = 0;
+    if (out_cells_z)
+        *out_cells_z = 0;
+    if (!t)
+        return NULL;
+    terrain_refresh_hole_mask(t);
+    if (!t->hole_mask)
+        return NULL;
+    if (out_cells_x)
+        *out_cells_x = t->width - 1;
+    if (out_cells_z)
+        *out_cells_z = t->depth - 1;
+    return t->hole_mask;
+}
+
+/*==========================================================================
+ * Splat maps 2 + slope/height auto-blend rules
+ *=========================================================================*/
+
+/// @brief Set splat map @p index (0 weights layers 0-3, 1 weights layers 4-7).
+void rt_terrain3d_set_splat_map_at(void *obj, int64_t index, void *pixels) {
+    if (index == 0) {
+        rt_terrain3d_set_splat_map(obj, pixels);
+        return;
+    }
+    if (index != 1)
+        return;
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    terrain_repair_texture_slot(&t->splat_map2);
+    if (pixels) {
+        rt_pixels_impl *p =
+            rt_pixels_checked_impl(pixels, "Terrain3D.SetSplatMapAt: expected Pixels");
+        if (!p || p->width <= 0 || p->height <= 0 || p->width > INT32_MAX ||
+            p->height > INT32_MAX || !p->data) {
+            rt_trap("Terrain3D.SetSplatMapAt: splat map must be non-empty Pixels");
+            return;
+        }
+    }
+    terrain_assign_texture_ref(&t->splat_map2, pixels);
+    t->splat_dirty = 1;
+}
+
+/// @brief Configure a slope-band rule (degrees) generating weights for @p layer.
+void rt_terrain3d_set_slope_layer(
+    void *obj, int64_t layer, double min_slope_deg, double max_slope_deg, double sharpness) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
+        return;
+    t->layer_rules[layer].mode = 1;
+    t->layer_rules[layer].min_value = isfinite(min_slope_deg) ? min_slope_deg : 0.0;
+    t->layer_rules[layer].max_value = isfinite(max_slope_deg) ? max_slope_deg : 90.0;
+    t->layer_rules[layer].sharpness = isfinite(sharpness) && sharpness > 0.0 ? sharpness : 1.0;
+}
+
+/// @brief Configure a height-band rule (world Y) generating weights for @p layer.
+void rt_terrain3d_set_height_layer(
+    void *obj, int64_t layer, double min_y, double max_y, double sharpness) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
+        return;
+    t->layer_rules[layer].mode = 2;
+    t->layer_rules[layer].min_value = isfinite(min_y) ? min_y : 0.0;
+    t->layer_rules[layer].max_value = isfinite(max_y) ? max_y : 0.0;
+    t->layer_rules[layer].sharpness = isfinite(sharpness) && sharpness > 0.0 ? sharpness : 1.0;
+}
+
+/// @brief Internal: borrow splat map @p index (0 or 1) for editor/test inspection.
+void *rt_terrain3d_get_splat_map_raw(void *obj, int64_t index) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return NULL;
+    if (index == 0)
+        return t->splat_map;
+    if (index == 1)
+        return t->splat_map2;
+    return NULL;
+}
+
+/// @brief Smoothstep helper for rule bands.
+static double terrain_rule_smoothstep(double edge0, double edge1, double x) {
+    double range = edge1 - edge0;
+    double tval;
+    if (!(range > 1e-12))
+        return x >= edge1 ? 1.0 : 0.0;
+    tval = (x - edge0) / range;
+    if (tval < 0.0)
+        tval = 0.0;
+    if (tval > 1.0)
+        tval = 1.0;
+    return tval * tval * (3.0 - 2.0 * tval);
+}
+
+/// @brief Regenerate both splat maps from the configured slope/height rules.
+/// @details Deterministic CPU pass at heightmap resolution: per-texel layer weight =
+///   band(smoothstep in, smoothstep out); weights normalize across configured layers.
+///   Painting a map afterwards overrides the generated weights (last write wins).
+void rt_terrain3d_rebuild_splat_weights(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    int configured = 0;
+    if (!t || !t->heights || t->width < 2 || t->depth < 2)
+        return;
+    for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; ++layer)
+        if (t->layer_rules[layer].mode != 0)
+            configured = 1;
+    if (!configured)
+        return;
+
+    void *map0 = rt_pixels_new(t->width, t->depth);
+    void *map1 = rt_pixels_new(t->width, t->depth);
+    if (!map0 || !map1) {
+        if (map0 && rt_obj_release_check0(map0))
+            rt_obj_free(map0);
+        if (map1 && rt_obj_release_check0(map1))
+            rt_obj_free(map1);
+        return;
+    }
+    double sx = terrain_scale_axis_or(t, 0, 1.0);
+    double sy = terrain_scale_axis_or(t, 1, 1.0);
+    double sz = terrain_scale_axis_or(t, 2, 1.0);
+    for (int32_t iz = 0; iz < t->depth; ++iz) {
+        for (int32_t ix = 0; ix < t->width; ++ix) {
+            double nx;
+            double ny;
+            double nz;
+            double weights[TERRAIN_MAX_SPLAT_LAYERS];
+            double sum = 0.0;
+            terrain_grid_normal_at(t, ix, iz, sx, sy, sz, &nx, &ny, &nz);
+            if (ny < -1.0)
+                ny = -1.0;
+            if (ny > 1.0)
+                ny = 1.0;
+            double slope_deg = acos(ny) * (180.0 / 3.14159265358979323846);
+            double height_y = (double)sample_height(t, ix, iz) * sy;
+            for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; ++layer) {
+                double w = 0.0;
+                double value = 0.0;
+                int mode = t->layer_rules[layer].mode;
+                if (mode == 1)
+                    value = slope_deg;
+                else if (mode == 2)
+                    value = height_y;
+                if (mode != 0) {
+                    double sharp = t->layer_rules[layer].sharpness;
+                    double lo = t->layer_rules[layer].min_value;
+                    double hi = t->layer_rules[layer].max_value;
+                    w = terrain_rule_smoothstep(lo - sharp, lo + sharp, value) *
+                        (1.0 - terrain_rule_smoothstep(hi - sharp, hi + sharp, value));
+                }
+                weights[layer] = w;
+                sum += w;
+            }
+            if (sum <= 1e-9) {
+                /* No rule matched: fall back entirely to layer 0. */
+                weights[0] = 1.0;
+                sum = 1.0;
+            }
+            int32_t ch[TERRAIN_MAX_SPLAT_LAYERS];
+            for (int layer = 0; layer < TERRAIN_MAX_SPLAT_LAYERS; ++layer) {
+                double w = weights[layer] / sum;
+                ch[layer] = terrain_channel_to_u8(w);
+            }
+            int64_t p0 = ((int64_t)ch[0] << 24) | ((int64_t)ch[1] << 16) | ((int64_t)ch[2] << 8) |
+                         (int64_t)ch[3];
+            int64_t p1 = ((int64_t)ch[4] << 24) | ((int64_t)ch[5] << 16) | ((int64_t)ch[6] << 8) |
+                         (int64_t)ch[7];
+            rt_pixels_set(map0, ix, iz, p0);
+            rt_pixels_set(map1, ix, iz, p1);
+        }
+    }
+    terrain_assign_texture_ref(&t->splat_map, map0);
+    terrain_assign_texture_ref(&t->splat_map2, map1);
+    if (rt_obj_release_check0(map0))
+        rt_obj_free(map0);
+    if (rt_obj_release_check0(map1))
+        rt_obj_free(map1);
+    t->splat_dirty = 1;
 }
 
 /// @brief Compute per-vertex data at grid position (ix, iz).
@@ -901,6 +1263,20 @@ static void terrain_build_chunk_surface(void *mesh,
     }
     for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
         for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
+            if (t->hole_mask) {
+                /* Conservative hole test: skip the quad when any covered fine
+                 * cell is holed so every LOD hides the same footprint. */
+                int32_t dz0 = rz * step;
+                int32_t dz1 = (rz + 1) * step;
+                int32_t dx0 = rx * step;
+                int32_t dx1 = (rx + 1) * step;
+                if (dz1 > rows || rz + 1 == vert_rows - 1)
+                    dz1 = rows;
+                if (dx1 > cols || rx + 1 == vert_cols - 1)
+                    dx1 = cols;
+                if (terrain_cell_range_holed(t, x0 + dx0, z0 + dz0, x0 + dx1, z0 + dz1))
+                    continue;
+            }
             int64_t base = (int64_t)(rz * vert_cols + rx);
             rt_mesh3d_add_triangle(mesh, base, base + vert_cols, base + 1);
             rt_mesh3d_add_triangle(mesh, base + 1, base + vert_cols, base + vert_cols + 1);

@@ -176,8 +176,7 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
             mesh->bone_count > VGFX3D_MAX_BONES ? VGFX3D_MAX_BONES : mesh->bone_count;
         size_t lanes = (size_t)local_count * 16u;
         float *gathered = (float *)malloc(lanes * sizeof(float));
-        float *gathered_prev =
-            prev_bone_palette ? (float *)malloc(lanes * sizeof(float)) : NULL;
+        float *gathered_prev = prev_bone_palette ? (float *)malloc(lanes * sizeof(float)) : NULL;
         if (!gathered || !rt_canvas3d_add_temp_buffer(canvas, gathered)) {
             free(gathered);
             free(gathered_prev);
@@ -191,9 +190,8 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
             int32_t src = mesh->bone_map[i];
             if (src < 0 || src >= bone_count)
                 src = 0;
-            memcpy(gathered + (size_t)i * 16u,
-                   bone_palette + (size_t)src * 16u,
-                   16u * sizeof(float));
+            memcpy(
+                gathered + (size_t)i * 16u, bone_palette + (size_t)src * 16u, 16u * sizeof(float));
             if (gathered_prev)
                 memcpy(gathered_prev + (size_t)i * 16u,
                        prev_bone_palette + (size_t)src * 16u,
@@ -205,12 +203,15 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
     }
     if (bone_count > VGFX3D_MAX_BONES)
         bone_count = VGFX3D_MAX_BONES;
-    if (c->backend && !mesh->extra_influences &&
+    if (c->backend && !c->force_cpu_skinning && !mesh->extra_influences &&
         vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
         rt_mesh3d tmp = *mesh;
         tmp.bone_palette = bone_palette;
         tmp.prev_bone_palette = prev_bone_palette;
         tmp.bone_count = bone_count;
+        c->gpu_skinned_draw_count++;
+        c->skinning_upload_bytes +=
+            (int64_t)bone_count * 16 * (int64_t)sizeof(float) * (prev_bone_palette ? 2 : 1);
         rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
                                                   &tmp,
                                                   model_matrix,
@@ -399,9 +400,10 @@ void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
     if (!mesh)
         return;
 
-    gpu_ok = !mesh->extra_influences && !mesh->bone_map &&
+    gpu_ok = !c->force_cpu_skinning && !mesh->extra_influences && !mesh->bone_map &&
              vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count);
     if (gpu_ok) {
+        c->gpu_skinned_draw_count++;
         int32_t per_draw = VGFX3D_MAX_BONES / bone_count;
         size_t palette_lanes = (size_t)instance_count * (size_t)bone_count * 16u;
         float *palette_snapshot = NULL;
@@ -417,6 +419,8 @@ void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
             return;
         }
         memcpy(palette_snapshot, bone_palettes, palette_lanes * sizeof(float));
+        c->skinning_upload_bytes +=
+            (int64_t)(palette_lanes * sizeof(float)) * (prev_bone_palettes ? 2 : 1);
         if (prev_bone_palettes) {
             prev_snapshot = (float *)malloc(palette_lanes * sizeof(float));
             if (prev_snapshot && !rt_canvas3d_add_temp_buffer(canvas, prev_snapshot)) {
@@ -437,8 +441,7 @@ void rt_canvas3d_draw_mesh_instanced_skinned(void *canvas,
                     instance_matrices + (size_t)start * 16u,
                     len,
                     palette_snapshot + (size_t)start * (size_t)bone_count * 16u,
-                    prev_snapshot ? prev_snapshot + (size_t)start * (size_t)bone_count * 16u
-                                  : NULL,
+                    prev_snapshot ? prev_snapshot + (size_t)start * (size_t)bone_count * 16u : NULL,
                     len * bone_count,
                     bone_count)) {
                 /* Hardware refusal is batch-invariant (same mesh/material), so nothing

@@ -6,10 +6,10 @@
 //===----------------------------------------------------------------------===//
 //
 // File: examples/games/xenoscape/package_probe.zia
-// Purpose: Validates mandatory release assets and permanent fallback inventory.
+// Purpose: Validates runtime assets, QA references, and fallback inventory.
 // Key invariants:
-//   - Mandatory package paths resolve from the project/package working directory.
-//   - Release feature toggles default on while procedural fallbacks remain usable.
+//   - Runtime package paths resolve from the project/package working directory.
+//   - Development feature toggles default on while fallbacks remain usable.
 // Ownership/Lifetime:
 //   - Probe owns temporary decoded Pixels and procedural SpriteFactory objects.
 // Links: viper.project, xenoscape.runtime.json, assets/manifest.txt,
@@ -30,11 +30,11 @@ bind "./tuning";
 
 /// @brief Emit one deterministic package inventory failure.
 ///
-/// @param message Concise missing/invalid release inventory item.
+/// @param message Concise missing or invalid package inventory item.
 /// @return Nothing. Omits the success marker expected by CTest.
 func fail(message: String) { Terminal.Say("RESULT: fail " + message); }
 
-/// @brief Verify mandatory assets, release toggles, and procedural fallbacks.
+/// @brief Verify runtime assets, QA references, toggles, and fallbacks.
 ///
 /// @return Nothing. Prints `RESULT: ok` only for a complete package inventory.
 func main() {
@@ -47,7 +47,7 @@ func main() {
        File.Exists("assets/icons/hud-icon-atlas.png") == false or
        File.Exists("assets/ui/title-menu-panel.png") == false or
        File.Exists("xenoscape.runtime.json") == false {
-        fail("mandatory package path"); return;
+        fail("runtime or QA-reference package path"); return;
     }
     var art = Pixels.Load("assets/art/title-key-art.png");
     if art == null or art.get_Width() < SCREEN_W or
@@ -71,7 +71,7 @@ func main() {
        iconAtlas.get_Height() != 64 or
        uiPanel == null or uiPanel.get_Width() != 440 or
        uiPanel.get_Height() != 330 {
-        fail("release atlas decode or dimensions"); return;
+        fail("runtime or QA-reference atlas decode or dimensions"); return;
     }
 
     var tuning = new RuntimeTuning("xenoscape.runtime.json");
@@ -80,7 +80,7 @@ func main() {
        tuning.getBool("presentation.authoredArtEnabled", false) == false or
        tuning.getBool("presentation.adaptiveMusicEnabled", false) == false or
        tuning.getBool("debug.enabled", true) {
-        fail("release feature-toggle defaults"); return;
+        fail("development feature-toggle defaults"); return;
     }
 
     var pal = new Palette();

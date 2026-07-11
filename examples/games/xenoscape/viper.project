@@ -1,11 +1,11 @@
 project xenoscape
-version 1.0.0
+version 0.3.0
 lang zia
 entry main.zia
 
 # === Package Metadata ===
 package-name Xenoscape
-package-description "A polished ten-region sci-fi action Metroidvania built with Viper"
+package-description "A development preview of a ten-region sci-fi action Metroidvania built with Viper"
 package-identifier org.viper-lang.xenoscape
 package-author "Viper Project"
 package-license GPL-3.0-only

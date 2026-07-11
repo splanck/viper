@@ -707,6 +707,18 @@ void rt_material3d_set_ao_map(void *o, void *p) {
     (void)p;
 }
 
+/// @brief Silent stub for `Material3D.SetLightmap` — no-op.
+void rt_material3d_set_lightmap(void *obj, void *pixels) {
+    (void)obj;
+    (void)pixels;
+}
+
+/// @brief Silent stub for `Material3D.get_HasLightmap` — no-op; returns 0.
+int8_t rt_material3d_get_has_lightmap(void *obj) {
+    (void)obj;
+    return 0;
+}
+
 /// @brief Stub for `Material3D.HasAmbientOcclusionMap`.
 ///
 /// Silent stub returning `0`.

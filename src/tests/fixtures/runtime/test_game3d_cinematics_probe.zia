@@ -1,0 +1,132 @@
+module test_game3d_cinematics_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Cinematics Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    var actor = Game3D.Entity3D.New();
+    actor.SetPosition(0.0, 1.0, 0.0);
+    world.Spawn(actor);
+
+    // --- RailCamera3D rides a spline and honours look/FOV keys ---
+    var path = G3D.Path3D.New();
+    path.AddPoint(Math.Vec3.New(0.0, 2.0, 6.0));
+    path.AddPoint(Math.Vec3.New(2.0, 2.0, 3.0));
+    path.AddPoint(Math.Vec3.New(2.0, 2.0, 0.0));
+    path.AddPoint(Math.Vec3.New(0.0, 2.0, -3.0));
+    var rail = Game3D.RailCamera3D.New(world, path);
+    rail.Speed = 0.5;
+    rail.SetLookEntity(actor);
+    rail.AddFovKey(0.0, 60.0);
+    rail.AddFovKey(1.0, 40.0);
+    world.SetCameraController(rail);
+
+    var i = 0;
+    while (i < 30) {
+        world.StepSimulation(0.016666666666666666);
+        i = i + 1;
+    }
+    if (rail.Progress <= 0.0) {
+        fail("rail camera did not advance along the path");
+        return;
+    }
+
+    // --- Timeline3D fires markers, owns the camera, and finishes ---
+    var tl = Game3D.Timeline3D.New(world);
+    tl.AddCameraCut(0.0, Math.Vec3.New(1.0, 3.0, 6.0), Math.Vec3.New(0.0, 1.0, 0.0), 55.0);
+    tl.AddMarker(0.05, 7);
+    tl.AddSubtitle(0.0, 0.4, "hello");
+    world.PlayTimeline(tl);
+    if (tl.Playing == false) {
+        fail("timeline did not start playing");
+        return;
+    }
+    world.StepSimulation(0.1);
+    if (tl.EventsFiredCount() != 1) {
+        fail("timeline marker did not fire exactly once");
+        return;
+    }
+    if (tl.EventFiredId(0) != 7) {
+        fail("timeline marker id mismatch");
+        return;
+    }
+    var j = 0;
+    while (j < 10) {
+        world.StepSimulation(0.1);
+        j = j + 1;
+    }
+    if (tl.Finished == false) {
+        fail("timeline did not finish");
+        return;
+    }
+    world.StopTimeline();
+
+    // --- Dialogue3D typewriter + two-stage advance ---
+    var dlg = Game3D.Dialogue3D.New(world);
+    dlg.SetRevealSpeed(20.0);
+    dlg.Say("Guide", "Welcome to the ruins.");
+    dlg.Say("Guide", "Mind the gap.");
+    dlg.Show();
+    world.StepSimulation(0.05);
+    if (dlg.Active == false) {
+        fail("dialogue did not activate");
+        return;
+    }
+    dlg.Advance();
+    dlg.Advance();
+    world.StepSimulation(0.05);
+    if (dlg.Active == false) {
+        fail("dialogue ended after only the first of two lines");
+        return;
+    }
+    dlg.Advance();
+    dlg.Advance();
+    world.StepSimulation(0.05);
+    if (dlg.Active) {
+        fail("dialogue still active after all lines consumed");
+        return;
+    }
+
+    // --- LipSync3D envelope from injected levels ---
+    var sync = Game3D.LipSync3D.New(actor);
+    sync.DriveLevel(1.0);
+    var k = 0;
+    while (k < 6) {
+        world.StepSimulation(0.016666666666666666);
+        sync.DriveLevel(1.0);
+        k = k + 1;
+    }
+    if (sync.Level <= 0.5) {
+        fail("lip sync envelope did not rise under sustained level");
+        return;
+    }
+    sync.DriveLevel(0.0);
+    var m = 0;
+    while (m < 30) {
+        world.StepSimulation(0.016666666666666666);
+        sync.DriveLevel(0.0);
+        m = m + 1;
+    }
+    if (sync.Level >= 0.2) {
+        fail("lip sync envelope did not decay after silence");
+        return;
+    }
+
+    world.Destroy();
+    Terminal.Say("PASS");
+}

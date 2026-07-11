@@ -229,7 +229,10 @@ class Player {
     /// controls the character's feel.
     expose func init() {
         phys = new PhysicsHelper();
-        abilityMask = ABILITY_WALL_JUMP;
+        // Campaign traversal is authored against both baseline suit modules.
+        // Game/SaveManager remain authoritative after construction, but this
+        // safe default also prevents a pre-sync spawn from losing Double Jump.
+        abilityMask = ABILITY_WALL_JUMP + ABILITY_DOUBLE_JUMP;
         chargeTimePercent = 100;
         dashCooldownPercent = 100;
 

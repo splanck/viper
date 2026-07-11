@@ -28,6 +28,7 @@ module level_validation;
 
 bind Viper.Terminal as Terminal;
 bind Viper.Text.Fmt;
+bind "./abilities";
 bind "./campaign_content";
 bind "./config";
 bind "./level";
@@ -40,11 +41,15 @@ bind "./world_graph";
 /// validator finds them so CI or a local shell can show the exact bad level.
 class LevelValidationReport {
     expose Integer checkedLevels;
+    expose Integer reachableLevels;
+    expose Integer criticalPointsChecked;
     expose Integer errors;
 
     /// @brief Initialise the report counters to zero.
     expose func init() {
         checkedLevels = 0;
+        reachableLevels = 0;
+        criticalPointsChecked = 0;
         errors = 0;
     }
 
@@ -82,6 +87,21 @@ class LevelValidator {
             levelNum = levelNum + 1;
         }
 
+        return report;
+    }
+
+    /// @brief Validate the title-to-first-boss gold slice geometry.
+    ///
+    /// The focused gate covers Crash Site and Fungal Caverns so onboarding and
+    /// the first ability reward can be checked quickly during iteration while
+    /// `validateCampaign` remains the complete release-readiness proof.
+    ///
+    /// @param verbose When true, prints a pass line for both valid regions.
+    /// @return Fresh report that must contain two checked and reachable levels.
+    expose func validateGoldSlice(verbose: Boolean) -> LevelValidationReport {
+        report = new LevelValidationReport();
+        validateLevel(1, verbose);
+        validateLevel(2, verbose);
         return report;
     }
 
@@ -135,6 +155,9 @@ class LevelValidator {
             fail(levelNum, "missing TILE_SIGN_END exit");
         } else {
             validateCriticalOrder(levelNum, lvl, exitCol);
+            if validateCriticalTraversal(levelNum, lvl, exitCol) {
+                report.reachableLevels = report.reachableLevels + 1;
+            }
         }
 
         if verbose and report.errors == before {
@@ -245,7 +268,9 @@ class LevelValidator {
         var targets = 0;
         var doors = 0;
         var teleporters = 0;
+        var gateways = 0;
         var shrines = 0;
+        var graph = new WorldGraph();
         var firstDoorCol = lvl.levelWidth;
         var i = 0;
         while i < total {
@@ -270,6 +295,28 @@ class LevelValidator {
                     fail(levelNum, "teleporter id does not match stable region id");
                 }
             }
+            if kind == INTERACTION_REGION_GATE {
+                gateways = gateways + 1;
+                var edge = lvl.interactionIds.get(i);
+                var region = levelNum - 1;
+                var expectedRoom = graph.getEdgeRoom(edge, region);
+                if expectedRoom < 0 {
+                    fail(levelNum, "regional gateway uses a nonincident edge");
+                } else {
+                    if lvl.interactionPayloads.get(i) !=
+                       graph.getOtherRegion(edge, region) {
+                        fail(levelNum, "regional gateway destination mismatch");
+                    }
+                    if lvl.interactionChannels.get(i) != graph.getEdgeGate(edge) {
+                        fail(levelNum, "regional gateway ability mismatch");
+                    }
+                    var actualRoom = graph.authoredRoomIndexForColumn(
+                        region, lvl.interactionCols.get(i), lvl.levelWidth);
+                    if actualRoom != expectedRoom {
+                        fail(levelNum, "regional gateway left its endpoint room");
+                    }
+                }
+            }
             if kind == INTERACTION_ABILITY_SHRINE { shrines = shrines + 1; }
             i = i + 1;
         }
@@ -280,6 +327,9 @@ class LevelValidator {
         if targets < 1 { fail(levelNum, "missing linked switch target"); }
         if doors < 3 { fail(levelNum, "keyed door is not three tiles high"); }
         if teleporters < 1 { fail(levelNum, "missing authored teleporter"); }
+        if gateways != graph.getAvailableNeighborCount(levelNum - 1, 63) {
+            fail(levelNum, "physical gateway count does not match world graph");
+        }
         if (levelNum == 5 or levelNum == 7) and shrines < 1 {
             fail(levelNum, "missing authored ability shrine");
         }
@@ -395,10 +445,10 @@ class LevelValidator {
         if lvl.secretCols.length() < CAMPAIGN_SECRET_TARGET {
             fail(levelNum, "fewer than two authored optional secret caches");
         } else {
-            var firstRoom = graph.roomIndexForColumn(
-                lvl.secretCols.get(0), lvl.levelWidth);
-            var secondRoom = graph.roomIndexForColumn(
-                lvl.secretCols.get(1), lvl.levelWidth);
+            var firstRoom = graph.authoredRoomIndexForColumn(
+                region, lvl.secretCols.get(0), lvl.levelWidth);
+            var secondRoom = graph.authoredRoomIndexForColumn(
+                region, lvl.secretCols.get(1), lvl.levelWidth);
             if firstRoom != 2 { fail(levelNum, "first secret is not in room 2"); }
             if secondRoom != 6 { fail(levelNum, "second secret is not in room 6"); }
         }
@@ -433,6 +483,311 @@ class LevelValidator {
         if lvl.countTilesOfType(tile) <= 0 {
             fail(levelNum, "missing regional mechanic: " + label);
         }
+    }
+
+    /// @brief Prove that production traversal can reach every critical room beat.
+    ///
+    /// The graph uses actual standable tile cells and conservative movement
+    /// envelopes derived from the shipped jump: ordinary jumps rise two tiles,
+    /// the baseline Double Jump rises four, and horizontal air control spans at
+    /// most six tiles. Locked doors are considered passable only because the
+    /// structural validator separately proves a permanent key is reachable before
+    /// each door. Ability walls remain solid until the entry mask owns their move.
+    hide func validateCriticalTraversal(levelNum: Integer, lvl: Level,
+                                         exitCol: Integer) -> Boolean {
+        var abilityMask = campaignEntryAbilityMask(levelNum);
+        var start = findNearestStand(
+            lvl, lvl.playerStartX / TILE_SIZE,
+            lvl.playerStartY / TILE_SIZE, abilityMask);
+        if start < 0 {
+            fail(levelNum, "player start has no standable traversal cell");
+            return false;
+        }
+
+        var reachable = buildReachableCells(lvl, start, abilityMask);
+        var allReachable = true;
+        var furthest = furthestReachableColumn(lvl, reachable);
+        var exitRow = findExitRow(lvl, exitCol);
+        if reachablePoint(lvl, reachable, exitCol, exitRow,
+                          abilityMask) == false {
+            fail(levelNum, "exit is unreachable with campaign-entry abilities; " +
+                 "furthest reachable column " + Int(furthest));
+            allReachable = false;
+        }
+        report.criticalPointsChecked = report.criticalPointsChecked + 1;
+
+        if lvl.hasCheckpoint {
+            if reachablePoint(
+                lvl, reachable, lvl.checkpointX / TILE_SIZE,
+                lvl.checkpointY / TILE_SIZE, abilityMask) == false {
+                fail(levelNum, "checkpoint is outside the traversable route");
+                allReachable = false;
+            }
+            report.criticalPointsChecked = report.criticalPointsChecked + 1;
+        }
+
+        if lvl.hasBoss {
+            if reachablePoint(
+                lvl, reachable, lvl.bossX / TILE_SIZE,
+                lvl.bossY / TILE_SIZE, abilityMask) == false {
+                fail(levelNum, "boss arena is outside the traversable route");
+                allReachable = false;
+            }
+            report.criticalPointsChecked = report.criticalPointsChecked + 1;
+        }
+
+        var graph = new WorldGraph();
+        var room = 0;
+        while room < WORLD_ROOMS_PER_REGION {
+            var center = graph.getRoomCenterColumn(
+                levelNum - 1, room, lvl.levelWidth);
+            if reachablePoint(lvl, reachable, center,
+                              lvl.playerStartY / TILE_SIZE,
+                              abilityMask) == false {
+                fail(levelNum, "named room " + Int(room) +
+                     " has no reachable route cell");
+                allReachable = false;
+            }
+            report.criticalPointsChecked = report.criticalPointsChecked + 1;
+            room = room + 1;
+        }
+        return allReachable;
+    }
+
+    /// @brief Return the greatest column containing a visited traversal cell.
+    hide func furthestReachableColumn(lvl: Level,
+                                      reachable: List[Integer]) -> Integer {
+        var furthest = -1;
+        var key = 0;
+        while key < reachable.length() {
+            if reachable.get(key) == 1 {
+                var col = key % lvl.levelWidth;
+                if col > furthest { furthest = col; }
+            }
+            key = key + 1;
+        }
+        return furthest;
+    }
+
+    /// @brief Return the abilities guaranteed before first entering a region.
+    hide func campaignEntryAbilityMask(levelNum: Integer) -> Integer {
+        var baseline = ABILITY_WALL_JUMP + ABILITY_DOUBLE_JUMP;
+        if levelNum <= 2 { return baseline; }
+        if levelNum == 3 {
+            return baseline + ABILITY_DASH;
+        }
+        if levelNum <= 5 { return baseline; }
+        if levelNum == 6 {
+            // The open Lake route guarantees Charge after its climax, but Dash
+            // is optional when Crystal is bypassed.
+            return baseline + ABILITY_CHARGE_SHOT;
+        }
+        if levelNum == 7 { return baseline; }
+        if levelNum == 8 {
+            return baseline + ABILITY_CHARGE_SHOT + ABILITY_GRAPPLE;
+        }
+        if levelNum == 9 {
+            return baseline + ABILITY_CHARGE_SHOT + ABILITY_GROUND_POUND;
+        }
+        return baseline + ABILITY_CHARGE_SHOT + ABILITY_GROUND_POUND +
+               ABILITY_GRAPPLE;
+    }
+
+    /// @brief Flood standable cells through the shipped movement envelope.
+    hide func buildReachableCells(lvl: Level, start: Integer,
+                                  abilityMask: Integer) -> List[Integer] {
+        var reachable: List[Integer] = [];
+        var total = lvl.levelWidth * lvl.levelHeight;
+        var i = 0;
+        while i < total { reachable.add(0); i = i + 1; }
+        var queue: List[Integer] = [];
+        queue.add(start);
+        reachable.set(start, 1);
+        var head = 0;
+        while head < queue.length() {
+            var key = queue.get(head);
+            head = head + 1;
+            var fromCol = key % lvl.levelWidth;
+            var fromRow = key / lvl.levelWidth;
+            var minCol = fromCol - 6;
+            var maxCol = fromCol + 6;
+            if minCol < 0 { minCol = 0; }
+            if maxCol >= lvl.levelWidth { maxCol = lvl.levelWidth - 1; }
+            var minRow = fromRow - 4;
+            if (abilityMask / ABILITY_WALL_JUMP) % 2 == 1 {
+                minRow = fromRow - 13;
+            }
+            var maxRow = fromRow + 16;
+            if minRow < 0 { minRow = 0; }
+            if maxRow >= lvl.levelHeight { maxRow = lvl.levelHeight - 1; }
+
+            var col = minCol;
+            while col <= maxCol {
+                var row = minRow;
+                while row <= maxRow {
+                    var next = col + row * lvl.levelWidth;
+                    if reachable.get(next) == 0 and
+                       isStandable(lvl, col, row, abilityMask) and
+                       canTraverseBetween(lvl, fromCol, fromRow,
+                                          col, row, abilityMask) {
+                        reachable.set(next, 1);
+                        queue.add(next);
+                    }
+                    row = row + 1;
+                }
+                col = col + 1;
+            }
+        }
+        return reachable;
+    }
+
+    /// @brief Test one movement edge between standable cells.
+    hide func canTraverseBetween(lvl: Level,
+                                 fromCol: Integer, fromRow: Integer,
+                                 toCol: Integer, toRow: Integer,
+                                 abilityMask: Integer) -> Boolean {
+        if fromCol == toCol and fromRow == toRow { return false; }
+        var dx = toCol - fromCol;
+        if dx < 0 { dx = 0 - dx; }
+        var rise = fromRow - toRow;
+        var drop = toRow - fromRow;
+        if rise < 0 { rise = 0; }
+        if drop < 0 { drop = 0; }
+
+        var maxRise = 2;
+        var maxHorizontal = 4;
+        if (abilityMask / ABILITY_DOUBLE_JUMP) % 2 == 1 {
+            maxRise = 4;
+            maxHorizontal = 6;
+        }
+        if (abilityMask / ABILITY_WALL_JUMP) % 2 == 1 and
+           rise <= 13 and dx <= 2 and
+           wallClimbAvailable(lvl, fromCol, fromRow, toCol, toRow) {
+            return true;
+        }
+        // Falling is not an unlockable move; every authored region is shorter
+        // than this bound and Player clamps velocity safely on the way down.
+        if rise > maxRise or dx > maxHorizontal or drop > 16 { return false; }
+        return jumpCorridorClear(
+            lvl, fromCol, fromRow, toCol, toRow, abilityMask);
+    }
+
+    /// @brief Recognize a continuous authored wall-jump ascent to a ledge.
+    hide func wallClimbAvailable(lvl: Level,
+                                 fromCol: Integer, fromRow: Integer,
+                                 toCol: Integer, toRow: Integer) -> Boolean {
+        var dx = fromCol - toCol;
+        if dx < 0 { dx = 0 - dx; }
+        if dx > 2 or toRow >= fromRow { return false; }
+        var wallCol = toCol;
+        var row = toRow + 1;
+        var solidCount = 0;
+        while row <= fromRow {
+            if lvl.isSolid(wallCol, row) { solidCount = solidCount + 1; }
+            row = row + 1;
+        }
+        return solidCount >= fromRow - toRow - 1;
+    }
+
+    /// @brief Sample the interior of a conservative parabolic jump corridor.
+    hide func jumpCorridorClear(lvl: Level,
+                                fromCol: Integer, fromRow: Integer,
+                                toCol: Integer, toRow: Integer,
+                                abilityMask: Integer) -> Boolean {
+        var sample = 1;
+        while sample < 4 {
+            var col = fromCol + (toCol - fromCol) * sample / 4;
+            var row = fromRow + (toRow - fromRow) * sample / 4;
+            var arch = 1;
+            if sample == 2 { arch = 2; }
+            row = row - arch;
+            if bodyCellOpen(lvl, col, row, abilityMask) == false {
+                return false;
+            }
+            sample = sample + 1;
+        }
+        return true;
+    }
+
+    /// @brief Find a safe standing cell nearest an authored world point.
+    hide func findNearestStand(lvl: Level, preferredCol: Integer,
+                               preferredRow: Integer,
+                               abilityMask: Integer) -> Integer {
+        var best = -1;
+        var bestDistance = 1000000;
+        var row = 0;
+        while row < lvl.levelHeight - 1 {
+            var col = 0;
+            while col < lvl.levelWidth {
+                if isStandable(lvl, col, row, abilityMask) {
+                    var dx = col - preferredCol;
+                    var dy = row - preferredRow;
+                    if dx < 0 { dx = 0 - dx; }
+                    if dy < 0 { dy = 0 - dy; }
+                    var distance = dx * 4 + dy;
+                    if distance < bestDistance {
+                        bestDistance = distance;
+                        best = col + row * lvl.levelWidth;
+                    }
+                }
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+        return best;
+    }
+
+    /// @brief Test whether a critical point resolves to a visited stand cell.
+    hide func reachablePoint(lvl: Level, reachable: List[Integer],
+                             col: Integer, row: Integer,
+                             abilityMask: Integer) -> Boolean {
+        var key = findNearestStand(lvl, col, row, abilityMask);
+        if key < 0 or key >= reachable.length() { return false; }
+        var standCol = key % lvl.levelWidth;
+        var standRow = key / lvl.levelWidth;
+        var dx = standCol - col;
+        var dy = standRow - row;
+        if dx < 0 { dx = 0 - dx; }
+        if dy < 0 { dy = 0 - dy; }
+        // A critical marker may sit above its supporting floor, but it may not
+        // borrow reachability from a distant room or unrelated route branch.
+        if dx > 4 or dy > 12 { return false; }
+        return reachable.get(key) == 1;
+    }
+
+    /// @brief Test whether one aligned player cell has safe support below it.
+    hide func isStandable(lvl: Level, col: Integer, row: Integer,
+                          abilityMask: Integer) -> Boolean {
+        if col < 0 or col >= lvl.levelWidth or row < 0 or
+           row + 1 >= lvl.levelHeight { return false; }
+        if bodyCellOpen(lvl, col, row, abilityMask) == false { return false; }
+        if lvl.isHazard(col, row + 1) { return false; }
+        var support = lvl.getTile(col, row + 1);
+        return lvl.isSolid(col, row + 1) or support == TILE_ONE_WAY;
+    }
+
+    /// @brief Treat only legitimately bypassable progression tiles as open.
+    hide func bodyCellOpen(lvl: Level, col: Integer, row: Integer,
+                           abilityMask: Integer) -> Boolean {
+        if col < 0 or col >= lvl.levelWidth or row < 0 or
+           row >= lvl.levelHeight { return false; }
+        var tile = lvl.getTile(col, row);
+        if tile == TILE_LOCKED_DOOR { return true; }
+        if tile == TILE_DESTRUCTIBLE {
+            return (abilityMask / ABILITY_CHARGE_SHOT) % 2 == 1 or
+                   (abilityMask / ABILITY_GROUND_POUND) % 2 == 1;
+        }
+        return lvl.isSolid(col, row) == false;
+    }
+
+    /// @brief Find the row containing an already-located exit column.
+    hide func findExitRow(lvl: Level, exitCol: Integer) -> Integer {
+        var row = 0;
+        while row < lvl.levelHeight {
+            if lvl.getTile(exitCol, row) == TILE_SIGN_END { return row; }
+            row = row + 1;
+        }
+        return 0;
     }
 
     /// @brief Find the first exit-sign column in a loaded tilemap.

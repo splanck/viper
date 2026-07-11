@@ -127,6 +127,11 @@ typedef struct {
     double elapsed;
     int64_t frame;
     int64_t dropped_fixed_steps;
+    double time_scale;
+    int8_t paused;
+    double hitstop_remaining;
+    double unscaled_dt;
+    double unscaled_elapsed;
     int64_t worker_count;
     void *job_pool;
     int8_t jobs_enabled;
@@ -143,6 +148,17 @@ typedef struct {
     void *body;
     void *anim;
     void *behavior;
+    void **hitboxes;
+    int32_t hitbox_count;
+    int32_t hitbox_capacity;
+    void *health;
+    void *ragdoll;
+    void *lipsync;
+    void *footsteps;
+    void *interactable;
+    void *interactor;
+    void *perception;
+    void *btree;
     int64_t layer;
     int64_t collision_mask_bits;
     rt_string name;
@@ -192,6 +208,23 @@ typedef struct {
     double max_distance;
     int64_t volume;
     int8_t listener_follow_camera;
+    void **reverb_zones;
+    int32_t reverb_zone_count;
+    int32_t reverb_zone_capacity;
+    int64_t reverb_group;
+    int64_t reverb_fx;
+    double reverb_blend;
+    double reverb_room;
+    double reverb_damp;
+    double reverb_wet;
+    int8_t reverb_routing;
+    int8_t occlusion_enabled;
+    int64_t occlusion_mask;
+    double occlusion_amount;
+    int32_t occlusion_budget;
+    int32_t occlusion_cursor;
+    int64_t dialogue_group;
+    void *ambient_bed;
 } Game3DAudioTestLayout;
 
 typedef struct {
@@ -2908,7 +2941,8 @@ static bool test_phase3_world_presets_environment_and_debug() {
 
 static bool test_phase4_assets3d_model_templates() {
     TEST("Assets3D loads models and caches SceneTemplate objects");
-    rt_string path = test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
+    rt_string path =
+        test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
 
     rt_game3d_assets_clear_cache();
 
@@ -3369,7 +3403,8 @@ static bool test_phase4_assets3d_stale_async_publish_revalidates_generation() {
 
 static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
     TEST("Assets3D resident byte telemetry returns to baseline after churn");
-    rt_string path = test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
+    rt_string path =
+        test_fixture_path("src/tests/fixtures/runtime/assets/gltf/load_asset_triangle.gltf");
 
     rt_game3d_assets_set_residency_budget(-1);
     rt_game3d_assets_clear_cache();
@@ -3645,10 +3680,14 @@ static bool test_phase5_world_stream3d_baseline() {
     TEST("WorldStream3D tracks mounted manifests and resident budgets");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     EXPECT_TRUE(stream != nullptr, "World3D.stream returns an owned stream handle");
     EXPECT_TRUE(rt_game3d_world_get_stream(world) == stream,
                 "World3D.stream is stable across repeated property reads");
     void *standalone_stream = rt_game3d_world_stream_new(world);
+    rt_game3d_world_stream_set_async_streaming(standalone_stream,
+                                               0); /* blocking: test pins synchronous residency */
     EXPECT_TRUE(standalone_stream != nullptr, "WorldStream3D.New still returns a stream handle");
     EXPECT_EQ_INT(
         rt_game3d_world_stream_get_resident_cell_count(stream), 0, "initial cell count is zero");
@@ -3740,6 +3779,8 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Stream Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
@@ -3845,6 +3886,8 @@ static bool test_phase5_world_stream3d_terrain_slots_reject_wrong_class_refs() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Wrong Slot Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
@@ -3920,6 +3963,8 @@ static bool test_phase5_world_stream3d_heightmap_resample_preserves_edges() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Resample Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
@@ -3962,6 +4007,8 @@ static bool test_phase5_world_stream3d_rejects_trailing_heightmap_tokens() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Trailing Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
@@ -4026,6 +4073,8 @@ static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
     void *world = rt_game3d_world_new_with_camera(
         rt_const_cstr("Game3D Terrain Seam Unit"), 96, 72, 60.0, 0.1, 20000.0);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 7000.0, 8000.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(tile_extent * 0.5, 0.0, 0.0));
     rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
@@ -4116,6 +4165,8 @@ static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
     void *cell_world =
         rt_game3d_world_new(rt_const_cstr("Game3D Nearest Cell Budget Unit"), 80, 60);
     void *cell_stream = rt_game3d_world_get_stream(cell_world);
+    rt_game3d_world_stream_set_async_streaming(cell_stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(cell_stream, rt_vec3_new(1000.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(cell_stream, 256.0, 256.0);
     rt_game3d_world_stream_mount_cells(cell_stream, rt_const_cstr(cells_manifest_path));
@@ -4157,6 +4208,8 @@ static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
     void *terrain_world =
         rt_game3d_world_new(rt_const_cstr("Game3D Nearest Terrain Budget Unit"), 80, 60);
     void *terrain_stream = rt_game3d_world_get_stream(terrain_world);
+    rt_game3d_world_stream_set_async_streaming(terrain_stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(terrain_stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(terrain_stream, 256.0, 256.0);
     rt_game3d_world_stream_set_residency_budget(terrain_stream, 7000);
@@ -4241,6 +4294,8 @@ static bool test_phase5_world_stream3d_manifest_cells() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Manifest Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
@@ -4310,6 +4365,8 @@ static bool test_phase5_world_stream3d_cell_binary_sidecar() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Sidecar Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
@@ -4349,6 +4406,8 @@ static bool test_phase5_world_stream3d_cell_binary_sidecar() {
     void *world2 =
         rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Sidecar Missing Unit"), 80, 60);
     void *stream2 = rt_game3d_world_get_stream(world2);
+    rt_game3d_world_stream_set_async_streaming(stream2,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream2, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream2, 64.0, 96.0);
     rt_game3d_world_stream_mount_cells(stream2, rt_const_cstr(missing_manifest_path));
@@ -4385,6 +4444,8 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     void *world =
         rt_game3d_world_new(rt_const_cstr("Game3D WorldStream LOD Residency Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
@@ -4539,6 +4600,8 @@ static bool test_phase5_world_stream3d_hitch_budgeted_update() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Budget Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));
@@ -4632,6 +4695,8 @@ static bool test_phase5_world_stream3d_budget_hysteresis_and_cooldown() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Hysteresis Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(stream, 64.0, 96.0); // both cells stay in radius throughout
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));
@@ -4701,16 +4766,17 @@ static bool test_phase5_world_stream3d_zero_radius_update_traps() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Zero Radius Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     // SetRadii deliberately never called: the default radii are zero, which streams nothing.
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
                   0,
                   "zero-radius mount streams nothing in");
-    EXPECT_TRUE(
-        expect_trap_contains([&]() { rt_game3d_world_stream_update(stream, 1.0 / 60.0); },
-                             "load radius is 0"),
-        "update with a mounted manifest and zero radii traps instead of silently rendering "
-        "an empty world");
+    EXPECT_TRUE(expect_trap_contains([&]() { rt_game3d_world_stream_update(stream, 1.0 / 60.0); },
+                                     "load radius is 0"),
+                "update with a mounted manifest and zero radii traps instead of silently rendering "
+                "an empty world");
 
     rt_game3d_world_destroy(world);
     std::remove(cell_path);
@@ -4767,6 +4833,8 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Stream Inspection Unit"), 80, 60);
     void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_async_streaming(stream,
+                                               0); /* blocking: test pins synchronous residency */
     rt_game3d_world_stream_set_radii(stream, 64.0, 64.0);
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(cells_manifest_path));

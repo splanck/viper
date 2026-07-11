@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_events.inc  (#included from rt_physics3d.c; not a standalone translation unit)
-// Purpose: Physics3D collision-event queries and hit lists
+// File: src/runtime/graphics/3d/physics/rt_physics3d_events.inc  (#included from rt_physics3d.c;
+// not a standalone translation unit) Purpose: Physics3D collision-event queries and hit lists
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Collision event queries
@@ -107,9 +107,8 @@ void *rt_world3d_get_collision_event(void *obj, int64_t index) {
 /// @brief `World3D.EnterEventCount` — contacts that began this frame.
 int64_t rt_world3d_get_enter_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? world3d_contact_count_safe(w->enter_events,
-                                          w->enter_event_count,
-                                          w->enter_event_capacity)
+    return w ? world3d_contact_count_safe(
+                   w->enter_events, w->enter_event_count, w->enter_event_capacity)
              : 0;
 }
 
@@ -129,9 +128,8 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
 /// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
 int64_t rt_world3d_get_stay_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? world3d_contact_count_safe(w->stay_events,
-                                          w->stay_event_count,
-                                          w->stay_event_capacity)
+    return w ? world3d_contact_count_safe(
+                   w->stay_events, w->stay_event_count, w->stay_event_capacity)
              : 0;
 }
 
@@ -151,9 +149,8 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
 /// @brief `World3D.ExitEventCount` — contacts that ended this frame.
 int64_t rt_world3d_get_exit_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? world3d_contact_count_safe(w->exit_events,
-                                          w->exit_event_count,
-                                          w->exit_event_capacity)
+    return w ? world3d_contact_count_safe(
+                   w->exit_events, w->exit_event_count, w->exit_event_capacity)
              : 0;
 }
 
@@ -208,6 +205,18 @@ void *rt_collision_event3d_get_collider_a(void *obj) {
 void *rt_collision_event3d_get_collider_b(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     return event ? ph3d_collider_ref_or_null(event->collider_b) : NULL;
+}
+
+/// @brief `CollisionEvent3D.SurfaceTypeA` — surface tag of body A's leaf collider.
+int64_t rt_collision_event3d_get_surface_type_a(void *obj) {
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event && event->collider_a ? rt_collider3d_get_surface_type(event->collider_a) : 0;
+}
+
+/// @brief `CollisionEvent3D.SurfaceTypeB` — surface tag of body B's leaf collider.
+int64_t rt_collision_event3d_get_surface_type_b(void *obj) {
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event && event->collider_b ? rt_collider3d_get_surface_type(event->collider_b) : 0;
 }
 
 /// @brief `CollisionEvent3D.IsTrigger` — whether either party is a trigger.
@@ -337,6 +346,12 @@ void *rt_physics_hit3d_get_body(void *obj) {
 void *rt_physics_hit3d_get_collider(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
     return hit ? ph3d_collider_ref_or_null(hit->collider) : NULL;
+}
+
+/// @brief `PhysicsHit3D.SurfaceType` — surface tag of the hit (leaf) collider.
+int64_t rt_physics_hit3d_get_surface_type(void *obj) {
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit && hit->collider ? rt_collider3d_get_surface_type(hit->collider) : 0;
 }
 
 /// @brief `PhysicsHit3D.Point` — world-space hit location.

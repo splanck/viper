@@ -1827,6 +1827,96 @@ void rt_collider3d_get_child_transform_raw(
 /// @param normal_out `double[3]` receives surface normal (defaults to +Y).
 ///
 /// @return `0` (sample missed / outside heightfield bounds).
+/// @brief Silent stub for `Collider3D.set_Friction` — no-op.
+void rt_collider3d_set_friction(void *collider, double friction) {
+    (void)collider;
+    (void)friction;
+}
+
+/// @brief Silent stub for `Collider3D.get_Friction` — no-op; returns -1.
+double rt_collider3d_get_friction(void *collider) {
+    (void)collider;
+    return -1.0;
+}
+
+/// @brief Silent stub for `Collider3D.set_Restitution` — no-op.
+void rt_collider3d_set_restitution(void *collider, double restitution) {
+    (void)collider;
+    (void)restitution;
+}
+
+/// @brief Silent stub for `Collider3D.get_Restitution` — no-op; returns -1.
+double rt_collider3d_get_restitution(void *collider) {
+    (void)collider;
+    return -1.0;
+}
+
+/// @brief Silent stub for `Collider3D.set_SurfaceType` — no-op.
+void rt_collider3d_set_surface_type(void *collider, int64_t surface_type) {
+    (void)collider;
+    (void)surface_type;
+}
+
+/// @brief Silent stub for `Collider3D.get_SurfaceType` — no-op; returns 0.
+int64_t rt_collider3d_get_surface_type(void *collider) {
+    (void)collider;
+    return 0;
+}
+
+/// @brief Silent stub for the effective-friction resolver — no-op; body value.
+double rt_collider3d_effective_friction_raw(void *collider, double body_friction) {
+    (void)collider;
+    return body_friction;
+}
+
+/// @brief Silent stub for the effective-restitution resolver — no-op; body value.
+double rt_collider3d_effective_restitution_raw(void *collider, double body_restitution) {
+    (void)collider;
+    return body_restitution;
+}
+
+/// @brief Silent stub for `Physics3DBody.set_UserData` — no-op.
+void rt_body3d_set_user_data(void *body, int64_t value) {
+    (void)body;
+    (void)value;
+}
+
+/// @brief Silent stub for `Physics3DBody.get_UserData` — no-op; returns 0.
+int64_t rt_body3d_get_user_data(void *body) {
+    (void)body;
+    return 0;
+}
+
+/// @brief Silent stub for `PhysicsHit3D.get_SurfaceType` — no-op; returns 0.
+int64_t rt_physics_hit3d_get_surface_type(void *hit) {
+    (void)hit;
+    return 0;
+}
+
+/// @brief Silent stub for `CollisionEvent3D.get_SurfaceTypeA` — no-op; returns 0.
+int64_t rt_collision_event3d_get_surface_type_a(void *event) {
+    (void)event;
+    return 0;
+}
+
+/// @brief Silent stub for `CollisionEvent3D.get_SurfaceTypeB` — no-op; returns 0.
+int64_t rt_collision_event3d_get_surface_type_b(void *event) {
+    (void)event;
+    return 0;
+}
+
+/// @brief Silent stub for the internal heightfield hole-mask installer — no-op; returns 0.
+int8_t rt_collider3d_heightfield_set_holes_raw(void *collider,
+                                               const uint8_t *mask,
+                                               int32_t cells_x,
+                                               int32_t cells_z) {
+    (void)collider;
+    (void)mask;
+    (void)cells_x;
+    (void)cells_z;
+    return 0;
+}
+
 int8_t rt_collider3d_sample_heightfield_raw(
     void *collider, double local_x, double local_z, double *height_out, double *normal_out) {
     (void)collider;
@@ -2811,4 +2901,146 @@ void rt_trigger3d_set_bounds(
     (void)x1;
     (void)y1;
     (void)z1;
+}
+
+/* Cloth3D stubs (plan 27) */
+
+/// @brief Stub for `Cloth3D.NewChain` — would allocate a verlet chain.
+///
+/// Traps: graphics support not compiled in.
+void *rt_cloth3d_new_chain(int64_t segments, double total_length) {
+    (void)segments;
+    (void)total_length;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Cloth3D.NewChain: graphics support not compiled in", NULL);
+}
+
+/// @brief Stub for `Cloth3D.NewPatch` — would allocate a verlet patch grid.
+///
+/// Traps: graphics support not compiled in.
+void *rt_cloth3d_new_patch(int64_t w, int64_t h, double width, double height) {
+    (void)w;
+    (void)h;
+    (void)width;
+    (void)height;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Cloth3D.NewPatch: graphics support not compiled in", NULL);
+}
+
+/// @brief Stub for `Cloth3D.get_Damping`. Silent stub returning `0`.
+double rt_cloth3d_get_damping(void *cloth) {
+    (void)cloth;
+    return 0.0;
+}
+
+/// @brief Stub for `Cloth3D.set_Damping`. Silent no-op stub.
+void rt_cloth3d_set_damping(void *cloth, double damping) {
+    (void)cloth;
+    (void)damping;
+}
+
+/// @brief Stub for `Cloth3D.get_Iterations`. Silent stub returning `0`.
+int64_t rt_cloth3d_get_iterations(void *cloth) {
+    (void)cloth;
+    return 0;
+}
+
+/// @brief Stub for `Cloth3D.set_Iterations`. Silent no-op stub.
+void rt_cloth3d_set_iterations(void *cloth, int64_t iterations) {
+    (void)cloth;
+    (void)iterations;
+}
+
+/// @brief Stub for `Cloth3D.get_GravityScale`. Silent stub returning `0`.
+double rt_cloth3d_get_gravity_scale(void *cloth) {
+    (void)cloth;
+    return 0.0;
+}
+
+/// @brief Stub for `Cloth3D.set_GravityScale`. Silent no-op stub.
+void rt_cloth3d_set_gravity_scale(void *cloth, double scale) {
+    (void)cloth;
+    (void)scale;
+}
+
+/// @brief Stub for `Cloth3D.get_WindResponse`. Silent stub returning `0`.
+double rt_cloth3d_get_wind_response(void *cloth) {
+    (void)cloth;
+    return 0.0;
+}
+
+/// @brief Stub for `Cloth3D.set_WindResponse`. Silent no-op stub.
+void rt_cloth3d_set_wind_response(void *cloth, double response) {
+    (void)cloth;
+    (void)response;
+}
+
+/// @brief Stub for `Cloth3D.get_PointCount`. Silent stub returning `0`.
+int64_t rt_cloth3d_get_point_count(void *cloth) {
+    (void)cloth;
+    return 0;
+}
+
+/// @brief Stub for `Cloth3D.Pin`. Silent no-op stub returning the handle.
+void *rt_cloth3d_pin(void *cloth, int64_t index) {
+    (void)index;
+    return cloth;
+}
+
+/// @brief Stub for `Cloth3D.AddSphere`. Silent no-op stub returning the handle.
+void *rt_cloth3d_add_sphere(void *cloth, void *center, double radius) {
+    (void)center;
+    (void)radius;
+    return cloth;
+}
+
+/// @brief Stub for `Cloth3D.AddCapsule`. Silent no-op stub returning the handle.
+void *rt_cloth3d_add_capsule(void *cloth, void *a, void *b, double radius) {
+    (void)a;
+    (void)b;
+    (void)radius;
+    return cloth;
+}
+
+/// @brief Stub for `Cloth3D.SetWind`. Silent no-op stub.
+void rt_cloth3d_set_wind(void *cloth, void *direction, double strength) {
+    (void)cloth;
+    (void)direction;
+    (void)strength;
+}
+
+/// @brief Stub for `Cloth3D.GetPoint`. Silent stub returning `NULL`.
+void *rt_cloth3d_get_point(void *cloth, int64_t index) {
+    (void)cloth;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `Cloth3D.BindMesh`. Silent no-op stub returning the handle.
+void *rt_cloth3d_bind_mesh(void *cloth, void *mesh) {
+    (void)mesh;
+    return cloth;
+}
+
+/// @brief Stub for `Cloth3D.BindBoneChain`. Silent no-op stub returning the handle.
+void *rt_cloth3d_bind_bone_chain(void *cloth, void *animator, rt_string root_bone) {
+    (void)animator;
+    (void)root_bone;
+    return cloth;
+}
+
+/// @brief Stub for `Cloth3D.Step`. Silent no-op stub.
+void rt_cloth3d_step(void *cloth, double dt) {
+    (void)cloth;
+    (void)dt;
+}
+
+/// @brief Stub for `World3D.AddCloth`. Silent no-op stub.
+void rt_game3d_world_add_cloth(void *world, void *cloth) {
+    (void)world;
+    (void)cloth;
+}
+
+/// @brief Stub for `World3D.RemoveCloth`. Silent no-op stub.
+void rt_game3d_world_remove_cloth(void *world, void *cloth) {
+    (void)world;
+    (void)cloth;
 }

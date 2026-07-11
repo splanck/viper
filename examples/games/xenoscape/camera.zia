@@ -127,6 +127,7 @@ class GameCamera {
     hide Integer verticalIntentTimer;
     hide Integer verticalIntentDirection;
     hide Integer verticalIntentOffset;
+    hide Boolean focusWindowActive;
 
     // Pre-generated Perlin noise cloud textures (5 variants)
     hide Pixels cloudFar0;   // 64x28  — small wisp
@@ -149,6 +150,7 @@ class GameCamera {
         verticalIntentTimer = 0;
         verticalIntentDirection = 0;
         verticalIntentOffset = 0;
+        focusWindowActive = false;
         cam = Camera.New(SCREEN_W, SCREEN_H);
         // Camera.SmoothFollow provides built-in interpolation with lerp factor
 
@@ -177,7 +179,44 @@ class GameCamera {
         levelPixelH = h * TILE_SIZE;
         // Camera.SetBounds expects world extents, not pre-subtracted scroll limits.
         cam.SetBounds(0, 0, levelPixelW, levelPixelH);
+        focusWindowActive = false;
     }
+
+    /// @brief Clamp framing to a boss/set-piece window without a hard cut.
+    /// @param centerWorldX Set-piece center in world pixels.
+    /// @param radiusPixels Requested half-width, clamped to a screen-safe value.
+    /// @return Nothing. Replaces camera bounds while retaining smooth follow.
+    expose func setFocusWindow(centerWorldX: Integer, radiusPixels: Integer) {
+        if levelPixelW <= 0 { return; }
+        var radius = radiusPixels;
+        if radius < SCREEN_W / 2 + TILE_SIZE { radius = SCREEN_W / 2 + TILE_SIZE; }
+        var left = centerWorldX - radius;
+        var right = centerWorldX + radius;
+        if left < 0 { left = 0; }
+        if right > levelPixelW { right = levelPixelW; }
+        if right - left < SCREEN_W + TILE_SIZE * 2 {
+            right = left + SCREEN_W + TILE_SIZE * 2;
+            if right > levelPixelW {
+                right = levelPixelW;
+                left = right - SCREEN_W - TILE_SIZE * 2;
+                if left < 0 { left = 0; }
+            }
+        }
+        cam.SetBounds(left, 0, right - left, levelPixelH);
+        focusWindowActive = true;
+    }
+
+    /// @brief Restore whole-region camera bounds after a set piece ends.
+    /// @return Nothing. No-ops when whole-region bounds already apply.
+    expose func clearFocusWindow() {
+        if focusWindowActive == false { return; }
+        cam.SetBounds(0, 0, levelPixelW, levelPixelH);
+        focusWindowActive = false;
+    }
+
+    /// @brief Report whether set-piece bounds currently constrain the camera.
+    /// @return True after `setFocusWindow` and before a clear/load.
+    expose func hasFocusWindow() -> Boolean { return focusWindowActive; }
 
     // Snap camera to target instantly (no smooth interpolation).
     // Called on level load to avoid the camera slowly scrolling from the

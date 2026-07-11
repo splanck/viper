@@ -118,6 +118,23 @@ void *rt_game3d_env_handle_with_fog(void *obj, double near_plane, double far_pla
     return obj;
 }
 
+/// @brief Fluent: enable exponential height fog on the environment's canvas.
+void *rt_game3d_env_handle_with_height_fog(void *obj,
+                                           double density,
+                                           double height,
+                                           double falloff) {
+    rt_game3d_env_handle *env =
+        game3d_env_handle_checked(obj, "Game3D.EnvHandle.withHeightFog: invalid environment");
+    rt_game3d_world *world = game3d_env_world(env, "Game3D.EnvHandle.withHeightFog: invalid world");
+    if (world && world->canvas)
+        rt_canvas3d_set_height_fog(world->canvas,
+                                   game3d_finite_or(height, 0.0),
+                                   game3d_positive_or(falloff, 0.1),
+                                   game3d_nonnegative_or(density, 0.02),
+                                   1.0);
+    return obj;
+}
+
 /// @brief Build a bright daytime environment (sun lighting, terrain, fog) and return
 ///   its handle. See header.
 void *rt_game3d_environment_outdoor(void *obj) {
@@ -244,6 +261,12 @@ static void game3d_world_update_controller(rt_game3d_world *world, double dt) {
             break;
         case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
             rt_game3d_follow_controller_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_THIRDPERSON_CLASS_ID:
+            rt_game3d_thirdperson_controller_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_RAILCAMERA_CLASS_ID:
+            rt_game3d_rail_camera_update(world->camera_controller, world, dt);
             break;
         default:
             rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
@@ -466,6 +489,12 @@ static void game3d_world_late_update_controller(rt_game3d_world *world, double d
             break;
         case RT_G3D_GAME3D_FOLLOW_CLASS_ID:
             rt_game3d_follow_controller_late_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_THIRDPERSON_CLASS_ID:
+            rt_game3d_thirdperson_controller_late_update(world->camera_controller, world, dt);
+            break;
+        case RT_G3D_GAME3D_RAILCAMERA_CLASS_ID:
+            rt_game3d_rail_camera_late_update(world->camera_controller, world, dt);
             break;
         default:
             rt_trap("Game3D.World3D: camera controller must be a Game3D camera controller");
@@ -923,6 +952,8 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
     }
     game3d_camera_controller_clear_world_ref_if(world->camera_controller, world);
     game3d_release_ref(&world->camera_controller);
+    game3d_release_typed_ref(&world->active_timeline, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    game3d_release_typed_ref(&world->active_dialogue, RT_G3D_GAME3D_DIALOGUE_CLASS_ID);
     game3d_release_ref(&world->debug_axis_origin);
     if (world->stream) {
         rt_game3d_world_stream *stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
@@ -946,6 +977,20 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
 static void game3d_world_free_registries(rt_game3d_world *world) {
     if (!world)
         return;
+    game3d_world_clear_combat_events(world);
+    game3d_persistence_release(world);
+    for (int32_t cl = 0; cl < world->cloth_count; ++cl)
+        game3d_release_typed_ref(&world->cloths[cl], RT_G3D_CLOTH3D_CLASS_ID);
+    free(world->cloths);
+    world->cloths = NULL;
+    world->cloth_count = 0;
+    world->cloth_capacity = 0;
+    free(world->hit_events);
+    free(world->damage_events);
+    world->hit_events = NULL;
+    world->damage_events = NULL;
+    world->hit_event_capacity = 0;
+    world->damage_event_capacity = 0;
     free(world->entities);
     free(world->body_index_entries);
     free(world->name_index_hashes);

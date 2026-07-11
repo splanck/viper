@@ -174,6 +174,14 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene_node_release_pixels_slot(&node->impostor_pixels);
     scene_node_release_class_slot(&node->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
     scene_node_release_class_slot(&node->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (node->impostor_frame_meshes) {
+        for (int32_t fi = 0; fi < node->impostor_frame_count; ++fi)
+            scene_node_release_class_slot(&node->impostor_frame_meshes[fi], RT_G3D_MESH3D_CLASS_ID);
+        free(node->impostor_frame_meshes);
+        node->impostor_frame_meshes = NULL;
+    }
+    node->impostor_frame_count = 0;
+    node->impostor_frame_index = 0;
     for (int32_t i = 0; i < node->variant_material_count && node->variant_materials; i++)
         scene_node_release_class_slot(&node->variant_materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
     free(node->variant_materials);
@@ -291,12 +299,16 @@ void *rt_scene_node3d_new(void) {
     node->auto_lod_screen_error_px = 8.0;
     node->lod_selected_index = 0;
     node->lod_selection_valid = 0;
+    node->is_static = 0;
     node->has_impostor = 0;
     node->impostor_selected = 0;
     node->impostor_distance = 0.0;
     node->impostor_pixels = NULL;
     node->impostor_mesh = NULL;
     node->impostor_material = NULL;
+    node->impostor_frame_count = 0;
+    node->impostor_frame_index = 0;
+    node->impostor_frame_meshes = NULL;
     node->variant_materials = NULL;
     node->variant_material_count = 0;
 
@@ -915,6 +927,19 @@ void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
         node->visible = next;
         scene3d_mark_spatial_dirty(node->owner_scene);
     }
+}
+
+/// @brief Mark a node as static bake input (lightmaps/probes/reflection captures).
+void rt_scene_node3d_set_static(void *obj, int8_t is_static) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (node)
+        node->is_static = is_static ? 1 : 0;
+}
+
+/// @brief True when the node is flagged static for baking.
+int8_t rt_scene_node3d_get_static(void *obj) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node && node->is_static ? 1 : 0;
 }
 
 /// @brief Read the visibility flag (0 or 1; 0 if `obj` is NULL).

@@ -5,8 +5,9 @@ XENOSCAPE: The Descent is developed as part of the Viper project.
 - Game design, programming, procedural sprites, tiles, VFX, music, ambience,
   synthesized sound effects, documentation, and release engineering: Viper
   Project contributors.
-- Original title key art and ARIA portrait: commissioned for this game from
-  original project briefs using OpenAI's image-generation service on 2026-07-09.
+- Original title key art and ARIA portrait: generated for this game from original
+  project briefs using OpenAI's image-generation service on 2026-07-10, then
+  selected and integrated by the project contributors.
 - Engine, Zia compiler, runtime, Canvas, audio synthesis, input, persistence,
   packaging, and test infrastructure: Viper Project contributors.
 

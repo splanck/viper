@@ -1152,6 +1152,45 @@ int64_t rt_mesh3d_get_triangle_count(void *obj) {
     return m ? (int64_t)(rt_mesh3d_safe_index_count(m) / 3u) : 0;
 }
 
+/// @brief Read one vertex's position/normal/uv (internal: HLOD proxy bake readback).
+/// @return 1 on success, 0 for an invalid mesh or out-of-range index.
+int8_t rt_mesh3d_get_vertex_raw(
+    void *obj, int64_t index, double out_pos[3], double out_normal[3], double out_uv[2]) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m || index < 0 || index >= (int64_t)rt_mesh3d_safe_vertex_count(m))
+        return 0;
+    const vgfx3d_vertex_t *v = &m->vertices[index];
+    if (out_pos) {
+        out_pos[0] = v->pos[0];
+        out_pos[1] = v->pos[1];
+        out_pos[2] = v->pos[2];
+    }
+    if (out_normal) {
+        out_normal[0] = v->normal[0];
+        out_normal[1] = v->normal[1];
+        out_normal[2] = v->normal[2];
+    }
+    if (out_uv) {
+        out_uv[0] = v->uv[0];
+        out_uv[1] = v->uv[1];
+    }
+    return 1;
+}
+
+/// @brief Read one triangle's vertex indices (internal: HLOD proxy bake readback).
+/// @return 1 on success, 0 for an invalid mesh or out-of-range triangle.
+int8_t rt_mesh3d_get_triangle_raw(void *obj, int64_t triangle, int64_t out_indices[3]) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m || triangle < 0 || triangle >= (int64_t)(rt_mesh3d_safe_index_count(m) / 3u))
+        return 0;
+    if (out_indices) {
+        out_indices[0] = m->indices[triangle * 3 + 0];
+        out_indices[1] = m->indices[triangle * 3 + 1];
+        out_indices[2] = m->indices[triangle * 3 + 2];
+    }
+    return 1;
+}
+
 /// @brief Return whether this mesh's vertex/index payload is resident.
 int8_t rt_mesh3d_get_resident(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);

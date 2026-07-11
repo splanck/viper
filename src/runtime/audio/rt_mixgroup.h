@@ -92,6 +92,10 @@ int64_t rt_snd_group_add_delay(int64_t group, double delay_ms, double feedback, 
 /// @brief Add a small Freeverb-style reverb insert to a mix group.
 int64_t rt_snd_group_add_reverb(int64_t group, double room_size, double damping, double wet);
 
+/// @brief Update a group reverb insert's room/damping/wet in place.
+void rt_snd_group_set_reverb(
+    int64_t group, int64_t fx_id, double room_size, double damping, double wet);
+
 /// @brief Bypass or enable one effect by id.
 void rt_snd_group_fx_bypass(int64_t group, int64_t fx_id, int8_t bypass);
 

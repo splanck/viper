@@ -45,6 +45,9 @@ class WorldGraph {
     hide List[Integer] edgeFrom;
     hide List[Integer] edgeTo;
     hide List[Integer] edgeGate;
+    hide List[Integer] edgeFromRoom;
+    hide List[Integer] edgeToRoom;
+    hide List[Integer] roomBoundaries;
 
     /// @brief Populate the exact approved campaign topology.
     ///
@@ -58,10 +61,27 @@ class WorldGraph {
         edgeFrom = [0, 1, 0, 1, 2, 3, 4, 5, 3, 6, 7, 8];
         edgeTo =   [1, 2, 3, 4, 5, 4, 5, 8, 6, 7, 8, 9];
         edgeGate = [
-            ABILITY_NONE, ABILITY_DOUBLE_JUMP, ABILITY_NONE, ABILITY_NONE,
+            ABILITY_NONE, ABILITY_DASH, ABILITY_NONE, ABILITY_NONE,
             ABILITY_DASH, ABILITY_NONE, ABILITY_NONE, ABILITY_GROUND_POUND,
             ABILITY_NONE, ABILITY_CHARGE_SHOT, ABILITY_GROUND_POUND,
             ABILITY_GRAPPLE
+        ];
+        // Physical endpoint rooms for each regional connection. These are not
+        // inferred from map direction: each route terminates at a named room
+        // whose in-level gateway and entry spawn can be validated together.
+        edgeFromRoom = [7, 6, 2, 3, 7, 4, 7, 7, 7, 7, 7, 7];
+        edgeToRoom =   [0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 2, 0];
+        roomBoundaries = [
+            0, 87, 173, 333, 420, 593, 753, 907, 1000,
+            0, 87, 173, 333, 420, 587, 720, 880, 1000,
+            0, 160, 310, 455, 590, 725, 820, 910, 1000,
+            0, 105, 230, 355, 480, 610, 735, 870, 1000,
+            0, 155, 300, 420, 540, 665, 790, 900, 1000,
+            0, 150, 290, 430, 565, 700, 820, 920, 1000,
+            0, 140, 275, 410, 545, 680, 805, 910, 1000,
+            0, 110, 235, 360, 485, 610, 740, 870, 1000,
+            0, 150, 285, 420, 550, 680, 805, 915, 1000,
+            0, 120, 250, 400, 535, 670, 800, 900, 1000
         ];
     }
 
@@ -109,6 +129,24 @@ class WorldGraph {
     expose func getEdgeGate(edge: Integer) -> Integer {
         if edge < 0 or edge >= edgeGate.length() { return -1; }
         return edgeGate.get(edge);
+    }
+
+    /// @brief Read the named endpoint room for an edge and incident region.
+    ///
+    /// @return Local room id 0..7, or -1 when the edge/region pair is invalid.
+    expose func getEdgeRoom(edge: Integer, region: Integer) -> Integer {
+        if edge < 0 or edge >= edgeFrom.length() { return -1; }
+        if edgeFrom.get(edge) == region { return edgeFromRoom.get(edge); }
+        if edgeTo.get(edge) == region { return edgeToRoom.get(edge); }
+        return -1;
+    }
+
+    /// @brief Read the opposite endpoint of an incident edge.
+    expose func getOtherRegion(edge: Integer, region: Integer) -> Integer {
+        if edge < 0 or edge >= edgeFrom.length() { return -1; }
+        if edgeFrom.get(edge) == region { return edgeTo.get(edge); }
+        if edgeTo.get(edge) == region { return edgeFrom.get(edge); }
+        return -1;
     }
 
     /// @brief Find the undirected edge connecting two regions.
@@ -259,6 +297,67 @@ class WorldGraph {
         var room = bounded * WORLD_ROOMS_PER_REGION / levelWidth;
         if room >= WORLD_ROOMS_PER_REGION { room = WORLD_ROOMS_PER_REGION - 1; }
         return room;
+    }
+
+    /// @brief Map a regional column through its authored, nonuniform boundaries.
+    expose func authoredRoomIndexForColumn(region: Integer, column: Integer,
+                                           levelWidth: Integer) -> Integer {
+        if region < 0 or region >= WORLD_REGION_COUNT or levelWidth <= 0 {
+            return 0;
+        }
+        var bounded = column;
+        if bounded < 0 { bounded = 0; }
+        if bounded >= levelWidth { bounded = levelWidth - 1; }
+        var room = 0;
+        while room < WORLD_ROOMS_PER_REGION - 1 {
+            if bounded < getRoomStartColumn(region, room + 1, levelWidth) {
+                return room;
+            }
+            room = room + 1;
+        }
+        return WORLD_ROOMS_PER_REGION - 1;
+    }
+
+    /// @brief Return the inclusive first tile column of one authored room.
+    expose func getRoomStartColumn(region: Integer, room: Integer,
+                                   levelWidth: Integer) -> Integer {
+        if region < 0 or region >= WORLD_REGION_COUNT or
+           room < 0 or room >= WORLD_ROOMS_PER_REGION or levelWidth <= 0 {
+            return 0;
+        }
+        return roomBoundaryPermille(region, room) * levelWidth / 1000;
+    }
+
+    /// @brief Return the inclusive final tile column of one authored room.
+    expose func getRoomEndColumn(region: Integer, room: Integer,
+                                 levelWidth: Integer) -> Integer {
+        if region < 0 or region >= WORLD_REGION_COUNT or
+           room < 0 or room >= WORLD_ROOMS_PER_REGION or levelWidth <= 0 {
+            return 0;
+        }
+        var result = roomBoundaryPermille(region, room + 1) * levelWidth / 1000 - 1;
+        if room == WORLD_ROOMS_PER_REGION - 1 { result = levelWidth - 1; }
+        if result < 0 { result = 0; }
+        return result;
+    }
+
+    /// @brief Return the midpoint column used for content anchors/gateways.
+    expose func getRoomCenterColumn(region: Integer, room: Integer,
+                                    levelWidth: Integer) -> Integer {
+        return (getRoomStartColumn(region, room, levelWidth) +
+                getRoomEndColumn(region, room, levelWidth)) / 2;
+    }
+
+    /// @brief Authored nonuniform room boundary in thousandths of region width.
+    ///
+    /// Boundary zero is 0 and boundary eight is 1000. Intermediate values align
+    /// with the legacy builders' actual encounter, landmark, and arena seams.
+    hide func roomBoundaryPermille(region: Integer,
+                                   boundary: Integer) -> Integer {
+        if region < 0 or region >= WORLD_REGION_COUNT { return 0; }
+        if boundary <= 0 { return 0; }
+        if boundary >= WORLD_ROOMS_PER_REGION { return 1000; }
+        return roomBoundaries.get(region * 9 + boundary);
     }
 
     /// @brief Build a stable global room id from region and local room index.

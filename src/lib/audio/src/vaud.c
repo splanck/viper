@@ -929,6 +929,33 @@ void vaud_set_voice_occlusion(vaud_context_t ctx, vaud_voice_id voice_id, float 
     vaud_mutex_unlock(&ctx->mutex);
 }
 
+/// @brief Enable/disable per-voice RMS metering (zero mixing cost when off).
+void vaud_set_voice_metering(vaud_context_t ctx, vaud_voice_id voice_id, int enabled) {
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return;
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice) {
+        voice->metering = enabled ? 1 : 0;
+        if (!enabled)
+            voice->level = 0.0f;
+    }
+    vaud_mutex_unlock(&ctx->mutex);
+}
+
+/// @brief RMS source level of the last mixed block (0 when unmetered/stopped).
+float vaud_get_voice_level(vaud_context_t ctx, vaud_voice_id voice_id) {
+    float level = 0.0f;
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
+        return 0.0f;
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_voice *voice = vaud_find_voice(ctx, voice_id);
+    if (voice && voice->metering)
+        level = voice->level;
+    vaud_mutex_unlock(&ctx->mutex);
+    return level;
+}
+
 void vaud_set_group_duck(vaud_context_t ctx,
                          int64_t trigger_group,
                          int64_t target_group,

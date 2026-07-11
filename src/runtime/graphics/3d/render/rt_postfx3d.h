@@ -78,6 +78,9 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
 /// @brief Append a depth-of-field pass (focus distance in world units, aperture controls bokeh
 /// size).
 void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur);
+/// @brief Live focus-distance mutation for an existing DOF effect (focus pulls);
+///        returns 0 (recoverable) when the chain has no DOF effect.
+int8_t rt_postfx3d_set_dof_focus(void *obj, double distance);
 /// @brief Append a motion-blur pass (intensity 0..1, sample count for blur quality).
 void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples);
 /// @brief Append a TAA (temporal antialiasing) resolve pass. `blend` is the history weight

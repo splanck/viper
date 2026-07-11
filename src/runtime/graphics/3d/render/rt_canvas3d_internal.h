@@ -439,7 +439,8 @@ typedef struct {
         *emissive_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (emissive map, slot 3) */
     void *metallic_roughness_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (glTF
                                      metallic/roughness map) */
-    void *ao_map; /* Pixels, TextureAsset3D, or RenderTarget3D source (ambient occlusion map) */
+    void *ao_map;   /* Pixels, TextureAsset3D, or RenderTarget3D source (ambient occlusion map) */
+    void *lightmap; /* baked GI atlas (Pixels), sampled with TEXCOORD_1; replaces flat ambient */
     double emissive[3];        /* emissive color multiplier */
     double metallic;           /* [0,1] dielectric->metal */
     double roughness;          /* [0,1] smooth->rough */
@@ -466,9 +467,9 @@ typedef struct {
     int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
-    int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
+    int32_t shading_model;    /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[12]; /* user-defined parameters per shading model */
-    double depth_bias;       /* constant depth offset; negative pulls coplanar geometry forward */
+    double depth_bias;        /* constant depth offset; negative pulls coplanar geometry forward */
     double slope_scaled_depth_bias; /* additional slope-scaled depth offset for decals/overlays */
     double soft_fade;               /* soft-particle fade distance in world units (0 = off) */
     int8_t ssr_enabled;             /* screen-space reflections opt-in (Plan 10) */
@@ -860,6 +861,9 @@ typedef struct {
     void *backend_ctx;                   /* opaque backend state */
     const char *backend_requested_name;  /* backend selected before runtime fallback */
     int8_t backend_fallback;             /* 1 when Canvas3D fell back to software at creation */
+    int8_t force_cpu_skinning;           /* 1 = route all skinned draws through CPU skinning */
+    int64_t gpu_skinned_draw_count;      /* lifetime count of draws GPU-skinned via palette */
+    int64_t skinning_upload_bytes;       /* lifetime bone-palette bytes handed to the backend */
     const char *backend_fallback_reason; /* empty unless backend_fallback is true */
 
     /* Frame state */
@@ -877,6 +881,9 @@ typedef struct {
     float height_fog_falloff;
     float height_fog_density;
     float height_fog_blend;
+    float height_fog_sun_color[3];  /* inscattering tint (defaults to white) */
+    float height_fog_sun_power;     /* view-sun alignment exponent */
+    float height_fog_sun_amount;    /* 0 disables inscattering (default) */
     float cached_vp[16];            /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3];        /* camera position cached for sort key computation */
     double cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
@@ -1124,6 +1131,10 @@ typedef struct {
     int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
     int64_t last_frame_gpu_time_us;
+    /* Per-pass draw attribution (plan 30): Shadow/Opaque/Transparent/PostFX/
+     * Overlay/Present. CPU-exact tallies bumped at the submit seams. */
+    int64_t last_pass_draw_count[6];
+    int64_t last_pass_instance_count[6];
 
     /* Automatic texture mip-residency streaming (opt-in; default off). The
      * table tracks per-TextureAsset3D screen-space texel demand aggregated per

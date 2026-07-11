@@ -1,0 +1,60 @@
+module test_game3d_interact_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = Game3D.World3D.New("Interact Probe", 64, 48);
+    world.SetGravity(0.0, 0.0, 0.0);
+
+    // Player at origin facing -Z (default orientation).
+    var player = Game3D.Entity3D.New();
+    player.SetPosition(0.0, 1.0, 0.0);
+    world.Spawn(player);
+    var scanner = Game3D.Interactor3D.New(player);
+    scanner.RequireLineOfSight = false;
+
+    // Door in front (-Z), chest behind (+Z, outside the cone).
+    var door = Game3D.Entity3D.New();
+    door.SetPosition(0.0, 1.0, -1.5);
+    world.Spawn(door);
+    var doorUse = Game3D.Interactable3D.New(door).WithPrompt("Open").WithKind(7).WithRadius(3.0);
+
+    var chest = Game3D.Entity3D.New();
+    chest.SetPosition(0.0, 1.0, 1.5);
+    world.Spawn(chest);
+    Game3D.Interactable3D.New(chest).WithPrompt("Loot").WithKind(9).WithRadius(3.0);
+
+    world.StepSimulation(1.0 / 60.0);
+    if (scanner.FocusChanged() == false) {
+        Terminal.Say("FAIL: gaining focus should raise the one-shot");
+        return;
+    }
+    var focused = scanner.Focused;
+    if (focused == null || Game3D.Interactable3D.get_Kind(focused) != 7) {
+        Terminal.Say("FAIL: the door in the view cone should win focus");
+        return;
+    }
+    if (Game3D.Interactable3D.get_Prompt(focused) != "Open") {
+        Terminal.Say("FAIL: prompt text lost");
+        return;
+    }
+    if (scanner.Interact() == false || scanner.InteractCount != 1) {
+        Terminal.Say("FAIL: interact on a focused target should fire");
+        return;
+    }
+    // Disable the door: focus drops next tick.
+    doorUse.Enabled = false;
+    world.StepSimulation(1.0 / 60.0);
+    if (scanner.Focused != null) {
+        Terminal.Say("FAIL: disabling the target should clear focus");
+        return;
+    }
+    if (scanner.FocusChanged() == false) {
+        Terminal.Say("FAIL: losing focus should raise the one-shot");
+        return;
+    }
+    world.Destroy();
+    Terminal.Say("PASS");
+}

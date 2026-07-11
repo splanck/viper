@@ -38,6 +38,30 @@ void rt_terrain3d_set_material(void *terrain, void *material);
 void rt_terrain3d_set_scale(void *terrain, double sx, double sy, double sz);
 /// @brief Bind a 4-channel splat map (RGBA selects which of 4 layer textures shows at each texel).
 void rt_terrain3d_set_splat_map(void *terrain, void *pixels);
+/// @brief Set splat map @p index: 0 weights layers 0-3, 1 weights layers 4-7.
+void rt_terrain3d_set_splat_map_at(void *terrain, int64_t index, void *pixels);
+/// @brief Carve a rectangular hole (terrain-local units); returns its index or -1.
+int64_t rt_terrain3d_set_hole(void *terrain, double x, double z, double width, double depth);
+/// @brief Remove the hole at @p index; 1 on success.
+int8_t rt_terrain3d_remove_hole(void *terrain, int64_t index);
+/// @brief Remove every authored hole.
+void rt_terrain3d_clear_holes(void *terrain);
+/// @brief Number of authored holes.
+int64_t rt_terrain3d_get_hole_count(void *terrain);
+/// @brief Internal: borrow the rasterized hole bitmask (bit per cell) or NULL.
+const uint8_t *rt_terrain3d_get_hole_mask_raw(void *terrain,
+                                              int32_t *out_cells_x,
+                                              int32_t *out_cells_z);
+/// @brief Configure a slope-band rule (degrees) generating splat weights for @p layer.
+void rt_terrain3d_set_slope_layer(
+    void *terrain, int64_t layer, double min_slope_deg, double max_slope_deg, double sharpness);
+/// @brief Configure a height-band rule (world Y) generating splat weights for @p layer.
+void rt_terrain3d_set_height_layer(
+    void *terrain, int64_t layer, double min_y, double max_y, double sharpness);
+/// @brief Regenerate both splat maps from the configured slope/height rules.
+void rt_terrain3d_rebuild_splat_weights(void *terrain);
+/// @brief Internal: borrow splat map @p index (0 or 1), or NULL.
+void *rt_terrain3d_get_splat_map_raw(void *terrain, int64_t index);
 /// @brief Bind a texture for one of the 4 splat layers (@p layer in 0..3).
 void rt_terrain3d_set_layer_texture(void *terrain, int64_t layer, void *pixels);
 /// @brief Set the UV tiling scale of one splat layer.

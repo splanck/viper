@@ -246,10 +246,27 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj);
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 /// @brief Number of main 3D draw submissions queued by the latest ended frame.
+/// @brief Force all skinned draws through the CPU skinning path (debug/bisection).
+void rt_canvas3d_set_force_cpu_skinning(void *obj, int8_t enabled);
+/// @brief Lifetime count of skinned draws routed to GPU vertex-shader skinning.
+int64_t rt_canvas3d_get_gpu_skinned_draw_count(void *obj);
+/// @brief Lifetime bone-palette bytes handed to the backend for GPU skinning.
+int64_t rt_canvas3d_get_skinning_upload_bytes(void *obj);
 int64_t rt_canvas3d_get_draw_count(void *obj);
+/// @brief Per-pass draw submissions for the latest frame (Game3D.RenderPass ids).
+int64_t rt_canvas3d_pass_draw_count(void *obj, int64_t pass);
+/// @brief Per-pass instance tally for the latest frame (instanced draws expanded).
+int64_t rt_canvas3d_pass_instance_count(void *obj, int64_t pass);
 /// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
 /// @brief Enable exponential height fog (pools below baseHeight; combines with distance fog).
+/// @brief Configure height-fog sun inscattering (amount 0 disables; default off).
+void rt_canvas3d_set_height_fog_sun(
+    void *obj, double r, double g, double b, double power, double amount);
+/// @brief Disable height fog only (distance fog remains).
+void rt_canvas3d_clear_height_fog(void *obj);
+/// @brief True while exponential height fog is enabled.
+int8_t rt_canvas3d_get_height_fog_enabled(void *obj);
 void rt_canvas3d_set_height_fog(
     void *obj, double base_height, double falloff, double density, double blend);
 /// @brief Draw anti-aliased screen-space text at an arbitrary scale.
@@ -422,6 +439,11 @@ void *rt_mesh3d_from_stl(rt_string path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
 /// @brief Number of triangles currently in the mesh (== indices / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj);
+/// @brief Read one vertex's position/normal/uv (internal readback; 1 on success).
+int8_t rt_mesh3d_get_vertex_raw(
+    void *obj, int64_t index, double out_pos[3], double out_normal[3], double out_uv[2]);
+/// @brief Read one triangle's vertex indices (internal readback; 1 on success).
+int8_t rt_mesh3d_get_triangle_raw(void *obj, int64_t triangle, int64_t out_indices[3]);
 /// @brief True when the mesh payload is resident and drawable.
 int8_t rt_mesh3d_get_resident(void *obj);
 /// @brief Mark the mesh payload resident/nonresident without releasing the Mesh3D handle.
@@ -514,6 +536,17 @@ void *rt_camera3d_get_right(void *obj);
 /// @brief Return a normalized world-space picking direction for screen pixel (sx, sy).
 /// Combine it with `ScreenToRayOrigin()` for perspective and orthographic picking.
 /// Orthographic cameras return their forward direction (parallel rays).
+/// @brief Project a world point to pixels; returns 1 when in front of the camera.
+int8_t rt_camera3d_world_to_screen(void *obj,
+                                   double x,
+                                   double y,
+                                   double z,
+                                   int64_t sw,
+                                   int64_t sh,
+                                   double *out_sx,
+                                   double *out_sy);
+/// @brief VM-facing WorldToScreen: Vec3(pixelX, pixelY, visible ? 1 : 0).
+void *rt_camera3d_world_to_screen_vec(void *obj, void *point, int64_t sw, int64_t sh);
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh);
 /// @brief Return the world-space origin for a screen-space picking ray.
 void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh);
@@ -605,6 +638,10 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
 int8_t rt_material3d_get_has_metallic_roughness_map(void *obj);
 /// @brief Bind a separate ambient-occlusion texture.
 void rt_material3d_set_ao_map(void *obj, void *pixels);
+/// @brief Assign a baked lightmap atlas (TEXCOORD_1); replaces flat ambient when set.
+void rt_material3d_set_lightmap(void *obj, void *pixels);
+/// @brief Return whether the baked lightmap slot is populated.
+int8_t rt_material3d_get_has_lightmap(void *obj);
 /// @brief True when a separate ambient-occlusion texture is bound.
 int8_t rt_material3d_get_has_ao_map(void *obj);
 /// @brief Bind a legacy specular highlight texture.

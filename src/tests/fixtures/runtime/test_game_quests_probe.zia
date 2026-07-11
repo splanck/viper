@@ -1,0 +1,129 @@
+module test_game_quests_probe;
+bind Viper.Game as Game;
+bind Viper.IO as IO;
+bind Viper.Terminal as Terminal;
+
+func registerHunt(tracker: Game.Quests) {
+    tracker.AddQuest("hunt", "The Wolf Hunt");
+    tracker.AddStage("hunt", "track", "Track the wolves");
+    tracker.AddFlag("hunt", "track", "find_den", "Find the den");
+    tracker.AddCounter("hunt", "track", "kill_scouts", "Kill scouts", 3);
+    tracker.AddStage("hunt", "showdown", "Slay the alpha");
+    tracker.AddFlag("hunt", "showdown", "kill_alpha", "Slay the alpha wolf");
+}
+
+func start() {
+    var tracker = Game.Quests.New();
+    registerHunt(tracker);
+
+    // Hidden until activated; mutations on hidden quests are safe no-ops.
+    if (tracker.QuestState("hunt") != Game.QuestState.Hidden) {
+        Terminal.Say("FAIL: quests start hidden");
+        return;
+    }
+    if (tracker.SetFlag("hunt", "find_den") == true) {
+        Terminal.Say("FAIL: mutating a hidden quest must return false");
+        return;
+    }
+    if (tracker.Activate("hunt") == false) {
+        Terminal.Say("FAIL: activation should succeed");
+        return;
+    }
+    if (tracker.ActiveCount != 1 || tracker.ActiveQuest(0) != "hunt") {
+        Terminal.Say("FAIL: the quest should be active");
+        return;
+    }
+    if (tracker.CurrentStageText("hunt") != "Track the wolves") {
+        Terminal.Say("FAIL: stage text should read back");
+        return;
+    }
+
+    // Stage 1 completes only when the flag AND the counter are done.
+    tracker.SetFlag("hunt", "find_den");
+    if (tracker.CurrentStageText("hunt") != "Track the wolves") {
+        Terminal.Say("FAIL: the stage must wait for the counter");
+        return;
+    }
+    tracker.Progress("hunt", "kill_scouts", 2);
+    if (tracker.ObjectiveProgress("hunt", 1) != 2) {
+        Terminal.Say("FAIL: counter progress should accumulate");
+        return;
+    }
+    tracker.Progress("hunt", "kill_scouts", 5);
+    if (tracker.ObjectiveProgress("hunt", 0) != 0) {
+        Terminal.Say("FAIL: stage 2 objectives start fresh after auto-advance");
+        return;
+    }
+    if (tracker.CurrentStageText("hunt") != "Slay the alpha") {
+        Terminal.Say("FAIL: completing all objectives should advance the stage");
+        return;
+    }
+
+    // Final stage completes the quest with the full ordered event trail.
+    tracker.SetFlag("hunt", "kill_alpha");
+    if (tracker.QuestState("hunt") != Game.QuestState.Complete) {
+        Terminal.Say("FAIL: the final stage should complete the quest");
+        return;
+    }
+    if (tracker.JustCompleted("hunt") == false) {
+        Terminal.Say("FAIL: JustCompleted should fire once");
+        return;
+    }
+    if (tracker.JustCompleted("hunt") == true) {
+        Terminal.Say("FAIL: JustCompleted must reset after being read");
+        return;
+    }
+    var eventCount = tracker.EventCount();
+    if (eventCount < 6) {
+        Terminal.Say("FAIL: the run should buffer the full event trail");
+        return;
+    }
+    if (tracker.EventKind(eventCount - 1) != Game.QuestEventKind.QuestComplete) {
+        Terminal.Say("FAIL: the last event should be QuestComplete");
+        return;
+    }
+    if (tracker.EventQuestId(eventCount - 1) != "hunt") {
+        Terminal.Say("FAIL: events should carry their quest id");
+        return;
+    }
+    tracker.ClearEvents();
+    if (tracker.EventCount() != 0) {
+        Terminal.Say("FAIL: ClearEvents should empty the ring");
+        return;
+    }
+
+    // SaveData round-trip: fresh tracker + re-register, then Load.
+    var save = IO.SaveData.New("viper-quests-probe");
+    var second = Game.Quests.New();
+    second.AddQuest("side", "Side Errand");
+    second.AddStage("side", "one", "Do the thing");
+    second.AddCounter("side", "one", "count", "Collect herbs", 5);
+    second.Activate("side");
+    second.Progress("side", "count", 2);
+    if (second.Save(save) == false) {
+        Terminal.Say("FAIL: Save should succeed");
+        return;
+    }
+    var third = Game.Quests.New();
+    if (third.Load(save) == true) {
+        Terminal.Say("FAIL: Load before registration must return false");
+        return;
+    }
+    third.AddQuest("side", "Side Errand");
+    third.AddStage("side", "one", "Do the thing");
+    third.AddCounter("side", "one", "count", "Collect herbs", 5);
+    if (third.Load(save) == false) {
+        Terminal.Say("FAIL: Load after registration should succeed");
+        return;
+    }
+    if (third.QuestState("side") != Game.QuestState.Active) {
+        Terminal.Say("FAIL: loaded quest should be active");
+        return;
+    }
+    if (third.ObjectiveProgress("side", 0) != 2) {
+        Terminal.Say("FAIL: loaded counter progress should match the save");
+        return;
+    }
+
+    Terminal.Say("PASS");
+}

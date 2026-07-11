@@ -45,26 +45,44 @@
 #define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0           ///< Default controller move speed (units/sec).
 #define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01    ///< Default mouse-look degrees per pixel.
 #define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5           ///< Default jump launch speed (units/sec).
-#define RT_GAME3D_DEFAULT_GRAVITY 20.0            ///< Default downward character gravity magnitude.
-#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0     ///< Default follow-camera smoothing factor.
-#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0  ///< Default audio full-volume radius.
-#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0 ///< Default audio silence radius.
-#define RT_GAME3D_AUDIO_DISTANCE_MAX 1000000000.0 ///< Max finite audio attenuation radius.
-#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100        ///< Default master audio volume (0–100).
-#define RT_GAME3D_PI 3.14159265358979323846       ///< Pi (avoids relying on non-portable M_PI).
-#define RT_GAME3D_ANIM_EVENT_MAX 64               ///< Max animation events buffered per update.
-#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8     ///< Fixed-loop spiral-of-death guard.
-#define RT_GAME3D_COORD_ABS_MAX 1000000000000.0   ///< Max finite world coordinate accepted.
-#define RT_GAME3D_SCALE_ABS_MAX 1000000.0         ///< Max absolute node/body scale.
-#define RT_GAME3D_ANGLE_DEG_ABS_MAX 1000000.0     ///< Max finite Euler/orbit angle in degrees.
-#define RT_GAME3D_CONTROLLER_SPEED_MAX 1000000.0  ///< Max controller speed/jump velocity.
-#define RT_GAME3D_LOOK_SENSITIVITY_MAX 1000.0     ///< Max mouse-look sensitivity.
-#define RT_GAME3D_DAMPING_MAX 1000.0              ///< Max camera damping factor.
-#define RT_GAME3D_ANIM_BLEND_TIME_MAX 1000000.0   ///< Max animation transition duration.
-#define RT_GAME3D_ANIM_STEP_MAX 1.0               ///< Max single Game3D animator update step.
-#define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0    ///< Max animation playback speed multiplier.
-#define RT_GAME3D_EFFECT_STEP_MAX 10.0            ///< Max single EffectRegistry3D update step.
-#define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0     ///< Max effect auto-expire lifetime.
+#define RT_GAME3D_DEFAULT_GRAVITY 20.0         ///< Default downward character gravity magnitude.
+#define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0  ///< Default follow-camera smoothing factor.
+#define RT_GAME3D_TP_DEFAULT_DISTANCE 4.0      ///< Third-person default boom length.
+#define RT_GAME3D_TP_DEFAULT_MIN_DISTANCE 0.75 ///< Third-person boom pull-in floor.
+#define RT_GAME3D_TP_DEFAULT_MAX_DISTANCE 8.0  ///< Third-person boom length ceiling.
+#define RT_GAME3D_TP_DEFAULT_PIVOT_HEIGHT 1.5  ///< Third-person pivot above entity origin.
+#define RT_GAME3D_TP_DEFAULT_SHOULDER_X 0.35   ///< Third-person lateral shoulder offset.
+#define RT_GAME3D_TP_DEFAULT_PITCH_MIN (-60.0) ///< Third-person pitch clamp floor (deg).
+#define RT_GAME3D_TP_DEFAULT_PITCH_MAX 75.0    ///< Third-person pitch clamp ceiling (deg).
+#define RT_GAME3D_TP_DEFAULT_COLLISION_RADIUS 0.25 ///< Third-person boom sweep sphere radius.
+#define RT_GAME3D_TP_DEFAULT_AIM_DISTANCE 1.6      ///< Third-person aim-mode boom length.
+#define RT_GAME3D_TP_DEFAULT_AIM_FOV 45.0          ///< Third-person aim-mode camera FOV (deg).
+#define RT_GAME3D_TP_BOOM_SKIN 0.05                ///< Boom hit back-off epsilon.
+#define RT_GAME3D_TP_AIM_BLEND_RATE 6.0            ///< Aim blend speed (fraction per second).
+#define RT_GAME3D_TP_FADE_ALPHA 0.35               ///< Occluder fade target alpha.
+#define RT_GAME3D_TP_FADE_RATE 8.0                 ///< Occluder fade exponential rate (1/sec).
+#define RT_GAME3D_TL_DEFAULT_MAX_DISTANCE 18.0     ///< TargetLock3D acquisition radius.
+#define RT_GAME3D_TL_DEFAULT_CONE_DEGREES 65.0     ///< TargetLock3D half-angle cone (deg).
+#define RT_GAME3D_TL_DEFAULT_STICKINESS 1.25       ///< TargetLock3D current-target score bonus.
+#define RT_GAME3D_TL_DEFAULT_LOS_GRACE 0.5         ///< TargetLock3D LoS-break grace (seconds).
+#define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0   ///< Default audio full-volume radius.
+#define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0  ///< Default audio silence radius.
+#define RT_GAME3D_AUDIO_DISTANCE_MAX 1000000000.0  ///< Max finite audio attenuation radius.
+#define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100         ///< Default master audio volume (0–100).
+#define RT_GAME3D_PI 3.14159265358979323846        ///< Pi (avoids relying on non-portable M_PI).
+#define RT_GAME3D_ANIM_EVENT_MAX 64                ///< Max animation events buffered per update.
+#define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8      ///< Fixed-loop spiral-of-death guard.
+#define RT_GAME3D_COORD_ABS_MAX 1000000000000.0    ///< Max finite world coordinate accepted.
+#define RT_GAME3D_SCALE_ABS_MAX 1000000.0          ///< Max absolute node/body scale.
+#define RT_GAME3D_ANGLE_DEG_ABS_MAX 1000000.0      ///< Max finite Euler/orbit angle in degrees.
+#define RT_GAME3D_CONTROLLER_SPEED_MAX 1000000.0   ///< Max controller speed/jump velocity.
+#define RT_GAME3D_LOOK_SENSITIVITY_MAX 1000.0      ///< Max mouse-look sensitivity.
+#define RT_GAME3D_DAMPING_MAX 1000.0               ///< Max camera damping factor.
+#define RT_GAME3D_ANIM_BLEND_TIME_MAX 1000000.0    ///< Max animation transition duration.
+#define RT_GAME3D_ANIM_STEP_MAX 1.0                ///< Max single Game3D animator update step.
+#define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0     ///< Max animation playback speed multiplier.
+#define RT_GAME3D_EFFECT_STEP_MAX 10.0             ///< Max single EffectRegistry3D update step.
+#define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0      ///< Max effect auto-expire lifetime.
 #ifndef RT_GAME3D_MODEL_CACHE_KEY_MAX
 #define RT_GAME3D_MODEL_CACHE_KEY_MAX 4096 ///< Max bytes snapshotted for model cache/load paths.
 #endif
@@ -155,7 +173,18 @@ typedef struct rt_game3d_entity {
     void *material;
     void *body;
     void *anim;
-    void *behavior; /* retained Behavior3D ticked each simulation step, or NULL */
+    void *behavior;  /* retained Behavior3D ticked each simulation step, or NULL */
+    void **hitboxes; /* retained Hitbox3D array (combat volumes), or NULL */
+    int32_t hitbox_count;
+    int32_t hitbox_capacity;
+    void *health;       /* retained Health3D component, or NULL */
+    void *ragdoll;      /* retained Ragdoll3D built by enableRagdoll, or NULL */
+    void *lipsync;      /* retained LipSync3D component, or NULL */
+    void *footsteps;    /* retained Footsteps3D component, or NULL */
+    void *interactable; /* retained Interactable3D component, or NULL */
+    void *interactor;   /* retained Interactor3D component, or NULL */
+    void *perception;   /* retained Perception3D component, or NULL */
+    void *btree;        /* retained BehaviorTreeInstance3D, or NULL */
     int64_t layer;
     int64_t collision_mask_bits;
     rt_string name;
@@ -178,6 +207,8 @@ typedef struct rt_game3d_entity {
     double interp_saved_rotation[4];
     int8_t interp_has_prev;
     int8_t interp_pose_blended;
+    rt_string persistent_key; ///< Retained persistence key, or NULL (plan 17).
+    int64_t state_tag;        ///< Free-form persisted state tag.
 } rt_game3d_entity;
 
 /// @brief Return the entity's SceneNode3D slot only when it still has the expected class.
@@ -225,6 +256,24 @@ typedef struct rt_game3d_audio {
     double max_distance;
     int64_t volume;
     int8_t listener_follow_camera;
+    /* Audio immersion (plan 24): reverb zones, occlusion raycasts, ambient beds. */
+    void **reverb_zones;          ///< Retained ReverbZone3D handles.
+    int32_t reverb_zone_count;    ///< Number of registered zones.
+    int32_t reverb_zone_capacity; ///< Zone array capacity.
+    int64_t reverb_group;         ///< Lazily-registered "g3d_reverb" group (-1 unset).
+    int64_t reverb_fx;            ///< Reverb insert id on the group (-1 unset).
+    double reverb_blend;          ///< Zone parameter blend time in seconds.
+    double reverb_room;           ///< Current eased room size.
+    double reverb_damp;           ///< Current eased damping.
+    double reverb_wet;            ///< Current eased wet mix.
+    int8_t reverb_routing;        ///< Route new positional voices to the reverb group.
+    int8_t occlusion_enabled;     ///< Listener->source raycast occlusion on/off.
+    int64_t occlusion_mask;       ///< Raycast layer mask for occlusion probes.
+    double occlusion_amount;      ///< Occlusion applied to a blocked source (0..1).
+    int32_t occlusion_budget;     ///< Max raycasts per world step.
+    int32_t occlusion_cursor;     ///< Round-robin cursor over tracked sources.
+    int64_t dialogue_group;       ///< Lazily-registered "g3d_dialogue" group (-1 unset).
+    void *ambient_bed;            ///< Retained AmbientBed3D (NULL when unused).
 } rt_game3d_audio;
 
 /// @brief One registered effect: its kind (RT_GAME3D_EFFECT_*), the wrapped
@@ -360,10 +409,29 @@ typedef struct rt_game3d_stream_cell {
     void *scene;
     void *entity;
     int8_t resident;
-    void *sidecar_data;      /* loaded binary sidecar payload (malloc-owned), or NULL */
-    int64_t sidecar_bytes;   /* size in bytes of the loaded binary sidecar payload */
-    int32_t reload_cooldown; /* recompute passes to wait before reloading after a
-                                budget eviction (prevents load/unload thrash) */
+    void *sidecar_data;        /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes;     /* size in bytes of the loaded binary sidecar payload */
+    int32_t reload_cooldown;   /* recompute passes to wait before reloading after a
+                                  budget eviction (prevents load/unload thrash) */
+    int8_t staging;            /* async: a worker staging job is in flight */
+    int8_t staged;             /* async: worker payload landed, awaiting main commit */
+    int8_t staged_error;       /* async: staging failed (missing/corrupt payload) */
+    int8_t prefetched;         /* staged/staging due to velocity prefetch only */
+    char *staged_text;         /* staged .vscn text (malloc-owned), or NULL */
+    size_t staged_text_len;    /* byte length of staged_text */
+    uint8_t *staged_sidecar;   /* staged sidecar bytes (malloc-owned), or NULL */
+    size_t staged_sidecar_len; /* byte length of staged_sidecar */
+    /* --- HLOD proxy ring (cell-level merged low-poly stand-in) --- */
+    rt_string proxy_path;         /* optional manifest "proxy" .vscn path, or NULL */
+    int64_t proxy_bytes;          /* manifest "proxyBytes" estimate */
+    int64_t measured_proxy_bytes; /* measured proxy residency after load */
+    void *proxy_scene;            /* loaded proxy Scene3D while ProxyResident */
+    void *proxy_entity;           /* spawned proxy entity subtree while ProxyResident */
+    int8_t proxy_resident;        /* proxy subtree currently attached */
+    int8_t proxy_staging;         /* async proxy staging job in flight */
+    int8_t proxy_staged;          /* staged proxy text awaiting commit */
+    char *staged_proxy_text;      /* staged proxy .vscn text (malloc-owned) */
+    size_t staged_proxy_text_len;
 } rt_game3d_stream_cell;
 
 /// @brief Scratch entry used to sort manifest-backed streaming loads nearest-first.
@@ -402,14 +470,56 @@ typedef struct rt_game3d_stream_terrain_tile {
     void *collider_entity;
     void *nav_entity;
     int8_t resident;
-    void *sidecar_data;      /* loaded binary sidecar payload (malloc-owned), or NULL */
-    int64_t sidecar_bytes;   /* size in bytes of the loaded binary sidecar payload */
-    int32_t reload_cooldown; /* recompute passes to wait before reloading after a
-                                budget eviction (prevents load/unload thrash) */
+    void *sidecar_data;        /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes;     /* size in bytes of the loaded binary sidecar payload */
+    int32_t reload_cooldown;   /* recompute passes to wait before reloading after a
+                                  budget eviction (prevents load/unload thrash) */
+    int8_t staging;            /* async: a worker staging job is in flight */
+    int8_t staged;             /* async: worker payload landed, awaiting main commit */
+    int8_t staged_error;       /* async: staging failed (missing/corrupt payload) */
+    int8_t prefetched;         /* staged/staging due to velocity prefetch only */
+    double *staged_heights;    /* staged POD height grid (malloc-owned), or NULL */
+    int64_t staged_hm_width;   /* source width of staged_heights */
+    int64_t staged_hm_depth;   /* source depth of staged_heights */
+    uint8_t *staged_sidecar;   /* staged sidecar bytes (malloc-owned), or NULL */
+    size_t staged_sidecar_len; /* byte length of staged_sidecar */
+    double (*holes)[4];        /* manifest-authored hole rects (tile-local units) */
+    int32_t manifest_hole_count;
 } rt_game3d_stream_terrain_tile;
 
 /// @brief WorldStream3D payload: streaming focus/radii, mounted manifest paths,
 ///   parsed scene-cell manifests, and deterministic resident telemetry.
+#define RT_GAME3D_MAX_HITCHES 256
+#define RT_GAME3D_HITCH_SOURCE_STREAM_COMMIT 0
+#define RT_GAME3D_HITCH_SOURCE_FRAME_TOTAL 3
+
+/// @brief One recorded hitch: frame index, source constant, and wall ms.
+typedef struct rt_game3d_hitch_entry {
+    int64_t frame;  ///< World frame counter when the hitch was recorded.
+    int64_t source; ///< RT_GAME3D_HITCH_SOURCE_* constant.
+    double ms;      ///< Measured milliseconds.
+} rt_game3d_hitch_entry;
+
+/// @brief One persisted-entity delta record (plan 17): keyed pose + liveness.
+typedef struct rt_game3d_persist_record {
+    rt_string key;          ///< Retained game-stable persistence key.
+    int8_t alive;           ///< 0 once the keyed entity was despawned/killed.
+    int8_t applied_pending; ///< Loaded from a snapshot, not yet applied to an entity.
+    double position[3];     ///< Last captured world position.
+    double rotation[4];     ///< Last captured world rotation quaternion (xyzw).
+    double scale[3];        ///< Reserved (identity in v1).
+    int64_t state_tag;      ///< Free-form game state tag.
+} rt_game3d_persist_record;
+
+/// @brief One per-cell persisted flag (door-opened / chest-looted style).
+typedef struct rt_game3d_cell_flag {
+    rt_string cell; ///< Retained cell name (manifest key).
+    rt_string key;  ///< Retained flag key.
+    int64_t value;  ///< Flag value.
+} rt_game3d_cell_flag;
+
+#define RT_GAME3D_STREAM_MAX_LOADED_EVENTS 32
+
 typedef struct rt_game3d_world_stream {
     void *world;
     double center[3];
@@ -435,6 +545,26 @@ typedef struct rt_game3d_world_stream {
     int8_t cells_manifest_loaded;
     int8_t terrain_manifest_loaded;
     int8_t retains_world;
+    /* --- worker-backed streaming (plan: async cell/tile staging) --- */
+    int8_t async_streaming;          /* 1 = worker staging + budgeted main commits (default) */
+    uint64_t cell_generation;        /* bumped on cell mount/clear so late results drop */
+    uint64_t terrain_generation;     /* bumped on terrain mount/clear so late results drop */
+    int64_t commit_budget_bytes;     /* staged bytes committed per update; -1 = unlimited,
+                                        0 = hold commits pending */
+    double prefetch_lookahead;       /* seconds of center velocity to prefetch along */
+    double prev_center[3];           /* center at the previous update (velocity estimate) */
+    double velocity[3];              /* smoothed center velocity (units/sec) */
+    int8_t has_prev_center;          /* prev_center is valid */
+    double stream_stall_ms;          /* worst single commit-slice wall ms since mount */
+    int64_t prefetched_cell_count;   /* cells staged/staging from prefetch only */
+    double proxy_radius;             /* HLOD proxy ring radius; <=0 = auto (4x load) */
+    int64_t proxy_resident_count;    /* cells currently holding only their proxy */
+    int64_t proxy_resident_bytes;    /* measured bytes of resident proxy subtrees */
+    rt_game3d_cell_flag *cell_flags; /* persisted per-cell flags (plan 17) */
+    int32_t cell_flag_count;         /* number of flags */
+    int32_t cell_flag_capacity;      /* flag array capacity */
+    rt_string loaded_events[RT_GAME3D_STREAM_MAX_LOADED_EVENTS]; /* just-loaded cell names */
+    int32_t loaded_event_count;                                  /* buffered loaded-cell events */
 } rt_game3d_world_stream;
 
 /// @brief One entry in the process-wide model cache, keyed by path + asset flag
@@ -451,7 +581,8 @@ typedef struct rt_game3d_model_cache_entry {
 } rt_game3d_model_cache_entry;
 
 /// @brief CharacterController3D payload: owning world, driven entity, underlying
-///   character object, movement tuning, and integrated vertical velocity / eye height.
+///   character object, movement tuning, integrated vertical velocity / eye height,
+///   and the crouch/stand capsule heights.
 typedef struct rt_game3d_character_controller {
     void *world;
     void *entity;
@@ -461,6 +592,10 @@ typedef struct rt_game3d_character_controller {
     double gravity;
     double vertical_velocity;
     double eye_height;
+    double stand_height;   ///< Capsule height restored by SetCrouching(false).
+    double crouch_height;  ///< Capsule height applied by SetCrouching(true).
+    double capsule_radius; ///< Capsule radius captured at creation (probe sugar).
+    int8_t crouching;      ///< Current requested crouch state.
 } rt_game3d_character_controller;
 
 /// @brief FirstPersonController payload: owning world, the character controller it
@@ -505,6 +640,313 @@ typedef struct rt_game3d_follow_controller {
     double damping;
 } rt_game3d_follow_controller;
 
+/// @brief One occluder-fade bookkeeping entry for the third-person controller:
+///   the scene node whose material was swapped, the original material handle to
+///   restore, the faded instance clone, and the current animated alpha.
+typedef struct rt_game3d_tp_fade_entry {
+    void *node;              ///< Retained scene node whose material is swapped.
+    void *original_material; ///< Retained original material to restore.
+    void *fade_material;     ///< Retained Material3D.MakeInstance clone being faded.
+    double alpha;            ///< Current animated alpha on the clone.
+    double original_alpha;   ///< Alpha of the original material at capture time.
+    int8_t occluding;        ///< Marked each late update while still occluding.
+} rt_game3d_tp_fade_entry;
+
+/// @brief ThirdPersonController payload: owning world, orbited target entity,
+///   optional character-drive slot, spring-arm orbit state (yaw/pitch/distance),
+///   shoulder/pivot framing, boom collision tuning, aim-mode blend state, and
+///   occluder-fade bookkeeping.
+typedef struct rt_game3d_thirdperson_controller {
+    void *world;               ///< Weak-style retained world back-ref (controller-slot pattern).
+    void *target;              ///< Entity3D the camera orbits (usually the player).
+    void *character;           ///< Optional CharacterController3D drive slot.
+    void *lock;                ///< Optional TargetLock3D framing source (plan 02).
+    double yaw;                ///< Camera orbit yaw in degrees.
+    double pitch;              ///< Camera orbit pitch in degrees.
+    double distance;           ///< Desired boom length.
+    double min_distance;       ///< Boom pull-in floor.
+    double max_distance;       ///< Boom length ceiling.
+    double shoulder_offset[3]; ///< Local-space offset from the target pivot.
+    double pivot_height;       ///< Pivot height above the entity origin.
+    double pitch_min;          ///< Pitch clamp floor in degrees.
+    double pitch_max;          ///< Pitch clamp ceiling in degrees.
+    double damping;            ///< Exponential smoothing rate for boom release.
+    double collision_radius;   ///< Boom sweep sphere radius.
+    int64_t collision_mask;    ///< Layers the boom collides with.
+    int8_t occlusion_fade;     ///< Opt-in occluder fading toggle.
+    int8_t aiming;             ///< Aim-mode request flag.
+    double aim_blend;          ///< 0..1 current aim interpolation.
+    double aim_distance;       ///< Boom length while aiming.
+    double aim_fov;            ///< Camera FOV while aiming (degrees).
+    double aim_shoulder_offset[3];  ///< Shoulder offset while aiming.
+    double base_fov;                ///< Camera FOV captured when aim blend engages.
+    int8_t base_fov_valid;          ///< True while base_fov holds a captured value.
+    double current_distance;        ///< Smoothed post-collision boom length.
+    rt_game3d_tp_fade_entry *fades; ///< Occluder-fade bookkeeping array.
+    int32_t fade_count;             ///< Live fade entries.
+    int32_t fade_capacity;          ///< Allocated fade entries.
+} rt_game3d_thirdperson_controller;
+
+#define RT_GAME3D_TL_MAX_MARKERS_PER_STEP 64 ///< Marker events buffered per tick.
+#define RT_GAME3D_TL_TEXT_MAX 256            ///< Subtitle/name text capacity per track.
+
+/// @brief Timeline3D track kinds.
+enum {
+    RT_GAME3D_TL_CAMERA_CUT = 0,
+    RT_GAME3D_TL_CAMERA_MOVE = 1,
+    RT_GAME3D_TL_FOV_RAMP = 2,
+    RT_GAME3D_TL_ANIM = 3,
+    RT_GAME3D_TL_AUDIO = 4,
+    RT_GAME3D_TL_SUBTITLE = 5,
+    RT_GAME3D_TL_LETTERBOX = 6,
+    RT_GAME3D_TL_FADE = 7,
+    RT_GAME3D_TL_MARKER = 8,
+};
+
+/// @brief One Timeline3D track record (flat union of per-kind fields).
+typedef struct rt_game3d_tl_track {
+    int8_t type;                        ///< RT_GAME3D_TL_*.
+    double t0;                          ///< Start time (fire time for point tracks).
+    double t1;                          ///< End time (== t0 for point tracks).
+    int8_t fired;                       ///< Fire-once latch, reset by play()/stop().
+    int8_t ease;                        ///< 0 linear, 1 smoothstep, 2 ease-in, 3 ease-out.
+    double vec_a[3];                    ///< Cut position / audio position.
+    double vec_b[3];                    ///< Cut look-at point.
+    double scalar_a;                    ///< Cut/ramp fov0 / letterbox amount / fade a0 / crossfade.
+    double scalar_b;                    ///< Ramp fov1 / fade a1.
+    void *obj_a;                        ///< Retained Path3D (move) or audio clip.
+    void *obj_b;                        ///< Retained look target (Vec3 | Entity3D | Path3D).
+    int8_t positional;                  ///< Audio: play at vec_a instead of 2D.
+    int64_t marker_id;                  ///< Marker payload.
+    char text_a[RT_GAME3D_TL_TEXT_MAX]; ///< Anim entity name / subtitle text.
+    char text_b[RT_GAME3D_TL_TEXT_MAX]; ///< Anim state name.
+} rt_game3d_tl_track;
+
+/// @brief Timeline3D payload: track list + playhead + polled marker buffer.
+typedef struct rt_game3d_timeline {
+    void *world; ///< Retained world while installed as active timeline.
+    rt_game3d_tl_track *tracks;
+    int32_t track_count;
+    int32_t track_capacity;
+    double time;
+    double duration;
+    int8_t playing;
+    int8_t finished;
+    int8_t just_finished;
+    int8_t skippable;
+    int8_t sorted;
+    int8_t has_camera_tracks; ///< Suspends the installed camera controller.
+    int64_t fired_markers[RT_GAME3D_TL_MAX_MARKERS_PER_STEP];
+    int32_t fired_marker_count;
+    char active_subtitle[RT_GAME3D_TL_TEXT_MAX];
+    double letterbox_amount; ///< Current letterbox fraction (overlay pass).
+    double fade_alpha;       ///< Current full-screen fade alpha (overlay pass).
+} rt_game3d_timeline;
+
+#define RT_GAME3D_DLG_MAX_LINES 32  ///< Queued dialogue lines per conversation.
+#define RT_GAME3D_DLG_MAX_CHOICES 8 ///< Options per choice prompt.
+#define RT_GAME3D_DLG_NAME_MAX 64   ///< Speaker-name capacity.
+
+#define RT_GAME3D_LS_MAX_SHAPES 4 ///< Mouth shapes per LipSync3D binding.
+
+/// @brief One bound mouth shape (name + per-shape weight scale).
+typedef struct rt_game3d_ls_shape {
+    char name[RT_GAME3D_DLG_NAME_MAX];
+    double scale;
+} rt_game3d_ls_shape;
+
+/// @brief LipSync3D payload: amplitude-envelope mouth drive + procedural blink
+///   + gaze sugar over LookAt IK.
+typedef struct rt_game3d_lipsync {
+    void *entity;      ///< Owner backref (plain; cleared at entity teardown).
+    void *morph;       ///< Retained MorphTarget3D driven by the bindings.
+    void *gaze_solver; ///< Retained LookAt IKSolver3D, or NULL.
+    void *gaze_target; ///< Retained Vec3 target handed to the solver.
+    rt_game3d_ls_shape shapes[RT_GAME3D_LS_MAX_SHAPES];
+    int32_t shape_count;
+    int64_t voice_id; ///< Metered voice being tracked, or -1.
+    double envelope;  ///< Smoothed level (attack 0.04 s / release 0.12 s).
+    int8_t driving;   ///< Voice drive active.
+    /* Blink layer (seeded LCG so replays match). */
+    int8_t blink_enabled;
+    char blink_shape[RT_GAME3D_DLG_NAME_MAX];
+    double blink_min_interval;
+    double blink_max_interval;
+    double blink_timer;  ///< Countdown to the next blink.
+    double blink_phase;  ///< Active blink progress (0 = idle).
+    uint64_t blink_seed; ///< LCG state.
+    double gaze_weight;  ///< Eased IK weight.
+    int8_t gaze_active;
+} rt_game3d_lipsync;
+
+/// @brief One queued dialogue line (text resolved at say() time).
+typedef struct rt_game3d_dlg_line {
+    char speaker[RT_GAME3D_DLG_NAME_MAX];
+    char text[RT_GAME3D_TL_TEXT_MAX];
+    void *voice_clip; ///< Retained clip played when the line starts, or NULL.
+} rt_game3d_dlg_line;
+
+/// @brief Dialogue3D payload: line queue + typewriter reveal + choice prompt +
+///   speaker anchoring + localization binding + style knobs.
+typedef struct rt_game3d_dialogue {
+    void *world;          ///< Retained world back-ref.
+    void *bundle;         ///< Retained MessageBundle for key resolution, or NULL.
+    void *speaker_entity; ///< Retained anchor entity, or NULL.
+    rt_game3d_dlg_line lines[RT_GAME3D_DLG_MAX_LINES];
+    int32_t line_count;
+    int32_t line_index;
+    double reveal_chars;   ///< Characters revealed on the current line.
+    double reveal_speed;   ///< Characters per second (default 40).
+    double hold_remaining; ///< Auto-advance hold after the reveal completes.
+    int8_t active;         ///< Shown and consuming the overlay.
+    int8_t anchored;       ///< Bubble above the speaker entity when visible.
+    int8_t auto_advance;   ///< Advance lines automatically after reveal + hold.
+    int8_t line_started;   ///< Voice fired for the current line.
+    char choices[RT_GAME3D_DLG_MAX_CHOICES][RT_GAME3D_TL_TEXT_MAX];
+    int32_t choice_count;
+    int32_t choice_selected;
+    int8_t choice_active; ///< Blocks advance until confirmed.
+    int8_t choice_made;   ///< One-shot: a choice was confirmed.
+    int64_t last_choice;  ///< Index confirmed by the last choice prompt.
+    double panel_alpha;   ///< Bottom-panel opacity (default 0.65).
+    int64_t name_color;   ///< Speaker-name color (default 0xFFD75A).
+} rt_game3d_dialogue;
+
+#define RT_GAME3D_RAIL_MAX_KEYS 16 ///< FOV/roll keys per rail camera.
+
+/// @brief One rail-camera key: value at arclength-normalized t.
+typedef struct rt_game3d_rail_key {
+    double t;
+    double value;
+} rt_game3d_rail_key;
+
+/// @brief RailCamera3D payload: owning world, spline path, look target (entity,
+///   point, or second path), progress/auto-advance state, damping, and
+///   piecewise FOV/roll keys.
+typedef struct rt_game3d_rail_camera {
+    void *world;             ///< Retained world back-ref (controller-slot pattern).
+    void *path;              ///< Retained Path3D the camera rides.
+    void *look_entity;       ///< Retained Entity3D look target, or NULL.
+    void *look_point;        ///< Retained Vec3 look target, or NULL.
+    void *look_path;         ///< Retained Path3D look target, or NULL.
+    double progress;         ///< Requested arclength-normalized position [0,1].
+    double smoothed;         ///< Damped progress actually applied.
+    double speed;            ///< Auto-advance in units/sec along arclength (0 = manual).
+    double position_damping; ///< Exponential smoothing for progress jumps (0 = snap).
+    int8_t key_ease;         ///< 0 = linear keys, 1 = smoothstep between keys.
+    rt_game3d_rail_key fov_keys[RT_GAME3D_RAIL_MAX_KEYS];
+    int32_t fov_key_count;
+    rt_game3d_rail_key roll_keys[RT_GAME3D_RAIL_MAX_KEYS];
+    int32_t roll_key_count;
+} rt_game3d_rail_camera;
+
+/// @brief TargetLock3D payload: owning world, owner entity (the player), the
+///   currently locked target, acquisition tuning (range/cone/mask/LoS), and the
+///   one-shot acquired/lost polling flags with the LoS grace timer.
+typedef struct rt_game3d_targetlock {
+    void *world;              ///< Retained World3D back-ref.
+    void *owner;              ///< Retained owner Entity3D (scoring origin).
+    void *target;             ///< Retained locked Entity3D or NULL.
+    double max_distance;      ///< Acquisition radius.
+    double cone_degrees;      ///< Half-angle cone from camera forward.
+    int64_t candidate_mask;   ///< Layers that are targetable.
+    int8_t require_los;       ///< Reject candidates without line of sight.
+    double stickiness;        ///< Score multiplier for the current target.
+    double break_distance;    ///< Auto-release distance.
+    double los_grace_seconds; ///< LoS-break grace before auto-release.
+    double los_broken_time;   ///< Accumulated seconds the LoS has been broken.
+    int8_t just_acquired;     ///< One-shot poll flag set on acquisition.
+    int8_t just_lost;         ///< One-shot poll flag set on release.
+} rt_game3d_targetlock;
+
+#define RT_GAME3D_HITBOX_MAX_WINDOWS 4     ///< Animation windows per hitbox.
+#define RT_GAME3D_HITBOX_MAX_VICTIMS 16    ///< Rehit-suppression ring per activation.
+#define RT_GAME3D_HITBOX_STATE_NAME_MAX 64 ///< Window state-name capacity.
+#define RT_GAME3D_HITBOX_KIND_HURT 0       ///< Damageable region volume.
+#define RT_GAME3D_HITBOX_KIND_HIT 1        ///< Attack volume.
+
+/// @brief One animation-window binding: the hitbox is live while the owner's
+///   animator base state matches @p state and its time is within [t0, t1].
+typedef struct rt_game3d_hitbox_window {
+    char state[RT_GAME3D_HITBOX_STATE_NAME_MAX];
+    double t0;
+    double t1;
+} rt_game3d_hitbox_window;
+
+/// @brief Hitbox3D payload: owner backref (plain pointer cleared at entity
+///   teardown), retained collider shape, bone/entity attachment, combat filters,
+///   activation state, window bindings, and the per-activation rehit ring.
+typedef struct rt_game3d_hitbox {
+    struct rt_game3d_entity *entity; ///< Owner; NULLed when the entity tears down.
+    void *collider;                  ///< Retained Collider3D shape.
+    int64_t bone_index;              ///< -1 = entity-space attachment.
+    double local_offset[3];          ///< Offset in bone/entity space.
+    int8_t kind;                     ///< RT_GAME3D_HITBOX_KIND_*.
+    int64_t team;                    ///< Same-team pairs are skipped unless friendly fire.
+    int64_t channel;                 ///< Bitmask; hit×hurt require overlapping channels.
+    int8_t friendly_fire;            ///< Allow same-team hits from this attacker.
+    int8_t active;                   ///< Manual activation switch.
+    int8_t was_live;                 ///< Previous-step liveness (rehit reset edge).
+    rt_game3d_hitbox_window windows[RT_GAME3D_HITBOX_MAX_WINDOWS];
+    int32_t window_count;
+    /// Victims already hit during the current activation (one hit per swing).
+    struct rt_game3d_entity *hit_victims[RT_GAME3D_HITBOX_MAX_VICTIMS];
+    int32_t hit_victim_count;
+} rt_game3d_hitbox;
+
+/// @brief Health3D payload: owner backref (plain pointer cleared at entity
+///   teardown), hit points, i-frame state, and one-shot damage/death flags.
+typedef struct rt_game3d_health {
+    struct rt_game3d_entity *entity; ///< Owner; NULLed when the entity tears down.
+    double max_hp;
+    double hp;
+    double invuln_seconds;   ///< I-frame duration granted per applied damage.
+    double invuln_remaining; ///< Ticked down by the world combat pass.
+    int8_t dead;             ///< Latched at hp <= 0 until Revive.
+    int8_t just_died;        ///< One-shot flag, cleared next combat pass.
+    int8_t just_damaged;     ///< One-shot flag, cleared next combat pass.
+    double last_damage;      ///< Most recent applied amount.
+    int64_t last_tag;        ///< Caller-supplied damage tag.
+} rt_game3d_health;
+
+/// @brief One buffered hit event: retained handles released when the buffer clears.
+typedef struct rt_game3d_hit_event_rec {
+    void *attacker; ///< Retained Entity3D.
+    void *victim;   ///< Retained Entity3D.
+    void *hitbox;   ///< Retained attacking Hitbox3D.
+    void *hurtbox;  ///< Retained victim Hitbox3D.
+    double point[3];
+    double normal[3];
+} rt_game3d_hit_event_rec;
+
+/// @brief One buffered damage event: retained handles released when the buffer clears.
+typedef struct rt_game3d_damage_event_rec {
+    void *victim; ///< Retained Entity3D.
+    void *source; ///< Retained Entity3D or NULL.
+    double amount;
+    int64_t tag;
+    int8_t was_lethal;
+} rt_game3d_damage_event_rec;
+
+/// @brief Boxed HitEvent3D handle returned by World3D.hitEvent (fail-closed).
+typedef struct rt_game3d_hit_event {
+    void *attacker;
+    void *victim;
+    void *hitbox;
+    void *hurtbox;
+    double point[3];
+    double normal[3];
+} rt_game3d_hit_event;
+
+/// @brief Boxed DamageEvent3D handle returned by World3D.damageEvent (fail-closed).
+typedef struct rt_game3d_damage_event {
+    void *victim;
+    void *source;
+    double amount;
+    int64_t tag;
+    int8_t was_lethal;
+} rt_game3d_damage_event;
+
 /// @brief One body→entity index entry, mapping a physics body handle to the
 ///   Entity3D that owns it for fast collision-event entity lookup.
 typedef struct {
@@ -548,6 +990,11 @@ typedef struct rt_game3d_world {
     double elapsed;
     int64_t frame;
     int64_t dropped_fixed_steps;
+    double time_scale;        /* world time multiplier, clamped [0, 4], default 1 */
+    int8_t paused;            /* latched pause: effective scale 0 while set */
+    double hitstop_remaining; /* one-shot freeze, decays by REAL (unscaled) dt */
+    double unscaled_dt;       /* real clamped frame step (UI/menus) */
+    double unscaled_elapsed;  /* real elapsed seconds (UI/menus) */
     int64_t worker_count;
     void *job_pool;
     int8_t jobs_enabled;
@@ -559,6 +1006,14 @@ typedef struct rt_game3d_world {
     double clear_r;
     double clear_g;
     double clear_b;
+    void *active_timeline;               /* retained Timeline3D playing in this world, or NULL */
+    void *active_dialogue;               /* retained Dialogue3D shown in this world, or NULL */
+    rt_game3d_hit_event_rec *hit_events; /* combat-pass hit buffer, cleared each step */
+    int32_t hit_event_count;
+    int32_t hit_event_capacity;
+    rt_game3d_damage_event_rec *damage_events; /* damage buffer, cleared each step */
+    int32_t damage_event_count;
+    int32_t damage_event_capacity;
     void *debug_axis_origin;
     double debug_axis_size;
     double stream_camera_user_far;
@@ -575,6 +1030,17 @@ typedef struct rt_game3d_world {
      * the previous and current fixed steps by fixed_interpolation_alpha during render,
      * then restored — 60 Hz physics stays smooth on 120/144 Hz displays. */
     int8_t render_interpolation;
+    void **cloths;                             /* retained Cloth3D handles ticked per step */
+    int32_t cloth_count;                       /* number of registered cloths */
+    int32_t cloth_capacity;                    /* cloth array capacity */
+    rt_game3d_persist_record *persist_records; /* keyed entity-state deltas (plan 17) */
+    int32_t persist_count;                     /* number of records */
+    int32_t persist_capacity;                  /* record array capacity */
+    rt_game3d_hitch_entry hitches[RT_GAME3D_MAX_HITCHES]; /* hitch ring (plan 30) */
+    int32_t hitch_count;               /* live entries (<= RT_GAME3D_MAX_HITCHES) */
+    int32_t hitch_head;                /* oldest entry index once the ring wraps */
+    double hitch_threshold_ms;         /* FrameTotal threshold (default 25) */
+    double hitch_last_stream_stall_ms; /* stream stall watermark at last step */
 } rt_game3d_world;
 
 #if defined(_MSC_VER)
@@ -823,6 +1289,62 @@ static inline rt_game3d_follow_controller *game3d_follow_controller_checked(void
     return controller;
 }
 
+/// @brief Validate `obj` as a ThirdPersonController handle, trapping `method` on mismatch.
+static inline rt_game3d_thirdperson_controller *game3d_thirdperson_controller_checked(
+    void *obj, const char *method) {
+    rt_game3d_thirdperson_controller *controller =
+        (rt_game3d_thirdperson_controller *)rt_g3d_checked_or_null(
+            obj, RT_G3D_GAME3D_THIRDPERSON_CLASS_ID);
+    if (!controller)
+        rt_trap(method);
+    return controller;
+}
+
+/// @brief Validate `obj` as a LipSync3D handle, trapping `method` on mismatch.
+static inline rt_game3d_lipsync *game3d_lipsync_checked(void *obj, const char *method) {
+    rt_game3d_lipsync *lipsync =
+        (rt_game3d_lipsync *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_LIPSYNC_CLASS_ID);
+    if (!lipsync)
+        rt_trap(method);
+    return lipsync;
+}
+
+/// @brief Validate `obj` as a Dialogue3D handle, trapping `method` on mismatch.
+static inline rt_game3d_dialogue *game3d_dialogue_checked(void *obj, const char *method) {
+    rt_game3d_dialogue *dialogue =
+        (rt_game3d_dialogue *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_DIALOGUE_CLASS_ID);
+    if (!dialogue)
+        rt_trap(method);
+    return dialogue;
+}
+
+/// @brief Validate `obj` as a Timeline3D handle, trapping `method` on mismatch.
+static inline rt_game3d_timeline *game3d_timeline_checked(void *obj, const char *method) {
+    rt_game3d_timeline *timeline =
+        (rt_game3d_timeline *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_TIMELINE_CLASS_ID);
+    if (!timeline)
+        rt_trap(method);
+    return timeline;
+}
+
+/// @brief Validate `obj` as a RailCamera3D handle, trapping `method` on mismatch.
+static inline rt_game3d_rail_camera *game3d_rail_camera_checked(void *obj, const char *method) {
+    rt_game3d_rail_camera *rail =
+        (rt_game3d_rail_camera *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_RAILCAMERA_CLASS_ID);
+    if (!rail)
+        rt_trap(method);
+    return rail;
+}
+
+/// @brief Validate `obj` as a TargetLock3D handle, trapping `method` on mismatch.
+static inline rt_game3d_targetlock *game3d_targetlock_checked(void *obj, const char *method) {
+    rt_game3d_targetlock *lock =
+        (rt_game3d_targetlock *)rt_g3d_checked_or_null(obj, RT_G3D_GAME3D_TARGETLOCK_CLASS_ID);
+    if (!lock)
+        rt_trap(method);
+    return lock;
+}
+
 //=========================================================================
 // Shared internal helpers — defined in rt_game3d.c / rt_game3d_controllers.c,
 // declared here for the split sibling translation units.
@@ -855,6 +1377,18 @@ void game3d_camera_controller_bind_world_ref(void *controller, void *world);
 void game3d_camera_controller_clear_world_ref(void *controller);
 void game3d_camera_controller_clear_world_ref_if(void *controller, void *world);
 int game3d_camera_controller_is_valid(void *controller);
+/// @brief Trap unless @p controller is detached or bound to @p world.
+int game3d_camera_controller_validate_world(void *controller,
+                                            rt_game3d_world *world,
+                                            const char *api_name);
+/// @brief Trap unless the CharacterController3D's retained world matches @p world.
+int game3d_character_controller_validate_world(rt_game3d_character_controller *controller,
+                                               rt_game3d_world *world,
+                                               const char *api_name);
+/// @brief Trap when a spawned entity belongs to a different world than @p world.
+int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
+                                            rt_game3d_world *world,
+                                            const char *api_name);
 int game3d_entity_world_position_components(rt_game3d_entity *entity, double out_pos[3]);
 int64_t game3d_input_mouse_dx(const rt_game3d_input *input);
 double game3d_input_mouse_fdx(const rt_game3d_input *input);
@@ -866,6 +1400,52 @@ void game3d_input_move_axis_components(rt_game3d_input *input,
                                        double *out_z);
 double game3d_input_wheel_y_snapshot(const rt_game3d_input *input);
 void game3d_sync_body_from_entity_node(rt_game3d_entity *entity, int8_t force);
+/// @brief Shared planar character drive: integrate jump/gravity and move the wrapped
+///   Character3D along an explicit XZ basis (already normalized), then sync the entity.
+/// @details Used by CharacterController3D.update (camera-derived basis) and the
+///   third-person controller (yaw-derived basis) so vertical-velocity state lives in
+///   exactly one place.
+void game3d_character_controller_drive(rt_game3d_character_controller *controller,
+                                       void *input_obj,
+                                       double fx,
+                                       double fz,
+                                       double rx,
+                                       double rz,
+                                       double dt);
+/// @brief Restore all faded occluder materials and drop the fade bookkeeping array.
+void game3d_thirdperson_reset_fades(rt_game3d_thirdperson_controller *controller);
+/// @brief Combat pass (rt_game3d_combat.c): clears one-shot health flags and event
+///   buffers, ticks i-frames, then overlaps live hit volumes against hurt volumes
+///   and emits HitEvent3D records. Runs after animation + scene sync each step.
+void game3d_world_update_combat(rt_game3d_world *world, double dt);
+/// @brief Release the world's buffered hit/damage event records (world teardown).
+void game3d_world_clear_combat_events(rt_game3d_world *world);
+/// @brief Release an entity's hitbox array and health slot, clearing backrefs
+///   first so surviving handles fail closed (entity despawn/teardown path).
+void game3d_entity_release_combat_slots(rt_game3d_entity *entity);
+/// @brief Timeline pre-physics tick: advance the playhead and fire point tracks
+///   (anim/audio/markers). Returns 1 while camera tracks suspend the controller.
+int game3d_world_timeline_pre(rt_game3d_world *world, double dt);
+/// @brief Timeline camera application (the suspended controller's late slot).
+void game3d_world_timeline_camera(rt_game3d_world *world);
+/// @brief Timeline overlay pass: letterbox bars, fade quad, active subtitle.
+void game3d_world_timeline_overlay(rt_game3d_world *world);
+/// @brief Dialogue tick: typewriter reveal + auto-advance (scaled dt).
+void game3d_world_dialogue_tick(rt_game3d_world *world, double dt);
+/// @brief Dialogue overlay pass: panel/bubble, speaker name, choices.
+void game3d_world_dialogue_overlay(rt_game3d_world *world);
+/// @brief Facial tick (lip sync envelope + blink + gaze), after ragdoll sync.
+void game3d_world_facial_tick(rt_game3d_world *world, double dt);
+void game3d_footsteps_tick(rt_game3d_world *world, rt_game3d_entity *entity, double dt);
+void game3d_interactor_tick(rt_game3d_world *world, rt_game3d_entity *owner, double dt);
+void game3d_ai_tick(rt_game3d_world *world, rt_game3d_entity *entity, double dt);
+/// @brief Append a damage event record to the world buffer (Health3D.damage).
+void game3d_world_push_damage_event(rt_game3d_world *world,
+                                    rt_game3d_entity *victim,
+                                    rt_game3d_entity *source,
+                                    double amount,
+                                    int64_t tag,
+                                    int8_t was_lethal);
 void game3d_world_body_index_remove(rt_game3d_world *world, void *body);
 int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity);
 int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity *entity);
@@ -877,6 +1457,14 @@ int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed);
 void game3d_audio_repair_sources(rt_game3d_audio *audio);
 void game3d_audio_track_source(rt_game3d_audio *audio, void *source);
 void game3d_audio_prune_sources(rt_game3d_audio *audio);
+void game3d_audio_immersion_tick(struct rt_game3d_world *world, double dt);
+void game3d_cloth_tick(struct rt_game3d_world *world, double dt);
+void game3d_persistence_tick(struct rt_game3d_world *world);
+void game3d_persistence_on_despawn(struct rt_game3d_world *world, struct rt_game3d_entity *entity);
+void game3d_persistence_release(struct rt_game3d_world *world);
+void game3d_stream_push_loaded_event(struct rt_game3d_world_stream *stream, rt_string cell_name);
+void game3d_stream_persistence_release(struct rt_game3d_world_stream *stream);
+void game3d_world_note_hitches(struct rt_game3d_world *world, double step_wall_ms);
 int64_t game3d_clamp_i64(int64_t value, int64_t lo, int64_t hi);
 void *game3d_audio_new(void *camera);
 void game3d_effect_release_item(rt_game3d_effect_item *item);

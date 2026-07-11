@@ -2,7 +2,8 @@
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_context.inc
 //   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Pipeline/sampler/depth-state creation, shader compilation, context create/destroy, clear, and frame begin (TAA jitter, opaque resolve)
+// Purpose: Pipeline/sampler/depth-state creation, shader compilation, context create/destroy,
+// clear, and frame begin (TAA jitter, opaque resolve)
 //===----------------------------------------------------------------------===//
 
 /// @brief Build the MTLVertexDescriptor describing the interleaved 92-byte vgfx3d_vertex_t layout
@@ -609,8 +610,8 @@ static void metal_create_compact_pipeline_states(VGFXMetalContext *ctx,
         spd.vertexDescriptor = create_vertex_descriptor_compact();
         spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
         spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
-        ctx.shadowPipelineCompact = [device newRenderPipelineStateWithDescriptor:spd
-                                                                           error:&shadowErr];
+        ctx.shadowPipelineCompact =
+            [device newRenderPipelineStateWithDescriptor:spd error:&shadowErr];
     }
     if (ctx.pipelineStateCompact && ctx.pipelineStateAlphaCompact &&
         ctx.pipelineStateAdditiveCompact && ctx.pipelineStateColorOnlyCompact &&
@@ -1298,8 +1299,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                     ppd.vertexFunction = pfxVS;
                     ppd.fragmentFunction = pfxFS;
                     ppd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-                    ctx.postfxPipeline = [device newRenderPipelineStateWithDescriptor:ppd
-                                                                                error:&pfxErr];
+                    ctx.postfxPipeline =
+                        [device newRenderPipelineStateWithDescriptor:ppd error:&pfxErr];
                 }
                 /* Plan 05: bloom mip-chain pipelines (RGBA16F targets; the upsample pass
                  * accumulates via additive blending) and the TAA resolve pipeline. */
@@ -1333,8 +1334,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         bu.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOne;
                         bu.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
                         bu.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorZero;
-                        ctx.bloomUpPipeline = [device newRenderPipelineStateWithDescriptor:bu
-                                                                                     error:&pfxErr];
+                        ctx.bloomUpPipeline =
+                            [device newRenderPipelineStateWithDescriptor:bu error:&pfxErr];
                     }
                     if (taaFS) {
                         MTLRenderPipelineDescriptor *td =
@@ -1354,8 +1355,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                             sd.fragmentFunction = ssrFS;
                             /* SSR writes into the BGRA8 postfx ping-pong targets. */
                             sd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-                            ctx.ssrPipeline = [device newRenderPipelineStateWithDescriptor:sd
-                                                                                     error:&pfxErr];
+                            ctx.ssrPipeline =
+                                [device newRenderPipelineStateWithDescriptor:sd error:&pfxErr];
                         }
                     }
                 }
@@ -1405,9 +1406,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                  "    return skyboxTex.sample(s, worldDir);\n"
                  "}\n";
             NSError *skyErr = nil;
-            id<MTLLibrary> skyLib = [device newLibraryWithSource:skyboxSrc
-                                                         options:nil
-                                                           error:&skyErr];
+            id<MTLLibrary> skyLib =
+                [device newLibraryWithSource:skyboxSrc options:nil error:&skyErr];
             if (skyLib) {
                 id<MTLFunction> skyVS = [skyLib newFunctionWithName:@ "skybox_vs"];
                 id<MTLFunction> skyFS = [skyLib newFunctionWithName:@ "skybox_fs"];
@@ -1640,6 +1640,14 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->_heightFog[2] =
             cam->height_fog_enabled ? cam->height_fog_density * cam->height_fog_blend : 0.0f;
         ctx->_heightFog[3] = 0.0f;
+        ctx->_heightFogSun[0] = cam->height_fog_sun_color[0];
+        ctx->_heightFogSun[1] = cam->height_fog_sun_color[1];
+        ctx->_heightFogSun[2] = cam->height_fog_sun_color[2];
+        ctx->_heightFogSun[3] = cam->height_fog_enabled ? cam->height_fog_sun_amount : 0.0f;
+        ctx->_heightFogSunDir[0] = cam->height_fog_sun_dir[0];
+        ctx->_heightFogSunDir[1] = cam->height_fog_sun_dir[1];
+        ctx->_heightFogSunDir[2] = cam->height_fog_sun_dir[2];
+        ctx->_heightFogSunDir[3] = cam->height_fog_sun_power;
         ctx->_fogNear = cam->fog_near;
         ctx->_fogFar = cam->fog_far;
         ctx->_fogColor[0] = cam->fog_color[0];
@@ -1742,4 +1750,3 @@ static int64_t metal_get_feature_caps(void *ctx_ptr) {
     (void)ctx_ptr;
     return RT_CANVAS3D_BACKEND_CAP_HDR_SCENE | RT_CANVAS3D_BACKEND_CAP_TAA;
 }
-

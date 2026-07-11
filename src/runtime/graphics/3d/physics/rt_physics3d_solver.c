@@ -428,7 +428,11 @@ static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
     b = c->body_b;
     if (!a || !b || c->is_trigger || !ph3d_contact_should_solve(a, b))
         return;
-    e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
+    {
+        double ra = rt_collider3d_effective_restitution_raw(c->collider_a, a->restitution);
+        double rb = rt_collider3d_effective_restitution_raw(c->collider_b, b->restitution);
+        e = (ra < rb) ? ra : rb;
+    }
 
     /* Identical body/collider ordering keeps stored impulse directions valid. */
     for (int32_t p = 0; p < w->previous_contact_count; ++p) {
@@ -505,8 +509,12 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
     if (!a || !b || c->is_trigger || (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
         return;
     {
-        double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
-        double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
+        /* Per-collider material overrides win over body values (plan 20);
+         * the geometric-mean combine is unchanged. */
+        double fa = ph3d_clamp_nonnegative_finite(
+            rt_collider3d_effective_friction_raw(c->collider_a, a->friction), 0.0);
+        double fb = ph3d_clamp_nonnegative_finite(
+            rt_collider3d_effective_friction_raw(c->collider_b, b->friction), 0.0);
         mu = sqrt(fa) * sqrt(fb);
         if (!isfinite(mu))
             mu = 0.0;

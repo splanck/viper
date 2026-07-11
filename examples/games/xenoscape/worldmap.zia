@@ -84,6 +84,7 @@ module worldmap;
 bind Viper.Graphics;
 bind "./config";
 bind "./palette";
+bind "./accessibility";
 bind "./abilities";
 bind "./world_graph";
 bind "./world_state";
@@ -112,6 +113,9 @@ class WorldMap {
     expose func init() {}
     hide Palette pal;
     hide WorldGraph graph;
+    hide Integer accessibilityUiScale;
+    hide Boolean accessibilityLargeText;
+    hide Boolean accessibilityHighContrast;
 
     // Per-node parallel arrays.
     hide List[Integer] nodeX;
@@ -123,9 +127,24 @@ class WorldMap {
     expose func initMap(p: Palette) {
         pal = p;
         graph = new WorldGraph();
-        // (x, y) centred for the 1280×720 canvas.
-        nodeX = [240, 480, 720,   240, 480, 720,   240, 480, 720,   720];
-        nodeY = [180, 180, 180,   360, 360, 360,   540, 540, 540,   660];
+        accessibilityUiScale = 100;
+        accessibilityLargeText = false;
+        accessibilityHighContrast = false;
+        // Wide nodes keep complete region labels from spilling into routes.
+        nodeX = [120, 500, 880,   120, 500, 880,   120, 500, 880,   880];
+        nodeY = [145, 145, 145,   320, 320, 320,   495, 495, 495,   615];
+    }
+
+    /// @brief Apply live map scale, text-size, and contrast preferences.
+    /// @param uiScale Advertised 100, 125, or 150 percent scale.
+    /// @param largeText True for compact two-scale region labels.
+    /// @param highContrast True for maximum backdrop opacity.
+    /// @return Nothing. Mutates presentation state only.
+    expose func setAccessibility(uiScale: Integer, largeText: Boolean,
+                                 highContrast: Boolean) {
+        accessibilityUiScale = uiScale;
+        accessibilityLargeText = largeText;
+        accessibilityHighContrast = highContrast;
     }
 
     /// @brief Draw the whole map screen.
@@ -154,9 +173,14 @@ class WorldMap {
                      bossesDefeated: Integer, discoveryMask: Integer,
                      abilities: AbilityManager) {
         // Translucent dim layer — classic pause-screen trick.
-        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10), 200);
+        canvas.BoxAlpha(0, 0, SCREEN_W, SCREEN_H, Color.RGB(0, 0, 10),
+                        accessiblePanelAlpha(accessibilityHighContrast));
 
-        canvas.TextCenteredScaled(30, "XENOSCAPE — WORLD MAP", Color.RGB(200, 200, 220), 2);
+        var titleScale = accessibleTextScale(
+            2, accessibilityUiScale, accessibilityLargeText);
+        if titleScale > 3 { titleScale = 3; }
+        canvas.TextCenteredScaled(30, "XENOSCAPE — WORLD MAP",
+                                  Color.RGB(200, 200, 220), titleScale);
         var currentIdx = currentLevel - 1;
         if currentIdx < 0 { currentIdx = 0; }
         if currentIdx >= MAP_NODES { currentIdx = MAP_NODES - 1; }
@@ -164,13 +188,13 @@ class WorldMap {
         // ---- Edges ----
         var c = 0;
         while c < graph.getEdgeCount() {
-            // +30 / +15 to anchor the line at each node box's centre.
+            // Anchor each line at the center of the wide node card.
             var from = graph.getEdgeFrom(c);
             var to = graph.getEdgeTo(c);
-            var fx = nodeX.get(from) + 30;
-            var fy = nodeY.get(from) + 15;
-            var tx = nodeX.get(to) + 30;
-            var ty = nodeY.get(to) + 15;
+            var fx = nodeX.get(from) + 90;
+            var fy = nodeY.get(from) + 22;
+            var tx = nodeX.get(to) + 90;
+            var ty = nodeY.get(to) + 22;
             var gate = graph.getEdgeGate(c);
 
             if worldStateMaskHas(discoveryMask, from) and
@@ -193,8 +217,8 @@ class WorldMap {
         while i < MAP_NODES {
             var nx = nodeX.get(i);
             var ny = nodeY.get(i);
-            var nodeW = 60;
-            var nodeH = 30;
+            var nodeW = 180;
+            var nodeH = 44;
 
             // Colour triple (bg, border, text) picked per state.
             // Start with a neutral slate-grey.
@@ -222,11 +246,19 @@ class WorldMap {
             canvas.Box(nx, ny, nodeW, nodeH, bgColor);
             canvas.Frame(nx, ny, nodeW, nodeH, borderColor);
             var nodeLabel = "????";
-            if discovered { nodeLabel = graph.getRegionName(i); }
-            canvas.Text(nx + 4, ny + 4, nodeLabel, textColor);
+            if discovered {
+                nodeLabel = graph.getRegionName(i);
+                if accessibilityLargeText { nodeLabel = shortRegionName(i); }
+            }
+            var nodeScale = accessibleTextScale(
+                1, accessibilityUiScale, accessibilityLargeText);
+            if nodeScale > 2 { nodeScale = 2; }
+            canvas.TextScaled(nx + 10, ny + 12, nodeLabel,
+                              nodeScale, textColor);
 
             if defeated(bossesDefeated, i) {
-                canvas.Text(nx + nodeW - 14, ny + 2, "OK", Color.RGB(100, 255, 100));
+                canvas.Text(nx + nodeW - 26, ny + 3, "OK",
+                            Color.RGB(100, 255, 100));
             }
 
             i = i + 1;
@@ -235,6 +267,21 @@ class WorldMap {
         // ---- Legend ----
         canvas.Text(40, SCREEN_H - 60, "Current: [highlighted]   Completed: [OK]", Color.RGB(120, 120, 140));
         canvas.Text(40, SCREEN_H - 40, "Red X = Locked (need ability)", Color.RGB(120, 120, 140));
+    }
+
+    /// @brief Compact labels used when Large Text is active.
+    hide func shortRegionName(region: Integer) -> String {
+        if region == 0 { return "Crash"; }
+        if region == 1 { return "Fungal"; }
+        if region == 2 { return "Crystal"; }
+        if region == 3 { return "Ruins"; }
+        if region == 4 { return "Lake"; }
+        if region == 5 { return "Thermal"; }
+        if region == 6 { return "Overgrowth"; }
+        if region == 7 { return "Frozen"; }
+        if region == 8 { return "Corrupted"; }
+        if region == 9 { return "Core"; }
+        return "????";
     }
 
     /// @brief Read a defeated-boss bit from the campaign bitmask.

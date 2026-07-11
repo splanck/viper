@@ -1,0 +1,97 @@
+module test_game3d_footsteps_probe;
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func makeWalkController() -> AnimController3D {
+    var skel = Skeleton3D.New();
+    var rootBone = Skeleton3D.AddBone(skel, "root", -1, Math.Mat4.Identity());
+    Skeleton3D.ComputeInverseBind(skel);
+    var rot = Math.Quat.Identity();
+    var scl = Math.Vec3.One();
+    var walk = Animation3D.New("walk", 1.0);
+    Animation3D.set_Looping(walk, true);
+    Animation3D.AddKeyframe(walk, rootBone, 0.0, Math.Vec3.Zero(), rot, scl);
+    Animation3D.AddKeyframe(walk, rootBone, 1.0, Math.Vec3.Zero(), rot, scl);
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "walk", walk);
+    AnimController3D.AddEvent(controller, "walk", 0.25, "footstep_l");
+    AnimController3D.AddEvent(controller, "walk", 0.75, "footstep_r");
+    return controller;
+}
+
+func start() {
+    var ice = Game3D.Surfaces.Register("probe_ice");
+    var world = Game3D.World3D.New("Footsteps Probe", 64, 48);
+
+    // Tagged static floor.
+    var floorEnt = Game3D.Entity3D.New();
+    world.Spawn(floorEnt);
+    var shape = Collider3D.NewBox(10.0, 0.5, 10.0);
+    shape.SurfaceType = ice;
+    var body = Physics3DBody.New(0.0);
+    body.Static = true;
+    body.Collider = shape;
+    floorEnt.AttachBody(body);
+
+    // Walker with an animator state firing two footstep events per second.
+    var walker = Game3D.Entity3D.New();
+    walker.SetPosition(0.0, 1.0, 0.0);
+    world.Spawn(walker);
+    var anim = Game3D.Animator3D.New(makeWalkController());
+    walker.AttachAnimator(anim);
+    anim.Play("walk");
+
+    // No audio clip rows: the component still counts steps and resolves the
+    // surface (empty rows are a silent no-op by contract).
+    var table = Game3D.SurfaceTable3D.New();
+    if (table.ClipCount(ice) != 0) {
+        Terminal.Say("FAIL: fresh table should have no clips");
+        return;
+    }
+    var steps = Game3D.Footsteps3D.New(walker, table);
+
+    var i = 0;
+    while (i < 120) {
+        world.StepSimulation(1.0 / 60.0);
+        i = i + 1;
+    }
+    if (steps.StepCount < 3) {
+        Terminal.Say("FAIL: expected at least 3 steps over 2s of walk (got " + steps.StepCount + ")");
+        return;
+    }
+    if (steps.LastSurface != ice) {
+        Terminal.Say("FAIL: step surface should resolve the tagged floor");
+        return;
+    }
+    // Determinism: identical run produces the identical step count.
+    var world2 = Game3D.World3D.New("Footsteps Probe 2", 64, 48);
+    var floor2 = Game3D.Entity3D.New();
+    world2.Spawn(floor2);
+    var shape2 = Collider3D.NewBox(10.0, 0.5, 10.0);
+    shape2.SurfaceType = ice;
+    var body2 = Physics3DBody.New(0.0);
+    body2.Static = true;
+    body2.Collider = shape2;
+    floor2.AttachBody(body2);
+    var walker2 = Game3D.Entity3D.New();
+    walker2.SetPosition(0.0, 1.0, 0.0);
+    world2.Spawn(walker2);
+    var anim2 = Game3D.Animator3D.New(makeWalkController());
+    walker2.AttachAnimator(anim2);
+    anim2.Play("walk");
+    var steps2 = Game3D.Footsteps3D.New(walker2, table);
+    var j = 0;
+    while (j < 120) {
+        world2.StepSimulation(1.0 / 60.0);
+        j = j + 1;
+    }
+    if (steps2.StepCount != steps.StepCount) {
+        Terminal.Say("FAIL: footsteps not deterministic across identical runs");
+        return;
+    }
+    world.Destroy();
+    world2.Destroy();
+    Terminal.Say("PASS");
+}

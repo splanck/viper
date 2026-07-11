@@ -236,7 +236,6 @@ int64_t rt_game3d_key_f11(void) {
     return rt_keyboard_key_f11();
 }
 
-
 // --- Full keyboard coverage wrappers (forward to the shared rt_keyboard table) ---
 
 /// @brief Key code for the B key (forwards to the shared keyboard table).
@@ -692,4 +691,44 @@ int64_t rt_game3d_mouse_x1(void) {
 /// @brief Button code for the second extra (X2) mouse button (forwards to the shared mouse table).
 int64_t rt_game3d_mouse_x2(void) {
     return rt_mouse_button_x2();
+}
+
+/// @brief RenderPass.Shadow constant (plan 30 pass-attribution ids).
+int64_t rt_game3d_renderpass_shadow(void) {
+    return 0;
+}
+
+/// @brief RenderPass.Opaque constant.
+int64_t rt_game3d_renderpass_opaque(void) {
+    return 1;
+}
+
+/// @brief RenderPass.Transparent constant.
+int64_t rt_game3d_renderpass_transparent(void) {
+    return 2;
+}
+
+/// @brief RenderPass.PostFX constant.
+int64_t rt_game3d_renderpass_postfx(void) {
+    return 3;
+}
+
+/// @brief RenderPass.Overlay constant.
+int64_t rt_game3d_renderpass_overlay(void) {
+    return 4;
+}
+
+/// @brief RenderPass.Present constant.
+int64_t rt_game3d_renderpass_present(void) {
+    return 5;
+}
+
+/// @brief HitchSource.StreamCommit constant.
+int64_t rt_game3d_hitchsource_stream_commit(void) {
+    return 0;
+}
+
+/// @brief HitchSource.FrameTotal constant.
+int64_t rt_game3d_hitchsource_frame_total(void) {
+    return 3;
 }

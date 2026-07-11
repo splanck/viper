@@ -1174,6 +1174,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
         cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, cmd->emissive_map_asset);
     cmd->metallic_roughness_map = rt_material3d_resolve_texture_pixels(mat->metallic_roughness_map);
     cmd->ao_map = rt_material3d_resolve_texture_pixels(mat->ao_map);
+    cmd->lightmap = rt_material3d_resolve_texture_pixels(mat->lightmap);
     cmd->metallic_roughness_map_asset =
         rt_material3d_resolve_texture_native_asset(mat->metallic_roughness_map);
     cmd->ao_map_asset = rt_material3d_resolve_texture_native_asset(mat->ao_map);

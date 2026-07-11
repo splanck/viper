@@ -93,7 +93,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_uipanel_") || starts("rt_uinineslice_") || starts("rt_uimenulist_") ||
         starts("rt_pathfinder_") || starts("rt_dialogue_") || starts("rt_lighting2d_") ||
         starts("rt_platformer_ctrl_") || starts("rt_achievement_") || starts("rt_typewriter_") ||
-        starts("rt_game_scene_"))
+        starts("rt_quests_") || starts("rt_game_scene_"))
         return RtComponent::Game;
 
     // Text component
@@ -278,6 +278,10 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         add(RtComponent::Collections); // Game depends on Collections + OOP
         add(RtComponent::Text);        // LevelData/scene editor use JSON helpers
     }
+    if (has(RtComponent::Graphics))
+        add(RtComponent::Localization); // Game3D Dialogue3D resolves text via MessageBundle
+    if (has(RtComponent::Localization))
+        add(RtComponent::Collections); // MessageBundle.FromMap reads rt_map entries
     if (has(RtComponent::IoFs)) {
         add(RtComponent::Text);    // SaveData depends on rt_json_stream_*
         add(RtComponent::Network); // IO uses the shared OS entropy adapter.
@@ -286,7 +290,7 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         add(RtComponent::Arrays);
     if (has(RtComponent::Collections) || has(RtComponent::Arrays) || has(RtComponent::Graphics) ||
         has(RtComponent::Threads) || has(RtComponent::Audio) || has(RtComponent::Network) ||
-        has(RtComponent::Game))
+        has(RtComponent::Game) || has(RtComponent::Localization))
         add(RtComponent::Oop);
     if (has(RtComponent::Oop))
         add(RtComponent::Threads);
@@ -308,6 +312,7 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         RtComponent::Graphics,
         RtComponent::Audio,
         RtComponent::Network,
+        RtComponent::Localization,
     };
     for (auto c : order) {
         if (has(c))

@@ -847,6 +847,11 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_scene3d_bindings test_rt_scene3d_bindings)
     viper_add_test_labels(test_rt_scene3d_bindings graphics3d unit)
 
+    viper_add_test(test_rt_cloth3d ${VIPER_TESTS_DIR}/unit/test_rt_cloth3d.cpp)
+    target_link_libraries(test_rt_cloth3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_cloth3d test_rt_cloth3d)
+    viper_add_test_labels(test_rt_cloth3d graphics3d unit)
+
     viper_add_test(test_rt_game3d ${VIPER_TESTS_DIR}/unit/test_rt_game3d.cpp)
     target_link_libraries(test_rt_game3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     target_compile_definitions(test_rt_game3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -857,6 +862,51 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_game3d_diagnostics PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_game3d_diagnostics test_rt_game3d_diagnostics)
     viper_add_test_labels(test_rt_game3d_diagnostics graphics3d unit)
+
+    viper_add_test(test_rt_game3d_thirdperson ${VIPER_TESTS_DIR}/unit/test_rt_game3d_thirdperson.cpp)
+    target_link_libraries(test_rt_game3d_thirdperson PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_thirdperson test_rt_game3d_thirdperson)
+    viper_add_test_labels(test_rt_game3d_thirdperson graphics3d unit)
+
+    viper_add_test(test_rt_game3d_combat ${VIPER_TESTS_DIR}/unit/test_rt_game3d_combat.cpp)
+    target_link_libraries(test_rt_game3d_combat PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_combat test_rt_game3d_combat)
+    viper_add_test_labels(test_rt_game3d_combat graphics3d unit)
+
+    viper_add_test(test_rt_game3d_ragdoll_time ${VIPER_TESTS_DIR}/unit/test_rt_game3d_ragdoll_time.cpp)
+    target_link_libraries(test_rt_game3d_ragdoll_time PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_ragdoll_time test_rt_game3d_ragdoll_time)
+    viper_add_test_labels(test_rt_game3d_ragdoll_time graphics3d unit)
+
+    viper_add_test(test_rt_game3d_cinematics ${VIPER_TESTS_DIR}/unit/test_rt_game3d_cinematics.cpp)
+    target_link_libraries(test_rt_game3d_cinematics PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_cinematics test_rt_game3d_cinematics)
+    viper_add_test_labels(test_rt_game3d_cinematics graphics3d unit)
+
+    viper_add_test(test_rt_game3d_dialogue_facial ${VIPER_TESTS_DIR}/unit/test_rt_game3d_dialogue_facial.cpp)
+    target_link_libraries(test_rt_game3d_dialogue_facial PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_dialogue_facial test_rt_game3d_dialogue_facial)
+    viper_add_test_labels(test_rt_game3d_dialogue_facial graphics3d unit)
+
+    viper_add_test(test_rt_game3d_streaming_async ${VIPER_TESTS_DIR}/unit/test_rt_game3d_streaming_async.cpp)
+    target_link_libraries(test_rt_game3d_streaming_async PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_streaming_async test_rt_game3d_streaming_async)
+    viper_add_test_labels(test_rt_game3d_streaming_async graphics3d unit)
+
+    viper_add_test(test_rt_game3d_hlod ${VIPER_TESTS_DIR}/unit/test_rt_game3d_hlod.cpp)
+    target_link_libraries(test_rt_game3d_hlod PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_hlod test_rt_game3d_hlod)
+    viper_add_test_labels(test_rt_game3d_hlod graphics3d unit)
+
+    viper_add_test(test_rt_terrain3d_upgrades ${VIPER_TESTS_DIR}/unit/test_rt_terrain3d_upgrades.cpp)
+    target_link_libraries(test_rt_terrain3d_upgrades PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_terrain3d_upgrades test_rt_terrain3d_upgrades)
+    viper_add_test_labels(test_rt_terrain3d_upgrades graphics3d unit)
+
+    viper_add_test(test_rt_lightbaker3d ${VIPER_TESTS_DIR}/unit/test_rt_lightbaker3d.cpp)
+    target_link_libraries(test_rt_lightbaker3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_lightbaker3d test_rt_lightbaker3d)
+    viper_add_test_labels(test_rt_lightbaker3d graphics3d unit)
 
     viper_add_test(g3d_3dnext2_surface_probe ${VIPER_TESTS_DIR}/unit/test_3dnext2_surface_probe.cpp)
     target_link_libraries(g3d_3dnext2_surface_probe PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)

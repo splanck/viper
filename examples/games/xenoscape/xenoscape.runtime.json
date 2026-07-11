@@ -8,7 +8,6 @@
   },
   "presentation": {
     "sceneTransitionMs": 350,
-    "introSplashMs": 1200,
     "authoredArtEnabled": true,
     "adaptiveMusicEnabled": true
   },
