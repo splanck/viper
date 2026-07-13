@@ -129,6 +129,8 @@ typedef unsigned int GLbitfield;
 #define GL_RGBA8 0x8058
 #define GL_RGBA16F 0x881A
 #define GL_R32F 0x822E
+#define GL_RG 0x8227
+#define GL_RG32F 0x8230
 #define GL_DEPTH_COMPONENT 0x1902
 #define GL_DEPTH_COMPONENT24 0x81A6
 #define GL_DEPTH_COMPONENT32F 0x8CAC
@@ -931,6 +933,7 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
 static void bind_morph_payload(gl_context_t *ctx,
                                const vgfx3d_draw_cmd_t *cmd,
                                GLint uHasSkinning,
+                               GLint uInstanceBoneStride,
                                GLint uMorphShapeCount,
                                GLint uVertexCount,
                                GLint uMorphWeights,
@@ -955,7 +958,10 @@ static GLuint gl_get_material_texture(gl_context_t *ctx,
 static void gl_destroy_mesh_cache(gl_context_t *ctx);
 static void gl_mesh_cache_prune(gl_context_t *ctx);
 static void set_identity_instance_constants(void);
-static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo);
+static void configure_mesh_attributes(gl_context_t *ctx,
+                                      GLuint mesh_vbo,
+                                      GLuint mesh_ibo,
+                                      int compact);
 static int configure_instance_attributes(gl_context_t *ctx,
                                          const float *instance_matrices,
                                          const float *prev_instance_matrices,
@@ -963,7 +969,8 @@ static int configure_instance_attributes(gl_context_t *ctx,
 static int prepare_mesh_buffers(gl_context_t *ctx,
                                 const vgfx3d_draw_cmd_t *cmd,
                                 GLuint *out_vbo,
-                                GLuint *out_ibo);
+                                GLuint *out_ibo,
+                                int *out_compact);
 static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain);
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap);
 static void destroy_scene_targets(gl_context_t *ctx);

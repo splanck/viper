@@ -454,7 +454,7 @@ static const char *const glsl_fragment_src[] = {
     "        lit += sampleShadowCmp(shadowIndex, sampleUv, depth - bias);\n"
     "    }\n"
     "    return lit / float(taps);\n"
-    "}\n"
+    "}\n",
     /* Cascade blend band + distance fade: hard cascade cuts pop visibly as the
      * camera moves, so the last ~12% of each cascade cross-fades into the next,
      * and directional shadows fade out approaching the capped shadow distance
@@ -707,7 +707,7 @@ static const char *const glsl_fragment_src[] = {
     "uLightShadowCascadeCount[i], uLightShadowProjectionType[i], "
     "uLightShadowCascadeSplits[i], vWorldPos, N, L));\n"
     "            }\n"
-    "            float NdotL = max(dot(N, L), 0.0);\n"
+    "            float NdotL = max(dot(N, L), 0.0);\n",
     "            if (NdotL <= 0.0) continue;\n"
     "            vec3 H = safeNormalize3(L + V, N);\n"
     "            float NdotV = max(dot(N, V), 0.001);\n"

@@ -451,7 +451,11 @@ static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSourc
         fs::path root = fs::weakly_canonical(fs::path(path).parent_path(), ec);
         if (ec)
             root = fs::path(path).parent_path().lexically_normal();
-        if (root.empty())
+        /* Synthetic editor URIs such as file:///test.zia resolve directly under
+         * a filesystem root. Recursing from there is both unrelated to the open
+         * document and potentially unbounded; keep the open document indexed,
+         * but do not treat a volume root as an inferred workspace. */
+        if (root.empty() || root == root.root_path())
             continue;
         std::string key = root.string();
         if (rootKeys.insert(key).second)
