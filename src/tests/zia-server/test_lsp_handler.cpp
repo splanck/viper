@@ -361,6 +361,19 @@ TEST(LspHandler, CompletionAfterDot) {
     auto result = resp["result"];
     // Should have items (runtime classes/modules after "Viper.")
     EXPECT_TRUE(result.size() > 0u);
+    bool foundDocumentation = false;
+    for (std::size_t i = 0; i < result.size(); ++i) {
+        const auto &item = result.at(i);
+        if (!item.has("documentation"))
+            continue;
+        const auto &documentation = item["documentation"];
+        if (documentation["kind"].asString() == "markdown" &&
+            !documentation["value"].asString().empty()) {
+            foundDocumentation = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundDocumentation);
 }
 
 TEST(LspHandler, CompletionOnClosedDoc) {
@@ -388,8 +401,8 @@ TEST(LspHandler, CompletionInvalidParamsReturnsError) {
     auto params = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///x.zia")}})},
     });
-    auto resp = parseResponse(
-        handler.handleRequest(makeReq("textDocument/completion", std::move(params))));
+    auto resp =
+        parseResponse(handler.handleRequest(makeReq("textDocument/completion", std::move(params))));
     EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
 }
 
@@ -537,8 +550,7 @@ TEST(LspHandler, DocumentSymbolsListsFunctions) {
         if (result.at(i)["name"].asString() == "start") {
             foundStart = true;
             auto range = result.at(i)["location"]["range"];
-            EXPECT_TRUE(range["end"]["character"].asInt() >
-                        range["start"]["character"].asInt());
+            EXPECT_TRUE(range["end"]["character"].asInt() > range["start"]["character"].asInt());
         }
     }
     EXPECT_TRUE(foundStart);
@@ -552,13 +564,12 @@ TEST(LspHandler, DefinitionReferencesAndRenameUseProjectIndex) {
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
     startLspSession(handler);
 
-    std::string source =
-        "module Test;\n"
-        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
-        "func start() {\n"
-        "    var value = add(1, 2);\n"
-        "    Viper.Terminal.SayInt(value);\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+                         "func start() {\n"
+                         "    var value = add(1, 2);\n"
+                         "    Viper.Terminal.SayInt(value);\n"
+                         "}\n";
     openDocument(handler, "file:///test.zia", source);
 
     auto defParams = JsonValue::object({
@@ -597,12 +608,11 @@ TEST(LspHandler, SignatureHelpReturnsActiveParameter) {
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
     startLspSession(handler);
 
-    std::string source =
-        "module Test;\n"
-        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
-        "func start() {\n"
-        "    var value = add(1, 2);\n"
-        "}\n";
+    std::string source = "module Test;\n"
+                         "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+                         "func start() {\n"
+                         "    var value = add(1, 2);\n"
+                         "}\n";
     openDocument(handler, "file:///test.zia", source);
 
     auto params = JsonValue::object({
@@ -623,10 +633,9 @@ TEST(LspHandler, WorkspaceSymbolSearchesOpenDocuments) {
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
     startLspSession(handler);
 
-    std::string source =
-        "module Test;\n"
-        "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
-        "func start() { var value = add(1, 2); }\n";
+    std::string source = "module Test;\n"
+                         "func add(a: Integer, b: Integer) -> Integer { return a + b; }\n"
+                         "func start() { var value = add(1, 2); }\n";
     openDocument(handler, "file:///test.zia", source);
 
     auto params = JsonValue::object({{"query", JsonValue("add")}});
@@ -654,8 +663,8 @@ TEST(LspHandler, SemanticTokensFullReturnsDeltaEncodedData) {
     auto params = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///test.zia")}})},
     });
-    auto resp = parseResponse(handler.handleRequest(
-        makeReq("textDocument/semanticTokens/full", std::move(params))));
+    auto resp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/semanticTokens/full", std::move(params))));
     auto data = resp["result"]["data"];
     EXPECT_TRUE(data.size() > 0u);
     EXPECT_EQ(data.size() % 5u, 0u);

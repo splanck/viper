@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include "tests/RuntimeDefTestView.hpp"
+
 #ifndef VIPER_SOURCE_DIR
 #define VIPER_SOURCE_DIR "."
 #endif
@@ -204,7 +206,7 @@ bool check_class_ids() {
 }
 
 bool check_runtime_surface_names() {
-    const std::string runtime_def = read_file("src/il/runtime/runtime.def");
+    const std::string runtime_def = viper::tests::runtimeDefinitionText();
     const std::string canvas_header = read_file("src/runtime/graphics/3d/render/rt_canvas3d.h");
     const std::string canvas_overlay =
         read_file("src/runtime/graphics/3d/render/rt_canvas3d_overlay.c");

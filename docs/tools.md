@@ -254,7 +254,7 @@ Two driver flags emit JSON inventories generated from the live in-process
 registries, so they can never drift from the binary:
 
 ```bash
-viper --dump-runtime-api   # schema v2 runtime contract catalog
+viper --dump-runtime-api   # schema v3 runtime contract catalog
 viper --dump-opcodes       # {ilVersion, opcodes:[{mnemonic,resultArity,resultType,operandsMin,operandsMax,operandTypes,sideEffects,successors,terminator}]}
 ```
 
@@ -264,11 +264,12 @@ These complement the human-oriented `--dump-runtime-descriptors` and
 `--dump-runtime-api` preserves the original compact fields (`version`,
 `functions[].name`, `functions[].signature`, `classes[].name`,
 `classes[].constructor`, `properties`, and `methods`) and adds
-`schema_version: 2`, `signature_dialect: "runtime-def-v1"`, parsed
+`schema_version: 3`, `signature_dialect: "runtime-def-v1"`, parsed
 `return_type`/`params`, `kind`, `owner`, `class_kind`, `is_static`,
 `stability`, `capabilities`, `fallibility`, `ownership`, and `docs_anchor`
-metadata. The new metadata is additive so older tools can continue reading the
-fields they already understand.
+metadata. Class rows also carry authored Markdown documentation with a short
+`summary` and long `details` field. The new metadata is additive so older tools
+can continue reading the fields they already understand.
 
 ### viper -run
 

@@ -6,21 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/rtgen/rtgen.cpp
-// Purpose: Build-time generator that produces runtime registry .inc files from
-//          the single source of truth: runtime.def
+// Purpose: Parse the modular runtime definition set and generate registries and
+//          exhaustive API reference documentation.
+// Key invariants:
+//   - Includes are relative, cycle-free, root-confined, and declaration-ordered.
+//   - Runtime class documentation is authored once and propagated unchanged.
+// Ownership/Lifetime:
+//   - ParseState owns source metadata until generation finishes.
+//   - Generated C++ literals and Markdown files own copied string data.
+// Links: src/il/runtime/runtime.def, docs/adr/0101-modular-runtime-definitions-and-documentation.md
 //
 // Usage: rtgen <input.def> <output_dir>
+//        rtgen --validate <input.def>
+//        rtgen --docs [--check] <input.def> <output_dir>
 //
 // Outputs:
 //   - RuntimeNameMap.inc     (canonical Viper.* -> rt_* symbol mapping)
 //   - RuntimeClasses.inc     (OOP class/method/property catalog)
 //   - RuntimeSignatures.inc  (runtime descriptor rows)
 //   - RuntimeNames.hpp       (C++ constants for frontend use)
-//
-// Key invariants:
-//   - Parses runtime.def line by line
-//   - Validates no duplicate symbols or missing targets
-//   - Pure C++17, no external dependencies
 //
 //===----------------------------------------------------------------------===//
 
@@ -81,12 +85,19 @@ struct RuntimeMethod {
     std::string target_id; // Target function id (or canonical name)
 };
 
+/// @brief Authored documentation attached to a runtime definition row.
+struct RuntimeDocumentation {
+    std::string summary; ///< Short plain-text description used by completion lists.
+    std::string details; ///< Long Markdown description used by hover and reference docs.
+};
+
 /// @brief A runtime OOP class (RT_CLASS block) with its properties and methods.
 struct RuntimeClass {
     std::string name;                   // Class name (e.g., "Viper.String")
     std::string type_id;                // Type ID suffix (e.g., "String")
     std::string layout;                 // Layout type (e.g., "opaque*", "obj")
     std::string ctor_id;                // Constructor function id or empty
+    RuntimeDocumentation documentation; // Authored summary and long-form details
     std::vector<RuntimeProperty> props; // Properties
     std::vector<RuntimeMethod> methods; // Methods
 };
@@ -99,13 +110,13 @@ struct CSignature {
 
 /// @brief Fields used to emit one descriptor row in RuntimeSignatures.inc.
 struct DescriptorFields {
-    std::string signatureId; ///< Signature identifier.
-    std::string spec;        ///< Signature-spec expression.
-    std::string handler;     ///< VM handler expression.
-    std::string lowering;    ///< Lowering kind.
-    std::string hidden;      ///< Hidden-argument expression.
-    std::string hiddenCount; ///< Number of hidden arguments.
-    std::string trapClass;   ///< Trap classification.
+    std::string signatureId;   ///< Signature identifier.
+    std::string spec;          ///< Signature-spec expression.
+    std::string handler;       ///< VM handler expression.
+    std::string lowering;      ///< Lowering kind.
+    std::string hidden;        ///< Hidden-argument expression.
+    std::string hiddenCount;   ///< Number of hidden arguments.
+    std::string trapClass;     ///< Trap classification.
     std::string publicSurface; ///< Whether this descriptor is frontend-visible as a function.
 };
 
@@ -137,6 +148,7 @@ struct ResolvedRuntimeClass {
     std::string type_id;                        ///< Type ID suffix.
     std::string layout;                         ///< Layout type.
     std::string ctorCanonical;                  ///< Canonical constructor name, or empty.
+    RuntimeDocumentation documentation;         ///< Authored class documentation.
     std::vector<ResolvedRuntimeProperty> props; ///< Resolved properties.
     std::vector<ResolvedRuntimeMethod> methods; ///< Resolved methods.
 };
@@ -171,6 +183,25 @@ struct ParseState {
     std::optional<RuntimeClass> current_class; ///< Class block currently open, if any.
     int line_num = 0;                          ///< 1-based current line for diagnostics.
     std::string filename;                      ///< Source filename for diagnostics.
+
+    /// @brief Documentation block waiting to attach to the next class row.
+    struct PendingDocumentation {
+        std::string summary;           ///< Parsed @summary text.
+        std::string details;           ///< Parsed @details Markdown.
+        std::string filename;          ///< File where the block began.
+        int line = 0;                  ///< Line where the block began.
+        bool sawSummary{false};        ///< Whether @summary appeared.
+        bool sawDetails{false};        ///< Whether @details appeared.
+        bool collectingDetails{false}; ///< Whether subsequent /// lines are details.
+
+        [[nodiscard]] bool active() const noexcept {
+            return sawSummary || sawDetails || collectingDetails;
+        }
+
+        void clear() {
+            *this = PendingDocumentation{};
+        }
+    } pendingDocumentation;
 
     /// @brief Print a file:line error to stderr and terminate the process.
     void error(const std::string &msg) const {
@@ -550,6 +581,26 @@ static void parseRtClassBegin(ParseState &state, const std::string &args) {
     stripQuotes(cls.layout);
     stripQuotes(cls.ctor_id);
 
+    if (state.pendingDocumentation.active()) {
+        if (!state.pendingDocumentation.sawSummary)
+            state.error("runtime class documentation is missing @summary");
+        if (!state.pendingDocumentation.sawDetails)
+            state.error("runtime class documentation is missing @details");
+
+        while (!state.pendingDocumentation.details.empty() &&
+               state.pendingDocumentation.details.front() == '\n') {
+            state.pendingDocumentation.details.erase(state.pendingDocumentation.details.begin());
+        }
+        while (!state.pendingDocumentation.details.empty() &&
+               state.pendingDocumentation.details.back() == '\n') {
+            state.pendingDocumentation.details.pop_back();
+        }
+
+        cls.documentation.summary = std::move(state.pendingDocumentation.summary);
+        cls.documentation.details = std::move(state.pendingDocumentation.details);
+        state.pendingDocumentation.clear();
+    }
+
     state.current_class = std::move(cls);
 }
 
@@ -620,15 +671,120 @@ static void parseRtClassEnd(ParseState &state) {
     state.current_class.reset();
 }
 
+/// @brief Parse one formal `///` runtime documentation line.
+/// @details Documentation blocks support one `@summary` line followed by an
+///          `@details` marker and zero or more Markdown lines. The block is
+///          attached by parseRtClassBegin() to the immediately following class.
+static void parseDocumentationLine(ParseState &state, std::string_view line) {
+    std::string_view content = stripPrefix(line, "///");
+    if (!content.empty() && content.front() == ' ')
+        content.remove_prefix(1);
+
+    auto &doc = state.pendingDocumentation;
+    if (!doc.active()) {
+        doc.filename = state.filename;
+        doc.line = state.line_num;
+    }
+
+    const auto isCommand = [content](std::string_view command) {
+        return content == command ||
+               (startsWith(content, command) && content.size() > command.size() &&
+                std::isspace(static_cast<unsigned char>(content[command.size()])));
+    };
+
+    if (isCommand("@summary")) {
+        if (doc.sawSummary)
+            state.error("duplicate @summary in runtime documentation block");
+        if (doc.sawDetails)
+            state.error("@summary must appear before @details");
+        std::string_view value = trimView(stripPrefix(content, "@summary"));
+        if (value.empty())
+            state.error("@summary requires non-empty text");
+        if (value.size() > 200)
+            state.error("@summary must not exceed 200 bytes");
+        doc.summary = std::string(value);
+        doc.sawSummary = true;
+        return;
+    }
+
+    if (isCommand("@details")) {
+        if (!doc.sawSummary)
+            state.error("@details requires a preceding @summary");
+        if (doc.sawDetails)
+            state.error("duplicate @details in runtime documentation block");
+        doc.sawDetails = true;
+        doc.collectingDetails = true;
+        std::string_view firstLine = stripPrefix(content, "@details");
+        if (!firstLine.empty() && firstLine.front() == ' ')
+            firstLine.remove_prefix(1);
+        if (!firstLine.empty()) {
+            doc.details.append(firstLine);
+            doc.details.push_back('\n');
+        }
+        return;
+    }
+
+    if (!doc.collectingDetails)
+        state.error("runtime documentation text requires an @details marker");
+
+    doc.details.append(content);
+    doc.details.push_back('\n');
+}
+
+/// @brief Return a quoted path from a `#include` directive.
+/// @return The relative include path, nullopt when @p line is not an include.
+static std::optional<std::string> parseIncludeDirective(std::string_view line) {
+    line = trimView(line);
+    if (!startsWith(line, "#include"))
+        return std::nullopt;
+    line = trimView(stripPrefix(line, "#include"));
+    if (line.size() < 2 || line.front() != '"')
+        throw std::runtime_error("runtime definition includes must use quoted paths");
+    const size_t close = line.find('"', 1);
+    if (close == std::string_view::npos)
+        throw std::runtime_error("unterminated quoted runtime definition include");
+    if (!trimView(line.substr(close + 1)).empty())
+        throw std::runtime_error("unexpected text after runtime definition include");
+    return std::string(line.substr(1, close - 1));
+}
+
+/// @brief Return whether @p candidate is equal to or nested beneath @p root.
+static bool pathIsWithin(const fs::path &candidate, const fs::path &root) {
+    auto candidateIt = candidate.begin();
+    for (auto rootIt = root.begin(); rootIt != root.end(); ++rootIt, ++candidateIt) {
+        if (candidateIt == candidate.end() || *candidateIt != *rootIt)
+            return false;
+    }
+    return true;
+}
+
+static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state,
+                                             const std::string &idOrCanonical);
+
 /// @brief Dispatch one runtime.def line to the matching RT_* directive parser.
-/// @details Skips blank lines and // / # comments; an unrecognised directive is a
-///          fatal error.
+/// @details Parses formal documentation before ordinary comments. Includes are
+///          handled by parseDefinitionFile(); an unrecognised directive is fatal.
 static void parseLine(ParseState &state, const std::string &line) {
     std::string trimmed = trim(line);
 
-    // Skip empty lines and comments
-    if (trimmed.empty() || startsWith(trimmed, "//") || startsWith(trimmed, "#"))
+    if (startsWith(trimmed, "///")) {
+        parseDocumentationLine(state, trimmed);
         return;
+    }
+
+    // Blank lines and ordinary comments do not interrupt a documentation block;
+    // this permits section separators between prose and declarations while still
+    // rejecting a block followed by the wrong directive below.
+    if (trimmed.empty() || startsWith(trimmed, "//"))
+        return;
+
+    if (startsWith(trimmed, "#"))
+        state.error("unsupported preprocessor directive: " + trimmed);
+
+    if (state.pendingDocumentation.active() &&
+        !extractParens(trimmed, "RT_CLASS_BEGIN").has_value()) {
+        state.error("runtime documentation block must immediately precede RT_CLASS_BEGIN");
+    }
 
     // Parse macros. Each branch uses a distinct binding name: an `else if`
     // condition declaration stays in scope through the rest of the chain, so a
@@ -655,29 +811,156 @@ static void parseLine(ParseState &state, const std::string &line) {
     }
 }
 
-/// @brief Read and parse an entire runtime.def file into a ParseState.
-/// @details Opens @p path (fatal error on failure), parses each line, and verifies
-///          there is no unclosed class block at end of file.
-static ParseState parseFile(const fs::path &path) {
-    ParseState state;
-    state.filename = path.string();
+/// @brief Recursively parse one runtime definition file and its quoted includes.
+static void parseDefinitionFile(ParseState &state,
+                                const fs::path &path,
+                                const fs::path &definitionRoot,
+                                std::unordered_set<std::string> &includedFiles,
+                                std::vector<std::string> &includeStack) {
+    std::error_code canonicalEc;
+    fs::path canonicalPath = fs::weakly_canonical(path, canonicalEc);
+    if (canonicalEc)
+        throw std::runtime_error("cannot resolve runtime definition file " + path.string() + ": " +
+                                 canonicalEc.message());
+    if (!pathIsWithin(canonicalPath, definitionRoot))
+        throw std::runtime_error("runtime definition include escapes definition root: " +
+                                 canonicalPath.string());
 
-    std::ifstream in(path);
+    const std::string pathKey = canonicalPath.generic_string();
+    if (std::find(includeStack.begin(), includeStack.end(), pathKey) != includeStack.end())
+        throw std::runtime_error("cyclic runtime definition include: " + pathKey);
+    if (!includedFiles.insert(pathKey).second)
+        throw std::runtime_error("duplicate runtime definition include: " + pathKey);
+
+    std::ifstream in(canonicalPath);
     if (!in) {
-        throw std::runtime_error("cannot open " + path.string());
+        throw std::runtime_error("cannot open " + canonicalPath.string());
     }
+
+    const std::string previousFilename = state.filename;
+    const int previousLine = state.line_num;
+    state.filename = canonicalPath.generic_string();
+    state.line_num = 0;
+    includeStack.push_back(pathKey);
 
     std::string line;
     while (std::getline(in, line)) {
         state.line_num++;
+
+        const std::string trimmed = trim(line);
+        if (startsWith(trimmed, "#include")) {
+            if (state.current_class.has_value())
+                state.error("runtime definition include is not allowed inside a class block");
+            if (state.pendingDocumentation.active())
+                state.error(
+                    "runtime definition include cannot follow a pending documentation block");
+
+            std::optional<std::string> includePath;
+            try {
+                includePath = parseIncludeDirective(trimmed);
+            } catch (const std::exception &e) {
+                state.error(e.what());
+            }
+            if (!includePath)
+                state.error("invalid runtime definition include");
+            fs::path relativePath(*includePath);
+            if (relativePath.empty() || relativePath.is_absolute())
+                state.error("runtime definition include path must be relative");
+
+            const std::string includeFilename = state.filename;
+            const int includeLine = state.line_num;
+            try {
+                parseDefinitionFile(state,
+                                    canonicalPath.parent_path() / relativePath,
+                                    definitionRoot,
+                                    includedFiles,
+                                    includeStack);
+            } catch (const std::exception &e) {
+                throw std::runtime_error(std::string(e.what()) + "\n  included from " +
+                                         includeFilename + ":" + std::to_string(includeLine));
+            }
+            state.filename = includeFilename;
+            state.line_num = includeLine;
+            continue;
+        }
+
         parseLine(state, line);
     }
 
+    if (state.pendingDocumentation.active())
+        state.error("orphaned runtime documentation block at end of file");
     if (state.current_class.has_value()) {
         state.error("Unclosed RT_CLASS_BEGIN (missing RT_CLASS_END)");
     }
 
+    includeStack.pop_back();
+    state.filename = previousFilename;
+    state.line_num = previousLine;
+}
+
+/// @brief Read and parse a runtime.def manifest and all included fragments.
+static ParseState parseFile(const fs::path &path) {
+    ParseState state;
+    std::error_code rootEc;
+    const fs::path absolutePath = fs::absolute(path, rootEc);
+    if (rootEc)
+        throw std::runtime_error("cannot resolve runtime definition root: " + rootEc.message());
+    const fs::path definitionRoot = fs::weakly_canonical(absolutePath.parent_path(), rootEc);
+    if (rootEc)
+        throw std::runtime_error("cannot resolve runtime definition root: " + rootEc.message());
+
+    std::unordered_set<std::string> includedFiles;
+    std::vector<std::string> includeStack;
+    parseDefinitionFile(state, absolutePath, definitionRoot, includedFiles, includeStack);
+
     return state;
+}
+
+/// @brief Validate cross-row references that require the complete definition set.
+/// @details Includes may place a referenced function after its class, so these
+///          checks run only after the root manifest and all fragments are parsed.
+static void validateDefinitionReferences(const ParseState &state, const fs::path &inputPath) {
+    std::vector<std::string> errors;
+    for (const auto &cls : state.classes) {
+        if (cls.documentation.summary.empty())
+            errors.push_back("runtime class " + cls.name + " is missing authored @summary text");
+        if (cls.documentation.details.empty())
+            errors.push_back("runtime class " + cls.name + " is missing authored @details text");
+        if (!cls.ctor_id.empty() && cls.ctor_id != "none" &&
+            !resolveRuntimeFunc(state, cls.ctor_id)) {
+            errors.push_back("runtime class " + cls.name + " has unresolved ctor target " +
+                             cls.ctor_id);
+        }
+        for (const auto &prop : cls.props) {
+            if (!prop.getter_id.empty() && prop.getter_id != "none" &&
+                !resolveRuntimeFunc(state, prop.getter_id)) {
+                errors.push_back("runtime property " + cls.name + "." + prop.name +
+                                 " has unresolved getter target " + prop.getter_id);
+            }
+            if (!prop.setter_id.empty() && prop.setter_id != "none" &&
+                !resolveRuntimeFunc(state, prop.setter_id)) {
+                errors.push_back("runtime property " + cls.name + "." + prop.name +
+                                 " has unresolved setter target " + prop.setter_id);
+            }
+        }
+        for (const auto &method : cls.methods) {
+            if (!method.target_id.empty() && method.target_id != "none" &&
+                !resolveRuntimeFunc(state, method.target_id)) {
+                errors.push_back("runtime method " + cls.name + "." + method.name +
+                                 " has unresolved target " + method.target_id);
+            }
+        }
+    }
+
+    if (errors.empty())
+        return;
+    std::sort(errors.begin(), errors.end());
+    std::ostringstream message;
+    message << inputPath << ": error: runtime definition validation found " << errors.size()
+            << " unresolved reference(s)";
+    for (const auto &error : errors)
+        message << "\n  " << error;
+    throw std::runtime_error(message.str());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1349,6 +1632,7 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
         outClass.name = cls.name;
         outClass.type_id = cls.type_id;
         outClass.layout = cls.layout;
+        outClass.documentation = cls.documentation;
         if (auto ctorCanonical = resolveRuntimeCanonical(state, cls.ctor_id))
             outClass.ctorCanonical = *ctorCanonical;
 
@@ -1714,6 +1998,9 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
         } else {
             out << "    " << cppStringLiteral(cls.ctorCanonical) << ",\n";
         }
+
+        out << "    " << cppStringLiteral(cls.documentation.summary) << ",\n";
+        out << "    " << cppStringLiteral(cls.documentation.details) << ",\n";
 
         out << "    RUNTIME_PROPS(";
         for (size_t i = 0; i < cls.props.size(); ++i) {
@@ -2090,6 +2377,227 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Return the first namespace segment beneath `Viper` for @p name.
+static std::string runtimeDocumentationDomain(std::string_view name) {
+    constexpr std::string_view prefix = "Viper.";
+    if (startsWith(name, prefix))
+        name.remove_prefix(prefix.size());
+    const size_t dot = name.find('.');
+    return std::string(name.substr(0, dot));
+}
+
+/// @brief Build the same lowercase dash-separated anchor used by the API dump.
+static std::string runtimeDocumentationSlug(std::string_view text) {
+    std::string slug;
+    bool previousDash = false;
+    for (unsigned char ch : text) {
+        if (std::isalnum(ch)) {
+            slug.push_back(static_cast<char>(std::tolower(ch)));
+            previousDash = false;
+        } else if (!previousDash) {
+            slug.push_back('-');
+            previousDash = true;
+        }
+    }
+    while (!slug.empty() && slug.back() == '-')
+        slug.pop_back();
+    while (!slug.empty() && slug.front() == '-')
+        slug.erase(slug.begin());
+    return slug;
+}
+
+/// @brief Escape text for a Markdown table cell.
+static std::string markdownTableCell(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (char ch : value) {
+        if (ch == '|')
+            escaped += "\\|";
+        else if (ch == '\n' || ch == '\r')
+            escaped.push_back(' ');
+        else
+            escaped.push_back(ch);
+    }
+    return escaped;
+}
+
+/// @brief Compare or write one deterministic generated documentation file.
+static bool emitRuntimeDocumentationFile(const fs::path &path,
+                                         const std::ostringstream &contents,
+                                         bool checkOnly) {
+    const std::string expected = contents.str();
+    if (checkOnly) {
+        if (!fs::exists(path)) {
+            std::cerr << "error: generated runtime documentation is missing: " << path << "\n";
+            return false;
+        }
+        if (readTextFile(path) != expected) {
+            std::cerr << "error: generated runtime documentation is stale: " << path << "\n";
+            return false;
+        }
+        return true;
+    }
+
+    std::ostringstream writable;
+    writable << expected;
+    writeGeneratedTextFile(path, writable);
+    std::cout << "  Generated " << path << "\n";
+    return true;
+}
+
+/// @brief Generate or verify exhaustive Markdown runtime reference pages.
+static bool generateRuntimeDocumentation(const ParseState &state,
+                                         const fs::path &outDir,
+                                         bool checkOnly) {
+    const auto resolvedClasses = buildResolvedClasses(state);
+    std::map<std::string, std::vector<const ResolvedRuntimeClass *>> classesByDomain;
+    std::map<std::string, std::vector<const RuntimeFunc *>> functionsByDomain;
+    for (const auto &cls : resolvedClasses)
+        classesByDomain[runtimeDocumentationDomain(cls.name)].push_back(&cls);
+    for (const auto &func : state.functions) {
+        if (func.publicSurface)
+            functionsByDomain[runtimeDocumentationDomain(func.canonical)].push_back(&func);
+    }
+
+    std::set<std::string> domains;
+    for (const auto &[domain, _] : classesByDomain)
+        domains.insert(domain);
+    for (const auto &[domain, _] : functionsByDomain)
+        domains.insert(domain);
+
+    std::error_code directoryEc;
+    if (!checkOnly)
+        fs::create_directories(outDir, directoryEc);
+    if (directoryEc) {
+        std::cerr << "error: cannot create runtime documentation directory " << outDir << ": "
+                  << directoryEc.message() << "\n";
+        return false;
+    }
+
+    std::unordered_set<std::string> expectedFiles{"README.md"};
+    bool clean = true;
+    std::ostringstream index;
+    index << "<!-- AUTO-GENERATED by rtgen from src/il/runtime/runtime.def. DO NOT EDIT. -->\n\n";
+    index << "# Viper Runtime API Reference\n\n";
+    index << "This exhaustive reference is generated from the modular runtime definition "
+             "registry. Conceptual guides live under "
+             "[`docs/viperlib`](../../viperlib/README.md).\n\n";
+    index << "| Domain | Classes | Functions |\n";
+    index << "|---|---:|---:|\n";
+
+    for (const auto &domain : domains) {
+        const std::string filename = runtimeDocumentationSlug(domain) + ".md";
+        expectedFiles.insert(filename);
+        const auto &classes = classesByDomain[domain];
+        const auto &functions = functionsByDomain[domain];
+        index << "| [" << markdownTableCell(domain) << "](" << filename << ") | " << classes.size()
+              << " | " << functions.size() << " |\n";
+
+        std::ostringstream page;
+        page
+            << "<!-- AUTO-GENERATED by rtgen from src/il/runtime/runtime.def. DO NOT EDIT. -->\n\n";
+        page << "# Viper " << domain << " Runtime Reference\n\n";
+        page << "[Back to the runtime reference index](README.md)\n\n";
+        std::unordered_set<std::string> emittedPageAnchors;
+
+        if (!classes.empty()) {
+            page << "## Classes\n\n";
+            for (const auto *cls : classes) {
+                const std::string classAnchor = runtimeDocumentationSlug(cls->name);
+                if (emittedPageAnchors.insert(classAnchor).second)
+                    page << "<a id=\"" << classAnchor << "\"></a>\n";
+                page << "### `" << cls->name << "`\n\n";
+                page << cls->documentation.summary << "\n\n";
+                page << cls->documentation.details << "\n\n";
+                if (!cls->ctorCanonical.empty())
+                    page << "Constructor: `" << cls->ctorCanonical << "`\n\n";
+
+                if (!cls->props.empty()) {
+                    page << "#### Properties\n\n";
+                    page << "| Property | Type | Access |\n";
+                    page << "|---|---|---|\n";
+                    for (const auto &prop : cls->props) {
+                        const std::string qualified = cls->name + "." + prop.name;
+                        const std::string anchor = runtimeDocumentationSlug(qualified);
+                        page << "| ";
+                        if (emittedPageAnchors.insert(anchor).second)
+                            page << "<a id=\"" << anchor << "\"></a>";
+                        page << "`" << markdownTableCell(prop.name) << "` | `"
+                             << markdownTableCell(prop.type) << "` | "
+                             << ((prop.setterCanonical.empty() || prop.setterCanonical == "none")
+                                     ? "read-only"
+                                     : "read/write")
+                             << " |\n";
+                    }
+                    page << "\n";
+                }
+
+                if (!cls->methods.empty()) {
+                    page << "#### Methods\n\n";
+                    page << "| Method | Signature | Runtime target |\n";
+                    page << "|---|---|---|\n";
+                    for (const auto &method : cls->methods) {
+                        const std::string qualified = cls->name + "." + method.name;
+                        const std::string anchor = runtimeDocumentationSlug(qualified);
+                        page << "| ";
+                        if (emittedPageAnchors.insert(anchor).second)
+                            page << "<a id=\"" << anchor << "\"></a>";
+                        page << "`" << markdownTableCell(method.name) << "` | `"
+                             << markdownTableCell(method.signature) << "` | `"
+                             << markdownTableCell(method.targetCanonical) << "` |\n";
+                    }
+                    page << "\n";
+                }
+            }
+        }
+
+        if (!functions.empty()) {
+            page << "## Functions\n\n";
+            page << "| Function | Signature | Runtime symbol |\n";
+            page << "|---|---|---|\n";
+            for (const auto *func : functions) {
+                const std::string anchor = runtimeDocumentationSlug(func->canonical);
+                page << "| ";
+                if (emittedPageAnchors.insert(anchor).second)
+                    page << "<a id=\"" << anchor << "\"></a>";
+                page << "`" << markdownTableCell(func->canonical) << "` | `"
+                     << markdownTableCell(func->signature) << "` | `"
+                     << markdownTableCell(func->c_symbol) << "` |\n";
+            }
+            page << "\n";
+        }
+
+        clean = emitRuntimeDocumentationFile(outDir / filename, page, checkOnly) && clean;
+    }
+
+    clean = emitRuntimeDocumentationFile(outDir / "README.md", index, checkOnly) && clean;
+
+    if (fs::exists(outDir)) {
+        for (const auto &entry : fs::directory_iterator(outDir)) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".md")
+                continue;
+            const std::string filename = entry.path().filename().string();
+            if (expectedFiles.count(filename))
+                continue;
+            if (checkOnly) {
+                std::cerr << "error: stale generated runtime documentation file: " << entry.path()
+                          << "\n";
+                clean = false;
+            } else {
+                std::error_code removeEc;
+                fs::remove(entry.path(), removeEc);
+                if (removeEc) {
+                    std::cerr << "error: cannot remove stale generated runtime documentation file "
+                              << entry.path() << ": " << removeEc.message() << "\n";
+                    clean = false;
+                }
+            }
+        }
+    }
+
+    return clean;
+}
+
 /// @brief Audit runtime.def against the actual runtime headers/sources and policy.
 /// @details Cross-checks that declared functions exist, that runtime symbols are
 ///          classified, and that the surface policy's expectations hold; prints a
@@ -2257,9 +2765,8 @@ static int runAudit(const ParseState &state,
     std::sort(headerSyncFindings.begin(), headerSyncFindings.end());
     std::sort(unclassifiedFindings.begin(), unclassifiedFindings.end());
 
-    std::cout << "rtgen audit: " << state.functions.size() << " functions, "
-              << state.classes.size() << " classes, " << headerDecls.size()
-              << " header declarations\n";
+    std::cout << "rtgen audit: " << state.functions.size() << " functions, " << state.classes.size()
+              << " classes, " << headerDecls.size() << " header declarations\n";
 
     if (!summaryOnly) {
         for (const auto &finding : headerSyncFindings)
@@ -2307,6 +2814,8 @@ static int runAudit(const ParseState &state,
 /// @brief Print rtgen command-line usage (generate and audit modes) to stderr.
 static void printUsage(const char *prog) {
     std::cerr << "Usage: " << prog << " <input.def> <output_dir>\n";
+    std::cerr << "       " << prog << " --validate <input.def>\n";
+    std::cerr << "       " << prog << " --docs [--check] <input.def> <output_dir>\n";
     std::cerr
         << "       " << prog
         << " --audit [--strict-header-sync] [--strict-unclassified] [--summary-only] <input.def>\n";
@@ -2325,6 +2834,9 @@ static void printUsage(const char *prog) {
 /// @return 0 on success; non-zero on usage error or audit failure.
 int main(int argc, char **argv) {
     bool auditMode = false;
+    bool validateMode = false;
+    bool docsMode = false;
+    bool checkDocs = false;
     bool strictHeaderSync = false;
     bool strictUnclassified = false;
     bool summaryOnly = false;
@@ -2334,6 +2846,12 @@ int main(int argc, char **argv) {
         std::string arg = argv[i];
         if (arg == "--audit") {
             auditMode = true;
+        } else if (arg == "--validate") {
+            validateMode = true;
+        } else if (arg == "--docs") {
+            docsMode = true;
+        } else if (arg == "--check") {
+            checkDocs = true;
         } else if (arg == "--strict-header-sync") {
             strictHeaderSync = true;
         } else if (arg == "--strict-unclassified") {
@@ -2345,7 +2863,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    if ((!auditMode && positional.size() != 2) || (auditMode && positional.size() != 1)) {
+    const int selectedModes =
+        static_cast<int>(auditMode) + static_cast<int>(validateMode) + static_cast<int>(docsMode);
+    if (selectedModes > 1 || (checkDocs && !docsMode) ||
+        (!auditMode && !validateMode && !docsMode && positional.size() != 2) ||
+        ((auditMode || validateMode) && positional.size() != 1) ||
+        (docsMode && positional.size() != 2)) {
         printUsage(argv[0]);
         return 1;
     }
@@ -2362,6 +2885,7 @@ int main(int argc, char **argv) {
     try {
         std::cout << "rtgen: Parsing " << inputPath << "\n";
         state = parseFile(inputPath);
+        validateDefinitionReferences(state, inputPath);
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";
         return 1;
@@ -2369,6 +2893,19 @@ int main(int argc, char **argv) {
 
     if (auditMode)
         return runAudit(state, inputPath, strictHeaderSync, strictUnclassified, summaryOnly);
+    if (validateMode) {
+        std::cout << "rtgen: Validated " << state.functions.size() << " functions, "
+                  << state.classes.size() << " classes\n";
+        return 0;
+    }
+    if (docsMode) {
+        const fs::path documentationDir = positional[1];
+        if (!generateRuntimeDocumentation(state, documentationDir, checkDocs))
+            return 1;
+        if (checkDocs)
+            std::cout << "rtgen: Runtime documentation is current\n";
+        return 0;
+    }
 
     fs::path outputDir = positional[1];
 

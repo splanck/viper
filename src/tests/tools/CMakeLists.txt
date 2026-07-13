@@ -53,6 +53,20 @@ function(viper_add_tools_tests)
             -P ${_VIPER_TOOLS_DIR}/AgentCliTests.cmake)
     viper_add_test_labels(agent_cli tools zia)
 
+    viper_add_ctest(rtgen_definition_manifest
+            ${CMAKE_COMMAND}
+            -DRTGEN_EXE=$<TARGET_FILE:rtgen>
+            -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/rtgen_definition_manifest
+            -P ${_VIPER_TOOLS_DIR}/RtgenDefinitionManifestTests.cmake)
+    viper_add_test_labels(rtgen_definition_manifest tools runtime)
+
+    viper_add_ctest(runtime_reference_docs
+            $<TARGET_FILE:rtgen>
+            --docs --check
+            ${CMAKE_SOURCE_DIR}/src/il/runtime/runtime.def
+            ${CMAKE_SOURCE_DIR}/docs/generated/runtime)
+    viper_add_test_labels(runtime_reference_docs tools runtime contract)
+
     viper_add_test(test_tools_frontend_native_compiler
             ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)

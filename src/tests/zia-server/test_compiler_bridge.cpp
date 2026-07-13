@@ -20,6 +20,7 @@
 #include "tests/TestHarness.hpp"
 #include "tools/zia-server/CompilerBridge.hpp"
 
+#include <algorithm>
 #include <string>
 
 using namespace viper::server;
@@ -171,6 +172,21 @@ TEST(CompilerBridge, CompletionsReturnsResults) {
     auto items = bridge.completions(source, 3, 11, "test.zia");
     // Should return at least some completions (runtime classes like Terminal, etc.)
     EXPECT_TRUE(items.size() > 0u);
+}
+
+TEST(CompilerBridge, RuntimeClassCompletionCarriesAuthoredDocumentation) {
+    CompilerBridge bridge;
+    std::string source = "module Test;\n"
+                         "bind Viper.GUI as GUI;\n"
+                         "func start() {\n"
+                         "    GUI.Ap\n"
+                         "}\n";
+    auto items = bridge.completions(source, 4, 11, "test.zia");
+    const auto app = std::find_if(
+        items.begin(), items.end(), [](const CompletionInfo &item) { return item.label == "App"; });
+    ASSERT_NE(app, items.end());
+    EXPECT_TRUE(app->documentation.find("Owns a GUI application window") != std::string::npos);
+    EXPECT_TRUE(app->documentation.find("`Viper.GUI.App`") != std::string::npos);
 }
 
 TEST(CompilerBridge, CompletionsAtEmptyPosition) {
@@ -389,6 +405,16 @@ TEST(CompilerBridge, HoverOnRuntimeMethod) {
     auto result = bridge.hover(source, 5, 8, "test.zia");
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("Say") != std::string::npos);
+}
+
+TEST(CompilerBridge, HoverOnRuntimeClassIncludesAuthoredDocumentation) {
+    CompilerBridge bridge;
+    std::string source = "module Test;\n"
+                         "func use(app: Viper.GUI.App) {}\n";
+    auto result = bridge.hover(source, 2, 25, "test.zia");
+    EXPECT_FALSE(result.empty());
+    EXPECT_TRUE(result.find("Owns a GUI application window") != std::string::npos);
+    EXPECT_TRUE(result.find("`Viper.GUI.App`") != std::string::npos);
 }
 
 TEST(CompilerBridge, HoverOnFinalVariable) {

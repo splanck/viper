@@ -13,6 +13,11 @@ last-verified: 2026-07-02
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
 
+For the exhaustive, source-generated class/member/function inventory, see the
+[Runtime API Reference](../generated/runtime/README.md). The pages below are
+conceptual guides and curated navigation; canonical signatures and class
+descriptions come from the modular `runtime.def` registry.
+
 ---
 
 ## Quick Navigation

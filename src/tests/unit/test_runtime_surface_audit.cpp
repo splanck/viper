@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "il/runtime/classes/RuntimeClasses.hpp"
+#include "tests/RuntimeDefTestView.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <cctype>
@@ -230,7 +231,7 @@ std::string stripPreprocessor(std::string input) {
 }
 
 std::unordered_map<std::string, std::string> runtimeDefCanonicalsToSymbols() {
-    const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
+    const std::string text = viper::tests::runtimeDefinitionText();
     const std::regex funcRe(
         R"RTFUNC(RT_FUNC\(\s*([A-Za-z0-9_]+)\s*,\s*(rt_[A-Za-z0-9_]+)\s*,\s*"([^"]+)")RTFUNC");
     std::unordered_map<std::string, std::string> out;
@@ -251,7 +252,7 @@ std::unordered_set<std::string> runtimeDefSymbols() {
 }
 
 std::vector<SignatureRecord> runtimeDefSignatures() {
-    const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
+    const std::string text = viper::tests::runtimeDefinitionText();
     std::vector<SignatureRecord> signatures;
 
     const std::regex funcRe(
@@ -433,7 +434,7 @@ TEST(RuntimeSurfaceAudit, RuntimeDefHasNoRawPointerSurfaceTypes) {
 }
 
 TEST(RuntimeSurfaceAudit, ZiaCallbackBridgeRolesAreDeclaredInRuntimeDef) {
-    const std::string text = readText(repoRoot() / "src/il/runtime/runtime.def");
+    const std::string text = viper::tests::runtimeDefinitionText();
     const std::vector<std::string> required = {
         "RT_BRIDGE(ThreadStart, \"callback,payload\")",
         "RT_BRIDGE(ThreadStartSafe, \"callback,payload\")",

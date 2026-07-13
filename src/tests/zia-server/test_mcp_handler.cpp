@@ -48,8 +48,7 @@ static JsonValue parseResponse(const std::string &resp) {
 /// call this helper instead of only sending `initialize`.
 static void startMcpSession(McpHandler &handler) {
     (void)handler.handleRequest(makeReq("initialize"));
-    (void)handler.handleRequest(
-        {"initialized", JsonValue::object({}), JsonValue() /* null id */});
+    (void)handler.handleRequest({"initialized", JsonValue::object({}), JsonValue() /* null id */});
 }
 
 // ===== Lifecycle =====
@@ -317,9 +316,17 @@ TEST(McpHandler, ToolsCallCompletions) {
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     EXPECT_TRUE(resp.has("result"));
     auto text = resp["result"]["content"].at(0)["text"].asString();
-    // Should be a JSON array (possibly empty, but valid JSON)
     auto parsed = JsonValue::parse(text);
-    (void)parsed;
+    const auto &completions = parsed["completions"];
+    bool foundDocumentation = false;
+    for (std::size_t i = 0; i < completions.size(); ++i) {
+        const auto &item = completions.at(i);
+        if (item.has("documentation") && !item["documentation"].asString().empty()) {
+            foundDocumentation = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundDocumentation);
 }
 
 TEST(McpHandler, ToolsCallSymbols) {
@@ -440,6 +447,21 @@ TEST(McpHandler, ToolsCallRuntimeClasses) {
     auto text = resp["result"]["content"].at(0)["text"].asString();
     auto parsed = JsonValue::parse(text);
     EXPECT_TRUE(parsed["classes"].size() > 0u);
+    bool foundAuthoredDocumentation = false;
+    const auto &classes = parsed["classes"];
+    for (std::size_t i = 0; i < classes.size(); ++i) {
+        const auto &runtimeClass = classes.at(i);
+        if (runtimeClass["qname"].asString() != "Viper.Terminal")
+            continue;
+        EXPECT_EQ(runtimeClass["documentation"]["format"].asString(), "markdown");
+        EXPECT_TRUE(runtimeClass["documentation"]["summary"].asString().find(
+                        "terminal input, output, styling") != std::string::npos);
+        EXPECT_TRUE(runtimeClass["documentation"]["details"].asString().find("`Viper.Terminal`") !=
+                    std::string::npos);
+        foundAuthoredDocumentation = true;
+        break;
+    }
+    EXPECT_TRUE(foundAuthoredDocumentation);
 }
 
 TEST(McpHandler, ToolsCallRuntimeMethods) {

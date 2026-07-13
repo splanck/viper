@@ -1,0 +1,779 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/classes/threads_network.def
+// Purpose: Threading, time, math, and network runtime class declarations.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+
+// Viper.Threads.ConcurrentQueue - thread-safe FIFO queue
+/// @summary Provides thread-safe FIFO queue.
+/// @details
+/// Create `Viper.Threads.ConcurrentQueue` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `IsClosed`, `Count` and operations including `Clear`, `Close`, `Dequeue`,
+/// `DequeueTimeout`.
+RT_CLASS_BEGIN("Viper.Threads.ConcurrentQueue", ConcurrentQueue, "obj", ConcQueueNew)
+    RT_PROP("IsEmpty", "i1", ConcQueueIsEmpty, none)
+    RT_PROP("IsClosed", "i1", ConcQueueIsClosed, none)
+    RT_PROP("Count", "i64", ConcQueueLen, none)
+    RT_METHOD("Clear", "void()", ConcQueueClear)
+    RT_METHOD("Close", "void()", ConcQueueClose)
+    RT_METHOD("Dequeue", "obj()", ConcQueueDequeue)
+    RT_METHOD("DequeueTimeout", "obj(i64)", ConcQueueDequeueTimeout)
+    RT_METHOD("Enqueue", "void(obj)", ConcQueueEnqueue)
+    RT_METHOD("Peek", "obj()", ConcQueuePeek)
+    RT_METHOD("TryDequeue", "obj()", ConcQueueTryDequeue)
+    RT_METHOD("TryDequeueOption", "obj<Viper.Option>()", ConcQueueTryDequeueOption)
+RT_CLASS_END()
+
+// Viper.Threads.ConcurrentMap - thread-safe hash map
+/// @summary Provides thread-safe hash map.
+/// @details
+/// Create `Viper.Threads.ConcurrentMap` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `IsEmpty`, `Count` and operations including `Clear`, `Get`, `GetOr`, `Has`.
+RT_CLASS_BEGIN("Viper.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
+    RT_PROP("IsEmpty", "i1", ConcMapIsEmpty, none)
+    RT_PROP("Count", "i64", ConcMapLen, none)
+    RT_METHOD("Clear", "void()", ConcMapClear)
+    RT_METHOD("Get", "obj(str)", ConcMapGet)
+    RT_METHOD("GetOr", "obj(str,obj)", ConcMapGetOr)
+    RT_METHOD("Has", "i1(str)", ConcMapHas)
+    RT_METHOD("Keys", "obj()", ConcMapKeys)
+    RT_METHOD("Remove", "i1(str)", ConcMapRemove)
+    RT_METHOD("Set", "void(str,obj)", ConcMapSet)
+    RT_METHOD("SetIfMissing", "i1(str,obj)", ConcMapSetIfMissing)
+    RT_METHOD("Values", "obj()", ConcMapValues)
+RT_CLASS_END()
+
+// Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
+/// @summary Provides fIFO-fair, re-entrant monitor primitive.
+/// @details
+/// `Viper.Threads.Monitor` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Enter`,
+/// `TryEnter`, `TryEnterFor`, `Exit`.
+RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
+    RT_METHOD("Enter", "void(obj)", MonitorEnter)
+    RT_METHOD("TryEnter", "i1(obj)", MonitorTryEnter)
+    RT_METHOD("TryEnterFor", "i1(obj,i64)", MonitorTryEnterFor)
+    RT_METHOD("Exit", "void(obj)", MonitorExit)
+    RT_METHOD("Wait", "void(obj)", MonitorWait)
+    RT_METHOD("WaitFor", "i1(obj,i64)", MonitorWaitFor)
+    RT_METHOD("Pause", "void(obj)", MonitorPause)
+    RT_METHOD("PauseAll", "void(obj)", MonitorPauseAll)
+RT_CLASS_END()
+
+// Viper.Threads.SafeI64 - FIFO-safe integer cell
+/// @summary Provides fIFO-safe integer cell.
+/// @details
+/// Create `Viper.Threads.SafeI64` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including `Get`,
+/// `Set`, `Add`, `CompareExchange`.
+RT_CLASS_BEGIN("Viper.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
+    RT_METHOD("Get", "i64()", SafeI64Get)
+    RT_METHOD("Set", "void(i64)", SafeI64Set)
+    RT_METHOD("Add", "i64(i64)", SafeI64Add)
+    RT_METHOD("CompareExchange", "i64(i64,i64)", SafeI64CompareExchange)
+RT_CLASS_END()
+
+// Viper.Threads.Gate - FIFO-fair permit gate (semaphore)
+/// @summary Provides fIFO-fair permit gate (semaphore).
+/// @details
+/// Create `Viper.Threads.Gate` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as `Permits`
+/// and operations including `Enter`, `TryEnter`, `TryEnterFor`, `Leave`.
+RT_CLASS_BEGIN("Viper.Threads.Gate", ThreadsGate, "obj", GateNew)
+    RT_PROP("Permits", "i64", GateGetPermits, none)
+    RT_METHOD("Enter", "void()", GateEnter)
+    RT_METHOD("TryEnter", "i1()", GateTryEnter)
+    RT_METHOD("TryEnterFor", "i1(i64)", GateTryEnterFor)
+    RT_METHOD("Leave", "void()", GateLeave)
+    RT_METHOD("Leave", "void(i64)", GateLeaveMany)
+RT_CLASS_END()
+
+// Viper.Threads.Barrier - reusable N-party barrier
+/// @summary Provides reusable N-party barrier.
+/// @details
+/// Create `Viper.Threads.Barrier` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Parties`,
+/// `Waiting` and operations including `Arrive`, `Reset`.
+RT_CLASS_BEGIN("Viper.Threads.Barrier", ThreadsBarrier, "obj", BarrierNew)
+    RT_PROP("Parties", "i64", BarrierGetParties, none)
+    RT_PROP("Waiting", "i64", BarrierGetWaiting, none)
+    RT_METHOD("Arrive", "i64()", BarrierArrive)
+    RT_METHOD("Reset", "void()", BarrierReset)
+RT_CLASS_END()
+
+// Viper.Threads.RwLock - writer-preference reader-writer lock
+/// @summary Provides writer-preference reader-writer lock.
+/// @details
+/// Create `Viper.Threads.RwLock` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Readers`,
+/// `IsWriteLocked` and operations including `ReadEnter`, `ReadExit`, `WriteEnter`, `WriteExit`.
+RT_CLASS_BEGIN("Viper.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
+    RT_PROP("Readers", "i64", RwLockGetReaders, none)
+    RT_PROP("IsWriteLocked", "i1", RwLockGetIsWriteLocked, none)
+    RT_METHOD("ReadEnter", "void()", RwLockReadEnter)
+    RT_METHOD("ReadExit", "void()", RwLockReadExit)
+    RT_METHOD("WriteEnter", "void()", RwLockWriteEnter)
+    RT_METHOD("WriteExit", "void()", RwLockWriteExit)
+    RT_METHOD("TryReadEnter", "i1()", RwLockTryReadEnter)
+    RT_METHOD("TryWriteEnter", "i1()", RwLockTryWriteEnter)
+RT_CLASS_END()
+
+// Viper.Threads.Thread - OS thread handle
+/// @summary Provides oS thread handle.
+/// @details
+/// `Viper.Threads.Thread` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Id`, `IsAlive`,
+/// `HasError` and operations including `Start`, `StartOwned`, `StartSafe`, `StartSafeOwned`.
+RT_CLASS_BEGIN("Viper.Threads.Thread", ThreadsThread, "obj", none)
+    RT_PROP("Id", "i64", ThreadGetId, none)
+    RT_PROP("IsAlive", "i1", ThreadGetIsAlive, none)
+    RT_METHOD("Start", "obj(obj,obj)", ThreadStart)
+    RT_METHOD("StartOwned", "obj(obj,obj)", ThreadStartOwned)
+    RT_METHOD("StartSafe", "obj(obj,obj)", ThreadStartSafe)
+    RT_METHOD("StartSafeOwned", "obj(obj,obj)", ThreadStartSafeOwned)
+    RT_METHOD("Join", "void()", ThreadJoin)
+    RT_METHOD("TryJoin", "i1()", ThreadTryJoin)
+    RT_METHOD("JoinFor", "i1(i64)", ThreadJoinFor)
+    RT_METHOD("Sleep", "void(i64)", ThreadSleep)
+    RT_METHOD("Yield", "void()", ThreadYield)
+    RT_METHOD("SafeJoin", "void()", ThreadSafeJoin)
+    RT_METHOD("SafeGetId", "i64()", ThreadSafeGetId)
+    RT_METHOD("SafeIsAlive", "i1()", ThreadSafeIsAlive)
+    RT_PROP("HasError", "i1", ThreadHasError, none)
+    RT_PROP("Error", "str", ThreadGetError, none)
+RT_CLASS_END()
+
+// Viper.Threads.Promise - async result producer
+RT_FUNC(PromiseNew,        rt_promise_new,        "Viper.Threads.Promise.New",        "obj()")
+RT_FUNC(PromiseGetFuture,  rt_promise_get_future,  "Viper.Threads.Promise.GetFuture", "obj<Viper.Threads.Future>(obj)")
+RT_FUNC(PromiseSet,        rt_promise_set,          "Viper.Threads.Promise.Set",       "void(obj,obj)")
+RT_FUNC(PromiseSetOwned,   rt_promise_set_owned,    "Viper.Threads.Promise.SetOwned",  "void(obj,obj)")
+RT_FUNC(PromiseSetError,   rt_promise_set_error,    "Viper.Threads.Promise.SetError",  "void(obj,str)")
+RT_FUNC(PromiseIsDone,     rt_promise_is_done,      "Viper.Threads.Promise.get_IsDone","i1(obj)")
+/// @summary Provides Promise functionality for concurrent and asynchronous programs.
+/// @details
+/// Create `Viper.Threads.Promise` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as `IsDone`
+/// and operations including `GetFuture`, `Set`, `SetOwned`, `SetError`.
+RT_CLASS_BEGIN("Viper.Threads.Promise", ThreadsPromise, "obj", PromiseNew)
+    RT_METHOD("GetFuture", "obj<Viper.Threads.Future>()", PromiseGetFuture)
+    RT_METHOD("Set", "void(obj)", PromiseSet)
+    RT_METHOD("SetOwned", "void(obj)", PromiseSetOwned)
+    RT_METHOD("SetError", "void(str)", PromiseSetError)
+    RT_PROP("IsDone", "i1", PromiseIsDone, none)
+RT_CLASS_END()
+
+// Viper.Threads.Future - async result consumer
+RT_FUNC(FutureGet,         rt_future_get,           "Viper.Threads.Future.Get",         "obj(obj)")
+RT_FUNC(FutureWait,        rt_future_wait,           "Viper.Threads.Future.Wait",       "void(obj)")
+RT_FUNC(FutureWaitFor,     rt_future_wait_for,       "Viper.Threads.Future.WaitFor",    "i1(obj,i64)")
+RT_FUNC(FutureIsDone,      rt_future_is_done,        "Viper.Threads.Future.get_IsDone", "i1(obj)")
+RT_FUNC(FutureIsError,     rt_future_is_error,       "Viper.Threads.Future.get_IsError","i1(obj)")
+RT_FUNC(FutureGetError,    rt_future_get_error,      "Viper.Threads.Future.get_Error",  "str(obj)")
+RT_FUNC(FutureTryGetVal,   rt_future_try_get_val,    "Viper.Threads.Future.TryGet",     "obj(obj)")
+RT_FUNC(FutureTryGetOption, rt_future_try_get_option, "Viper.Threads.Future.TryGetOption", "obj<Viper.Option>(obj)")
+RT_FUNC(FutureGetForVal,   rt_future_get_for_val,    "Viper.Threads.Future.GetFor",     "obj(obj,i64)")
+RT_FUNC(AsyncRun,          rt_async_run,             "Viper.Threads.Async.Run",             "obj<Viper.Threads.Future>(obj,obj)")
+RT_FUNC(AsyncRunOwned,     rt_async_run_owned,       "Viper.Threads.Async.RunOwned",        "obj<Viper.Threads.Future>(obj,obj)")
+RT_FUNC(AsyncRunCancellable, rt_async_run_cancellable, "Viper.Threads.Async.RunCancellable", "obj<Viper.Threads.Future>(obj,obj,obj)")
+RT_FUNC(AsyncRunCancellableOwned, rt_async_run_cancellable_owned, "Viper.Threads.Async.RunCancellableOwned", "obj<Viper.Threads.Future>(obj,obj,obj)")
+RT_BRIDGE(AsyncRun, "callback,payload")
+RT_BRIDGE(AsyncRunOwned, "callback,none")
+RT_BRIDGE(AsyncRunCancellable, "callback,payload,none")
+RT_BRIDGE(AsyncRunCancellableOwned, "callback,none,none")
+RT_FUNC(AsyncDelay,        rt_async_delay,           "Viper.Threads.Async.Delay",       "obj<Viper.Threads.Future>(i64)")
+RT_FUNC(AsyncAll,          rt_async_all,             "Viper.Threads.Async.All",         "obj<Viper.Threads.Future>(obj)")
+RT_FUNC(AsyncAny,          rt_async_any,             "Viper.Threads.Async.Any",         "obj<Viper.Threads.Future>(obj)")
+RT_FUNC(AsyncMap,          rt_async_map,             "Viper.Threads.Async.Map",         "obj<Viper.Threads.Future>(obj,obj,obj)")
+RT_FUNC(AsyncMapOwned,     rt_async_map_owned,       "Viper.Threads.Async.MapOwned",    "obj<Viper.Threads.Future>(obj,obj,obj)")
+RT_BRIDGE(AsyncMap, "none,callback,payload")
+RT_BRIDGE(AsyncMapOwned, "none,callback,none")
+/// @summary Provides Future functionality for concurrent and asynchronous programs.
+/// @details
+/// `Viper.Threads.Future` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `IsDone`, `IsError`,
+/// `Error` and operations including `Get`, `TryGet`, `TryGetOption`, `GetFor`.
+RT_CLASS_BEGIN("Viper.Threads.Future", ThreadsFuture, "obj", none)
+    RT_METHOD("Get", "obj()", FutureGet)
+    RT_METHOD("TryGet", "obj()", FutureTryGetVal)
+    RT_METHOD("TryGetOption", "obj<Viper.Option>()", FutureTryGetOption)
+    RT_METHOD("GetFor", "obj(i64)", FutureGetForVal)
+    RT_METHOD("Wait", "void()", FutureWait)
+    RT_METHOD("WaitFor", "i1(i64)", FutureWaitFor)
+    RT_PROP("IsDone", "i1", FutureIsDone, none)
+    RT_PROP("IsError", "i1", FutureIsError, none)
+    RT_PROP("Error", "str", FutureGetError, none)
+RT_CLASS_END()
+
+// Viper.Threads.Async - high-level async combinators
+/// @summary Provides high-level async combinators.
+/// @details
+/// `Viper.Threads.Async` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Run`, `RunOwned`,
+/// `RunCancellable`, `RunCancellableOwned`.
+RT_CLASS_BEGIN("Viper.Threads.Async", ThreadsAsync, "obj", none)
+    RT_METHOD("Run", "obj<Viper.Threads.Future>(obj,obj)", AsyncRun)
+    RT_METHOD("RunOwned", "obj<Viper.Threads.Future>(obj,obj)", AsyncRunOwned)
+    RT_METHOD("RunCancellable", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncRunCancellable)
+    RT_METHOD("RunCancellableOwned", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncRunCancellableOwned)
+    RT_METHOD("Delay", "obj<Viper.Threads.Future>(i64)", AsyncDelay)
+    RT_METHOD("All", "obj<Viper.Threads.Future>(obj)", AsyncAll)
+    RT_METHOD("Any", "obj<Viper.Threads.Future>(obj)", AsyncAny)
+    RT_METHOD("Map", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncMap)
+    RT_METHOD("MapOwned", "obj<Viper.Threads.Future>(obj,obj,obj)", AsyncMapOwned)
+RT_CLASS_END()
+
+// Viper.Threads.Parallel - parallel execution utilities
+/// @summary Provides parallel execution utilities.
+/// @details
+/// `Viper.Threads.Parallel` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `ForEach`,
+/// `ForEachPool`, `Map`, `MapPool`.
+RT_CLASS_BEGIN("Viper.Threads.Parallel", ThreadsParallel, "obj", none)
+    RT_METHOD("ForEach", "void(obj,obj)", ParallelForEach)
+    RT_METHOD("ForEachPool", "void(obj,obj,obj)", ParallelForEachPool)
+    RT_METHOD("Map", "obj(obj,obj)", ParallelMap)
+    RT_METHOD("MapPool", "obj(obj,obj,obj)", ParallelMapPool)
+    RT_METHOD("Invoke", "void(obj)", ParallelInvoke)
+    RT_METHOD("InvokePool", "void(obj,obj)", ParallelInvokePool)
+    RT_METHOD("For", "void(i64,i64,obj)", ParallelFor)
+    RT_METHOD("ForPool", "void(i64,i64,obj,obj)", ParallelForPool)
+    RT_METHOD("Reduce", "obj(obj,obj,obj)", ParallelReduce)
+    RT_METHOD("ReducePool", "obj(obj,obj,obj,obj)", ParallelReducePool)
+    RT_METHOD("DefaultWorkers", "i64()", ParallelDefaultWorkers)
+    RT_METHOD("DefaultPool", "obj()", ParallelDefaultPool)
+RT_CLASS_END()
+
+// Viper.Threads.CancelToken - cooperative cancellation
+/// @summary Provides cooperative cancellation.
+/// @details
+/// Create `Viper.Threads.CancelToken` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes a property such as
+/// `IsCancelled` and operations including `Cancel`, `Reset`, `Linked`, `Check`.
+RT_CLASS_BEGIN("Viper.Threads.CancelToken", CancelToken, "obj", CancelNew)
+    RT_PROP("IsCancelled", "i1", CancelIsCancelled, none)
+    RT_METHOD("Cancel", "void()", CancelCancel)
+    RT_METHOD("Reset", "void()", CancelReset)
+    RT_METHOD("Linked", "obj(obj)", CancelLinked)
+    RT_METHOD("Check", "i1()", CancelCheck)
+    RT_METHOD("ThrowIfCancelled", "void()", CancelThrowIfCancelled)
+RT_CLASS_END()
+
+// Viper.Threads.Debouncer - delay-until-quiet rate limiter
+/// @summary Provides delay-until-quiet rate limiter.
+/// @details
+/// Create `Viper.Threads.Debouncer` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Delay`,
+/// `IsReady`, `SignalCount` and operations including `Signal`, `Reset`.
+RT_CLASS_BEGIN("Viper.Threads.Debouncer", Debouncer, "obj", DebounceNew)
+    RT_PROP("Delay", "i64", DebounceGetDelay, none)
+    RT_PROP("IsReady", "i1", DebounceIsReady, none)
+    RT_PROP("SignalCount", "i64", DebounceGetSignalCount, none)
+    RT_METHOD("Signal", "void()", DebounceSignal)
+    RT_METHOD("Reset", "void()", DebounceReset)
+RT_CLASS_END()
+
+// Viper.Threads.Throttler - interval-based rate limiter
+/// @summary Provides interval-based rate limiter.
+/// @details
+/// Create `Viper.Threads.Throttler` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `CanProceed`, `Count`, `Interval` and operations including `Try`, `Reset`.
+RT_CLASS_BEGIN("Viper.Threads.Throttler", Throttler, "obj", ThrottleNew)
+    RT_PROP("CanProceed", "i1", ThrottleCanProceed, none)
+    RT_PROP("Count", "i64", ThrottleGetCount, none)
+    RT_PROP("Interval", "i64", ThrottleGetInterval, none)
+    RT_PROP("RemainingMs", "i64", ThrottleRemainingMs, none)
+    RT_METHOD("Try", "i1()", ThrottleTry)
+    RT_METHOD("Reset", "void()", ThrottleReset)
+RT_CLASS_END()
+
+// Viper.Time.Clock - basic timing utilities (sleep, ticks)
+/// @summary Provides basic timing utilities (sleep, ticks).
+/// @details
+/// `Viper.Time.Clock` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Sleep`, `Ticks`,
+/// `TicksUs`.
+RT_CLASS_BEGIN("Viper.Time.Clock", Clock, "obj", none)
+    RT_METHOD("Sleep", "void(i64)", ClockSleep)
+    RT_METHOD("Ticks", "i64()", ClockTicks)
+    RT_METHOD("TicksUs", "i64()", ClockTicksUs)
+RT_CLASS_END()
+
+// Viper.Time.Countdown - interval timing with expiration
+/// @summary Provides interval timing with expiration.
+/// @details
+/// Create `Viper.Time.Countdown` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Elapsed`,
+/// `Remaining`, `Expired` and operations including `Start`, `Stop`, `Reset`, `Wait`.
+RT_CLASS_BEGIN("Viper.Time.Countdown", Countdown, "obj", CountdownNew)
+    RT_PROP("Elapsed", "i64", CountdownElapsed, none)
+    RT_PROP("Remaining", "i64", CountdownRemaining, none)
+    RT_PROP("Expired", "i1", CountdownExpired, none)
+    RT_PROP("Interval", "i64", CountdownInterval, CountdownSetInterval)
+    RT_PROP("IsRunning", "i1", CountdownIsRunning, none)
+    RT_METHOD("Start", "void()", CountdownStart)
+    RT_METHOD("Stop", "void()", CountdownStop)
+    RT_METHOD("Reset", "void()", CountdownReset)
+    RT_METHOD("Wait", "void()", CountdownWait)
+RT_CLASS_END()
+
+// Viper.Vec2 - 2D vector math
+/// @summary Provides Vec 2 functionality for numeric and geometric calculations.
+/// @details
+/// Create `Viper.Math.Vec2` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `X`, `Y` and
+/// operations including `Zero`, `One`, `Add`, `Sub`.
+RT_CLASS_BEGIN("Viper.Math.Vec2", Vec2, "obj", Vec2New)
+    RT_PROP("X", "f64", Vec2X, none)
+    RT_PROP("Y", "f64", Vec2Y, none)
+    RT_METHOD("Zero", "obj()", Vec2Zero)
+    RT_METHOD("One", "obj()", Vec2One)
+    RT_METHOD("Add", "obj(obj)", Vec2Add)
+    RT_METHOD("Sub", "obj(obj)", Vec2Sub)
+    RT_METHOD("Mul", "obj(f64)", Vec2Mul)
+    RT_METHOD("Scale", "obj(f64)", Vec2Mul)
+    RT_METHOD("Div", "obj(f64)", Vec2Div)
+    RT_METHOD("Dot", "f64(obj)", Vec2Dot)
+    RT_METHOD("Cross", "f64(obj)", Vec2Cross)
+    RT_METHOD("Len", "f64()", Vec2Len)
+    RT_METHOD("Length", "f64()", Vec2Len)
+    RT_METHOD("LenSq", "f64()", Vec2LenSq)
+    RT_METHOD("Norm", "obj()", Vec2Norm)
+    RT_METHOD("Normalize", "obj()", Vec2Norm)
+    RT_METHOD("Dist", "f64(obj)", Vec2Dist)
+    RT_METHOD("Distance", "f64(obj)", Vec2Dist)
+    RT_METHOD("Lerp", "obj(obj,f64)", Vec2Lerp)
+    RT_METHOD("Angle", "f64()", Vec2Angle)
+    RT_METHOD("Rotate", "obj(f64)", Vec2Rotate)
+    RT_METHOD("Neg", "obj()", Vec2Neg)
+RT_CLASS_END()
+
+// Viper.Vec3 - 3D vector math
+/// @summary Provides Vec 3 functionality for numeric and geometric calculations.
+/// @details
+/// Create `Viper.Math.Vec3` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z` and
+/// operations including `Set`, `CopyFrom`, `Add`, `Sub`.
+RT_CLASS_BEGIN("Viper.Math.Vec3", Vec3, "obj", Vec3New)
+    RT_PROP("X", "f64", Vec3X, Vec3SetX)
+    RT_PROP("Y", "f64", Vec3Y, Vec3SetY)
+    RT_PROP("Z", "f64", Vec3Z, Vec3SetZ)
+    RT_METHOD("Set", "void(f64,f64,f64)", Vec3Set)
+    RT_METHOD("CopyFrom", "void(obj)", Vec3CopyFrom)
+    RT_METHOD("Add", "obj(obj)", Vec3Add)
+    RT_METHOD("Sub", "obj(obj)", Vec3Sub)
+    RT_METHOD("Mul", "obj(f64)", Vec3Mul)
+    RT_METHOD("Scale", "obj(f64)", Vec3Mul)
+    RT_METHOD("Div", "obj(f64)", Vec3Div)
+    RT_METHOD("Dot", "f64(obj)", Vec3Dot)
+    RT_METHOD("Cross", "obj(obj)", Vec3Cross)
+    RT_METHOD("Len", "f64()", Vec3Len)
+    RT_METHOD("Length", "f64()", Vec3Len)
+    RT_METHOD("LenSq", "f64()", Vec3LenSq)
+    RT_METHOD("Norm", "obj()", Vec3Norm)
+    RT_METHOD("Normalize", "obj()", Vec3Norm)
+    RT_METHOD("Dist", "f64(obj)", Vec3Dist)
+    RT_METHOD("Distance", "f64(obj)", Vec3Dist)
+    RT_METHOD("Lerp", "obj(obj,f64)", Vec3Lerp)
+    RT_METHOD("Neg", "obj()", Vec3Neg)
+    RT_METHOD("Reflect", "obj(obj)", Vec3Reflect)
+    RT_METHOD("Project", "obj(obj)", Vec3Project)
+    RT_METHOD("ClampLen", "obj(f64)", Vec3ClampLen)
+    RT_METHOD("MoveTowards", "obj(obj,f64)", Vec3MoveTowards)
+    RT_METHOD("Angle", "f64(obj)", Vec3Angle)
+    RT_METHOD("Min", "obj(obj)", Vec3Min)
+    RT_METHOD("Max", "obj(obj)", Vec3Max)
+RT_CLASS_END()
+
+// Viper.Math.Quat - quaternion rotation math
+/// @summary Provides quaternion rotation math.
+/// @details
+/// Create `Viper.Math.Quat` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `X`, `Y`, `Z` and
+/// operations including `Identity`, `FromAxisAngle`, `FromEuler`, `Mul`.
+RT_CLASS_BEGIN("Viper.Math.Quat", Quat, "obj", QuatNew)
+    RT_PROP("X", "f64", QuatX, none)
+    RT_PROP("Y", "f64", QuatY, none)
+    RT_PROP("Z", "f64", QuatZ, none)
+    RT_PROP("W", "f64", QuatW, none)
+    RT_METHOD("Identity", "obj()", QuatIdentity)
+    RT_METHOD("FromAxisAngle", "obj(obj,f64)", QuatFromAxisAngle)
+    RT_METHOD("FromEuler", "obj(f64,f64,f64)", QuatFromEuler)
+    RT_METHOD("Mul", "obj(obj)", QuatMul)
+    RT_METHOD("Conjugate", "obj()", QuatConjugate)
+    RT_METHOD("Inverse", "obj()", QuatInverse)
+    RT_METHOD("Norm", "obj()", QuatNorm)
+    RT_METHOD("Len", "f64()", QuatLen)
+    RT_METHOD("LenSq", "f64()", QuatLenSq)
+    RT_METHOD("Dot", "f64(obj)", QuatDot)
+    RT_METHOD("Slerp", "obj(obj,f64)", QuatSlerp)
+    RT_METHOD("Lerp", "obj(obj,f64)", QuatLerp)
+    RT_METHOD("RotateVec3", "obj(obj)", QuatRotateVec3)
+    RT_METHOD("ToMat4", "obj()", QuatToMat4)
+    RT_METHOD("Axis", "obj()", QuatAxis)
+    RT_METHOD("Angle", "f64()", QuatAngle)
+RT_CLASS_END()
+
+// Viper.Math.Spline - curve interpolation
+/// @summary Provides curve interpolation.
+/// @details
+/// `Viper.Math.Spline` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes a property such as `PointCount` and
+/// operations including `CatmullRom`, `Bezier`, `Linear`, `Eval`.
+RT_CLASS_BEGIN("Viper.Math.Spline", Spline, "obj", none)
+    RT_METHOD("CatmullRom", "obj(obj)", SplineCatmullRom)
+    RT_METHOD("Bezier", "obj(obj,obj,obj,obj)", SplineBezier)
+    RT_METHOD("Linear", "obj(obj)", SplineLinear)
+    RT_METHOD("Eval", "obj(obj,f64)", SplineEval)
+    RT_METHOD("Tangent", "obj(obj,f64)", SplineTangent)
+    RT_PROP("PointCount", "i64", SplinePointCount, none)
+    RT_METHOD("PointAt", "obj(obj,i64)", SplinePointAt)
+    RT_METHOD("ArcLength", "f64(obj,f64,f64,i64)", SplineArcLength)
+    RT_METHOD("Sample", "obj(obj,i64)", SplineSample)
+RT_CLASS_END()
+
+// Viper.Network.Tcp - TCP client connection
+/// @summary Provides tCP client connection.
+/// @details
+/// `Viper.Network.Tcp` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
+/// `LocalPort` and operations including `Connect`, `ConnectFor`, `Send`, `SendStr`.
+RT_CLASS_BEGIN("Viper.Network.Tcp", Tcp, "obj", none)
+    // Static constructors
+    RT_METHOD("Connect", "obj(str,i64)", TcpConnect)
+    RT_METHOD("ConnectFor", "obj(str,i64,i64)", TcpConnectFor)
+    // Properties (instance, takes receiver as arg0)
+    RT_PROP("Host", "str", TcpHost, none)
+    RT_PROP("Port", "i64", TcpPort, none)
+    RT_PROP("LocalPort", "i64", TcpLocalPort, none)
+    RT_PROP("IsOpen", "i1", TcpIsOpen, none)
+    RT_PROP("Available", "i64", TcpAvailable, none)
+    // Send methods
+    RT_METHOD("Send", "i64(obj)", TcpSend)
+    RT_METHOD("SendStr", "i64(str)", TcpSendStr)
+    RT_METHOD("SendAll", "void(obj)", TcpSendAll)
+    // Receive methods
+    RT_METHOD("Recv", "obj(i64)", TcpRecv)
+    RT_METHOD("RecvStr", "str(i64)", TcpRecvStr)
+    RT_METHOD("RecvExact", "obj(i64)", TcpRecvExact)
+    RT_METHOD("RecvLine", "str()", TcpRecvLine)
+    // Timeout and close
+    RT_METHOD("SetRecvTimeout", "void(i64)", TcpSetRecvTimeout)
+    RT_METHOD("SetSendTimeout", "void(i64)", TcpSetSendTimeout)
+    RT_METHOD("Close", "void()", TcpClose)
+RT_CLASS_END()
+
+// Viper.Network.TcpServer - TCP server (listener)
+/// @summary Provides tCP server (listener).
+/// @details
+/// `Viper.Network.TcpServer` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Port`, `Address`,
+/// `IsListening` and operations including `Listen`, `ListenAt`, `Accept`, `AcceptFor`.
+RT_CLASS_BEGIN("Viper.Network.TcpServer", TcpServer, "obj", none)
+    // Static constructors
+    RT_METHOD("Listen", "obj(i64)", TcpServerListen)
+    RT_METHOD("ListenAt", "obj(str,i64)", TcpServerListenAt)
+    // Properties
+    RT_PROP("Port", "i64", TcpServerPort, none)
+    RT_PROP("Address", "str", TcpServerAddress, none)
+    RT_PROP("IsListening", "i1", TcpServerIsListening, none)
+    // Accept and close
+    RT_METHOD("Accept", "obj<Viper.Network.Tcp>()", TcpServerAccept)
+    RT_METHOD("AcceptFor", "obj<Viper.Network.Tcp>(i64)", TcpServerAcceptFor)
+    RT_METHOD("Close", "void()", TcpServerClose)
+RT_CLASS_END()
+
+// Viper.Network.Udp - UDP datagram socket
+/// @summary Provides uDP datagram socket.
+/// @details
+/// Create `Viper.Network.Udp` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Port`,
+/// `Address`, `IsBound` and operations including `Bind`, `BindAt`, `SendTo`, `SendToStr`.
+RT_CLASS_BEGIN("Viper.Network.Udp", Udp, "obj", UdpNew)
+    // Static constructors
+    RT_METHOD("New", "obj()", UdpNew)
+    RT_METHOD("Bind", "obj(i64)", UdpBind)
+    RT_METHOD("BindAt", "obj(str,i64)", UdpBindAt)
+    // Properties
+    RT_PROP("Port", "i64", UdpPort, none)
+    RT_PROP("Address", "str", UdpAddress, none)
+    RT_PROP("IsBound", "i1", UdpIsBound, none)
+    // Send methods
+    RT_METHOD("SendTo", "i64(str,i64,obj)", UdpSendTo)
+    RT_METHOD("SendToStr", "i64(str,i64,str)", UdpSendToStr)
+    // Receive methods
+    RT_METHOD("Recv", "obj(i64)", UdpRecv)
+    RT_METHOD("RecvFrom", "obj(i64)", UdpRecvFrom)
+    RT_METHOD("RecvFor", "obj(i64,i64)", UdpRecvFor)
+    RT_METHOD("SenderHost", "str()", UdpSenderHost)
+    RT_METHOD("SenderPort", "i64()", UdpSenderPort)
+    // Options and close
+    RT_METHOD("SetBroadcast", "void(i1)", UdpSetBroadcast)
+    RT_METHOD("JoinGroup", "void(str)", UdpJoinGroup)
+    RT_METHOD("LeaveGroup", "void(str)", UdpLeaveGroup)
+    RT_METHOD("SetRecvTimeout", "void(i64)", UdpSetRecvTimeout)
+    RT_METHOD("Close", "void()", UdpClose)
+RT_CLASS_END()
+
+// Viper.Network.Dns - DNS resolution utility class (static)
+/// @summary Provides dNS resolution utility class (static).
+/// @details
+/// `Viper.Network.Dns` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resolve6`.
+RT_CLASS_BEGIN("Viper.Network.Dns", Dns, "none", none)
+    // Resolution methods
+    RT_METHOD("Resolve", "str(str)", DnsResolve)
+    RT_METHOD("ResolveAll", "obj(str)", DnsResolveAll)
+    RT_METHOD("Resolve4", "str(str)", DnsResolve4)
+    RT_METHOD("Resolve6", "str(str)", DnsResolve6)
+    RT_METHOD("Reverse", "str(str)", DnsReverse)
+    // Validation methods
+    RT_METHOD("IsIPv4", "i1(str)", DnsIsIPv4)
+    RT_METHOD("IsIPv6", "i1(str)", DnsIsIPv6)
+    RT_METHOD("IsIP", "i1(str)", DnsIsIP)
+    // Local info methods
+    RT_METHOD("LocalHost", "str()", DnsLocalHost)
+    RT_METHOD("LocalAddrs", "obj()", DnsLocalAddrs)
+RT_CLASS_END()
+
+// Viper.Network.Http - Static HTTP client utilities
+/// @summary Provides static HTTP client utilities.
+/// @details
+/// `Viper.Network.Http` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
+RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
+    // Simple GET/POST methods
+    RT_METHOD("Get", "str(str)", HttpGet)
+    RT_METHOD("GetBytes", "obj(str)", HttpGetBytes)
+    RT_METHOD("Post", "str(str,str)", HttpPost)
+    RT_METHOD("PostBytes", "obj(str,obj)", HttpPostBytes)
+    RT_METHOD("Download", "i1(str,str)", HttpDownload)
+    RT_METHOD("Head", "obj(str)", HttpHead)
+    RT_METHOD("Patch", "str(str,str)", HttpPatch)
+    RT_METHOD("Options", "str(str)", HttpOptions)
+RT_CLASS_END()
+
+// Viper.Network.HttpReq - HTTP request builder (instance class)
+/// @summary Provides hTTP request builder.
+/// @details
+/// Create `Viper.Network.HttpReq` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `SetHeader`, `SetBody`, `SetBodyStr`, `SetTimeout`.
+RT_CLASS_BEGIN("Viper.Network.HttpReq", HttpReq, "obj", HttpReqNew)
+    // Constructor
+    RT_METHOD("New", "obj(str,str)", HttpReqNew)
+    // Chainable setters
+    RT_METHOD("SetHeader", "obj(str,str)", HttpReqSetHeader)
+    RT_METHOD("SetBody", "obj(obj)", HttpReqSetBody)
+    RT_METHOD("SetBodyStr", "obj(str)", HttpReqSetBodyStr)
+    RT_METHOD("SetTimeout", "obj(i64)", HttpReqSetTimeout)
+    RT_METHOD("SetForceHttp1", "obj(i1)", HttpReqSetForceHttp1)
+    RT_METHOD("SetTlsVerify", "obj(i1)", HttpReqSetTlsVerify)
+    RT_METHOD("AllowInsecureCertificatesForTesting", "obj()", HttpReqAllowInsecureCertificatesForTesting)
+    RT_METHOD("SetKeepAlive", "obj(i1)", HttpReqSetKeepAlive)
+    // Send request
+    RT_METHOD("Send", "obj()", HttpReqSend)
+    RT_METHOD("SendResult", "obj<Viper.Result>()", HttpReqSendResult)
+RT_CLASS_END()
+
+// Viper.Network.HttpRes - HTTP response (instance class)
+/// @summary Provides hTTP response.
+/// @details
+/// `Viper.Network.HttpRes` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Status`,
+/// `StatusText`, `Headers` and operations including `Body`, `BodyStr`, `Header`, `IsOk`.
+RT_CLASS_BEGIN("Viper.Network.HttpRes", HttpRes, "obj", none)
+    // Properties
+    RT_PROP("Status", "i64", HttpResStatus, none)
+    RT_PROP("StatusText", "str", HttpResStatusText, none)
+    RT_PROP("Headers", "obj", HttpResHeaders, none)
+    // Methods
+    RT_METHOD("Body", "obj()", HttpResBody)
+    RT_METHOD("BodyStr", "str()", HttpResBodyStr)
+    RT_METHOD("Header", "str(str)", HttpResHeader)
+    RT_METHOD("IsOk", "i1()", HttpResIsOk)
+RT_CLASS_END()
+
+// Viper.Network.Url - URL parsing and construction (instance class)
+/// @summary Provides uRL parsing and construction.
+/// @details
+/// Create `Viper.Network.Url` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Scheme`, `Host`,
+/// `Port` and operations including `Parse`, `SetQueryParam`, `GetQueryParam`, `HasQueryParam`.
+RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", UrlNew)
+    // Static constructors
+    RT_METHOD("Parse", "obj(str)", UrlParse)
+    RT_METHOD("New", "obj()", UrlNew)
+    // Read/write properties
+    RT_PROP("Scheme", "str", UrlScheme, UrlSetScheme)
+    RT_PROP("Host", "str", UrlHost, UrlSetHost)
+    RT_PROP("Port", "i64", UrlPort, UrlSetPort)
+    RT_PROP("Path", "str", UrlPath, UrlSetPath)
+    RT_PROP("Query", "str", UrlQuery, UrlSetQuery)
+    RT_PROP("Fragment", "str", UrlFragment, UrlSetFragment)
+    RT_PROP("User", "str", UrlUser, UrlSetUser)
+    RT_PROP("Pass", "str", UrlPass, UrlSetPass)
+    // Read-only computed properties
+    RT_PROP("Authority", "str", UrlAuthority, none)
+    RT_PROP("HostPort", "str", UrlHostPort, none)
+    RT_PROP("Full", "str", UrlFull, none)
+    // Query parameter methods
+    RT_METHOD("SetQueryParam", "obj(str,str)", UrlSetQueryParam)
+    RT_METHOD("GetQueryParam", "str(str)", UrlGetQueryParam)
+    RT_METHOD("HasQueryParam", "i1(str)", UrlHasQueryParam)
+    RT_METHOD("DelQueryParam", "obj(str)", UrlDelQueryParam)
+    RT_METHOD("QueryMap", "obj()", UrlQueryMap)
+    // Other methods
+    RT_METHOD("Resolve", "obj(str)", UrlResolve)
+    RT_METHOD("Clone", "obj()", UrlClone)
+    // Static utility methods
+    RT_METHOD("Encode", "str(str)", UrlEncode)
+    RT_METHOD("Decode", "str(str)", UrlDecode)
+    RT_METHOD("EncodeQuery", "str(obj)", UrlEncodeQueryMap)
+    RT_METHOD("DecodeQuery", "obj(str)", UrlDecodeQueryStr)
+    RT_METHOD("IsValid", "i1(str)", UrlIsValid)
+RT_CLASS_END()
+
+// Viper.Network.WebSocket - WebSocket client for real-time communication
+/// @summary Provides webSocket client for real-time communication.
+/// @details
+/// `Viper.Network.WebSocket` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Url`, `IsOpen`,
+/// `CloseCode` and operations including `Connect`, `ConnectFor`, `ConnectProtocol`,
+/// `ConnectForProtocol`.
+RT_CLASS_BEGIN("Viper.Network.WebSocket", WebSocket, "obj", none)
+    // Static constructors
+    RT_METHOD("Connect", "obj(str)", WsConnect)
+    RT_METHOD("ConnectFor", "obj(str,i64)", WsConnectFor)
+    RT_METHOD("ConnectProtocol", "obj(str,str)", WsConnectProtocol)
+    RT_METHOD("ConnectForProtocol", "obj(str,i64,str)", WsConnectForProtocol)
+    // Properties
+    RT_PROP("Url", "str", WsUrl, none)
+    RT_PROP("IsOpen", "i1", WsIsOpen, none)
+    RT_PROP("CloseCode", "i64", WsCloseCode, none)
+    RT_PROP("CloseReason", "str", WsCloseReason, none)
+    RT_PROP("Subprotocol", "str", WsSubprotocol, none)
+    // Send methods
+    RT_METHOD("Send", "void(str)", WsSend)
+    RT_METHOD("SendBytes", "void(obj)", WsSendBytes)
+    RT_METHOD("Ping", "void()", WsPing)
+    // Receive methods
+    RT_METHOD("Recv", "str()", WsRecv)
+    RT_METHOD("RecvFor", "str(i64)", WsRecvFor)
+    RT_METHOD("RecvBytes", "obj()", WsRecvBytes)
+    RT_METHOD("RecvBytesFor", "obj(i64)", WsRecvBytesFor)
+    // Close methods
+    RT_METHOD("Close", "void()", WsClose)
+    RT_METHOD("CloseWith", "void(i64,str)", WsCloseWith)
+RT_CLASS_END()
+
+// Viper.Network.RetryPolicy - configurable retry with backoff
+/// @summary Provides configurable retry with backoff.
+/// @details
+/// Create `Viper.Network.RetryPolicy` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Attempt`, `CanRetry`, `IsExhausted` and operations including `Exponential`, `NextDelay`,
+/// `Reset`.
+RT_CLASS_BEGIN("Viper.Network.RetryPolicy", RetryPolicy, "obj", RetryNew)
+    RT_PROP("Attempt", "i64", RetryGetAttempt, none)
+    RT_PROP("CanRetry", "i1", RetryCanRetry, none)
+    RT_PROP("IsExhausted", "i1", RetryIsExhausted, none)
+    RT_PROP("MaxRetries", "i64", RetryGetMaxRetries, none)
+    RT_PROP("TotalAttempts", "i64", RetryGetTotalAttempts, none)
+    RT_METHOD("Exponential", "obj(i64,i64,i64)", RetryExponential)
+    RT_METHOD("NextDelay", "i64()", RetryNextDelay)
+    RT_METHOD("Reset", "void()", RetryReset)
+RT_CLASS_END()
+
+// Viper.Network.RestClient - REST API client with session management
+RT_FUNC(RestClientNew,          rt_restclient_new,           "Viper.Network.RestClient.New",          "obj(str)")
+RT_FUNC(RestClientBaseUrl,      rt_restclient_base_url,      "Viper.Network.RestClient.get_BaseUrl",  "str(obj)")
+RT_FUNC(RestClientSetHeader,    rt_restclient_set_header,    "Viper.Network.RestClient.SetHeader",    "void(obj,str,str)")
+RT_FUNC(RestClientDelHeader,    rt_restclient_del_header,    "Viper.Network.RestClient.DelHeader",    "void(obj,str)")
+RT_FUNC(RestClientSetAuthBearer,rt_restclient_set_auth_bearer,"Viper.Network.RestClient.SetAuthBearer","void(obj,str)")
+RT_FUNC(RestClientSetAuthBasic, rt_restclient_set_auth_basic,"Viper.Network.RestClient.SetAuthBasic", "void(obj,str,str)")
+RT_FUNC(RestClientClearAuth,    rt_restclient_clear_auth,    "Viper.Network.RestClient.ClearAuth",    "void(obj)")
+RT_FUNC(RestClientSetTimeout,   rt_restclient_set_timeout,   "Viper.Network.RestClient.SetTimeout",   "void(obj,i64)")
+RT_FUNC(RestClientKeepAliveGet, rt_restclient_get_keep_alive,"Viper.Network.RestClient.get_KeepAlive","i1(obj)")
+RT_FUNC(RestClientKeepAliveSet, rt_restclient_set_keep_alive,"Viper.Network.RestClient.set_KeepAlive","void(obj,i1)")
+RT_FUNC(RestClientSetPoolSize,  rt_restclient_set_pool_size, "Viper.Network.RestClient.SetPoolSize",  "void(obj,i64)")
+RT_FUNC(RestClientGet,          rt_restclient_get,           "Viper.Network.RestClient.Get",          "obj(obj,str)")
+RT_FUNC(RestClientGetResult,    rt_restclient_get_result,    "Viper.Network.RestClient.GetResult",    "obj<Viper.Result>(obj,str)")
+RT_FUNC(RestClientPost,         rt_restclient_post,          "Viper.Network.RestClient.Post",         "obj(obj,str,str)")
+RT_FUNC(RestClientPostResult,   rt_restclient_post_result,   "Viper.Network.RestClient.PostResult",   "obj<Viper.Result>(obj,str,str)")
+RT_FUNC(RestClientPut,          rt_restclient_put,           "Viper.Network.RestClient.Put",          "obj(obj,str,str)")
+RT_FUNC(RestClientPutResult,    rt_restclient_put_result,    "Viper.Network.RestClient.PutResult",    "obj<Viper.Result>(obj,str,str)")
+RT_FUNC(RestClientPatch,        rt_restclient_patch,         "Viper.Network.RestClient.Patch",        "obj(obj,str,str)")
+RT_FUNC(RestClientPatchResult,  rt_restclient_patch_result,  "Viper.Network.RestClient.PatchResult",  "obj<Viper.Result>(obj,str,str)")
+RT_FUNC(RestClientDelete,       rt_restclient_delete,        "Viper.Network.RestClient.Delete",       "obj(obj,str)")
+RT_FUNC(RestClientDeleteResult, rt_restclient_delete_result, "Viper.Network.RestClient.DeleteResult", "obj<Viper.Result>(obj,str)")
+RT_FUNC(RestClientHead,         rt_restclient_head,          "Viper.Network.RestClient.Head",         "obj(obj,str)")
+RT_FUNC(RestClientHeadResult,   rt_restclient_head_result,   "Viper.Network.RestClient.HeadResult",   "obj<Viper.Result>(obj,str)")
+RT_FUNC(RestClientGetJson,      rt_restclient_get_json,      "Viper.Network.RestClient.GetJson",      "obj(obj,str)")
+RT_FUNC(RestClientPostJson,     rt_restclient_post_json,     "Viper.Network.RestClient.PostJson",     "obj(obj,str,obj)")
+RT_FUNC(RestClientPutJson,      rt_restclient_put_json,      "Viper.Network.RestClient.PutJson",      "obj(obj,str,obj)")
+RT_FUNC(RestClientPatchJson,    rt_restclient_patch_json,    "Viper.Network.RestClient.PatchJson",    "obj(obj,str,obj)")
+RT_FUNC(RestClientDeleteJson,   rt_restclient_delete_json,   "Viper.Network.RestClient.DeleteJson",   "obj(obj,str)")
+RT_FUNC(RestClientLastStatus,   rt_restclient_last_status,   "Viper.Network.RestClient.LastStatus",   "i64(obj)")
+RT_FUNC(RestClientLastResponse, rt_restclient_last_response, "Viper.Network.RestClient.LastResponse", "obj(obj)")
+RT_FUNC(RestClientLastOk,       rt_restclient_last_ok,       "Viper.Network.RestClient.LastOk",       "i1(obj)")
+/// @summary Provides Rest Client functionality for networked applications.
+/// @details
+/// Create `Viper.Network.RestClient` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `BaseUrl`,
+/// `KeepAlive` and operations including `SetHeader`, `DelHeader`, `SetAuthBearer`, `SetAuthBasic`.
+RT_CLASS_BEGIN("Viper.Network.RestClient", RestClient, "obj", RestClientNew)
+    // Constructor
+    RT_METHOD("New", "obj(str)", RestClientNew)
+    // Properties
+    RT_PROP("BaseUrl", "str", RestClientBaseUrl, none)
+    // Configuration
+    RT_METHOD("SetHeader", "void(str,str)", RestClientSetHeader)
+    RT_METHOD("DelHeader", "void(str)", RestClientDelHeader)
+    RT_METHOD("SetAuthBearer", "void(str)", RestClientSetAuthBearer)
+    RT_METHOD("SetAuthBasic", "void(str,str)", RestClientSetAuthBasic)
+    RT_METHOD("ClearAuth", "void()", RestClientClearAuth)
+    RT_METHOD("SetTimeout", "void(i64)", RestClientSetTimeout)
+    RT_METHOD("SetPoolSize", "void(i64)", RestClientSetPoolSize)
+    RT_PROP("KeepAlive", "i1", RestClientKeepAliveGet, RestClientKeepAliveSet)
+    // Raw HTTP methods
+    RT_METHOD("Get", "obj(str)", RestClientGet)
+    RT_METHOD("GetResult", "obj<Viper.Result>(str)", RestClientGetResult)
+    RT_METHOD("Post", "obj(str,str)", RestClientPost)
+    RT_METHOD("PostResult", "obj<Viper.Result>(str,str)", RestClientPostResult)
+    RT_METHOD("Put", "obj(str,str)", RestClientPut)
+    RT_METHOD("PutResult", "obj<Viper.Result>(str,str)", RestClientPutResult)
+    RT_METHOD("Patch", "obj(str,str)", RestClientPatch)
+    RT_METHOD("PatchResult", "obj<Viper.Result>(str,str)", RestClientPatchResult)
+    RT_METHOD("Delete", "obj(str)", RestClientDelete)
+    RT_METHOD("DeleteResult", "obj<Viper.Result>(str)", RestClientDeleteResult)
+    RT_METHOD("Head", "obj(str)", RestClientHead)
+    RT_METHOD("HeadResult", "obj<Viper.Result>(str)", RestClientHeadResult)
+    // JSON convenience methods
+    RT_METHOD("GetJson", "obj(str)", RestClientGetJson)
+    RT_METHOD("PostJson", "obj(str,obj)", RestClientPostJson)
+    RT_METHOD("PutJson", "obj(str,obj)", RestClientPutJson)
+    RT_METHOD("PatchJson", "obj(str,obj)", RestClientPatchJson)
+    RT_METHOD("DeleteJson", "obj(str)", RestClientDeleteJson)
+    // Error handling
+    RT_METHOD("LastStatus", "i64()", RestClientLastStatus)
+    RT_METHOD("LastResponse", "obj()", RestClientLastResponse)
+    RT_METHOD("LastOk", "i1()", RestClientLastOk)
+RT_CLASS_END()

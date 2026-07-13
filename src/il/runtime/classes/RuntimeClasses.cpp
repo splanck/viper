@@ -123,10 +123,12 @@ namespace {
 /// @details This macro is the main entry point for RuntimeClasses.inc. Each
 /// invocation creates a RuntimeClass with all its metadata, properties, and
 /// methods, then emplaces it into the catalog vector being constructed.
-#define RUNTIME_CLASS(_qname, _typeId, _layout, _ctor, _props, _methods)                           \
+#define RUNTIME_CLASS(_qname, _typeId, _layout, _ctor, _summary, _details, _props, _methods)       \
     catalog.emplace_back(::il::runtime::RuntimeClass{(_qname),                                     \
                                                      (_layout),                                    \
                                                      (_ctor),                                      \
+                                                     (_summary),                                   \
+                                                     (_details),                                   \
                                                      ::il::runtime::RuntimeTypeId::_typeId,        \
                                                      (_props),                                     \
                                                      (_methods)});

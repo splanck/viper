@@ -143,6 +143,17 @@ static bool prefixMatch(const std::string &label, const std::string &prefix) {
     return lLabel.find(lPrefix) == 0;
 }
 
+/// @brief Combine authored documentation for a runtime class.
+static std::string runtimeClassDocumentation(const il::runtime::RuntimeClass &runtimeClass) {
+    std::string documentation = runtimeClass.summary ? runtimeClass.summary : "";
+    if (runtimeClass.details && *runtimeClass.details) {
+        if (!documentation.empty())
+            documentation += "\n\n";
+        documentation += runtimeClass.details;
+    }
+    return documentation;
+}
+
 // --- Providers ---
 
 std::vector<CompletionItem> BasicCompletionEngine::provideKeywords(
@@ -376,20 +387,25 @@ std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
     const auto *cls = il::runtime::findRuntimeClassByQName(className);
     if (!cls)
         return items;
+    const std::string classDocumentation = runtimeClassDocumentation(*cls);
 
     for (const auto &method : cls->methods) {
         if (prefixMatch(method.name, prefix)) {
-            items.push_back({method.name,
-                             method.name,
-                             CompletionKind::Method,
-                             method.signature ? method.signature : "",
-                             30});
+            CompletionItem item{method.name,
+                                method.name,
+                                CompletionKind::Method,
+                                method.signature ? method.signature : "",
+                                30};
+            item.documentation = classDocumentation;
+            items.push_back(std::move(item));
         }
     }
     for (const auto &prop : cls->properties) {
         if (prefixMatch(prop.name, prefix)) {
-            items.push_back(
-                {prop.name, prop.name, CompletionKind::Property, prop.type ? prop.type : "", 30});
+            CompletionItem item{
+                prop.name, prop.name, CompletionKind::Property, prop.type ? prop.type : "", 30};
+            item.documentation = classDocumentation;
+            items.push_back(std::move(item));
         }
     }
     return items;

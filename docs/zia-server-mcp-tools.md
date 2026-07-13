@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-11
 ---
 
 # Zia Server — MCP Tool Specification
@@ -101,11 +101,13 @@ Get code completions at a cursor position.
 }
 ```
 
-**Result:** JSON array of completion items:
+**Result:** JSON object with a `completions` array. Each completion item has:
 - `label`: Display text
 - `insertText`: Text to insert
 - `kind`: Completion kind integer (0=Keyword, 1=Snippet, 2=Variable, 3=Parameter, 4=Field, 5=Method, 6=Function, 7=Entity, 8=Value, 9=Interface, 10=Module, 11=RuntimeClass, 12=Property)
 - `detail`: Type or signature detail
+- `documentation`: Optional Markdown documentation. Runtime-class descriptions
+  come from the canonical runtime definition registry.
 
 ---
 
@@ -115,7 +117,8 @@ Get type information for the symbol at a cursor position.
 
 **Input Schema:** Same as `zia/completions`.
 
-**Result:** Plain text string with type information (e.g., `"x: Integer"`), or `"(no type information)"` if nothing found.
+**Result:** Markdown type/signature information, including authored runtime-class
+documentation when applicable, or `"(no type information)"` if nothing is found.
 
 ---
 
@@ -175,14 +178,15 @@ Dump the token stream.
 
 ## zia/runtime-classes
 
-List all Viper runtime classes with member counts.
+List all Viper runtime classes with member counts and canonical documentation.
 
 **Input Schema:** Empty object `{}`.
 
-**Result:** JSON array:
+**Result:** JSON object with a `classes` array. Each class has:
 - `qname`: Fully qualified name (e.g., `"Viper.Terminal"`)
 - `propertyCount`: Number of properties
 - `methodCount`: Number of methods
+- `documentation`: `{summary, details, format}` where `format` is `"markdown"`
 
 ---
 

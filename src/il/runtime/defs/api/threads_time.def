@@ -1,0 +1,360 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/api/threads_time.def
+// Purpose: Threading, scheduling, time, conversion, and Vec2 runtime functions.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+// THREADS
+//=============================================================================
+
+RT_FUNC(ConcQueueNew,            rt_concqueue_new,            "Viper.Threads.ConcurrentQueue.New",            "obj()")
+RT_FUNC(ConcQueueLen,            rt_concqueue_len,            "Viper.Threads.ConcurrentQueue.get_Count",        "i64(obj)")
+RT_FUNC(ConcQueueIsEmpty,        rt_concqueue_is_empty,       "Viper.Threads.ConcurrentQueue.get_IsEmpty",    "i1(obj)")
+RT_FUNC(ConcQueueIsClosed,       rt_concqueue_get_is_closed,  "Viper.Threads.ConcurrentQueue.get_IsClosed",   "i1(obj)")
+RT_FUNC(ConcQueueEnqueue,        rt_concqueue_enqueue,        "Viper.Threads.ConcurrentQueue.Enqueue",        "void(obj,obj)")
+RT_FUNC(ConcQueueTryDequeue,     rt_concqueue_try_dequeue,    "Viper.Threads.ConcurrentQueue.TryDequeue",     "obj(obj)")
+RT_FUNC(ConcQueueTryDequeueOption, rt_concqueue_try_dequeue_option, "Viper.Threads.ConcurrentQueue.TryDequeueOption", "obj<Viper.Option>(obj)")
+RT_FUNC(ConcQueueDequeue,        rt_concqueue_dequeue,        "Viper.Threads.ConcurrentQueue.Dequeue",        "obj(obj)")
+RT_FUNC(ConcQueueDequeueTimeout, rt_concqueue_dequeue_timeout,"Viper.Threads.ConcurrentQueue.DequeueTimeout", "obj(obj,i64)")
+RT_FUNC(ConcQueuePeek,           rt_concqueue_peek,           "Viper.Threads.ConcurrentQueue.Peek",           "obj(obj)")
+RT_FUNC(ConcQueueClear,          rt_concqueue_clear,          "Viper.Threads.ConcurrentQueue.Clear",          "void(obj)")
+RT_FUNC(ConcQueueClose,          rt_concqueue_close,          "Viper.Threads.ConcurrentQueue.Close",          "void(obj)")
+
+//=============================================================================
+// CONCURRENT MAP (thread-safe hash map)
+//=============================================================================
+
+RT_FUNC(ConcMapNew,          rt_concmap_new,            "Viper.Threads.ConcurrentMap.New",            "obj()")
+RT_FUNC(ConcMapLen,          rt_concmap_len,            "Viper.Threads.ConcurrentMap.get_Count",        "i64(obj)")
+RT_FUNC(ConcMapIsEmpty,      rt_concmap_is_empty,       "Viper.Threads.ConcurrentMap.get_IsEmpty",    "i1(obj)")
+RT_FUNC(ConcMapSet,          rt_concmap_set,            "Viper.Threads.ConcurrentMap.Set",            "void(obj,str,obj)")
+RT_FUNC(ConcMapGet,          rt_concmap_get,            "Viper.Threads.ConcurrentMap.Get",            "obj(obj,str)")
+RT_FUNC(ConcMapGetOr,        rt_concmap_get_or,         "Viper.Threads.ConcurrentMap.GetOr",          "obj(obj,str,obj)")
+RT_FUNC(ConcMapHas,          rt_concmap_has,            "Viper.Threads.ConcurrentMap.Has",            "i1(obj,str)")
+RT_FUNC(ConcMapSetIfMissing, rt_concmap_set_if_missing, "Viper.Threads.ConcurrentMap.SetIfMissing",   "i1(obj,str,obj)")
+RT_FUNC(ConcMapRemove,       rt_concmap_remove,         "Viper.Threads.ConcurrentMap.Remove",         "i1(obj,str)")
+RT_FUNC(ConcMapClear,        rt_concmap_clear,          "Viper.Threads.ConcurrentMap.Clear",          "void(obj)")
+RT_FUNC(ConcMapKeys,         rt_concmap_keys,           "Viper.Threads.ConcurrentMap.Keys",           "obj(obj)")
+RT_FUNC(ConcMapValues,       rt_concmap_values,         "Viper.Threads.ConcurrentMap.Values",         "obj(obj)")
+
+// Cancellation Token
+RT_FUNC(CancelNew,               rt_cancellation_new,              "Viper.Threads.CancelToken.New",              "obj()")
+RT_FUNC(CancelIsCancelled,       rt_cancellation_is_cancelled,     "Viper.Threads.CancelToken.get_IsCancelled",  "i1(obj)")
+RT_FUNC(CancelCancel,            rt_cancellation_cancel,           "Viper.Threads.CancelToken.Cancel",           "void(obj)")
+RT_FUNC(CancelReset,             rt_cancellation_reset,            "Viper.Threads.CancelToken.Reset",            "void(obj)")
+RT_FUNC(CancelLinked,            rt_cancellation_linked,           "Viper.Threads.CancelToken.Linked",           "obj(obj)")
+RT_FUNC(CancelCheck,             rt_cancellation_check,            "Viper.Threads.CancelToken.Check",            "i1(obj)")
+RT_FUNC(CancelThrowIfCancelled,  rt_cancellation_throw_if_cancelled,"Viper.Threads.CancelToken.ThrowIfCancelled","void(obj)")
+
+// Debouncer
+RT_FUNC(DebounceNew,             rt_debounce_new,                  "Viper.Threads.Debouncer.New",                      "obj(i64)")
+RT_FUNC(DebounceSignal,          rt_debounce_signal,               "Viper.Threads.Debouncer.Signal",                   "void(obj)")
+RT_FUNC(DebounceIsReady,         rt_debounce_is_ready,             "Viper.Threads.Debouncer.get_IsReady",              "i1(obj)")
+RT_FUNC(DebounceReset,           rt_debounce_reset,                "Viper.Threads.Debouncer.Reset",                    "void(obj)")
+RT_FUNC(DebounceGetDelay,        rt_debounce_get_delay,            "Viper.Threads.Debouncer.get_Delay",                "i64(obj)")
+RT_FUNC(DebounceGetSignalCount,  rt_debounce_get_signal_count,     "Viper.Threads.Debouncer.get_SignalCount",          "i64(obj)")
+
+// Throttler
+RT_FUNC(ThrottleNew,             rt_throttle_new,                  "Viper.Threads.Throttler.New",                      "obj(i64)")
+RT_FUNC(ThrottleTry,             rt_throttle_try,                  "Viper.Threads.Throttler.Try",                      "i1(obj)")
+RT_FUNC(ThrottleCanProceed,      rt_throttle_can_proceed,          "Viper.Threads.Throttler.get_CanProceed",           "i1(obj)")
+RT_FUNC(ThrottleReset,           rt_throttle_reset,                "Viper.Threads.Throttler.Reset",                    "void(obj)")
+RT_FUNC(ThrottleGetInterval,     rt_throttle_get_interval,         "Viper.Threads.Throttler.get_Interval",             "i64(obj)")
+RT_FUNC(ThrottleGetCount,        rt_throttle_get_count,            "Viper.Threads.Throttler.get_Count",                "i64(obj)")
+RT_FUNC(ThrottleRemainingMs,     rt_throttle_remaining_ms,         "Viper.Threads.Throttler.get_RemainingMs",          "i64(obj)")
+
+//=============================================================================
+// THREADS - SCHEDULER
+//=============================================================================
+
+RT_FUNC(SchedulerNew,            rt_scheduler_new,             "Viper.Threads.Scheduler.New",             "obj()")
+RT_FUNC(SchedulerSchedule,       rt_scheduler_schedule,        "Viper.Threads.Scheduler.Schedule",        "void(obj,str,i64)")
+RT_FUNC(SchedulerScheduleGen,    rt_scheduler_schedule_gen,    "Viper.Threads.Scheduler.ScheduleGen",     "void(obj,str,i64,i64)")
+RT_FUNC(SchedulerCancel,         rt_scheduler_cancel,          "Viper.Threads.Scheduler.Cancel",          "i1(obj,str)")
+RT_FUNC(SchedulerIsDue,          rt_scheduler_is_due,          "Viper.Threads.Scheduler.IsDue",           "i1(obj,str)")
+RT_FUNC(SchedulerIsDueGen,       rt_scheduler_is_due_gen,      "Viper.Threads.Scheduler.IsDueGen",        "i1(obj,str,i64)")
+RT_FUNC(SchedulerGenerationOf,   rt_scheduler_generation_of,   "Viper.Threads.Scheduler.GenerationOf",    "i64(obj,str)")
+RT_FUNC(SchedulerPoll,           rt_scheduler_poll,            "Viper.Threads.Scheduler.Poll",            "obj(obj)")
+RT_FUNC(SchedulerPending,        rt_scheduler_pending,         "Viper.Threads.Scheduler.get_Pending",     "i64(obj)")
+RT_FUNC(SchedulerClear,          rt_scheduler_clear,           "Viper.Threads.Scheduler.Clear",           "void(obj)")
+
+RT_FUNC(MonitorEnter,       rt_monitor_enter,         "Viper.Threads.Monitor.Enter",       "void(obj)")
+RT_FUNC(MonitorTryEnter,    rt_monitor_try_enter,     "Viper.Threads.Monitor.TryEnter",    "i1(obj)")
+RT_FUNC(MonitorTryEnterFor, rt_monitor_try_enter_for, "Viper.Threads.Monitor.TryEnterFor", "i1(obj,i64)")
+RT_FUNC(MonitorExit,        rt_monitor_exit,          "Viper.Threads.Monitor.Exit",        "void(obj)")
+RT_FUNC(MonitorWait,        rt_monitor_wait,          "Viper.Threads.Monitor.Wait",        "void(obj)")
+RT_FUNC(MonitorWaitFor,     rt_monitor_wait_for,      "Viper.Threads.Monitor.WaitFor",     "i1(obj,i64)")
+RT_FUNC(MonitorPause,       rt_monitor_pause,         "Viper.Threads.Monitor.Pause",       "void(obj)")
+RT_FUNC(MonitorPauseAll,    rt_monitor_pause_all,     "Viper.Threads.Monitor.PauseAll",    "void(obj)")
+
+RT_FUNC(ThreadStart,     rt_thread_start,        "Viper.Threads.Thread.Start",       "obj(obj,obj)")
+RT_FUNC(ThreadStartOwned, rt_thread_start_owned, "Viper.Threads.Thread.StartOwned",  "obj(obj,obj)")
+RT_BRIDGE(ThreadStart, "callback,payload")
+RT_BRIDGE(ThreadStartOwned, "callback,none")
+RT_FUNC(ThreadJoin,      rt_thread_join,         "Viper.Threads.Thread.Join",        "void(obj)")
+RT_FUNC(ThreadTryJoin,   rt_thread_try_join,     "Viper.Threads.Thread.TryJoin",     "i1(obj)")
+RT_FUNC(ThreadJoinFor,   rt_thread_join_for,     "Viper.Threads.Thread.JoinFor",     "i1(obj,i64)")
+RT_FUNC(ThreadGetId,     rt_thread_get_id,       "Viper.Threads.Thread.get_Id",      "i64(obj)")
+RT_FUNC(ThreadGetIsAlive,rt_thread_get_is_alive, "Viper.Threads.Thread.get_IsAlive", "i1(obj)")
+RT_FUNC(ThreadSleep,     rt_thread_sleep,        "Viper.Threads.Thread.Sleep",       "void(i64)")
+RT_FUNC(ThreadYield,     rt_thread_yield,        "Viper.Threads.Thread.Yield",       "void()")
+RT_FUNC(ThreadStartSafe, rt_thread_start_safe,   "Viper.Threads.Thread.StartSafe",   "obj(obj,obj)")
+RT_FUNC(ThreadStartSafeOwned, rt_thread_start_safe_owned, "Viper.Threads.Thread.StartSafeOwned", "obj(obj,obj)")
+RT_BRIDGE(ThreadStartSafe, "callback,payload")
+RT_BRIDGE(ThreadStartSafeOwned, "callback,none")
+RT_FUNC(ThreadHasError,  rt_thread_has_error,    "Viper.Threads.Thread.get_HasError", "i1(obj)")
+RT_FUNC(ThreadGetError,  rt_thread_get_error,    "Viper.Threads.Thread.get_Error",    "str(obj)")
+RT_FUNC(ThreadSafeJoin,  rt_thread_safe_join,    "Viper.Threads.Thread.SafeJoin",     "void(obj)")
+RT_FUNC(ThreadSafeGetId, rt_thread_safe_get_id,  "Viper.Threads.Thread.SafeGetId",    "i64(obj)")
+RT_FUNC(ThreadSafeIsAlive, rt_thread_safe_is_alive, "Viper.Threads.Thread.SafeIsAlive", "i1(obj)")
+
+RT_FUNC(SafeI64New,             rt_safe_i64_new,              "Viper.Threads.SafeI64.New",             "obj(i64)")
+RT_FUNC(SafeI64Get,             rt_safe_i64_get,              "Viper.Threads.SafeI64.Get",             "i64(obj)")
+RT_FUNC(SafeI64Set,             rt_safe_i64_set,              "Viper.Threads.SafeI64.Set",             "void(obj,i64)")
+RT_FUNC(SafeI64Add,             rt_safe_i64_add,              "Viper.Threads.SafeI64.Add",             "i64(obj,i64)")
+RT_FUNC(SafeI64CompareExchange, rt_safe_i64_compare_exchange, "Viper.Threads.SafeI64.CompareExchange", "i64(obj,i64,i64)")
+
+RT_FUNC(GateNew,         rt_gate_new,          "Viper.Threads.Gate.New",           "obj(i64)")
+RT_FUNC(GateEnter,       rt_gate_enter,        "Viper.Threads.Gate.Enter",         "void(obj)")
+RT_FUNC(GateTryEnter,    rt_gate_try_enter,    "Viper.Threads.Gate.TryEnter",      "i1(obj)")
+RT_FUNC(GateTryEnterFor, rt_gate_try_enter_for,"Viper.Threads.Gate.TryEnterFor",   "i1(obj,i64)")
+RT_FUNC(GateLeave,       rt_gate_leave,        "Viper.Threads.Gate.Leave",         "void(obj)")
+RT_FUNC(GateLeaveMany,   rt_gate_leave_many,   "Viper.Threads.Gate.LeaveMany",     "void(obj,i64)")
+RT_FUNC(GateGetPermits,  rt_gate_get_permits,  "Viper.Threads.Gate.get_Permits",   "i64(obj)")
+
+RT_FUNC(BarrierNew,        rt_barrier_new,         "Viper.Threads.Barrier.New",         "obj(i64)")
+RT_FUNC(BarrierArrive,     rt_barrier_arrive,      "Viper.Threads.Barrier.Arrive",      "i64(obj)")
+RT_FUNC(BarrierReset,      rt_barrier_reset,       "Viper.Threads.Barrier.Reset",       "void(obj)")
+RT_FUNC(BarrierGetParties, rt_barrier_get_parties, "Viper.Threads.Barrier.get_Parties", "i64(obj)")
+RT_FUNC(BarrierGetWaiting, rt_barrier_get_waiting, "Viper.Threads.Barrier.get_Waiting", "i64(obj)")
+
+RT_FUNC(RwLockNew,             rt_rwlock_new,                "Viper.Threads.RwLock.New",              "obj()")
+RT_FUNC(RwLockReadEnter,       rt_rwlock_read_enter,         "Viper.Threads.RwLock.ReadEnter",        "void(obj)")
+RT_FUNC(RwLockReadExit,        rt_rwlock_read_exit,          "Viper.Threads.RwLock.ReadExit",         "void(obj)")
+RT_FUNC(RwLockWriteEnter,      rt_rwlock_write_enter,        "Viper.Threads.RwLock.WriteEnter",       "void(obj)")
+RT_FUNC(RwLockWriteExit,       rt_rwlock_write_exit,         "Viper.Threads.RwLock.WriteExit",        "void(obj)")
+RT_FUNC(RwLockTryReadEnter,    rt_rwlock_try_read_enter,     "Viper.Threads.RwLock.TryReadEnter",     "i1(obj)")
+RT_FUNC(RwLockTryWriteEnter,   rt_rwlock_try_write_enter,    "Viper.Threads.RwLock.TryWriteEnter",    "i1(obj)")
+RT_FUNC(RwLockGetReaders,      rt_rwlock_get_readers,        "Viper.Threads.RwLock.get_Readers",      "i64(obj)")
+RT_FUNC(RwLockGetIsWriteLocked,rt_rwlock_get_is_write_locked,"Viper.Threads.RwLock.get_IsWriteLocked","i1(obj)")
+
+//=============================================================================
+// THREADS - POOL
+//=============================================================================
+
+RT_FUNC(PoolNew,           rt_threadpool_new,            "Viper.Threads.Pool.New",            "obj(i64)")
+RT_FUNC(PoolSubmit,        rt_threadpool_submit,         "Viper.Threads.Pool.Submit",         "i1(obj,obj,obj)")
+RT_FUNC(PoolWait,          rt_threadpool_wait,           "Viper.Threads.Pool.Wait",           "void(obj)")
+RT_FUNC(PoolWaitFor,       rt_threadpool_wait_for,       "Viper.Threads.Pool.WaitFor",        "i1(obj,i64)")
+RT_FUNC(PoolShutdown,      rt_threadpool_shutdown,       "Viper.Threads.Pool.Shutdown",       "void(obj)")
+RT_FUNC(PoolShutdownNow,   rt_threadpool_shutdown_now,   "Viper.Threads.Pool.ShutdownNow",    "void(obj)")
+RT_FUNC(PoolGetSize,       rt_threadpool_get_size,       "Viper.Threads.Pool.get_Size",       "i64(obj)")
+RT_FUNC(PoolGetPending,    rt_threadpool_get_pending,    "Viper.Threads.Pool.get_Pending",    "i64(obj)")
+RT_FUNC(PoolGetActive,     rt_threadpool_get_active,     "Viper.Threads.Pool.get_Active",     "i64(obj)")
+RT_FUNC(ParallelDefaultWorkers, rt_parallel_default_workers, "Viper.Threads.Parallel.DefaultWorkers", "i64()")
+RT_FUNC(ParallelDefaultPool,    rt_parallel_default_pool,    "Viper.Threads.Parallel.DefaultPool",    "obj()")
+RT_FUNC(ParallelForEach,        rt_parallel_foreach,         "Viper.Threads.Parallel.ForEach",        "void(obj,obj)")
+RT_FUNC(ParallelForEachPool,    rt_parallel_foreach_pool,    "Viper.Threads.Parallel.ForEachPool",    "void(obj,obj,obj)")
+RT_FUNC(ParallelMap,            rt_parallel_map,             "Viper.Threads.Parallel.Map",            "obj(obj,obj)")
+RT_FUNC(ParallelMapPool,        rt_parallel_map_pool,        "Viper.Threads.Parallel.MapPool",        "obj(obj,obj,obj)")
+RT_FUNC(ParallelInvoke,         rt_parallel_invoke,          "Viper.Threads.Parallel.Invoke",         "void(obj)")
+RT_FUNC(ParallelInvokePool,     rt_parallel_invoke_pool,     "Viper.Threads.Parallel.InvokePool",     "void(obj,obj)")
+RT_FUNC(ParallelFor,            rt_parallel_for,             "Viper.Threads.Parallel.For",            "void(i64,i64,obj)")
+RT_FUNC(ParallelForPool,        rt_parallel_for_pool,        "Viper.Threads.Parallel.ForPool",        "void(i64,i64,obj,obj)")
+RT_FUNC(ParallelReduce,         rt_parallel_reduce,          "Viper.Threads.Parallel.Reduce",         "obj(obj,obj,obj)")
+RT_FUNC(ParallelReducePool,     rt_parallel_reduce_pool,     "Viper.Threads.Parallel.ReducePool",     "obj(obj,obj,obj,obj)")
+RT_FUNC(PoolGetIsShutdown, rt_threadpool_get_is_shutdown,"Viper.Threads.Pool.get_IsShutdown", "i1(obj)")
+
+/// @summary Provides Pool functionality for concurrent and asynchronous programs.
+/// @details
+/// Create `Viper.Threads.Pool` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Size`,
+/// `Pending`, `Active` and operations including `Submit`, `Wait`, `WaitFor`, `Shutdown`.
+RT_CLASS_BEGIN("Viper.Threads.Pool", ThreadsPool, "obj", PoolNew)
+    RT_METHOD("Submit",      "i1(obj,obj)", PoolSubmit)
+    RT_METHOD("Wait",        "void()",      PoolWait)
+    RT_METHOD("WaitFor",     "i1(i64)",     PoolWaitFor)
+    RT_METHOD("Shutdown",    "void()",      PoolShutdown)
+    RT_METHOD("ShutdownNow", "void()",      PoolShutdownNow)
+    RT_PROP("Size",       "i64", PoolGetSize,       none)
+    RT_PROP("Pending",    "i64", PoolGetPending,    none)
+    RT_PROP("Active",     "i64", PoolGetActive,     none)
+    RT_PROP("IsShutdown", "i1",  PoolGetIsShutdown, none)
+RT_CLASS_END()
+
+//=============================================================================
+// THREADS - CHANNEL
+//=============================================================================
+
+RT_FUNC(ChannelNew,          rt_channel_new,            "Viper.Threads.Channel.New",           "obj(i64)")
+RT_FUNC(ChannelSend,         rt_channel_send,           "Viper.Threads.Channel.Send",          "void(obj,obj)")
+RT_FUNC(ChannelTrySend,      rt_channel_try_send,       "Viper.Threads.Channel.TrySend",       "i1(obj,obj)")
+RT_FUNC(ChannelSendFor,      rt_channel_send_for,       "Viper.Threads.Channel.SendFor",       "i1(obj,obj,i64)")
+RT_FUNC(ChannelRecv,         rt_channel_recv,           "Viper.Threads.Channel.Recv",          "obj(obj)")
+RT_FUNC(ChannelTryRecv,      rt_channel_try_recv_val,   "Viper.Threads.Channel.TryRecv",       "obj(obj)")
+RT_FUNC(ChannelTryRecvOption, rt_channel_try_recv_option, "Viper.Threads.Channel.TryRecvOption", "obj<Viper.Option>(obj)")
+RT_FUNC(ChannelRecvFor,      rt_channel_recv_for_val,   "Viper.Threads.Channel.RecvFor",       "obj(obj,i64)")
+RT_FUNC(ChannelClose,        rt_channel_close,          "Viper.Threads.Channel.Close",         "void(obj)")
+RT_FUNC(ChannelGetLen,       rt_channel_get_len,        "Viper.Threads.Channel.get_Count",       "i64(obj)")
+RT_FUNC(ChannelGetCap,       rt_channel_get_cap,        "Viper.Threads.Channel.get_Cap",      "i64(obj)")
+RT_FUNC(ChannelGetCapacity,  rt_channel_get_cap,        "Viper.Threads.Channel.get_Capacity", "i64(obj)")
+RT_FUNC(ChannelGetIsClosed,  rt_channel_get_is_closed,  "Viper.Threads.Channel.get_IsClosed",  "i1(obj)")
+RT_FUNC(ChannelGetIsEmpty,   rt_channel_get_is_empty,   "Viper.Threads.Channel.get_IsEmpty",   "i1(obj)")
+RT_FUNC(ChannelGetIsFull,    rt_channel_get_is_full,    "Viper.Threads.Channel.get_IsFull",    "i1(obj)")
+
+/// @summary Provides Channel functionality for concurrent and asynchronous programs.
+/// @details
+/// Create `Viper.Threads.Channel` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Count`,
+/// `Cap`, `Capacity` and operations including `Send`, `TrySend`, `SendFor`, `Recv`.
+RT_CLASS_BEGIN("Viper.Threads.Channel", ThreadsChannel, "obj", ChannelNew)
+    RT_METHOD("Send",    "void(obj)",    ChannelSend)
+    RT_METHOD("TrySend", "i1(obj)",     ChannelTrySend)
+    RT_METHOD("SendFor", "i1(obj,i64)", ChannelSendFor)
+    RT_METHOD("Recv",    "obj()",        ChannelRecv)
+    RT_METHOD("TryRecv", "obj()",       ChannelTryRecv)
+    RT_METHOD("TryRecvOption", "obj<Viper.Option>()", ChannelTryRecvOption)
+    RT_METHOD("RecvFor", "obj(i64)",    ChannelRecvFor)
+    RT_METHOD("Close",   "void()",       ChannelClose)
+    RT_PROP("Count",      "i64", ChannelGetLen,      none)
+    RT_PROP("Cap",       "i64", ChannelGetCap,      none)
+    RT_PROP("Capacity",  "i64", ChannelGetCapacity, none)
+    RT_PROP("IsClosed", "i1",  ChannelGetIsClosed, none)
+    RT_PROP("IsEmpty",  "i1",  ChannelGetIsEmpty,  none)
+    RT_PROP("IsFull",   "i1",  ChannelGetIsFull,   none)
+RT_CLASS_END()
+
+//=============================================================================
+// TIME - CLOCK
+//=============================================================================
+
+RT_FUNC(ClockSleep,   rt_clock_sleep,    "Viper.Time.Clock.Sleep",   "void(i64)")
+RT_FUNC(ClockTicks,   rt_clock_ticks,    "Viper.Time.Clock.Ticks",   "i64()")
+RT_FUNC(ClockTicksUs, rt_clock_ticks_us, "Viper.Time.Clock.TicksUs", "i64()")
+
+// Legacy aliases for backward compatibility
+
+//=============================================================================
+// TIME - COUNTDOWN
+//=============================================================================
+
+RT_FUNC(CountdownNew,         rt_countdown_new,          "Viper.Time.Countdown.New",          "obj(i64)")
+RT_FUNC(CountdownStart,       rt_countdown_start,        "Viper.Time.Countdown.Start",        "void(obj)")
+RT_FUNC(CountdownStop,        rt_countdown_stop,         "Viper.Time.Countdown.Stop",         "void(obj)")
+RT_FUNC(CountdownReset,       rt_countdown_reset,        "Viper.Time.Countdown.Reset",        "void(obj)")
+RT_FUNC(CountdownElapsed,     rt_countdown_elapsed,      "Viper.Time.Countdown.get_Elapsed",  "i64(obj)")
+RT_FUNC(CountdownRemaining,   rt_countdown_remaining,    "Viper.Time.Countdown.get_Remaining","i64(obj)")
+RT_FUNC(CountdownExpired,     rt_countdown_expired,      "Viper.Time.Countdown.get_Expired",  "i1(obj)")
+RT_FUNC(CountdownInterval,    rt_countdown_interval,     "Viper.Time.Countdown.get_Interval", "i64(obj)")
+RT_FUNC(CountdownSetInterval, rt_countdown_set_interval, "Viper.Time.Countdown.set_Interval", "void(obj,i64)")
+RT_FUNC(CountdownIsRunning,   rt_countdown_is_running,   "Viper.Time.Countdown.get_IsRunning","i1(obj)")
+RT_FUNC(CountdownWait,        rt_countdown_wait,         "Viper.Time.Countdown.Wait",         "void(obj)")
+
+//=============================================================================
+// TYPE CONVERSION
+//=============================================================================
+
+RT_FUNC(ToDouble,    rt_to_double,    "Viper.Core.Convert.ToDouble", "f64(str)")
+RT_FUNC(ToInt64,     rt_to_int,       "Viper.Core.Convert.ToInt64",  "i64(str)")
+RT_FUNC(ToStringInt, rt_int_to_str,   "Viper.Core.Convert.ToString_Int", "str(i64)")
+RT_FUNC(ToStringDbl, rt_f64_to_str,   "Viper.Core.Convert.ToString_Double", "str(f64)")
+RT_FUNC(ToStringIntCanonical, rt_int_to_str, "Viper.Core.Convert.ToStringInt", "str(i64)")
+RT_FUNC(ToStringDoubleCanonical, rt_f64_to_str, "Viper.Core.Convert.ToStringDouble", "str(f64)")
+RT_FUNC(NumToInt,      rt_f64_to_i64,   "Viper.Core.Convert.NumToInt", "i64(f64)")
+
+// Safe parsing functions (return Option/default/validation values; no out-pointers)
+RT_FUNC(ParseTryInt,   rt_parse_int64_option,  "Viper.Core.Parse.TryInt",   "obj<Viper.Option>(str)")
+RT_FUNC(ParseTryNum,   rt_parse_double_option, "Viper.Core.Parse.TryNum",   "obj<Viper.Option>(str)")
+RT_FUNC(ParseTryDouble, rt_parse_double_option, "Viper.Core.Parse.TryDouble", "obj<Viper.Option>(str)")
+RT_FUNC(ParseTryBool,  rt_parse_bool_option,   "Viper.Core.Parse.TryBool",  "obj<Viper.Option>(str)")
+RT_FUNC(ParseIntOr,    rt_parse_int_or,    "Viper.Core.Parse.IntOr",    "i64(str,i64)")
+RT_FUNC(ParseNumOr,    rt_parse_num_or,    "Viper.Core.Parse.NumOr",    "f64(str,f64)")
+RT_FUNC(ParseDoubleOr, rt_parse_num_or,    "Viper.Core.Parse.DoubleOr", "f64(str,f64)")
+RT_FUNC(ParseBoolOr,   rt_parse_bool_or,   "Viper.Core.Parse.BoolOr",   "i1(str,i1)")
+RT_FUNC(ParseIsInt,    rt_parse_is_int,    "Viper.Core.Parse.IsInt",    "i1(str)")
+RT_FUNC(ParseIsNum,    rt_parse_is_num,    "Viper.Core.Parse.IsNum",    "i1(str)")
+RT_FUNC(ParseIntRadix, rt_parse_int_radix, "Viper.Core.Parse.IntRadix", "i64(str,i64,i64)")
+
+/// @summary Provides Parse functionality for core runtime services.
+/// @details
+/// `Viper.Core.Parse` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `TryInt`,
+/// `TryNum`, `TryDouble`, `TryBool`.
+RT_CLASS_BEGIN("Viper.Core.Parse", CoreParse, "obj", none)
+    RT_METHOD("TryInt",    "obj<Viper.Option>(str)", ParseTryInt)
+    RT_METHOD("TryNum",    "obj<Viper.Option>(str)", ParseTryNum)
+    RT_METHOD("TryDouble", "obj<Viper.Option>(str)", ParseTryDouble)
+    RT_METHOD("TryBool",   "obj<Viper.Option>(str)", ParseTryBool)
+    RT_METHOD("IntOr",     "i64(str,i64)",     ParseIntOr)
+    RT_METHOD("NumOr",     "f64(str,f64)",     ParseNumOr)
+    RT_METHOD("DoubleOr",  "f64(str,f64)",     ParseDoubleOr)
+    RT_METHOD("BoolOr",    "i1(str,i1)",       ParseBoolOr)
+    RT_METHOD("IsInt",     "i1(str)",          ParseIsInt)
+    RT_METHOD("IsNum",     "i1(str)",          ParseIsNum)
+    RT_METHOD("IntRadix",  "i64(str,i64,i64)", ParseIntRadix)
+RT_CLASS_END()
+
+//=============================================================================
+// FMT (value formatting)
+//=============================================================================
+
+RT_FUNC(FmtInt,      rt_fmt_int,       "Viper.Text.Fmt.Int",      "str(i64)")
+RT_FUNC(FmtIntRadix, rt_fmt_int_radix, "Viper.Text.Fmt.IntRadix", "str(i64,i64)")
+RT_FUNC(FmtIntPad,   rt_fmt_int_pad,   "Viper.Text.Fmt.IntPad",   "str(i64,i64,str)")
+RT_FUNC(FmtNum,      rt_fmt_num,       "Viper.Text.Fmt.Num",      "str(f64)")
+RT_FUNC(FmtNumFixed, rt_fmt_num_fixed, "Viper.Text.Fmt.NumFixed", "str(f64,i64)")
+RT_FUNC(FmtNumSci,   rt_fmt_num_sci,   "Viper.Text.Fmt.NumSci",   "str(f64,i64)")
+RT_FUNC(FmtNumPct,   rt_fmt_num_pct,   "Viper.Text.Fmt.NumPct",   "str(f64,i64)")
+RT_FUNC(FmtScientific, rt_fmt_num_sci, "Viper.Text.Fmt.Scientific", "str(f64,i64)")
+RT_FUNC(FmtPercent,    rt_fmt_num_pct, "Viper.Text.Fmt.Percent",    "str(f64,i64)")
+RT_FUNC(FmtBool,     rt_fmt_bool,      "Viper.Text.Fmt.Bool",     "str(i1)")
+RT_FUNC(FmtBoolYN,   rt_fmt_bool_yn,   "Viper.Text.Fmt.BoolYN",   "str(i1)")
+RT_FUNC(FmtYesNo,    rt_fmt_bool_yn,   "Viper.Text.Fmt.YesNo",    "str(i1)")
+RT_FUNC(FmtSize,     rt_fmt_size,      "Viper.Text.Fmt.Size",     "str(i64)")
+RT_FUNC(FmtHex,      rt_fmt_hex,       "Viper.Text.Fmt.Hex",      "str(i64)")
+RT_FUNC(FmtHexPad,   rt_fmt_hex_pad,   "Viper.Text.Fmt.HexPad",   "str(i64,i64)")
+RT_FUNC(FmtBin,      rt_fmt_bin,       "Viper.Text.Fmt.Bin",      "str(i64)")
+RT_FUNC(FmtOct,      rt_fmt_oct,       "Viper.Text.Fmt.Oct",      "str(i64)")
+RT_FUNC(FmtIntGrouped, rt_fmt_int_grouped, "Viper.Text.Fmt.IntGrouped", "str(i64,str)")
+RT_FUNC(FmtCurrency, rt_fmt_currency,  "Viper.Text.Fmt.Currency", "str(f64,i64,str)")
+RT_FUNC(FmtToWords,  rt_fmt_to_words,  "Viper.Text.Fmt.ToWords",  "str(i64)")
+RT_FUNC(FmtOrdinal,  rt_fmt_ordinal,   "Viper.Text.Fmt.Ordinal",  "str(i64)")
+
+//=============================================================================
+// VEC2
+//=============================================================================
+
+RT_FUNC(Vec2Add,    rt_vec2_add,    "Viper.Math.Vec2.Add",    "obj(obj,obj)")
+RT_FUNC(Vec2Angle,  rt_vec2_angle,  "Viper.Math.Vec2.Angle",  "f64(obj)")
+RT_FUNC(Vec2Cross,  rt_vec2_cross,  "Viper.Math.Vec2.Cross",  "f64(obj,obj)")
+RT_FUNC(Vec2Dist,   rt_vec2_dist,   "Viper.Math.Vec2.Dist",   "f64(obj,obj)")
+RT_FUNC(Vec2Div,    rt_vec2_div,    "Viper.Math.Vec2.Div",    "obj(obj,f64)")
+RT_FUNC(Vec2Dot,    rt_vec2_dot,    "Viper.Math.Vec2.Dot",    "f64(obj,obj)")
+RT_FUNC(Vec2Len,    rt_vec2_len,    "Viper.Math.Vec2.Len",    "f64(obj)")
+RT_FUNC(Vec2LenSq,  rt_vec2_len_sq, "Viper.Math.Vec2.LenSq",  "f64(obj)")
+RT_FUNC(Vec2Lerp,   rt_vec2_lerp,   "Viper.Math.Vec2.Lerp",   "obj(obj,obj,f64)")
+RT_FUNC(Vec2Mul,    rt_vec2_mul,    "Viper.Math.Vec2.Mul",    "obj(obj,f64)")
+RT_FUNC(Vec2Neg,    rt_vec2_neg,    "Viper.Math.Vec2.Neg",    "obj(obj)")
+RT_FUNC(Vec2New,    rt_vec2_new,    "Viper.Math.Vec2.New",    "obj(f64,f64)")
+RT_FUNC(Vec2Norm,   rt_vec2_norm,   "Viper.Math.Vec2.Norm",   "obj(obj)")
+RT_FUNC(Vec2One,    rt_vec2_one,    "Viper.Math.Vec2.One",    "obj()")
+RT_FUNC(Vec2Rotate, rt_vec2_rotate, "Viper.Math.Vec2.Rotate", "obj(obj,f64)")
+RT_FUNC(Vec2Sub,    rt_vec2_sub,    "Viper.Math.Vec2.Sub",    "obj(obj,obj)")
+RT_FUNC(Vec2X,      rt_vec2_x,      "Viper.Math.Vec2.get_X",  "f64(obj)")
+RT_FUNC(Vec2Y,      rt_vec2_y,      "Viper.Math.Vec2.get_Y",  "f64(obj)")
+RT_FUNC(Vec2Zero,   rt_vec2_zero,   "Viper.Math.Vec2.Zero",   "obj()")
+
+//=============================================================================

@@ -62,10 +62,16 @@ int main() {
     assert(cat.size() >= 1);
 
     for (const auto &cls : cat) {
+        assert(cls.summary != nullptr && *cls.summary != '\0' &&
+               "runtime classes must have authored summaries");
+        assert(cls.details != nullptr && *cls.details != '\0' &&
+               "runtime classes must have authored details");
         for (const auto &method : cls.methods) {
             const std::string_view name(method.name);
-            assert(!startsWith(name, "get_") && "accessors must be runtime properties, not methods");
-            assert(!startsWith(name, "set_") && "accessors must be runtime properties, not methods");
+            assert(!startsWith(name, "get_") &&
+                   "accessors must be runtime properties, not methods");
+            assert(!startsWith(name, "set_") &&
+                   "accessors must be runtime properties, not methods");
         }
     }
 
@@ -73,6 +79,9 @@ int main() {
     const il::runtime::RuntimeClass *stringCls = findClass("Viper.String");
 
     assert(stringCls != nullptr && "Viper.String not found in catalog");
+    assert(std::string_view(stringCls->summary) ==
+           "Provides immutable runtime string values and common text operations.");
+    assert(std::string_view(stringCls->details).find("`Viper.String`") != std::string_view::npos);
     assert(stringCls->properties.size() >= 2);
 
     // Find Length and IsEmpty properties (order-independent)

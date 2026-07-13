@@ -1,54 +1,43 @@
-#!/bin/bash
-# check_runtime_completeness.sh
-# Finds RT_METHOD/RT_PROP handler names referenced in runtime.def that
-# have no corresponding RT_FUNC entry. Exits 1 if any gaps are found.
+#!/usr/bin/env bash
+#===----------------------------------------------------------------------===//
 #
-# Usage: ./scripts/check_runtime_completeness.sh
+# Part of the Viper project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===//
+#
+# File: scripts/check_runtime_completeness.sh
+# Purpose: Validate cross-row references in the modular runtime definition set.
+# Key invariants:
+#   - rtgen is the only parser for runtime definition manifests and fragments.
+#   - Every class constructor, property accessor, and method target resolves.
+# Ownership/Lifetime:
+#   - Reads repository sources and an existing rtgen build artifact.
+#   - Creates no persistent files.
+# Links: src/tools/rtgen/rtgen.cpp, src/il/runtime/runtime.def
+#
+#===----------------------------------------------------------------------===//
 
 set -euo pipefail
 
-DEF="src/il/runtime/runtime.def"
+readonly DEF="src/il/runtime/runtime.def"
+RTGEN="${VIPER_RTGEN:-build/src/rtgen}"
 
-if [[ ! -f "$DEF" ]]; then
-    echo "ERROR: $DEF not found. Run from the project root." >&2
+if [[ ! -f "${DEF}" ]]; then
+    echo "ERROR: ${DEF} not found. Run from the project root." >&2
     exit 2
 fi
 
-# Extract handler names from RT_METHOD("Name", "sig", HandlerName) lines.
-method_handlers=$(grep -E '^\s+RT_METHOD\(' "$DEF" \
-    | sed -E 's/.*RT_METHOD\("[^"]*",[ ]*"[^"]*",[ ]*([A-Za-z_][A-Za-z0-9_]*)\).*/\1/')
-
-# Extract getter handler names from RT_PROP("Name", "type", Getter, Setter) lines.
-prop_getters=$(grep -E '^\s+RT_PROP\(' "$DEF" \
-    | sed -E 's/.*RT_PROP\("[^"]*",[ ]*"[^"]*",[ ]*([A-Za-z_][A-Za-z0-9_]*),[ ]*[A-Za-z_][A-Za-z0-9_]*\).*/\1/')
-
-# Extract setter handler names (4th arg), excluding "none".
-prop_setters=$(grep -E '^\s+RT_PROP\(' "$DEF" \
-    | sed -E 's/.*RT_PROP\("[^"]*",[ ]*"[^"]*",[ ]*[A-Za-z_][A-Za-z0-9_]*,[ ]*([A-Za-z_][A-Za-z0-9_]*)\).*/\1/' \
-    | grep -v '^none$')
-
-# Combine all handler names, deduplicate, and sort.
-handlers=$(printf '%s\n%s\n%s\n' "$method_handlers" "$prop_getters" "$prop_setters" \
-    | grep -v '^$' | grep -v '^none$' | sort -u)
-
-# Extract all handler identifiers defined by RT_FUNC(HandlerName, ...) and
-# RT_INTERNAL_FUNC(HandlerName, ...) lines — both macros define a handler that an
-# RT_METHOD/RT_PROP may reference (RT_INTERNAL_FUNC is used for internal class
-# metadata/lowering targets hidden from the public catalog).
-funcs=$(grep -E '^RT_(INTERNAL_)?FUNC\(' "$DEF" \
-    | sed -E 's/RT_(INTERNAL_)?FUNC\(([A-Za-z_][A-Za-z0-9_]*).*/\2/' \
-    | sort -u)
-
-# Find handler names with no RT_FUNC entry.
-missing=$(comm -23 <(echo "$handlers") <(echo "$funcs"))
-
-if [[ -n "$missing" ]]; then
-    count=$(echo "$missing" | wc -l | tr -d ' ')
-    echo "ERROR: $count handler(s) referenced in RT_METHOD/RT_PROP have no RT_FUNC entry:"
-    echo "$missing" | sed 's/^/  /'
-    echo ""
-    echo "Add RT_FUNC entries for the above handlers in $DEF"
-    exit 1
+if [[ ! -x "${RTGEN}" ]]; then
+    config="${VIPER_BUILD_TYPE:-Debug}"
+    candidate="build/src/${config}/rtgen.exe"
+    if [[ -x "${candidate}" ]]; then
+        RTGEN="${candidate}"
+    else
+        echo "ERROR: rtgen is not built. Run the platform build script first." >&2
+        exit 2
+    fi
 fi
 
-echo "OK: All RT_METHOD/RT_PROP handlers have RT_FUNC entries."
+"${RTGEN}" --validate "${DEF}"
+echo "OK: Runtime definition references are complete."

@@ -30,6 +30,7 @@
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/Token.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "il/transform/PassManager.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
@@ -38,6 +39,7 @@
 #include <cctype>
 #include <cstdio>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -77,6 +79,20 @@ static std::string sanitizeBasicHoverCode(std::string text) {
             c = ' ';
     }
     return text;
+}
+
+/// @brief Combine authored runtime class documentation for BASIC tooling.
+static std::string runtimeClassDocumentation(std::string_view qualifiedName) {
+    const auto *runtimeClass = il::runtime::findRuntimeClassByQName(qualifiedName);
+    if (!runtimeClass)
+        return {};
+    std::string documentation = runtimeClass->summary ? runtimeClass->summary : "";
+    if (runtimeClass->details && *runtimeClass->details) {
+        if (!documentation.empty())
+            documentation += "\n\n";
+        documentation += runtimeClass->details;
+    }
+    return documentation;
 }
 
 /// @brief Build a case-folded map from BASIC identifier spellings to source locations.
@@ -267,7 +283,8 @@ std::vector<CompletionInfo> BasicCompilerBridge::completions(const std::string &
                           item.insertText,
                           static_cast<int>(item.kind),
                           item.detail,
-                          item.sortPriority});
+                          item.sortPriority,
+                          item.documentation});
     }
     return result;
 }
@@ -295,6 +312,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
     auto varType = sema.lookupVarType(ident);
     if (varType) {
         std::string typeStr;
+        std::string documentation;
         switch (*varType) {
             case SemanticAnalyzer::Type::Int:
                 typeStr = "INTEGER";
@@ -320,6 +338,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             case SemanticAnalyzer::Type::Object: {
                 auto cls = sema.lookupObjectClassQName(ident);
                 typeStr = cls.value_or("Object");
+                documentation = runtimeClassDocumentation(typeStr);
                 break;
             }
             case SemanticAnalyzer::Type::Unknown:
@@ -333,6 +352,8 @@ std::string BasicCompilerBridge::hover(const std::string &source,
         else
             md += "DIM ";
         md += sanitizeBasicHoverCode(ident) + " AS " + sanitizeBasicHoverCode(typeStr) + "\n```";
+        if (!documentation.empty())
+            md += "\n\n" + documentation;
         return md;
     }
 
@@ -403,6 +424,9 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             "```basic\nCLASS " + sanitizeBasicHoverCode(classInfo->qualifiedName) + "\n```";
         md += "\n\n*" + std::to_string(classInfo->fields.size()) + " fields, " +
               std::to_string(classInfo->methods.size()) + " methods*";
+        if (std::string documentation = runtimeClassDocumentation(classInfo->qualifiedName);
+            !documentation.empty())
+            md += "\n\n" + documentation;
         return md;
     }
 

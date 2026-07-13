@@ -1,0 +1,950 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/api/gui_layout.def
+// Purpose: GUI layout, tooling, and advanced widget runtime functions.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+// GUI - LAYOUT
+//=============================================================================
+
+RT_FUNC(GuiVBoxNew,           rt_vbox_new,             "Viper.GUI.VBox.New",           "obj()")
+RT_FUNC(GuiHBoxNew,           rt_hbox_new,             "Viper.GUI.HBox.New",           "obj()")
+RT_FUNC(GuiContainerSetSpacing, rt_container_set_spacing, "Viper.GUI.Container.SetSpacing", "void(obj,f64)")
+RT_FUNC(GuiContainerSetPadding, rt_container_set_padding, "Viper.GUI.Container.SetPadding", "void(obj,f64)")
+
+/// @summary Provides Container functionality for graphical user interfaces.
+/// @details
+/// `Viper.GUI.Container` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `SetSpacing`,
+/// `SetPadding`.
+RT_CLASS_BEGIN("Viper.GUI.Container", GuiContainer, "obj", none)
+    RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
+    RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - CLIPBOARD (Phase 1)
+//=============================================================================
+
+RT_FUNC(ClipboardSetText,  rt_clipboard_set_text,  "Viper.GUI.ClipboardText.SetText",  "void(str)")
+RT_FUNC(ClipboardGetText,  rt_clipboard_get_text,  "Viper.GUI.ClipboardText.GetText",  "str()")
+RT_FUNC(ClipboardHasText,  rt_clipboard_has_text,  "Viper.GUI.ClipboardText.HasText",  "i1()")
+RT_FUNC(ClipboardClear,    rt_clipboard_clear,     "Viper.GUI.ClipboardText.Clear",    "void()")
+
+/// @summary Provides Clipboard Text constants and static operations for graphical user interfaces.
+/// @details
+/// `Viper.GUI.ClipboardText` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `SetText`, `GetText`, `HasText`, `Clear`.
+RT_CLASS_BEGIN("Viper.GUI.ClipboardText", GuiClipboardText, "none", none)
+    RT_METHOD("SetText", "void(str)", ClipboardSetText)
+    RT_METHOD("GetText", "str()",     ClipboardGetText)
+    RT_METHOD("HasText", "i1()",     ClipboardHasText)
+    RT_METHOD("Clear",   "void()",    ClipboardClear)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - KEYBOARD SHORTCUTS (Phase 1)
+//=============================================================================
+
+RT_FUNC(ShortcutsRegister,         rt_shortcuts_register,          "Viper.GUI.Shortcuts.Register",         "void(str,str,str)")
+RT_FUNC(ShortcutsUnregister,       rt_shortcuts_unregister,        "Viper.GUI.Shortcuts.Unregister",       "void(str)")
+RT_FUNC(ShortcutsClear,            rt_shortcuts_clear,             "Viper.GUI.Shortcuts.Clear",            "void()")
+RT_FUNC(ShortcutsIsEnabled,        rt_shortcuts_is_enabled,        "Viper.GUI.Shortcuts.IsEnabled",        "i1(str)")
+RT_FUNC(ShortcutsSetEnabled,       rt_shortcuts_set_enabled,       "Viper.GUI.Shortcuts.SetEnabled",       "void(str,i1)")
+RT_FUNC(ShortcutsGetGlobalEnabled, rt_shortcuts_get_global_enabled,"Viper.GUI.Shortcuts.GetGlobalEnabled", "i1()")
+RT_FUNC(ShortcutsSetGlobalEnabled, rt_shortcuts_set_global_enabled,"Viper.GUI.Shortcuts.SetGlobalEnabled", "void(i1)")
+RT_FUNC(ShortcutsWasTriggered,     rt_shortcuts_was_triggered,     "Viper.GUI.Shortcuts.WasTriggered",     "i1(str)")
+RT_FUNC(ShortcutsGetTriggered,     rt_shortcuts_get_triggered,     "Viper.GUI.Shortcuts.GetTriggered",     "str()")
+
+/// @summary Provides Shortcuts constants and static operations for graphical user interfaces.
+/// @details
+/// `Viper.GUI.Shortcuts` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Register`, `Unregister`, `Clear`, `IsEnabled`.
+RT_CLASS_BEGIN("Viper.GUI.Shortcuts", GuiShortcuts, "none", none)
+    RT_METHOD("Register",          "void(str,str,str)", ShortcutsRegister)
+    RT_METHOD("Unregister",        "void(str)",         ShortcutsUnregister)
+    RT_METHOD("Clear",             "void()",            ShortcutsClear)
+    RT_METHOD("IsEnabled",         "i1(str)",          ShortcutsIsEnabled)
+    RT_METHOD("SetEnabled",        "void(str,i1)",     ShortcutsSetEnabled)
+    RT_METHOD("GetGlobalEnabled",  "i1()",             ShortcutsGetGlobalEnabled)
+    RT_METHOD("SetGlobalEnabled",  "void(i1)",         ShortcutsSetGlobalEnabled)
+    RT_METHOD("WasTriggered",      "i1(str)",          ShortcutsWasTriggered)
+    RT_METHOD("GetTriggered",      "str()",             ShortcutsGetTriggered)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - CURSOR (Phase 1)
+//=============================================================================
+
+RT_FUNC(CursorSet,        rt_cursor_set,         "Viper.GUI.Cursor.Set",        "void(i64)")
+RT_FUNC(CursorReset,      rt_cursor_reset,       "Viper.GUI.Cursor.Reset",      "void()")
+RT_FUNC(CursorSetVisible, rt_cursor_set_visible, "Viper.GUI.Cursor.SetVisible", "void(i1)")
+
+/// @summary Provides Cursor constants and static operations for graphical user interfaces.
+/// @details
+/// `Viper.GUI.Cursor` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Set`, `Reset`, `SetVisible`.
+RT_CLASS_BEGIN("Viper.GUI.Cursor", GuiCursor, "none", none)
+    RT_METHOD("Set",        "void(i64)", CursorSet)
+    RT_METHOD("Reset",      "void()",    CursorReset)
+    RT_METHOD("SetVisible", "void(i1)", CursorSetVisible)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - MENUBAR (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuBarNew,          rt_menubar_new,           "Viper.GUI.MenuBar.New",          "obj(obj)")
+RT_FUNC(MenuBarDestroy,      rt_menubar_destroy,       "Viper.GUI.MenuBar.Destroy",      "void(obj)")
+RT_FUNC(MenuBarAddMenu,      rt_menubar_add_menu,      "Viper.GUI.MenuBar.AddMenu",      "obj(obj,str)")
+RT_FUNC(MenuBarRemoveMenu,   rt_menubar_remove_menu,   "Viper.GUI.MenuBar.RemoveMenu",   "void(obj,obj)")
+RT_FUNC(MenuBarGetMenuCount, rt_menubar_get_menu_count,"Viper.GUI.MenuBar.GetMenuCount", "i64(obj)")
+RT_FUNC(MenuBarGetMenu,      rt_menubar_get_menu,      "Viper.GUI.MenuBar.GetMenu",      "obj(obj,i64)")
+RT_FUNC(MenuBarIsVisible,    rt_menubar_is_visible,    "Viper.GUI.MenuBar.IsVisible",    "i1(obj)")
+
+//=============================================================================
+// GUI - MENU (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuAddItem,             rt_menu_add_item,             "Viper.GUI.Menu.AddItem",             "obj(obj,str)")
+RT_FUNC(MenuAddItemWithShortcut, rt_menu_add_item_with_shortcut,"Viper.GUI.Menu.AddItemWithShortcut", "obj(obj,str,str)")
+RT_FUNC(MenuAddSeparator,        rt_menu_add_separator,        "Viper.GUI.Menu.AddSeparator",        "obj(obj)")
+RT_FUNC(MenuAddSubmenu,          rt_menu_add_submenu,          "Viper.GUI.Menu.AddSubmenu",          "obj(obj,str)")
+RT_FUNC(MenuRemoveItem,          rt_menu_remove_item,          "Viper.GUI.Menu.RemoveItem",          "void(obj,obj)")
+RT_FUNC(MenuClear,               rt_menu_clear,                "Viper.GUI.Menu.Clear",               "void(obj)")
+RT_FUNC(MenuSetTitle,            rt_menu_set_title,            "Viper.GUI.Menu.SetTitle",            "void(obj,str)")
+RT_FUNC(MenuGetTitle,            rt_menu_get_title,            "Viper.GUI.Menu.GetTitle",            "str(obj)")
+RT_FUNC(MenuGetItemCount,        rt_menu_get_item_count,       "Viper.GUI.Menu.GetItemCount",        "i64(obj)")
+RT_FUNC(MenuGetItem,             rt_menu_get_item,             "Viper.GUI.Menu.GetItem",             "obj(obj,i64)")
+RT_FUNC(MenuSetEnabled,          rt_menu_set_enabled,          "Viper.GUI.Menu.SetEnabled",          "void(obj,i1)")
+RT_FUNC(MenuIsEnabled,           rt_menu_is_enabled,           "Viper.GUI.Menu.IsEnabled",           "i1(obj)")
+
+//=============================================================================
+// GUI - MENUITEM (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuItemSetText,      rt_menuitem_set_text,       "Viper.GUI.MenuItem.SetText",      "void(obj,str)")
+RT_FUNC(MenuItemGetText,      rt_menuitem_get_text,       "Viper.GUI.MenuItem.GetText",      "str(obj)")
+RT_FUNC(MenuItemSetEnabled,   rt_menuitem_set_enabled,    "Viper.GUI.MenuItem.SetEnabled",   "void(obj,i1)")
+RT_FUNC(MenuItemIsEnabled,    rt_menuitem_is_enabled,     "Viper.GUI.MenuItem.IsEnabled",    "i1(obj)")
+RT_FUNC(MenuItemSetChecked,   rt_menuitem_set_checked,    "Viper.GUI.MenuItem.SetChecked",   "void(obj,i1)")
+RT_FUNC(MenuItemIsChecked,    rt_menuitem_is_checked,     "Viper.GUI.MenuItem.IsChecked",    "i1(obj)")
+RT_FUNC(MenuItemSetShortcut,  rt_menuitem_set_shortcut,   "Viper.GUI.MenuItem.SetShortcut",  "void(obj,str)")
+RT_FUNC(MenuItemGetShortcut,  rt_menuitem_get_shortcut,   "Viper.GUI.MenuItem.GetShortcut",  "str(obj)")
+RT_FUNC(MenuItemSetIcon,      rt_menuitem_set_icon,       "Viper.GUI.MenuItem.SetIcon",      "void(obj,obj)")
+RT_FUNC(MenuItemSetCheckable, rt_menuitem_set_checkable,  "Viper.GUI.MenuItem.SetCheckable", "void(obj,i1)")
+RT_FUNC(MenuItemIsCheckable,  rt_menuitem_is_checkable,   "Viper.GUI.MenuItem.IsCheckable",  "i1(obj)")
+RT_FUNC(MenuItemIsSeparator,  rt_menuitem_is_separator,   "Viper.GUI.MenuItem.IsSeparator",  "i1(obj)")
+RT_FUNC(MenuItemWasClicked,   rt_menuitem_was_clicked,    "Viper.GUI.MenuItem.WasClicked",   "i1(obj)")
+
+//=============================================================================
+// GUI - CONTEXTMENU (Phase 2)
+//=============================================================================
+
+RT_FUNC(ContextMenuNew,              rt_contextmenu_new,               "Viper.GUI.ContextMenu.New",              "obj()")
+RT_FUNC(ContextMenuDestroy,          rt_contextmenu_destroy,           "Viper.GUI.ContextMenu.Destroy",          "void(obj)")
+RT_FUNC(ContextMenuAddItem,          rt_contextmenu_add_item,          "Viper.GUI.ContextMenu.AddItem",          "obj(obj,str)")
+RT_FUNC(ContextMenuAddItemShortcut,  rt_contextmenu_add_item_with_shortcut, "Viper.GUI.ContextMenu.AddItemWithShortcut", "obj(obj,str,str)")
+RT_FUNC(ContextMenuAddSeparator,     rt_contextmenu_add_separator,     "Viper.GUI.ContextMenu.AddSeparator",     "obj(obj)")
+RT_FUNC(ContextMenuShow,             rt_contextmenu_show,              "Viper.GUI.ContextMenu.Show",             "void(obj,i64,i64)")
+RT_FUNC(ContextMenuHide,             rt_contextmenu_hide,              "Viper.GUI.ContextMenu.Hide",             "void(obj)")
+RT_FUNC(ContextMenuIsVisible,        rt_contextmenu_is_visible,        "Viper.GUI.ContextMenu.IsVisible",        "i1(obj)")
+RT_FUNC(ContextMenuClear,            rt_contextmenu_clear,             "Viper.GUI.ContextMenu.Clear",            "void(obj)")
+RT_FUNC(ContextMenuAddSubmenu,       rt_contextmenu_add_submenu,       "Viper.GUI.ContextMenu.AddSubmenu",       "obj(obj,str)")
+RT_FUNC(ContextMenuGetClickedItem,   rt_contextmenu_get_clicked_item,  "Viper.GUI.ContextMenu.GetClickedItem",   "obj(obj)")
+
+//=============================================================================
+// GUI - STATUSBAR (Phase 3)
+//=============================================================================
+
+RT_FUNC(StatusBarNew,           rt_statusbar_new,            "Viper.GUI.StatusBar.New",           "obj(obj)")
+RT_FUNC(StatusBarDestroy,       rt_statusbar_destroy,        "Viper.GUI.StatusBar.Destroy",       "void(obj)")
+RT_FUNC(StatusBarSetLeftText,   rt_statusbar_set_left_text,  "Viper.GUI.StatusBar.SetLeftText",   "void(obj,str)")
+RT_FUNC(StatusBarSetCenterText, rt_statusbar_set_center_text,"Viper.GUI.StatusBar.SetCenterText", "void(obj,str)")
+RT_FUNC(StatusBarSetRightText,  rt_statusbar_set_right_text, "Viper.GUI.StatusBar.SetRightText",  "void(obj,str)")
+RT_FUNC(StatusBarSetVisible,    rt_statusbar_set_visible,    "Viper.GUI.StatusBar.SetVisible",    "void(obj,i1)")
+RT_FUNC(StatusBarIsVisible,     rt_statusbar_is_visible,     "Viper.GUI.StatusBar.IsVisible",     "i1(obj)")
+RT_FUNC(StatusBarAddText,          rt_statusbar_add_text,          "Viper.GUI.StatusBar.AddText",          "obj(obj,str,i64)")
+RT_FUNC(StatusBarGetLeftText,      rt_statusbar_get_left_text,     "Viper.GUI.StatusBar.GetLeftText",      "str(obj)")
+RT_FUNC(StatusBarGetCenterText,    rt_statusbar_get_center_text,   "Viper.GUI.StatusBar.GetCenterText",    "str(obj)")
+RT_FUNC(StatusBarGetRightText,     rt_statusbar_get_right_text,    "Viper.GUI.StatusBar.GetRightText",     "str(obj)")
+RT_FUNC(StatusBarAddButton,        rt_statusbar_add_button,        "Viper.GUI.StatusBar.AddButton",        "obj(obj,str,i64)")
+RT_FUNC(StatusBarAddProgress,      rt_statusbar_add_progress,      "Viper.GUI.StatusBar.AddProgress",      "obj(obj,i64)")
+RT_FUNC(StatusBarAddSeparator,     rt_statusbar_add_separator,     "Viper.GUI.StatusBar.AddSeparator",     "obj(obj,i64)")
+RT_FUNC(StatusBarAddSpacer,        rt_statusbar_add_spacer,        "Viper.GUI.StatusBar.AddSpacer",        "obj(obj,i64)")
+RT_FUNC(StatusBarRemoveItem,       rt_statusbar_remove_item,       "Viper.GUI.StatusBar.RemoveItem",       "void(obj,obj)")
+RT_FUNC(StatusBarClear,            rt_statusbar_clear,             "Viper.GUI.StatusBar.Clear",            "void(obj)")
+
+//=============================================================================
+// GUI - STATUSBARITEM (Phase 3)
+//=============================================================================
+
+RT_FUNC(StatusBarItemSetText,        rt_statusbaritem_set_text,        "Viper.GUI.StatusBarItem.SetText",        "void(obj,str)")
+RT_FUNC(StatusBarItemGetText,        rt_statusbaritem_get_text,        "Viper.GUI.StatusBarItem.GetText",        "str(obj)")
+RT_FUNC(StatusBarItemSetTextColor,   rt_statusbaritem_set_text_color,  "Viper.GUI.StatusBarItem.SetTextColor",   "void(obj,i64)")
+RT_FUNC(StatusBarItemSetTooltip,     rt_statusbaritem_set_tooltip,     "Viper.GUI.StatusBarItem.SetTooltip",     "void(obj,str)")
+RT_FUNC(StatusBarItemSetVisible,     rt_statusbaritem_set_visible,     "Viper.GUI.StatusBarItem.SetVisible",     "void(obj,i1)")
+RT_FUNC(StatusBarItemWasClicked,     rt_statusbaritem_was_clicked,     "Viper.GUI.StatusBarItem.WasClicked",     "i1(obj)")
+RT_FUNC(StatusBarItemSetProgress,    rt_statusbaritem_set_progress,    "Viper.GUI.StatusBarItem.SetProgress",    "void(obj,f64)")
+RT_FUNC(StatusBarItemGetProgress,    rt_statusbaritem_get_progress,    "Viper.GUI.StatusBarItem.GetProgress",    "f64(obj)")
+
+//=============================================================================
+// GUI - TOOLBAR (Phase 3)
+//=============================================================================
+
+RT_FUNC(ToolbarNew,          rt_toolbar_new,                  "Viper.GUI.Toolbar.New",             "obj(obj)")
+RT_FUNC(ToolbarNewVertical,  rt_toolbar_new_vertical,         "Viper.GUI.Toolbar.NewVertical",     "obj(obj)")
+RT_FUNC(ToolbarDestroy,      rt_toolbar_destroy,              "Viper.GUI.Toolbar.Destroy",         "void(obj)")
+RT_FUNC(ToolbarAddButton,    rt_toolbar_add_button,           "Viper.GUI.Toolbar.AddButton",       "obj(obj,str,str)")
+RT_FUNC(ToolbarAddButtonText,rt_toolbar_add_button_with_text, "Viper.GUI.Toolbar.AddButtonWithText","obj(obj,str,str,str)")
+RT_FUNC(ToolbarAddNamedButton, rt_toolbar_add_named_button,    "Viper.GUI.Toolbar.AddNamedButton",  "obj(obj,str,str)")
+RT_FUNC(ToolbarAddNamedButtonText, rt_toolbar_add_named_button_with_text, "Viper.GUI.Toolbar.AddNamedButtonWithText", "obj(obj,str,str,str)")
+RT_FUNC(ToolbarAddToggle,    rt_toolbar_add_toggle,           "Viper.GUI.Toolbar.AddToggle",       "obj(obj,str,str)")
+RT_FUNC(ToolbarAddNamedToggle, rt_toolbar_add_named_toggle,    "Viper.GUI.Toolbar.AddNamedToggle",  "obj(obj,str,str)")
+RT_FUNC(ToolbarAddSeparator, rt_toolbar_add_separator,        "Viper.GUI.Toolbar.AddSeparator",    "obj(obj)")
+RT_FUNC(ToolbarAddSpacer,    rt_toolbar_add_spacer,           "Viper.GUI.Toolbar.AddSpacer",       "obj(obj)")
+RT_FUNC(ToolbarAddDropdown,  rt_toolbar_add_dropdown,         "Viper.GUI.Toolbar.AddDropdown",     "obj(obj,str)")
+RT_FUNC(ToolbarRemoveItem,   rt_toolbar_remove_item,          "Viper.GUI.Toolbar.RemoveItem",      "void(obj,obj)")
+RT_FUNC(ToolbarSetIconSize,  rt_toolbar_set_icon_size,        "Viper.GUI.Toolbar.SetIconSize",     "void(obj,i64)")
+RT_FUNC(ToolbarGetIconSize,  rt_toolbar_get_icon_size,        "Viper.GUI.Toolbar.GetIconSize",     "i64(obj)")
+RT_FUNC(ToolbarSetStyle,     rt_toolbar_set_style,            "Viper.GUI.Toolbar.SetStyle",        "void(obj,i64)")
+RT_FUNC(ToolbarGetItemCount, rt_toolbar_get_item_count,       "Viper.GUI.Toolbar.GetItemCount",    "i64(obj)")
+RT_FUNC(ToolbarGetItem,      rt_toolbar_get_item,             "Viper.GUI.Toolbar.GetItem",         "obj(obj,i64)")
+RT_FUNC(ToolbarSetVisible,   rt_toolbar_set_visible,          "Viper.GUI.Toolbar.SetVisible",      "void(obj,i1)")
+RT_FUNC(ToolbarIsVisible,    rt_toolbar_is_visible,           "Viper.GUI.Toolbar.IsVisible",       "i1(obj)")
+
+//=============================================================================
+// GUI - TOOLBARITEM (Phase 3)
+//=============================================================================
+
+RT_FUNC(ToolbarItemSetEnabled,   rt_toolbaritem_set_enabled,   "Viper.GUI.ToolbarItem.SetEnabled",   "void(obj,i1)")
+RT_FUNC(ToolbarItemIsEnabled,    rt_toolbaritem_is_enabled,    "Viper.GUI.ToolbarItem.IsEnabled",    "i1(obj)")
+RT_FUNC(ToolbarItemSetTooltip,   rt_toolbaritem_set_tooltip,   "Viper.GUI.ToolbarItem.SetTooltip",   "void(obj,str)")
+RT_FUNC(ToolbarItemSetIcon,      rt_toolbaritem_set_icon,      "Viper.GUI.ToolbarItem.SetIcon",      "void(obj,str)")
+RT_FUNC(ToolbarItemSetIconPixels,rt_toolbaritem_set_icon_pixels,"Viper.GUI.ToolbarItem.SetIconPixels","void(obj,obj)")
+RT_FUNC(ToolbarItemSetNamedIcon, rt_toolbaritem_set_named_icon, "Viper.GUI.ToolbarItem.SetNamedIcon", "void(obj,str)")
+RT_FUNC(ToolbarItemSetText,      rt_toolbaritem_set_text,      "Viper.GUI.ToolbarItem.SetText",      "void(obj,str)")
+RT_FUNC(ToolbarItemSetToggled,   rt_toolbaritem_set_toggled,   "Viper.GUI.ToolbarItem.SetToggled",   "void(obj,i1)")
+RT_FUNC(ToolbarItemIsToggled,    rt_toolbaritem_is_toggled,    "Viper.GUI.ToolbarItem.IsToggled",    "i1(obj)")
+RT_FUNC(ToolbarItemWasClicked,   rt_toolbaritem_was_clicked,   "Viper.GUI.ToolbarItem.WasClicked",   "i1(obj)")
+
+//=============================================================================
+// GUI - CODEEDITOR ENHANCEMENTS (Phase 4)
+//=============================================================================
+
+RT_FUNC(CodeEditorSetLanguage,       rt_codeeditor_set_language,        "Viper.GUI.CodeEditor.SetLanguage",       "void(obj,str)")
+RT_FUNC(CodeEditorSetTokenColor,     rt_codeeditor_set_token_color,     "Viper.GUI.CodeEditor.SetTokenColor",     "void(obj,i64,i64)")
+RT_FUNC(CodeEditorAddHighlight,      rt_codeeditor_add_highlight,       "Viper.GUI.CodeEditor.AddHighlight",      "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(CodeEditorClearHighlights,   rt_codeeditor_clear_highlights,    "Viper.GUI.CodeEditor.ClearHighlights",   "void(obj)")
+RT_FUNC(CodeEditorAddSemanticToken,  rt_codeeditor_add_semantic_token,  "Viper.GUI.CodeEditor.AddSemanticToken",  "void(obj,i64,i64,i64,i64)")
+RT_FUNC(CodeEditorClearSemanticTokens, rt_codeeditor_clear_semantic_tokens, "Viper.GUI.CodeEditor.ClearSemanticTokens", "void(obj)")
+RT_FUNC(CodeEditorAddInlayHint,      rt_codeeditor_add_inlay_hint,      "Viper.GUI.CodeEditor.AddInlayHint",      "void(obj,i64,i64,str,i64)")
+RT_FUNC(CodeEditorClearInlayHints,   rt_codeeditor_clear_inlay_hints,   "Viper.GUI.CodeEditor.ClearInlayHints",   "void(obj)")
+RT_FUNC(CodeEditorGetInlayHintCount, rt_codeeditor_get_inlay_hint_count,"Viper.GUI.CodeEditor.GetInlayHintCount", "i64(obj)")
+RT_FUNC(CodeEditorSetShowLineNums,   rt_codeeditor_set_show_line_numbers,"Viper.GUI.CodeEditor.SetShowLineNumbers","void(obj,i1)")
+RT_FUNC(CodeEditorSetGutterIcon,     rt_codeeditor_set_gutter_icon,     "Viper.GUI.CodeEditor.SetGutterIcon",     "void(obj,i64,obj,i64)")
+RT_FUNC(CodeEditorSetGutterBar,      rt_codeeditor_set_gutter_bar,      "Viper.GUI.CodeEditor.SetGutterBar",      "void(obj,i64,i64,i64)")
+RT_FUNC(CodeEditorClearAllGutterIcons, rt_codeeditor_clear_all_gutter_icons, "Viper.GUI.CodeEditor.ClearGutterIcons", "void(obj,i64)")
+RT_FUNC(CodeEditorWasGutterClicked,  rt_codeeditor_was_gutter_clicked,  "Viper.GUI.CodeEditor.WasGutterClicked",  "i1(obj)")
+RT_FUNC(CodeEditorTakeGutterClick,   rt_codeeditor_take_gutter_click,   "Viper.GUI.CodeEditor.TakeGutterClick",   "obj(obj)")
+RT_FUNC(CodeEditorGetGutterClickLine,rt_codeeditor_get_gutter_clicked_line,"Viper.GUI.CodeEditor.GetGutterClickLine","i64(obj)")
+RT_FUNC(CodeEditorGetGutterClickSlot,rt_codeeditor_get_gutter_clicked_slot,"Viper.GUI.CodeEditor.GetGutterClickSlot","i64(obj)")
+RT_FUNC(CodeEditorAddFoldRegion,     rt_codeeditor_add_fold_region,     "Viper.GUI.CodeEditor.AddFoldRegion",     "void(obj,i64,i64)")
+RT_FUNC(CodeEditorFold,              rt_codeeditor_fold,                "Viper.GUI.CodeEditor.Fold",              "void(obj,i64)")
+RT_FUNC(CodeEditorUnfold,            rt_codeeditor_unfold,              "Viper.GUI.CodeEditor.Unfold",            "void(obj,i64)")
+RT_FUNC(CodeEditorIsFolded,          rt_codeeditor_is_folded,           "Viper.GUI.CodeEditor.IsFolded",          "i1(obj,i64)")
+RT_FUNC(CodeEditorGetCursorCount,    rt_codeeditor_get_cursor_count,    "Viper.GUI.CodeEditor.GetCursorCount",    "i64(obj)")
+RT_FUNC(CodeEditorAddCursor,         rt_codeeditor_add_cursor,          "Viper.GUI.CodeEditor.AddCursor",         "void(obj,i64,i64)")
+RT_FUNC(CodeEditorClearCursors,      rt_codeeditor_clear_extra_cursors, "Viper.GUI.CodeEditor.ClearCursors",      "void(obj)")
+RT_FUNC(CodeEditorCursorHasSelection,rt_codeeditor_cursor_has_selection,"Viper.GUI.CodeEditor.CursorHasSelection","i1(obj,i64)")
+RT_FUNC(CodeEditorGetSelectionStartLineAt, rt_codeeditor_get_selection_start_line_at, "Viper.GUI.CodeEditor.GetSelectionStartLineAt", "i64(obj,i64)")
+RT_FUNC(CodeEditorGetSelectionStartColAt,  rt_codeeditor_get_selection_start_col_at,  "Viper.GUI.CodeEditor.GetSelectionStartColAt",  "i64(obj,i64)")
+RT_FUNC(CodeEditorGetSelectionEndLineAt,   rt_codeeditor_get_selection_end_line_at,   "Viper.GUI.CodeEditor.GetSelectionEndLineAt",   "i64(obj,i64)")
+RT_FUNC(CodeEditorGetSelectionEndColAt,    rt_codeeditor_get_selection_end_col_at,    "Viper.GUI.CodeEditor.GetSelectionEndColAt",    "i64(obj,i64)")
+RT_FUNC(CodeEditorUndo,              rt_codeeditor_undo,                "Viper.GUI.CodeEditor.Undo",              "void(obj)")
+RT_FUNC(CodeEditorRedo,              rt_codeeditor_redo,                "Viper.GUI.CodeEditor.Redo",              "void(obj)")
+RT_FUNC(CodeEditorCanUndo,           rt_codeeditor_can_undo,            "Viper.GUI.CodeEditor.CanUndo",           "i1(obj)")
+RT_FUNC(CodeEditorCanRedo,           rt_codeeditor_can_redo,            "Viper.GUI.CodeEditor.CanRedo",           "i1(obj)")
+RT_FUNC(CodeEditorCopy,              rt_codeeditor_copy,                "Viper.GUI.CodeEditor.Copy",              "i64(obj)")
+RT_FUNC(CodeEditorCut,               rt_codeeditor_cut,                 "Viper.GUI.CodeEditor.Cut",               "i64(obj)")
+RT_FUNC(CodeEditorPaste,             rt_codeeditor_paste,               "Viper.GUI.CodeEditor.Paste",             "i64(obj)")
+RT_FUNC(CodeEditorSelectAll,         rt_codeeditor_select_all,          "Viper.GUI.CodeEditor.SelectAll",         "void(obj)")
+RT_FUNC(CodeEditorSetTabSize,        rt_codeeditor_set_tab_size,        "Viper.GUI.CodeEditor.SetTabSize",        "void(obj,i64)")
+RT_FUNC(CodeEditorGetTabSize,        rt_codeeditor_get_tab_size,        "Viper.GUI.CodeEditor.GetTabSize",        "i64(obj)")
+RT_FUNC(CodeEditorSetInsertSpaces,   rt_codeeditor_set_insert_spaces,   "Viper.GUI.CodeEditor.SetInsertSpaces",   "void(obj,i1)")
+RT_FUNC(CodeEditorGetInsertSpaces,   rt_codeeditor_get_insert_spaces,   "Viper.GUI.CodeEditor.GetInsertSpaces",   "i64(obj)")
+RT_FUNC(CodeEditorSetWordWrap,       rt_codeeditor_set_word_wrap,       "Viper.GUI.CodeEditor.SetWordWrap",       "void(obj,i1)")
+RT_FUNC(CodeEditorGetWordWrap,       rt_codeeditor_get_word_wrap,       "Viper.GUI.CodeEditor.GetWordWrap",       "i64(obj)")
+RT_FUNC(CodeEditorSetWhitespaceMode, rt_codeeditor_set_whitespace_mode, "Viper.GUI.CodeEditor.SetWhitespaceMode", "void(obj,i64)")
+RT_FUNC(CodeEditorGetWhitespaceMode, rt_codeeditor_get_whitespace_mode, "Viper.GUI.CodeEditor.GetWhitespaceMode", "i64(obj)")
+RT_FUNC(CodeEditorAttachBuffer,    rt_codeeditor_attach_buffer,    "Viper.GUI.CodeEditor.AttachBuffer",    "obj<Viper.GUI.EditorBuffer>(obj,obj)")
+RT_FUNC(GuiEditorBufferNew,        rt_editorbuffer_new,            "Viper.GUI.EditorBuffer.New",           "obj(str)")
+RT_FUNC(GuiEditorBufferGetText,    rt_editorbuffer_get_text,       "Viper.GUI.EditorBuffer.get_Text",      "str(obj)")
+RT_FUNC(GuiEditorBufferGetRevision, rt_editorbuffer_get_revision,  "Viper.GUI.EditorBuffer.get_Revision",  "i64(obj)")
+RT_FUNC(GuiEditorBufferIsModified, rt_editorbuffer_is_modified,    "Viper.GUI.EditorBuffer.IsModified",    "i1(obj)")
+RT_FUNC(GuiEditorBufferClearModified, rt_editorbuffer_clear_modified, "Viper.GUI.EditorBuffer.ClearModified", "void(obj)")
+RT_FUNC(CodeEditorSetShowIndentGuides, rt_codeeditor_set_show_indent_guides, "Viper.GUI.CodeEditor.SetShowIndentGuides", "void(obj,i1)")
+RT_FUNC(CodeEditorGetShowIndentGuides, rt_codeeditor_get_show_indent_guides, "Viper.GUI.CodeEditor.GetShowIndentGuides", "i64(obj)")
+RT_FUNC(CodeEditorSetReadOnly,       rt_codeeditor_set_read_only,       "Viper.GUI.CodeEditor.SetReadOnly",       "void(obj,i1)")
+RT_FUNC(CodeEditorGetReadOnly,       rt_codeeditor_get_read_only,       "Viper.GUI.CodeEditor.GetReadOnly",       "i64(obj)")
+RT_FUNC(CodeEditorGetCursorPixelX,   rt_codeeditor_get_cursor_pixel_x,  "Viper.GUI.CodeEditor.GetCursorPixelX",   "i64(obj)")
+RT_FUNC(CodeEditorGetCursorPixelY,   rt_codeeditor_get_cursor_pixel_y,  "Viper.GUI.CodeEditor.GetCursorPixelY",   "i64(obj)")
+RT_FUNC(CodeEditorGetLineAtPixel,    rt_codeeditor_get_line_at_pixel,   "Viper.GUI.CodeEditor.GetLineAtPixel",    "i64(obj,i64)")
+RT_FUNC(CodeEditorGetColAtPixel,     rt_codeeditor_get_col_at_pixel,    "Viper.GUI.CodeEditor.GetColAtPixel",     "i64(obj,i64,i64)")
+RT_FUNC(CodeEditorInsertAtCursor,    rt_codeeditor_insert_at_cursor,    "Viper.GUI.CodeEditor.InsertAtCursor",    "void(obj,str)")
+RT_FUNC(CodeEditorInsertAndPlaceCursor, rt_codeeditor_insert_and_place_cursor, "Viper.GUI.CodeEditor.InsertAndPlaceCursor", "void(obj,str,i64)")
+RT_FUNC(CodeEditorGetWordAtCursor,   rt_codeeditor_get_word_at_cursor,  "Viper.GUI.CodeEditor.GetWordAtCursor",   "str(obj)")
+RT_FUNC(CodeEditorReplaceWordAtCursor,rt_codeeditor_replace_word_at_cursor,"Viper.GUI.CodeEditor.ReplaceWordAtCursor","void(obj,str)")
+RT_FUNC(CodeEditorGetLine,              rt_codeeditor_get_line,                "Viper.GUI.CodeEditor.GetLine",              "str(obj,i64)")
+RT_FUNC(CodeEditorSetCustomKeywords,    rt_codeeditor_set_custom_keywords,     "Viper.GUI.CodeEditor.SetCustomKeywords",    "void(obj,str)")
+RT_FUNC(CodeEditorRefreshHighlights,    rt_codeeditor_refresh_highlights,      "Viper.GUI.CodeEditor.RefreshHighlights",    "void(obj)")
+RT_FUNC(CodeEditorGetShowLineNumbers,   rt_codeeditor_get_show_line_numbers,   "Viper.GUI.CodeEditor.GetShowLineNumbers",   "i64(obj)")
+RT_FUNC(CodeEditorSetLineNumberWidth,   rt_codeeditor_set_line_number_width,   "Viper.GUI.CodeEditor.SetLineNumberWidth",   "void(obj,i64)")
+RT_FUNC(CodeEditorClearGutterIcon,      rt_codeeditor_clear_gutter_icon,       "Viper.GUI.CodeEditor.ClearGutterIcon",      "void(obj,i64,i64)")
+RT_FUNC(CodeEditorSetShowFoldGutter,    rt_codeeditor_set_show_fold_gutter,    "Viper.GUI.CodeEditor.SetShowFoldGutter",    "void(obj,i1)")
+RT_FUNC(CodeEditorRemoveFoldRegion,     rt_codeeditor_remove_fold_region,      "Viper.GUI.CodeEditor.RemoveFoldRegion",     "void(obj,i64)")
+RT_FUNC(CodeEditorClearFoldRegions,     rt_codeeditor_clear_fold_regions,      "Viper.GUI.CodeEditor.ClearFoldRegions",     "void(obj)")
+RT_FUNC(CodeEditorToggleFold,           rt_codeeditor_toggle_fold,             "Viper.GUI.CodeEditor.ToggleFold",           "void(obj,i64)")
+RT_FUNC(CodeEditorFoldAll,              rt_codeeditor_fold_all,                "Viper.GUI.CodeEditor.FoldAll",              "void(obj)")
+RT_FUNC(CodeEditorUnfoldAll,            rt_codeeditor_unfold_all,              "Viper.GUI.CodeEditor.UnfoldAll",            "void(obj)")
+RT_FUNC(CodeEditorSetAutoFoldDetection, rt_codeeditor_set_auto_fold_detection, "Viper.GUI.CodeEditor.SetAutoFoldDetection", "void(obj,i1)")
+RT_FUNC(CodeEditorRemoveCursor,         rt_codeeditor_remove_cursor,           "Viper.GUI.CodeEditor.RemoveCursor",         "void(obj,i64)")
+RT_FUNC(CodeEditorGetCursorLineAt,      rt_codeeditor_get_cursor_line_at,      "Viper.GUI.CodeEditor.GetCursorLineAt",      "i64(obj,i64)")
+RT_FUNC(CodeEditorGetCursorColAt,       rt_codeeditor_get_cursor_col_at,       "Viper.GUI.CodeEditor.GetCursorColAt",       "i64(obj,i64)")
+RT_FUNC(CodeEditorSetCursorPositionAt,  rt_codeeditor_set_cursor_position_at,  "Viper.GUI.CodeEditor.SetCursorPositionAt",  "void(obj,i64,i64,i64)")
+RT_FUNC(CodeEditorSetCursorSelection,   rt_codeeditor_set_cursor_selection,    "Viper.GUI.CodeEditor.SetCursorSelection",   "void(obj,i64,i64,i64,i64,i64)")
+RT_FUNC(CodeEditorResetPerfStats,       rt_codeeditor_reset_perf_stats,        "Viper.GUI.CodeEditor.ResetPerfStats",       "void(obj)")
+RT_FUNC(CodeEditorGetFullTextCopyCount, rt_codeeditor_get_full_text_copy_count,"Viper.GUI.CodeEditor.GetFullTextCopyCount", "i64(obj)")
+RT_FUNC(CodeEditorGetLayoutLinearScanCount, rt_codeeditor_get_layout_linear_scan_count, "Viper.GUI.CodeEditor.GetLayoutLinearScanCount", "i64(obj)")
+RT_FUNC(CodeEditorGetSyntaxHighlightCallCount, rt_codeeditor_get_syntax_highlight_call_count, "Viper.GUI.CodeEditor.GetSyntaxHighlightCallCount", "i64(obj)")
+RT_FUNC(CodeEditorGetSyntaxStateLineScanCount, rt_codeeditor_get_syntax_state_line_scan_count, "Viper.GUI.CodeEditor.GetSyntaxStateLineScanCount", "i64(obj)")
+RT_FUNC(CodeEditorGetHighlightSpanCheckCount, rt_codeeditor_get_highlight_span_check_count, "Viper.GUI.CodeEditor.GetHighlightSpanCheckCount", "i64(obj)")
+RT_FUNC(CodeEditorGetFullTextCopyByteCount, rt_codeeditor_get_full_text_copy_byte_count, "Viper.GUI.CodeEditor.GetFullTextCopyByteCount", "i64(obj)")
+
+//=============================================================================
+// Zia Language Completion (Phase 2 IDE)
+//=============================================================================
+
+RT_FUNC(ZiaComplete,                 rt_zia_complete,                   "Viper.Zia.Completion.Complete",  "str(str,i64,i64)")
+RT_FUNC(ZiaCompleteForFile,          rt_zia_complete_for_file,          "Viper.Zia.Completion.CompleteForFile", "str(str,str,i64,i64)")
+RT_FUNC(ZiaCompletionItems,          rt_zia_completion_items,           "Viper.Zia.Completion.Items", "obj<Viper.Collections.Seq>(str,i64,i64)")
+RT_FUNC(ZiaCompletionItemsForFile,   rt_zia_completion_items_for_file,  "Viper.Zia.Completion.ItemsForFile", "obj<Viper.Collections.Seq>(str,str,i64,i64)")
+RT_FUNC(ZiaCompletionBeginItemsForFile, rt_zia_completion_begin_items_for_file, "Viper.Zia.Completion.BeginItemsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)")
+RT_FUNC(ZiaSignatureHelp,            rt_zia_signature_help,             "Viper.Zia.Completion.SignatureHelp", "str(str,i64,i64)")
+RT_FUNC(ZiaSignatureHelpForFile,     rt_zia_signature_help_for_file,    "Viper.Zia.Completion.SignatureHelpForFile", "str(str,str,i64,i64)")
+RT_FUNC(ZiaSignatureInfo,            rt_zia_signature_info,             "Viper.Zia.Completion.SignatureInfo", "obj<Viper.Collections.Map>(str,i64,i64)")
+RT_FUNC(ZiaSignatureInfoForFile,     rt_zia_signature_info_for_file,    "Viper.Zia.Completion.SignatureInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)")
+RT_FUNC(ZiaCompletionBeginSignatureInfoForFile, rt_zia_completion_begin_signature_info_for_file, "Viper.Zia.Completion.BeginSignatureInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)")
+RT_FUNC(ZiaCompletionClearCache,     rt_zia_completion_clear_cache,     "Viper.Zia.Completion.ClearCache","void()")
+RT_FUNC(ZiaCheck,                    rt_zia_check,                      "Viper.Zia.Completion.Check",     "str(str)")
+RT_FUNC(ZiaCheckForFile,             rt_zia_check_for_file,             "Viper.Zia.Completion.CheckForFile", "str(str,str)")
+RT_FUNC(ZiaToolchainCheck,           rt_zia_toolchain_check,            "Viper.Zia.Toolchain.Check", "obj<Viper.Collections.Seq>(str)")
+RT_FUNC(ZiaToolchainCheckForFile,    rt_zia_toolchain_check_for_file,   "Viper.Zia.Toolchain.CheckForFile", "obj<Viper.Collections.Seq>(str,str)")
+RT_FUNC(ZiaToolchainBeginCheckForFile, rt_zia_toolchain_begin_check_for_file, "Viper.Zia.Toolchain.BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)")
+RT_FUNC(ZiaToolchainCompile,         rt_zia_toolchain_compile,          "Viper.Zia.Toolchain.Compile", "obj<Viper.Collections.Map>(str)")
+RT_FUNC(ZiaToolchainCompileForFile,  rt_zia_toolchain_compile_for_file, "Viper.Zia.Toolchain.CompileForFile", "obj<Viper.Collections.Map>(str,str)")
+RT_FUNC(ZiaProjectIndexNew,          rt_zia_project_index_new,          "Viper.Zia.ProjectIndex.New", "obj<Viper.Zia.ProjectIndex.ProjectIndexHandle>(str)")
+RT_FUNC(ZiaProjectIndexIsValid,      rt_zia_project_index_is_valid,     "Viper.Zia.ProjectIndex.IsValid", "i1(obj)")
+RT_FUNC(ZiaProjectIndexUpdateFile,   rt_zia_project_index_update_file,  "Viper.Zia.ProjectIndex.UpdateFile", "i1(obj,str,str)")
+RT_FUNC(ZiaProjectIndexRemoveFile,   rt_zia_project_index_remove_file,  "Viper.Zia.ProjectIndex.RemoveFile", "i1(obj,str)")
+RT_FUNC(ZiaProjectIndexClear,        rt_zia_project_index_clear,        "Viper.Zia.ProjectIndex.Clear", "void(obj)")
+RT_FUNC(ZiaProjectIndexDestroy,      rt_zia_project_index_destroy,      "Viper.Zia.ProjectIndex.Destroy", "void(obj)")
+RT_FUNC(ZiaProjectIndexDefinition,   rt_zia_project_index_definition,   "Viper.Zia.ProjectIndex.Definition", "obj<Viper.Collections.Map>(obj,str,str,i64,i64)")
+RT_FUNC(ZiaProjectIndexReferences,   rt_zia_project_index_references,   "Viper.Zia.ProjectIndex.References", "obj<Viper.Collections.Seq>(obj,str,str,i64,i64)")
+RT_FUNC(ZiaProjectIndexRenameEdits,  rt_zia_project_index_rename_edits, "Viper.Zia.ProjectIndex.RenameEdits", "obj<Viper.Collections.Map>(obj,str,str,i64,i64,str)")
+RT_FUNC(ZiaHover,                    rt_zia_hover,                      "Viper.Zia.Completion.Hover",     "str(str,i64,i64)")
+RT_FUNC(ZiaHoverForFile,             rt_zia_hover_for_file,             "Viper.Zia.Completion.HoverForFile", "str(str,str,i64,i64)")
+RT_FUNC(ZiaHoverInfo,                rt_zia_hover_info,                 "Viper.Zia.Completion.HoverInfo", "obj<Viper.Collections.Map>(str,i64,i64)")
+RT_FUNC(ZiaHoverInfoForFile,         rt_zia_hover_info_for_file,        "Viper.Zia.Completion.HoverInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)")
+RT_FUNC(ZiaCompletionBeginHoverInfoForFile, rt_zia_completion_begin_hover_info_for_file, "Viper.Zia.Completion.BeginHoverInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)")
+RT_FUNC(ZiaSymbols,                  rt_zia_symbols,                    "Viper.Zia.Completion.Symbols",   "str(str)")
+RT_FUNC(ZiaSymbolsForFile,           rt_zia_symbols_for_file,           "Viper.Zia.Completion.SymbolsForFile", "str(str,str)")
+RT_FUNC(ZiaCompletionBeginSymbolsForFile, rt_zia_completion_begin_symbols_for_file, "Viper.Zia.Completion.BeginSymbolsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)")
+RT_FUNC(ZiaCompletionBeginTokensForFile, rt_zia_completion_begin_tokens_for_file, "Viper.Zia.Completion.BeginTokensForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)")
+RT_FUNC(ZiaSemanticJobIsDone,         rt_zia_semantic_job_is_done,       "Viper.Zia.SemanticJob.IsDone", "i1(obj)")
+RT_FUNC(ZiaSemanticJobIsError,        rt_zia_semantic_job_is_error,      "Viper.Zia.SemanticJob.IsError", "i1(obj)")
+RT_FUNC(ZiaSemanticJobError,          rt_zia_semantic_job_error,         "Viper.Zia.SemanticJob.Error", "str(obj)")
+RT_FUNC(ZiaSemanticJobErrorOption,    rt_zia_semantic_job_error_option,  "Viper.Zia.SemanticJob.ErrorOption", "obj<Viper.Option>(obj)")
+RT_FUNC(ZiaSemanticJobKind,           rt_zia_semantic_job_kind,          "Viper.Zia.SemanticJob.Kind", "i64(obj)")
+RT_FUNC(ZiaSemanticJobCancel,         rt_zia_semantic_job_cancel,        "Viper.Zia.SemanticJob.Cancel", "void(obj)")
+RT_FUNC(ZiaSemanticJobCompletionItems, rt_zia_semantic_job_completion_items, "Viper.Zia.SemanticJob.CompletionItems", "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(ZiaSemanticJobSignatureInfo,  rt_zia_semantic_job_signature_info, "Viper.Zia.SemanticJob.SignatureInfo", "obj<Viper.Collections.Map>(obj)")
+RT_FUNC(ZiaSemanticJobHoverInfo,      rt_zia_semantic_job_hover_info,    "Viper.Zia.SemanticJob.HoverInfo", "obj<Viper.Collections.Map>(obj)")
+RT_FUNC(ZiaSemanticJobSymbols,        rt_zia_semantic_job_symbols,       "Viper.Zia.SemanticJob.Symbols", "str(obj)")
+RT_FUNC(ZiaSemanticJobTokens,         rt_zia_semantic_job_tokens,        "Viper.Zia.SemanticJob.Tokens", "str(obj)")
+RT_FUNC(ZiaSemanticJobDiagnostics,    rt_zia_semantic_job_diagnostics,   "Viper.Zia.SemanticJob.Diagnostics", "obj<Viper.Collections.Seq>(obj)")
+
+//=============================================================================
+// Viper.Zia.Document — incremental document mirror sync (plan 08). The IDE
+// pushes edit deltas so semantic requests avoid re-materializing the full
+// buffer on every keystroke; the service keeps a per-path text mirror keyed by
+// revision. SyncDelta returns i1 (0 = no baseline / malformed → caller must
+// full-sync). CheckForFile runs diagnostics straight off the mirror (no text
+// argument). Text is a testability accessor.
+//=============================================================================
+
+RT_FUNC(ZiaDocSyncFull,     rt_zia_doc_sync_full,          "Viper.Zia.Document.SyncFull",     "void(str,str,i64)")
+RT_FUNC(ZiaDocSyncDelta,    rt_zia_doc_sync_delta,         "Viper.Zia.Document.SyncDelta",    "i1(str,str,i64)")
+RT_FUNC(ZiaDocClose,        rt_zia_doc_close,              "Viper.Zia.Document.Close",        "void(str)")
+RT_FUNC(ZiaDocText,         rt_zia_doc_text,               "Viper.Zia.Document.Text",         "str(str)")
+RT_FUNC(ZiaDocCheckForFile, rt_zia_check_for_file_mirror,  "Viper.Zia.Document.CheckForFile", "str(str)")
+RT_FUNC(ZiaDocBeginCheckForFile, rt_zia_doc_begin_check_for_file, "Viper.Zia.Document.BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)")
+
+//=============================================================================
+// Viper BASIC Language Services (Phase 4 IDE) — sync, in-process bridge over the
+// BASIC frontend engines (parseAndAnalyzeBasic / BasicCompletionEngine). Result
+// shapes mirror Viper.Zia.* so the IDE controllers consume both. Exposed as one
+// Viper.Basic.LanguageService class: Viper.* class leaf names must be unique
+// (test_runtime_class_qualified_surface) and BASIC's completion + toolchain
+// share a single sync engine. See ADR 0014.
+//=============================================================================
+
+RT_FUNC(BasicToolchainCheckForFile,  rt_basic_toolchain_check_for_file,  "Viper.Basic.LanguageService.CheckForFile",  "obj<Viper.Collections.Seq>(str,str)")
+RT_FUNC(BasicCompletionItemsForFile, rt_basic_completion_items_for_file, "Viper.Basic.LanguageService.ItemsForFile", "obj<Viper.Collections.Seq>(str,str,i64,i64)")
+RT_FUNC(BasicCompletionSymbolsForFile,   rt_basic_completion_symbols_for_file,    "Viper.Basic.LanguageService.SymbolsForFile",   "str(str,str)")
+RT_FUNC(BasicCompletionHoverInfoForFile, rt_basic_completion_hover_info_for_file, "Viper.Basic.LanguageService.HoverInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)")
+
+//=============================================================================
+// GUI - FLOATING PANEL (Overlay popup for IntelliSense)
+//=============================================================================
+
+RT_FUNC(GuiFloatingPanelNew,         rt_floatingpanel_new,         "Viper.GUI.FloatingPanel.New",         "obj(obj)")
+RT_FUNC(GuiFloatingPanelSetPosition, rt_floatingpanel_set_position,"Viper.GUI.FloatingPanel.SetPosition", "void(obj,f64,f64)")
+RT_FUNC(GuiFloatingPanelCenterInParent, rt_floatingpanel_center_in_parent, "Viper.GUI.FloatingPanel.CenterInParent", "void(obj)")
+RT_FUNC(GuiFloatingPanelSetSize,     rt_floatingpanel_set_size,    "Viper.GUI.FloatingPanel.SetSize",     "void(obj,f64,f64)")
+RT_FUNC(GuiFloatingPanelSetVisible,  rt_floatingpanel_set_visible, "Viper.GUI.FloatingPanel.SetVisible",  "void(obj,i1)")
+RT_FUNC(GuiFloatingPanelAddChild,    rt_floatingpanel_add_child,   "Viper.GUI.FloatingPanel.AddChild",    "void(obj,obj)")
+RT_FUNC(GuiGroupBoxNew,      rt_groupbox_new,       "Viper.GUI.GroupBox.New",      "obj(obj,str)")
+RT_FUNC(GuiGroupBoxDestroy,  rt_groupbox_destroy,   "Viper.GUI.GroupBox.Destroy",  "void(obj)")
+RT_FUNC(GuiGroupBoxSetTitle, rt_groupbox_set_title, "Viper.GUI.GroupBox.SetTitle", "void(obj,str)")
+RT_FUNC(GuiGroupBoxAddChild, rt_groupbox_add_child, "Viper.GUI.GroupBox.AddChild", "void(obj,obj)")
+
+//=============================================================================
+// GUI - MESSAGEBOX (Phase 5)
+//=============================================================================
+
+RT_FUNC(MessageBoxInfo,     rt_messagebox_info,     "Viper.GUI.MessageBox.Info",     "i64(str,str)")
+RT_FUNC(MessageBoxWarning,  rt_messagebox_warning,  "Viper.GUI.MessageBox.Warning",  "i64(str,str)")
+RT_FUNC(MessageBoxError,    rt_messagebox_error,    "Viper.GUI.MessageBox.Error",    "i64(str,str)")
+RT_FUNC(MessageBoxQuestion, rt_messagebox_question, "Viper.GUI.MessageBox.Question", "i64(str,str)")
+RT_FUNC(MessageBoxConfirm,  rt_messagebox_confirm,  "Viper.GUI.MessageBox.Confirm",  "i64(str,str)")
+RT_FUNC(MessageBoxPrompt,   rt_messagebox_prompt,   "Viper.GUI.MessageBox.Prompt",   "str(str,str)")
+RT_FUNC(MessageBoxNew,      rt_messagebox_new,      "Viper.GUI.MessageBox.New",      "obj(str,str,i64)")
+RT_FUNC(MessageBoxNewInfo,  rt_messagebox_new_info, "Viper.GUI.MessageBox.NewInfo",  "obj(str,str)")
+RT_FUNC(MessageBoxNewWarning, rt_messagebox_new_warning, "Viper.GUI.MessageBox.NewWarning", "obj(str,str)")
+RT_FUNC(MessageBoxNewError, rt_messagebox_new_error, "Viper.GUI.MessageBox.NewError", "obj(str,str)")
+RT_FUNC(MessageBoxNewQuestion, rt_messagebox_new_question, "Viper.GUI.MessageBox.NewQuestion", "obj(str,str)")
+RT_FUNC(MessageBoxAddButton, rt_messagebox_add_button, "Viper.GUI.MessageBox.AddButton", "void(obj,str,i64)")
+RT_FUNC(MessageBoxSetDefaultButton, rt_messagebox_set_default_button, "Viper.GUI.MessageBox.SetDefaultButton", "void(obj,i64)")
+RT_FUNC(MessageBoxShowDialog, rt_messagebox_show, "Viper.GUI.MessageBox.Show", "i64(obj)")
+RT_FUNC(MessageBoxDestroyDialog, rt_messagebox_destroy, "Viper.GUI.MessageBox.Destroy", "void(obj)")
+
+/// @summary Provides Message Box functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.MessageBox` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including `Info`,
+/// `Warning`, `Error`, `Question`.
+RT_CLASS_BEGIN("Viper.GUI.MessageBox", GuiMessageBox, "obj", MessageBoxNew)
+    RT_METHOD("Info",     "i64(str,str)",  MessageBoxInfo)
+    RT_METHOD("Warning",  "i64(str,str)",  MessageBoxWarning)
+    RT_METHOD("Error",    "i64(str,str)",  MessageBoxError)
+    RT_METHOD("Question", "i64(str,str)",  MessageBoxQuestion)
+    RT_METHOD("Confirm",  "i64(str,str)",  MessageBoxConfirm)
+    RT_METHOD("Prompt",   "str(str,str)",  MessageBoxPrompt)
+    RT_METHOD("New", "obj(str,str,i64)", MessageBoxNew)
+    RT_METHOD("NewInfo", "obj(str,str)", MessageBoxNewInfo)
+    RT_METHOD("NewWarning", "obj(str,str)", MessageBoxNewWarning)
+    RT_METHOD("NewError", "obj(str,str)", MessageBoxNewError)
+    RT_METHOD("NewQuestion", "obj(str,str)", MessageBoxNewQuestion)
+    RT_METHOD("AddButton", "void(str,i64)", MessageBoxAddButton)
+    RT_METHOD("SetDefaultButton", "void(i64)", MessageBoxSetDefaultButton)
+    RT_METHOD("Show", "i64()", MessageBoxShowDialog)
+    RT_METHOD("Destroy", "void()", MessageBoxDestroyDialog)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - FILEDIALOG (Phase 5)
+//=============================================================================
+
+RT_FUNC(FileDialogOpen,         rt_filedialog_open,          "Viper.GUI.FileDialog.Open",         "str(str,str,str)")
+RT_FUNC(FileDialogOpenMultiple, rt_filedialog_open_multiple, "Viper.GUI.FileDialog.OpenMultiple", "str(str,str,str)")
+RT_FUNC(FileDialogPathListCount, rt_filedialog_path_list_count, "Viper.GUI.FileDialog.PathListCount", "i64(str)")
+RT_FUNC(FileDialogPathListGet,   rt_filedialog_path_list_get,   "Viper.GUI.FileDialog.PathListGet",   "str(str,i64)")
+RT_FUNC(FileDialogSave,         rt_filedialog_save,          "Viper.GUI.FileDialog.Save",         "str(str,str,str,str)")
+RT_FUNC(FileDialogSelectFolder, rt_filedialog_select_folder, "Viper.GUI.FileDialog.SelectFolder", "str(str,str)")
+RT_FUNC(FileDialogNew,          rt_filedialog_new,           "Viper.GUI.FileDialog.New",          "obj(i64)")
+RT_FUNC(FileDialogNewOpen,      rt_filedialog_new_open,      "Viper.GUI.FileDialog.NewOpen",      "obj()")
+RT_FUNC(FileDialogNewSave,      rt_filedialog_new_save,      "Viper.GUI.FileDialog.NewSave",      "obj()")
+RT_FUNC(FileDialogNewFolder,    rt_filedialog_new_folder,    "Viper.GUI.FileDialog.NewFolder",    "obj()")
+RT_FUNC(FileDialogSetTitle,     rt_filedialog_set_title,     "Viper.GUI.FileDialog.SetTitle",     "void(obj,str)")
+RT_FUNC(FileDialogSetPath,      rt_filedialog_set_path,      "Viper.GUI.FileDialog.SetPath",      "void(obj,str)")
+RT_FUNC(FileDialogSetFilter,    rt_filedialog_set_filter,    "Viper.GUI.FileDialog.SetFilter",    "void(obj,str,str)")
+RT_FUNC(FileDialogAddFilter,    rt_filedialog_add_filter,    "Viper.GUI.FileDialog.AddFilter",    "void(obj,str,str)")
+RT_FUNC(FileDialogSetDefaultName, rt_filedialog_set_default_name, "Viper.GUI.FileDialog.SetDefaultName", "void(obj,str)")
+RT_FUNC(FileDialogSetMultiple,  rt_filedialog_set_multiple,  "Viper.GUI.FileDialog.SetMultiple",  "void(obj,i1)")
+RT_FUNC(FileDialogShowDialog,   rt_filedialog_show,          "Viper.GUI.FileDialog.Show",         "i64(obj)")
+RT_FUNC(FileDialogGetPath,      rt_filedialog_get_path,      "Viper.GUI.FileDialog.GetPath",      "str(obj)")
+RT_FUNC(FileDialogPathCount,    rt_filedialog_get_path_count,"Viper.GUI.FileDialog.get_PathCount","i64(obj)")
+RT_FUNC(FileDialogGetPathAt,    rt_filedialog_get_path_at,   "Viper.GUI.FileDialog.GetPathAt",    "str(obj,i64)")
+RT_FUNC(FileDialogDestroyDialog, rt_filedialog_destroy,      "Viper.GUI.FileDialog.Destroy",      "void(obj)")
+
+/// @summary Provides File Dialog functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.FileDialog` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as
+/// `PathCount` and operations including `Open`, `OpenMultiple`, `PathListCount`, `PathListGet`.
+RT_CLASS_BEGIN("Viper.GUI.FileDialog", GuiFileDialog, "obj", FileDialogNew)
+    RT_METHOD("Open",          "str(str,str,str)",     FileDialogOpen)
+    RT_METHOD("OpenMultiple",  "str(str,str,str)",     FileDialogOpenMultiple)
+    RT_METHOD("PathListCount", "i64(str)",             FileDialogPathListCount)
+    RT_METHOD("PathListGet",   "str(str,i64)",         FileDialogPathListGet)
+    RT_METHOD("Save",          "str(str,str,str,str)", FileDialogSave)
+    RT_METHOD("SelectFolder",  "str(str,str)",         FileDialogSelectFolder)
+    RT_METHOD("New", "obj(i64)", FileDialogNew)
+    RT_METHOD("NewOpen", "obj()", FileDialogNewOpen)
+    RT_METHOD("NewSave", "obj()", FileDialogNewSave)
+    RT_METHOD("NewFolder", "obj()", FileDialogNewFolder)
+    RT_PROP("PathCount", "i64", FileDialogPathCount, none)
+    RT_METHOD("SetTitle", "void(str)", FileDialogSetTitle)
+    RT_METHOD("SetPath", "void(str)", FileDialogSetPath)
+    RT_METHOD("SetFilter", "void(str,str)", FileDialogSetFilter)
+    RT_METHOD("AddFilter", "void(str,str)", FileDialogAddFilter)
+    RT_METHOD("SetDefaultName", "void(str)", FileDialogSetDefaultName)
+    RT_METHOD("SetMultiple", "void(i1)", FileDialogSetMultiple)
+    RT_METHOD("Show", "i64()", FileDialogShowDialog)
+    RT_METHOD("GetPath", "str()", FileDialogGetPath)
+    RT_METHOD("GetPathAt", "str(i64)", FileDialogGetPathAt)
+    RT_METHOD("Destroy", "void()", FileDialogDestroyDialog)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - FINDBAR (Phase 6)
+//=============================================================================
+
+RT_FUNC(FindBarNew,             rt_findbar_new,              "Viper.GUI.FindBar.New",             "obj(obj)")
+RT_FUNC(FindBarDestroy,         rt_findbar_destroy,          "Viper.GUI.FindBar.Destroy",         "void(obj)")
+RT_FUNC(FindBarSetFindText,     rt_findbar_set_find_text,    "Viper.GUI.FindBar.SetFindText",     "void(obj,str)")
+RT_FUNC(FindBarGetFindText,     rt_findbar_get_find_text,    "Viper.GUI.FindBar.GetFindText",     "str(obj)")
+RT_FUNC(FindBarSetReplaceText,  rt_findbar_set_replace_text, "Viper.GUI.FindBar.SetReplaceText",  "void(obj,str)")
+RT_FUNC(FindBarGetReplaceText,  rt_findbar_get_replace_text, "Viper.GUI.FindBar.GetReplaceText",  "str(obj)")
+RT_FUNC(FindBarSetCaseSensitive,rt_findbar_set_case_sensitive,"Viper.GUI.FindBar.SetCaseSensitive","void(obj,i1)")
+RT_FUNC(FindBarIsCaseSensitive, rt_findbar_is_case_sensitive,"Viper.GUI.FindBar.IsCaseSensitive", "i1(obj)")
+RT_FUNC(FindBarSetWholeWord,    rt_findbar_set_whole_word,   "Viper.GUI.FindBar.SetWholeWord",    "void(obj,i1)")
+RT_FUNC(FindBarIsWholeWord,     rt_findbar_is_whole_word,    "Viper.GUI.FindBar.IsWholeWord",     "i1(obj)")
+RT_FUNC(FindBarSetRegex,        rt_findbar_set_regex,        "Viper.GUI.FindBar.SetRegex",        "void(obj,i1)")
+RT_FUNC(FindBarIsRegex,         rt_findbar_is_regex,         "Viper.GUI.FindBar.IsRegex",         "i1(obj)")
+RT_FUNC(FindBarSetReplaceMode,  rt_findbar_set_replace_mode, "Viper.GUI.FindBar.SetReplaceMode",  "void(obj,i1)")
+RT_FUNC(FindBarIsReplaceMode,   rt_findbar_is_replace_mode,  "Viper.GUI.FindBar.IsReplaceMode",   "i1(obj)")
+RT_FUNC(FindBarSetVisible,      rt_findbar_set_visible,      "Viper.GUI.FindBar.SetVisible",      "void(obj,i1)")
+RT_FUNC(FindBarIsVisible,       rt_findbar_is_visible,       "Viper.GUI.FindBar.IsVisible",       "i1(obj)")
+RT_FUNC(FindBarFindNext,        rt_findbar_find_next,        "Viper.GUI.FindBar.FindNext",        "i64(obj)")
+RT_FUNC(FindBarFindNextOption,  rt_findbar_find_next_option, "Viper.GUI.FindBar.FindNextOption",  "obj<Viper.Option>(obj)")
+RT_FUNC(FindBarFindPrev,        rt_findbar_find_previous,    "Viper.GUI.FindBar.FindPrev",        "i64(obj)")
+RT_FUNC(FindBarFindPrevOption,  rt_findbar_find_previous_option, "Viper.GUI.FindBar.FindPrevOption", "obj<Viper.Option>(obj)")
+RT_FUNC(FindBarReplace,         rt_findbar_replace,          "Viper.GUI.FindBar.Replace",         "i64(obj)")
+RT_FUNC(FindBarReplaceAll,      rt_findbar_replace_all,      "Viper.GUI.FindBar.ReplaceAll",      "i64(obj)")
+RT_FUNC(FindBarGetMatchCount,   rt_findbar_get_match_count,  "Viper.GUI.FindBar.GetMatchCount",   "i64(obj)")
+RT_FUNC(FindBarGetCurrentMatch, rt_findbar_get_current_match,"Viper.GUI.FindBar.GetCurrentMatch", "i64(obj)")
+RT_FUNC(FindBarFocus,           rt_findbar_focus,            "Viper.GUI.FindBar.Focus",           "void(obj)")
+RT_FUNC(FindBarBindEditor,      rt_findbar_bind_editor,      "Viper.GUI.FindBar.BindEditor",      "void(obj,obj)")
+RT_FUNC(FindBarUnbindEditor,    rt_findbar_unbind_editor,    "Viper.GUI.FindBar.UnbindEditor",    "void(obj)")
+
+//=============================================================================
+// GUI - COMMANDPALETTE (Phase 6)
+//=============================================================================
+
+RT_FUNC(CommandPaletteNew,            rt_commandpalette_new,             "Viper.GUI.CommandPalette.New",            "obj(obj)")
+RT_FUNC(CommandPaletteDestroy,        rt_commandpalette_destroy,         "Viper.GUI.CommandPalette.Destroy",        "void(obj)")
+RT_FUNC(CommandPaletteAddCommand,     rt_commandpalette_add_command,     "Viper.GUI.CommandPalette.AddCommand",     "void(obj,str,str,str)")
+RT_FUNC(CommandPaletteAddCmdShortcut, rt_commandpalette_add_command_with_shortcut, "Viper.GUI.CommandPalette.AddCommandWithShortcut", "void(obj,str,str,str,str)")
+RT_FUNC(CommandPaletteRemoveCommand,  rt_commandpalette_remove_command,  "Viper.GUI.CommandPalette.RemoveCommand",  "void(obj,str)")
+RT_FUNC(CommandPaletteClear,          rt_commandpalette_clear,           "Viper.GUI.CommandPalette.Clear",          "void(obj)")
+RT_FUNC(CommandPaletteShow,           rt_commandpalette_show,            "Viper.GUI.CommandPalette.Show",           "void(obj)")
+RT_FUNC(CommandPaletteHide,           rt_commandpalette_hide,            "Viper.GUI.CommandPalette.Hide",           "void(obj)")
+RT_FUNC(CommandPaletteIsVisible,      rt_commandpalette_is_visible,      "Viper.GUI.CommandPalette.IsVisible",      "i1(obj)")
+RT_FUNC(CommandPaletteSetPlaceholder, rt_commandpalette_set_placeholder, "Viper.GUI.CommandPalette.SetPlaceholder", "void(obj,str)")
+RT_FUNC(CommandPaletteGetSelected,    rt_commandpalette_get_selected_command, "Viper.GUI.CommandPalette.GetSelected", "str(obj)")
+RT_FUNC(CommandPaletteWasSelected,    rt_commandpalette_was_command_selected, "Viper.GUI.CommandPalette.WasSelected", "i1(obj)")
+RT_FUNC(CommandPaletteGetQuery,       rt_commandpalette_get_query,            "Viper.GUI.CommandPalette.GetQuery",       "str(obj)")
+RT_FUNC(CommandPaletteGetQueryGen,    rt_commandpalette_get_query_generation, "Viper.GUI.CommandPalette.GetQueryGeneration", "i64(obj)")
+RT_FUNC(CommandPaletteSetQuery,       rt_commandpalette_set_query,            "Viper.GUI.CommandPalette.SetQuery",       "void(obj,str)")
+RT_FUNC(CommandPaletteSetClientFilter, rt_commandpalette_set_client_filtered, "Viper.GUI.CommandPalette.SetClientFiltered", "void(obj,i1)")
+
+RT_FUNC(GuiTestHarnessNew,            rt_gui_test_harness_new,             "Viper.GUI.TestHarness.New", "obj<Viper.GUI.TestHarness>()")
+RT_FUNC(GuiTestHarnessClear,          rt_gui_test_harness_clear,           "Viper.GUI.TestHarness.Clear", "void(obj)")
+RT_FUNC(GuiTestHarnessTick,           rt_gui_test_harness_tick,            "Viper.GUI.TestHarness.Tick", "i64(obj,i64)")
+RT_FUNC(GuiTestHarnessRegisterWidget, rt_gui_test_harness_register_widget, "Viper.GUI.TestHarness.RegisterWidget", "void(obj,str,str,str,i64,i64,i64,i64)")
+RT_FUNC(GuiTestHarnessFindById,       rt_gui_test_harness_find_by_id,      "Viper.GUI.TestHarness.FindById", "obj<Viper.Collections.Map>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByIdOption, rt_gui_test_harness_find_by_id_option, "Viper.GUI.TestHarness.FindByIdOption", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByName,     rt_gui_test_harness_find_by_name,    "Viper.GUI.TestHarness.FindByName", "obj<Viper.Collections.Map>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByNameOption, rt_gui_test_harness_find_by_name_option, "Viper.GUI.TestHarness.FindByNameOption", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByType,     rt_gui_test_harness_find_by_type,    "Viper.GUI.TestHarness.FindByType", "obj<Viper.Collections.Map>(obj,str)")
+RT_FUNC(GuiTestHarnessFindByTypeOption, rt_gui_test_harness_find_by_type_option, "Viper.GUI.TestHarness.FindByTypeOption", "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiTestHarnessSendKey,        rt_gui_test_harness_send_key,        "Viper.GUI.TestHarness.SendKey", "void(obj,str,i64)")
+RT_FUNC(GuiTestHarnessSendMouse,      rt_gui_test_harness_send_mouse,      "Viper.GUI.TestHarness.SendMouse", "void(obj,str,i64,i64,i64)")
+RT_FUNC(GuiTestHarnessGetFocus,       rt_gui_test_harness_get_focus,       "Viper.GUI.TestHarness.GetFocus", "str(obj)")
+RT_FUNC(GuiTestHarnessFocusOrder,     rt_gui_test_harness_focus_order,     "Viper.GUI.TestHarness.FocusOrder", "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(GuiTestHarnessCaptureRegion,  rt_gui_test_harness_capture_region,  "Viper.GUI.TestHarness.CaptureRegion", "obj<Viper.Collections.Map>(obj,i64,i64,i64,i64)")
+RT_FUNC(GuiTestHarnessAssertNonblank, rt_gui_test_harness_assert_nonblank, "Viper.GUI.TestHarness.AssertNonBlank", "i1(obj)")
+
+RT_FUNC(GuiVirtualListNew,              rt_virtual_list_new,                "Viper.GUI.VirtualList.New", "obj<Viper.GUI.VirtualList>(i64,i64,i64)")
+RT_FUNC(GuiVirtualListSetCount,         rt_virtual_list_set_count,          "Viper.GUI.VirtualList.SetCount", "void(obj,i64)")
+RT_FUNC(GuiVirtualListSetRowId,         rt_virtual_list_set_row_id,         "Viper.GUI.VirtualList.SetRowId", "void(obj,i64,str)")
+RT_FUNC(GuiVirtualListVisibleRange,     rt_virtual_list_visible_range,      "Viper.GUI.VirtualList.VisibleRange", "obj<Viper.Collections.Map>(obj,i64)")
+RT_FUNC(GuiVirtualListSelectId,         rt_virtual_list_select_id,          "Viper.GUI.VirtualList.SelectId", "void(obj,str)")
+RT_FUNC(GuiVirtualListGetSelectedId,    rt_virtual_list_get_selected_id,    "Viper.GUI.VirtualList.GetSelectedId", "str(obj)")
+RT_FUNC(GuiVirtualListGetSelectedIndex, rt_virtual_list_get_selected_index, "Viper.GUI.VirtualList.GetSelectedIndex", "i64(obj)")
+
+RT_FUNC(GuiVirtualTreeNew,           rt_virtual_tree_new,             "Viper.GUI.VirtualTree.New", "obj<Viper.GUI.VirtualTree>()")
+RT_FUNC(GuiVirtualTreeAddNode,       rt_virtual_tree_add_node,        "Viper.GUI.VirtualTree.AddNode", "void(obj,str,str,str)")
+RT_FUNC(GuiVirtualTreeExpand,        rt_virtual_tree_expand,          "Viper.GUI.VirtualTree.Expand", "obj<Viper.Collections.Map>(obj,str)")
+RT_FUNC(GuiVirtualTreeCollapse,      rt_virtual_tree_collapse,        "Viper.GUI.VirtualTree.Collapse", "void(obj,str)")
+RT_FUNC(GuiVirtualTreeSelectId,      rt_virtual_tree_select_id,       "Viper.GUI.VirtualTree.SelectId", "void(obj,str)")
+RT_FUNC(GuiVirtualTreeGetSelectedId, rt_virtual_tree_get_selected_id, "Viper.GUI.VirtualTree.GetSelectedId", "str(obj)")
+RT_FUNC(GuiVirtualTreeVisibleRows,   rt_virtual_tree_visible_rows,    "Viper.GUI.VirtualTree.VisibleRows", "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(GuiVirtualTreeRefreshSubtree, rt_virtual_tree_refresh_subtree, "Viper.GUI.VirtualTree.RefreshSubtree", "void(obj,str)")
+
+RT_FUNC(GuiCommandStateNew,           rt_command_state_new,            "Viper.GUI.CommandState.New", "obj<Viper.GUI.CommandState>(str,str)")
+RT_FUNC(GuiCommandStateSetEnabled,    rt_command_state_set_enabled,    "Viper.GUI.CommandState.SetEnabled", "void(obj,i1)")
+RT_FUNC(GuiCommandStateGetEnabled,    rt_command_state_get_enabled,    "Viper.GUI.CommandState.GetEnabled", "i1(obj)")
+RT_FUNC(GuiCommandStateSetChecked,    rt_command_state_set_checked,    "Viper.GUI.CommandState.SetChecked", "void(obj,i1)")
+RT_FUNC(GuiCommandStateGetChecked,    rt_command_state_get_checked,    "Viper.GUI.CommandState.GetChecked", "i1(obj)")
+RT_FUNC(GuiCommandStateSetAccessible, rt_command_state_set_accessible, "Viper.GUI.CommandState.SetAccessible", "void(obj,str,str)")
+RT_FUNC(GuiCommandStateSnapshot,      rt_command_state_snapshot,       "Viper.GUI.CommandState.Snapshot", "obj<Viper.Collections.Map>(obj)")
+
+RT_FUNC(GuiCommandNew,             rt_command_new,              "Viper.GUI.Command.New",             "obj<Viper.GUI.Command>(str,str)")
+RT_FUNC(GuiCommandGetId,           rt_command_get_id,           "Viper.GUI.Command.GetId",           "str(obj)")
+RT_FUNC(GuiCommandGetTitle,        rt_command_get_title,        "Viper.GUI.Command.GetTitle",        "str(obj)")
+RT_FUNC(GuiCommandSetShortcut,     rt_command_set_shortcut,     "Viper.GUI.Command.SetShortcut",     "void(obj,str)")
+RT_FUNC(GuiCommandGetShortcut,     rt_command_get_shortcut,     "Viper.GUI.Command.GetShortcut",     "str(obj)")
+RT_FUNC(GuiCommandSetEnabled,      rt_command_set_enabled,      "Viper.GUI.Command.SetEnabled",      "void(obj,i1)")
+RT_FUNC(GuiCommandIsEnabled,       rt_command_is_enabled,       "Viper.GUI.Command.IsEnabled",       "i1(obj)")
+RT_FUNC(GuiCommandSetCheckable,    rt_command_set_checkable,    "Viper.GUI.Command.SetCheckable",    "void(obj,i1)")
+RT_FUNC(GuiCommandIsCheckable,     rt_command_is_checkable,     "Viper.GUI.Command.IsCheckable",     "i1(obj)")
+RT_FUNC(GuiCommandSetChecked,      rt_command_set_checked,      "Viper.GUI.Command.SetChecked",      "void(obj,i1)")
+RT_FUNC(GuiCommandIsChecked,       rt_command_is_checked,       "Viper.GUI.Command.IsChecked",       "i1(obj)")
+RT_FUNC(GuiCommandBindMenuItem,    rt_command_bind_menu_item,   "Viper.GUI.Command.BindMenuItem",    "void(obj,obj)")
+RT_FUNC(GuiCommandBindToolbarItem, rt_command_bind_toolbar_item,"Viper.GUI.Command.BindToolbarItem", "void(obj,obj)")
+RT_FUNC(GuiCommandPoll,            rt_command_poll,             "Viper.GUI.Command.Poll",            "i1(obj)")
+RT_FUNC(GuiCommandWasInvoked,      rt_command_was_invoked,      "Viper.GUI.Command.WasInvoked",      "i1(obj)")
+RT_FUNC(GuiCommandSnapshot,        rt_command_snapshot,         "Viper.GUI.Command.Snapshot",        "obj<Viper.Collections.Map>(obj)")
+
+RT_FUNC(GuiCommandRegistryNew,         rt_command_registry_new,          "Viper.GUI.CommandRegistry.New",         "obj<Viper.GUI.CommandRegistry>()")
+RT_FUNC(GuiCommandRegistryAdd,         rt_command_registry_add,          "Viper.GUI.CommandRegistry.Add",         "void(obj,obj)")
+RT_FUNC(GuiCommandRegistryCount,       rt_command_registry_count,        "Viper.GUI.CommandRegistry.Count",       "i64(obj)")
+RT_FUNC(GuiCommandRegistryFind,        rt_command_registry_find,         "Viper.GUI.CommandRegistry.Find",        "obj<Viper.GUI.Command>(obj,str)")
+RT_FUNC(GuiCommandRegistryFindOption,  rt_command_registry_find_option,  "Viper.GUI.CommandRegistry.FindOption",  "obj<Viper.Option>(obj,str)")
+RT_FUNC(GuiCommandRegistryBindPalette, rt_command_registry_bind_palette, "Viper.GUI.CommandRegistry.BindPalette", "void(obj,obj)")
+RT_FUNC(GuiCommandRegistryPoll,        rt_command_registry_poll,         "Viper.GUI.CommandRegistry.Poll",        "str(obj)")
+RT_FUNC(GuiCommandRegistryClear,       rt_command_registry_clear,        "Viper.GUI.CommandRegistry.Clear",       "void(obj)")
+
+RT_FUNC(GuiAccessibilityContrastRatio, rt_accessibility_contrast_ratio, "Viper.GUI.Accessibility.ContrastRatio", "f64(i64,i64)")
+RT_FUNC(GuiAccessibilityMeetsContrast, rt_accessibility_meets_contrast, "Viper.GUI.Accessibility.MeetsContrast", "i1(i64,i64,f64)")
+RT_FUNC(GuiAccessibilityHighContrastTokens, rt_accessibility_high_contrast_tokens, "Viper.GUI.Accessibility.HighContrastTokens", "obj<Viper.Collections.Map>()")
+
+/// @summary Provides Command Palette functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.CommandPalette` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `AddCommand`, `AddCommandWithShortcut`, `RemoveCommand`, `Clear`.
+RT_CLASS_BEGIN("Viper.GUI.CommandPalette", GuiCommandPalette, "obj", CommandPaletteNew)
+    RT_METHOD("AddCommand",             "void(str,str,str)",     CommandPaletteAddCommand)
+    RT_METHOD("AddCommandWithShortcut", "void(str,str,str,str)", CommandPaletteAddCmdShortcut)
+    RT_METHOD("RemoveCommand",          "void(str)",             CommandPaletteRemoveCommand)
+    RT_METHOD("Clear",                  "void()",                CommandPaletteClear)
+    RT_METHOD("Show",                   "void()",                CommandPaletteShow)
+    RT_METHOD("Hide",                   "void()",                CommandPaletteHide)
+    RT_METHOD("IsVisible",              "i1()",                 CommandPaletteIsVisible)
+    RT_METHOD("SetPlaceholder",         "void(str)",             CommandPaletteSetPlaceholder)
+    RT_METHOD("GetSelected",            "str()",                 CommandPaletteGetSelected)
+    RT_METHOD("WasSelected",            "i1()",                 CommandPaletteWasSelected)
+    RT_METHOD("GetQuery",               "str()",                 CommandPaletteGetQuery)
+    RT_METHOD("GetQueryGeneration",     "i64()",                 CommandPaletteGetQueryGen)
+    RT_METHOD("SetQuery",               "void(str)",             CommandPaletteSetQuery)
+    RT_METHOD("SetClientFiltered",      "void(i1)",              CommandPaletteSetClientFilter)
+    RT_METHOD("Destroy",                "void()",                CommandPaletteDestroy)
+RT_CLASS_END()
+
+/// @summary Provides Test Harness functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.TestHarness` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including `Clear`,
+/// `Tick`, `RegisterWidget`, `FindById`.
+RT_CLASS_BEGIN("Viper.GUI.TestHarness", GuiTestHarness, "obj", GuiTestHarnessNew)
+    RT_METHOD("Clear",          "void()",                          GuiTestHarnessClear)
+    RT_METHOD("Tick",           "i64(i64)",                        GuiTestHarnessTick)
+    RT_METHOD("RegisterWidget", "void(str,str,str,i64,i64,i64,i64)", GuiTestHarnessRegisterWidget)
+    RT_METHOD("FindById",       "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindById)
+    RT_METHOD("FindByIdOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByIdOption)
+    RT_METHOD("FindByName",     "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindByName)
+    RT_METHOD("FindByNameOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByNameOption)
+    RT_METHOD("FindByType",     "obj<Viper.Collections.Map>(str)", GuiTestHarnessFindByType)
+    RT_METHOD("FindByTypeOption", "obj<Viper.Option>(str)", GuiTestHarnessFindByTypeOption)
+    RT_METHOD("SendKey",        "void(str,i64)",                   GuiTestHarnessSendKey)
+    RT_METHOD("SendMouse",      "void(str,i64,i64,i64)",           GuiTestHarnessSendMouse)
+    RT_METHOD("GetFocus",       "str()",                           GuiTestHarnessGetFocus)
+    RT_METHOD("FocusOrder",     "obj<Viper.Collections.Seq>()",    GuiTestHarnessFocusOrder)
+    RT_METHOD("CaptureRegion",  "obj<Viper.Collections.Map>(i64,i64,i64,i64)", GuiTestHarnessCaptureRegion)
+    RT_METHOD("AssertNonBlank", "i1(obj)",                         GuiTestHarnessAssertNonblank)
+RT_CLASS_END()
+
+/// @summary Provides Virtual List functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.VirtualList` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `SetCount`, `SetRowId`, `VisibleRange`, `SelectId`.
+RT_CLASS_BEGIN("Viper.GUI.VirtualList", GuiVirtualList, "obj", GuiVirtualListNew)
+    RT_METHOD("SetCount",         "void(i64)",                       GuiVirtualListSetCount)
+    RT_METHOD("SetRowId",         "void(i64,str)",                   GuiVirtualListSetRowId)
+    RT_METHOD("VisibleRange",     "obj<Viper.Collections.Map>(i64)", GuiVirtualListVisibleRange)
+    RT_METHOD("SelectId",         "void(str)",                       GuiVirtualListSelectId)
+    RT_METHOD("GetSelectedId",    "str()",                           GuiVirtualListGetSelectedId)
+    RT_METHOD("GetSelectedIndex", "i64()",                           GuiVirtualListGetSelectedIndex)
+RT_CLASS_END()
+
+/// @summary Provides Virtual Tree functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.VirtualTree` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `AddNode`, `Expand`, `Collapse`, `SelectId`.
+RT_CLASS_BEGIN("Viper.GUI.VirtualTree", GuiVirtualTree, "obj", GuiVirtualTreeNew)
+    RT_METHOD("AddNode",        "void(str,str,str)",                 GuiVirtualTreeAddNode)
+    RT_METHOD("Expand",         "obj<Viper.Collections.Map>(str)",   GuiVirtualTreeExpand)
+    RT_METHOD("Collapse",       "void(str)",                         GuiVirtualTreeCollapse)
+    RT_METHOD("SelectId",       "void(str)",                         GuiVirtualTreeSelectId)
+    RT_METHOD("GetSelectedId",  "str()",                             GuiVirtualTreeGetSelectedId)
+    RT_METHOD("VisibleRows",    "obj<Viper.Collections.Seq>()",      GuiVirtualTreeVisibleRows)
+    RT_METHOD("RefreshSubtree", "void(str)",                         GuiVirtualTreeRefreshSubtree)
+RT_CLASS_END()
+
+/// @summary Provides Command State functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.CommandState` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `SetEnabled`, `GetEnabled`, `SetChecked`, `GetChecked`.
+RT_CLASS_BEGIN("Viper.GUI.CommandState", GuiCommandState, "obj", GuiCommandStateNew)
+    RT_METHOD("SetEnabled",    "void(i1)",                       GuiCommandStateSetEnabled)
+    RT_METHOD("GetEnabled",    "i1()",                           GuiCommandStateGetEnabled)
+    RT_METHOD("SetChecked",    "void(i1)",                       GuiCommandStateSetChecked)
+    RT_METHOD("GetChecked",    "i1()",                           GuiCommandStateGetChecked)
+    RT_METHOD("SetAccessible", "void(str,str)",                   GuiCommandStateSetAccessible)
+    RT_METHOD("Snapshot",      "obj<Viper.Collections.Map>()",    GuiCommandStateSnapshot)
+RT_CLASS_END()
+
+/// @summary Provides Command functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.Command` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes operations including `GetId`,
+/// `GetTitle`, `SetShortcut`, `GetShortcut`.
+RT_CLASS_BEGIN("Viper.GUI.Command", GuiCommand, "obj", GuiCommandNew)
+    RT_METHOD("GetId",           "str()",                        GuiCommandGetId)
+    RT_METHOD("GetTitle",        "str()",                        GuiCommandGetTitle)
+    RT_METHOD("SetShortcut",     "void(str)",                    GuiCommandSetShortcut)
+    RT_METHOD("GetShortcut",     "str()",                        GuiCommandGetShortcut)
+    RT_METHOD("SetEnabled",      "void(i1)",                     GuiCommandSetEnabled)
+    RT_METHOD("IsEnabled",       "i1()",                         GuiCommandIsEnabled)
+    RT_METHOD("SetCheckable",    "void(i1)",                     GuiCommandSetCheckable)
+    RT_METHOD("IsCheckable",     "i1()",                         GuiCommandIsCheckable)
+    RT_METHOD("SetChecked",      "void(i1)",                     GuiCommandSetChecked)
+    RT_METHOD("IsChecked",       "i1()",                         GuiCommandIsChecked)
+    RT_METHOD("BindMenuItem",    "void(obj)",                    GuiCommandBindMenuItem)
+    RT_METHOD("BindToolbarItem", "void(obj)",                    GuiCommandBindToolbarItem)
+    RT_METHOD("Poll",            "i1()",                         GuiCommandPoll)
+    RT_METHOD("WasInvoked",      "i1()",                         GuiCommandWasInvoked)
+    RT_METHOD("Snapshot",        "obj<Viper.Collections.Map>()", GuiCommandSnapshot)
+RT_CLASS_END()
+
+/// @summary Provides Command Registry functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.CommandRegistry` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes operations including
+/// `Add`, `Count`, `Find`, `FindOption`.
+RT_CLASS_BEGIN("Viper.GUI.CommandRegistry", GuiCommandRegistry, "obj", GuiCommandRegistryNew)
+    RT_METHOD("Add",         "void(obj)",                   GuiCommandRegistryAdd)
+    RT_METHOD("Count",       "i64()",                       GuiCommandRegistryCount)
+    RT_METHOD("Find",        "obj<Viper.GUI.Command>(str)", GuiCommandRegistryFind)
+    RT_METHOD("FindOption",  "obj<Viper.Option>(str)",      GuiCommandRegistryFindOption)
+    RT_METHOD("BindPalette", "void(obj)",                   GuiCommandRegistryBindPalette)
+    RT_METHOD("Poll",        "str()",                       GuiCommandRegistryPoll)
+    RT_METHOD("Clear",       "void()",                      GuiCommandRegistryClear)
+RT_CLASS_END()
+
+/// @summary Provides Accessibility constants and static operations for graphical user interfaces.
+/// @details
+/// `Viper.GUI.Accessibility` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
+/// `HighContrastTokens`.
+RT_CLASS_BEGIN("Viper.GUI.Accessibility", GuiAccessibility, "none", none)
+    RT_METHOD("ContrastRatio",      "f64(i64,i64)",                 GuiAccessibilityContrastRatio)
+    RT_METHOD("MeetsContrast",      "i1(i64,i64,f64)",              GuiAccessibilityMeetsContrast)
+    RT_METHOD("HighContrastTokens", "obj<Viper.Collections.Map>()", GuiAccessibilityHighContrastTokens)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - TOOLTIP (Phase 7)
+//=============================================================================
+
+RT_FUNC(TooltipShow,          rt_tooltip_show,           "Viper.GUI.Tooltip.Show",          "void(str,i64,i64)")
+RT_FUNC(TooltipShowRich,      rt_tooltip_show_rich,      "Viper.GUI.Tooltip.ShowRich",      "void(str,str,i64,i64)")
+RT_FUNC(TooltipHide,          rt_tooltip_hide,           "Viper.GUI.Tooltip.Hide",          "void()")
+RT_FUNC(TooltipSetDelay,      rt_tooltip_set_delay,      "Viper.GUI.Tooltip.SetDelay",      "void(i64)")
+
+/// @summary Provides Tooltip constants and static operations for graphical user interfaces.
+/// @details
+/// `Viper.GUI.Tooltip` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Show`, `ShowRich`, `Hide`, `SetDelay`.
+RT_CLASS_BEGIN("Viper.GUI.Tooltip", GuiTooltip, "none", none)
+    RT_METHOD("Show",     "void(str,i64,i64)",   TooltipShow)
+    RT_METHOD("ShowRich", "void(str,str,i64,i64)",TooltipShowRich)
+    RT_METHOD("Hide",     "void()",               TooltipHide)
+    RT_METHOD("SetDelay", "void(i64)",            TooltipSetDelay)
+RT_CLASS_END()
+
+RT_FUNC(WidgetSetTooltip,     rt_widget_set_tooltip,     "Viper.GUI.Widget.SetTooltip",     "void(obj,str)")
+RT_FUNC(WidgetSetTooltipRich, rt_widget_set_tooltip_rich,"Viper.GUI.Widget.SetTooltipRich", "void(obj,str,str)")
+RT_FUNC(WidgetClearTooltip,   rt_widget_clear_tooltip,   "Viper.GUI.Widget.ClearTooltip",   "void(obj)")
+
+//=============================================================================
+// GUI - TOAST/NOTIFICATIONS (Phase 7)
+//=============================================================================
+
+RT_FUNC(ToastInfo,            rt_toast_info,             "Viper.GUI.Toast.Info",            "void(str)")
+RT_FUNC(ToastSuccess,         rt_toast_success,          "Viper.GUI.Toast.Success",         "void(str)")
+RT_FUNC(ToastWarning,         rt_toast_warning,          "Viper.GUI.Toast.Warning",         "void(str)")
+RT_FUNC(ToastError,           rt_toast_error,            "Viper.GUI.Toast.Error",           "void(str)")
+RT_FUNC(ToastNew,             rt_toast_new,              "Viper.GUI.Toast.New",             "obj(str,i64,i64)")
+RT_FUNC(ToastSetAction,       rt_toast_set_action,       "Viper.GUI.Toast.SetAction",       "void(obj,str)")
+RT_FUNC(ToastWasActionClicked,rt_toast_was_action_clicked,"Viper.GUI.Toast.WasActionClicked","i1(obj)")
+RT_FUNC(ToastWasDismissed,    rt_toast_was_dismissed,    "Viper.GUI.Toast.WasDismissed",    "i1(obj)")
+RT_FUNC(ToastDismiss,         rt_toast_dismiss,          "Viper.GUI.Toast.Dismiss",         "void(obj)")
+RT_FUNC(ToastSetPosition,     rt_toast_set_position,     "Viper.GUI.Toast.SetPosition",     "void(i64)")
+RT_FUNC(ToastSetMaxVisible,   rt_toast_set_max_visible,  "Viper.GUI.Toast.SetMaxVisible",   "void(i64)")
+RT_FUNC(ToastDismissAll,      rt_toast_dismiss_all,      "Viper.GUI.Toast.DismissAll",      "void()")
+
+/// @summary Provides Toast functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.Toast` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes operations including `Info`,
+/// `Success`, `Warning`, `Error`.
+RT_CLASS_BEGIN("Viper.GUI.Toast", GuiToast, "obj", ToastNew)
+    RT_METHOD("New",              "obj(str,i64,i64)", ToastNew)
+    RT_METHOD("Info",             "void(str)",  ToastInfo)
+    RT_METHOD("Success",          "void(str)",  ToastSuccess)
+    RT_METHOD("Warning",          "void(str)",  ToastWarning)
+    RT_METHOD("Error",            "void(str)",  ToastError)
+    RT_METHOD("SetAction",        "void(str)",  ToastSetAction)
+    RT_METHOD("WasActionClicked", "i1()",      ToastWasActionClicked)
+    RT_METHOD("WasDismissed",     "i1()",      ToastWasDismissed)
+    RT_METHOD("Dismiss",          "void()",     ToastDismiss)
+    RT_METHOD("SetPosition",      "void(i64)",  ToastSetPosition)
+    RT_METHOD("SetMaxVisible",    "void(i64)",  ToastSetMaxVisible)
+    RT_METHOD("DismissAll",       "void()",     ToastDismissAll)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - BREADCRUMB (Phase 8)
+//=============================================================================
+
+RT_FUNC(BreadcrumbNew,            rt_breadcrumb_new,             "Viper.GUI.Breadcrumb.New",            "obj(obj)")
+RT_FUNC(BreadcrumbDestroy,        rt_breadcrumb_destroy,         "Viper.GUI.Breadcrumb.Destroy",        "void(obj)")
+RT_FUNC(BreadcrumbSetPath,        rt_breadcrumb_set_path,        "Viper.GUI.Breadcrumb.SetPath",        "void(obj,str,str)")
+RT_FUNC(BreadcrumbSetItems,       rt_breadcrumb_set_items,       "Viper.GUI.Breadcrumb.SetItems",       "void(obj,str)")
+RT_FUNC(BreadcrumbAddItem,        rt_breadcrumb_add_item,        "Viper.GUI.Breadcrumb.AddItem",        "void(obj,str,str)")
+RT_FUNC(BreadcrumbClear,          rt_breadcrumb_clear,           "Viper.GUI.Breadcrumb.Clear",          "void(obj)")
+RT_FUNC(BreadcrumbWasItemClicked, rt_breadcrumb_was_item_clicked,"Viper.GUI.Breadcrumb.WasItemClicked", "i1(obj)")
+RT_FUNC(BreadcrumbGetClickedIndex,rt_breadcrumb_get_clicked_index,"Viper.GUI.Breadcrumb.GetClickedIndex","i64(obj)")
+RT_FUNC(BreadcrumbGetClickedData, rt_breadcrumb_get_clicked_data,"Viper.GUI.Breadcrumb.GetClickedData", "str(obj)")
+RT_FUNC(BreadcrumbSetSeparator,   rt_breadcrumb_set_separator,   "Viper.GUI.Breadcrumb.SetSeparator",   "void(obj,str)")
+RT_FUNC(BreadcrumbSetMaxItems,    rt_breadcrumb_set_max_items,   "Viper.GUI.Breadcrumb.SetMaxItems",    "void(obj,i64)")
+RT_FUNC(BreadcrumbSetVisible,     rt_breadcrumb_set_visible,     "Viper.GUI.Breadcrumb.SetVisible",     "void(obj,i1)")
+RT_FUNC(BreadcrumbIsVisible,      rt_breadcrumb_is_visible,      "Viper.GUI.Breadcrumb.IsVisible",      "i1(obj)")
+
+/// @summary Provides Breadcrumb functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.Breadcrumb` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `SetPath`, `SetItems`, `AddItem`, `Clear`.
+RT_CLASS_BEGIN("Viper.GUI.Breadcrumb", GuiBreadcrumb, "obj", BreadcrumbNew)
+    RT_METHOD("SetPath",         "void(str,str)", BreadcrumbSetPath)
+    RT_METHOD("SetItems",        "void(str)",     BreadcrumbSetItems)
+    RT_METHOD("AddItem",         "void(str,str)", BreadcrumbAddItem)
+    RT_METHOD("Clear",           "void()",        BreadcrumbClear)
+    RT_METHOD("WasItemClicked",  "i1()",         BreadcrumbWasItemClicked)
+    RT_METHOD("GetClickedIndex", "i64()",         BreadcrumbGetClickedIndex)
+    RT_METHOD("GetClickedData",  "str()",         BreadcrumbGetClickedData)
+    RT_METHOD("SetSeparator",    "void(str)",     BreadcrumbSetSeparator)
+    RT_METHOD("SetMaxItems",     "void(i64)",     BreadcrumbSetMaxItems)
+    RT_METHOD("SetVisible",      "void(i1)",     BreadcrumbSetVisible)
+    RT_METHOD("IsVisible",       "i1()",         BreadcrumbIsVisible)
+    RT_METHOD("Destroy",         "void()",        BreadcrumbDestroy)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - MINIMAP (Phase 8)
+//=============================================================================
+
+RT_FUNC(MinimapNew,           rt_minimap_new,            "Viper.GUI.Minimap.New",           "obj(obj)")
+RT_FUNC(MinimapDestroy,       rt_minimap_destroy,        "Viper.GUI.Minimap.Destroy",       "void(obj)")
+RT_FUNC(MinimapBindEditor,    rt_minimap_bind_editor,    "Viper.GUI.Minimap.BindEditor",    "void(obj,obj)")
+RT_FUNC(MinimapUnbindEditor,  rt_minimap_unbind_editor,  "Viper.GUI.Minimap.UnbindEditor",  "void(obj)")
+RT_FUNC(MinimapSetWidth,      rt_minimap_set_width,      "Viper.GUI.Minimap.SetWidth",      "void(obj,i64)")
+RT_FUNC(MinimapSetVisible,    rt_minimap_set_visible,    "Viper.GUI.Minimap.SetVisible",    "void(obj,i1)")
+RT_FUNC(MinimapIsVisible,     rt_minimap_is_visible,     "Viper.GUI.Minimap.IsVisible",     "i1(obj)")
+RT_FUNC(MinimapGetWidth,      rt_minimap_get_width,      "Viper.GUI.Minimap.GetWidth",      "i64(obj)")
+RT_FUNC(MinimapSetScale,      rt_minimap_set_scale,      "Viper.GUI.Minimap.SetScale",      "void(obj,f64)")
+RT_FUNC(MinimapSetShowSlider, rt_minimap_set_show_slider,"Viper.GUI.Minimap.SetShowSlider", "void(obj,i1)")
+RT_FUNC(MinimapAddMarker,     rt_minimap_add_marker,     "Viper.GUI.Minimap.AddMarker",     "void(obj,i64,i64,i64)")
+RT_FUNC(MinimapRemoveMarkers, rt_minimap_remove_markers, "Viper.GUI.Minimap.RemoveMarkers", "void(obj,i64)")
+RT_FUNC(MinimapClearMarkers,  rt_minimap_clear_markers,  "Viper.GUI.Minimap.ClearMarkers",  "void(obj)")
+
+/// @summary Provides Minimap functionality for graphical user interfaces.
+/// @details
+/// Create `Viper.GUI.Minimap` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes operations including `BindEditor`,
+/// `UnbindEditor`, `SetWidth`, `SetVisible`.
+RT_CLASS_BEGIN("Viper.GUI.Minimap", GuiMinimap, "obj", MinimapNew)
+    RT_METHOD("BindEditor",    "void(obj)",         MinimapBindEditor)
+    RT_METHOD("UnbindEditor",  "void()",            MinimapUnbindEditor)
+    RT_METHOD("SetWidth",      "void(i64)",         MinimapSetWidth)
+    RT_METHOD("SetVisible",    "void(i1)",         MinimapSetVisible)
+    RT_METHOD("IsVisible",     "i1()",             MinimapIsVisible)
+    RT_METHOD("GetWidth",      "i64()",             MinimapGetWidth)
+    RT_METHOD("SetScale",      "void(f64)",         MinimapSetScale)
+    RT_METHOD("SetShowSlider", "void(i1)",         MinimapSetShowSlider)
+    RT_METHOD("AddMarker",     "void(i64,i64,i64)", MinimapAddMarker)
+    RT_METHOD("RemoveMarkers", "void(i64)",         MinimapRemoveMarkers)
+    RT_METHOD("ClearMarkers",  "void()",            MinimapClearMarkers)
+    RT_METHOD("Destroy",       "void()",            MinimapDestroy)
+RT_CLASS_END()
+
+//=============================================================================
+// GUI - DRAG AND DROP (Phase 8)
+//=============================================================================
+
+RT_FUNC(WidgetSetDraggable,        rt_widget_set_draggable,         "Viper.GUI.Widget.SetDraggable",        "void(obj,i1)")
+RT_FUNC(WidgetSetDragData,         rt_widget_set_drag_data,         "Viper.GUI.Widget.SetDragData",         "void(obj,str,str)")
+RT_FUNC(WidgetIsBeingDragged,      rt_widget_is_being_dragged,      "Viper.GUI.Widget.IsBeingDragged",      "i1(obj)")
+RT_FUNC(WidgetSetDropTarget,       rt_widget_set_drop_target,       "Viper.GUI.Widget.SetDropTarget",       "void(obj,i1)")
+RT_FUNC(WidgetSetAcceptedDropTypes,rt_widget_set_accepted_drop_types,"Viper.GUI.Widget.SetAcceptedDropTypes","void(obj,str)")
+RT_FUNC(WidgetIsDragOver,          rt_widget_is_drag_over,          "Viper.GUI.Widget.IsDragOver",          "i1(obj)")
+RT_FUNC(WidgetWasDropped,          rt_widget_was_dropped,           "Viper.GUI.Widget.WasDropped",          "i1(obj)")
+RT_FUNC(WidgetGetDropType,         rt_widget_get_drop_type,         "Viper.GUI.Widget.GetDropType",         "str(obj)")
+RT_FUNC(WidgetGetDropData,         rt_widget_get_drop_data,         "Viper.GUI.Widget.GetDropData",         "str(obj)")
+RT_FUNC(AppWasFileDropped,         rt_app_was_file_dropped,         "Viper.GUI.App.WasFileDropped",         "i1(obj)")
+RT_FUNC(AppGetDroppedFileCount,    rt_app_get_dropped_file_count,   "Viper.GUI.App.GetDroppedFileCount",    "i64(obj)")
+RT_FUNC(AppGetDroppedFile,         rt_app_get_dropped_file,         "Viper.GUI.App.GetDroppedFile",         "str(obj,i64)")
+
+//=============================================================================

@@ -1,0 +1,1105 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/classes/input_game.def
+// Purpose: Input, game, graphics, and 2D physics runtime class declarations.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+
+// Viper.Input.Keyboard - keyboard input handling (static class)
+/// @summary Provides keyboard input handling.
+/// @details
+/// `Viper.Input.Keyboard` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `KeyUnknown`,
+/// `KeyA`, `KeyB` and operations including `IsDown`, `IsUp`, `AnyDown`, `GetDown`.
+RT_CLASS_BEGIN("Viper.Input.Keyboard", Keyboard, "obj", none)
+    // Polling methods (current state)
+    RT_METHOD("IsDown", "i1(i64)", KeyboardIsDown)
+    RT_METHOD("IsUp", "i1(i64)", KeyboardIsUp)
+    RT_METHOD("AnyDown", "i1()", KeyboardAnyDown)
+    RT_METHOD("GetDown", "i64()", KeyboardGetDown)
+
+    // Event methods (since last Poll)
+    RT_METHOD("WasPressed", "i1(i64)", KeyboardWasPressed)
+    RT_METHOD("WasReleased", "i1(i64)", KeyboardWasReleased)
+    RT_METHOD("GetPressed", "obj()", KeyboardGetPressed)
+    RT_METHOD("GetReleased", "obj()", KeyboardGetReleased)
+
+    // Text input
+    RT_METHOD("GetText", "str()", KeyboardGetText)
+    RT_METHOD("EnableTextInput", "void()", KeyboardEnableTextInput)
+    RT_METHOD("DisableTextInput", "void()", KeyboardDisableTextInput)
+
+    // Modifier state
+    RT_METHOD("Shift", "i1()", KeyboardShift)
+    RT_METHOD("Ctrl", "i1()", KeyboardCtrl)
+    RT_METHOD("Alt", "i1()", KeyboardAlt)
+    RT_METHOD("CapsLock", "i1()", KeyboardCapsLock)
+
+    // Helper
+    RT_METHOD("KeyName", "str(i64)", KeyboardKeyName)
+
+    // Key code constants - Unknown
+    RT_PROP("KeyUnknown", "i64", KeyboardKeyUnknown, none)
+
+    // Letters (ASCII uppercase: 65-90)
+    RT_PROP("KeyA", "i64", KeyboardKeyA, none)
+    RT_PROP("KeyB", "i64", KeyboardKeyB, none)
+    RT_PROP("KeyC", "i64", KeyboardKeyC, none)
+    RT_PROP("KeyD", "i64", KeyboardKeyD, none)
+    RT_PROP("KeyE", "i64", KeyboardKeyE, none)
+    RT_PROP("KeyF", "i64", KeyboardKeyF, none)
+    RT_PROP("KeyG", "i64", KeyboardKeyG, none)
+    RT_PROP("KeyH", "i64", KeyboardKeyH, none)
+    RT_PROP("KeyI", "i64", KeyboardKeyI, none)
+    RT_PROP("KeyJ", "i64", KeyboardKeyJ, none)
+    RT_PROP("KeyK", "i64", KeyboardKeyK, none)
+    RT_PROP("KeyL", "i64", KeyboardKeyL, none)
+    RT_PROP("KeyM", "i64", KeyboardKeyM, none)
+    RT_PROP("KeyN", "i64", KeyboardKeyN, none)
+    RT_PROP("KeyO", "i64", KeyboardKeyO, none)
+    RT_PROP("KeyP", "i64", KeyboardKeyP, none)
+    RT_PROP("KeyQ", "i64", KeyboardKeyQ, none)
+    RT_PROP("KeyR", "i64", KeyboardKeyR, none)
+    RT_PROP("KeyS", "i64", KeyboardKeyS, none)
+    RT_PROP("KeyT", "i64", KeyboardKeyT, none)
+    RT_PROP("KeyU", "i64", KeyboardKeyU, none)
+    RT_PROP("KeyV", "i64", KeyboardKeyV, none)
+    RT_PROP("KeyW", "i64", KeyboardKeyW, none)
+    RT_PROP("KeyX", "i64", KeyboardKeyX, none)
+    RT_PROP("KeyY", "i64", KeyboardKeyY, none)
+    RT_PROP("KeyZ", "i64", KeyboardKeyZ, none)
+
+    // Numbers (ASCII digits: 48-57)
+    RT_PROP("Key0", "i64", KeyboardKey0, none)
+    RT_PROP("Key1", "i64", KeyboardKey1, none)
+    RT_PROP("Key2", "i64", KeyboardKey2, none)
+    RT_PROP("Key3", "i64", KeyboardKey3, none)
+    RT_PROP("Key4", "i64", KeyboardKey4, none)
+    RT_PROP("Key5", "i64", KeyboardKey5, none)
+    RT_PROP("Key6", "i64", KeyboardKey6, none)
+    RT_PROP("Key7", "i64", KeyboardKey7, none)
+    RT_PROP("Key8", "i64", KeyboardKey8, none)
+    RT_PROP("Key9", "i64", KeyboardKey9, none)
+
+    // Function keys (290-301)
+    RT_PROP("KeyF1", "i64", KeyboardKeyF1, none)
+    RT_PROP("KeyF2", "i64", KeyboardKeyF2, none)
+    RT_PROP("KeyF3", "i64", KeyboardKeyF3, none)
+    RT_PROP("KeyF4", "i64", KeyboardKeyF4, none)
+    RT_PROP("KeyF5", "i64", KeyboardKeyF5, none)
+    RT_PROP("KeyF6", "i64", KeyboardKeyF6, none)
+    RT_PROP("KeyF7", "i64", KeyboardKeyF7, none)
+    RT_PROP("KeyF8", "i64", KeyboardKeyF8, none)
+    RT_PROP("KeyF9", "i64", KeyboardKeyF9, none)
+    RT_PROP("KeyF10", "i64", KeyboardKeyF10, none)
+    RT_PROP("KeyF11", "i64", KeyboardKeyF11, none)
+    RT_PROP("KeyF12", "i64", KeyboardKeyF12, none)
+
+    // Navigation
+    RT_PROP("KeyUp", "i64", KeyboardKeyUp, none)
+    RT_PROP("KeyDown", "i64", KeyboardKeyDown, none)
+    RT_PROP("KeyLeft", "i64", KeyboardKeyLeft, none)
+    RT_PROP("KeyRight", "i64", KeyboardKeyRight, none)
+    RT_PROP("KeyHome", "i64", KeyboardKeyHome, none)
+    RT_PROP("KeyEnd", "i64", KeyboardKeyEnd, none)
+    RT_PROP("KeyPageUp", "i64", KeyboardKeyPageUp, none)
+    RT_PROP("KeyPageDown", "i64", KeyboardKeyPageDown, none)
+    RT_PROP("KeyInsert", "i64", KeyboardKeyInsert, none)
+    RT_PROP("KeyDelete", "i64", KeyboardKeyDelete, none)
+
+    // Editing
+    RT_PROP("KeyBackspace", "i64", KeyboardKeyBackspace, none)
+    RT_PROP("KeyTab", "i64", KeyboardKeyTab, none)
+    RT_PROP("KeyEnter", "i64", KeyboardKeyEnter, none)
+    RT_PROP("KeySpace", "i64", KeyboardKeySpace, none)
+    RT_PROP("KeyEscape", "i64", KeyboardKeyEscape, none)
+
+    // Modifiers
+    RT_PROP("KeyLeftShift", "i64", KeyboardKeyLeftShift, none)
+    RT_PROP("KeyRightShift", "i64", KeyboardKeyRightShift, none)
+    RT_PROP("KeyLeftControl", "i64", KeyboardKeyLeftControl, none)
+    RT_PROP("KeyRightControl", "i64", KeyboardKeyRightControl, none)
+    RT_PROP("KeyLeftAlt", "i64", KeyboardKeyLeftAlt, none)
+    RT_PROP("KeyRightAlt", "i64", KeyboardKeyRightAlt, none)
+
+    // Punctuation
+    RT_PROP("KeyMinus", "i64", KeyboardKeyMinus, none)
+    RT_PROP("KeyEquals", "i64", KeyboardKeyEquals, none)
+    RT_PROP("KeyLeftBracket", "i64", KeyboardKeyLeftBracket, none)
+    RT_PROP("KeyRightBracket", "i64", KeyboardKeyRightBracket, none)
+    RT_PROP("KeyBackslash", "i64", KeyboardKeyBackslash, none)
+    RT_PROP("KeySemicolon", "i64", KeyboardKeySemicolon, none)
+    RT_PROP("KeyQuote", "i64", KeyboardKeyQuote, none)
+    RT_PROP("KeyGrave", "i64", KeyboardKeyGrave, none)
+    RT_PROP("KeyComma", "i64", KeyboardKeyComma, none)
+    RT_PROP("KeyPeriod", "i64", KeyboardKeyPeriod, none)
+    RT_PROP("KeySlash", "i64", KeyboardKeySlash, none)
+
+    // Numpad
+    RT_PROP("KeyNum0", "i64", KeyboardKeyNum0, none)
+    RT_PROP("KeyNum1", "i64", KeyboardKeyNum1, none)
+    RT_PROP("KeyNum2", "i64", KeyboardKeyNum2, none)
+    RT_PROP("KeyNum3", "i64", KeyboardKeyNum3, none)
+    RT_PROP("KeyNum4", "i64", KeyboardKeyNum4, none)
+    RT_PROP("KeyNum5", "i64", KeyboardKeyNum5, none)
+    RT_PROP("KeyNum6", "i64", KeyboardKeyNum6, none)
+    RT_PROP("KeyNum7", "i64", KeyboardKeyNum7, none)
+    RT_PROP("KeyNum8", "i64", KeyboardKeyNum8, none)
+    RT_PROP("KeyNum9", "i64", KeyboardKeyNum9, none)
+    RT_PROP("KeyNumAdd", "i64", KeyboardKeyNumAdd, none)
+    RT_PROP("KeyNumSub", "i64", KeyboardKeyNumSub, none)
+    RT_PROP("KeyNumMul", "i64", KeyboardKeyNumMul, none)
+    RT_PROP("KeyNumDiv", "i64", KeyboardKeyNumDiv, none)
+	    RT_PROP("KeyNumEnter", "i64", KeyboardKeyNumEnter, none)
+	    RT_PROP("KeyNumDot", "i64", KeyboardKeyNumDot, none)
+	RT_CLASS_END()
+
+// Viper.Input.Key - canonical keyboard key-code constants (static class)
+/// @summary Defines canonical keyboard key-code constants.
+/// @details
+/// `Viper.Input.Key` is a static runtime surface and does not require an instance. Its public
+/// surface exposes properties such as `Unknown`, `A`, `B`.
+RT_CLASS_BEGIN("Viper.Input.Key", InputKey, "none", none)
+    RT_PROP("Unknown", "i64", InputKeyUnknown, none)
+    RT_PROP("A", "i64", InputKeyA, none)
+    RT_PROP("B", "i64", InputKeyB, none)
+    RT_PROP("C", "i64", InputKeyC, none)
+    RT_PROP("D", "i64", InputKeyD, none)
+    RT_PROP("E", "i64", InputKeyE, none)
+    RT_PROP("F", "i64", InputKeyF, none)
+    RT_PROP("G", "i64", InputKeyG, none)
+    RT_PROP("H", "i64", InputKeyH, none)
+    RT_PROP("I", "i64", InputKeyI, none)
+    RT_PROP("J", "i64", InputKeyJ, none)
+    RT_PROP("K", "i64", InputKeyK, none)
+    RT_PROP("L", "i64", InputKeyL, none)
+    RT_PROP("M", "i64", InputKeyM, none)
+    RT_PROP("N", "i64", InputKeyN, none)
+    RT_PROP("O", "i64", InputKeyO, none)
+    RT_PROP("P", "i64", InputKeyP, none)
+    RT_PROP("Q", "i64", InputKeyQ, none)
+    RT_PROP("R", "i64", InputKeyR, none)
+    RT_PROP("S", "i64", InputKeyS, none)
+    RT_PROP("T", "i64", InputKeyT, none)
+    RT_PROP("U", "i64", InputKeyU, none)
+    RT_PROP("V", "i64", InputKeyV, none)
+    RT_PROP("W", "i64", InputKeyW, none)
+    RT_PROP("X", "i64", InputKeyX, none)
+    RT_PROP("Y", "i64", InputKeyY, none)
+    RT_PROP("Z", "i64", InputKeyZ, none)
+    RT_PROP("Digit0", "i64", InputKeyDigit0, none)
+    RT_PROP("Digit1", "i64", InputKeyDigit1, none)
+    RT_PROP("Digit2", "i64", InputKeyDigit2, none)
+    RT_PROP("Digit3", "i64", InputKeyDigit3, none)
+    RT_PROP("Digit4", "i64", InputKeyDigit4, none)
+    RT_PROP("Digit5", "i64", InputKeyDigit5, none)
+    RT_PROP("Digit6", "i64", InputKeyDigit6, none)
+    RT_PROP("Digit7", "i64", InputKeyDigit7, none)
+    RT_PROP("Digit8", "i64", InputKeyDigit8, none)
+    RT_PROP("Digit9", "i64", InputKeyDigit9, none)
+    RT_PROP("F1", "i64", InputKeyF1, none)
+    RT_PROP("F2", "i64", InputKeyF2, none)
+    RT_PROP("F3", "i64", InputKeyF3, none)
+    RT_PROP("F4", "i64", InputKeyF4, none)
+    RT_PROP("F5", "i64", InputKeyF5, none)
+    RT_PROP("F6", "i64", InputKeyF6, none)
+    RT_PROP("F7", "i64", InputKeyF7, none)
+    RT_PROP("F8", "i64", InputKeyF8, none)
+    RT_PROP("F9", "i64", InputKeyF9, none)
+    RT_PROP("F10", "i64", InputKeyF10, none)
+    RT_PROP("F11", "i64", InputKeyF11, none)
+    RT_PROP("F12", "i64", InputKeyF12, none)
+    RT_PROP("Up", "i64", InputKeyUp, none)
+    RT_PROP("Down", "i64", InputKeyDown, none)
+    RT_PROP("Left", "i64", InputKeyLeft, none)
+    RT_PROP("Right", "i64", InputKeyRight, none)
+    RT_PROP("Home", "i64", InputKeyHome, none)
+    RT_PROP("End", "i64", InputKeyEnd, none)
+    RT_PROP("PageUp", "i64", InputKeyPageUp, none)
+    RT_PROP("PageDown", "i64", InputKeyPageDown, none)
+    RT_PROP("Insert", "i64", InputKeyInsert, none)
+    RT_PROP("Delete", "i64", InputKeyDelete, none)
+    RT_PROP("Backspace", "i64", InputKeyBackspace, none)
+    RT_PROP("Tab", "i64", InputKeyTab, none)
+    RT_PROP("Enter", "i64", InputKeyEnter, none)
+    RT_PROP("Space", "i64", InputKeySpace, none)
+    RT_PROP("Escape", "i64", InputKeyEscape, none)
+    RT_PROP("LeftShift", "i64", InputKeyLeftShift, none)
+    RT_PROP("RightShift", "i64", InputKeyRightShift, none)
+    RT_PROP("LeftControl", "i64", InputKeyLeftControl, none)
+    RT_PROP("RightControl", "i64", InputKeyRightControl, none)
+    RT_PROP("LeftAlt", "i64", InputKeyLeftAlt, none)
+    RT_PROP("RightAlt", "i64", InputKeyRightAlt, none)
+    RT_PROP("Minus", "i64", InputKeyMinus, none)
+    RT_PROP("Equals", "i64", InputKeyEquals, none)
+    RT_PROP("LeftBracket", "i64", InputKeyLeftBracket, none)
+    RT_PROP("RightBracket", "i64", InputKeyRightBracket, none)
+    RT_PROP("Backslash", "i64", InputKeyBackslash, none)
+    RT_PROP("Semicolon", "i64", InputKeySemicolon, none)
+    RT_PROP("Quote", "i64", InputKeyQuote, none)
+    RT_PROP("Grave", "i64", InputKeyGrave, none)
+    RT_PROP("Comma", "i64", InputKeyComma, none)
+    RT_PROP("Period", "i64", InputKeyPeriod, none)
+    RT_PROP("Slash", "i64", InputKeySlash, none)
+    RT_PROP("Numpad0", "i64", InputKeyNumpad0, none)
+    RT_PROP("Numpad1", "i64", InputKeyNumpad1, none)
+    RT_PROP("Numpad2", "i64", InputKeyNumpad2, none)
+    RT_PROP("Numpad3", "i64", InputKeyNumpad3, none)
+    RT_PROP("Numpad4", "i64", InputKeyNumpad4, none)
+    RT_PROP("Numpad5", "i64", InputKeyNumpad5, none)
+    RT_PROP("Numpad6", "i64", InputKeyNumpad6, none)
+    RT_PROP("Numpad7", "i64", InputKeyNumpad7, none)
+    RT_PROP("Numpad8", "i64", InputKeyNumpad8, none)
+    RT_PROP("Numpad9", "i64", InputKeyNumpad9, none)
+    RT_PROP("NumpadAdd", "i64", InputKeyNumpadAdd, none)
+    RT_PROP("NumpadSubtract", "i64", InputKeyNumpadSubtract, none)
+    RT_PROP("NumpadMultiply", "i64", InputKeyNumpadMultiply, none)
+    RT_PROP("NumpadDivide", "i64", InputKeyNumpadDivide, none)
+    RT_PROP("NumpadEnter", "i64", InputKeyNumpadEnter, none)
+    RT_PROP("NumpadDecimal", "i64", InputKeyNumpadDecimal, none)
+RT_CLASS_END()
+
+// Viper.Input.Mouse - mouse input handling (static class)
+/// @summary Provides mouse input handling.
+/// @details
+/// `Viper.Input.Mouse` is a static runtime surface and does not require an instance. Its public
+/// surface exposes properties such as `RelativeMode`, `RelativeModeNative`, `ButtonLeft` and
+/// operations including `X`, `Y`, `DeltaX`, `DeltaY`.
+RT_CLASS_BEGIN("Viper.Input.Mouse", Mouse, "none", none)
+    // Position (relative to canvas)
+    RT_METHOD("X", "i64()", MouseX)
+    RT_METHOD("Y", "i64()", MouseY)
+    RT_METHOD("DeltaX", "i64()", MouseDeltaX)
+    RT_METHOD("DeltaY", "i64()", MouseDeltaY)
+
+    // Button state (polling)
+    RT_METHOD("IsDown", "i1(i64)", MouseIsDown)
+    RT_METHOD("IsUp", "i1(i64)", MouseIsUp)
+    RT_METHOD("Left", "i1()", MouseLeft)
+    RT_METHOD("Right", "i1()", MouseRight)
+    RT_METHOD("Middle", "i1()", MouseMiddle)
+
+    // Button events (since last poll)
+    RT_METHOD("WasPressed", "i1(i64)", MouseWasPressed)
+    RT_METHOD("WasReleased", "i1(i64)", MouseWasReleased)
+    RT_METHOD("WasClicked", "i1(i64)", MouseWasClicked)
+    RT_METHOD("WasDoubleClicked", "i1(i64)", MouseWasDoubleClicked)
+
+    // Scroll wheel
+    RT_METHOD("WheelX", "i64()", MouseWheelX)
+    RT_METHOD("WheelY", "i64()", MouseWheelY)
+    RT_METHOD("WheelXF", "f64()", MouseWheelXF)
+    RT_METHOD("WheelYF", "f64()", MouseWheelYF)
+
+    // Cursor control
+    RT_METHOD("Show", "void()", MouseShow)
+    RT_METHOD("Hide", "void()", MouseHide)
+    RT_METHOD("IsHidden", "i1()", MouseIsHidden)
+    RT_METHOD("Capture", "void()", MouseCapture)
+    RT_METHOD("Release", "void()", MouseRelease)
+    RT_METHOD("IsCaptured", "i1()", MouseIsCaptured)
+    RT_METHOD("SetPos", "void(i64,i64)", MouseSetPos)
+
+    // Relative (raw) mouse mode — FPS mouse-look. Enabling implies Capture;
+    // deltas become unbounded and sub-pixel (DeltaXF/DeltaYF). RelativeModeNative
+    // reports whether the platform delivers raw motion (else warp-to-center
+    // fallback serves the same deltas).
+    RT_METHOD("SetRelativeMode", "void(i1)", MouseSetRelativeMode)
+    RT_PROP("RelativeMode", "i1", MouseGetRelativeMode, none)
+    RT_PROP("RelativeModeNative", "i1", MouseGetRelativeNative, none)
+    RT_METHOD("DeltaXF", "f64()", MouseDeltaXF)
+    RT_METHOD("DeltaYF", "f64()", MouseDeltaYF)
+
+    // Button constants
+    RT_PROP("ButtonLeft", "i64", MouseButtonLeft, none)
+    RT_PROP("ButtonRight", "i64", MouseButtonRight, none)
+    RT_PROP("ButtonMiddle", "i64", MouseButtonMiddle, none)
+    RT_PROP("ButtonX1", "i64", MouseButtonX1, none)
+    RT_PROP("ButtonX2", "i64", MouseButtonX2, none)
+RT_CLASS_END()
+
+// Viper.Input.Pad - gamepad/controller input handling (static class)
+/// @summary Provides gamepad/controller input handling.
+/// @details
+/// `Viper.Input.Pad` is a static runtime surface and does not require an instance. Its public
+/// surface exposes properties such as `ButtonA`, `ButtonB`, `ButtonX` and operations including
+/// `Count`, `IsConnected`, `Name`, `IsDown`.
+RT_CLASS_BEGIN("Viper.Input.Pad", Pad, "none", none)
+    // Controller enumeration
+    RT_METHOD("Count", "i64()", PadCount)
+    RT_METHOD("IsConnected", "i1(i64)", PadIsConnected)
+    RT_METHOD("Name", "str(i64)", PadName)
+
+    // Button state (polling)
+    RT_METHOD("IsDown", "i1(i64,i64)", PadIsDown)
+    RT_METHOD("IsUp", "i1(i64,i64)", PadIsUp)
+
+    // Button events (since last poll)
+    RT_METHOD("WasPressed", "i1(i64,i64)", PadWasPressed)
+    RT_METHOD("WasReleased", "i1(i64,i64)", PadWasReleased)
+
+    // Analog inputs (-1.0 to 1.0 for sticks, 0.0 to 1.0 for triggers)
+    RT_METHOD("LeftX", "f64(i64)", PadLeftX)
+    RT_METHOD("LeftY", "f64(i64)", PadLeftY)
+    RT_METHOD("RightX", "f64(i64)", PadRightX)
+    RT_METHOD("RightY", "f64(i64)", PadRightY)
+    RT_METHOD("LeftTrigger", "f64(i64)", PadLeftTrigger)
+    RT_METHOD("RightTrigger", "f64(i64)", PadRightTrigger)
+
+    // Deadzone handling
+    RT_METHOD("SetDeadzone", "void(f64)", PadSetDeadzone)
+    RT_METHOD("GetDeadzone", "f64()", PadGetDeadzone)
+
+    // Vibration/rumble
+    RT_METHOD("Vibrate", "void(i64,f64,f64)", PadVibrate)
+    RT_METHOD("StopVibration", "void(i64)", PadStopVibration)
+
+    // Button constants (standard gamepad layout)
+    RT_PROP("ButtonA", "i64", PadButtonA, none)
+    RT_PROP("ButtonB", "i64", PadButtonB, none)
+    RT_PROP("ButtonX", "i64", PadButtonX, none)
+    RT_PROP("ButtonY", "i64", PadButtonY, none)
+    RT_PROP("ButtonLeftBumper", "i64", PadButtonLB, none)
+    RT_PROP("ButtonRightBumper", "i64", PadButtonRB, none)
+    RT_PROP("ButtonBack", "i64", PadButtonBack, none)
+    RT_PROP("ButtonStart", "i64", PadButtonStart, none)
+    RT_PROP("ButtonLeftStick", "i64", PadButtonLStick, none)
+    RT_PROP("ButtonRightStick", "i64", PadButtonRStick, none)
+    RT_PROP("ButtonUp", "i64", PadButtonUp, none)
+    RT_PROP("ButtonDown", "i64", PadButtonDown, none)
+    RT_PROP("ButtonLeft", "i64", PadButtonLeft, none)
+    RT_PROP("ButtonRight", "i64", PadButtonRight, none)
+    RT_PROP("ButtonGuide", "i64", PadButtonGuide, none)
+RT_CLASS_END()
+
+// Viper.Input.Action - action mapping system (static class)
+/// @summary Provides action mapping system.
+/// @details
+/// `Viper.Input.Action` is a static runtime surface and does not require an instance. Its public
+/// surface exposes properties such as `AxisLeftX`, `AxisLeftY`, `AxisRightX` and operations
+/// including `Clear`, `Define`, `DefineAxis`, `Exists`.
+RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
+    // Action definition
+    RT_METHOD("Clear", "void()", ActionClear)
+    RT_METHOD("Define", "i1(str)", ActionDefine)
+    RT_METHOD("DefineAxis", "i1(str)", ActionDefineAxis)
+    RT_METHOD("Exists", "i1(str)", ActionExists)
+    RT_METHOD("IsAxis", "i1(str)", ActionIsAxis)
+    RT_METHOD("Remove", "i1(str)", ActionRemove)
+
+    // Keyboard bindings
+    RT_METHOD("BindKey", "i1(str,i64)", ActionBindKey)
+    RT_METHOD("BindKeyAxis", "i1(str,i64,f64)", ActionBindKeyAxis)
+    RT_METHOD("UnbindKey", "i1(str,i64)", ActionUnbindKey)
+
+    // Key chord/combo bindings
+    RT_METHOD("BindChord", "i1(str,obj)", ActionBindChord)
+    RT_METHOD("UnbindChord", "i1(str,obj)", ActionUnbindChord)
+    RT_METHOD("ChordCount", "i64(str)", ActionChordCount)
+
+    // Mouse bindings
+    RT_METHOD("BindMouse", "i1(str,i64)", ActionBindMouse)
+    RT_METHOD("UnbindMouse", "i1(str,i64)", ActionUnbindMouse)
+    RT_METHOD("BindMouseX", "i1(str,f64)", ActionBindMouseX)
+    RT_METHOD("BindMouseY", "i1(str,f64)", ActionBindMouseY)
+    RT_METHOD("BindScrollX", "i1(str,f64)", ActionBindScrollX)
+    RT_METHOD("BindScrollY", "i1(str,f64)", ActionBindScrollY)
+
+    // Gamepad bindings
+    RT_METHOD("BindPadButton", "i1(str,i64,i64)", ActionBindPadButton)
+    RT_METHOD("UnbindPadButton", "i1(str,i64,i64)", ActionUnbindPadButton)
+    RT_METHOD("BindPadAxis", "i1(str,i64,i64,f64)", ActionBindPadAxis)
+    RT_METHOD("UnbindPadAxis", "i1(str,i64,i64)", ActionUnbindPadAxis)
+    RT_METHOD("BindPadButtonAxis", "i1(str,i64,i64,f64)", ActionBindPadButtonAxis)
+
+    // State queries
+    RT_METHOD("Pressed", "i1(str)", ActionPressed)
+    RT_METHOD("Released", "i1(str)", ActionReleased)
+    RT_METHOD("Held", "i1(str)", ActionHeld)
+    RT_METHOD("Strength", "f64(str)", ActionStrength)
+    RT_METHOD("Axis", "f64(str)", ActionAxis)
+    RT_METHOD("AxisRaw", "f64(str)", ActionAxisRaw)
+
+    // Introspection
+    RT_METHOD("List", "obj()", ActionList)
+    RT_METHOD("BindingsStr", "str(str)", ActionBindingsStr)
+    RT_METHOD("BindingCount", "i64(str)", ActionBindingCount)
+    RT_METHOD("KeyBoundTo", "str(i64)", ActionKeyBoundTo)
+    RT_METHOD("MouseBoundTo", "str(i64)", ActionMouseBoundTo)
+    RT_METHOD("PadButtonBoundTo", "str(i64,i64)", ActionPadButtonBoundTo)
+
+    // Persistence
+    RT_METHOD("Save", "str()", ActionSave)
+    RT_METHOD("Load", "i1(str)", ActionLoad)
+
+    // Presets
+    RT_METHOD("LoadPreset", "i1(str)", ActionLoadPreset)
+
+    // Gamepad axis constants
+    RT_PROP("AxisLeftX", "i64", ActionAxisLeftX, none)
+    RT_PROP("AxisLeftY", "i64", ActionAxisLeftY, none)
+    RT_PROP("AxisRightX", "i64", ActionAxisRightX, none)
+    RT_PROP("AxisRightY", "i64", ActionAxisRightY, none)
+    RT_PROP("AxisLeftTrigger", "i64", ActionAxisLeftTrigger, none)
+    RT_PROP("AxisRightTrigger", "i64", ActionAxisRightTrigger, none)
+RT_CLASS_END()
+
+// Viper.Grid2D - 2D array container
+/// @summary Provides Grid 2D functionality for game applications.
+/// @details
+/// Create `Viper.Game.Grid2D` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Width`,
+/// `Height`, `IsEmpty` and operations including `Get`, `Set`, `Fill`, `Clear`.
+RT_CLASS_BEGIN("Viper.Game.Grid2D", Grid2D, "obj", Grid2DNew)
+    RT_PROP("Width", "i64", Grid2DWidth, none)
+    RT_PROP("Height", "i64", Grid2DHeight, none)
+    RT_PROP("IsEmpty", "i1", Grid2DIsEmpty, none)
+    RT_PROP("Size", "i64", Grid2DSize, none)
+    RT_METHOD("Get", "i64(i64,i64)", Grid2DGet)
+    RT_METHOD("Set", "void(i64,i64,i64)", Grid2DSet)
+    RT_METHOD("Fill", "void(i64)", Grid2DFill)
+    RT_METHOD("Clear", "void()", Grid2DClear)
+    RT_METHOD("InBounds", "i1(i64,i64)", Grid2DInBounds)
+    RT_METHOD("CopyFrom", "i1(obj)", Grid2DCopyFrom)
+    RT_METHOD("Count", "i64(i64)", Grid2DCount)
+    RT_METHOD("Replace", "i64(i64,i64)", Grid2DReplace)
+RT_CLASS_END()
+
+// Viper.Timer - frame-based timer
+/// @summary Provides Timer functionality for game applications.
+/// @details
+/// Create `Viper.Game.Timer` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `IsRunning`,
+/// `IsExpired`, `IsRepeating` and operations including `Start`, `StartRepeating`, `Stop`, `Reset`.
+RT_CLASS_BEGIN("Viper.Game.Timer", Timer, "obj", TimerNew)
+    RT_PROP("IsRunning", "i1", TimerIsRunning, none)
+    RT_PROP("IsExpired", "i1", TimerIsExpired, none)
+    RT_PROP("IsRepeating", "i1", TimerIsRepeating, none)
+    RT_PROP("Elapsed", "i64", TimerElapsed, none)
+    RT_PROP("Remaining", "i64", TimerRemaining, none)
+    RT_PROP("Progress", "i64", TimerProgress, none)
+    RT_PROP("Duration", "i64", TimerDuration, TimerSetDuration)
+    RT_METHOD("Start", "void(i64)", TimerStart)
+    RT_METHOD("StartRepeating", "void(i64)", TimerStartRepeating)
+    RT_METHOD("Stop", "void()", TimerStop)
+    RT_METHOD("Reset", "void()", TimerReset)
+    RT_METHOD("Update", "i1()", TimerUpdate)
+    RT_METHOD("StartMs", "void(i64)", TimerStartMs)
+    RT_METHOD("StartRepeatingMs", "void(i64)", TimerStartRepeatingMs)
+    RT_METHOD("UpdateMs", "i1(i64)", TimerUpdateMs)
+    RT_PROP("ElapsedMs", "i64", TimerElapsedMs, none)
+    RT_PROP("RemainingMs", "i64", TimerRemainingMs, none)
+RT_CLASS_END()
+
+// Viper.StateMachine - game/app state management
+/// @summary Provides State Machine functionality for game applications.
+/// @details
+/// Create `Viper.Game.StateMachine` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Current`,
+/// `Previous`, `JustEntered` and operations including `AddState`, `SetInitial`, `IsState`,
+/// `Transition`.
+RT_CLASS_BEGIN("Viper.Game.StateMachine", StateMachine, "obj", StateMachineNew)
+    RT_PROP("Current", "i64", StateMachineCurrent, none)
+    RT_PROP("Previous", "i64", StateMachinePrevious, none)
+    RT_PROP("JustEntered", "i1", StateMachineJustEntered, none)
+    RT_PROP("JustExited", "i1", StateMachineJustExited, none)
+    RT_PROP("FramesInState", "i64", StateMachineFramesInState, none)
+    RT_PROP("StateCount", "i64", StateMachineStateCount, none)
+    RT_METHOD("AddState", "i1(i64)", StateMachineAddState)
+    RT_METHOD("SetInitial", "i1(i64)", StateMachineSetInitial)
+    RT_METHOD("IsState", "i1(i64)", StateMachineIsState)
+    RT_METHOD("Transition", "i1(i64)", StateMachineTransition)
+    RT_METHOD("ClearFlags", "void()", StateMachineClearFlags)
+    RT_METHOD("Update", "void()", StateMachineUpdate)
+    RT_METHOD("HasState", "i1(i64)", StateMachineHasState)
+RT_CLASS_END()
+
+// Viper.AnimStateMachine - combined state + animation playback
+/// @summary Provides Anim State Machine functionality for game applications.
+/// @details
+/// Create `Viper.Game.AnimStateMachine` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `CurrentState`, `PreviousState`, `JustEntered` and operations including `AddState`, `AddNamed`,
+/// `AddEvent`, `ClearEvents`.
+RT_CLASS_BEGIN("Viper.Game.AnimStateMachine", AnimStateMachine, "obj", AnimStateNew)
+    RT_PROP("CurrentState", "i64", AnimStateCurrent, none)
+    RT_PROP("PreviousState", "i64", AnimStatePrevious, none)
+    RT_PROP("JustEntered", "i1", AnimStateJustEntered, none)
+    RT_PROP("JustExited", "i1", AnimStateJustExited, none)
+    RT_PROP("FramesInState", "i64", AnimStateFramesInState, none)
+    RT_PROP("CurrentFrame", "i64", AnimStateCurrentFrame, none)
+    RT_PROP("IsAnimFinished", "i1", AnimStateIsFinished, none)
+    RT_PROP("Progress", "i64", AnimStateProgress, none)
+    RT_PROP("StateName", "obj", AnimStateCurrentName, none)
+    RT_PROP("EventFired", "i1", AnimStateEventFired, none)
+    RT_PROP("EventsFiredCount", "i64", AnimStateEventsFired, none)
+    RT_METHOD("AddState", "void(i64,i64,i64,i64,i1)", AnimStateAddState)
+    RT_METHOD("AddNamed", "void(str,i64,i64,i64,i1)", AnimStateAddNamed)
+    RT_METHOD("AddEvent", "i1(i64,i64,i64)", AnimStateAddEvent)
+    RT_METHOD("ClearEvents", "void(i64)", AnimStateClearEvents)
+    RT_METHOD("EventFiredId", "i64(i64)", AnimStateEventFiredId)
+    RT_METHOD("PollEvents", "obj<Viper.Game.AnimationEventBatch>()", AnimStatePollEvents)
+    RT_METHOD("SetInitial", "i1(i64)", AnimStateSetInitial)
+    RT_METHOD("Transition", "i1(i64)", AnimStateTransition)
+    RT_METHOD("Play", "void(str)", AnimStatePlay)
+    RT_METHOD("SetEventFrame", "void(i64)", AnimStateSetEventFrame)
+    RT_METHOD("Update", "void()", AnimStateUpdate)
+    RT_METHOD("ClearFlags", "void()", AnimStateClearFlags)
+RT_CLASS_END()
+
+/// @summary Provides Animation Event Batch functionality for game applications.
+/// @details
+/// `Viper.Game.AnimationEventBatch` exposes a registry-backed runtime surface without requiring
+/// callers to construct the class directly. Its public surface exposes a property such as `Count`
+/// and operations including `GetId`, `Contains`, `Ids`.
+RT_CLASS_BEGIN("Viper.Game.AnimationEventBatch", AnimationEventBatch, "obj", none)
+    RT_PROP("Count", "i64", AnimationEventBatchCount, none)
+    RT_METHOD("GetId", "i64(i64)", AnimationEventBatchGetId)
+    RT_METHOD("Contains", "i1(i64)", AnimationEventBatchContains)
+    RT_METHOD("Ids", "obj()", AnimationEventBatchIds)
+RT_CLASS_END()
+
+/// @summary Provides Anim Timeline functionality for game applications.
+/// @details
+/// Create `Viper.Game.AnimTimeline` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `IsPlaying`, `IsFinished`, `CurrentFrame` and operations including `AddAnimTrack`,
+/// `AddTweenTrack`, `AddMarker`, `Play`.
+RT_CLASS_BEGIN("Viper.Game.AnimTimeline", AnimTimeline, "obj", AnimTimelineNew)
+    RT_PROP("IsPlaying", "i1", AnimTimelineIsPlaying, none)
+    RT_PROP("IsFinished", "i1", AnimTimelineIsFinished, none)
+    RT_PROP("CurrentFrame", "i64", AnimTimelineFrame, none)
+    RT_PROP("Looping", "i1", none, AnimTimelineSetLoop)
+    RT_PROP("EventsFiredCount", "i64", AnimTimelineEvents, none)
+    RT_METHOD("AddAnimTrack", "i64(str,i64,i64,i64)", AnimTimelineAddAnim)
+    RT_METHOD("AddTweenTrack", "i64(str,i64,i64,i64,i64)", AnimTimelineAddTween)
+    RT_METHOD("AddMarker", "i64(i64,i64)", AnimTimelineAddMarker)
+    RT_METHOD("Play", "void()", AnimTimelinePlay)
+    RT_METHOD("Pause", "void()", AnimTimelinePause)
+    RT_METHOD("Stop", "void()", AnimTimelineStop)
+    RT_METHOD("Advance", "void(i64)", AnimTimelineAdvance)
+    RT_METHOD("EventFiredId", "i64(i64)", AnimTimelineEventId)
+    RT_METHOD("PollEvents", "obj<Viper.Game.AnimationEventBatch>()", AnimTimelinePollEvents)
+    RT_METHOD("TrackIsActive", "i1(i64)", AnimTimelineTrackActive)
+    RT_METHOD("TrackProgress", "f64(i64)", AnimTimelineTrackProg)
+    RT_METHOD("TrackPayloadA", "i64(i64)", AnimTimelinePayloadA)
+    RT_METHOD("TrackPayloadB", "i64(i64)", AnimTimelinePayloadB)
+    RT_METHOD("TrackPayloadC", "i64(i64)", AnimTimelinePayloadC)
+RT_CLASS_END()
+
+// Viper.Tween - animation and interpolation
+/// @summary Provides Tween functionality for game applications.
+/// @details
+/// Create `Viper.Game.Tween` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Value`,
+/// `ValueI64`, `IsRunning` and operations including `Start`, `StartI64`, `Update`, `Stop`.
+RT_CLASS_BEGIN("Viper.Game.Tween", Tween, "obj", TweenNew)
+    RT_PROP("Value", "f64", TweenValue, none)
+    RT_PROP("ValueI64", "i64", TweenValueI64, none)
+    RT_PROP("IsRunning", "i1", TweenIsRunning, none)
+    RT_PROP("IsComplete", "i1", TweenIsComplete, none)
+    RT_PROP("IsPaused", "i1", TweenIsPaused, none)
+    RT_PROP("Progress", "i64", TweenProgress, none)
+    RT_PROP("Elapsed", "i64", TweenElapsed, none)
+    RT_PROP("Duration", "i64", TweenDuration, none)
+    RT_METHOD("Start", "void(f64,f64,i64,i64)", TweenStart)
+    RT_METHOD("StartI64", "void(i64,i64,i64,i64)", TweenStartI64)
+    RT_METHOD("Update", "i1()", TweenUpdate)
+    RT_METHOD("Stop", "void()", TweenStop)
+    RT_METHOD("Reset", "void()", TweenReset)
+    RT_METHOD("Pause", "void()", TweenPause)
+    RT_METHOD("Resume", "void()", TweenResume)
+    // Static interpolation functions (can be called without an instance)
+    RT_METHOD("LerpI64", "i64(i64,i64,f64)", TweenLerpI64)
+    RT_METHOD("Ease", "f64(f64,i64)", TweenEase)
+RT_CLASS_END()
+
+
+// Viper.ButtonGroup - mutually exclusive selection
+/// @summary Provides Button Group functionality for game applications.
+/// @details
+/// Create `Viper.Game.ButtonGroup` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Count`,
+/// `Selected`, `HasSelection` and operations including `Add`, `Remove`, `Has`, `Select`.
+RT_CLASS_BEGIN("Viper.Game.ButtonGroup", ButtonGroup, "obj", ButtonGroupNew)
+    RT_PROP("Count", "i64", ButtonGroupCount, none)
+    RT_PROP("Selected", "i64", ButtonGroupSelected, none)
+    RT_PROP("HasSelection", "i1", ButtonGroupHasSelection, none)
+    RT_PROP("SelectionChanged", "i1", ButtonGroupSelectionChanged, none)
+    RT_METHOD("Add", "i1(i64)", ButtonGroupAdd)
+    RT_METHOD("Remove", "i1(i64)", ButtonGroupRemove)
+    RT_METHOD("Has", "i1(i64)", ButtonGroupHas)
+    RT_METHOD("Select", "i1(i64)", ButtonGroupSelect)
+    RT_METHOD("ClearSelection", "void()", ButtonGroupClearSelection)
+    RT_METHOD("IsSelected", "i1(i64)", ButtonGroupIsSelected)
+    RT_METHOD("ClearChangedFlag", "void()", ButtonGroupClearChangedFlag)
+    RT_METHOD("GetAt", "i64(i64)", ButtonGroupGetAt)
+    RT_METHOD("SelectNext", "i64()", ButtonGroupSelectNext)
+    RT_METHOD("SelectPrev", "i64()", ButtonGroupSelectPrev)
+RT_CLASS_END()
+
+// Viper.SmoothValue - smooth value interpolation
+/// @summary Provides Smooth Value functionality for game applications.
+/// @details
+/// Create `Viper.Game.SmoothValue` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Value`,
+/// `ValueI64`, `Target` and operations including `SetImmediate`, `Update`, `Impulse`.
+RT_CLASS_BEGIN("Viper.Game.SmoothValue", SmoothValue, "obj", SmoothValueNew)
+    RT_PROP("Value", "f64", SmoothValueGet, none)
+    RT_PROP("ValueI64", "i64", SmoothValueGetI64, none)
+    RT_PROP("Target", "f64", SmoothValueTarget, SmoothValueSetTarget)
+    RT_PROP("Smoothing", "f64", SmoothValueSmoothing, SmoothValueSetSmoothing)
+    RT_PROP("AtTarget", "i1", SmoothValueAtTarget, none)
+    RT_PROP("Velocity", "f64", SmoothValueVelocity, none)
+    RT_METHOD("SetImmediate", "void(f64)", SmoothValueSetImmediate)
+    RT_METHOD("Update", "void()", SmoothValueUpdate)
+    RT_METHOD("Impulse", "void(f64)", SmoothValueImpulse)
+RT_CLASS_END()
+
+// Viper.ParticleEmitter - particle effects system
+/// @summary Provides Particle Emitter functionality for game applications.
+/// @details
+/// Create `Viper.Game.ParticleEmitter` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `X`, `Y`, `Rate` and operations including `SetPosition`, `SetLifetime`, `SetVelocity`,
+/// `SetGravity`.
+RT_CLASS_BEGIN("Viper.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmitterNew)
+    RT_PROP("X", "f64", ParticleEmitterX, none)
+    RT_PROP("Y", "f64", ParticleEmitterY, none)
+    RT_PROP("Rate", "f64", ParticleEmitterRate, ParticleEmitterSetRate)
+    RT_PROP("IsEmitting", "i1", ParticleEmitterIsEmitting, none)
+    RT_PROP("Count", "i64", ParticleEmitterCount, none)
+    RT_PROP("FadeOut", "i1", ParticleEmitterGetFadeOut, ParticleEmitterSetFadeOut)
+    RT_PROP("Shrink", "i1", ParticleEmitterGetShrink, ParticleEmitterSetShrink)
+    RT_PROP("Color", "i64", ParticleEmitterGetColor, ParticleEmitterSetColor)
+    RT_METHOD("SetPosition", "void(f64,f64)", ParticleEmitterSetPosition)
+    RT_METHOD("SetLifetime", "void(i64,i64)", ParticleEmitterSetLifetime)
+    RT_METHOD("SetVelocity", "void(f64,f64,f64,f64)", ParticleEmitterSetVelocity)
+    RT_METHOD("SetGravity", "void(f64,f64)", ParticleEmitterSetGravity)
+    RT_METHOD("SetSize", "void(f64,f64)", ParticleEmitterSetSize)
+    RT_METHOD("Start", "void()", ParticleEmitterStart)
+    RT_METHOD("Stop", "void()", ParticleEmitterStop)
+    RT_METHOD("Burst", "void(i64)", ParticleEmitterBurst)
+    RT_METHOD("Update", "void()", ParticleEmitterUpdate)
+    RT_METHOD("Clear", "void()", ParticleEmitterClear)
+    RT_METHOD("Destroy", "void()", ParticleEmitterDestroy)
+    RT_METHOD("ParticleAt", "obj<Viper.Option>(i64)", ParticleEmitterParticleAt)
+    RT_METHOD("Draw", "i64(obj)", ParticleEmitterDraw)
+    RT_METHOD("DrawAt", "i64(obj,i64,i64)", ParticleEmitterDrawAt)
+    RT_METHOD("DrawToPixels", "i64(obj,i64,i64)", ParticleEmitterDrawToPixels)
+RT_CLASS_END()
+
+/// @summary Provides Particle Snapshot functionality for game applications.
+/// @details
+/// Create `Viper.Game.ParticleSnapshot` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `X`, `Y`, `Size`.
+RT_CLASS_BEGIN("Viper.Game.ParticleSnapshot", ParticleSnapshot, "obj", ParticleSnapshotNew)
+    RT_PROP("X", "f64", ParticleSnapshotX, none)
+    RT_PROP("Y", "f64", ParticleSnapshotY, none)
+    RT_PROP("Size", "f64", ParticleSnapshotSize, none)
+    RT_PROP("Color", "i64", ParticleSnapshotColor, none)
+RT_CLASS_END()
+
+/// @summary Provides Particle System 2D functionality for 2D graphics and media applications.
+/// @details
+/// `Viper.Graphics.ParticleSystem2D` exposes a registry-backed runtime surface without requiring
+/// callers to construct the class directly. Its public surface exposes properties such as `X`, `Y`,
+/// `Rate` and operations including `SetPosition`, `SetLifetime`, `SetVelocity`, `SetGravity`.
+RT_CLASS_BEGIN("Viper.Graphics.ParticleSystem2D", ParticleSystem2D, "obj", none)
+    RT_PROP("X", "f64", ParticleEmitterX, none)
+    RT_PROP("Y", "f64", ParticleEmitterY, none)
+    RT_PROP("Rate", "f64", ParticleEmitterRate, ParticleEmitterSetRate)
+    RT_PROP("IsEmitting", "i1", ParticleEmitterIsEmitting, none)
+    RT_PROP("Count", "i64", ParticleEmitterCount, none)
+    RT_PROP("FadeOut", "i1", ParticleEmitterGetFadeOut, ParticleEmitterSetFadeOut)
+    RT_PROP("Shrink", "i1", ParticleEmitterGetShrink, ParticleEmitterSetShrink)
+    RT_PROP("Color", "i64", ParticleEmitterGetColor, ParticleEmitterSetColor)
+    RT_METHOD("SetPosition", "void(f64,f64)", ParticleEmitterSetPosition)
+    RT_METHOD("SetLifetime", "void(i64,i64)", ParticleEmitterSetLifetime)
+    RT_METHOD("SetVelocity", "void(f64,f64,f64,f64)", ParticleEmitterSetVelocity)
+    RT_METHOD("SetGravity", "void(f64,f64)", ParticleEmitterSetGravity)
+    RT_METHOD("SetSize", "void(f64,f64)", ParticleEmitterSetSize)
+    RT_METHOD("Start", "void()", ParticleEmitterStart)
+    RT_METHOD("Stop", "void()", ParticleEmitterStop)
+    RT_METHOD("Burst", "void(i64)", ParticleEmitterBurst)
+    RT_METHOD("Update", "void()", ParticleEmitterUpdate)
+    RT_METHOD("Clear", "void()", ParticleEmitterClear)
+    RT_METHOD("Destroy", "void()", ParticleEmitterDestroy)
+    RT_METHOD("ParticleAt", "obj<Viper.Option>(i64)", ParticleEmitterParticleAt)
+    RT_METHOD("Draw", "i64(obj)", ParticleEmitterDraw)
+    RT_METHOD("DrawAt", "i64(obj,i64,i64)", ParticleEmitterDrawAt)
+    RT_METHOD("DrawToPixels", "i64(obj,i64,i64)", ParticleEmitterDrawToPixels)
+RT_CLASS_END()
+
+/// @summary Provides Emitter 2D functionality for 2D graphics and media applications.
+/// @details
+/// `Viper.Graphics.Emitter2D` exposes a registry-backed runtime surface without requiring callers
+/// to construct the class directly. Its public surface exposes properties such as `X`, `Y`, `Rate`
+/// and operations including `SetPosition`, `SetLifetime`, `SetVelocity`, `SetGravity`.
+RT_CLASS_BEGIN("Viper.Graphics.Emitter2D", Emitter2D, "obj", none)
+    RT_PROP("X", "f64", ParticleEmitterX, none)
+    RT_PROP("Y", "f64", ParticleEmitterY, none)
+    RT_PROP("Rate", "f64", ParticleEmitterRate, ParticleEmitterSetRate)
+    RT_PROP("IsEmitting", "i1", ParticleEmitterIsEmitting, none)
+    RT_PROP("Count", "i64", ParticleEmitterCount, none)
+    RT_PROP("FadeOut", "i1", ParticleEmitterGetFadeOut, ParticleEmitterSetFadeOut)
+    RT_PROP("Shrink", "i1", ParticleEmitterGetShrink, ParticleEmitterSetShrink)
+    RT_PROP("Color", "i64", ParticleEmitterGetColor, ParticleEmitterSetColor)
+    RT_METHOD("SetPosition", "void(f64,f64)", ParticleEmitterSetPosition)
+    RT_METHOD("SetLifetime", "void(i64,i64)", ParticleEmitterSetLifetime)
+    RT_METHOD("SetVelocity", "void(f64,f64,f64,f64)", ParticleEmitterSetVelocity)
+    RT_METHOD("SetGravity", "void(f64,f64)", ParticleEmitterSetGravity)
+    RT_METHOD("SetSize", "void(f64,f64)", ParticleEmitterSetSize)
+    RT_METHOD("Start", "void()", ParticleEmitterStart)
+    RT_METHOD("Stop", "void()", ParticleEmitterStop)
+    RT_METHOD("Burst", "void(i64)", ParticleEmitterBurst)
+    RT_METHOD("Update", "void()", ParticleEmitterUpdate)
+    RT_METHOD("Clear", "void()", ParticleEmitterClear)
+    RT_METHOD("Destroy", "void()", ParticleEmitterDestroy)
+    RT_METHOD("ParticleAt", "obj<Viper.Option>(i64)", ParticleEmitterParticleAt)
+    RT_METHOD("Draw", "i64(obj)", ParticleEmitterDraw)
+    RT_METHOD("DrawAt", "i64(obj,i64,i64)", ParticleEmitterDrawAt)
+    RT_METHOD("DrawToPixels", "i64(obj,i64,i64)", ParticleEmitterDrawToPixels)
+RT_CLASS_END()
+
+// Viper.SpriteAnimation - frame-based animation
+/// @summary Provides Sprite Animation functionality for game applications.
+/// @details
+/// Create `Viper.Game.SpriteAnimation` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Frame`, `FrameDuration`, `FrameCount` and operations including `Setup`, `Play`, `Stop`,
+/// `Pause`.
+RT_CLASS_BEGIN("Viper.Game.SpriteAnimation", SpriteAnimation, "obj", SpriteAnimNew)
+    RT_PROP("Frame", "i64", SpriteAnimFrame, SpriteAnimSetFrame)
+    RT_PROP("FrameDuration", "i64", SpriteAnimFrameDuration, SpriteAnimSetFrameDuration)
+    RT_PROP("FrameCount", "i64", SpriteAnimFrameCount, none)
+    RT_PROP("IsPlaying", "i1", SpriteAnimIsPlaying, none)
+    RT_PROP("IsPaused", "i1", SpriteAnimIsPaused, none)
+    RT_PROP("IsFinished", "i1", SpriteAnimIsFinished, none)
+    RT_PROP("Progress", "i64", SpriteAnimProgress, none)
+    RT_PROP("Speed", "f64", SpriteAnimSpeed, SpriteAnimSetSpeed)
+    RT_PROP("Loop", "i1", SpriteAnimGetLoop, SpriteAnimSetLoop)
+    RT_PROP("PingPong", "i1", SpriteAnimGetPingPong, SpriteAnimSetPingPong)
+    RT_PROP("FrameChanged", "i1", SpriteAnimFrameChanged, none)
+    RT_METHOD("Setup", "void(i64,i64,i64)", SpriteAnimSetup)
+    RT_METHOD("Play", "void()", SpriteAnimPlay)
+    RT_METHOD("Stop", "void()", SpriteAnimStop)
+    RT_METHOD("Pause", "void()", SpriteAnimPause)
+    RT_METHOD("Resume", "void()", SpriteAnimResume)
+    RT_METHOD("Reset", "void()", SpriteAnimReset)
+    RT_METHOD("Update", "i1()", SpriteAnimUpdate)
+RT_CLASS_END()
+
+// Viper.CollisionRect - AABB collision detection
+/// @summary Provides Collision Rect functionality for game applications.
+/// @details
+/// Create `Viper.Game.CollisionRect` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `X`, `Y`,
+/// `Width` and operations including `SetPosition`, `SetSize`, `Set`, `SetCenter`.
+RT_CLASS_BEGIN("Viper.Game.CollisionRect", CollisionRect, "obj", CollisionRectNew)
+    RT_PROP("X", "f64", CollisionRectX, none)
+    RT_PROP("Y", "f64", CollisionRectY, none)
+    RT_PROP("Width", "f64", CollisionRectWidth, none)
+    RT_PROP("Height", "f64", CollisionRectHeight, none)
+    RT_PROP("Right", "f64", CollisionRectRight, none)
+    RT_PROP("Bottom", "f64", CollisionRectBottom, none)
+    RT_PROP("CenterX", "f64", CollisionRectCenterX, none)
+    RT_PROP("CenterY", "f64", CollisionRectCenterY, none)
+    RT_METHOD("SetPosition", "void(f64,f64)", CollisionRectSetPosition)
+    RT_METHOD("SetSize", "void(f64,f64)", CollisionRectSetSize)
+    RT_METHOD("Set", "void(f64,f64,f64,f64)", CollisionRectSet)
+    RT_METHOD("SetCenter", "void(f64,f64)", CollisionRectSetCenter)
+    RT_METHOD("Move", "void(f64,f64)", CollisionRectMove)
+    RT_METHOD("ContainsPoint", "i1(f64,f64)", CollisionRectContainsPoint)
+    RT_METHOD("Overlaps", "i1(obj)", CollisionRectOverlaps)
+    RT_METHOD("OverlapsRect", "i1(f64,f64,f64,f64)", CollisionRectOverlapsRect)
+    RT_METHOD("OverlapX", "f64(obj)", CollisionRectOverlapX)
+    RT_METHOD("OverlapY", "f64(obj)", CollisionRectOverlapY)
+    RT_METHOD("Expand", "void(f64)", CollisionRectExpand)
+    RT_METHOD("ContainsRect", "i1(obj)", CollisionRectContainsRect)
+RT_CLASS_END()
+
+// Viper.Game.Collision - static collision helpers
+/// @summary Provides static collision helpers.
+/// @details
+/// `Viper.Game.Collision` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `RectsOverlap`,
+/// `PointInRect`, `CirclesOverlap`, `PointInCircle`.
+RT_CLASS_BEGIN("Viper.Game.Collision", Collision, "obj", none)
+    RT_METHOD("RectsOverlap", "i1(f64,f64,f64,f64,f64,f64,f64,f64)", CollisionRectsOverlap)
+    RT_METHOD("PointInRect", "i1(f64,f64,f64,f64,f64,f64)", CollisionPointInRect)
+    RT_METHOD("CirclesOverlap", "i1(f64,f64,f64,f64,f64,f64)", CollisionCirclesOverlap)
+    RT_METHOD("PointInCircle", "i1(f64,f64,f64,f64,f64)", CollisionPointInCircle)
+    RT_METHOD("CircleRect", "i1(f64,f64,f64,f64,f64,f64,f64)", CollisionCircleRect)
+    RT_METHOD("Distance", "f64(f64,f64,f64,f64)", CollisionDistance)
+    RT_METHOD("DistanceSquared", "f64(f64,f64,f64,f64)", CollisionDistanceSquared)
+RT_CLASS_END()
+
+// Viper.Game.WorldToScreenProjection - static projection helpers
+/// @summary Provides static projection helpers.
+/// @details
+/// `Viper.Game.WorldToScreenProjection` exposes a registry-backed runtime surface without requiring
+/// callers to construct the class directly. Its public surface exposes operations including
+/// `LinearX`, `LinearY`, `IsometricX`, `IsometricY`.
+RT_CLASS_BEGIN("Viper.Game.WorldToScreenProjection", WorldToScreenProjection, "obj", none)
+    RT_METHOD("LinearX", "f64(f64,f64,f64,f64)", WorldProjectionLinearX)
+    RT_METHOD("LinearY", "f64(f64,f64,f64,f64,i1)", WorldProjectionLinearY)
+    RT_METHOD("IsometricX", "f64(f64,f64,f64,f64)", WorldProjectionIsometricX)
+    RT_METHOD("IsometricY", "f64(f64,f64,f64,f64)", WorldProjectionIsometricY)
+    RT_METHOD("PerspectiveScale", "f64(f64,f64,f64,f64,f64)", WorldProjectionPerspectiveScale)
+    RT_METHOD("PerspectiveX", "f64(f64,f64,f64,f64)", WorldProjectionPerspectiveX)
+    RT_METHOD("PerspectiveY", "f64(f64,f64,f64,f64,i1)", WorldProjectionPerspectiveY)
+RT_CLASS_END()
+
+// Viper.Graphics.SpriteSheet - sprite atlas with named regions
+/// @summary Provides sprite atlas with named regions.
+/// @details
+/// Create `Viper.Graphics.SpriteSheet` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `RegionCount`, `Width`, `Height` and operations including `FromGrid`, `SetRegion`, `GetRegion`,
+/// `HasRegion`.
+RT_CLASS_BEGIN("Viper.Graphics.SpriteSheet", SpriteSheet, "obj", SpriteSheetNew)
+    RT_PROP("RegionCount", "i64", SpriteSheetRegionCount, none)
+    RT_PROP("Width", "i64", SpriteSheetWidth, none)
+    RT_PROP("Height", "i64", SpriteSheetHeight, none)
+    RT_METHOD("FromGrid", "obj<Viper.Graphics.SpriteSheet>(obj,i64,i64)", SpriteSheetFromGrid)
+    RT_METHOD("SetRegion", "void(str,i64,i64,i64,i64)", SpriteSheetSetRegion)
+    RT_METHOD("GetRegion", "obj(str)", SpriteSheetGetRegion)
+    RT_METHOD("HasRegion", "i1(str)", SpriteSheetHasRegion)
+    RT_METHOD("RegionNames", "obj()", SpriteSheetRegionNames)
+    RT_METHOD("RemoveRegion", "i1(str)", SpriteSheetRemoveRegion)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.World - 2D physics world
+/// @summary Provides 2D physics world.
+/// @details
+/// Create `Viper.Game.Physics2D.World` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `BodyCount`, `ContactCount`, `ContactOverflowed` and operations including `Step`, `Add`,
+/// `Remove`, `SetGravity`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.World", Physics2DWorld, "obj", Physics2DWorldNew)
+    RT_PROP("BodyCount", "i64", Physics2DWorldBodyCount, none)
+    RT_PROP("ContactCount", "i64", Physics2DWorldContactCount, none)
+    RT_PROP("ContactOverflowed", "i1", Physics2DWorldContactOverflowed, none)
+    RT_METHOD("Step", "void(f64)", Physics2DWorldStep)
+    RT_METHOD("Add", "void(obj)", Physics2DWorldAdd)
+    RT_METHOD("Remove", "void(obj)", Physics2DWorldRemove)
+    RT_METHOD("SetGravity", "void(f64,f64)", Physics2DWorldSetGravity)
+    RT_METHOD("ContactBodyA", "obj(i64)", Physics2DWorldContactBodyA)
+    RT_METHOD("ContactBodyB", "obj(i64)", Physics2DWorldContactBodyB)
+    RT_METHOD("ContactNX", "f64(i64)", Physics2DWorldContactNX)
+    RT_METHOD("ContactNY", "f64(i64)", Physics2DWorldContactNY)
+    RT_METHOD("ContactDepth", "f64(i64)", Physics2DWorldContactDepth)
+    RT_PROP("JointCount", "i64", WorldJointCount, none)
+    RT_METHOD("AddJoint", "void(obj)", WorldAddJoint)
+    RT_METHOD("RemoveJoint", "void(obj)", WorldRemoveJoint)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.Body - 2D rigid body
+/// @summary Provides 2D rigid body.
+/// @details
+/// Create `Viper.Game.Physics2D.Body` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `X`, `Y`, `PrevX` and operations including `SetPos`, `SetVel`, `ApplyForce`, `ApplyImpulse`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.Body", Physics2DBody, "obj", Physics2DBodyNew)
+    RT_PROP("X", "f64", Physics2DBodyX, none)
+    RT_PROP("Y", "f64", Physics2DBodyY, none)
+    RT_PROP("PrevX", "f64", Physics2DBodyPrevX, none)
+    RT_PROP("PrevY", "f64", Physics2DBodyPrevY, none)
+    RT_PROP("Width", "f64", Physics2DBodyW, none)
+    RT_PROP("Height", "f64", Physics2DBodyH, none)
+    RT_PROP("VelocityX", "f64", Physics2DBodyVX, none)
+    RT_PROP("VelocityY", "f64", Physics2DBodyVY, none)
+    RT_PROP("Restitution", "f64", Physics2DBodyRestitution, Physics2DBodySetRestitution)
+    RT_PROP("Friction", "f64", Physics2DBodyFriction, Physics2DBodySetFriction)
+    RT_PROP("IsStatic", "i1", Physics2DBodyIsStatic, none)
+    RT_PROP("Mass", "f64", Physics2DBodyMass, none)
+    RT_PROP("CollisionLayer", "i64", Physics2DBodyCollisionLayer, Physics2DBodySetCollisionLayer)
+    RT_PROP("CollisionMask", "i64", Physics2DBodyCollisionMask, Physics2DBodySetCollisionMask)
+    RT_METHOD("SetPos", "void(f64,f64)", Physics2DBodySetPos)
+    RT_METHOD("SetVel", "void(f64,f64)", Physics2DBodySetVel)
+    RT_METHOD("ApplyForce", "void(f64,f64)", Physics2DBodyApplyForce)
+    RT_METHOD("ApplyImpulse", "void(f64,f64)", Physics2DBodyApplyImpulse)
+    RT_PROP("Radius", "f64", Physics2DBodyRadius, none)
+    RT_PROP("IsCircle", "i1", Physics2DBodyIsCircle, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.Projectile2D - analytic 2D projectile helper
+/// @summary Provides analytic 2D projectile helper.
+/// @details
+/// Create `Viper.Game.Physics2D.Projectile2D` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `HasLanded`, `TotalTime` and operations including `SetDrag`, `SetGroundY`, `Reset`, `Advance`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.Projectile2D", Projectile2D, "obj", Projectile2DNew)
+    RT_PROP("HasLanded", "i1", Projectile2DHasLanded, none)
+    RT_PROP("TotalTime", "f64", Projectile2DTotalTime, none)
+    RT_METHOD("SetDrag", "void(f64)", Projectile2DSetDrag)
+    RT_METHOD("SetGroundY", "void(f64)", Projectile2DSetGroundY)
+    RT_METHOD("Reset", "void()", Projectile2DReset)
+    RT_METHOD("Advance", "void(f64)", Projectile2DAdvance)
+    RT_METHOD("XAt", "f64(f64)", Projectile2DXAt)
+    RT_METHOD("YAt", "f64(f64)", Projectile2DYAt)
+    RT_METHOD("VXAt", "f64(f64)", Projectile2DVXAt)
+    RT_METHOD("VYAt", "f64(f64)", Projectile2DVYAt)
+    RT_METHOD("TimeToGround", "f64()", Projectile2DTimeToGround)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.CircleBody - circular 2D rigid body constructor
+/// @summary Provides circular 2D rigid body constructor.
+/// @details
+/// Create `Viper.Game.Physics2D.CircleBody` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `X`, `Y`, `PrevX` and operations including `SetPos`, `SetVel`, `ApplyForce`, `ApplyImpulse`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.CircleBody", Physics2DCircleBody, "obj", Physics2DCircleBodyNew)
+    RT_PROP("X", "f64", Physics2DBodyX, none)
+    RT_PROP("Y", "f64", Physics2DBodyY, none)
+    RT_PROP("PrevX", "f64", Physics2DBodyPrevX, none)
+    RT_PROP("PrevY", "f64", Physics2DBodyPrevY, none)
+    RT_PROP("VelocityX", "f64", Physics2DBodyVX, none)
+    RT_PROP("VelocityY", "f64", Physics2DBodyVY, none)
+    RT_PROP("Radius", "f64", Physics2DBodyRadius, none)
+    RT_PROP("IsCircle", "i1", Physics2DBodyIsCircle, none)
+    RT_PROP("Restitution", "f64", Physics2DBodyRestitution, Physics2DBodySetRestitution)
+    RT_PROP("Friction", "f64", Physics2DBodyFriction, Physics2DBodySetFriction)
+    RT_PROP("IsStatic", "i1", Physics2DBodyIsStatic, none)
+    RT_PROP("Mass", "f64", Physics2DBodyMass, none)
+    RT_PROP("CollisionLayer", "i64", Physics2DBodyCollisionLayer, Physics2DBodySetCollisionLayer)
+    RT_PROP("CollisionMask", "i64", Physics2DBodyCollisionMask, Physics2DBodySetCollisionMask)
+    RT_METHOD("SetPos", "void(f64,f64)", Physics2DBodySetPos)
+    RT_METHOD("SetVel", "void(f64,f64)", Physics2DBodySetVel)
+    RT_METHOD("ApplyForce", "void(f64,f64)", Physics2DBodyApplyForce)
+    RT_METHOD("ApplyImpulse", "void(f64,f64)", Physics2DBodyApplyImpulse)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.DistanceJoint
+/// @summary Provides Distance Joint functionality for game applications.
+/// @details
+/// Create `Viper.Game.Physics2D.DistanceJoint` values through its registered constructor and use
+/// the returned object with the instance members below. Its public surface exposes properties such
+/// as `Length`, `Type`, `BodyA`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.DistanceJoint", DistanceJoint, "obj", DistanceJointNew)
+    RT_PROP("Length", "f64", DistanceJointGetLen, DistanceJointSetLen)
+    RT_PROP("Type", "i64", JointGetType, none)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.SpringJoint
+/// @summary Provides Spring Joint functionality for game applications.
+/// @details
+/// Create `Viper.Game.Physics2D.SpringJoint` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Stiffness`, `Damping`, `Type`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.SpringJoint", SpringJoint, "obj", SpringJointNew)
+    RT_PROP("Stiffness", "f64", SpringJointGetStiff, SpringJointSetStiff)
+    RT_PROP("Damping", "f64", SpringJointGetDamp, SpringJointSetDamp)
+    RT_PROP("Type", "i64", JointGetType, none)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.HingeJoint
+/// @summary Provides Hinge Joint functionality for game applications.
+/// @details
+/// Create `Viper.Game.Physics2D.HingeJoint` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Angle`, `Type`, `BodyA`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.HingeJoint", HingeJoint, "obj", HingeJointNew)
+    RT_PROP("Angle", "f64", HingeJointGetAngle, none)
+    RT_PROP("Type", "i64", JointGetType, none)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Game.Physics2D.RopeJoint
+/// @summary Provides Rope Joint functionality for game applications.
+/// @details
+/// Create `Viper.Game.Physics2D.RopeJoint` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `MaxLength`, `Type`, `BodyA`.
+RT_CLASS_BEGIN("Viper.Game.Physics2D.RopeJoint", RopeJoint, "obj", RopeJointNew)
+    RT_PROP("MaxLength", "f64", RopeJointGetMaxLen, RopeJointSetMaxLen)
+    RT_PROP("Type", "i64", JointGetType, none)
+    RT_PROP("BodyA", "obj", JointGetBodyA, none)
+    RT_PROP("BodyB", "obj", JointGetBodyB, none)
+    RT_PROP("IsActive", "i1", JointIsActive, none)
+RT_CLASS_END()
+
+// Viper.Input.Manager - high-level input manager
+/// @summary Provides high-level input manager.
+/// @details
+/// Create `Viper.Input.Manager` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `DebounceDelay`, `MouseX`, `MouseY` and operations including `Update`, `KeyPressed`,
+/// `KeyReleased`, `KeyHeld`.
+RT_CLASS_BEGIN("Viper.Input.Manager", InputMgr, "obj", InputMgrNew)
+    RT_PROP("DebounceDelay", "i64", InputMgrGetDebounceDelay, InputMgrSetDebounceDelay)
+    RT_PROP("MouseX", "i64", InputMgrMouseX, none)
+    RT_PROP("MouseY", "i64", InputMgrMouseY, none)
+    RT_PROP("MouseDeltaX", "i64", InputMgrMouseDeltaX, none)
+    RT_PROP("MouseDeltaY", "i64", InputMgrMouseDeltaY, none)
+    RT_PROP("ScrollX", "i64", InputMgrScrollX, none)
+    RT_PROP("ScrollY", "i64", InputMgrScrollY, none)
+    RT_PROP("ScrollHorizontalFloat", "f64", InputMgrScrollHorizontalFloat, none)
+    RT_PROP("ScrollVerticalFloat", "f64", InputMgrScrollVerticalFloat, none)
+    RT_PROP("Up", "i1", InputMgrUp, none)
+    RT_PROP("Down", "i1", InputMgrDown, none)
+    RT_PROP("Left", "i1", InputMgrLeft, none)
+    RT_PROP("Right", "i1", InputMgrRight, none)
+    RT_PROP("Confirm", "i1", InputMgrConfirm, none)
+    RT_PROP("Cancel", "i1", InputMgrCancel, none)
+    RT_PROP("AxisX", "f64", InputMgrAxisX, none)
+    RT_PROP("AxisY", "f64", InputMgrAxisY, none)
+    RT_METHOD("Update", "void()", InputMgrUpdate)
+    RT_METHOD("KeyPressed", "i1(i64)", InputMgrKeyPressed)
+    RT_METHOD("KeyReleased", "i1(i64)", InputMgrKeyReleased)
+    RT_METHOD("KeyHeld", "i1(i64)", InputMgrKeyHeld)
+    RT_METHOD("KeyPressedDebounced", "i1(i64)", InputMgrKeyPressedDebounced)
+    RT_METHOD("MousePressed", "i1(i64)", InputMgrMousePressed)
+    RT_METHOD("MouseReleased", "i1(i64)", InputMgrMouseReleased)
+    RT_METHOD("MouseHeld", "i1(i64)", InputMgrMouseHeld)
+    RT_METHOD("PadPressed", "i1(i64,i64)", InputMgrPadPressed)
+    RT_METHOD("PadReleased", "i1(i64,i64)", InputMgrPadReleased)
+    RT_METHOD("PadHeld", "i1(i64,i64)", InputMgrPadHeld)
+    RT_METHOD("PadLeftX", "f64(i64)", InputMgrPadLeftX)
+    RT_METHOD("PadLeftY", "f64(i64)", InputMgrPadLeftY)
+    RT_METHOD("PadRightX", "f64(i64)", InputMgrPadRightX)
+    RT_METHOD("PadRightY", "f64(i64)", InputMgrPadRightY)
+    RT_METHOD("PadLeftTrigger", "f64(i64)", InputMgrPadLeftTrigger)
+    RT_METHOD("PadRightTrigger", "f64(i64)", InputMgrPadRightTrigger)
+RT_CLASS_END()
+
+// Viper.Input.KeyChord - key chord and combo detection
+/// @summary Provides key chord and combo detection.
+/// @details
+/// Create `Viper.Input.KeyChord` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as `Count`
+/// and operations including `Active`, `Clear`, `Define`, `DefineCombo`.
+RT_CLASS_BEGIN("Viper.Input.KeyChord", KeyChord, "obj", KeyChordNew)
+    RT_PROP("Count", "i64", KeyChordCount, none)
+    RT_METHOD("Active", "i1(str)", KeyChordActive)
+    RT_METHOD("Clear", "void()", KeyChordClear)
+    RT_METHOD("Define", "void(str,obj)", KeyChordDefine)
+    RT_METHOD("DefineCombo", "void(str,obj,i64)", KeyChordDefineCombo)
+    RT_METHOD("Progress", "i64(str)", KeyChordProgress)
+    RT_METHOD("Remove", "i1(str)", KeyChordRemove)
+    RT_METHOD("Triggered", "i1(str)", KeyChordTriggered)
+    RT_METHOD("Update", "void()", KeyChordUpdate)
+RT_CLASS_END()

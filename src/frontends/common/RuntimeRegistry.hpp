@@ -79,6 +79,8 @@ struct RuntimeFunctionInfo {
 struct RuntimeClassInfo {
     std::string_view name;                            ///< Class name (e.g., "Viper.String")
     std::string_view constructor;                     ///< Constructor canonical name or empty
+    std::string_view summary;                         ///< Short authored class description
+    std::string_view details;                         ///< Long authored Markdown description
     std::vector<runtime::RuntimeProperty> properties; ///< Class properties
     std::vector<runtime::RuntimeMethod> methods;      ///< Class methods
 };

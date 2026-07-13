@@ -24,6 +24,7 @@
 #include "frontends/basic/BasicCompletion.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "runtime/collections/rt_map.h"
 #include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
@@ -199,19 +200,32 @@ void *diagnosticsToSeq(const il::support::DiagnosticEngine &diagnostics,
 
 std::string_view completionKindName(CompletionKind kind) {
     switch (kind) {
-        case CompletionKind::Keyword: return "keyword";
-        case CompletionKind::Snippet: return "snippet";
-        case CompletionKind::Variable: return "variable";
-        case CompletionKind::Parameter: return "parameter";
-        case CompletionKind::Field: return "field";
-        case CompletionKind::Method: return "method";
-        case CompletionKind::Function: return "function";
-        case CompletionKind::Entity: return "entity";
-        case CompletionKind::Value: return "value";
-        case CompletionKind::Interface: return "interface";
-        case CompletionKind::Module: return "module";
-        case CompletionKind::RuntimeClass: return "runtimeClass";
-        case CompletionKind::Property: return "property";
+        case CompletionKind::Keyword:
+            return "keyword";
+        case CompletionKind::Snippet:
+            return "snippet";
+        case CompletionKind::Variable:
+            return "variable";
+        case CompletionKind::Parameter:
+            return "parameter";
+        case CompletionKind::Field:
+            return "field";
+        case CompletionKind::Method:
+            return "method";
+        case CompletionKind::Function:
+            return "function";
+        case CompletionKind::Entity:
+            return "entity";
+        case CompletionKind::Value:
+            return "value";
+        case CompletionKind::Interface:
+            return "interface";
+        case CompletionKind::Module:
+            return "module";
+        case CompletionKind::RuntimeClass:
+            return "runtimeClass";
+        case CompletionKind::Property:
+            return "property";
     }
     return "item";
 }
@@ -223,7 +237,7 @@ void *completionItemToMap(const CompletionItem &item) {
     mapSetInt(map, "kind", static_cast<int64_t>(item.kind));
     mapSetStr(map, "kindName", completionKindName(item.kind));
     mapSetStr(map, "detail", item.detail);
-    mapSetStr(map, "documentation", "");
+    mapSetStr(map, "documentation", item.documentation);
     mapSetStr(map, "source", "basic");
     mapSetStr(map, "commitCharacters", "");
     // Omit replacement*/cursorOffset: the IDE defaults them to the cursor
@@ -293,25 +307,38 @@ std::string basicSymbolsString(const Program &prog) {
 
 std::string semaTypeDisplay(SemanticAnalyzer::Type t) {
     switch (t) {
-        case SemanticAnalyzer::Type::Int: return "INTEGER";
-        case SemanticAnalyzer::Type::Float: return "DOUBLE";
-        case SemanticAnalyzer::Type::String: return "STRING";
-        case SemanticAnalyzer::Type::Bool: return "BOOLEAN";
-        case SemanticAnalyzer::Type::ArrayInt: return "INTEGER()";
-        case SemanticAnalyzer::Type::ArrayString: return "STRING()";
-        case SemanticAnalyzer::Type::ArrayObject: return "object()";
-        case SemanticAnalyzer::Type::Object: return "object";
-        default: return "";
+        case SemanticAnalyzer::Type::Int:
+            return "INTEGER";
+        case SemanticAnalyzer::Type::Float:
+            return "DOUBLE";
+        case SemanticAnalyzer::Type::String:
+            return "STRING";
+        case SemanticAnalyzer::Type::Bool:
+            return "BOOLEAN";
+        case SemanticAnalyzer::Type::ArrayInt:
+            return "INTEGER()";
+        case SemanticAnalyzer::Type::ArrayString:
+            return "STRING()";
+        case SemanticAnalyzer::Type::ArrayObject:
+            return "object()";
+        case SemanticAnalyzer::Type::Object:
+            return "object";
+        default:
+            return "";
     }
 }
 
 /// @brief Display name for an AST declared type (DIM/param/return).
 std::string astTypeDisplay(Type t) {
     switch (t) {
-        case Type::I64: return "INTEGER";
-        case Type::F64: return "DOUBLE";
-        case Type::Str: return "STRING";
-        case Type::Bool: return "BOOLEAN";
+        case Type::I64:
+            return "INTEGER";
+        case Type::F64:
+            return "DOUBLE";
+        case Type::Str:
+            return "STRING";
+        case Type::Bool:
+            return "BOOLEAN";
     }
     return "";
 }
@@ -414,7 +441,22 @@ std::string identifierAt(const std::string &source, int line, int col) {
     return ln.substr(b, e - b + 1);
 }
 
-void *basicHoverMap(const std::string &name, const std::string &typeStr) {
+std::string runtimeClassDocumentation(std::string_view qname) {
+    const auto *runtimeClass = il::runtime::findRuntimeClassByQName(qname);
+    if (!runtimeClass)
+        return {};
+    std::string documentation = runtimeClass->summary ? runtimeClass->summary : "";
+    if (runtimeClass->details && *runtimeClass->details) {
+        if (!documentation.empty())
+            documentation += "\n\n";
+        documentation += runtimeClass->details;
+    }
+    return documentation;
+}
+
+void *basicHoverMap(const std::string &name,
+                    const std::string &typeStr,
+                    const std::string &documentation = {}) {
     void *map = rt_map_new();
     const bool available = !name.empty() && !typeStr.empty();
     mapSetBool(map, "available", available);
@@ -423,7 +465,7 @@ void *basicHoverMap(const std::string &name, const std::string &typeStr) {
         mapSetStr(map, "type", typeStr);
         mapSetStr(map, "display", name + " : " + typeStr);
         mapSetStr(map, "source", "basic");
-        mapSetStr(map, "documentation", "");
+        mapSetStr(map, "documentation", documentation);
     }
     return map;
 }
@@ -442,8 +484,8 @@ void *rt_basic_toolchain_check_for_file(rt_string source, rt_string file_path) {
         if (!result)
             return rt_seq_new_owned();
         std::string_view resolved = sm.getPath(result->fileId);
-        return diagnosticsToSeq(result->diagnostics, sm,
-                                resolved.empty() ? pathStr : std::string(resolved));
+        return diagnosticsToSeq(
+            result->diagnostics, sm, resolved.empty() ? pathStr : std::string(resolved));
     } catch (...) {
         return rt_seq_new_owned();
     }
@@ -513,7 +555,7 @@ void *rt_basic_completion_hover_info_for_file(rt_string source,
         // proc types still resolve.
         if (disp.empty())
             disp = lookupDeclType(*result->ast, ident);
-        return basicHoverMap(ident, disp);
+        return basicHoverMap(ident, disp, runtimeClassDocumentation(disp));
     } catch (...) {
         return basicHoverMap("", "");
     }

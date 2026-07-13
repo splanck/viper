@@ -91,6 +91,16 @@ TEST(BasicCompletion, ScopeProcedures) {
     EXPECT_TRUE(foundProc);
 }
 
+TEST(BasicCompletion, RuntimeMemberCarriesAuthoredClassDocumentation) {
+    BasicCompletionEngine engine;
+    auto items = engine.complete("Viper.Terminal.Sa\n", 1, 18, "test.bas", 0);
+    const auto say = std::find_if(
+        items.begin(), items.end(), [](const CompletionItem &item) { return item.label == "Say"; });
+    ASSERT_NE(say, items.end());
+    EXPECT_TRUE(say->documentation.find("terminal input, output, styling") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("`Viper.Terminal`") != std::string::npos);
+}
+
 // ===== No-crash edge cases =====
 
 TEST(BasicCompletion, EmptySource) {

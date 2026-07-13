@@ -30,6 +30,7 @@
 #include "frontends/zia/ZiaAstPrinter.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "runtime/collections/rt_map.h"
 #include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
@@ -588,12 +589,40 @@ struct HoverResult {
     std::string name;
     std::string
         kind; ///< "variable","parameter","function","method","field","type","module","runtime-class"
-    std::string type;      ///< developer-facing semantic type string
-    std::string signature; ///< Full signature for functions/methods
-    std::string ownerName; ///< Parent type name for members
+    std::string type;          ///< developer-facing semantic type string
+    std::string signature;     ///< Full signature for functions/methods
+    std::string ownerName;     ///< Parent type name for members
+    std::string documentation; ///< Authored documentation for runtime classes.
     bool isFinal{false};
     bool isExtern{false};
 };
+
+/// @brief Return combined authored documentation for a runtime class.
+static std::string runtimeClassDocumentation(std::string_view qualifiedName) {
+    const auto *runtimeClass = il::runtime::findRuntimeClassByQName(qualifiedName);
+    if (!runtimeClass)
+        return {};
+    std::string documentation = runtimeClass->summary ? runtimeClass->summary : "";
+    if (runtimeClass->details && *runtimeClass->details) {
+        if (!documentation.empty())
+            documentation += "\n\n";
+        documentation += runtimeClass->details;
+    }
+    return documentation;
+}
+
+/// @brief Populate hover metadata for a catalogued runtime class.
+static bool populateRuntimeClassHover(HoverResult &result, std::string_view qualifiedName) {
+    const auto *runtimeClass = il::runtime::findRuntimeClassByQName(qualifiedName);
+    if (!runtimeClass)
+        return false;
+    result.name = std::string(qualifiedName);
+    result.kind = "runtime-class";
+    result.signature = std::to_string(runtimeClass->properties.size()) + " properties, " +
+                       std::to_string(runtimeClass->methods.size()) + " methods";
+    result.documentation = runtimeClassDocumentation(qualifiedName);
+    return true;
+}
 
 /// @brief Build a human-readable function signature from AST param names + semantic types.
 static std::string buildSignatureFromDecl(const std::vector<Param> &params,
@@ -658,6 +687,11 @@ static HoverResult resolveHoverTarget(
         if (parts.empty())
             return result;
 
+        // A literal qualified class name (for example, a type annotation such
+        // as `Viper.GUI.App`) does not require a module binding to resolve.
+        if (populateRuntimeClassHover(result, ctx.dotPrefix + "." + ctx.identifier))
+            return result;
+
         // Look up first part in globals.
         TypeRef current;
         auto globals = sema.getGlobalSymbols();
@@ -685,21 +719,8 @@ static HoverResult resolveHoverTarget(
                     fullQname += "." + parts[i];
 
                 std::string classQname = fullQname + "." + ctx.identifier;
-                auto classMembers = sema.getRuntimeMembers(classQname);
-                if (!classMembers.empty()) {
-                    result.name = classQname;
-                    result.kind = "runtime-class";
-                    int methods = 0, props = 0;
-                    for (const auto &m : classMembers) {
-                        if (m.kind == Symbol::Kind::Method)
-                            ++methods;
-                        else
-                            ++props;
-                    }
-                    result.signature = std::to_string(props) + " properties, " +
-                                       std::to_string(methods) + " methods";
+                if (populateRuntimeClassHover(result, classQname))
                     return result;
-                }
 
                 auto members = sema.getRuntimeMembers(fullQname);
                 if (!members.empty())
@@ -714,11 +735,8 @@ static HoverResult resolveHoverTarget(
                 fullQname += "." + parts[i];
 
             std::string classQname = fullQname + "." + ctx.identifier;
-            if (!sema.getRuntimeMembers(classQname).empty()) {
-                result.name = classQname;
-                result.kind = "runtime-class";
+            if (populateRuntimeClassHover(result, classQname))
                 return result;
-            }
 
             auto members = sema.getRuntimeMembers(fullQname);
             if (!members.empty())
@@ -845,6 +863,7 @@ static HoverResult resolveHoverTarget(
         result.name = ctx.identifier;
         result.kind = "module";
         result.type = ns;
+        result.documentation = runtimeClassDocumentation(ns);
         return result;
     }
 
@@ -924,6 +943,9 @@ static std::string formatHoverMarkdown(const HoverResult &info) {
             md += ": " + escapeMarkdownCodeText(info.type);
         md += "\n```";
     }
+
+    if (!info.documentation.empty())
+        md += "\n\n" + info.documentation;
 
     return md;
 }
@@ -1115,7 +1137,8 @@ std::vector<CompletionInfo> CompilerBridge::completions(const std::string &sourc
                           item.insertText,
                           static_cast<int>(item.kind),
                           item.detail,
-                          item.sortPriority});
+                          item.sortPriority,
+                          item.documentation});
     }
     return result;
 }

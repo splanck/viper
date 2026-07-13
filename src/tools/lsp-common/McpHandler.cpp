@@ -532,6 +532,7 @@ McpHandler::ToolCallResult McpHandler::callCompletions(const JsonValue &args) {
             {"insertText", JsonValue(item.insertText)},
             {"kind", JsonValue(item.kind)},
             {"detail", JsonValue(item.detail)},
+            {"documentation", JsonValue(item.documentation)},
         }));
     }
 
@@ -603,6 +604,10 @@ McpHandler::ToolCallResult McpHandler::callRuntimeClasses(const JsonValue & /*ar
             {"qname", JsonValue(cls.qname)},
             {"propertyCount", JsonValue(cls.propertyCount)},
             {"methodCount", JsonValue(cls.methodCount)},
+            {"documentation",
+             JsonValue::object({{"summary", JsonValue(cls.summary)},
+                                {"details", JsonValue(cls.details)},
+                                {"format", JsonValue("markdown")}})},
         }));
     }
 

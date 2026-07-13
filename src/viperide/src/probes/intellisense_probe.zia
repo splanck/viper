@@ -844,6 +844,32 @@ func main() {
         fail(shell, "runtime completion documentation");
         return;
     }
+    var runtimeClassDocSource = "module RuntimeClassDocProbe;\n"
+        + "bind Viper.GUI as GUI;\n"
+        + "func main() {\n"
+        + "    GUI.Ap\n"
+        + "}\n";
+    var runtimeClassItems = ZiaCompletion.ItemsForFile(runtimeClassDocSource,
+                                                       "intellisense_probe.zia",
+                                                       4,
+                                                       10);
+    if completionItemDocumentationContains(runtimeClassItems,
+                                           "App",
+                                           "Owns a GUI application window") == false {
+        fail(shell, "runtime class completion documentation");
+        return;
+    }
+    var runtimeClassHoverSource = "module RuntimeClassHoverProbe;\n"
+        + "func use(app: Viper.GUI.App) {}\n";
+    var runtimeClassHover = ZiaCompletion.HoverInfoForFile(runtimeClassHoverSource,
+                                                           "intellisense_probe.zia",
+                                                           2,
+                                                           25);
+    if Str.IndexOf(Map.GetStr(runtimeClassHover, "documentation"),
+                   "Owns a GUI application window") == 0 {
+        fail(shell, "runtime class hover documentation");
+        return;
+    }
     var runtimeSig = ZiaCompletion.SignatureInfoForFile(runtimeDocSource,
                                                         "intellisense_probe.zia",
                                                         4,

@@ -20,6 +20,7 @@
 #include "tests/TestHarness.hpp"
 #include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
+#include <algorithm>
 #include <string>
 
 using namespace viper::server;
@@ -81,6 +82,16 @@ TEST(BasicBridge, CompletionsReturnsResults) {
     EXPECT_TRUE(items.size() > 0u);
 }
 
+TEST(BasicBridge, RuntimeCompletionCarriesAuthoredClassDocumentation) {
+    BasicCompilerBridge bridge;
+    auto items = bridge.completions("Viper.Terminal.Sa\n", 1, 18, "test.bas");
+    const auto say = std::find_if(
+        items.begin(), items.end(), [](const CompletionInfo &item) { return item.label == "Say"; });
+    ASSERT_NE(say, items.end());
+    EXPECT_TRUE(say->documentation.find("terminal input, output, styling") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("`Viper.Terminal`") != std::string::npos);
+}
+
 TEST(BasicBridge, CompletionsAtEmptyPosition) {
     BasicCompilerBridge bridge;
     std::string source = "DIM x AS INTEGER\n\n";
@@ -101,6 +112,15 @@ TEST(BasicBridge, HoverOnVariable) {
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("X") != std::string::npos);
     EXPECT_TRUE(result.find("INTEGER") != std::string::npos);
+}
+
+TEST(BasicBridge, HoverOnRuntimeClassVariableIncludesAuthoredDocumentation) {
+    BasicCompilerBridge bridge;
+    std::string source = "DIM file AS Viper.IO.File\nPRINT file\nEND\n";
+    auto result = bridge.hover(source, 2, 7, "test.bas");
+    EXPECT_FALSE(result.empty());
+    EXPECT_TRUE(result.find("whole-file I/O, metadata") != std::string::npos);
+    EXPECT_TRUE(result.find("`Viper.IO.File`") != std::string::npos);
 }
 
 TEST(BasicBridge, HoverOnConst) {

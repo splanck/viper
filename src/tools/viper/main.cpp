@@ -383,52 +383,20 @@ void emitRuntimeApiTypeJson(std::ostream &os, std::string_view rawType) {
     os << ",\"nullable\":" << (nullable ? "true" : "false") << '}';
 }
 
-/// @brief Infer the documentation file that owns a runtime API row.
-/// @details This first implementation is deliberately coarse. It gives tools a
-///          stable link target while exact per-member anchors are added to docs.
+/// @brief Return the generated domain reference that owns a runtime API row.
+/// @details Domain pages are rendered from this same live registry, so the link
+///          target and the machine-readable API surface cannot drift.
 /// @param name Public runtime name or class name.
 /// @return Repository-relative documentation path.
 std::string docsFileForRuntimeName(std::string_view name) {
-    if (startsWith(name, "Viper.Collections."))
-        return "docs/viperlib/collections/README.md";
-    if (startsWith(name, "Viper.Crypto."))
-        return "docs/viperlib/crypto.md";
-    if (startsWith(name, "Viper.Data.") || startsWith(name, "Viper.Text."))
-        return "docs/viperlib/text/README.md";
-    if (startsWith(name, "Viper.Diagnostics."))
-        return "docs/viperlib/diagnostics.md";
-    if (startsWith(name, "Viper.Game3D.") || startsWith(name, "Viper.Graphics3D."))
-        return "docs/viperlib/graphics/rendering3d.md";
-    if (startsWith(name, "Viper.Game2D.") || startsWith(name, "Viper.Graphics2D."))
-        return "docs/viperlib/graphics/rendering2d.md";
-    if (startsWith(name, "Viper.Game."))
-        return "docs/viperlib/game.md";
-    if (startsWith(name, "Viper.Graphics."))
-        return "docs/viperlib/graphics/README.md";
-    if (startsWith(name, "Viper.GUI."))
-        return "docs/viperlib/gui/README.md";
-    if (startsWith(name, "Viper.Input."))
-        return "docs/viperlib/input.md";
-    if (startsWith(name, "Viper.IO.") || startsWith(name, "Viper.Assets."))
-        return "docs/viperlib/io/README.md";
-    if (startsWith(name, "Viper.Localization."))
-        return "docs/viperlib/localization/README.md";
-    if (startsWith(name, "Viper.Math."))
-        return "docs/viperlib/math.md";
-    if (startsWith(name, "Viper.Network."))
-        return "docs/viperlib/network.md";
-    if (startsWith(name, "Viper.Sound."))
-        return "docs/viperlib/audio.md";
-    if (startsWith(name, "Viper.Threads."))
-        return "docs/viperlib/threads.md";
-    if (startsWith(name, "Viper.Time."))
-        return "docs/viperlib/time.md";
-    if (startsWith(name, "Viper.Zia."))
-        return "docs/viperlib/zia.md";
-    if (startsWith(name, "Viper.System.") || startsWith(name, "Viper.Memory.") ||
-        startsWith(name, "Viper.Terminal."))
-        return "docs/viperlib/system.md";
-    return "docs/viperlib/core.md";
+    constexpr std::string_view prefix = "Viper.";
+    std::string_view domain = name;
+    if (startsWith(domain, prefix))
+        domain.remove_prefix(prefix.size());
+    if (const size_t dot = domain.find('.'); dot != std::string_view::npos)
+        domain = domain.substr(0, dot);
+    std::string slug = runtimeApiSlug(domain.empty() ? std::string_view("core") : domain);
+    return "docs/generated/runtime/" + slug + ".md";
 }
 
 /// @brief Emit a best-effort docs anchor hint for a runtime row.
@@ -1211,7 +1179,7 @@ int dumpRuntimeApi() {
 
     os << "{\"version\":";
     printJsonStringEscaped(os, VIPER_VERSION_STR);
-    os << ",\"schema_version\":2";
+    os << ",\"schema_version\":3";
     os << ",\"signature_dialect\":\"runtime-def-v1\"";
 
     // Global runtime functions with canonical Viper.* names.
@@ -1271,6 +1239,11 @@ int dumpRuntimeApi() {
             emitStringArrayJson(os, inferRuntimeCapabilities(c.qname ? c.qname : ""));
             os << ",\"docs_anchor\":";
             emitDocsAnchorJson(os, c.qname ? c.qname : "");
+            os << ",\"documentation\":{\"summary\":";
+            printJsonStringEscaped(os, c.summary ? c.summary : "");
+            os << ",\"details\":";
+            printJsonStringEscaped(os, c.details ? c.details : "");
+            os << ",\"format\":\"markdown\"}";
             os << ",\"properties\":[";
             bool firstProp = true;
             for (const auto &p : c.properties) {

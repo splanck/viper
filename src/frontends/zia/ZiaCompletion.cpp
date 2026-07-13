@@ -12,6 +12,7 @@
 
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "support/source_manager.hpp"
 #include <algorithm>
 #include <cctype>
@@ -58,6 +59,17 @@ static std::string typeDetail(const TypeRef &type) {
     if (!type)
         return {};
     return type->toDisplayString();
+}
+
+/// @brief Combine authored runtime class summary/details for tooling display.
+static std::string runtimeClassDocumentation(const il::runtime::RuntimeClass &runtimeClass) {
+    std::string documentation = runtimeClass.summary ? runtimeClass.summary : "";
+    if (runtimeClass.details && *runtimeClass.details) {
+        if (!documentation.empty())
+            documentation += "\n\n";
+        documentation += runtimeClass.details;
+    }
+    return documentation;
 }
 
 /// @brief Convert a CompletionItem to its tab-delimited serialized form.
@@ -1023,7 +1035,11 @@ std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
         item.label = name;
         item.insertText = name;
         item.kind = CompletionKind::RuntimeClass;
-        item.documentation = "Runtime class " + nsPrefix + "." + name + ".";
+        const std::string qualifiedName = nsPrefix + "." + name;
+        if (const auto *runtimeClass = il::runtime::findRuntimeClassByQName(qualifiedName))
+            item.documentation = runtimeClassDocumentation(*runtimeClass);
+        if (item.documentation.empty())
+            item.documentation = "Runtime class " + qualifiedName + ".";
         item.source = "runtime";
         item.sortPriority = 5;
         items.push_back(std::move(item));

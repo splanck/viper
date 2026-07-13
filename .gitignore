@@ -44,6 +44,9 @@ CPackSourceConfig.cmake
 # --- Generated files ---
 /generated/
 */generated/
+!docs/generated/
+!docs/generated/runtime/
+!docs/generated/runtime/*.md
 
 # --- Compilers / Linkers ---
 *.o

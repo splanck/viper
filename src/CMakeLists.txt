@@ -11,6 +11,8 @@ target_link_libraries(rtgen PRIVATE viper_common_opts)
 # Generate runtime registry files
 set(RTGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/il/runtime")
 set(RTGEN_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/runtime.def")
+file(GLOB_RECURSE RTGEN_DEF_DEPS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/defs/*.def")
 file(GLOB_RECURSE RTGEN_HEADER_DEPS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/runtime/*.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/il/runtime/RuntimeSurfacePolicy.inc")
@@ -26,12 +28,18 @@ add_custom_command(
         OUTPUT ${RTGEN_OUTPUTS}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${RTGEN_OUTPUT_DIR}"
         COMMAND rtgen "${RTGEN_INPUT}" "${RTGEN_OUTPUT_DIR}"
-        DEPENDS rtgen "${RTGEN_INPUT}" ${RTGEN_HEADER_DEPS}
+        DEPENDS rtgen "${RTGEN_INPUT}" ${RTGEN_DEF_DEPS} ${RTGEN_HEADER_DEPS}
         COMMENT "Generating runtime registry files from runtime.def"
         VERBATIM
 )
 
 add_custom_target(generate_runtime_registry DEPENDS ${RTGEN_OUTPUTS})
+
+add_custom_target(generate_runtime_reference
+        COMMAND rtgen --docs "${RTGEN_INPUT}" "${PROJECT_SOURCE_DIR}/docs/generated/runtime"
+        DEPENDS rtgen "${RTGEN_INPUT}" ${RTGEN_DEF_DEPS}
+        COMMENT "Generating runtime API reference documentation"
+        VERBATIM)
 #===----------------------------------------------------------------------===//
 
 add_library(viper_common STATIC

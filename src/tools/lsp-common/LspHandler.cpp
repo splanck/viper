@@ -1058,13 +1058,20 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
     for (const auto &item : items) {
         char sortBuf[32];
         std::snprintf(sortBuf, sizeof(sortBuf), "%08d", item.sortPriority);
-        arr.push_back(JsonValue::object({
+        JsonValue::ObjectType completionMembers{
             {"label", JsonValue(item.label)},
             {"insertText", JsonValue(item.insertText)},
             {"kind", JsonValue(completionKindToLsp(item.kind))},
             {"detail", JsonValue(item.detail)},
             {"sortText", JsonValue(sortBuf)},
-        }));
+        };
+        if (!item.documentation.empty()) {
+            completionMembers.emplace_back(
+                "documentation",
+                JsonValue::object(
+                    {{"kind", JsonValue("markdown")}, {"value", JsonValue(item.documentation)}}));
+        }
+        arr.emplace_back(JsonValue(std::move(completionMembers)));
     }
 
     return buildResponse(req.id, JsonValue(std::move(arr)));

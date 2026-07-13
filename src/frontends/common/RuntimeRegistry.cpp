@@ -216,6 +216,8 @@ void RuntimeRegistry::buildClassIndex() {
         RuntimeClassInfo info;
         info.name = cls.qname;
         info.constructor = cls.ctor ? cls.ctor : "";
+        info.summary = cls.summary ? cls.summary : "";
+        info.details = cls.details ? cls.details : "";
         info.properties = cls.properties;
         info.methods = cls.methods;
 

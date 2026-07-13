@@ -1,0 +1,696 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/classes/extended_tooling.def
+// Purpose: Extended collection, text, network, Zia, BASIC, and GUI class declarations.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+
+// Viper.Collections.Deque - Double-ended queue for O(1) operations at both ends
+RT_FUNC(DequeNew,          rt_deque_new,            "Viper.Collections.Deque.New",          "obj()")
+RT_FUNC(DequeWithCapacity, rt_deque_with_capacity,  "Viper.Collections.Deque.WithCapacity", "obj(i64)")
+RT_FUNC(DequeLen,       rt_deque_len,          "Viper.Collections.Deque.get_Count",   "i64(obj)")
+RT_FUNC(DequeCap,       rt_deque_cap,          "Viper.Collections.Deque.get_Cap",      "i64(obj)")
+RT_FUNC(DequeCapacity,  rt_deque_cap,          "Viper.Collections.Deque.get_Capacity", "i64(obj)")
+RT_FUNC(DequeIsEmpty,   rt_deque_is_empty,     "Viper.Collections.Deque.get_IsEmpty", "i1(obj)")
+RT_FUNC(DequePushFront, rt_deque_push_front,   "Viper.Collections.Deque.PushFront", "void(obj,obj)")
+RT_FUNC(DequePopFront,  rt_deque_pop_front,    "Viper.Collections.Deque.PopFront",  "obj(obj)")
+RT_FUNC(DequePeekFront, rt_deque_peek_front,   "Viper.Collections.Deque.PeekFront", "obj(obj)")
+RT_FUNC(DequePushBack,  rt_deque_push_back,    "Viper.Collections.Deque.PushBack",  "void(obj,obj)")
+RT_FUNC(DequePopBack,   rt_deque_pop_back,     "Viper.Collections.Deque.PopBack",   "obj(obj)")
+RT_FUNC(DequePeekBack,  rt_deque_peek_back,    "Viper.Collections.Deque.PeekBack",  "obj(obj)")
+RT_FUNC(DequeGet,       rt_deque_get,          "Viper.Collections.Deque.Get",       "obj(obj,i64)")
+RT_FUNC(DequeSet,       rt_deque_set,          "Viper.Collections.Deque.Set",       "void(obj,i64,obj)")
+RT_FUNC(DequeClear,     rt_deque_clear,        "Viper.Collections.Deque.Clear",     "void(obj)")
+RT_FUNC(DequeHas,       rt_deque_has,          "Viper.Collections.Deque.Has",       "i1(obj,obj)")
+RT_FUNC(DequeReverse,   rt_deque_reverse,      "Viper.Collections.Deque.Reverse",   "void(obj)")
+RT_FUNC(DequeClone,     rt_deque_clone,        "Viper.Collections.Deque.Clone",     "obj<Viper.Collections.Deque>(obj)")
+RT_FUNC(DequeTryPopFront, rt_deque_try_pop_front, "Viper.Collections.Deque.TryPopFront", "obj(obj)")
+RT_FUNC(DequeTryPopBack,  rt_deque_try_pop_back,  "Viper.Collections.Deque.TryPopBack",  "obj(obj)")
+RT_FUNC(DequeTryPopFrontOption, rt_deque_try_pop_front_option, "Viper.Collections.Deque.TryPopFrontOption", "obj<Viper.Option>(obj)")
+RT_FUNC(DequeTryPopBackOption,  rt_deque_try_pop_back_option,  "Viper.Collections.Deque.TryPopBackOption",  "obj<Viper.Option>(obj)")
+RT_FUNC(DequeToSeq,     rt_deque_to_seq,       "Viper.Collections.Deque.ToSeq",     "obj<Viper.Collections.Seq>(obj)")
+RT_FUNC(DequeToList,    rt_deque_to_list,      "Viper.Collections.Deque.ToList",    "obj<Viper.Collections.List>(obj)")
+
+// Deque aliases
+
+/// @summary Provides Deque functionality for collection-oriented programs.
+/// @details
+/// Create `Viper.Collections.Deque` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Count`,
+/// `Cap`, `Capacity` and operations including `PushFront`, `PopFront`, `PeekFront`, `PushBack`.
+RT_CLASS_BEGIN("Viper.Collections.Deque", Deque, "obj", DequeNew)
+    RT_PROP("Count", "i64", DequeLen, none)
+    RT_PROP("Cap", "i64", DequeCap, none)
+    RT_PROP("Capacity", "i64", DequeCapacity, none)
+    RT_PROP("IsEmpty", "i1", DequeIsEmpty, none)
+    RT_METHOD("PushFront", "void(obj)", DequePushFront)
+    RT_METHOD("PopFront", "obj()", DequePopFront)
+    RT_METHOD("PeekFront", "obj()", DequePeekFront)
+    RT_METHOD("PushBack", "void(obj)", DequePushBack)
+    RT_METHOD("PopBack", "obj()", DequePopBack)
+    RT_METHOD("PeekBack", "obj()", DequePeekBack)
+    RT_METHOD("Get", "obj(i64)", DequeGet)
+    RT_METHOD("Set", "void(i64,obj)", DequeSet)
+    RT_METHOD("Clear", "void()", DequeClear)
+    RT_METHOD("Has", "i1(obj)", DequeHas)
+    RT_METHOD("Reverse", "void()", DequeReverse)
+    RT_METHOD("Clone", "obj<Viper.Collections.Deque>()", DequeClone)
+    RT_METHOD("ToSeq", "obj<Viper.Collections.Seq>()", DequeToSeq)
+    RT_METHOD("TryPopFront", "obj()", DequeTryPopFront)
+    RT_METHOD("TryPopBack", "obj()", DequeTryPopBack)
+    RT_METHOD("TryPopFrontOption", "obj<Viper.Option>()", DequeTryPopFrontOption)
+    RT_METHOD("TryPopBackOption", "obj<Viper.Option>()", DequeTryPopBackOption)
+    RT_METHOD("ToList", "obj<Viper.Collections.List>()", DequeToList)
+RT_CLASS_END()
+
+// Viper.Text.Scanner - String scanner for lexing and parsing
+/// @summary Provides string scanner for lexing and parsing.
+/// @details
+/// Create `Viper.Text.Scanner` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Pos`,
+/// `IsEnd`, `Remaining` and operations including `Reset`, `Peek`, `PeekAt`, `PeekStr`.
+RT_CLASS_BEGIN("Viper.Text.Scanner", Scanner, "obj", ScannerNew)
+    RT_PROP("Pos", "i64", ScannerPos, ScannerSetPos)
+    RT_PROP("IsEnd", "i1", ScannerIsEnd, none)
+    RT_PROP("Remaining", "i64", ScannerRemaining, none)
+    RT_PROP("Length", "i64", ScannerLen, none)
+    RT_METHOD("Reset", "void()", ScannerReset)
+    RT_METHOD("Peek", "i64()", ScannerPeek)
+    RT_METHOD("PeekAt", "i64(i64)", ScannerPeekAt)
+    RT_METHOD("PeekStr", "str(i64)", ScannerPeekStr)
+    RT_METHOD("Read", "i64()", ScannerRead)
+    RT_METHOD("ReadStr", "str(i64)", ScannerReadStr)
+    RT_METHOD("ReadUntil", "str(i64)", ScannerReadUntil)
+    RT_METHOD("ReadUntilAny", "str(str)", ScannerReadUntilAny)
+    RT_METHOD("Match", "i1(i64)", ScannerMatch)
+    RT_METHOD("MatchStr", "i1(str)", ScannerMatchStr)
+    RT_METHOD("Accept", "i1(i64)", ScannerAccept)
+    RT_METHOD("AcceptStr", "i1(str)", ScannerAcceptStr)
+    RT_METHOD("AcceptAny", "i1(str)", ScannerAcceptAny)
+    RT_METHOD("Skip", "void(i64)", ScannerSkip)
+    RT_METHOD("SkipWhitespace", "i64()", ScannerSkipWhitespace)
+    RT_METHOD("ReadIdent", "str()", ScannerReadIdent)
+    RT_METHOD("ReadInt", "str()", ScannerReadInt)
+    RT_METHOD("ReadNumber", "str()", ScannerReadNumber)
+    RT_METHOD("ReadQuoted", "str(i64)", ScannerReadQuoted)
+    RT_METHOD("ReadLine", "str()", ScannerReadLine)
+RT_CLASS_END()
+
+// Viper.Time.DateOnly - Date without time components
+/// @summary Provides date without time components.
+/// @details
+/// `Viper.Time.DateOnly` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Year`, `Month`,
+/// `Day` and operations including `Create`, `Today`, `Parse`, `FromDays`.
+RT_CLASS_BEGIN("Viper.Time.DateOnly", DateOnly, "obj", none)
+    RT_METHOD("Create", "obj(i64,i64,i64)", DateOnlyCreate)
+    RT_METHOD("Today", "obj()", DateOnlyToday)
+    RT_METHOD("Parse", "obj(str)", DateOnlyParse)
+    RT_METHOD("FromDays", "obj(i64)", DateOnlyFromDays)
+    RT_PROP("Year", "i64", DateOnlyYear, none)
+    RT_PROP("Month", "i64", DateOnlyMonth, none)
+    RT_PROP("Day", "i64", DateOnlyDay, none)
+    RT_PROP("DayOfWeek", "i64", DateOnlyDayOfWeek, none)
+    RT_PROP("DayOfYear", "i64", DateOnlyDayOfYear, none)
+    RT_METHOD("ToDays", "i64()", DateOnlyToDays)
+    RT_METHOD("AddDays", "obj(i64)", DateOnlyAddDays)
+    RT_METHOD("AddMonths", "obj(i64)", DateOnlyAddMonths)
+    RT_METHOD("AddYears", "obj(i64)", DateOnlyAddYears)
+    RT_METHOD("DiffDays", "i64(obj)", DateOnlyDiffDays)
+    RT_PROP("IsLeapYear", "i1", DateOnlyIsLeapYear, none)
+    RT_PROP("DaysInMonth", "i64", DateOnlyDaysInMonth, none)
+    RT_METHOD("StartOfMonth", "obj()", DateOnlyStartOfMonth)
+    RT_METHOD("EndOfMonth", "obj()", DateOnlyEndOfMonth)
+    RT_METHOD("StartOfYear", "obj()", DateOnlyStartOfYear)
+    RT_METHOD("EndOfYear", "obj()", DateOnlyEndOfYear)
+    RT_METHOD("Cmp", "i64(obj)", DateOnlyCmp)
+    RT_METHOD("Equals", "i1(obj)", DateOnlyEquals)
+    RT_METHOD("ToString", "str()", DateOnlyToString)
+    RT_METHOD("Format", "str(str)", DateOnlyFormat)
+RT_CLASS_END()
+
+// Viper.Text.TextWrapper - Text wrapping and formatting utilities
+/// @summary Provides text wrapping and formatting utilities.
+/// @details
+/// `Viper.Text.TextWrapper` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Wrap`,
+/// `WrapLines`, `Fill`, `Indent`.
+RT_CLASS_BEGIN("Viper.Text.TextWrapper", TextWrapper, "obj", none)
+    RT_METHOD("Wrap", "str(str,i64)", TextWrapWrap)
+    RT_METHOD("WrapLines", "seq<str>(str,i64)", TextWrapWrapLines)
+    RT_METHOD("Fill", "str(str,i64)", TextWrapFill)
+    RT_METHOD("Indent", "str(str,str)", TextWrapIndent)
+    RT_METHOD("Dedent", "str(str)", TextWrapDedent)
+    RT_METHOD("Hang", "str(str,str)", TextWrapHang)
+    RT_METHOD("Truncate", "str(str,i64)", TextWrapTruncate)
+    RT_METHOD("TruncateWith", "str(str,i64,str)", TextWrapTruncateWith)
+    RT_METHOD("Shorten", "str(str,i64)", TextWrapShorten)
+    RT_METHOD("Left", "str(str,i64)", TextWrapLeft)
+    RT_METHOD("Right", "str(str,i64)", TextWrapRight)
+    RT_METHOD("Center", "str(str,i64)", TextWrapCenter)
+    RT_METHOD("LineCount", "i64(str)", TextWrapLineCount)
+    RT_METHOD("MaxLineLen", "i64(str)", TextWrapMaxLineLen)
+RT_CLASS_END()
+
+// Viper.Functional.Lazy - Deferred computation until first access
+RT_FUNC(LazyOf,            rt_lazy_of,            "Viper.Functional.Lazy.Of",             "obj<Viper.Functional.Lazy>(obj)")
+RT_FUNC(LazyOfStr,         rt_lazy_of_str,        "Viper.Functional.Lazy.OfStr",          "obj<Viper.Functional.Lazy>(str)")
+RT_FUNC(LazyOfI64,         rt_lazy_of_i64,        "Viper.Functional.Lazy.OfI64",          "obj<Viper.Functional.Lazy>(i64)")
+RT_FUNC(LazyGet,           rt_lazy_get,           "Viper.Functional.Lazy.Get",            "obj(obj)")
+RT_FUNC(LazyGetStr,        rt_lazy_get_str,       "Viper.Functional.Lazy.GetStr",         "str(obj)")
+RT_FUNC(LazyGetI64,        rt_lazy_get_i64,       "Viper.Functional.Lazy.GetI64",         "i64(obj)")
+RT_FUNC(LazyIsEvaluated,   rt_lazy_is_evaluated,  "Viper.Functional.Lazy.get_IsEvaluated","i1(obj)")
+RT_FUNC(LazyForce,         rt_lazy_force,         "Viper.Functional.Lazy.Force",          "void(obj)")
+RT_FUNC(LazyMap,           rt_lazy_map_wrapper,      "Viper.Functional.Lazy.Map",            "obj<Viper.Functional.Lazy>(obj,obj)")
+RT_FUNC(LazyFlatMap,       rt_lazy_flat_map_wrapper, "Viper.Functional.Lazy.FlatMap",        "obj<Viper.Functional.Lazy>(obj,obj)")
+/// @summary Provides Lazy functionality for functional programming workflows.
+/// @details
+/// `Viper.Functional.Lazy` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes a property such as `IsEvaluated` and
+/// operations including `Of`, `OfStr`, `OfI64`, `Get`.
+RT_CLASS_BEGIN("Viper.Functional.Lazy", Lazy, "obj", none)
+    RT_METHOD("Of", "obj<Viper.Functional.Lazy>(obj)", LazyOf)
+    RT_METHOD("OfStr", "obj<Viper.Functional.Lazy>(str)", LazyOfStr)
+    RT_METHOD("OfI64", "obj<Viper.Functional.Lazy>(i64)", LazyOfI64)
+    RT_METHOD("Get", "obj()", LazyGet)
+    RT_METHOD("GetStr", "str()", LazyGetStr)
+    RT_METHOD("GetI64", "i64()", LazyGetI64)
+    RT_PROP("IsEvaluated", "i1", LazyIsEvaluated, none)
+    RT_METHOD("Force", "void()", LazyForce)
+    RT_METHOD("Map", "obj<Viper.Functional.Lazy>(obj)", LazyMap)
+    RT_METHOD("FlatMap", "obj<Viper.Functional.Lazy>(obj)", LazyFlatMap)
+RT_CLASS_END()
+
+//=============================================================================
+// Viper.Functional.LazySeq - Lazy sequence with on-demand element generation
+//=============================================================================
+
+// Factory methods (no receiver) — use void* wrappers for IL ABI
+RT_FUNC(LazySeqRange,          rt_lazyseq_w_range,        "Viper.Functional.LazySeq.Range",           "obj<Viper.Functional.LazySeq>(i64,i64,i64)")
+RT_FUNC(LazySeqRepeat,         rt_lazyseq_w_repeat,       "Viper.Functional.LazySeq.Repeat",          "obj<Viper.Functional.LazySeq>(obj,i64)")
+// Instance methods (receiver as first obj param) — use void* wrappers for IL ABI
+RT_FUNC(LazySeqNext,           rt_lazyseq_w_next,         "Viper.Functional.LazySeq.Next",            "obj(obj)")
+RT_FUNC(LazySeqPeek,           rt_lazyseq_w_peek,         "Viper.Functional.LazySeq.Peek",            "obj(obj)")
+RT_FUNC(LazySeqReset,          rt_lazyseq_w_reset,        "Viper.Functional.LazySeq.Reset",           "void(obj)")
+RT_FUNC(LazySeqIndex,          rt_lazyseq_w_index,        "Viper.Functional.LazySeq.get_Index",       "i64(obj)")
+RT_FUNC(LazySeqIsExhausted,    rt_lazyseq_w_is_exhausted, "Viper.Functional.LazySeq.get_IsExhausted", "i1(obj)")
+RT_FUNC(LazySeqTake,           rt_lazyseq_w_take,         "Viper.Functional.LazySeq.Take",            "obj<Viper.Functional.LazySeq>(obj,i64)")
+RT_FUNC(LazySeqDrop,           rt_lazyseq_w_drop,         "Viper.Functional.LazySeq.Drop",            "obj<Viper.Functional.LazySeq>(obj,i64)")
+RT_FUNC(LazySeqConcat,         rt_lazyseq_w_concat,       "Viper.Functional.LazySeq.Concat",          "obj<Viper.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqToSeq,          rt_lazyseq_w_to_seq,       "Viper.Functional.LazySeq.ToSeq",           "seq<obj>(obj)")
+RT_FUNC(LazySeqToSeqN,         rt_lazyseq_w_to_seq_n,     "Viper.Functional.LazySeq.ToSeqN",          "seq<obj>(obj,i64)")
+RT_FUNC(LazySeqCount,          rt_lazyseq_w_count,        "Viper.Functional.LazySeq.Count",           "i64(obj)")
+// Functional methods (receiver as first obj, closure as second obj)
+RT_FUNC(LazySeqMap,            rt_lazyseq_w_map,          "Viper.Functional.LazySeq.Map",             "obj<Viper.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqFilter,         rt_lazyseq_w_filter,       "Viper.Functional.LazySeq.Filter",          "obj<Viper.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqTakeWhile,      rt_lazyseq_w_take_while,   "Viper.Functional.LazySeq.TakeWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqDropWhile,      rt_lazyseq_w_drop_while,   "Viper.Functional.LazySeq.DropWhile",       "obj<Viper.Functional.LazySeq>(obj,obj)")
+RT_FUNC(LazySeqFind,           rt_lazyseq_w_find,         "Viper.Functional.LazySeq.Find",            "obj(obj,obj)")
+RT_FUNC(LazySeqFindOption,     rt_lazyseq_w_find_option,  "Viper.Functional.LazySeq.FindOption",      "obj<Viper.Option>(obj,obj)")
+RT_FUNC(LazySeqAny,            rt_lazyseq_w_any,          "Viper.Functional.LazySeq.Any",             "i1(obj,obj)")
+RT_FUNC(LazySeqAll,            rt_lazyseq_w_all,          "Viper.Functional.LazySeq.All",             "i1(obj,obj)")
+
+/// @summary Provides Lazy Seq functionality for functional programming workflows.
+/// @details
+/// `Viper.Functional.LazySeq` exposes a registry-backed runtime surface without requiring callers
+/// to construct the class directly. Its public surface exposes properties such as `Index`,
+/// `IsExhausted` and operations including `Range`, `Repeat`, `Next`, `Peek`.
+RT_CLASS_BEGIN("Viper.Functional.LazySeq", LazySeq, "obj", none)
+    RT_METHOD("Range", "obj<Viper.Functional.LazySeq>(i64,i64,i64)", LazySeqRange)
+    RT_METHOD("Repeat", "obj<Viper.Functional.LazySeq>(obj,i64)", LazySeqRepeat)
+    RT_METHOD("Next", "obj()", LazySeqNext)
+    RT_METHOD("Peek", "obj()", LazySeqPeek)
+    RT_METHOD("Reset", "void()", LazySeqReset)
+    RT_PROP("Index", "i64", LazySeqIndex, none)
+    RT_PROP("IsExhausted", "i1", LazySeqIsExhausted, none)
+    RT_METHOD("Map", "obj<Viper.Functional.LazySeq>(obj)", LazySeqMap)
+    RT_METHOD("Filter", "obj<Viper.Functional.LazySeq>(obj)", LazySeqFilter)
+    RT_METHOD("Take", "obj<Viper.Functional.LazySeq>(i64)", LazySeqTake)
+    RT_METHOD("Drop", "obj<Viper.Functional.LazySeq>(i64)", LazySeqDrop)
+    RT_METHOD("TakeWhile", "obj<Viper.Functional.LazySeq>(obj)", LazySeqTakeWhile)
+    RT_METHOD("DropWhile", "obj<Viper.Functional.LazySeq>(obj)", LazySeqDropWhile)
+    RT_METHOD("Concat", "obj<Viper.Functional.LazySeq>(obj)", LazySeqConcat)
+    RT_METHOD("ToSeq", "seq<obj>()", LazySeqToSeq)
+    RT_METHOD("ToSeqN", "seq<obj>(i64)", LazySeqToSeqN)
+    RT_METHOD("Count", "i64()", LazySeqCount)
+    RT_METHOD("Find", "obj(obj)", LazySeqFind)
+    RT_METHOD("FindOption", "obj<Viper.Option>(obj)", LazySeqFindOption)
+    RT_METHOD("Any", "i1(obj)", LazySeqAny)
+    RT_METHOD("All", "i1(obj)", LazySeqAll)
+RT_CLASS_END()
+
+// Viper.Threads.Scheduler - named task scheduler
+/// @summary Provides named task scheduler.
+/// @details
+/// Create `Viper.Threads.Scheduler` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as `Pending`
+/// and operations including `Schedule`, `ScheduleGen`, `Cancel`, `IsDue`.
+RT_CLASS_BEGIN("Viper.Threads.Scheduler", Scheduler, "obj", SchedulerNew)
+    RT_PROP("Pending", "i64", SchedulerPending, none)
+    RT_METHOD("Schedule", "void(str,i64)", SchedulerSchedule)
+    RT_METHOD("ScheduleGen", "void(str,i64,i64)", SchedulerScheduleGen)
+    RT_METHOD("Cancel", "i1(str)", SchedulerCancel)
+    RT_METHOD("IsDue", "i1(str)", SchedulerIsDue)
+    RT_METHOD("IsDueGen", "i1(str,i64)", SchedulerIsDueGen)
+    RT_METHOD("GenerationOf", "i64(str)", SchedulerGenerationOf)
+    RT_METHOD("Poll", "obj()", SchedulerPoll)
+    RT_METHOD("Clear", "void()", SchedulerClear)
+RT_CLASS_END()
+
+// Viper.Network.RateLimiter - token bucket rate limiter
+/// @summary Provides token bucket rate limiter.
+/// @details
+/// Create `Viper.Network.RateLimiter` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Available`, `Max`, `Rate` and operations including `TryAcquire`, `TryAcquireN`, `Reset`.
+RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
+    RT_PROP("Available", "i64", RateLimitAvailable, none)
+    RT_PROP("Max", "i64", RateLimitGetMax, none)
+    RT_PROP("Rate", "f64", RateLimitGetRate, none)
+    RT_METHOD("TryAcquire", "i1()", RateLimitTryAcquire)
+    RT_METHOD("TryAcquireN", "i1(i64)", RateLimitTryAcquireN)
+    RT_METHOD("Reset", "void()", RateLimitReset)
+RT_CLASS_END()
+
+// Viper.Network.HttpRouter - URL pattern matching with parameter extraction
+/// @summary Provides uRL pattern matching with parameter extraction.
+/// @details
+/// Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as `Count`
+/// and operations including `Add`, `Get`, `Post`, `Put`.
+RT_CLASS_BEGIN("Viper.Network.HttpRouter", HttpRouter, "obj", HttpRouterNew)
+    RT_METHOD("Add", "obj(str,str)", HttpRouterAdd)
+    RT_METHOD("Get", "obj(str)", HttpRouterGet)
+    RT_METHOD("Post", "obj(str)", HttpRouterPost)
+    RT_METHOD("Put", "obj(str)", HttpRouterPut)
+    RT_METHOD("Delete", "obj(str)", HttpRouterDelete)
+    RT_METHOD("Match", "obj(str,str)", HttpRouterMatch)
+    RT_PROP("Count", "i64", HttpRouterCount, none)
+RT_CLASS_END()
+
+// Viper.Network.RouteMatch - result of a route match
+/// @summary Provides result of a route match.
+/// @details
+/// `Viper.Network.RouteMatch` exposes a registry-backed runtime surface without requiring callers
+/// to construct the class directly. Its public surface exposes properties such as `Index`,
+/// `Pattern` and operations including `Param`.
+RT_CLASS_BEGIN("Viper.Network.RouteMatch", RouteMatch, "obj", none)
+    RT_METHOD("Param", "str(str)", RouteMatchParam)
+    RT_PROP("Index", "i64", RouteMatchIndex, none)
+    RT_PROP("Pattern", "str", RouteMatchPattern, none)
+RT_CLASS_END()
+
+// Viper.Network.HttpServer - threaded HTTP/1.1 server
+/// @summary Provides threaded HTTP/1.1 server.
+/// @details
+/// Create `Viper.Network.HttpServer` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Port`,
+/// `IsRunning` and operations including `Get`, `Post`, `Put`, `Delete`.
+RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
+    RT_METHOD("Get", "void(str,str)", HttpServerGetRoute)
+    RT_METHOD("Post", "void(str,str)", HttpServerPostRoute)
+    RT_METHOD("Put", "void(str,str)", HttpServerPutRoute)
+    RT_METHOD("Delete", "void(str,str)", HttpServerDeleteRoute)
+    RT_METHOD("BindHandler", "void(str,obj)", HttpServerBindHandler)
+    RT_METHOD("Start", "void()", HttpServerStart)
+    RT_METHOD("Stop", "void()", HttpServerStop)
+    RT_PROP("Port", "i64", HttpServerPort, none)
+    RT_PROP("IsRunning", "i1", HttpServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.HttpsServer - threaded TLS-backed HTTP/1.1 server
+/// @summary Provides threaded TLS-backed HTTP/1.1 server.
+/// @details
+/// Create `Viper.Network.HttpsServer` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Port`, `IsRunning` and operations including `Get`, `Post`, `Put`, `Delete`.
+RT_CLASS_BEGIN("Viper.Network.HttpsServer", HttpsServer, "obj", HttpsServerNew)
+    RT_METHOD("Get", "void(str,str)", HttpsServerGetRoute)
+    RT_METHOD("Post", "void(str,str)", HttpsServerPostRoute)
+    RT_METHOD("Put", "void(str,str)", HttpsServerPutRoute)
+    RT_METHOD("Delete", "void(str,str)", HttpsServerDeleteRoute)
+    RT_METHOD("BindHandler", "void(str,obj)", HttpsServerBindHandler)
+    RT_METHOD("Start", "void()", HttpsServerStart)
+    RT_METHOD("Stop", "void()", HttpsServerStop)
+    RT_PROP("Port", "i64", HttpsServerPort, none)
+    RT_PROP("IsRunning", "i1", HttpsServerIsRunning, none)
+RT_CLASS_END()
+
+/// @summary Provides Server Req functionality for networked applications.
+/// @details
+/// `Viper.Network.ServerReq` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Method`, `Path`,
+/// `Body` and operations including `Header`, `Param`, `Query`.
+RT_CLASS_BEGIN("Viper.Network.ServerReq", ServerReq, "obj", none)
+    RT_PROP("Method", "str", ServerReqMethod, none)
+    RT_PROP("Path", "str", ServerReqPath, none)
+    RT_PROP("Body", "str", ServerReqBody, none)
+    RT_METHOD("Header", "str(str)", ServerReqHeader)
+    RT_METHOD("Param", "str(str)", ServerReqParam)
+    RT_METHOD("Query", "str(str)", ServerReqQuery)
+RT_CLASS_END()
+
+/// @summary Provides Server Res functionality for networked applications.
+/// @details
+/// `Viper.Network.ServerRes` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Status`,
+/// `Header`, `Send`, `Json`.
+RT_CLASS_BEGIN("Viper.Network.ServerRes", ServerRes, "obj", none)
+    RT_METHOD("Status", "obj(i64)", ServerResStatus)
+    RT_METHOD("Header", "obj(str,str)", ServerResHeader)
+    RT_METHOD("Send", "void(str)", ServerResSend)
+    RT_METHOD("Json", "void(str)", ServerResJson)
+RT_CLASS_END()
+
+// Viper.Network.ConnectionPool - thread-safe TCP connection pooling
+/// @summary Provides thread-safe TCP connection pooling.
+/// @details
+/// Create `Viper.Network.ConnectionPool` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes properties such as
+/// `Size`, `Available` and operations including `Acquire`, `Release`, `Clear`.
+RT_CLASS_BEGIN("Viper.Network.ConnectionPool", ConnectionPool, "obj", ConnPoolNew)
+    RT_METHOD("Acquire", "obj(str,i64)", ConnPoolAcquire)
+    RT_METHOD("Release", "void(obj)", ConnPoolRelease)
+    RT_METHOD("Clear", "void()", ConnPoolClear)
+    RT_PROP("Size", "i64", ConnPoolSize, none)
+    RT_PROP("Available", "i64", ConnPoolAvailable, none)
+RT_CLASS_END()
+
+// Viper.Network.Multipart - multipart form-data builder and parser
+/// @summary Provides multipart form-data builder and parser.
+/// @details
+/// Create `Viper.Network.Multipart` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `ContentType`, `Count` and operations including `AddField`, `AddFile`, `Build`, `Parse`.
+RT_CLASS_BEGIN("Viper.Network.Multipart", Multipart, "obj", MultipartNew)
+    RT_METHOD("AddField", "obj(str,str)", MultipartAddField)
+    RT_METHOD("AddFile", "obj(str,str,obj)", MultipartAddFile)
+    RT_METHOD("Build", "obj()", MultipartBuild)
+    RT_METHOD("Parse", "obj(str,obj)", MultipartParse)
+    RT_METHOD("GetField", "str(str)", MultipartGetField)
+    RT_METHOD("GetFile", "obj(str)", MultipartGetFile)
+    RT_PROP("ContentType", "str", MultipartContentType, none)
+    RT_PROP("Count", "i64", MultipartCount, none)
+RT_CLASS_END()
+
+// Viper.Network.NetUtils - static network utilities
+/// @summary Provides static network utilities.
+/// @details
+/// `Viper.Network.NetUtils` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchCIDR`,
+/// `IsPrivateIP`.
+RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
+    RT_METHOD("IsPortOpen", "i1(str,i64,i64)", NetUtilsIsPortOpen)
+    RT_METHOD("GetFreePort", "i64()", NetUtilsGetFreePort)
+    RT_METHOD("MatchCIDR", "i1(str,str)", NetUtilsMatchCIDR)
+    RT_METHOD("IsPrivateIP", "i1(str)", NetUtilsIsPrivateIP)
+    RT_METHOD("LocalIPv4", "str()", NetUtilsLocalIPv4)
+RT_CLASS_END()
+
+// Viper.Network.WsServer - WebSocket server
+/// @summary Provides webSocket server.
+/// @details
+/// Create `Viper.Network.WsServer` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
+/// `Broadcast`.
+RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
+    RT_METHOD("Start", "void()", WsServerStart)
+    RT_METHOD("Stop", "void()", WsServerStop)
+    RT_METHOD("SetSubprotocol", "void(str)", WsServerSetSubprotocol)
+    RT_METHOD("Broadcast", "void(str)", WsServerBroadcast)
+    RT_METHOD("BroadcastBytes", "void(obj)", WsServerBroadcastBytes)
+    RT_PROP("ClientCount", "i64", WsServerClientCount, none)
+    RT_PROP("Subprotocol", "str", WsServerSubprotocol, none)
+    RT_PROP("Port", "i64", WsServerPort, none)
+    RT_PROP("IsRunning", "i1", WsServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.WssServer - TLS-backed WebSocket server
+/// @summary Provides tLS-backed WebSocket server.
+/// @details
+/// Create `Viper.Network.WssServer` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `ClientCount`, `Subprotocol`, `Port` and operations including `Start`, `Stop`, `SetSubprotocol`,
+/// `Broadcast`.
+RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
+    RT_METHOD("Start", "void()", WssServerStart)
+    RT_METHOD("Stop", "void()", WssServerStop)
+    RT_METHOD("SetSubprotocol", "void(str)", WssServerSetSubprotocol)
+    RT_METHOD("Broadcast", "void(str)", WssServerBroadcast)
+    RT_METHOD("BroadcastBytes", "void(obj)", WssServerBroadcastBytes)
+    RT_PROP("ClientCount", "i64", WssServerClientCount, none)
+    RT_PROP("Subprotocol", "str", WssServerSubprotocol, none)
+    RT_PROP("Port", "i64", WssServerPort, none)
+    RT_PROP("IsRunning", "i1", WssServerIsRunning, none)
+RT_CLASS_END()
+
+// Viper.Network.SseClient - Server-Sent Events client
+/// @summary Provides server-Sent Events client.
+/// @details
+/// `Viper.Network.SseClient` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `IsOpen`,
+/// `LastEventType`, `LastEventId` and operations including `Recv`, `RecvFor`, `Close`.
+RT_CLASS_BEGIN("Viper.Network.SseClient", SseClient, "obj", none)
+    RT_METHOD("Recv", "str()", SseRecv)
+    RT_METHOD("RecvFor", "str(i64)", SseRecvFor)
+    RT_METHOD("Close", "void()", SseClose)
+    RT_PROP("IsOpen", "i1", SseIsOpen, none)
+    RT_PROP("LastEventType", "str", SseLastEventType, none)
+    RT_PROP("LastEventId", "str", SseLastEventId, none)
+RT_CLASS_END()
+
+// Viper.Network.HttpClient - session-based HTTP client with cookies
+/// @summary Provides session-based HTTP client with cookies.
+/// @details
+/// Create `Viper.Network.HttpClient` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `KeepAlive`, `FollowRedirects` and operations including `Get`, `Post`, `Put`, `Delete`.
+RT_CLASS_BEGIN("Viper.Network.HttpClient", HttpClient, "obj", HttpClientNew)
+    RT_METHOD("Get", "obj(str)", HttpClientGet)
+    RT_METHOD("Post", "obj(str,str)", HttpClientPost)
+    RT_METHOD("Put", "obj(str,str)", HttpClientPut)
+    RT_METHOD("Delete", "obj(str)", HttpClientDelete)
+    RT_METHOD("SetHeader", "void(str,str)", HttpClientSetHeader)
+    RT_METHOD("SetTimeout", "void(i64)", HttpClientSetTimeout)
+    RT_METHOD("SetPoolSize", "void(i64)", HttpClientSetPoolSize)
+    RT_METHOD("SetMaxRedirects", "void(i64)", HttpClientSetMaxRedir)
+    RT_METHOD("SetCookie", "void(str,str,str)", HttpClientSetCookie)
+    RT_METHOD("GetCookies", "obj(str)", HttpClientGetCookies)
+    RT_PROP("KeepAlive", "i1", HttpClientKeepAliveGet, HttpClientKeepAliveSet)
+    RT_PROP("FollowRedirects", "i1", HttpClientFollowRedirGet, HttpClientFollowRedirSet)
+RT_CLASS_END()
+
+// Viper.Network.SmtpClient - simple email sending
+/// @summary Provides simple email sending.
+/// @details
+/// Create `Viper.Network.SmtpClient` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes a property such as
+/// `LastError` and operations including `SetAuth`, `SetTls`, `Send`, `SendResult`.
+RT_CLASS_BEGIN("Viper.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
+    RT_METHOD("SetAuth", "void(str,str)", SmtpSetAuth)
+    RT_METHOD("SetTls", "void(i1)", SmtpSetTls)
+    RT_METHOD("Send", "i1(str,str,str,str)", SmtpSend)
+    RT_METHOD("SendResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendResult)
+    RT_METHOD("SendHtml", "i1(str,str,str,str)", SmtpSendHtml)
+    RT_METHOD("SendHtmlResult", "obj<Viper.Result>(str,str,str,str)", SmtpSendHtmlResult)
+    RT_METHOD("Close", "void()", SmtpClose)
+    RT_PROP("LastError", "str", SmtpLastError, none)
+RT_CLASS_END()
+
+// Viper.Network.AsyncSocket - non-blocking socket with Future integration
+/// @summary Provides non-blocking socket with Future integration.
+/// @details
+/// `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `SendAsync`,
+/// `RecvAsync`.
+RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
+    RT_METHOD("ConnectAsync",    "obj(str,i64)",    AsyncConnect)
+    RT_METHOD("ConnectForAsync", "obj(str,i64,i64)", AsyncConnectFor)
+    RT_METHOD("SendAsync", "obj(obj,obj)", AsyncSend)
+    RT_METHOD("RecvAsync", "obj(obj,i64)", AsyncRecv)
+    RT_METHOD("HttpGetAsync", "obj(str)", AsyncHttpGet)
+    RT_METHOD("HttpPostAsync", "obj(str,str)", AsyncHttpPost)
+RT_CLASS_END()
+
+// Viper.Text.Html - HTML parsing and utilities
+/// @summary Provides hTML parsing and utilities.
+/// @details
+/// `Viper.Text.Html` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Parse`, `ToText`,
+/// `Escape`, `Unescape`.
+RT_CLASS_BEGIN("Viper.Text.Html", Html, "obj", none)
+    RT_METHOD("Parse", "obj(str)", HtmlParse)
+    RT_METHOD("ToText", "str(str)", HtmlToText)
+    RT_METHOD("Escape", "str(str)", HtmlEscape)
+    RT_METHOD("Unescape", "str(str)", HtmlUnescape)
+    RT_METHOD("StripTags", "str(str)", HtmlStripTags)
+    RT_METHOD("ExtractLinks", "obj(str)", HtmlExtractLinks)
+    RT_METHOD("ExtractText", "obj(str,str)", HtmlExtractText)
+RT_CLASS_END()
+
+//=============================================================================
+// Zia Language Completion (Phase 2 IDE) — static-only class
+//=============================================================================
+
+/// @summary Provides Completion constants and static operations for Zia language tooling.
+/// @details
+/// `Viper.Zia.Completion` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Complete`, `CompleteForFile`, `Items`, `ItemsForFile`.
+RT_CLASS_BEGIN("Viper.Zia.Completion", ZiaCompletion, "none", none)
+    RT_METHOD("Complete",       "str(str,i64,i64)",     ZiaComplete)
+    RT_METHOD("CompleteForFile", "str(str,str,i64,i64)", ZiaCompleteForFile)
+    RT_METHOD("Items",          "obj<Viper.Collections.Seq>(str,i64,i64)", ZiaCompletionItems)
+    RT_METHOD("ItemsForFile",   "obj<Viper.Collections.Seq>(str,str,i64,i64)", ZiaCompletionItemsForFile)
+    RT_METHOD("BeginItemsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginItemsForFile)
+    RT_METHOD("SignatureHelp",   "str(str,i64,i64)",     ZiaSignatureHelp)
+    RT_METHOD("SignatureHelpForFile", "str(str,str,i64,i64)", ZiaSignatureHelpForFile)
+    RT_METHOD("SignatureInfo",   "obj<Viper.Collections.Map>(str,i64,i64)", ZiaSignatureInfo)
+    RT_METHOD("SignatureInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)", ZiaSignatureInfoForFile)
+    RT_METHOD("BeginSignatureInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginSignatureInfoForFile)
+    RT_METHOD("Check",          "str(str)",             ZiaCheck)
+    RT_METHOD("CheckForFile",   "str(str,str)",         ZiaCheckForFile)
+    RT_METHOD("Hover",          "str(str,i64,i64)",     ZiaHover)
+    RT_METHOD("HoverForFile",   "str(str,str,i64,i64)", ZiaHoverForFile)
+    RT_METHOD("HoverInfo",      "obj<Viper.Collections.Map>(str,i64,i64)", ZiaHoverInfo)
+    RT_METHOD("HoverInfoForFile", "obj<Viper.Collections.Map>(str,str,i64,i64)", ZiaHoverInfoForFile)
+    RT_METHOD("BeginHoverInfoForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str,i64,i64)", ZiaCompletionBeginHoverInfoForFile)
+    RT_METHOD("Symbols",        "str(str)",             ZiaSymbols)
+    RT_METHOD("SymbolsForFile", "str(str,str)",         ZiaSymbolsForFile)
+    RT_METHOD("BeginSymbolsForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginSymbolsForFile)
+    RT_METHOD("BeginTokensForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaCompletionBeginTokensForFile)
+    RT_METHOD("ClearCache",     "void()",               ZiaCompletionClearCache)
+RT_CLASS_END()
+
+// Viper.Zia.Toolchain - structured diagnostics and compile results
+/// @summary Provides structured diagnostics and compile results.
+/// @details
+/// `Viper.Zia.Toolchain` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Check`, `CheckForFile`, `BeginCheckForFile`, `Compile`.
+RT_CLASS_BEGIN("Viper.Zia.Toolchain", ZiaToolchain, "none", none)
+    RT_METHOD("Check",          "obj<Viper.Collections.Seq>(str)",     ZiaToolchainCheck)
+    RT_METHOD("CheckForFile",   "obj<Viper.Collections.Seq>(str,str)", ZiaToolchainCheckForFile)
+    RT_METHOD("BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str,str)", ZiaToolchainBeginCheckForFile)
+    RT_METHOD("Compile",        "obj<Viper.Collections.Map>(str)",     ZiaToolchainCompile)
+    RT_METHOD("CompileForFile", "obj<Viper.Collections.Map>(str,str)", ZiaToolchainCompileForFile)
+RT_CLASS_END()
+
+// Viper.Zia.Document - incremental document mirror sync (plan 08), static-only
+/// @summary Provides incremental document mirror sync (plan 08), static-only.
+/// @details
+/// `Viper.Zia.Document` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `SyncFull`, `SyncDelta`, `Close`, `Text`.
+RT_CLASS_BEGIN("Viper.Zia.Document", ZiaDocument, "none", none)
+    RT_METHOD("SyncFull",     "void(str,str,i64)", ZiaDocSyncFull)
+    RT_METHOD("SyncDelta",    "i1(str,str,i64)",   ZiaDocSyncDelta)
+    RT_METHOD("Close",        "void(str)",         ZiaDocClose)
+    RT_METHOD("Text",         "str(str)",          ZiaDocText)
+    RT_METHOD("CheckForFile", "str(str)",          ZiaDocCheckForFile)
+    RT_METHOD("BeginCheckForFile", "obj<Viper.Zia.SemanticJob.SemanticJobHandle>(str)", ZiaDocBeginCheckForFile)
+RT_CLASS_END()
+
+/// @summary Provides Language Service constants and static operations for Viper BASIC language tooling.
+/// @details
+/// `Viper.Basic.LanguageService` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `CheckForFile`, `ItemsForFile`, `SymbolsForFile`,
+/// `HoverInfoForFile`.
+RT_CLASS_BEGIN("Viper.Basic.LanguageService", BasicLanguageService, "none", none)
+    RT_METHOD("CheckForFile",    "obj<Viper.Collections.Seq>(str,str)",         BasicToolchainCheckForFile)
+    RT_METHOD("ItemsForFile",    "obj<Viper.Collections.Seq>(str,str,i64,i64)", BasicCompletionItemsForFile)
+    RT_METHOD("SymbolsForFile",  "str(str,str)",                                BasicCompletionSymbolsForFile)
+    RT_METHOD("HoverInfoForFile","obj<Viper.Collections.Map>(str,str,i64,i64)", BasicCompletionHoverInfoForFile)
+RT_CLASS_END()
+
+/// @summary Provides Semantic Job constants and static operations for Zia language tooling.
+/// @details
+/// `Viper.Zia.SemanticJob` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `IsDone`, `IsError`, `Error`, `ErrorOption`.
+RT_CLASS_BEGIN("Viper.Zia.SemanticJob", ZiaSemanticJob, "none", none)
+    RT_METHOD("IsDone",          "i1(obj)",                         ZiaSemanticJobIsDone)
+    RT_METHOD("IsError",         "i1(obj)",                         ZiaSemanticJobIsError)
+    RT_METHOD("Error",           "str(obj)",                        ZiaSemanticJobError)
+    RT_METHOD("ErrorOption",     "obj<Viper.Option>(obj)",          ZiaSemanticJobErrorOption)
+    RT_METHOD("Kind",            "i64(obj)",                        ZiaSemanticJobKind)
+    RT_METHOD("Cancel",          "void(obj)",                       ZiaSemanticJobCancel)
+    RT_METHOD("CompletionItems", "obj<Viper.Collections.Seq>(obj)", ZiaSemanticJobCompletionItems)
+    RT_METHOD("SignatureInfo",   "obj<Viper.Collections.Map>(obj)", ZiaSemanticJobSignatureInfo)
+    RT_METHOD("HoverInfo",       "obj<Viper.Collections.Map>(obj)", ZiaSemanticJobHoverInfo)
+    RT_METHOD("Symbols",         "str(obj)",                        ZiaSemanticJobSymbols)
+    RT_METHOD("Tokens",          "str(obj)",                        ZiaSemanticJobTokens)
+    RT_METHOD("Diagnostics",     "obj<Viper.Collections.Seq>(obj)", ZiaSemanticJobDiagnostics)
+RT_CLASS_END()
+
+/// @summary Provides Semantic Job Handle functionality for Zia language tooling.
+/// @details
+/// `Viper.Zia.SemanticJob.SemanticJobHandle` exposes a registry-backed runtime surface without
+/// requiring callers to construct the class directly. The registry entry makes the type available
+/// to compilers, language services, and generated reference documentation.
+RT_CLASS_BEGIN("Viper.Zia.SemanticJob.SemanticJobHandle", ZiaSemanticJobHandle, "obj", none)
+RT_CLASS_END()
+
+// Viper.Zia.ProjectIndex - project-wide semantic navigation and rename queries
+/// @summary Provides project-wide semantic navigation and rename queries.
+/// @details
+/// `Viper.Zia.ProjectIndex` is a static runtime surface and does not require an instance. Its
+/// public surface exposes operations including `IsValid`, `UpdateFile`, `RemoveFile`, `Clear`.
+RT_CLASS_BEGIN("Viper.Zia.ProjectIndex", ZiaProjectIndex, "none", none)
+    RT_METHOD("New",         "obj<Viper.Zia.ProjectIndex.ProjectIndexHandle>(str)",        ZiaProjectIndexNew)
+    RT_METHOD("IsValid",     "i1(obj)",                                        ZiaProjectIndexIsValid)
+    RT_METHOD("UpdateFile",  "i1(obj,str,str)",                                ZiaProjectIndexUpdateFile)
+    RT_METHOD("RemoveFile",  "i1(obj,str)",                                    ZiaProjectIndexRemoveFile)
+    RT_METHOD("Clear",       "void(obj)",                                      ZiaProjectIndexClear)
+    RT_METHOD("Destroy",     "void(obj)",                                      ZiaProjectIndexDestroy)
+    RT_METHOD("Definition",  "obj<Viper.Collections.Map>(obj,str,str,i64,i64)", ZiaProjectIndexDefinition)
+    RT_METHOD("References",  "obj<Viper.Collections.Seq>(obj,str,str,i64,i64)", ZiaProjectIndexReferences)
+    RT_METHOD("RenameEdits", "obj<Viper.Collections.Map>(obj,str,str,i64,i64,str)", ZiaProjectIndexRenameEdits)
+RT_CLASS_END()
+
+/// @summary Provides Project Index Handle functionality for Zia language tooling.
+/// @details
+/// `Viper.Zia.ProjectIndex.ProjectIndexHandle` exposes a registry-backed runtime surface without
+/// requiring callers to construct the class directly. The registry entry makes the type available
+/// to compilers, language services, and generated reference documentation.
+RT_CLASS_BEGIN("Viper.Zia.ProjectIndex.ProjectIndexHandle", ZiaProjectIndexHandle, "obj", none)
+RT_CLASS_END()
+
+// Viper.GUI.GroupBox - titled "card" container for grouping related controls
+/// @summary Provides titled "card" container for grouping related controls.
+/// @details
+/// Create `Viper.GUI.GroupBox` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `Destroy`, `SetTitle`, `AddChild`.
+RT_CLASS_BEGIN("Viper.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew)
+    RT_METHOD("Destroy",     "void()",        GuiGroupBoxDestroy)
+    RT_METHOD("SetTitle",    "void(str)",     GuiGroupBoxSetTitle)
+    RT_METHOD("AddChild",    "void(obj)",     GuiGroupBoxAddChild)
+RT_CLASS_END()
+
+// Viper.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense
+/// @summary Provides floating overlay panel for popups/IntelliSense.
+/// @details
+/// Create `Viper.GUI.FloatingPanel` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `Destroy`, `SetPosition`, `CenterInParent`, `SetSize`.
+RT_CLASS_BEGIN("Viper.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew)
+    RT_METHOD("Destroy",     "void()",        GuiFloatingPanelDestroy)
+    RT_METHOD("SetPosition", "void(f64,f64)", GuiFloatingPanelSetPosition)
+    RT_METHOD("CenterInParent", "void()",     GuiFloatingPanelCenterInParent)
+    RT_METHOD("SetSize",     "void(f64,f64)", GuiFloatingPanelSetSize)
+    RT_METHOD("SetVisible",  "void(i1)",     GuiFloatingPanelSetVisible)
+    RT_METHOD("AddChild",    "void(obj)",     GuiFloatingPanelAddChild)
+RT_CLASS_END()
+
+//=============================================================================

@@ -24,6 +24,7 @@
 #include "frontends/zia/ZiaAnalysis.hpp"
 #include "frontends/zia/ZiaCompletion.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "runtime/collections/rt_map.h"
 #include "runtime/collections/rt_seq.h"
 #include "runtime/core/rt_string.h"
@@ -1456,6 +1457,23 @@ std::string qualifierBeforeIdentifier(std::string_view source, size_t identStart
     return std::string(source.substr(start, end - start));
 }
 
+std::string dottedQualifierBeforeIdentifier(std::string_view source, size_t identStart) {
+    if (identStart == 0 || source[identStart - 1] != '.')
+        return {};
+
+    size_t end = identStart - 1;
+    size_t start = end;
+    while (start > 0) {
+        const char previous = source[start - 1];
+        if (!isIdentByte(previous) && previous != '.')
+            break;
+        --start;
+    }
+    if (start == end)
+        return {};
+    return std::string(source.substr(start, end - start));
+}
+
 bool symbolNameMatchesIdentifier(const Symbol &sym, std::string_view ident) {
     if (sym.name == ident)
         return true;
@@ -1520,6 +1538,40 @@ std::optional<Symbol> runtimeMemberSymbolAt(const Sema &sema,
             return sym;
     }
     return std::nullopt;
+}
+
+/// @brief Build hover text for a qualified runtime class identifier.
+static std::string runtimeClassHoverAt(const Sema &sema,
+                                       std::string_view source,
+                                       size_t identStart,
+                                       std::string_view ident) {
+    std::string qualifier = dottedQualifierBeforeIdentifier(source, identStart);
+    if (qualifier.empty())
+        return {};
+
+    auto parts = splitDottedIdentifier(qualifier);
+    if (parts.empty())
+        return {};
+
+    std::string className = sema.resolveModuleAlias(parts.front());
+    if (!className.empty()) {
+        for (size_t i = 1; i < parts.size(); ++i)
+            className += "." + parts[i];
+    } else {
+        className = qualifier;
+    }
+    className += "." + std::string(ident);
+
+    const auto *runtimeClass = il::runtime::findRuntimeClassByQName(className);
+    if (!runtimeClass)
+        return {};
+
+    std::string hover = "class " + std::string(ident) + ": " + className;
+    if (runtimeClass->summary && *runtimeClass->summary)
+        hover += "\n" + std::string(runtimeClass->summary);
+    if (runtimeClass->details && *runtimeClass->details)
+        hover += "\n\n" + std::string(runtimeClass->details);
+    return hover;
 }
 
 std::string hoverKindForSymbol(const Symbol &sym) {
@@ -1815,6 +1867,11 @@ std::string hoverForSource(const std::string &source,
 
     if (auto exportSym = moduleExportSymbolAt(*result->sema, source, start, ident))
         return formatHoverForSymbol(sm, *exportSym, ident);
+
+    if (std::string runtimeClassHover = runtimeClassHoverAt(*result->sema, source, start, ident);
+        !runtimeClassHover.empty()) {
+        return runtimeClassHover;
+    }
 
     if (auto runtimeSym = runtimeMemberSymbolAt(*result->sema, source, start, ident))
         return formatHoverForSymbol(sm, *runtimeSym, ident);
@@ -2791,6 +2848,10 @@ rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t l
         hover = formatHoverForSymbol(sm, scoped->symbol, ident);
     else if (auto exportSym = moduleExportSymbolAt(*result->sema, sourceStr, start, ident))
         hover = formatHoverForSymbol(sm, *exportSym, ident);
+    else if (std::string runtimeClassHover =
+                 runtimeClassHoverAt(*result->sema, sourceStr, start, ident);
+             !runtimeClassHover.empty())
+        hover = std::move(runtimeClassHover);
     else if (auto runtimeSym = runtimeMemberSymbolAt(*result->sema, sourceStr, start, ident))
         hover = formatHoverForSymbol(sm, *runtimeSym, ident);
     else

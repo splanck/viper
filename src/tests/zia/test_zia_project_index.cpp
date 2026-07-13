@@ -268,6 +268,41 @@ TEST(ZiaProjectIndex, DirtyBufferUpdateReplacesIndexedSource) {
     releaseObj(def);
 }
 
+TEST(ZiaRuntimeBridge, HoverOnQualifiedRuntimeClassIncludesAuthoredDocumentation) {
+    const std::string source = "module Main;\n"
+                               "func use(app: Viper.GUI.App) {}\n";
+    rt_string sourceStr = str(source);
+    rt_string pathStr = str("runtime_class_hover.zia");
+    void *hover = rt_zia_hover_info_for_file(sourceStr, pathStr, 2, columnOf(source, 2, "App"));
+    rt_string_unref(pathStr);
+    rt_string_unref(sourceStr);
+
+    ASSERT_TRUE(hover != nullptr);
+    EXPECT_TRUE(mapBool(hover, "available"));
+    EXPECT_EQ(mapStr(hover, "type"), "Viper.GUI.App");
+    EXPECT_TRUE(mapStr(hover, "documentation").find("Owns a GUI application window") !=
+                std::string::npos);
+    releaseObj(hover);
+}
+
+TEST(ZiaRuntimeBridge, HoverOnAliasedRuntimeClassIncludesAuthoredDocumentation) {
+    const std::string source = "module Main;\n"
+                               "bind Viper.GUI as GUI;\n"
+                               "func use(app: GUI.App) {}\n";
+    rt_string sourceStr = str(source);
+    rt_string pathStr = str("runtime_class_alias_hover.zia");
+    void *hover = rt_zia_hover_info_for_file(sourceStr, pathStr, 3, columnOf(source, 3, "App"));
+    rt_string_unref(pathStr);
+    rt_string_unref(sourceStr);
+
+    ASSERT_TRUE(hover != nullptr);
+    EXPECT_TRUE(mapBool(hover, "available"));
+    EXPECT_EQ(mapStr(hover, "type"), "Viper.GUI.App");
+    EXPECT_TRUE(mapStr(hover, "documentation").find("Owns a GUI application window") !=
+                std::string::npos);
+    releaseObj(hover);
+}
+
 } // namespace
 
 int main() {

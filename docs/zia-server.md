@@ -99,7 +99,7 @@ Add to your project's `.mcp.json` or global MCP settings:
 | `zia/dump-il` | Dump compiled IL | `source` |
 | `zia/dump-ast` | Dump abstract syntax tree | `source` |
 | `zia/dump-tokens` | Dump token stream | `source` |
-| `zia/runtime-classes` | List all runtime classes | _(none)_ |
+| `zia/runtime-classes` | List runtime classes, member counts, and authored documentation | _(none)_ |
 | `zia/runtime-methods` | List members of a runtime class | `className` |
 | `zia/runtime-search` | Search runtime APIs by keyword | `keyword` |
 

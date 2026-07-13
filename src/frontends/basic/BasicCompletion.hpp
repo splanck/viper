@@ -52,8 +52,9 @@ struct CompletionItem {
     std::string label;      ///< Text shown in the popup list
     std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
-    std::string detail;    ///< Type/signature shown right-aligned
-    int sortPriority{100}; ///< Lower = ranked higher
+    std::string detail;          ///< Type/signature shown right-aligned
+    int sortPriority{100};       ///< Lower = ranked higher
+    std::string documentation{}; ///< Optional documentation shown by IDE clients.
 };
 
 /// @brief Stateful code-completion engine for BASIC source files.

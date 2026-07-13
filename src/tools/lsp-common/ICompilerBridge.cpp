@@ -41,13 +41,15 @@ std::vector<RuntimeClassSummary> ICompilerBridge::runtimeClasses() {
     for (const auto &cls : catalog) {
         result.push_back({cls.qname,
                           static_cast<int>(cls.properties.size()),
-                          static_cast<int>(cls.methods.size())});
+                          static_cast<int>(cls.methods.size()),
+                          cls.summary ? cls.summary : "",
+                          cls.details ? cls.details : ""});
     }
     return result;
 }
 
-void ICompilerBridge::updateDocument(const std::string & /*path*/,
-                                     const std::string & /*source*/) {}
+void ICompilerBridge::updateDocument(const std::string & /*path*/, const std::string & /*source*/) {
+}
 
 void ICompilerBridge::removeDocument(const std::string & /*path*/) {}
 

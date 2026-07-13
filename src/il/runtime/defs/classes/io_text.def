@@ -1,0 +1,923 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/defs/classes/io_text.def
+// Purpose: I/O, math, string, terminal, and text runtime class declarations.
+// Key invariants:
+//   - Included in declaration order by src/il/runtime/runtime.def.
+//   - Class blocks remain balanced within this fragment.
+// Ownership/Lifetime:
+//   - Declarative registry data is consumed by rtgen and X-macro tests.
+//   - Generated string storage has process lifetime.
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+//
+//===----------------------------------------------------------------------===//
+
+
+// Viper.IO.Dir - directory operations
+/// @summary Provides directory enumeration, creation, movement, and removal operations.
+/// @details
+/// `Viper.IO.Dir` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes operations including `Current`, `Dirs`,
+/// `DirsSeq`, `Exists`.
+RT_CLASS_BEGIN("Viper.IO.Dir", Dir, "obj", none)
+    RT_METHOD("Current", "str()", DirCurrent)
+    RT_METHOD("Dirs", "seq<str>(str)", DirDirs)
+    RT_METHOD("DirsSeq", "seq<str>(str)", DirDirsSeq)
+    RT_METHOD("Exists", "i1(str)", DirExists)
+    RT_METHOD("Entries", "seq<str>(str)", DirEntries)
+    RT_METHOD("Files", "seq<str>(str)", DirFiles)
+    RT_METHOD("FilesSeq", "seq<str>(str)", DirFilesSeq)
+    RT_METHOD("List", "seq<str>(str)", DirList)
+    RT_METHOD("ListSeq", "seq<str>(str)", DirListSeq)
+    RT_METHOD("Make", "void(str)", DirMake)
+    RT_METHOD("MakeAll", "void(str)", DirMakeAll)
+    RT_METHOD("Move", "void(str,str)", DirMove)
+    RT_METHOD("Remove", "void(str)", DirRemove)
+    RT_METHOD("RemoveAll", "void(str)", DirRemoveAll)
+    RT_METHOD("SetCurrent", "void(str)", DirSetCurrent)
+RT_CLASS_END()
+
+// Viper.IO.Glob - glob pattern matching
+/// @summary Provides glob pattern matching.
+/// @details
+/// `Viper.IO.Glob` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes operations including `Match`, `Files`,
+/// `FilesRecursive`, `Entries`.
+RT_CLASS_BEGIN("Viper.IO.Glob", Glob, "obj", none)
+    RT_METHOD("Match", "i1(str,str)", GlobMatch)
+    RT_METHOD("Files", "seq<str>(str,str)", GlobFiles)
+    RT_METHOD("FilesRecursive", "seq<str>(str,str)", GlobFilesRecursive)
+    RT_METHOD("Entries", "seq<str>(str,str)", GlobEntries)
+RT_CLASS_END()
+
+// Viper.IO.TempFile - temporary file utilities
+/// @summary Provides temporary file utilities.
+/// @details
+/// `Viper.IO.TempFile` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Dir`, `Path`,
+/// `PathWithPrefix`, `PathWithExt`.
+RT_CLASS_BEGIN("Viper.IO.TempFile", TempFile, "obj", none)
+    RT_METHOD("Dir", "str()", TempFileDir)
+    RT_METHOD("Path", "str()", TempFilePath)
+    RT_METHOD("PathWithPrefix", "str(str)", TempFilePathWithPrefix)
+    RT_METHOD("PathWithExt", "str(str,str)", TempFilePathWithExt)
+    RT_METHOD("Create", "str()", TempFileCreate)
+    RT_METHOD("CreateWithPrefix", "str(str)", TempFileCreateWithPrefix)
+    RT_METHOD("CreateDir", "str()", TempDirCreate)
+    RT_METHOD("CreateDirWithPrefix", "str(str)", TempDirCreateWithPrefix)
+RT_CLASS_END()
+
+// Viper.IO.File - static utility class
+/// @summary Provides whole-file I/O, metadata, copying, moving, and deletion operations.
+/// @details
+/// `Viper.IO.File` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes operations including `Append`, `AppendLine`,
+/// `Copy`, `Delete`.
+RT_CLASS_BEGIN("Viper.IO.File", File, "obj", none)
+    RT_METHOD("Append", "void(str,str)", FileAppend)
+    RT_METHOD("AppendLine", "void(str,str)", FileAppendLine)
+    RT_METHOD("Copy", "void(str,str)", FileCopy)
+    RT_METHOD("Delete", "void(str)", FileDelete)
+    RT_METHOD("Exists", "i1(str)", FileExists)
+    RT_METHOD("Modified", "i64(str)", FileModified)
+    RT_METHOD("Move", "void(str,str)", FileMove)
+    RT_METHOD("ReadAllBytes", "obj<Viper.Collections.Bytes>(str)", FileReadAllBytes)
+    RT_METHOD("ReadAllLines", "seq<str>(str)", FileReadAllLines)
+    RT_METHOD("ReadAllText", "str(str)", FileReadAllText)
+    RT_METHOD("ReadBytes", "obj<Viper.Collections.Bytes>(str)", FileReadBytes)
+    RT_METHOD("ReadLines", "seq<str>(str)", FileReadLines)
+    RT_METHOD("Size", "i64(str)", FileSize)
+    RT_METHOD("Touch", "void(str)", FileTouch)
+    RT_METHOD("WriteAllBytes", "void(str,obj<Viper.Collections.Bytes>)", FileWriteAllBytes)
+    RT_METHOD("WriteAllLines", "void(str,seq<str>)", FileWriteAllLines)
+    RT_METHOD("WriteAllText", "void(str,str)", FileWriteAllText)
+    RT_METHOD("WriteBytes", "void(str,obj<Viper.Collections.Bytes>)", FileWriteBytes)
+    RT_METHOD("WriteLines", "void(str,seq<str>)", FileWriteLines)
+RT_CLASS_END()
+
+// Viper.IO.Path - static utility class for path manipulation
+/// @summary Provides static utility class for path manipulation.
+/// @details
+/// `Viper.IO.Path` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes operations including `Abs`, `Dir`, `Ext`,
+/// `ExeDir`.
+RT_CLASS_BEGIN("Viper.IO.Path", Path, "obj", none)
+    RT_METHOD("Abs", "str(str)", PathAbs)
+    RT_METHOD("Dir", "str(str)", PathDir)
+    RT_METHOD("Ext", "str(str)", PathExt)
+    RT_METHOD("ExeDir", "str()", PathExeDir)
+    // Per-user writable data directory (created on demand):
+    // %APPDATA%\<app> | ~/Library/Application Support/<app> | $XDG_DATA_HOME/<app>.
+    RT_METHOD("DataDir", "str(str)", PathDataDir)
+    RT_METHOD("IsAbs", "i1(str)", PathIsAbs)
+    RT_METHOD("Join", "str(str,str)", PathJoin)
+    RT_METHOD("Name", "str(str)", PathName)
+    RT_METHOD("Norm", "str(str)", PathNorm)
+    RT_METHOD("Sep", "str()", PathSep)
+    RT_METHOD("Stem", "str(str)", PathStem)
+    RT_METHOD("WithExt", "str(str,str)", PathWithExt)
+RT_CLASS_END()
+
+// Viper.IO.BinFile - binary file stream operations
+/// @summary Provides binary file stream operations.
+/// @details
+/// `Viper.IO.BinFile` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Eof`, `Pos`, `Size`
+/// and operations including `Open`, `Close`, `Flush`, `Read`.
+RT_CLASS_BEGIN("Viper.IO.BinFile", BinFile, "obj", none)
+    RT_PROP("Eof", "i1", BinFileEof, none)
+    RT_PROP("Pos", "i64", BinFilePos, none)
+    RT_PROP("Size", "i64", BinFileSize, none)
+    RT_METHOD("Open", "obj(str,str)", BinFileOpen)
+    RT_METHOD("Close", "void()", BinFileClose)
+    RT_METHOD("Flush", "void()", BinFileFlush)
+    RT_METHOD("Read", "i64(obj,i64,i64)", BinFileRead)
+    RT_METHOD("ReadByte", "i64()", BinFileReadByte)
+    RT_METHOD("Seek", "i64(i64,i64)", BinFileSeek)
+    RT_METHOD("Write", "void(obj,i64,i64)", BinFileWrite)
+    RT_METHOD("WriteByte", "void(i64)", BinFileWriteByte)
+RT_CLASS_END()
+
+// Viper.IO.MemStream - in-memory binary stream
+/// @summary Provides in-memory binary stream.
+/// @details
+/// Create `Viper.IO.MemStream` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Pos`,
+/// `Length`, `Capacity` and operations including `ReadI8`, `WriteI8`, `ReadU8`, `WriteU8`.
+RT_CLASS_BEGIN("Viper.IO.MemStream", MemStream, "obj", MemStreamNew)
+    RT_PROP("Pos", "i64", MemStreamGetPos, MemStreamSetPos)
+    RT_PROP("Length", "i64", MemStreamGetLen, none)
+    RT_PROP("Capacity", "i64", MemStreamGetCapacity, none)
+    RT_METHOD("ReadI8", "i64()", MemStreamReadI8)
+    RT_METHOD("WriteI8", "void(i64)", MemStreamWriteI8)
+    RT_METHOD("ReadU8", "i64()", MemStreamReadU8)
+    RT_METHOD("WriteU8", "void(i64)", MemStreamWriteU8)
+    RT_METHOD("ReadI16", "i64()", MemStreamReadI16)
+    RT_METHOD("WriteI16", "void(i64)", MemStreamWriteI16)
+    RT_METHOD("ReadU16", "i64()", MemStreamReadU16)
+    RT_METHOD("WriteU16", "void(i64)", MemStreamWriteU16)
+    RT_METHOD("ReadI32", "i64()", MemStreamReadI32)
+    RT_METHOD("WriteI32", "void(i64)", MemStreamWriteI32)
+    RT_METHOD("ReadU32", "i64()", MemStreamReadU32)
+    RT_METHOD("WriteU32", "void(i64)", MemStreamWriteU32)
+    RT_METHOD("ReadI64", "i64()", MemStreamReadI64)
+    RT_METHOD("WriteI64", "void(i64)", MemStreamWriteI64)
+    RT_METHOD("ReadF32", "f64()", MemStreamReadF32)
+    RT_METHOD("WriteF32", "void(f64)", MemStreamWriteF32)
+    RT_METHOD("ReadF64", "f64()", MemStreamReadF64)
+    RT_METHOD("WriteF64", "void(f64)", MemStreamWriteF64)
+    RT_METHOD("ReadBytes", "obj(i64)", MemStreamReadBytes)
+    RT_METHOD("WriteBytes", "void(obj)", MemStreamWriteBytes)
+    RT_METHOD("ReadStr", "str(i64)", MemStreamReadStr)
+    RT_METHOD("WriteStr", "void(str)", MemStreamWriteStr)
+    RT_METHOD("ToBytes", "obj()", MemStreamToBytes)
+    RT_METHOD("Clear", "void()", MemStreamClear)
+    RT_METHOD("Seek", "void(i64)", MemStreamSeek)
+    RT_METHOD("Skip", "void(i64)", MemStreamSkip)
+RT_CLASS_END()
+
+// Viper.IO.BinaryBuffer - positioned binary read/write buffer
+/// @summary Provides positioned binary read/write buffer.
+/// @details
+/// Create `Viper.IO.BinaryBuffer` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Pos`,
+/// `Length` and operations including `NewCap`, `NewCapacity`, `FromBytes`, `WriteByte`.
+RT_CLASS_BEGIN("Viper.IO.BinaryBuffer", BinaryBuffer, "obj", BinBufNew)
+    RT_PROP("Pos", "i64", BinBufGetPos, BinBufSetPos)
+    RT_PROP("Length", "i64", BinBufGetLen, none)
+    RT_METHOD("NewCap", "obj(i64)", BinBufNewCap)
+    RT_METHOD("NewCapacity", "obj(i64)", BinBufNewCapacity)
+    RT_METHOD("FromBytes", "obj(obj)", BinBufFromBytes)
+    RT_METHOD("WriteByte", "void(i64)", BinBufWriteByte)
+    RT_METHOD("WriteI16LE", "void(i64)", BinBufWriteI16LE)
+    RT_METHOD("WriteI16BE", "void(i64)", BinBufWriteI16BE)
+    RT_METHOD("WriteU16LE", "void(i64)", BinBufWriteU16LE)
+    RT_METHOD("WriteU16BE", "void(i64)", BinBufWriteU16BE)
+    RT_METHOD("WriteI32LE", "void(i64)", BinBufWriteI32LE)
+    RT_METHOD("WriteI32BE", "void(i64)", BinBufWriteI32BE)
+    RT_METHOD("WriteU32LE", "void(i64)", BinBufWriteU32LE)
+    RT_METHOD("WriteU32BE", "void(i64)", BinBufWriteU32BE)
+    RT_METHOD("WriteI64LE", "void(i64)", BinBufWriteI64LE)
+    RT_METHOD("WriteI64BE", "void(i64)", BinBufWriteI64BE)
+    RT_METHOD("WriteStr", "void(str)", BinBufWriteStr)
+    RT_METHOD("WriteBytes", "void(obj)", BinBufWriteBytes)
+    RT_METHOD("ReadByte", "i64()", BinBufReadByte)
+    RT_METHOD("ReadI16LE", "i64()", BinBufReadI16LE)
+    RT_METHOD("ReadI16BE", "i64()", BinBufReadI16BE)
+    RT_METHOD("ReadU16LE", "i64()", BinBufReadU16LE)
+    RT_METHOD("ReadU16BE", "i64()", BinBufReadU16BE)
+    RT_METHOD("ReadI32LE", "i64()", BinBufReadI32LE)
+    RT_METHOD("ReadI32BE", "i64()", BinBufReadI32BE)
+    RT_METHOD("ReadU32LE", "i64()", BinBufReadU32LE)
+    RT_METHOD("ReadU32BE", "i64()", BinBufReadU32BE)
+    RT_METHOD("ReadI64LE", "i64()", BinBufReadI64LE)
+    RT_METHOD("ReadI64BE", "i64()", BinBufReadI64BE)
+    RT_METHOD("ReadStr", "str()", BinBufReadStr)
+    RT_METHOD("ReadBytes", "obj(i64)", BinBufReadBytes)
+    RT_METHOD("ToBytes", "obj()", BinBufToBytes)
+    RT_METHOD("Reset", "void()", BinBufReset)
+RT_CLASS_END()
+
+// Viper.IO.Stream - unified stream interface
+/// @summary Provides unified stream interface.
+/// @details
+/// `Viper.IO.Stream` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Type`, `Pos`,
+/// `Length` and operations including `OpenFile`, `OpenMemory`, `OpenBytes`, `FromBinFile`.
+RT_CLASS_BEGIN("Viper.IO.Stream", Stream, "obj", none)
+    // Static constructors
+    RT_METHOD("OpenFile", "obj(str,str)", StreamOpenFile)
+    RT_METHOD("OpenMemory", "obj()", StreamOpenMemory)
+    RT_METHOD("OpenBytes", "obj(obj)", StreamOpenBytes)
+    RT_METHOD("FromBinFile", "obj(obj)", StreamFromBinFile)
+    RT_METHOD("FromMemStream", "obj(obj)", StreamFromMemStream)
+    // Properties
+    RT_PROP("Type", "i64", StreamGetType, none)
+    RT_PROP("Pos", "i64", StreamGetPos, StreamSetPos)
+    RT_PROP("Length", "i64", StreamGetLen, none)
+    RT_PROP("Eof", "i1", StreamIsEof, none)
+    // Operations
+    RT_METHOD("Read", "obj(i64)", StreamRead)
+    RT_METHOD("ReadAll", "obj()", StreamReadAll)
+    RT_METHOD("Write", "void(obj)", StreamWrite)
+    RT_METHOD("ReadByte", "i64()", StreamReadByte)
+    RT_METHOD("WriteByte", "void(i64)", StreamWriteByte)
+    RT_METHOD("Flush", "void()", StreamFlush)
+    RT_METHOD("Close", "void()", StreamClose)
+    // Conversion
+    RT_METHOD("AsBinFile", "obj()", StreamAsBinFile)
+    RT_METHOD("AsMemStream", "obj()", StreamAsMemStream)
+    RT_METHOD("ToBytes", "obj()", StreamToBytes)
+RT_CLASS_END()
+
+// Viper.IO.LineReader - line-by-line text file reader
+/// @summary Provides line-by-line text file reader.
+/// @details
+/// `Viper.IO.LineReader` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes a property such as `Eof` and operations
+/// including `Open`, `Close`, `PeekChar`, `Read`.
+RT_CLASS_BEGIN("Viper.IO.LineReader", LineReader, "obj", none)
+    RT_PROP("Eof", "i1", LineReaderEof, none)
+    RT_METHOD("Open", "obj(str)", LineReaderOpen)
+    RT_METHOD("Close", "void()", LineReaderClose)
+    RT_METHOD("PeekChar", "i64()", LineReaderPeekChar)
+    RT_METHOD("Read", "str()", LineReaderRead)
+    RT_METHOD("ReadAll", "str()", LineReaderReadAll)
+    RT_METHOD("ReadChar", "i64()", LineReaderReadChar)
+RT_CLASS_END()
+
+// Viper.IO.LineWriter - buffered text file writer
+/// @summary Provides buffered text file writer.
+/// @details
+/// `Viper.IO.LineWriter` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes a property such as `NewLine` and
+/// operations including `Open`, `Append`, `Close`, `Flush`.
+RT_CLASS_BEGIN("Viper.IO.LineWriter", LineWriter, "obj", none)
+    RT_PROP("NewLine", "str", LineWriterNewLine, LineWriterSetNewLine)
+    RT_METHOD("Open", "obj(str)", LineWriterOpen)
+    RT_METHOD("Append", "obj(str)", LineWriterAppend)
+    RT_METHOD("Close", "void()", LineWriterClose)
+    RT_METHOD("Flush", "void()", LineWriterFlush)
+    RT_METHOD("Write", "void(str)", LineWriterWrite)
+    RT_METHOD("WriteChar", "void(i64)", LineWriterWriteChar)
+    RT_METHOD("WriteLn", "void(str)", LineWriterWriteLn)
+RT_CLASS_END()
+
+// Viper.IO.SaveData - key-value game save persistence
+/// @summary Provides key-value game save persistence.
+/// @details
+/// Create `Viper.IO.SaveData` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Count`, `Path`
+/// and operations including `SetInt`, `SetString`, `GetInt`, `GetString`.
+RT_CLASS_BEGIN("Viper.IO.SaveData", SaveData, "obj", SaveDataNew)
+    RT_PROP("Count", "i64", SaveDataCount, none)
+    RT_PROP("Path", "str", SaveDataGetPath, none)
+    RT_METHOD("SetInt", "void(str,i64)", SaveDataSetInt)
+    RT_METHOD("SetString", "void(str,str)", SaveDataSetString)
+    RT_METHOD("GetInt", "i64(str,i64)", SaveDataGetInt)
+    RT_METHOD("GetString", "str(str,str)", SaveDataGetString)
+    RT_METHOD("Save", "i1()", SaveDataSave)
+    RT_METHOD("Load", "i1()", SaveDataLoad)
+    RT_METHOD("HasKey", "i1(str)", SaveDataHasKey)
+    RT_METHOD("Remove", "i1(str)", SaveDataRemove)
+    RT_METHOD("Clear", "void()", SaveDataClear)
+RT_CLASS_END()
+
+// Viper.IO.Watcher - file system watcher
+/// @summary Provides file system watcher.
+/// @details
+/// Create `Viper.IO.Watcher` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes properties such as `Path`,
+/// `IsWatching`, `EventNone` and operations including `Start`, `Stop`, `Poll`, `PollFor`.
+RT_CLASS_BEGIN("Viper.IO.Watcher", Watcher, "obj", WatcherNew)
+    RT_PROP("Path", "str", WatcherPath, none)
+    RT_PROP("IsWatching", "i1", WatcherIsWatching, none)
+    RT_PROP("EventNone", "i64", WatcherEventNone, none)
+    RT_PROP("EventCreated", "i64", WatcherEventCreated, none)
+    RT_PROP("EventModified", "i64", WatcherEventModified, none)
+    RT_PROP("EventDeleted", "i64", WatcherEventDeleted, none)
+    RT_PROP("EventRenamed", "i64", WatcherEventRenamed, none)
+    RT_PROP("EventOverflow", "i64", WatcherEventOverflow, none)
+    RT_METHOD("Start", "void()", WatcherStart)
+    RT_METHOD("Stop", "void()", WatcherStop)
+    RT_METHOD("Poll", "i64()", WatcherPoll)
+    RT_METHOD("PollFor", "i64(i64)", WatcherPollFor)
+    RT_METHOD("EventPath", "str()", WatcherEventPath)
+    RT_METHOD("EventType", "i64()", WatcherEventType)
+    RT_METHOD("EventOverflowCount", "i64()", WatcherEventOverflowCount)
+RT_CLASS_END()
+
+/// @summary Provides Compress functionality for filesystem and stream workflows.
+/// @details
+/// `Viper.IO.Compress` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Deflate`,
+/// `DeflateLvl`, `Inflate`, `Gzip`.
+RT_CLASS_BEGIN("Viper.IO.Compress", Compress, "obj", none)
+    RT_METHOD("Deflate", "obj(obj)", CompressDeflate)
+    RT_METHOD("DeflateLvl", "obj(obj,i64)", CompressDeflateLvl)
+    RT_METHOD("Inflate", "obj(obj)", CompressInflate)
+    RT_METHOD("Gzip", "obj(obj)", CompressGzip)
+    RT_METHOD("GzipLvl", "obj(obj,i64)", CompressGzipLvl)
+    RT_METHOD("Gunzip", "obj(obj)", CompressGunzip)
+    RT_METHOD("DeflateStr", "obj(str)", CompressDeflateStr)
+    RT_METHOD("InflateStr", "str(obj)", CompressInflateStr)
+    RT_METHOD("GzipStr", "obj(str)", CompressGzipStr)
+    RT_METHOD("GunzipStr", "str(obj)", CompressGunzipStr)
+RT_CLASS_END()
+
+// Viper.IO.Archive - ZIP archive support
+// Instance class for reading and writing ZIP files.
+// Open(path) or FromBytes(data) for reading, Create(path) for writing.
+/// @summary Provides Archive functionality for filesystem and stream workflows.
+/// @details
+/// `Viper.IO.Archive` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Path`, `Count`,
+/// `Names` and operations including `Open`, `Create`, `FromBytes`, `Has`.
+RT_CLASS_BEGIN("Viper.IO.Archive", Archive, "obj", none)
+    // Static constructors
+    RT_METHOD("Open", "obj(str)", ArchiveOpen)
+    RT_METHOD("Create", "obj(str)", ArchiveCreate)
+    RT_METHOD("FromBytes", "obj(obj)", ArchiveFromBytes)
+    // Properties (instance, takes receiver as arg0)
+    RT_PROP("Path", "str", ArchivePath, none)
+    RT_PROP("Count", "i64", ArchiveCount, none)
+    RT_PROP("Names", "obj", ArchiveNames, none)
+    // Reading methods
+    RT_METHOD("Has", "i1(str)", ArchiveHas)
+    RT_METHOD("Read", "obj(str)", ArchiveRead)
+    RT_METHOD("ReadStr", "str(str)", ArchiveReadStr)
+    RT_METHOD("Extract", "void(str,str)", ArchiveExtract)
+    RT_METHOD("ExtractAll", "void(str)", ArchiveExtractAll)
+    RT_METHOD("Info", "obj(str)", ArchiveInfo)
+    // Writing methods
+    RT_METHOD("Add", "void(str,obj)", ArchiveAdd)
+    RT_METHOD("AddStr", "void(str,str)", ArchiveAddStr)
+    RT_METHOD("AddFile", "void(str,str)", ArchiveAddFile)
+    RT_METHOD("AddDir", "void(str)", ArchiveAddDir)
+    RT_METHOD("Finish", "void()", ArchiveFinish)
+    // Static methods
+    RT_METHOD("IsZip", "i1(str)", ArchiveIsZip)
+    RT_METHOD("IsZipBytes", "i1(obj)", ArchiveIsZipBytes)
+RT_CLASS_END()
+
+// Viper.Diagnostics.Log - simple logging utilities
+/// @summary Provides simple logging utilities.
+/// @details
+/// `Viper.Diagnostics.Log` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Level`,
+/// `LevelDebug`, `LevelInfo` and operations including `Debug`, `Info`, `Warn`, `Error`.
+RT_CLASS_BEGIN("Viper.Diagnostics.Log", Log, "obj", none)
+    RT_PROP("Level", "i64", LogLevel, LogSetLevel)
+    RT_PROP("LevelDebug", "i64", LogDEBUG, none)
+    RT_PROP("LevelInfo", "i64", LogINFO, none)
+    RT_PROP("LevelWarn", "i64", LogWARN, none)
+    RT_PROP("LevelError", "i64", LogERROR, none)
+    RT_PROP("LevelOff", "i64", LogOFF, none)
+    RT_METHOD("Debug", "void(str)", LogDebug)
+    RT_METHOD("Info", "void(str)", LogInfo)
+    RT_METHOD("Warn", "void(str)", LogWarn)
+    RT_METHOD("Error", "void(str)", LogError)
+    RT_METHOD("Enabled", "i1(i64)", LogEnabled)
+RT_CLASS_END()
+
+// Viper.System.Machine - system information queries
+/// @summary Provides system information queries.
+/// @details
+/// `Viper.System.Machine` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Arch`, `Cores`,
+/// `Endian`.
+RT_CLASS_BEGIN("Viper.System.Machine", Machine, "obj", none)
+    RT_PROP("Arch", "str", MachineArch, none)
+    RT_PROP("Cores", "i64", MachineCores, none)
+    RT_PROP("Endian", "str", MachineEndian, none)
+    RT_PROP("Home", "str", MachineHome, none)
+    RT_PROP("Host", "str", MachineHost, none)
+    RT_PROP("MemFree", "i64", MachineMemFree, none)
+    RT_PROP("MemTotal", "i64", MachineMemTotal, none)
+    RT_PROP("Os", "str", MachineOS, none)
+    RT_PROP("OsVer", "str", MachineOSVer, none)
+    RT_PROP("PageSize", "i64", MachinePageSize, none)
+    RT_PROP("PointerSize", "i64", MachinePointerSize, none)
+    RT_PROP("Temp", "str", MachineTemp, none)
+    RT_PROP("User", "str", MachineUser, none)
+RT_CLASS_END()
+
+// Viper.Math - static utility class
+/// @summary Provides scalar mathematical functions and numeric utilities.
+/// @details
+/// `Viper.Math` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes properties such as `Euler`, `Pi`, `Tau` and
+/// operations including `Abs`, `AbsInt`, `Acos`, `Asin`.
+RT_CLASS_BEGIN("Viper.Math", Math, "obj", none)
+    RT_PROP("Euler", "f64", MathE, none)
+    RT_PROP("Pi", "f64", MathPi, none)
+    RT_PROP("Tau", "f64", MathTau, none)
+    RT_METHOD("Abs", "f64(f64)", MathAbs)
+    RT_METHOD("AbsInt", "i64(i64)", MathAbsInt)
+    RT_METHOD("Acos", "f64(f64)", MathAcos)
+    RT_METHOD("Asin", "f64(f64)", MathAsin)
+    RT_METHOD("Atan", "f64(f64)", MathAtan)
+    RT_METHOD("Atan2", "f64(f64,f64)", MathAtan2)
+    RT_METHOD("Ceil", "f64(f64)", MathCeil)
+    RT_METHOD("Clamp", "f64(f64,f64,f64)", MathClamp)
+    RT_METHOD("ClampInt", "i64(i64,i64,i64)", MathClampInt)
+    RT_METHOD("Cos", "f64(f64)", MathCos)
+    RT_METHOD("Cosh", "f64(f64)", MathCosh)
+    RT_METHOD("Deg", "f64(f64)", MathDeg)
+    RT_METHOD("Exp", "f64(f64)", MathExp)
+    RT_METHOD("FMod", "f64(f64,f64)", MathFMod)
+    RT_METHOD("Floor", "f64(f64)", MathFloor)
+    RT_METHOD("Hypot", "f64(f64,f64)", MathHypot)
+    RT_METHOD("Lerp", "f64(f64,f64,f64)", MathLerp)
+    RT_METHOD("Log", "f64(f64)", MathLog)
+    RT_METHOD("Log10", "f64(f64)", MathLog10)
+    RT_METHOD("Log2", "f64(f64)", MathLog2)
+    RT_METHOD("Max", "f64(f64,f64)", MathMax)
+    RT_METHOD("MaxInt", "i64(i64,i64)", MathMaxInt)
+    RT_METHOD("Min", "f64(f64,f64)", MathMin)
+    RT_METHOD("MinInt", "i64(i64,i64)", MathMinInt)
+    RT_METHOD("Pow", "f64(f64,f64)", MathPow)
+    RT_METHOD("Rad", "f64(f64)", MathRad)
+    RT_METHOD("Round", "f64(f64)", MathRound)
+    RT_METHOD("Sgn", "f64(f64)", MathSgn)
+    RT_METHOD("SgnInt", "i64(i64)", MathSgnInt)
+    RT_METHOD("Sin", "f64(f64)", MathSin)
+    RT_METHOD("Sinh", "f64(f64)", MathSinh)
+    RT_METHOD("Sqrt", "f64(f64)", MathSqrt)
+    RT_METHOD("Tan", "f64(f64)", MathTan)
+    RT_METHOD("Tanh", "f64(f64)", MathTanh)
+    RT_METHOD("Trunc", "f64(f64)", MathTrunc)
+    RT_METHOD("Wrap", "f64(f64,f64,f64)", MathWrap)
+    RT_METHOD("WrapInt", "i64(i64,i64,i64)", MathWrapInt)
+RT_CLASS_END()
+
+// Viper.Math.PerlinNoise - Perlin noise generator
+/// @summary Provides perlin noise generator.
+/// @details
+/// Create `Viper.Math.PerlinNoise` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes operations including
+/// `Noise2D`, `Noise3D`, `Octave2D`, `Octave3D`.
+RT_CLASS_BEGIN("Viper.Math.PerlinNoise", PerlinNoise, "obj", PerlinNew)
+    RT_METHOD("Noise2D", "f64(obj,f64,f64)", PerlinNoise2D)
+    RT_METHOD("Noise3D", "f64(obj,f64,f64,f64)", PerlinNoise3D)
+    RT_METHOD("Octave2D", "f64(obj,f64,f64,i64,f64)", PerlinOctave2D)
+    RT_METHOD("Octave3D", "f64(obj,f64,f64,f64,i64,f64)", PerlinOctave3D)
+RT_CLASS_END()
+
+// Viper.Math.Easing - static easing functions
+/// @summary Provides static easing functions.
+/// @details
+/// `Viper.Math.Easing` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Linear`,
+/// `InQuad`, `EaseInQuad`, `OutQuad`.
+RT_CLASS_BEGIN("Viper.Math.Easing", Easing, "obj", none)
+    RT_METHOD("Linear", "f64(f64)", EaseLinear)
+    RT_METHOD("InQuad", "f64(f64)", EaseInQuad)
+    RT_METHOD("EaseInQuad", "f64(f64)", EaseInQuad)
+    RT_METHOD("OutQuad", "f64(f64)", EaseOutQuad)
+    RT_METHOD("EaseOutQuad", "f64(f64)", EaseOutQuad)
+    RT_METHOD("InOutQuad", "f64(f64)", EaseInOutQuad)
+    RT_METHOD("EaseInOutQuad", "f64(f64)", EaseInOutQuad)
+    RT_METHOD("InCubic", "f64(f64)", EaseInCubic)
+    RT_METHOD("OutCubic", "f64(f64)", EaseOutCubic)
+    RT_METHOD("InOutCubic", "f64(f64)", EaseInOutCubic)
+    RT_METHOD("InQuart", "f64(f64)", EaseInQuart)
+    RT_METHOD("OutQuart", "f64(f64)", EaseOutQuart)
+    RT_METHOD("InOutQuart", "f64(f64)", EaseInOutQuart)
+    RT_METHOD("InSine", "f64(f64)", EaseInSine)
+    RT_METHOD("OutSine", "f64(f64)", EaseOutSine)
+    RT_METHOD("InOutSine", "f64(f64)", EaseInOutSine)
+    RT_METHOD("InExpo", "f64(f64)", EaseInExpo)
+    RT_METHOD("OutExpo", "f64(f64)", EaseOutExpo)
+    RT_METHOD("InOutExpo", "f64(f64)", EaseInOutExpo)
+    RT_METHOD("InCirc", "f64(f64)", EaseInCirc)
+    RT_METHOD("OutCirc", "f64(f64)", EaseOutCirc)
+    RT_METHOD("InOutCirc", "f64(f64)", EaseInOutCirc)
+    RT_METHOD("InBack", "f64(f64)", EaseInBack)
+    RT_METHOD("OutBack", "f64(f64)", EaseOutBack)
+    RT_METHOD("InOutBack", "f64(f64)", EaseInOutBack)
+    RT_METHOD("InElastic", "f64(f64)", EaseInElastic)
+    RT_METHOD("OutElastic", "f64(f64)", EaseOutElastic)
+    RT_METHOD("InOutElastic", "f64(f64)", EaseInOutElastic)
+    RT_METHOD("InBounce", "f64(f64)", EaseInBounce)
+    RT_METHOD("OutBounce", "f64(f64)", EaseOutBounce)
+    RT_METHOD("InOutBounce", "f64(f64)", EaseInOutBounce)
+RT_CLASS_END()
+
+// Viper.Core.Object - base class for all objects
+/// @summary Provides base class for all objects.
+/// @details
+/// `Viper.Core.Object` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Equals`,
+/// `RefEquals`, `HashCode`, `ToString`.
+RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
+    RT_METHOD("Equals", "i1(obj)", ObjEquals)
+    RT_METHOD("RefEquals", "i1(obj,obj)", ObjRefEquals)
+    RT_METHOD("HashCode", "i64()", ObjHashCode)
+    RT_METHOD("ToString", "str()", ObjToString)
+    RT_METHOD("TypeName", "str()", ObjTypeName)
+    RT_METHOD("TypeId", "i64()", ObjTypeId)
+    RT_METHOD("IsNull", "i1()", ObjIsNull)
+    RT_METHOD("IsNull", "i1(obj)", ObjIsNull)
+RT_CLASS_END()
+
+// Viper.Random - RNG class with independent per-instance state
+/// @summary Provides Random functionality for numeric and geometric calculations.
+/// @details
+/// Create `Viper.Math.Random` values through its registered constructor and use the returned object
+/// with the instance members below. Its public surface exposes operations including `Next`,
+/// `NextDouble`, `NextInt`, `Range`.
+RT_CLASS_BEGIN("Viper.Math.Random", Random, "obj", RandomNew)
+    RT_METHOD("Next", "f64()", RandomNextMethod)
+    RT_METHOD("NextDouble", "f64()", RandomNextMethod)
+    RT_METHOD("NextInt", "i64(i64)", RandomNextIntMethod)
+    RT_METHOD("Range", "i64(i64,i64)", RandomRangeMethod)
+    RT_METHOD("Seed", "void(i64)", RandomSeedMethod)
+RT_CLASS_END()
+
+// Viper.String - built-in string type
+/// @summary Provides immutable runtime string values and common text operations.
+/// @details
+/// `Viper.String` exposes a registry-backed runtime surface without requiring callers to construct
+/// the class directly. Its public surface exposes properties such as `IsEmpty`, `Length` and
+/// operations including `Asc`, `CamelCase`, `Chr`, `Cmp`.
+RT_CLASS_BEGIN("Viper.String", String, "opaque*", none)
+    RT_PROP("IsEmpty", "i1", StrIsEmpty, none)
+    RT_PROP("Length", "i64", Len, none)
+    RT_METHOD("Asc", "i64()", Asc)
+    RT_METHOD("CamelCase", "str()", StrCamelCase)
+    RT_METHOD("Chr", "str(i64)", Chr)
+    RT_METHOD("Cmp", "i64(str)", StrCmp)
+    RT_METHOD("CmpNoCase", "i64(str)", StrCmpNoCase)
+    RT_METHOD("Concat", "str(str)", Concat)
+    RT_METHOD("Count", "i64(str)", StrCount)
+    RT_METHOD("EndsWith", "i1(str)", StrEndsWith)
+    RT_METHOD("Flip", "str()", StrFlip)
+    RT_METHOD("Contains", "i1(str)", StrHas)
+    RT_METHOD("Has", "i1(str)", StrHas)
+    RT_METHOD("IndexOf", "i64(str)", IndexOf)
+    RT_METHOD("IndexOfFrom", "i64(i64,str)", IndexOfFrom)
+    RT_METHOD("KebabCase", "str()", StrKebabCase)
+    RT_METHOD("Left", "str(i64)", Left)
+    RT_METHOD("Lines", "seq<str>()", StrLines)
+    RT_METHOD("Mid", "str(i64)", Mid2)
+    RT_METHOD("MidLen", "str(i64,i64)", Mid3)
+    RT_METHOD("PadLeft", "str(i64,str)", StrPadLeft)
+    RT_METHOD("PadRight", "str(i64,str)", StrPadRight)
+    RT_METHOD("PascalCase", "str()", StrPascalCase)
+    RT_METHOD("Repeat", "str(i64)", StrRepeat)
+    RT_METHOD("Replace", "str(str,str)", StrReplace)
+    RT_METHOD("Right", "str(i64)", Right)
+    RT_METHOD("ScreamingSnake", "str()", StrScreamingSnake)
+    RT_METHOD("SnakeCase", "str()", StrSnakeCase)
+    RT_METHOD("Split", "seq<str>(str)", StrSplit)
+    RT_METHOD("SplitFields", "seq<str>(str)", SplitFields)
+    RT_METHOD("StartsWith", "i1(str)", StrStartsWith)
+    RT_METHOD("Substring", "str(i64,i64)", Substr)
+    RT_METHOD("ToLower", "str()", LCase)
+    RT_METHOD("ToUpper", "str()", UCase)
+    RT_METHOD("Trim", "str()", Trim)
+    RT_METHOD("TrimEnd", "str()", RTrim)
+    RT_METHOD("TrimStart", "str()", LTrim)
+    RT_METHOD("Like", "i1(str)", StrLike)
+    RT_METHOD("LikeCI", "i1(str)", StrLikeCI)
+RT_CLASS_END()
+
+// Viper.Terminal - terminal I/O, cursor control, and keyboard input
+/// @summary Provides terminal input, output, styling, and screen-control operations.
+/// @details
+/// `Viper.Terminal` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Ask`,
+/// `AskResult`, `BeginBatch`, `Bell`.
+RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
+    RT_METHOD("Ask", "str(str)", TermAsk)
+    RT_METHOD("AskResult", "obj<Viper.Result>(str)", TermAskResult)
+    RT_METHOD("BeginBatch", "void()", TermBeginBatch)
+    RT_METHOD("Bell", "void()", TermBell)
+    RT_METHOD("Clear", "void()", TermClear)
+    RT_METHOD("EndBatch", "void()", TermEndBatch)
+    RT_METHOD("Flush", "void()", TermFlush)
+    RT_METHOD("GetKey", "str()", TermGetKey)
+    RT_METHOD("GetKeyTimeout", "str(i64)", TermGetKeyTimeout)
+    RT_METHOD("InKey", "str()", TermInKey)
+    RT_METHOD("Print", "void(str)", TermPrint)
+    RT_METHOD("PrintInt", "void(i64)", TermPrintInt)
+    RT_METHOD("PrintNum", "void(f64)", TermPrintNum)
+    RT_METHOD("PrintBool", "void(i1)", TermPrintBool)
+    RT_METHOD("ReadLine", "str()", TermReadLine)
+    RT_METHOD("ReadLineResult", "obj<Viper.Result>()", TermReadLineResult)
+    RT_METHOD("Say", "void(str)", TermSay)
+    RT_METHOD("SayBool", "void(i1)", TermSayBool)
+    RT_METHOD("SayInt", "void(i64)", TermSayInt)
+    RT_METHOD("SayNum", "void(f64)", TermSayNum)
+    RT_METHOD("SetAltScreen", "void(i1)", TermSetAltScreen)
+    RT_METHOD("SetColor", "void(i64,i64)", TermSetColor)
+    RT_METHOD("SetCursorVisible", "void(i1)", TermSetCursorVisible)
+    RT_METHOD("SetPosition", "void(i64,i64)", TermSetPosition)
+    RT_METHOD("TryAsk", "obj<Viper.Option>(str)", TermTryAsk)
+    RT_METHOD("TryReadLine", "obj<Viper.Option>()", TermTryReadLine)
+RT_CLASS_END()
+
+// Viper.Text.Codec - Base64, Hex, and URL encoding/decoding utilities
+/// @summary Provides base64, Hex, and URL encoding/decoding utilities.
+/// @details
+/// `Viper.Text.Codec` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Base64Dec`,
+/// `Base64Enc`, `HexDec`, `HexEnc`.
+RT_CLASS_BEGIN("Viper.Text.Codec", Codec, "obj", none)
+    RT_METHOD("Base64Dec", "str(str)", CodecBase64Dec)
+    RT_METHOD("Base64Enc", "str(str)", CodecBase64Enc)
+    RT_METHOD("HexDec", "str(str)", CodecHexDec)
+    RT_METHOD("HexEnc", "str(str)", CodecHexEnc)
+    RT_METHOD("UrlDecode", "str(str)", CodecUrlDecode)
+    RT_METHOD("UrlEncode", "str(str)", CodecUrlEncode)
+RT_CLASS_END()
+
+// Viper.Text.Csv - CSV parsing and formatting (RFC 4180)
+/// @summary Provides cSV parsing and formatting (RFC 4180).
+/// @details
+/// `Viper.Text.Csv` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Format`,
+/// `FormatLine`, `FormatLineWith`, `FormatWith`.
+RT_CLASS_BEGIN("Viper.Text.Csv", Csv, "obj", none)
+    RT_METHOD("Format", "str(obj)", CsvFormat)
+    RT_METHOD("FormatLine", "str(obj)", CsvFormatLine)
+    RT_METHOD("FormatLineWith", "str(obj,str)", CsvFormatLineWith)
+    RT_METHOD("FormatWith", "str(obj,str)", CsvFormatWith)
+    RT_METHOD("IsValid", "i1(str)", CsvIsValid)
+    RT_METHOD("Parse", "obj(str)", CsvParse)
+    RT_METHOD("ParseLine", "seq<str>(str)", CsvParseLine)
+    RT_METHOD("ParseLineWith", "seq<str>(str,str)", CsvParseLineWith)
+    RT_METHOD("ParseWith", "obj(str,str)", CsvParseWith)
+RT_CLASS_END()
+
+// Viper.Text.FuzzyMatch - quick-open and command ranking helpers
+/// @summary Provides quick-open and command ranking helpers.
+/// @details
+/// `Viper.Text.FuzzyMatch` is a static runtime surface and does not require an instance. Its public
+/// surface exposes operations including `Score`, `Match`.
+RT_CLASS_BEGIN("Viper.Text.FuzzyMatch", FuzzyMatch, "none", none)
+    RT_METHOD("Score", "i64(str,str)", FuzzyMatchScore)
+    RT_METHOD("Match", "obj<Viper.Collections.Map>(str,str)", FuzzyMatchMatch)
+RT_CLASS_END()
+
+// Viper.Text.Ini - INI config file parsing and formatting
+/// @summary Provides iNI config file parsing and formatting.
+/// @details
+/// `Viper.Text.Ini` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Parse`, `Format`,
+/// `Get`, `Set`.
+RT_CLASS_BEGIN("Viper.Text.Ini", Ini, "obj", none)
+    RT_METHOD("Parse", "obj(str)", IniParse)
+    RT_METHOD("Format", "str(obj)", IniFormat)
+    RT_METHOD("Get", "str(obj,str,str)", IniGet)
+    RT_METHOD("Set", "void(obj,str,str,str)", IniSet)
+    RT_METHOD("HasSection", "i1(obj,str)", IniHasSection)
+    RT_METHOD("Sections", "obj(obj)", IniSections)
+    RT_METHOD("Remove", "i1(obj,str,str)", IniRemove)
+RT_CLASS_END()
+
+// Viper.Text.Json - JSON parsing and formatting (ECMA-404/RFC 8259)
+/// @summary Provides jSON parsing and formatting (ECMA-404/RFC 8259).
+/// @details
+/// `Viper.Text.Json` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Format`,
+/// `FormatPretty`, `Stringify`, `IsValid`.
+RT_CLASS_BEGIN("Viper.Text.Json", Json, "obj", none)
+    RT_METHOD("Format", "str(obj)", JsonFormat)
+    RT_METHOD("FormatPretty", "str(obj,i64)", JsonFormatPretty)
+    RT_METHOD("Stringify", "str(obj)", JsonFormat)
+    RT_METHOD("IsValid", "i1(str)", JsonIsValid)
+    RT_METHOD("NewObject", "obj<Viper.Collections.Map>()", JsonNewObject)
+    RT_METHOD("Has", "i1(obj,str)", MapHas)
+    RT_METHOD("GetStr", "str(obj,str)", MapGetStr)
+    RT_METHOD("GetInt", "i64(obj,str)", MapGetInt)
+    RT_METHOD("GetBool", "i1(obj,str)", MapGetBool)
+    RT_METHOD("SetStr", "void(obj,str,str)", MapSetStr)
+    RT_METHOD("SetInt", "void(obj,str,i64)", MapSetInt)
+    RT_METHOD("SetBool", "void(obj,str,i1)", MapSetBool)
+    RT_METHOD("Parse", "obj(str)", JsonParse)
+    RT_METHOD("ParseArray", "obj(str)", JsonParseArray)
+    RT_METHOD("ParseObject", "obj<Viper.Collections.Map>(str)", JsonParseObject)
+    RT_METHOD("TypeOf", "str(obj)", JsonTypeOf)
+RT_CLASS_END()
+
+// Viper.Text.JsonStream - SAX-style streaming JSON parser
+/// @summary Provides sAX-style streaming JSON parser.
+/// @details
+/// Create `Viper.Text.JsonStream` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as `Depth`,
+/// `TokenType` and operations including `BoolValue`, `Error`, `HasNext`, `Next`.
+RT_CLASS_BEGIN("Viper.Text.JsonStream", JsonStream, "obj(str)", JsonStreamNew)
+    RT_PROP("Depth", "i64", JsonStreamDepth, none)
+    RT_PROP("TokenType", "i64", JsonStreamTokenType, none)
+    RT_METHOD("BoolValue", "i1()", JsonStreamBoolValue)
+    RT_METHOD("Error", "str()", JsonStreamError)
+    RT_METHOD("HasNext", "i1()", JsonStreamHasNext)
+    RT_METHOD("Next", "i64()", JsonStreamNext)
+    RT_METHOD("NextResult", "obj<Viper.Result>()", JsonStreamNextResult)
+    RT_METHOD("NumberValue", "f64()", JsonStreamNumberValue)
+    RT_METHOD("Skip", "void()", JsonStreamSkip)
+    RT_METHOD("StringValue", "str()", JsonStreamStringValue)
+RT_CLASS_END()
+
+// Viper.Text.Uuid - UUID generation and manipulation
+/// @summary Provides uUID generation and manipulation.
+/// @details
+/// `Viper.Text.Uuid` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes a property such as `Empty` and
+/// operations including `FromBytes`, `IsValid`, `ToBytes`.
+RT_CLASS_BEGIN("Viper.Text.Uuid", Uuid, "obj", none)
+    RT_PROP("Empty", "str", UuidEmpty, none)
+    RT_METHOD("FromBytes", "str(obj)", UuidFromBytes)
+    RT_METHOD("IsValid", "i1(str)", UuidIsValid)
+    RT_METHOD("New", "str()", UuidNew)
+    RT_METHOD("ToBytes", "obj(str)", UuidToBytes)
+RT_CLASS_END()
+
+// Viper.Text.Pluralize - English noun pluralization
+/// @summary Provides english noun pluralization.
+/// @details
+/// `Viper.Text.Pluralize` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Count`, `Plural`,
+/// `Singular`.
+RT_CLASS_BEGIN("Viper.Text.Pluralize", Pluralize, "obj", none)
+    RT_METHOD("Count", "str(i64,str)", PluralizeCount)
+    RT_METHOD("Plural", "str(str)", Pluralize)
+    RT_METHOD("Singular", "str(str)", Singularize)
+RT_CLASS_END()
+
+// Viper.Text.Version - Semantic version parsing and comparison
+/// @summary Provides semantic version parsing and comparison.
+/// @details
+/// `Viper.Text.Version` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes properties such as `Build`, `Major`,
+/// `Minor` and operations including `BumpMajor`, `BumpMinor`, `BumpPatch`, `Cmp`.
+RT_CLASS_BEGIN("Viper.Text.Version", Version, "obj(str)", none)
+    RT_PROP("Build", "str", VersionBuild, none)
+    RT_PROP("Major", "i64", VersionMajor, none)
+    RT_PROP("Minor", "i64", VersionMinor, none)
+    RT_PROP("Patch", "i64", VersionPatch, none)
+    RT_PROP("Prerelease", "str", VersionPrerelease, none)
+    RT_METHOD("BumpMajor", "str()", VersionBumpMajor)
+    RT_METHOD("BumpMinor", "str()", VersionBumpMinor)
+    RT_METHOD("BumpPatch", "str()", VersionBumpPatch)
+    RT_METHOD("Cmp", "i64(obj)", VersionCmp)
+    RT_METHOD("IsValid", "i1(str)", VersionIsValid)
+    RT_METHOD("Satisfies", "i1(str)", VersionSatisfies)
+    RT_METHOD("ToString", "str()", VersionToString)
+RT_CLASS_END()
+
+// Viper.Text.Diff - text diffing utilities
+/// @summary Provides text diffing utilities.
+/// @details
+/// `Viper.Text.Diff` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `CountChanges`,
+/// `Lines`, `Patch`, `Unified`.
+RT_CLASS_BEGIN("Viper.Text.Diff", Diff, "obj", none)
+    RT_METHOD("CountChanges", "i64(str,str)", DiffCountChanges)
+    RT_METHOD("Lines", "obj(str,str)", DiffLines)
+    RT_METHOD("Patch", "str(str,obj)", DiffPatch)
+    RT_METHOD("Unified", "str(str,str,i64)", DiffUnified)
+RT_CLASS_END()
+
+// Viper.Text.Toml - TOML config parsing and formatting
+/// @summary Provides tOML config parsing and formatting.
+/// @details
+/// `Viper.Text.Toml` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Parse`,
+/// `IsValid`, `Format`, `Get`.
+RT_CLASS_BEGIN("Viper.Text.Toml", Toml, "obj", none)
+    RT_METHOD("Parse", "obj(str)", TomlParse)
+    RT_METHOD("IsValid", "i1(str)", TomlIsValid)
+    RT_METHOD("Format", "str(obj)", TomlFormat)
+    RT_METHOD("Get", "obj(obj,str)", TomlGet)
+RT_CLASS_END()
+
+// Viper.Text.Markdown - Markdown conversion and extraction
+/// @summary Provides markdown conversion and extraction.
+/// @details
+/// `Viper.Text.Markdown` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `ToHtml`,
+/// `ToText`, `ExtractLinks`, `ExtractHeadings`.
+RT_CLASS_BEGIN("Viper.Text.Markdown", Markdown, "obj", none)
+    RT_METHOD("ToHtml", "str(str)", MarkdownToHtml)
+    RT_METHOD("ToText", "str(str)", MarkdownToText)
+    RT_METHOD("ExtractLinks", "seq<str>(str)", MarkdownExtractLinks)
+    RT_METHOD("ExtractHeadings", "seq<str>(str)", MarkdownExtractHeadings)
+RT_CLASS_END()
+
+// Viper.Text.JsonPath - JSONPath query expressions
+/// @summary Provides jSONPath query expressions.
+/// @details
+/// `Viper.Text.JsonPath` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Get`, `GetOr`,
+/// `Has`, `Query`.
+RT_CLASS_BEGIN("Viper.Text.JsonPath", JsonPath, "obj", none)
+    RT_METHOD("Get", "obj(obj,str)", JsonPathGet)
+    RT_METHOD("GetOr", "obj(obj,str,obj)", JsonPathGetOr)
+    RT_METHOD("Has", "i1(obj,str)", JsonPathHas)
+    RT_METHOD("Query", "obj(obj,str)", JsonPathQuery)
+    RT_METHOD("GetStr", "str(obj,str)", JsonPathGetStr)
+    RT_METHOD("GetInt", "i64(obj,str)", JsonPathGetInt)
+RT_CLASS_END()
+
+// Viper.Text.StringBuilder
+/// @summary Provides String Builder functionality for text processing workflows.
+/// @details
+/// Create `Viper.Text.StringBuilder` values through its registered constructor and use the returned
+/// object with the instance members below. Its public surface exposes properties such as
+/// `Capacity`, `Length` and operations including `Append`, `AppendLine`, `Clear`, `ToString`.
+RT_CLASS_BEGIN("Viper.Text.StringBuilder", StringBuilder, "opaque*", SBNew)
+    RT_PROP("Capacity", "i64", SBGetCapacity, none)
+    RT_PROP("Length", "i64", SBGetLength, none)
+    RT_METHOD("Append", "obj(str)", SBAppend)
+    RT_METHOD("AppendLine", "obj(str)", SBAppendLine)
+    RT_METHOD("Clear", "void()", SBClear)
+    RT_METHOD("ToString", "str()", SBToString)
+RT_CLASS_END()
+
+// Viper.Text.Pattern - regular expression pattern matching
+/// @summary Provides regular expression pattern matching.
+/// @details
+/// `Viper.Text.Pattern` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `IsMatch`, `Find`,
+/// `FindOption`, `FindFrom`.
+RT_CLASS_BEGIN("Viper.Text.Pattern", Pattern, "obj", none)
+    RT_METHOD("IsMatch", "i1(str,str)", PatternIsMatch)
+    RT_METHOD("Find", "str(str,str)", PatternFind)
+    RT_METHOD("FindOption", "obj<Viper.Option>(str,str)", PatternFindOption)
+    RT_METHOD("FindFrom", "str(str,str,i64)", PatternFindFrom)
+    RT_METHOD("FindFromOption", "obj<Viper.Option>(str,str,i64)", PatternFindFromOption)
+    RT_METHOD("FindPos", "i64(str,str)", PatternFindPos)
+    RT_METHOD("FindPosOption", "obj<Viper.Option>(str,str)", PatternFindPosOption)
+    RT_METHOD("FindAll", "seq<str>(str,str)", PatternFindAll)
+    RT_METHOD("Replace", "str(str,str,str)", PatternReplace)
+    RT_METHOD("ReplaceFirst", "str(str,str,str)", PatternReplaceFirst)
+    RT_METHOD("Split", "seq<str>(str,str)", PatternSplit)
+    RT_METHOD("Escape", "str(str)", PatternEscape)
+RT_CLASS_END()
+
+// Viper.Text.CompiledPattern - pre-compiled regex for efficient repeated use
+/// @summary Provides pre-compiled regex for efficient repeated use.
+/// @details
+/// Create `Viper.Text.CompiledPattern` values through its registered constructor and use the
+/// returned object with the instance members below. Its public surface exposes a property such as
+/// `Pattern` and operations including `IsMatch`, `Find`, `FindOption`, `FindFrom`.
+RT_CLASS_BEGIN("Viper.Text.CompiledPattern", CompiledPattern, "obj", CompiledPatternNew)
+    RT_PROP("Pattern", "str", CompiledPatternGetPattern, none)
+    RT_METHOD("IsMatch", "i1(str)", CompiledPatternIsMatch)
+    RT_METHOD("Find", "str(str)", CompiledPatternFind)
+    RT_METHOD("FindOption", "obj<Viper.Option>(str)", CompiledPatternFindOption)
+    RT_METHOD("FindFrom", "str(str,i64)", CompiledPatternFindFrom)
+    RT_METHOD("FindFromOption", "obj<Viper.Option>(str,i64)", CompiledPatternFindFromOption)
+    RT_METHOD("FindPos", "i64(str)", CompiledPatternFindPos)
+    RT_METHOD("FindPosOption", "obj<Viper.Option>(str)", CompiledPatternFindPosOption)
+    RT_METHOD("FindAll", "seq<str>(str)", CompiledPatternFindAll)
+    RT_METHOD("Captures", "seq<str>(str)", CompiledPatternCaptures)
+    RT_METHOD("CapturesFrom", "seq<str>(str,i64)", CompiledPatternCapturesFrom)
+    RT_METHOD("Replace", "str(str,str)", CompiledPatternReplace)
+    RT_METHOD("ReplaceFirst", "str(str,str)", CompiledPatternReplaceFirst)
+    RT_METHOD("Split", "seq<str>(str)", CompiledPatternSplit)
+    RT_METHOD("SplitN", "seq<str>(str,i64)", CompiledPatternSplitN)
+RT_CLASS_END()
+
+// Viper.Text.Template - simple string templating
+/// @summary Provides simple string templating.
+/// @details
+/// `Viper.Text.Template` exposes a registry-backed runtime surface without requiring callers to
+/// construct the class directly. Its public surface exposes operations including `Render`,
+/// `RenderSeq`, `RenderWith`, `Has`.
+RT_CLASS_BEGIN("Viper.Text.Template", Template, "obj", none)
+    RT_METHOD("Render", "str(str,obj)", TemplateRender)
+    RT_METHOD("RenderSeq", "str(str,obj)", TemplateRenderSeq)
+    RT_METHOD("RenderWith", "str(str,obj,str,str)", TemplateRenderWith)
+    RT_METHOD("Has", "i1(str,str)", TemplateHas)
+    RT_METHOD("Keys", "seq<str>(str)", TemplateKeys)
+    RT_METHOD("Escape", "str(str)", TemplateEscape)
+RT_CLASS_END()

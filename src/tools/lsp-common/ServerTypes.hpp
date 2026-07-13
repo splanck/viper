@@ -76,25 +76,25 @@ struct SymbolInfo {
 /// @brief Source range in a compiler-owned file.
 /// @details Coordinates are 1-based byte columns and half-open at the end.
 struct SourceRangeInfo {
-    std::string file;       ///< Source file path.
-    uint32_t line{0};       ///< 1-based start line.
-    uint32_t column{0};     ///< 1-based start column.
-    uint32_t endLine{0};    ///< 1-based end line.
-    uint32_t endColumn{0};  ///< 1-based end column, exclusive.
+    std::string file;      ///< Source file path.
+    uint32_t line{0};      ///< 1-based start line.
+    uint32_t column{0};    ///< 1-based start column.
+    uint32_t endLine{0};   ///< 1-based end line.
+    uint32_t endColumn{0}; ///< 1-based end column, exclusive.
 };
 
 /// @brief Location result for definition/reference navigation.
 struct LocationInfo {
-    SourceRangeInfo range;  ///< File and range for the target occurrence.
-    std::string name;       ///< Display name for the symbol.
-    std::string kind;       ///< Symbol kind string.
+    SourceRangeInfo range; ///< File and range for the target occurrence.
+    std::string name;      ///< Display name for the symbol.
+    std::string kind;      ///< Symbol kind string.
     bool isDefinition{false};
 };
 
 /// @brief Single text edit produced by a workspace-level refactoring.
 struct TextEditInfo {
-    SourceRangeInfo range;  ///< File and range to replace.
-    std::string newText;    ///< Replacement text.
+    SourceRangeInfo range; ///< File and range to replace.
+    std::string newText;   ///< Replacement text.
 };
 
 /// @brief Result of a semantic rename request.
@@ -156,11 +156,12 @@ struct SemanticTokenInfo {
 
 /// @brief Completion item from a completion engine.
 struct CompletionInfo {
-    std::string label;      ///< Text shown in the completion list.
-    std::string insertText; ///< Text inserted when the item is accepted.
-    int kind{0};            ///< Maps to CompletionKind int (0-12)
-    std::string detail;     ///< Secondary detail (e.g., type/signature).
-    int sortPriority{0};    ///< Lower values sort earlier in the list.
+    std::string label;         ///< Text shown in the completion list.
+    std::string insertText;    ///< Text inserted when the item is accepted.
+    int kind{0};               ///< Maps to CompletionKind int (0-12)
+    std::string detail;        ///< Secondary detail (e.g., type/signature).
+    int sortPriority{0};       ///< Lower values sort earlier in the list.
+    std::string documentation; ///< Optional Markdown documentation.
 };
 
 /// @brief Runtime class summary.
@@ -168,6 +169,8 @@ struct RuntimeClassSummary {
     std::string qname;    ///< Fully-qualified class name.
     int propertyCount{0}; ///< Number of properties on the class.
     int methodCount{0};   ///< Number of methods on the class.
+    std::string summary;  ///< Short authored class description.
+    std::string details;  ///< Long authored Markdown class description.
 };
 
 /// @brief Runtime member (method or property).

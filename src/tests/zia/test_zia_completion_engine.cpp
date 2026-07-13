@@ -340,6 +340,26 @@ func compute() -> Number {    var r = Math.Sq
     EXPECT_FALSE(items.empty());
 }
 
+TEST(CompletionEngine, RuntimeClassCompletionCarriesAuthoredDocumentation) {
+    const std::string source = R"(
+module Test;
+
+bind Viper.GUI as GUI;
+
+func main() {
+    GUI.Ap
+}
+)";
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "GUI.Ap");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+    const CompletionItem *app = findItem(items, "App");
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app->kind, CompletionKind::RuntimeClass);
+    EXPECT_TRUE(app->documentation.find("Owns a GUI application window") != std::string::npos);
+    EXPECT_TRUE(app->documentation.find("`Viper.GUI.App`") != std::string::npos);
+}
+
 TEST(CompletionEngine, RuntimeMemberCompletionCarriesDocumentation) {
     const std::string source = R"(
 module Test;
