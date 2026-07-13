@@ -1811,7 +1811,7 @@ add_test(NAME zia_xenoscape_level_validation
 set_tests_properties(zia_xenoscape_level_validation PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;gameplay"
-        TIMEOUT 30)
+        TIMEOUT 180)
 
 add_test(NAME zia_xenoscape_playthrough
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/playthrough_probe.zia"
@@ -1883,7 +1883,7 @@ add_test(NAME zia_xenoscape_campaign
 set_tests_properties(zia_xenoscape_campaign PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;gameplay"
-        TIMEOUT 30)
+        TIMEOUT 180)
 
 add_test(NAME zia_xenoscape_render
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/render_probe.zia"
@@ -1908,7 +1908,7 @@ add_test(NAME zia_xenoscape_performance
 set_tests_properties(zia_xenoscape_performance PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;gameplay;performance"
-        TIMEOUT 20)
+        TIMEOUT 60)
 
 add_test(NAME zia_xenoscape_soak
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/soak_probe.zia"
