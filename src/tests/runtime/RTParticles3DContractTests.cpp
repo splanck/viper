@@ -25,6 +25,7 @@ extern "C" {
 #include <cassert>
 #include <cmath>
 #include <csetjmp>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -90,12 +91,16 @@ struct StubMaterial {
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6] = {{0.0}};
     int32_t shading_model = 0;
-    double custom_params[8] = {0.0};
+    double custom_params[12] = {0.0};
     double depth_bias = 0.0;
     double slope_scaled_depth_bias = 0.0;
     double soft_fade = 0.0;
     int8_t ssr_enabled = 0;
+    uint32_t identity_serial = 0;
 };
+
+static_assert(sizeof(StubMaterial) == sizeof(rt_material3d));
+static_assert(offsetof(StubMaterial, soft_fade) == offsetof(rt_material3d, soft_fade));
 
 struct ParticlesView {
     void *vptr;

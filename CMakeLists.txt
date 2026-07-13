@@ -136,7 +136,9 @@ option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 option(IL_SANITIZE_THREAD "Enable thread sanitizer (mutually exclusive with ASAN)" OFF)
 option(VIPER_ENABLE_COVERAGE "Enable Clang source-based coverage instrumentation" OFF)
-option(VIPER_FAST_DEBUG "Use light optimization for Debug builds of Viper targets" OFF)
+option(VIPER_FAST_DEBUG
+       "Use light optimization and reduced STL checking for Debug builds of Viper targets"
+       OFF)
 
 if(VIPER_ENABLE_COVERAGE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(FATAL_ERROR "VIPER_ENABLE_COVERAGE requires Clang or AppleClang")
@@ -279,7 +281,26 @@ endif()
 
 if(VIPER_FAST_DEBUG)
   if(MSVC)
-    list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:/Ob1>")
+    # CMake's MSVC Debug defaults (/Od /RTC1 and checked STL iterators) make
+    # interpreter- and software-renderer-heavy tests an order of magnitude
+    # slower than the -Og configuration used by the macOS build.  /RTC1 is
+    # incompatible with optimization, so remove it from the effective Debug
+    # flags while this explicitly requested fast-Debug mode is active.  Keep
+    # debug symbols, assertions, and the Debug CRT; only compiler optimization
+    # and iterator instrumentation change.
+    foreach(_viper_debug_flags_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG)
+      set(_viper_debug_flags "${${_viper_debug_flags_var}}")
+      foreach(_viper_slow_debug_flag IN ITEMS
+          "[/-]RTC[1su]"
+          "[/-]Od"
+          "[/-]Ob0")
+        string(REGEX REPLACE "(^| )${_viper_slow_debug_flag}($| )" " "
+               _viper_debug_flags "${_viper_debug_flags}")
+      endforeach()
+      string(APPEND _viper_debug_flags " /O1 /Ob1")
+      set(${_viper_debug_flags_var} "${_viper_debug_flags}")
+    endforeach()
+    add_compile_definitions("$<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>")
   else()
     list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:-Og>")
   endif()
@@ -909,6 +930,17 @@ endif ()
 if (TARGET viperaud)
   list(APPEND VIPER_PUBLIC_LIB_TARGETS viperaud)
 endif ()
+
+if(VIPER_FAST_DEBUG AND MSVC)
+  # MSVC encodes _ITERATOR_DEBUG_LEVEL into C++ object files and rejects a
+  # consumer that links static libraries built with a different value. Export
+  # the fast-Debug ABI requirement on every public library so find_package(Viper)
+  # consumers compile their Debug objects compatibly.
+  foreach(_viper_public_target IN LISTS VIPER_PUBLIC_LIB_TARGETS)
+    target_compile_definitions(${_viper_public_target} INTERFACE
+      "$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CXX>>:_ITERATOR_DEBUG_LEVEL=0>")
+  endforeach()
+endif()
 
 set_target_properties(viper_common_opts PROPERTIES EXPORT_NAME common_opts)
 if (TARGET viper_support)

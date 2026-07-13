@@ -10,19 +10,92 @@ set(_tmp_root "${VIPER_BUILD_DIR}/tests/install-package-tarball-smoke")
 set(_artifact "${_tmp_root}/viper-toolchain.tar.gz")
 set(_release_artifact "${_tmp_root}/viper-toolchain-release.tar.gz")
 set(_extensionless_artifact "${_tmp_root}/portable-toolchain")
-
-set(_install_package_cmd
-        "${VIPER_BIN}" install-package
-        --build-dir "${VIPER_BUILD_DIR}"
-        --skip-build
-        --target tarball
-        --output-file "${_artifact}")
-if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-    list(APPEND _install_package_cmd --config "${VIPER_CONFIG}")
-endif ()
+set(_stage "${_tmp_root}/stage")
 
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}")
+
+# The installed-config smoke separately exercises the repository's full
+# cmake --install tree. This test targets tarball creation, verification,
+# checksums, output naming, and release collision behavior, so use a complete
+# minimal manifest fixture instead of compressing the multi-gigabyte Debug
+# install tree three times.
+file(MAKE_DIRECTORY
+        "${_stage}/bin"
+        "${_stage}/lib/cmake/Viper"
+        "${_stage}/lib")
+
+if (WIN32)
+    set(_tool_suffix ".exe")
+    set(_archive_prefix "")
+    set(_archive_suffix ".lib")
+else ()
+    set(_tool_suffix "")
+    set(_archive_prefix "lib")
+    set(_archive_suffix ".a")
+endif ()
+
+# A host-native executable is required only for staged platform/architecture
+# detection. The real Viper binary still drives every command in this test.
+configure_file("${CMAKE_COMMAND}" "${_stage}/bin/viper${_tool_suffix}" COPYONLY)
+foreach (_tool IN ITEMS
+        zia
+        vbasic
+        ilrun
+        il-verify
+        il-dis
+        zia-server
+        vbasic-server
+        basic-ast-dump
+        basic-lex-dump
+        viperide)
+    file(WRITE "${_stage}/bin/${_tool}${_tool_suffix}" "fixture\n")
+endforeach ()
+if (NOT WIN32)
+    file(CHMOD "${_stage}/bin/viper${_tool_suffix}"
+            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+                        WORLD_READ WORLD_EXECUTE)
+    foreach (_tool IN ITEMS
+            zia
+            vbasic
+            ilrun
+            il-verify
+            il-dis
+            zia-server
+            vbasic-server
+            basic-ast-dump
+            basic-lex-dump
+            viperide)
+        file(CHMOD "${_stage}/bin/${_tool}${_tool_suffix}"
+                PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+                            WORLD_READ WORLD_EXECUTE)
+    endforeach ()
+endif ()
+
+file(WRITE "${_stage}/lib/cmake/Viper/ViperConfig.cmake" "# tarball smoke fixture\n")
+file(WRITE "${_stage}/lib/cmake/Viper/ViperTargets.cmake" "# tarball smoke fixture\n")
+file(WRITE "${_stage}/lib/cmake/Viper/ViperConfigVersion.cmake"
+        "set(PACKAGE_VERSION \"1.2.3\")\n")
+
+set(_runtime_manifest
+        "${VIPER_BUILD_DIR}/generated/viper/runtime/RuntimeComponentManifest.hpp")
+if (NOT EXISTS "${_runtime_manifest}")
+    message(FATAL_ERROR "generated runtime component manifest is missing: ${_runtime_manifest}")
+endif ()
+file(STRINGS "${_runtime_manifest}" _runtime_archive_lines
+        REGEX "\"viper_rt_[A-Za-z0-9_]+\"")
+foreach (_archive_line IN LISTS _runtime_archive_lines)
+    string(REGEX MATCH "viper_rt_[A-Za-z0-9_]+" _archive "${_archive_line}")
+    if (NOT "${_archive}" STREQUAL "")
+        file(WRITE "${_stage}/lib/${_archive_prefix}${_archive}${_archive_suffix}" "fixture\n")
+    endif ()
+endforeach ()
+
+set(_install_package_cmd
+        "${VIPER_BIN}" install-package
+        --stage-dir "${_stage}"
+        --target tarball
+        --output-file "${_artifact}")
 
 execute_process(
         COMMAND ${_install_package_cmd}
@@ -81,13 +154,9 @@ file(WRITE "${_artifact}.sha256" "${_valid_sidecar}")
 
 set(_extensionless_cmd
         "${VIPER_BIN}" install-package
-        --build-dir "${VIPER_BUILD_DIR}"
-        --skip-build
+        --stage-dir "${_stage}"
         --target tarball
         -o "${_extensionless_artifact}")
-if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-    list(APPEND _extensionless_cmd --config "${VIPER_CONFIG}")
-endif ()
 execute_process(
         COMMAND ${_extensionless_cmd}
         RESULT_VARIABLE _extensionless_rv
@@ -101,14 +170,10 @@ endif ()
 set(_release_cmd
         "${CMAKE_COMMAND}" -E env SOURCE_DATE_EPOCH=1700000000
         "${VIPER_BIN}" install-package
-        --build-dir "${VIPER_BUILD_DIR}"
-        --skip-build
+        --stage-dir "${_stage}"
         --target tarball
         --output-file "${_release_artifact}"
         --release)
-if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
-    list(APPEND _release_cmd --config "${VIPER_CONFIG}")
-endif ()
 execute_process(
         COMMAND ${_release_cmd}
         RESULT_VARIABLE _release_rv

@@ -48,6 +48,15 @@ done
 
 cd "$ROOT_DIR"
 
+RG_BIN=""
+if command -v rg >/dev/null 2>&1; then
+    RG_BIN="rg"
+elif command -v rg.exe >/dev/null 2>&1; then
+    # WSL inherits Windows executables with their .exe suffix. Prefer the
+    # native ripgrep binary over recursively scanning /mnt/c with GNU grep.
+    RG_BIN="rg.exe"
+fi
+
 need_file() {
     local path="$1"
     if [[ ! -e "$path" ]]; then
@@ -59,8 +68,9 @@ need_file() {
 rg_count() {
     local pattern="$1"
     shift
-    if command -v rg >/dev/null 2>&1; then
-        { rg -n -- "$pattern" "$@" 2>/dev/null || true; } | wc -l | tr -d ' '
+    if [[ -n "$RG_BIN" ]]; then
+        { "$RG_BIN" -n -- "$pattern" "$@" </dev/null 2>/dev/null || true; } \
+            | wc -l | tr -d ' '
     else
         { grep -R -n -E -- "$pattern" "$@" 2>/dev/null || true; } | wc -l | tr -d ' '
     fi
@@ -69,23 +79,49 @@ rg_count() {
 file_line_count_over() {
     local threshold="$1"
     shift
+    local roots=()
+    local root
+    for root in "$@"; do
+        [[ -e "$root" ]] && roots+=("$root")
+    done
+
+    if [[ -n "$RG_BIN" ]]; then
+        { "$RG_BIN" --hidden --no-ignore --count '^' "${roots[@]}" \
+            -g '*.c' -g '*.h' -g '*.cpp' -g '*.hpp' -g '*.inc' -g '*.def' \
+            -g '*.zia' -g '*.bas' -g '*.il' -g '*.cmake' -g 'CMakeLists.txt' \
+            -g '*.sh' -g '*.cmd' -g '*.ps1' </dev/null 2>/dev/null || true; } \
+            | awk -F: -v threshold="$threshold" -v verbose="$VERBOSE" '
+                $NF > threshold {
+                    count += 1
+                    if (verbose == 1) {
+                        lines = $NF
+                        sub(/:[^:]*$/, "", $0)
+                        printf "  mega-file %s %s\n", lines, $0 > "/dev/stderr"
+                    }
+                }
+                END { print count + 0 }
+            '
+        return
+    fi
+
     local count=0
     local lines
     local file
-    while IFS= read -r file; do
-        [[ -f "$file" ]] || continue
-        lines="$(wc -l < "$file" | tr -d ' ')"
+    while read -r lines file; do
+        [[ "$file" == "total" ]] && continue
+        [[ "$lines" =~ ^[0-9]+$ ]] || continue
         if [[ "$lines" -gt "$threshold" ]]; then
             count=$((count + 1))
             if [[ "$VERBOSE" -eq 1 ]]; then
                 printf '  mega-file %s %s\n' "$lines" "$file" >&2
             fi
         fi
-    done < <(find "$@" -type f ! -name '*.md' \
+    done < <(find "${roots[@]}" -type f ! -name '*.md' \
         \( -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' -o \
            -name '*.inc' -o -name '*.def' -o -name '*.zia' -o -name '*.bas' -o \
            -name '*.il' -o -name '*.cmake' -o -name 'CMakeLists.txt' -o \
-           -name '*.sh' -o -name '*.cmd' -o -name '*.ps1' \))
+           -name '*.sh' -o -name '*.cmd' -o -name '*.ps1' \) \
+        -exec wc -l {} +)
     printf '%s\n' "$count"
 }
 
@@ -103,10 +139,10 @@ manual_alloc_hotspot_count() {
             fi
         fi
     done < <(
-        if command -v rg >/dev/null 2>&1; then
-            { rg -n 'malloc|calloc|realloc|free|new |delete ' \
+        if [[ -n "$RG_BIN" ]]; then
+            { "$RG_BIN" -n 'malloc|calloc|realloc|free|new |delete ' \
                 src/runtime src/bytecode src/tools/common/packaging src/tools/viper \
-                -g '!*.md' 2>/dev/null || true; }
+                -g '!*.md' </dev/null 2>/dev/null || true; }
         else
             { grep -R -n -E 'malloc|calloc|realloc|free|new |delete ' \
                 src/runtime src/bytecode src/tools/common/packaging src/tools/viper 2>/dev/null || true; }
@@ -139,30 +175,38 @@ graphics_stub_function_count() {
 }
 
 graphics_stub_unclassified_count() {
-    local count=0
-    local file
-    local line
-    local fn_line
-    while IFS=: read -r file line _rest; do
-        [[ -n "$file" && -n "$line" ]] || continue
-        fn_line="$line"
-        if ! sed -n "$((fn_line > 10 ? fn_line - 10 : 1)),$((fn_line - 1))p" "$file" \
-            | grep -Eiq 'Trapping stub|Silent stub|fallback|no-op|RT_GRAPHICS_TRAP|graphics_unavailable'; then
-            count=$((count + 1))
-            if [[ "$VERBOSE" -eq 1 ]]; then
-                printf '  unclassified-stub %s:%s\n' "$file" "$line" >&2
-            fi
-        fi
-    done < <(
-        if command -v rg >/dev/null 2>&1; then
-            { rg -n '^[A-Za-z_][A-Za-z0-9_ *]*[[:space:]]+rt_[A-Za-z0-9_]+[[:space:]]*\(' \
-                src/runtime/graphics/common/*_stubs.c 2>/dev/null || true; }
-        else
-            { grep -n -E '^[A-Za-z_][A-Za-z0-9_ *]*[[:space:]]+rt_[A-Za-z0-9_]+[[:space:]]*\(' \
-                src/runtime/graphics/common/*_stubs.c 2>/dev/null || true; }
-        fi
-    )
-    printf '%s\n' "$count"
+    awk -v verbose="$VERBOSE" '
+        BEGIN {
+            function_pattern = "^[A-Za-z_][A-Za-z0-9_ *]*[[:space:]]+rt_[A-Za-z0-9_]+[[:space:]]*\\("
+            classification_pattern = "trapping stub|silent stub|fallback|no-op|rt_graphics_trap|graphics_unavailable"
+        }
+        FNR == 1 {
+            for (line_number in prior_lines)
+                delete prior_lines[line_number]
+        }
+        {
+            if ($0 ~ function_pattern) {
+                classified = 0
+                for (offset = 1; offset <= 10; ++offset) {
+                    prior_number = FNR - offset
+                    if (prior_number > 0 &&
+                        tolower(prior_lines[prior_number]) ~ classification_pattern) {
+                        classified = 1
+                        break
+                    }
+                }
+                if (!classified) {
+                    count += 1
+                    if (verbose == 1)
+                        printf "  unclassified-stub %s:%s\n", FILENAME, FNR > "/dev/stderr"
+                }
+            }
+            prior_lines[FNR] = $0
+            if (FNR > 10)
+                delete prior_lines[FNR - 10]
+        }
+        END { print count + 0 }
+    ' src/runtime/graphics/common/*_stubs.c
 }
 
 metric_value() {

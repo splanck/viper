@@ -528,7 +528,7 @@ function SnapshotState(){
  $regDir=Join-Path $txn 'registry';[IO.Directory]::CreateDirectory($regDir)|Out-Null;$i=0;foreach($rk in $regKeys){$dir=Join-Path $regDir ([string]$i);[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir 'provider'),$rk[0]);[IO.File]::WriteAllText((Join-Path $dir 'native'),$rk[1]);if(Test-Path -LiteralPath $rk[0]){& $regExe export $rk[1] (Join-Path $dir 'backup.reg') /y | Out-Null;if($LASTEXITCODE -ne 0){throw 'failed to snapshot Windows installer registry state'};[IO.File]::WriteAllText((Join-Path $dir 'state'),'present')}else{[IO.File]::WriteAllText((Join-Path $dir 'state'),'absent')};$i++}
 }
 function CopyOverlay($fs,$f,[string]$dst){
- Parent $dst;$tmp=$dst+'.viper-new-'+[Guid]::NewGuid().ToString('N');$out=[IO.File]::CreateNew($tmp);$hash=$null;$actual='';$left=[int64]$f[3];try{if($f[4]){$hash=[Security.Cryptography.SHA256]::Create()};$null=$fs.Seek($baseOffset+[int64]$f[2],[IO.SeekOrigin]::Begin);$buf=New-Object byte[] 65536;while($left -gt 0){$want=$buf.Length;if($left -lt $want){$want=[int]$left};$n=$fs.Read($buf,0,$want);if($n -le 0){throw 'installer overlay ended early'};if($hash){$null=$hash.TransformBlock($buf,0,$n,$buf,0)};$out.Write($buf,0,$n);$left-=$n};if($hash){$null=$hash.TransformFinalBlock([byte[]]@(),0,0);$actual=[BitConverter]::ToString($hash.Hash).Replace('-','').ToLowerInvariant()}}finally{$out.Dispose();if($hash){$hash.Dispose()};if($left -gt 0){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}};if($f[4] -and $actual -ne $f[4]){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue;throw 'installer overlay checksum mismatch'};return $tmp
+ Parent $dst;$tmp=$dst+'.viper-new-'+[Guid]::NewGuid().ToString('N');$out=[IO.File]::Open($tmp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);$hash=$null;$actual='';$left=[int64]$f[3];try{if($f[4]){$hash=[Security.Cryptography.SHA256]::Create()};$null=$fs.Seek($baseOffset+[int64]$f[2],[IO.SeekOrigin]::Begin);$buf=New-Object byte[] 65536;while($left -gt 0){$want=$buf.Length;if($left -lt $want){$want=[int]$left};$n=$fs.Read($buf,0,$want);if($n -le 0){throw 'installer overlay ended early'};if($hash){$null=$hash.TransformBlock($buf,0,$n,$buf,0)};$out.Write($buf,0,$n);$left-=$n};if($hash){$null=$hash.TransformFinalBlock([byte[]]@(),0,0);$actual=[BitConverter]::ToString($hash.Hash).Replace('-','').ToLowerInvariant()}}finally{$out.Dispose();if($hash){$hash.Dispose()};if($left -gt 0){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}};if($f[4] -and $actual -ne $f[4]){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue;throw 'installer overlay checksum mismatch'};return $tmp
 }
 function ReplaceTemp([string]$tmp,[string]$dst){try{if(Test-Path -LiteralPath $dst){Remove-Item -LiteralPath $dst -Force -ErrorAction Stop};Move-Item -LiteralPath $tmp -Destination $dst -Force -ErrorAction Stop}finally{if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}}}
 function BeginTransaction(){
@@ -687,19 +687,19 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
            << ";Desc=" << powershellSingleQuote(assoc.description)
            << ";Mime=" << powershellSingleQuote(assoc.mimeType)
            << ";Prog=" << powershellSingleQuote(assoc.progId)
-           << ";Args=" << powershellSingleQuote(assoc.openCommandArguments) << "},\n";
+           << ";Args=" << powershellSingleQuote(assoc.openCommandArguments) << "}\n";
     }
     ps << ")\n";
     ps << "$regKeys=@(\n";
-    ps << "@(" << powershellSingleQuote(hive + "\\" + uninstallKey) << ","
-       << powershellSingleQuote(nativeHive + "\\" + uninstallKey) << "),\n";
+    ps << ",@(" << powershellSingleQuote(hive + "\\" + uninstallKey) << ","
+       << powershellSingleQuote(nativeHive + "\\" + uninstallKey) << ")\n";
     for (const auto &assoc : layout.fileAssociations) {
         const std::string extensionKey = "Software\\Classes\\" + assoc.extension;
         const std::string progIdKey = "Software\\Classes\\" + assoc.progId;
-        ps << "@(" << powershellSingleQuote(hive + "\\" + extensionKey) << ","
-           << powershellSingleQuote(nativeHive + "\\" + extensionKey) << "),\n";
-        ps << "@(" << powershellSingleQuote(hive + "\\" + progIdKey) << ","
-           << powershellSingleQuote(nativeHive + "\\" + progIdKey) << "),\n";
+        ps << ",@(" << powershellSingleQuote(hive + "\\" + extensionKey) << ","
+           << powershellSingleQuote(nativeHive + "\\" + extensionKey) << ")\n";
+        ps << ",@(" << powershellSingleQuote(hive + "\\" + progIdKey) << ","
+           << powershellSingleQuote(nativeHive + "\\" + progIdKey) << ")\n";
     }
     ps << ")\n";
     appendWindowsInstallTransaction(ps);
@@ -740,8 +740,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         for (const auto &file : layout.uninstallFiles) {
             if (file.root == WindowsInstallRoot::InstallDir)
                 continue;
-            ps << "@(" << powershellSingleQuote(powershellRootCode(file.root)) << ","
-               << powershellSingleQuote(powershellRelPath(file.relativePath)) << "),\n";
+            ps << ",@(" << powershellSingleQuote(powershellRootCode(file.root)) << ","
+               << powershellSingleQuote(powershellRelPath(file.relativePath)) << ")\n";
         }
     }
     ps << ")\n";
@@ -751,8 +751,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         for (const auto &dir : layout.uninstallDirectories) {
             if (dir.relativePath.empty())
                 continue;
-            ps << "@(" << powershellSingleQuote(powershellRootCode(dir.root)) << ","
-               << powershellSingleQuote(powershellRelPath(dir.relativePath)) << "),\n";
+            ps << ",@(" << powershellSingleQuote(powershellRootCode(dir.root)) << ","
+               << powershellSingleQuote(powershellRelPath(dir.relativePath)) << ")\n";
         }
     }
     ps << ")\n";
@@ -795,10 +795,10 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         ps << "if($mode -eq 'install'){ConfirmDialog ($display+' Setup') $msg}\n";
         ps << "$files=@(\n";
         for (const auto &file : layout.installFiles) {
-            ps << "@(" << powershellSingleQuote(powershellRootCode(file.root)) << ","
+            ps << ",@(" << powershellSingleQuote(powershellRootCode(file.root)) << ","
                << powershellSingleQuote(powershellRelPath(file.relativePath)) << ",[int64]"
                << file.overlayDataOffset << ",[int64]" << file.sizeBytes << ","
-               << powershellSingleQuote(file.sha256) << "),\n";
+               << powershellSingleQuote(file.sha256) << ")\n";
         }
         ps << ")\n";
         ps << "try{\n";

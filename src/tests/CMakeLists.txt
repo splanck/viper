@@ -1140,7 +1140,6 @@ add_test(NAME zia_viperide_editor_hot_path
 set_tests_properties(zia_viperide_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;editor;requires_display;perf"
-        PROCESSORS 4
         TIMEOUT 60)
 
 add_test(NAME zia_viperide_palette_query
@@ -1245,7 +1244,6 @@ add_test(NAME zia_viperide_intellisense
 set_tests_properties(zia_viperide_intellisense PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;intellisense;requires_display"
-        PROCESSORS 4
         TIMEOUT 180)
 
 add_test(NAME zia_viperide_file_tree
@@ -1401,7 +1399,6 @@ add_test(NAME zia_viperide_console_search
 set_tests_properties(zia_viperide_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;console;search;requires_display"
-        PROCESSORS 4
         TIMEOUT 420)
 
 add_test(NAME zia_smoke_vipersql
@@ -1410,7 +1407,6 @@ add_test(NAME zia_smoke_vipersql
 set_tests_properties(zia_smoke_vipersql PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
-        PROCESSORS 4
         TIMEOUT 240)
 
 add_test(NAME zia_smoke_3dbowling
@@ -1551,30 +1547,6 @@ set_tests_properties(zia_smoke_ashfall_assets PROPERTIES
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 240)
 
-if (WIN32)
-    # Windows Debug builds spend several minutes in the heavier Ashfall
-    # software-rendered probes. Keep them isolated under the default ctest -j
-    # run so timeout budgets measure the probe, not parallel display/CPU load.
-    set(_VIPER_ASHFALL_HEAVY_WINDOWS_PROBES
-            zia_smoke_ashfall_combat
-            zia_smoke_ashfall_enemy
-            zia_smoke_ashfall_level
-            zia_smoke_ashfall_render
-            zia_smoke_ashfall_campaign
-            zia_smoke_ashfall_menu)
-    foreach (_test IN LISTS _VIPER_ASHFALL_HEAVY_WINDOWS_PROBES)
-        set_tests_properties(${_test} PROPERTIES
-                RESOURCE_LOCK viper_display
-                PROCESSORS 8)
-    endforeach ()
-    set_tests_properties(zia_smoke_ashfall_combat PROPERTIES TIMEOUT 300)
-    set_tests_properties(zia_smoke_ashfall_enemy PROPERTIES TIMEOUT 360)
-    set_tests_properties(zia_smoke_ashfall_level PROPERTIES TIMEOUT 600)
-    set_tests_properties(zia_smoke_ashfall_render PROPERTIES TIMEOUT 600)
-    set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES TIMEOUT 600)
-    set_tests_properties(zia_smoke_ashfall_menu PROPERTIES TIMEOUT 300)
-endif ()
-
 add_test(NAME zia_smoke_3dbowling_aim
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
@@ -1643,21 +1615,17 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 if (WIN32)
-    # Windows Debug builds currently spend several minutes in the Ridgebound
-    # compile/render path; keep the smoke tests correctness-focused.
+    # The software probes are headless and single-threaded, so they can share
+    # the CTest worker pool. Only the hardware D3D11 lane needs the display
+    # lock; claiming all workers for software rendering serializes the suite.
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
-            PROCESSORS 8
-            TIMEOUT 900)
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
     if (TEST zia_smoke_ridgebound_tree_materials)
         set_property(TEST zia_smoke_ridgebound_tree_materials PROPERTY
                 ENVIRONMENT "VIPER_3D_BACKEND=software")
     endif ()
     set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software"
-            RESOURCE_LOCK viper_display
-            PROCESSORS 8
-            TIMEOUT 600)
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
     add_test(NAME zia_smoke_ridgebound_d3d11
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/smoke_probe.zia"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
@@ -1666,7 +1634,6 @@ if (WIN32)
             LABELS "zia;smoke;graphics3d;requires_display;d3d11"
             ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
             RESOURCE_LOCK viper_display
-            PROCESSORS 8
             TIMEOUT 600)
     add_test(NAME zia_smoke_d3d11_rtt_readback
             COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/3d/d3d11_rtt_readback_probe.zia"
@@ -1721,7 +1688,6 @@ endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software"
-            PROCESSORS 4
             TIMEOUT 180)
 endif ()
 
@@ -1910,6 +1876,13 @@ set_tests_properties(zia_xenoscape_performance PROPERTIES
         LABELS "zia;smoke;gameplay;performance"
         TIMEOUT 60)
 
+if (WIN32)
+    # This sustained VM stress pass is sensitive to concurrent software-render
+    # load. Give the benchmark an exclusive measurement window so its timing
+    # remains stable without weakening the workload.
+    set_tests_properties(zia_xenoscape_performance PROPERTIES PROCESSORS 8)
+endif ()
+
 add_test(NAME zia_xenoscape_soak
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/soak_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
@@ -1974,11 +1947,15 @@ set(VIPER_DISPLAY_TESTS
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim
         zia_smoke_3dscene
-        zia_smoke_ridgebound
         zia_smoke_3dbaseball
         zia_smoke_3dbowling_overlay
         zia_smoke_3dbowling_title_postfx
         zia_smoke_xenoscape)
+if (APPLE)
+    # The primary Ridgebound probe uses Metal on macOS. Windows and Linux
+    # explicitly select the headless software backend and need no display lock.
+    list(APPEND VIPER_DISPLAY_TESTS zia_smoke_ridgebound)
+endif ()
 set_tests_properties(${VIPER_DISPLAY_TESTS} PROPERTIES
         RESOURCE_LOCK viper_display)
 
@@ -2004,7 +1981,6 @@ add_test(NAME zia_calibration_baseball
 set_tests_properties(zia_calibration_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        PROCESSORS 4
         TIMEOUT 300)
 
 add_test(NAME zia_staff_usage_baseball
@@ -2029,7 +2005,6 @@ add_test(NAME zia_season_baseball
 set_tests_properties(zia_season_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        PROCESSORS 4
         TIMEOUT 600)
 
 add_test(NAME zia_persistence_baseball
@@ -2038,7 +2013,6 @@ add_test(NAME zia_persistence_baseball
 set_tests_properties(zia_persistence_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        PROCESSORS 4
         TIMEOUT 180)
 
 add_test(NAME zia_reporting_baseball
@@ -2047,7 +2021,6 @@ add_test(NAME zia_reporting_baseball
 set_tests_properties(zia_reporting_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
-        PROCESSORS 4
         TIMEOUT 90)
 
 set(VIPER_BASEBALL_DATA_TESTS
@@ -2850,7 +2823,6 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_perf_probe"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
-            PROCESSORS 4
             RESOURCE_LOCK viper_display
             TIMEOUT 120)
 
@@ -2865,7 +2837,6 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
     set_tests_properties(g3d_openworld_slice_perf_harness PROPERTIES
             PASS_REGULAR_EXPRESSION "HARNESS: name=openworld_slice"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
-            PROCESSORS 4
             RESOURCE_LOCK viper_display
             TIMEOUT 150)
 
@@ -2949,6 +2920,62 @@ if (NOT TARGET runtime_surface_audit_bundle)
             test_basic_runtime_calls
             test_rt_graphics_surface_link
             test_rt_audio_surface_link)
+endif ()
+
+if (WIN32)
+    # The Windows build clears CTest's historical cost cache before every run.
+    # Seed the known VM/render-heavy tests so the parallel scheduler starts them
+    # while the short unit tests fill the remaining workers, rather than leaving
+    # several minutes of single-test tail latency at the end of the suite.
+    function(_viper_set_windows_test_cost test_name cost)
+        if (TEST ${test_name})
+            set_property(TEST ${test_name} PROPERTY COST ${cost})
+        endif ()
+    endfunction()
+    _viper_set_windows_test_cost(zia_smoke_ridgebound 170)
+    _viper_set_windows_test_cost(zia_smoke_ridgebound_tree_fallback_materials 90)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_level 80)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_render 75)
+    _viper_set_windows_test_cost(test_zia_server_lsp 70)
+    _viper_set_windows_test_cost(zia_smoke_ridgebound_d3d11 65)
+    _viper_set_windows_test_cost(zia_viperide_console_search 60)
+    _viper_set_windows_test_cost(zia_season_baseball 50)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_enemy 45)
+    _viper_set_windows_test_cost(zia_xenoscape_performance 200)
+    _viper_set_windows_test_cost(test_zia_repl 40)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_campaign 35)
+    _viper_set_windows_test_cost(zia_calibration_baseball 30)
+    _viper_set_windows_test_cost(test_zia_bugfixes 30)
+    _viper_set_windows_test_cost(test_rt_scene3d 30)
+    _viper_set_windows_test_cost(zia_smoke_vipersql 25)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_combat 20)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_menu 20)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_assets 20)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_movement 15)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_perf 15)
+    _viper_set_windows_test_cost(zia_viperide_intellisense 15)
+    _viper_set_windows_test_cost(zia_smoke_3dbaseball 10)
+
+    # Every display-labelled test runs in its own process with window activation
+    # disabled and windows hidden. A single Windows-wide display lock therefore
+    # serialized unrelated software, 2D, and D3D probes without protecting shared
+    # state. Keep only a narrow lock between tests that actually use D3D11.
+    get_property(_viper_windows_tests DIRECTORY PROPERTY TESTS)
+    foreach (_test IN LISTS _viper_windows_tests)
+        get_property(_resource_locks TEST ${_test} PROPERTY RESOURCE_LOCK)
+        if (_resource_locks)
+            list(REMOVE_ITEM _resource_locks viper_display)
+            set_property(TEST ${_test} PROPERTY RESOURCE_LOCK "${_resource_locks}")
+        endif ()
+
+        get_property(_labels TEST ${_test} PROPERTY LABELS)
+        get_property(_environment TEST ${_test} PROPERTY ENVIRONMENT)
+        if ("d3d11" IN_LIST _labels OR
+            "${_environment}" MATCHES "(^|;)VIPER_3D_BACKEND=d3d11($|;)")
+            set_property(TEST ${_test} APPEND PROPERTY RESOURCE_LOCK viper_d3d11)
+        endif ()
+    endforeach ()
+    unset(_viper_windows_tests)
 endif ()
 
 viper_apply_display_test_environment()

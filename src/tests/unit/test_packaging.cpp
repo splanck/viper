@@ -3358,6 +3358,12 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     const std::string script = decodedArm64PowerShellSource(stub);
     ASSERT_TRUE(!script.empty());
 
+    // Windows PowerShell 5.1 rejects a trailing comma before an array-subexpression close.
+    EXPECT_TRUE(script.find(",\n)") == std::string::npos);
+    EXPECT_CONTAINS(script, "$files=@(\n,@(");
+    EXPECT_TRUE(script.find("[IO.File]::CreateNew") == std::string::npos);
+    EXPECT_CONTAINS(script, "[IO.FileMode]::CreateNew");
+
     // The decoded script must carry the install scaffolding and overlay-read loop,
     // proving the encoder produced a complete, uncorrupted program.
     EXPECT_TRUE(script.find("$installLeaf=") != std::string::npos);

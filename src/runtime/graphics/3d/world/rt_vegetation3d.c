@@ -921,6 +921,18 @@ typedef struct {
     double time;
 } vegetation3d_update_params;
 
+/// @brief Floor and clamp a normalized grid coordinate before narrowing it to int32.
+/// @details Large LOD radii combined with a near-degenerate grid extent can produce coordinates
+///   outside the int32 range. Clamping in double precision avoids an undefined narrowing conversion
+///   that can otherwise turn an upper cell bound negative and skip the entire culling walk.
+static int32_t vegetation3d_clamp_grid_cell(double coordinate, int32_t cell_count) {
+    if (cell_count <= 1 || isnan(coordinate) || coordinate <= 0.0)
+        return 0;
+    if (!isfinite(coordinate) || coordinate >= (double)cell_count)
+        return cell_count - 1;
+    return (int32_t)floor(coordinate);
+}
+
 /// @brief Cull, thin, fade, and wind-shear one blade, appending it to the visible buffer.
 static void
 vegetation3d_collect_blade(rt_vegetation3d *v, int32_t i, const vegetation3d_update_params *p) {
@@ -994,8 +1006,10 @@ vegetation3d_collect_blade(rt_vegetation3d *v, int32_t i, const vegetation3d_upd
     /* Bend the blade's up (Y) axis toward the wind. In this row-major 4x4,
      * indices 1 and 9 are the X and Z components of the second (Y) column,
      * so adding to them leans the blade top along world X and Z. */
-    dst[1] += wind_x;
-    dst[9] += wind_z;
+    dst[1] = (float)vegetation_abs_or(
+        (double)dst[1] + (double)wind_x, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    dst[9] = (float)vegetation_abs_or(
+        (double)dst[9] + (double)wind_z, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
     if (fade < 1.0f) {
         /* Uniformly shrink the 3x3 basis (translation untouched) for the far fade-out. */
         dst[0] *= fade;
@@ -1099,18 +1113,14 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         int32_t cells_z = v->grid_cells_z;
         double inv_w = 1.0 / (double)v->grid_cell_w;
         double inv_d = 1.0 / (double)v->grid_cell_d;
-        int32_t cx0 = (int32_t)floor((camX - (double)lod_far - (double)v->grid_min_x) * inv_w);
-        int32_t cx1 = (int32_t)floor((camX + (double)lod_far - (double)v->grid_min_x) * inv_w);
-        int32_t cz0 = (int32_t)floor((camZ - (double)lod_far - (double)v->grid_min_z) * inv_d);
-        int32_t cz1 = (int32_t)floor((camZ + (double)lod_far - (double)v->grid_min_z) * inv_d);
-        if (cx0 < 0)
-            cx0 = 0;
-        if (cz0 < 0)
-            cz0 = 0;
-        if (cx1 >= cells_x)
-            cx1 = cells_x - 1;
-        if (cz1 >= cells_z)
-            cz1 = cells_z - 1;
+        int32_t cx0 = vegetation3d_clamp_grid_cell(
+            (camX - (double)lod_far - (double)v->grid_min_x) * inv_w, cells_x);
+        int32_t cx1 = vegetation3d_clamp_grid_cell(
+            (camX + (double)lod_far - (double)v->grid_min_x) * inv_w, cells_x);
+        int32_t cz0 = vegetation3d_clamp_grid_cell(
+            (camZ - (double)lod_far - (double)v->grid_min_z) * inv_d, cells_z);
+        int32_t cz1 = vegetation3d_clamp_grid_cell(
+            (camZ + (double)lod_far - (double)v->grid_min_z) * inv_d, cells_z);
         for (int32_t cz = cz0; cz <= cz1; cz++) {
             double cell_min_z = (double)v->grid_min_z + (double)cz * (double)v->grid_cell_d;
             double cell_max_z = cell_min_z + (double)v->grid_cell_d;

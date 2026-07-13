@@ -29,6 +29,9 @@ if not "%VIPER_CTEST_JOBS%"=="" (
 echo Using %JOBS% build jobs
 echo Using %CTEST_JOBS% CTest jobs
 
+REM Do not leave Visual Studio worker nodes resident after the script exits.
+if "%MSBUILDDISABLENODEREUSE%"=="" set "MSBUILDDISABLENODEREUSE=1"
+
 if "%VIPER_BUILD_DIR%"=="" set "VIPER_BUILD_DIR=build"
 if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
 if "%VIPER_SKIP_INSTALL%"=="" set "VIPER_SKIP_INSTALL=0"
@@ -39,7 +42,7 @@ if "%VIPER_LINT_CHANGED_ONLY%"=="" set "VIPER_LINT_CHANGED_ONLY=1"
 if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
 if "%VIPER_SKIP_CLEAN%"=="" set "VIPER_SKIP_CLEAN=0"
 if "%VIPER_RUN_SLOW_TESTS%"=="" set "VIPER_RUN_SLOW_TESTS=0"
-if "%VIPER_FAST_DEBUG%"=="" set "VIPER_FAST_DEBUG=0"
+if "%VIPER_FAST_DEBUG%"=="" set "VIPER_FAST_DEBUG=1"
 echo Build type: %VIPER_BUILD_TYPE%
 echo Fast Debug: %VIPER_FAST_DEBUG%
 
