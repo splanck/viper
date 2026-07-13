@@ -1876,13 +1876,6 @@ set_tests_properties(zia_xenoscape_performance PROPERTIES
         LABELS "zia;smoke;gameplay;performance"
         TIMEOUT 60)
 
-if (WIN32)
-    # This sustained VM stress pass is sensitive to concurrent software-render
-    # load. Give the benchmark an exclusive measurement window so its timing
-    # remains stable without weakening the workload.
-    set_tests_properties(zia_xenoscape_performance PROPERTIES PROCESSORS 8)
-endif ()
-
 add_test(NAME zia_xenoscape_soak
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/soak_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
@@ -1890,6 +1883,14 @@ set_tests_properties(zia_xenoscape_soak PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;gameplay;performance"
         TIMEOUT 30)
+
+if (WIN32)
+    # These sustained VM stress passes are sensitive to concurrent software-render
+    # load. Give each benchmark an exclusive measurement window so its timing
+    # remains stable without weakening the workload.
+    set_tests_properties(zia_xenoscape_performance zia_xenoscape_soak
+            PROPERTIES PROCESSORS 8)
+endif ()
 
 add_test(NAME xenoscape_package_dry_run
         COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run

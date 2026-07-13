@@ -68,7 +68,7 @@ foreach (_installed_file "${_app_exe}" "${_uninstall_exe}" "${_runtime_json}" "$
 endforeach ()
 
 file(READ "${_runtime_json}" _runtime_text)
-if (NOT _runtime_text MATCHES "introSplashMs")
+if (NOT _runtime_text MATCHES "sceneTransitionMs")
     message(FATAL_ERROR "Installed XenoScape runtime JSON did not contain expected tuning keys")
 endif ()
 
