@@ -1336,15 +1336,8 @@ bool MachOWriter::write(const std::string &path,
             file.insert(file.end(), d.begin(), d.end());
         }
 
-        // --- 7. Write to disk ---
-        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            err << "MachOWriter: cannot open " << path << " for writing\n";
-            return false;
-        }
-        if (!checkedWriteAll(ofs, file, "MachOWriter", path, err))
-            return false;
-        return true;
+        // --- 7. Commit to the selected file or memory sink ---
+        return commitOutput(path, file, "MachOWriter", err);
     } catch (const std::exception &ex) {
         err << "MachOWriter: " << ex.what() << "\n";
         return false;

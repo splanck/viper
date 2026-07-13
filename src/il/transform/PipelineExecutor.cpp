@@ -23,10 +23,13 @@
 #include "il/core/Module.hpp"
 #include "viper/pass/PassManager.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -246,6 +249,40 @@ std::uint64_t moduleStateFingerprint(const core::Module &module) {
     }
     return hash;
 }
+
+/// @brief Determine whether expensive pass-change auditing is enabled.
+/// @details Normal optimizer execution trusts each pass's PreservedAnalyses
+///          result and therefore avoids hashing the complete module around every
+///          pass. Setting VIPER_VERIFY_PASS_CHANGE_REPORTS retains the historical
+///          structural fingerprint check for optimizer development and converts
+///          any under-reported mutation into a conservative changed result.
+/// @return True when structural change reports should be independently audited.
+bool verifyPassChangeReports() {
+    static const bool enabled = std::getenv("VIPER_VERIFY_PASS_CHANGE_REPORTS") != nullptr;
+    return enabled;
+}
+
+/// @brief Select a bounded worker count for function-parallel IL passes.
+/// @details VIPER_OPT_THREADS provides build orchestration with an explicit
+///          per-process CPU budget. Invalid or absent values fall back to host
+///          hardware concurrency, and non-empty workloads always receive at
+///          least one worker.
+/// @param functionCount Number of independent functions in the current module.
+/// @return Worker count in the inclusive range [1, functionCount] for non-empty input.
+std::size_t optimizerWorkerCount(std::size_t functionCount) {
+    if (functionCount == 0)
+        return 0;
+    std::size_t cap =
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+    if (const char *raw = std::getenv("VIPER_OPT_THREADS")) {
+        std::size_t parsed = 0;
+        const char *end = raw + std::strlen(raw);
+        const auto result = std::from_chars(raw, end, parsed);
+        if (result.ec == std::errc{} && result.ptr == end && parsed > 0)
+            cap = parsed;
+    }
+    return std::min(functionCount, cap);
+}
 } // namespace
 
 /// @brief Construct an executor bound to specific pass and analysis registries.
@@ -315,7 +352,9 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 if (!factory)
                     return false;
 
-                const std::uint64_t beforeState = moduleStateFingerprint(module);
+                const bool auditChanges = verifyPassChangeReports();
+                const std::uint64_t beforeState =
+                    auditChanges ? moduleStateFingerprint(module) : std::uint64_t{0};
                 bool executed = false;
                 bool passChanged = false;
                 AnalysisCounts parallelAnalysisCounts{};
@@ -327,6 +366,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         if (!pass)
                             return false;
                         PreservedAnalyses preserved = pass->run(module, analysis);
+                        passChanged = !preserved.preservesAllAnalyses();
                         analysis.invalidateAfterModulePass(preserved);
                         executed = true;
                         break;
@@ -342,7 +382,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             if (!pass)
                                 return false;
                             PreservedAnalyses preserved = pass->run(fn, functionAnalysis);
-                            functionChanged = false;
+                            functionChanged = !preserved.preservesAllAnalyses();
                             functionAnalysis.invalidateAfterFunctionPass(preserved, fn);
                             return true;
                         };
@@ -352,9 +392,8 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         // that were explicitly audited and registered as safe.
                         if (parallelFunctionPasses_ && factory->parallelSafe &&
                             module.functions.size() > 1) {
-                            const std::size_t workerCount = std::min<std::size_t>(
-                                module.functions.size(),
-                                std::max<std::size_t>(1, std::thread::hardware_concurrency()));
+                            const std::size_t workerCount =
+                                optimizerWorkerCount(module.functions.size());
                             std::atomic_size_t nextIndex{0};
                             std::atomic_bool allOk{true};
                             std::atomic_bool anyChanged{false};
@@ -398,7 +437,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             // when the pass mutated the module conservatively
                             // drop every cached function analysis. (GVN crashed
                             // intermittently on a stale DomTree without this.)
-                            if (executedAll && moduleStateFingerprint(module) != beforeState) {
+                            if (executedAll && passChanged) {
                                 const PreservedAnalyses nothingPreserved{};
                                 for (auto &fn : module.functions)
                                     analysis.invalidateAfterFunctionPass(nothingPreserved, fn);
@@ -418,8 +457,10 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
                 if (!executed)
                     return false;
-                passChanged = moduleStateFingerprint(module) != beforeState;
-                module.internOwnedIdentifiers();
+                if (auditChanges)
+                    passChanged = passChanged || moduleStateFingerprint(module) != beforeState;
+                if (passChanged)
+                    module.internOwnedIdentifiers();
 
                 if (collectMetrics)
                     passEndTime = std::chrono::steady_clock::now();

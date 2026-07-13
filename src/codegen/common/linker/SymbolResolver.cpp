@@ -618,7 +618,7 @@ static bool allowDuplicateStrongDefinition(const std::string &name,
 }
 
 bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
-                    std::vector<Archive> &archives,
+                    const std::vector<const Archive *> &archives,
                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                     std::vector<ObjFile> &allObjects,
                     std::unordered_set<std::string> &dynamicSyms,
@@ -651,12 +651,16 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     // Iteratively resolve from archives until fixed point.
     std::unordered_set<InputSectionKey, InputSectionKeyHash> extractedMembers;
     size_t maxArchiveExtractions = 0;
-    for (const auto &ar : archives) {
-        if (ar.members.size() > std::numeric_limits<size_t>::max() - maxArchiveExtractions) {
+    for (const Archive *archive : archives) {
+        if (archive == nullptr) {
+            err << "error: null archive supplied to symbol resolution\n";
+            return false;
+        }
+        if (archive->members.size() > std::numeric_limits<size_t>::max() - maxArchiveExtractions) {
             err << "error: archive member count exceeds addressable size\n";
             return false;
         }
-        maxArchiveExtractions += ar.members.size();
+        maxArchiveExtractions += archive->members.size();
     }
     size_t extractedCount = 0;
     while (pendingIndex < pendingUndefined.size()) {
@@ -666,7 +670,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
         bool extractedForUndef = false;
         for (size_t ai = 0; ai < archives.size(); ++ai) {
-            auto &ar = archives[ai];
+            const Archive &ar = *archives[ai];
             // Mach-O archives use underscore-prefixed symbol names.
             auto candIt = findWithPlatformFallback(ar.symbolCandidates, undef, platform);
             std::vector<size_t> legacyCandidate;
@@ -804,6 +808,26 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     }
 
     return true;
+}
+
+bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
+                    std::vector<Archive> &archives,
+                    std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                    std::vector<ObjFile> &allObjects,
+                    std::unordered_set<std::string> &dynamicSyms,
+                    std::ostream &err,
+                    LinkPlatform platform) {
+    std::vector<const Archive *> archiveViews;
+    archiveViews.reserve(archives.size());
+    for (const Archive &archive : archives)
+        archiveViews.push_back(&archive);
+    return resolveSymbols(initialObjects,
+                          archiveViews,
+                          globalSyms,
+                          allObjects,
+                          dynamicSyms,
+                          err,
+                          platform);
 }
 
 static void discardComdatLosers(std::vector<ObjFile> &allObjects,

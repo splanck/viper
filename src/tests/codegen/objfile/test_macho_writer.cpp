@@ -164,6 +164,10 @@ static void testMinimalX64Macho() {
     auto data = readFile(path);
     CHECK(data.size() > 32); // At least the Mach-O header
 
+    std::vector<uint8_t> memoryData;
+    CHECK(writer.writeToMemory(memoryData, text, rodata, errStream));
+    CHECK(memoryData == data);
+
     // Magic
     CHECK(readLE32(data, 0) == 0xFEEDFACF);
 

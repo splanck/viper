@@ -40,7 +40,7 @@ case "$PLATFORM" in
     Linux)
         DEFAULT_BUILD_TYPE="Debug"
         DEFAULT_CTEST_JOBS="$(detect_build_jobs)"
-        DEFAULT_FAST_DEBUG="0"
+        DEFAULT_FAST_DEBUG="1"
         ;;
     *)
         echo "Error: build_viper_unix.sh supports macOS and Linux only"

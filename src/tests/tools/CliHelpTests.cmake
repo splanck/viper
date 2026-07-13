@@ -54,6 +54,24 @@ if (NOT ILOPT_TEXT MATCHES "viper il-opt")
     message(FATAL_ERROR "il-opt help output was not shown\n${ILOPT_TEXT}")
 endif ()
 
+run_help_case(BUILD_MANY build-many --help)
+if (NOT BUILD_MANY_TEXT MATCHES "name=project" OR
+    NOT BUILD_MANY_TEXT MATCHES "--output-dir")
+    message(FATAL_ERROR "build-many help output is incomplete\n${BUILD_MANY_TEXT}")
+endif ()
+
+run_help_case(CODEGEN_X64 codegen x64 --help)
+if (NOT CODEGEN_X64_TEXT MATCHES "--time-passes" OR
+    NOT CODEGEN_X64_TEXT MATCHES "--skip-il-optimization")
+    message(FATAL_ERROR "x64 codegen performance flags are missing from help\n${CODEGEN_X64_TEXT}")
+endif ()
+
+run_help_case(CODEGEN_ARM64 codegen arm64 --help)
+if (NOT CODEGEN_ARM64_TEXT MATCHES "--time-passes" OR
+    NOT CODEGEN_ARM64_TEXT MATCHES "--skip-il-optimization")
+    message(FATAL_ERROR "arm64 codegen performance flags are missing from help\n${CODEGEN_ARM64_TEXT}")
+endif ()
+
 run_fail_case(BENCH_BAD_ITER bench missing.il -n 0)
 if (NOT BENCH_BAD_ITER_TEXT MATCHES "invalid iteration count")
     message(FATAL_ERROR "bench did not reject zero iterations\n${BENCH_BAD_ITER_TEXT}")
@@ -72,4 +90,9 @@ endif ()
 run_fail_case(CODEGEN_ARM64_BAD_STACK codegen arm64 missing.il --stack-size=nope)
 if (NOT CODEGEN_ARM64_BAD_STACK_TEXT MATCHES "invalid --stack-size value")
     message(FATAL_ERROR "arm64 codegen did not reject invalid stack size\n${CODEGEN_ARM64_BAD_STACK_TEXT}")
+endif ()
+
+run_fail_case(BUILD_MANY_BAD_NAME build-many --output-dir out ../bad=missing)
+if (NOT BUILD_MANY_BAD_NAME_TEXT MATCHES "one path component")
+    message(FATAL_ERROR "build-many did not reject an unsafe output name\n${BUILD_MANY_BAD_NAME_TEXT}")
 endif ()

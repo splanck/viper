@@ -1485,14 +1485,7 @@ bool CoffWriter::write(const std::string &path,
         file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
         file.insert(file.end(), strtabBytes.begin(), strtabBytes.end());
 
-        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            err << "CoffWriter: cannot open " << path << " for writing\n";
-            return false;
-        }
-        if (!checkedWriteAll(ofs, file, "CoffWriter", path, err))
-            return false;
-        return true;
+        return commitOutput(path, file, "CoffWriter", err);
     } catch (const std::exception &ex) {
         err << "CoffWriter: " << ex.what() << "\n";
         return false;
@@ -2315,14 +2308,7 @@ bool CoffWriter::write(const std::string &path,
         file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
         file.insert(file.end(), strtabBytes.begin(), strtabBytes.end());
 
-        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            err << "CoffWriter: cannot open " << path << " for writing\n";
-            return false;
-        }
-        if (!checkedWriteAll(ofs, file, "CoffWriter", path, err))
-            return false;
-        return true;
+        return commitOutput(path, file, "CoffWriter", err);
     } catch (const std::exception &ex) {
         err << "CoffWriter: " << ex.what() << "\n";
         return false;

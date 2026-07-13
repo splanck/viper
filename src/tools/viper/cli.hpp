@@ -268,6 +268,16 @@ int cmdRun(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdBuild(int argc, char **argv);
 
+/// @brief Handle `viper build-many` for persistent multi-project native builds.
+/// @details Builds named project targets sequentially inside one process so
+///          compiler registries, parsed runtime archives, and linker metadata
+///          caches can be reused. Each target is written beneath one output
+///          directory using `name=project-path` syntax.
+/// @param argc Number of arguments following `build-many`.
+/// @param argv Array containing options and named project specifications.
+/// @return Zero when every project builds successfully; otherwise non-zero.
+int cmdBuildMany(int argc, char **argv);
+
 /// @brief Build a project to a native executable for packaging workflows.
 /// @details This is the programmatic equivalent of `viper build <target> -o
 ///          <output> --arch <arch>` and shares the same project-resolution,

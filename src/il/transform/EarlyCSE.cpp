@@ -134,7 +134,8 @@ bool runEarlyCSE(Module &M, Function &F) {
 
     // Iterate to fixed point (bounded to avoid pathological cases).
     for (int iter = 0; iter < 4; ++iter) {
-        viper::analysis::CFGContext cfg(M);
+        viper::analysis::CFGContext cfg =
+            viper::analysis::CFGContext::forInternedFunction(M, F);
         viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
 
         // Iterative pre-order DFS over the dominator tree.

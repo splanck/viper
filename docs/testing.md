@@ -48,7 +48,7 @@ platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
 | `VIPER_BUILD_TYPE=RelWithDebInfo` | Override the full-suite script default build type (`Debug`) |
 | `VIPER_JOBS=<n>` | Override build parallelism |
 | `VIPER_CTEST_JOBS=<n>` | Override CTest parallelism independently from build jobs; macOS defaults to performance-core count |
-| `VIPER_FAST_DEBUG=0` | Disable the default fast-Debug compile mode on macOS (`-Og`) or Windows (`/O1` with lean STL checks); Linux remains fully unoptimized by default |
+| `VIPER_FAST_DEBUG=0` | Disable the default fast-Debug compile mode (`-Og` on Linux/macOS or `/O1` with lean STL checks on Windows) |
 | `VIPER_SKIP_CLEAN=1` | Skip the clean-all step (incremental rebuild) |
 | `VIPER_SKIP_TESTS=1` | Build without running ctest |
 | `VIPER_TEST_LABEL=<label>` | Run only tests with the given ctest label |
@@ -90,6 +90,23 @@ ctest --test-dir build --print-labels
 # Run with sanitizers
 ./scripts/ci_full_sanitizer.sh
 ```
+
+### Measuring demo build performance
+
+Use a forced rebuild for repeatable cold compiler measurements and a second
+unforced run to validate dependency-stamp behavior:
+
+```bash
+./scripts/build_demos_linux.sh --rebuild --jobs "$(nproc)" --timings
+./scripts/build_demos_linux.sh --jobs "$(nproc)" --timings
+./scripts/build_demos_linux.sh --release --rebuild --jobs "$(nproc)" --timings
+```
+
+The first command measures the interactive O1/fast-link path, the second should
+report unchanged demos as up to date, and the third measures release O2. For an
+optimizer change-report audit, rerun a representative target with
+`VIPER_VERIFY_PASS_CHANGE_REPORTS=1`; this deliberately restores full-module
+fingerprints around every pass and is not a performance configuration.
 
 ## Test Labels
 

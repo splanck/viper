@@ -49,4 +49,24 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::ostream &err,
                     LinkPlatform platform = detectLinkPlatform());
 
+/// Resolve symbols using non-owning immutable archive pointers.
+/// @details This overload lets persistent build processes retain parsed archives
+///          in shared immutable storage without copying their raw byte buffers.
+///          Every pointer must remain valid for the duration of the call.
+/// @param objects Initial object files supplied directly by the caller.
+/// @param archives Ordered, non-null parsed archives searched for definitions.
+/// @param globalSyms Receives the resolved global symbol table.
+/// @param allObjects Receives direct objects plus extracted archive members.
+/// @param dynamicSyms Receives unresolved symbols accepted as loader imports.
+/// @param err Diagnostic stream for malformed archives and resolution failures.
+/// @param platform Target platform governing symbol spelling and import policy.
+/// @return True when every reference resolves statically or as a permitted import.
+bool resolveSymbols(const std::vector<ObjFile> &objects,
+                    const std::vector<const Archive *> &archives,
+                    std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                    std::vector<ObjFile> &allObjects,
+                    std::unordered_set<std::string> &dynamicSyms,
+                    std::ostream &err,
+                    LinkPlatform platform = detectLinkPlatform());
+
 } // namespace viper::codegen::linker

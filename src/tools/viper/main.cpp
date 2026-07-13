@@ -1446,6 +1446,7 @@ void printTopLevelUsage(std::ostream &out) {
         << "Common commands:\n"
         << "       viper run [target] [options] [-- program-args...]\n"
         << "       viper build [target] [-o output] [options]\n"
+        << "       viper build-many --output-dir DIR name=project [...]\n"
         << "       viper check [target] [options]\n"
         << "       viper init <project-name> [--lang zia|basic]\n"
         << "       viper repl [zia|basic]\n"
@@ -1574,6 +1575,9 @@ int main(int argc, char **argv) {
     if (cmd == "build") {
         return cmdBuild(argc - 2, argv + 2);
     }
+    if (cmd == "build-many") {
+        return cmdBuildMany(argc - 2, argv + 2);
+    }
     if (cmd == "check") {
         return cmdCheck(argc - 2, argv + 2);
     }
@@ -1608,6 +1612,8 @@ int main(int argc, char **argv) {
             return invokeHelp(cmdRun);
         if (topic == "build")
             return invokeHelp(cmdBuild);
+        if (topic == "build-many")
+            return invokeHelp(cmdBuildMany);
         if (topic == "check")
             return invokeHelp(cmdCheck);
         if (topic == "init")

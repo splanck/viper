@@ -44,9 +44,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <iomanip>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -55,10 +59,68 @@ namespace viper::codegen::linker {
 
 namespace {
 
+struct ArchiveCacheEntry {
+    std::filesystem::file_time_type modified{}; ///< Last-write time used for invalidation.
+    std::uintmax_t size = 0;                    ///< File size used for invalidation.
+    std::shared_ptr<const Archive> archive{};   ///< Shared immutable parsed archive snapshot.
+};
+
+/// @brief Read an archive through the process-wide parsed-archive cache.
+/// @details Cache entries are invalidated whenever file size or last-write time
+///          changes. Returned archives share an immutable parsed snapshot;
+///          symbol resolution records per-link extraction state separately.
+///          Sharing avoids both archive reparsing and copies of the raw archive
+///          byte buffer during multi-target builds.
+/// @param path Archive path to load and validate.
+/// @param archive Receives shared ownership of the current parsed snapshot.
+/// @param err Diagnostic stream used for filesystem and parse failures.
+/// @return True on a cache hit or successful parse; false on input failure.
+bool readArchiveCached(const std::string &path,
+                       std::shared_ptr<const Archive> &archive,
+                       std::ostream &err) {
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string, ArchiveCacheEntry> cache;
+
+    std::error_code ec;
+    const auto modified = std::filesystem::last_write_time(path, ec);
+    if (ec) {
+        auto parsed = std::make_shared<Archive>();
+        if (!readArchive(path, *parsed, err))
+            return false;
+        archive = std::move(parsed);
+        return true;
+    }
+    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        auto parsed = std::make_shared<Archive>();
+        if (!readArchive(path, *parsed, err))
+            return false;
+        archive = std::move(parsed);
+        return true;
+    }
+
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    if (const auto it = cache.find(path);
+        it != cache.end() && it->second.modified == modified && it->second.size == size) {
+        archive = it->second.archive;
+        return true;
+    }
+
+    auto parsed = std::make_shared<Archive>();
+    if (!readArchive(path, *parsed, err))
+        return false;
+    cache[path] = ArchiveCacheEntry{modified, size, parsed};
+    archive = std::move(parsed);
+    return true;
+}
+
 class LinkTiming {
   public:
     explicit LinkTiming(std::ostream &err)
-        : err_(err), enabled_(std::getenv("VIPER_LINKER_STATS") != nullptr),
+        : err_(err), enabled_([]() {
+              const char *value = std::getenv("VIPER_LINKER_STATS");
+              return value != nullptr && std::string_view(value) != "0";
+          }()),
           last_(std::chrono::steady_clock::now()) {}
 
     void mark(const char *stage) {
@@ -1143,11 +1205,11 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
 ///          stages rather than inlining 10+ LOC of archive iteration. Writes
 ///          an error to @p err and returns false on any per-archive failure.
 static bool readArchiveFiles(const std::vector<std::string> &paths,
-                             std::vector<Archive> &outArchives,
+                             std::vector<std::shared_ptr<const Archive>> &outArchives,
                              std::ostream &err) {
     for (const auto &arPath : paths) {
-        Archive ar;
-        if (!readArchive(arPath, ar, err)) {
+        std::shared_ptr<const Archive> ar;
+        if (!readArchiveCached(arPath, ar, err)) {
             err << "error: failed to read archive '" << arPath << "'\n";
             return false;
         }
@@ -1167,13 +1229,13 @@ static bool loadForceLoadArchiveMembers(const std::vector<std::string> &paths,
                                         std::vector<ObjFile> &extraObjects,
                                         std::ostream &err) {
     for (const auto &arPath : paths) {
-        Archive forceAr;
-        if (!readArchive(arPath, forceAr, err)) {
+        std::shared_ptr<const Archive> forceAr;
+        if (!readArchiveCached(arPath, forceAr, err)) {
             err << "error: failed to read force-load archive '" << arPath << "'\n";
             return false;
         }
-        for (const auto &member : forceAr.members) {
-            const ArchiveMemberView view = memberDataView(forceAr, member);
+        for (const auto &member : forceAr->members) {
+            const ArchiveMemberView view = memberDataView(*forceAr, member);
             if (view.data == nullptr || view.size == 0)
                 continue;
             ObjFile memberObj;
@@ -1203,7 +1265,14 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 1: Read the user's object file.
     ObjFile userObj;
-    if (!readObjFile(opts.objPath, userObj, err)) {
+    const bool readUserObject = opts.objData
+                                    ? readObjFile(opts.objData->data(),
+                                                  opts.objData->size(),
+                                                  opts.objPath,
+                                                  userObj,
+                                                  err)
+                                    : readObjFile(opts.objPath, userObj, err);
+    if (!readUserObject) {
         err << "error: failed to read object file '" << opts.objPath << "'\n";
         return 1;
     }
@@ -1232,9 +1301,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     timing.mark("read-input-objects");
 
     // Step 2: Read all archive files.
-    std::vector<Archive> archives;
-    if (!readArchiveFiles(opts.archivePaths, archives, err))
+    std::vector<std::shared_ptr<const Archive>> archiveOwners;
+    if (!readArchiveFiles(opts.archivePaths, archiveOwners, err))
         return 1;
+    std::vector<const Archive *> archives;
+    archives.reserve(archiveOwners.size());
+    for (const auto &archive : archiveOwners)
+        archives.push_back(archive.get());
     timing.mark("read-archives");
 
     // Step 3: Symbol resolution (iterative archive extraction).

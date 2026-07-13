@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build demo binaries on Linux using Viper object generation plus the system
 # linker. Optional smoke-run validation can be enabled with --run.
-# Usage: ./scripts/build_demos_linux.sh [--clean] [--run|--skip-run]
+# Usage: ./scripts/build_demos_linux.sh [options]
 
 set -euo pipefail
 
@@ -16,6 +16,12 @@ VIPER="$BUILD_DIR/src/tools/viper/viper"
 LINK_CMD="${CXX:-c++}"
 RUN_TIMEOUT_DEFAULT="${VIPER_DEMO_TIMEOUT:-5}"
 RUN_DEMO_RC=0
+STAMP_DIR="$BIN_DIR/.demo-stamps"
+DEMO_OPT="${VIPER_DEMO_OPT:-O1}"
+DEMO_JOBS="${VIPER_DEMO_JOBS:-}"
+LINK_MODE="${VIPER_DEMO_LINKER:-native}"
+TIMINGS=0
+FORCE_REBUILD=0
 
 RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
@@ -29,16 +35,24 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 usage() {
-    echo "Usage: $0 [--clean] [--run|--skip-run]"
+    echo "Usage: $0 [--clean] [--run|--skip-run] [--release|--opt O1|O2]"
+    echo "          [--jobs N] [--linker native|system] [--timings] [--rebuild]"
     echo "  --clean      Remove existing binaries before building"
     echo "  --run        Launch each built demo for smoke validation"
     echo "  --skip-run   Build only; skip launch validation (default)"
+    echo "  --release    Build demos at O2 (interactive builds default to O1)"
+    echo "  --opt LEVEL  Select O1 or O2 explicitly"
+    echo "  --jobs N     Build up to N demos concurrently"
+    echo "  --linker     Select native (default) or legacy system linker"
+    echo "  --timings    Print frontend, backend, and native-link stage timings"
+    echo "  --rebuild    Ignore dependency stamps without deleting binaries"
     exit 1
 }
 
 CLEAN=0
 SKIP_RUN=1
-for arg in "$@"; do
+while [[ $# -gt 0 ]]; do
+    arg="$1"
     case "$arg" in
         --clean)
             CLEAN=1
@@ -49,6 +63,30 @@ for arg in "$@"; do
         --skip-run)
             SKIP_RUN=1
             ;;
+        --release)
+            DEMO_OPT="O2"
+            ;;
+        --opt)
+            shift
+            [[ $# -gt 0 ]] || usage
+            DEMO_OPT="$1"
+            ;;
+        --jobs)
+            shift
+            [[ $# -gt 0 ]] || usage
+            DEMO_JOBS="$1"
+            ;;
+        --linker)
+            shift
+            [[ $# -gt 0 ]] || usage
+            LINK_MODE="$1"
+            ;;
+        --timings)
+            TIMINGS=1
+            ;;
+        --rebuild)
+            FORCE_REBUILD=1
+            ;;
         -h|--help)
             usage
             ;;
@@ -57,7 +95,29 @@ for arg in "$@"; do
             usage
             ;;
     esac
+    shift
 done
+
+if [[ "$DEMO_OPT" != "O1" && "$DEMO_OPT" != "O2" ]]; then
+    echo -e "${RED}Error: --opt must be O1 or O2${NC}"
+    exit 1
+fi
+if [[ "$LINK_MODE" != "native" && "$LINK_MODE" != "system" ]]; then
+    echo -e "${RED}Error: --linker must be native or system${NC}"
+    exit 1
+fi
+if [[ -z "$DEMO_JOBS" ]]; then
+    DEMO_JOBS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+fi
+if [[ ! "$DEMO_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${RED}Error: --jobs must be a positive integer${NC}"
+    exit 1
+fi
+HOST_CPUS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+THREADS_PER_DEMO=$((HOST_CPUS / DEMO_JOBS))
+if [[ $THREADS_PER_DEMO -lt 1 ]]; then
+    THREADS_PER_DEMO=1
+fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
     echo -e "${RED}Error: build_demos_linux.sh must be run on Linux${NC}"
@@ -85,7 +145,7 @@ if [[ ! -x "$VIPER" ]]; then
     exit 1
 fi
 
-if ! command -v "$LINK_CMD" >/dev/null 2>&1; then
+if [[ "$LINK_MODE" == "system" ]] && ! command -v "$LINK_CMD" >/dev/null 2>&1; then
     echo -e "${RED}Error: C++ linker '$LINK_CMD' not found${NC}"
     exit 1
 fi
@@ -93,6 +153,14 @@ fi
 if [[ $SKIP_RUN -eq 0 ]] && ! command -v timeout >/dev/null 2>&1; then
     echo -e "${RED}Error: 'timeout' command not found${NC}"
     exit 1
+fi
+
+# Smoke runs create and remove files in the shared examples/bin directory.
+# Keep that validation deterministic and avoid multiple graphical demos
+# competing for the same display/audio devices.
+if [[ $SKIP_RUN -eq 0 ]]; then
+    DEMO_JOBS=1
+    THREADS_PER_DEMO=$HOST_CPUS
 fi
 
 for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
@@ -103,11 +171,13 @@ for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
     fi
 done
 
-mkdir -p "$BIN_DIR"
+mkdir -p "$BIN_DIR" "$STAMP_DIR"
 
 if [[ $CLEAN -eq 1 ]]; then
     echo "Cleaning existing binaries..."
     rm -f "$BIN_DIR"/*
+    rm -rf "$STAMP_DIR"
+    mkdir -p "$STAMP_DIR"
 fi
 
 ZIA_DEMOS=(
@@ -120,6 +190,17 @@ ZIA_DEMOS=(
     "chess:${GAMES_DIR}/chess"
     "xenoscape:${GAMES_DIR}/xenoscape"
     "baseball:${GAMES_DIR}/baseball"
+    "centipede:${GAMES_DIR}/centipede"
+    "frogger:${GAMES_DIR}/frogger"
+    "vtris:${GAMES_DIR}/vtris"
+    "3dscene:${GAMES_DIR}/3dscene"
+    "asset_demo:${APPS_DIR}/asset_demo"
+)
+
+BASIC_DEMOS=(
+    "pacman-basic:${GAMES_DIR}/pacman-basic"
+    "frogger-basic:${GAMES_DIR}/frogger-basic"
+    "centipede-basic:${GAMES_DIR}/centipede-basic"
 )
 
 link_demo() {
@@ -143,6 +224,36 @@ link_demo() {
     fi
 
     return 0
+}
+
+demo_stamp_value() {
+    local name="$1"
+    printf '%s\n' "arch=$TARGET_ARCH opt=$DEMO_OPT linker=$LINK_MODE name=$name"
+}
+
+is_demo_up_to_date() {
+    local name="$1"
+    local project_dir="$2"
+    local exe_file="$BIN_DIR/$name"
+    local stamp_file="$STAMP_DIR/$name.stamp"
+
+    [[ $FORCE_REBUILD -eq 0 && -x "$exe_file" && -f "$stamp_file" ]] || return 1
+    [[ "$(<"$stamp_file")" == "$(demo_stamp_value "$name")" ]] || return 1
+    [[ "$VIPER" -ot "$exe_file" ]] || return 1
+    if find "$project_dir" -type f -newer "$exe_file" -print -quit | grep -q .; then
+        return 1
+    fi
+    if find "$BUILD_DIR/src/runtime" "$BUILD_DIR/src/lib" "$BUILD_DIR/lib" \
+        -type f \( -name '*.a' -o -name '*.so' \) -newer "$exe_file" -print -quit 2>/dev/null | \
+        grep -q .; then
+        return 1
+    fi
+    return 0
+}
+
+write_demo_stamp() {
+    local name="$1"
+    demo_stamp_value "$name" >"$STAMP_DIR/$name.stamp"
 }
 
 snapshot_bin_dir() {
@@ -222,19 +333,30 @@ build_demo() {
         return 1
     fi
 
-    # All demos build at -O2. The loop-rotate SSA-reconstruction and inliner
-    # escaped-param typing bugs that previously forced centipede/chess/
-    # crackman down to -O0 on arm64 have been fixed in the IL optimizer (the IL
-    # passes are target-independent, so this applies to x86_64 and arm64 alike).
-    local demo_opt="-O2"
+    if is_demo_up_to_date "$name" "$project_dir"; then
+        echo -e "  ${GREEN}Up to date: $exe_file${NC}"
+        return 2
+    fi
 
-    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
-        # Asset projects (embed -> .rodata, pack -> a .vpa beside the binary) must
-        # build in one step: `viper build` runs the asset compiler, whereas the
-        # staged IL->obj->system-link path carries no assets (the binary would
-        # fall back to loose files on disk). Single-step links via the native linker.
-        echo -n "  Build+embed -> native... "
-        if ! "$VIPER" build "$project_dir" --arch "$TARGET_ARCH" "$demo_opt" -o "$exe_file" \
+    # Every demo uses the requested common optimization level. The
+    # loop-rotate SSA-reconstruction and inliner escaped-param typing bugs that
+    # previously forced a few arm64 demos down to -O0 have been fixed in the
+    # target-independent IL optimizer.
+    local demo_opt="-$DEMO_OPT"
+    local timing_args=()
+    local link_args=()
+    if [[ $TIMINGS -eq 1 ]]; then
+        timing_args+=(--time-compile)
+    fi
+    if [[ "$DEMO_OPT" == "O1" ]]; then
+        link_args+=(--fast-link)
+    fi
+
+    if [[ "$LINK_MODE" == "native" ]] || \
+        grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+        echo -n "  Build -> native (in-memory IL)... "
+        if ! VIPER_LINKER_STATS="$TIMINGS" "$VIPER" build "$project_dir" --arch "$TARGET_ARCH" \
+            "$demo_opt" "${timing_args[@]}" "${link_args[@]}" -o "$exe_file" \
             >"$codegen_out" 2>"$codegen_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$codegen_err"
@@ -242,10 +364,14 @@ build_demo() {
                 "$link_err" "$run_out" "$run_err"
             return 1
         fi
+        if [[ $TIMINGS -eq 1 ]]; then
+            grep -E '^\[(time-compile|link-time)\]' "$codegen_err" || true
+        fi
         echo -e "${GREEN}OK${NC}"
     else
         echo -n "  Frontend -> IL... "
-        if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
+        if ! "$VIPER" build "$project_dir" "$demo_opt" "${timing_args[@]}" -o "$il_file" \
+            2>"$frontend_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$frontend_err"
             rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
@@ -256,7 +382,8 @@ build_demo() {
 
         if [[ $NATIVE_LINK -eq 1 ]]; then
             echo -n "  Codegen (native asm+link)... "
-            if ! "$VIPER" codegen "$TARGET_ARCH" "$il_file" --native-asm --native-link "$demo_opt" -o "$exe_file" \
+            if ! "$VIPER" codegen "$TARGET_ARCH" "$il_file" --native-asm --native-link \
+                --skip-il-optimization "$demo_opt" -o "$exe_file" \
                 >"$codegen_out" 2>"$codegen_err"; then
                 echo -e "${RED}FAILED${NC}"
                 head -20 "$codegen_err"
@@ -266,7 +393,8 @@ build_demo() {
             fi
         else
             echo -n "  Codegen (native obj)... "
-            if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm "$demo_opt" -o "$obj_file" \
+            if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm \
+                --skip-il-optimization "$demo_opt" -o "$obj_file" \
                 >"$codegen_out" 2>"$codegen_err"; then
                 echo -e "${RED}FAILED${NC}"
                 head -20 "$codegen_err"
@@ -311,6 +439,8 @@ build_demo() {
     rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
         "$link_err" "$run_out" "$run_err"
 
+    write_demo_stamp "$name"
+
     local size
     size=$(ls -lh "$exe_file" | awk '{print $5}')
     echo -e "  ${GREEN}Built: $exe_file ($size)${NC}"
@@ -318,13 +448,14 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos on Linux (${TARGET_ARCH})${NC}"
-if [[ $NATIVE_LINK -eq 1 ]]; then
+if [[ "$LINK_MODE" == "native" ]]; then
     echo -e "${CYAN}Object generation: Viper native backend${NC}"
     echo -e "${CYAN}Final link: Viper native linker${NC}"
 else
     echo -e "${CYAN}Object generation: Viper native backend${NC}"
     echo -e "${CYAN}Final link: system c++${NC}"
 fi
+echo -e "${CYAN}Optimization: ${DEMO_OPT}; concurrent demos: ${DEMO_JOBS}${NC}"
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi
@@ -338,22 +469,69 @@ SKIPPED=0
 echo "=== Zia Demos ==="
 echo ""
 
-for demo in "${ZIA_DEMOS[@]}"; do
-    IFS=':' read -r name project_dir <<< "$demo"
-    if [[ ! -d "$project_dir" ]]; then
-        echo -e "Skipping $name (${YELLOW}directory not found${NC})"
-        SKIPPED=$((SKIPPED + 1))
-        echo ""
-        continue
-    fi
-    echo "Building $name..."
-    if build_demo "$name" "$project_dir"; then
-        SUCCEEDED=$((SUCCEEDED + 1))
-    else
-        FAILED=$((FAILED + 1))
-    fi
-    echo ""
-done
+build_demo_group() {
+    local array_name="$1"
+    local -n demos_ref="$array_name"
+    local index=0
+
+    while [[ $index -lt ${#demos_ref[@]} ]]; do
+        local pids=()
+        local logs=()
+        local statuses=()
+        local names=()
+        local launched=0
+        while [[ $index -lt ${#demos_ref[@]} && $launched -lt $DEMO_JOBS ]]; do
+            local demo="${demos_ref[$index]}"
+            local name project_dir
+            IFS=':' read -r name project_dir <<< "$demo"
+            local job_base="/tmp/viper_demo_job_${name}_$$"
+            local log_file="${job_base}.log"
+            local status_file="${job_base}.status"
+            (
+                export VIPER_CODEGEN_THREADS="${VIPER_CODEGEN_THREADS:-$THREADS_PER_DEMO}"
+                export VIPER_OPT_THREADS="${VIPER_OPT_THREADS:-$THREADS_PER_DEMO}"
+                if [[ ! -d "$project_dir" ]]; then
+                    echo -e "Skipping $name (${YELLOW}directory not found${NC})"
+                    echo 3 >"$status_file"
+                    exit 0
+                fi
+                echo "Building $name..."
+                local rc=0
+                build_demo "$name" "$project_dir" || rc=$?
+                echo "$rc" >"$status_file"
+            ) >"$log_file" 2>&1 &
+            pids+=("$!")
+            logs+=("$log_file")
+            statuses+=("$status_file")
+            names+=("$name")
+            index=$((index + 1))
+            launched=$((launched + 1))
+        done
+
+        local job
+        for job in "${!pids[@]}"; do
+            wait "${pids[$job]}" || true
+            cat "${logs[$job]}"
+            local rc=1
+            if [[ -f "${statuses[$job]}" ]]; then
+                rc="$(<"${statuses[$job]}")"
+            fi
+            case "$rc" in
+                0) SUCCEEDED=$((SUCCEEDED + 1)) ;;
+                2|3) SKIPPED=$((SKIPPED + 1)) ;;
+                *) FAILED=$((FAILED + 1)) ;;
+            esac
+            rm -f "${logs[$job]}" "${statuses[$job]}"
+            echo ""
+        done
+    done
+}
+
+build_demo_group ZIA_DEMOS
+
+echo "=== BASIC Demos ==="
+echo ""
+build_demo_group BASIC_DEMOS
 
 echo "=============================================="
 TOTAL=$((SUCCEEDED + FAILED + SKIPPED))

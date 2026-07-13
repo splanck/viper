@@ -177,6 +177,22 @@ Both Zia and BASIC source paths print successful warnings by default. Zia O0/deb
 
 Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization. Safe per-function IL optimizer passes, x86-64 peephole work, and arm64 binary function emission may run in parallel unless a diagnostic dump or `--verify-each` requires strict serial instrumentation.
 
+### viper build-many
+
+Build several projects in one compiler process. Targets are named with
+`output-name=project-path`; output names must be single path components. The
+command continues after a failed target, returns failure if any target failed,
+and preserves argument order in its diagnostics. Keeping the process alive
+allows parsed runtime archives and other immutable process caches to be reused.
+
+```bash
+viper build-many --output-dir examples/bin --arch x64 -O1 --fast-link \
+  paint=examples/apps/paint chess=examples/games/chess
+```
+
+`--arch x64|arm64`, `-O0|-O1|-O2`, `--fast-link`, and `--time-compile`
+apply to every target in the batch.
+
 ### viper check
 
 Type-check and verify a source file or project without executing or emitting
@@ -377,7 +393,21 @@ writes a relocatable object instead of linking an executable.
 
 On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
 
-File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Native assembler debug line emission is disabled by default for faster object generation and smaller native-link executables; pass `--debug-lines` when you need DWARF `.debug_line` content in native objects and linked outputs. `--fast-link` skips string deduplication and identical-code folding in the native linker; on arm64 it also emits one generated text section instead of per-function sections for faster debug links.
+File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Executable builds using the native assembler and linker also transfer the generated relocatable object in memory, avoiding a temporary `.o` write and read; object-only builds continue to write the requested file. Native assembler debug line emission is disabled by default for faster object generation and smaller native-link executables; pass `--debug-lines` when you need DWARF `.debug_line` content in native objects and linked outputs. `--fast-link` skips string deduplication and identical-code folding in the native linker; on arm64 it also emits one generated text section instead of per-function sections for faster debug links.
+
+Both backend drivers accept `--time-passes` for per-pass codegen timings and
+`--skip-il-optimization` when an upstream frontend has already optimized the
+IL. The latter is intended for staged build tooling; ordinary direct codegen
+should leave backend IL optimization enabled.
+
+### Demo build driver
+
+On Linux, `scripts/build_demos_linux.sh` builds Zia and BASIC demos through the
+in-process project-to-native path. It defaults to O1, the fast linker, host CPU
+parallelism, and dependency stamps. Useful controls are `--release` (O2),
+`--opt O1|O2`, `--jobs N`, `--timings`, `--rebuild`, and the diagnostic legacy
+path `--linker system`. `--run` intentionally serializes smoke launches because
+the graphical demos share display, audio, and output-directory state.
 
 ### viper package
 

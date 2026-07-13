@@ -114,6 +114,10 @@ int main() {
     const std::string path = "build/test-out/coff_unwind.obj";
     ASSERT(writer.write(path, text, rodata, err));
 
+    std::vector<uint8_t> memoryData;
+    ASSERT(writer.writeToMemory(memoryData, text, rodata, err));
+    CHECK(memoryData == readFile(path));
+
     ObjFile obj;
     ASSERT(readObjFile(path, obj, err));
 

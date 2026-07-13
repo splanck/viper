@@ -143,9 +143,9 @@ inline const std::vector<const char *> &macExclusiveDynamicSymbols() {
 
 inline const std::vector<const char *> &linuxExclusiveDynamicSymbols() {
     static const std::vector<const char *> kSyms = {
-        "__errno_location", "__assert_fail", "__ctype_b_loc", "__isoc23_strtol",
-        "__isoc23_strtoll", "__isoc99_sscanf", "fopen64", "fseeko64", "ftello64", "getrandom",
-        "sysinfo"};
+        "__errno_location", "__assert_fail", "__ctype_b_loc", "__ctype_tolower_loc", "bcmp",
+        "__isoc23_strtol", "__isoc23_strtoll", "__isoc99_sscanf", "fopen64", "fseeko64",
+        "ftello64", "getrandom", "sysinfo"};
     return kSyms;
 }
 
@@ -367,7 +367,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "memmove",
         "memset",
         "memcmp",
+        "bcmp",
         "memchr",
+        "ctype_tolower_loc",
         "strlen",
         "strnlen",
         "strcmp",

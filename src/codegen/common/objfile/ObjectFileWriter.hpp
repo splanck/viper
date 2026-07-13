@@ -82,9 +82,54 @@ class ObjectFileWriter {
                        const CodeSection &rodata,
                        std::ostream &err);
 
+    /// @brief Serialize a single-text-section relocatable object into memory.
+    /// @details Uses the same concrete ELF, Mach-O, or COFF serializer as
+    ///          @ref write, but captures its completed byte buffer instead of
+    ///          opening a temporary file. Writer configuration such as debug
+    ///          lines and writable data sections is honored unchanged.
+    /// @param output Receives the complete relocatable object bytes on success.
+    /// @param text Machine-code text section.
+    /// @param rodata Read-only data section, which may be empty.
+    /// @param err Diagnostic stream for serialization failures.
+    /// @return True when serialization completed and @p output is valid.
+    bool writeToMemory(std::vector<uint8_t> &output,
+                       const CodeSection &text,
+                       const CodeSection &rodata,
+                       std::ostream &err);
+
+    /// @brief Serialize per-function text sections into an in-memory object.
+    /// @details Preserves the concrete writer's per-function section behavior,
+    ///          enabling the native linker to dead-strip functions without an
+    ///          intermediate filesystem write/read cycle.
+    /// @param output Receives the complete relocatable object bytes on success.
+    /// @param textSections Ordered function text sections.
+    /// @param rodata Read-only data section, which may be empty.
+    /// @param err Diagnostic stream for serialization failures.
+    /// @return True when serialization completed and @p output is valid.
+    bool writeToMemory(std::vector<uint8_t> &output,
+                       const std::vector<CodeSection> &textSections,
+                       const CodeSection &rodata,
+                       std::ostream &err);
+
   protected:
+    /// @brief Commit a concrete writer's completed object bytes.
+    /// @details Captures bytes for an active @ref writeToMemory call; otherwise
+    ///          writes them through the ordinary checked file stream path.
+    /// @param path Destination path used for filesystem output and diagnostics.
+    /// @param bytes Fully serialized object bytes.
+    /// @param writerName Concrete writer name used in diagnostics.
+    /// @param err Diagnostic stream for open/write failures.
+    /// @return True when the memory capture or complete file write succeeds.
+    bool commitOutput(const std::string &path,
+                      const std::vector<uint8_t> &bytes,
+                      const char *writerName,
+                      std::ostream &err);
+
     std::vector<uint8_t> debugLineData_;     ///< Pre-encoded DWARF .debug_line bytes.
     std::optional<CodeSection> dataSection_; ///< Writable initialized-data section (if any).
+
+  private:
+    std::vector<uint8_t> *memoryOutput_ = nullptr; ///< Active in-memory serialization sink.
 };
 
 /// Detect the host object file format at compile time.

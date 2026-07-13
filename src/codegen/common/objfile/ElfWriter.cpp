@@ -807,15 +807,8 @@ bool ElfWriter::write(const std::string &path,
                       8,
                       0);
 
-        // --- 6. Write to disk ---
-        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            err << "ElfWriter: cannot open " << path << " for writing\n";
-            return false;
-        }
-        if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
-            return false;
-        return true;
+        // --- 6. Commit to the selected file or memory sink ---
+        return commitOutput(path, file, "ElfWriter", err);
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
         return false;
@@ -1523,15 +1516,8 @@ bool ElfWriter::write(const std::string &path,
                       8,
                       0);
 
-        // --- 9. Write to disk ---
-        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            err << "ElfWriter: cannot open " << path << " for writing\n";
-            return false;
-        }
-        if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
-            return false;
-        return true;
+        // --- 9. Commit to the selected file or memory sink ---
+        return commitOutput(path, file, "ElfWriter", err);
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
         return false;

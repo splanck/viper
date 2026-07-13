@@ -81,3 +81,24 @@ endif ()
 if (NOT _explicit_run_err MATCHES "\\[time-compile\\] zia\\.optimize")
     message(FATAL_ERROR "explicit-profile viper run did not preserve manifest optimization:\n${_explicit_run_err}")
 endif ()
+
+set(_batch_a "${TEST_WORK_DIR}/batch_a")
+set(_batch_b "${TEST_WORK_DIR}/batch_b")
+set(_batch_out "${TEST_WORK_DIR}/batch_out")
+file(MAKE_DIRECTORY "${_batch_a}" "${_batch_b}")
+file(WRITE "${_batch_a}/main.zia" "module main;\nfunc start() {}\n")
+file(WRITE "${_batch_b}/main.zia" "module main;\nfunc start() {}\n")
+
+execute_process(
+        COMMAND "${VIPER_EXE}" build-many --output-dir "${_batch_out}" -O0 --fast-link
+        "one=${_batch_a}" "two=${_batch_b}"
+        RESULT_VARIABLE _batch_result
+        OUTPUT_VARIABLE _batch_stdout
+        ERROR_VARIABLE _batch_stderr)
+if (NOT _batch_result EQUAL 0)
+    message(FATAL_ERROR
+            "build-many failed:\nstdout=${_batch_stdout}\nstderr=${_batch_stderr}")
+endif ()
+if (NOT EXISTS "${_batch_out}/one" OR NOT EXISTS "${_batch_out}/two")
+    message(FATAL_ERROR "build-many did not emit both named outputs")
+endif ()

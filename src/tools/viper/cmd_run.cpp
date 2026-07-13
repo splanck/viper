@@ -1178,6 +1178,111 @@ int cmdBuild(int argc, char **argv) {
     return runOrBuild(RunMode::Build, argc, argv);
 }
 
+/// @brief Build several named projects while retaining process-local compiler caches.
+/// @details Each positional target has the form `name=project`. The command invokes
+///          the ordinary native-build pipeline once per project in stable argument
+///          order, placing executables beneath `--output-dir`. Keeping the builds in
+///          one process allows immutable runtime archives and other process-wide
+///          compiler data to be reused without changing the semantics of an
+///          individual `viper build` invocation. A failed target does not prevent
+///          later targets from being attempted, so callers receive a complete batch
+///          result and deterministic diagnostics.
+/// @param argc Number of arguments following the `build-many` command name.
+/// @param argv Argument vector following the `build-many` command name.
+/// @return Zero when every target builds successfully; one for invalid arguments,
+///         output-directory failures, or one or more failed project builds.
+int cmdBuildMany(int argc, char **argv) {
+    constexpr std::string_view usage =
+        "Usage: viper build-many --output-dir DIR [--arch x64|arm64] "
+        "[-O0|-O1|-O2] [--fast-link] [--time-compile] name=project [...]\n";
+    std::filesystem::path outputDir;
+    std::optional<std::string> arch;
+    std::optional<std::string> optimize;
+    bool fastLink = false;
+    bool timeCompile = false;
+    std::vector<std::pair<std::string, std::string>> projects;
+
+    for (int index = 0; index < argc; ++index) {
+        const std::string_view arg = argv[index];
+        if (arg == "-h" || arg == "--help") {
+            std::cout << usage;
+            return 0;
+        }
+        if (arg == "--output-dir") {
+            if (++index >= argc) {
+                std::cerr << "error: --output-dir requires a path\n" << usage;
+                return 1;
+            }
+            outputDir = argv[index];
+            continue;
+        }
+        if (arg == "--arch") {
+            if (++index >= argc || !parseTargetArch(argv[index])) {
+                std::cerr << "error: --arch requires x64 or arm64\n" << usage;
+                return 1;
+            }
+            arch = argv[index];
+            continue;
+        }
+        if (arg == "--fast-link") {
+            fastLink = true;
+            continue;
+        }
+        if (arg == "--time-compile") {
+            timeCompile = true;
+            continue;
+        }
+        if (arg == "-O0" || arg == "-O1" || arg == "-O2") {
+            optimize = std::string(arg.substr(1));
+            continue;
+        }
+        const std::size_t equals = arg.find('=');
+        if (equals == std::string_view::npos || equals == 0 || equals + 1 >= arg.size()) {
+            std::cerr << "error: expected name=project target, got '" << arg << "'\n" << usage;
+            return 1;
+        }
+        const std::string name(arg.substr(0, equals));
+        if (std::filesystem::path(name).filename() != name || name == "." || name == "..") {
+            std::cerr << "error: build-many output name must be one path component: '" << name
+                      << "'\n";
+            return 1;
+        }
+        projects.emplace_back(name, std::string(arg.substr(equals + 1)));
+    }
+
+    if (outputDir.empty() || projects.empty()) {
+        std::cerr << "error: build-many requires --output-dir and at least one project\n" << usage;
+        return 1;
+    }
+    std::error_code directoryError;
+    std::filesystem::create_directories(outputDir, directoryError);
+    if (directoryError) {
+        std::cerr << "error: cannot create build-many output directory: "
+                  << directoryError.message() << "\n";
+        return 1;
+    }
+
+    int failures = 0;
+    for (const auto &[name, target] : projects) {
+        RunBuildConfig config;
+        config.mode = RunMode::Build;
+        config.target = target;
+        config.outputPath = (outputDir / name).string();
+        config.shared.timeCompile = timeCompile;
+        config.fastLinkOverride = fastLink;
+        if (arch)
+            config.archOverride = *parseTargetArch(*arch);
+        if (optimize)
+            config.optimizeLevelOverride = *optimize;
+        std::cerr << "[build-many] " << name << " <- " << target << "\n";
+        if (executeRunBuildConfig(std::move(config)) != 0)
+            ++failures;
+    }
+    if (failures != 0)
+        std::cerr << "error: build-many failed for " << failures << " project(s)\n";
+    return failures == 0 ? 0 : 1;
+}
+
 int cmdCheck(int argc, char **argv) {
     return runOrBuild(RunMode::Check, argc, argv);
 }

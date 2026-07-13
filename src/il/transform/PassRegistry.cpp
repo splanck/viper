@@ -616,7 +616,8 @@ void registerDSEPass(PassRegistry &registry) {
 }
 
 void registerEarlyCSEPass(PassRegistry &registry) {
-    // Sequential: rebuilds a whole-module CFGContext while removing instructions.
+    // Each invocation indexes and mutates only its assigned function. Identifier
+    // sidecars are synchronized by PipelineExecutor before parallel dispatch.
     registry.registerFunctionPass(
         "earlycse",
         [](core::Function &fn, AnalysisManager &am) {
@@ -630,7 +631,7 @@ void registerEarlyCSEPass(PassRegistry &registry) {
             p.preserveLoopInfo();
             return p;
         },
-        false);
+        true);
 }
 
 void registerReassociatePass(PassRegistry &registry) {

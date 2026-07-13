@@ -156,10 +156,22 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
     }
 }
 
-CFGContext::CFGContext(il::core::Module &module, il::core::Function &function) : module(&module) {
-    internFunctionIdentifiers(module, function);
+CFGContext::CFGContext(il::core::Module &module, il::core::Function &function)
+    : CFGContext(module, function, true) {}
+
+CFGContext::CFGContext(il::core::Module &module,
+                       il::core::Function &function,
+                       bool refreshIdentifiers)
+    : module(&module) {
+    if (refreshIdentifiers)
+        internFunctionIdentifiers(module, function);
     indexFunction(*this, function);
     buildFunctionEdges(*this, function);
+}
+
+CFGContext CFGContext::forInternedFunction(il::core::Module &module,
+                                           il::core::Function &function) {
+    return CFGContext(module, function, false);
 }
 
 /// @brief Gather successor blocks of @p B.

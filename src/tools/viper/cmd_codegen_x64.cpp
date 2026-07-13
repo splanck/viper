@@ -44,7 +44,7 @@ constexpr std::string_view kUsage =
     "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
     "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
     "[--target-darwin|--target-linux|--target-windows] [--debug-lines] "
-    "[--fast-link|--no-fast-link]\n";
+    "[--fast-link|--no-fast-link] [--time-passes] [--skip-il-optimization]\n";
 /// @brief Minimum accepted native stack reserve for generated executables.
 constexpr std::size_t kMinStackSize = 4096;
 
@@ -172,6 +172,14 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg.size() == 3 && arg[0] == '-' && arg[1] == 'O' && arg[2] >= '0' && arg[2] <= '3') {
             opts.optimize = arg[2] - '0';
+            continue;
+        }
+        if (arg == "--time-passes") {
+            opts.time_passes = true;
+            continue;
+        }
+        if (arg == "--skip-il-optimization") {
+            opts.skip_il_optimization = true;
             continue;
         }
         if (arg.substr(0, 13) == "--stack-size=") {

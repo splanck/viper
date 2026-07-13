@@ -172,6 +172,10 @@ static void testMinimalX64Elf() {
     auto data = readFile(path);
     CHECK(data.size() > 64); // At least the ELF header
 
+    std::vector<uint8_t> memoryData;
+    CHECK(writer.writeToMemory(memoryData, text, rodata, errStream));
+    CHECK(memoryData == data);
+
     // ELF magic
     CHECK(data[0] == 0x7F);
     CHECK(data[1] == 'E');

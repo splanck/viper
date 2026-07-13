@@ -19,6 +19,7 @@
 
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 
+#include "codegen/common/Parallelism.hpp"
 #include "codegen/x86_64/Unsupported.hpp"
 #include "common/IntegerHelpers.hpp"
 #include "il/core/Global.hpp"
@@ -27,12 +28,15 @@
 #include "il/core/Type.hpp"
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 
@@ -52,16 +56,52 @@ class ModuleAdapter {
     explicit ModuleAdapter() = default;
 
     /// @brief Convert an IL module to the backend adapter representation.
+    /// @details Functions are independent at this stage, so a bounded worker
+    ///          pool gives each function a private adapter and writes results by
+    ///          stable index. Exceptions are captured and rethrown on the caller
+    ///          thread to preserve the existing diagnostic behavior.
+    /// @param module Canonical IL module to adapt without mutation.
+    /// @return Deterministically ordered x86-64 adapter module.
     ILModule adapt(const il::core::Module &module) {
-        currentModule_ = &module;
         ILModule result{};
-        result.funcs.reserve(module.functions.size());
+        result.funcs.resize(module.functions.size());
 
-        for (const auto &func : module.functions) {
-            result.funcs.push_back(adaptFunction(func));
+        std::atomic_size_t nextIndex{0};
+        std::exception_ptr firstException;
+        std::mutex exceptionMutex;
+        auto adaptNext = [&]() {
+            for (;;) {
+                const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                if (index >= module.functions.size())
+                    return;
+                try {
+                    ModuleAdapter worker;
+                    worker.currentModule_ = &module;
+                    result.funcs[index] = worker.adaptFunction(module.functions[index]);
+                } catch (...) {
+                    std::lock_guard<std::mutex> lock(exceptionMutex);
+                    if (!firstException)
+                        firstException = std::current_exception();
+                    return;
+                }
+            }
+        };
+
+        const std::size_t workerCount =
+            common::codegenWorkerCount(module.functions.size());
+        if (workerCount <= 1) {
+            adaptNext();
+        } else {
+            std::vector<std::thread> workers;
+            workers.reserve(workerCount);
+            for (std::size_t worker = 0; worker < workerCount; ++worker)
+                workers.emplace_back(adaptNext);
+            for (auto &worker : workers)
+                worker.join();
         }
 
-        currentModule_ = nullptr;
+        if (firstException)
+            std::rethrow_exception(firstException);
         return result;
     }
 

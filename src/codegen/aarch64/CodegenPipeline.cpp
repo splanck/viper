@@ -140,6 +140,7 @@ static bool isObjectOutputPath(const std::string &path) {
 
 /// @brief Forward declaration; defined later after collectNativeLinkArchives.
 static int linkObjToExe(const std::string &objPath,
+                        std::optional<std::vector<uint8_t>> objData,
                         const std::string &exePath,
                         const LinkContext &ctx,
                         TargetPlatform targetPlatform,
@@ -177,6 +178,7 @@ static int linkToExe(const std::string &asmPath,
         return arc;
 
     const int lrc = linkObjToExe(objPath.string(),
+                                 std::nullopt,
                                  exePath,
                                  ctx,
                                  targetPlatform,
@@ -266,6 +268,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 ///          extra objects, stack size) and dispatches to nativeLink(). AArch64 arch is always
 ///          used; platform is mapped from the TargetPlatform enum.
 /// @param objPath       Path to the compiled object file.
+/// @param objData       Optional serialized object bytes supplied by native codegen.
 /// @param exePath       Destination path for the output executable.
 /// @param ctx           Link context (runtime archive set, build dir, etc.).
 /// @param targetPlatform Target OS; determines symbol mangling and ABI format.
@@ -277,6 +280,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 /// @param err           Stream for linker stderr diagnostics.
 /// @return 0 on success, non-zero on link failure.
 static int linkObjToExe(const std::string &objPath,
+                        std::optional<std::vector<uint8_t>> objData,
                         const std::string &exePath,
                         const LinkContext &ctx,
                         TargetPlatform targetPlatform,
@@ -293,6 +297,7 @@ static int linkObjToExe(const std::string &objPath,
 
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath;
+    linkOpts.objData = std::move(objData);
     linkOpts.exePath = exePath;
     linkOpts.platform = targetLinkPlatform(targetPlatform);
     linkOpts.arch = linker::LinkArch::AArch64;
@@ -332,6 +337,7 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
         return true;
 
     il::transform::PassManager ilpm;
+    ilpm.enableParallelFunctionPasses(true);
     return ilpm.runPipeline(mod, optimizeLevel >= 2 ? "O2" : "O1");
 }
 
@@ -669,15 +675,29 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
         if (pipelineModule.binaryData && !pipelineModule.binaryData->bytes().empty())
             writer->setDataSection(*pipelineModule.binaryData);
+        std::optional<std::vector<uint8_t>> objectData;
+        if (!outputIsObj)
+            objectData.emplace();
         const bool wroteObject = !pipelineModule.binaryTextSections.empty()
-                                     ? writer->write(objPath.string(),
-                                                     pipelineModule.binaryTextSections,
-                                                     *pipelineModule.binaryRodata,
-                                                     err)
-                                     : writer->write(objPath.string(),
-                                                     *pipelineModule.binaryText,
-                                                     *pipelineModule.binaryRodata,
-                                                     err);
+                                     ? (outputIsObj
+                                            ? writer->write(objPath.string(),
+                                                            pipelineModule.binaryTextSections,
+                                                            *pipelineModule.binaryRodata,
+                                                            err)
+                                            : writer->writeToMemory(
+                                                  *objectData,
+                                                  pipelineModule.binaryTextSections,
+                                                  *pipelineModule.binaryRodata,
+                                                  err))
+                                     : (outputIsObj
+                                            ? writer->write(objPath.string(),
+                                                            *pipelineModule.binaryText,
+                                                            *pipelineModule.binaryRodata,
+                                                            err)
+                                            : writer->writeToMemory(*objectData,
+                                                                    *pipelineModule.binaryText,
+                                                                    *pipelineModule.binaryRodata,
+                                                                    err));
         if (!wroteObject) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
@@ -727,6 +747,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             err << "warning: --system-link is deprecated; using the native linker\n";
 
         const int lrc = linkObjToExe(objPath.string(),
+                                     std::move(objectData),
                                      exe.string(),
                                      ctx,
                                      opts_.target_platform,
@@ -737,11 +758,6 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                                      opts_.emit_debug_lines,
                                      out,
                                      err);
-
-        if (!outputIsObj) {
-            std::error_code ec;
-            std::filesystem::remove(objPath, ec);
-        }
 
         if (lrc != 0) {
             result.exit_code = 1;

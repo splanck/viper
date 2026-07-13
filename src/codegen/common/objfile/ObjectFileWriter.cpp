@@ -19,6 +19,9 @@
 #include "codegen/common/objfile/CoffWriter.hpp"
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
+#include "codegen/common/objfile/ObjFileWriterUtil.hpp"
+
+#include <fstream>
 
 namespace viper::codegen::objfile {
 
@@ -31,6 +34,62 @@ bool ObjectFileWriter::write(const std::string &path,
     for (const auto &ts : textSections)
         merged.appendSection(ts);
     return write(path, merged, rodata, err);
+}
+
+bool ObjectFileWriter::writeToMemory(std::vector<uint8_t> &output,
+                                     const CodeSection &text,
+                                     const CodeSection &rodata,
+                                     std::ostream &err) {
+    output.clear();
+    memoryOutput_ = &output;
+    bool ok = false;
+    try {
+        ok = write("<memory-object>", text, rodata, err);
+    } catch (...) {
+        memoryOutput_ = nullptr;
+        output.clear();
+        throw;
+    }
+    memoryOutput_ = nullptr;
+    if (!ok)
+        output.clear();
+    return ok;
+}
+
+bool ObjectFileWriter::writeToMemory(std::vector<uint8_t> &output,
+                                     const std::vector<CodeSection> &textSections,
+                                     const CodeSection &rodata,
+                                     std::ostream &err) {
+    output.clear();
+    memoryOutput_ = &output;
+    bool ok = false;
+    try {
+        ok = write("<memory-object>", textSections, rodata, err);
+    } catch (...) {
+        memoryOutput_ = nullptr;
+        output.clear();
+        throw;
+    }
+    memoryOutput_ = nullptr;
+    if (!ok)
+        output.clear();
+    return ok;
+}
+
+bool ObjectFileWriter::commitOutput(const std::string &path,
+                                    const std::vector<uint8_t> &bytes,
+                                    const char *writerName,
+                                    std::ostream &err) {
+    if (memoryOutput_ != nullptr) {
+        *memoryOutput_ = bytes;
+        return true;
+    }
+    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    if (!ofs) {
+        err << writerName << ": cannot open " << path << " for writing\n";
+        return false;
+    }
+    return checkedWriteAll(ofs, bytes, writerName, path, err);
 }
 
 std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjArch arch) {

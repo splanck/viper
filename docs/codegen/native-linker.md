@@ -659,9 +659,19 @@ the host assembler for `.s -> .o`, but `--system-link` no longer routes the fina
 
 | Variable | Effect |
 |----------|--------|
-| `VIPER_LINKER_STATS` | When set, prints per-stage link timings to stderr (`[link-time] <stage> <ms>`) |
+| `VIPER_LINKER_STATS` | When set to a value other than `0`, prints per-stage link timings to stderr (`[link-time] <stage> <ms>`) |
 | `VIPER_LIB_PATH` | Additional directory searched for runtime/support archives |
 | `VIPER_BUILD_DIR` / `VIPER_BUILD_TYPE` | Override the discovered CMake build directory / configuration |
+
+The linker keeps parsed immutable archives in a process-wide cache. Cache keys
+include the archive path, file size, and last-write time, so a rebuilt runtime
+archive is reparsed on the next link while repeated `build-many` targets avoid
+rescanning unchanged archive headers and symbol indexes.
+
+Native codegen executable builds pass their newly serialized relocatable object
+directly to the linker as bytes. This removes the temporary object-file
+write/read cycle without changing explicit object-only output. The file-path
+input remains supported for external objects and compatibility callers.
 
 ### Known limitations
 

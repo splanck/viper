@@ -345,11 +345,17 @@ TEST(DynamicSymbolPolicy, ForeignPlatformSymbolsRejectedNativeAccepted) {
     EXPECT_TRUE(isKnownDynamicSymbol("__errno_location", LinkPlatform::Linux));
     EXPECT_FALSE(isKnownDynamicSymbol("__errno_location", LinkPlatform::macOS));
     EXPECT_FALSE(isKnownDynamicSymbol("__errno_location", LinkPlatform::Windows));
+    EXPECT_TRUE(isKnownDynamicSymbol("__ctype_tolower_loc", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("__ctype_tolower_loc", LinkPlatform::macOS));
+    EXPECT_FALSE(isKnownDynamicSymbol("__ctype_tolower_loc", LinkPlatform::Windows));
 
     // Genuinely cross-platform libc stays accepted on every platform.
     EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::Windows));
     EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::Linux));
     EXPECT_TRUE(isKnownDynamicSymbol("malloc", LinkPlatform::macOS));
+    EXPECT_TRUE(isKnownDynamicSymbol("bcmp", LinkPlatform::Linux));
+    EXPECT_FALSE(isKnownDynamicSymbol("bcmp", LinkPlatform::macOS));
+    EXPECT_FALSE(isKnownDynamicSymbol("bcmp", LinkPlatform::Windows));
 }
 
 // F24/F25: OpenGL (gl + CamelCase, incl. glX) resolves to libGL and X11 (X +

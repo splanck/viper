@@ -52,6 +52,18 @@ struct CFGContext {
     explicit CFGContext(il::core::Module &module);
     CFGContext(il::core::Module &module, il::core::Function &function);
 
+    /// @brief Build a CFG cache for one function whose identifier sidecars are current.
+    /// @details Unlike the two-argument constructor, this factory does not refresh
+    ///          identifier interning. It is intended for function-parallel optimizer
+    ///          passes after PipelineExecutor has synchronized the module once, avoiding
+    ///          both a whole-module scan and concurrent writes to the symbol table.
+    /// @param module Module that owns @p function and its identifier storage.
+    /// @param function Sole function to index into the returned CFG context.
+    /// @return A function-scoped CFG context safe for read-only concurrent analysis.
+    /// @pre module identifier sidecars match their corresponding string fields.
+    [[nodiscard]] static CFGContext forInternedFunction(il::core::Module &module,
+                                                        il::core::Function &function);
+
     il::core::Module *module{nullptr};
     std::unordered_map<const il::core::Block *, il::core::Function *> blockToFunction;
     /// @brief Cache mapping function pointers to their blocks indexed by label.
@@ -71,6 +83,15 @@ struct CFGContext {
     /// @brief Cached predecessor edge sources derived from the successor cache.
     /// @details A predecessor appears once per incoming edge.
     std::unordered_map<const il::core::Block *, std::vector<il::core::Block *>> blockPredecessors;
+
+  private:
+    /// @brief Construct a function-scoped context with optional identifier refresh.
+    /// @param module Module that owns the indexed function.
+    /// @param function Function whose blocks and edges are cached.
+    /// @param refreshIdentifiers True to rebuild identifier sidecars before indexing.
+    CFGContext(il::core::Module &module,
+               il::core::Function &function,
+               bool refreshIdentifiers);
 };
 
 /// @brief Return successors of block @p B by inspecting its terminator.

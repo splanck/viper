@@ -393,12 +393,15 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
     }
 }
 
-/// @brief Link @p objPath into @p exePath using Viper's in-process linker.
+/// @brief Link @p objData or @p objPath into @p exePath with the in-process linker.
 /// @details Fills NativeLinkerOptions from @p ctx and the caller's flags,
 ///          collects archive paths via collectNativeLinkArchives, and invokes
 ///          linker::nativeLink. Errors are written to @p err and surfaced via
 ///          a non-zero return value.
+/// @param objPath Object display name and filesystem fallback when @p objData is absent.
+/// @param objData Optional serialized object bytes transferred directly from codegen.
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
+                               std::optional<std::vector<uint8_t>> objData,
                                const std::filesystem::path &exePath,
                                const common::LinkContext &ctx,
                                TargetPlatform targetPlatform,
@@ -411,6 +414,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                std::ostream &err) {
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath.string();
+    linkOpts.objData = std::move(objData);
     linkOpts.exePath = exePath.string();
     linkOpts.entrySymbol = "main";
     linkOpts.platform = targetLinkPlatform(targetPlatform);
@@ -511,6 +515,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     // backends stay aligned with frontend/VM optimization behavior.
     if (!opts_.skip_il_optimization && opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
+        ilpm.enableParallelFunctionPasses(true);
         const bool ok = ilpm.runPipeline(module, opts_.optimize >= 2 ? "O2" : "O1");
 
         if (!ok) {
@@ -652,14 +657,29 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (pipelineModule.binaryData && !pipelineModule.binaryData->bytes().empty())
             writer->setDataSection(*pipelineModule.binaryData);
 
-        const bool wroteObject = hasDebugLine ? writer->write(objPath.string(),
-                                                              *pipelineModule.binaryText,
-                                                              *pipelineModule.binaryRodata,
-                                                              err)
-                                              : writer->write(objPath.string(),
-                                                              pipelineModule.binaryTextSections,
-                                                              *pipelineModule.binaryRodata,
-                                                              err);
+        std::optional<std::vector<uint8_t>> objectData;
+        if (!wantsObjectOnly)
+            objectData.emplace();
+        const bool wroteObject = hasDebugLine
+                                     ? (wantsObjectOnly
+                                            ? writer->write(objPath.string(),
+                                                            *pipelineModule.binaryText,
+                                                            *pipelineModule.binaryRodata,
+                                                            err)
+                                            : writer->writeToMemory(*objectData,
+                                                                    *pipelineModule.binaryText,
+                                                                    *pipelineModule.binaryRodata,
+                                                                    err))
+                                     : (wantsObjectOnly
+                                            ? writer->write(objPath.string(),
+                                                            pipelineModule.binaryTextSections,
+                                                            *pipelineModule.binaryRodata,
+                                                            err)
+                                            : writer->writeToMemory(
+                                                  *objectData,
+                                                  pipelineModule.binaryTextSections,
+                                                  *pipelineModule.binaryRodata,
+                                                  err));
         if (!wroteObject) {
             result.exit_code = 1;
             return finish();
@@ -717,6 +737,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             err << "warning: --system-link is deprecated; using the native linker\n";
 
         const int linkExit = linkObjectWithNativeLinker(objPath,
+                                                        std::move(objectData),
                                                         exePath,
                                                         ctx,
                                                         targetPlatform,
@@ -730,12 +751,6 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             return finish();
-        }
-
-        // Clean up intermediate .o file.
-        {
-            std::error_code ec;
-            std::filesystem::remove(objPath, ec);
         }
 
         if (!opts_.run_native) {
@@ -826,6 +841,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         err << "warning: --system-link is deprecated; using the native linker\n";
 
     const int linkExit = linkObjectWithNativeLinker(objPath,
+                                                    std::nullopt,
                                                     exePath,
                                                     ctx,
                                                     targetPlatform,

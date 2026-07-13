@@ -26,6 +26,7 @@
 #include "codegen/common/linker/LinkTypes.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -36,6 +37,10 @@ namespace viper::codegen::linker {
 /// Options for the native linker.
 struct NativeLinkerOptions {
     std::string objPath;                   ///< Path to the user's compiled .o file.
+    /// Optional serialized user object supplied directly by native codegen.
+    /// When present, the linker parses these bytes instead of reading @ref objPath;
+    /// objPath remains the diagnostic display name.
+    std::optional<std::vector<uint8_t>> objData;
     std::string exePath;                   ///< Output executable path.
     std::vector<std::string> archivePaths; ///< Runtime archive .a paths (in dependency order).
     /// Archives whose every member is loaded unconditionally (whole-archive /

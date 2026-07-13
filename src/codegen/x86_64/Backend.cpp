@@ -446,25 +446,87 @@ bool legalizeModuleToMIR(const ILModule &mod,
     errors.clear();
 
     try {
-        LowerILToMIR lowering{target, roData};
         std::unordered_set<std::string> knownVarArgCallees;
         knownVarArgCallees.reserve(mod.funcs.size());
         for (const auto &fn : mod.funcs) {
-            if (fn.isVarArg) {
+            if (fn.isVarArg)
                 knownVarArgCallees.insert(fn.name);
-            }
         }
-        lowering.setKnownVarArgCallees(std::move(knownVarArgCallees));
-        mir.reserve(mod.funcs.size());
-        frames.reserve(mod.funcs.size());
 
-        for (std::size_t fi = 0; fi < mod.funcs.size(); ++fi) {
-            const auto &func = mod.funcs[fi];
-            FrameInfo frame{};
-            MFunction machineFunc{};
-            legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
-            mir.push_back(std::move(machineFunc));
-            frames.push_back(frame);
+        mir.resize(mod.funcs.size());
+        frames.resize(mod.funcs.size());
+        std::vector<AsmEmitter::RoDataPool> functionPools(mod.funcs.size());
+        std::atomic_size_t nextIndex{0};
+        std::exception_ptr firstException;
+        std::mutex exceptionMutex;
+
+        /// Legalize functions independently with private lowering state and
+        /// literal pools. Stable-index storage preserves deterministic function
+        /// order; literal labels are canonicalized after all workers join.
+        auto legalizeNext = [&]() {
+            for (;;) {
+                const std::size_t index =
+                    nextIndex.fetch_add(1, std::memory_order_relaxed);
+                if (index >= mod.funcs.size())
+                    return;
+                try {
+                    LowerILToMIR lowering{target, functionPools[index]};
+                    lowering.setKnownVarArgCallees(knownVarArgCallees);
+                    legalizeFunctionPipeline(
+                        mod.funcs[index], lowering, target, frames[index], mir[index]);
+                } catch (...) {
+                    std::lock_guard<std::mutex> lock(exceptionMutex);
+                    if (!firstException)
+                        firstException = std::current_exception();
+                    return;
+                }
+            }
+        };
+
+        const std::size_t workerCount = common::codegenWorkerCount(mod.funcs.size());
+        if (workerCount <= 1) {
+            legalizeNext();
+        } else {
+            std::vector<std::thread> workers;
+            workers.reserve(workerCount);
+            for (std::size_t worker = 0; worker < workerCount; ++worker)
+                workers.emplace_back(legalizeNext);
+            for (auto &worker : workers)
+                worker.join();
+        }
+        if (firstException)
+            std::rethrow_exception(firstException);
+
+        // Merge per-function literals in source order and rewrite every symbolic
+        // operand that referred to a worker-local literal label.
+        for (std::size_t index = 0; index < functionPools.size(); ++index) {
+            auto &pool = functionPools[index];
+            std::unordered_map<std::string, std::string> labelMap;
+            for (std::size_t literal = 0; literal < pool.stringCount(); ++literal) {
+                const int localIndex = static_cast<int>(literal);
+                const int globalIndex = roData.addStringLiteral(pool.stringBytes(localIndex));
+                labelMap.emplace(pool.stringLabel(static_cast<int>(literal)),
+                                 roData.stringLabel(globalIndex));
+            }
+            for (std::size_t literal = 0; literal < pool.f64Count(); ++literal) {
+                const int localIndex = static_cast<int>(literal);
+                const int globalIndex = roData.addF64Literal(pool.f64Value(localIndex));
+                labelMap.emplace(pool.f64Label(static_cast<int>(literal)),
+                                 roData.f64Label(globalIndex));
+            }
+            for (auto &block : mir[index].blocks) {
+                for (auto &instr : block.instructions) {
+                    for (auto &operand : instr.operands) {
+                        if (auto *label = std::get_if<OpLabel>(&operand)) {
+                            if (const auto it = labelMap.find(label->name); it != labelMap.end())
+                                label->name = it->second;
+                        } else if (auto *ripLabel = std::get_if<OpRipLabel>(&operand)) {
+                            if (const auto it = labelMap.find(ripLabel->name); it != labelMap.end())
+                                ripLabel->name = it->second;
+                        }
+                    }
+                }
+            }
         }
     } catch (const std::exception &ex) {
         mir.clear();
@@ -808,14 +870,48 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
             result.textSections.push_back(std::move(funcText));
         }
     } else {
-        for (std::size_t i = 0; i < mir.size(); ++i) {
-            objfile::CodeSection funcText;
-            if (std::string error = encodeOne(i, funcText, nullptr); !error.empty()) {
+        struct EncodedFunction {
+            objfile::CodeSection text;
+            std::string error;
+        };
+        std::vector<EncodedFunction> encoded(mir.size());
+        std::atomic_size_t nextIndex{0};
+        std::atomic_bool failed{false};
+
+        /// Encode independent functions into stable result slots. Each worker owns
+        /// its encoder and text section; the shared rodata section is read-only.
+        auto encodeNext = [&]() {
+            while (!failed.load(std::memory_order_relaxed)) {
+                const std::size_t index =
+                    nextIndex.fetch_add(1, std::memory_order_relaxed);
+                if (index >= mir.size())
+                    return;
+                encoded[index].error = encodeOne(index, encoded[index].text, nullptr);
+                if (!encoded[index].error.empty())
+                    failed.store(true, std::memory_order_relaxed);
+            }
+        };
+
+        const std::size_t workerCount = common::codegenWorkerCount(mir.size());
+        if (workerCount <= 1) {
+            encodeNext();
+        } else {
+            std::vector<std::thread> workers;
+            workers.reserve(workerCount);
+            for (std::size_t worker = 0; worker < workerCount; ++worker)
+                workers.emplace_back(encodeNext);
+            for (auto &worker : workers)
+                worker.join();
+        }
+
+        result.textSections.reserve(encoded.size());
+        for (auto &function : encoded) {
+            if (!function.error.empty()) {
                 BinaryEmitResult failure{};
-                failure.errors = std::move(error);
+                failure.errors = std::move(function.error);
                 return failure;
             }
-            result.textSections.push_back(std::move(funcText));
+            result.textSections.push_back(std::move(function.text));
         }
     }
 
