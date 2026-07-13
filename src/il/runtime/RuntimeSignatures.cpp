@@ -46,7 +46,6 @@
 
 #include "rt.hpp"
 #include "rt_achievement.h"
-#include "rt_quests.h"
 #include "rt_action.h"
 #include "rt_aes.h"
 #include "rt_animation_events.h"
@@ -81,9 +80,9 @@
 #include "rt_canvas3d.h"
 #include "rt_channel.h"
 #include "rt_cipher.h"
+#include "rt_cloth3d.h"
 #include "rt_codec.h"
 #include "rt_collator.h"
-#include "rt_cloth3d.h"
 #include "rt_collider3d.h"
 #include "rt_collision.h"
 #include "rt_compiled_pattern.h"
@@ -160,7 +159,9 @@
 #include "rt_keyderive.h"
 #include "rt_lazy.h"
 #include "rt_lazyseq.h"
+#include "rt_lensflare3d.h"
 #include "rt_leveldata.h"
+#include "rt_lightbaker3d.h"
 #include "rt_lighting2d.h"
 #include "rt_linereader.h"
 #include "rt_linewriter.h"
@@ -178,6 +179,7 @@
 #include "rt_mat4.h"
 #include "rt_math.h"
 #include "rt_memstream.h"
+#include "rt_mesh_simplify.h"
 #include "rt_message_bundle.h"
 #include "rt_mixgroup.h"
 #include "rt_model3d.h"
@@ -212,11 +214,6 @@
 #include "rt_physics2d.h"
 #include "rt_physics2d_joint.h"
 #include "rt_physics3d.h"
-#include "rt_ragdoll3d.h"
-#include "rt_lightbaker3d.h"
-#include "rt_reflectionprobe3d.h"
-#include "rt_sky3d.h"
-#include "rt_timeofday3d.h"
 #include "rt_pixels.h"
 #include "rt_platformer_ctrl.h"
 #include "rt_playlist.h"
@@ -229,23 +226,26 @@
 #include "rt_pty.h"
 #include "rt_quadtree.h"
 #include "rt_quat.h"
+#include "rt_quests.h"
 #include "rt_queue.h"
+#include "rt_ragdoll3d.h"
 #include "rt_rand.h"
 #include "rt_random.h"
 #include "rt_ratelimit.h"
 #include "rt_raycast2d.h"
 #include "rt_raycast3d.h"
+#include "rt_reflectionprobe3d.h"
 #include "rt_reltime_format.h"
 #include "rt_scenemanager.h"
+#include "rt_sky3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
-#include "rt_lensflare3d.h"
-#include "rt_mesh_simplify.h"
 #include "rt_sprite3d.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
 #include "rt_text_direction.h"
+#include "rt_timeofday3d.h"
 #include "rt_transform3d.h"
 #include "rt_vegetation3d.h"
 #include "rt_videoplayer.h"
@@ -454,6 +454,7 @@ struct DescriptorRow {
     std::size_t hiddenCount{0};
     RuntimeTrapClass trapClass{RuntimeTrapClass::None};
     bool publicSurface{true};
+    std::string_view cSymbol{};
 };
 
 // Use deduced array size to avoid mismatches that would create an empty default row.
@@ -2371,6 +2372,7 @@ RuntimeSignature buildSignature(const DescriptorRow &row) {
 RuntimeDescriptor buildDescriptor(const DescriptorRow &row) {
     RuntimeDescriptor descriptor;
     descriptor.name = row.name;
+    descriptor.cSymbol = row.cSymbol;
     descriptor.signatureText = row.spec;
     descriptor.signature = buildSignature(row);
     descriptor.handler = row.handler;

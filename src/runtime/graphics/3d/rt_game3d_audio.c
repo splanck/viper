@@ -517,7 +517,9 @@ void rt_game3d_audio_add_reverb_zone(void *obj, void *zone_obj) {
                             RT_G3D_GAME3D_REVERBZONE_CLASS_ID);
     audio->reverb_zone_count += 1;
     if (audio->reverb_group < 0) {
-        audio->reverb_group = rt_audio_register_group(rt_const_cstr("g3d_reverb"));
+        rt_string group_name = rt_const_cstr("g3d_reverb");
+        audio->reverb_group = rt_audio_register_group(group_name);
+        rt_string_unref(group_name);
         if (audio->reverb_group >= 0)
             audio->reverb_fx = rt_snd_group_add_reverb(
                 audio->reverb_group, audio->reverb_room, audio->reverb_damp, 0.0);
@@ -579,8 +581,11 @@ int64_t rt_game3d_audio_play_dialogue(void *obj, void *clip) {
         rt_trap("Game3D.Sound3D.PlayDialogue: expected Sound clip");
         return 0;
     }
-    if (audio->dialogue_group < 0)
-        audio->dialogue_group = rt_audio_register_group(rt_const_cstr("g3d_dialogue"));
+    if (audio->dialogue_group < 0) {
+        rt_string group_name = rt_const_cstr("g3d_dialogue");
+        audio->dialogue_group = rt_audio_register_group(group_name);
+        rt_string_unref(group_name);
+    }
     if (audio->dialogue_group < 0)
         return 0;
     int64_t voice = rt_sound_play_ex_in_group(
@@ -787,8 +792,11 @@ static void game3d_audio_ambientbed_tick(rt_game3d_ambientbed *bed,
         bed->prev_volume = bed->cur_volume;
         void *clip = selected >= 0 ? bed->zones[selected].clip : bed->default_clip;
         int64_t volume = selected >= 0 ? bed->zones[selected].volume : bed->default_volume;
-        if (bed->group < 0)
-            bed->group = rt_audio_register_group(rt_const_cstr("g3d_ambience"));
+        if (bed->group < 0) {
+            rt_string group_name = rt_const_cstr("g3d_ambience");
+            bed->group = rt_audio_register_group(group_name);
+            rt_string_unref(group_name);
+        }
         bed->cur_voice =
             clip && bed->group >= 0 ? rt_sound_play_loop_in_group(clip, 0, 0, bed->group) : 0;
         if (bed->cur_voice < 0)

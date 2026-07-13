@@ -37,6 +37,7 @@
 #include "rt_font.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 #include "rt_textureasset3d.h"
 #include "rt_vec3.h"
@@ -88,12 +89,6 @@ static int world_to_screen(
     return 1;
 }
 
-typedef struct {
-    int64_t w;
-    int64_t h;
-    uint32_t *data;
-} canvas3d_pixels_view_t;
-
 /// @brief Resolve the active output surface's public coordinate size.
 /// @details When a render target is bound, overlays size to the RTT. Otherwise
 ///          they size to the Canvas3D logical dimensions, not the framebuffer
@@ -120,7 +115,7 @@ static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *ou
 }
 
 /// @brief Pack an RGBA byte surface into `Pixels`, scaling to logical size when needed.
-static int canvas3d_pack_rgba_to_pixels(canvas3d_pixels_view_t *pv,
+static int canvas3d_pack_rgba_to_pixels(rt_pixels_impl *pv,
                                         const uint8_t *src,
                                         int32_t src_w,
                                         int32_t src_h,
@@ -129,14 +124,14 @@ static int canvas3d_pack_rgba_to_pixels(canvas3d_pixels_view_t *pv,
                                         int32_t dst_h) {
     if (!pv || !pv->data || !src || src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0)
         return 0;
-    if (src_stride < src_w * 4)
+    if ((int64_t)src_stride < (int64_t)src_w * 4)
         return 0;
 
     if (src_w == dst_w && src_h == dst_h) {
         for (int32_t y = 0; y < dst_h; y++) {
             for (int32_t x = 0; x < dst_w; x++) {
                 const uint8_t *p = src + (size_t)y * (size_t)src_stride + (size_t)x * 4u;
-                pv->data[(size_t)y * (size_t)pv->w + (size_t)x] =
+                pv->data[(size_t)y * (size_t)pv->width + (size_t)x] =
                     ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
                     (uint32_t)p[3];
             }
@@ -176,7 +171,7 @@ static int canvas3d_pack_rgba_to_pixels(canvas3d_pixels_view_t *pv,
             }
             if (count == 0)
                 count = 1;
-            pv->data[(size_t)y * (size_t)pv->w + (size_t)x] =
+            pv->data[(size_t)y * (size_t)pv->width + (size_t)x] =
                 ((uint32_t)((r + count / 2u) / count) << 24) |
                 ((uint32_t)((g + count / 2u) / count) << 16) |
                 ((uint32_t)((b + count / 2u) / count) << 8) | (uint32_t)((a + count / 2u) / count);
@@ -1597,50 +1592,72 @@ int64_t rt_canvas3d_get_backend_present_path(void *obj) {
     return stats.present_path;
 }
 
-/// @brief Capture the current canvas contents into a freshly allocated Pixels object.
+/// @brief Grow the reusable GPU-readback staging buffer without losing the previous allocation.
+static int canvas3d_reserve_readback_scratch(rt_canvas3d *c, size_t required) {
+    size_t capacity;
+    uint8_t *next;
+    if (!c || required == 0)
+        return 0;
+    if (required <= c->readback_rgba_scratch_capacity && c->readback_rgba_scratch)
+        return 1;
+    capacity = c->readback_rgba_scratch_capacity > 0 ? c->readback_rgba_scratch_capacity : 4096u;
+    while (capacity < required) {
+        size_t grown = capacity + capacity / 2u;
+        if (grown <= capacity || grown > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity = grown;
+    }
+    next = (uint8_t *)realloc(c->readback_rgba_scratch, capacity);
+    if (!next)
+        return 0;
+    c->readback_rgba_scratch = next;
+    c->readback_rgba_scratch_capacity = capacity;
+    return 1;
+}
+
+/// @brief Capture the current canvas contents into an existing same-size Pixels object.
 /// @details Three-way capture path, picked by what's bound:
 ///          1. RTT bound → call `rendertarget_sync_color_if_needed` to
 ///             pull GPU contents back to CPU, then RGBA-pack each row
 ///             into the Pixels buffer.
-///          2. GPU backend with `readback_rgba` → allocate a temp
-///             RGBA buffer, ask the backend to fill it, repack.
+///          2. GPU backend with `readback_rgba` → reuse the canvas-owned
+///             RGBA scratch buffer, ask the backend to fill it, repack.
 ///          3. Software backend / fallback → copy directly from the
 ///             window's CPU framebuffer.
 ///          The 0xRRGGBBAA pack here matches the `rt_pixels` storage
 ///          convention (top byte = red), so the screenshot can be saved
 ///          to BMP/PNG via `Pixels.Save` without a swizzle pass.
-///          Returns NULL on size = 0 or alloc failure.
-void *rt_canvas3d_screenshot(void *obj) {
-    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    if (!c)
-        return NULL;
-
-    const int32_t shot_w = c->render_target ? c->render_target->width : c->width;
-    const int32_t shot_h = c->render_target ? c->render_target->height : c->height;
-    int32_t source_w = shot_w;
-    int32_t source_h = shot_h;
-    if (shot_w <= 0 || shot_h <= 0)
-        return NULL;
-
-    void *pixels = rt_pixels_new((int64_t)shot_w, (int64_t)shot_h);
-    if (!pixels)
-        return NULL;
-    canvas3d_pixels_view_t *pv = (canvas3d_pixels_view_t *)pixels;
+/// @return 1 after a successful copy, or 0 on invalid layout/readback/allocation failure.
+static int canvas3d_screenshot_into(rt_canvas3d *c, rt_pixels_impl *pv) {
+    int32_t shot_w;
+    int32_t shot_h;
+    int32_t source_w;
+    int32_t source_h;
+    int copied = 0;
+    if (!c || !pv || !pv->data)
+        return 0;
+    shot_w = c->render_target ? c->render_target->width : c->width;
+    shot_h = c->render_target ? c->render_target->height : c->height;
+    source_w = shot_w;
+    source_h = shot_h;
+    if (shot_w <= 0 || shot_h <= 0 || pv->width != shot_w || pv->height != shot_h)
+        return 0;
 
     if (c->render_target && vgfx3d_rendertarget_ensure_color(c->render_target)) {
-        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target)) {
-            if (rt_obj_release_check0(pixels))
-                rt_obj_free(pixels);
-            return NULL;
-        }
-        canvas3d_pack_rgba_to_pixels(pv,
-                                     c->render_target->color_buf,
-                                     shot_w,
-                                     shot_h,
-                                     c->render_target->stride,
-                                     shot_w,
-                                     shot_h);
-        return pixels;
+        if (!vgfx3d_rendertarget_sync_color_if_needed(c->render_target))
+            return 0;
+        copied = canvas3d_pack_rgba_to_pixels(pv,
+                                              c->render_target->color_buf,
+                                              shot_w,
+                                              shot_h,
+                                              c->render_target->stride,
+                                              shot_w,
+                                              shot_h);
+        if (copied)
+            pixels_touch(pv);
+        return copied;
     }
 
     if (c->framebuffer_width > 0 && c->framebuffer_height > 0) {
@@ -1650,38 +1667,71 @@ void *rt_canvas3d_screenshot(void *obj) {
 
     if (c->backend && c->backend != &vgfx3d_software_backend && c->backend->readback_rgba) {
         const size_t row_bytes = (size_t)source_w * 4u;
-        uint8_t *rgba;
-        if ((size_t)source_w > SIZE_MAX / 4u || (size_t)source_h > SIZE_MAX / row_bytes) {
-            if (rt_obj_release_check0(pixels))
-                rt_obj_free(pixels);
-            return NULL;
+        size_t required;
+        if ((size_t)source_w > SIZE_MAX / 4u || row_bytes > INT32_MAX || row_bytes == 0u ||
+            (size_t)source_h > SIZE_MAX / row_bytes)
+            return 0;
+        required = (size_t)source_h * row_bytes;
+        if (canvas3d_reserve_readback_scratch(c, required) &&
+            c->backend->readback_rgba(
+                c->backend_ctx, c->readback_rgba_scratch, source_w, source_h, (int32_t)row_bytes)) {
+            copied = canvas3d_pack_rgba_to_pixels(pv,
+                                                  c->readback_rgba_scratch,
+                                                  source_w,
+                                                  source_h,
+                                                  (int32_t)row_bytes,
+                                                  shot_w,
+                                                  shot_h);
+            if (copied) {
+                pixels_touch(pv);
+                return 1;
+            }
         }
-        rgba = (uint8_t *)malloc((size_t)source_h * row_bytes);
-        if (rgba && c->backend->readback_rgba(
-                        c->backend_ctx, rgba, source_w, source_h, (int32_t)row_bytes)) {
-            canvas3d_pack_rgba_to_pixels(
-                pv, rgba, source_w, source_h, (int32_t)row_bytes, shot_w, shot_h);
-            free(rgba);
-            return pixels;
-        }
-        free(rgba);
     }
 
     if (c->gfx_win) {
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels || fb.width <= 0 ||
-            fb.height <= 0 || fb.stride < fb.width * 4) {
-            if (rt_obj_release_check0(pixels))
-                rt_obj_free(pixels);
-            return NULL;
-        }
-        canvas3d_pack_rgba_to_pixels(pv, fb.pixels, fb.width, fb.height, fb.stride, shot_w, shot_h);
-    } else {
+            fb.height <= 0 || (int64_t)fb.stride < (int64_t)fb.width * 4)
+            return 0;
+        copied = canvas3d_pack_rgba_to_pixels(
+            pv, fb.pixels, fb.width, fb.height, fb.stride, shot_w, shot_h);
+        if (copied)
+            pixels_touch(pv);
+        return copied;
+    }
+    return 0;
+}
+
+/// @brief Capture the current canvas contents into a freshly allocated Pixels object.
+/// @return A new Pixels object, or NULL on invalid size, allocation, or readback failure.
+void *rt_canvas3d_screenshot(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    const int32_t shot_w = c && c->render_target ? c->render_target->width : c ? c->width : 0;
+    const int32_t shot_h = c && c->render_target ? c->render_target->height : c ? c->height : 0;
+    void *pixels;
+    if (!c || shot_w <= 0 || shot_h <= 0)
+        return NULL;
+    pixels = rt_pixels_new((int64_t)shot_w, (int64_t)shot_h);
+    if (!pixels)
+        return NULL;
+    if (!canvas3d_screenshot_into(c, rt_pixels_checked_impl_or_null(pixels))) {
         if (rt_obj_release_check0(pixels))
             rt_obj_free(pixels);
         return NULL;
     }
     return pixels;
+}
+
+/// @brief Copy the current canvas contents into an existing same-size Pixels object.
+/// @details Reuses canvas-owned GPU staging storage after the first large-enough readback, avoiding
+///          per-frame allocation in capture loops. Render-target and software paths allocate no
+///          staging storage. The destination generation advances on success.
+/// @return 1 on success; 0 for invalid handles, size mismatch, or readback failure.
+int8_t rt_canvas3d_try_copy_screenshot_to(void *obj, void *pixels) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(pixels);
+    return canvas3d_screenshot_into(c, pv) ? 1 : 0;
 }
 
 /// @brief Draw an axis-aligned bounding box as 12 wireframe edges from raw min/max corner arrays.

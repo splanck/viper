@@ -105,7 +105,11 @@ static int gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bundl
             ((size_t)tan_offset > payload_bytes ||
              channel_bytes > payload_bytes - (size_t)tan_offset))
             goto malformed;
-        shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr(name));
+        {
+            rt_string runtime_name = rt_const_cstr(name);
+            shape = rt_morphtarget3d_add_shape(morph, runtime_name);
+            rt_string_unref(runtime_name);
+        }
         if (shape < 0)
             goto malformed;
         rt_morphtarget3d_set_weight(morph, shape, weight);
@@ -999,11 +1003,11 @@ static void gltf_import_primitive_morph_targets(void *root,
         int has_norm = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
         int has_tangent =
             gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &tangent_view);
-        if (has_pos && (!gltf_accessor_has_payload(&pos_view) ||
-                        !gltf_accessor_is_position(&pos_view)))
+        if (has_pos &&
+            (!gltf_accessor_has_payload(&pos_view) || !gltf_accessor_is_position(&pos_view)))
             has_pos = 0;
-        if (has_norm && (!gltf_accessor_has_payload(&norm_view) ||
-                         !gltf_accessor_is_normal(&norm_view)))
+        if (has_norm &&
+            (!gltf_accessor_has_payload(&norm_view) || !gltf_accessor_is_normal(&norm_view)))
             has_norm = 0;
         if (has_tangent && (!gltf_accessor_has_payload(&tangent_view) ||
                             !gltf_accessor_is_tangent(&tangent_view, 3)))
@@ -1015,7 +1019,11 @@ static void gltf_import_primitive_morph_targets(void *root,
             continue;
 
         name = gltf_target_name(mesh_json, (int32_t)ti, fallback_name, sizeof(fallback_name));
-        shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr(name));
+        {
+            rt_string runtime_name = rt_const_cstr(name);
+            shape = rt_morphtarget3d_add_shape(morph, runtime_name);
+            rt_string_unref(runtime_name);
+        }
         if (shape < 0)
             continue;
 
@@ -1300,7 +1308,9 @@ static uint8_t *gltf_load_dependency_bytes(const char *resource_path,
     if (data)
         goto done;
     if (load_assets) {
-        data = rt_asset_load_raw(rt_const_cstr(resource_path), &len);
+        rt_string runtime_path = rt_const_cstr(resource_path);
+        data = rt_asset_load_raw(runtime_path, &len);
+        rt_string_unref(runtime_path);
         if (data || gltf_is_asset_uri(resource_path))
             goto done;
     }
@@ -1365,7 +1375,9 @@ static void *gltf_load_dependency_image(const char *resource_path,
     }
     if (load_assets) {
         size_t data_len = 0;
-        uint8_t *data = rt_asset_load_raw(rt_const_cstr(resource_path), &data_len);
+        rt_string runtime_path = rt_const_cstr(resource_path);
+        uint8_t *data = rt_asset_load_raw(runtime_path, &data_len);
+        rt_string_unref(runtime_path);
         if (data) {
             void *decoded = is_ktx2 ? gltf_decode_ktx2_payload(data, data_len)
                                     : rt_asset_decode_typed(resource_path, data, data_len);
@@ -1383,7 +1395,12 @@ static void *gltf_load_dependency_image(const char *resource_path,
         free(data);
         return decoded;
     }
-    return rt_pixels_load(rt_const_cstr(resource_path));
+    {
+        rt_string runtime_path = rt_const_cstr(resource_path);
+        void *pixels = rt_pixels_load(runtime_path);
+        rt_string_unref(runtime_path);
+        return pixels;
+    }
 }
 
 /// @brief Write a NUL-terminated error message into the caller's buffer (no-op if buffer absent).

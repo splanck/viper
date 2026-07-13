@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_anim.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF skin parsing plus skeletal and node animation extraction
+// File: src/runtime/graphics/3d/assets/rt_gltf_anim.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF skin parsing plus skeletal and node animation
+// extraction
 //===----------------------------------------------------------------------===//
 
 /// @brief Reverse-lookup: given a glTF node index, return the local joint slot within
@@ -50,8 +51,7 @@ static int64_t gltf_add_skin_joint_recursive(gltf_skin_t *skin,
     int64_t bone_idx;
     void *children;
     int32_t joint_count = gltf_skin_safe_joint_count(skin);
-    if (!skin || !skin->skeleton || !nodes_arr || joint_local < 0 ||
-        joint_local >= joint_count)
+    if (!skin || !skin->skeleton || !nodes_arr || joint_local < 0 || joint_local >= joint_count)
         return -1;
     if (skin->joint_to_bone[joint_local] >= 0)
         return skin->joint_to_bone[joint_local];
@@ -85,7 +85,11 @@ static int64_t gltf_add_skin_joint_recursive(gltf_skin_t *skin,
                            local[13],
                            local[14],
                            local[15]);
-    bone_idx = rt_skeleton3d_add_bone(skin->skeleton, rt_const_cstr(name), parent_bone, bind_mat);
+    {
+        rt_string runtime_name = rt_const_cstr(name);
+        bone_idx = rt_skeleton3d_add_bone(skin->skeleton, runtime_name, parent_bone, bind_mat);
+        rt_string_unref(runtime_name);
+    }
     gltf_release_ref(&bind_mat);
     if (bone_idx < 0) {
         skin->joint_to_bone[joint_local] = -1;
@@ -124,8 +128,7 @@ static void gltf_release_skin_skeletons(gltf_skin_t *skins, int32_t skin_count) 
         gltf_release_ref(&skins[i].skeleton);
 }
 
-static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view,
-                                            int32_t joint_count);
+static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view, int32_t joint_count);
 
 static void gltf_parse_skins_clear_asset(rt_gltf_asset *asset) {
     if (!asset)
@@ -239,10 +242,9 @@ static void gltf_skin_register_joints(gltf_skin_t *skin,
                                       int32_t node_count) {
     int32_t joint_count = gltf_skin_safe_joint_count(skin);
     for (int32_t ji = 0; ji < joint_count; ji++) {
-        int32_t parent_node =
-            skin->joint_nodes[ji] >= 0 && skin->joint_nodes[ji] < node_count
-                ? node_parents[skin->joint_nodes[ji]]
-                : -1;
+        int32_t parent_node = skin->joint_nodes[ji] >= 0 && skin->joint_nodes[ji] < node_count
+                                  ? node_parents[skin->joint_nodes[ji]]
+                                  : -1;
         if (gltf_skin_find_joint(skin, parent_node) < 0)
             gltf_add_skin_joint_recursive(skin, nodes_arr, ji, -1);
     }
@@ -252,11 +254,8 @@ static void gltf_skin_register_joints(gltf_skin_t *skin,
     }
 }
 
-static void gltf_skin_apply_inverse_bind(void *root,
-                                         void *skin_json,
-                                         gltf_buffer_t *buffers,
-                                         int buf_count,
-                                         gltf_skin_t *skin) {
+static void gltf_skin_apply_inverse_bind(
+    void *root, void *skin_json, gltf_buffer_t *buffers, int buf_count, gltf_skin_t *skin) {
     int32_t joint_count = gltf_skin_safe_joint_count(skin);
     int64_t ibm_acc = jint(skin_json, "inverseBindMatrices", -1);
     gltf_accessor_view_t ibm_view;
@@ -525,11 +524,8 @@ static int gltf_anim_curve_already_targets(const gltf_anim_curve_t *curves,
 }
 
 /// @brief Return non-zero if a node animation channel already owns this node/path pair.
-static int gltf_node_anim_channel_seen(const int32_t *nodes,
-                                       const int32_t *paths,
-                                       int32_t count,
-                                       int32_t node_idx,
-                                       int32_t path) {
+static int gltf_node_anim_channel_seen(
+    const int32_t *nodes, const int32_t *paths, int32_t count, int32_t node_idx, int32_t path) {
     if (!nodes || !paths || count <= 0 || node_idx < 0)
         return 0;
     for (int32_t i = 0; i < count; i++) {
@@ -628,9 +624,8 @@ static int gltf_anim_insert_curve_times(double **times,
             return 0;
         if (step && ti + 1 < curve->input.count) {
             double hold = gltf_anim_step_hold_time(t, gltf_curve_time(&curve->input, ti + 1));
-            if (hold >= 0.0 &&
-                (!gltf_anim_insert_time(times, count, capacity, hold) ||
-                 *count > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL))
+            if (hold >= 0.0 && (!gltf_anim_insert_time(times, count, capacity, hold) ||
+                                *count > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL))
                 return 0;
         }
     }
@@ -749,7 +744,8 @@ static int gltf_animation_input_accessor_valid(const gltf_accessor_view_t *input
 #define GLTF_NODE_ANIM_VALUE_COUNT_MAX 4000000
 #define GLTF_SKIN_ANIM_KEY_COUNT_MAX RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL
 
-/// @brief Decode a glTF sampler interpolation string, applying only the spec's absent-field default.
+/// @brief Decode a glTF sampler interpolation string, applying only the spec's absent-field
+/// default.
 static int32_t gltf_animation_interpolation_mode(const char *interpolation) {
     if (!interpolation || interpolation[0] == '\0' || strcmp(interpolation, "LINEAR") == 0)
         return GLTF_ANIM_INTERP_LINEAR;
@@ -776,8 +772,7 @@ static int gltf_animation_trs_output_accessor_valid(const gltf_accessor_view_t *
 }
 
 /// @brief Validate inverseBindMatrices accessors before overriding computed bind data.
-static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view,
-                                            int32_t joint_count) {
+static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view, int32_t joint_count) {
     if (!view || joint_count <= 0 || view->comp_type != 5126 || view->comp_count != 16 ||
         view->count != joint_count)
         return 0;
@@ -890,8 +885,8 @@ static int gltf_sample_curve_tangents(const gltf_anim_curve_t *curve,
     double t0;
     double t1;
     if (!curve || !curve->valid || !curve->interpolation ||
-        strcmp(curve->interpolation, "CUBICSPLINE") != 0 || components <= 0 ||
-        components > 4 || curve->input.count <= 0 || !isfinite(time))
+        strcmp(curve->interpolation, "CUBICSPLINE") != 0 || components <= 0 || components > 4 ||
+        curve->input.count <= 0 || !isfinite(time))
         return 0;
     key_count = curve->input.count;
     if (key_count > INT32_MAX / 3 || curve->output.count < key_count * 3)
@@ -1143,25 +1138,19 @@ static void gltf_skin_anim_resolve_curve(void *root,
     interpolation_mode = gltf_animation_interpolation_mode(curves[channel_index].interpolation);
     if (interpolation_mode == GLTF_ANIM_INTERP_INVALID)
         return;
-    if (!gltf_get_accessor_view(root,
-                                jint(sampler, "input", -1),
-                                buffers,
-                                buf_count,
-                                &curves[channel_index].input) ||
-        !gltf_get_accessor_view(root,
-                                jint(sampler, "output", -1),
-                                buffers,
-                                buf_count,
-                                &curves[channel_index].output))
+    if (!gltf_get_accessor_view(
+            root, jint(sampler, "input", -1), buffers, buf_count, &curves[channel_index].input) ||
+        !gltf_get_accessor_view(
+            root, jint(sampler, "output", -1), buffers, buf_count, &curves[channel_index].output))
         return;
     if (curves[channel_index].input.count > GLTF_SKIN_ANIM_KEY_COUNT_MAX ||
         !gltf_animation_input_accessor_valid(&curves[channel_index].input, interpolation_mode))
         return;
-    if (!gltf_animation_trs_output_accessor_valid(
-            &curves[channel_index].input,
-            &curves[channel_index].output,
-            curves[channel_index].path == 1 ? 4 : 3,
-            interpolation_mode == GLTF_ANIM_INTERP_CUBICSPLINE))
+    if (!gltf_animation_trs_output_accessor_valid(&curves[channel_index].input,
+                                                  &curves[channel_index].output,
+                                                  curves[channel_index].path == 1 ? 4 : 3,
+                                                  interpolation_mode ==
+                                                      GLTF_ANIM_INTERP_CUBICSPLINE))
         return;
     curves[channel_index].valid = 1;
     curves[channel_index].node_idx = (int32_t)node_idx;
@@ -1174,28 +1163,20 @@ static void gltf_skin_anim_resolve_curve(void *root,
 }
 
 static gltf_anim_curve_t *gltf_skin_anim_build_curves(void *root,
-                                                     void *nodes_arr,
-                                                     void *samplers,
-                                                     void *channels,
-                                                     int32_t channel_count,
-                                                     gltf_buffer_t *buffers,
-                                                     int buf_count,
-                                                     const gltf_skin_t *skin,
-                                                     double *duration_io) {
+                                                      void *nodes_arr,
+                                                      void *samplers,
+                                                      void *channels,
+                                                      int32_t channel_count,
+                                                      gltf_buffer_t *buffers,
+                                                      int buf_count,
+                                                      const gltf_skin_t *skin,
+                                                      double *duration_io) {
     gltf_anim_curve_t *curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
     if (!curves)
         return NULL;
     for (int32_t ci = 0; ci < channel_count; ci++)
-        gltf_skin_anim_resolve_curve(root,
-                                     nodes_arr,
-                                     samplers,
-                                     channels,
-                                     ci,
-                                     buffers,
-                                     buf_count,
-                                     skin,
-                                     curves,
-                                     duration_io);
+        gltf_skin_anim_resolve_curve(
+            root, nodes_arr, samplers, channels, ci, buffers, buf_count, skin, curves, duration_io);
     return curves;
 }
 
@@ -1445,27 +1426,29 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 snprintf(skin_name, sizeof(skin_name), "%s_skin_%d", name, (int)si);
                 clip_name = skin_name;
             }
-            anim = rt_animation3d_new(rt_const_cstr(clip_name), duration > 0.0 ? duration : 1.0);
+            {
+                rt_string runtime_name = rt_const_cstr(clip_name);
+                anim = rt_animation3d_new(runtime_name, duration > 0.0 ? duration : 1.0);
+                rt_string_unref(runtime_name);
+            }
             if (!anim) {
                 free(curves);
                 continue;
             }
-            emitted_any = gltf_skin_anim_emit_clip_bones(
-                anim, nodes_arr, curves, channel_count, bone_limit);
+            emitted_any =
+                gltf_skin_anim_emit_clip_bones(anim, nodes_arr, curves, channel_count, bone_limit);
             free(curves);
             if (!emitted_any) {
                 gltf_release_ref(&anim);
                 continue;
             }
             rt_animation3d_set_looping(anim, 1);
-            if (asset->animation_count < 0 ||
-                asset->animation_count >= asset->animation_capacity) {
+            if (asset->animation_count < 0 || asset->animation_count >= asset->animation_capacity) {
                 gltf_release_ref(&anim);
                 continue;
             }
             if (rt_gltf_active_load_options()->compress_animations) {
-                int64_t dropped =
-                    rt_animation3d_compress_keyframes(anim, 1e-4, 1e-5, 1e-4);
+                int64_t dropped = rt_animation3d_compress_keyframes(anim, 1e-4, 1e-5, 1e-4);
                 if (dropped > 0)
                     rt_asset_error_add_import_stat(
                         RT_ASSET_IMPORT_STAT_COMPRESSED_ANIMATION_KEYS_DROPPED, dropped);
@@ -1636,8 +1619,7 @@ static int gltf_node_anim_resolve_channel(void *root,
         if (expected_weight_width <= 0)
             return 0;
     }
-    if (gltf_node_anim_channel_seen(
-            seen_nodes, seen_paths, seen_count, (int32_t)node_idx, path))
+    if (gltf_node_anim_channel_seen(seen_nodes, seen_paths, seen_count, (int32_t)node_idx, path))
         return 0;
     sampler = rt_seq_get(samplers, sampler_idx);
     out->interpolation = jstr(sampler, "interpolation");
@@ -1659,8 +1641,7 @@ static int gltf_node_anim_resolve_channel(void *root,
     if (width > GLTF_NODE_ANIM_VALUE_WIDTH_MAX)
         return 0;
     value_count = (int64_t)input.count * (int64_t)width;
-    if (value_count <= 0 || value_count > INT32_MAX ||
-        value_count > GLTF_NODE_ANIM_VALUE_COUNT_MAX)
+    if (value_count <= 0 || value_count > INT32_MAX || value_count > GLTF_NODE_ANIM_VALUE_COUNT_MAX)
         return 0;
     if (cubic && value_count > INT32_MAX / 3)
         return 0;
@@ -1746,8 +1727,7 @@ static void gltf_node_anim_fill_trs_key(const gltf_node_anim_channel_t *channel,
                                         float *values,
                                         float *in_tangents,
                                         float *out_tangents) {
-    float tmp[4] = {
-        0.0f, 0.0f, 0.0f, channel->path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
+    float tmp[4] = {0.0f, 0.0f, 0.0f, channel->path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
     gltf_accessor_read_f32(&channel->output, source_key, tmp, channel->width);
     if (channel->path == RT_NODE_ANIM_PATH_ROTATION)
         gltf_normalize_sample_if_quat(tmp, 4);
@@ -1788,8 +1768,7 @@ static void gltf_node_anim_fill_samples(const gltf_node_anim_channel_t *channel,
         if (channel->path == RT_NODE_ANIM_PATH_WEIGHTS)
             gltf_node_anim_fill_weight_key(channel, ki, values, in_tangents, out_tangents);
         else
-            gltf_node_anim_fill_trs_key(
-                channel, ki, source_key, values, in_tangents, out_tangents);
+            gltf_node_anim_fill_trs_key(channel, ki, source_key, values, in_tangents, out_tangents);
     }
 }
 
@@ -1805,14 +1784,16 @@ static int gltf_node_anim_emit_channel(void *node_anim,
                                        int32_t *seen_count,
                                        int32_t channel_count) {
     char fallback_name[64];
-    const char *target_name =
-        gltf_effective_node_name(nodes_arr, channel->node_idx, fallback_name, sizeof(fallback_name));
+    const char *target_name = gltf_effective_node_name(
+        nodes_arr, channel->node_idx, fallback_name, sizeof(fallback_name));
     int64_t channel_index;
+    rt_string runtime_target_name;
     if (!target_name)
         return 0;
+    runtime_target_name = rt_const_cstr(target_name);
     if (channel->cubic) {
         channel_index = rt_node_animation3d_add_cubic_channel(node_anim,
-                                                              rt_const_cstr(target_name),
+                                                              runtime_target_name,
                                                               channel->path,
                                                               channel->input.count,
                                                               channel->width,
@@ -1823,7 +1804,7 @@ static int gltf_node_anim_emit_channel(void *node_anim,
     } else {
         channel_index = rt_node_animation3d_add_channel(
             node_anim,
-            rt_const_cstr(target_name),
+            runtime_target_name,
             channel->path,
             channel->interpolation_mode == GLTF_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
                                                                  : RT_NODE_ANIM_INTERP_LINEAR,
@@ -1832,6 +1813,7 @@ static int gltf_node_anim_emit_channel(void *node_anim,
             times,
             values);
     }
+    rt_string_unref(runtime_target_name);
     if (channel_index < 0)
         return 0;
     rt_node_animation3d_set_channel_target_node_index(node_anim, channel_index, channel->node_idx);
@@ -1941,7 +1923,11 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             snprintf(generated_name, sizeof(generated_name), "node_animation_%d", (int)ai);
             name = generated_name;
         }
-        node_anim = rt_node_animation3d_new(rt_const_cstr(name), 1.0);
+        {
+            rt_string runtime_name = rt_const_cstr(name);
+            node_anim = rt_node_animation3d_new(runtime_name, 1.0);
+            rt_string_unref(runtime_name);
+        }
         if (!node_anim)
             continue;
         if ((size_t)channel_count > SIZE_MAX / sizeof(*seen_nodes) ||

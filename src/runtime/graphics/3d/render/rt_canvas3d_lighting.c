@@ -71,9 +71,13 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
 
 /// @brief Return the active light payload limit for the selected lighting path.
 int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
-    if (c && c->clustered_lighting &&
-        rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting")))
-        return VGFX3D_MAX_LIGHTS;
+    if (c && c->clustered_lighting) {
+        rt_string capability = rt_const_cstr("clustered-lighting");
+        int8_t supported = rt_canvas3d_backend_supports(c, capability);
+        rt_string_unref(capability);
+        if (supported)
+            return VGFX3D_MAX_LIGHTS;
+    }
     return VGFX3D_FORWARD_LIGHT_LIMIT;
 }
 

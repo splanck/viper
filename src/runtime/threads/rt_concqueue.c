@@ -12,7 +12,8 @@
 //          (blocking), TryDequeue (non-blocking), Count, and Clear.
 //
 // Key invariants:
-//   - Enqueue always succeeds; the queue is unbounded.
+//   - The queue has no logical capacity bound. Strict Enqueue traps if its node
+//     allocation fails; the internal TryEnqueue reports failure instead.
 //   - Dequeue blocks until an item is available or a timeout expires.
 //   - TryDequeue returns false immediately if the queue is empty.
 //   - Count reflects the number of items currently in the queue.
@@ -450,6 +451,50 @@ void rt_concqueue_enqueue(void *obj, void *item) {
     CQ_SIGNAL(cq);
     CQ_UNLOCK(cq);
     concqueue_release_object(obj);
+}
+
+/// @brief Status-returning enqueue used by internal queues that must preserve payload ownership
+///        across memory pressure and shutdown races.
+/// @details Unlike the public strict enqueue, node-allocation failure and a queue that closes while
+///          the node is prepared return zero. The value retain is acquired before publication and
+///          rolled back if the close check loses its race.
+int8_t rt_concqueue_try_enqueue(void *obj, void *item) {
+    rt_concqueue_impl *cq;
+    cq_node *node;
+    if (!obj || !item)
+        return 0;
+    cq = concqueue_require(obj, 0);
+    if (!cq)
+        return 0;
+    rt_obj_retain_maybe(obj);
+    node = (cq_node *)malloc(sizeof(*node));
+    if (!node) {
+        concqueue_release_object(obj);
+        return 0;
+    }
+    node->value = item;
+    node->next = NULL;
+    rt_obj_retain_maybe(item);
+
+    CQ_LOCK(cq);
+    if (cq->closed) {
+        CQ_UNLOCK(cq);
+        if (rt_obj_release_check0(item))
+            rt_obj_free(item);
+        free(node);
+        concqueue_release_object(obj);
+        return 0;
+    }
+    if (cq->tail)
+        cq->tail->next = node;
+    else
+        cq->head = node;
+    cq->tail = node;
+    cq->count++;
+    CQ_SIGNAL(cq);
+    CQ_UNLOCK(cq);
+    concqueue_release_object(obj);
+    return 1;
 }
 
 /// @brief Non-blocking dequeue: pop the head if available, otherwise return NULL immediately.

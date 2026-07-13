@@ -22,13 +22,16 @@
 //===----------------------------------------------------------------------===//
 #include "vgfx3d_brdf_lut.h"
 
+#include "rt_platform.h"
+
 #include <math.h>
 #include <stddef.h>
 
 #define BRDF_LUT_SAMPLES 1024u
 
 static float g_brdf_lut[VGFX3D_BRDF_LUT_SIZE * VGFX3D_BRDF_LUT_SIZE * 2];
-static int g_brdf_lut_ready = 0;
+/* 0 = uninitialized, 1 = one builder active, 2 = immutable/ready. */
+static int g_brdf_lut_state = 0;
 
 /// @brief Van der Corput radical inverse in base 2 (bit reversal).
 static float brdf_radical_inverse(uint32_t bits) {
@@ -88,17 +91,25 @@ static void brdf_integrate(float ndotv, float roughness, float *out_a, float *ou
 }
 
 void vgfx3d_brdf_lut_ensure(void) {
-    if (g_brdf_lut_ready)
+    if (rt_atomic_load_i32(&g_brdf_lut_state, __ATOMIC_ACQUIRE) == 2)
         return;
-    for (int y = 0; y < VGFX3D_BRDF_LUT_SIZE; y++) {
-        float roughness = ((float)y + 0.5f) / (float)VGFX3D_BRDF_LUT_SIZE;
-        for (int x = 0; x < VGFX3D_BRDF_LUT_SIZE; x++) {
-            float ndotv = ((float)x + 0.5f) / (float)VGFX3D_BRDF_LUT_SIZE;
-            float *texel = &g_brdf_lut[(size_t)(y * VGFX3D_BRDF_LUT_SIZE + x) * 2u];
-            brdf_integrate(ndotv, roughness, &texel[0], &texel[1]);
+    int expected = 0;
+    if (rt_atomic_compare_exchange_i32(
+            &g_brdf_lut_state, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        for (int y = 0; y < VGFX3D_BRDF_LUT_SIZE; y++) {
+            float roughness = ((float)y + 0.5f) / (float)VGFX3D_BRDF_LUT_SIZE;
+            for (int x = 0; x < VGFX3D_BRDF_LUT_SIZE; x++) {
+                float ndotv = ((float)x + 0.5f) / (float)VGFX3D_BRDF_LUT_SIZE;
+                float *texel = &g_brdf_lut[(size_t)(y * VGFX3D_BRDF_LUT_SIZE + x) * 2u];
+                brdf_integrate(ndotv, roughness, &texel[0], &texel[1]);
+            }
         }
+        rt_atomic_store_i32(&g_brdf_lut_state, 2, __ATOMIC_RELEASE);
+        return;
     }
-    g_brdf_lut_ready = 1;
+    while (rt_atomic_load_i32(&g_brdf_lut_state, __ATOMIC_ACQUIRE) != 2) {
+        /* One backend is building the process-lifetime table. */
+    }
 }
 
 const float *vgfx3d_brdf_lut_data(void) {

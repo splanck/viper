@@ -820,6 +820,12 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_graphics3d_abi_surface test_graphics3d_abi_surface)
     viper_add_test_labels(test_graphics3d_abi_surface graphics3d unit contract)
 
+    viper_add_test(test_graphics3d_runtime_manifest
+            ${VIPER_TESTS_DIR}/unit/test_graphics3d_runtime_manifest.cpp)
+    target_link_libraries(test_graphics3d_runtime_manifest PRIVATE fe_basic)
+    viper_add_ctest(test_graphics3d_runtime_manifest test_graphics3d_runtime_manifest)
+    viper_add_test_labels(test_graphics3d_runtime_manifest graphics3d unit contract)
+
     viper_add_test(test_runtime_class_qualified_surface
             ${VIPER_TESTS_DIR}/unit/test_runtime_class_qualified_surface.cpp)
     target_include_directories(test_runtime_class_qualified_surface PRIVATE ${CMAKE_SOURCE_DIR}/src)

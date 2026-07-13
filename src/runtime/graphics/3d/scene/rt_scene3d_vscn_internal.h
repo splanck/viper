@@ -32,7 +32,10 @@
 #include <math.h>
 #include <stdint.h>
 
-#define VSCN_MAX_NODE_DEPTH 1024
+/* A VSCN node adds an object and, except at the leaf, a children array to the shared JSON parser's
+ * 200-level nesting budget. Ninety-eight node levels leave room for the document root plus the
+ * deepest node's optional light/LOD/auto-LOD objects. Save and load enforce this same limit. */
+#define VSCN_MAX_NODE_DEPTH 98
 #define VSCN_ABS_MAX 1.0e12
 #define VSCN_MAX_FILE_BYTES (256u * 1024u * 1024u)
 

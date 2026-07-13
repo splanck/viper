@@ -254,7 +254,7 @@ Two driver flags emit JSON inventories generated from the live in-process
 registries, so they can never drift from the binary:
 
 ```bash
-viper --dump-runtime-api   # schema v3 runtime contract catalog
+viper --dump-runtime-api   # schema v4 runtime contract and ABI catalog
 viper --dump-opcodes       # {ilVersion, opcodes:[{mnemonic,resultArity,resultType,operandsMin,operandsMax,operandTypes,sideEffects,successors,terminator}]}
 ```
 
@@ -264,12 +264,25 @@ These complement the human-oriented `--dump-runtime-descriptors` and
 `--dump-runtime-api` preserves the original compact fields (`version`,
 `functions[].name`, `functions[].signature`, `classes[].name`,
 `classes[].constructor`, `properties`, and `methods`) and adds
-`schema_version: 3`, `signature_dialect: "runtime-def-v1"`, parsed
+`schema_version: 4`, `signature_dialect: "runtime-def-v1"`, parsed
 `return_type`/`params`, `kind`, `owner`, `class_kind`, `is_static`,
 `stability`, `capabilities`, `fallibility`, `ownership`, and `docs_anchor`
 metadata. Class rows also carry authored Markdown documentation with a short
 `summary` and long `details` field. The new metadata is additive so older tools
 can continue reading the fields they already understand.
+
+Schema v4 declares `public_boundary: "registry"` and
+`c_abi_status: "internal-embedding"`. Every registry function includes a
+`c_symbol` field; generated public rows contain the backing symbol and legacy
+hand-authored bridge-only rows may report `null`. Non-empty class constructors,
+property accessors, and methods include resolved constructor/getter/setter/method
+C symbols (an absent constructor or accessor is reported as `null`). Graphics3D and Game3D
+rows additionally carry explicit return nullability, ownership, and
+fallibility contracts with `contract_source: "three-d-boundary-policy"`.
+Together, the canonical name, compact signature, C symbol, and complete class
+member bindings form the live ABI manifest used by contract tests. The C
+symbols are available to Viper's embedding and VM layers, but they are not a
+separately versioned public SDK ABI and expose no stable object layouts.
 
 ### viper -run
 

@@ -287,6 +287,9 @@ typedef struct {
 
 #define D3D11_MORPH_CACHE_CAPACITY 32
 #define D3D11_TEXTURE_CACHE_MAX_RESIDENT 512
+#define D3D11_TEXTURE_CACHE_HINT_CAPACITY 1024
+_Static_assert((D3D11_TEXTURE_CACHE_HINT_CAPACITY & (D3D11_TEXTURE_CACHE_HINT_CAPACITY - 1)) == 0,
+               "texture-cache hint capacity must be a power of two");
 #define D3D11_TEXTURE_CACHE_PRUNE_AGE 600u
 #define D3D11_CUBEMAP_CACHE_MAX_RESIDENT 64
 #define D3D11_CUBEMAP_CACHE_PRUNE_AGE 240u
@@ -525,6 +528,7 @@ typedef struct {
     d3d_tex_cache_entry_t *tex_cache;
     int32_t tex_cache_count;
     int32_t tex_cache_capacity;
+    int32_t tex_cache_hints[D3D11_TEXTURE_CACHE_HINT_CAPACITY]; /* entry index + 1 */
     d3d_cubemap_cache_entry_t *cubemap_cache;
     int32_t cubemap_cache_count;
     int32_t cubemap_cache_capacity;

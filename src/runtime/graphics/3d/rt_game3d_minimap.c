@@ -491,8 +491,11 @@ void rt_game3d_minimap_draw(void *obj) {
             if (fabs(rel) > MINIMAP3D_PI * 0.5)
                 continue;
             double x = cx + rel / (MINIMAP3D_PI * 0.5) * half;
-            rt_canvas3d_draw_text_3d(
-                canvas, (int64_t)(x - 4), (int64_t)top, rt_const_cstr(kCardinals[c]), 0xE8E8E8);
+            rt_string label = rt_const_cstr(kCardinals[c]);
+            if (label) {
+                rt_canvas3d_draw_text_3d(canvas, (int64_t)(x - 4), (int64_t)top, label, 0xE8E8E8);
+                rt_string_unref(label);
+            }
         }
         double center[3] = {0.0, 0.0, 0.0};
         rt_game3d_entity *tracked =

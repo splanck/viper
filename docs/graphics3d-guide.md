@@ -216,6 +216,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `End()` | `void()` | End the current 3D or 2D draw pass; this does not run post-FX or present |
 | `FinalizeFrame()` | `void()` | Apply post-FX and replay the final overlay once, without presenting |
 | `ScreenshotFinal()` | `obj()` | Finalize if needed, then capture the final frame as `Pixels` |
+| `TryCopyScreenshotTo(pixels)` | `i1(obj)` | Copy the active output into a same-size reusable `Pixels`; return false on invalid size/handle or failed readback |
+| `TryCopyScreenshotFinalTo(pixels)` | `i1(obj)` | Finalize if needed, then copy the final frame into a same-size reusable `Pixels` |
 | `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
 | `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open, `0` when closed/unavailable |
 | `PollEvent()` | `i64()` | Dequeue the next raw canvas event type, or `0` when none are pending |
@@ -355,6 +357,16 @@ consistent surface.
 | `DrawAxis(transform, size)` | `void(obj, f64)` | Draw XYZ axes at a Mat4 position |
 | `Screenshot()` | `obj()` | Capture the active output as `Pixels` without forcing finalization |
 | `ScreenshotFinal()` | `obj()` | Finalize first, then capture post-FX plus final-overlay pixels as `Pixels` |
+| `TryCopyScreenshotTo(pixels)` | `i1(obj)` | Allocation-reusing active-output capture into same-size `Pixels` |
+| `TryCopyScreenshotFinalTo(pixels)` | `i1(obj)` | Allocation-reusing finalized capture into same-size `Pixels` |
+
+Use the `TryCopy*` forms for repeated capture, streaming, or test loops. Create
+the destination `Pixels` once at the active output dimensions and reuse it each
+frame. A successful copy updates the destination generation so texture caches
+observe the new pixels. The methods return false, without resizing or replacing
+the destination, when either handle is invalid, dimensions differ, or backend
+readback fails. GPU canvases also reuse canvas-owned staging storage after the
+first sufficiently large readback.
 
 ### HUD Overlay (2D)
 
@@ -423,9 +435,10 @@ func start() {
 
 `End()` only flushes queued geometry for the current 3D or 2D pass. `FinalizeFrame()`
 is the idempotent boundary that applies post-FX and replays the final overlay. `Flip()`
-calls `FinalizeFrame()` if needed, then presents. `ScreenshotFinal()` also calls
-`FinalizeFrame()` if needed and captures the finalized pixels without presenting, so
-the usual capture path is `EndOverlay → ScreenshotFinal → Flip`.
+calls `FinalizeFrame()` if needed, then presents. `ScreenshotFinal()` and
+`TryCopyScreenshotFinalTo()` also call `FinalizeFrame()` if needed and capture
+the finalized pixels without presenting, so a reusable capture path is
+`EndOverlay → TryCopyScreenshotFinalTo → Flip`.
 
 For a compact, executable example of this path, see
 `examples/3d/walk_min.zia`. Its companion `walk_min_probe.zia` renders one

@@ -28,13 +28,13 @@ void *rt_g3d_commit_queue_new(void);
 void rt_g3d_commit_queue_free(void *queue);
 
 /// @brief Enqueue a commit callback. The callback runs only when drained.
-/// @return Non-zero when the callback was queued.
+/// @return Non-zero when queued; zero for invalid input, shutdown, or allocation failure.
 int8_t rt_g3d_commit_queue_enqueue(void *queue, rt_g3d_commit_fn fn, void *user_data);
 
 /// @brief Enqueue a commit callback with an estimated main-thread cost.
 /// @details The cost is an opaque budget unit; use RT_G3D_COMMIT_COST_UNIT for default work and
 /// decoded-byte counts for asset uploads that should honor upload budgets.
-/// @return Non-zero when the callback was queued.
+/// @return Non-zero when queued; zero for invalid input, shutdown, or allocation failure.
 int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
                                         rt_g3d_commit_fn fn,
                                         void *user_data,
@@ -44,12 +44,17 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
 /// @details `cancel_fn` runs only if the queue is closed/freed before `fn` drains. This lets worker
 ///          jobs hand retained runtime handles or malloc-owned staging buffers to the queue without
 ///          leaking them during shutdown. A successfully drained item never calls `cancel_fn`.
-/// @return Non-zero when the callback was queued.
+/// @return Non-zero when queued. On zero, ownership remains with the caller.
 int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *queue,
                                                rt_g3d_commit_fn fn,
                                                void *user_data,
                                                uint64_t cost,
                                                rt_g3d_commit_cancel_fn cancel_fn);
+
+/// @brief Force the next @p count enqueue-wrapper allocations to fail in tests.
+/// @details This process-global fault-injection hook is internal to the runtime test surface.
+///          Passing zero disables it. It does not affect queue or payload allocations.
+void rt_g3d_commit_queue_test_fail_next_allocations(int32_t count);
 
 /// @brief Drain up to @p max_items callbacks on the main thread.
 /// @details `max_items <= 0` drains until the queue is empty.

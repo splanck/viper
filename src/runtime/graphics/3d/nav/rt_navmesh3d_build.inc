@@ -66,6 +66,10 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->obstacles);
     free(nm->qgrid_starts);
     free(nm->qgrid_tris);
+    free(nm->path_g_cost);
+    free(nm->path_parent);
+    free(nm->path_closed);
+    free(nm->path_heap);
     free(nm->voxel_cell_height);
     free(nm->voxel_cell_walkable);
     free(nm->voxel_corner_vertices);
@@ -80,6 +84,12 @@ static void navmesh3d_finalizer(void *obj) {
     nm->obstacles = NULL;
     nm->qgrid_starts = NULL;
     nm->qgrid_tris = NULL;
+    nm->path_g_cost = NULL;
+    nm->path_parent = NULL;
+    nm->path_closed = NULL;
+    nm->path_heap = NULL;
+    nm->path_triangle_capacity = 0;
+    nm->path_heap_capacity = 0;
     nm->voxel_cell_height = NULL;
     nm->voxel_cell_walkable = NULL;
     nm->voxel_corner_vertices = NULL;

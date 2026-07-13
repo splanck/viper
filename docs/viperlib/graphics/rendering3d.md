@@ -175,12 +175,19 @@ frame and does not run post-processing. Finalization is the step that applies
 | `Resize(w, h)` | `Void(Integer, Integer)` | Resize the canvas and active backend output targets |
 | `FinalizeFrame()` | `Void()` | Apply post-FX and final overlay once, without presenting |
 | `ScreenshotFinal()` | `Object()` | Finalize if needed, then capture finalized pixels |
+| `TryCopyScreenshotTo(pixels)` | `Boolean(Object)` | Copy the active output into a same-size reusable `Pixels` object |
+| `TryCopyScreenshotFinalTo(pixels)` | `Boolean(Object)` | Finalize if needed, then copy into a same-size reusable `Pixels` object |
 | `FrameFinalized` | `Boolean` | True once the current frame has been finalized |
 
 Use final overlays for HUD text, reticles, debug labels, and capture annotations
 that must remain crisp after bloom, tonemapping, or color grading. `Flip()`
 finalizes automatically if the frame has not already been finalized, so
 `ScreenshotFinal()` can be followed by `Flip()` without re-running post-FX.
+For repeated captures, allocate a `Pixels` destination once and call
+`TryCopyScreenshotFinalTo()`. It returns false for invalid handles, mismatched
+dimensions, or failed backend readback and leaves ownership with the caller.
+Successful copies update the destination generation for texture-cache
+invalidation; GPU canvases reuse their staging allocation across calls.
 
 ```rust
 Canvas3D.Begin(canvas, cam)

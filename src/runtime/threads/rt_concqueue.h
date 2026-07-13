@@ -13,6 +13,8 @@
 //   - rt_concqueue_try_dequeue returns NULL immediately if the queue is empty.
 //   - rt_concqueue_close wakes all blocked dequeue callers with NULL once the
 //     queue is empty and rejects future enqueue attempts.
+//   - The strict enqueue traps on node-allocation failure or a closed queue;
+//     the internal status-returning enqueue leaves caller ownership unchanged.
 //
 // Ownership/Lifetime:
 //   - ConcQueue objects are heap-allocated; caller is responsible for lifetime management.
@@ -50,9 +52,17 @@ int8_t rt_concqueue_is_empty(void *obj);
 int8_t rt_concqueue_get_is_closed(void *obj);
 
 /// @brief Add item to back of queue (thread-safe).
+/// @details Traps if the node allocation fails or the queue is closed.
 /// @param obj ConcurrentQueue pointer.
 /// @param item Value to enqueue (retained).
 void rt_concqueue_enqueue(void *obj, void *item);
+
+/// @brief Try to add an item without trapping for node-allocation failure or a closed queue.
+/// @details The item is retained only on success. Invalid non-null queue handles may still trap.
+/// @param obj ConcurrentQueue pointer.
+/// @param item Value to enqueue (retained on success).
+/// @return 1 when enqueued, or 0 for null input, allocation failure, or a closed queue.
+int8_t rt_concqueue_try_enqueue(void *obj, void *item);
 
 /// @brief Remove item from front of queue (non-blocking).
 /// @param obj ConcurrentQueue pointer.

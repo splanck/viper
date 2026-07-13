@@ -23,6 +23,10 @@
 extern "C" {
 #endif
 
+/* Maximum public compound nesting. Collision of two legal compound trees can recurse through
+ * both sides, so the pair dispatcher separately allows twice this depth. */
+#define RT_COLLIDER3D_MAX_COMPOUND_DEPTH 64
+
 #define RT_COLLIDER3D_TYPE_BOX 0
 #define RT_COLLIDER3D_TYPE_SPHERE 1
 #define RT_COLLIDER3D_TYPE_CAPSULE 2
@@ -67,6 +71,8 @@ void *rt_collider3d_get_local_bounds_max(void *collider);
 void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out);
 /// @brief Monotonic revision that changes whenever cached collider bounds change.
 uint64_t rt_collider3d_get_bounds_revision_raw(void *collider);
+/// @brief Process-wide monotonic epoch for collider hierarchy mutations.
+uint64_t rt_collider3d_global_geometry_epoch(void);
 /// @brief Compute the world-space AABB for a collider placed at the given
 ///        position/rotation/scale; results written to @p min_out / @p max_out.
 void rt_collider3d_compute_world_aabb_raw(void *collider,

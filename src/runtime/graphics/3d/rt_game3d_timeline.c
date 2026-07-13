@@ -444,12 +444,17 @@ static void game3d_timeline_fire(rt_game3d_world *world,
     track->fired = 1;
     switch (track->type) {
         case RT_GAME3D_TL_ANIM: {
-            void *entity = rt_game3d_world_find_entity(world, rt_const_cstr(track->text_a));
+            rt_string entity_name = rt_const_cstr(track->text_a);
+            void *entity = rt_game3d_world_find_entity(world, entity_name);
+            rt_string_unref(entity_name);
             void *animator = entity ? game3d_entity_anim_ref((rt_game3d_entity *)entity) : NULL;
             void *controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
-            if (controller)
+            if (controller) {
+                rt_string state_name = rt_const_cstr(track->text_b);
                 (void)rt_anim_controller3d_crossfade(
-                    controller, rt_const_cstr(track->text_b), silent ? 0.0 : track->scalar_a);
+                    controller, state_name, silent ? 0.0 : track->scalar_a);
+                rt_string_unref(state_name);
+            }
             break;
         }
         case RT_GAME3D_TL_AUDIO: {
@@ -667,6 +672,7 @@ void game3d_world_timeline_overlay(rt_game3d_world *world) {
             text_x = 8;
         rt_canvas3d_draw_text2d(
             world->canvas, text_x, (int64_t)((double)height * 0.85), text, 0xFFFFFF);
+        rt_string_unref(text);
     }
 }
 

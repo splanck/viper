@@ -116,7 +116,11 @@ static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects,
     fbx_decode_object_name(fbx_prop_str(model_node, 1), decoded_name, sizeof(decoded_name));
     if (decoded_name[0] == '\0')
         return -1;
-    bone_index = rt_skeleton3d_find_bone(skeleton, rt_const_cstr(decoded_name));
+    {
+        rt_string name = rt_const_cstr(decoded_name);
+        bone_index = rt_skeleton3d_find_bone(skeleton, name);
+        rt_string_unref(name);
+    }
     if (bone_index < 0 || bone_index > INT32_MAX)
         return -1;
     return (int32_t)bone_index;
@@ -1230,7 +1234,9 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
         duration = ((double)max_time - (double)min_time) / (double)FBX_TIME_SECOND;
         duration = fbx_clamp_double(duration, 0.0, FBX_ANIM_TIME_SECONDS_MAX, 0.0);
-        void *anim = rt_animation3d_new(rt_const_cstr(anim_name), duration > 0.0 ? duration : 1.0);
+        rt_string runtime_anim_name = rt_const_cstr(anim_name);
+        void *anim = rt_animation3d_new(runtime_anim_name, duration > 0.0 ? duration : 1.0);
+        rt_string_unref(runtime_anim_name);
         int emitted_any = 0;
         if (!anim) {
             free(builders);

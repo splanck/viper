@@ -39,6 +39,7 @@
 #include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
+#include "rt_platform.h"
 #include "rt_raycast3d.h"
 
 #include "rt_physics3d_internal.h"
@@ -82,7 +83,7 @@ void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled) {
 }
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
- * the shared rt_body3d_kinematics view declared in rt_physics3d.h. These asserts
+ * the private shared rt_body3d_kinematics view. These asserts
  * pin the contract: if any shared field is reordered or retyped in rt_body3d, the
  * build fails here instead of silently corrupting joint solving at runtime. */
 _Static_assert(offsetof(rt_body3d, vptr) == offsetof(rt_body3d_kinematics, vptr),
@@ -612,9 +613,12 @@ static int32_t collision_event3d_contact_count_safe(const rt_collision_event3d_o
 }
 
 static int64_t physics_hit_list3d_count_safe(const rt_physics_hit_list3d_obj *list) {
-    if (!list || !list->items || list->count <= 0 || list->capacity <= 0)
+    if (!list || !list->items || list->count <= 0 || list->capacity <= 0 ||
+        list->allocated_count <= 0)
         return 0;
-    int64_t cap = list->capacity < PH3D_MAX_QUERY_HITS ? list->capacity : PH3D_MAX_QUERY_HITS;
+    int64_t cap = list->capacity < list->allocated_count ? list->capacity : list->allocated_count;
+    if (cap > PH3D_QUERY_HITS_MAX)
+        cap = PH3D_QUERY_HITS_MAX;
     return list->count < cap ? list->count : cap;
 }
 

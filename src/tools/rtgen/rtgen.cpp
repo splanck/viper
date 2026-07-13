@@ -118,6 +118,7 @@ struct DescriptorFields {
     std::string hiddenCount;   ///< Number of hidden arguments.
     std::string trapClass;     ///< Trap classification.
     std::string publicSurface; ///< Whether this descriptor is frontend-visible as a function.
+    std::string cSymbol;       ///< Backing C function symbol for manifest/tooling output.
 };
 
 /// @brief A runtime function prototype recovered from a runtime header.
@@ -1934,6 +1935,7 @@ static DescriptorFields buildDefaultDescriptor(
     fields.hiddenCount = "0";
     fields.trapClass = "RuntimeTrapClass::None";
     fields.publicSurface = "true";
+    fields.cSymbol = cppStringLiteral(entry.c_symbol);
     return fields;
 }
 
@@ -1955,7 +1957,8 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.hidden << ",\n";
     out << pad << "              " << fields.hiddenCount << ",\n";
     out << pad << "              " << fields.trapClass << ",\n";
-    out << pad << "              " << fields.publicSurface << "},\n";
+    out << pad << "              " << fields.publicSurface << ",\n";
+    out << pad << "              " << fields.cSymbol << "},\n";
 }
 
 /// @brief Generate RuntimeNameMap.inc: canonical Viper.* → C rt_* symbol mappings.

@@ -122,6 +122,7 @@ typedef struct {
     int8_t valid;
     uint32_t build_count;
     uint32_t refit_count;
+    uint64_t mesh_geometry_epoch;
     int32_t last_candidate_count;
     int32_t last_prefiltered_count;
 } rt_scene3d_spatial_index;

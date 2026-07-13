@@ -536,7 +536,11 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
         len = sizeof(buf) - 1;
     memcpy(buf, name, len);
     buf[len] = '\0';
-    rt_scene_node3d_set_name(root, rt_const_cstr(buf));
+    {
+        rt_string runtime_name = rt_const_cstr(buf);
+        rt_scene_node3d_set_name(root, runtime_name);
+        rt_string_unref(runtime_name);
+    }
 }
 
 /// @brief Recursive deep-copy of a scene-node subtree. Clones TRS, world-dirty flag,
@@ -917,6 +921,7 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
             state_index < before_count) {
             snprintf(unique_fallback, sizeof(unique_fallback), "animation_%d", (int)i);
             if (strcmp(unique_fallback, name) != 0) {
+                rt_string_unref(state_name);
                 state_name = rt_const_cstr(unique_fallback);
                 state_index = rt_anim_controller3d_add_state(controller, state_name, animation);
             }
@@ -925,6 +930,8 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
             rt_anim_controller3d_play(controller, state_name);
             added_any = 1;
         }
+        rt_string_unref(state_name);
+        rt_string_unref(anim_name);
     }
     if (added_any)
         rt_scene_node3d_bind_animator(root, controller);
@@ -1194,7 +1201,11 @@ static int model_build_synth_mesh_nodes(rt_model3d *model) {
         if (!node)
             return 0;
         snprintf(name, sizeof(name), "mesh_%d", (int)i);
-        rt_scene_node3d_set_name(node, rt_const_cstr(name));
+        {
+            rt_string runtime_name = rt_const_cstr(name);
+            rt_scene_node3d_set_name(node, runtime_name);
+            rt_string_unref(runtime_name);
+        }
         rt_scene_node3d_set_mesh(node, model->meshes[i]);
         if (material_count == 1)
             material = model->materials[0];

@@ -191,11 +191,12 @@ struct RuntimeSignature {
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
 struct RuntimeDescriptor {
-    std::string_view name;      ///< Symbol exported by the runtime library.
-    std::string_view signatureText; ///< Public runtime.def signature spelling.
-    RuntimeSignature signature; ///< Canonical IL signature for the helper.
+    std::string_view name;           ///< Canonical name exported through the runtime registry.
+    std::string_view cSymbol;        ///< Backing C symbol, empty for hand-authored internal rows.
+    std::string_view signatureText;  ///< Public runtime.def signature spelling.
+    RuntimeSignature signature;      ///< Canonical IL signature for the helper.
     RuntimeHandler handler{nullptr}; ///< Adapter that invokes the C implementation.
-    RuntimeLowering lowering;   ///< Lowering metadata controlling declaration.
+    RuntimeLowering lowering;        ///< Lowering metadata controlling declaration.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap classification for VM bridge.
     bool publicSurface{true}; ///< Visible as a standalone frontend runtime function.
 };

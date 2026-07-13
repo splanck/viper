@@ -72,29 +72,28 @@ static int rt_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
-/// @brief Estimate the GPU memory (color + depth) of a @p w×@p h render target for the given
-///   color format (8 bytes/texel for HDR16F, otherwise 4), using overflow-checked products.
+/// @brief Estimate the maximum owned memory of a @p w×@p h render target for the given color
+///   format, using overflow-checked products.
+/// @details The reservation covers native color/depth storage plus every lazy CPU mirror that the
+///   target may allocate. LDR targets reserve 16 bytes/texel (GPU color/depth and CPU
+///   color/depth); HDR targets reserve 36 bytes/texel (HDR16F GPU color, GPU depth, RGBA32F HDR
+///   mirror, RGBA8 tonemapped mirror, and CPU depth). This deliberately budgets the maximum rather
+///   than only the shell's initial allocation so lazy readback cannot bypass the process ceiling.
 /// @return 1 with @p out_bytes set on success; 0 for non-positive dimensions or on overflow.
 static int rt_rendertarget_estimate_bytes(int32_t w,
                                           int32_t h,
                                           vgfx3d_rendertarget_color_format_t color_format,
                                           size_t *out_bytes) {
     size_t pixels;
-    size_t color_bytes;
-    size_t depth_bytes;
     size_t total;
-    size_t color_stride = color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F ? 8u : 4u;
+    size_t bytes_per_pixel = color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F ? 36u : 16u;
     if (out_bytes)
         *out_bytes = 0u;
     if (!out_bytes || w <= 0 || h <= 0)
         return 0;
     if (!rt_checked_mul_size((size_t)w, (size_t)h, &pixels) ||
-        !rt_checked_mul_size(pixels, color_stride, &color_bytes) ||
-        !rt_checked_mul_size(pixels, sizeof(float), &depth_bytes))
+        !rt_checked_mul_size(pixels, bytes_per_pixel, &total))
         return 0;
-    if (SIZE_MAX - color_bytes < depth_bytes)
-        return 0;
-    total = color_bytes + depth_bytes;
     *out_bytes = total;
     return 1;
 }

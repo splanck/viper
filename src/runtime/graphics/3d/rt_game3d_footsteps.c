@@ -184,7 +184,7 @@ void *rt_game3d_footsteps_new(void *entity_obj, void *table_obj) {
     steps->entity = entity;
     rt_obj_retain_maybe(table_obj);
     steps->table = table_obj;
-    steps->event_prefix = rt_string_ref(rt_const_cstr("footstep"));
+    steps->event_prefix = rt_const_cstr("footstep");
     steps->ground_mask = -1;
     steps->volume_scale = 1.0;
     steps->rng = 0x9E3779B9u; /* fixed bind seed: deterministic replays */

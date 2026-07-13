@@ -46,18 +46,25 @@ static pipe_vert_t *sw_acquire_pipe_vertices(sw_context_t *ctx, uint32_t count) 
 /// output (vertex counts, shader paths, etc.). Cached on first call
 /// to avoid repeated `getenv` overhead in the hot path.
 static int sw_debug_enabled(void) {
-    /* Lazy one-time cache of the VIPER_3D_DEBUG env flag. The software rasterizer dispatches
-     * tiles across a worker pool, so two threads may run this initialization concurrently. The
-     * race is benign: every thread derives the identical 0/1 value and an aligned int store is
-     * atomic on all supported platforms (no torn read), so the worst case is a few redundant
-     * getenv() calls during warm-up. Caching then avoids a getenv() per triangle on the hot
-     * path. */
-    static int cached = -1;
-    if (cached == -1) {
+    /* 0 = uninitialized, 1 = one thread is reading the environment, 2 = disabled,
+     * 3 = enabled. This is a real once gate rather than a racy "benign" cache: the C
+     * memory model does not permit concurrent plain reads/writes merely because an
+     * aligned machine store happens to be indivisible on supported CPUs. */
+    static int state = 0;
+    int current = rt_atomic_load_i32(&state, __ATOMIC_ACQUIRE);
+    if (current >= 2)
+        return current == 3;
+    int expected = 0;
+    if (rt_atomic_compare_exchange_i32(&state, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         const char *env = getenv("VIPER_3D_DEBUG");
-        cached = (env && *env && strcmp(env, "0") != 0) ? 1 : 0;
+        int enabled = (env && *env && strcmp(env, "0") != 0) ? 1 : 0;
+        rt_atomic_store_i32(&state, enabled ? 3 : 2, __ATOMIC_RELEASE);
+        return enabled;
     }
-    return cached;
+    while ((current = rt_atomic_load_i32(&state, __ATOMIC_ACQUIRE)) == 1) {
+        /* The winner performs one getenv call and immediately publishes the result. */
+    }
+    return current == 3;
 }
 
 #define MAX_CLIP_VERTS 9

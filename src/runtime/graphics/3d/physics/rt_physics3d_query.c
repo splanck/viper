@@ -208,10 +208,16 @@ int32_t world3d_build_query_broadphase(rt_world3d *w) {
     int32_t entry_count = 0;
     int32_t geometry_count = 0;
     uint64_t signature;
+    uint64_t mesh_epoch;
+    uint64_t collider_epoch;
     if (!w)
         return -1;
     signature = world3d_query_broadphase_signature(w);
-    if (w->query_broadphase_valid && w->query_broadphase_signature == signature)
+    mesh_epoch = rt_mesh3d_global_geometry_epoch();
+    collider_epoch = rt_collider3d_global_geometry_epoch();
+    if (w->query_broadphase_valid && w->query_broadphase_signature == signature &&
+        w->query_broadphase_mesh_epoch == mesh_epoch &&
+        w->query_broadphase_collider_epoch == collider_epoch)
         return w->query_broadphase_count;
     for (int32_t i = 0; i < w->body_count; ++i) {
         if (body3d_has_collision_geometry(w->bodies[i]))
@@ -232,6 +238,8 @@ int32_t world3d_build_query_broadphase(rt_world3d *w) {
     ph3d_broadphase_sort_entries(w->broadphase_entries, w->broadphase_sort_scratch, entry_count, 0);
     w->query_broadphase_count = entry_count;
     w->query_broadphase_signature = signature;
+    w->query_broadphase_mesh_epoch = mesh_epoch;
+    w->query_broadphase_collider_epoch = collider_epoch;
     w->query_broadphase_valid = 1;
     return entry_count;
 }
@@ -587,7 +595,7 @@ static int sweep_capsule_against_body(const double *a,
 ///
 /// Builds a transient sphere collider, then tests every world body
 /// (after layer/mask filter) for overlap. Returns up to
-/// `PH3D_MAX_QUERY_HITS` (256) hits as a `PhysicsHitList3D`. The
+/// the configured query cap as a `PhysicsHitList3D`. The
 /// transient collider is released before returning.
 void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int64_t mask) {
     rt_world3d *w = world3d_checked(obj);

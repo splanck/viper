@@ -13,8 +13,8 @@
 // Key invariants:
 //   - The table is a pure function of (NdotV, roughness), built from a fixed
 //     Hammersley sample sequence — bit-stable per platform, VM == native.
-//   - vgfx3d_brdf_lut_ensure() must be called from a single-threaded seam
-//     (backend init / frame begin) before any concurrent sampling.
+//   - Lazy construction is protected by a cross-platform atomic once gate;
+//     concurrent backend initialization and sampling are safe.
 // Ownership/Lifetime:
 //   - The table is process-lifetime static storage; callers never free it.
 // Links: vgfx3d_backend_sw_raster.inc, vgfx3d_backend_metal.m,
@@ -32,8 +32,7 @@ extern "C" {
 /// @brief Table edge size (NdotV on X, roughness on Y), two floats per texel.
 #define VGFX3D_BRDF_LUT_SIZE 64
 
-/// @brief Build the table if it has not been built yet. Not thread-safe by
-///   itself: call from backend init or frame begin before parallel sampling.
+/// @brief Build the table if it has not been built yet (thread-safe, exactly once).
 void vgfx3d_brdf_lut_ensure(void);
 
 /// @brief Borrow the table data: VGFX3D_BRDF_LUT_SIZE^2 texels of (A, B) float

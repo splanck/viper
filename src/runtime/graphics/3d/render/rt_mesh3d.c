@@ -33,6 +33,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_untrusted_count.h"
 #include "vgfx3d_backend_utils.h"
@@ -77,6 +78,16 @@ extern const char *rt_string_cstr(rt_string s);
 #else
 #define MESH3D_UNUSED_PRIVATE
 #endif
+
+static volatile uint64_t g_mesh3d_geometry_epoch = 1u;
+
+void rt_mesh3d_note_global_geometry_change(void) {
+    (void)rt_atomic_fetch_add_u64(&g_mesh3d_geometry_epoch, UINT64_C(1), __ATOMIC_RELEASE);
+}
+
+uint64_t rt_mesh3d_global_geometry_epoch(void) {
+    return rt_atomic_load_u64(&g_mesh3d_geometry_epoch, __ATOMIC_ACQUIRE);
+}
 
 /// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
@@ -163,6 +174,7 @@ static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
     m->morph_bound_shape_count = 0;
     m->morph_bound_pad = 0.0;
     m->morph_bound_valid = 0;
+    rt_mesh3d_note_global_geometry_change();
 }
 
 /// @brief Estimate vertex/index payload bytes, saturating to INT64_MAX for ABI stability.

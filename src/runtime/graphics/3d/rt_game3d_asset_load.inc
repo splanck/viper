@@ -4,6 +4,17 @@
 // standalone translation unit) Purpose: Game3D async asset loading, model-template instantiation,
 // and the public Assets3D API
 //===----------------------------------------------------------------------===//
+/// @brief Assign a newly-created string into an owned slot, then release the caller's reference.
+static void game3d_asset_assign_new_string(rt_string *slot, rt_string value) {
+    game3d_assign_ref((void **)slot, value);
+    rt_string_unref(value);
+}
+
+/// @brief Copy a transient C string into an owned runtime-string slot.
+static void game3d_asset_assign_cstr(rt_string *slot, const char *value) {
+    game3d_asset_assign_new_string(slot, rt_const_cstr(value ? value : ""));
+}
+
 /// @brief Update the cache entry backing @p model_template with a residency priority/distance hint.
 /// @details Caller must hold g_game3d_model_cache_lock. Drives victim selection so
 /// high-priority/near models stay resident longer under budget.
@@ -203,8 +214,8 @@ static void game3d_asset_handle_fail_terminal(rt_game3d_asset_handle *handle, co
     game3d_asset_handle_store_flag(&handle->deferred, 0);
     game3d_asset_handle_store_flag(&handle->async_started, 0);
     game3d_asset_handle_store_progress(handle, 1.0);
-    game3d_assign_ref((void **)&handle->error,
-                      rt_const_cstr(message && *message ? message : "failed to load model"));
+    game3d_asset_assign_cstr(&handle->error,
+                             message && *message ? message : "failed to load model");
     game3d_asset_handle_store_flag(&handle->ready, 1);
 }
 
@@ -591,8 +602,7 @@ static void game3d_asset_async_commit(void *user_data) {
                 rt_game3d_model_template *model_template = NULL;
                 int stale = 0;
                 if (!cache_path) {
-                    game3d_assign_ref((void **)&handle->error,
-                                      rt_const_cstr("failed to schedule asset load"));
+                    game3d_asset_assign_cstr(&handle->error, "failed to schedule asset load");
                 } else if (game3d_model_cache_generation_matches(job->cache_generation)) {
                     game3d_asset_async_run_cache_publish_hook();
                     model_template = game3d_model_cache_store_loaded_template_for_generation(
@@ -615,8 +625,8 @@ static void game3d_asset_async_commit(void *user_data) {
                                             RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID);
                     game3d_release_ref((void **)&model_template);
                 } else if (!game3d_string_has_bytes(handle->error)) {
-                    game3d_assign_ref((void **)&handle->error,
-                                      game3d_asset_handle_load_error(handle));
+                    game3d_asset_assign_new_string(&handle->error,
+                                                   game3d_asset_handle_load_error(handle));
                 }
                 game3d_release_ref((void **)&cache_path);
             } else {
@@ -628,8 +638,7 @@ static void game3d_asset_async_commit(void *user_data) {
                     game3d_assign_typed_ref(&handle->entity, entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
                     game3d_release_ref(&entity);
                 } else {
-                    game3d_assign_ref((void **)&handle->error,
-                                      rt_const_cstr("failed to load model"));
+                    game3d_asset_assign_cstr(&handle->error, "failed to load model");
                 }
                 if (model_template && rt_obj_release_check0(model_template))
                     rt_obj_free(model_template);
@@ -637,11 +646,15 @@ static void game3d_asset_async_commit(void *user_data) {
         } else {
             if (job->error[0]) {
                 rt_string error = rt_string_from_bytes(job->error, strlen(job->error));
-                game3d_assign_ref((void **)&handle->error,
-                                  error ? error : game3d_asset_handle_load_error(handle));
+                if (error)
+                    game3d_assign_ref((void **)&handle->error, error);
+                else
+                    game3d_asset_assign_new_string(&handle->error,
+                                                   game3d_asset_handle_load_error(handle));
                 game3d_release_ref((void **)&error);
             } else {
-                game3d_assign_ref((void **)&handle->error, game3d_asset_handle_load_error(handle));
+                game3d_asset_assign_new_string(&handle->error,
+                                               game3d_asset_handle_load_error(handle));
             }
         }
         game3d_asset_handle_store_flag(&handle->deferred, 0);
@@ -726,16 +739,17 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
         game3d_asset_handle_store_progress(handle, 1.0);
         game3d_assign_ref((void **)&handle->error, preflight_error);
         game3d_asset_handle_store_flag(&handle->ready, 1);
+        rt_string_unref(preflight_error);
         return;
     }
+    rt_string_unref(preflight_error);
 
     if (handle->template_request) {
         rt_string cache_path = game3d_model_cache_key_path(handle->path, handle->asset_path);
         if (!cache_path) {
             game3d_asset_handle_store_flag(&handle->deferred, 0);
             game3d_asset_handle_store_progress(handle, 1.0);
-            game3d_assign_ref((void **)&handle->error,
-                              rt_const_cstr("failed to schedule asset load"));
+            game3d_asset_assign_cstr(&handle->error, "failed to schedule asset load");
             game3d_asset_handle_store_flag(&handle->ready, 1);
             return;
         }
@@ -757,7 +771,7 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
     if (!game3d_asset_async_ensure_runtime()) {
         game3d_asset_handle_store_flag(&handle->deferred, 0);
         game3d_asset_handle_store_progress(handle, 1.0);
-        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        game3d_asset_assign_cstr(&handle->error, "failed to schedule asset load");
         game3d_asset_handle_store_flag(&handle->ready, 1);
         return;
     }
@@ -767,7 +781,7 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
     if (!job) {
         game3d_asset_handle_store_flag(&handle->deferred, 0);
         game3d_asset_handle_store_progress(handle, 1.0);
-        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        game3d_asset_assign_cstr(&handle->error, "failed to schedule asset load");
         game3d_asset_handle_store_flag(&handle->ready, 1);
         return;
     }
@@ -786,7 +800,7 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
         game3d_asset_handle_store_flag(&handle->async_started, 0);
         game3d_asset_handle_store_flag(&handle->deferred, 0);
         game3d_asset_handle_store_progress(handle, 1.0);
-        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        game3d_asset_assign_cstr(&handle->error, "failed to schedule asset load");
         game3d_asset_handle_store_flag(&handle->ready, 1);
         game3d_asset_async_job_free(job);
     }
@@ -1248,7 +1262,7 @@ void rt_game3d_asset_handle_cancel(void *obj) {
     game3d_asset_handle_store_flag(&handle->cancelled, 1);
     game3d_asset_handle_store_flag(&handle->deferred, 0);
     game3d_asset_handle_store_progress(handle, 1.0);
-    game3d_assign_ref((void **)&handle->error, rt_const_cstr("cancelled"));
+    game3d_asset_assign_cstr(&handle->error, "cancelled");
     game3d_release_typed_ref(&handle->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
     game3d_release_typed_ref(&handle->model_template, RT_G3D_GAME3D_MODEL_TEMPLATE_CLASS_ID);
     game3d_asset_handle_store_flag(&handle->ready, 1);

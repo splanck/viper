@@ -682,6 +682,7 @@ int8_t rt_game3d_world_load_state(void *obj, rt_string app_name, rt_string slot)
         persist3d_read(&reader, &alive, 1);
         rt_string key_str = rt_const_cstr(key);
         rt_game3d_persist_record *record = game3d_persist_upsert(world, key_str);
+        rt_string_unref(key_str);
         if (record) {
             record->alive = alive ? 1 : 0;
             record->applied_pending = 1;
@@ -703,9 +704,13 @@ int8_t rt_game3d_world_load_state(void *obj, rt_string app_name, rt_string slot)
         persist3d_read_key(&reader, cell, sizeof(cell));
         persist3d_read_key(&reader, key, sizeof(key));
         int64_t value = persist3d_read_i64(&reader);
-        if (stream)
-            rt_game3d_world_stream_set_cell_flag(
-                stream, rt_const_cstr(cell), rt_const_cstr(key), value);
+        if (stream) {
+            rt_string cell_string = rt_const_cstr(cell);
+            rt_string key_string = rt_const_cstr(key);
+            rt_game3d_world_stream_set_cell_flag(stream, cell_string, key_string, value);
+            rt_string_unref(cell_string);
+            rt_string_unref(key_string);
+        }
     }
     world->world_origin[0] = origin[0];
     world->world_origin[1] = origin[1];

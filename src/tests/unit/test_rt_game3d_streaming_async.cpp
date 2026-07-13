@@ -23,6 +23,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_g3d_commit_queue.h"
 #include "rt_game3d.h"
 #include "rt_game3d_diagnostics.h"
 #include "rt_object.h"
@@ -183,6 +184,52 @@ bool test_async_parity_with_blocking() {
                 "far cell subtree attaches after the swap");
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("async_near_marker")) == nullptr,
                 "near cell unloads after the swap");
+
+    rt_game3d_world_destroy(world);
+    if (rt_obj_release_check0(world))
+        rt_obj_free(world);
+    PASS();
+}
+
+//=========================================================================
+// Commit-wrapper allocation failure
+//=========================================================================
+
+bool test_enqueue_allocation_failure_uses_emergency_handoff() {
+    TEST("async streaming survives a commit-wrapper allocation failure");
+
+    const char *cell_path = "/tmp/viper_g3d_async_oom.vscn";
+    const char *manifest_path = "/tmp/viper_g3d_async_oom_cells.json";
+    EXPECT_TRUE(write_cell_scene(cell_path, "async_oom_marker"), "fixture saves");
+
+    char manifest[512];
+    std::snprintf(manifest,
+                  sizeof(manifest),
+                  "{\"cells\":[{\"name\":\"cell\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":8,\"bytes\":65536}]}",
+                  cell_path);
+    EXPECT_TRUE(write_text_file(manifest_path, manifest), "manifest writes");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Async Stream Enqueue OOM"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    set_center(stream, 0.0, 0.0);
+    rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
+
+    /* The worker has already retained the stream when it reaches this allocation. The
+     * allocation-free emergency handoff must preserve both that retain and its staged payload. */
+    rt_g3d_commit_queue_test_fail_next_allocations(1);
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
+    quiesce(stream);
+    rt_g3d_commit_queue_test_fail_next_allocations(0);
+
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "emergency-handoff cell becomes resident");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("async_oom_marker")) != nullptr,
+                "emergency-handoff payload attaches");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_pending_request_count(stream),
+                  0,
+                  "failed wrapper leaves no retained pending job");
 
     rt_game3d_world_destroy(world);
     if (rt_obj_release_check0(world))
@@ -469,6 +516,7 @@ int main() {
     std::printf("Game3D async streaming tests\n");
     bool ok = true;
     ok &= test_async_parity_with_blocking();
+    ok &= test_enqueue_allocation_failure_uses_emergency_handoff();
     ok &= test_corrupt_cell_is_skipped();
     ok &= test_cancelled_stage_is_dropped();
     ok &= test_zero_commit_budget_holds_then_releases();

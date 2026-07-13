@@ -618,7 +618,9 @@ static void scene3d_spatial_refit_bvh_node(rt_scene3d_spatial_index *index, int3
 static int scene3d_spatial_refit(rt_scene3d *scene) {
     rt_scene3d_spatial_index *index;
     int refreshed = 0;
+
     enum { SCENE3D_SPATIAL_MAX_REFITS_BEFORE_REBUILD = 32 };
+
     if (!scene || !scene->root)
         return 0;
     index = &scene->spatial_index;
@@ -645,6 +647,7 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
     index->dirty = 0;
     index->valid = 1;
     index->topology_dirty = 0;
+    index->mesh_geometry_epoch = rt_mesh3d_global_geometry_epoch();
     if (refreshed)
         index->refit_count++;
     if (refreshed && index->refit_count >= SCENE3D_SPATIAL_MAX_REFITS_BEFORE_REBUILD)
@@ -765,6 +768,7 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
     index->valid = 1;
     index->build_count++;
     index->refit_count = 0;
+    index->mesh_geometry_epoch = rt_mesh3d_global_geometry_epoch();
     return 1;
 }
 
@@ -774,8 +778,11 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
 static int scene3d_spatial_ensure(rt_scene3d *scene) {
     if (!scene || !scene->use_spatial_index)
         return 0;
-    if (scene->spatial_index.valid && !scene->spatial_index.dirty)
+    if (scene->spatial_index.valid && !scene->spatial_index.dirty &&
+        scene->spatial_index.mesh_geometry_epoch == rt_mesh3d_global_geometry_epoch())
         return 1;
+    if (scene->spatial_index.valid && !scene->spatial_index.dirty)
+        scene->spatial_index.dirty = 1;
     if (scene->spatial_index.valid && scene->spatial_index.dirty &&
         !scene->spatial_index.topology_dirty)
         return scene3d_spatial_refit(scene);

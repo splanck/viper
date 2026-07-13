@@ -20,6 +20,7 @@
 #include "rt_path3d.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
+#include <atomic>
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -28,6 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -48,6 +50,10 @@ extern int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m);
 extern void rt_skeleton3d_compute_inverse_bind(void *s);
 extern void *rt_animation3d_new(rt_string name, double duration);
 extern rt_string rt_const_cstr(const char *s);
+extern int64_t rt_navmesh3d_copy_path_points(void *navmesh,
+                                             void *from,
+                                             void *to,
+                                             double **out_points_xyz);
 }
 
 static int tests_passed = 0;
@@ -116,6 +122,16 @@ typedef struct {
     int32_t tri;
     int32_t link;
 } NavMeshOffmeshEdgeRefTestLayout;
+
+typedef struct {
+    int32_t v[3];
+    int32_t neighbors[3];
+    float centroid[3];
+    float normal[3];
+    int8_t blocked;
+    int32_t area_id;
+    float traversal_cost;
+} NavMeshTriangleTestLayout;
 
 typedef struct {
     void *vptr;
@@ -208,6 +224,34 @@ static void test_navmesh_find_path_from_shared_edge() {
     EXPECT_TRUE(path != nullptr, "NavMesh finds a path from a shared triangle edge");
     if (path)
         EXPECT_TRUE(rt_path3d_get_point_count(path) >= 2, "Shared-edge path includes endpoints");
+}
+
+static void test_navmesh_path_workspace_reuse_is_concurrent_safe() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *nm = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *from = rt_vec3_new(-8.0, 0.0, -7.0);
+    void *to = rt_vec3_new(8.0, 0.0, 7.0);
+    std::atomic<bool> ok{true};
+    constexpr int worker_count = 8;
+    std::thread workers[worker_count];
+    for (int worker = 0; worker < worker_count; worker++) {
+        workers[worker] = std::thread([&]() {
+            for (int iteration = 0; iteration < 100; iteration++) {
+                double *points = nullptr;
+                int64_t count = rt_navmesh3d_copy_path_points(nm, from, to, &points);
+                if (count < 2 || !points || !std::isfinite(points[0]) ||
+                    !std::isfinite(points[(count - 1) * 3 + 2]))
+                    ok.store(false, std::memory_order_relaxed);
+                std::free(points);
+            }
+        });
+    }
+    for (auto &worker : workers)
+        worker.join();
+    EXPECT_TRUE(ok.load(std::memory_order_relaxed),
+                "NavMesh A* workspace is reusable across serialized concurrent queries");
+    EXPECT_TRUE(std::isfinite(rt_navmesh3d_get_last_path_cost(nm)),
+                "NavMesh LastPathCost remains atomically readable during workspace reuse");
 }
 
 static void test_navmesh_box_slope_filter() {
@@ -383,6 +427,59 @@ static void test_navmesh_offmesh_link_metadata_affects_cost() {
                 "NavMesh off-mesh metadata: invalid link index is rejected");
     EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_state(nm, 3) == 0,
                 "NavMesh off-mesh metadata: invalid getter returns neutral state");
+}
+
+static void test_navmesh_offmesh_links_keep_astar_heuristic_admissible() {
+    void *mesh = rt_mesh3d_new();
+    for (int tri = 0; tri < 4; tri++) {
+        double x = (double)tri * 10.0;
+        int64_t base = tri * 3;
+        rt_mesh3d_add_vertex(mesh, x - 0.4, 0.0, -0.4, 0.0, 1.0, 0.0, 0.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, x, 0.0, 0.4, 0.0, 1.0, 0.0, 0.5, 1.0);
+        rt_mesh3d_add_vertex(mesh, x + 0.4, 0.0, -0.4, 0.0, 1.0, 0.0, 1.0, 0.0);
+        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+    }
+    void *nm = rt_navmesh3d_build(mesh, 0.1, 1.8);
+    void *link_from = rt_vec3_new(20.0, 0.0, 0.0);
+    void *link_to = rt_vec3_new(30.0, 0.0, 0.0);
+    EXPECT_TRUE(nm != nullptr && rt_navmesh3d_get_triangle_count(nm) == 4,
+                "NavMesh admissibility fixture builds four isolated polygons");
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 0) != 0,
+                "NavMesh admissibility fixture adds its directed jump");
+
+    auto *view = static_cast<NavMesh3DTestLayout *>(nm);
+    auto *triangles = static_cast<NavMeshTriangleTestLayout *>(view->triangles);
+    for (int i = 0; i < 4; i++)
+        for (int edge = 0; edge < 3; edge++)
+            triangles[i].neighbors[edge] = -1;
+    triangles[0].neighbors[0] = 1; /* expensive direct route */
+    triangles[0].neighbors[1] = 2; /* cheap route to the jump */
+    triangles[3].neighbors[0] = 1; /* cheap route from jump landing to goal */
+    triangles[0].centroid[0] = 0.0f;
+    triangles[1].centroid[0] = 100.0f;
+    triangles[2].centroid[0] = -1.0f;
+    triangles[3].centroid[0] = 99.0f;
+    for (int i = 0; i < 4; i++) {
+        triangles[i].centroid[1] = 0.0f;
+        triangles[i].centroid[2] = 0.0f;
+    }
+    /* Keep resolved polygon ids but model a one-unit authored jump. The optimal cost is
+     * 1 (start->jump) + 1 (jump) + 1 (landing->goal), versus 100 directly. */
+    view->offmesh_links[0].from[0] = 0.0f;
+    view->offmesh_links[0].from[1] = 0.0f;
+    view->offmesh_links[0].from[2] = 0.0f;
+    view->offmesh_links[0].to[0] = 1.0f;
+    view->offmesh_links[0].to[1] = 0.0f;
+    view->offmesh_links[0].to[2] = 0.0f;
+
+    void *from = rt_vec3_new(0.0, 0.0, 0.0);
+    void *to = rt_vec3_new(10.0, 0.0, 0.0);
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh finds a path in the off-mesh admissibility fixture");
+    EXPECT_NEAR(rt_navmesh3d_get_last_path_cost(nm),
+                3.0,
+                0.001,
+                "A* does not terminate on a suboptimal goal when off-mesh links exist");
 }
 
 static void *make_navmesh_obstacle_strip() {
@@ -1071,6 +1168,7 @@ int main() {
     test_navmesh_sample_position();
     test_navmesh_find_path();
     test_navmesh_find_path_from_shared_edge();
+    test_navmesh_path_workspace_reuse_is_concurrent_safe();
     test_navmesh_box_slope_filter();
     test_navmesh_adjacency_edge_hash();
     test_navmesh_rejects_non_manifold_edges();
@@ -1079,6 +1177,7 @@ int main() {
     test_navmesh_offmesh_links_bridge_islands();
     test_navmesh_offmesh_links_validate_and_direct();
     test_navmesh_offmesh_link_metadata_affects_cost();
+    test_navmesh_offmesh_links_keep_astar_heuristic_admissible();
     test_navmesh_obstacle_carving_uses_triangle_footprint();
     test_navmesh_add_obstacle_carves_walkable_triangles();
     test_navmesh_area_metadata_and_traversal_costs();

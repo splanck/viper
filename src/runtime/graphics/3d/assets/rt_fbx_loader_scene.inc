@@ -19,8 +19,11 @@ static void fbx_release_ref(void **slot) {
 static void fbx_set_clean_object_name(void *node, const char *raw_name) {
     char name[128];
     fbx_decode_object_name(raw_name, name, sizeof(name));
-    if (*name)
-        rt_scene_node3d_set_name(node, rt_const_cstr(name));
+    if (*name) {
+        rt_string runtime_name = rt_const_cstr(name);
+        rt_scene_node3d_set_name(node, runtime_name);
+        rt_string_unref(runtime_name);
+    }
 }
 
 /// @brief Parsed FBX `Model` transform properties before matrix composition.
@@ -1041,7 +1044,9 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                                  "mesh_%d_material_%d",
                                  extra_mesh_count,
                                  slot);
-                        rt_scene_node3d_set_name(mesh_node, rt_const_cstr(generated_name));
+                        rt_string runtime_name = rt_const_cstr(generated_name);
+                        rt_scene_node3d_set_name(mesh_node, runtime_name);
+                        rt_string_unref(runtime_name);
                     }
                     rt_scene_node3d_set_mesh(mesh_node, slot_mesh);
                     rt_scene_node3d_set_material(mesh_node, slot_material);
@@ -1076,7 +1081,9 @@ static void *fbx_build_scene_root(fbx_node_t *root,
             if (extra_mesh_count > 0) {
                 char generated_name[64];
                 snprintf(generated_name, sizeof(generated_name), "mesh_%d", extra_mesh_count);
-                rt_scene_node3d_set_name(mesh_node, rt_const_cstr(generated_name));
+                rt_string runtime_name = rt_const_cstr(generated_name);
+                rt_scene_node3d_set_name(mesh_node, runtime_name);
+                rt_string_unref(runtime_name);
             }
             rt_scene_node3d_set_mesh(mesh_node, mesh);
             rt_scene_node3d_set_material(mesh_node, material ? material : default_material);

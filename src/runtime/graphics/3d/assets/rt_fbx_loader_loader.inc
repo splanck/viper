@@ -671,7 +671,11 @@ static void *fbx_load_ascii_minimal(const char *text) {
     asset->material_capacity = 1;
     fbx_ascii_apply_material_properties(text, material);
     fbx_ascii_extract_model_name(text, model_name, sizeof(model_name));
-    rt_scene_node3d_set_name(mesh_node, rt_const_cstr(model_name[0] ? model_name : "mesh_0"));
+    {
+        rt_string name = rt_const_cstr(model_name[0] ? model_name : "mesh_0");
+        rt_scene_node3d_set_name(mesh_node, name);
+        rt_string_unref(name);
+    }
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
     if (!rt_scene_node3d_try_add_child(scene_root, mesh_node))
@@ -1054,6 +1058,7 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
             // Add this shape
             rt_string sname = rt_const_cstr(shape_name);
             int64_t si = rt_morphtarget3d_add_shape(morph, sname);
+            rt_string_unref(sname);
             if (si < 0)
                 continue;
 

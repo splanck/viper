@@ -261,6 +261,12 @@ tonemapped scene instead of being fed into bloom, SSAO, DOF, or motion blur.
 Backends without that split still present through `present_postfx`, where the
 overlay target is composited as a fallback. `ScreenshotFinal()` and `Flip()`
 share the same post-FX-plus-overlay ordering.
+`TryCopyScreenshotTo()` and `TryCopyScreenshotFinalTo()` use the same ordering
+while writing into caller-owned, same-size `Pixels`. Software and render-target
+paths copy directly; GPU window readback grows a canvas-owned RGBA staging
+buffer only when required and reuses it on later captures. A successful write
+bumps the destination `Pixels` generation so backend texture caches cannot
+retain stale content.
 Screen-space overlay replays submit with alpha blending/no depth writes so
 coplanar HUD primitives such as panels, accent bars, and text do not hide each
 other through the depth buffer.

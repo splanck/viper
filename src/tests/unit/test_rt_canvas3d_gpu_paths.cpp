@@ -49,6 +49,7 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <thread>
 
 extern "C" {
 extern void *rt_mat4_identity(void);
@@ -510,6 +511,7 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     std::free(canvas->draw_cmds);
     std::free(canvas->sort_cmds);
     std::free(canvas->motion_history);
+    std::free(canvas->readback_rgba_scratch);
     if (canvas->postfx && rt_obj_release_check0(canvas->postfx))
         rt_obj_free(canvas->postfx);
     vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
@@ -520,6 +522,8 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     canvas->draw_cmds = nullptr;
     canvas->sort_cmds = nullptr;
     canvas->motion_history = nullptr;
+    canvas->readback_rgba_scratch = nullptr;
+    canvas->readback_rgba_scratch_capacity = 0;
     canvas->postfx = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
     canvas->temp_obj_count = canvas->temp_obj_capacity = 0;
@@ -1170,6 +1174,27 @@ static void test_brdf_lut_matches_split_sum_reference(void) {
         EXPECT_TRUE(fabsf(ab[1] - ref_b) < 0.08f,
                     "BRDF LUT bias tracks the analytic fit mid-domain");
     }
+}
+
+static void test_brdf_lut_concurrent_first_use_is_safe() {
+    constexpr int worker_count = 16;
+    const float *tables[worker_count] = {};
+    float samples[worker_count][2] = {};
+    std::thread workers[worker_count];
+    for (int i = 0; i < worker_count; i++) {
+        workers[i] = std::thread([&, i]() {
+            tables[i] = vgfx3d_brdf_lut_data();
+            vgfx3d_brdf_lut_sample(0.37f, 0.61f, samples[i]);
+        });
+    }
+    for (auto &worker : workers)
+        worker.join();
+    bool same = tables[0] != nullptr;
+    for (int i = 1; i < worker_count; i++) {
+        same = same && tables[i] == tables[0] && samples[i][0] == samples[0][0] &&
+               samples[i][1] == samples[0][1];
+    }
+    EXPECT_TRUE(same, "BRDF LUT concurrent first use publishes one complete immutable table");
 }
 
 static void test_large_morph_payload_falls_back_to_cpu_for_opengl(void) {
@@ -3259,6 +3284,60 @@ static void test_screenshot_prefers_backend_readback(void) {
         EXPECT_TRUE(view->data[0] == 0x12345678u,
                     "Canvas3D.Screenshot stores backend RGBA bytes in Pixels order");
     }
+    if (shot && rt_obj_release_check0(shot))
+        rt_obj_free(shot);
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_screenshot_copy_reuses_destination_and_gpu_scratch(void) {
+    typedef struct {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+        uint64_t generation;
+    } pixels_view_t;
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.readback_rgba = record_readback_rgba;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.width = 2;
+    canvas.height = 2;
+    void *pixels = rt_pixels_new(2, 2);
+    pixels_view_t *view = (pixels_view_t *)pixels;
+
+    EXPECT_TRUE(rt_canvas3d_try_copy_screenshot_to(&canvas, pixels) == 1,
+                "TryCopyScreenshotTo reads into an existing Pixels object");
+    uint8_t *scratch = canvas.readback_rgba_scratch;
+    size_t capacity = canvas.readback_rgba_scratch_capacity;
+    uint64_t generation = view ? view->generation : 0;
+    EXPECT_TRUE(scratch != nullptr && capacity >= 16,
+                "TryCopyScreenshotTo keeps reusable GPU staging storage");
+    EXPECT_TRUE(view && view->data && view->data[0] == 0x12345678u,
+                "TryCopyScreenshotTo preserves Pixels RGBA packing");
+
+    EXPECT_TRUE(rt_canvas3d_try_copy_screenshot_to(&canvas, pixels) == 1,
+                "TryCopyScreenshotTo supports repeated capture");
+    EXPECT_TRUE(canvas.readback_rgba_scratch == scratch &&
+                    canvas.readback_rgba_scratch_capacity == capacity,
+                "same-size repeated capture reuses GPU staging allocation");
+    EXPECT_TRUE(view && view->generation == generation + 1,
+                "successful repeated capture advances Pixels generation");
+
+    void *wrong_size = rt_pixels_new(1, 1);
+    EXPECT_TRUE(rt_canvas3d_try_copy_screenshot_to(&canvas, wrong_size) == 0,
+                "TryCopyScreenshotTo reports a destination size mismatch");
+    EXPECT_TRUE(rt_canvas3d_try_copy_screenshot_to(nullptr, pixels) == 0 &&
+                    rt_canvas3d_try_copy_screenshot_to(&canvas, nullptr) == 0,
+                "TryCopyScreenshotTo rejects null handles without dereferencing them");
+
+    if (wrong_size && rt_obj_release_check0(wrong_size))
+        rt_obj_free(wrong_size);
+    if (pixels && rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+    cleanup_fake_canvas(&canvas);
 }
 
 static void test_screenshot_reads_physical_framebuffer_to_logical_pixels(void) {
@@ -3478,8 +3557,16 @@ static void test_screenshot_final_finalizes_before_readback(void) {
                     "Canvas3D.ScreenshotFinal stores backend RGBA bytes in Pixels order");
     }
 
+    void *reused = rt_pixels_new(2, 2);
+    EXPECT_TRUE(rt_canvas3d_try_copy_screenshot_final_to(&canvas, reused) == 1,
+                "TryCopyScreenshotFinalTo captures into an existing Pixels object");
+    EXPECT_TRUE(final_readback_calls == 2,
+                "TryCopyScreenshotFinalTo reads an already-finalized frame exactly once");
+
     if (shot && rt_obj_release_check0(shot))
         rt_obj_free(shot);
+    if (reused && rt_obj_release_check0(reused))
+        rt_obj_free(reused);
     cleanup_fake_canvas(&canvas);
 }
 
@@ -3709,6 +3796,7 @@ static void test_quality_profile_enables_gpu_effects_when_backend_supports_postf
 }
 
 int main() {
+    test_brdf_lut_concurrent_first_use_is_safe();
     test_gpu_skinning_bypass_for_opengl();
     test_draw_repairs_corrupt_mesh_geometry_counts();
     test_gpu_skinning_bypass_for_d3d11();
@@ -3778,6 +3866,7 @@ int main() {
     test_disabled_lights_are_not_submitted();
     test_clear_lights_keeps_scene_explicitly_dark();
     test_screenshot_prefers_backend_readback();
+    test_screenshot_copy_reuses_destination_and_gpu_scratch();
     test_screenshot_reads_physical_framebuffer_to_logical_pixels();
     test_final_overlay_replays_after_finalize();
     test_gpu_postfx_final_overlay_presents_composited_frame();

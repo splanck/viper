@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_skeleton.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX skeleton extraction
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_skeleton.inc  (#included from rt_fbx_loader.c;
+// not a standalone translation unit) Purpose: FBX skeleton extraction
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Skeleton extraction
@@ -20,11 +20,8 @@
 /// @param z_up Non-zero when source coordinates are Z-up.
 /// @param out Receives the row-major global bind matrix on success.
 /// @return Non-zero when a cluster link matrix was found.
-static int fbx_find_cluster_transform_link_for_model(fbx_node_t *objects,
-                                                     const fbx_conn_table_t *ct,
-                                                     int64_t model_id,
-                                                     int z_up,
-                                                     double out[16]) {
+static int fbx_find_cluster_transform_link_for_model(
+    fbx_node_t *objects, const fbx_conn_table_t *ct, int64_t model_id, int z_up, double out[16]) {
     if (!objects || !ct || model_id == 0 || !out)
         return 0;
     for (int32_t oi = 0; oi < objects->child_count; oi++) {
@@ -66,8 +63,10 @@ typedef struct {
 
 /// @brief Order skeleton bones parent-first (roots, then children whose parent is already
 ///        placed) into @p order; marks @p placed and returns the number of placed bones.
-static int32_t fbx_skeleton_topo_order(const fbx_skel_bone_info_t *bones, int32_t bone_count,
-                                       int32_t *order, int8_t *placed) {
+static int32_t fbx_skeleton_topo_order(const fbx_skel_bone_info_t *bones,
+                                       int32_t bone_count,
+                                       int32_t *order,
+                                       int8_t *placed) {
     int32_t placed_count = 0;
     /* Place roots first */
     for (int32_t i = 0; i < bone_count; i++) {
@@ -142,10 +141,12 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
 
         if (bone_count >= bone_cap) {
             if (bone_cap < 0 || bone_cap > INT32_MAX / 2 ||
-                (size_t)(bone_cap == 0 ? 32 : bone_cap * 2) > SIZE_MAX / sizeof(fbx_skel_bone_info_t))
+                (size_t)(bone_cap == 0 ? 32 : bone_cap * 2) >
+                    SIZE_MAX / sizeof(fbx_skel_bone_info_t))
                 break;
             int32_t new_cap = bone_cap == 0 ? 32 : bone_cap * 2;
-            fbx_skel_bone_info_t *nb = (fbx_skel_bone_info_t *)realloc(bones, (size_t)new_cap * sizeof(fbx_skel_bone_info_t));
+            fbx_skel_bone_info_t *nb = (fbx_skel_bone_info_t *)realloc(
+                bones, (size_t)new_cap * sizeof(fbx_skel_bone_info_t));
             if (!nb)
                 break;
             bones = nb;
@@ -248,9 +249,8 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
         if (bi->has_cluster_global_bind) {
             memcpy(global_bind, bi->cluster_global_bind, sizeof(global_bind));
         } else if (parent_idx >= 0) {
-            fbx_mat4_mul_local(&global_binds[(size_t)parent_idx * 16u],
-                               bi->local_model_bind,
-                               global_bind);
+            fbx_mat4_mul_local(
+                &global_binds[(size_t)parent_idx * 16u], bi->local_model_bind, global_bind);
         } else {
             memcpy(global_bind, bi->local_model_bind, sizeof(global_bind));
         }
@@ -267,7 +267,9 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
         }
 
         void *bind_mat = fbx_mat4_to_rt(local_bind);
-        int64_t added = rt_skeleton3d_add_bone(skel, rt_const_cstr(bi->name), parent_idx, bind_mat);
+        rt_string bone_name = rt_const_cstr(bi->name);
+        int64_t added = rt_skeleton3d_add_bone(skel, bone_name, parent_idx, bind_mat);
+        rt_string_unref(bone_name);
         fbx_release_ref(&bind_mat);
         if (added < 0) {
             failed = 1;

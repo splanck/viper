@@ -213,6 +213,11 @@ bool endsWith(std::string_view text, std::string_view suffix) {
     return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
 }
 
+/// @brief Return whether a name belongs to the reviewed Graphics3D/Game3D boundary.
+bool isThreeDRuntimeName(std::string_view name) {
+    return startsWith(name, "Viper.Graphics3D.") || startsWith(name, "Viper.Game3D.");
+}
+
 /// @brief Return the last dot-separated segment of a runtime name.
 /// @details `Viper.Network.Http.Get` becomes `Get`; names without dots are
 ///          returned unchanged.
@@ -340,7 +345,9 @@ void emitStringArrayJson(std::ostream &os, const std::vector<std::string> &value
 ///          requiring tools to guess what punctuation means.
 /// @param os Stream receiving JSON.
 /// @param rawType Type token from a public signature.
-void emitRuntimeApiTypeJson(std::ostream &os, std::string_view rawType) {
+void emitRuntimeApiTypeJson(std::ostream &os,
+                            std::string_view rawType,
+                            std::optional<bool> nullableOverride = std::nullopt) {
     using il::support::printJsonStringEscaped;
 
     std::string type(rawType);
@@ -349,6 +356,8 @@ void emitRuntimeApiTypeJson(std::ostream &os, std::string_view rawType) {
         nullable = true;
         type.pop_back();
     }
+    if (nullableOverride.has_value())
+        nullable = *nullableOverride;
 
     os << "{\"raw\":";
     printJsonStringEscaped(os, rawType);
@@ -381,6 +390,22 @@ void emitRuntimeApiTypeJson(std::ostream &os, std::string_view rawType) {
     }
 
     os << ",\"nullable\":" << (nullable ? "true" : "false") << '}';
+}
+
+/// @brief Resolve row-level return nullability beyond the compact signature spelling.
+/// @details The runtime-def-v1 dialect erases object nullability to `obj`. For the reviewed 3D
+///          domains, the raw C boundary can return null for invalid handles, absence, failed
+///          readback/import, or a trapped allocation, so object/pointer results are conservatively
+///          and explicitly nullable. Primitive, string, and void results are non-nullable.
+std::optional<bool> runtimeReturnNullable(std::string_view name, std::string_view signature) {
+    const RuntimeApiSignatureParts sig = parseRuntimeApiSignature(signature);
+    if (!sig.valid)
+        return std::nullopt;
+    if (endsWith(sig.returnType, "?"))
+        return true;
+    if (!isThreeDRuntimeName(name))
+        return std::nullopt;
+    return sig.returnType == "obj" || sig.returnType == "ptr" || startsWith(sig.returnType, "obj<");
 }
 
 /// @brief Return the generated domain reference that owns a runtime API row.
@@ -859,6 +884,12 @@ std::string inferRuntimeFallibility(std::string_view name, std::string_view sign
     const std::string_view leaf = lastRuntimeNameSegment(name);
     if (isRuntimeSideChannelDiagnostic(name, leaf))
         return "side-channel";
+    if (isThreeDRuntimeName(name)) {
+        if (startsWith(leaf, "Try") && sig.valid && sig.returnType == "i1")
+            return "status";
+        if (runtimeReturnNullable(name, signature).value_or(false))
+            return "nullable";
+    }
     if (name == "Viper.Terminal.Ask" || name == "Viper.Terminal.ReadLine" ||
         name == "Viper.Terminal.InputLine")
         return "option";
@@ -903,6 +934,13 @@ std::string inferRuntimeOwnership(std::string_view name, std::string_view signat
         sig.returnType == "i32" || sig.returnType == "i64" || sig.returnType == "f32" ||
         sig.returnType == "f64" || sig.returnType == "bool")
         return "value";
+    if (isThreeDRuntimeName(name)) {
+        if (sig.returnType == "ptr")
+            return "borrowed";
+        if (sig.returnType == "str" || sig.returnType == "string" || sig.returnType == "obj" ||
+            startsWith(sig.returnType, "obj<") || startsWith(sig.returnType, "seq<"))
+            return "managed";
+    }
     if (sig.returnType == "str" || sig.returnType == "string")
         return "owned";
     if (startsWith(sig.returnType, "obj<Viper.Option") ||
@@ -973,7 +1011,7 @@ void emitRuntimeSignatureMetadataJson(std::ostream &os,
     const RuntimeApiSignatureParts sig = parseRuntimeApiSignature(signature);
     os << ",\"return_type\":";
     if (sig.valid) {
-        emitRuntimeApiTypeJson(os, sig.returnType);
+        emitRuntimeApiTypeJson(os, sig.returnType, runtimeReturnNullable(name, signature));
     } else {
         os << "null";
     }
@@ -1015,6 +1053,9 @@ void emitRuntimeContractMetadataJson(std::ostream &os,
     il::support::printJsonStringEscaped(os, inferRuntimeFallibility(name, signature));
     os << ",\"ownership\":";
     il::support::printJsonStringEscaped(os, inferRuntimeOwnership(name, signature));
+    os << ",\"contract_source\":";
+    il::support::printJsonStringEscaped(
+        os, isThreeDRuntimeName(name) ? "three-d-boundary-policy" : "inferred");
     if (const std::string migrationTarget = inferRuntimeMigrationTarget(name);
         !migrationTarget.empty()) {
         os << ",\"migration_target\":";
@@ -1179,8 +1220,10 @@ int dumpRuntimeApi() {
 
     os << "{\"version\":";
     printJsonStringEscaped(os, VIPER_VERSION_STR);
-    os << ",\"schema_version\":3";
+    os << ",\"schema_version\":4";
     os << ",\"signature_dialect\":\"runtime-def-v1\"";
+    os << ",\"public_boundary\":\"registry\"";
+    os << ",\"c_abi_status\":\"internal-embedding\"";
 
     // Global runtime functions with canonical Viper.* names.
     os << ",\"functions\":[";
@@ -1199,6 +1242,11 @@ int dumpRuntimeApi() {
             printJsonStringEscaped(os, d.name);
             os << ",\"signature\":";
             printJsonStringEscaped(os, d.signatureText);
+            os << ",\"c_symbol\":";
+            if (!d.cSymbol.empty())
+                printJsonStringEscaped(os, d.cSymbol);
+            else
+                os << "null";
             os << ",\"kind\":\"function\"";
             os << ",\"owner\":";
             printJsonStringEscaped(os, runtimeApiOwner(d.name));
@@ -1222,6 +1270,15 @@ int dumpRuntimeApi() {
             printJsonStringEscaped(os, c.qname ? c.qname : "");
             os << ",\"constructor\":";
             printJsonStringEscaped(os, c.ctor ? c.ctor : "");
+            os << ",\"constructor_c_symbol\":";
+            {
+                const auto ctor =
+                    descriptorsByName.find(c.ctor ? std::string_view(c.ctor) : std::string_view());
+                if (ctor != descriptorsByName.end() && !ctor->second->cSymbol.empty())
+                    printJsonStringEscaped(os, ctor->second->cSymbol);
+                else
+                    os << "null";
+            }
             os << ",\"kind\":\"class\"";
             os << ",\"owner\":";
             printJsonStringEscaped(os, runtimeApiOwner(c.qname ? c.qname : ""));
@@ -1260,22 +1317,55 @@ int dumpRuntimeApi() {
                 printJsonStringEscaped(os, c.qname ? c.qname : "");
                 os << ",\"getter\":";
                 printJsonStringEscaped(os, p.getter ? p.getter : "");
+                os << ",\"getter_c_symbol\":";
+                {
+                    const auto getter = descriptorsByName.find(p.getter ? std::string_view(p.getter)
+                                                                        : std::string_view());
+                    if (getter != descriptorsByName.end() && !getter->second->cSymbol.empty())
+                        printJsonStringEscaped(os, getter->second->cSymbol);
+                    else
+                        os << "null";
+                }
                 os << ",\"setter\":";
                 if (p.setter)
                     printJsonStringEscaped(os, p.setter);
                 else
                     os << "null";
+                os << ",\"setter_c_symbol\":";
+                {
+                    const auto setter = descriptorsByName.find(p.setter ? std::string_view(p.setter)
+                                                                        : std::string_view());
+                    if (setter != descriptorsByName.end() && !setter->second->cSymbol.empty())
+                        printJsonStringEscaped(os, setter->second->cSymbol);
+                    else
+                        os << "null";
+                }
+                const std::string propertyName =
+                    std::string(c.qname ? c.qname : "") + "." + (p.name ? p.name : "");
+                const std::string propertyTarget =
+                    p.getter && *p.getter != '\0'
+                        ? p.getter
+                        : (p.setter && *p.setter != '\0' ? p.setter : propertyName);
+                const std::string propertySignature = std::string(p.type ? p.type : "") + "()";
                 os << ",\"return_type\":";
-                emitRuntimeApiTypeJson(os, p.type ? p.type : "");
+                emitRuntimeApiTypeJson(os,
+                                       p.type ? p.type : "",
+                                       runtimeReturnNullable(propertyTarget, propertySignature));
                 os << ",\"stability\":";
                 printJsonStringEscaped(os, inferRuntimeStability(p.getter ? p.getter : ""));
                 os << ",\"capabilities\":";
                 emitStringArrayJson(os, inferRuntimeCapabilities(c.qname ? c.qname : ""));
-                os << ",\"fallibility\":\"infallible\"";
-                os << ",\"ownership\":\"unknown\"";
+                os << ",\"fallibility\":";
+                printJsonStringEscaped(os,
+                                       inferRuntimeFallibility(propertyTarget, propertySignature));
+                os << ",\"ownership\":";
+                printJsonStringEscaped(os,
+                                       inferRuntimeOwnership(propertyTarget, propertySignature));
+                os << ",\"contract_source\":";
+                printJsonStringEscaped(
+                    os,
+                    isThreeDRuntimeName(propertyTarget) ? "three-d-boundary-policy" : "inferred");
                 os << ",\"docs_anchor\":";
-                const std::string propertyName =
-                    std::string(c.qname ? c.qname : "") + "." + (p.name ? p.name : "");
                 emitDocsAnchorJson(os, propertyName);
                 os << "}";
             }
@@ -1294,6 +1384,15 @@ int dumpRuntimeApi() {
                 printJsonStringEscaped(os, c.qname ? c.qname : "");
                 os << ",\"target\":";
                 printJsonStringEscaped(os, m.target ? m.target : "");
+                os << ",\"c_symbol\":";
+                {
+                    const auto target = descriptorsByName.find(m.target ? std::string_view(m.target)
+                                                                        : std::string_view());
+                    if (target != descriptorsByName.end() && !target->second->cSymbol.empty())
+                        printJsonStringEscaped(os, target->second->cSymbol);
+                    else
+                        os << "null";
+                }
                 os << ",\"is_static\":"
                    << (inferRuntimeMethodIsStatic(m, descriptorsByName) ? "true" : "false");
                 const std::string methodName =

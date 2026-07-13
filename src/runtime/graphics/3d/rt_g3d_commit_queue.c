@@ -25,14 +25,39 @@ typedef struct rt_g3d_commit_item {
     uint64_t cost;
 } rt_g3d_commit_item;
 
-/// @brief Queue state: a lock-free FIFO of items plus submit/drain counters.
+/// @brief Queue state: a concurrent FIFO of items plus submit/drain counters.
 typedef struct rt_g3d_commit_queue {
     void *items;
     int64_t submitted;
     int64_t drained;
 } rt_g3d_commit_queue;
 
-/// @brief Allocate a commit queue wrapping a fresh lock-free concurrent FIFO.
+/// @brief Test-only countdown for deterministic enqueue-wrapper allocation failures.
+static volatile int g_rt_g3d_commit_queue_fail_allocations;
+
+/// @brief Consume one requested allocation failure without racing concurrent producers.
+static int rt_g3d_commit_queue_should_fail_allocation(void) {
+    int remaining = rt_atomic_load_i32(&g_rt_g3d_commit_queue_fail_allocations, __ATOMIC_ACQUIRE);
+    while (remaining > 0) {
+        int expected = remaining;
+        if (rt_atomic_compare_exchange_i32(&g_rt_g3d_commit_queue_fail_allocations,
+                                           &expected,
+                                           remaining - 1,
+                                           __ATOMIC_ACQ_REL,
+                                           __ATOMIC_ACQUIRE))
+            return 1;
+        remaining = expected;
+    }
+    return 0;
+}
+
+/// @brief Configure deterministic allocation failure injection for unit tests.
+void rt_g3d_commit_queue_test_fail_next_allocations(int32_t count) {
+    rt_atomic_store_i32(
+        &g_rt_g3d_commit_queue_fail_allocations, count > 0 ? count : 0, __ATOMIC_RELEASE);
+}
+
+/// @brief Allocate a commit queue wrapping a fresh concurrent FIFO.
 /// @return Opaque queue handle, or NULL if either allocation fails.
 void *rt_g3d_commit_queue_new(void) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)calloc(1, sizeof(rt_g3d_commit_queue));
@@ -78,10 +103,10 @@ void rt_g3d_commit_queue_free(void *obj) {
 }
 
 /// @brief Enqueue a commit callback tagged with a main-thread cost estimate and cleanup hook.
-/// @details Traps on allocation failure rather than silently dropping the commit. If the queue is
-///          later closed before the item drains, `cancel_fn` receives `user_data` so payload
-///          ownership can be released.
-/// @return 1 when queued; 0 when the queue or callback handle is invalid.
+/// @details If allocation fails, ownership remains with the caller and zero is returned. If the
+///          queue is later closed before the item drains, `cancel_fn` receives `user_data` so
+///          payload ownership can be released.
+/// @return 1 when queued; 0 for invalid input, a closed queue, or allocation failure.
 int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *obj,
                                                rt_g3d_commit_fn fn,
                                                void *user_data,
@@ -92,16 +117,19 @@ int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *obj,
         return 0;
     if (rt_concqueue_get_is_closed(queue->items))
         return 0;
-    rt_g3d_commit_item *item = (rt_g3d_commit_item *)malloc(sizeof(rt_g3d_commit_item));
-    if (!item) {
-        rt_trap("Graphics3D commit queue: memory allocation failed");
+    rt_g3d_commit_item *item = NULL;
+    if (!rt_g3d_commit_queue_should_fail_allocation())
+        item = (rt_g3d_commit_item *)malloc(sizeof(rt_g3d_commit_item));
+    if (!item)
         return 0;
-    }
     item->fn = fn;
     item->cancel_fn = cancel_fn;
     item->user_data = user_data;
     item->cost = cost;
-    rt_concqueue_enqueue(queue->items, item);
+    if (!rt_concqueue_try_enqueue(queue->items, item)) {
+        free(item);
+        return 0;
+    }
     rt_atomic_fetch_add_i64(&queue->submitted, 1, __ATOMIC_RELAXED);
     return 1;
 }

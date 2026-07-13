@@ -35,7 +35,7 @@
 static char g_surface_names[GAME3D_SURFACES_MAX][GAME3D_SURFACE_NAME_MAX];
 static int32_t g_surface_count;
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <windows.h>
 static CRITICAL_SECTION g_surfaces_lock;
 static INIT_ONCE g_surfaces_once = INIT_ONCE_STATIC_INIT;
@@ -69,18 +69,33 @@ static void surfaces_unlock(void) {
 }
 #endif
 
+/// @brief Copy a public surface name into the registry's canonical fixed-width form.
+/// @details Surface names are documented as truncating to 63 bytes. Canonicalizing before both
+///   insertion and lookup keeps Register idempotent for long names and makes IdOf agree with
+///   NameOf. The registry stores bytes rather than interpreting UTF-8, matching rt_string_cstr.
+static void surfaces_canonicalize_name(const char *name, char canonical[GAME3D_SURFACE_NAME_MAX]) {
+    size_t length = name ? strlen(name) : 0u;
+    if (length >= GAME3D_SURFACE_NAME_MAX)
+        length = GAME3D_SURFACE_NAME_MAX - 1u;
+    if (length > 0u)
+        memcpy(canonical, name, length);
+    canonical[length] = '\0';
+}
+
 /// @brief Register (or look up) a surface name; ids are stable from 1.
 /// @details Idempotent; names are case-sensitive and truncated at 63 bytes.
 ///   Traps past the 255-surface budget (a data error, not a runtime state).
 int64_t rt_game3d_surfaces_register(rt_string name) {
     const char *cname = name ? rt_string_cstr(name) : NULL;
+    char canonical[GAME3D_SURFACE_NAME_MAX];
     if (!cname || !*cname) {
         rt_trap("Game3D.Surfaces.Register: name must not be empty");
         return 0;
     }
+    surfaces_canonicalize_name(cname, canonical);
     surfaces_lock();
     for (int32_t i = 0; i < g_surface_count; ++i) {
-        if (strncmp(g_surface_names[i], cname, GAME3D_SURFACE_NAME_MAX) == 0) {
+        if (strcmp(g_surface_names[i], canonical) == 0) {
             surfaces_unlock();
             return i + 1;
         }
@@ -91,31 +106,32 @@ int64_t rt_game3d_surfaces_register(rt_string name) {
         return 0;
     }
     int32_t index = g_surface_count++;
-    strncpy(g_surface_names[index], cname, GAME3D_SURFACE_NAME_MAX - 1);
-    g_surface_names[index][GAME3D_SURFACE_NAME_MAX - 1] = '\0';
+    memcpy(g_surface_names[index], canonical, sizeof(canonical));
     surfaces_unlock();
     return index + 1;
 }
 
 /// @brief Name for a surface id, or "" when unknown.
 rt_string rt_game3d_surfaces_name_of(int64_t id) {
-    rt_string result = NULL;
+    const char *result = NULL;
     surfaces_lock();
     if (id >= 1 && id <= g_surface_count)
-        result = rt_const_cstr(g_surface_names[id - 1]);
+        result = g_surface_names[id - 1];
     surfaces_unlock();
-    return result ? rt_string_ref(result) : rt_str_empty();
+    return result ? rt_const_cstr(result) : rt_str_empty();
 }
 
 /// @brief Id for a surface name, or 0 when unregistered.
 int64_t rt_game3d_surfaces_id_of(rt_string name) {
     const char *cname = name ? rt_string_cstr(name) : NULL;
+    char canonical[GAME3D_SURFACE_NAME_MAX];
     int64_t id = 0;
     if (!cname || !*cname)
         return 0;
+    surfaces_canonicalize_name(cname, canonical);
     surfaces_lock();
     for (int32_t i = 0; i < g_surface_count; ++i) {
-        if (strncmp(g_surface_names[i], cname, GAME3D_SURFACE_NAME_MAX) == 0) {
+        if (strcmp(g_surface_names[i], canonical) == 0) {
             id = i + 1;
             break;
         }

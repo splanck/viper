@@ -1233,6 +1233,14 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
         rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(new_hits) == 1, "Dirty spatial index returns the moved node");
 
+    rt_mesh3d_add_vertex(mesh, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    void *geometry_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(19.0, -1.0, -5.0), rt_vec3_new(21.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(geometry_hits) == 1,
+                "Spatial index observes geometry changes on an already-bound mesh");
+    EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count + 2,
+                "Spatial index refits after bound mesh geometry changes");
+
     rt_scene_node3d_set_visible(node, 0);
     void *hidden_hits =
         rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
@@ -2366,6 +2374,52 @@ static void test_node_animator_import_index_binding_does_not_fallback_to_duplica
                 0.0,
                 0.001,
                 "Import-index-bound node animation does not drive a same-name fallback node");
+}
+
+static void test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit() {
+    const char *path = "/tmp/viper_scene_deep_roundtrip_test.vscn";
+    constexpr int supported_depth = 98;
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene3d_get_root(scene);
+
+    for (int i = 0; i < supported_depth; ++i) {
+        void *child = rt_scene_node3d_new();
+        rt_scene_node3d_set_position(child, 1.0, 0.0, 0.0);
+        EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, child) == 1,
+                    "Deep VSCN fixture attaches every supported node level");
+        parent = child;
+    }
+    rt_scene_node3d_set_name(parent, rt_const_cstr("deep-leaf"));
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "SceneGraph.Save accepts the full VSCN node-depth limit");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr,
+                "SceneGraph.Load accepts every hierarchy emitted at the VSCN depth limit");
+    if (loaded) {
+        void *current = rt_scene3d_get_root(loaded);
+        int loaded_depth = 0;
+        while (current && rt_scene_node3d_child_count(current) == 1) {
+            current = rt_scene_node3d_get_child(current, 0);
+            loaded_depth++;
+        }
+        EXPECT_TRUE(loaded_depth == supported_depth,
+                    "VSCN iterative traversal preserves all deep hierarchy levels");
+        EXPECT_TRUE(current != nullptr && rt_scene_node3d_child_count(current) == 0,
+                    "VSCN deep hierarchy terminates at the expected leaf");
+    }
+    std::remove(path);
+
+    void *too_deep_scene = rt_scene3d_new();
+    parent = rt_scene3d_get_root(too_deep_scene);
+    for (int i = 0; i <= supported_depth; ++i) {
+        void *child = rt_scene_node3d_new();
+        rt_scene_node3d_add_child(parent, child);
+        parent = child;
+    }
+    EXPECT_TRUE(rt_scene3d_save(too_deep_scene, rt_const_cstr(path)) == 0,
+                "SceneGraph.Save rejects a hierarchy deeper than its loader can parse");
+    std::remove(path);
 }
 
 static void test_scene_save_skips_invalid_material_asset_refs() {
@@ -3747,6 +3801,7 @@ int main() {
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
+    test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit();
     test_scene_save_skips_invalid_material_asset_refs();
     test_node_animator_handles_large_morph_weight_channels();
     test_node_animator_public_controls_drive_bound_nodes();

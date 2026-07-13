@@ -1020,10 +1020,10 @@ static rt_string game3d_terrain_collider_name(const rt_game3d_stream_terrain_til
     size_t base_len = strlen(base);
     size_t suffix_len = strlen(suffix);
     if (base_len > SIZE_MAX - suffix_len - 1u)
-        return rt_string_ref(rt_const_cstr("terrain_tile_heightfield_collider"));
+        return rt_const_cstr("terrain_tile_heightfield_collider");
     char *name = (char *)malloc(base_len + suffix_len + 1u);
     if (!name)
-        return rt_string_ref(rt_const_cstr("terrain_tile_heightfield_collider"));
+        return rt_const_cstr("terrain_tile_heightfield_collider");
     memcpy(name, base, base_len);
     memcpy(name + base_len, suffix, suffix_len + 1u);
     rt_string result = rt_string_from_bytes(name, base_len + suffix_len);
@@ -1108,10 +1108,10 @@ static rt_string game3d_terrain_nav_source_name(const rt_game3d_stream_terrain_t
     size_t base_len = strlen(base);
     size_t suffix_len = strlen(suffix);
     if (base_len > SIZE_MAX - suffix_len - 1u)
-        return rt_string_ref(rt_const_cstr("terrain_tile_navmesh_source"));
+        return rt_const_cstr("terrain_tile_navmesh_source");
     char *name = (char *)malloc(base_len + suffix_len + 1u);
     if (!name)
-        return rt_string_ref(rt_const_cstr("terrain_tile_navmesh_source"));
+        return rt_const_cstr("terrain_tile_navmesh_source");
     memcpy(name, base, base_len);
     memcpy(name + base_len, suffix, suffix_len + 1u);
     rt_string result = rt_string_from_bytes(name, base_len + suffix_len);
@@ -2008,6 +2008,7 @@ static int game3d_i64_budget_can_fit(int64_t current, int64_t budget, int64_t co
  * with staging in flight cannot finalize until its results drain. */
 
 typedef struct rt_game3d_stream_stage_job {
+    struct rt_game3d_stream_stage_job *failed_next; /* intrusive OOM fallback stack */
     void *stream;        /* retained WorldStream3D; released on the main thread */
     uint64_t generation; /* stream_generation snapshot at submit */
     int32_t kind;        /* 0 = scene cell, 1 = terrain tile */
@@ -2026,6 +2027,10 @@ typedef struct rt_game3d_stream_stage_job {
 
 /* Process-global staging result queue; drained only on the main thread. */
 static void *g_game3d_stream_stage_queue;
+/* If the commit queue cannot allocate its wrapper item, the already-allocated job itself becomes
+ * a lock-free emergency-stack node. The next main-thread drain owns cleanup and releases the
+ * runtime retain without ever finalizing a stream on a worker. */
+static void *volatile g_game3d_stream_failed_stage_jobs;
 
 /// @brief malloc-duplicate a C string (workers must not touch rt_string refcounts).
 static char *game3d_stream_strdup(const char *text) {
@@ -2069,6 +2074,18 @@ static void game3d_stream_stage_cancel(void *user_data) {
         return;
     game3d_release_ref(&job->stream);
     game3d_stream_stage_job_free_shallow(job);
+}
+
+/// @brief Publish a worker result to the allocation-free emergency stack.
+static void game3d_stream_stage_publish_enqueue_failure(rt_game3d_stream_stage_job *job) {
+    void *expected;
+    if (!job)
+        return;
+    do {
+        expected = rt_atomic_load_ptr(&g_game3d_stream_failed_stage_jobs, __ATOMIC_ACQUIRE);
+        job->failed_next = (rt_game3d_stream_stage_job *)expected;
+    } while (!rt_atomic_compare_exchange_ptr(
+        &g_game3d_stream_failed_stage_jobs, &expected, job, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE));
 }
 
 /// @brief Drop a cell's staged payload without committing it (cancellation/unload path).
@@ -2185,6 +2202,18 @@ static void game3d_stream_stage_commit(void *user_data) {
     game3d_stream_stage_job_free_shallow(job);
 }
 
+/// @brief Drain emergency-stack jobs on the main thread through the normal commit path.
+static void game3d_stream_stage_drain_enqueue_failures(void) {
+    rt_game3d_stream_stage_job *jobs = (rt_game3d_stream_stage_job *)rt_atomic_exchange_ptr(
+        &g_game3d_stream_failed_stage_jobs, NULL, __ATOMIC_ACQ_REL);
+    while (jobs) {
+        rt_game3d_stream_stage_job *next = jobs->failed_next;
+        jobs->failed_next = NULL;
+        game3d_stream_stage_commit(jobs);
+        jobs = next;
+    }
+}
+
 /// @brief Worker-thread entry: read the payload files and parse heightmap text to POD.
 /// @details Touches no rt objects — file IO plus plain-C parsing only, then hands the
 ///   result to the main thread through the staging commit queue.
@@ -2233,10 +2262,7 @@ static void game3d_stream_stage_worker(void *user_data) {
                                                  job,
                                                  RT_G3D_COMMIT_COST_UNIT,
                                                  game3d_stream_stage_cancel)) {
-        /* OOM enqueue failure: free the payload but keep the stream retain — releasing
-         * an rt object off the main thread could run its finalizer on a worker. The
-         * single leaked retain under OOM is the safe trade. */
-        game3d_stream_stage_job_free_shallow(job);
+        game3d_stream_stage_publish_enqueue_failure(job);
     }
 }
 
@@ -2313,6 +2339,7 @@ static void game3d_stream_stage_submit(rt_game3d_world_stream *stream,
 static void game3d_stream_stage_drain(void) {
     if (g_game3d_stream_stage_queue)
         (void)rt_g3d_commit_queue_drain(g_game3d_stream_stage_queue, -1);
+    game3d_stream_stage_drain_enqueue_failures();
 }
 
 /// @brief Eviction watermark for the residency budget: budget + budget/8.
@@ -2477,10 +2504,10 @@ static rt_string game3d_stream_cell_proxy_name(const rt_game3d_stream_cell *cell
     size_t base_len = strlen(base);
     size_t suffix_len = strlen(suffix);
     if (base_len > SIZE_MAX - suffix_len - 1u)
-        return rt_string_ref(rt_const_cstr("cell_proxy"));
+        return rt_const_cstr("cell_proxy");
     char *name = (char *)malloc(base_len + suffix_len + 1u);
     if (!name)
-        return rt_string_ref(rt_const_cstr("cell_proxy"));
+        return rt_const_cstr("cell_proxy");
     memcpy(name, base, base_len);
     memcpy(name + base_len, suffix, suffix_len + 1u);
     rt_string result = rt_string_from_bytes(name, base_len + suffix_len);

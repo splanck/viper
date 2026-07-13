@@ -869,22 +869,39 @@ static void physics_hit3d_finalizer(void *obj) {
     hit->collider = NULL;
 }
 
-/// @brief GC finalizer for `PhysicsHitList3D` — release each item then the array.
+/// @brief GC finalizer for `PhysicsHitList3D` — release lazy boxes and packed raw references.
 static void physics_hit_list3d_finalizer(void *obj) {
     rt_physics_hit_list3d_obj *list = (rt_physics_hit_list3d_obj *)obj;
     if (!list)
         return;
+    int64_t count = list->allocated_count;
+    if (count < 0)
+        count = 0;
+    if (count > PH3D_QUERY_HITS_MAX)
+        count = PH3D_QUERY_HITS_MAX;
     if (list->items) {
-        int64_t count = physics_hit_list3d_count_safe(list);
         for (int64_t i = 0; i < count; ++i) {
-            if (list->items[i] && rt_obj_release_check0(list->items[i]))
-                rt_obj_free(list->items[i]);
+            void *item =
+                rt_atomic_load_ptr((void *const volatile *)&list->items[i], __ATOMIC_ACQUIRE);
+            if (item && rt_obj_release_check0(item))
+                rt_obj_free(item);
         }
-        free(list->items);
         list->items = NULL;
+    }
+    if (list->raw_hits) {
+        for (int64_t i = 0; i < count; ++i) {
+            if (list->raw_hits[i].body && rt_obj_release_check0(list->raw_hits[i].body))
+                rt_obj_free(list->raw_hits[i].body);
+            if (list->raw_hits[i].collider && rt_obj_release_check0(list->raw_hits[i].collider))
+                rt_obj_free(list->raw_hits[i].collider);
+            list->raw_hits[i].body = NULL;
+            list->raw_hits[i].collider = NULL;
+        }
+        list->raw_hits = NULL;
     }
     list->count = 0;
     list->capacity = 0;
+    list->allocated_count = 0;
 }
 
 /// @brief GC finalizer for `CollisionEvent3D` — release both bodies and both colliders.
@@ -992,44 +1009,58 @@ void *physics_hit3d_new(const rt_query_hit3d *src) {
 
 /// @brief Build a `PhysicsHitList3D` from a transient hit array.
 ///
-/// Allocates an items array of length `count`, boxes each hit via
-/// `physics_hit3d_new`, and returns the GC-managed wrapper. Returns
-/// NULL when `count <= 0` so callers can pass empty results back as
-/// a NULL Zia value.
+/// Stores the raw hits and lazy-box pointer slots in the list object's single allocation. A
+/// PhysicsHit3D is materialized only if Get(index) is called, avoiding N managed allocations for
+/// callers that only inspect Count/TotalCount. Empty queries return a valid zero-count list.
 void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,
                                 int32_t count,
                                 int64_t total_count,
                                 int8_t truncated) {
     rt_physics_hit_list3d_obj *list;
-    if (count <= 0)
+    size_t items_bytes;
+    size_t hits_bytes;
+    size_t allocation_bytes;
+    if (count < 0)
+        count = 0;
+    if (count > PH3D_QUERY_HITS_MAX) {
+        if (total_count < count)
+            total_count = count;
+        count = PH3D_QUERY_HITS_MAX;
+        truncated = 1;
+    }
+    if (count > 0 && !hits)
         return NULL;
+    items_bytes = (size_t)count * sizeof(void *);
+    hits_bytes = (size_t)count * sizeof(rt_query_hit3d);
+    if (items_bytes > SIZE_MAX - sizeof(*list) ||
+        hits_bytes > SIZE_MAX - sizeof(*list) - items_bytes) {
+        rt_trap("PhysicsHitList3D: allocation size overflow");
+        return NULL;
+    }
+    allocation_bytes = sizeof(*list) + items_bytes + hits_bytes;
     list = (rt_physics_hit_list3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHITLIST3D_CLASS_ID,
-                                                       (int64_t)sizeof(*list));
+                                                       (int64_t)allocation_bytes);
     if (!list) {
         rt_trap("PhysicsHitList3D: allocation failed");
         return NULL;
     }
-    memset(list, 0, sizeof(*list));
+    memset(list, 0, allocation_bytes);
     rt_obj_set_finalizer(list, physics_hit_list3d_finalizer);
     list->total_count = total_count >= count ? total_count : count;
     list->truncated = truncated ? 1 : 0;
-    list->items = (void **)calloc((size_t)count, sizeof(void *));
-    if (!list->items) {
-        if (rt_obj_release_check0(list))
-            rt_obj_free(list);
-        rt_trap("PhysicsHitList3D: allocation failed");
-        return NULL;
-    }
+    list->items = count > 0 ? (void **)(list + 1) : NULL;
+    list->raw_hits = count > 0 ? (rt_query_hit3d *)((uint8_t *)(list + 1) + items_bytes) : NULL;
     list->count = count;
     list->capacity = count;
+    list->allocated_count = count;
     for (int32_t i = 0; i < count; ++i) {
-        list->items[i] = physics_hit3d_new(&hits[i]);
-        if (!list->items[i]) {
-            if (rt_obj_release_check0(list))
-                rt_obj_free(list);
-            rt_trap("PhysicsHitList3D: allocation failed");
-            return NULL;
-        }
+        list->raw_hits[i] = hits[i];
+        list->raw_hits[i].body = ph3d_body_ref_or_null(hits[i].body);
+        list->raw_hits[i].collider = ph3d_collider_ref_or_null(hits[i].collider);
+        if (list->raw_hits[i].body)
+            rt_obj_retain_maybe(list->raw_hits[i].body);
+        if (list->raw_hits[i].collider)
+            rt_obj_retain_maybe(list->raw_hits[i].collider);
     }
     return list;
 }

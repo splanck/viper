@@ -17,6 +17,17 @@ func start() {
         Terminal.Say("FAIL: surface name/id lookups wrong");
         return;
     }
+    var longName = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-extra-a";
+    var samePrefix = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-extra-b";
+    var longId = Game3D.Surfaces.Register(longName);
+    if (Game3D.Surfaces.Register(longName) != longId ||
+        Game3D.Surfaces.Register(samePrefix) != longId ||
+        Game3D.Surfaces.IdOf(longName) != longId ||
+        Game3D.Surfaces.NameOf(longId) !=
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-") {
+        Terminal.Say("FAIL: long surface names are not canonical/idempotent");
+        return;
+    }
 
     // Tagged floor: raycast reads the surface through the hit collider.
     var world = Game3D.World3D.New("Surfaces Probe", 64, 48);

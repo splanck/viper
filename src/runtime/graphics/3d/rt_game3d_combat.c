@@ -376,7 +376,9 @@ static int game3d_hitbox_is_live(rt_game3d_hitbox *hitbox) {
         if (state_time < window->t0 || state_time > window->t1)
             continue;
         rt_string name = rt_const_cstr(window->state);
-        if (rt_anim_controller3d_is_state_playing(controller, name))
+        int8_t playing = rt_anim_controller3d_is_state_playing(controller, name);
+        rt_string_unref(name);
+        if (playing)
             return 1;
     }
     return 0;

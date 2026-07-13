@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_collision_meshconvex.inc  (#included from rt_physics3d_collision.c; not a standalone translation unit)
-// Purpose: Physics3D GJK/EPA, mesh-like tests, and the collider-pair dispatcher
+// File: src/runtime/graphics/3d/physics/rt_physics3d_collision_meshconvex.inc  (#included from
+// rt_physics3d_collision.c; not a standalone translation unit) Purpose: Physics3D GJK/EPA,
+// mesh-like tests, and the collider-pair dispatcher
 //===----------------------------------------------------------------------===//
 typedef struct {
     double v[3];
@@ -884,7 +885,10 @@ static int test_heightfield_box(void *heightfield,
 ///   - simple × simple (route via `test_simple_collision`)
 ///   - convex hull / mesh × simple and mesh × convex hull (route via BVH/GJK helpers)
 ///   - heightfield × simple (route via `test_heightfield_*`)
-///   - everything else falls back to AABB-vs-AABB.
+///
+/// Shape pairs without an exact narrow phase fail closed. Treating their broad-phase AABBs as a
+/// contact used to create phantom collision impulses for disjoint triangle meshes and for
+/// mesh/heightfield combinations.
 ///
 /// Outputs the leaf colliders that actually touched (so the higher-level
 /// contact event can carry the precise child collider, not just the
@@ -918,6 +922,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                               const rt_body3d *b_body,
                               void *b_collider,
                               const rt_collider_pose *b_pose,
+                              int32_t recursion_depth,
                               double *normal,
                               double *depth,
                               void **leaf_a_out,
@@ -935,6 +940,7 @@ static int test_compound_collider(const rt_body3d *a_body,
                                   void *b_collider,
                                   const rt_collider_pose *b_pose,
                                   int compound_is_a,
+                                  int32_t recursion_depth,
                                   double *normal,
                                   double *depth,
                                   void **leaf_a_out,
@@ -966,6 +972,7 @@ static int test_compound_collider(const rt_body3d *a_body,
                                                          b_body,
                                                          b_collider,
                                                          b_pose,
+                                                         recursion_depth + 1,
                                                          cur_normal,
                                                          &cur_depth,
                                                          &cur_leaf_a,
@@ -978,6 +985,7 @@ static int test_compound_collider(const rt_body3d *a_body,
                                                          b_body,
                                                          child,
                                                          &child_pose,
+                                                         recursion_depth + 1,
                                                          cur_normal,
                                                          &cur_depth,
                                                          &cur_leaf_a,
@@ -1008,10 +1016,16 @@ static int test_compound_collider(const rt_body3d *a_body,
 
 /// @brief Broad-phase AABB reject for a collider pair: compute both world AABBs, return 0 when
 ///        they are disjoint, else fill the AABB extents and centers and return 1.
-static int collider_pair_broadphase(void *a_collider, const rt_collider_pose *a_pose,
-                                    void *b_collider, const rt_collider_pose *b_pose,
-                                    double amn[3], double amx[3], double bmn[3], double bmx[3],
-                                    double a_center[3], double b_center[3]) {
+static int collider_pair_broadphase(void *a_collider,
+                                    const rt_collider_pose *a_pose,
+                                    void *b_collider,
+                                    const rt_collider_pose *b_pose,
+                                    double amn[3],
+                                    double amx[3],
+                                    double bmn[3],
+                                    double bmx[3],
+                                    double a_center[3],
+                                    double b_center[3]) {
     rt_collider3d_compute_world_aabb_raw(
         a_collider, a_pose->position, a_pose->rotation, a_pose->scale, amn, amx);
     rt_collider3d_compute_world_aabb_raw(
@@ -1038,6 +1052,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                               const rt_body3d *b_body,
                               void *b_collider,
                               const rt_collider_pose *b_pose,
+                              int32_t recursion_depth,
                               double *normal,
                               double *depth,
                               void **leaf_a_out,
@@ -1048,11 +1063,11 @@ static int test_collider_pair(const rt_body3d *a_body,
     double a_center[3], b_center[3];
     int64_t a_type;
     int64_t b_type;
-    if (!a_collider || !b_collider)
+    if (!a_collider || !b_collider || recursion_depth > RT_COLLIDER3D_MAX_COMPOUND_DEPTH * 2)
         return 0;
 
-    if (!collider_pair_broadphase(a_collider, a_pose, b_collider, b_pose, amn, amx, bmn, bmx,
-                                  a_center, b_center))
+    if (!collider_pair_broadphase(
+            a_collider, a_pose, b_collider, b_pose, amn, amx, bmn, bmx, a_center, b_center))
         return 0;
 
     a_type = rt_collider3d_get_type(a_collider);
@@ -1066,6 +1081,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                                       b_collider,
                                       b_pose,
                                       1,
+                                      recursion_depth,
                                       normal,
                                       depth,
                                       leaf_a_out,
@@ -1081,6 +1097,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                                       b_collider,
                                       b_pose,
                                       0,
+                                      recursion_depth,
                                       normal,
                                       depth,
                                       leaf_a_out,
@@ -1163,6 +1180,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                                      a_body,
                                      a_collider,
                                      a_pose,
+                                     recursion_depth,
                                      normal,
                                      depth,
                                      leaf_b_out,
@@ -1186,6 +1204,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                                  a_body,
                                  a_collider,
                                  a_pose,
+                                 recursion_depth,
                                  normal,
                                  depth,
                                  leaf_b_out,
@@ -1244,6 +1263,7 @@ static int test_collider_pair(const rt_body3d *a_body,
                                  a_body,
                                  a_collider,
                                  a_pose,
+                                 recursion_depth,
                                  normal,
                                  depth,
                                  leaf_b_out,
@@ -1258,16 +1278,125 @@ static int test_collider_pair(const rt_body3d *a_body,
         return hit;
     }
 
-    if (!test_bounds_overlap(amn, amx, a_center, bmn, bmx, b_center, normal, depth))
-        return 0;
-    return commit_pair_leaves(leaf_a_out,
-                              leaf_a_pose_out,
-                              a_collider,
-                              a_pose,
-                              leaf_b_out,
-                              leaf_b_pose_out,
-                              b_collider,
-                              b_pose);
+    /* Unsupported narrow-phase pair (mesh/mesh, mesh/heightfield, convex/heightfield, or
+     * heightfield/heightfield). The AABB check above is only a reject test, never contact proof. */
+    return 0;
+}
+
+/// @brief Collect distinct leaf contacts for a compound pair into an existing body-pair manifold.
+static void contact3d_collect_compound_leaf_points(rt_contact3d *contact,
+                                                   const rt_body3d *a_body,
+                                                   void *a_collider,
+                                                   const rt_collider_pose *a_pose,
+                                                   const rt_body3d *b_body,
+                                                   void *b_collider,
+                                                   const rt_collider_pose *b_pose,
+                                                   int32_t recursion_depth) {
+    int64_t a_type;
+    int64_t b_type;
+
+    if (!contact || !a_collider || !a_pose || !b_collider || !b_pose ||
+        contact->contact_count >= PH3D_MAX_MANIFOLD_POINTS ||
+        recursion_depth > RT_COLLIDER3D_MAX_COMPOUND_DEPTH * 2)
+        return;
+    a_type = rt_collider3d_get_type(a_collider);
+    b_type = rt_collider3d_get_type(b_collider);
+
+    if (a_type == RT_COLLIDER3D_TYPE_COMPOUND) {
+        int64_t child_count = rt_collider3d_get_child_count_raw(a_collider);
+        for (int64_t i = 0; i < child_count && contact->contact_count < PH3D_MAX_MANIFOLD_POINTS;
+             ++i) {
+            double child_pos[3];
+            double child_rot[4];
+            double child_scale[3];
+            rt_collider_pose child_pose;
+            void *child = rt_collider3d_get_child_raw(a_collider, i);
+
+            rt_collider3d_get_child_transform_raw(a_collider, i, child_pos, child_rot, child_scale);
+            collider_pose_compose(a_pose, child_pos, child_rot, child_scale, &child_pose);
+            contact3d_collect_compound_leaf_points(contact,
+                                                   a_body,
+                                                   child,
+                                                   &child_pose,
+                                                   b_body,
+                                                   b_collider,
+                                                   b_pose,
+                                                   recursion_depth + 1);
+        }
+        return;
+    }
+    if (b_type == RT_COLLIDER3D_TYPE_COMPOUND) {
+        int64_t child_count = rt_collider3d_get_child_count_raw(b_collider);
+        for (int64_t i = 0; i < child_count && contact->contact_count < PH3D_MAX_MANIFOLD_POINTS;
+             ++i) {
+            double child_pos[3];
+            double child_rot[4];
+            double child_scale[3];
+            rt_collider_pose child_pose;
+            void *child = rt_collider3d_get_child_raw(b_collider, i);
+
+            rt_collider3d_get_child_transform_raw(b_collider, i, child_pos, child_rot, child_scale);
+            collider_pose_compose(b_pose, child_pos, child_rot, child_scale, &child_pose);
+            contact3d_collect_compound_leaf_points(contact,
+                                                   a_body,
+                                                   a_collider,
+                                                   a_pose,
+                                                   b_body,
+                                                   child,
+                                                   &child_pose,
+                                                   recursion_depth + 1);
+        }
+        return;
+    }
+
+    {
+        double normal[3];
+        double depth = 0.0;
+        double point[3];
+        void *leaf_a = NULL;
+        void *leaf_b = NULL;
+        rt_collider_pose leaf_a_pose;
+        rt_collider_pose leaf_b_pose;
+
+        if (!test_collider_pair(a_body,
+                                a_collider,
+                                a_pose,
+                                b_body,
+                                b_collider,
+                                b_pose,
+                                recursion_depth,
+                                normal,
+                                &depth,
+                                &leaf_a,
+                                &leaf_a_pose,
+                                &leaf_b,
+                                &leaf_b_pose))
+            return;
+        compute_contact_point_from_leafs(leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose, normal, point);
+        contact3d_try_add_manifold_point(contact, point, normal, -depth);
+    }
+}
+
+/// @brief Add contacts from multiple touching compound leaves to a body-pair manifold.
+void contact3d_expand_compound_manifold(rt_contact3d *contact,
+                                        const rt_body3d *a,
+                                        const rt_body3d *b) {
+    rt_collider_pose a_pose;
+    rt_collider_pose b_pose;
+    int64_t a_type;
+    int64_t b_type;
+
+    if (!contact || !a || !b || !a->collider || !b->collider ||
+        contact->contact_count >= PH3D_MAX_MANIFOLD_POINTS)
+        return;
+    a_type = rt_collider3d_get_type(a->collider);
+    b_type = rt_collider3d_get_type(b->collider);
+    if (a_type != RT_COLLIDER3D_TYPE_COMPOUND && b_type != RT_COLLIDER3D_TYPE_COMPOUND)
+        return;
+    collider_pose_from_body(a, &a_pose);
+    collider_pose_from_body(b, &b_pose);
+    contact3d_collect_compound_leaf_points(
+        contact, a, a->collider, &a_pose, b, b->collider, &b_pose, 0);
 }
 
 /// @brief Top-level body-vs-body collision test, including contact point.
@@ -1318,6 +1447,7 @@ int test_collision(const rt_body3d *a,
                             b,
                             b->collider,
                             &b_pose,
+                            0,
                             normal,
                             depth,
                             &leaf_a,

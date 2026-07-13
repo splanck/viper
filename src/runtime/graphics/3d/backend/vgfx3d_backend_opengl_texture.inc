@@ -22,6 +22,58 @@ static void texture_cache_release_entry(gl_texture_cache_entry_t *entry) {
     memset(entry, 0, sizeof(*entry));
 }
 
+/// @brief Hash an object identity into the direct-mapped texture-cache hint table.
+static uint32_t gl_texture_cache_hint_slot(const void *key) {
+    uintptr_t value = (uintptr_t)key;
+    value ^= value >> 7u;
+    value ^= value >> 17u;
+    return (uint32_t)value & (GL_TEXTURE_CACHE_HINT_CAPACITY - 1u);
+}
+
+/// @brief Remember the current array index for a Pixels or TextureAsset3D identity.
+static void gl_texture_cache_remember(gl_context_t *ctx, const void *key, int32_t index) {
+    if (!ctx || !key || index < 0 || index >= ctx->texture_cache_count)
+        return;
+    ctx->texture_cache_hints[gl_texture_cache_hint_slot(key)] = index + 1;
+}
+
+/// @brief Return a validated hinted Pixels entry index, or -1 on collision/staleness.
+static int32_t gl_texture_cache_hint_pixels(const gl_context_t *ctx, const void *pixels) {
+    int32_t index;
+    if (!ctx || !pixels)
+        return -1;
+    index = ctx->texture_cache_hints[gl_texture_cache_hint_slot(pixels)] - 1;
+    if (index < 0 || index >= ctx->texture_cache_count ||
+        ctx->texture_cache[index].pixels != pixels)
+        return -1;
+    return index;
+}
+
+/// @brief Return a validated hinted native-asset entry index, or -1 on collision/staleness.
+static int32_t gl_texture_cache_hint_asset(const gl_context_t *ctx, const void *asset) {
+    int32_t index;
+    if (!ctx || !asset)
+        return -1;
+    index = ctx->texture_cache_hints[gl_texture_cache_hint_slot(asset)] - 1;
+    if (index < 0 || index >= ctx->texture_cache_count ||
+        ctx->texture_cache[index].texture_asset != asset)
+        return -1;
+    return index;
+}
+
+/// @brief Rebuild hints after an in-place LRU compaction moved cache entries.
+static void gl_texture_cache_rebuild_hints(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    memset(ctx->texture_cache_hints, 0, sizeof(ctx->texture_cache_hints));
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        if (ctx->texture_cache[i].pixels)
+            gl_texture_cache_remember(ctx, ctx->texture_cache[i].pixels, i);
+        if (ctx->texture_cache[i].texture_asset)
+            gl_texture_cache_remember(ctx, ctx->texture_cache[i].texture_asset, i);
+    }
+}
+
 /// @brief Release one cubemap-cache slot's owned texture object and zero the entry.
 static void cubemap_cache_release_entry(gl_cubemap_cache_entry_t *entry) {
     if (!entry)
@@ -32,7 +84,10 @@ static void cubemap_cache_release_entry(gl_cubemap_cache_entry_t *entry) {
 }
 
 static void texture_cache_clear(gl_context_t *ctx) {
-    if (!ctx || !ctx->texture_cache)
+    if (!ctx)
+        return;
+    memset(ctx->texture_cache_hints, 0, sizeof(ctx->texture_cache_hints));
+    if (!ctx->texture_cache)
         return;
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         texture_cache_release_entry(&ctx->texture_cache[i]);
@@ -170,6 +225,7 @@ static void texture_cache_prune(gl_context_t *ctx) {
             }
         }
     }
+    gl_texture_cache_rebuild_hints(ctx);
 }
 
 /// @brief LRU prune for the cubemap cache (limit 64, age 240 frames).
@@ -783,40 +839,49 @@ static int gl_start_texture_upload(gl_context_t *ctx,
 ///      round-trip).
 ///   3. Miss → create a new texture, append to cache.
 /// Returns 0 on failure (caller falls back to no texture).
+static GLuint gl_resolve_cached_pixels_texture(gl_context_t *ctx,
+                                               int32_t index,
+                                               const void *pixels_ptr,
+                                               uint64_t cache_key) {
+    gl_texture_cache_entry_t *entry;
+    if (!ctx || index < 0 || index >= ctx->texture_cache_count)
+        return 0;
+    entry = &ctx->texture_cache[index];
+    if (entry->pixels != pixels_ptr)
+        return 0;
+    gl_texture_cache_remember(ctx, pixels_ptr, index);
+    if (entry->generation == cache_key) {
+        entry->last_used_frame = ctx->frame_serial;
+        return entry->tex;
+    }
+    if (entry->pending_generation == cache_key && entry->upload_in_progress) {
+        if (gl_continue_texture_upload(ctx, entry, pixels_ptr))
+            return entry->tex;
+        ctx->stats.texture_fallback_binds++;
+        return entry->fallback_tex ? entry->fallback_tex : gl_fallback_white_texture(ctx);
+    }
+    if (!gl_start_texture_upload(ctx, entry, pixels_ptr, cache_key))
+        return 0;
+    if (entry->upload_in_progress) {
+        ctx->stats.texture_fallback_binds++;
+        return entry->fallback_tex ? entry->fallback_tex : gl_fallback_white_texture(ctx);
+    }
+    return entry->tex;
+}
+
 static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     uint64_t cache_key;
+    int32_t hinted;
     if (!ctx || !pixels_ptr)
         return 0;
     cache_key = vgfx3d_get_pixels_cache_key(pixels_ptr);
 
+    hinted = gl_texture_cache_hint_pixels(ctx, pixels_ptr);
+    if (hinted >= 0)
+        return gl_resolve_cached_pixels_texture(ctx, hinted, pixels_ptr, cache_key);
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
-        if (ctx->texture_cache[i].pixels == pixels_ptr &&
-            ctx->texture_cache[i].generation == cache_key) {
-            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->texture_cache[i].tex;
-        }
-        if (ctx->texture_cache[i].pixels == pixels_ptr &&
-            ctx->texture_cache[i].pending_generation == cache_key &&
-            ctx->texture_cache[i].upload_in_progress) {
-            if (gl_continue_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr))
-                return ctx->texture_cache[i].tex;
-            ctx->stats.texture_fallback_binds++;
-            return ctx->texture_cache[i].fallback_tex ? ctx->texture_cache[i].fallback_tex
-                                                      : gl_fallback_white_texture(ctx);
-        }
-    }
-
-    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
-        if (ctx->texture_cache[i].pixels == pixels_ptr) {
-            if (!gl_start_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr, cache_key))
-                return 0;
-            if (ctx->texture_cache[i].upload_in_progress) {
-                ctx->stats.texture_fallback_binds++;
-                return ctx->texture_cache[i].fallback_tex ? ctx->texture_cache[i].fallback_tex
-                                                          : gl_fallback_white_texture(ctx);
-            }
-            return ctx->texture_cache[i].tex;
-        }
+        if (ctx->texture_cache[i].pixels == pixels_ptr)
+            return gl_resolve_cached_pixels_texture(ctx, i, pixels_ptr, cache_key);
     }
 
     if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
@@ -833,7 +898,8 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
         ctx->texture_cache_capacity = new_cap;
     }
 
-    gl_texture_cache_entry_t *entry = &ctx->texture_cache[ctx->texture_cache_count++];
+    int32_t index = ctx->texture_cache_count++;
+    gl_texture_cache_entry_t *entry = &ctx->texture_cache[index];
     memset(entry, 0, sizeof(*entry));
     if (!gl_start_texture_upload(ctx, entry, pixels_ptr, cache_key)) {
         if (entry->tex)
@@ -842,9 +908,45 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
         ctx->texture_cache_count--;
         return 0;
     }
+    gl_texture_cache_remember(ctx, pixels_ptr, index);
     if (entry->upload_in_progress) {
         ctx->stats.texture_fallback_binds++;
         return gl_fallback_white_texture(ctx);
+    }
+    return entry->tex;
+}
+
+/// @brief Resolve a native TextureAsset3D from a known cache slot.
+static GLuint gl_resolve_cached_native_texture(gl_context_t *ctx,
+                                               int32_t index,
+                                               void *asset,
+                                               uint64_t cache_key,
+                                               int64_t mip_start,
+                                               int64_t mip_count) {
+    gl_texture_cache_entry_t *entry;
+    if (!ctx || index < 0 || index >= ctx->texture_cache_count)
+        return 0;
+    entry = &ctx->texture_cache[index];
+    if (entry->texture_asset != asset)
+        return 0;
+    gl_texture_cache_remember(ctx, asset, index);
+    if (entry->generation == cache_key && entry->native_mip_start == mip_start &&
+        entry->native_mip_count == mip_count) {
+        entry->last_used_frame = ctx->frame_serial;
+        return entry->tex;
+    }
+    if (entry->pending_generation == cache_key && entry->native_mip_start == mip_start &&
+        entry->native_mip_count == mip_count && entry->upload_in_progress) {
+        if (gl_continue_native_texture_upload(ctx, entry))
+            return entry->tex;
+        ctx->stats.texture_fallback_binds++;
+        return entry->fallback_tex ? entry->fallback_tex : gl_fallback_white_texture(ctx);
+    }
+    if (!gl_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count))
+        return 0;
+    if (entry->upload_in_progress) {
+        ctx->stats.texture_fallback_binds++;
+        return entry->fallback_tex ? entry->fallback_tex : gl_fallback_white_texture(ctx);
     }
     return entry->tex;
 }
@@ -854,6 +956,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
 /// @return The GL texture name, or 0 if it cannot be created.
 static GLuint gl_get_cached_native_texture(
     gl_context_t *ctx, void *asset, uint64_t cache_key, int64_t mip_start, int64_t mip_count) {
+    int32_t hinted;
     if (!ctx || !asset ||
         !vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)))
         return 0;
@@ -866,39 +969,13 @@ static GLuint gl_get_cached_native_texture(
     if (cache_key == 0)
         return 0;
 
+    hinted = gl_texture_cache_hint_asset(ctx, asset);
+    if (hinted >= 0)
+        return gl_resolve_cached_native_texture(
+            ctx, hinted, asset, cache_key, mip_start, mip_count);
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
-        if (ctx->texture_cache[i].texture_asset == asset &&
-            ctx->texture_cache[i].generation == cache_key &&
-            ctx->texture_cache[i].native_mip_start == mip_start &&
-            ctx->texture_cache[i].native_mip_count == mip_count) {
-            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->texture_cache[i].tex;
-        }
-        if (ctx->texture_cache[i].texture_asset == asset &&
-            ctx->texture_cache[i].pending_generation == cache_key &&
-            ctx->texture_cache[i].native_mip_start == mip_start &&
-            ctx->texture_cache[i].native_mip_count == mip_count &&
-            ctx->texture_cache[i].upload_in_progress) {
-            if (gl_continue_native_texture_upload(ctx, &ctx->texture_cache[i]))
-                return ctx->texture_cache[i].tex;
-            ctx->stats.texture_fallback_binds++;
-            return ctx->texture_cache[i].fallback_tex ? ctx->texture_cache[i].fallback_tex
-                                                      : gl_fallback_white_texture(ctx);
-        }
-    }
-
-    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
-        if (ctx->texture_cache[i].texture_asset == asset) {
-            if (!gl_start_native_texture_upload(
-                    ctx, &ctx->texture_cache[i], asset, cache_key, mip_start, mip_count))
-                return 0;
-            if (ctx->texture_cache[i].upload_in_progress) {
-                ctx->stats.texture_fallback_binds++;
-                return ctx->texture_cache[i].fallback_tex ? ctx->texture_cache[i].fallback_tex
-                                                          : gl_fallback_white_texture(ctx);
-            }
-            return ctx->texture_cache[i].tex;
-        }
+        if (ctx->texture_cache[i].texture_asset == asset)
+            return gl_resolve_cached_native_texture(ctx, i, asset, cache_key, mip_start, mip_count);
     }
 
     if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
@@ -915,7 +992,8 @@ static GLuint gl_get_cached_native_texture(
         ctx->texture_cache_capacity = new_cap;
     }
 
-    gl_texture_cache_entry_t *entry = &ctx->texture_cache[ctx->texture_cache_count++];
+    int32_t index = ctx->texture_cache_count++;
+    gl_texture_cache_entry_t *entry = &ctx->texture_cache[index];
     memset(entry, 0, sizeof(*entry));
     if (!gl_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count)) {
         if (entry->tex)
@@ -924,6 +1002,7 @@ static GLuint gl_get_cached_native_texture(
         ctx->texture_cache_count--;
         return 0;
     }
+    gl_texture_cache_remember(ctx, asset, index);
     if (entry->upload_in_progress) {
         ctx->stats.texture_fallback_binds++;
         return gl_fallback_white_texture(ctx);

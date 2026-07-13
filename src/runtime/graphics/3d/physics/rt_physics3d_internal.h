@@ -16,7 +16,7 @@
 //
 // Key invariants:
 //   - rt_body3d field layout is pinned by _Static_asserts in rt_physics3d.c
-//     against rt_body3d_kinematics (declared in rt_physics3d.h).
+//     against the private rt_body3d_kinematics prefix view.
 //   - World3D / Body3D / Character3D / Trigger3D are GC-managed; shared mutable
 //     state flows exclusively through these struct pointers (no file-scope state).
 //
@@ -33,6 +33,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_body3d_kinematics_internal.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_physics3d.h"
 
@@ -210,6 +211,8 @@ struct rt_world3d {
     uint64_t broadphase_world_revision;
     int32_t query_broadphase_count;
     uint64_t query_broadphase_signature;
+    uint64_t query_broadphase_mesh_epoch;
+    uint64_t query_broadphase_collider_epoch;
     int8_t query_broadphase_valid;
     void *query_sphere_collider;
     void *query_box_collider;
@@ -284,8 +287,10 @@ typedef struct {
 typedef struct {
     void *vptr;
     void **items;
+    rt_query_hit3d *raw_hits;
     int64_t count;
     int64_t capacity;
+    int64_t allocated_count;
     int64_t total_count;
     int8_t truncated;
 } rt_physics_hit_list3d_obj;
@@ -443,6 +448,9 @@ void contact3d_init_single_point(rt_contact3d *contact,
                                  const double *normal,
                                  double separation);
 void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b);
+void contact3d_expand_compound_manifold(rt_contact3d *contact,
+                                        const rt_body3d *a,
+                                        const rt_body3d *b);
 int contact3d_expand_obb_manifold(rt_contact3d *contact,
                                   void *a_leaf,
                                   const rt_collider_pose *a_pose,

@@ -14,8 +14,8 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
-#include "rt_g3d_commit_queue.h"
 #include "rt_concqueue.h"
+#include "rt_g3d_commit_queue.h"
 #include "rt_platform.h"
 #include "rt_threadpool.h"
 
@@ -270,6 +270,31 @@ static void test_closed_backing_queue_rejects_enqueue_without_trap() {
 
     rt_g3d_commit_queue_free(queue);
 }
+
+static void test_wrapper_allocation_failure_preserves_caller_ownership() {
+    void *queue = rt_g3d_commit_queue_new();
+    expect_true(queue != nullptr, "queue should be created for allocation-failure test");
+
+    CommitContext ctx = {};
+    CommitRecord record = {&ctx, 13};
+    rt_g3d_commit_queue_test_fail_next_allocations(1);
+    expect_true(rt_g3d_commit_queue_enqueue(queue, record_commit, &record) == 0,
+                "wrapper allocation failure should be reported without trapping");
+    rt_g3d_commit_queue_test_fail_next_allocations(0);
+    expect_true(rt_g3d_commit_queue_pending(queue) == 0,
+                "failed allocation should not publish a pending item");
+    expect_true(rt_g3d_commit_queue_submitted(queue) == 0,
+                "failed allocation should not advance submit telemetry");
+    expect_true(ctx.count == 0, "failed allocation must not run or consume the caller payload");
+
+    expect_true(rt_g3d_commit_queue_enqueue(queue, record_commit, &record) != 0,
+                "caller should be able to retry the same payload after allocation failure");
+    expect_true(rt_g3d_commit_queue_drain(queue, 0) == 1, "retried payload should drain normally");
+    expect_true(ctx.count == 1 && ctx.values[0] == 13,
+                "retried payload should remain intact after allocation failure");
+
+    rt_g3d_commit_queue_free(queue);
+}
 } // namespace
 
 int main() {
@@ -279,6 +304,7 @@ int main() {
     test_worker_drain_is_rejected();
     test_cost_budget_drain();
     test_closed_backing_queue_rejects_enqueue_without_trap();
+    test_wrapper_allocation_failure_preserves_caller_ownership();
     std::printf("Graphics3D commit queue tests: all passed\n");
     return 0;
 }

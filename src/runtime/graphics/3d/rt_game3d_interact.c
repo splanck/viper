@@ -89,7 +89,7 @@ void *rt_game3d_interactable_new(void *entity_obj) {
     memset(item, 0, sizeof(*item));
     rt_obj_set_finalizer(item, game3d_interactable_finalize);
     item->entity = entity;
-    item->prompt = rt_string_ref(rt_const_cstr("Use"));
+    item->prompt = rt_const_cstr("Use");
     item->radius = 2.0;
     item->enabled = 1;
     {

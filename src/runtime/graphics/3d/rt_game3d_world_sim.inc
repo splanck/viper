@@ -57,7 +57,9 @@ void *rt_game3d_env_handle_with_terrain(void *obj, double size, double height) {
     void *mat = rt_game3d_materials_rubber(0.30, 0.45, 0.24);
     void *terrain = rt_game3d_prefab_ground(s, mat);
     if (terrain) {
-        rt_game3d_entity_set_name(terrain, rt_const_cstr("Environment Terrain"));
+        rt_string name = rt_const_cstr("Environment Terrain");
+        rt_game3d_entity_set_name(terrain, name);
+        rt_string_unref(name);
         rt_game3d_entity_set_position(terrain, 0.0, y, 0.0);
         void *body = rt_body3d_new_aabb(s * 0.5, 0.001, s * 0.5, 0.0);
         rt_game3d_entity_attach_body(terrain, body);
@@ -92,7 +94,9 @@ void *rt_game3d_env_handle_with_water(void *obj, double level) {
     void *mat = rt_game3d_materials_glass(0.18, 0.42, 0.62, 0.48);
     void *water = rt_game3d_prefab_plane(water_size, water_size, mat);
     if (water) {
-        rt_game3d_entity_set_name(water, rt_const_cstr("Environment Water"));
+        rt_string name = rt_const_cstr("Environment Water");
+        rt_game3d_entity_set_name(water, name);
+        rt_string_unref(name);
         rt_game3d_entity_set_position(water, 0.0, y, 0.0);
         rt_game3d_world_spawn(world, water);
         game3d_assign_ref(&env->water_entity, water);

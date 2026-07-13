@@ -16,7 +16,7 @@
 //     outside the physics/ directory.
 //   - All clamp/sanitize helpers map non-finite input to safe defaults so the
 //     solver never propagates NaN.
-//   - Body access uses the shared rt_body3d_kinematics view from rt_physics3d.h.
+//   - Body access uses the private shared rt_body3d_kinematics prefix view.
 //
 // Ownership/Lifetime:
 //   - Pure functions over caller-owned double arrays / body views; no
@@ -28,7 +28,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "rt_physics3d.h"
+#include "rt_body3d_kinematics_internal.h"
 
 //=============================================================================
 // Joint math limits
@@ -40,8 +40,8 @@
 #define RT_JOINT3D_MAX_DT 1.0
 #define RT_JOINT3D_TWO_PI 6.28318530717958647692
 
-/* Body pose/velocity access uses the shared rt_body3d_kinematics view from
- * rt_physics3d.h, whose layout is asserted to match the private rt_body3d there. */
+/* Body pose/velocity access uses a private prefix view whose layout is asserted to match the
+ * private rt_body3d payload in rt_physics3d.c. */
 
 typedef struct {
     double m[16];
@@ -74,14 +74,36 @@ void joint3d_quat_from_axis_angle(const double *axis, double angle, double *out)
 void joint3d_quat_prepend_axis_angle(double *orientation, const double *axis, double angle);
 void joint3d_quat_to_rotation_vector(const double *q, double *out);
 void joint3d_quat_rotate_vec3(const double *q, const double *v, double *out);
-void joint3d_world_anchor(const rt_body3d_kinematics *body, const double *local_anchor, double *out);
-void joint3d_local_from_world(const rt_body3d_kinematics *body, const double *world_point, double *out);
-void joint3d_world_axis_from_local(const rt_body3d_kinematics *body, const double *local_axis, double *out);
-void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b, const double *local_anchor_a, const double *local_anchor_b, double stiffness);
-void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b, const double *local_anchor_a, const double *local_anchor_b, const double *linear_min, const double *linear_max);
-void joint3d_remove_relative_linear_velocity(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b, double amount);
-void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b, const double *linear_min, const double *linear_max);
-void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b, const double *allowed_axis);
+void joint3d_world_anchor(const rt_body3d_kinematics *body,
+                          const double *local_anchor,
+                          double *out);
+void joint3d_local_from_world(const rt_body3d_kinematics *body,
+                              const double *world_point,
+                              double *out);
+void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
+                                   const double *local_axis,
+                                   double *out);
+void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
+                                 rt_body3d_kinematics *body_b,
+                                 const double *local_anchor_a,
+                                 const double *local_anchor_b,
+                                 double stiffness);
+void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
+                                         rt_body3d_kinematics *body_b,
+                                         const double *local_anchor_a,
+                                         const double *local_anchor_b,
+                                         const double *linear_min,
+                                         const double *linear_max);
+void joint3d_remove_relative_linear_velocity(rt_body3d_kinematics *body_a,
+                                             rt_body3d_kinematics *body_b,
+                                             double amount);
+void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinematics *body_a,
+                                                         rt_body3d_kinematics *body_b,
+                                                         const double *linear_min,
+                                                         const double *linear_max);
+void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a,
+                                              rt_body3d_kinematics *body_b,
+                                              const double *allowed_axis);
 
 /// @brief True if a body view is solvable (finite state, non-negative inv mass).
 /// Defined in rt_joints3d.c.

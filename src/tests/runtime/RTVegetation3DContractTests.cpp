@@ -159,6 +159,8 @@ extern "C" int8_t rt_heap_is_payload(void *) {
     return 0;
 }
 
+extern "C" void rt_mesh3d_note_global_geometry_change(void) {}
+
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
 extern "C" void rt_obj_retain_maybe(void *) {}
@@ -554,7 +556,8 @@ static void collect_visible_keys(const VegetationView *v,
     }
 }
 
-static bool key_present(const std::pair<float, float> *keys, int32_t count,
+static bool key_present(const std::pair<float, float> *keys,
+                        int32_t count,
                         std::pair<float, float> key) {
     for (int32_t i = 0; i < count; i++) {
         if (keys[i] == key)

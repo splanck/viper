@@ -465,11 +465,16 @@ static int vjson_is_seq(void *obj) {
 /// @brief Look up @p key in a parsed-JSON object; returns the value or NULL if @p obj is
 ///   not a map or the key is absent.
 static void *vjson_get(void *obj, const char *key) {
+    rt_string runtime_key;
+    void *value;
     if (!obj || !key)
         return NULL;
     if (!vjson_is_map(obj))
         return NULL;
-    return rt_map_get(obj, rt_const_cstr(key));
+    runtime_key = rt_const_cstr(key);
+    value = rt_map_get(obj, runtime_key);
+    rt_string_unref(runtime_key);
+    return value;
 }
 
 /// @brief Length of a JSON array, or 0 for NULL.
@@ -1113,8 +1118,12 @@ static void *vscn_parse_animation(void *anim_obj) {
     channel_count = vjson_len(channels_arr);
     if (channel_count < 0 || channel_count > RT_ANIMATION3D_MAX_CHANNELS)
         return NULL;
-    anim = (rt_animation3d *)rt_animation3d_new(rt_const_cstr(name ? name : "baked"),
-                                                vjson_f64(anim_obj, "duration", 0.0));
+    {
+        rt_string runtime_name = rt_const_cstr(name ? name : "baked");
+        anim = (rt_animation3d *)rt_animation3d_new(runtime_name,
+                                                    vjson_f64(anim_obj, "duration", 0.0));
+        rt_string_unref(runtime_name);
+    }
     if (!anim)
         return NULL;
     rt_animation3d_set_looping(anim, vjson_bool(anim_obj, "looping", 1));
@@ -1220,24 +1229,18 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     return light;
 }
 
-/// @brief Reverse of `vscn_serialize_node` — recursively rebuild a node subtree from JSON.
-static rt_scene_node3d *vscn_parse_node(void *node_obj,
-                                        rt_mesh3d **meshes,
-                                        int mesh_count,
-                                        rt_material3d **materials,
-                                        int material_count,
-                                        int *io_error,
-                                        int depth) {
+/// @brief Parse one scene node's fields, leaving child attachment to the iterative tree walker.
+static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
+                                               rt_mesh3d **meshes,
+                                               int mesh_count,
+                                               rt_material3d **materials,
+                                               int material_count,
+                                               int *io_error) {
     rt_scene_node3d *node;
     void *arr;
     rt_string name;
 
     if (!vjson_is_map(node_obj)) {
-        if (io_error)
-            *io_error = 1;
-        return NULL;
-    }
-    if (depth > VSCN_MAX_NODE_DEPTH) {
         if (io_error)
             *io_error = 1;
         return NULL;
@@ -1377,43 +1380,73 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
         }
     }
 
-    arr = vjson_get(node_obj, "children");
-    if (arr) {
-        if (!vjson_is_seq(arr)) {
-            if (io_error)
-                *io_error = 1;
-            scene3d_release_ref((void **)&node);
-            return NULL;
+    return node;
+}
+
+/// @brief Iteratively rebuild a scene-node subtree from JSON.
+static rt_scene_node3d *vscn_parse_node(void *node_obj,
+                                        rt_mesh3d **meshes,
+                                        int mesh_count,
+                                        rt_material3d **materials,
+                                        int material_count,
+                                        int *io_error) {
+    typedef struct vscn_parse_node_frame {
+        void *children;
+        rt_scene_node3d *node;
+        int64_t next_child;
+        int64_t child_count;
+    } vscn_parse_node_frame_t;
+
+    vscn_parse_node_frame_t frames[VSCN_MAX_NODE_DEPTH] = {{0}};
+    rt_scene_node3d *root;
+    size_t frame_count = 0;
+
+    root =
+        vscn_parse_node_fields(node_obj, meshes, mesh_count, materials, material_count, io_error);
+    if (!root)
+        return NULL;
+    frames[frame_count++] = (vscn_parse_node_frame_t){vjson_get(node_obj, "children"), root, 0, 0};
+
+    while (frame_count > 0) {
+        vscn_parse_node_frame_t *frame = &frames[frame_count - 1];
+        rt_scene_node3d *child;
+        void *child_obj;
+
+        if (!frame->children) {
+            frame_count--;
+            continue;
         }
-        for (int64_t i = 0; i < vjson_len(arr); i++) {
-            rt_scene_node3d *child = vscn_parse_node(rt_seq_get(arr, i),
-                                                     meshes,
-                                                     mesh_count,
-                                                     materials,
-                                                     material_count,
-                                                     io_error,
-                                                     depth + 1);
-            if (io_error && *io_error) {
-                scene3d_release_ref((void **)&node);
-                return NULL;
-            }
-            if (child) {
-                if (!rt_scene_node3d_try_add_child(node, child)) {
-                    if (io_error)
-                        *io_error = 1;
-                    scene3d_release_ref((void **)&child);
-                    scene3d_release_ref((void **)&node);
-                    return NULL;
-                }
-                {
-                    void *tmp = child;
-                    scene3d_release_ref(&tmp);
-                }
-            }
+        if (!vjson_is_seq(frame->children))
+            goto fail;
+        if (frame->child_count == 0)
+            frame->child_count = vjson_len(frame->children);
+        if (frame->next_child >= frame->child_count) {
+            frame_count--;
+            continue;
         }
+        if (frame_count >= VSCN_MAX_NODE_DEPTH)
+            goto fail;
+        child_obj = rt_seq_get(frame->children, frame->next_child++);
+        child = vscn_parse_node_fields(
+            child_obj, meshes, mesh_count, materials, material_count, io_error);
+        if (!child)
+            goto fail;
+        if (!rt_scene_node3d_try_add_child(frame->node, child)) {
+            scene3d_release_ref((void **)&child);
+            goto fail;
+        }
+        frames[frame_count++] =
+            (vscn_parse_node_frame_t){vjson_get(child_obj, "children"), child, 0, 0};
+        scene3d_release_ref((void **)&child);
     }
 
-    return node;
+    return root;
+
+fail:
+    if (io_error)
+        *io_error = 1;
+    scene3d_release_ref((void **)&root);
+    return NULL;
 }
 
 /// @brief Read an entire file into a newly-malloc'd, NUL-terminated buffer.
@@ -1485,13 +1518,8 @@ static int vscn_load_nodes(rt_scene3d *scene,
         return 1;
     for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
         int parse_error = 0;
-        rt_scene_node3d *node = vscn_parse_node(rt_seq_get(nodes_arr, i),
-                                                meshes,
-                                                mesh_count,
-                                                materials,
-                                                material_count,
-                                                &parse_error,
-                                                0);
+        rt_scene_node3d *node = vscn_parse_node(
+            rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count, &parse_error);
         if (parse_error || !node) {
             scene3d_release_ref((void **)&node);
             return 0;

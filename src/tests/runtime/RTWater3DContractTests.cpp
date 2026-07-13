@@ -166,6 +166,8 @@ extern "C" void rt_trap(const char *) {
     std::abort();
 }
 
+extern "C" void rt_mesh3d_note_global_geometry_change(void) {}
+
 extern "C" void *rt_mesh3d_new(void) {
     void *mesh = std::calloc(1, sizeof(rt_mesh3d));
     stub_track_pointer(g_stub_meshes,

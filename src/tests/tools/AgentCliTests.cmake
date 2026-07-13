@@ -182,7 +182,10 @@ endif ()
 if (NOT _api_out MATCHES "\"functions\":" OR NOT _api_out MATCHES "\"classes\":")
     message(FATAL_ERROR "--dump-runtime-api missing top-level sections")
 endif ()
-if (NOT _api_out MATCHES "\"schema_version\":3" OR NOT _api_out MATCHES "\"signature_dialect\":\"runtime-def-v1\"")
+if (NOT _api_out MATCHES "\"schema_version\":4" OR
+    NOT _api_out MATCHES "\"signature_dialect\":\"runtime-def-v1\"" OR
+    NOT _api_out MATCHES "\"public_boundary\":\"registry\"" OR
+    NOT _api_out MATCHES "\"c_abi_status\":\"internal-embedding\"")
     message(FATAL_ERROR "--dump-runtime-api missing schema metadata")
 endif ()
 if (NOT _api_out MATCHES "\"documentation\":\\{\"summary\":" OR
@@ -195,6 +198,18 @@ if (NOT _api_out MATCHES "Provides immutable runtime string values" OR
 endif ()
 if (NOT _api_out MATCHES "\"fallibility\":" OR NOT _api_out MATCHES "\"class_kind\":")
     message(FATAL_ERROR "--dump-runtime-api missing production contract metadata")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"[^\n]*\"fallibility\":\"status\"[^\n]*\"ownership\":\"value\"[^\n]*\"contract_source\":\"three-d-boundary-policy\"")
+    message(FATAL_ERROR "--dump-runtime-api missing the allocation-reusing Canvas3D status contract")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"Viper.Graphics3D.Canvas3D.Screenshot\"[^\n]*\"c_symbol\":\"rt_canvas3d_screenshot\"[^\n]*\"nullable\":true[^\n]*\"fallibility\":\"nullable\"[^\n]*\"ownership\":\"managed\"")
+    message(FATAL_ERROR "--dump-runtime-api missing the Canvas3D screenshot ownership contract")
+endif ()
+if (NOT _api_out MATCHES
+        "\"name\":\"TryCopyScreenshotTo\"[^\n]*\"target\":\"Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo\"[^\n]*\"c_symbol\":\"rt_canvas3d_try_copy_screenshot_to\"")
+    message(FATAL_ERROR "--dump-runtime-api class methods must resolve to backing C symbols")
 endif ()
 if (NOT _api_out MATCHES "Viper.Terminal.Say")
     message(FATAL_ERROR "--dump-runtime-api missing canonical function entries")

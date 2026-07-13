@@ -66,6 +66,11 @@ typedef struct {
     float weights[4];
 } vgfx3d_extra_influences_t;
 
+/// @brief Notify shared spatial caches that some Mesh3D geometry changed.
+void rt_mesh3d_note_global_geometry_change(void);
+/// @brief Process-wide monotonic epoch for Mesh3D geometry mutations.
+uint64_t rt_mesh3d_global_geometry_epoch(void);
+
 //=============================================================================
 // Mesh3D
 //=============================================================================
@@ -262,6 +267,7 @@ static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     mesh->morph_bound_shape_count = 0;
     mesh->morph_bound_pad = 0.0;
     mesh->morph_bound_valid = 0;
+    rt_mesh3d_note_global_geometry_change();
 }
 
 /// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
@@ -653,7 +659,7 @@ struct vgfx3d_rendertarget {
     int32_t stride; /* width * 4 */
     int32_t color_format;
     uint64_t cache_identity;  /* stable key generation across allocator pointer reuse */
-    uint64_t estimated_bytes; /* color + depth footprint reserved against RT budget */
+    uint64_t estimated_bytes; /* native storage + all lazy CPU mirrors reserved against budget */
     int8_t color_dirty;
     int8_t hdr_color_valid;
     /* Bumped when a Canvas3D frame that rendered into this target ends; lets
@@ -930,6 +936,8 @@ typedef struct {
     /* Render target (NULL = render to window) */
     vgfx3d_rendertarget_t *render_target;
     rt_rendertarget3d *render_target_owner; /* retained wrapper for active target */
+    uint8_t *readback_rgba_scratch;         /* reusable GPU screenshot staging bytes */
+    size_t readback_rgba_scratch_capacity;
 
     /* Lighting */
     rt_light3d *lights[VGFX3D_MAX_LIGHTS];

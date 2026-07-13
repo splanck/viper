@@ -1087,7 +1087,9 @@ void *rt_game3d_world_spawn_heightfield_collider(void *world_obj,
 
     entity = rt_game3d_entity_new();
     if (entity) {
-        rt_game3d_entity_set_name(entity, rt_const_cstr("terrain_heightfield_collider"));
+        rt_string name = rt_const_cstr("terrain_heightfield_collider");
+        rt_game3d_entity_set_name(entity, name);
+        rt_string_unref(name);
         rt_game3d_entity_set_position(entity,
                                       game3d_clamp_coord_or(pos_x, 0.0),
                                       game3d_clamp_coord_or(pos_y, 0.0),

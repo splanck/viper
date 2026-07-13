@@ -113,8 +113,7 @@ void rt_game3d_lighting_outdoor(void *obj, void *sun_dir) {
         dir_xyz[0] = -0.45;
         dir_xyz[1] = -1.0;
         dir_xyz[2] = -0.22;
-        dir_len =
-            sqrt(dir_xyz[0] * dir_xyz[0] + dir_xyz[1] * dir_xyz[1] + dir_xyz[2] * dir_xyz[2]);
+        dir_len = sqrt(dir_xyz[0] * dir_xyz[0] + dir_xyz[1] * dir_xyz[1] + dir_xyz[2] * dir_xyz[2]);
     }
     if (isfinite(dir_len) && dir_len > 1e-12) {
         dir_xyz[0] /= dir_len;
@@ -329,14 +328,20 @@ void rt_game3d_quality_apply(void *obj, int64_t quality) {
         return;
     }
 
-    if (rt_canvas3d_backend_supports(world->canvas, rt_const_cstr("shadows"))) {
+    rt_string shadows_capability = rt_const_cstr("shadows");
+    int8_t shadows_supported = rt_canvas3d_backend_supports(world->canvas, shadows_capability);
+    rt_string_unref(shadows_capability);
+    if (shadows_supported) {
         rt_canvas3d_enable_shadows(world->canvas,
                                    quality == RT_GAME3D_QUALITY_CINEMATIC ? 2048 : 1024);
         rt_canvas3d_set_shadow_bias(world->canvas,
                                     quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.003 : 0.005);
         rt_canvas3d_set_shadow_slope_bias(world->canvas,
                                           quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.75 : 1.0);
-        if (rt_canvas3d_backend_supports(world->canvas, rt_const_cstr("shadow-csm")))
+        rt_string csm_capability = rt_const_cstr("shadow-csm");
+        int8_t csm_supported = rt_canvas3d_backend_supports(world->canvas, csm_capability);
+        rt_string_unref(csm_capability);
+        if (csm_supported)
             rt_canvas3d_set_shadow_cascades(world->canvas,
                                             quality == RT_GAME3D_QUALITY_CINEMATIC ? 4 : 2);
         else
@@ -365,8 +370,11 @@ static void *game3d_prefab_from_mesh(void *mesh, void *material, const char *nam
         owns_material = 1;
     }
     void *entity = rt_game3d_entity_of(mesh, material);
-    if (entity && name)
-        rt_game3d_entity_set_name(entity, rt_const_cstr(name));
+    if (entity && name) {
+        rt_string runtime_name = rt_const_cstr(name);
+        rt_game3d_entity_set_name(entity, runtime_name);
+        rt_string_unref(runtime_name);
+    }
     game3d_release_ref(&mesh);
     if (owns_material)
         game3d_release_ref(&material);
@@ -413,7 +421,9 @@ void *rt_game3d_prefab_plane(double width, double depth, void *material) {
 void *rt_game3d_prefab_ground(double size, void *material) {
     void *entity = rt_game3d_prefab_plane(size, size, material);
     if (entity) {
-        rt_game3d_entity_set_name(entity, rt_const_cstr("Ground"));
+        rt_string name = rt_const_cstr("Ground");
+        rt_game3d_entity_set_name(entity, name);
+        rt_string_unref(name);
         rt_game3d_entity_set_layer(entity, RT_GAME3D_LAYER_WORLD);
     }
     return entity;

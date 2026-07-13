@@ -84,6 +84,8 @@ static void world3d_finalizer(void *obj) {
     w->max_query_hits = PH3D_MAX_QUERY_HITS;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
+    w->query_broadphase_mesh_epoch = 0;
+    w->query_broadphase_collider_epoch = 0;
     w->query_broadphase_valid = 0;
     w->broadphase_fallback_count = 0;
     w->last_ccd_requested_substeps = 1;
@@ -109,6 +111,8 @@ static void world3d_finalizer(void *obj) {
     w->broadphase_world_revision = 1;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
+    w->query_broadphase_mesh_epoch = 0;
+    w->query_broadphase_collider_epoch = 0;
     w->query_broadphase_valid = 0;
 }
 
@@ -156,6 +160,8 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->broadphase_world_revision = 1;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
+    w->query_broadphase_mesh_epoch = 0;
+    w->query_broadphase_collider_epoch = 0;
     w->query_broadphase_valid = 0;
     w->broadphase_fallback_count = 0;
     w->bodies = NULL;

@@ -256,6 +256,14 @@ static int fbx_absolute_texture_paths_allowed(void) {
     return value && value[0] == '1' && value[1] == '\0';
 }
 
+/// @brief Load Pixels from a transient C path without leaking the runtime-string adapter.
+static void *fbx_pixels_load_cstr(const char *path) {
+    rt_string runtime_path = rt_const_cstr(path);
+    void *pixels = rt_pixels_load(runtime_path);
+    rt_string_unref(runtime_path);
+    return pixels;
+}
+
 /// @brief Try a local texture reference, then fall back to its basename beside the FBX file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
     char *raw_ref = NULL;
@@ -278,7 +286,7 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     if (!dir)
         goto done;
     if (fbx_is_absolute_path(raw_ref) && fbx_absolute_texture_paths_allowed()) {
-        pixels = rt_pixels_load(rt_const_cstr(raw_ref));
+        pixels = fbx_pixels_load_cstr(raw_ref);
         if (pixels)
             goto done;
     }
@@ -288,9 +296,9 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
         if (*dir) {
             candidate = fbx_join_path_alloc(dir, normalized_ref);
             if (candidate)
-                pixels = rt_pixels_load(rt_const_cstr(candidate));
+                pixels = fbx_pixels_load_cstr(candidate);
         } else {
-            pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
+            pixels = fbx_pixels_load_cstr(normalized_ref);
         }
         if (pixels)
             goto done;
@@ -313,7 +321,7 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
         if (!candidate)
             goto done;
     }
-    pixels = rt_pixels_load(rt_const_cstr(candidate));
+    pixels = fbx_pixels_load_cstr(candidate);
 
 done:
     free(candidate);

@@ -407,6 +407,16 @@ void game3d_world_dialogue_tick(rt_game3d_world *world, double dt) {
     }
 }
 
+/// @brief Draw borrowed C text through Canvas3D without leaking the temporary runtime string.
+static void game3d_dialogue_draw_text_cstr(
+    void *canvas, int64_t x, int64_t y, const char *text, int64_t color) {
+    rt_string runtime_text = rt_const_cstr(text ? text : "");
+    if (!runtime_text)
+        return;
+    rt_canvas3d_draw_text2d(canvas, x, y, runtime_text, color);
+    rt_string_unref(runtime_text);
+}
+
 /// @brief Overlay draw: bottom panel or anchored bubble + choices. See header.
 void game3d_world_dialogue_overlay(rt_game3d_world *world) {
     if (!world || !world->canvas)
@@ -433,11 +443,11 @@ void game3d_world_dialogue_overlay(rt_game3d_world *world) {
                      "%s %s",
                      i == dialogue->choice_selected ? ">" : " ",
                      dialogue->choices[i]);
-            rt_canvas3d_draw_text2d(world->canvas,
-                                    24,
-                                    top + 10 + (int64_t)i * 14,
-                                    rt_const_cstr(row),
-                                    i == dialogue->choice_selected ? 0xFFFFFF : 0xB0B8C0);
+            game3d_dialogue_draw_text_cstr(world->canvas,
+                                           24,
+                                           top + 10 + (int64_t)i * 14,
+                                           row,
+                                           i == dialogue->choice_selected ? 0xFFFFFF : 0xB0B8C0);
         }
         return;
     }
@@ -476,13 +486,9 @@ void game3d_world_dialogue_overlay(rt_game3d_world *world) {
                 rt_canvas3d_draw_rect2d_alpha(
                     world->canvas, bx, by, bubble_w, 28, 0x101418, dialogue->panel_alpha);
                 if (line->speaker[0])
-                    rt_canvas3d_draw_text2d(world->canvas,
-                                            bx + 8,
-                                            by + 4,
-                                            rt_const_cstr(line->speaker),
-                                            dialogue->name_color);
-                rt_canvas3d_draw_text2d(
-                    world->canvas, bx + 8, by + 16, rt_const_cstr(revealed), 0xFFFFFF);
+                    game3d_dialogue_draw_text_cstr(
+                        world->canvas, bx + 8, by + 4, line->speaker, dialogue->name_color);
+                game3d_dialogue_draw_text_cstr(world->canvas, bx + 8, by + 16, revealed, 0xFFFFFF);
                 return;
             }
         }
@@ -496,7 +502,7 @@ void game3d_world_dialogue_overlay(rt_game3d_world *world) {
     rt_canvas3d_draw_rect2d_alpha(
         world->canvas, 12, top, width - 24, panel_h, 0x101418, dialogue->panel_alpha);
     if (line->speaker[0])
-        rt_canvas3d_draw_text2d(
-            world->canvas, 24, top + 8, rt_const_cstr(line->speaker), dialogue->name_color);
-    rt_canvas3d_draw_text2d(world->canvas, 24, top + 24, rt_const_cstr(revealed), 0xFFFFFF);
+        game3d_dialogue_draw_text_cstr(
+            world->canvas, 24, top + 8, line->speaker, dialogue->name_color);
+    game3d_dialogue_draw_text_cstr(world->canvas, 24, top + 24, revealed, 0xFFFFFF);
 }

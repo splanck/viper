@@ -2265,9 +2265,8 @@ static void test_canvas3d_texture_streaming_residency() {
         levels.push_back(level.data());
         level_bytes.push_back(level.size());
     }
-    EXPECT_TRUE(
-        write_test_ktx2_mips(path, 145u, 256u, 256u, levels.data(), level_bytes.data(), 9u),
-        "streaming KTX2 fixture written");
+    EXPECT_TRUE(write_test_ktx2_mips(path, 145u, 256u, 256u, levels.data(), level_bytes.data(), 9u),
+                "streaming KTX2 fixture written");
 
     rt_string path_s = rt_string_from_bytes(path, std::strlen(path));
     void *asset = rt_textureasset3d_load_ktx2(path_s);
@@ -2408,8 +2407,8 @@ static void test_canvas3d_per_instance_skinning_software_fallback() {
     /* Camera default: origin looking down -Z. Instance 0 at (-2, 0, -6) with an
      * identity palette; instance 1 at (+2, 0, -6) with a zero palette that
      * collapses all of its vertices to a point. */
-    instance_matrices[0] = instance_matrices[5] = instance_matrices[10] =
-        instance_matrices[15] = 1.0f;
+    instance_matrices[0] = instance_matrices[5] = instance_matrices[10] = instance_matrices[15] =
+        1.0f;
     instance_matrices[3] = -2.0f;
     instance_matrices[11] = -6.0f;
     instance_matrices[16 + 0] = instance_matrices[16 + 5] = instance_matrices[16 + 10] =
@@ -4798,6 +4797,8 @@ static void test_rendertarget_new() {
                 "RenderTarget3D.New defaults to LDR UNORM8 color storage");
     EXPECT_TRUE(rt->target->color_buf == nullptr && rt->target->depth_buf == nullptr,
                 "RenderTarget3D.New keeps CPU color/depth buffers lazy until first CPU use");
+    EXPECT_TRUE(rt->target->estimated_bytes == 256ull * 256ull * 16ull,
+                "RenderTarget3D.New budgets native storage and all lazy CPU mirrors");
     PASS();
 }
 
@@ -4810,6 +4811,8 @@ static void test_rendertarget_new_hdr() {
                 "RenderTarget3D.NewHdr stores HDR color format metadata");
     EXPECT_TRUE(rt->target->color_buf == nullptr && rt->target->depth_buf == nullptr,
                 "RenderTarget3D.NewHdr keeps CPU color/depth buffers lazy until first CPU use");
+    EXPECT_TRUE(rt->target->estimated_bytes == 256ull * 128ull * 36ull,
+                "RenderTarget3D.NewHdr budgets native storage and both HDR/LDR CPU mirrors");
     PASS();
 }
 

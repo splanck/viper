@@ -972,6 +972,20 @@ void *rt_canvas3d_screenshot(void *o) {
     RT_GRAPHICS_TRAP_RET("Canvas3D.Screenshot: graphics support not compiled in", NULL);
 }
 
+/// @brief Graphics-disabled stub for allocation-reusing Canvas3D readback.
+int8_t rt_canvas3d_try_copy_screenshot_to(void *o, void *pixels) {
+    (void)o;
+    (void)pixels;
+    RT_GRAPHICS_TRAP_RET("Canvas3D.TryCopyScreenshotTo: graphics support not compiled in", 0);
+}
+
+/// @brief Graphics-disabled stub for finalized allocation-reusing Canvas3D readback.
+int8_t rt_canvas3d_try_copy_screenshot_final_to(void *o, void *pixels) {
+    (void)o;
+    (void)pixels;
+    RT_GRAPHICS_TRAP_RET("Canvas3D.TryCopyScreenshotFinalTo: graphics support not compiled in", 0);
+}
+
 /// @brief Stub for `Camera3D.New` — would normally create a perspective
 ///        camera with vertical field of view `f` (radians), aspect ratio
 ///        `a`, near plane `n`, and far plane `fa`. Position is `(0, 0, 0)`,

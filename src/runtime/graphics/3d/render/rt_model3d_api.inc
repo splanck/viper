@@ -18,8 +18,12 @@ static void *model3d_load_value_to_result(void *value, const char *fallback) {
     }
 
     const char *message = rt_asset_error_get_message();
-    if (!message || message[0] == '\0')
-        return rt_result_err_str(rt_const_cstr(fallback ? fallback : "SceneAsset load failed"));
+    if (!message || message[0] == '\0') {
+        rt_string err = rt_const_cstr(fallback ? fallback : "SceneAsset load failed");
+        void *result = rt_result_err_str(err);
+        rt_string_unref(err);
+        return result;
+    }
 
     rt_string err = rt_string_from_bytes(message, strlen(message));
     void *result = rt_result_err_str(err);
@@ -472,8 +476,7 @@ static model_lod_chain_entry *model_lod_chain_find_or_build(model_lod_chain_entr
         if (*entry_capacity > INT32_MAX / 2 ||
             (size_t)new_capacity > SIZE_MAX / sizeof(model_lod_chain_entry))
             return NULL;
-        grown = (model_lod_chain_entry *)realloc(*entries,
-                                                 (size_t)new_capacity * sizeof(*grown));
+        grown = (model_lod_chain_entry *)realloc(*entries, (size_t)new_capacity * sizeof(*grown));
         if (!grown)
             return NULL;
         *entries = grown;
@@ -594,8 +597,7 @@ int64_t rt_model3d_generate_lods(void *obj, int64_t levels, double ratio) {
                     (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *))
                     break;
                 new_capacity = stack_capacity * 2;
-                grown = (rt_scene_node3d **)realloc(stack,
-                                                    (size_t)new_capacity * sizeof(*stack));
+                grown = (rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
                 if (!grown)
                     break;
                 stack = grown;
@@ -762,8 +764,7 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index) {
     /* Carry the model's clips on the scene so a baked .vscn save (v3) can
      * serialize the full rig; the handles are retained per-slot. */
     if (model->animation_count > 0 && model->animations) {
-        scene->baked_animations =
-            (void **)calloc((size_t)model->animation_count, sizeof(void *));
+        scene->baked_animations = (void **)calloc((size_t)model->animation_count, sizeof(void *));
         if (scene->baked_animations) {
             for (int32_t i = 0; i < model->animation_count; i++) {
                 scene->baked_animations[i] = model->animations[i];

@@ -38,6 +38,7 @@
 #include "rt_mat4.h"
 #include "rt_option.h"
 #include "rt_path3d.h"
+#include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
 
@@ -122,6 +123,12 @@ typedef struct {
     float max[3];
 } nav_obstacle_t;
 
+/// @brief One entry in the reusable A* open-set heap.
+typedef struct {
+    int32_t tri;
+    float f;
+} navmesh3d_heap_entry_t;
+
 typedef struct {
     void *vptr;
     nav_vertex_t *vertices;
@@ -143,6 +150,15 @@ typedef struct {
     int32_t obstacle_count;
     int32_t obstacle_capacity;
     double last_path_cost;
+    /* Reusable A* workspace. Access is serialized per navmesh so callers from independent worker
+     * threads do not race while repeated main-loop queries avoid four heap allocations each. */
+    float *path_g_cost;
+    int32_t *path_parent;
+    int8_t *path_closed;
+    navmesh3d_heap_entry_t *path_heap;
+    int32_t path_triangle_capacity;
+    int32_t path_heap_capacity;
+    volatile int path_workspace_lock;
     double agent_radius;
     double agent_height;
     double max_slope;              /* degrees */

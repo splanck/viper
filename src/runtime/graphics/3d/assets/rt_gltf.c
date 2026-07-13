@@ -314,7 +314,9 @@ static void gltf_asset_finalize(void *obj) {
 static void gltf_set_node_name(rt_scene_node3d *node, const char *name) {
     if (!node || !name || name[0] == '\0')
         return;
-    rt_scene_node3d_set_name(node, rt_const_cstr(name));
+    rt_string runtime_name = rt_const_cstr(name);
+    rt_scene_node3d_set_name(node, runtime_name);
+    rt_string_unref(runtime_name);
 }
 
 /// @brief Return the best available name for a glTF node, falling back to a synthetic index string.
@@ -359,10 +361,13 @@ static const char *gltf_effective_node_name(void *nodes_arr,
 
 /// @brief Look up a JSON object field by key (NULL if absent or `obj` is NULL).
 static void *jget(void *obj, const char *key) {
+    void *value;
     if (!obj)
         return NULL;
     rt_string k = rt_const_cstr(key);
-    return rt_map_get(obj, k);
+    value = rt_map_get(obj, k);
+    rt_string_unref(k);
+    return value;
 }
 
 /// @brief Read `obj[key]` as a double; returns `def` if absent or wrong type.
@@ -540,8 +545,7 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_pbrSpecularGlossiness") == 0 ||
            strcmp(name, "KHR_materials_variants") == 0 ||
            strcmp(name, "EXT_meshopt_compression") == 0 ||
-           strcmp(name, "KHR_mesh_quantization") == 0 ||
-           strcmp(name, "KHR_texture_basisu") == 0 ||
+           strcmp(name, "KHR_mesh_quantization") == 0 || strcmp(name, "KHR_texture_basisu") == 0 ||
            strcmp(name, "KHR_draco_mesh_compression") == 0 ||
            strcmp(name, "KHR_lights_punctual") == 0;
 }
@@ -557,8 +561,7 @@ static int gltf_used_extension_supported(const char *name) {
     return strcmp(name, "KHR_texture_basisu") == 0 ||
            strcmp(name, "KHR_materials_clearcoat") == 0 ||
            strcmp(name, "KHR_materials_transmission") == 0 ||
-           strcmp(name, "KHR_materials_ior") == 0 ||
-           strcmp(name, "KHR_materials_volume") == 0 ||
+           strcmp(name, "KHR_materials_ior") == 0 || strcmp(name, "KHR_materials_volume") == 0 ||
            strcmp(name, "KHR_materials_sheen") == 0 ||
            strcmp(name, "KHR_materials_anisotropy") == 0;
 }
@@ -1270,6 +1273,7 @@ static void *gltf_parse_validated_root_json(char *json_str) {
     else
         trap_message = rt_trap_get_error();
     rt_trap_clear_recovery();
+    rt_string_unref(json_rts);
     free(json_str);
     if (!root) {
         rt_asset_error_setf_if_empty(RT_ASSET_ERROR_CORRUPT,

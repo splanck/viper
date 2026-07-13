@@ -43,6 +43,7 @@
 #include "rt_g3d_ref_slots.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 #include "rt_trap.h"
 
 #include <float.h>
@@ -53,6 +54,16 @@
 
 #define COLLIDER3D_COORD_ABS_MAX 1000000000000.0
 #define COLLIDER3D_EXTENT_MAX 1000000000.0
+
+static volatile uint64_t g_collider3d_geometry_epoch = 1u;
+
+static void collider3d_note_global_geometry_change(void) {
+    (void)rt_atomic_fetch_add_u64(&g_collider3d_geometry_epoch, UINT64_C(1), __ATOMIC_RELEASE);
+}
+
+uint64_t rt_collider3d_global_geometry_epoch(void) {
+    return rt_atomic_load_u64(&g_collider3d_geometry_epoch, __ATOMIC_ACQUIRE);
+}
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -430,11 +441,21 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
     }
 }
 
-/// @brief Recursively check whether `needle` appears anywhere in the compound collider tree rooted
-/// at `root`.
-static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle) {
+/// @brief Recursively check whether `needle` appears in a compound tree within the public depth
+///   contract.
+/// @param depth One-based compound depth the candidate would have after attachment.
+/// @param too_deep Set when the candidate subtree would exceed the nesting limit.
+static int collider3d_contains_child(rt_collider3d *root,
+                                     rt_collider3d *needle,
+                                     int32_t depth,
+                                     int *too_deep) {
     if (!root || !needle || root->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;
+    if (depth > RT_COLLIDER3D_MAX_COMPOUND_DEPTH) {
+        if (too_deep)
+            *too_deep = 1;
+        return 0;
+    }
     int32_t child_count = collider3d_safe_child_count(root, 0);
     for (int32_t i = 0; i < child_count; ++i) {
         rt_collider3d *child = collider3d_checked(root->children[i]);
@@ -442,7 +463,7 @@ static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle)
             continue;
         if (child == needle)
             return 1;
-        if (collider3d_contains_child(child, needle))
+        if (collider3d_contains_child(child, needle, depth + 1, too_deep))
             return 1;
     }
     return 0;
@@ -460,8 +481,12 @@ static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle)
 ///          Called after any geometry mutation (set radius, add child,
 ///          rebuild heights) so subsequent broadphase queries use the
 ///          current bounds.
-static void collider3d_recompute_bounds(rt_collider3d *collider) {
+static void collider3d_recompute_bounds_at_depth(rt_collider3d *collider, int32_t depth) {
     if (!collider)
+        return;
+    /* Corrupt/shared graphs can outgrow the public limit after attachment. Stop before the C stack
+     * can grow without bound and retain the deepest node's last valid cached bounds. */
+    if (depth > RT_COLLIDER3D_MAX_COMPOUND_DEPTH && collider->type == RT_COLLIDER3D_TYPE_COMPOUND)
         return;
 
     rt_mesh3d *mesh = collider3d_mesh_or_null(collider);
@@ -564,9 +589,12 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             for (int32_t i = 0; i < child_count; ++i) {
                 double child_min[3];
                 double child_max[3];
-                if (!collider3d_checked(collider->children[i]))
+                rt_collider3d *child = collider3d_checked(collider->children[i]);
+                if (!child)
                     continue;
-                rt_collider3d_get_local_bounds_raw(collider->children[i], child_min, child_max);
+                collider3d_recompute_bounds_at_depth(child, depth + 1);
+                vec3_copy(child_min, child->bounds_min);
+                vec3_copy(child_max, child->bounds_max);
                 transform_bounds_raw(child_min,
                                      child_max,
                                      collider->child_transforms[i].position,
@@ -605,6 +633,11 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
     }
     collider->bounds_revision =
         collider->bounds_revision == UINT64_MAX ? 1u : collider->bounds_revision + 1u;
+}
+
+/// @brief Refresh local bounds with a bounded compound-tree traversal.
+static void collider3d_recompute_bounds(rt_collider3d *collider) {
+    collider3d_recompute_bounds_at_depth(collider, 1);
 }
 
 /// @brief Construct an axis-aligned box collider with half-extents (hx, hy, hz). Negative
@@ -925,6 +958,7 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
     rt_collider3d *compound = collider3d_checked(compound_obj);
     rt_collider3d *child = collider3d_checked(child_obj);
     int32_t new_capacity;
+    int too_deep = 0;
     if (!compound)
         return;
     if (compound->type != RT_COLLIDER3D_TYPE_COMPOUND) {
@@ -943,8 +977,12 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
         rt_trap("Collider3D.AddChild: a collider cannot contain itself");
         return;
     }
-    if (collider3d_contains_child(child, compound)) {
+    if (collider3d_contains_child(child, compound, 2, &too_deep)) {
         rt_trap("Collider3D.AddChild: adding this child would create a cycle");
+        return;
+    }
+    if (too_deep) {
+        rt_trap("Collider3D.AddChild: compound nesting exceeds 64 levels");
         return;
     }
     if (compound->child_count >= compound->child_capacity) {
@@ -967,6 +1005,7 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
                                   local_transform);
     compound->child_count++;
     collider3d_recompute_bounds(compound);
+    collider3d_note_global_geometry_change();
 }
 
 /// @brief Return the collider's discriminator (RT_COLLIDER3D_TYPE_BOX, _SPHERE, ...). -1 if NULL.

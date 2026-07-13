@@ -355,6 +355,9 @@ int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *obj);
 int64_t rt_canvas3d_get_backend_present_path(void *obj);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
+/// @brief Try to copy the current back buffer into an existing same-size Pixels object.
+/// @details Reuses canvas-owned GPU staging storage after warm-up and bumps Pixels generation.
+int8_t rt_canvas3d_try_copy_screenshot_to(void *obj, void *pixels);
 /// @brief Begin recording a final overlay pass composited after post-FX during finalization.
 void rt_canvas3d_begin_overlay(void *obj);
 /// @brief Finish recording the final overlay pass started by BeginOverlay.
@@ -365,6 +368,8 @@ void rt_canvas3d_clear_overlay(void *obj);
 void rt_canvas3d_finalize_frame(void *obj);
 /// @brief Capture finalized pixels, finalizing first if needed.
 void *rt_canvas3d_screenshot_final(void *obj);
+/// @brief Finalize if needed, then try to copy into an existing same-size Pixels object.
+int8_t rt_canvas3d_try_copy_screenshot_final_to(void *obj, void *pixels);
 /// @brief Return whether the current frame has already been finalized.
 int8_t rt_canvas3d_get_frame_finalized(void *obj);
 

@@ -1,0 +1,182 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_graphics3d_runtime_manifest.cpp
+// Purpose: Guard the complete Graphics3D/Game3D registry-to-C ABI manifest.
+// Key invariants:
+//   - Every public 3D function has a valid signature, handler, and C symbol.
+//   - Every 3D class binding resolves to a public runtime descriptor.
+//   - The deterministic manifest fingerprint changes for any ABI surface drift.
+// Ownership/Lifetime:
+//   - Reads immutable process-lifetime runtime registries without retaining data.
+// Links: docs/adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md
+//
+//===----------------------------------------------------------------------===//
+
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
+
+#include <cstdint>
+#include <iostream>
+#include <string_view>
+#include <unordered_set>
+
+namespace {
+
+constexpr std::size_t kExpectedFunctionCount = 2067;
+constexpr std::size_t kExpectedClassCount = 125;
+constexpr std::size_t kExpectedPropertyCount = 735;
+constexpr std::size_t kExpectedMethodCount = 1120;
+
+bool is3DName(std::string_view name) {
+    return name.starts_with("Viper.Graphics3D.") || name.starts_with("Viper.Game3D.");
+}
+
+class ManifestHash {
+  public:
+    void addByte(std::uint8_t byte) {
+        value_ ^= byte;
+        value_ *= UINT64_C(1099511628211);
+    }
+
+    void addUnsigned(std::uint64_t value) {
+        for (unsigned shift = 0; shift < 64; shift += 8)
+            addByte(static_cast<std::uint8_t>(value >> shift));
+    }
+
+    void addString(std::string_view value) {
+        addUnsigned(value.size());
+        for (unsigned char byte : value)
+            addByte(byte);
+    }
+
+    void addNullable(const char *value) {
+        addByte(value != nullptr ? 1U : 0U);
+        if (value != nullptr)
+            addString(value);
+    }
+
+    [[nodiscard]] std::uint64_t value() const {
+        return value_;
+    }
+
+  private:
+    std::uint64_t value_{UINT64_C(14695981039346656037)};
+};
+
+bool require(bool condition, std::string_view message) {
+    if (!condition)
+        std::cerr << "FAIL: " << message << '\n';
+    return condition;
+}
+
+bool checkTarget(std::string_view target) {
+    const il::runtime::RuntimeDescriptor *descriptor =
+        il::runtime::findRuntimeDescriptor(target);
+    bool ok = require(descriptor != nullptr, "3D class binding target is not registered");
+    if (descriptor == nullptr)
+        return false;
+    ok = require(descriptor->publicSurface, "3D class binding target is not public") && ok;
+    ok = require(!descriptor->cSymbol.empty(), "3D class binding target has no C symbol") && ok;
+    return ok;
+}
+
+} // namespace
+
+int main() {
+    ManifestHash hash;
+    hash.addString("viper-graphics3d-abi-manifest-v1");
+
+    std::size_t functionCount = 0;
+    std::unordered_set<std::string_view> functionNames;
+    bool ok = true;
+    for (const il::runtime::RuntimeDescriptor &descriptor : il::runtime::runtimeRegistry()) {
+        if (!descriptor.publicSurface || !is3DName(descriptor.name))
+            continue;
+
+        ++functionCount;
+        ok = require(functionNames.insert(descriptor.name).second,
+                     "duplicate public 3D runtime function") &&
+             ok;
+        ok = require(!descriptor.cSymbol.empty(), "public 3D function has no C symbol") && ok;
+        ok = require(!descriptor.signatureText.empty(), "public 3D function has no signature") &&
+             ok;
+        ok = require(descriptor.signature.valid, "public 3D function has an invalid signature") &&
+             ok;
+        ok = require(descriptor.handler != nullptr, "public 3D function has no VM handler") && ok;
+
+        hash.addString(descriptor.name);
+        hash.addString(descriptor.signatureText);
+        hash.addString(descriptor.cSymbol);
+    }
+
+    std::size_t classCount = 0;
+    std::size_t propertyCount = 0;
+    std::size_t methodCount = 0;
+    for (const il::runtime::RuntimeClass &runtimeClass :
+         il::runtime::runtimeClassCatalog()) {
+        if (runtimeClass.qname == nullptr || !is3DName(runtimeClass.qname))
+            continue;
+
+        ++classCount;
+        hash.addString(runtimeClass.qname);
+        hash.addNullable(runtimeClass.layout);
+        hash.addNullable(runtimeClass.ctor);
+        if (runtimeClass.ctor != nullptr && *runtimeClass.ctor != '\0')
+            ok = checkTarget(runtimeClass.ctor) && ok;
+
+        for (const il::runtime::RuntimeProperty &property : runtimeClass.properties) {
+            ++propertyCount;
+            hash.addNullable(property.name);
+            hash.addNullable(property.type);
+            hash.addByte(property.readonly ? 1U : 0U);
+            hash.addNullable(property.getter);
+            hash.addNullable(property.setter);
+            const bool hasGetter = property.getter != nullptr && *property.getter != '\0';
+            const bool hasSetter = property.setter != nullptr && *property.setter != '\0';
+            ok = require(hasGetter || hasSetter, "3D property has no accessor") && ok;
+            if (hasGetter)
+                ok = checkTarget(property.getter) && ok;
+            if (hasSetter)
+                ok = checkTarget(property.setter) && ok;
+        }
+
+        for (const il::runtime::RuntimeMethod &method : runtimeClass.methods) {
+            ++methodCount;
+            hash.addNullable(method.name);
+            hash.addNullable(method.signature);
+            hash.addNullable(method.target);
+            ok = require(method.target != nullptr, "3D method has no target") && ok;
+            if (method.target != nullptr && *method.target != '\0')
+                ok = checkTarget(method.target) && ok;
+        }
+    }
+
+    ok = require(functionCount == kExpectedFunctionCount,
+                 "public 3D function count changed; review and update the ABI manifest") &&
+         ok;
+    ok = require(classCount == kExpectedClassCount,
+                 "public 3D class count changed; review and update the ABI manifest") &&
+         ok;
+    ok = require(propertyCount == kExpectedPropertyCount,
+                 "public 3D property count changed; review and update the ABI manifest") &&
+         ok;
+    ok = require(methodCount == kExpectedMethodCount,
+                 "public 3D method count changed; review and update the ABI manifest") &&
+         ok;
+
+    // Filled from the canonical registry after deliberate ABI review. This one value
+    // covers every function name/signature/C symbol and every class member binding.
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0xfdd498b594603697);
+    if (hash.value() != kExpectedManifestHash) {
+        std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
+                  << hash.value() << '\n';
+        ok = false;
+    }
+
+    return ok ? 0 : 1;
+}

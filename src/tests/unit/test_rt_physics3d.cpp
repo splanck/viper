@@ -361,9 +361,9 @@ static void test_collider_getters_sanitize_corrupt_private_state() {
     heightfield_view->heightfield_width = -1;
     int32_t width = 0, depth = 0;
     double heightfield_scale[3] = {};
-    EXPECT_TRUE(rt_collider3d_get_heightfield_info_raw(
-                    heightfield, &width, &depth, heightfield_scale) == 0,
-                "Collider3D heightfield info rejects corrupt private dimensions");
+    EXPECT_TRUE(
+        rt_collider3d_get_heightfield_info_raw(heightfield, &width, &depth, heightfield_scale) == 0,
+        "Collider3D heightfield info rejects corrupt private dimensions");
     heightfield_view->heightfield_width = saved_width;
     heightfield_view->heightfield_depth = saved_depth;
 }
@@ -501,18 +501,15 @@ static void test_body_getters_sanitize_corrupt_private_state() {
                 0.0,
                 0.001,
                 "Body3D angular damping getter sanitizes corrupt private state");
-    EXPECT_NEAR(rt_body3d_get_mass(b),
-                0.0,
-                0.001,
-                "Body3D mass getter sanitizes corrupt private state");
+    EXPECT_NEAR(
+        rt_body3d_get_mass(b), 0.0, 0.001, "Body3D mass getter sanitizes corrupt private state");
     EXPECT_TRUE(rt_body3d_get_collision_layer(b) == 1,
                 "Body3D collision layer getter repairs corrupt private state");
 
     view->motion_mode = PH3D_MODE_DYNAMIC;
     view->is_static = 42;
     view->is_kinematic = -7;
-    EXPECT_TRUE(rt_body3d_is_static(b) == 0,
-                "Body3D static getter follows sanitized motion mode");
+    EXPECT_TRUE(rt_body3d_is_static(b) == 0, "Body3D static getter follows sanitized motion mode");
     EXPECT_TRUE(rt_body3d_is_kinematic(b) == 0,
                 "Body3D kinematic getter follows sanitized motion mode");
     view->motion_mode = PH3D_MODE_STATIC;
@@ -1571,6 +1568,27 @@ static void test_convex_hull_gjk_rejects_aabb_false_positive() {
                 "convex hull GJK rejects separated hulls with overlapping AABBs");
 }
 
+static void test_unsupported_mesh_pair_rejects_aabb_false_positive() {
+    void *mesh_a = make_tetra_mesh(1);
+    void *mesh_b = make_tetra_mesh(-1);
+    void *body_a_obj = rt_body3d_new(0.0);
+    void *body_b_obj = rt_body3d_new(0.0);
+    rt_body3d *body_a = static_cast<rt_body3d *>(body_a_obj);
+    rt_body3d *body_b = static_cast<rt_body3d *>(body_b_obj);
+    double normal[3] = {0.0, 0.0, 0.0};
+    double point[3] = {0.0, 0.0, 0.0};
+    double depth = 0.0;
+
+    rt_body3d_set_collider(body_a, rt_collider3d_new_mesh(mesh_a));
+    rt_body3d_set_collider(body_b, rt_collider3d_new_mesh(mesh_b));
+    rt_body3d_set_position(body_a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body_b, 0.8, 0.8, 0.8);
+
+    EXPECT_TRUE(test_collision(
+                    body_a, body_b, normal, &depth, point, nullptr, nullptr, nullptr, nullptr) == 0,
+                "Unsupported mesh-mesh pair does not turn overlapping AABBs into a contact");
+}
+
 static void test_convex_hull_gjk_detects_overlapping_hulls() {
     void *world = rt_world3d_new(0, 0, 0);
     void *mesh_a = make_tetra_mesh(1);
@@ -1857,6 +1875,46 @@ static void test_compound_collider_child_transform_affects_contact() {
                 "compound collider: child offset affects contacts");
 }
 
+static void test_compound_collider_collects_multiple_leaf_contacts() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *compound = rt_collider3d_new_compound();
+    void *left = rt_collider3d_new_box(0.45, 0.2, 0.45);
+    void *right = rt_collider3d_new_box(0.45, 0.2, 0.45);
+    void *left_xf = rt_transform3d_new();
+    void *right_xf = rt_transform3d_new();
+    void *compound_body = rt_body3d_new(0.0);
+    void *bridge = rt_body3d_new_aabb(1.4, 0.2, 0.45, 1.0);
+
+    rt_transform3d_set_position(left_xf, -0.75, 0.0, 0.0);
+    rt_transform3d_set_position(right_xf, 0.75, 0.0, 0.0);
+    rt_collider3d_add_child(compound, left, left_xf);
+    rt_collider3d_add_child(compound, right, right_xf);
+    rt_body3d_set_collider(compound_body, compound);
+    rt_body3d_set_position(bridge, 0.0, 0.3, 0.0);
+    rt_body3d_set_trigger(bridge, 1);
+    rt_world3d_add(world, compound_body);
+    rt_world3d_add(world, bridge);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "Compound multi-contact fixture produces one body-pair contact");
+    void *event = rt_world3d_get_collision_event(world, 0);
+    int64_t contact_count = rt_collision_event3d_get_contact_count(event);
+    EXPECT_TRUE(contact_count >= 2,
+                "Compound body-pair manifold includes more than its deepest child contact");
+    double min_x = INFINITY;
+    double max_x = -INFINITY;
+    for (int64_t i = 0; i < contact_count; ++i) {
+        void *point = rt_collision_event3d_get_contact_point(event, i);
+        if (!point)
+            continue;
+        min_x = fmin(min_x, rt_vec3_x(point));
+        max_x = fmax(max_x, rt_vec3_x(point));
+    }
+    EXPECT_TRUE(min_x < -0.2 && max_x > 0.2,
+                "Compound manifold retains contacts from both separated child shapes");
+}
+
 static void test_compound_collider_rejects_transitive_cycle() {
     void *a = rt_collider3d_new_compound();
     void *b = rt_collider3d_new_compound();
@@ -1867,6 +1925,22 @@ static void test_compound_collider_rejects_transitive_cycle() {
                 "Compound collider rejects transitive cycles");
     EXPECT_TRUE(rt_collider3d_get_child_count_raw(b) == 0,
                 "Rejected compound cycle does not mutate child list");
+}
+
+static void test_compound_collider_rejects_excessive_nesting() {
+    void *leaf = rt_collider3d_new_sphere(0.5);
+    void *root = leaf;
+    for (int depth = 0; depth < RT_COLLIDER3D_MAX_COMPOUND_DEPTH; depth++) {
+        void *parent = rt_collider3d_new_compound();
+        rt_collider3d_add_child(parent, root, nullptr);
+        root = parent;
+    }
+    void *too_deep = rt_collider3d_new_compound();
+    EXPECT_TRUE(expect_trap_contains([&] { rt_collider3d_add_child(too_deep, root, nullptr); },
+                                     "64 levels"),
+                "Compound collider rejects trees that could exhaust recursive physics paths");
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(too_deep) == 0,
+                "Rejected excessive nesting leaves the target compound unchanged");
 }
 
 static void test_heightfield_collider_supports_ground_contact() {
@@ -2131,9 +2205,15 @@ static void test_world_raycast_all_sorted() {
         void *hits = rt_world3d_raycast_all(world, origin, dir, 20.0, 1);
         EXPECT_TRUE(hits != nullptr, "raycast all: list returned");
         EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits) == 2, "raycast all: two hits");
+        auto *list = static_cast<rt_physics_hit_list3d_obj *>(hits);
+        EXPECT_TRUE(list->raw_hits != nullptr && list->items[0] == nullptr &&
+                        list->items[1] == nullptr,
+                    "raycast all: raw hits are packed and managed boxes start lazy");
         {
             void *hit0 = rt_physics_hit_list3d_get(hits, 0);
             void *hit1 = rt_physics_hit_list3d_get(hits, 1);
+            EXPECT_TRUE(list->items[0] == hit0 && list->items[1] == hit1,
+                        "raycast all: Get materializes each managed hit at most once");
             EXPECT_TRUE(rt_physics_hit3d_get_body(hit0) == near_box, "raycast all: hit0 is near");
             EXPECT_TRUE(rt_physics_hit3d_get_body(hit1) == far_box, "raycast all: hit1 is far");
             EXPECT_TRUE(rt_physics_hit3d_get_distance(hit0) < rt_physics_hit3d_get_distance(hit1),
@@ -2161,6 +2241,18 @@ static void test_world_overlap_hit_list_reports_truncation() {
                 "OverlapSphere reports total matching hits");
     EXPECT_TRUE(rt_physics_hit_list3d_get_truncated(hits) != 0,
                 "OverlapSphere marks truncated hit lists");
+
+    rt_world3d_set_max_query_hits(world, 4096);
+    void *expanded_hits = rt_world3d_overlap_sphere(world, center, 100.0, 1);
+    EXPECT_TRUE(expanded_hits != nullptr, "OverlapSphere returns an expanded hit list");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_count(expanded_hits) == 260,
+                "OverlapSphere exposes hits above the legacy 256-item limit");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_total_count(expanded_hits) == 260,
+                "Expanded OverlapSphere preserves its total hit count");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_truncated(expanded_hits) == 0,
+                "Expanded OverlapSphere is not marked truncated");
+    EXPECT_TRUE(rt_physics_hit_list3d_get(expanded_hits, 259) != nullptr,
+                "Expanded OverlapSphere exposes its final boxed hit");
 }
 
 static void test_world_sweep_sphere_reports_started_penetrating() {
@@ -2267,6 +2359,55 @@ static void test_world_query_broadphase_cache_invalidates_after_body_move() {
                 "query broadphase cache invalidates after body movement");
 }
 
+static void test_world_query_broadphase_cache_invalidates_after_compound_mutation() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *compound = rt_collider3d_new_compound();
+    void *body = rt_body3d_new(0.0);
+    void *origin_child = rt_collider3d_new_box(0.5, 0.5, 0.5);
+    void *far_child = rt_collider3d_new_box(0.5, 0.5, 0.5);
+    void *far_transform = rt_transform3d_new();
+    void *far_center = rt_vec3_new(10.0, 0.0, 0.0);
+    rt_collider3d_add_child(compound, origin_child, nullptr);
+    rt_body3d_set_collider(body, compound);
+    rt_world3d_add(world, body);
+
+    void *hits = rt_world3d_overlap_sphere(world, far_center, 0.25, -1);
+    EXPECT_TRUE(hits == nullptr || rt_physics_hit_list3d_get_count(hits) == 0,
+                "query broadphase initially excludes the future compound child");
+
+    rt_transform3d_set_position(far_transform, 10.0, 0.0, 0.0);
+    rt_collider3d_add_child(compound, far_child, far_transform);
+    hits = rt_world3d_overlap_sphere(world, far_center, 0.25, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "query broadphase invalidates after attached compound mutation");
+}
+
+static void test_world_query_broadphase_cache_invalidates_after_mesh_mutation() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    void *collider = rt_collider3d_new_mesh(mesh);
+    void *body = rt_body3d_new(0.0);
+    void *far_center = rt_vec3_new(10.25, 0.25, 0.0);
+    rt_body3d_set_collider(body, collider);
+    rt_world3d_add(world, body);
+
+    void *hits = rt_world3d_overlap_sphere(world, far_center, 0.1, -1);
+    EXPECT_TRUE(hits == nullptr || rt_physics_hit_list3d_get_count(hits) == 0,
+                "query broadphase initially excludes future mesh geometry");
+
+    rt_mesh3d_add_vertex(mesh, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 11.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 10.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 3, 4, 5);
+    hits = rt_world3d_overlap_sphere(world, far_center, 0.1, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "query broadphase invalidates after collider mesh mutation");
+}
+
 static void test_world_rebase_origin_shifts_body_contact_and_query_state() {
     void *world = rt_world3d_new(0, 0, 0);
     void *query_body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
@@ -2351,12 +2492,15 @@ static void test_query_mask_zero_matches_no_layers() {
 
     EXPECT_TRUE(rt_world3d_raycast(world, origin, dir, 10.0, 0) == nullptr,
                 "LayerMask.None raycast returns no hit");
-    EXPECT_TRUE(rt_world3d_raycast_all(world, origin, dir, 10.0, 0) == nullptr,
-                "LayerMask.None raycast all returns no list");
-    EXPECT_TRUE(rt_world3d_overlap_sphere(world, center, 1.0, 0) == nullptr,
-                "LayerMask.None overlap sphere returns no list");
-    EXPECT_TRUE(rt_world3d_overlap_aabb(world, minv, maxv, 0) == nullptr,
-                "LayerMask.None overlap aabb returns no list");
+    void *ray_hits = rt_world3d_raycast_all(world, origin, dir, 10.0, 0);
+    void *sphere_hits = rt_world3d_overlap_sphere(world, center, 1.0, 0);
+    void *aabb_hits = rt_world3d_overlap_aabb(world, minv, maxv, 0);
+    EXPECT_TRUE(ray_hits != nullptr && rt_physics_hit_list3d_get_count(ray_hits) == 0,
+                "LayerMask.None raycast all returns an empty list");
+    EXPECT_TRUE(sphere_hits != nullptr && rt_physics_hit_list3d_get_count(sphere_hits) == 0,
+                "LayerMask.None overlap sphere returns an empty list");
+    EXPECT_TRUE(aabb_hits != nullptr && rt_physics_hit_list3d_get_count(aabb_hits) == 0,
+                "LayerMask.None overlap aabb returns an empty list");
     EXPECT_TRUE(rt_world3d_sweep_sphere(world, origin, 0.25, delta, 0) == nullptr,
                 "LayerMask.None sphere sweep returns no hit");
 }
@@ -2687,8 +2831,8 @@ static void test_joint3d_extreme_finite_inputs_remain_finite() {
     rt_body3d_set_collision_mask(base, 1);
     rt_body3d_set_collision_layer(arm, 2);
     rt_body3d_set_collision_mask(arm, 2);
-    void *hinge =
-        rt_hinge_joint3d_new(base, arm, rt_vec3_new(1.0e300, 0.0, 0.0), rt_vec3_new(1.0e300, 0.0, 0.0));
+    void *hinge = rt_hinge_joint3d_new(
+        base, arm, rt_vec3_new(1.0e300, 0.0, 0.0), rt_vec3_new(1.0e300, 0.0, 0.0));
     EXPECT_TRUE(hinge != nullptr, "HingeJoint3D accepts clampable extreme finite anchor/axis");
     rt_hinge_joint3d_set_motor(hinge, 1, 1.0e300, 1.0e300);
     rt_hinge_joint3d_set_limits(hinge, 1.0e300, -1.0e300);
@@ -2711,14 +2855,38 @@ static void test_joint3d_extreme_finite_inputs_remain_finite() {
     void *six_world = rt_world3d_new(0.0, 0.0, 0.0);
     void *six_a = rt_body3d_new_sphere(0.25, 0.0);
     void *six_b = rt_body3d_new_sphere(0.25, 1.0);
-    void *frame_a = rt_mat4_new(1.0, 0.0, 0.0, 1.0e300,
-                                0.0, 1.0, 0.0, -1.0e300,
-                                0.0, 0.0, 1.0, 1.0e300,
-                                0.0, 0.0, 0.0, 1.0);
-    void *frame_b = rt_mat4_new(1.0, 0.0, 0.0, -1.0e300,
-                                0.0, 1.0, 0.0, 1.0e300,
-                                0.0, 0.0, 1.0, -1.0e300,
-                                0.0, 0.0, 0.0, 1.0);
+    void *frame_a = rt_mat4_new(1.0,
+                                0.0,
+                                0.0,
+                                1.0e300,
+                                0.0,
+                                1.0,
+                                0.0,
+                                -1.0e300,
+                                0.0,
+                                0.0,
+                                1.0,
+                                1.0e300,
+                                0.0,
+                                0.0,
+                                0.0,
+                                1.0);
+    void *frame_b = rt_mat4_new(1.0,
+                                0.0,
+                                0.0,
+                                -1.0e300,
+                                0.0,
+                                1.0,
+                                0.0,
+                                1.0e300,
+                                0.0,
+                                0.0,
+                                1.0,
+                                -1.0e300,
+                                0.0,
+                                0.0,
+                                0.0,
+                                1.0);
     void *six = rt_sixdof_joint3d_new(six_a, six_b, frame_a, frame_b);
     EXPECT_TRUE(six != nullptr, "SixDofJoint3D clamps extreme finite frame translations");
     rt_sixdof_joint3d_set_linear_limits(
@@ -3382,6 +3550,7 @@ int main() {
     test_convex_hull_collider_blocks_sphere();
     test_convex_hull_gjk_detects_contained_sphere();
     test_convex_hull_gjk_rejects_aabb_false_positive();
+    test_unsupported_mesh_pair_rejects_aabb_false_positive();
     test_convex_hull_gjk_detects_overlapping_hulls();
     test_convex_hull_gjk_handles_box_capsule_and_simple_edge_cases();
     test_convex_hull_gjk_perf_target();
@@ -3389,7 +3558,9 @@ int main() {
     test_mesh_collider_narrowphase_builds_bvh_for_sphere_and_box();
     test_mesh_convex_hull_bvh_and_body_broadphase_target();
     test_compound_collider_child_transform_affects_contact();
+    test_compound_collider_collects_multiple_leaf_contacts();
     test_compound_collider_rejects_transitive_cycle();
+    test_compound_collider_rejects_excessive_nesting();
     test_heightfield_collider_supports_ground_contact();
     test_heightfield_box_samples_bottom_edges();
 
@@ -3405,6 +3576,8 @@ int main() {
     test_world_overlap_queries_reject_nonfinite_inputs();
     test_world_queries_clamp_extreme_finite_inputs();
     test_world_query_broadphase_cache_invalidates_after_body_move();
+    test_world_query_broadphase_cache_invalidates_after_compound_mutation();
+    test_world_query_broadphase_cache_invalidates_after_mesh_mutation();
     test_world_rebase_origin_shifts_body_contact_and_query_state();
     test_collision_events_enter_stay_exit();
     test_query_mask_zero_matches_no_layers();

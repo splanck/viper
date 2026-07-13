@@ -59,10 +59,9 @@ static const uint8_t bc6h_partition2[32][16] = {
     {0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0},
 };
 
-static const uint8_t bc6h_anchor2[32] = {15, 15, 15, 15, 15, 15, 15, 15,
-                                        15, 15, 15, 15, 15, 15, 15, 15,
-                                        15, 2,  8,  2,  2,  8,  8,  15,
-                                        2,  8,  2,  2,  8,  8,  2,  2};
+static const uint8_t bc6h_anchor2[32] = {15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                                         15, 15, 15, 15, 15, 15, 2,  8,  2,  2,  8,
+                                         8,  15, 2,  8,  2,  2,  8,  8,  2,  2};
 
 typedef struct {
     uint8_t var; /* 0=M, 1..12=R0,G0,B0,R1,G1,B1,R2,G2,B2,R3,G3,B3, 13=PB */
@@ -71,82 +70,101 @@ typedef struct {
 } bc6h_field_t;
 
 static const bc6h_field_t bc6h_mode0_fields[] = {
-    {0, 1, 0}, {8, 4, 4}, {9, 4, 4}, {12, 4, 4}, {1, 9, 0}, {2, 9, 0},
-    {3, 9, 0}, {4, 4, 0}, {11, 4, 4}, {8, 3, 0}, {5, 4, 0}, {12, 0, 0},
-    {11, 3, 0}, {6, 4, 0}, {12, 1, 1}, {9, 3, 0}, {7, 4, 0}, {12, 2, 2},
-    {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
+    {0, 1, 0},  {8, 4, 4},  {9, 4, 4}, {12, 4, 4}, {1, 9, 0},  {2, 9, 0},  {3, 9, 0},
+    {4, 4, 0},  {11, 4, 4}, {8, 3, 0}, {5, 4, 0},  {12, 0, 0}, {11, 3, 0}, {6, 4, 0},
+    {12, 1, 1}, {9, 3, 0},  {7, 4, 0}, {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode1_fields[] = {
-    {0, 1, 0}, {8, 5, 5}, {11, 4, 4}, {11, 5, 5}, {1, 6, 0}, {12, 0, 0},
-    {12, 1, 1}, {9, 4, 4}, {2, 6, 0}, {9, 5, 5}, {12, 2, 2}, {8, 4, 4},
-    {3, 6, 0}, {12, 3, 3}, {12, 5, 5}, {12, 4, 4}, {4, 5, 0}, {8, 3, 0},
-    {5, 5, 0}, {11, 3, 0}, {6, 5, 0}, {9, 3, 0}, {7, 5, 0}, {10, 5, 0},
-    {13, 4, 0},
+    {0, 1, 0},  {8, 5, 5},  {11, 4, 4}, {11, 5, 5}, {1, 6, 0}, {12, 0, 0}, {12, 1, 1},
+    {9, 4, 4},  {2, 6, 0},  {9, 5, 5},  {12, 2, 2}, {8, 4, 4}, {3, 6, 0},  {12, 3, 3},
+    {12, 5, 5}, {12, 4, 4}, {4, 5, 0},  {8, 3, 0},  {5, 5, 0}, {11, 3, 0}, {6, 5, 0},
+    {9, 3, 0},  {7, 5, 0},  {10, 5, 0}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode2_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 4, 0}, {1, 10, 10},
-    {8, 3, 0}, {5, 3, 0}, {2, 10, 10}, {12, 0, 0}, {11, 3, 0}, {6, 3, 0},
-    {3, 10, 10}, {12, 1, 1}, {9, 3, 0}, {7, 4, 0}, {12, 2, 2}, {10, 4, 0},
-    {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0}, {1, 9, 0},   {2, 9, 0},  {3, 9, 0},  {4, 4, 0},  {1, 10, 10}, {8, 3, 0},
+    {5, 3, 0}, {2, 10, 10}, {12, 0, 0}, {11, 3, 0}, {6, 3, 0},  {3, 10, 10}, {12, 1, 1},
+    {9, 3, 0}, {7, 4, 0},   {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode6_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 3, 0}, {1, 10, 10},
-    {11, 4, 4}, {8, 3, 0}, {5, 4, 0}, {2, 10, 10}, {11, 3, 0}, {6, 3, 0},
-    {3, 10, 10}, {12, 1, 1}, {9, 3, 0}, {7, 3, 0}, {12, 0, 0}, {12, 2, 2},
-    {10, 3, 0}, {8, 4, 4}, {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0},  {1, 9, 0},   {2, 9, 0},  {3, 9, 0}, {4, 3, 0},   {1, 10, 10}, {11, 4, 4}, {8, 3, 0},
+    {5, 4, 0},  {2, 10, 10}, {11, 3, 0}, {6, 3, 0}, {3, 10, 10}, {12, 1, 1},  {9, 3, 0},  {7, 3, 0},
+    {12, 0, 0}, {12, 2, 2},  {10, 3, 0}, {8, 4, 4}, {12, 3, 3},  {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode10_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 3, 0}, {1, 10, 10},
-    {9, 4, 4}, {8, 3, 0}, {5, 3, 0}, {2, 10, 10}, {12, 0, 0}, {11, 3, 0},
-    {6, 4, 0}, {3, 10, 10}, {9, 3, 0}, {7, 3, 0}, {12, 1, 1}, {12, 2, 2},
-    {10, 3, 0}, {12, 4, 4}, {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0},  {1, 9, 0},   {2, 9, 0},  {3, 9, 0},  {4, 3, 0},  {1, 10, 10}, {9, 4, 4}, {8, 3, 0},
+    {5, 3, 0},  {2, 10, 10}, {12, 0, 0}, {11, 3, 0}, {6, 4, 0},  {3, 10, 10}, {9, 3, 0}, {7, 3, 0},
+    {12, 1, 1}, {12, 2, 2},  {10, 3, 0}, {12, 4, 4}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode14_fields[] = {
-    {0, 4, 0}, {1, 8, 0}, {9, 4, 4}, {2, 8, 0}, {8, 4, 4}, {3, 8, 0},
-    {12, 4, 4}, {4, 4, 0}, {11, 4, 4}, {8, 3, 0}, {5, 4, 0}, {12, 0, 0},
-    {11, 3, 0}, {6, 4, 0}, {12, 1, 1}, {9, 3, 0}, {7, 4, 0}, {12, 2, 2},
-    {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0},  {1, 8, 0},  {9, 4, 4}, {2, 8, 0},  {8, 4, 4},  {3, 8, 0},  {12, 4, 4},
+    {4, 4, 0},  {11, 4, 4}, {8, 3, 0}, {5, 4, 0},  {12, 0, 0}, {11, 3, 0}, {6, 4, 0},
+    {12, 1, 1}, {9, 3, 0},  {7, 4, 0}, {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode18_fields[] = {
-    {0, 4, 0}, {1, 7, 0}, {11, 4, 4}, {9, 4, 4}, {2, 7, 0}, {12, 2, 2},
-    {8, 4, 4}, {3, 7, 0}, {12, 3, 3}, {12, 4, 4}, {4, 5, 0}, {8, 3, 0},
-    {5, 4, 0}, {12, 0, 0}, {11, 3, 0}, {6, 4, 0}, {12, 1, 1}, {9, 3, 0},
-    {7, 5, 0}, {10, 5, 0}, {13, 4, 0},
+    {0, 4, 0},  {1, 7, 0},  {11, 4, 4}, {9, 4, 4}, {2, 7, 0}, {12, 2, 2}, {8, 4, 4},
+    {3, 7, 0},  {12, 3, 3}, {12, 4, 4}, {4, 5, 0}, {8, 3, 0}, {5, 4, 0},  {12, 0, 0},
+    {11, 3, 0}, {6, 4, 0},  {12, 1, 1}, {9, 3, 0}, {7, 5, 0}, {10, 5, 0}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode22_fields[] = {
-    {0, 4, 0}, {1, 7, 0}, {12, 0, 0}, {9, 4, 4}, {2, 7, 0}, {8, 5, 5},
-    {8, 4, 4}, {3, 7, 0}, {11, 5, 5}, {12, 4, 4}, {4, 4, 0}, {11, 4, 4},
-    {8, 3, 0}, {5, 5, 0}, {11, 3, 0}, {6, 4, 0}, {12, 1, 1}, {9, 3, 0},
-    {7, 4, 0}, {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0},  {1, 7, 0},  {12, 0, 0}, {9, 4, 4},  {2, 7, 0},  {8, 5, 5},  {8, 4, 4},  {3, 7, 0},
+    {11, 5, 5}, {12, 4, 4}, {4, 4, 0},  {11, 4, 4}, {8, 3, 0},  {5, 5, 0},  {11, 3, 0}, {6, 4, 0},
+    {12, 1, 1}, {9, 3, 0},  {7, 4, 0},  {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode26_fields[] = {
-    {0, 4, 0}, {1, 7, 0}, {12, 1, 1}, {9, 4, 4}, {2, 7, 0}, {9, 5, 5},
-    {8, 4, 4}, {3, 7, 0}, {12, 5, 5}, {12, 4, 4}, {4, 4, 0}, {11, 4, 4},
-    {8, 3, 0}, {5, 4, 0}, {12, 0, 0}, {11, 3, 0}, {6, 5, 0}, {9, 3, 0},
-    {7, 4, 0}, {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
+    {0, 4, 0},  {1, 7, 0},  {12, 1, 1}, {9, 4, 4},  {2, 7, 0},  {9, 5, 5},  {8, 4, 4},  {3, 7, 0},
+    {12, 5, 5}, {12, 4, 4}, {4, 4, 0},  {11, 4, 4}, {8, 3, 0},  {5, 4, 0},  {12, 0, 0}, {11, 3, 0},
+    {6, 5, 0},  {9, 3, 0},  {7, 4, 0},  {12, 2, 2}, {10, 4, 0}, {12, 3, 3}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode30_fields[] = {
-    {0, 4, 0}, {1, 5, 0}, {11, 4, 4}, {12, 0, 0}, {12, 1, 1}, {9, 4, 4},
-    {2, 5, 0}, {8, 5, 5}, {9, 5, 5}, {12, 2, 2}, {8, 4, 4}, {3, 5, 0},
-    {11, 5, 5}, {12, 3, 3}, {12, 5, 5}, {12, 4, 4}, {4, 5, 0}, {8, 3, 0},
-    {5, 5, 0}, {11, 3, 0}, {6, 5, 0}, {9, 3, 0}, {7, 5, 0}, {10, 5, 0},
-    {13, 4, 0},
+    {0, 4, 0},  {1, 5, 0},  {11, 4, 4}, {12, 0, 0}, {12, 1, 1}, {9, 4, 4},  {2, 5, 0},
+    {8, 5, 5},  {9, 5, 5},  {12, 2, 2}, {8, 4, 4},  {3, 5, 0},  {11, 5, 5}, {12, 3, 3},
+    {12, 5, 5}, {12, 4, 4}, {4, 5, 0},  {8, 3, 0},  {5, 5, 0},  {11, 3, 0}, {6, 5, 0},
+    {9, 3, 0},  {7, 5, 0},  {10, 5, 0}, {13, 4, 0},
 };
 static const bc6h_field_t bc6h_mode3_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 9, 0}, {5, 9, 0},
+    {0, 4, 0},
+    {1, 9, 0},
+    {2, 9, 0},
+    {3, 9, 0},
+    {4, 9, 0},
+    {5, 9, 0},
     {6, 9, 0},
 };
 static const bc6h_field_t bc6h_mode7_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 8, 0}, {1, 10, 10},
-    {5, 8, 0}, {2, 10, 10}, {6, 8, 0}, {3, 10, 10},
+    {0, 4, 0},
+    {1, 9, 0},
+    {2, 9, 0},
+    {3, 9, 0},
+    {4, 8, 0},
+    {1, 10, 10},
+    {5, 8, 0},
+    {2, 10, 10},
+    {6, 8, 0},
+    {3, 10, 10},
 };
 static const bc6h_field_t bc6h_mode11_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 7, 0}, {1, 10, 11},
-    {5, 7, 0}, {2, 10, 11}, {6, 7, 0}, {3, 10, 11},
+    {0, 4, 0},
+    {1, 9, 0},
+    {2, 9, 0},
+    {3, 9, 0},
+    {4, 7, 0},
+    {1, 10, 11},
+    {5, 7, 0},
+    {2, 10, 11},
+    {6, 7, 0},
+    {3, 10, 11},
 };
 static const bc6h_field_t bc6h_mode15_fields[] = {
-    {0, 4, 0}, {1, 9, 0}, {2, 9, 0}, {3, 9, 0}, {4, 3, 0}, {1, 10, 15},
-    {5, 3, 0}, {2, 10, 15}, {6, 3, 0}, {3, 10, 15},
+    {0, 4, 0},
+    {1, 9, 0},
+    {2, 9, 0},
+    {3, 9, 0},
+    {4, 3, 0},
+    {1, 10, 15},
+    {5, 3, 0},
+    {2, 10, 15},
+    {6, 3, 0},
+    {3, 10, 15},
 };
 
 typedef struct {
@@ -163,7 +181,12 @@ static const bc6h_mode_info_t bc6h_modes[] = {
     {1, bc6h_mode1_fields, (uint8_t)(sizeof(bc6h_mode1_fields) / sizeof(bc6h_field_t)), 7, 1, 1},
     {2, bc6h_mode2_fields, (uint8_t)(sizeof(bc6h_mode2_fields) / sizeof(bc6h_field_t)), 11, 1, 1},
     {6, bc6h_mode6_fields, (uint8_t)(sizeof(bc6h_mode6_fields) / sizeof(bc6h_field_t)), 11, 1, 1},
-    {10, bc6h_mode10_fields, (uint8_t)(sizeof(bc6h_mode10_fields) / sizeof(bc6h_field_t)), 11, 1, 1},
+    {10,
+     bc6h_mode10_fields,
+     (uint8_t)(sizeof(bc6h_mode10_fields) / sizeof(bc6h_field_t)),
+     11,
+     1,
+     1},
     {14, bc6h_mode14_fields, (uint8_t)(sizeof(bc6h_mode14_fields) / sizeof(bc6h_field_t)), 9, 1, 1},
     {18, bc6h_mode18_fields, (uint8_t)(sizeof(bc6h_mode18_fields) / sizeof(bc6h_field_t)), 8, 1, 1},
     {22, bc6h_mode22_fields, (uint8_t)(sizeof(bc6h_mode22_fields) / sizeof(bc6h_field_t)), 8, 1, 1},
@@ -171,21 +194,37 @@ static const bc6h_mode_info_t bc6h_modes[] = {
     {30, bc6h_mode30_fields, (uint8_t)(sizeof(bc6h_mode30_fields) / sizeof(bc6h_field_t)), 6, 0, 1},
     {3, bc6h_mode3_fields, (uint8_t)(sizeof(bc6h_mode3_fields) / sizeof(bc6h_field_t)), 10, 0, 0},
     {7, bc6h_mode7_fields, (uint8_t)(sizeof(bc6h_mode7_fields) / sizeof(bc6h_field_t)), 11, 1, 0},
-    {11, bc6h_mode11_fields, (uint8_t)(sizeof(bc6h_mode11_fields) / sizeof(bc6h_field_t)), 12, 1, 0},
-    {15, bc6h_mode15_fields, (uint8_t)(sizeof(bc6h_mode15_fields) / sizeof(bc6h_field_t)), 16, 1, 0},
+    {11,
+     bc6h_mode11_fields,
+     (uint8_t)(sizeof(bc6h_mode11_fields) / sizeof(bc6h_field_t)),
+     12,
+     1,
+     0},
+    {15,
+     bc6h_mode15_fields,
+     (uint8_t)(sizeof(bc6h_mode15_fields) / sizeof(bc6h_field_t)),
+     16,
+     1,
+     0},
 };
 
 static const uint8_t bc6h_weights3[8] = {0, 9, 18, 27, 37, 46, 55, 64};
-static const uint8_t bc6h_weights4[16] = {0, 4, 9, 13, 17, 21, 26, 30,
-                                          34, 38, 43, 47, 51, 55, 60, 64};
+static const uint8_t bc6h_weights4[16] = {
+    0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
 
 typedef struct {
     const uint8_t *data;
     uint32_t bit;
+    int failed;
 } bc6h_reader_t;
 
 static uint32_t bc6h_read_bits(bc6h_reader_t *r, uint32_t count) {
     uint32_t value = 0;
+    if (!r || !r->data || count > 32u || r->bit > 128u || count > 128u - r->bit) {
+        if (r)
+            r->failed = 1;
+        return 0;
+    }
     for (uint32_t i = 0; i < count; i++) {
         uint32_t bit = r->bit + i;
         value |= (uint32_t)((r->data[bit >> 3] >> (bit & 7u)) & 1u) << i;
@@ -195,49 +234,68 @@ static uint32_t bc6h_read_bits(bc6h_reader_t *r, uint32_t count) {
 }
 
 static int32_t bc6h_sign_extend(int32_t value, int bits) {
-    int32_t mask = 1 << (bits - 1);
-    return (value ^ mask) - mask;
+    if (bits <= 0 || bits >= 32)
+        return value;
+    uint32_t sign = UINT32_C(1) << (uint32_t)(bits - 1);
+    return (int32_t)(((uint32_t)value ^ sign) - sign);
 }
 
 static int32_t bc6h_unquantize_unsigned(int32_t x, int epb) {
     if (epb >= 15)
         return x;
+    if (epb <= 0 || x < 0)
+        return 0;
     if (x == 0)
         return 0;
-    if (x == ((1 << epb) - 1))
+    if ((uint32_t)x == ((UINT32_C(1) << (uint32_t)epb) - 1u))
         return 0xFFFF;
-    return ((x << 15) + 0x4000) >> (epb - 1);
+    return (int32_t)(((uint64_t)(uint32_t)x * UINT64_C(32768) + UINT64_C(0x4000)) >>
+                     (uint32_t)(epb - 1));
 }
 
 static int32_t bc6h_unquantize_signed(int32_t x, int epb) {
-    int s = 0;
-    int32_t unq;
+    int negative = x < 0;
+    int64_t magnitude = negative ? -(int64_t)x : (int64_t)x;
+    int64_t unq;
     if (epb >= 16)
         return x;
-    if (x < 0) {
-        s = 1;
-        x = -x;
-    }
-    if (x == 0)
+    if (epb <= 1)
+        return 0;
+    if (magnitude == 0)
         unq = 0;
-    else if (x >= ((1 << (epb - 1)) - 1))
+    else if ((uint64_t)magnitude >= ((UINT64_C(1) << (uint32_t)(epb - 1)) - UINT64_C(1)))
         unq = 0x7FFF;
     else
-        unq = ((x << 15) + 0x4000) >> (epb - 1);
-    return s ? -unq : unq;
+        unq = (magnitude * INT64_C(32768) + INT64_C(0x4000)) >> (uint32_t)(epb - 1);
+    return (int32_t)(negative ? -unq : unq);
 }
 
 static uint16_t bc6h_finish_unsigned(int32_t i) {
-    return (uint16_t)((i * 31) >> 6);
+    if (i <= 0)
+        return 0;
+    return (uint16_t)(((uint64_t)(uint32_t)i * UINT64_C(31)) >> 6u);
 }
 
 static uint16_t bc6h_finish_signed(int32_t i) {
-    return i < 0 ? (uint16_t)((((-i) * 31) >> 5) | 0x8000) : (uint16_t)((i * 31) >> 5);
+    int64_t value = i;
+    if (value < 0)
+        return (uint16_t)((((uint64_t)(-value) * UINT64_C(31)) >> 5u) | UINT64_C(0x8000));
+    return (uint16_t)(((uint64_t)value * UINT64_C(31)) >> 5u);
+}
+
+/// @brief Portable arithmetic right shift by six with floor semantics.
+/// @details C leaves right-shifting negative signed integers implementation-defined. BC6H endpoint
+///          interpolation requires the arithmetic result on every compiler, so spell it in terms
+///          of non-negative unsigned shifts.
+static int32_t bc6h_floor_div64(int64_t value) {
+    if (value >= 0)
+        return (int32_t)((uint64_t)value >> 6u);
+    return (int32_t)(-((int64_t)(((uint64_t)(-value) + UINT64_C(63)) >> 6u)));
 }
 
 /// Decode one 16-byte BC6H block into 16 RGB half-float bit triples.
 void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halves[16][3]) {
-    bc6h_reader_t reader = {block, 0};
+    bc6h_reader_t reader = {block, 0, 0};
     const bc6h_mode_info_t *info = 0;
     int32_t vars[14];
     int mode;
@@ -261,23 +319,29 @@ void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halv
         if (field->hi >= field->lo) {
             uint32_t width = (uint32_t)(field->hi - field->lo + 1);
             uint32_t bits = bc6h_read_bits(&reader, width);
-            vars[field->var] |= (int32_t)(bits << field->lo);
+            if (field->lo < 0 || field->lo >= 32 || width > 32u - (uint32_t)field->lo) {
+                reader.failed = 1;
+                break;
+            }
+            vars[field->var] |= (int32_t)(bits << (uint32_t)field->lo);
         } else {
             /* Reversed storage: first block bit lands in the highest variable bit. */
             uint32_t width = (uint32_t)(field->lo - field->hi + 1);
             uint32_t bits = bc6h_read_bits(&reader, width);
             for (uint32_t i = 0; i < width; i++) {
                 if (bits & (1u << i))
-                    vars[field->var] |= 1 << (field->lo - (int)i);
+                    vars[field->var] |= (int32_t)(UINT32_C(1) << (uint32_t)(field->lo - (int)i));
             }
         }
     }
+    if (reader.failed)
+        return;
 
     {
         int epb = info->epb;
         int endpoint_count = info->two_subset ? 4 : 2;
         int32_t endpoints[4][3];
-        int32_t mask = epb >= 32 ? -1 : ((1 << epb) - 1);
+        uint32_t mask = epb >= 32 ? UINT32_MAX : ((UINT32_C(1) << (uint32_t)epb) - 1u);
         int pb = vars[13] & 31;
         for (int e = 0; e < endpoint_count; e++) {
             for (int c = 0; c < 3; c++)
@@ -310,7 +374,8 @@ void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halv
         if (info->transformed) {
             for (int e = 1; e < endpoint_count; e++) {
                 for (int c = 0; c < 3; c++) {
-                    endpoints[e][c] = (endpoints[0][c] + endpoints[e][c]) & mask;
+                    endpoints[e][c] =
+                        (int32_t)(((uint32_t)endpoints[0][c] + (uint32_t)endpoints[e][c]) & mask);
                     if (is_signed)
                         endpoints[e][c] = bc6h_sign_extend(endpoints[e][c], epb);
                 }
@@ -318,9 +383,8 @@ void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halv
         }
         for (int e = 0; e < endpoint_count; e++) {
             for (int c = 0; c < 3; c++) {
-                endpoints[e][c] = is_signed
-                                      ? bc6h_unquantize_signed(endpoints[e][c], epb)
-                                      : bc6h_unquantize_unsigned(endpoints[e][c], epb);
+                endpoints[e][c] = is_signed ? bc6h_unquantize_signed(endpoints[e][c], epb)
+                                            : bc6h_unquantize_unsigned(endpoints[e][c], epb);
             }
         }
 
@@ -329,19 +393,21 @@ void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halv
             int anchor = (t == 0) || (info->two_subset && t == bc6h_anchor2[pb]);
             int index_bits = (info->two_subset ? 3 : 4) - (anchor ? 1 : 0);
             uint32_t index = bc6h_read_bits(&reader, (uint32_t)index_bits);
-            int weight = info->two_subset ? bc6h_weights3[index & 7]
-                                          : bc6h_weights4[index & 15];
+            int weight = info->two_subset ? bc6h_weights3[index & 7] : bc6h_weights4[index & 15];
             for (int c = 0; c < 3; c++) {
                 int32_t e0 = endpoints[subset * 2][c];
                 int32_t e1 = endpoints[subset * 2 + 1][c];
-                int32_t interpolated = (e0 * (64 - weight) + e1 * weight + 32) >> 6;
+                int64_t numerator = (int64_t)e0 * (int64_t)(64 - weight) +
+                                    (int64_t)e1 * (int64_t)weight + INT64_C(32);
+                int32_t interpolated = bc6h_floor_div64(numerator);
                 out_halves[t][c] = is_signed ? bc6h_finish_signed(interpolated)
                                              : bc6h_finish_unsigned(interpolated);
             }
         }
+        if (reader.failed)
+            memset(out_halves, 0, 16 * 3 * sizeof(uint16_t));
     }
 }
-
 
 /// @brief Half-float bit pattern to float.
 static float textureasset3d_half_to_float(uint16_t h) {
@@ -445,8 +511,7 @@ static void **textureasset3d_decode_bc6h_mips(const uint8_t *data,
         return NULL;
     for (int64_t i = 0; i < mip_count; i++) {
         mip_pixels[i] = textureasset3d_decode_bc6h_fallback(
-            data, size, mips[i].width, mips[i].height, mips[i].offset, mips[i].length,
-            is_signed);
+            data, size, mips[i].width, mips[i].height, mips[i].offset, mips[i].length, is_signed);
         if (mip_pixels[i])
             decoded_count++;
     }

@@ -679,6 +679,9 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_peek_value")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_try_get")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_value_is_owned")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_promise_set_transferred")
+// Status-returning queue insertion is an implementation primitive used by the
+// Graphics3D commit queue to preserve ownership on allocation failure.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_concqueue_try_enqueue")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_close")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_config_init")
@@ -695,6 +698,9 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_send")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_compute_world_aabb_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_get_box_half_extents_raw")
+// Process-wide geometry epoch used solely to invalidate runtime-owned physics
+// and scene acceleration caches after in-place collider mutation.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_global_geometry_epoch")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_overlap_at_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_skeleton3d_get_bone_parent_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_skeleton3d_get_bone_bind_local_raw")

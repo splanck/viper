@@ -44,6 +44,56 @@ static void d3d11_release_texture_cache_entry(d3d_tex_cache_entry_t *entry) {
     memset(entry, 0, sizeof(*entry));
 }
 
+/// @brief Hash an object identity into the direct-mapped texture-cache hint table.
+static uint32_t d3d11_texture_cache_hint_slot(const void *key) {
+    uintptr_t value = (uintptr_t)key;
+    value ^= value >> 7u;
+    value ^= value >> 17u;
+    return (uint32_t)value & (D3D11_TEXTURE_CACHE_HINT_CAPACITY - 1u);
+}
+
+/// @brief Remember the current array index for a Pixels or TextureAsset3D identity.
+static void d3d11_texture_cache_remember(d3d11_context_t *ctx, const void *key, int32_t index) {
+    if (!ctx || !key || index < 0 || index >= ctx->tex_cache_count)
+        return;
+    ctx->tex_cache_hints[d3d11_texture_cache_hint_slot(key)] = index + 1;
+}
+
+/// @brief Return a validated hinted Pixels entry index, or -1 on collision/staleness.
+static int32_t d3d11_texture_cache_hint_pixels(const d3d11_context_t *ctx, const void *pixels) {
+    int32_t index;
+    if (!ctx || !pixels)
+        return -1;
+    index = ctx->tex_cache_hints[d3d11_texture_cache_hint_slot(pixels)] - 1;
+    if (index < 0 || index >= ctx->tex_cache_count || ctx->tex_cache[index].pixels_ptr != pixels)
+        return -1;
+    return index;
+}
+
+/// @brief Return a validated hinted native-asset entry index, or -1 on collision/staleness.
+static int32_t d3d11_texture_cache_hint_asset(const d3d11_context_t *ctx, const void *asset) {
+    int32_t index;
+    if (!ctx || !asset)
+        return -1;
+    index = ctx->tex_cache_hints[d3d11_texture_cache_hint_slot(asset)] - 1;
+    if (index < 0 || index >= ctx->tex_cache_count || ctx->tex_cache[index].texture_asset != asset)
+        return -1;
+    return index;
+}
+
+/// @brief Rebuild hints after an in-place LRU compaction moved cache entries.
+static void d3d11_texture_cache_rebuild_hints(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    memset(ctx->tex_cache_hints, 0, sizeof(ctx->tex_cache_hints));
+    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
+        if (ctx->tex_cache[i].pixels_ptr)
+            d3d11_texture_cache_remember(ctx, ctx->tex_cache[i].pixels_ptr, i);
+        if (ctx->tex_cache[i].texture_asset)
+            d3d11_texture_cache_remember(ctx, ctx->tex_cache[i].texture_asset, i);
+    }
+}
+
 /// @brief Release one cubemap cache slot and clear all identity/upload metadata.
 static void d3d11_release_cubemap_cache_entry(d3d_cubemap_cache_entry_t *entry) {
     if (!entry)
@@ -97,6 +147,7 @@ static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
     free(ctx->tex_cache);
     ctx->tex_cache = NULL;
     ctx->tex_cache_capacity = 0;
+    memset(ctx->tex_cache_hints, 0, sizeof(ctx->tex_cache_hints));
 }
 
 /// @brief Evict aged 2D texture-cache entries while keeping a resident floor.
@@ -128,6 +179,7 @@ static void d3d11_prune_texture_cache(d3d11_context_t *ctx) {
         write_index++;
     }
     ctx->tex_cache_count = write_index;
+    d3d11_texture_cache_rebuild_hints(ctx);
 }
 
 /// @brief Release every entry in the cubemap cache (teardown path).
@@ -1023,10 +1075,47 @@ static int d3d11_start_texture_upload(d3d11_context_t *ctx,
 ///   1. Hit (pixels_ptr + cache-key match) → return cached SRV.
 ///   2. Pixels match but stale generation → restart upload in that slot.
 ///   3. Miss → create new, append to cache, and return only when upload completes.
+static ID3D11ShaderResourceView *d3d11_resolve_pixels_cache_entry(d3d11_context_t *ctx,
+                                                                  int32_t index,
+                                                                  const void *pixels,
+                                                                  uint64_t cache_key) {
+    d3d_tex_cache_entry_t *entry;
+    if (!ctx || index < 0 || index >= ctx->tex_cache_count)
+        return NULL;
+    entry = &ctx->tex_cache[index];
+    if (entry->pixels_ptr != pixels)
+        return NULL;
+    d3d11_texture_cache_remember(ctx, pixels, index);
+    if (entry->failed_generation == cache_key)
+        return NULL;
+    if (entry->generation == cache_key && entry->tex && entry->srv) {
+        entry->last_used_frame = ctx->frame_serial;
+        return entry->srv;
+    }
+    if (entry->pending_generation == cache_key && entry->upload_in_progress) {
+        vgfx3d_d3d11_upload_result_t result;
+        entry->last_used_frame = ctx->frame_serial;
+        result = d3d11_continue_texture_upload(ctx, entry, pixels);
+        if (result == VGFX3D_D3D11_UPLOAD_COMPLETE)
+            return entry->srv;
+        if (result == VGFX3D_D3D11_UPLOAD_FAILED) {
+            d3d11_mark_texture_upload_failed(
+                entry, pixels, NULL, cache_key, 0, 0, ctx->frame_serial);
+            return NULL;
+        }
+        return d3d11_fallback_white_srv(ctx);
+    }
+    if (!d3d11_start_texture_upload(ctx, entry, pixels, cache_key))
+        return NULL;
+    d3d11_texture_cache_remember(ctx, pixels, index);
+    return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
+}
+
 static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
                                                          const void *pixels,
                                                          d3d_temp_srv_t *out_temp) {
     uint64_t cache_key;
+    int32_t hinted;
 
     if (out_temp)
         memset(out_temp, 0, sizeof(*out_temp));
@@ -1034,45 +1123,19 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         return NULL;
     cache_key = vgfx3d_get_pixels_cache_key(pixels);
 
+    hinted = d3d11_texture_cache_hint_pixels(ctx, pixels);
+    if (hinted >= 0)
+        return d3d11_resolve_pixels_cache_entry(ctx, hinted, pixels, cache_key);
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels &&
-            ctx->tex_cache[i].failed_generation == cache_key)
-            return NULL;
-        if (ctx->tex_cache[i].pixels_ptr == pixels && ctx->tex_cache[i].generation == cache_key &&
-            ctx->tex_cache[i].tex && ctx->tex_cache[i].srv) {
-            ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->tex_cache[i].srv;
-        }
-        if (ctx->tex_cache[i].pixels_ptr == pixels &&
-            ctx->tex_cache[i].pending_generation == cache_key &&
-            ctx->tex_cache[i].upload_in_progress) {
-            ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
-            vgfx3d_d3d11_upload_result_t result =
-                d3d11_continue_texture_upload(ctx, &ctx->tex_cache[i], pixels);
-            if (result == VGFX3D_D3D11_UPLOAD_COMPLETE)
-                return ctx->tex_cache[i].srv;
-            if (result == VGFX3D_D3D11_UPLOAD_FAILED) {
-                d3d11_mark_texture_upload_failed(
-                    &ctx->tex_cache[i], pixels, NULL, cache_key, 0, 0, ctx->frame_serial);
-                return NULL;
-            }
-            return d3d11_fallback_white_srv(ctx);
-        }
-    }
-
-    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].pixels_ptr == pixels) {
-            if (!d3d11_start_texture_upload(ctx, &ctx->tex_cache[i], pixels, cache_key))
-                return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
-                                                        : ctx->tex_cache[i].srv;
-        }
+        if (ctx->tex_cache[i].pixels_ptr == pixels)
+            return d3d11_resolve_pixels_cache_entry(ctx, i, pixels, cache_key);
     }
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
         if (!ctx->tex_cache[i].pixels_ptr && !ctx->tex_cache[i].texture_asset) {
             if (!d3d11_start_texture_upload(ctx, &ctx->tex_cache[i], pixels, cache_key))
                 return NULL;
+            d3d11_texture_cache_remember(ctx, pixels, i);
             return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
                                                         : ctx->tex_cache[i].srv;
         }
@@ -1084,8 +1147,11 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         if (!d3d11_start_texture_upload(ctx, entry, pixels, cache_key)) {
             if (entry->failed_generation != cache_key)
                 ctx->tex_cache_count--;
+            else
+                d3d11_texture_cache_remember(ctx, pixels, ctx->tex_cache_count - 1);
             return NULL;
         }
+        d3d11_texture_cache_remember(ctx, pixels, ctx->tex_cache_count - 1);
         return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
     }
     {
@@ -1098,11 +1164,54 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     return d3d11_create_temp_texture_srv(ctx, pixels, out_temp);
 }
 
+/// @brief Resolve a native TextureAsset3D from a known cache slot.
+static ID3D11ShaderResourceView *d3d11_resolve_native_cache_entry(d3d11_context_t *ctx,
+                                                                  int32_t index,
+                                                                  void *asset,
+                                                                  uint64_t cache_key,
+                                                                  int64_t mip_start,
+                                                                  int64_t mip_count) {
+    d3d_tex_cache_entry_t *entry;
+    if (!ctx || index < 0 || index >= ctx->tex_cache_count)
+        return NULL;
+    entry = &ctx->tex_cache[index];
+    if (entry->texture_asset != asset)
+        return NULL;
+    d3d11_texture_cache_remember(ctx, asset, index);
+    if (entry->failed_generation == cache_key && entry->native_mip_start == mip_start &&
+        entry->native_mip_count == mip_count)
+        return NULL;
+    if (entry->generation == cache_key && entry->native_mip_start == mip_start &&
+        entry->native_mip_count == mip_count && entry->tex && entry->srv) {
+        entry->last_used_frame = ctx->frame_serial;
+        return entry->srv;
+    }
+    if (entry->pending_generation == cache_key && entry->native_mip_start == mip_start &&
+        entry->native_mip_count == mip_count && entry->upload_in_progress) {
+        vgfx3d_d3d11_upload_result_t result;
+        entry->last_used_frame = ctx->frame_serial;
+        result = d3d11_continue_native_texture_upload(ctx, entry, asset);
+        if (result == VGFX3D_D3D11_UPLOAD_COMPLETE)
+            return entry->srv;
+        if (result == VGFX3D_D3D11_UPLOAD_FAILED) {
+            d3d11_mark_texture_upload_failed(
+                entry, NULL, asset, cache_key, mip_start, mip_count, ctx->frame_serial);
+            return NULL;
+        }
+        return d3d11_fallback_white_srv(ctx);
+    }
+    if (!d3d11_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count))
+        return NULL;
+    d3d11_texture_cache_remember(ctx, asset, index);
+    return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
+}
+
 /// @brief Get the SRV for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key so residency changes invalidate the entry.
 /// @return The shader-resource view to bind, or NULL if it cannot be created.
 static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
     d3d11_context_t *ctx, void *asset, uint64_t cache_key, int64_t mip_start, int64_t mip_count) {
+    int32_t hinted;
     if (!ctx || !asset ||
         !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
         return NULL;
@@ -1115,51 +1224,13 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
     if (cache_key == 0)
         return NULL;
 
+    hinted = d3d11_texture_cache_hint_asset(ctx, asset);
+    if (hinted >= 0)
+        return d3d11_resolve_native_cache_entry(
+            ctx, hinted, asset, cache_key, mip_start, mip_count);
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].texture_asset == asset &&
-            ctx->tex_cache[i].failed_generation == cache_key &&
-            ctx->tex_cache[i].native_mip_start == mip_start &&
-            ctx->tex_cache[i].native_mip_count == mip_count)
-            return NULL;
-        if (ctx->tex_cache[i].texture_asset == asset && ctx->tex_cache[i].generation == cache_key &&
-            ctx->tex_cache[i].native_mip_start == mip_start &&
-            ctx->tex_cache[i].native_mip_count == mip_count && ctx->tex_cache[i].tex &&
-            ctx->tex_cache[i].srv) {
-            ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->tex_cache[i].srv;
-        }
-        if (ctx->tex_cache[i].texture_asset == asset &&
-            ctx->tex_cache[i].pending_generation == cache_key &&
-            ctx->tex_cache[i].native_mip_start == mip_start &&
-            ctx->tex_cache[i].native_mip_count == mip_count &&
-            ctx->tex_cache[i].upload_in_progress) {
-            ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
-            vgfx3d_d3d11_upload_result_t result =
-                d3d11_continue_native_texture_upload(ctx, &ctx->tex_cache[i], asset);
-            if (result == VGFX3D_D3D11_UPLOAD_COMPLETE)
-                return ctx->tex_cache[i].srv;
-            if (result == VGFX3D_D3D11_UPLOAD_FAILED) {
-                d3d11_mark_texture_upload_failed(&ctx->tex_cache[i],
-                                                 NULL,
-                                                 asset,
-                                                 cache_key,
-                                                 mip_start,
-                                                 mip_count,
-                                                 ctx->frame_serial);
-                return NULL;
-            }
-            return d3d11_fallback_white_srv(ctx);
-        }
-    }
-
-    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (ctx->tex_cache[i].texture_asset == asset) {
-            if (!d3d11_start_native_texture_upload(
-                    ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
-                return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
-                                                        : ctx->tex_cache[i].srv;
-        }
+        if (ctx->tex_cache[i].texture_asset == asset)
+            return d3d11_resolve_native_cache_entry(ctx, i, asset, cache_key, mip_start, mip_count);
     }
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
@@ -1167,6 +1238,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
             if (!d3d11_start_native_texture_upload(
                     ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
                 return NULL;
+            d3d11_texture_cache_remember(ctx, asset, i);
             return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
                                                         : ctx->tex_cache[i].srv;
         }
@@ -1179,8 +1251,11 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
                 ctx, entry, asset, cache_key, mip_start, mip_count)) {
             if (entry->failed_generation != cache_key)
                 ctx->tex_cache_count--;
+            else
+                d3d11_texture_cache_remember(ctx, asset, ctx->tex_cache_count - 1);
             return NULL;
         }
+        d3d11_texture_cache_remember(ctx, asset, ctx->tex_cache_count - 1);
         return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
     }
     return NULL;

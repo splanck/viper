@@ -421,5 +421,25 @@ void *rt_physics_hit_list3d_get(void *obj, int64_t index) {
     int64_t count = physics_hit_list3d_count_safe(list);
     if (!list || index < 0 || index >= count)
         return NULL;
-    return rt_g3d_checked_or_null(list->items[index], RT_G3D_PHYSICSHIT3D_CLASS_ID);
+    void *item = rt_atomic_load_ptr((void *const volatile *)&list->items[index], __ATOMIC_ACQUIRE);
+    if (item)
+        return rt_g3d_checked_or_null(item, RT_G3D_PHYSICSHIT3D_CLASS_ID);
+    if (!list->raw_hits)
+        return NULL;
+    void *created = physics_hit3d_new(&list->raw_hits[index]);
+    if (!created)
+        return NULL;
+    void *expected = NULL;
+    if (!rt_atomic_compare_exchange_ptr((void *volatile *)&list->items[index],
+                                        &expected,
+                                        created,
+                                        __ATOMIC_RELEASE,
+                                        __ATOMIC_ACQUIRE)) {
+        if (rt_obj_release_check0(created))
+            rt_obj_free(created);
+        item = expected;
+    } else {
+        item = created;
+    }
+    return rt_g3d_checked_or_null(item, RT_G3D_PHYSICSHIT3D_CLASS_ID);
 }

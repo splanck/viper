@@ -597,6 +597,10 @@ typedef struct {
     uint64_t last_used_frame;
 } gl_texture_cache_entry_t;
 
+#define GL_TEXTURE_CACHE_HINT_CAPACITY 512
+_Static_assert((GL_TEXTURE_CACHE_HINT_CAPACITY & (GL_TEXTURE_CACHE_HINT_CAPACITY - 1)) == 0,
+               "texture-cache hint capacity must be a power of two");
+
 typedef struct {
     const void *cubemap;
     uint64_t generation;
@@ -760,6 +764,7 @@ typedef struct {
     gl_texture_cache_entry_t *texture_cache;
     int32_t texture_cache_count;
     int32_t texture_cache_capacity;
+    int32_t texture_cache_hints[GL_TEXTURE_CACHE_HINT_CAPACITY]; /* entry index + 1 */
     gl_cubemap_cache_entry_t *cubemap_cache;
     int32_t cubemap_cache_count;
     int32_t cubemap_cache_capacity;

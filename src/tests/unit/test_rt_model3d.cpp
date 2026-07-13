@@ -65,6 +65,7 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_retain_maybe(void *p);
 extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
+extern void bc6h_decode_block(const uint8_t block[16], int is_signed, uint16_t out_halves[16][3]);
 }
 
 struct SceneAssetView {
@@ -462,6 +463,22 @@ static bool write_fbx_document_fixture(const char *path,
     write_fbx_node_fixture(connections, bytes);
     bytes.resize(bytes.size() + 13, 0);
     return write_binary_file(path, bytes);
+}
+
+/// @brief Write a skeleton-only FBX whose bone count crosses the historical 256-bone cap.
+static bool write_fbx_large_skeleton_fixture(const char *path, int32_t bone_count) {
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    for (int32_t i = 0; i < bone_count; i++) {
+        std::string name = "Bone_" + std::to_string(i);
+        objects.children.push_back(make_fbx_model_fixture(
+            1000 + i, name.c_str(), i == 0 ? "Root" : "LimbNode", 0.0, i == 0 ? 0.0 : 1.0, 0.0));
+        if (i > 0)
+            connections.children.push_back(make_fbx_connection_fixture(1000 + i, 1000 + i - 1));
+    }
+    return write_fbx_document_fixture(path, objects, connections);
 }
 
 static FbxNodeFixture make_fbx_deformer_fixture(int64_t id, const char *name, const char *type) {
@@ -2995,6 +3012,19 @@ static void test_fbx_cluster_transform_link_drives_bind_pose() {
                 "FBX child bind pose uses Cluster TransformLink instead of Model Lcl Translation");
 }
 
+static void test_fbx_imports_skeletons_beyond_draw_palette_limit() {
+    const char *path = "/tmp/viper_model3d_257_bone_fixture.fbx";
+    EXPECT_TRUE(write_fbx_large_skeleton_fixture(path, 257), "FBX 257-bone fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX loader accepts skeletons larger than one draw palette");
+    void *skeleton = asset ? rt_fbx_get_skeleton(asset) : nullptr;
+    EXPECT_TRUE(skeleton != nullptr && rt_skeleton3d_get_bone_count(skeleton) == 257,
+                "FBX loader preserves bones 257+ up to Skeleton3D's 1024-bone limit");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
 static void test_fbx_constant_animation_curve_preserves_step() {
     const char *path = "/tmp/viper_model3d_constant_anim_curve.fbx";
     EXPECT_TRUE(write_fbx_constant_animation_fixture(path),
@@ -3743,12 +3773,11 @@ static void test_model3d_loads_gltfpack_meshopt_fixture() {
          VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent_meshopt.glb"
 #endif
         });
-    const char *reference =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+    const char *reference = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+         "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(compressed != nullptr && reference != nullptr,
@@ -3785,9 +3814,9 @@ static void test_model3d_loads_gltfpack_meshopt_fixture() {
     float cmp_max[3];
     mesh_position_bounds(ref_mesh, ref_min, ref_max);
     mesh_position_bounds(cmp_mesh, cmp_min, cmp_max);
-    EXPECT_TRUE(ref_min[0] == cmp_min[0] && ref_min[1] == cmp_min[1] &&
-                    ref_min[2] == cmp_min[2] && ref_max[0] == cmp_max[0] &&
-                    ref_max[1] == cmp_max[1] && ref_max[2] == cmp_max[2],
+    EXPECT_TRUE(ref_min[0] == cmp_min[0] && ref_min[1] == cmp_min[1] && ref_min[2] == cmp_min[2] &&
+                    ref_max[0] == cmp_max[0] && ref_max[1] == cmp_max[1] &&
+                    ref_max[2] == cmp_max[2],
                 "meshopt-decoded positions match the uncompressed twin exactly");
     EXPECT_TRUE(cmp_mesh->bone_count == ref_mesh->bone_count,
                 "meshopt mesh keeps the skinning palette size");
@@ -3808,12 +3837,11 @@ static void test_model3d_loads_gltfpack_meshopt_fixture() {
 static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     /* Real gltfpack -tc output: KTX2 supercompression scheme 1 (BasisLZ/ETC1S),
      * 16x16 with 5 mips, quadrant colors red/green/blue/white. */
-    const char *path =
-        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
-                            "../examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
+    const char *path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
+         "../examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_etc1s.ktx2"
 #endif
         });
     EXPECT_TRUE(path != nullptr, "ETC1S KTX2 fixture is present");
@@ -3844,6 +3872,7 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
                       {12, 3, 0, 255, 0, "green"},
                       {3, 12, 0, 0, 255, "blue"},
                       {12, 12, 255, 255, 255, "white"}};
+
         for (int q = 0; q < 4; q++) {
             uint32_t rgba = (uint32_t)rt_pixels_get_rgba(pixels, quads[q].x, quads[q].y);
             int r = (int)((rgba >> 24) & 0xFF);
@@ -3862,12 +3891,11 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     /* BC6H (vkFormat 143): four flat mode-3 blocks with mid-range HDR values;
      * expectations are the validated decoder's own output (bit-exact against an
      * independent reference across all 14 modes). */
-    const char *bc6h_path =
-        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
-                            "../examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
+    const char *bc6h_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
+         "../examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_bc6h.ktx2"
 #endif
         });
     EXPECT_TRUE(bc6h_path != nullptr, "BC6H KTX2 fixture is present");
@@ -3884,18 +3912,16 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
                     int r;
                     int g;
                     int b;
-                } blocks[4] = {{1, 1, 64, 0, 0},
-                               {5, 1, 0, 24, 0},
-                               {1, 5, 0, 0, 4},
-                               {5, 5, 64, 24, 4}};
+                } blocks[4] = {
+                    {1, 1, 64, 0, 0}, {5, 1, 0, 24, 0}, {1, 5, 0, 0, 4}, {5, 5, 64, 24, 4}};
+
                 for (int q = 0; q < 4; q++) {
                     uint32_t rgba =
                         (uint32_t)rt_pixels_get_rgba(bc6h_pixels, blocks[q].x, blocks[q].y);
                     int r = (int)((rgba >> 24) & 0xFF);
                     int g = (int)((rgba >> 16) & 0xFF);
                     int b = (int)((rgba >> 8) & 0xFF);
-                    EXPECT_TRUE(std::abs(r - blocks[q].r) <= 1 &&
-                                    std::abs(g - blocks[q].g) <= 1 &&
+                    EXPECT_TRUE(std::abs(r - blocks[q].r) <= 1 && std::abs(g - blocks[q].g) <= 1 &&
                                     std::abs(b - blocks[q].b) <= 1,
                                 "BC6H block decodes to the expected clamped color");
                 }
@@ -3906,12 +3932,11 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     }
 
     /* UASTC twin (scheme 2 + UASTC DFD): same quadrants through the UASTC block decoder. */
-    const char *uastc_path =
-        find_existing_path({"examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
-                            "../examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
+    const char *uastc_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
+         "../examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/quad_uastc.ktx2"
 #endif
         });
     EXPECT_TRUE(uastc_path != nullptr, "UASTC KTX2 fixture is present");
@@ -3933,6 +3958,7 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
                               {12, 3, 0, 255, 0, "green"},
                               {3, 12, 0, 0, 255, "blue"},
                               {12, 12, 255, 255, 255, "white"}};
+
                 for (int q = 0; q < 4; q++) {
                     uint32_t rgba =
                         (uint32_t)rt_pixels_get_rgba(uastc_pixels, quads[q].x, quads[q].y);
@@ -3940,8 +3966,8 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
                     int g = (int)((rgba >> 16) & 0xFF);
                     int b = (int)((rgba >> 8) & 0xFF);
                     char message[96];
-                    snprintf(message, sizeof(message), "UASTC decodes the %s quadrant",
-                             quads[q].name);
+                    snprintf(
+                        message, sizeof(message), "UASTC decodes the %s quadrant", quads[q].name);
                     EXPECT_TRUE(std::abs(r - quads[q].r) <= 16 && std::abs(g - quads[q].g) <= 16 &&
                                     std::abs(b - quads[q].b) <= 16,
                                 message);
@@ -3953,12 +3979,11 @@ static void test_textureasset3d_decodes_basislz_etc1s_ktx2() {
     }
 
     /* End-to-end: a GLB whose base color texture is that ETC1S KTX2 (KHR_texture_basisu). */
-    const char *glb =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
-                            "../examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
+    const char *glb = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
+         "../examples/3d/openworld_slice/assets/models/quad_etc1s.glb",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/quad_etc1s.glb"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_etc1s.glb"
 #endif
         });
     EXPECT_TRUE(glb != nullptr, "ETC1S GLB fixture is present");
@@ -3979,12 +4004,11 @@ static void test_model3d_loads_draco_sequential_fixture() {
     /* Real gltf-pipeline output: KHR_draco_mesh_compression in extensionsRequired.
      * Both encodings must decode: sequential (compressionLevel 0) and standard
      * edgebreaker (compressionLevel 7). */
-    const char *seq_path =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
-                            "../examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
+    const char *seq_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
+         "../examples/3d/openworld_slice/assets/models/quad_draco_seq.glb",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/quad_draco_seq.glb"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_seq.glb"
 #endif
         });
     EXPECT_TRUE(seq_path != nullptr, "Draco sequential fixture is present");
@@ -4022,12 +4046,11 @@ static void test_model3d_loads_draco_sequential_fixture() {
             rt_obj_free(model);
     }
 
-    const char *eb_path =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
-                            "../examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
+    const char *eb_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
+         "../examples/3d/openworld_slice/assets/models/quad_draco_eb.glb",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/quad_draco_eb.glb"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/quad_draco_eb.glb"
 #endif
         });
     EXPECT_TRUE(eb_path != nullptr, "Draco edgebreaker fixture is present");
@@ -4130,14 +4153,12 @@ static void test_model3d_loads_draco_edgebreaker_spheres() {
         {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
 #ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR
-         "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
 #endif
         });
     EXPECT_TRUE(valence_path != nullptr, "valence-edgebreaker sphere fixture is present");
     if (valence_path)
-        expect_draco_unit_sphere("valence-edgebreaker Draco sphere loads", valence_path, 623,
-                                 1104);
+        expect_draco_unit_sphere("valence-edgebreaker Draco sphere loads", valence_path, 623, 1104);
 
     /* Reference draco_encoder -cl 10 (speed 0): valence traversal plus the
      * prediction-degree position traverser. */
@@ -4157,12 +4178,11 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     /* Bake pipeline round-trip: load a skinned glTF, instantiate, save as .vscn
      * (v3 adds skeletons + animation clips), reload through SceneAsset, and
      * verify the rig survived. */
-    const char *src_path =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+    const char *src_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+         "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(src_path != nullptr, "skinned agent fixture is present");
@@ -4210,8 +4230,7 @@ static void test_model3d_draco_corrupt_payloads_fail_cleanly() {
         {"examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
          "../examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb",
 #ifdef VIPER_SOURCE_DIR
-         VIPER_SOURCE_DIR
-         "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/sphere_draco_valence.glb"
 #endif
         });
     if (!path)
@@ -4266,12 +4285,11 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
      * skinned_agent_quantized.glb stores USHORT positions with a dequantization node
      * scale; skinned_agent_filtered.glb keeps float positions through the EXPONENTIAL
      * filter and 16-bit octahedral-filtered normals. */
-    const char *reference =
-        find_existing_path({"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
-                            "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+    const char *reference = find_existing_path(
+        {"examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
+         "../examples/3d/openworld_slice/assets/models/skinned_agent.gltf",
 #ifdef VIPER_SOURCE_DIR
-                            VIPER_SOURCE_DIR
-                            "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
+         VIPER_SOURCE_DIR "/examples/3d/openworld_slice/assets/models/skinned_agent.gltf"
 #endif
         });
     EXPECT_TRUE(reference != nullptr, "Quantized-fixture reference twin is present");
@@ -4327,8 +4345,8 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
                     message);
         void *inst = rt_model3d_instantiate(model);
         rt_scene_node3d *mesh_node = find_first_mesh_node((rt_scene_node3d *)inst, 0);
-        snprintf(message, sizeof(message), "gltfpack %s fixture exposes a mesh node",
-                 fixtures[f].name);
+        snprintf(
+            message, sizeof(message), "gltfpack %s fixture exposes a mesh node", fixtures[f].name);
         EXPECT_TRUE(mesh_node != nullptr, message);
         if (mesh_node) {
             auto *mesh = static_cast<rt_mesh3d *>(mesh_node->mesh);
@@ -4344,7 +4362,8 @@ static void test_model3d_loads_gltfpack_quantized_fixtures() {
                 if (std::fabs(scaled - expected) > 0.02)
                     extents_ok = 0;
             }
-            snprintf(message, sizeof(message),
+            snprintf(message,
+                     sizeof(message),
                      "gltfpack %s fixture dequantizes to the reference extents",
                      fixtures[f].name);
             EXPECT_TRUE(extents_ok, message);
@@ -5085,7 +5104,45 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
     std::remove(path);
 }
 
+static void test_bc6h_all_modes_are_finite_and_deterministic() {
+    static const uint8_t modes[] = {0, 1, 2, 6, 10, 14, 18, 22, 26, 30, 3, 7, 11, 15};
+    for (int signed_mode = 0; signed_mode <= 1; signed_mode++) {
+        for (uint8_t mode : modes) {
+            uint8_t block[16];
+            uint16_t first[16][3];
+            uint16_t second[16][3];
+            for (size_t i = 0; i < sizeof(block); i++)
+                block[i] = (uint8_t)(0x5Au + (uint8_t)(i * 37u) + mode * 11u);
+            if (mode < 2)
+                block[0] = (uint8_t)((block[0] & ~UINT8_C(3)) | mode);
+            else
+                block[0] = (uint8_t)((block[0] & ~UINT8_C(31)) | mode);
+
+            bc6h_decode_block(block, signed_mode, first);
+            bc6h_decode_block(block, signed_mode, second);
+            EXPECT_TRUE(std::memcmp(first, second, sizeof(first)) == 0,
+                        "BC6H mode decoding is deterministic");
+            bool finite = true;
+            for (int texel = 0; texel < 16; texel++) {
+                for (int channel = 0; channel < 3; channel++) {
+                    if ((first[texel][channel] & UINT16_C(0x7C00)) == UINT16_C(0x7C00))
+                        finite = false;
+                }
+            }
+            EXPECT_TRUE(finite, "BC6H mode decoding never synthesizes NaN or infinity");
+        }
+    }
+
+    uint8_t reserved[16] = {19};
+    uint16_t decoded[16][3];
+    bc6h_decode_block(reserved, 0, decoded);
+    uint16_t zero[16][3] = {};
+    EXPECT_TRUE(std::memcmp(decoded, zero, sizeof(decoded)) == 0,
+                "BC6H reserved modes fail closed to black");
+}
+
 int main() {
+    test_bc6h_all_modes_are_finite_and_deterministic();
     test_model3d_rejects_wrong_handle_types();
     test_model3d_binds_first_valid_default_skeletal_animator_for_multiple_skeletons();
     test_model3d_clamps_corrupt_counts_and_child_walks();
@@ -5114,6 +5171,7 @@ int main() {
     test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs();
     test_model3d_imports_fbx_secondary_uvs_and_vertex_colors();
     test_fbx_cluster_transform_link_drives_bind_pose();
+    test_fbx_imports_skeletons_beyond_draw_palette_limit();
     test_fbx_constant_animation_curve_preserves_step();
     test_model3d_loads_ascii_fbx_attributes_and_materials();
     test_model3d_honors_fbx_rotation_order();

@@ -36,26 +36,6 @@
 extern "C" {
 #endif
 
-/// @brief Shared read/write view of a Body3D's kinematic prefix.
-/// @details The full `rt_body3d` struct is private to rt_physics3d.c, but the
-///   joint solver (rt_joints3d.c) needs direct access to a body's pose and
-///   velocity. Rather than hand-duplicating the field layout (which silently
-///   breaks if the private struct is reordered), both sides share this prefix
-///   type. rt_physics3d.c pins the contract with `_Static_assert`s that every
-///   field offset here matches the real `rt_body3d`.
-typedef struct {
-    void *vptr;
-    double position[3];
-    double orientation[4];
-    double scale[3];
-    double velocity[3];
-    double angular_velocity[3];
-    double force[3];
-    double torque[3];
-    double mass;
-    double inv_mass;
-} rt_body3d_kinematics;
-
 /* Physics3D World */
 /// @brief Create a 3D physics world with the given gravity vector (m/s² along each axis).
 void *rt_world3d_new(double gx, double gy, double gz);
@@ -164,7 +144,8 @@ void rt_world3d_clear_collision_events(void *world);
 /// @brief Cast a ray; returns the closest PhysicsHit3D within @p max_distance, or NULL if none.
 void *rt_world3d_raycast(
     void *world, void *origin, void *direction, double max_distance, int64_t mask);
-/// @brief Cast a ray and return all hits as a PhysicsHitList3D, sorted by distance.
+/// @brief Cast a ray and return all hits as a non-null PhysicsHitList3D, sorted by distance.
+/// @details Valid queries with no matches return an empty list; invalid arguments return NULL.
 void *rt_world3d_raycast_all(
     void *world, void *origin, void *direction, double max_distance, int64_t mask);
 /// @brief Sweep a sphere along @p delta; returns the first PhysicsHit3D or NULL.
@@ -172,9 +153,10 @@ void *rt_world3d_sweep_sphere(void *world, void *center, double radius, void *de
 /// @brief Sweep a capsule (segment between @p a and @p b, radius @p radius) along @p delta.
 void *rt_world3d_sweep_capsule(
     void *world, void *a, void *b, double radius, void *delta, int64_t mask);
-/// @brief Find all bodies overlapping a sphere (PhysicsHitList3D).
+/// @brief Find all bodies overlapping a sphere (non-null PhysicsHitList3D for valid inputs).
 void *rt_world3d_overlap_sphere(void *world, void *center, double radius, int64_t mask);
-/// @brief Find all bodies overlapping an axis-aligned bounding box (PhysicsHitList3D).
+/// @brief Find all bodies overlapping an axis-aligned bounding box (non-null list for valid
+/// inputs).
 void *rt_world3d_overlap_aabb(void *world, void *min_corner, void *max_corner, int64_t mask);
 
 /* Traversal probes (rt_physics3d_probes.c) */

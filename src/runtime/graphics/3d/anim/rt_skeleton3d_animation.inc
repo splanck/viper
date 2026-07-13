@@ -411,11 +411,11 @@ int64_t rt_animation3d_compress_keyframes(void *obj,
         kept = 1; /* first key always survives */
         for (int32_t i = 1; i < n; i++) {
             if (i < n - 1 && animation3d_keyframe_is_redundant(&ch->keyframes[kept - 1],
-                                                              &ch->keyframes[i],
-                                                              &ch->keyframes[i + 1],
-                                                              pos_tol,
-                                                              rot_tol,
-                                                              scl_tol)) {
+                                                               &ch->keyframes[i],
+                                                               &ch->keyframes[i + 1],
+                                                               pos_tol,
+                                                               rot_tol,
+                                                               scl_tol)) {
                 dropped++;
                 continue;
             }
@@ -754,7 +754,11 @@ void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_ske
     int32_t src_channel_count;
     if (!src_anim || !src_skel || !dst_skel)
         return NULL;
-    out_obj = rt_animation3d_new(rt_const_cstr(src_anim->name), src_anim->duration);
+    {
+        rt_string name = rt_const_cstr(src_anim->name);
+        out_obj = rt_animation3d_new(name, src_anim->duration);
+        rt_string_unref(name);
+    }
     out = animation3d_checked(out_obj);
     if (!out)
         return NULL;
@@ -904,14 +908,14 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
         int scl_cubic = (both_cubic & 4u) && dt > 0.0f;
         for (int i = 0; i < 3; i++) {
             if (pos_cubic) {
-                out_pos[i] = h00 * pos0[i] + h10 * dt * key0->pos_out_tangent[i] +
-                             h01 * pos1[i] + h11 * dt * key1->pos_in_tangent[i];
+                out_pos[i] = h00 * pos0[i] + h10 * dt * key0->pos_out_tangent[i] + h01 * pos1[i] +
+                             h11 * dt * key1->pos_in_tangent[i];
             } else {
                 out_pos[i] = pos0[i] + alpha * (pos1[i] - pos0[i]);
             }
             if (scl_cubic) {
-                out_scl[i] = h00 * scl0[i] + h10 * dt * key0->scale_out_tangent[i] +
-                             h01 * scl1[i] + h11 * dt * key1->scale_in_tangent[i];
+                out_scl[i] = h00 * scl0[i] + h10 * dt * key0->scale_out_tangent[i] + h01 * scl1[i] +
+                             h11 * dt * key1->scale_in_tangent[i];
             } else {
                 out_scl[i] = scl0[i] + alpha * (scl1[i] - scl0[i]);
             }
@@ -922,8 +926,8 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
              * between stored keys fall back to slerp below. */
             float sum = 0.0f;
             for (int i = 0; i < 4; i++) {
-                out_rot[i] = h00 * rot0[i] + h10 * dt * key0->rot_out_tangent[i] +
-                             h01 * rot1[i] + h11 * dt * key1->rot_in_tangent[i];
+                out_rot[i] = h00 * rot0[i] + h10 * dt * key0->rot_out_tangent[i] + h01 * rot1[i] +
+                             h11 * dt * key1->rot_in_tangent[i];
                 sum += out_rot[i] * out_rot[i];
             }
             if (sum > 1e-12f) {

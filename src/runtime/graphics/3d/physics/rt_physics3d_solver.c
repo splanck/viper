@@ -923,6 +923,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     c->normal[2] = normal[2];
     c->separation = -depth;
     contact3d_init_single_point(c, point, normal, c->separation);
+    contact3d_expand_compound_manifold(c, a, b);
     contact3d_expand_aabb_manifold(c, a, b);
     if (c->contact_count <= 1)
         contact3d_expand_obb_manifold(c, leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose);

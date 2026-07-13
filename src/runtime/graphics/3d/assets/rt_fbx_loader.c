@@ -147,7 +147,9 @@ typedef struct {
 #define FBX_SKIN_WEIGHT_MAX 1000000.0
 #define FBX_ANIM_TIME_SECONDS_MAX 100000000.0
 #define FBX_ANIM_CURVE_KEYS_MAX 1000000u
-#define FBX_MAX_SKELETON_BONES 256
+/* Keep importer capacity aligned with Skeleton3D. Individual draw palettes remain capped at
+ * VGFX3D_MAX_BONES (256) and use per-mesh remapping; the asset-level hierarchy supports 1024. */
+#define FBX_MAX_SKELETON_BONES 1024
 
 /// @brief Parse an unsigned decimal byte limit without adding libc conversion dependencies.
 /// @details Accepts only ASCII digits, rejects zero, and validates the entire input. Values above

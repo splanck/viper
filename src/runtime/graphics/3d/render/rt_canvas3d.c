@@ -1562,6 +1562,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->text_indices);
     c->text_indices = NULL;
     c->text_index_capacity = 0;
+    free(c->readback_rgba_scratch);
+    c->readback_rgba_scratch = NULL;
+    c->readback_rgba_scratch_capacity = 0u;
 
     /* Free shadow render targets if allocated */
     canvas3d_release_shadow_targets(c);
@@ -1798,7 +1801,11 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->shadow_distance = 0.0f; /* auto: min(camera far, 300) */
     /* Two cascades by default on CSM-capable backends: one map spanning the whole
      * shadow range wastes most of its texels far from the camera. */
-    c->shadow_cascade_count = rt_canvas3d_backend_supports(c, rt_const_cstr("shadow-csm")) ? 2 : 1;
+    {
+        rt_string capability = rt_const_cstr("shadow-csm");
+        c->shadow_cascade_count = rt_canvas3d_backend_supports(c, capability) ? 2 : 1;
+        rt_string_unref(capability);
+    }
     c->cluster_light_budget = 64;
     c->last_dropped_light_count = 0;
     c->shadow_budget = VGFX3D_MAX_SHADOW_LIGHTS;
@@ -1954,6 +1961,16 @@ int8_t rt_canvas3d_get_frame_finalized(void *obj) {
 void *rt_canvas3d_screenshot_final(void *obj) {
     canvas3d_finalize_frame_impl(rt_canvas3d_checked_or_stack(obj), 0);
     return rt_canvas3d_screenshot(obj);
+}
+
+/// @brief Finalize the current frame if needed, then copy it into an existing Pixels object.
+/// @return 1 on successful finalization/readback, or 0 for invalid input/readback failure.
+int8_t rt_canvas3d_try_copy_screenshot_final_to(void *obj, void *pixels) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return 0;
+    canvas3d_finalize_frame_impl(c, 0);
+    return rt_canvas3d_try_copy_screenshot_to(obj, pixels);
 }
 
 /// @brief Present the rendered frame to the window (swaps buffers).
@@ -2515,7 +2532,10 @@ int8_t rt_canvas3d_try_set_clustered_lighting(void *obj, int8_t enabled) {
         c->clustered_lighting = 0; /* env kill switch wins over explicit enables */
         return 0;
     }
-    if (!rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting"))) {
+    rt_string capability = rt_const_cstr("clustered-lighting");
+    int8_t supported = rt_canvas3d_backend_supports(c, capability);
+    rt_string_unref(capability);
+    if (!supported) {
         c->clustered_lighting = 0;
         return 0;
     }
@@ -2830,9 +2850,15 @@ void rt_canvas3d_set_shadow_cascades(void *obj, int64_t count) {
         count = 1;
     if (count > VGFX3D_CSM_SLOTS)
         count = VGFX3D_CSM_SLOTS;
-    if (count > 1 && !rt_canvas3d_backend_supports(c, rt_const_cstr("shadow-csm"))) {
-        rt_trap("Canvas3D.SetShadowCascades: cascaded shadows are not supported by this backend");
-        return;
+    if (count > 1) {
+        rt_string capability = rt_const_cstr("shadow-csm");
+        int8_t supported = rt_canvas3d_backend_supports(c, capability);
+        rt_string_unref(capability);
+        if (!supported) {
+            rt_trap(
+                "Canvas3D.SetShadowCascades: cascaded shadows are not supported by this backend");
+            return;
+        }
     }
     c->shadow_cascade_count = (int32_t)count;
 }

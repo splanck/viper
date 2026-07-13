@@ -8,10 +8,70 @@
  * A* pathfinding
  *=========================================================================*/
 
-typedef struct {
-    int32_t tri;
-    float f;
-} heap_entry_t;
+typedef navmesh3d_heap_entry_t heap_entry_t;
+
+/// @brief Serialize use of one navmesh's reusable A* workspace.
+static void navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
+    int expected;
+    if (!nm)
+        return;
+    for (;;) {
+        expected = 0;
+        if (rt_atomic_compare_exchange_i32(
+                &nm->path_workspace_lock, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            return;
+    }
+}
+
+/// @brief Publish one navmesh's reusable A* workspace for the next query.
+static void navmesh3d_path_workspace_release(rt_navmesh3d *nm) {
+    if (nm)
+        rt_atomic_store_i32(&nm->path_workspace_lock, 0, __ATOMIC_RELEASE);
+}
+
+/// @brief Grow reusable A* arrays without discarding the previous workspace on allocation failure.
+static int navmesh3d_reserve_path_workspace(rt_navmesh3d *nm,
+                                            int32_t triangle_count,
+                                            int32_t heap_capacity) {
+    if (!nm || triangle_count <= 0 || heap_capacity <= 0)
+        return 0;
+    if (triangle_count > nm->path_triangle_capacity) {
+        float *g_cost = (float *)malloc((size_t)triangle_count * sizeof(*g_cost));
+        int32_t *parent = (int32_t *)malloc((size_t)triangle_count * sizeof(*parent));
+        int8_t *closed = (int8_t *)malloc((size_t)triangle_count * sizeof(*closed));
+        if (!g_cost || !parent || !closed) {
+            free(g_cost);
+            free(parent);
+            free(closed);
+            return 0;
+        }
+        free(nm->path_g_cost);
+        free(nm->path_parent);
+        free(nm->path_closed);
+        nm->path_g_cost = g_cost;
+        nm->path_parent = parent;
+        nm->path_closed = closed;
+        nm->path_triangle_capacity = triangle_count;
+    }
+    if (heap_capacity > nm->path_heap_capacity) {
+        heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_capacity * sizeof(*heap));
+        if (!heap)
+            return 0;
+        free(nm->path_heap);
+        nm->path_heap = heap;
+        nm->path_heap_capacity = heap_capacity;
+    }
+    return 1;
+}
+
+/// @brief Atomically publish LastPathCost for concurrent read-only telemetry.
+static void navmesh3d_store_last_path_cost(rt_navmesh3d *nm, double value) {
+    if (!nm)
+        return;
+    if (!isfinite(value) || value < 0.0)
+        value = 0.0;
+    rt_atomic_store_f64(&nm->last_path_cost, &value, __ATOMIC_RELEASE);
+}
 
 /// @brief Push a `(triangle, f-score)` entry onto the A* min-heap and sift up. Comparison
 /// uses `f` (g + heuristic) so the heap top is always the lowest-cost open triangle.
@@ -65,14 +125,25 @@ static int32_t heap_pop(heap_entry_t *heap, int32_t *size) {
 }
 
 /// @brief Euclidean distance between two triangles' precomputed centroids. Used as the
-/// A* heuristic (admissible since centroid-to-centroid is always ≤ the true polygon-
-/// crossing path) and as the per-edge step cost when expanding neighbours.
+/// A* heuristic on ordinary triangle-only graphs and as the per-edge step cost when expanding
+/// neighbours.
 static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     const float *ca = nm->triangles[a].centroid;
     const float *cb = nm->triangles[b].centroid;
     float dx = cb[0] - ca[0], dy = cb[1] - ca[1], dz = cb[2] - ca[2];
     float dist = sqrtf(dx * dx + dy * dy + dz * dz);
     return isfinite(dist) ? dist : FLT_MAX;
+}
+
+/// @brief Admissible A* heuristic for the current navigation graph.
+/// @details Authored off-mesh links can jump between remote polygons for less than their centroid
+///   separation, so Euclidean distance is not a lower bound once any such edge exists. Falling
+///   back to zero turns the search into Dijkstra while preserving optimality. Triangle-only
+///   navmeshes retain the faster Euclidean heuristic.
+static float navmesh3d_astar_heuristic(const rt_navmesh3d *nm, int32_t from, int32_t goal) {
+    if (!nm || nm->offmesh_link_count > 0)
+        return 0.0f;
+    return centroid_dist(nm, from, goal);
 }
 
 /// @brief A* edge cost between adjacent triangles @p from and @p to: their centroid distance
@@ -122,7 +193,8 @@ static void navmesh3d_astar_relax_offmesh(rt_navmesh3d *nm,
     if (new_g < g_cost[next]) {
         g_cost[next] = new_g;
         parent[next] = cur;
-        heap_push(heap, heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+        heap_push(
+            heap, heap_size, heap_cap, next, new_g + navmesh3d_astar_heuristic(nm, next, goal));
     }
 }
 
@@ -143,7 +215,7 @@ static int navmesh3d_astar_search(rt_navmesh3d *nm,
     int32_t tc = nm->triangle_count;
     int32_t heap_size = 0;
     g_cost[start] = 0;
-    heap_push(heap, &heap_size, heap_cap, start, centroid_dist(nm, start, goal));
+    heap_push(heap, &heap_size, heap_cap, start, navmesh3d_astar_heuristic(nm, start, goal));
     while (heap_size > 0) {
         int32_t cur = heap_pop(heap, &heap_size);
         if (cur == goal)
@@ -161,7 +233,11 @@ static int navmesh3d_astar_search(rt_navmesh3d *nm,
             if (new_g < g_cost[next]) {
                 g_cost[next] = new_g;
                 parent[next] = cur;
-                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+                heap_push(heap,
+                          &heap_size,
+                          heap_cap,
+                          next,
+                          new_g + navmesh3d_astar_heuristic(nm, next, goal));
             }
         }
 
@@ -525,7 +601,7 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || nm->triangle_count == 0 || !nm->triangles || !nm->vertices)
         return 0;
-    nm->last_path_cost = 0.0;
+    navmesh3d_store_last_path_cost(nm, 0.0);
 
     double fdx = from_p[0], fdy = from_p[1], fdz = from_p[2];
     double tdx = to_p[0], tdy = to_p[1], tdz = to_p[2];
@@ -546,8 +622,8 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
         if (!points)
             return 0;
         double dx = tdx - fdx, dy = tdy - fdy, dz = tdz - fdz;
-        nm->last_path_cost =
-            sqrt(dx * dx + dy * dy + dz * dz) * (double)navmesh3d_tri_cost(nm, start);
+        navmesh3d_store_last_path_cost(
+            nm, sqrt(dx * dx + dy * dy + dz * dz) * (double)navmesh3d_tri_cost(nm, start));
         points[0] = fdx;
         points[1] = fdy;
         points[2] = fdz;
@@ -574,31 +650,27 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
         (size_t)tc > SIZE_MAX / sizeof(int8_t) ||
         (size_t)heap_cap > SIZE_MAX / sizeof(heap_entry_t))
         return 0;
-    float *g_cost = (float *)calloc((size_t)tc, sizeof(float));
-    int32_t *parent = (int32_t *)malloc((size_t)tc * sizeof(int32_t));
-    int8_t *closed = (int8_t *)calloc((size_t)tc, sizeof(int8_t));
-    heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_cap * sizeof(heap_entry_t));
-    if (!g_cost || !parent || !closed || !heap) {
-        free(g_cost);
-        free(parent);
-        free(closed);
-        free(heap);
+    navmesh3d_path_workspace_acquire(nm);
+    if (!navmesh3d_reserve_path_workspace(nm, tc, heap_cap)) {
+        navmesh3d_path_workspace_release(nm);
         return 0;
     }
+    float *g_cost = nm->path_g_cost;
+    int32_t *parent = nm->path_parent;
+    int8_t *closed = nm->path_closed;
+    heap_entry_t *heap = nm->path_heap;
+    memset(closed, 0, (size_t)tc * sizeof(*closed));
     memset(parent, -1, (size_t)tc * sizeof(int32_t));
     for (int32_t i = 0; i < tc; i++)
         g_cost[i] = FLT_MAX;
 
     if (navmesh3d_astar_search(nm, start, goal, g_cost, parent, closed, heap, heap_cap)) {
-        nm->last_path_cost = (double)g_cost[goal];
+        navmesh3d_store_last_path_cost(nm, (double)g_cost[goal]);
         points = navmesh3d_reconstruct_path(
             nm, parent, goal, fx, fy, fz, fdx, fdy, fdz, tdx, tdy, tdz, &point_count);
     }
 
-    free(g_cost);
-    free(parent);
-    free(closed);
-    free(heap);
+    navmesh3d_path_workspace_release(nm);
     if (out_points_xyz)
         *out_points_xyz = points;
     else
@@ -736,8 +808,10 @@ int64_t rt_navmesh3d_get_triangle_count(void *obj) {
 /// @brief Total accumulated cost of the most recent successful path query, or 0 if none has run.
 double rt_navmesh3d_get_last_path_cost(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    return (nm && isfinite(nm->last_path_cost) && nm->last_path_cost >= 0.0) ? nm->last_path_cost
-                                                                             : 0.0;
+    double value = 0.0;
+    if (nm)
+        rt_atomic_load_f64(&nm->last_path_cost, &value, __ATOMIC_ACQUIRE);
+    return (isfinite(value) && value >= 0.0) ? value : 0.0;
 }
 
 /// @brief Add an authored off-mesh traversal link between two walkable points.

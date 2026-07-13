@@ -189,6 +189,8 @@ Constructor: `Viper.Graphics3D.Canvas3D.New`
 | <a id="viper-graphics3d-canvas3d-settexturestreamingbias"></a>`SetTextureStreamingBias` | `void(f64)` | `Viper.Graphics3D.Canvas3D.SetTextureStreamingBias` |
 | <a id="viper-graphics3d-canvas3d-screenshot"></a>`Screenshot` | `obj()` | `Viper.Graphics3D.Canvas3D.Screenshot` |
 | <a id="viper-graphics3d-canvas3d-screenshotfinal"></a>`ScreenshotFinal` | `obj()` | `Viper.Graphics3D.Canvas3D.ScreenshotFinal` |
+| <a id="viper-graphics3d-canvas3d-trycopyscreenshotto"></a>`TryCopyScreenshotTo` | `i1(obj)` | `Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo` |
+| <a id="viper-graphics3d-canvas3d-trycopyscreenshotfinalto"></a>`TryCopyScreenshotFinalTo` | `i1(obj)` | `Viper.Graphics3D.Canvas3D.TryCopyScreenshotFinalTo` |
 | <a id="viper-graphics3d-canvas3d-finalizeframe"></a>`FinalizeFrame` | `void()` | `Viper.Graphics3D.Canvas3D.FinalizeFrame` |
 | <a id="viper-graphics3d-canvas3d-setskybox"></a>`SetSkybox` | `void(obj)` | `Viper.Graphics3D.Canvas3D.SetSkybox` |
 | <a id="viper-graphics3d-canvas3d-clearskybox"></a>`ClearSkybox` | `void()` | `Viper.Graphics3D.Canvas3D.ClearSkybox` |
@@ -2428,6 +2430,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-canvas3d-get-backendpresentpath"></a>`Viper.Graphics3D.Canvas3D.get_BackendPresentPath` | `i64(obj)` | `rt_canvas3d_get_backend_present_path` |
 | `Viper.Graphics3D.Canvas3D.Screenshot` | `obj(obj)` | `rt_canvas3d_screenshot` |
 | `Viper.Graphics3D.Canvas3D.ScreenshotFinal` | `obj(obj)` | `rt_canvas3d_screenshot_final` |
+| `Viper.Graphics3D.Canvas3D.TryCopyScreenshotTo` | `i1(obj,obj)` | `rt_canvas3d_try_copy_screenshot_to` |
+| `Viper.Graphics3D.Canvas3D.TryCopyScreenshotFinalTo` | `i1(obj,obj)` | `rt_canvas3d_try_copy_screenshot_final_to` |
 | <a id="viper-graphics3d-canvas3d-get-framefinalized"></a>`Viper.Graphics3D.Canvas3D.get_FrameFinalized` | `i1(obj)` | `rt_canvas3d_get_frame_finalized` |
 | `Viper.Graphics3D.Canvas3D.DrawAABBWire` | `void(obj,obj,obj,i64)` | `rt_canvas3d_draw_aabb_wire` |
 | `Viper.Graphics3D.Canvas3D.DrawSphereWire` | `void(obj,obj,f64,i64)` | `rt_canvas3d_draw_sphere_wire` |

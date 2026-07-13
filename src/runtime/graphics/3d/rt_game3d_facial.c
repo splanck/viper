@@ -340,17 +340,20 @@ static void game3d_lipsync_tick_one(rt_game3d_lipsync *lipsync, double dt) {
                 strcmp(lipsync->shapes[i].name, lipsync->blink_shape) == 0 &&
                 blink_weight > shape_weight)
                 shape_weight = blink_weight; /* additive-max composition */
-            rt_morphtarget3d_set_weight_by_name(
-                morph, rt_const_cstr(lipsync->shapes[i].name), shape_weight);
+            rt_string shape_name = rt_const_cstr(lipsync->shapes[i].name);
+            rt_morphtarget3d_set_weight_by_name(morph, shape_name, shape_weight);
+            rt_string_unref(shape_name);
         }
         if (lipsync->blink_enabled && lipsync->blink_shape[0]) {
             int bound = 0;
             for (int32_t i = 0; i < lipsync->shape_count; ++i)
                 if (strcmp(lipsync->shapes[i].name, lipsync->blink_shape) == 0)
                     bound = 1;
-            if (!bound)
-                rt_morphtarget3d_set_weight_by_name(
-                    morph, rt_const_cstr(lipsync->blink_shape), blink_weight);
+            if (!bound) {
+                rt_string shape_name = rt_const_cstr(lipsync->blink_shape);
+                rt_morphtarget3d_set_weight_by_name(morph, shape_name, blink_weight);
+                rt_string_unref(shape_name);
+            }
         }
     }
 

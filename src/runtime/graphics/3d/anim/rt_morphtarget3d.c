@@ -506,7 +506,9 @@ void *rt_morphtarget3d_clone(void *obj) {
         return NULL;
     }
     for (int32_t i = 0, count = morphtarget_safe_shape_count(src); i < count; i++) {
-        int64_t shape = rt_morphtarget3d_add_shape(dst, rt_const_cstr(src->shapes[i].name));
+        rt_string shape_name = rt_const_cstr(src->shapes[i].name);
+        int64_t shape = rt_morphtarget3d_add_shape(dst, shape_name);
+        rt_string_unref(shape_name);
         if (shape < 0) {
             if (rt_obj_release_check0(dst))
                 rt_obj_free(dst);

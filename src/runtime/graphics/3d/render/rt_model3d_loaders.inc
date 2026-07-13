@@ -63,7 +63,11 @@ static void model_obj_set_texture_from_map(void *material,
                                     safe_ref);
         return;
     }
-    pixels = rt_pixels_load(rt_const_cstr(path));
+    {
+        rt_string runtime_path = rt_const_cstr(path);
+        pixels = rt_pixels_load(runtime_path);
+        rt_string_unref(runtime_path);
+    }
     if (!pixels) {
         rt_asset_error_add_warningf("material texture '%s' not loaded: %s",
                                     safe_ref,
@@ -294,7 +298,11 @@ static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *
             snprintf(fallback_name, sizeof(fallback_name), "mesh_%d", (int)i);
             node_name = fallback_name;
         }
-        rt_scene_node3d_set_name(node, rt_const_cstr(node_name));
+        {
+            rt_string runtime_name = rt_const_cstr(node_name);
+            rt_scene_node3d_set_name(node, runtime_name);
+            rt_string_unref(runtime_name);
+        }
         rt_scene_node3d_set_mesh(node, groups[i].mesh);
         rt_scene_node3d_set_material(node, material);
         if (!rt_scene_node3d_try_add_child(model->template_root, node)) {
@@ -563,7 +571,13 @@ static void *model3d_fbx_from_asset_bytes(rt_string original_path,
                                           size_t size) {
     if (!bytes || size == 0)
         return NULL;
-    rt_string tmp = rt_tempfile_path_with_ext(rt_const_cstr("viper_fbx_"), rt_const_cstr(".fbx"));
+    rt_string prefix = rt_const_cstr("viper_fbx_");
+    rt_string suffix = rt_const_cstr(".fbx");
+    rt_string tmp = rt_tempfile_path_with_ext(prefix, suffix);
+    rt_string_unref(prefix);
+    rt_string_unref(suffix);
+    if (!tmp)
+        return NULL;
     const char *tpath = rt_string_cstr(tmp);
     if (!tpath) {
         rt_string_unref(tmp);
