@@ -1545,6 +1545,11 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_spline PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_spline test_rt_spline)
 
+    viper_add_test(test_rt_math_handle_validation
+            ${VIPER_TESTS_DIR}/runtime/RTMathHandleValidationTests.cpp)
+    target_link_libraries(test_rt_math_handle_validation PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_math_handle_validation test_rt_math_handle_validation)
+
     viper_add_test(test_rt_pixels ${VIPER_TESTS_DIR}/runtime/RTPixelsTests.cpp)
     target_link_libraries(test_rt_pixels PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_pixels test_rt_pixels)

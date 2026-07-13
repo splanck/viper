@@ -955,13 +955,19 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
 /// @brief Apply per-material polygon offset for coplanar geometry.
 /// @details OpenGL keeps polygon offset as sticky global state, so every draw explicitly enables
 ///   and configures it or disables it. The command contract uses negative constant values to pull
-///   triangles toward the camera and positive values to push them away, matching GL's depth offset
-///   direction with the renderer's `GL_LESS` depth test.
-static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
+///   triangles toward the camera and positive values to push them away. Scene passes render
+///   reversed-Z (`GL_GREATER`), which inverts the window-z direction, so both offset terms are
+///   sign-flipped there; the shadow pass keeps the standard convention and passes
+///   `reversed_z == 0`.
+static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd, int reversed_z) {
     if (cmd && (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)) {
         gl.Enable(GL_POLYGON_OFFSET_FILL);
-        gl.PolygonOffset(cmd->slope_scaled_depth_bias,
-                         vgfx3d_depth_bias_constant_units(cmd->depth_bias));
+        if (reversed_z)
+            gl.PolygonOffset(vgfx3d_depth_bias_slope_reversed_z(cmd->slope_scaled_depth_bias),
+                             vgfx3d_depth_bias_constant_units_reversed_z(cmd->depth_bias));
+        else
+            gl.PolygonOffset(cmd->slope_scaled_depth_bias,
+                             vgfx3d_depth_bias_constant_units(cmd->depth_bias));
     } else {
         gl.Disable(GL_POLYGON_OFFSET_FILL);
     }

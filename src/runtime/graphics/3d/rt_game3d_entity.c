@@ -815,10 +815,18 @@ void rt_game3d_entity_apply_impulse(void *obj, double x, double y, double z) {
         rt_trap("Game3D.Entity3D.applyImpulse: entity has no body");
         return;
     }
+    /* Bound the impulse in velocity-change terms (impulse = mass * delta-v), so
+     * heavy bodies can receive proportionally larger momentum while the
+     * resulting velocity change stays inside the same finite envelope as the
+     * controller speed cap. */
+    double mass = rt_body3d_get_mass(body);
+    if (!isfinite(mass) || mass < 1.0)
+        mass = 1.0;
+    double impulse_max = mass * RT_GAME3D_CONTROLLER_SPEED_MAX;
     rt_body3d_apply_impulse(body,
-                            game3d_clamp_abs_or(x, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX),
-                            game3d_clamp_abs_or(y, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX),
-                            game3d_clamp_abs_or(z, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX));
+                            game3d_clamp_abs_or(x, 0.0, impulse_max),
+                            game3d_clamp_abs_or(y, 0.0, impulse_max),
+                            game3d_clamp_abs_or(z, 0.0, impulse_max));
 }
 
 /// @brief Set the entity body's linear velocity; traps if it has no body.

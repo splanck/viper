@@ -1041,29 +1041,28 @@ void *rt_world3d_raycast(
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
-/// @brief `World3D.RaycastAll(origin, direction, maxDistance, mask)` — all hits along a ray,
-/// sorted.
-///
-/// Like `Raycast` but doesn't stop at the first hit — every body
-/// the ray pierces is recorded. Results come back sorted by distance.
-/// Bounded by the world's configurable query capacity
-/// (`Physics3DWorld.SetMaxQueryHits`, default 256).
-void *rt_world3d_raycast_all(
-    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
-    rt_world3d *w = world3d_checked(obj);
-    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+/// @brief Shared raycast-all core: fill the world's sorted hit scratch from raw inputs.
+/// @details `origin`/`dir` are mutated in place by sanitization. Returns the number of
+///   hits kept in the scratch (bounded by the world's query capacity) and writes the
+///   unbounded pierce count to @p out_total; returns -1 on invalid input.
+static int32_t world3d_raycast_all_core(rt_world3d *w,
+                                        rt_query_hit3d *hits,
+                                        double *origin,
+                                        double *dir,
+                                        double max_distance,
+                                        int64_t mask,
+                                        int64_t *out_total) {
+    double query_min[3], query_max[3], end[3];
     int32_t hit_capacity = w ? w->max_query_hits : 0;
-    double origin[3], dir[3], query_min[3], query_max[3], end[3];
     int32_t hit_count = 0;
     int64_t total_count = 0;
-    if (!w || !hits || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
-        !isfinite(max_distance) || max_distance <= 0.0)
-        return NULL;
-    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
-        return NULL;
+    if (out_total)
+        *out_total = 0;
+    if (!w || !hits || !isfinite(max_distance) || max_distance <= 0.0)
+        return -1;
     max_distance = query_sanitize_distance(max_distance);
     if (!query_normalize_direction(dir))
-        return NULL;
+        return -1;
     end[0] = query_saturate_coord(origin[0] + dir[0] * max_distance);
     end[1] = query_saturate_coord(origin[1] + dir[1] * max_distance);
     end[2] = query_saturate_coord(origin[2] + dir[2] * max_distance);
@@ -1088,8 +1087,63 @@ void *rt_world3d_raycast_all(
             hit_count = query_hit_insert_sorted_bounded(hits, hit_count, hit_capacity, &hit);
         }
     }
+    if (out_total)
+        *out_total = total_count;
+    return hit_count;
+}
+
+/// @brief `World3D.RaycastAll(origin, direction, maxDistance, mask)` — all hits along a ray,
+/// sorted.
+///
+/// Like `Raycast` but doesn't stop at the first hit — every body
+/// the ray pierces is recorded. Results come back sorted by distance.
+/// Bounded by the world's configurable query capacity
+/// (`Physics3DWorld.SetMaxQueryHits`, default 256).
+void *rt_world3d_raycast_all(
+    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
+    rt_world3d *w = world3d_checked(obj);
+    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+    double origin[3], dir[3];
+    int64_t total_count = 0;
+    if (!w || !hits || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj))
+        return NULL;
+    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
+        return NULL;
+    int32_t hit_count =
+        world3d_raycast_all_core(w, hits, origin, dir, max_distance, mask, &total_count);
+    if (hit_count < 0)
+        return NULL;
     return physics_hit_list3d_new_ex(
         hits, hit_count, total_count, total_count > (int64_t)hit_count);
+}
+
+/// @brief C-internal raycast-all fast path: write the non-trigger bodies the ray
+///   pierces (nearest-first) into @p out_bodies as borrowed pointers, without boxing
+///   a hit-list object or requiring Vec3 handles. Used by per-frame paths like the
+///   third-person occluder fade.
+/// @return Number of bodies written (bounded by @p out_cap), or 0 on invalid input.
+int32_t rt_world3d_raycast_all_bodies_raw(void *obj,
+                                          const double *origin_in,
+                                          const double *direction_in,
+                                          double max_distance,
+                                          int64_t mask,
+                                          void **out_bodies,
+                                          int32_t out_cap) {
+    rt_world3d *w = world3d_checked(obj);
+    rt_query_hit3d *hits = world3d_query_hits_scratch(w);
+    double origin[3], dir[3];
+    int32_t written = 0;
+    if (!w || !hits || !origin_in || !direction_in || !out_bodies || out_cap <= 0)
+        return 0;
+    memcpy(origin, origin_in, sizeof(origin));
+    memcpy(dir, direction_in, sizeof(dir));
+    int32_t hit_count = world3d_raycast_all_core(w, hits, origin, dir, max_distance, mask, NULL);
+    for (int32_t i = 0; i < hit_count && written < out_cap; ++i) {
+        if (hits[i].is_trigger || !hits[i].body)
+            continue;
+        out_bodies[written++] = hits[i].body;
+    }
+    return written;
 }
 
 #else

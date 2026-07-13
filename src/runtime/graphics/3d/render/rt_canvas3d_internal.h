@@ -1215,7 +1215,10 @@ typedef struct {
     rt_canvas3d_occlusion_duplicate_entry *occlusion_duplicate_counts;
     int32_t occlusion_duplicate_count_capacity;
     int8_t occlusion_state_valid;
-    void *occlusion_last_render_target;
+    /* Keyed by the target's monotonic cache_identity (0 = window/default output),
+     * not the pointer: a freed target reallocated at the same address must not
+     * inherit covered-streak occlusion history (ABA). */
+    uint64_t occlusion_last_render_target_identity;
     int32_t occlusion_last_output_width;
     int32_t occlusion_last_output_height;
     double occlusion_last_world_cam_pos[3];

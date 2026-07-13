@@ -382,7 +382,9 @@ void game3d_interactor_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
             if (align < cone_cos)
                 continue;
         }
-        if (scanner->require_los && world->physics && dist > 1e-3) {
+        /* Near-touching candidates (dist <= 0.05) skip the occlusion ray: the
+         * epsilon pull-back would drive the ray length negative. */
+        if (scanner->require_los && world->physics && dist > 0.05) {
             void *o = rt_vec3_new(origin[0], origin[1], origin[2]);
             void *d = rt_vec3_new(to[0] / dist, to[1] / dist, to[2] / dist);
             int blocked = 0;
@@ -390,10 +392,10 @@ void game3d_interactor_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
                 void *hit =
                     rt_world3d_raycast(world->physics, o, d, dist - 0.05, scanner->los_mask);
                 if (hit) {
-                    /* A hit on any body other than the target's blocks focus. */
+                    /* A hit on any body other than the target's blocks focus.
+                     * rt_physics_hit3d_get_body returns a borrowed reference. */
                     void *hit_body = rt_physics_hit3d_get_body(hit);
                     blocked = hit_body != candidate->body;
-                    game3d_release_ref(&hit_body);
                     game3d_release_ref(&hit);
                 }
             }

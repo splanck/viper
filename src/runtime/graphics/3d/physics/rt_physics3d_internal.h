@@ -448,6 +448,9 @@ void contact3d_init_single_point(rt_contact3d *contact,
                                  const double *normal,
                                  double separation);
 void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b);
+void contact3d_expand_capsule_manifold(rt_contact3d *contact,
+                                       const rt_body3d *a,
+                                       const rt_body3d *b);
 void contact3d_expand_compound_manifold(rt_contact3d *contact,
                                         const rt_body3d *a,
                                         const rt_body3d *b);

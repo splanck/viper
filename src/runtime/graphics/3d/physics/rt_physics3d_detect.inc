@@ -506,7 +506,13 @@ void transform_normal_from_local(const rt_collider_pose *pose,
 }
 
 /// @brief Choose how many points to sample along a capsule's central axis when
-///   approximating it for collision: spacing ≈ radius/2 (min 1e-4), clamped to [1, 256].
+///   approximating it for collision.
+/// @details Prefers spacing ≈ radius/2 (min 1e-4) up to 256 samples. When that
+///   fine spacing would exceed 256 samples (very long capsules), the spacing is
+///   allowed to widen — but never past the sphere diameter, so consecutive
+///   sample spheres always overlap and a thin obstacle between samples cannot
+///   slip through untested. The count is hard-capped at 2048 for degenerate
+///   content (a capsule longer than ~4096 radii).
 int capsule_axis_sample_count(double axis_len, double radius) {
     double spacing;
     int samples;
@@ -517,10 +523,19 @@ int capsule_axis_sample_count(double axis_len, double radius) {
         spacing = 1e-4;
     /* Clamp in double space before the int cast: converting an out-of-range
      * double to int is undefined behavior, and axis_len/spacing can be huge for
-     * extreme scales, so the [1,256] clamp must happen before narrowing. */
+     * extreme scales, so all clamps must happen before narrowing. */
     double sample_estimate = ceil(axis_len / spacing) + 1.0;
-    if (!isfinite(sample_estimate) || sample_estimate >= 256.0)
+    if (!isfinite(sample_estimate))
         return 256;
+    if (sample_estimate >= 256.0) {
+        /* Fine spacing needs too many samples: fall back to coverage spacing
+         * (one sphere diameter) so the swept volume still has no gaps. */
+        double coverage = (isfinite(radius) && radius > 1e-6) ? radius * 2.0 : 0.1;
+        double coverage_estimate = ceil(axis_len / coverage) + 1.0;
+        if (!isfinite(coverage_estimate) || coverage_estimate >= 2048.0)
+            return 2048;
+        return coverage_estimate <= 256.0 ? 256 : (int)coverage_estimate;
+    }
     if (sample_estimate < 1.0)
         return 1;
     samples = (int)sample_estimate;
@@ -666,11 +681,24 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
     }
 
     {
-        double r2 = b->radius * b->radius;
-        double cylinder_height = fmax(b->height - 2.0 * b->radius, 0.0);
+        /* Full capsule tensor: the mass is split between the cylinder and the
+         * two hemispherical end caps by volume (the shared pi factor cancels),
+         * and the caps contribute their parallel-axis-shifted terms to the
+         * perpendicular axes. Degenerate cases collapse correctly: zero
+         * cylinder height yields the solid-sphere tensor, zero radius the rod.
+         */
+        double r = b->radius;
+        double r2 = r * r;
+        double cylinder_height = fmax(b->height - 2.0 * r, 0.0);
         double h2 = cylinder_height * cylinder_height;
-        double ixx = b->mass * (3.0 * r2 + h2) / 12.0;
-        double iyy = 0.5 * b->mass * r2;
+        double vol_cyl = r2 * cylinder_height;   /* / pi */
+        double vol_caps = (4.0 / 3.0) * r2 * r;  /* / pi */
+        double vol_total = vol_cyl + vol_caps;
+        double mass_cyl = vol_total > 1e-30 ? b->mass * (vol_cyl / vol_total) : 0.0;
+        double mass_caps = b->mass - mass_cyl;
+        double iyy = 0.5 * mass_cyl * r2 + 0.4 * mass_caps * r2;
+        double ixx = mass_cyl * (h2 / 12.0 + r2 / 4.0) +
+                     mass_caps * (0.4 * r2 + h2 / 4.0 + 3.0 * cylinder_height * r / 8.0);
         double izz = ixx;
         b->inv_inertia[0] = body3d_inverse_inertia_from(ixx);
         b->inv_inertia[1] = body3d_inverse_inertia_from(iyy);

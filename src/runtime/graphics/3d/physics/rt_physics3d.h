@@ -148,6 +148,16 @@ void *rt_world3d_raycast(
 /// @details Valid queries with no matches return an empty list; invalid arguments return NULL.
 void *rt_world3d_raycast_all(
     void *world, void *origin, void *direction, double max_distance, int64_t mask);
+/// @brief C-internal raycast-all fast path: writes the non-trigger bodies the ray pierces
+///   (nearest-first, borrowed pointers) into @p out_bodies — no hit-list boxing, no Vec3
+///   handles. Not part of the script-visible registry. Returns the count written.
+int32_t rt_world3d_raycast_all_bodies_raw(void *world,
+                                          const double *origin,
+                                          const double *direction,
+                                          double max_distance,
+                                          int64_t mask,
+                                          void **out_bodies,
+                                          int32_t out_cap);
 /// @brief Sweep a sphere along @p delta; returns the first PhysicsHit3D or NULL.
 void *rt_world3d_sweep_sphere(void *world, void *center, double radius, void *delta, int64_t mask);
 /// @brief Sweep a capsule (segment between @p a and @p b, radius @p radius) along @p delta.
@@ -368,6 +378,11 @@ void rt_body3d_wake(void *body);
 /// @brief Force the body to sleep immediately (zero velocity).
 void rt_body3d_sleep(void *body);
 /// @brief Toggle continuous collision detection for fast-moving bodies (prevents tunneling).
+/// @details The swept TOI pass clips motion against STATIC and KINEMATIC surfaces only —
+///   their poses are stable for the whole substep, so the sweep is exact. Two fast
+///   dynamic bodies rely on substep subdivision, not CCD, and can still pass through
+///   each other in a single extreme substep; keep relative speeds of dynamic pairs
+///   below (size / dt) or use kinematic bodies for critical thin barriers.
 void rt_body3d_set_use_ccd(void *body, int8_t use_ccd);
 /// @brief Get the CCD enable flag.
 int8_t rt_body3d_get_use_ccd(void *body);

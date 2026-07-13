@@ -339,38 +339,33 @@ double rt_vec3_z(void *v) {
 
 /// @brief Set the X component in place.
 void rt_vec3_set_x(void *v, double x) {
-    if (!v) {
-        rt_trap("Vec3.set_X: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.set_X: invalid vector");
+    if (!vec)
         return;
-    }
-    ((ViperVec3 *)v)->x = x;
+    vec->x = x;
 }
 
 /// @brief Set the Y component in place.
 void rt_vec3_set_y(void *v, double y) {
-    if (!v) {
-        rt_trap("Vec3.set_Y: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.set_Y: invalid vector");
+    if (!vec)
         return;
-    }
-    ((ViperVec3 *)v)->y = y;
+    vec->y = y;
 }
 
 /// @brief Set the Z component in place.
 void rt_vec3_set_z(void *v, double z) {
-    if (!v) {
-        rt_trap("Vec3.set_Z: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.set_Z: invalid vector");
+    if (!vec)
         return;
-    }
-    ((ViperVec3 *)v)->z = z;
+    vec->z = z;
 }
 
 /// @brief Set all components in place.
 void rt_vec3_set(void *v, double x, double y, double z) {
-    if (!v) {
-        rt_trap("Vec3.Set: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Set: invalid vector");
+    if (!vec)
         return;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     vec->x = x;
     vec->y = y;
     vec->z = z;
@@ -378,12 +373,10 @@ void rt_vec3_set(void *v, double x, double y, double z) {
 
 /// @brief Copy all components from @p other into @p v.
 void rt_vec3_copy_from(void *v, void *other) {
-    if (!v || !other) {
-        rt_trap("Vec3.CopyFrom: null vector");
+    ViperVec3 *dst = vec3_checked(v, "Vec3.CopyFrom: invalid vector");
+    ViperVec3 *src = vec3_checked(other, "Vec3.CopyFrom: invalid vector");
+    if (!dst || !src)
         return;
-    }
-    ViperVec3 *dst = (ViperVec3 *)v;
-    ViperVec3 *src = (ViperVec3 *)other;
     dst->x = src->x;
     dst->y = src->y;
     dst->z = src->z;
@@ -418,12 +411,10 @@ void rt_vec3_copy_from(void *v, void *other) {
 ///
 /// @see rt_vec3_sub For vector subtraction
 void *rt_vec3_add(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Vec3.Add: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Add: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Add: invalid vector");
+    if (!va || !vb)
         return NULL;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     return vec3_alloc(va->x + vb->x, va->y + vb->y, va->z + vb->z);
 }
 
@@ -454,12 +445,10 @@ void *rt_vec3_add(void *a, void *b) {
 ///
 /// @see rt_vec3_add For vector addition
 void *rt_vec3_sub(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Vec3.Sub: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Sub: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Sub: invalid vector");
+    if (!va || !vb)
         return NULL;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     return vec3_alloc(va->x - vb->x, va->y - vb->y, va->z - vb->z);
 }
 
@@ -491,11 +480,9 @@ void *rt_vec3_sub(void *a, void *b) {
 ///
 /// @see rt_vec3_div For scalar division
 void *rt_vec3_mul(void *v, double s) {
-    if (!v) {
-        rt_trap("Vec3.Mul: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Mul: invalid vector");
+    if (!vec)
         return NULL;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec3_alloc(vec->x * s, vec->y * s, vec->z * s);
 }
 
@@ -559,11 +546,9 @@ void *rt_vec3_div(void *v, double s) {
 ///
 /// @see rt_vec3_mul For scalar multiplication
 void *rt_vec3_neg(void *v) {
-    if (!v) {
-        rt_trap("Vec3.Neg: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Neg: invalid vector");
+    if (!vec)
         return NULL;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec3_alloc(-vec->x, -vec->y, -vec->z);
 }
 
@@ -608,12 +593,10 @@ void *rt_vec3_neg(void *v) {
 ///
 /// @see rt_vec3_cross For the cross product
 double rt_vec3_dot(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Vec3.Dot: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Dot: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Dot: invalid vector");
+    if (!va || !vb)
         return 0.0;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     return va->x * vb->x + va->y * vb->y + va->z * vb->z;
 }
 
@@ -677,12 +660,10 @@ double rt_vec3_dot(void *a, void *b) {
 /// @see rt_vec2_cross For the 2D cross product (returns scalar)
 void *rt_vec3_cross(void *a, void *b) {
     // 3D cross product: a × b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
-    if (!a || !b) {
-        rt_trap("Vec3.Cross: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Cross: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Cross: invalid vector");
+    if (!va || !vb)
         return NULL;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     double x = va->y * vb->z - va->z * vb->y;
     double y = va->z * vb->x - va->x * vb->z;
     double z = va->x * vb->y - va->y * vb->x;
@@ -726,11 +707,9 @@ void *rt_vec3_cross(void *a, void *b) {
 ///
 /// @see rt_vec3_len For the actual length
 double rt_vec3_len_sq(void *v) {
-    if (!v) {
-        rt_trap("Vec3.LenSq: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.LenSq: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec->x * vec->x + vec->y * vec->y + vec->z * vec->z;
 }
 
@@ -758,11 +737,9 @@ double rt_vec3_len_sq(void *v) {
 /// @see rt_vec3_len_sq For squared length (faster for comparisons)
 /// @see rt_vec3_norm For getting a unit-length vector
 double rt_vec3_len(void *v) {
-    if (!v) {
-        rt_trap("Vec3.Len: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Len: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec3_safe_len(vec->x, vec->y, vec->z);
 }
 
@@ -793,12 +770,10 @@ double rt_vec3_len(void *v) {
 ///
 /// @see rt_vec3_len For the length of a single vector
 double rt_vec3_dist(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Vec3.Dist: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Dist: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Dist: invalid vector");
+    if (!va || !vb)
         return 0.0;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     double dx = vb->x - va->x;
     double dy = vb->y - va->y;
     double dz = vb->z - va->z;
@@ -845,11 +820,9 @@ double rt_vec3_dist(void *a, void *b) {
 /// @see rt_vec3_len For getting the length
 /// @see rt_vec3_div For manual normalization
 void *rt_vec3_norm(void *v) {
-    if (!v) {
-        rt_trap("Vec3.Norm: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Norm: invalid vector");
+    if (!vec)
         return NULL;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     double len = vec3_safe_len(vec->x, vec->y, vec->z);
     if (len == 0.0 || !isfinite(len)) {
         // Return zero vector for zero-length input
@@ -899,12 +872,10 @@ void *rt_vec3_norm(void *v) {
 ///
 /// @see rt_vec3_add For vector addition
 void *rt_vec3_lerp(void *a, void *b, double t) {
-    if (!a || !b) {
-        rt_trap("Vec3.Lerp: null vector");
+    ViperVec3 *va = vec3_checked(a, "Vec3.Lerp: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Lerp: invalid vector");
+    if (!va || !vb)
         return NULL;
-    }
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
     // lerp(a, b, t) = a + (b - a) * t = a * (1 - t) + b * t
     double x = va->x + (vb->x - va->x) * t;
     double y = va->y + (vb->y - va->y) * t;
@@ -919,8 +890,10 @@ void *rt_vec3_lerp(void *a, void *b, double t) {
 void *rt_vec3_reflect(void *v, void *normal) {
     if (!v || !normal)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *vv = (ViperVec3 *)v;
-    ViperVec3 *n = (ViperVec3 *)normal;
+    ViperVec3 *vv = vec3_checked(v, "Vec3.Reflect: invalid vector");
+    ViperVec3 *n = vec3_checked(normal, "Vec3.Reflect: invalid vector");
+    if (!vv || !n)
+        return vec3_alloc(0, 0, 0);
     double n_len = vec3_safe_len(n->x, n->y, n->z);
     if (n_len < 1e-12 || !isfinite(n_len) || !isfinite(vv->x) || !isfinite(vv->y) ||
         !isfinite(vv->z))
@@ -942,8 +915,10 @@ void *rt_vec3_reflect(void *v, void *normal) {
 void *rt_vec3_project(void *v, void *onto) {
     if (!v || !onto)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *vv = (ViperVec3 *)v;
-    ViperVec3 *t = (ViperVec3 *)onto;
+    ViperVec3 *vv = vec3_checked(v, "Vec3.Project: invalid vector");
+    ViperVec3 *t = vec3_checked(onto, "Vec3.Project: invalid vector");
+    if (!vv || !t)
+        return vec3_alloc(0, 0, 0);
     if (!isfinite(vv->x) || !isfinite(vv->y) || !isfinite(vv->z))
         return vec3_alloc(0, 0, 0);
     double t_len = vec3_safe_len(t->x, t->y, t->z);
@@ -964,7 +939,9 @@ void *rt_vec3_project(void *v, void *onto) {
 void *rt_vec3_clamp_len(void *v, double max_len) {
     if (!v || !isfinite(max_len) || max_len <= 0.0)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *vv = (ViperVec3 *)v;
+    ViperVec3 *vv = vec3_checked(v, "Vec3.ClampLen: invalid vector");
+    if (!vv)
+        return vec3_alloc(0, 0, 0);
     double len = vec3_safe_len(vv->x, vv->y, vv->z);
     if (!isfinite(len))
         return vec3_alloc(0, 0, 0);
@@ -979,8 +956,10 @@ void *rt_vec3_clamp_len(void *v, double max_len) {
 void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
     if (!current || !target)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *c = (ViperVec3 *)current;
-    ViperVec3 *t = (ViperVec3 *)target;
+    ViperVec3 *c = vec3_checked(current, "Vec3.MoveTowards: invalid vector");
+    ViperVec3 *t = vec3_checked(target, "Vec3.MoveTowards: invalid vector");
+    if (!c || !t)
+        return vec3_alloc(0, 0, 0);
     if (!isfinite(max_delta) || max_delta < 0.0)
         return vec3_alloc(c->x, c->y, c->z);
     double dx = t->x - c->x, dy = t->y - c->y, dz = t->z - c->z;
@@ -999,8 +978,10 @@ void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
 double rt_vec3_angle(void *a, void *b) {
     if (!a || !b)
         return 0.0;
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
+    ViperVec3 *va = vec3_checked(a, "Vec3.Angle: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Angle: invalid vector");
+    if (!va || !vb)
+        return 0.0;
     double la = vec3_safe_len(va->x, va->y, va->z);
     double lb = vec3_safe_len(vb->x, vb->y, vb->z);
     if (la < 1e-12 || lb < 1e-12 || !isfinite(la) || !isfinite(lb))
@@ -1024,8 +1005,10 @@ double rt_vec3_angle(void *a, void *b) {
 void *rt_vec3_min(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
+    ViperVec3 *va = vec3_checked(a, "Vec3.Min: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Min: invalid vector");
+    if (!va || !vb)
+        return vec3_alloc(0, 0, 0);
     return vec3_alloc(fmin(va->x, vb->x), fmin(va->y, vb->y), fmin(va->z, vb->z));
 }
 
@@ -1034,7 +1017,9 @@ void *rt_vec3_min(void *a, void *b) {
 void *rt_vec3_max(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);
-    ViperVec3 *va = (ViperVec3 *)a;
-    ViperVec3 *vb = (ViperVec3 *)b;
+    ViperVec3 *va = vec3_checked(a, "Vec3.Max: invalid vector");
+    ViperVec3 *vb = vec3_checked(b, "Vec3.Max: invalid vector");
+    if (!va || !vb)
+        return vec3_alloc(0, 0, 0);
     return vec3_alloc(fmax(va->x, vb->x), fmax(va->y, vb->y), fmax(va->z, vb->z));
 }

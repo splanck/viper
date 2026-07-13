@@ -529,17 +529,13 @@ static void cloth3d_substep(rt_cloth3d *cloth) {
             if (!isfinite(len) || len < 1e-9)
                 continue;
             double diff = (len - con->rest) / len;
-            double wa = cloth->pinned[con->a] ? 0.0 : 0.5;
-            double wb = cloth->pinned[con->b] ? 0.0 : 0.5;
-            double total = wa + wb;
-            if (total <= 0.0)
-                continue;
-            wa /= total * 2.0 * 0.5 / 0.5; /* normalize so wa+wb move covers diff */
-            wa = cloth->pinned[con->a] ? 0.0 : (cloth->pinned[con->b] ? 1.0 : 0.5);
-            wb = 1.0 - wa - (cloth->pinned[con->a] && cloth->pinned[con->b] ? 0.0 : 0.0);
+            /* Distribute the correction so wa + wb == 1: an unpinned point
+             * facing a pinned partner absorbs the whole correction; two free
+             * points split it evenly; two pinned points cannot move. */
             if (cloth->pinned[con->a] && cloth->pinned[con->b])
                 continue;
-            wb = cloth->pinned[con->b] ? 0.0 : 1.0 - wa;
+            double wa = cloth->pinned[con->a] ? 0.0 : (cloth->pinned[con->b] ? 1.0 : 0.5);
+            double wb = cloth->pinned[con->b] ? 0.0 : 1.0 - wa;
             for (int i = 0; i < 3; ++i) {
                 pa[i] += d[i] * diff * wa;
                 pb[i] -= d[i] * diff * wb;
@@ -574,7 +570,66 @@ static void cloth3d_substep(rt_cloth3d *cloth) {
             if (dist >= col->radius)
                 continue;
             if (dist < 1e-9) {
-                pos[1] = closest[1] + col->radius;
+                /* Point sits exactly on the collider center/axis: eject along a
+                 * direction derived from the collider — perpendicular to a
+                 * capsule's axis, or toward the point's previous position for a
+                 * sphere — rather than a fixed world axis. */
+                double eject[3] = {0.0, 1.0, 0.0};
+                const double *prev = &cloth->prev[p * 3];
+                double away[3] = {
+                    prev[0] - closest[0], prev[1] - closest[1], prev[2] - closest[2]};
+                double away_len =
+                    sqrt(away[0] * away[0] + away[1] * away[1] + away[2] * away[2]);
+                if (isfinite(away_len) && away_len > 1e-9) {
+                    eject[0] = away[0] / away_len;
+                    eject[1] = away[1] / away_len;
+                    eject[2] = away[2] / away_len;
+                }
+                if (col->is_capsule) {
+                    /* Remove the axis-parallel component so the point leaves the
+                     * capsule through its side, the nearest surface. */
+                    double ab[3] = {
+                        col->b[0] - col->a[0], col->b[1] - col->a[1], col->b[2] - col->a[2]};
+                    double ab_len = sqrt(ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2]);
+                    if (isfinite(ab_len) && ab_len > 1e-9) {
+                        double axis[3] = {ab[0] / ab_len, ab[1] / ab_len, ab[2] / ab_len};
+                        double along =
+                            eject[0] * axis[0] + eject[1] * axis[1] + eject[2] * axis[2];
+                        double perp[3] = {eject[0] - axis[0] * along,
+                                          eject[1] - axis[1] * along,
+                                          eject[2] - axis[2] * along};
+                        double perp_len =
+                            sqrt(perp[0] * perp[0] + perp[1] * perp[1] + perp[2] * perp[2]);
+                        if (isfinite(perp_len) && perp_len > 1e-9) {
+                            eject[0] = perp[0] / perp_len;
+                            eject[1] = perp[1] / perp_len;
+                            eject[2] = perp[2] / perp_len;
+                        } else {
+                            /* Previous position lies on the axis too: pick any
+                             * unit vector perpendicular to the axis. */
+                            double basis[3] = {1.0, 0.0, 0.0};
+                            if (fabs(axis[0]) > 0.9)
+                                basis[0] = 0.0, basis[1] = 1.0;
+                            eject[0] = axis[1] * basis[2] - axis[2] * basis[1];
+                            eject[1] = axis[2] * basis[0] - axis[0] * basis[2];
+                            eject[2] = axis[0] * basis[1] - axis[1] * basis[0];
+                            double el = sqrt(eject[0] * eject[0] + eject[1] * eject[1] +
+                                             eject[2] * eject[2]);
+                            if (isfinite(el) && el > 1e-9) {
+                                eject[0] /= el;
+                                eject[1] /= el;
+                                eject[2] /= el;
+                            } else {
+                                eject[0] = 0.0;
+                                eject[1] = 1.0;
+                                eject[2] = 0.0;
+                            }
+                        }
+                    }
+                }
+                pos[0] = closest[0] + eject[0] * col->radius;
+                pos[1] = closest[1] + eject[1] * col->radius;
+                pos[2] = closest[2] + eject[2] * col->radius;
                 continue;
             }
             double push = col->radius / dist;

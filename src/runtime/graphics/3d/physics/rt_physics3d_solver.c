@@ -927,6 +927,8 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     contact3d_expand_aabb_manifold(c, a, b);
     if (c->contact_count <= 1)
         contact3d_expand_obb_manifold(c, leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose);
+    if (c->contact_count <= 1)
+        contact3d_expand_capsule_manifold(c, a, b);
     c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
     /* Detection only: the warm-started sequential-impulse solver runs after the
      * whole manifold is built. Record the

@@ -125,8 +125,11 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             mips[i].offset = textureasset3d_read_u64le(entry);
             mips[i].length = textureasset3d_read_u64le(entry + 8u);
             mips[i].uncompressed_length = textureasset3d_read_u64le(entry + 16u);
-            if (mips[i].length > 0 && (mips[i].offset > (uint64_t)size ||
-                                       mips[i].length > (uint64_t)size - mips[i].offset)) {
+            /* The offset must stay inside the file even for zero-length levels:
+             * `data + offset` is still formed below, and an unchecked 64-bit
+             * offset would create an out-of-bounds pointer. */
+            if (mips[i].offset > (uint64_t)size ||
+                mips[i].length > (uint64_t)size - mips[i].offset) {
                 free(mips);
                 rt_asset_error_setf(
                     RT_ASSET_ERROR_CORRUPT, "%s: truncated mip payload", api_name);

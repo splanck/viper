@@ -160,11 +160,35 @@ static int canvas3d_render_shadow_light_slot(
     memcpy(c->shadow_light_vps[slot], light_vp, sizeof(light_vp));
     shadow_lights[slot] = light;
     shadow_lights[slot].shadow_index = slot;
+
+    /* Spot lights illuminate a bounded sphere around their position, so casters
+     * outside `position +/- range` cannot affect this map. Directional lights are
+     * unbounded along the light ray (casters behind the fitted box still shadow
+     * into it), so they submit the full caster list. */
+    int cull_spot = light.type == 3;
+    float spot_min[3] = {0.0f, 0.0f, 0.0f};
+    float spot_max[3] = {0.0f, 0.0f, 0.0f};
+    if (cull_spot) {
+        float range =
+            canvas3d_shadow_spot_range_from_bounds(&light, shadow_world_min, shadow_world_max);
+        if (!isfinite(range) || range <= 0.0f) {
+            cull_spot = 0;
+        } else {
+            for (int axis = 0; axis < 3; axis++) {
+                spot_min[axis] = light.position[axis] - range;
+                spot_max[axis] = light.position[axis] + range;
+            }
+        }
+    }
+
     c->backend->shadow_begin(
         c->backend_ctx, slot, shadow_rt->depth_buf, shadow_rt->width, shadow_rt->height, light_vp);
     for (int32_t si = 0; si < shadow_index_count; si++) {
         int32_t draw_index = shadow_indices[si];
         if (draw_index < 0)
+            continue;
+        if (cull_spot &&
+            !canvas3d_deferred_intersects_world_bounds(c, &cmds[draw_index], spot_min, spot_max))
             continue;
         canvas3d_shadow_deferred(c, &cmds[draw_index]);
     }
@@ -201,6 +225,24 @@ static int canvas3d_render_point_shadow_cube(
     light.shadow_cascade_count = 1;
     light.shadow_projection_type = VGFX3D_SHADOW_PROJECTION_CUBE;
 
+    /* Each face is a ~90-degree frustum from the light position with far plane at
+     * the light range, so it fits inside the half-cube along the face axis
+     * (laterally widened for the 92-degree guard band). Casters outside that box
+     * cannot write depth into the face. */
+    float face_range =
+        canvas3d_shadow_spot_range_from_bounds(&light, shadow_world_min, shadow_world_max);
+    int cull_faces = isfinite(face_range) && face_range > 0.0f;
+    float face_lateral = cull_faces ? face_range * 1.05f : 0.0f;
+
+    static const float cube_face_dirs[VGFX3D_SHADOW_CUBE_FACES][3] = {
+        {1.0f, 0.0f, 0.0f},
+        {-1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {0.0f, -1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, -1.0f},
+    };
+
     for (int32_t face = 0; face < VGFX3D_SHADOW_CUBE_FACES; face++) {
         vgfx3d_rendertarget_t *shadow_rt;
         float light_vp[16];
@@ -214,6 +256,25 @@ static int canvas3d_render_point_shadow_cube(
         if (!canvas3d_build_point_shadow_face_vp(
                 shadow_world_min, shadow_world_max, &light, face, light_vp))
             return 0;
+
+        float face_min[3];
+        float face_max[3];
+        if (cull_faces) {
+            for (int axis = 0; axis < 3; axis++) {
+                face_min[axis] = light.position[axis] - face_lateral;
+                face_max[axis] = light.position[axis] + face_lateral;
+            }
+            for (int axis = 0; axis < 3; axis++) {
+                if (cube_face_dirs[face][axis] > 0.5f) {
+                    face_min[axis] = light.position[axis] - 0.1f;
+                    face_max[axis] = light.position[axis] + face_range;
+                } else if (cube_face_dirs[face][axis] < -0.5f) {
+                    face_min[axis] = light.position[axis] - face_range;
+                    face_max[axis] = light.position[axis] + 0.1f;
+                }
+            }
+        }
+
         memcpy(c->shadow_light_vps[slot], light_vp, sizeof(light_vp));
         c->backend->shadow_begin(c->backend_ctx,
                                  slot,
@@ -224,6 +285,10 @@ static int canvas3d_render_point_shadow_cube(
         for (int32_t si = 0; si < shadow_index_count; si++) {
             int32_t draw_index = shadow_indices[si];
             if (draw_index < 0)
+                continue;
+            if (cull_faces &&
+                !canvas3d_deferred_intersects_world_bounds(
+                    c, &cmds[draw_index], face_min, face_max))
                 continue;
             canvas3d_shadow_deferred(c, &cmds[draw_index]);
         }

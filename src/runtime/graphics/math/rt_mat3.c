@@ -203,7 +203,9 @@ void *rt_mat3_row(void *m, int64_t row) {
     if (!m || row < 0 || row > 2)
         return rt_vec3_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.Row: invalid matrix");
+    if (!mat)
+        return rt_vec3_zero();
     return rt_vec3_new(M(mat, row, 0), M(mat, row, 1), M(mat, row, 2));
 }
 
@@ -212,7 +214,9 @@ void *rt_mat3_col(void *m, int64_t col) {
     if (!m || col < 0 || col > 2)
         return rt_vec3_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.Col: invalid matrix");
+    if (!mat)
+        return rt_vec3_zero();
     return rt_vec3_new(M(mat, 0, col), M(mat, 1, col), M(mat, 2, col));
 }
 
@@ -225,8 +229,10 @@ void *rt_mat3_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
 
-    mat3_impl *ma = (mat3_impl *)a;
-    mat3_impl *mb = (mat3_impl *)b;
+    mat3_impl *ma = mat3_checked(a, "Mat3.Add: invalid matrix");
+    mat3_impl *mb = mat3_checked(b, "Mat3.Add: invalid matrix");
+    if (!ma || !mb)
+        return rt_mat3_zero();
 
     return rt_mat3_new(ma->m[0] + mb->m[0],
                        ma->m[1] + mb->m[1],
@@ -244,8 +250,10 @@ void *rt_mat3_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
 
-    mat3_impl *ma = (mat3_impl *)a;
-    mat3_impl *mb = (mat3_impl *)b;
+    mat3_impl *ma = mat3_checked(a, "Mat3.Sub: invalid matrix");
+    mat3_impl *mb = mat3_checked(b, "Mat3.Sub: invalid matrix");
+    if (!ma || !mb)
+        return rt_mat3_zero();
 
     return rt_mat3_new(ma->m[0] - mb->m[0],
                        ma->m[1] - mb->m[1],
@@ -264,8 +272,10 @@ void *rt_mat3_mul(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_identity();
 
-    mat3_impl *ma = (mat3_impl *)a;
-    mat3_impl *mb = (mat3_impl *)b;
+    mat3_impl *ma = mat3_checked(a, "Mat3.Mul: invalid matrix");
+    mat3_impl *mb = mat3_checked(b, "Mat3.Mul: invalid matrix");
+    if (!ma || !mb)
+        return rt_mat3_identity();
 
     double r[9];
     for (int i = 0; i < 3; i++) {
@@ -284,7 +294,9 @@ void *rt_mat3_mul_scalar(void *m, double s) {
     if (!m)
         return rt_mat3_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.MulScalar: invalid matrix");
+    if (!mat)
+        return rt_mat3_zero();
 
     return rt_mat3_new(mat->m[0] * s,
                        mat->m[1] * s,
@@ -303,7 +315,9 @@ void *rt_mat3_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.TransformPoint: invalid matrix");
+    if (!mat)
+        return rt_vec2_zero();
     double x = rt_vec2_x(v);
     double y = rt_vec2_y(v);
 
@@ -320,7 +334,9 @@ void *rt_mat3_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.TransformVec: invalid matrix");
+    if (!mat)
+        return rt_vec2_zero();
     double x = rt_vec2_x(v);
     double y = rt_vec2_y(v);
 
@@ -340,7 +356,9 @@ void *rt_mat3_transpose(void *m) {
     if (!m)
         return rt_mat3_identity();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.Transpose: invalid matrix");
+    if (!mat)
+        return rt_mat3_identity();
 
     return rt_mat3_new(mat->m[0],
                        mat->m[3],
@@ -419,7 +437,9 @@ void *rt_mat3_neg(void *m) {
     if (!m)
         return rt_mat3_zero();
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat3_impl *mat = mat3_checked(m, "Mat3.Neg: invalid matrix");
+    if (!mat)
+        return rt_mat3_zero();
 
     return rt_mat3_new(-mat->m[0],
                        -mat->m[1],
@@ -444,8 +464,10 @@ int8_t rt_mat3_eq(void *a, void *b, double epsilon) {
     if (epsilon <= 0.0)
         epsilon = 1e-9;
 
-    mat3_impl *ma = (mat3_impl *)a;
-    mat3_impl *mb = (mat3_impl *)b;
+    mat3_impl *ma = mat3_checked(a, "Mat3.Eq: invalid matrix");
+    mat3_impl *mb = mat3_checked(b, "Mat3.Eq: invalid matrix");
+    if (!ma || !mb)
+        return (!a && !b) ? 1 : 0;
 
     for (int i = 0; i < 9; i++) {
         if (fabs(ma->m[i] - mb->m[i]) > epsilon)

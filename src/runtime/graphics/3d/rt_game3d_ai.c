@@ -51,11 +51,13 @@
  *=========================================================================*/
 
 typedef struct rt_game3d_percept_track {
-    void *entity; /* plain pointer key; validated against the world list */
+    void *entity;      /* plain pointer key; validated against the world list */
+    int64_t entity_id; /* stable id guard: a reused heap address never aliases */
     double visible_time;
     double lost_time;
     double last_known[3];
     int8_t seen;
+    int8_t touched; /* set when the perception tick saw this entity alive */
 } rt_game3d_percept_track;
 
 typedef struct rt_game3d_heard_event {
@@ -250,17 +252,46 @@ int64_t rt_game3d_perception_heard_tag(void *obj, int64_t index) {
     return sense->heard[index].tag;
 }
 
-/// @brief Track slot for @p target (existing or new; evicts nothing — capped).
-static rt_game3d_percept_track *game3d_perception_track(rt_game3d_perception *sense, void *target) {
+/// @brief Find the existing track slot for @p target, or NULL.
+/// @details Slots key on the entity pointer AND its stable id, so a freed
+///   entity's heap address reused by a new entity starts from a fresh track
+///   instead of inheriting stale seen/last_known state.
+static rt_game3d_percept_track *game3d_perception_find_track(rt_game3d_perception *sense,
+                                                             const rt_game3d_entity *target) {
     for (int32_t i = 0; i < sense->track_count; ++i)
-        if (sense->tracks[i].entity == target)
+        if (sense->tracks[i].entity == target && sense->tracks[i].entity_id == target->id)
             return &sense->tracks[i];
+    return NULL;
+}
+
+/// @brief Create a fresh track slot for @p target (NULL when the table is full).
+/// @details Tracks are created lazily — only when a target first becomes
+///   visible — so distant never-seen entities cannot hog slots. Dead tracks are
+///   compacted away at the end of every perception tick, so the table cannot
+///   fill permanently.
+static rt_game3d_percept_track *game3d_perception_create_track(rt_game3d_perception *sense,
+                                                               rt_game3d_entity *target) {
     if (sense->track_count >= PERCEPTION3D_MAX_TRACKED)
         return NULL;
     rt_game3d_percept_track *track = &sense->tracks[sense->track_count++];
     memset(track, 0, sizeof(*track));
     track->entity = target;
+    track->entity_id = target->id;
     return track;
+}
+
+/// @brief Drop tracks that the current tick did not touch (dead/removed/filtered
+///   entities), compacting the table so slots are always reclaimable.
+static void game3d_perception_compact_tracks(rt_game3d_perception *sense) {
+    int32_t kept = 0;
+    for (int32_t i = 0; i < sense->track_count; ++i) {
+        if (!sense->tracks[i].touched)
+            continue;
+        if (kept != i)
+            sense->tracks[kept] = sense->tracks[i];
+        kept++;
+    }
+    sense->track_count = kept;
 }
 
 /// @brief Per-step sight update (cone + LoS + hysteresis) for one perceiver.
@@ -271,6 +302,9 @@ void game3d_perception_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
         return;
     /* Heard events expire every step; World3D.ReportSound refills them. */
     sense->heard_count = 0;
+    /* Tracks touched by this tick survive; the rest are compacted away below. */
+    for (int32_t i = 0; i < sense->track_count; ++i)
+        sense->tracks[i].touched = 0;
 
     double origin[3];
     if (!game3d_entity_world_position_components(owner, origin))
@@ -294,33 +328,42 @@ void game3d_perception_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
     int32_t count = world->entity_count;
     if (count < 0 || count > world->entity_capacity)
         count = world->entity_capacity > 0 ? world->entity_capacity : 0;
+    double sight_range_sq = sense->sight_range * sense->sight_range;
     for (int32_t i = 0; i < count; ++i) {
         rt_game3d_entity *target = world->entities ? world->entities[i] : NULL;
         if (!target || !target->alive || target == owner)
             continue;
         if (sense->target_mask != -1 && (target->layer & sense->target_mask) == 0)
             continue;
+        rt_game3d_percept_track *track = game3d_perception_find_track(sense, target);
+        /* An untracked target with a full table can neither be recorded nor
+         * transition any state: skip all remaining work for it. */
+        if (!track && sense->track_count >= PERCEPTION3D_MAX_TRACKED)
+            continue;
         double tpos[3];
         if (!game3d_entity_world_position_components(target, tpos))
             continue;
         double to[3] = {tpos[0] - origin[0], tpos[1] - origin[1], tpos[2] - origin[2]};
-        double dist = sqrt(to[0] * to[0] + to[1] * to[1] + to[2] * to[2]);
+        double dist_sq = to[0] * to[0] + to[1] * to[1] + to[2] * to[2];
         int visible = 0;
-        if (isfinite(dist) && dist <= sense->sight_range && dist > 1e-6) {
+        if (isfinite(dist_sq) && dist_sq <= sight_range_sq && dist_sq > 1e-12) {
+            double dist = sqrt(dist_sq);
             double align = (to[0] * forward[0] + to[1] * forward[1] + to[2] * forward[2]) / dist;
             if (align >= cone_cos) {
                 visible = 1;
-                if (world->physics) {
+                /* Skip the occlusion ray for near-touching targets: the epsilon
+                 * pull-back would drive the ray length negative. */
+                if (world->physics && dist > 0.05) {
                     void *o = rt_vec3_new(origin[0], origin[1], origin[2]);
                     void *d = rt_vec3_new(to[0] / dist, to[1] / dist, to[2] / dist);
                     if (o && d) {
                         void *hit =
                             rt_world3d_raycast(world->physics, o, d, dist - 0.05, sense->los_mask);
                         if (hit) {
+                            /* rt_physics_hit3d_get_body returns a borrowed reference. */
                             void *hit_body = rt_physics_hit3d_get_body(hit);
                             if (hit_body != target->body)
                                 visible = 0;
-                            game3d_release_ref(&hit_body);
                             game3d_release_ref(&hit);
                         }
                     }
@@ -329,9 +372,13 @@ void game3d_perception_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
                 }
             }
         }
-        rt_game3d_percept_track *track = game3d_perception_track(sense, target);
+        /* Tracks begin at first visibility; invisible untracked targets carry
+         * no state worth storing. */
+        if (!track && visible)
+            track = game3d_perception_create_track(sense, target);
         if (!track)
             continue;
+        track->touched = 1;
         if (visible) {
             track->visible_time += dt;
             track->lost_time = 0.0;
@@ -349,6 +396,7 @@ void game3d_perception_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
             }
         }
     }
+    game3d_perception_compact_tracks(sense);
 }
 
 /// @brief World stimulus: deliver a sound event to every hearing perceiver in range.
@@ -379,8 +427,10 @@ void rt_game3d_world_report_sound(void *world_obj, void *position, double loudne
         double dx = pos[0] - epos[0];
         double dy = pos[1] - epos[1];
         double dz = pos[2] - epos[2];
-        double dist = sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist > sense->hearing_range * loudness)
+        /* Squared-distance compare: skips a sqrt per entity per sound event. */
+        double dist_sq = dx * dx + dy * dy + dz * dz;
+        double reach = sense->hearing_range * loudness;
+        if (!isfinite(dist_sq) || !isfinite(reach) || reach < 0.0 || dist_sq > reach * reach)
             continue;
         rt_game3d_heard_event *event = &sense->heard[sense->heard_count++];
         memcpy(event->position, pos, sizeof(event->position));

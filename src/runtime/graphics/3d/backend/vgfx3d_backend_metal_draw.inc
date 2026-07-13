@@ -55,10 +55,14 @@ static void metal_submit_draw(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
+        /* Scene passes are reversed-Z: flip both bias terms so positive material
+         * bias still pushes fragments away from the camera. The shadow pass below
+         * keeps the standard convention. */
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
-            [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
-                           slopeScale:cmd->slope_scaled_depth_bias
-                                clamp:0.0f];
+            [ctx.encoder
+                setDepthBias:vgfx3d_depth_bias_constant_units_reversed_z(cmd->depth_bias)
+                  slopeScale:vgfx3d_depth_bias_slope_reversed_z(cmd->slope_scaled_depth_bias)
+                       clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
@@ -916,10 +920,14 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
+        /* Scene passes are reversed-Z: flip both bias terms so positive material
+         * bias still pushes fragments away from the camera. The shadow pass below
+         * keeps the standard convention. */
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
-            [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
-                           slopeScale:cmd->slope_scaled_depth_bias
-                                clamp:0.0f];
+            [ctx.encoder
+                setDepthBias:vgfx3d_depth_bias_constant_units_reversed_z(cmd->depth_bias)
+                  slopeScale:vgfx3d_depth_bias_slope_reversed_z(cmd->slope_scaled_depth_bias)
+                       clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 

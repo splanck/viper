@@ -995,6 +995,8 @@ static void game3d_world_free_registries(rt_game3d_world *world) {
     world->damage_events = NULL;
     world->hit_event_capacity = 0;
     world->damage_event_capacity = 0;
+    free(world->combat_scratch);
+    world->combat_scratch = NULL;
     free(world->entities);
     free(world->body_index_entries);
     free(world->name_index_hashes);

@@ -225,12 +225,10 @@ double rt_quat_w(void *q) {
 /// @brief Hamilton product (a × b) — composes rotations: applying `mul(a, b)` rotates the
 /// vector by b first, then by a. Traps on null input.
 void *rt_quat_mul(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Quat.Mul: null quaternion");
+    ViperQuat *qa = quat_checked(a, "Quat.Mul: invalid quaternion");
+    ViperQuat *qb = quat_checked(b, "Quat.Mul: invalid quaternion");
+    if (!qa || !qb)
         return NULL;
-    }
-    ViperQuat *qa = (ViperQuat *)a;
-    ViperQuat *qb = (ViperQuat *)b;
     double w = qa->w * qb->w - qa->x * qb->x - qa->y * qb->y - qa->z * qb->z;
     double x = qa->w * qb->x + qa->x * qb->w + qa->y * qb->z - qa->z * qb->y;
     double y = qa->w * qb->y - qa->x * qb->z + qa->y * qb->w + qa->z * qb->x;
@@ -241,22 +239,18 @@ void *rt_quat_mul(void *a, void *b) {
 /// @brief Quaternion conjugate (negates the imaginary part: x, y, z → -x, -y, -z; w stays).
 /// For unit quaternions, conjugate equals inverse and represents the opposite rotation.
 void *rt_quat_conjugate(void *q) {
-    if (!q) {
-        rt_trap("Quat.Conjugate: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Conjugate: invalid quaternion");
+    if (!qv)
         return NULL;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     return quat_alloc(-qv->x, -qv->y, -qv->z, qv->w);
 }
 
 /// @brief Quaternion inverse (conjugate / |q|²). For unit quaternions matches `_conjugate`
 /// but is safer for general use. Traps on null or zero-length/non-finite input.
 void *rt_quat_inverse(void *q) {
-    if (!q) {
-        rt_trap("Quat.Inverse: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Inverse: invalid quaternion");
+    if (!qv)
         return NULL;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
     if (len == 0.0 || !isfinite(len)) {
         rt_trap("Quat.Inverse: invalid quaternion length");
@@ -271,11 +265,9 @@ void *rt_quat_inverse(void *q) {
 /// to avoid divide-by-zero. Re-normalize periodically when chaining many multiplies to prevent
 /// drift from accumulated floating-point error.
 void *rt_quat_norm(void *q) {
-    if (!q) {
-        rt_trap("Quat.Norm: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Norm: invalid quaternion");
+    if (!qv)
         return NULL;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
     if (len == 0.0 || !isfinite(len))
         return quat_alloc(0.0, 0.0, 0.0, 0.0);
@@ -285,32 +277,26 @@ void *rt_quat_norm(void *q) {
 
 /// @brief Return the number of elements in the quat.
 double rt_quat_len(void *q) {
-    if (!q) {
-        rt_trap("Quat.Len: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Len: invalid quaternion");
+    if (!qv)
         return 0.0;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     return quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
 }
 
 /// @brief Len the sq of the quat.
 double rt_quat_len_sq(void *q) {
-    if (!q) {
-        rt_trap("Quat.LenSq: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.LenSq: invalid quaternion");
+    if (!qv)
         return 0.0;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     return qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w;
 }
 
 /// @brief Dot the quat.
 double rt_quat_dot(void *a, void *b) {
-    if (!a || !b) {
-        rt_trap("Quat.Dot: null quaternion");
+    ViperQuat *qa = quat_checked(a, "Quat.Dot: invalid quaternion");
+    ViperQuat *qb = quat_checked(b, "Quat.Dot: invalid quaternion");
+    if (!qa || !qb)
         return 0.0;
-    }
-    ViperQuat *qa = (ViperQuat *)a;
-    ViperQuat *qb = (ViperQuat *)b;
     return qa->x * qb->x + qa->y * qb->y + qa->z * qb->z + qa->w * qb->w;
 }
 
@@ -376,14 +362,12 @@ void *rt_quat_slerp(void *a, void *b, double t) {
 
 /// @brief Linear quaternion interpolation (component-wise) between `a` and `b`. Faster than
 /// slerp but constant angular velocity is not preserved — use only for small angle deltas.
-/// Result is *not* automatically normalized.
+/// The result is re-normalized to unit length (nlerp); a degenerate blend returns identity.
 void *rt_quat_lerp(void *a, void *b, double t) {
-    if (!a || !b) {
-        rt_trap("Quat.Lerp: null quaternion");
+    ViperQuat *qa = quat_checked(a, "Quat.Lerp: invalid quaternion");
+    ViperQuat *qb = quat_checked(b, "Quat.Lerp: invalid quaternion");
+    if (!qa || !qb)
         return NULL;
-    }
-    ViperQuat *qa = (ViperQuat *)a;
-    ViperQuat *qb = (ViperQuat *)b;
     double omt = 1.0 - t;
     double x = omt * qa->x + t * qb->x;
     double y = omt * qa->y + t * qb->y;
@@ -403,11 +387,13 @@ void *rt_quat_lerp(void *a, void *b, double t) {
 /// @brief Apply rotation `q` to vector `v` (returns a new Vec3). Computes `q · v · q*` using
 /// the optimized formula `v + 2 * cross(qxyz, cross(qxyz, v) + qw * v)`.
 void *rt_quat_rotate_vec3(void *q, void *v) {
-    if (!q || !v) {
+    if (!v) {
         rt_trap("Quat.RotateVec3: null argument");
         return NULL;
     }
-    ViperQuat *qv = (ViperQuat *)q;
+    ViperQuat *qv = quat_checked(q, "Quat.RotateVec3: invalid quaternion");
+    if (!qv)
+        return NULL;
     double vx = rt_vec3_x(v);
     double vy = rt_vec3_y(v);
     double vz = rt_vec3_z(v);
@@ -427,11 +413,9 @@ void *rt_quat_rotate_vec3(void *q, void *v) {
 /// @brief Convert the quaternion to an equivalent 4×4 rotation matrix (translation = 0,
 /// scale = 1). Useful for shader uniforms that prefer matrix uniforms over quaternion math.
 void *rt_quat_to_mat4(void *q) {
-    if (!q) {
-        rt_trap("Quat.ToMat4: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.ToMat4: invalid quaternion");
+    if (!qv)
         return NULL;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
     double x = qv->x;
     double y = qv->y;
     double z = qv->z;
@@ -469,29 +453,31 @@ void *rt_quat_to_mat4(void *q) {
                        1.0);
 }
 
-/// @brief Extract the rotation axis from a unit quaternion (the inverse of `_from_axis_angle`).
-/// Returns (1, 0, 0) for an identity-or-degenerate quaternion (no meaningful axis).
+/// @brief Extract the rotation axis (the inverse of `_from_axis_angle`). The axis is the
+/// normalized imaginary part, so the result is correct for non-unit quaternions too.
+/// Returns (0, 0, 1) for an identity-or-degenerate quaternion (no meaningful axis).
 void *rt_quat_axis(void *q) {
-    if (!q) {
-        rt_trap("Quat.Axis: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Axis: invalid quaternion");
+    if (!qv)
         return NULL;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
-    double s_sq = 1.0 - qv->w * qv->w;
-    if (s_sq <= 0.0)
+    double len = quat_safe_len3(qv->x, qv->y, qv->z);
+    if (!isfinite(len) || len < 1e-12)
         return rt_vec3_new(0.0, 0.0, 1.0); /* Identity — arbitrary axis. */
-    double inv_s = 1.0 / sqrt(s_sq);
+    double inv_s = 1.0 / len;
     return rt_vec3_new(qv->x * inv_s, qv->y * inv_s, qv->z * inv_s);
 }
 
-/// @brief Angle the quat.
+/// @brief Rotation angle in radians (the inverse of `_from_axis_angle`), in [0, 2π].
+/// The scalar part is normalized first so non-unit quaternions report the correct angle;
+/// a zero/degenerate quaternion returns 0.
 double rt_quat_angle(void *q) {
-    if (!q) {
-        rt_trap("Quat.Angle: null quaternion");
+    ViperQuat *qv = quat_checked(q, "Quat.Angle: invalid quaternion");
+    if (!qv)
         return 0.0;
-    }
-    ViperQuat *qv = (ViperQuat *)q;
-    double w_clamped = qv->w;
+    double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
+    if (!isfinite(len) || len < 1e-12)
+        return 0.0;
+    double w_clamped = qv->w / len;
     if (w_clamped > 1.0)
         w_clamped = 1.0;
     if (w_clamped < -1.0)

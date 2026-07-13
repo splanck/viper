@@ -985,7 +985,7 @@ static void gl_recompute_shadow_count(gl_context_t *ctx);
 static int32_t gl_sanitize_shadow_slot(gl_context_t *ctx, int32_t shadow_index);
 static void bind_main_framebuffer(gl_context_t *ctx);
 static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
-static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd);
+static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd, int reversed_z);
 static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture);
 static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                                            GLint uniform_loc,

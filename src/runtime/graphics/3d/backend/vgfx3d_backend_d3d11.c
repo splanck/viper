@@ -1013,9 +1013,17 @@ static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
 /// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
 /// @details D3D11's constant bias is expressed in implementation-scaled integer units. Scaling the
 ///   renderer value by 2^16 gives useful sub-depth-buffer offsets without overflowing normal
-///   material settings; the result is clamped before narrowing to INT.
+///   material settings; the result is clamped before narrowing to INT. The biased rasterizer is
+///   used only by the main (scene) pipeline, which renders reversed-Z, so the term is
+///   sign-flipped here to keep the "positive bias pushes away from the camera" contract.
 static INT d3d11_depth_bias_to_int(float bias) {
-    return (INT)vgfx3d_depth_bias_d3d11_units(bias);
+    return (INT)vgfx3d_depth_bias_d3d11_units(-bias);
+}
+
+/// @brief Sanitized, reversed-Z-signed slope bias for the scene pipeline's biased rasterizer.
+static float d3d11_scene_slope_bias(float slope_bias) {
+    return vgfx3d_depth_bias_slope_reversed_z(
+        vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(slope_bias));
 }
 
 /// @brief Create a rasterizer state for a biased draw.
@@ -1039,8 +1047,7 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
     desc.FrontCounterClockwise = TRUE;
     desc.DepthClipEnable = TRUE;
     desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    desc.SlopeScaledDepthBias =
-        vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cmd->slope_scaled_depth_bias);
+    desc.SlopeScaledDepthBias = d3d11_scene_slope_bias(cmd->slope_scaled_depth_bias);
     desc.DepthBiasClamp = 0.0f;
     return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
 }
@@ -1064,7 +1071,7 @@ static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
     if (!ctx || !cmd || !out_state)
         return E_INVALIDARG;
     depth_bias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    slope_bias = vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cmd->slope_scaled_depth_bias);
+    slope_bias = d3d11_scene_slope_bias(cmd->slope_scaled_depth_bias);
     if (ctx->rs_depth_biased_valid && ctx->rs_depth_biased_cached &&
         ctx->rs_depth_biased_depth_bias == depth_bias &&
         ctx->rs_depth_biased_slope_bias == slope_bias &&

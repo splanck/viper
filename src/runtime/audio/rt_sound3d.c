@@ -371,16 +371,26 @@ static int sound3d_ensure_voice_capacity(int32_t needed) {
 }
 
 /// @brief Find a reusable slot whose tracked voice has ended.
-/// @details Avoids growing or evicting when one-shot audio has already completed. Tests can force
-///   all voices to appear live to exercise overflow/eviction behavior deterministically.
+/// @details Avoids growing or evicting when one-shot audio has already completed. The scan
+///   starts from a rotating cursor so repeated registrations amortize the liveness probes
+///   across the table instead of re-probing the same live prefix every time. Tests can
+///   force all voices to appear live to exercise overflow/eviction deterministically.
 /// @return Slot index, or -1 when no tracked entry is reusable.
 static int32_t sound3d_find_reclaimable_voice_slot(void) {
-    if (!s_voice_dist)
+    static int32_t s_reclaim_cursor = 0;
+    if (!s_voice_dist || s_voice_dist_count <= 0)
         return -1;
-    for (int32_t i = 0; i < s_voice_dist_count; i++) {
+    if (s_reclaim_cursor >= s_voice_dist_count)
+        s_reclaim_cursor = 0;
+    for (int32_t n = 0; n < s_voice_dist_count; n++) {
+        int32_t i = s_reclaim_cursor + n;
+        if (i >= s_voice_dist_count)
+            i -= s_voice_dist_count;
         if (s_voice_dist[i].voice_id <= 0 || (!s_voice_dist_test_force_all_playing &&
-                                              !rt_voice_is_playing(s_voice_dist[i].voice_id)))
+                                              !rt_voice_is_playing(s_voice_dist[i].voice_id))) {
+            s_reclaim_cursor = i + 1;
             return i;
+        }
     }
     return -1;
 }
@@ -580,7 +590,13 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
          * by projecting onto x/z while still dividing by the 3D distance. */
         double dot_right =
             ndx * effective->right[0] + ndy * effective->right[1] + ndz * effective->right[2];
-        *out_pan = isfinite(dot_right) ? clamp_i64((int64_t)(dot_right * 100.0), -100, 100) : 0;
+        /* Round to nearest (like the volume path) instead of truncating toward
+         * zero, which biased pan values toward center. */
+        *out_pan = isfinite(dot_right)
+                       ? clamp_i64((int64_t)(dot_right * 100.0 + (dot_right >= 0.0 ? 0.5 : -0.5)),
+                                   -100,
+                                   100)
+                       : 0;
     } else {
         *out_pan = 0;
     }

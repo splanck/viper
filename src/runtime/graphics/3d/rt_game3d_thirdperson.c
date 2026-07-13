@@ -165,19 +165,18 @@ static void game3d_thirdperson_update_fades(rt_game3d_thirdperson_controller *co
     double dir[3] = {eye[0] - pivot[0], eye[1] - pivot[1], eye[2] - pivot[2]};
     double len = sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
     if (isfinite(len) && len > 1e-6 && world->physics) {
-        void *origin = rt_vec3_new(pivot[0], pivot[1], pivot[2]);
-        void *direction = rt_vec3_new(dir[0] / len, dir[1] / len, dir[2] / len);
         /* All layers on purpose: fadeable props are typically excluded from the
          * boom CollisionMask (no pull-in), yet must still fade when they sit
-         * between the pivot and the camera. */
-        void *hits = rt_world3d_raycast_all(world->physics, origin, direction, len, -1);
-        int64_t hit_count = hits ? rt_physics_hit_list3d_get_count(hits) : 0;
-        for (int64_t h = 0; h < hit_count; ++h) {
-            void *hit = rt_physics_hit_list3d_get(hits, h);
-            if (!hit || rt_physics_hit3d_get_is_trigger(hit))
-                continue;
-            void *body = rt_physics_hit3d_get_body(hit);
-            rt_game3d_entity *entity = body ? game3d_world_find_entity_by_body(world, body) : NULL;
+         * between the pivot and the camera. The raw query writes borrowed body
+         * pointers into a stack buffer, so this per-frame pass allocates
+         * nothing (no Vec3 handles, no boxed hit list). */
+        enum { GAME3D_TP_FADE_QUERY_MAX = 64 };
+        void *bodies[GAME3D_TP_FADE_QUERY_MAX];
+        double ndir[3] = {dir[0] / len, dir[1] / len, dir[2] / len};
+        int32_t hit_count = rt_world3d_raycast_all_bodies_raw(
+            world->physics, pivot, ndir, len, -1, bodies, GAME3D_TP_FADE_QUERY_MAX);
+        for (int32_t h = 0; h < hit_count; ++h) {
+            rt_game3d_entity *entity = game3d_world_find_entity_by_body(world, bodies[h]);
             if (!entity || entity == target || !game3d_entity_alive_or_record(entity))
                 continue;
             void *node = game3d_entity_node_ref(entity);
@@ -189,9 +188,6 @@ static void game3d_thirdperson_update_fades(rt_game3d_thirdperson_controller *co
             if (index >= 0)
                 controller->fades[index].occluding = 1;
         }
-        game3d_release_ref(&hits);
-        game3d_release_ref(&direction);
-        game3d_release_ref(&origin);
     }
 
     /* Animate alphas; restore and compact entries that finished releasing. */

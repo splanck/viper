@@ -547,6 +547,25 @@ int8_t rt_anim_controller3d_is_state_playing(void *obj, rt_string state_name) {
                : 0;
 }
 
+/// @brief C-internal fast path of rt_anim_controller3d_is_state_playing for callers
+///   that hold a plain C string (avoids a transient rt_string allocation per query;
+///   used by the per-frame combat window check).
+int8_t rt_anim_controller3d_is_state_playing_cstr(void *obj, const char *state_name) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    anim_controller3d_layer_t *layer;
+    int32_t state_index;
+    if (!controller)
+        return 0;
+    state_index = controller_find_state_cstr(controller, state_name);
+    if (state_index < 0)
+        return 0;
+    layer = &controller->layers[0];
+    return layer->current_state == state_index && layer->player &&
+                   rt_anim_player3d_is_playing(layer->player)
+               ? 1
+               : 0;
+}
+
 /// @brief Override the playback speed multiplier for a state. Applied immediately to any
 /// layer currently playing that state. Negative speeds are accepted (reverse playback).
 void rt_anim_controller3d_set_state_speed(void *obj, rt_string state_name, double speed) {

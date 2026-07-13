@@ -239,6 +239,21 @@ static inline int32_t vgfx3d_depth_bias_d3d11_units(float bias) {
     return (int32_t)lrintf(scaled);
 }
 
+/// @brief Constant depth-bias units for a reversed-Z scene pass (sign-flipped).
+/// @details The Material3D contract is standard-Z: positive bias pushes fragments away
+///          from the camera. Reversed-Z scene passes (clear 0, Greater compare) invert
+///          the window-z direction, so both the constant and slope-scaled terms must be
+///          negated to preserve that contract. Shadow-map passes keep the standard
+///          convention on every backend and use the unflipped helpers above.
+static inline float vgfx3d_depth_bias_constant_units_reversed_z(float bias) {
+    return -vgfx3d_depth_bias_constant_units(bias);
+}
+
+/// @brief Slope-scaled depth-bias term for a reversed-Z scene pass (sign-flipped).
+static inline float vgfx3d_depth_bias_slope_reversed_z(float slope_bias) {
+    return isfinite(slope_bias) ? -slope_bias : 0.0f;
+}
+
 /// @brief True if the command needs standard (non-additive) alpha blending.
 /// @details Honors the draw command's resolved alpha mode first. Material classification promotes
 ///   decoded fractional-alpha textures to BLEND and binary cutouts to MASK before commands reach

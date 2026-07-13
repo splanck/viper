@@ -1349,8 +1349,16 @@ static int draco_eb_parse_and_alloc(draco_buf *b, draco_eb *eb) {
         return 0;
     if (ns > nf)
         return 0;
+    /* Split symbols are a subset of the S symbols, so nss > ns is malformed.
+     * Bounding it here also keeps every count below 2^30, making the
+     * total_verts arithmetic and the uint32 narrowings below overflow-free. */
+    if (nss > ns)
+        return 0;
+    if (nv > (uint64_t)UINT32_MAX)
+        return 0;
     total_verts = nv + nss;
-    if (total_verts == 0 || total_verts > 3u * nf + nss)
+    if (total_verts == 0 || total_verts > 3u * nf + nss ||
+        total_verts > (uint64_t)UINT32_MAX)
         return 0;
     eb->num_vertices = (uint32_t)total_verts;
     eb->num_faces = (uint32_t)nf;

@@ -362,6 +362,55 @@ static void contact3d_try_add_manifold_point(rt_contact3d *contact,
     contact3d_set_manifold_point(contact, contact->contact_count++, point, normal, separation);
 }
 
+/// @brief Promote a single-point lengthwise capsule contact to a two-point manifold.
+/// @details A capsule resting on its side touches along a line, but the sphere-sample
+///          narrow phase reports only the deepest sample, so the solver receives one
+///          point and the capsule rocks/jitters instead of resting flat. Projecting
+///          both axis endpoints onto the contact plane through the reported point
+///          gives the solver a stable two-point patch. Fires only when the capsule
+///          axis is roughly perpendicular to the contact normal — end-standing
+///          capsules keep their correct single point.
+void contact3d_expand_capsule_manifold(rt_contact3d *contact,
+                                       const rt_body3d *a,
+                                       const rt_body3d *b) {
+    const rt_body3d *cap = NULL;
+    double e0[3];
+    double e1[3];
+    double axis[3];
+    double axis_len;
+    double align;
+
+    if (!contact || !a || !b || contact->contact_count != 1)
+        return;
+    if (a->shape == PH3D_SHAPE_CAPSULE && b->shape != PH3D_SHAPE_CAPSULE)
+        cap = a;
+    else if (b->shape == PH3D_SHAPE_CAPSULE && a->shape != PH3D_SHAPE_CAPSULE)
+        cap = b;
+    if (!cap)
+        return;
+    capsule_axis_endpoints(cap, e0, e1);
+    vec3_sub(e1, e0, axis);
+    axis_len = vec3_len(axis);
+    if (!isfinite(axis_len) || axis_len < 1e-6)
+        return;
+    align = (axis[0] * contact->normal[0] + axis[1] * contact->normal[1] +
+             axis[2] * contact->normal[2]) /
+            axis_len;
+    if (!isfinite(align) || fabs(align) > 0.3)
+        return; /* end-on contact: the single point is the right manifold */
+
+    const double *ends[2] = {e0, e1};
+    for (int i = 0; i < 2; i++) {
+        double to_plane = (contact->point[0] - ends[i][0]) * contact->normal[0] +
+                          (contact->point[1] - ends[i][1]) * contact->normal[1] +
+                          (contact->point[2] - ends[i][2]) * contact->normal[2];
+        double projected[3] = {ends[i][0] + contact->normal[0] * to_plane,
+                               ends[i][1] + contact->normal[1] * to_plane,
+                               ends[i][2] + contact->normal[2] * to_plane};
+        contact3d_try_add_manifold_point(contact, projected, contact->normal, contact->separation);
+    }
+}
+
 /// @brief Promote a single-point box/box contact to a multi-point manifold over the AABB overlap.
 /// @details Samples the corners of the two bodies' overlapping AABB region as extra contact points,
 ///          giving the solver a stable contact patch (resting boxes don't wobble on one point).

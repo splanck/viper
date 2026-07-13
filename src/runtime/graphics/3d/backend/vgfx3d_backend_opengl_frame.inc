@@ -332,7 +332,7 @@ static void gl_submit_draw(void *ctx_ptr,
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     gl_configure_draw_output(ctx, cmd);
-    gl_apply_depth_bias(cmd);
+    gl_apply_depth_bias(cmd, 1);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
@@ -985,7 +985,7 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         gl.Disable(GL_CULL_FACE);
     else
         gl.Enable(GL_CULL_FACE);
-    gl_apply_depth_bias(cmd);
+    gl_apply_depth_bias(cmd, 0);
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact))
         return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
@@ -1120,7 +1120,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     gl_configure_draw_output(ctx, cmd);
-    gl_apply_depth_bias(cmd);
+    gl_apply_depth_bias(cmd, 1);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);

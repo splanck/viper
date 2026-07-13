@@ -24,6 +24,11 @@
 
 #include <stdint.h>
 
+/// @brief Runtime class id tagging Spline heap payloads.
+/// @details Lets public entry points validate script-supplied handles before
+///          dereferencing the spline's internal coordinate-array pointers.
+#define RT_SPLINE_CLASS_ID INT64_C(-0x600209)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

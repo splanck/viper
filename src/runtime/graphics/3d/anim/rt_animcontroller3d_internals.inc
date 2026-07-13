@@ -424,19 +424,17 @@ static int controller_rebuild_state_name_index(rt_anim_controller3d *controller)
     return 1;
 }
 
-/// @brief Find a state by name, using an open-addressed name index for larger controllers.
-/// @return State index, or -1 if `name` is NULL/empty or no match.
-static int32_t controller_find_state(rt_anim_controller3d *controller, rt_string name) {
-    char target_buf[RT_ANIM_CONTROLLER3D_STATE_NAME_MAX];
-    const char *target = target_buf;
+/// @brief Find a state by NUL-terminated name (the allocation-free core lookup).
+/// @details Shared by the rt_string entry point and C-internal callers (e.g. the
+///   per-frame combat window check) that already hold a plain C string, so hot
+///   paths need not allocate a transient rt_string per query.
+/// @return State index, or -1 if `target` is NULL/empty or no match.
+static int32_t controller_find_state_cstr(rt_anim_controller3d *controller, const char *target) {
     int32_t state_count;
-    if (!controller || !name)
+    if (!controller || !target || target[0] == '\0')
         return -1;
     controller_repair_state_table(controller);
     state_count = controller->state_count;
-    controller_copy_name(target_buf, sizeof(target_buf), name);
-    if (target_buf[0] == '\0')
-        return -1;
     if (state_count >= 16) {
         uint64_t hash = controller_hash_name_cstr(target);
         if ((controller->state_name_index_dirty || controller->state_name_index_capacity <= 0 ||
@@ -466,6 +464,16 @@ linear_scan:
             return i;
     }
     return -1;
+}
+
+/// @brief Find a state by name, using an open-addressed name index for larger controllers.
+/// @return State index, or -1 if `name` is NULL/empty or no match.
+static int32_t controller_find_state(rt_anim_controller3d *controller, rt_string name) {
+    char target_buf[RT_ANIM_CONTROLLER3D_STATE_NAME_MAX];
+    if (!controller || !name)
+        return -1;
+    controller_copy_name(target_buf, sizeof(target_buf), name);
+    return controller_find_state_cstr(controller, target_buf);
 }
 
 /// @brief Linear-scan the transition table for an exact `(from, to)` pair.

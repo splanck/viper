@@ -1004,7 +1004,8 @@ static int canvas3d_occlusion_state_changed_for_begin(const rt_canvas3d *c,
 
     if (!c || !c->occlusion_state_valid)
         return 1;
-    if (c->occlusion_last_render_target != (void *)c->render_target ||
+    if (c->occlusion_last_render_target_identity !=
+            (c->render_target ? c->render_target->cache_identity : 0u) ||
         c->occlusion_last_output_width != output_w || c->occlusion_last_output_height != output_h ||
         c->occlusion_last_is_ortho != c->cached_cam_is_ortho)
         return 1;
@@ -1041,7 +1042,8 @@ static void canvas3d_update_occlusion_state_for_begin(rt_canvas3d *c,
     if (canvas3d_occlusion_state_changed_for_begin(c, output_w, output_h))
         canvas3d_clear_occlusion_history(c);
     c->occlusion_state_valid = 1;
-    c->occlusion_last_render_target = (void *)c->render_target;
+    c->occlusion_last_render_target_identity =
+        c->render_target ? c->render_target->cache_identity : 0u;
     c->occlusion_last_output_width = output_w;
     c->occlusion_last_output_height = output_h;
     memcpy(c->occlusion_last_world_cam_pos,

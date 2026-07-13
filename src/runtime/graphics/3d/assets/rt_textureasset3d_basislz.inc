@@ -91,6 +91,13 @@ static int basislz_huff_build(basislz_huff_table *table,
     for (int len = 1; len <= BASISLZ_HUFF_MAX_CODE_SIZE; len++) {
         table->base_code[len] = (int32_t)code;
         table->base_index[len] = index;
+        /* Kraft over-subscription check: canonical assignment must fit in the
+         * len-bit code space. A malformed length table that over-subscribes
+         * would otherwise decode ambiguous, attacker-influenced symbols. */
+        if ((uint64_t)code + (uint64_t)table->counts[len] > ((uint64_t)1 << len)) {
+            basislz_huff_free(table);
+            return 0;
+        }
         for (uint32_t s = 0; s < num_syms; s++) {
             if (lengths[s] == len)
                 table->sorted_syms[index++] = (uint16_t)s;

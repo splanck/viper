@@ -1011,6 +1011,7 @@ typedef struct rt_game3d_world {
     rt_game3d_hit_event_rec *hit_events; /* combat-pass hit buffer, cleared each step */
     int32_t hit_event_count;
     int32_t hit_event_capacity;
+    void *combat_scratch; /* lazily allocated per-world combat volume scratch (combat.c) */
     rt_game3d_damage_event_rec *damage_events; /* damage buffer, cleared each step */
     int32_t damage_event_count;
     int32_t damage_event_capacity;

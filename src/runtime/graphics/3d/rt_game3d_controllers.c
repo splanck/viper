@@ -1054,8 +1054,16 @@ void rt_game3d_first_person_controller_late_update(void *obj, void *world_obj, d
         return;
     void *pos = rt_character3d_get_position(character_ref);
     if (pos) {
+        /* Scale the standing eye offset by the capsule's CURRENT height so a
+         * crouched character's camera drops with the capsule instead of
+         * floating at standing eye level above the shrunk collider. */
+        double eye_offset = character->eye_height;
+        double current_height = rt_character3d_get_height(character_ref);
+        if (isfinite(current_height) && current_height > 1e-9 &&
+            isfinite(character->stand_height) && character->stand_height > 1e-9)
+            eye_offset *= current_height / character->stand_height;
         void *eye = rt_vec3_new(game3d_clamp_coord_or(rt_vec3_x(pos), 0.0),
-                                game3d_clamp_coord_or(rt_vec3_y(pos) + character->eye_height, 0.0),
+                                game3d_clamp_coord_or(rt_vec3_y(pos) + eye_offset, 0.0),
                                 game3d_clamp_coord_or(rt_vec3_z(pos), 0.0));
         rt_camera3d_set_position(world->camera, eye);
         game3d_release_ref(&eye);

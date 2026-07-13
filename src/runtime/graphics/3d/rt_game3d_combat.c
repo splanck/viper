@@ -375,10 +375,7 @@ static int game3d_hitbox_is_live(rt_game3d_hitbox *hitbox) {
         rt_game3d_hitbox_window *window = &hitbox->windows[i];
         if (state_time < window->t0 || state_time > window->t1)
             continue;
-        rt_string name = rt_const_cstr(window->state);
-        int8_t playing = rt_anim_controller3d_is_state_playing(controller, name);
-        rt_string_unref(name);
-        if (playing)
+        if (rt_anim_controller3d_is_state_playing_cstr(controller, window->state))
             return 1;
     }
     return 0;
@@ -394,9 +391,14 @@ static int game3d_hitbox_victim_seen(const rt_game3d_hitbox *hitbox,
 }
 
 /// @brief Record @p victim in the rehit-suppression ring (bounded).
-static void game3d_hitbox_remember_victim(rt_game3d_hitbox *hitbox, rt_game3d_entity *victim) {
-    if (hitbox->hit_victim_count < RT_GAME3D_HITBOX_MAX_VICTIMS)
-        hitbox->hit_victims[hitbox->hit_victim_count++] = victim;
+/// @return 1 when recorded; 0 when the ring is full. Callers must fail closed
+///   (suppress the hit) on 0 — an unrecorded victim would otherwise be re-hit
+///   on every subsequent combat pass of the same activation.
+static int game3d_hitbox_remember_victim(rt_game3d_hitbox *hitbox, rt_game3d_entity *victim) {
+    if (hitbox->hit_victim_count >= RT_GAME3D_HITBOX_MAX_VICTIMS)
+        return 0;
+    hitbox->hit_victims[hitbox->hit_victim_count++] = victim;
+    return 1;
 }
 
 //=========================================================================
@@ -742,6 +744,24 @@ typedef struct {
     double aabb_max[3];
 } game3d_combat_volume;
 
+/// @brief Per-world combat scratch: the posed hit/hurt volume lists for one pass.
+/// @details Owned by the world (lazily allocated, freed with the world's other
+///   registries) instead of TU-static storage, so concurrent worlds and any
+///   re-entrant combat pass each work on their own buffers.
+typedef struct {
+    game3d_combat_volume hit_volumes[GAME3D_COMBAT_MAX_HIT_VOLUMES];
+    game3d_combat_volume hurt_volumes[GAME3D_COMBAT_MAX_HURT_VOLUMES];
+} game3d_combat_scratch;
+
+/// @brief Return the world's combat scratch, allocating it on first use.
+static game3d_combat_scratch *game3d_combat_scratch_for(rt_game3d_world *world) {
+    if (!world)
+        return NULL;
+    if (!world->combat_scratch)
+        world->combat_scratch = malloc(sizeof(game3d_combat_scratch));
+    return (game3d_combat_scratch *)world->combat_scratch;
+}
+
 /// @brief Collect one entity's live volumes into the hit/hurt lists.
 static void game3d_combat_collect_entity(rt_game3d_entity *entity,
                                          game3d_combat_volume *hits,
@@ -840,8 +860,11 @@ void game3d_world_update_combat(rt_game3d_world *world, double dt) {
         return;
 
     /* 2. Collect live hit volumes and all hurt volumes, posed in world space. */
-    static game3d_combat_volume hit_volumes[GAME3D_COMBAT_MAX_HIT_VOLUMES];
-    static game3d_combat_volume hurt_volumes[GAME3D_COMBAT_MAX_HURT_VOLUMES];
+    game3d_combat_scratch *scratch = game3d_combat_scratch_for(world);
+    if (!scratch)
+        return;
+    game3d_combat_volume *hit_volumes = scratch->hit_volumes;
+    game3d_combat_volume *hurt_volumes = scratch->hurt_volumes;
     int32_t hit_count = 0;
     int32_t hurt_count = 0;
     for (int32_t e = 0; e < entity_count; ++e) {
@@ -892,7 +915,10 @@ void game3d_world_update_combat(rt_game3d_world *world, double dt) {
             double safe_point[3] = {game3d_clamp_coord_or(point[0], attack->pos[0]),
                                     game3d_clamp_coord_or(point[1], attack->pos[1]),
                                     game3d_clamp_coord_or(point[2], attack->pos[2])};
-            game3d_hitbox_remember_victim(attack->hitbox, defend->entity);
+            /* Fail closed when the suppression ring is full: dropping the hit
+             * preserves the one-hit-per-activation-per-victim invariant. */
+            if (!game3d_hitbox_remember_victim(attack->hitbox, defend->entity))
+                continue;
             game3d_world_push_hit_event(world,
                                         attack->entity,
                                         defend->entity,

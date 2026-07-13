@@ -1487,39 +1487,49 @@ int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
 }
 
 /// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
+/// @details Reuses the owning scene's query traversal stack when the subtree is
+///   scene-attached, so repeated per-frame `Find` calls do not heap-allocate.
+///   Detached subtrees (e.g. scene-less model rigs) fall back to a local stack.
 rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
-    rt_scene_node3d **stack = NULL;
+    rt_scene_node3d **local_stack = NULL;
+    size_t local_capacity = 0;
+    rt_scene_node3d ***stack_ref = &local_stack;
+    size_t *capacity_ref = &local_capacity;
     size_t count = 0;
-    size_t capacity = 0;
+    rt_scene_node3d *found = NULL;
     if (!node || !target)
         return NULL;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+    if (node->owner_scene) {
+        stack_ref = &node->owner_scene->query_traversal_stack;
+        capacity_ref = &node->owner_scene->query_traversal_stack_capacity;
+    }
+    if (!scene_node_stack_push(stack_ref, &count, capacity_ref, node)) {
         rt_trap("SceneNode3D.Find: traversal stack allocation failed");
         return NULL;
     }
     while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
+        rt_scene_node3d *current = (*stack_ref)[--count];
         if (current->name) {
             if (!rt_string_is_handle(current->name)) {
                 current->name = NULL;
             } else {
                 const char *s = rt_string_cstr(current->name);
                 if (s && strcmp(s, target) == 0) {
-                    free(stack);
-                    return current;
+                    found = current;
+                    break;
                 }
             }
         }
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            if (!scene_node_stack_push(stack_ref, &count, capacity_ref, current->children[i])) {
                 rt_trap("SceneNode3D.Find: traversal stack allocation failed");
-                free(stack);
+                free(local_stack);
                 return NULL;
             }
         }
     }
-    free(stack);
-    return NULL;
+    free(local_stack);
+    return found;
 }
 
 /// @brief Read a boxed Vec3 into a double[3], trapping with @p trap_message on a non-Vec3 handle.

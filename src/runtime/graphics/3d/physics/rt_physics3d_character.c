@@ -29,6 +29,7 @@
 #include "rt_graphics3d_ids.h"
 #include "rt_physics3d.h"
 #include "rt_physics3d_internal.h"
+#include "rt_physics3d_query_internal.h"
 #include "rt_trap.h"
 
 #include <float.h>
@@ -55,6 +56,14 @@ typedef struct {
     double push_strength;   /* dynamic push impulse scale (0 = block only) */
     rt_body3d *ground_body; /* retained body under our feet, NULL airborne */
     rt_body3d *pushed_body; /* impulse-once-per-step guard, weak in-step ref */
+    /* Per-Move broadphase shortlist: bodies whose AABB overlaps the swept move
+     * volume. While active, position probes narrow-phase only this list instead
+     * of every world body. Weak in-step refs; the world cannot mutate its body
+     * set during a Move. */
+    rt_body3d **move_candidates;
+    int32_t move_candidate_count;
+    int32_t move_candidate_capacity;
+    int8_t move_candidates_active;
 } rt_character3d;
 
 /// @brief Validate @p obj as a Character3D handle (NULL on mismatch).
@@ -213,11 +222,89 @@ static int character3d_candidate_body(const rt_character3d *ctrl, const rt_body3
     return bodies_can_collide(ctrl->body, other);
 }
 
+/// @brief Ensure the per-Move candidate shortlist can hold @p needed body pointers.
+static int character3d_reserve_move_candidates(rt_character3d *ctrl, int32_t needed) {
+    rt_body3d **grown;
+    int32_t new_cap;
+    if (!ctrl || needed < 0)
+        return 0;
+    if (ctrl->move_candidate_capacity >= needed)
+        return 1;
+    new_cap = ctrl->move_candidate_capacity > 0 ? ctrl->move_candidate_capacity : 16;
+    while (new_cap < needed) {
+        if (new_cap > INT32_MAX / 2)
+            return 0;
+        new_cap *= 2;
+    }
+    grown = (rt_body3d **)realloc(ctrl->move_candidates, (size_t)new_cap * sizeof(*grown));
+    if (!grown)
+        return 0;
+    ctrl->move_candidates = grown;
+    ctrl->move_candidate_capacity = new_cap;
+    return 1;
+}
+
+/// @brief Build the per-Move broadphase shortlist for a swept move volume.
+///
+/// Collects every candidate body whose cached broadphase AABB overlaps the
+/// conservative volume the controller can touch this Move: the start position
+/// expanded on every axis by the total move length (sliding can redirect
+/// motion onto any axis), the capsule extents, the step-up/probe reach, and a
+/// safety margin. Falls back to full-world scans (shortlist inactive) if the
+/// broadphase cannot be built.
+static void character3d_begin_move_candidates(rt_character3d *ctrl,
+                                              const double *start,
+                                              double move_len) {
+    ctrl->move_candidates_active = 0;
+    ctrl->move_candidate_count = 0;
+    if (!ctrl->world || !ctrl->body)
+        return;
+
+    int32_t entry_count = world3d_build_query_broadphase(ctrl->world);
+    if (entry_count < 0)
+        return;
+
+    double half_height = isfinite(ctrl->body->height) ? fabs(ctrl->body->height) * 0.5 : 1.0;
+    double radius = isfinite(ctrl->body->radius) ? fabs(ctrl->body->radius) : 0.5;
+    double step = character3d_sanitize_step_height(ctrl->step_height);
+    double reach = move_len + half_height + radius + step + 0.6;
+    if (!isfinite(reach) || reach <= 0.0)
+        return;
+
+    double qmin[3];
+    double qmax[3];
+    for (int axis = 0; axis < 3; axis++) {
+        qmin[axis] = start[axis] - reach;
+        qmax[axis] = start[axis] + reach;
+    }
+
+    for (int32_t i = 0; i < entry_count; i++) {
+        const ph3d_broadphase_entry *entry = &ctrl->world->broadphase_entries[i];
+        if (!query_entry_overlaps_bounds(entry, qmin, qmax))
+            continue;
+        if (!character3d_candidate_body(ctrl, entry->body))
+            continue;
+        if (!character3d_reserve_move_candidates(ctrl, ctrl->move_candidate_count + 1))
+            return; /* stay inactive: full scan remains correct */
+        ctrl->move_candidates[ctrl->move_candidate_count++] = entry->body;
+    }
+    ctrl->move_candidates_active = 1;
+}
+
+/// @brief Deactivate the per-Move shortlist (buffer is kept for reuse).
+static void character3d_end_move_candidates(rt_character3d *ctrl) {
+    if (!ctrl)
+        return;
+    ctrl->move_candidates_active = 0;
+    ctrl->move_candidate_count = 0;
+}
+
 /// @brief Probe what the controller would collide with at a given position.
 ///
 /// Temporarily moves the body to `pos`, runs the standard narrow-phase
-/// against every candidate body, restores the original position, and
-/// returns the deepest contact (if any). Used for both penetration
+/// against every candidate body (the per-Move broadphase shortlist when one
+/// is active, otherwise every world body), restores the original position,
+/// and returns the deepest contact (if any). Used for both penetration
 /// resolution and binary-searched sweeps.
 static int character3d_test_position(rt_character3d *ctrl,
                                      const double *pos,
@@ -233,9 +320,14 @@ static int character3d_test_position(rt_character3d *ctrl,
     body->position[1] = test_pos[1];
     body->position[2] = test_pos[2];
 
+    rt_body3d **candidates =
+        ctrl->move_candidates_active ? ctrl->move_candidates : ctrl->world->bodies;
+    int32_t candidate_count =
+        ctrl->move_candidates_active ? ctrl->move_candidate_count : ctrl->world->body_count;
+
     rt_character_hit3d best = {0};
-    for (int32_t i = 0; i < ctrl->world->body_count; i++) {
-        rt_body3d *other = ctrl->world->bodies[i];
+    for (int32_t i = 0; i < candidate_count; i++) {
+        rt_body3d *other = candidates[i];
         double normal[3], depth;
         if (!character3d_candidate_body(ctrl, other))
             continue;
@@ -559,6 +651,11 @@ static void character3d_finalizer(void *obj) {
     rt_character3d *c = (rt_character3d *)obj;
     if (!c)
         return;
+    free(c->move_candidates);
+    c->move_candidates = NULL;
+    c->move_candidate_count = 0;
+    c->move_candidate_capacity = 0;
+    c->move_candidates_active = 0;
     if (c->body && rt_obj_release_check0(c->body))
         rt_obj_free(c->body);
     c->body = NULL;
@@ -601,6 +698,10 @@ void *rt_character3d_new(double radius, double height, double mass) {
     c->push_strength = 1.0;
     c->ground_body = NULL;
     c->pushed_body = NULL;
+    c->move_candidates = NULL;
+    c->move_candidate_count = 0;
+    c->move_candidate_capacity = 0;
+    c->move_candidates_active = 0;
     rt_obj_set_finalizer(c, character3d_finalizer);
     return c;
 }
@@ -664,13 +765,16 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
         character3d_sanitize_vec3(start);
         double horizontal[3] = {velocity[0] * dt, 0.0, velocity[2] * dt};
         double vertical[3] = {0.0, velocity[1] * dt, 0.0};
+        double move_len = vec3_len(horizontal) + vec3_len(vertical);
 
+        character3d_begin_move_candidates(ctrl, start, move_len);
         character3d_resolve_penetration(ctrl);
         character3d_move_axis(ctrl, horizontal, 1, dt);
         character3d_move_axis(ctrl, vertical, 0, dt);
         character3d_resolve_penetration(ctrl);
         if (!ctrl->is_grounded)
             character3d_probe_ground(ctrl);
+        character3d_end_move_candidates(ctrl);
 
         body->position[0] = character3d_saturate_coord(body->position[0]);
         body->position[1] = character3d_saturate_coord(body->position[1]);
@@ -679,6 +783,10 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
         body->velocity[1] = character3d_saturate_coord((body->position[1] - start[1]) / dt);
         body->velocity[2] = character3d_saturate_coord((body->position[2] - start[2]) / dt);
         ph3d_vec3_sanitize_state(body->velocity);
+        /* The swept move mutated the body's position directly; stamp the
+         * broadphase so later spatial queries (raycasts, overlaps, other
+         * controllers' shortlists) see the new AABB instead of a stale cache. */
+        body3d_touch_broadphase(body);
     }
 }
 

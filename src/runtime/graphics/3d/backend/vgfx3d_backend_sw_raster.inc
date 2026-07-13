@@ -16,6 +16,18 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vy,
                                           float *out_vz);
 static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, float wy, float wz);
+
+/// @brief Perspective-correct, slot-transformed UV pairs for every texture
+///   slot consumed by the per-pixel lighting stages.
+struct sw_slot_uvs {
+    float normal_u, normal_v;
+    float specular_u, specular_v;
+    float emissive_u, emissive_v;
+    float mr_u, mr_v;
+    float ao_u, ao_v;
+    float lm_u, lm_v; /* raw TEXCOORD_1 for the baked lightmap atlas */
+};
+
 static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const sw_pixels_view *normal_map,
                                             const sw_pixels_view *metallic_roughness_map,
@@ -27,6 +39,7 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const screen_vert_t *v2,
                                             const sw_context_t *ctx,
                                             const float *precomputed_world_normal,
+                                            const struct sw_slot_uvs *precomputed_uvs,
                                             float *inout_r,
                                             float *inout_g,
                                             float *inout_b);
@@ -172,6 +185,7 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
                                             const screen_vert_t *v2,
                                             const sw_context_t *ctx,
                                             const float *precomputed_world_normal,
+                                            const struct sw_slot_uvs *precomputed_uvs,
                                             float *inout_r,
                                             float *inout_g,
                                             float *inout_b) {
@@ -203,10 +217,27 @@ static void sw_apply_environment_reflection(const vgfx3d_draw_cmd_t *cmd,
     pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
     normalize3f(&pnx, &pny, &pnz);
 
-    sw_interpolate_uv_for_slot(
-        cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL, b0, b1, b2, v0, v1, v2, &normal_u, &normal_v);
-    sw_interpolate_uv_for_slot(
-        cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS, b0, b1, b2, v0, v1, v2, &mr_u, &mr_v);
+    /* Reuse the slot UVs the main shading path already interpolated for this
+     * fragment; only recompute them for fragments that skipped that path. */
+    if (precomputed_uvs) {
+        normal_u = precomputed_uvs->normal_u;
+        normal_v = precomputed_uvs->normal_v;
+        mr_u = precomputed_uvs->mr_u;
+        mr_v = precomputed_uvs->mr_v;
+    } else {
+        sw_interpolate_uv_for_slot(
+            cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL, b0, b1, b2, v0, v1, v2, &normal_u, &normal_v);
+        sw_interpolate_uv_for_slot(cmd,
+                                   RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                   b0,
+                                   b1,
+                                   b2,
+                                   v0,
+                                   v1,
+                                   v2,
+                                   &mr_u,
+                                   &mr_v);
+    }
 
     /* When the main shading path already produced this fragment's perturbed
      * world normal, reuse it (below) and skip the redundant per-pixel normal-map
@@ -370,16 +401,7 @@ typedef struct {
     const sw_pixels_view *layer_views;
 } sw_fragment_ctx;
 
-/// @brief Vertex-attribute UVs interpolated once per fragment for each texture
-///   slot consumed by the per-pixel lighting stages.
-typedef struct {
-    float normal_u, normal_v;
-    float specular_u, specular_v;
-    float emissive_u, emissive_v;
-    float mr_u, mr_v;
-    float ao_u, ao_v;
-    float lm_u, lm_v; /* raw TEXCOORD_1 for the baked lightmap atlas */
-} sw_slot_uvs;
+typedef struct sw_slot_uvs sw_slot_uvs;
 
 /// @brief Per-fragment geometric inputs shared by the PBR and Phong lighting
 ///   stages: the (possibly normal-mapped) shading normal, world position, view
@@ -478,14 +500,17 @@ static void sw_shade_resolve_albedo(const sw_fragment_ctx *fc,
     }
 
     /* Emissive map sampling (legacy path only; PBR handles it in the lighting
-     * branch so emissiveIntensity can scale both the color and the map.) */
+     * branch so emissiveIntensity can scale both the color and the map.) The
+     * legacy pipeline lights in gamma space (albedo is sampled raw), so the
+     * emissive map is sampled raw as well — matching the GPU shaders, which
+     * only sRGB-decode emissive for the PBR workflow. */
     if (emissive_tex && !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
         float u;
         float vc;
         float er, eg, eb, ea;
         sw_interpolate_uv_for_slot(
             cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, b0, b1, b2, v0, v1, v2, &u, &vc);
-        sample_texture_slot_srgb_ex(
+        sample_texture_slot_ex(
             emissive_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, u, vc, &er, &eg, &eb, &ea);
         float emissive_scale = (cmd ? cmd->emissive_intensity : 1.0f);
         cr += er * emissive_color[0] * emissive_scale;
@@ -938,7 +963,8 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
     }
 
     if (cmd->shading_model == 1) {
-        float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+        /* Same banding domain and defaults as the GPU shaders' PBR toon pass. */
+        float bands = cmd->custom_params[0] > 2.0f ? cmd->custom_params[0] : 2.0f;
         lit_r = floorf(lit_r * bands) / bands;
         lit_g = floorf(lit_g * bands) / bands;
         lit_b = floorf(lit_b * bands) / bands;
@@ -1024,6 +1050,14 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
         float ndl = pnx * llx + pny * lly + pnz * llz;
         if (ndl < 0.0f)
             ndl = 0.0f;
+        /* Toon (legacy workflow): band the per-light diffuse term and threshold
+         * the specular highlight, matching the GPU shaders. The final color is
+         * NOT banded on the legacy path (that final-band pass is PBR-only). */
+        if (cmd->shading_model == 1) {
+            float bands = cmd->custom_params[0] > 2.0f ? cmd->custom_params[0] : 2.0f;
+            float denom = bands - 1.0f > 1.0f ? bands - 1.0f : 1.0f;
+            ndl = floorf(ndl * bands) / denom;
+        }
         float li_i = lt->intensity;
         lit_r += lt->color[0] * li_i * ndl * base_r * la;
         lit_g += lt->color[1] * li_i * ndl * base_g * la;
@@ -1036,6 +1070,10 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
             if (ndh < 0.0f)
                 ndh = 0.0f;
             float spec = sw_material_powf(ndh, cmd->shininess);
+            if (cmd->shading_model == 1) {
+                float cut = cmd->custom_params[1] > 0.5f ? cmd->custom_params[1] : 0.5f;
+                spec = spec >= cut ? 1.0f : 0.0f;
+            }
             lit_r += lt->color[0] * li_i * spec * sp_r * la;
             lit_g += lt->color[1] * li_i * spec * sp_g * la;
             lit_b += lt->color[2] * li_i * spec * sp_b * la;
@@ -1047,12 +1085,7 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
     lit_g += cmd->emissive_color[1] * cmd->emissive_intensity;
     lit_b += cmd->emissive_color[2] * cmd->emissive_intensity;
 
-    if (cmd->shading_model == 1) {
-        float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
-        lit_r = floorf(lit_r * bands) / bands;
-        lit_g = floorf(lit_g * bands) / bands;
-        lit_b = floorf(lit_b * bands) / bands;
-    } else if (cmd->shading_model == 5) {
+    if (cmd->shading_model == 5) {
         float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
         lit_r += cmd->emissive_color[0] * cmd->emissive_intensity * (strength - 1.0f);
         lit_g += cmd->emissive_color[1] * cmd->emissive_intensity * (strength - 1.0f);
@@ -1194,13 +1227,16 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
     }
     /* Plan 10 soft particles: fade blend fragments as they approach the opaque
      * depth snapshot, removing the hard intersection line where a particle quad
-     * crosses geometry. Only meaningful for depth-tested blend-mode draws. */
+     * crosses geometry. Only meaningful for depth-tested blend-mode draws. The
+     * snapshot is indexed by its own dimensions, not the framebuffer's, so a
+     * stale snapshot captured at a different size cannot alias wrong texels. */
     if (cmd && cmd->soft_particle_fade > 0.0f && !depth_disabled && fc->fog_ctx &&
         fc->fog_ctx->opaque_zbuf_valid && fc->fog_ctx->opaque_zbuf &&
         (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND || cmd->additive_blend) &&
-        idx < (size_t)fc->fog_ctx->opaque_zbuf_w * (size_t)fc->fog_ctx->opaque_zbuf_h) {
+        x >= 0 && y >= 0 && x < fc->fog_ctx->opaque_zbuf_w && y < fc->fog_ctx->opaque_zbuf_h) {
         const sw_context_t *sc = fc->fog_ctx;
-        float lin_scene = sw_linearize_ndc_depth(sc, sc->opaque_zbuf[idx]);
+        size_t snap_idx = (size_t)y * (size_t)sc->opaque_zbuf_w + (size_t)x;
+        float lin_scene = sw_linearize_ndc_depth(sc, sc->opaque_zbuf[snap_idx]);
         float lin_frag = sw_linearize_ndc_depth(sc, z);
         if (lin_scene > 0.0f && lin_frag > 0.0f)
             fa *= clamp01f((lin_scene - lin_frag) / cmd->soft_particle_fade);
@@ -1208,26 +1244,28 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
 
     uint8_t *dst = &pixels[y * stride + x * 4];
     if (!discard_fragment && fa >= 1.0f) {
-        /* Opaque: overwrite pixel; screen-space overlays skip Z writes. */
+        /* Opaque: overwrite pixel; screen-space overlays skip Z writes.
+         * Round to nearest (+0.5) like GPU backends so quantization does not
+         * carry a consistent half-LSB darkening bias versus native output. */
         if (!depth_disabled)
             zbuf[idx] = z;
-        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
-        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
-        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
+        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f + 0.5f);
+        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f + 0.5f);
+        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f + 0.5f);
         dst[3] = 0xFF;
         return 1;
     } else if (!discard_fragment && fa > 0.0f) {
         /* Transparent: additive keeps the destination, alpha uses source-over.
          * Both skip Z writes so they don't occlude later transparent draws. */
         if (cmd && cmd->additive_blend) {
-            dst[0] = (uint8_t)fminf(255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
-            dst[1] = (uint8_t)fminf(255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
-            dst[2] = (uint8_t)fminf(255.0f, clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
+            dst[0] = (uint8_t)fminf(255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0] + 0.5f);
+            dst[1] = (uint8_t)fminf(255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1] + 0.5f);
+            dst[2] = (uint8_t)fminf(255.0f, clamp01f(fb_c) * 255.0f * fa + (float)dst[2] + 0.5f);
         } else {
             float inv_a = 1.0f - fa;
-            dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
-            dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
-            dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
+            dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a + 0.5f);
+            dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a + 0.5f);
+            dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a + 0.5f);
         }
         dst[3] = 0xFF;
         return 1;
@@ -1267,11 +1305,13 @@ static int sw_shade_fragment(
      * recomputing the TBN a second time. */
     float shading_normal[3] = {0.0f, 0.0f, 0.0f};
     int shading_normal_valid = 0;
+    sw_slot_uvs uv = {0};
+    int uv_valid = 0;
     if (cmd && !cmd->unlit &&
         (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map || fc->per_pixel_shadows)) {
         float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
         if (fabsf(pp_iw) > 1e-7f) {
-            sw_slot_uvs uv = {0};
+            uv_valid = 1;
             sw_interpolate_uv_for_slot(cmd,
                                        RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
                                        b0,
@@ -1359,6 +1399,7 @@ static int sw_shade_fragment(
                                         v2,
                                         fog_ctx,
                                         shading_normal_valid ? shading_normal : NULL,
+                                        uv_valid ? &uv : NULL,
                                         &fr,
                                         &fg,
                                         &fb_c);

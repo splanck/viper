@@ -36,6 +36,7 @@
 
 #include "rt_spline.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -68,12 +69,42 @@ static void spline_finalizer(void *payload) {
     }
 }
 
+/// @brief Return whether @p spline is a Spline heap payload.
+/// @details Requires the explicit Spline class id: unlike Vec3/Quat there is no legacy
+///          classless layout to accept, and the struct holds raw pointers, so any
+///          unrecognized payload must be rejected before its fields are dereferenced.
+static int spline_is_compatible_object(void *spline) {
+    if (!spline)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(spline, &hdr) || !hdr)
+        return 0;
+    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+        return 0;
+    return hdr->class_id == RT_SPLINE_CLASS_ID && hdr->cap >= (uint64_t)sizeof(ViperSpline);
+}
+
+/// @brief Validate and cast an opaque handle to a spline payload.
+/// @details Rejects NULL, non-object heap payloads, and wrong-class handles before the
+///          spline's kind/count/coordinate-array fields are read.
+/// @param spline Candidate Spline runtime handle.
+/// @param op Diagnostic prefix used if validation fails.
+/// @return Typed spline payload, or NULL after trapping.
+static ViperSpline *spline_checked(void *spline, const char *op) {
+    if (!spline_is_compatible_object(spline)) {
+        rt_trap(op ? op : "Spline: invalid spline");
+        return NULL;
+    }
+    return (ViperSpline *)spline;
+}
+
 /// @brief Allocate a GC-managed spline object with `count` control point slots.
 /// @details Allocates xs/ys double arrays via calloc and sets the spline kind.
 ///          On allocation failure, releases the partially-constructed object and traps.
 /// @return New ViperSpline or NULL on OOM.
 static ViperSpline *spline_alloc(SplineKind kind, int64_t count) {
-    ViperSpline *s = (ViperSpline *)rt_obj_new_i64(0, (int64_t)sizeof(ViperSpline));
+    ViperSpline *s =
+        (ViperSpline *)rt_obj_new_i64(RT_SPLINE_CLASS_ID, (int64_t)sizeof(ViperSpline));
     if (!s) {
         rt_trap("Spline: memory allocation failed");
         return NULL;
@@ -392,11 +423,9 @@ static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy
 /// Vec2 at that point along the curve. Dispatches to the per-type evaluator
 /// (Catmull/Bezier/Linear).
 void *rt_spline_eval(void *spline, double t) {
-    if (!spline) {
-        rt_trap("Spline.Eval: null spline");
+    ViperSpline *s = spline_checked(spline, "Spline.Eval: invalid spline");
+    if (!s)
         return NULL;
-    }
-    ViperSpline *s = (ViperSpline *)spline;
     double ox = 0.0, oy = 0.0;
     switch (s->kind) {
         case SPLINE_LINEAR:
@@ -415,11 +444,9 @@ void *rt_spline_eval(void *spline, double t) {
 /// @brief Approximate the spline's tangent vector at `t` (numerical derivative via finite
 /// differences). Useful for orienting objects following the curve. Returns a fresh Vec2.
 void *rt_spline_tangent(void *spline, double t) {
-    if (!spline) {
-        rt_trap("Spline.Tangent: null spline");
+    ViperSpline *s = spline_checked(spline, "Spline.Tangent: invalid spline");
+    if (!s)
         return NULL;
-    }
-    ViperSpline *s = (ViperSpline *)spline;
     double ox = 0.0, oy = 0.0;
     switch (s->kind) {
         case SPLINE_LINEAR:
@@ -437,21 +464,16 @@ void *rt_spline_tangent(void *spline, double t) {
 
 /// @brief Return the count of elements in the spline.
 int64_t rt_spline_point_count(void *spline) {
-    if (!spline) {
-        rt_trap("Spline.PointCount: null spline");
-        return 0;
-    }
-    return ((ViperSpline *)spline)->count;
+    ViperSpline *s = spline_checked(spline, "Spline.PointCount: invalid spline");
+    return s ? s->count : 0;
 }
 
 /// @brief Read the i-th control/anchor point from the spline as a fresh Vec2. Useful for
 /// debug visualization or editing tools. Out-of-range index returns origin.
 void *rt_spline_point_at(void *spline, int64_t index) {
-    if (!spline) {
-        rt_trap("Spline.PointAt: null spline");
+    ViperSpline *s = spline_checked(spline, "Spline.PointAt: invalid spline");
+    if (!s)
         return NULL;
-    }
-    ViperSpline *s = (ViperSpline *)spline;
     if (index < 0 || index >= s->count) {
         rt_trap("Spline.PointAt: index out of range");
         return NULL;
@@ -461,13 +483,11 @@ void *rt_spline_point_at(void *spline, int64_t index) {
 
 /// @brief Arc the length of the spline.
 double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
-    if (!spline) {
-        rt_trap("Spline.ArcLength: null spline");
+    ViperSpline *s = spline_checked(spline, "Spline.ArcLength: invalid spline");
+    if (!s)
         return 0.0;
-    }
     if (steps < 1)
         steps = 1;
-    ViperSpline *s = (ViperSpline *)spline;
     double length = 0.0;
     double dt = (t1 - t0) / (double)steps;
     double px = 0.0, py = 0.0;
@@ -510,10 +530,8 @@ double rt_spline_arc_length(void *spline, double t0, double t1, int64_t steps) {
 /// @brief Generate a Seq of `count` Vec2 points along the spline, evenly spaced in `t`. Useful
 /// for tessellating the curve for rendering or hit-test acceleration.
 void *rt_spline_sample(void *spline, int64_t count) {
-    if (!spline) {
-        rt_trap("Spline.Sample: null spline");
+    if (!spline_checked(spline, "Spline.Sample: invalid spline"))
         return NULL;
-    }
     if (count < 2)
         count = 2;
 
