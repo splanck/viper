@@ -18,11 +18,13 @@
 
 module smoke_probe;
 
+bind Viper.Core.Convert as Convert;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Input.Key as Key;
 bind Viper.Math as Math;
+bind Viper.System.Environment as Environment;
 bind Viper.Terminal as Terminal;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.Time.Clock as Clock;
@@ -49,6 +51,14 @@ func luminance(px: Integer) -> Integer {
 
 func ms(us: Integer) -> Float { return us / 1000.0; }
 func fmt(value: Float) -> String { return Fmt.NumFixed(value, 3); }
+
+func performanceBudget(variable: String, fallback: Float) -> Float {
+    if (Environment.HasVariable(variable)) {
+        var configured = Convert.ToDouble(Environment.GetVariable(variable));
+        if (configured > 0.0) { return configured; }
+    }
+    return fallback;
+}
 
 func absInt(value: Integer) -> Integer {
     if (value < 0) { return 0 - value; }
@@ -281,8 +291,9 @@ func assertHudFits(img: Pixels) -> Boolean {
         Terminal.Say("FAIL: Ridgebound final HUD overlay was not composited"); return false;
     }
 
-    // Sample each semantic line separately so a partial glyph-at-the-edge
-    // upload cannot masquerade as a healthy final overlay.
+    // Sample every pixel in each semantic line. The bitmap font's opaque cores
+    // can land entirely between a two-pixel sampling grid at some baselines,
+    // which made a complete line look missing even though it was rendered.
     var line0 = 0;
     var line1 = 0;
     var line2 = 0;
@@ -299,9 +310,9 @@ func assertHudFits(img: Pixels) -> Boolean {
                     line2 = line2 + 1;
                 }
             }
-            sampleX = sampleX + 2;
+            sampleX = sampleX + 1;
         }
-        sampleY = sampleY + 2;
+        sampleY = sampleY + 1;
     }
     if (line0 < 30 || line1 < 30 || line2 < 30) {
         Terminal.Say("FAIL: Ridgebound objective text was only partially composited"); return false;
@@ -480,8 +491,12 @@ func main() {
         perfIndex = perfIndex + 1;
     }
     var renderMs = ms(Clock.TicksUs() - renderStart) / (perfFrames + 0.0);
-    var budgetMs = config.PERF_BUDGET_GPU_MS;
-    if (game.getCanvas().Backend == "software") { budgetMs = config.PERF_BUDGET_SOFTWARE_MS; }
+    var budgetMs = performanceBudget(
+        "VIPER_RIDGEBOUND_PERF_BUDGET_GPU_MS", config.PERF_BUDGET_GPU_MS);
+    if (game.getCanvas().Backend == "software") {
+        budgetMs = performanceBudget(
+            "VIPER_RIDGEBOUND_PERF_BUDGET_SOFTWARE_MS", config.PERF_BUDGET_SOFTWARE_MS);
+    }
     Terminal.Say("METRIC: cinematic_960x540_render_ms=" + fmt(renderMs)
         + " budget_ms=" + fmt(budgetMs));
     if (renderMs > budgetMs) {

@@ -781,12 +781,9 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_native_texture_upload(
     if (!ctx || !ctx->ctx || !entry || !asset || entry->texture_asset != asset ||
         !entry->upload_in_progress || !entry->tex || !entry->srv)
         return VGFX3D_D3D11_UPLOAD_FAILED;
-    if (entry->native_mip_count <= 0)
+    if (entry->native_mip_count <= 0 || entry->native_next_mip < 0 ||
+        entry->native_next_mip >= entry->native_mip_count || entry->native_next_block_row < 0)
         return VGFX3D_D3D11_UPLOAD_FAILED;
-    if (entry->native_next_mip < 0)
-        entry->native_next_mip = 0;
-    if (entry->native_next_mip > entry->native_mip_count)
-        entry->native_next_mip = entry->native_mip_count;
     while (entry->native_next_mip < entry->native_mip_count) {
         vgfx3d_native_texture_mip_t mip;
         uint64_t row_bytes;
@@ -839,9 +836,11 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_native_texture_upload(
         block_rows = vgfx3d_d3d11_native_mip_block_rows(&mip);
         if (row_bytes == 0 || row_bytes > UINT_MAX || block_rows == 0 || block_rows > UINT_MAX)
             return VGFX3D_D3D11_UPLOAD_FAILED;
-        if (entry->native_next_block_row < 0 ||
-            (uint64_t)(uint32_t)entry->native_next_block_row >= block_rows)
-            entry->native_next_block_row = 0;
+        if (!vgfx3d_d3d11_native_upload_cursor_is_valid(entry->native_mip_count,
+                                                        entry->native_next_mip,
+                                                        block_rows,
+                                                        entry->native_next_block_row))
+            return VGFX3D_D3D11_UPLOAD_FAILED;
         rows = vgfx3d_upload_block_rows_for_budget(mip.width,
                                                    mip.height,
                                                    mip.block_width,
@@ -974,8 +973,8 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_texture_upload(d3d11_context_
     if (!vgfx3d_get_pixels_extent(pixels, &source_width, &source_height) ||
         source_width != entry->width || source_height != entry->height)
         return VGFX3D_D3D11_UPLOAD_FAILED;
-    if (entry->upload_next_row < 0 || entry->upload_next_row >= entry->height)
-        entry->upload_next_row = 0;
+    if (!vgfx3d_d3d11_row_upload_cursor_is_valid(entry->height, entry->upload_next_row))
+        return VGFX3D_D3D11_UPLOAD_FAILED;
     rows = vgfx3d_upload_rows_for_budget(entry->width,
                                          entry->height,
                                          entry->upload_next_row,
@@ -1425,16 +1424,9 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_cubemap_upload(d3d11_context_
     if (!ctx || !ctx->ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex ||
         !entry->srv || !vgfx3d_d3d11_is_valid_cubemap_extent(entry->face_size))
         return VGFX3D_D3D11_UPLOAD_FAILED;
-    if (entry->upload_face < 0 || entry->upload_face >= 6) {
-        entry->upload_face = 0;
-        entry->upload_next_row = 0;
-    }
-    if (entry->upload_next_row < 0)
-        entry->upload_next_row = 0;
-    if (entry->upload_next_row >= entry->face_size) {
-        entry->upload_face++;
-        entry->upload_next_row = 0;
-    }
+    if (!vgfx3d_d3d11_cubemap_upload_cursor_is_valid(
+            entry->face_size, entry->upload_face, entry->upload_next_row))
+        return VGFX3D_D3D11_UPLOAD_FAILED;
 
     mip_count = vgfx3d_d3d11_compute_mip_count(entry->face_size, entry->face_size);
     while (entry->upload_face < 6) {

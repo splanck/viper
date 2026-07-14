@@ -1234,7 +1234,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->reflectivity = cmd->env_map ? canvas3d_clamp01_f64(mat->reflectivity) : 0.0f;
     cmd->shading_model =
         (mat->shading_model >= 0 && mat->shading_model <= 5) ? mat->shading_model : 0;
-    for (int pi = 0; pi < 8; pi++)
+    for (int pi = 0; pi < (int)(sizeof(cmd->custom_params) / sizeof(cmd->custom_params[0])); pi++)
         cmd->custom_params[pi] =
             canvas3d_clamp_material_f64(mat->custom_params[pi],
                                         -CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX,

@@ -326,11 +326,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->scene_color_srv);
     SAFE_RELEASE(ctx->scene_color_rtv);
     SAFE_RELEASE(ctx->scene_color_tex);
-    ctx->depth_probe_request_count = 0;
-    ctx->depth_probe_pending_count = 0;
-    ctx->depth_probe_result_count = 0;
-    memset(ctx->depth_probe_requests, 0, sizeof(ctx->depth_probe_requests));
-    memset(ctx->depth_probe_results, 0, sizeof(ctx->depth_probe_results));
+    d3d11_reset_depth_probe_state(ctx);
     ctx->scene_width = 0;
     ctx->scene_height = 0;
     ctx->overlay_width = 0;
@@ -835,6 +831,7 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->rtt_rtv);
     SAFE_RELEASE(ctx->rtt_color_tex);
     d3d11_destroy_opaque_depth_target(ctx);
+    d3d11_reset_depth_probe_state(ctx);
     ctx->rtt_width = 0;
     ctx->rtt_height = 0;
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
@@ -856,7 +853,8 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     vgfx3d_d3d11_color_format_t color_format;
     DXGI_FORMAT staging_format;
 
-    if (!ctx || !rt || !vgfx3d_d3d11_is_valid_texture2d_extent(rt->width, rt->height))
+    if (!ctx || !rt || !vgfx3d_d3d11_is_valid_texture2d_extent(rt->width, rt->height) ||
+        !vgfx3d_d3d11_is_valid_rtt_color_format(rt->color_format))
         return E_INVALIDARG;
     if (ctx->rtt_color_tex && ctx->rtt_rtv && ctx->rtt_depth_tex && ctx->rtt_dsv &&
         ctx->rtt_staging && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
@@ -936,6 +934,7 @@ static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx) {
     ctx->shadow_atlas_h = 0;
     ctx->shadow_atlas_cleared = 0;
     ctx->shadow_pass_slot = -1;
+    ctx->shadow_pass_failed = 0;
     ctx->shadow_count = 0;
 }
 
@@ -958,6 +957,7 @@ static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot) {
     ctx->shadow_width[slot] = 0;
     ctx->shadow_height[slot] = 0;
     ctx->shadow_slot_complete[slot] = 0;
+    d3d11_recompute_shadow_count(ctx);
 }
 
 /// @brief Recompute the highest contiguous shadow slot advertised to shaders.
@@ -1011,10 +1011,8 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
         return hr;
     ctx->shadow_width[slot] = width;
     ctx->shadow_height[slot] = height;
-    /* Fold the freshly-allocated slot into the advertised shadow_count so the main pass's
-     * `shadowIndex < shadowCount` guard accepts it. The GL backend and the D3D11
-     * failure/release paths recompute, but this success path previously did not, leaving a
-     * valid shadow map silently unsampled until some other path refreshed the count. */
+    /* Allocation alone is not completeness: shadow_end advertises the slot only
+     * after its pass finishes without a CPU-side submission failure. */
     d3d11_recompute_shadow_count(ctx);
     return S_OK;
 }
@@ -1046,6 +1044,7 @@ static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, i
     ctx->shadow_atlas_cleared = 0;
     for (int32_t slot = VGFX3D_CSM_SLOTS; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
         ctx->shadow_slot_complete[slot] = 0;
+    d3d11_recompute_shadow_count(ctx);
     hr = d3d11_create_depth_target(ctx,
                                    atlas_w,
                                    atlas_h,

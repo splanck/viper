@@ -7325,6 +7325,10 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     mat->texture_slot_uv_set[1] = -1;
     mat->custom_params[0] = 1.0e300;
     mat->custom_params[1] = -1.0e300;
+    mat->custom_params[8] = 0.75;
+    mat->custom_params[9] = -0.25;
+    mat->custom_params[10] = 1.0e300;
+    mat->custom_params[11] = -1.0e300;
 
     memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
     rt_canvas3d_begin(&canvas, cam);
@@ -7355,6 +7359,10 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[1], 0);
     EXPECT_NEAR(g_last_draw_cmd.custom_params[0], 1000000.0f, 1.0f);
     EXPECT_NEAR(g_last_draw_cmd.custom_params[1], -1000000.0f, 1.0f);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[8], 0.75f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[9], -0.25f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[10], 1000000.0f, 1.0f);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[11], -1000000.0f, 1.0f);
     PASS();
 }
 

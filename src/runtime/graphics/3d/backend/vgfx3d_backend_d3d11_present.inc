@@ -149,7 +149,12 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
     ctx->ibl_enabled = cam->ibl_enabled ? 1 : 0;
     ctx->ibl_intensity = vgfx3d_d3d11_clamp_float_param(cam->ibl_intensity, 0.0f, 8.0f, 1.0f);
-    vgfx3d_d3d11_copy_float_array_finite_or(ctx->ibl_sh, cam->ibl_sh, 27u, 0.0f);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(ctx->ibl_sh,
+                                                    cam->ibl_sh,
+                                                    27u,
+                                                    -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                    VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                    0.0f);
     ctx->shadow_strength = cam->shadow_strength;
     ctx->shadow_slope_bias = vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cam->shadow_slope_bias);
     ctx->shadow_quality = cam->shadow_quality;
@@ -234,10 +239,15 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 }
 
 /// @brief Copy this frame's queued scene-depth probes into the staging strip.
-/// @details One 1x1 CopySubresourceRegion per probe from the R32_TYPELESS scene depth
-///   texture; the next frame's begin harvests the strip with a non-blocking Map.
+/// @details Selects RTT, offscreen-scene, or swapchain depth according to the
+///   active route, detaches all read/write bindings, and issues one 1x1 copy per
+///   probe. The next frame's begin harvests the strip with a non-blocking Map.
 static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
     int32_t pixels[VGFX3D_DEPTH_PROBE_MAX][2];
+    ID3D11Texture2D *source = NULL;
+    int32_t source_width = 0;
+    int32_t source_height = 0;
+    vgfx3d_d3d11_target_kind_t source_kind;
 
     if (!ctx || ctx->depth_probe_request_count <= 0)
         return;
@@ -247,7 +257,31 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
         ctx->depth_probe_request_count = 0;
         return;
     }
-    if (!ctx->ctx || !ctx->scene_depth_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0) {
+    if (!ctx->ctx) {
+        ctx->depth_probe_request_count = 0;
+        return;
+    }
+    source_kind = vgfx3d_d3d11_choose_depth_probe_target(
+        ctx->rtt_active,
+        ctx->gpu_postfx_enabled,
+        d3d11_has_rtt_targets(ctx),
+        d3d11_has_scene_targets(ctx),
+        ctx->depth_tex && ctx->dsv &&
+            vgfx3d_d3d11_is_valid_texture2d_extent(ctx->width, ctx->height));
+    if (source_kind == VGFX3D_D3D11_TARGET_RTT) {
+        source = ctx->rtt_depth_tex;
+        source_width = ctx->rtt_width;
+        source_height = ctx->rtt_height;
+    } else if (source_kind == VGFX3D_D3D11_TARGET_SCENE) {
+        source = ctx->scene_depth_tex;
+        source_width = ctx->scene_width;
+        source_height = ctx->scene_height;
+    } else if (source_kind == VGFX3D_D3D11_TARGET_SWAPCHAIN) {
+        source = ctx->depth_tex;
+        source_width = ctx->width;
+        source_height = ctx->height;
+    }
+    if (!source || !vgfx3d_d3d11_is_valid_texture2d_extent(source_width, source_height)) {
         ctx->depth_probe_request_count = 0;
         return;
     }
@@ -259,9 +293,9 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
      * skipping one malformed request would expose stale staging data under that request's slot. */
     for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
         if (!vgfx3d_d3d11_ndc_to_pixel(
-                ctx->depth_probe_requests[i][0], ctx->scene_width, 0, &pixels[i][0]) ||
+                ctx->depth_probe_requests[i][0], source_width, 0, &pixels[i][0]) ||
             !vgfx3d_d3d11_ndc_to_pixel(
-                ctx->depth_probe_requests[i][1], ctx->scene_height, 1, &pixels[i][1])) {
+                ctx->depth_probe_requests[i][1], source_height, 1, &pixels[i][1])) {
             ctx->depth_probe_request_count = 0;
             return;
         }
@@ -277,6 +311,8 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
             return;
         }
     }
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_unbind_output_targets(ctx);
     for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
         D3D11_BOX box;
         box.left = (UINT)pixels[i][0];
@@ -291,10 +327,11 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
                                                   (UINT)i,
                                                   0,
                                                   0,
-                                                  (ID3D11Resource *)ctx->scene_depth_tex,
+                                                  (ID3D11Resource *)source,
                                                   0,
                                                   &box);
     }
+    d3d11_restore_current_target_bindings(ctx);
     ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
     ctx->depth_probe_request_count = 0;
 }
@@ -1443,6 +1480,7 @@ static void d3d11_leave_shadow_pass(d3d11_context_t *ctx) {
         return;
     d3d11_unbind_output_targets(ctx);
     ctx->shadow_pass_slot = -1;
+    ctx->shadow_pass_failed = 0;
     d3d11_select_current_targets(ctx);
 }
 
@@ -1467,10 +1505,15 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     if (!ctx)
         return;
     d3d11_leave_shadow_pass(ctx);
-    if (!light_vp || width <= 0 || height <= 0 || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_pass_slot = -1;
+    ctx->shadow_pass_failed = 0;
     ctx->shadow_slot_complete[slot] = 0;
+    d3d11_recompute_shadow_count(ctx);
+    if (!light_vp || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
+        !vgfx3d_d3d11_shadow_matrix_is_usable(light_vp))
+        return;
     if (slot >= VGFX3D_CSM_SLOTS) {
         /* Atlas tile pass: render into the shared 4x2 depth atlas with a tile
          * viewport; the atlas clears once per frame on its first tile pass. */
@@ -1561,13 +1604,19 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     int alpha_masked_shadow = cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
     uint32_t index_count;
 
-    if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
-        ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || !cmd->vertices || !cmd->indices ||
-        cmd->vertex_count == 0 || cmd->index_count == 0)
+    if (!ctx)
         return;
+    if (!cmd || ctx->shadow_pass_slot < 0 || ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
+        !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0) {
+        if (ctx->shadow_pass_slot >= 0)
+            ctx->shadow_pass_failed = 1;
+        return;
+    }
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-    if (index_count == 0)
+    if (index_count == 0) {
+        ctx->shadow_pass_failed = 1;
         return;
+    }
 
     if (d3d11_draw_needs_depth_bias(cmd))
         (void)d3d11_get_depth_biased_rasterizer(
@@ -1585,11 +1634,13 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerObject shadow)", hr);
+        ctx->shadow_pass_failed = 1;
         return;
     }
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(cbPerScene shadow)", hr);
+        ctx->shadow_pass_failed = 1;
         return;
     }
     if (alpha_masked_shadow) {
@@ -1601,18 +1652,25 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
             cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
             &shadow_diffuse);
+        if ((cmd->texture_asset || cmd->texture) && !shadow_diffuse_srv) {
+            ctx->shadow_pass_failed = 1;
+            d3d11_release_temp_srv(&shadow_diffuse);
+            return;
+        }
         d3d11_prepare_material_data(
             cmd, shadow_diffuse_srv != NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, &material_data);
         hr = d3d11_update_constant_buffer(
             ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
         if (FAILED(hr)) {
             d3d11_log_hresult("Map(cbPerMaterial shadow)", hr);
+            ctx->shadow_pass_failed = 1;
             d3d11_release_temp_srv(&shadow_diffuse);
             return;
         }
     }
 
     if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib)) {
+        ctx->shadow_pass_failed = 1;
         d3d11_release_temp_srv(&shadow_diffuse);
         return;
     }
@@ -1633,11 +1691,20 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     if (alpha_masked_shadow && ctx->ps_shadow) {
         shadow_diffuse_sampler =
             d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+        if (!shadow_diffuse_sampler) {
+            ctx->shadow_pass_failed = 1;
+            d3d11_release_temp_srv(&shadow_diffuse);
+            return;
+        }
         ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_shadow, NULL, 0);
         ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cb_per_material);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &shadow_diffuse_srv);
         if (shadow_diffuse_sampler)
             ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &shadow_diffuse_sampler);
+    } else if (alpha_masked_shadow) {
+        ctx->shadow_pass_failed = 1;
+        d3d11_release_temp_srv(&shadow_diffuse);
+        return;
     } else {
         ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
     }
@@ -1667,12 +1734,14 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         return;
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || ctx->shadow_pass_slot != slot) {
         d3d11_leave_shadow_pass(ctx);
+        d3d11_recompute_shadow_count(ctx);
         return;
     }
-    ctx->shadow_slot_complete[slot] = 1;
+    ctx->shadow_slot_complete[slot] = ctx->shadow_pass_failed ? 0 : 1;
     d3d11_recompute_shadow_count(ctx);
     ctx->shadow_bias = vgfx3d_d3d11_sanitize_shadow_bias(bias);
     ctx->shadow_pass_slot = -1;
+    ctx->shadow_pass_failed = 0;
     d3d11_select_current_targets(ctx);
 }
 

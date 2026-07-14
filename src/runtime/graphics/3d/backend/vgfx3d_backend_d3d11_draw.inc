@@ -336,14 +336,21 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
         vgfx3d_d3d11_copy_mat4_finite_or_identity(scene_data->shadow_vp[slot],
                                                   ctx->shadow_vp[slot]);
     }
-    vgfx3d_d3d11_copy_float_array_finite_or(scene_data->camera_pos, ctx->cam_pos, 3u, 0.0f);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(scene_data->camera_pos,
+                                                    ctx->cam_pos,
+                                                    3u,
+                                                    -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    0.0f);
     scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
     vgfx3d_d3d11_copy_vec3_direction_or(
         scene_data->camera_forward, ctx->cam_forward, forward_fallback);
     if (ambient)
-        vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, ambient, 3u, 0.0f);
+        vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+            scene_data->ambient, ambient, 3u, 0.0f, 1.0f, 0.0f);
     else
-        vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, zero_vec3, 3u, 0.0f);
+        vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+            scene_data->ambient, zero_vec3, 3u, 0.0f, 1.0f, 0.0f);
     scene_data->ambient[3] = 1.0f;
     scene_data->fog_color[0] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[0], 0.0f, 1.0f, 0.5f);
     scene_data->fog_color[1] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[1], 0.0f, 1.0f, 0.5f);
@@ -361,9 +368,18 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
     scene_data->ibl_intensity =
         vgfx3d_d3d11_clamp_float_param(ctx->ibl_intensity, 0.0f, 8.0f, 1.0f);
     for (int32_t sh_k = 0; sh_k < 9; sh_k++) {
-        scene_data->sh[sh_k][0] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 0], 0.0f);
-        scene_data->sh[sh_k][1] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 1], 0.0f);
-        scene_data->sh[sh_k][2] = vgfx3d_d3d11_finite_or(ctx->ibl_sh[sh_k * 3 + 2], 0.0f);
+        scene_data->sh[sh_k][0] = vgfx3d_d3d11_clamp_float_param(ctx->ibl_sh[sh_k * 3 + 0],
+                                                                 -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 0.0f);
+        scene_data->sh[sh_k][1] = vgfx3d_d3d11_clamp_float_param(ctx->ibl_sh[sh_k * 3 + 1],
+                                                                 -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 0.0f);
+        scene_data->sh[sh_k][2] = vgfx3d_d3d11_clamp_float_param(ctx->ibl_sh[sh_k * 3 + 2],
+                                                                 -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                 0.0f);
         scene_data->sh[sh_k][3] = 0.0f;
     }
     scene_data->shadow_filter[0] =
@@ -560,6 +576,7 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                         float ibl_env_max_lod,
                                         d3d_per_material_t *material_data) {
     static const float uv_fallback[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    float safe_custom_params[12];
 
     memset(material_data, 0, sizeof(*material_data));
     material_data->diffuse[0] =
@@ -609,9 +626,15 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->pbr_flags[2] = vgfx3d_d3d11_sanitize_bool_flag(has_metallic_roughness_map);
     material_data->pbr_flags[3] = vgfx3d_d3d11_sanitize_bool_flag(has_ao_map);
     material_data->shading_model = vgfx3d_d3d11_sanitize_shading_model(cmd->shading_model);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(safe_custom_params,
+                                                    cmd->custom_params,
+                                                    12u,
+                                                    -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                    VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                    0.0f);
     vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
                                     VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
-                                    cmd->custom_params,
+                                    safe_custom_params,
                                     12);
     for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         if (slot < 4)
@@ -621,17 +644,35 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
             material_data->texture_uv_sets1[slot - 4] =
                 vgfx3d_d3d11_sanitize_texture_uv_set(cmd->texture_slot_uv_set[slot]);
         material_data->texture_uv_transform0[slot][0] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][0], uv_fallback[0]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][0],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[0]);
         material_data->texture_uv_transform0[slot][1] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][1], uv_fallback[1]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][1],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[1]);
         material_data->texture_uv_transform0[slot][2] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][2], uv_fallback[2]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][2],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[2]);
         material_data->texture_uv_transform0[slot][3] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][3], uv_fallback[3]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][3],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[3]);
         material_data->texture_uv_transform1[slot][0] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][4], uv_fallback[4]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][4],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[4]);
         material_data->texture_uv_transform1[slot][1] =
-            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][5], uv_fallback[5]);
+            vgfx3d_d3d11_clamp_float_param(cmd->texture_slot_uv_transform[slot][5],
+                                           -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                           uv_fallback[5]);
     }
     for (int32_t i = 0; i < 4; i++) {
         material_data->splat_scales[i] = vgfx3d_d3d11_finite_or(cmd->splat_layer_scales[i], 1.0f);
@@ -670,8 +711,12 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             light_data[i].shadow_index, lights[i].shadow_projection_type);
         vgfx3d_d3d11_copy_vec3_direction_or(
             light_data[i].direction, lights[i].direction, default_light_direction);
-        vgfx3d_d3d11_copy_float_array_finite_or(
-            light_data[i].position, lights[i].position, 3u, 0.0f);
+        vgfx3d_d3d11_copy_float_array_clamped_finite_or(light_data[i].position,
+                                                        lights[i].position,
+                                                        3u,
+                                                        -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                        VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                        0.0f);
         light_data[i].color[0] =
             vgfx3d_d3d11_clamp_float_param(lights[i].color[0], 0.0f, 1.0f, 1.0f);
         light_data[i].color[1] =

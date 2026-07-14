@@ -46,7 +46,9 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY 16
 #define VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY
 #define VGFX3D_D3D11_MAX_BUFFER_TEXELS (1u << 27)
+#define VGFX3D_D3D11_MIN_FLOAT_SRV_CAPACITY 256u
 #define VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
+#define VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX 1000000000000.0f
 #define VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS 16.0f
 #define VGFX3D_D3D11_MATERIAL_SHININESS_MAX 1000000.0f
 #define VGFX3D_D3D11_MATERIAL_SPLAT_SCALE_MAX 1000000.0f
@@ -77,6 +79,7 @@ typedef enum {
 /// @brief Render-target classification: the swapchain back buffer, the offscreen HDR
 ///   scene target, a user render-to-texture target, or the overlay target.
 typedef enum {
+    VGFX3D_D3D11_TARGET_NONE = -1,
     VGFX3D_D3D11_TARGET_SWAPCHAIN = 0,
     VGFX3D_D3D11_TARGET_SCENE = 1,
     VGFX3D_D3D11_TARGET_RTT = 2,
@@ -254,11 +257,16 @@ void vgfx3d_d3d11_sanitize_cluster_depth_range(float requested_near,
                                                float *out_far);
 /// @brief Return non-zero only when every value in @p values is finite.
 int vgfx3d_d3d11_float_array_is_finite(const float *values, size_t count);
+/// @brief Return non-zero only when every value is finite and within an absolute bound.
+int vgfx3d_d3d11_float_array_is_bounded(const float *values, size_t count, float abs_max);
 /// @brief Copy float constants while replacing NaN/Inf lanes with @p fallback.
 void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
                                              const float *src,
                                              size_t count,
                                              float fallback);
+/// @brief Copy float constants while replacing invalid lanes and clamping finite extremes.
+void vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+    float *dst, const float *src, size_t count, float min_value, float max_value, float fallback);
 /// @brief Validate a finite, non-degenerate direction vector for CPU/shader upload.
 int vgfx3d_d3d11_vec3_direction_is_usable(const float *values);
 /// @brief Copy and normalize a direction vector or a stable fallback when unusable.
@@ -267,6 +275,8 @@ void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const flo
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
 /// @brief Copy a matrix when finite, otherwise copy @p fallback or identity.
 void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback);
+/// @brief Validate a bounded, non-zero light view-projection matrix.
+int vgfx3d_d3d11_shadow_matrix_is_usable(const float *matrix);
 /// @brief Sanitize D3D11 rasterizer slope-scaled depth bias.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested);
 /// @brief Convert renderer depth bias for either reversed-Z scene or standard-Z shadow passes.
@@ -364,6 +374,17 @@ int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
                                                 size_t *out_bytes);
 /// @brief Check a float-buffer element count against D3D11's typed-buffer limit.
 int vgfx3d_d3d11_is_valid_float_srv_element_count(size_t element_count);
+/// @brief Choose a geometrically grown typed-float-buffer capacity.
+int vgfx3d_d3d11_compute_float_srv_capacity(size_t current_capacity,
+                                            size_t needed_capacity,
+                                            size_t *out_capacity);
+/// @brief Validate the structural contract required by a dynamic constant buffer.
+int vgfx3d_d3d11_constant_buffer_desc_is_usable(uint32_t byte_width,
+                                                int has_dynamic_usage,
+                                                int has_constant_buffer_bind,
+                                                int has_cpu_write_access,
+                                                uint32_t misc_flags,
+                                                uint32_t structure_byte_stride);
 /// @brief Validate an RGBA8 readback destination span.
 int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,
@@ -382,6 +403,15 @@ int vgfx3d_d3d11_is_single_subresource_texture2d(uint32_t width,
                                                  uint32_t sample_quality);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size);
+/// @brief Validate an in-progress row-upload cursor without silently rewinding it.
+int vgfx3d_d3d11_row_upload_cursor_is_valid(int32_t extent, int32_t next_row);
+/// @brief Validate an in-progress cubemap face/row cursor.
+int vgfx3d_d3d11_cubemap_upload_cursor_is_valid(int32_t face_size, int32_t face, int32_t next_row);
+/// @brief Validate an in-progress native mip/block-row cursor.
+int vgfx3d_d3d11_native_upload_cursor_is_valid(int64_t mip_count,
+                                               int64_t next_mip,
+                                               uint64_t block_rows,
+                                               int32_t next_block_row);
 /// @brief Validate a mapped texture row span before copying it into an RGBA8 destination.
 int vgfx3d_d3d11_validate_mapped_texture_copy(int32_t width,
                                               int32_t dst_stride,
@@ -454,6 +484,12 @@ int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_cou
                                                    int32_t advertised_shadow_count);
 /// @brief Clamp a shadow-count value to the D3D11 shader-visible shadow slots.
 int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count);
+/// @brief Select the depth texture that represents the active scene route.
+vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_depth_probe_target(int8_t rtt_active,
+                                                                  int8_t gpu_postfx_enabled,
+                                                                  int has_rtt_depth,
+                                                                  int has_scene_depth,
+                                                                  int has_swapchain_depth);
 /// @brief Project a world-space point through a shadow matrix to HLSL UV/depth coordinates.
 int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
                                       int32_t projection_type,
@@ -474,6 +510,8 @@ int vgfx3d_d3d11_rtt_readback_state_matches(int32_t target_width,
                                             int32_t resource_width,
                                             int32_t resource_height,
                                             int32_t resource_format);
+/// @brief Validate the public render-target color-format discriminator.
+int vgfx3d_d3d11_is_valid_rtt_color_format(int32_t color_format);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.

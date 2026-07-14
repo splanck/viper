@@ -1235,9 +1235,12 @@ int8_t rt_lightprobegrid3d_load(void *obj, rt_string path) {
     FILE *f = fopen(cpath, "rb");
     if (!f)
         return 0;
-    char magic[8];
-    double min_b[3], spacing;
-    int32_t nx, ny, nz;
+    char magic[8] = {0};
+    double min_b[3] = {0.0, 0.0, 0.0};
+    double spacing = 0.0;
+    int32_t nx = 0;
+    int32_t ny = 0;
+    int32_t nz = 0;
     int ok = fread(magic, 1, 8, f) == 8 && memcmp(magic, VLPG_MAGIC, 8) == 0 &&
              fread(min_b, sizeof(double), 3, f) == 3 &&
              fread(&spacing, sizeof(double), 1, f) == 1 && fread(&nx, sizeof(int32_t), 1, f) == 1 &&

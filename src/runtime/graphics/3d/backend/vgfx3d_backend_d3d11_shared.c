@@ -78,6 +78,17 @@ int vgfx3d_d3d11_float_array_is_finite(const float *values, size_t count) {
     return 1;
 }
 
+/// @brief Return non-zero only when every float is finite and within @p abs_max.
+int vgfx3d_d3d11_float_array_is_bounded(const float *values, size_t count, float abs_max) {
+    if ((!values && count > 0) || !isfinite(abs_max) || abs_max < 0.0f)
+        return 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!isfinite(values[i]) || values[i] < -abs_max || values[i] > abs_max)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Copy float constants while replacing NaN/Inf lanes with @p fallback.
 void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
                                              const float *src,
@@ -94,6 +105,32 @@ void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
     }
     for (size_t i = 0; i < count; i++)
         dst[i] = isfinite(src[i]) ? src[i] : safe_fallback;
+}
+
+/// @brief Copy float constants while substituting invalid lanes and clamping finite extremes.
+void vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+    float *dst, const float *src, size_t count, float min_value, float max_value, float fallback) {
+    float safe_fallback;
+
+    if (!dst || count == 0)
+        return;
+    if (!isfinite(min_value) || !isfinite(max_value) || min_value > max_value) {
+        min_value = 0.0f;
+        max_value = 0.0f;
+    }
+    safe_fallback = isfinite(fallback) ? fallback : 0.0f;
+    if (safe_fallback < min_value)
+        safe_fallback = min_value;
+    else if (safe_fallback > max_value)
+        safe_fallback = max_value;
+    for (size_t i = 0; i < count; i++) {
+        float value = src && isfinite(src[i]) ? src[i] : safe_fallback;
+        if (value < min_value)
+            value = min_value;
+        else if (value > max_value)
+            value = max_value;
+        dst[i] = value;
+    }
 }
 
 /// @brief Validate a finite direction vector before CPU constants or HLSL normalize.
@@ -134,7 +171,8 @@ void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const flo
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src) {
     if (!dst)
         return;
-    if (src && vgfx3d_d3d11_float_array_is_finite(src, 16u)) {
+    if (src &&
+        vgfx3d_d3d11_float_array_is_bounded(src, 16u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX)) {
         memcpy(dst, src, sizeof(float) * 16u);
         return;
     }
@@ -145,15 +183,31 @@ void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src) {
 void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback) {
     if (!dst)
         return;
-    if (src && vgfx3d_d3d11_float_array_is_finite(src, 16u)) {
+    if (src &&
+        vgfx3d_d3d11_float_array_is_bounded(src, 16u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX)) {
         memcpy(dst, src, sizeof(float) * 16u);
         return;
     }
-    if (fallback && vgfx3d_d3d11_float_array_is_finite(fallback, 16u)) {
+    if (fallback &&
+        vgfx3d_d3d11_float_array_is_bounded(fallback, 16u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX)) {
         memcpy(dst, fallback, sizeof(float) * 16u);
         return;
     }
     vgfx3d_d3d11_store_identity4x4(dst);
+}
+
+/// @brief Validate a bounded light view-projection matrix with at least one useful lane.
+int vgfx3d_d3d11_shadow_matrix_is_usable(const float *matrix) {
+    float max_abs = 0.0f;
+
+    if (!vgfx3d_d3d11_float_array_is_bounded(matrix, 16u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX))
+        return 0;
+    for (size_t i = 0; i < 16u; i++) {
+        float magnitude = fabsf(matrix[i]);
+        if (magnitude > max_abs)
+            max_abs = magnitude;
+    }
+    return max_abs > 1.0e-12f ? 1 : 0;
 }
 
 /// @brief Copy a bone palette (mat4 per bone) into a fixed-size cbuffer slot.
@@ -969,6 +1023,49 @@ int vgfx3d_d3d11_is_valid_float_srv_element_count(size_t element_count) {
            element_count <= (size_t)(UINT_MAX / sizeof(float));
 }
 
+/// @brief Grow typed-float storage geometrically while respecting D3D11 limits.
+int vgfx3d_d3d11_compute_float_srv_capacity(size_t current_capacity,
+                                            size_t needed_capacity,
+                                            size_t *out_capacity) {
+    size_t capacity;
+
+    if (out_capacity)
+        *out_capacity = 0;
+    if (!out_capacity || !vgfx3d_d3d11_is_valid_float_srv_element_count(needed_capacity))
+        return 0;
+    if (current_capacity >= needed_capacity &&
+        vgfx3d_d3d11_is_valid_float_srv_element_count(current_capacity)) {
+        *out_capacity = current_capacity;
+        return 1;
+    }
+    capacity = current_capacity;
+    if (capacity < VGFX3D_D3D11_MIN_FLOAT_SRV_CAPACITY)
+        capacity = VGFX3D_D3D11_MIN_FLOAT_SRV_CAPACITY;
+    while (capacity < needed_capacity) {
+        if (capacity > (size_t)VGFX3D_D3D11_MAX_BUFFER_TEXELS / 2u) {
+            capacity = VGFX3D_D3D11_MAX_BUFFER_TEXELS;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < needed_capacity || !vgfx3d_d3d11_is_valid_float_srv_element_count(capacity))
+        return 0;
+    *out_capacity = capacity;
+    return 1;
+}
+
+/// @brief Validate the fields required for WRITE_DISCARD constant-buffer updates.
+int vgfx3d_d3d11_constant_buffer_desc_is_usable(uint32_t byte_width,
+                                                int has_dynamic_usage,
+                                                int has_constant_buffer_bind,
+                                                int has_cpu_write_access,
+                                                uint32_t misc_flags,
+                                                uint32_t structure_byte_stride) {
+    return byte_width > 0 && byte_width <= VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES &&
+           (byte_width & 15u) == 0u && has_dynamic_usage && has_constant_buffer_bind &&
+           has_cpu_write_access && misc_flags == 0u && structure_byte_stride == 0u;
+}
+
 /// @brief Validate an RGBA8 destination rectangle and optionally return its byte span.
 /// @details The total stride * height span is checked even when @p out_bytes is
 ///   NULL. That keeps callers that only need a boolean answer from accepting an
@@ -1023,6 +1120,27 @@ int vgfx3d_d3d11_is_single_subresource_texture2d(uint32_t width,
 /// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size) {
     return face_size > 0 && face_size <= VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION;
+}
+
+/// @brief Validate an in-progress row upload without repairing corrupted state.
+int vgfx3d_d3d11_row_upload_cursor_is_valid(int32_t extent, int32_t next_row) {
+    return extent > 0 && next_row >= 0 && next_row < extent;
+}
+
+/// @brief Validate an in-progress cubemap face/row upload cursor.
+int vgfx3d_d3d11_cubemap_upload_cursor_is_valid(int32_t face_size, int32_t face, int32_t next_row) {
+    return vgfx3d_d3d11_is_valid_cubemap_extent(face_size) && face >= 0 && face < 6 &&
+           vgfx3d_d3d11_row_upload_cursor_is_valid(face_size, next_row);
+}
+
+/// @brief Validate an in-progress native compressed mip/block-row cursor.
+int vgfx3d_d3d11_native_upload_cursor_is_valid(int64_t mip_count,
+                                               int64_t next_mip,
+                                               uint64_t block_rows,
+                                               int32_t next_block_row) {
+    return mip_count > 0 && next_mip >= 0 && next_mip < mip_count && block_rows > 0 &&
+           block_rows <= UINT_MAX && next_block_row >= 0 &&
+           (uint64_t)(uint32_t)next_block_row < block_rows;
 }
 
 /// @brief Validate source/destination row spans for a mapped texture readback copy.
@@ -1428,6 +1546,21 @@ int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count) {
                                                               : advertised_shadow_count;
 }
 
+/// @brief Select scene depth according to the actual render route for this frame.
+vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_depth_probe_target(int8_t rtt_active,
+                                                                  int8_t gpu_postfx_enabled,
+                                                                  int has_rtt_depth,
+                                                                  int has_scene_depth,
+                                                                  int has_swapchain_depth) {
+    if (rtt_active)
+        return has_rtt_depth ? VGFX3D_D3D11_TARGET_RTT : VGFX3D_D3D11_TARGET_NONE;
+    if (gpu_postfx_enabled && has_scene_depth)
+        return VGFX3D_D3D11_TARGET_SCENE;
+    if (has_swapchain_depth)
+        return VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    return VGFX3D_D3D11_TARGET_NONE;
+}
+
 /// @brief Project a world-space point through a shadow VP matrix using HLSL sampling rules.
 int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
                                       int32_t projection_type,
@@ -1446,7 +1579,8 @@ int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
         out_uv_depth[1] = 0.0f;
         out_uv_depth[2] = 0.0f;
     }
-    if (!shadow_vp || !world_pos || !out_uv_depth)
+    if (!vgfx3d_d3d11_shadow_matrix_is_usable(shadow_vp) || !world_pos || !out_uv_depth ||
+        !vgfx3d_d3d11_float_array_is_bounded(world_pos, 3u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX))
         return 0;
     lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
          shadow_vp[3];
@@ -1457,7 +1591,7 @@ int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
     lw = world_pos[0] * shadow_vp[12] + world_pos[1] * shadow_vp[13] +
          world_pos[2] * shadow_vp[14] + shadow_vp[15];
     if (projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) {
-        if (!isfinite(lw) || lw <= 0.0001f)
+        if (!isfinite(lw) || lw <= 0.0001f || lw >= 1.0e20f)
             return 0;
         ndc_x = lx / lw;
         ndc_y = ly / lw;
@@ -1498,8 +1632,16 @@ int vgfx3d_d3d11_rtt_readback_state_matches(int32_t target_width,
                                             int32_t resource_height,
                                             int32_t resource_format) {
     return vgfx3d_d3d11_is_valid_texture2d_extent(target_width, target_height) &&
+           vgfx3d_d3d11_is_valid_rtt_color_format(target_format) &&
+           vgfx3d_d3d11_is_valid_rtt_color_format(resource_format) &&
            target_width == resource_width && target_height == resource_height &&
            target_format == resource_format;
+}
+
+/// @brief Validate the two color formats supported by RenderTarget3D.
+int vgfx3d_d3d11_is_valid_rtt_color_format(int32_t color_format) {
+    return color_format == (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8 ||
+           color_format == (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).

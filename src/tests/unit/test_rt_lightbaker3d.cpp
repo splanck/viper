@@ -284,9 +284,21 @@ bool test_probe_grid_sampling_and_roundtrip() {
     void *near_s2 = rt_lightprobegrid3d_sample(grid2, near_pos, up);
     EXPECT_TRUE(rt_vec3_x(near_s2) == nr, "loaded grid samples identically");
 
+    const char *truncated_path = "/tmp/viper_probe_grid_truncated.vlpg";
+    FILE *truncated = std::fopen(truncated_path, "wb");
+    EXPECT_TRUE(truncated != nullptr, "truncated-grid fixture opens");
+    EXPECT_TRUE(std::fwrite("VLPG0001", 1, 8, truncated) == 8, "truncated-grid header writes");
+    std::fclose(truncated);
+    EXPECT_TRUE(rt_lightprobegrid3d_load(grid2, rt_const_cstr(truncated_path)) == 0,
+                "truncated grid is rejected");
+    void *near_s3 = rt_lightprobegrid3d_sample(grid2, near_pos, up);
+    EXPECT_TRUE(rt_vec3_x(near_s3) == nr, "failed load preserves the previous grid");
+    std::remove(truncated_path);
+
     for (void *o : {near_s,
                     far_s,
                     near_s2,
+                    near_s3,
                     near_pos,
                     far_pos,
                     up,

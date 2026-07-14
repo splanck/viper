@@ -531,6 +531,7 @@ typedef struct {
     int32_t shadow_width[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_height[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_pass_slot;
+    int8_t shadow_pass_failed;
     int32_t shadow_count;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
     /* Shadow atlas for slots >= VGFX3D_CSM_SLOTS: 4x2 tiles at the per-slot
@@ -899,6 +900,8 @@ static void d3d11_begin_frame_timing(d3d11_context_t *ctx) {
     if (!ctx || !ctx->ctx || !ctx->frame_time_disjoint_query || !ctx->frame_time_start_query ||
         !ctx->frame_time_end_query)
         return;
+    if (ctx->frame_time_active)
+        return;
     if (ctx->frame_time_pending)
         (void)d3d11_harvest_frame_timing(ctx);
     if (ctx->frame_time_pending)
@@ -1244,7 +1247,7 @@ static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
 
 /// @brief Map our color-format class to a DXGI texture format.
 ///
-/// HDR16F → R16G16B16A16_FLOAT (linear, 8 bits/channel for HDR);
+/// HDR16F → R16G16B16A16_FLOAT (linear, 16 bits/channel for HDR);
 /// otherwise R8G8B8A8_UNORM (sRGB-style 8-bit).
 static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
     return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
@@ -1269,6 +1272,19 @@ static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
     ctx->overlay_used_this_frame = 0;
     ctx->scene_composited_to_swapchain = 0;
     ctx->presented_color_valid = 0;
+}
+
+/// @brief Invalidate queued, pending, and published scene-depth probe state.
+/// @details Target lifetime changes must not publish one target's asynchronous
+///   depth samples under slot ids belonging to a different target or extent.
+static void d3d11_reset_depth_probe_state(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    ctx->depth_probe_request_count = 0;
+    ctx->depth_probe_pending_count = 0;
+    ctx->depth_probe_result_count = 0;
+    memset(ctx->depth_probe_requests, 0, sizeof(ctx->depth_probe_requests));
+    memset(ctx->depth_probe_results, 0, sizeof(ctx->depth_probe_results));
 }
 
 /// @brief Release the soft-particle opaque-depth snapshot and clear its size/validity state.
@@ -1341,12 +1357,20 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
     if (!ctx || !ctx->ctx || !buffer || !data || size == 0)
         return E_INVALIDARG;
     ID3D11Buffer_GetDesc(buffer, &desc);
-    if (size > desc.ByteWidth)
+    if (!vgfx3d_d3d11_constant_buffer_desc_is_usable(desc.ByteWidth,
+                                                     desc.Usage == D3D11_USAGE_DYNAMIC,
+                                                     desc.BindFlags == D3D11_BIND_CONSTANT_BUFFER,
+                                                     desc.CPUAccessFlags == D3D11_CPU_ACCESS_WRITE,
+                                                     desc.MiscFlags,
+                                                     desc.StructureByteStride) ||
+        size > desc.ByteWidth)
         return E_INVALIDARG;
     hr = ID3D11DeviceContext_Map(
         ctx->ctx, (ID3D11Resource *)buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        d3d11_log_device_removed_reason(ctx, "Map(dynamic constant buffer)", hr);
         return hr;
+    }
     if (!mapped.pData) {
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)buffer, 0);
         return E_POINTER;
@@ -1687,6 +1711,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
     ID3D11Buffer *new_buffer = NULL;
     ID3D11ShaderResourceView *new_srv = NULL;
+    size_t allocation_capacity;
     size_t bytes;
     uint32_t byte_width;
     HRESULT hr;
@@ -1698,8 +1723,8 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     if (*buffer && *srv && *capacity >= element_count)
         return S_OK;
 
-    if (!vgfx3d_d3d11_is_valid_float_srv_element_count(element_count) ||
-        !d3d11_checked_mul_size(element_count, sizeof(float), &bytes))
+    if (!vgfx3d_d3d11_compute_float_srv_capacity(*capacity, element_count, &allocation_capacity) ||
+        !d3d11_checked_mul_size(allocation_capacity, sizeof(float), &bytes))
         return E_OUTOFMEMORY;
     if (!vgfx3d_d3d11_compute_buffer_byte_width(bytes, &byte_width))
         return E_OUTOFMEMORY;
@@ -1715,7 +1740,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
     srv_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
     srv_desc.Buffer.FirstElement = 0;
-    srv_desc.Buffer.NumElements = (UINT)element_count;
+    srv_desc.Buffer.NumElements = (UINT)allocation_capacity;
     hr = ID3D11Device_CreateShaderResourceView(
         ctx->device, (ID3D11Resource *)new_buffer, &srv_desc, &new_srv);
     if (FAILED(hr)) {
@@ -1727,7 +1752,7 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     SAFE_RELEASE(*buffer);
     *buffer = new_buffer;
     *srv = new_srv;
-    *capacity = element_count;
+    *capacity = allocation_capacity;
     return S_OK;
 }
 

@@ -202,6 +202,7 @@ static void test_finite_copy_helpers(void) {
     float fallback_direction[3] = {1.0f, 0.0f, 0.0f};
     float copied_direction[3];
     float copied[4];
+    float extreme[4] = {-5.0f, 2.0f, 8.0f, HUGE_VALF};
     float matrix[16];
     float fallback[16];
     float out[16];
@@ -214,6 +215,15 @@ static void test_finite_copy_helpers(void) {
     EXPECT_NEAR(copied[0], 1.0f, 1e-6f, "Finite-array copy preserves finite lanes");
     EXPECT_NEAR(copied[1], 0.25f, 1e-6f, "Finite-array copy replaces positive infinity");
     EXPECT_NEAR(copied[3], 0.25f, 1e-6f, "Finite-array copy replaces negative infinity");
+    EXPECT_TRUE(vgfx3d_d3d11_float_array_is_bounded(good, 4u, 4.0f) == 1,
+                "Bounded-array helper accepts values within the requested limit");
+    EXPECT_TRUE(vgfx3d_d3d11_float_array_is_bounded(good, 4u, 3.0f) == 0,
+                "Bounded-array helper rejects finite extremes outside the limit");
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(copied, extreme, 4u, -2.0f, 4.0f, 0.5f);
+    EXPECT_NEAR(copied[0], -2.0f, 1e-6f, "Clamped copy applies its lower bound");
+    EXPECT_NEAR(copied[1], 2.0f, 1e-6f, "Clamped copy preserves in-range values");
+    EXPECT_NEAR(copied[2], 4.0f, 1e-6f, "Clamped copy applies its upper bound");
+    EXPECT_NEAR(copied[3], 0.5f, 1e-6f, "Clamped copy replaces non-finite values");
 
     set_identity4x4(matrix);
     matrix[7] = HUGE_VALF;
@@ -225,6 +235,17 @@ static void test_finite_copy_helpers(void) {
     fallback[3] = 9.0f;
     vgfx3d_d3d11_copy_mat4_finite_or(out, matrix, fallback);
     EXPECT_NEAR(out[3], 9.0f, 1e-6f, "Invalid matrix copies finite fallback matrix");
+
+    set_identity4x4(matrix);
+    matrix[3] = VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX * 2.0f;
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(out, matrix);
+    EXPECT_NEAR(out[3], 0.0f, 1e-6f, "Matrix copy rejects finite overflow-prone components");
+    memset(matrix, 0, sizeof(matrix));
+    EXPECT_TRUE(vgfx3d_d3d11_shadow_matrix_is_usable(matrix) == 0,
+                "Shadow matrix validation rejects a zero transform");
+    set_identity4x4(matrix);
+    EXPECT_TRUE(vgfx3d_d3d11_shadow_matrix_is_usable(matrix) == 1,
+                "Shadow matrix validation accepts a bounded non-zero transform");
 
     EXPECT_TRUE(vgfx3d_d3d11_vec3_direction_is_usable(direction) == 1,
                 "Direction helper accepts finite non-degenerate vectors");
@@ -502,6 +523,7 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
 
 static void test_capacity_and_mip_helpers(void) {
     size_t bytes = 0;
+    size_t capacity = 0;
     uint32_t byte_width = 0;
     uint32_t row_pitch = 0;
     int32_t mip_extent = 0;
@@ -551,6 +573,18 @@ static void test_capacity_and_mip_helpers(void) {
                     VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES + 1u, &byte_width) == 0 &&
                     byte_width == 0u,
                 "Constant-buffer ByteWidth helper rejects oversized cbuffers");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(32u, 1, 1, 1, 0u, 0u) == 1,
+                "Constant-buffer descriptor validation accepts the dynamic write contract");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(31u, 1, 1, 1, 0u, 0u) == 0,
+                "Constant-buffer descriptor validation rejects unaligned storage");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(32u, 0, 1, 1, 0u, 0u) == 0,
+                "Constant-buffer descriptor validation rejects non-dynamic buffers");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(32u, 1, 0, 1, 0u, 0u) == 0,
+                "Constant-buffer descriptor validation rejects the wrong bind class");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(32u, 1, 1, 0, 0u, 0u) == 0,
+                "Constant-buffer descriptor validation requires CPU write access");
+    EXPECT_TRUE(vgfx3d_d3d11_constant_buffer_desc_is_usable(32u, 1, 1, 1, 1u, 0u) == 0,
+                "Constant-buffer descriptor validation rejects incompatible misc flags");
     EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(3, &row_pitch) == 1 && row_pitch == 12u,
                 "RGBA8 upload-pitch helper computes tightly packed rows");
     EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(0, &row_pitch) == 0 && row_pitch == 0u,
@@ -606,6 +640,19 @@ static void test_capacity_and_mip_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_float_srv_element_count(
                     (size_t)VGFX3D_D3D11_MAX_BUFFER_TEXELS + 1u) == 0,
                 "Float-SRV element validation rejects descriptors beyond the typed-buffer limit");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_capacity(0u, 3u, &capacity) == 1 &&
+                    capacity == VGFX3D_D3D11_MIN_FLOAT_SRV_CAPACITY,
+                "Float-SRV capacity starts at a reusable minimum allocation");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_capacity(256u, 300u, &capacity) == 1 &&
+                    capacity == 512u,
+                "Float-SRV capacity grows geometrically instead of reallocating every shape");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_capacity(512u, 300u, &capacity) == 1 &&
+                    capacity == 512u,
+                "Float-SRV capacity preserves sufficient existing storage");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_capacity(
+                    0u, (size_t)VGFX3D_D3D11_MAX_BUFFER_TEXELS + 1u, &capacity) == 0 &&
+                    capacity == 0u,
+                "Float-SRV capacity rejects growth beyond the typed-buffer limit");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes((size_t)UINT_MAX / sizeof(float) + 1u,
                                                             (size_t)UINT_MAX / sizeof(float) + 1u,
                                                             &bytes) == 0 &&
@@ -627,6 +674,24 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-span validation accepts the final texture row");
     EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, 15, 2) == 0,
                 "Row-span validation rejects bands past the texture extent");
+    EXPECT_TRUE(vgfx3d_d3d11_row_upload_cursor_is_valid(16, 0) == 1,
+                "Row-upload cursor accepts the first row");
+    EXPECT_TRUE(vgfx3d_d3d11_row_upload_cursor_is_valid(16, 15) == 1,
+                "Row-upload cursor accepts the final pending row");
+    EXPECT_TRUE(vgfx3d_d3d11_row_upload_cursor_is_valid(16, 16) == 0,
+                "Row-upload cursor rejects completed state mislabeled as pending");
+    EXPECT_TRUE(vgfx3d_d3d11_row_upload_cursor_is_valid(16, -1) == 0,
+                "Row-upload cursor rejects negative state instead of rewinding it");
+    EXPECT_TRUE(vgfx3d_d3d11_cubemap_upload_cursor_is_valid(16, 5, 15) == 1,
+                "Cubemap cursor accepts the final face and row");
+    EXPECT_TRUE(vgfx3d_d3d11_cubemap_upload_cursor_is_valid(16, 6, 0) == 0,
+                "Cubemap cursor rejects a face beyond the cube");
+    EXPECT_TRUE(vgfx3d_d3d11_native_upload_cursor_is_valid(4, 2, 8u, 7) == 1,
+                "Native upload cursor accepts an in-range mip block row");
+    EXPECT_TRUE(vgfx3d_d3d11_native_upload_cursor_is_valid(4, 4, 8u, 0) == 0,
+                "Native upload cursor rejects a completed mip chain marked pending");
+    EXPECT_TRUE(vgfx3d_d3d11_native_upload_cursor_is_valid(4, 2, 8u, 8) == 0,
+                "Native upload cursor rejects an exhausted block-row cursor");
     EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, -1, 1) == 0,
                 "Row-span validation rejects negative row cursors");
 }
@@ -1340,6 +1405,18 @@ static void test_shadow_and_rtt_policy_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(2, -1, 3) == 1,
                 "Shadow cascade sanitizer disables cascade fan-out for unshadowed lights");
 
+    EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(1, 0, 1, 1, 1) == VGFX3D_D3D11_TARGET_RTT,
+                "Depth probes prioritize the active RTT depth texture");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(1, 1, 0, 1, 1) == VGFX3D_D3D11_TARGET_NONE,
+                "Depth probes do not leak to another target when active RTT depth is missing");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(0, 1, 0, 1, 1) == VGFX3D_D3D11_TARGET_SCENE,
+                "Depth probes use offscreen scene depth on the post-FX route");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(0, 0, 0, 1, 1) ==
+                    VGFX3D_D3D11_TARGET_SWAPCHAIN,
+                "Depth probes avoid stale scene targets on the direct swapchain route");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(0, 0, 0, 0, 0) == VGFX3D_D3D11_TARGET_NONE,
+                "Depth probes reject a frame with no complete depth source");
+
     EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(1, 1, 1, 1, 1, 1, 1) == 1,
                 "RTT dirty helper accepts complete active RTT state");
     EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(1, 1, 1, 0, 1, 1, 1) == 0,
@@ -1420,6 +1497,13 @@ static void test_depth_probe_bias_instancing_and_rtt_guards(void) {
                 "RTT readback metadata rejects width drift");
     EXPECT_TRUE(vgfx3d_d3d11_rtt_readback_state_matches(64, 32, 1, 64, 32, 0) == 0,
                 "RTT readback metadata rejects format drift");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_rtt_color_format(0) == 1 &&
+                    vgfx3d_d3d11_is_valid_rtt_color_format(1) == 1,
+                "RTT color-format validation accepts UNORM8 and HDR16F");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_rtt_color_format(2) == 0,
+                "RTT color-format validation rejects unknown discriminators");
+    EXPECT_TRUE(vgfx3d_d3d11_rtt_readback_state_matches(64, 32, 99, 64, 32, 99) == 0,
+                "RTT readback rejects matching but invalid format metadata");
 }
 
 static void test_postfx_readback_policy_helpers(void) {
@@ -1605,12 +1689,20 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
 
     EXPECT_TRUE(contains_text(d3d11_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "Main D3D11 shader bounds safeNormalize before rsqrt");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "bool mainFinite3(float3 v)"),
+                "Main D3D11 shader exposes reusable finite-vector validation");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "idx = clamp(idx, 0, 63);"),
                 "Main D3D11 shader exposes all 64 packed morph weights");
     EXPECT_TRUE(!contains_text(d3d11_shader_source, "idx = clamp(idx, 0, 31);"),
                 "Main D3D11 shader no longer aliases upper morph weights to slot 31");
     EXPECT_TRUE(count_text(d3d11_shader_source, "if (abs(w) > 0.0001 && abs(w) < 1e20)") == 2,
                 "Position and normal morph loops reject non-finite weights");
+    EXPECT_TRUE(count_text(d3d11_shader_source, "if (!mainFinite3(delta))") == 2,
+                "Position and normal morph loops reject malformed delta payloads");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "float3 positionCandidate = pos + delta * w;"),
+                "Position morphing validates each accumulated candidate");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "float3 normalCandidate = nrm + delta * w;"),
+                "Normal morphing validates each accumulated candidate");
     EXPECT_TRUE(contains_text(d3d11_shader_source,
                               "uint skinPaletteIndex(uint paletteBase, uint boneIndex)"),
                 "Skinning uses overflow-safe palette indexing");
@@ -1619,6 +1711,15 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                 "Instanced skinning confines bone indices to one instance palette");
     EXPECT_TRUE(count_text(d3d11_shader_source, "if (!(w > 0.0001 && w < 1e20))") == 2,
                 "Position and vector skinning reject invalid bone weights");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "if (!mainFinite4(transformed))"),
+                "Position skinning skips invalid matrix products");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "if (!mainFinite3(transformed))"),
+                "Vector skinning skips invalid matrix products");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "if (!mainFinite4(lc) || (light.shadowProjectionType != 0 &&"),
+                "Shadow sampling rejects malformed homogeneous coordinates");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "if (!mainFinite3(ndc))"),
+                "Shadow sampling rejects invalid projected coordinates before texture lookup");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
                 "Main D3D11 shader source remains available to the compile path");
     EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),

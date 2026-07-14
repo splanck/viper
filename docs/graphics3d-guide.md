@@ -687,7 +687,7 @@ aliases for these factories.
 | `SetEmissiveColor(r, g, b)` | `void(f64, f64, f64)` | Set emissive color multiplier (additive glow) |
 | `SetNormalScale(value)` | `void(f64)` | Scale tangent-space normal-map strength |
 | `SetShadingModel(model)` | `void(i64)` | Set shading model (see table below) |
-| `SetCustomParam(index, value)` | `void(i64, f64)` | Set custom shader parameter (index 0-7) |
+| `SetCustomParam(index, value)` | `void(i64, f64)` | Set custom shader parameter (index 0-11) |
 | `SetEnvMap(cubemap)` | `void(obj)` | Set environment CubeMap3D for reflections |
 
 ### Workflow Notes
@@ -706,6 +706,7 @@ aliases for these factories.
 - When `AlphaMode` is left opaque, decoded textures with binary alpha auto-route to `Mask`, while
   decoded textures with fractional alpha auto-route to `Blend` so soft edges are preserved.
 - `SetShadingModel` and `SetCustomParam` remain available as advanced escape hatches. They are not the main PBR API.
+- All twelve custom parameters (`0..11`) are forwarded to every backend. Imported glTF material extensions use parameters through index 9 (including anisotropy strength/rotation at 8/9), so applications that override imported materials should preserve extension-owned slots they still need.
 
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
 - **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
@@ -3548,7 +3549,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting uses the real-time backend payload when the control map and all four layer textures are resident and falls back to CPU baking only for incomplete sets, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes in the current frame, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, validates complete clustered-light tables before upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and complete IBL layouts before GPU upload, keeps deferred native-texture and IBL payload metadata independent of runtime-object lifetime, rebuilds partial post-FX target sets before reuse, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting uses the real-time backend payload when the control map and all four layer textures are resident and falls back to CPU baking only for incomplete sets, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes in the current frame, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, forwards all twelve material custom parameters, validates complete clustered-light tables before upload, rejects malformed post-FX chain storage before indexed iteration, validates native BC mip block layouts and complete IBL layouts before GPU upload, rejects corrupt in-progress upload cursors instead of silently restarting partial resources, keeps deferred native-texture and IBL payload metadata independent of runtime-object lifetime, rebuilds partial post-FX target sets before reuse, selects depth-probe sources from the actual RTT/offscreen/swapchain route, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
 
 ## Performance Tips
 
