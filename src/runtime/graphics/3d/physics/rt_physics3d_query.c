@@ -199,10 +199,38 @@ static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
     return w->broadphase_world_revision ? w->broadphase_world_revision : 1;
 }
 
+/// @brief Whether every moved body in a still-valid cache remains inside its fat entry bounds.
+/// @details Walks the cached entries and, for each body whose revision changed since the
+///          build, recomputes the true AABB and tests containment against the cached
+///          fattened bounds. Bodies that stayed inside are restamped (so later validates
+///          skip them); the first escape aborts — the caller must rebuild.
+/// @return 1 if the cache is still usable, 0 if any body escaped its fat bounds.
+static int world3d_query_broadphase_contains_moved_bodies(rt_world3d *w) {
+    for (int32_t i = 0; i < w->query_broadphase_count; ++i) {
+        ph3d_broadphase_entry *entry = &w->query_broadphase_entries[i];
+        rt_body3d *body = entry->body;
+        if (!body || entry->body_revision == body->broadphase_revision)
+            continue;
+        double mn[3];
+        double mx[3];
+        body_aabb(body, mn, mx);
+        if (mn[0] < entry->min[0] || mn[1] < entry->min[1] || mn[2] < entry->min[2] ||
+            mx[0] > entry->max[0] || mx[1] > entry->max[1] || mx[2] > entry->max[2])
+            return 0;
+        entry->body_revision = body->broadphase_revision;
+    }
+    return 1;
+}
+
 /// @brief Build (or reuse) the cached broadphase entry list used to accelerate spatial queries.
-/// @details Collects each body's world AABB into entries sorted by min-X for sweep-and-prune, and
-///          stamps an FNV-1a signature over the body set/revisions so an unchanged world reuses the
-///          cache instead of rebuilding.
+/// @details Entries hold each body's world AABB fattened by PH3D_QUERY_BROADPHASE_MARGIN,
+///          sorted by fat min-X for sweep-and-prune, in the cache's own array (the per-step
+///          solver broadphase refills and re-sorts its separate array on the widest axis).
+///          Membership/shape changes bump the world revision and force a rebuild here;
+///          pose-only changes merely mark the cache dirty, and a lazy escape check keeps
+///          it valid while every moved body stays inside its fat bounds. Fat entries are a
+///          conservative candidate filter, so query results remain exact — every consumer
+///          narrow-tests live body state.
 /// @return The number of broadphase entries.
 int32_t world3d_build_query_broadphase(rt_world3d *w) {
     int32_t entry_count = 0;
@@ -217,30 +245,46 @@ int32_t world3d_build_query_broadphase(rt_world3d *w) {
     collider_epoch = rt_collider3d_global_geometry_epoch();
     if (w->query_broadphase_valid && w->query_broadphase_signature == signature &&
         w->query_broadphase_mesh_epoch == mesh_epoch &&
-        w->query_broadphase_collider_epoch == collider_epoch)
-        return w->query_broadphase_count;
+        w->query_broadphase_collider_epoch == collider_epoch) {
+        if (!w->query_broadphase_dirty)
+            return w->query_broadphase_count;
+        if (world3d_query_broadphase_contains_moved_bodies(w)) {
+            w->query_broadphase_dirty = 0;
+            return w->query_broadphase_count;
+        }
+    }
     for (int32_t i = 0; i < w->body_count; ++i) {
         if (body3d_has_collision_geometry(w->bodies[i]))
             geometry_count++;
     }
-    if (!world3d_reserve_broadphase_capacity(w, geometry_count))
+    if (!world3d_reserve_query_broadphase_capacity(w, geometry_count))
         return -1;
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
         if (!body3d_has_collision_geometry(body))
             continue;
-        ph3d_broadphase_entry *entry = &w->broadphase_entries[entry_count++];
+        ph3d_broadphase_entry *entry = &w->query_broadphase_entries[entry_count++];
         entry->body = body;
         body_aabb(body, entry->min, entry->max);
+        entry->min[0] -= PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->min[1] -= PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->min[2] -= PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->max[0] += PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->max[1] += PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->max[2] += PH3D_QUERY_BROADPHASE_MARGIN;
+        entry->body_revision = body->broadphase_revision;
     }
     if (!world3d_reserve_broadphase_sort_scratch(w, entry_count))
         return -1;
-    ph3d_broadphase_sort_entries(w->broadphase_entries, w->broadphase_sort_scratch, entry_count, 0);
+    ph3d_broadphase_sort_entries(
+        w->query_broadphase_entries, w->broadphase_sort_scratch, entry_count, 0);
     w->query_broadphase_count = entry_count;
     w->query_broadphase_signature = signature;
     w->query_broadphase_mesh_epoch = mesh_epoch;
     w->query_broadphase_collider_epoch = collider_epoch;
     w->query_broadphase_valid = 1;
+    w->query_broadphase_dirty = 0;
+    w->query_broadphase_rebuild_count++;
     return entry_count;
 }
 
@@ -620,12 +664,12 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
     body_aabb(&query_body, query_min, query_max);
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > query_max[0])
+            if (w->query_broadphase_entries[i].min[0] > query_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
         if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
@@ -675,12 +719,12 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     body_aabb(&query_body, query_min, query_max);
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > query_max[0])
+            if (w->query_broadphase_entries[i].min[0] > query_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
         if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
@@ -726,12 +770,12 @@ void *rt_world3d_sweep_sphere(
     swept_aabb_from_points(query_min, query_max, delta, swept_min, swept_max);
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > swept_max[0])
+            if (w->query_broadphase_entries[i].min[0] > swept_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], swept_min, swept_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], swept_min, swept_max))
                 continue;
         }
         if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
@@ -864,12 +908,12 @@ void *rt_world3d_sweep_capsule(
     swept_aabb_from_points(query_min, query_max, delta, swept_min, swept_max);
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > swept_max[0])
+            if (w->query_broadphase_entries[i].min[0] > swept_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], swept_min, swept_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], swept_min, swept_max))
                 continue;
         }
         if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))

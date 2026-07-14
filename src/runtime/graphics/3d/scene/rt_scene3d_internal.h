@@ -261,9 +261,13 @@ typedef struct rt_scene3d {
     rt_scene3d_spatial_entry **query_candidates;
     rt_scene_node3d **query_traversal_stack;
     rt_scene_node3d **world_matrix_stack;
+    /* Persistent per-scene traversal stack for SyncBindings so the once-per-tick
+     * whole-tree walk stops paying a malloc/free per frame. */
+    rt_scene_node3d **sync_stack;
     int32_t query_candidate_capacity;
     size_t query_traversal_stack_capacity;
     size_t world_matrix_stack_capacity;
+    size_t sync_stack_capacity;
     /* Baked animation clips carried by v3 .vscn files: the loader fills these,
      * the SceneAsset wrapper drains them into the model's clip list, and any
      * leftovers release with the scene. Retained rt_animation3d handles. */

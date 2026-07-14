@@ -26,12 +26,28 @@ var MUS_BOSS: Integer = 3;
 var MUS_VICTORY: Integer = 4;
 var MUS_DEFEAT: Integer = 5;
 
+// Per-frame voice budget: each positional one-shot category is capped per tick
+// so a dense firefight cannot flood the spatial mixer with source churn. The
+// loudest cues win because events are drained in emission order and later
+// duplicates of the same category carry the least information.
+var CAP_GUNSHOT: Integer = 8;
+var CAP_ENEMY_SHOT: Integer = 6;
+var CAP_EXPLOSION: Integer = 3;
+var CAP_IMPACT: Integer = 8;
+var CAP_FOOTSTEP: Integer = 6;
+var CAP_MELEE: Integer = 4;
+
 class Mixer {
     hide Boolean ready;
     hide Integer masterVol;
     hide Integer musicState;
     hide Float combatIntensity;
     hide Integer shotsThisFrame;
+    hide Integer enemyShotsThisFrame;
+    hide Integer explosionsThisFrame;
+    hide Integer impactsThisFrame;
+    hide Integer footstepsThisFrame;
+    hide Integer meleesThisFrame;
     hide Integer mappedCues;
 
     hide Sound3D spatial;
@@ -66,6 +82,11 @@ class Mixer {
         musicState = MUS_AMBIENT;
         combatIntensity = 0.0;
         shotsThisFrame = 0;
+        enemyShotsThisFrame = 0;
+        explosionsThisFrame = 0;
+        impactsThisFrame = 0;
+        footstepsThisFrame = 0;
+        meleesThisFrame = 0;
         mappedCues = 0;
         gunClip = [];
         ambientVoice = 0; combatVoice = 0; bossVoice = 0;
@@ -269,13 +290,18 @@ class Mixer {
     // Map the frame event stream to positional/flat cues and crossfade music.
     expose func update(dt: Float, bus: events.EventBus, bossActive: Boolean, inCombat: Boolean) {
         shotsThisFrame = 0;
+        enemyShotsThisFrame = 0;
+        explosionsThisFrame = 0;
+        impactsThisFrame = 0;
+        footstepsThisFrame = 0;
+        meleesThisFrame = 0;
         var n = bus.getCount();
         var i = 0;
         while i < n {
             var k = bus.kindAt(i);
             if k == config.EV_GUNSHOT {
                 combatIntensity = M.minf(combatIntensity + 0.05, 1.0);
-                if shotsThisFrame < 8 {
+                if shotsThisFrame < CAP_GUNSHOT {
                     if gunClip.Count > 0 {
                         var w = M.clampi(bus.aAt(i), 0, gunClip.Count - 1);
                         playAt(gunClip[w], bus.xAt(i), bus.yAt(i), bus.zAt(i), 55, 1.0);
@@ -285,16 +311,32 @@ class Mixer {
                     shotsThisFrame = shotsThisFrame + 1;
                 }
             } else if k == config.EV_ENEMY_SHOT {
-                playAt(enemyShotClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 48, 1.0);
+                if enemyShotsThisFrame < CAP_ENEMY_SHOT {
+                    playAt(enemyShotClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 48, 1.0);
+                    enemyShotsThisFrame = enemyShotsThisFrame + 1;
+                }
             } else if k == config.EV_EXPLOSION {
                 combatIntensity = M.minf(combatIntensity + 0.16, 1.0);
-                playAt(explosionClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 76, 1.0);
+                if explosionsThisFrame < CAP_EXPLOSION {
+                    playAt(explosionClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 76, 1.0);
+                    explosionsThisFrame = explosionsThisFrame + 1;
+                }
             } else if k == config.EV_IMPACT {
-                playAt(impactClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 30, 1.0);
+                if impactsThisFrame < CAP_IMPACT {
+                    playAt(impactClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 30, 1.0);
+                    impactsThisFrame = impactsThisFrame + 1;
+                }
             } else if k == config.EV_FOOTSTEP {
-                playAt(footstepClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 22, 0.92 + bus.aAt(i) * 0.04);
+                if footstepsThisFrame < CAP_FOOTSTEP {
+                    playAt(footstepClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 22,
+                           0.92 + bus.aAt(i) * 0.04);
+                    footstepsThisFrame = footstepsThisFrame + 1;
+                }
             } else if k == config.EV_MELEE {
-                playAt(meleeClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 48, 1.0);
+                if meleesThisFrame < CAP_MELEE {
+                    playAt(meleeClip, bus.xAt(i), bus.yAt(i), bus.zAt(i), 48, 1.0);
+                    meleesThisFrame = meleesThisFrame + 1;
+                }
             } else if k == config.EV_PICKUP && bus.cAt(i) == 1 {
                 playFlat(pickupClip, 48);
             } else if k == config.EV_KILL {

@@ -867,19 +867,19 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
 ///   - `BODY_TO_NODE`: copies the rigid body's world pose into the node.
 ///   - `NODE_TO_BODY`: pushes the node's transform back into the body.
 ///   - root motion: bumps the local TRS by the animator's per-frame delta.
-/// Then recurses into children.
-static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
-    rt_scene_node3d **stack = NULL;
+/// Then recurses into children. The traversal stack persists on @p scene so the
+/// once-per-tick whole-tree walk stops paying a malloc/free per frame; on trap
+/// paths the buffer is simply left in place for the next call.
+static void scene_node_sync_recursive(rt_scene3d *scene, rt_scene_node3d *node, double dt) {
     size_t count = 0;
-    size_t capacity = 0;
-    if (!node)
+    if (!node || !scene)
         return;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+    if (!scene_node_stack_push(&scene->sync_stack, &count, &scene->sync_stack_capacity, node)) {
         rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
         return;
     }
     while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
+        rt_scene_node3d *current = scene->sync_stack[--count];
         int64_t mode;
         int pull_from_body;
         int push_to_body;
@@ -933,14 +933,15 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
         }
 
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            if (!scene_node_stack_push(&scene->sync_stack,
+                                       &count,
+                                       &scene->sync_stack_capacity,
+                                       current->children[i])) {
                 rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
-                free(stack);
                 return;
             }
         }
     }
-    free(stack);
 }
 
 /// @brief True if `target` appears anywhere in the subtree rooted at `root`.

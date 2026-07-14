@@ -888,6 +888,9 @@ class Game {
     expose func getTargetReg() -> targets.TargetRegistry { return targetReg; }
     expose func getPlayerHealth() -> health.PlayerHealth { return playerHealth; }
     expose func getEnemies() -> ai_core.EnemyManager { return enemies; }
+    // Probe helper: physics world handle for diagnostic counters
+    // (query-broadphase rebuilds, broadphase fallbacks).
+    expose func getPhys() -> G3D.Physics3DWorld { return phys; }
     expose func devViewOffX() -> Float { return vm.getOffX(); }
     expose func devViewOffY() -> Float { return vm.getOffY(); }
     expose func devViewOffZ() -> Float { return vm.getOffZ(); }

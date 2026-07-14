@@ -467,6 +467,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-graphics3d-light3d-castsshadows"></a>`CastsShadows` | `i1` | read/write |
 | <a id="viper-graphics3d-light3d-direction"></a>`Direction` | `obj<Viper.Math.Vec3>` | read/write |
 | <a id="viper-graphics3d-light3d-position"></a>`Position` | `obj<Viper.Math.Vec3>` | read/write |
+| <a id="viper-graphics3d-light3d-attenuation"></a>`Attenuation` | `f64` | read-only |
 
 #### Methods
 
@@ -481,6 +482,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="viper-graphics3d-light3d-ambient"></a>`Ambient` | `obj(f64,f64,f64)` | `Viper.Graphics3D.Light3D.Ambient` |
 | <a id="viper-graphics3d-light3d-spot"></a>`Spot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `Viper.Graphics3D.Light3D.Spot` |
 | <a id="viper-graphics3d-light3d-setintensity"></a>`SetIntensity` | `void(f64)` | `Viper.Graphics3D.Light3D.SetIntensity` |
+| <a id="viper-graphics3d-light3d-setattenuation"></a>`SetAttenuation` | `void(f64)` | `Viper.Graphics3D.Light3D.SetAttenuation` |
 | <a id="viper-graphics3d-light3d-setcolor"></a>`SetColor` | `void(f64,f64,f64)` | `Viper.Graphics3D.Light3D.SetColor` |
 
 <a id="viper-graphics3d-scenegraph"></a>
@@ -1133,6 +1135,7 @@ Constructor: `Viper.Graphics3D.Physics3DWorld.New`
 | <a id="viper-graphics3d-physics3dworld-ccdtoicount"></a>`CcdToiCount` | `i64` | read-only |
 | <a id="viper-graphics3d-physics3dworld-maxqueryhits"></a>`MaxQueryHits` | `i64` | read-only |
 | <a id="viper-graphics3d-physics3dworld-broadphasefallbackcount"></a>`BroadphaseFallbackCount` | `i64` | read-only |
+| <a id="viper-graphics3d-physics3dworld-querybroadphaserebuildcount"></a>`QueryBroadphaseRebuildCount` | `i64` | read-only |
 | <a id="viper-graphics3d-physics3dworld-solveriterations"></a>`SolverIterations` | `i64` | read/write |
 | <a id="viper-graphics3d-physics3dworld-positioniterations"></a>`PositionIterations` | `i64` | read/write |
 | <a id="viper-graphics3d-physics3dworld-contactbeta"></a>`ContactBeta` | `f64` | read/write |
@@ -2585,6 +2588,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Light3D.Ambient` | `obj(f64,f64,f64)` | `rt_light3d_new_ambient` |
 | `Viper.Graphics3D.Light3D.Spot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `rt_light3d_new_spot` |
 | `Viper.Graphics3D.Light3D.SetIntensity` | `void(obj,f64)` | `rt_light3d_set_intensity` |
+| `Viper.Graphics3D.Light3D.SetAttenuation` | `void(obj,f64)` | `rt_light3d_set_attenuation` |
+| <a id="viper-graphics3d-light3d-get-attenuation"></a>`Viper.Graphics3D.Light3D.get_Attenuation` | `f64(obj)` | `rt_light3d_get_attenuation` |
 | `Viper.Graphics3D.Light3D.SetColor` | `void(obj,f64,f64,f64)` | `rt_light3d_set_color` |
 | <a id="viper-graphics3d-light3d-get-type"></a>`Viper.Graphics3D.Light3D.get_Type` | `i64(obj)` | `rt_light3d_get_type` |
 | <a id="viper-graphics3d-light3d-get-color"></a>`Viper.Graphics3D.Light3D.get_Color` | `obj<Viper.Math.Vec3>(obj)` | `rt_light3d_get_color` |
@@ -2943,6 +2948,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits` | `void(obj,i64)` | `rt_world3d_set_max_query_hits` |
 | <a id="viper-graphics3d-physics3dworld-get-maxqueryhits"></a>`Viper.Graphics3D.Physics3DWorld.get_MaxQueryHits` | `i64(obj)` | `rt_world3d_get_max_query_hits` |
 | <a id="viper-graphics3d-physics3dworld-get-broadphasefallbackcount"></a>`Viper.Graphics3D.Physics3DWorld.get_BroadphaseFallbackCount` | `i64(obj)` | `rt_world3d_get_broadphase_fallback_count` |
+| <a id="viper-graphics3d-physics3dworld-get-querybroadphaserebuildcount"></a>`Viper.Graphics3D.Physics3DWorld.get_QueryBroadphaseRebuildCount` | `i64(obj)` | `rt_world3d_get_query_broadphase_rebuild_count` |
 | <a id="viper-graphics3d-physics3dworld-get-solveriterations"></a>`Viper.Graphics3D.Physics3DWorld.get_SolverIterations` | `i64(obj)` | `rt_world3d_get_solver_iterations` |
 | <a id="viper-graphics3d-physics3dworld-set-solveriterations"></a>`Viper.Graphics3D.Physics3DWorld.set_SolverIterations` | `void(obj,i64)` | `rt_world3d_set_solver_iterations` |
 | <a id="viper-graphics3d-physics3dworld-get-positioniterations"></a>`Viper.Graphics3D.Physics3DWorld.get_PositionIterations` | `i64(obj)` | `rt_world3d_get_position_iterations` |

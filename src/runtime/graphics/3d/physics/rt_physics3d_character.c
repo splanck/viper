@@ -279,7 +279,7 @@ static void character3d_begin_move_candidates(rt_character3d *ctrl,
     }
 
     for (int32_t i = 0; i < entry_count; i++) {
-        const ph3d_broadphase_entry *entry = &ctrl->world->broadphase_entries[i];
+        const ph3d_broadphase_entry *entry = &ctrl->world->query_broadphase_entries[i];
         if (!query_entry_overlaps_bounds(entry, qmin, qmax))
             continue;
         if (!character3d_candidate_body(ctrl, entry->body))
@@ -796,8 +796,9 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
         ph3d_vec3_sanitize_state(body->velocity);
         /* The swept move mutated the body's position directly; stamp the
          * broadphase so later spatial queries (raycasts, overlaps, other
-         * controllers' shortlists) see the new AABB instead of a stale cache. */
-        body3d_touch_broadphase(body);
+         * controllers' shortlists) see the new AABB. Pose-only: the lazy
+         * escape check keeps the query cache valid for sub-margin moves. */
+        body3d_touch_broadphase_moved(body);
     }
 }
 

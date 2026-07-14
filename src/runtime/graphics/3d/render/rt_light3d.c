@@ -382,6 +382,29 @@ void rt_light3d_set_intensity(void *obj, double intensity) {
     light3d_note_mutation();
 }
 
+/// @brief Set the distance-falloff factor of a point or spot light after creation.
+/// @details Applies the same non-zero floor as the constructors so a zero value can
+///          never make a local light reach infinitely far. Directional and ambient
+///          lights have no distance falloff, so the call is a no-op for them —
+///          letting pooled lights be retuned without recreating them.
+/// @param obj         Light handle.
+/// @param attenuation Distance falloff factor (values <= 0 use the default falloff floor).
+void rt_light3d_set_attenuation(void *obj, double attenuation) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return;
+    if (light->type != 1 && light->type != 3)
+        return;
+    light->attenuation = sanitize_local_attenuation(attenuation);
+    light3d_note_mutation();
+}
+
+/// @brief Read the light's distance-falloff factor (0 for directional/ambient lights).
+double rt_light3d_get_attenuation(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    return light ? light->attenuation : 0.0;
+}
+
 /// @brief Change the RGB color of a light after creation.
 /// @param obj Light handle.
 /// @param r   Red component [0.0–1.0].

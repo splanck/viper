@@ -172,7 +172,7 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
     if (b) {
         ph3d_vec3_set_finite(b->position, x, y, z);
         ph3d_vec3_sanitize_state(b->position);
-        body3d_touch_broadphase(b);
+        body3d_touch_broadphase_moved(b);
         body3d_wake_if_dynamic(b);
     }
 }
@@ -233,7 +233,9 @@ void rt_body3d_set_orientation(void *o, void *quat) {
         b->orientation[3] = rt_quat_w(quat);
         quat_normalize(b->orientation);
     }
-    body3d_touch_broadphase(b);
+    /* Pose-only: the lazy escape check recomputes the true AABB, so a rotation
+     * that swings the body outside its fat bounds still forces a rebuild. */
+    body3d_touch_broadphase_moved(b);
     body3d_wake_if_dynamic(b);
 }
 

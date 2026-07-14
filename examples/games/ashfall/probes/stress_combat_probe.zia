@@ -1,0 +1,106 @@
+// =============================================================================
+// probes/stress_combat_probe.zia — sustained-combat degradation gate (headless)
+// =============================================================================
+//
+// Runs ~1000 fixed ticks of escalating combat — waves of mixed enemies kept
+// topped up, the player strafing and holding fire the whole time — and asserts
+// the physics query-broadphase cache stays healthy under that load. The bound
+// is deterministic (a counter, not wall clock): with fat-AABB reuse, rebuilds
+// track escapes/spawns (roughly one per few ticks), while the pre-fix behavior
+// (every SetPosition invalidating the cache, one rebuild per interleaved AI
+// raycast) produced 15-30+ rebuilds per tick and grew frame cost as waves
+// ramped. This is the regime the render/combat/perf probes never sustained,
+// which is how the ~15-second in-game lag ramp shipped unnoticed.
+// =============================================================================
+module stress_combat_probe;
+
+bind Viper.Terminal as Terminal;
+bind Viper.Math;
+bind "../config" as config;
+bind "../core/strings" as S;
+bind "../game" as game;
+
+func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
+
+func start() {
+    var g = new game.Game();
+    game.setGame(g);
+    g.initCore(0x57E55EED);
+    g.setScripted(true);
+    g.boot(true, false);
+    g.devSpawnPlayer(0.0, 0.2, 0.0);
+
+    // Warmup: settle spawn/boot transients before snapshotting the counter.
+    var i = 0;
+    while i < 120 {
+        g.scriptMove(0.0, 1.0);
+        g.tickSim(config.FIXED_DT);
+        g.stepPhysics(config.FIXED_DT);
+        i = i + 1;
+    }
+
+    var phys = g.getPhys();
+    var rebuildStart = phys.QueryBroadphaseRebuildCount;
+
+    // Sustained combat: top the field up with a mixed wave every 1.5 seconds,
+    // strafe continuously, and hold fire at a target dummy so every tick runs
+    // hitscan rays, AI perception rays, enemy bolts, impacts, and audio events.
+    var ticks = 900;
+    var spawned = 0;
+    var t = 0;
+    while t < ticks {
+        if t % 90 == 0 {
+            var wave = 0;
+            while wave < 4 {
+                var ang = ((spawned % 12) + 0.0) * 0.5236;
+                var arch = config.EN_HUSK;
+                if spawned % 3 == 1 { arch = config.EN_RANGER; }
+                if spawned % 3 == 2 { arch = config.EN_DRONE; }
+                if g.devSpawnEnemy(arch, Cos(ang) * 18.0, Sin(ang) * 18.0) >= 0 {
+                    spawned = spawned + 1;
+                }
+                wave = wave + 1;
+            }
+        }
+        var mz = 1.0;
+        if (t / 60) % 2 == 1 { mz = -1.0; }
+        g.scriptMove(0.4, mz);
+        g.scriptAimAt(g.getArena().dummyPosX(0), 1.2, g.getArena().dummyPosZ(0));
+        g.scriptFire(true);
+        g.tickSim(config.FIXED_DT);
+        g.stepPhysics(config.FIXED_DT);
+        t = t + 1;
+    }
+    g.scriptFire(false);
+
+    var rebuilds = phys.QueryBroadphaseRebuildCount - rebuildStart;
+    var fallbacks = phys.BroadphaseFallbackCount;
+    var alive = g.getEnemies().aliveCount();
+
+    Terminal.Say("stress ticks=" + S.intStr(ticks) +
+                 " spawned=" + S.intStr(spawned) +
+                 " alive=" + S.intStr(alive) +
+                 " rebuilds=" + S.intStr(rebuilds) +
+                 " fallbacks=" + S.intStr(fallbacks));
+
+    if spawned < 12 {
+        fail("combat never ramped — only " + S.intStr(spawned) + " spawns"); return;
+    }
+    // Fat-AABB reuse keeps rebuilds near escape/spawn rate; the pre-fix
+    // invalidate-on-every-SetPosition behavior lands far above 2 per tick.
+    if rebuilds > ticks * 2 {
+        fail("query broadphase rebuilt " + S.intStr(rebuilds) + " times in " +
+             S.intStr(ticks) + " ticks — cache is not being reused"); return;
+    }
+    if fallbacks > 0 {
+        fail("broadphase fell back to brute-force scans " + S.intStr(fallbacks) +
+             " times"); return;
+    }
+    var diag = g.getDiag();
+    if diag.hasFailed() {
+        fail("budget assertion — " + diag.getViolation()); return;
+    }
+
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

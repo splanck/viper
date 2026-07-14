@@ -59,6 +59,12 @@ platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
 | `VIPER_GFX_HIDE_WINDOWS=1` | On macOS and Linux, keep ViperGFX windows hidden while preserving framebuffer rendering; CTest applies this automatically to `requires_display` and `graphics3d` tests |
 | `VIPER_AUDIO_SILENT=1` | Keep platform-device output silent while still advancing voices, music, effects, and playback state; CTest applies this automatically to the main repository test suite |
 
+Each build script holds an exclusive lock for its resolved build directory until
+all build, test, validation, and install stages finish. A concurrent invocation
+using the same directory exits with the owning process ID instead of cleaning or
+regenerating files underneath the active run. Use a distinct `VIPER_BUILD_DIR`
+when concurrent builds are intentional.
+
 ```bash
 
 # Run all tests (after building)

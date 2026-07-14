@@ -1041,12 +1041,12 @@ void *rt_world3d_raycast(
     }
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > query_max[0])
+            if (w->query_broadphase_entries[i].min[0] > query_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
         if (!body || !body->collider || !query_mask_matches_body(body, mask))
@@ -1092,12 +1092,12 @@ static int32_t world3d_raycast_all_core(rt_world3d *w,
     }
     int32_t entry_count = world3d_build_query_broadphase(w);
     for (int32_t i = 0; i < (entry_count >= 0 ? entry_count : w->body_count); ++i) {
-        rt_body3d *body = entry_count >= 0 ? w->broadphase_entries[i].body : w->bodies[i];
+        rt_body3d *body = entry_count >= 0 ? w->query_broadphase_entries[i].body : w->bodies[i];
         rt_query_hit3d hit;
         if (entry_count >= 0) {
-            if (w->broadphase_entries[i].min[0] > query_max[0])
+            if (w->query_broadphase_entries[i].min[0] > query_max[0])
                 break;
-            if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
+            if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
         if (!body || !body->collider || !query_mask_matches_body(body, mask))

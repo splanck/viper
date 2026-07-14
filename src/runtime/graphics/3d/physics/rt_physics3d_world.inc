@@ -57,6 +57,7 @@ static void world3d_finalizer(void *obj) {
     free(w->joint_types);
     free(w->broadphase_entries);
     free(w->broadphase_sort_scratch);
+    free(w->query_broadphase_entries);
     free(w->query_hits_scratch);
     w->query_hits_scratch = NULL;
     if (w->query_sphere_collider && rt_obj_release_check0(w->query_sphere_collider))
@@ -78,6 +79,7 @@ static void world3d_finalizer(void *obj) {
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
     w->broadphase_sort_scratch = NULL;
+    w->query_broadphase_entries = NULL;
     w->query_sphere_collider = NULL;
     w->query_box_collider = NULL;
     w->query_hits_scratch = NULL;
@@ -87,6 +89,9 @@ static void world3d_finalizer(void *obj) {
     w->query_broadphase_mesh_epoch = 0;
     w->query_broadphase_collider_epoch = 0;
     w->query_broadphase_valid = 0;
+    w->query_broadphase_dirty = 0;
+    w->query_broadphase_rebuild_count = 0;
+    w->query_broadphase_entry_capacity = 0;
     w->broadphase_fallback_count = 0;
     w->last_ccd_requested_substeps = 1;
     w->last_ccd_substeps = 1;
@@ -163,6 +168,9 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->query_broadphase_mesh_epoch = 0;
     w->query_broadphase_collider_epoch = 0;
     w->query_broadphase_valid = 0;
+    w->query_broadphase_dirty = 0;
+    w->query_broadphase_rebuild_count = 0;
+    w->query_broadphase_entry_capacity = 0;
     w->broadphase_fallback_count = 0;
     w->bodies = NULL;
     w->contacts = NULL;
@@ -179,6 +187,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
     w->broadphase_sort_scratch = NULL;
+    w->query_broadphase_entries = NULL;
     w->broadphase_world_revision = 1;
     w->solver_iterations = PH3D_DEFAULT_SOLVER_ITERATIONS;
     w->position_iterations = PH3D_DEFAULT_POSITION_ITERATIONS;
@@ -456,7 +465,7 @@ void rt_world3d_step(void *obj, double dt) {
                         ph3d_vec3_sanitize_state(b->position);
                         ph3d_vec3_sanitize_state(b->velocity);
                         quat_normalize(b->orientation);
-                        body3d_touch_broadphase(b);
+                        body3d_touch_broadphase_moved(b);
                         continue;
                     }
                 }
@@ -469,7 +478,7 @@ void rt_world3d_step(void *obj, double dt) {
             quat_integrate(b->orientation, b->angular_velocity, sub_dt);
             ph3d_vec3_sanitize_state(b->position);
             quat_normalize(b->orientation);
-            body3d_touch_broadphase(b);
+            body3d_touch_broadphase_moved(b);
         }
 
         /* Phase 2: detect contacts once, then warm-started sequential-impulse solve.
@@ -996,6 +1005,14 @@ int64_t rt_world3d_get_ccd_toi_count(void *obj) {
 int64_t rt_world3d_get_broadphase_fallback_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->broadphase_fallback_count > 0) ? w->broadphase_fallback_count : 0;
+}
+
+/// @brief `World3D.QueryBroadphaseRebuildCount` — total query-broadphase rebuilds.
+/// @details Diagnostic for spatial-query cache health: with fat-AABB reuse, sub-margin
+///          body movement keeps this flat; membership/shape changes and escapes bump it.
+int64_t rt_world3d_get_query_broadphase_rebuild_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return (w && w->query_broadphase_rebuild_count > 0) ? w->query_broadphase_rebuild_count : 0;
 }
 
 /// @brief `World3D.SetGravity(gx, gy, gz)` — change the world gravity vector.

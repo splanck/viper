@@ -1468,6 +1468,15 @@ set_tests_properties(zia_smoke_ashfall_perf PROPERTIES
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 120)
 
+add_test(NAME zia_smoke_ashfall_stress
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/stress_combat_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+set_tests_properties(zia_smoke_ashfall_stress PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        ENVIRONMENT "VIPER_3D_BACKEND=software"
+        TIMEOUT 180)
+
 add_test(NAME zia_smoke_ashfall_combat
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/combat_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
@@ -2954,6 +2963,7 @@ if (WIN32)
     _viper_set_windows_test_cost(zia_smoke_ashfall_assets 20)
     _viper_set_windows_test_cost(zia_smoke_ashfall_movement 15)
     _viper_set_windows_test_cost(zia_smoke_ashfall_perf 15)
+    _viper_set_windows_test_cost(zia_smoke_ashfall_stress 25)
     _viper_set_windows_test_cost(zia_viperide_intellisense 15)
     _viper_set_windows_test_cost(zia_smoke_3dbaseball 10)
 

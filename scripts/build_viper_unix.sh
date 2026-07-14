@@ -69,6 +69,72 @@ INSTALL_PREFIX_EXPLICIT=0
 if [[ -n "${VIPER_INSTALL_PREFIX+x}" ]]; then
     INSTALL_PREFIX_EXPLICIT=1
 fi
+
+# A clean/build/test run mutates and consumes the same build tree throughout its
+# lifetime. Serializing by build directory prevents a second clean from deleting
+# executables or generated files while the first invocation is compiling or
+# running tests.
+if ! mkdir -p "$BUILD_DIR"; then
+    echo "error: cannot create build directory: $BUILD_DIR" >&2
+    exit 1
+fi
+BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"
+BUILD_LOCK_PATH="$BUILD_DIR/.viper-build.lock"
+
+release_build_lock() {
+    local exit_status=$?
+    local owner_pid=""
+
+    if [[ -L "$BUILD_LOCK_PATH" ]]; then
+        owner_pid="$(readlink "$BUILD_LOCK_PATH" 2>/dev/null || true)"
+    fi
+    if [[ "$owner_pid" == "$$" ]]; then
+        rm -f "$BUILD_LOCK_PATH"
+    fi
+
+    trap - EXIT
+    exit "$exit_status"
+}
+
+acquire_build_lock() {
+    local attempt owner_pid current_owner
+
+    for attempt in 1 2 3; do
+        if ln -s "$$" "$BUILD_LOCK_PATH" 2>/dev/null; then
+            trap release_build_lock EXIT
+            trap 'exit 129' HUP
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
+            return 0
+        fi
+
+        if [[ ! -L "$BUILD_LOCK_PATH" ]]; then
+            echo "error: build lock path exists but is not a symbolic link: $BUILD_LOCK_PATH" >&2
+            echo "Remove it if no Viper build is using this build directory." >&2
+            return 1
+        fi
+
+        owner_pid="$(readlink "$BUILD_LOCK_PATH" 2>/dev/null || true)"
+        if [[ "$owner_pid" =~ ^[0-9]+$ ]] && kill -0 "$owner_pid" 2>/dev/null; then
+            echo "error: another Viper build is already using $BUILD_DIR (PID $owner_pid)" >&2
+            echo "Wait for it to finish or set VIPER_BUILD_DIR to a different directory." >&2
+            return 1
+        fi
+
+        # Only unlink the stale lock if it still names the owner inspected above;
+        # another contender may have reclaimed it between readlink and this point.
+        current_owner="$(readlink "$BUILD_LOCK_PATH" 2>/dev/null || true)"
+        if [[ "$current_owner" == "$owner_pid" ]]; then
+            rm -f "$BUILD_LOCK_PATH"
+        fi
+    done
+
+    echo "error: unable to acquire build lock for $BUILD_DIR" >&2
+    return 1
+}
+
+acquire_build_lock
+
 CONFIGURE_ARGS=(
     -S "$ROOT_DIR"
     -B "$BUILD_DIR"

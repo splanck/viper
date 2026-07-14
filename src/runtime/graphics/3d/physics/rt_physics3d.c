@@ -157,6 +157,23 @@ void body3d_touch_broadphase(rt_body3d *body) {
     world3d_bump_broadphase_revision(body->owner_world);
 }
 
+/// @brief Record a pose-only transform change without invalidating the query broadphase.
+/// @details Cheap enough for solver position-correction hot paths: bumps the body's own
+///   revision and flags the world dirty. The next query build runs a lazy escape check —
+///   moved bodies still inside their cached fattened AABBs keep the cache valid (fat
+///   entries are a conservative candidate filter; narrow phase tests live body state),
+///   and only a body escaping its fat bounds forces a full rebuild. Shape, filter, and
+///   membership changes must keep using body3d_touch_broadphase / the explicit
+///   invalidate so the entry set itself is refreshed.
+void body3d_touch_broadphase_moved(rt_body3d *body) {
+    if (!body)
+        return;
+    body->broadphase_revision =
+        body->broadphase_revision == UINT64_MAX ? 1u : body->broadphase_revision + 1u;
+    if (body->owner_world)
+        body->owner_world->query_broadphase_dirty = 1;
+}
+
 /// @brief Invalidate the world's cached query broadphase so the next spatial query rebuilds it.
 static void world3d_invalidate_query_broadphase(rt_world3d *world) {
     world3d_bump_broadphase_revision(world);
@@ -359,6 +376,31 @@ int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
         return 0;
     w->broadphase_entries = new_entries;
     w->broadphase_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Grow the query broadphase's dedicated entry table.
+/// @details The query cache must NOT share storage with the per-step solver broadphase:
+///   the solver refills and re-sorts its entries on the widest-spread axis every Step,
+///   which would silently clobber a still-valid query cache sorted by min-X. Entries are
+///   pure scratch (every rebuild writes each entry before reading it).
+int world3d_reserve_query_broadphase_capacity(rt_world3d *w, int32_t needed) {
+    if (!w)
+        return 1;
+    if (g_ph3d_test_force_broadphase_alloc_failure)
+        return 0;
+    if (needed <= w->query_broadphase_entry_capacity)
+        return 1;
+    int32_t new_capacity =
+        ph3d_next_capacity(w->query_broadphase_entry_capacity, needed, PH3D_INITIAL_BODIES);
+    if (new_capacity < 0)
+        return 0;
+    ph3d_broadphase_entry *new_entries = (ph3d_broadphase_entry *)realloc(
+        w->query_broadphase_entries, (size_t)new_capacity * sizeof(*new_entries));
+    if (!new_entries)
+        return 0;
+    w->query_broadphase_entries = new_entries;
+    w->query_broadphase_entry_capacity = new_capacity;
     return 1;
 }
 

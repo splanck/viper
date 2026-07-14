@@ -3503,6 +3503,212 @@ static void test_world_joint_management() {
     EXPECT_TRUE(rt_world3d_joint_count(world) == 0, "World: 0 joints after remove");
 }
 
+/* --- Query broadphase cache: solver isolation + fat-AABB hysteresis --- */
+
+/// The per-step solver broadphase re-sorts its entries on the widest-spread
+/// axis. When it shared storage with the query cache, a Step could silently
+/// reorder a still-valid min-X-sorted query cache and the early break skipped
+/// live bodies. Layout: Y spread (1000) >> X spread (100) forces a Y sweep
+/// sort whose order is the reverse of the query cache's X order.
+static void test_query_broadphase_survives_step_with_nonx_sweep_axis() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body_a = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *body_b = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(body_a, 100.0, 0.0, 0.0);
+    rt_body3d_set_position(body_b, 0.0, 1000.0, 0.0);
+    rt_world3d_add(world, body_a);
+    rt_world3d_add(world, body_b);
+    void *origin = rt_vec3_new(-2.0, 1000.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 5.0, 1);
+        EXPECT_TRUE(hit != nullptr && rt_physics_hit3d_get_body(hit) == body_b,
+                    "query cache: body_b hit before Step");
+    }
+    rt_world3d_step(world, 1.0 / 60.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 5.0, 1);
+        EXPECT_TRUE(hit != nullptr && rt_physics_hit3d_get_body(hit) == body_b,
+                    "query cache: body_b still hit after a Step with a Y sweep axis");
+    }
+}
+
+/// A pose change within PH3D_QUERY_BROADPHASE_MARGIN must reuse the cache
+/// (no rebuild) while narrow phase still reports the exact new surface.
+static void test_query_broadphase_fat_aabb_skips_rebuild() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *target = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *bystander = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(target, 5.0, 0.0, 0.0);
+    rt_body3d_set_position(bystander, 0.0, 20.0, 0.0);
+    rt_world3d_add(world, target);
+    rt_world3d_add(world, bystander);
+    rt_world3d *view = static_cast<rt_world3d *>(world);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr, "fat aabb: initial hit builds the cache");
+    }
+    int64_t builds = view->query_broadphase_rebuild_count;
+    EXPECT_TRUE(builds >= 1, "fat aabb: rebuild counter advanced on first build");
+    rt_body3d_set_position(target, 5.1, 0.0, 0.0); /* well inside the 0.5 margin */
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr, "fat aabb: hit after sub-margin move");
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(d > 4.55 && d < 4.65, "fat aabb: narrow phase sees the moved surface (~4.6)");
+    }
+    EXPECT_TRUE(view->query_broadphase_rebuild_count == builds,
+                "fat aabb: sub-margin move reused the cache without a rebuild");
+}
+
+/// A pose change that escapes the fattened bounds must rebuild — and the
+/// rebuilt cache must place the body at its new position.
+static void test_query_broadphase_escape_rebuilds() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *target = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(target, 5.0, 0.0, 0.0);
+    rt_world3d_add(world, target);
+    rt_world3d *view = static_cast<rt_world3d *>(world);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 30.0, 1);
+        EXPECT_TRUE(hit != nullptr, "escape: initial hit builds the cache");
+    }
+    int64_t builds = view->query_broadphase_rebuild_count;
+    rt_body3d_set_position(target, 12.0, 0.0, 0.0); /* far outside the margin */
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 30.0, 1);
+        EXPECT_TRUE(hit != nullptr, "escape: hit after escaping move");
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(d > 11.45 && d < 11.55, "escape: hit at the new surface (~11.5)");
+    }
+    EXPECT_TRUE(view->query_broadphase_rebuild_count == builds + 1,
+                "escape: escaping move forced exactly one rebuild");
+}
+
+/// Membership changes (add/remove) must rebuild and be reflected in results.
+static void test_query_broadphase_membership_rebuilds() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *first = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(first, 8.0, 0.0, 0.0);
+    rt_world3d_add(world, first);
+    rt_world3d *view = static_cast<rt_world3d *>(world);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr && rt_physics_hit3d_get_body(hit) == first,
+                    "membership: first body hit initially");
+    }
+    int64_t builds = view->query_broadphase_rebuild_count;
+    void *second = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(second, 4.0, 0.0, 0.0);
+    rt_world3d_add(world, second);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr && rt_physics_hit3d_get_body(hit) == second,
+                    "membership: newly added nearer body is hit");
+    }
+    EXPECT_TRUE(view->query_broadphase_rebuild_count > builds, "membership: add forced a rebuild");
+    builds = view->query_broadphase_rebuild_count;
+    rt_world3d_remove(world, second);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        EXPECT_TRUE(hit != nullptr && rt_physics_hit3d_get_body(hit) == first,
+                    "membership: removed body no longer hit");
+    }
+    EXPECT_TRUE(view->query_broadphase_rebuild_count > builds,
+                "membership: remove forced a rebuild");
+}
+
+/// Shape changes (scale) and large rotations must be reflected in results.
+static void test_query_broadphase_shape_change_rebuilds() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(box, 5.0, 0.0, 0.0);
+    rt_world3d_add(world, box);
+    rt_world3d *view = static_cast<rt_world3d *>(world);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(hit != nullptr && d > 4.45 && d < 4.55, "shape: initial surface at ~4.5");
+    }
+    int64_t builds = view->query_broadphase_rebuild_count;
+    rt_body3d_set_scale(box, 2.0, 2.0, 2.0);
+    {
+        void *hit = rt_world3d_raycast(world, origin, dir, 20.0, 1);
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(hit != nullptr && d > 3.95 && d < 4.05, "shape: scaled surface at ~4.0");
+    }
+    EXPECT_TRUE(view->query_broadphase_rebuild_count > builds, "shape: scale forced a rebuild");
+
+    /* A long thin box whose AABB swings far past the margin when rotated. */
+    void *plank = rt_body3d_new_aabb(3.0, 0.2, 0.2, 0.0);
+    rt_body3d_set_position(plank, 0.0, 10.0, 20.0);
+    rt_world3d_add(world, plank);
+    void *up_origin = rt_vec3_new(0.0, 0.0, 20.0);
+    void *up_dir = rt_vec3_new(0.0, 1.0, 0.0);
+    {
+        void *hit = rt_world3d_raycast(world, up_origin, up_dir, 30.0, 1);
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(hit != nullptr && d > 9.75 && d < 9.85, "rotation: flat plank hit at ~9.8");
+    }
+    void *quat = rt_quat_new(0.0, 0.0, 0.70710678118654752, 0.70710678118654752);
+    rt_body3d_set_orientation(plank, quat); /* 90 deg about Z: AABB swings to +-3 in Y */
+    {
+        void *hit = rt_world3d_raycast(world, up_origin, up_dir, 30.0, 1);
+        double d = hit ? rt_physics_hit3d_get_distance(hit) : 0.0;
+        EXPECT_TRUE(hit != nullptr && d > 6.95 && d < 7.05, "rotation: rotated plank hit at ~7.0");
+    }
+}
+
+/// Mixed move/step sequence cross-checked over every query flavor.
+static void test_query_broadphase_flavors_after_mixed_moves() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *near_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *mid_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *far_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    rt_body3d_set_position(near_box, 3.0, 0.0, 0.0);
+    rt_body3d_set_position(mid_box, 6.0, 0.0, 0.0);
+    rt_body3d_set_position(far_box, 9.0, 0.0, 0.0);
+    rt_world3d_add(world, near_box);
+    rt_world3d_add(world, mid_box);
+    rt_world3d_add(world, far_box);
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    {
+        void *hits = rt_world3d_raycast_all(world, origin, dir, 30.0, 1);
+        EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 3,
+                    "flavors: three hits before moves");
+    }
+    rt_body3d_set_position(mid_box, 6.2, 0.0, 0.0); /* sub-margin */
+    rt_body3d_set_position(far_box, 11.0, 0.0, 0.0); /* escape */
+    rt_world3d_step(world, 1.0 / 60.0);
+    {
+        void *hits = rt_world3d_raycast_all(world, origin, dir, 30.0, 1);
+        EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 3,
+                    "flavors: three hits after mixed moves and a Step");
+        if (hits && rt_physics_hit_list3d_get_count(hits) == 3) {
+            void *hit2 = rt_physics_hit_list3d_get(hits, 2);
+            double d2 = rt_physics_hit3d_get_distance(hit2);
+            EXPECT_TRUE(rt_physics_hit3d_get_body(hit2) == far_box && d2 > 10.45 && d2 < 10.55,
+                        "flavors: escaped body reported at its new surface (~10.5)");
+        }
+    }
+    {
+        void *center = rt_vec3_new(6.2, 0.0, 0.0);
+        void *hits = rt_world3d_overlap_sphere(world, center, 1.0, 1);
+        EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1 &&
+                        rt_physics_hit3d_get_body(rt_physics_hit_list3d_get(hits, 0)) == mid_box,
+                    "flavors: overlap sphere finds the sub-margin-moved body at its live position");
+    }
+}
+
 int main() {
     /* Body creation */
     test_body_new_aabb();
@@ -3613,6 +3819,12 @@ int main() {
     test_physics_world_event_hit_getters_sanitize_corrupt_private_state();
     test_world_raycast_returns_nearest_hit();
     test_world_raycast_all_sorted();
+    test_query_broadphase_survives_step_with_nonx_sweep_axis();
+    test_query_broadphase_fat_aabb_skips_rebuild();
+    test_query_broadphase_escape_rebuilds();
+    test_query_broadphase_membership_rebuilds();
+    test_query_broadphase_shape_change_rebuilds();
+    test_query_broadphase_flavors_after_mixed_moves();
     test_world_overlap_hit_list_reports_truncation();
     test_world_sweep_sphere_reports_started_penetrating();
     test_world_overlap_queries_honor_mask();

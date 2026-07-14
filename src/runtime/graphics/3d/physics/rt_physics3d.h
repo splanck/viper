@@ -75,6 +75,8 @@ void rt_world3d_set_max_query_hits(void *world, int64_t max_hits);
 int64_t rt_world3d_get_max_query_hits(void *world);
 /// @brief Number of broadphase reserve failures that fell back to brute-force pair scans.
 int64_t rt_world3d_get_broadphase_fallback_count(void *world);
+/// @brief Total query-broadphase rebuilds performed (diagnostic; flat under fat-AABB reuse).
+int64_t rt_world3d_get_query_broadphase_rebuild_count(void *world);
 /// @brief Replace the world gravity vector at runtime.
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 /// @brief Shift all body/contact/query state by the inverse of a floating-origin delta.

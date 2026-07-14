@@ -449,6 +449,10 @@ int64_t rt_world3d_get_broadphase_fallback_count(void *world) {
     (void)world;
     return 0;
 }
+int64_t rt_world3d_get_query_broadphase_rebuild_count(void *world) {
+    (void)world;
+    return 0;
+}
 void rt_world3d_rebase_origin(void *world, double dx, double dy, double dz) {
     (void)world;
     (void)dx;

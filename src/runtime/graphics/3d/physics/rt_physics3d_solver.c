@@ -635,9 +635,9 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
             c->separations[k] += applied;
     }
     if (a->inv_mass > 0.0)
-        body3d_touch_broadphase(a);
+        body3d_touch_broadphase_moved(a);
     if (b->inv_mass > 0.0)
-        body3d_touch_broadphase(b);
+        body3d_touch_broadphase_moved(b);
 }
 
 /// @brief Warm-start every solvable contact, walking the batch island by island.
@@ -1035,6 +1035,9 @@ static int32_t world3d_fill_broadphase_entries(rt_world3d *w, ph3d_broadphase_en
             continue;
         entries[entry_count].body = body;
         body_aabb(body, entries[entry_count].min, entries[entry_count].max);
+        /* The step broadphase never reads revisions; stamp so the merge sort
+         * only ever copies initialized bytes. */
+        entries[entry_count].body_revision = 0;
         entry_count++;
     }
     return entry_count;

@@ -1014,6 +1014,28 @@ void rt_light3d_set_intensity(void *o, double i) {
     (void)i;
 }
 
+/// @brief Stub for `Light3D.SetAttenuation` — set a local light's distance falloff.
+///
+/// Silent no-op stub.
+///
+/// @param o Light3D handle (ignored).
+/// @param a Attenuation factor (ignored).
+void rt_light3d_set_attenuation(void *o, double a) {
+    (void)o;
+    (void)a;
+}
+
+/// @brief Stub for `Light3D.get_Attenuation` — read a light's distance falloff.
+///
+/// Silent no-op stub.
+///
+/// @param o Light3D handle (ignored).
+/// @return Always 0.0.
+double rt_light3d_get_attenuation(void *o) {
+    (void)o;
+    return 0.0;
+}
+
 /// @brief Stub for `Light3D.SetColor` — overwrite the light's RGB color.
 ///
 /// Silent no-op stub. Components are linear-space 0..1 floats.

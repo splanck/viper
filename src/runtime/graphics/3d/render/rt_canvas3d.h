@@ -709,6 +709,10 @@ void *rt_light3d_new_spot(void *position,
                           double outer_angle);
 /// @brief Multiply the light color by an intensity scalar (HDR-friendly).
 void rt_light3d_set_intensity(void *obj, double intensity);
+/// @brief Set the distance-falloff factor of a point/spot light (no-op for other types).
+void rt_light3d_set_attenuation(void *obj, double attenuation);
+/// @brief Get the light's distance-falloff factor (0 for directional/ambient).
+double rt_light3d_get_attenuation(void *obj);
 /// @brief Replace the light color (without altering intensity).
 void rt_light3d_set_color(void *obj, double r, double g, double b);
 /// @brief Get the light type (0=directional, 1=point, 2=ambient, 3=spot).

@@ -141,7 +141,9 @@ class EnemyManager {
             alive.Add(0); phase.Add(0); routeOn.Add(0); routeX.Add(0.0); routeZ.Add(0.0);
             bossPulseT.Add(0.0); lastKnownX.Add(0.0); lastKnownZ.Add(0.0); orbitPhase.Add(0.0);
             repositionT.Add(0.0); flankChoice.Add(-1);
-            // Persistent colliders + nodes, reused across the pool.
+            // Placeholder colliders sized for a generic humanoid. Each spawn
+            // replaces the slot's three bodies with archetype-sized ones via
+            // rebuildBodies (bounded per-spawn churn, not per-frame).
             var t = G3D.Physics3DBody.NewAABB(0.4, 0.9, 0.4, 0.0);
             G3D.Physics3DBody.set_CollisionLayer(t, config.LAYER_ENEMY);
             G3D.Physics3DBody.set_CollisionMask(t, 0);
@@ -281,6 +283,9 @@ class EnemyManager {
         return s;
     }
 
+    // Replace the slot's hit bodies with archetype-sized ones. Runs once per
+    // spawn (never per frame); Physics3DWorld.Remove compacts the world's body
+    // array and frees the old bodies, so the world body count stays flat.
     hide func rebuildBodies(s: Integer) {
         reg.unregisterEntity(config.TGT_ENEMY, s);
         G3D.Physics3DWorld.Remove(phys, torso[s]);
@@ -502,6 +507,16 @@ class EnemyManager {
             }
             i = i + 1;
         }
+        // Deferred body placement: updateOne only decides; all SetPosition calls
+        // land here, contiguously AFTER every canSee raycast. Interleaving moves
+        // with raycasts forced a physics query-broadphase rebuild per enemy per
+        // tick. Placement timing is invisible to in-loop decisions: enemy bodies
+        // are layer ENEMY / mask 0 and canSee raycasts only against LAYER_WORLD.
+        i = 0;
+        while i < cap {
+            if alive[i] == 1 { placeBodies(i); }
+            i = i + 1;
+        }
         models.update(dt);
     }
 
@@ -517,13 +532,11 @@ class EnemyManager {
         if staggerT[s] > 0.0 {
             staggerT[s] = staggerT[s] - dt;
             if staggerT[s] <= 0.0 && state[s] == AI_STAGGER { state[s] = AI_COMBAT; }
-            placeBodies(s);
             return;
         }
         if disabledT[s] > 0.0 {
             disabledT[s] = disabledT[s] - dt;
             if disabledT[s] <= 0.0 && state[s] == AI_DISABLED { state[s] = AI_COMBAT; }
-            placeBodies(s);
             return;
         }
 
@@ -542,7 +555,7 @@ class EnemyManager {
         } else if state[s] == AI_COMBAT || state[s] == AI_SEARCHING || state[s] == AI_SUSPICIOUS {
             behave(s, dt, px, py, pz, dist, seen, playerAlive);
         }
-        placeBodies(s);
+        // Body placement is deferred to update()'s trailing pass (see above).
     }
 
     hide func updateDot(s: Integer, dt: Float) {

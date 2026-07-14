@@ -89,6 +89,11 @@ extern double rt_quat_w(void *q);
 #define PH3D_MAX_MANIFOLD_POINTS 4
 #define PH3D_INITIAL_CONTACTS 128
 #define PH3D_MAX_QUERY_HITS 256
+/* Slop added to each cached query-broadphase AABB. Bodies that move without
+ * escaping their fattened bounds do not invalidate the cache: the fat entry
+ * remains a conservative candidate filter and narrow phase tests live body
+ * state, so results stay exact. Plain double add/sub — deterministic. */
+#define PH3D_QUERY_BROADPHASE_MARGIN 0.5
 #define PH3D_QUERY_HITS_MIN 16
 #define PH3D_QUERY_HITS_MAX 4096
 #define PH3D_INITIAL_JOINTS 128
@@ -209,11 +214,22 @@ struct rt_world3d {
     int32_t broadphase_capacity;
     int32_t broadphase_sort_scratch_capacity;
     uint64_t broadphase_world_revision;
+    /* Query-broadphase cache. Entries live in their own array (never shared
+     * with the per-step solver broadphase, which re-sorts on the widest axis
+     * while queries assume min-X order) and hold FATTENED AABBs so bodies
+     * moving within PH3D_QUERY_BROADPHASE_MARGIN of their cached bounds do
+     * not force a rebuild. Pose-only transform changes set
+     * query_broadphase_dirty; the next query build runs a lazy escape check
+     * and rebuilds only when a moved body left its fat bounds. */
+    ph3d_broadphase_entry *query_broadphase_entries;
+    int32_t query_broadphase_entry_capacity;
     int32_t query_broadphase_count;
     uint64_t query_broadphase_signature;
     uint64_t query_broadphase_mesh_epoch;
     uint64_t query_broadphase_collider_epoch;
     int8_t query_broadphase_valid;
+    int8_t query_broadphase_dirty;
+    int64_t query_broadphase_rebuild_count;
     void *query_sphere_collider;
     void *query_box_collider;
     /* Configurable query result capacity (RaycastAll/Overlap*): lists still
@@ -245,6 +261,10 @@ struct ph3d_broadphase_entry {
     rt_body3d *body;
     double min[3];
     double max[3];
+    /* Body revision stamped when the query broadphase cached this entry, so a
+     * dirty validate can identify exactly which bodies moved since the build.
+     * The per-step solver broadphase writes but never reads it. */
+    uint64_t body_revision;
 };
 
 //===----------------------------------------------------------------------===//
@@ -412,6 +432,7 @@ void ph3d_vec3_sanitize_state(double *v);
 
 // --- Body dynamics (defined in rt_physics3d.c) ---
 void body3d_touch_broadphase(rt_body3d *body);
+void body3d_touch_broadphase_moved(rt_body3d *body);
 void body3d_wake_if_dynamic(rt_body3d *b);
 void body3d_update_shape_cache_from_collider(rt_body3d *body);
 void body3d_contact_velocity(const rt_body3d *b, const double *r, double *out);
@@ -424,6 +445,7 @@ int world3d_checked_increment(int32_t value, int32_t *out);
 int world3d_reserve_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed);
+int world3d_reserve_query_broadphase_capacity(rt_world3d *w, int32_t needed);
 void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled);
 void *physics_hit3d_new(const rt_query_hit3d *src);
 void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,

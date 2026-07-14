@@ -107,6 +107,9 @@ class Effects {
     // --- Ambient atmosphere loop ---------------------------------------------
     // kind follows level_env.ATMO_*; count scales with the quality tier.
     expose func ambientSetup(kind: Integer, count: Integer) {
+        // Stop the previous level's emitter before replacing it (release hygiene;
+        // it was already excluded from Update/Draw once ambientOn dropped).
+        if ambientOn { G3D.Particles3D.Stop(ambient); }
         ambientOn = false;
         if ready == false || kind <= 0 || count <= 0 { return; }
         ambient = G3D.Particles3D.New(count);

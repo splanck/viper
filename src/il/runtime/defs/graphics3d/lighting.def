@@ -29,6 +29,8 @@ RT_FUNC(Light3DPoint,           rt_light3d_new_point,       "Viper.Graphics3D.Li
 RT_FUNC(Light3DAmbient,         rt_light3d_new_ambient,     "Viper.Graphics3D.Light3D.Ambient",         "obj(f64,f64,f64)")
 RT_FUNC(Light3DSpot,            rt_light3d_new_spot,        "Viper.Graphics3D.Light3D.Spot",            "obj(obj,obj,f64,f64,f64,f64,f64,f64)")
 RT_FUNC(Light3DSetIntensity,    rt_light3d_set_intensity,   "Viper.Graphics3D.Light3D.SetIntensity",    "void(obj,f64)")
+RT_FUNC(Light3DSetAttenuation,  rt_light3d_set_attenuation, "Viper.Graphics3D.Light3D.SetAttenuation",  "void(obj,f64)")
+RT_FUNC(Light3DGetAttenuation,  rt_light3d_get_attenuation, "Viper.Graphics3D.Light3D.get_Attenuation", "f64(obj)")
 RT_FUNC(Light3DSetColor,        rt_light3d_set_color,       "Viper.Graphics3D.Light3D.SetColor",        "void(obj,f64,f64,f64)")
 RT_FUNC(Light3DGetType,         rt_light3d_get_type,        "Viper.Graphics3D.Light3D.get_Type",        "i64(obj)")
 RT_FUNC(Light3DGetColor,        rt_light3d_get_color,       "Viper.Graphics3D.Light3D.get_Color",       "obj<Viper.Math.Vec3>(obj)")
@@ -64,6 +66,10 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Light3D", Light3D, "obj", none)
     RT_METHOD("Ambient", "obj(f64,f64,f64)", Light3DAmbient)
     RT_METHOD("Spot", "obj(obj,obj,f64,f64,f64,f64,f64,f64)", Light3DSpot)
     RT_METHOD("SetIntensity", "void(f64)", Light3DSetIntensity)
+    // Distance falloff for point/spot lights; no-op on other types. Lets pooled
+    // lights be retuned per effect instead of being recreated.
+    RT_METHOD("SetAttenuation", "void(f64)", Light3DSetAttenuation)
+    RT_PROP("Attenuation", "f64", Light3DGetAttenuation, none)
     RT_METHOD("SetColor", "void(f64,f64,f64)", Light3DSetColor)
 RT_CLASS_END()
 
@@ -881,6 +887,7 @@ RT_FUNC(World3DCcdToiCount, rt_world3d_get_ccd_toi_count, "Viper.Graphics3D.Phys
 RT_FUNC(World3DSetMaxQueryHits, rt_world3d_set_max_query_hits, "Viper.Graphics3D.Physics3DWorld.SetMaxQueryHits", "void(obj,i64)")
 RT_FUNC(World3DGetMaxQueryHits, rt_world3d_get_max_query_hits, "Viper.Graphics3D.Physics3DWorld.get_MaxQueryHits", "i64(obj)")
 RT_FUNC(World3DBroadphaseFallbackCount, rt_world3d_get_broadphase_fallback_count, "Viper.Graphics3D.Physics3DWorld.get_BroadphaseFallbackCount", "i64(obj)")
+RT_FUNC(World3DQueryBroadphaseRebuildCount, rt_world3d_get_query_broadphase_rebuild_count, "Viper.Graphics3D.Physics3DWorld.get_QueryBroadphaseRebuildCount", "i64(obj)")
 RT_FUNC(World3DGetSolverIterations, rt_world3d_get_solver_iterations, "Viper.Graphics3D.Physics3DWorld.get_SolverIterations", "i64(obj)")
 RT_FUNC(World3DSetSolverIterations, rt_world3d_set_solver_iterations, "Viper.Graphics3D.Physics3DWorld.set_SolverIterations", "void(obj,i64)")
 RT_FUNC(World3DGetPositionIterations, rt_world3d_get_position_iterations, "Viper.Graphics3D.Physics3DWorld.get_PositionIterations", "i64(obj)")
@@ -968,6 +975,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Physics3DWorld", Physics3DWorld, "obj", World3D
     RT_METHOD("SetMaxQueryHits", "void(i64)", World3DSetMaxQueryHits)
     RT_PROP("MaxQueryHits", "i64", World3DGetMaxQueryHits, none)
     RT_PROP("BroadphaseFallbackCount", "i64", World3DBroadphaseFallbackCount, none)
+    // Total spatial-query broadphase rebuilds; flat while bodies move within the fat-AABB margin.
+    RT_PROP("QueryBroadphaseRebuildCount", "i64", World3DQueryBroadphaseRebuildCount, none)
     RT_PROP("SolverIterations", "i64", World3DGetSolverIterations, World3DSetSolverIterations)
     RT_PROP("PositionIterations", "i64", World3DGetPositionIterations, World3DSetPositionIterations)
     RT_PROP("ContactBeta", "f64", World3DGetContactBeta, World3DSetContactBeta)

@@ -46,11 +46,13 @@ static void rt_scene3d_finalize(void *obj) {
     free(scene->query_candidates);
     free(scene->query_traversal_stack);
     free(scene->world_matrix_stack);
+    free(scene->sync_stack);
     scene->visibility_zones = NULL;
     scene->visibility_portals = NULL;
     scene->query_candidates = NULL;
     scene->query_traversal_stack = NULL;
     scene->world_matrix_stack = NULL;
+    scene->sync_stack = NULL;
     scene->visibility_zone_count = 0;
     scene->visibility_zone_capacity = 0;
     scene->visibility_portal_count = 0;
@@ -58,6 +60,7 @@ static void rt_scene3d_finalize(void *obj) {
     scene->query_candidate_capacity = 0;
     scene->query_traversal_stack_capacity = 0;
     scene->world_matrix_stack_capacity = 0;
+    scene->sync_stack_capacity = 0;
 }
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
@@ -89,9 +92,11 @@ void *rt_scene3d_new(void) {
     s->query_candidates = NULL;
     s->query_traversal_stack = NULL;
     s->world_matrix_stack = NULL;
+    s->sync_stack = NULL;
     s->query_candidate_capacity = 0;
     s->query_traversal_stack_capacity = 0;
     s->world_matrix_stack_capacity = 0;
+    s->sync_stack_capacity = 0;
     rt_obj_set_finalizer(s, rt_scene3d_finalize);
     return s;
 }
@@ -559,7 +564,7 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_scene_node3d *root = scene ? scene_node3d_checked(scene->root) : NULL;
     if (!scene || !root)
         return;
-    scene_node_sync_recursive(root, dt);
+    scene_node_sync_recursive(scene, root, dt);
     rt_sound3d_sync_bindings(dt);
 }
 

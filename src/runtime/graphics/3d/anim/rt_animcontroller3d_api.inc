@@ -55,6 +55,9 @@ static void controller_finalize(void *obj) {
     controller->prev_final_palette = NULL;
     free(controller->blend_locals_scratch);
     controller->blend_locals_scratch = NULL;
+    free(controller->sample_scratch);
+    controller->sample_scratch = NULL;
+    controller->sample_scratch_bones = 0;
 }
 
 /// @brief Construct a new AnimController3D bound to a skeleton.

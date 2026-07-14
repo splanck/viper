@@ -551,6 +551,13 @@ if(VIPER_BUILD_TESTING)
               ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
+
+    add_test(
+      NAME build_script_concurrency_lock
+      COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/build/build_viper_lock.sh
+              ${CMAKE_SOURCE_DIR}/scripts/build_viper_unix.sh
+    )
+    set_tests_properties(build_script_concurrency_lock PROPERTIES LABELS "build;tools")
   endif()
 endif()
 

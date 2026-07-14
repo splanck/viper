@@ -6,14 +6,15 @@
 /// @brief Compute the world-space matrix of @p bone_index for the given state at @p time
 ///   by sampling every bone's local transform and walking the parent chain; returns 0
 ///   on invalid controller/state/bone, else 1 with the result in @p out_global.
-static int controller_sample_state_global_matrix(const rt_anim_controller3d *controller,
+static int controller_sample_state_global_matrix(rt_anim_controller3d *controller,
                                                  int32_t state_index,
                                                  float time,
                                                  int32_t bone_index,
                                                  float *out_global) {
-    /* Heap-allocated: two VGFX3D_MAX_SKELETON_BONES*16 matrices would need 128 KB
-     * of stack. This is a cold const single-bone query (root-motion / attachment
-     * lookups), so a transient allocation is fine. */
+    /* Heap-backed: two VGFX3D_MAX_SKELETON_BONES*16 matrices would need 128 KB
+     * of stack. Bone-socket queries run this every frame per socketed node, so
+     * the buffer persists on the controller (grown on demand, freed with it)
+     * instead of paying a calloc/free per sample. */
     float *globals;
     float *locals;
     int32_t state_count;
@@ -30,9 +31,16 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
     animation = controller->states[state_index].animation;
     if (!animation)
         return 0;
-    locals = (float *)calloc((size_t)bone_count * 32u, sizeof(float));
-    if (!locals)
-        return 0;
+    if (controller->sample_scratch_bones < bone_count) {
+        float *grown = (float *)realloc(controller->sample_scratch,
+                                        (size_t)bone_count * 32u * sizeof(float));
+        if (!grown)
+            return 0;
+        controller->sample_scratch = grown;
+        controller->sample_scratch_bones = bone_count;
+    }
+    locals = controller->sample_scratch;
+    memset(locals, 0, (size_t)bone_count * 32u * sizeof(float));
     globals = locals + (size_t)bone_count * 16u;
     for (int32_t bone = 0; bone < bone_count; bone++) {
         controller_sample_animation_local_matrix(
@@ -40,7 +48,6 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
     }
     skeleton3d_compute_globals_from_locals(controller->skeleton, locals, globals, bone_count);
     memcpy(out_global, &globals[bone_index * 16], 16 * sizeof(float));
-    free(locals);
     return 1;
 }
 

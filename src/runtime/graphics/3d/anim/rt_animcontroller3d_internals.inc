@@ -92,6 +92,12 @@ typedef struct {
     /// Appended at the struct's end so white-box test layout mirrors of the earlier fields keep
     /// their offsets.
     float *blend_locals_scratch;
+    /// Lazily grown scratch for controller_sample_state_global_matrix (bone-socket /
+    /// root-motion queries, which run per frame for socketed nodes): holds
+    /// sample_scratch_bones*32 floats (locals + globals) so repeated samples stop
+    /// paying a calloc/free each call. Appended at the struct's end (see above).
+    float *sample_scratch;
+    int32_t sample_scratch_bones;
 } rt_anim_controller3d;
 
 /// @brief Validate that @p obj is a live AnimController3D handle, returning NULL otherwise.
