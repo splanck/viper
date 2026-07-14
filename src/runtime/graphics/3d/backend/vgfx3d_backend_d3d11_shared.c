@@ -107,10 +107,12 @@ int vgfx3d_d3d11_vec3_direction_is_usable(const float *values) {
     return len2 > 1.0e-12 && len2 < 1.0e20 ? 1 : 0;
 }
 
-/// @brief Copy a direction vector with a stable default for zero/non-finite/huge sources.
+/// @brief Copy and normalize a direction vector with a stable default for invalid sources.
 void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]) {
     static const float default_forward[3] = {0.0f, 0.0f, -1.0f};
     const float *chosen;
+    double inv_length;
+    double length_squared;
 
     if (!dst)
         return;
@@ -120,9 +122,12 @@ void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const flo
         chosen = fallback;
     else
         chosen = default_forward;
-    dst[0] = chosen[0];
-    dst[1] = chosen[1];
-    dst[2] = chosen[2];
+    length_squared = (double)chosen[0] * (double)chosen[0] + (double)chosen[1] * (double)chosen[1] +
+                     (double)chosen[2] * (double)chosen[2];
+    inv_length = 1.0 / sqrt(length_squared);
+    dst[0] = (float)((double)chosen[0] * inv_length);
+    dst[1] = (float)((double)chosen[1] * inv_length);
+    dst[2] = (float)((double)chosen[2] * inv_length);
 }
 
 /// @brief Copy a matrix when finite, otherwise write identity.
@@ -513,6 +518,74 @@ float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested) {
                                           -VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
                                           VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
                                           0.0f);
+}
+
+/// @brief Convert constant depth bias using the selected depth convention.
+int32_t vgfx3d_d3d11_depth_bias_units(float requested, int reversed_z) {
+    float bias = vgfx3d_d3d11_finite_or(requested, 0.0f);
+    return vgfx3d_depth_bias_d3d11_units(reversed_z ? -bias : bias);
+}
+
+/// @brief Clamp and sign slope-scaled depth bias using the selected depth convention.
+float vgfx3d_d3d11_depth_slope_bias(float requested, int reversed_z) {
+    float bias = vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(requested);
+    return reversed_z ? vgfx3d_depth_bias_slope_reversed_z(bias) : bias;
+}
+
+/// @brief Validate one packed per-instance bone palette against the fixed shader palette.
+int32_t vgfx3d_d3d11_sanitize_instance_bone_stride(int32_t requested_stride,
+                                                   int32_t total_bone_count,
+                                                   int32_t instance_count) {
+    uint64_t required_bones;
+
+    if (requested_stride <= 0)
+        return 0;
+    if (requested_stride > VGFX3D_D3D11_MAX_BONES || total_bone_count <= 0 ||
+        total_bone_count > VGFX3D_D3D11_MAX_BONES || instance_count <= 0)
+        return 0;
+    required_bones = (uint64_t)(uint32_t)requested_stride * (uint64_t)(uint32_t)instance_count;
+    if (required_bones != (uint64_t)(uint32_t)total_bone_count)
+        return 0;
+    return requested_stride;
+}
+
+/// @brief Convert one NDC coordinate to an in-bounds D3D11 texture coordinate.
+int vgfx3d_d3d11_ndc_to_pixel(float ndc, int32_t extent, int invert_axis, int32_t *out_pixel) {
+    double unit;
+    int32_t pixel;
+
+    if (out_pixel)
+        *out_pixel = 0;
+    if (!out_pixel || !isfinite(ndc) || extent <= 0 ||
+        extent > VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION)
+        return 0;
+    if (ndc < -1.0f)
+        ndc = -1.0f;
+    else if (ndc > 1.0f)
+        ndc = 1.0f;
+    unit = (double)ndc * 0.5 + 0.5;
+    if (invert_axis)
+        unit = 1.0 - unit;
+    pixel = (int32_t)(unit * (double)extent);
+    if (pixel >= extent)
+        pixel = extent - 1;
+    if (pixel < 0)
+        pixel = 0;
+    *out_pixel = pixel;
+    return 1;
+}
+
+/// @brief Convert reversed-Z storage to canonical depth while rejecting invalid samples.
+float vgfx3d_d3d11_sanitize_depth_probe_result(float reversed_depth) {
+    if (!isfinite(reversed_depth))
+        return -1.0f;
+    return vgfx3d_d3d11_clamp_float_param(1.0f - reversed_depth, 0.0f, 1.0f, -1.0f);
+}
+
+/// @brief Keep the CPU-side SSR request identical to the shader's loop bounds.
+int32_t vgfx3d_d3d11_sanitize_ssr_steps(int32_t requested) {
+    return vgfx3d_d3d11_clamp_int_param(
+        requested, VGFX3D_D3D11_SSR_STEPS_MIN, VGFX3D_D3D11_SSR_STEPS_MAX);
 }
 
 /// @brief Normalize material workflow constants before the shader branches on them.
@@ -1377,6 +1450,18 @@ int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
                                        int has_staging) {
     return rtt_active && has_target && has_color_tex && has_color_rtv && has_depth_tex &&
            has_depth_dsv && has_staging;
+}
+
+/// @brief Require the host target metadata to match the resources retained by the backend.
+int vgfx3d_d3d11_rtt_readback_state_matches(int32_t target_width,
+                                            int32_t target_height,
+                                            int32_t target_format,
+                                            int32_t resource_width,
+                                            int32_t resource_height,
+                                            int32_t resource_format) {
+    return vgfx3d_d3d11_is_valid_texture2d_extent(target_width, target_height) &&
+           target_width == resource_width && target_height == resource_height &&
+           target_format == resource_format;
 }
 
 /// @brief Map a draw command to its required blend state (alpha vs opaque).

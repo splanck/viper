@@ -141,6 +141,9 @@ typedef struct {
 
 typedef vgfx3d_d3d11_per_object_t d3d_per_object_t;
 
+_Static_assert(sizeof(d3d_per_object_t) == 752u,
+               "D3D11 PerObject cbuffer must match its HLSL layout");
+
 typedef struct {
     float vp[16];
     float prev_vp[16];
@@ -183,6 +186,9 @@ _Static_assert(sizeof(d3d_per_scene_t) % 16 == 0,
 
 typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
 
+_Static_assert(sizeof(d3d_per_material_t) == 448u,
+               "D3D11 PerMaterial cbuffer must match its HLSL layout");
+
 typedef struct {
     int32_t type;
     int32_t shadow_index;
@@ -198,11 +204,16 @@ typedef struct {
     float shadow_cascade_splits[4];
 } d3d_light_t;
 
+_Static_assert(sizeof(d3d_light_t) == 96u,
+               "D3D11 Light cbuffer element must match its HLSL layout");
+
 typedef struct {
     float inverse_projection[16];
     float inverse_view_rotation[16];
     float camera_forward[4];
 } d3d_skybox_cb_t;
+
+_Static_assert(sizeof(d3d_skybox_cb_t) == 144u, "D3D11 Skybox cbuffer must match its HLSL layout");
 
 typedef struct {
     float inv_vp[16];
@@ -242,12 +253,20 @@ typedef struct {
     float _pad1;
 } d3d_postfx_cb_t;
 
+_Static_assert(offsetof(d3d_postfx_cb_t, inv_resolution) == 144u,
+               "D3D11 PostFX cbuffer matrices must end on an HLSL register boundary");
+_Static_assert(offsetof(d3d_postfx_cb_t, scene_is_hdr) == 252u,
+               "D3D11 PostFX tail flags must match their HLSL offsets");
+_Static_assert(sizeof(d3d_postfx_cb_t) == 272u, "D3D11 PostFX cbuffer must match its HLSL layout");
+
 /* Plan 05: bloom pass constants (must match HLSL BloomCB). */
 typedef struct {
     float src_inv_size[2];
     float threshold;
     int32_t first_pass;
 } d3d_bloom_cb_t;
+
+_Static_assert(sizeof(d3d_bloom_cb_t) == 16u, "D3D11 Bloom cbuffer must match its HLSL layout");
 
 /* Plan 05: TAA resolve constants (must match HLSL TAACB). */
 typedef struct {
@@ -260,6 +279,8 @@ typedef struct {
     float _pad0[2];
 } d3d_taa_cb_t;
 
+_Static_assert(sizeof(d3d_taa_cb_t) == 160u, "D3D11 TAA cbuffer must match its HLSL layout");
+
 /* Plan 10: SSR constants (must match HLSL SSRCB). */
 typedef struct {
     float inv_vp[16];
@@ -269,6 +290,8 @@ typedef struct {
     float inv_resolution[2];
     float _pad0[2];
 } d3d_ssr_cb_t;
+
+_Static_assert(sizeof(d3d_ssr_cb_t) == 176u, "D3D11 SSR cbuffer must match its HLSL layout");
 
 typedef vgfx3d_d3d11_instance_data_t d3d_instance_data_t;
 
@@ -324,7 +347,7 @@ typedef struct {
     ID3D11DepthStencilState *depth_state;
     ID3D11DepthStencilState *depth_state_no_write;
     ID3D11DepthStencilState *depth_state_disabled;
-    ID3D11DepthStencilState *depth_state_readonly_lequal;
+    ID3D11DepthStencilState *depth_state_skybox;
     ID3D11DepthStencilState *depth_state_shadow; /* standard Less for the shadow pass */
     ID3D11RasterizerState *rs_solid_cull;
     ID3D11RasterizerState *rs_solid_no_cull;
@@ -335,6 +358,7 @@ typedef struct {
     float rs_depth_biased_slope_bias;
     int8_t rs_depth_biased_wireframe;
     int8_t rs_depth_biased_backface_cull;
+    int8_t rs_depth_biased_reversed_z;
     int8_t rs_depth_biased_valid;
     ID3D11SamplerState *linear_wrap_sampler;
     ID3D11SamplerState *linear_clamp_sampler;
@@ -676,7 +700,8 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
                                                        ID3D11ShaderResourceView *source_srv,
                                                        int32_t width,
                                                        int32_t height,
-                                                       const vgfx3d_postfx_snapshot_t *snapshot);
+                                                       const vgfx3d_postfx_snapshot_t *snapshot,
+                                                       int preserve_history);
 static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height);
 static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
                                                   int32_t width,
@@ -718,8 +743,11 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
 /// @param hr   The HRESULT returned by the failing call, printed as 0x%08lx.
 static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     char buffer[256];
-    snprintf(
-        buffer, sizeof(buffer), "[vgfx3d_d3d11] %s failed (hr=0x%08lx)\n", msg, (unsigned long)hr);
+    snprintf(buffer,
+             sizeof(buffer),
+             "[vgfx3d_d3d11] %s failed (hr=0x%08lx)\n",
+             msg ? msg : "D3D11 call",
+             (unsigned long)hr);
     OutputDebugStringA(buffer);
     fputs(buffer, stderr);
 }
@@ -1013,17 +1041,16 @@ static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
 /// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
 /// @details D3D11's constant bias is expressed in implementation-scaled integer units. Scaling the
 ///   renderer value by 2^16 gives useful sub-depth-buffer offsets without overflowing normal
-///   material settings; the result is clamped before narrowing to INT. The biased rasterizer is
-///   used only by the main (scene) pipeline, which renders reversed-Z, so the term is
-///   sign-flipped here to keep the "positive bias pushes away from the camera" contract.
-static INT d3d11_depth_bias_to_int(float bias) {
-    return (INT)vgfx3d_depth_bias_d3d11_units(-bias);
+///   material settings; the result is clamped before narrowing to INT. Reversed-Z scene draws and
+///   standard-Z shadow draws require opposite signs to preserve the renderer's "positive bias
+///   pushes away from the camera" contract.
+static INT d3d11_depth_bias_to_int(float bias, int reversed_z) {
+    return (INT)vgfx3d_d3d11_depth_bias_units(bias, reversed_z);
 }
 
-/// @brief Sanitized, reversed-Z-signed slope bias for the scene pipeline's biased rasterizer.
-static float d3d11_scene_slope_bias(float slope_bias) {
-    return vgfx3d_depth_bias_slope_reversed_z(
-        vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(slope_bias));
+/// @brief Sanitized slope bias for either the reversed-Z scene or standard-Z shadow pass.
+static float d3d11_slope_bias(float slope_bias, int reversed_z) {
+    return vgfx3d_d3d11_depth_slope_bias(slope_bias, reversed_z);
 }
 
 /// @brief Create a rasterizer state for a biased draw.
@@ -1034,6 +1061,7 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
                                                     const vgfx3d_draw_cmd_t *cmd,
                                                     int8_t wireframe,
                                                     int8_t backface_cull,
+                                                    int reversed_z,
                                                     ID3D11RasterizerState **out_state) {
     D3D11_RASTERIZER_DESC desc;
 
@@ -1046,8 +1074,8 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
     desc.CullMode = backface_cull ? D3D11_CULL_BACK : D3D11_CULL_NONE;
     desc.FrontCounterClockwise = TRUE;
     desc.DepthClipEnable = TRUE;
-    desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    desc.SlopeScaledDepthBias = d3d11_scene_slope_bias(cmd->slope_scaled_depth_bias);
+    desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias, reversed_z);
+    desc.SlopeScaledDepthBias = d3d11_slope_bias(cmd->slope_scaled_depth_bias, reversed_z);
     desc.DepthBiasClamp = 0.0f;
     return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
 }
@@ -1060,6 +1088,7 @@ static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
                                                  const vgfx3d_draw_cmd_t *cmd,
                                                  int8_t wireframe,
                                                  int8_t backface_cull,
+                                                 int reversed_z,
                                                  ID3D11RasterizerState **out_state) {
     INT depth_bias;
     float slope_bias;
@@ -1070,18 +1099,20 @@ static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
         *out_state = NULL;
     if (!ctx || !cmd || !out_state)
         return E_INVALIDARG;
-    depth_bias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    slope_bias = d3d11_scene_slope_bias(cmd->slope_scaled_depth_bias);
+    depth_bias = d3d11_depth_bias_to_int(cmd->depth_bias, reversed_z);
+    slope_bias = d3d11_slope_bias(cmd->slope_scaled_depth_bias, reversed_z);
     if (ctx->rs_depth_biased_valid && ctx->rs_depth_biased_cached &&
         ctx->rs_depth_biased_depth_bias == depth_bias &&
         ctx->rs_depth_biased_slope_bias == slope_bias &&
         ctx->rs_depth_biased_wireframe == (wireframe ? 1 : 0) &&
-        ctx->rs_depth_biased_backface_cull == (backface_cull ? 1 : 0)) {
+        ctx->rs_depth_biased_backface_cull == (backface_cull ? 1 : 0) &&
+        ctx->rs_depth_biased_reversed_z == (reversed_z ? 1 : 0)) {
         *out_state = ctx->rs_depth_biased_cached;
         return S_OK;
     }
 
-    hr = d3d11_create_depth_biased_rasterizer(ctx, cmd, wireframe, backface_cull, &state);
+    hr = d3d11_create_depth_biased_rasterizer(
+        ctx, cmd, wireframe, backface_cull, reversed_z, &state);
     if (FAILED(hr))
         return hr;
     SAFE_RELEASE(ctx->rs_depth_biased_cached);
@@ -1090,6 +1121,7 @@ static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
     ctx->rs_depth_biased_slope_bias = slope_bias;
     ctx->rs_depth_biased_wireframe = wireframe ? 1 : 0;
     ctx->rs_depth_biased_backface_cull = backface_cull ? 1 : 0;
+    ctx->rs_depth_biased_reversed_z = reversed_z ? 1 : 0;
     ctx->rs_depth_biased_valid = 1;
     *out_state = state;
     return S_OK;
@@ -1592,7 +1624,13 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
             if (wants_compact) {
                 /* R20: encode into the packed 48-byte layout; the compact input
                  * layouts decode it via input-assembler format conversion. */
-                size_t compact_bytes = (size_t)cmd->vertex_count * VGFX3D_COMPACT_VERTEX_STRIDE;
+                size_t compact_bytes;
+                uint32_t compact_byte_width;
+                if (!d3d11_checked_mul_size(
+                        (size_t)cmd->vertex_count, VGFX3D_COMPACT_VERTEX_STRIDE, &compact_bytes) ||
+                    !vgfx3d_d3d11_compute_buffer_byte_width(compact_bytes, &compact_byte_width))
+                    return 0;
+                (void)compact_byte_width;
                 uint8_t *packed = (uint8_t *)malloc(compact_bytes);
                 if (!packed)
                     return 0;

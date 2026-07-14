@@ -232,6 +232,8 @@ static void test_finite_copy_helpers(void) {
                 "Direction helper rejects zero-length vectors before HLSL normalize");
     EXPECT_TRUE(vgfx3d_d3d11_vec3_direction_is_usable(huge_direction) == 0,
                 "Direction helper rejects vectors whose squared length exceeds shader guards");
+    vgfx3d_d3d11_copy_vec3_direction_or(copied_direction, direction, fallback_direction);
+    EXPECT_NEAR(copied_direction[2], -1.0f, 1e-6f, "Direction copy normalizes valid vectors");
     vgfx3d_d3d11_copy_vec3_direction_or(copied_direction, zero_direction, fallback_direction);
     EXPECT_NEAR(copied_direction[0], 1.0f, 1e-6f, "Direction copy uses fallback X");
     EXPECT_NEAR(copied_direction[2], 0.0f, 1e-6f, "Direction copy uses fallback Z");
@@ -1309,6 +1311,80 @@ static void test_shadow_and_rtt_policy_helpers(void) {
                 "RTT dirty helper ignores inactive RTT state");
 }
 
+static void test_depth_probe_bias_instancing_and_rtt_guards(void) {
+    int32_t pixel = -1;
+
+    EXPECT_TRUE(vgfx3d_d3d11_ndc_to_pixel(-1.0f, 100, 0, &pixel) == 1 && pixel == 0,
+                "NDC conversion maps the left edge to pixel zero");
+    EXPECT_TRUE(vgfx3d_d3d11_ndc_to_pixel(1.0f, 100, 0, &pixel) == 1 && pixel == 99,
+                "NDC conversion clamps the right edge inside the texture");
+    EXPECT_TRUE(vgfx3d_d3d11_ndc_to_pixel(1.0e30f, 100, 1, &pixel) == 1 && pixel == 0,
+                "NDC conversion clamps huge finite inverted coordinates before narrowing");
+    pixel = 42;
+    EXPECT_TRUE(vgfx3d_d3d11_ndc_to_pixel(NAN, 100, 0, &pixel) == 0 && pixel == 0,
+                "NDC conversion rejects non-finite input and clears stale output");
+    EXPECT_TRUE(vgfx3d_d3d11_ndc_to_pixel(0.0f, 0, 0, &pixel) == 0,
+                "NDC conversion rejects empty texture extents");
+
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_depth_probe_result(0.25f),
+                0.75f,
+                1e-6f,
+                "Depth probes convert reversed-Z storage to canonical depth");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_depth_probe_result(-2.0f),
+                1.0f,
+                1e-6f,
+                "Depth probes clamp values above canonical far depth");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_depth_probe_result(2.0f),
+                0.0f,
+                1e-6f,
+                "Depth probes clamp values below canonical near depth");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_depth_probe_result(NAN),
+                -1.0f,
+                1e-6f,
+                "Depth probes publish the invalid sentinel for non-finite samples");
+
+    EXPECT_TRUE(vgfx3d_d3d11_depth_bias_units(0.01f, 0) > 0,
+                "Standard-Z shadow bias preserves the renderer sign");
+    EXPECT_TRUE(vgfx3d_d3d11_depth_bias_units(0.01f, 1) < 0,
+                "Reversed-Z scene bias flips the renderer sign");
+    EXPECT_TRUE(vgfx3d_d3d11_depth_bias_units(HUGE_VALF, 1) == 0,
+                "Depth-bias conversion clears non-finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_depth_slope_bias(2.0f, 0),
+                2.0f,
+                1e-6f,
+                "Standard-Z shadow slope bias preserves its sign");
+    EXPECT_NEAR(vgfx3d_d3d11_depth_slope_bias(2.0f, 1),
+                -2.0f,
+                1e-6f,
+                "Reversed-Z scene slope bias flips its sign");
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_instance_bone_stride(16, 64, 4) == 16,
+                "Instanced palette validation accepts exact packed layouts");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_instance_bone_stride(16, 63, 4) == 0,
+                "Instanced palette validation rejects truncated packed layouts");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_instance_bone_stride(16, 80, 4) == 0,
+                "Instanced palette validation rejects surplus packed layouts");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_instance_bone_stride(INT_MAX, 64, 4) == 0,
+                "Instanced palette validation rejects overflowing strides");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_instance_bone_stride(64, 320, 5) == 0,
+                "Instanced palette validation rejects layouts beyond the shader palette");
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_ssr_steps(1) == VGFX3D_D3D11_SSR_STEPS_MIN,
+                "SSR step sanitization matches the shader minimum");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_ssr_steps(256) == VGFX3D_D3D11_SSR_STEPS_MAX,
+                "SSR step sanitization matches the shader maximum");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_ssr_steps(VGFX3D_D3D11_SSR_STEPS_DEFAULT) ==
+                    VGFX3D_D3D11_SSR_STEPS_DEFAULT,
+                "SSR step sanitization preserves the documented default");
+
+    EXPECT_TRUE(vgfx3d_d3d11_rtt_readback_state_matches(64, 32, 1, 64, 32, 1) == 1,
+                "RTT readback metadata accepts matching target and resource state");
+    EXPECT_TRUE(vgfx3d_d3d11_rtt_readback_state_matches(64, 32, 1, 32, 32, 1) == 0,
+                "RTT readback metadata rejects width drift");
+    EXPECT_TRUE(vgfx3d_d3d11_rtt_readback_state_matches(64, 32, 1, 64, 32, 0) == 0,
+                "RTT readback metadata rejects format drift");
+}
+
 static void test_postfx_readback_policy_helpers(void) {
     vgfx3d_postfx_effect_desc_t effect;
     vgfx3d_postfx_chain_t chain;
@@ -1492,6 +1568,20 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
 
     EXPECT_TRUE(contains_text(d3d11_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "Main D3D11 shader bounds safeNormalize before rsqrt");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "idx = clamp(idx, 0, 63);"),
+                "Main D3D11 shader exposes all 64 packed morph weights");
+    EXPECT_TRUE(!contains_text(d3d11_shader_source, "idx = clamp(idx, 0, 31);"),
+                "Main D3D11 shader no longer aliases upper morph weights to slot 31");
+    EXPECT_TRUE(count_text(d3d11_shader_source, "if (abs(w) > 0.0001 && abs(w) < 1e20)") == 2,
+                "Position and normal morph loops reject non-finite weights");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "uint skinPaletteIndex(uint paletteBase, uint boneIndex)"),
+                "Skinning uses overflow-safe palette indexing");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "maxOffset = min(maxOffset, (uint)(instanceBoneStride - 1));"),
+                "Instanced skinning confines bone indices to one instance palette");
+    EXPECT_TRUE(count_text(d3d11_shader_source, "if (!(w > 0.0001 && w < 1e20))") == 2,
+                "Position and vector skinning reject invalid bone weights");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
                 "Main D3D11 shader source remains available to the compile path");
     EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),
@@ -1549,6 +1639,15 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
         !contains_text(d3d11_shader_source, "float3 T = safeNormalize3(input.tangent.xyz - N *"),
         "Normal mapping no longer promotes a missing tangent to a fallback basis");
     EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float tangentLengthSqA = dot(tangentProjectedA, "
+                              "tangentProjectedA);"),
+                "Anisotropy measures the projected tangent before normalization");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "if (tangentLengthSqA > 0.0001 && tangentLengthSqA < 1e20)"),
+                "Anisotropy skips degenerate and non-finite tangent bases");
+    EXPECT_TRUE(!contains_text(d3d11_shader_source, "float3 TnA = normalize("),
+                "Anisotropy no longer uses unsafe normalize on authored tangents");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
                               "float opticalDepth = min(hd * max(viewDistance, 0.0), 80.0);"),
                 "Height fog bounds optical depth");
     fog_write = strstr(d3d11_shader_source, "result = lerp(result, fogTint, fogFactor);");
@@ -1558,6 +1657,21 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                               "float3 accum = float3(0.0, 0.0, 0.0);\n"
                               "    for (int i = 0; i < taps; i++)"),
                 "Motion blur samples a centered full kernel");
+    EXPECT_TRUE(
+        contains_text(d3d11_shader_source, "if (any(isnan(velocity)) || any(isinf(velocity)))"),
+        "Main D3D11 shader prevents invalid motion vectors from reaching TAA");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "if (!(nlen2 > 1e-12 && nlen2 < 1e20))"),
+                "SSAO rejects non-finite reconstructed normals");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "color = sourceColor;"),
+                "PostFX falls back to its finite source color after numeric failure");
+    EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "bool taaFinite3(float3 v)"),
+                "TAA validates current, history, and resolved colors");
+    EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "taaFinite3(resolved) ? resolved : curr"),
+                "TAA falls back to current color when resolve math is invalid");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "bool ssrFinite3(float3 v)"),
+                "SSR validates source and reflected colors");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "ssrFinite3(reflected) ? reflected : base"),
+                "SSR falls back to the source pixel when reflection math is invalid");
     EXPECT_TRUE(!contains_text(d3d11_postfx_shader_source,
                                "float3 accum = color;\n    for (int i = 1; i < taps; i++)"),
                 "Motion blur no longer double-weights its input color");
@@ -1628,6 +1742,7 @@ int main(void) {
     test_target_fallback_helper();
     test_morph_cache_reuse_helper();
     test_shadow_and_rtt_policy_helpers();
+    test_depth_probe_bias_instancing_and_rtt_guards();
     test_postfx_readback_policy_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
     test_d3d11_shader_chunk_join_validation();

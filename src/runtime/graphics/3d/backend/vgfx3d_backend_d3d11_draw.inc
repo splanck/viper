@@ -289,9 +289,9 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
     object_data->has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
         cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
-    object_data->instance_bone_stride = (object_data->has_skinning && cmd->instance_bone_stride > 0)
-                                            ? cmd->instance_bone_stride
-                                            : 0;
+    /* Non-instanced draws always use the shared palette at base zero. The instanced
+     * submit path installs a validated stride once its instance count is known. */
+    object_data->instance_bone_stride = 0;
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
         morph_count =
@@ -891,7 +891,7 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 
     rasterizer = NULL;
     if (d3d11_draw_needs_depth_bias(cmd))
-        (void)d3d11_get_depth_biased_rasterizer(ctx, cmd, wireframe, backface_cull, &rasterizer);
+        (void)d3d11_get_depth_biased_rasterizer(ctx, cmd, wireframe, backface_cull, 1, &rasterizer);
     if (!rasterizer)
         rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
     if (rasterizer)
@@ -1372,6 +1372,14 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     object_data.has_prev_model_matrix = 0;
     object_data.has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
         cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
+    if (object_data.has_skinning && cmd->instance_bone_stride > 0) {
+        object_data.instance_bone_stride = vgfx3d_d3d11_sanitize_instance_bone_stride(
+            cmd->instance_bone_stride, cmd->bone_count, instance_count);
+        if (object_data.instance_bone_stride == 0) {
+            object_data.has_skinning = 0;
+            object_data.has_prev_skinning = 0;
+        }
+    }
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
 
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));

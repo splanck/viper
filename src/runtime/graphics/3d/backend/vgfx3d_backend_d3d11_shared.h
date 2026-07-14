@@ -58,6 +58,9 @@ extern "C" {
 #define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
 #define VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX 6
 #define VGFX3D_D3D11_BLOOM_MIN_DOWNSAMPLE_EXTENT 8
+#define VGFX3D_D3D11_SSR_STEPS_MIN 8
+#define VGFX3D_D3D11_SSR_STEPS_MAX 48
+#define VGFX3D_D3D11_SSR_STEPS_DEFAULT 24
 #define VGFX3D_D3D11_CLUSTER_ZNEAR_MIN 0.0001f
 #define VGFX3D_D3D11_CLUSTER_ZNEAR_FALLBACK 0.1f
 #define VGFX3D_D3D11_CLUSTER_ZFAR_FALLBACK 1000.0f
@@ -257,7 +260,7 @@ void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
                                              float fallback);
 /// @brief Validate a finite, non-degenerate direction vector for CPU/shader upload.
 int vgfx3d_d3d11_vec3_direction_is_usable(const float *values);
-/// @brief Copy a direction vector or a stable fallback when the source is unusable.
+/// @brief Copy and normalize a direction vector or a stable fallback when unusable.
 void vgfx3d_d3d11_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]);
 /// @brief Copy a matrix when finite, otherwise write the identity matrix.
 void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
@@ -265,6 +268,20 @@ void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
 void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback);
 /// @brief Sanitize D3D11 rasterizer slope-scaled depth bias.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested);
+/// @brief Convert renderer depth bias for either reversed-Z scene or standard-Z shadow passes.
+int32_t vgfx3d_d3d11_depth_bias_units(float requested, int reversed_z);
+/// @brief Sign and clamp slope bias for either reversed-Z scene or standard-Z shadow passes.
+float vgfx3d_d3d11_depth_slope_bias(float requested, int reversed_z);
+/// @brief Validate a packed per-instance bone-palette layout before shader indexing.
+int32_t vgfx3d_d3d11_sanitize_instance_bone_stride(int32_t requested_stride,
+                                                   int32_t total_bone_count,
+                                                   int32_t instance_count);
+/// @brief Convert one finite NDC coordinate to a clamped texture pixel coordinate.
+int vgfx3d_d3d11_ndc_to_pixel(float ndc, int32_t extent, int invert_axis, int32_t *out_pixel);
+/// @brief Convert reversed-Z probe storage to canonical window depth or -1 on invalid input.
+float vgfx3d_d3d11_sanitize_depth_probe_result(float reversed_depth);
+/// @brief Clamp screen-space-reflection steps to the shader's actual loop bounds.
+int32_t vgfx3d_d3d11_sanitize_ssr_steps(int32_t requested);
 /// @brief Normalize material workflow constants before shader upload.
 int32_t vgfx3d_d3d11_sanitize_material_workflow(int32_t requested);
 /// @brief Normalize material alpha-mode constants before shader upload.
@@ -434,6 +451,13 @@ int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
                                        int has_depth_tex,
                                        int has_depth_dsv,
                                        int has_staging);
+/// @brief Validate host/render-target metadata before a D3D11 RTT staging copy.
+int vgfx3d_d3d11_rtt_readback_state_matches(int32_t target_width,
+                                            int32_t target_height,
+                                            int32_t target_format,
+                                            int32_t resource_width,
+                                            int32_t resource_height,
+                                            int32_t resource_format);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.

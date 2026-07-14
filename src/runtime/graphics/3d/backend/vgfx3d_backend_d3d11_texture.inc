@@ -987,7 +987,7 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_texture_upload(d3d11_context_
             pixels, entry->upload_next_row, rows, 0, &slice_w, &slice_rows, &rgba) != 0 ||
         !rgba) {
         free(rgba);
-        return VGFX3D_D3D11_UPLOAD_PENDING;
+        return VGFX3D_D3D11_UPLOAD_FAILED;
     }
     if (slice_w != entry->width || slice_rows <= 0 ||
         !vgfx3d_d3d11_validate_row_span(entry->height, entry->upload_next_row, slice_rows)) {
@@ -1407,6 +1407,11 @@ cleanup:
     for (int32_t m = 0; m < RT_CUBEMAP3D_IBL_MAX_MIPS; m++)
         for (int f = 0; f < 6; f++)
             free(rgba[m][f]);
+    if (!ok) {
+        entry->failed_ibl_identity = cubemap->ibl_identity;
+        entry->pending_ibl_identity = 0;
+        entry->pending_ibl_bytes = 0;
+    }
     return ok;
 }
 
@@ -1461,7 +1466,7 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_cubemap_upload(d3d11_context_
                                             &rgba) != 0 ||
             !rgba) {
             free(rgba);
-            return VGFX3D_D3D11_UPLOAD_PENDING;
+            return VGFX3D_D3D11_UPLOAD_FAILED;
         }
         if (slice_size != entry->face_size || slice_rows <= 0 ||
             !vgfx3d_d3d11_validate_row_span(entry->face_size, entry->upload_next_row, slice_rows)) {

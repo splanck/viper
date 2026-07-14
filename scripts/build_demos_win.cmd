@@ -187,6 +187,10 @@ if /i "%NAME%"=="vipersql" (
     set "DEMO_BUILD_FLAGS=-O0"
     echo   Using -O0 to avoid pathological optimizer/codegen time for this large demo.
 )
+if /i "%NAME%"=="xenoscape" (
+    set "DEMO_BUILD_FLAGS=-O0"
+    echo   Using -O0 to avoid the Windows x64 checked-integer optimizer miscompile.
+)
 "%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% !DEMO_BUILD_FLAGS! -o "%EXE_FILE%" 2>nul
 if errorlevel 1 goto :build_demo_failed
 call :stage_demo_assets "%PROJECT_DIR%"

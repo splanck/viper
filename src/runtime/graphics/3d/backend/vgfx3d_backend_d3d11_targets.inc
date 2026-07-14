@@ -145,8 +145,7 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
 
 /// @brief Allocate a CPU-readable staging texture for `Map(READ)`-based readback.
 ///
-/// Used by `d3d11_readback_*` to copy GPU textures to system memory
-/// for screenshot capture, golden-frame tests, etc.
+/// Used by color readback and by the one-row R32 typeless depth-probe strip.
 static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
                                             int32_t width,
                                             int32_t height,
@@ -158,7 +157,8 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
         *out_tex = NULL;
     if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
         !out_tex ||
-        (format != DXGI_FORMAT_R8G8B8A8_UNORM && format != DXGI_FORMAT_R16G16B16A16_FLOAT))
+        (format != DXGI_FORMAT_R8G8B8A8_UNORM && format != DXGI_FORMAT_R16G16B16A16_FLOAT &&
+         format != DXGI_FORMAT_R32_TYPELESS))
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));
@@ -322,6 +322,11 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     SAFE_RELEASE(ctx->scene_color_srv);
     SAFE_RELEASE(ctx->scene_color_rtv);
     SAFE_RELEASE(ctx->scene_color_tex);
+    ctx->depth_probe_request_count = 0;
+    ctx->depth_probe_pending_count = 0;
+    ctx->depth_probe_result_count = 0;
+    memset(ctx->depth_probe_requests, 0, sizeof(ctx->depth_probe_requests));
+    memset(ctx->depth_probe_results, 0, sizeof(ctx->depth_probe_results));
     ctx->scene_width = 0;
     ctx->scene_height = 0;
     ctx->overlay_width = 0;
@@ -687,7 +692,10 @@ static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int3
 ///   Returns 0 when preconditions fail so the caller can fall back to the last cached copy.
 static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *target) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    D3D11_TEXTURE2D_DESC color_desc;
+    D3D11_TEXTURE2D_DESC staging_desc;
     D3D11_MAPPED_SUBRESOURCE mapped;
+    DXGI_FORMAT expected_format;
     HRESULT hr;
     int restore_target = 0;
     int mapped_ok = 0;
@@ -697,6 +705,26 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
         ctx->rtt_target != target || target->width <= 0 || target->height <= 0) {
         return 0;
     }
+    if (!vgfx3d_d3d11_rtt_readback_state_matches(target->width,
+                                                 target->height,
+                                                 target->color_format,
+                                                 ctx->rtt_width,
+                                                 ctx->rtt_height,
+                                                 ctx->rtt_color_format))
+        return 0;
+    expected_format = vgfx3d_rendertarget_is_hdr(target) ? DXGI_FORMAT_R16G16B16A16_FLOAT
+                                                         : DXGI_FORMAT_R8G8B8A8_UNORM;
+    ID3D11Texture2D_GetDesc(ctx->rtt_color_tex, &color_desc);
+    ID3D11Texture2D_GetDesc(ctx->rtt_staging, &staging_desc);
+    if (color_desc.Width != (UINT)target->width || color_desc.Height != (UINT)target->height ||
+        color_desc.MipLevels != 1 || color_desc.ArraySize != 1 ||
+        color_desc.Format != expected_format || color_desc.SampleDesc.Count != 1 ||
+        staging_desc.Width != color_desc.Width || staging_desc.Height != color_desc.Height ||
+        staging_desc.MipLevels != 1 || staging_desc.ArraySize != 1 ||
+        staging_desc.Format != expected_format || staging_desc.SampleDesc.Count != 1 ||
+        staging_desc.Usage != D3D11_USAGE_STAGING ||
+        (staging_desc.CPUAccessFlags & D3D11_CPU_ACCESS_READ) == 0)
+        return 0;
     if (!vgfx3d_rendertarget_ensure_color(target))
         return 0;
     if (vgfx3d_rendertarget_is_hdr(target) && !vgfx3d_rendertarget_ensure_hdr_color(target))

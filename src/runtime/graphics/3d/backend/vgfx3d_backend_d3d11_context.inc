@@ -130,8 +130,7 @@ static HRESULT d3d11_create_context_depth_states(d3d11_context_t *ctx) {
     }
     depth_desc.DepthEnable = TRUE;
     depth_desc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
-    hr = ID3D11Device_CreateDepthStencilState(
-        ctx->device, &depth_desc, &ctx->depth_state_readonly_lequal);
+    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state_skybox);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateDepthStencilState(skybox)", hr);
         return hr;
@@ -981,7 +980,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->rs_solid_cull);
     SAFE_RELEASE(ctx->rs_depth_biased_cached);
     ctx->rs_depth_biased_valid = 0;
-    SAFE_RELEASE(ctx->depth_state_readonly_lequal);
+    SAFE_RELEASE(ctx->depth_state_skybox);
     SAFE_RELEASE(ctx->depth_state_shadow);
     SAFE_RELEASE(ctx->depth_state_disabled);
     SAFE_RELEASE(ctx->depth_state_no_write);

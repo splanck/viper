@@ -104,21 +104,32 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
     ctx->height_fog[0] = vgfx3d_d3d11_finite_or(cam->height_fog_base, 0.0f);
-    ctx->height_fog[1] = vgfx3d_d3d11_finite_or(cam->height_fog_falloff, 0.1f);
+    ctx->height_fog[1] = vgfx3d_d3d11_clamp_float_param(
+        cam->height_fog_falloff, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 0.1f);
     ctx->height_fog[2] =
         cam->height_fog_enabled
-            ? vgfx3d_d3d11_finite_or(cam->height_fog_density * cam->height_fog_blend, 0.0f)
+            ? vgfx3d_d3d11_clamp_float_param(
+                  cam->height_fog_density, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 0.0f) *
+                  vgfx3d_d3d11_clamp_float_param(cam->height_fog_blend, 0.0f, 1.0f, 0.0f)
             : 0.0f;
     ctx->height_fog[3] = 0.0f;
-    ctx->height_fog_sun[0] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[0], 1.0f);
-    ctx->height_fog_sun[1] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[1], 1.0f);
-    ctx->height_fog_sun[2] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_color[2], 1.0f);
+    ctx->height_fog_sun[0] = vgfx3d_d3d11_clamp_float_param(
+        cam->height_fog_sun_color[0], 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 1.0f);
+    ctx->height_fog_sun[1] = vgfx3d_d3d11_clamp_float_param(
+        cam->height_fog_sun_color[1], 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 1.0f);
+    ctx->height_fog_sun[2] = vgfx3d_d3d11_clamp_float_param(
+        cam->height_fog_sun_color[2], 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 1.0f);
     ctx->height_fog_sun[3] =
-        cam->height_fog_enabled ? vgfx3d_d3d11_finite_or(cam->height_fog_sun_amount, 0.0f) : 0.0f;
-    ctx->height_fog_sun_dir[0] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[0], 0.0f);
-    ctx->height_fog_sun_dir[1] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[1], 1.0f);
-    ctx->height_fog_sun_dir[2] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_dir[2], 0.0f);
-    ctx->height_fog_sun_dir[3] = vgfx3d_d3d11_finite_or(cam->height_fog_sun_power, 8.0f);
+        cam->height_fog_enabled
+            ? vgfx3d_d3d11_clamp_float_param(cam->height_fog_sun_amount, 0.0f, 1.0f, 0.0f)
+            : 0.0f;
+    {
+        static const float height_fog_sun_fallback[3] = {0.0f, 1.0f, 0.0f};
+        vgfx3d_d3d11_copy_vec3_direction_or(
+            ctx->height_fog_sun_dir, cam->height_fog_sun_dir, height_fog_sun_fallback);
+    }
+    ctx->height_fog_sun_dir[3] = vgfx3d_d3d11_clamp_float_param(
+        cam->height_fog_sun_power, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 8.0f);
     vgfx3d_d3d11_sanitize_fog_range(cam->fog_near, cam->fog_far, &ctx->fog_near, &ctx->fog_far);
     ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
     ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
@@ -215,6 +226,12 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
     if (!ctx || ctx->depth_probe_request_count <= 0)
         return;
+    /* Never overwrite the single staging strip while a non-blocking Map is still pending.
+     * Slot ids are frame-local, so dropping this frame is safer than publishing mismatched data. */
+    if (ctx->depth_probe_pending_count > 0) {
+        ctx->depth_probe_request_count = 0;
+        return;
+    }
     if (!ctx->ctx || !ctx->scene_depth_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0) {
         ctx->depth_probe_request_count = 0;
         return;
@@ -234,16 +251,11 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
         float ndc_x = ctx->depth_probe_requests[i][0];
         float ndc_y = ctx->depth_probe_requests[i][1];
         D3D11_BOX box;
-        int32_t px = (int32_t)((ndc_x * 0.5f + 0.5f) * (float)ctx->scene_width);
-        int32_t py = (int32_t)((0.5f - ndc_y * 0.5f) * (float)ctx->scene_height);
-        if (px < 0)
-            px = 0;
-        if (py < 0)
-            py = 0;
-        if (px >= ctx->scene_width)
-            px = ctx->scene_width - 1;
-        if (py >= ctx->scene_height)
-            py = ctx->scene_height - 1;
+        int32_t px;
+        int32_t py;
+        if (!vgfx3d_d3d11_ndc_to_pixel(ndc_x, ctx->scene_width, 0, &px) ||
+            !vgfx3d_d3d11_ndc_to_pixel(ndc_y, ctx->scene_height, 1, &py))
+            continue;
         box.left = (UINT)px;
         box.top = (UINT)py;
         box.front = 0;
@@ -277,14 +289,29 @@ static void d3d11_harvest_depth_probes(d3d11_context_t *ctx) {
                                  D3D11_MAP_READ,
                                  D3D11_MAP_FLAG_DO_NOT_WAIT,
                                  &mapped);
-    if (FAILED(hr))
-        return; /* still drawing: keep pending and retry next frame */
-    if (mapped.pData) {
-        /* Probe contract is canonical window depth (larger = farther); the scene depth
-         * buffer is reversed-Z, so flip on publish. */
+    if (hr == DXGI_ERROR_WAS_STILL_DRAWING)
+        return;
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(depthProbeStaging)", hr);
+        d3d11_log_device_removed_reason(ctx, "Map(depthProbeStaging)", hr);
+        ctx->depth_probe_pending_count = 0;
+        ctx->depth_probe_result_count = 0;
+        return;
+    }
+    if (!mapped.pData ||
+        mapped.RowPitch < (UINT)((uint32_t)ctx->depth_probe_pending_count * sizeof(float))) {
+        ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
+        d3d11_log_hresult("Map(depthProbeStaging payload)", E_POINTER);
+        ctx->depth_probe_pending_count = 0;
+        ctx->depth_probe_result_count = 0;
+        return;
+    }
+    /* Probe contract is canonical window depth (larger = farther); the scene depth
+     * buffer is reversed-Z, so flip and validate every published sample. */
+    {
         const float *src = (const float *)mapped.pData;
         for (int32_t i = 0; i < ctx->depth_probe_pending_count; i++)
-            ctx->depth_probe_results[i] = 1.0f - src[i];
+            ctx->depth_probe_results[i] = vgfx3d_d3d11_sanitize_depth_probe_result(src[i]);
         ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
     }
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
@@ -303,12 +330,13 @@ static void d3d11_set_vsync(void *ctx_ptr, int8_t enabled) {
 static int32_t d3d11_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int32_t slot;
-    if (!ctx || ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
+    if (!ctx || ctx->depth_probe_pending_count > 0 ||
+        ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
         !isfinite(ndc_y))
         return -1;
     slot = ctx->depth_probe_request_count++;
-    ctx->depth_probe_requests[slot][0] = ndc_x;
-    ctx->depth_probe_requests[slot][1] = ndc_y;
+    ctx->depth_probe_requests[slot][0] = vgfx3d_d3d11_clamp_float_param(ndc_x, -1.0f, 1.0f, 0.0f);
+    ctx->depth_probe_requests[slot][1] = vgfx3d_d3d11_clamp_float_param(ndc_y, -1.0f, 1.0f, 0.0f);
     return slot;
 }
 
@@ -735,20 +763,24 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
     return ctx->bloom_mip_srv[0];
 }
 
-/// @brief Encode the Plan 05 TAA resolve into the free history slot and flip parity.
+/// @brief Encode the Plan 05 TAA resolve into history or a transient readback target.
 /// @details Reprojects + neighborhood-clamps the persistent history against
-///          @p source_srv; the written slot becomes both the pass output and the next
-///          frame's history.
+///          @p source_srv. Normal presentation writes the free history slot and flips
+///          parity. Screenshot replay writes a transient ping-pong target so observing
+///          a frame cannot advance or overwrite temporal history.
 /// @return The resolved SRV, or NULL when resources are unavailable.
 static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
                                                        ID3D11ShaderResourceView *source_srv,
                                                        int32_t width,
                                                        int32_t height,
-                                                       const vgfx3d_postfx_snapshot_t *snapshot) {
+                                                       const vgfx3d_postfx_snapshot_t *snapshot,
+                                                       int preserve_history) {
     d3d_taa_cb_t taa_data;
     ID3D11ShaderResourceView *srvs[4];
     ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
+    ID3D11RenderTargetView *output_rtv;
+    ID3D11ShaderResourceView *output_srv;
     int32_t write_slot;
     int32_t read_slot;
     HRESULT hr;
@@ -759,6 +791,21 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
 
     write_slot = ctx->taa_history_parity ? 1 : 0;
     read_slot = 1 - write_slot;
+    if (preserve_history) {
+        if (FAILED(d3d11_ensure_postfx_target(ctx, width, height)) ||
+            FAILED(d3d11_ensure_postfx_scratch_target(ctx, width, height)))
+            return NULL;
+        if (source_srv == ctx->postfx_color_srv) {
+            output_rtv = ctx->postfx_scratch_rtv;
+            output_srv = ctx->postfx_scratch_srv;
+        } else {
+            output_rtv = ctx->postfx_color_rtv;
+            output_srv = ctx->postfx_color_srv;
+        }
+    } else {
+        output_rtv = ctx->taa_history_rtv[write_slot];
+        output_srv = ctx->taa_history_srv[write_slot];
+    }
 
     memset(&taa_data, 0, sizeof(taa_data));
     vgfx3d_d3d11_copy_mat4_finite_or_identity(taa_data.inv_vp, ctx->scene_inv_vp);
@@ -776,7 +823,7 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
         return NULL;
     }
 
-    d3d11_bind_postfx_target(ctx, ctx->taa_history_rtv[write_slot], width, height);
+    d3d11_bind_postfx_target(ctx, output_rtv, width, height);
     srvs[0] = source_srv;
     srvs[1] = ctx->taa_history_srv[read_slot];
     srvs[2] = ctx->scene_motion_srv;
@@ -797,9 +844,11 @@ static ID3D11ShaderResourceView *d3d11_encode_taa_pass(d3d11_context_t *ctx,
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
 
-    ctx->taa_history_parity = ctx->taa_history_parity ? 0 : 1;
-    ctx->taa_history_valid = 1;
-    return ctx->taa_history_srv[write_slot];
+    if (!preserve_history) {
+        ctx->taa_history_parity = ctx->taa_history_parity ? 0 : 1;
+        ctx->taa_history_valid = 1;
+    }
+    return output_srv;
 }
 
 /// @brief Encode the Plan 10 SSR pass: ray-march the scene depth in screen space for
@@ -832,8 +881,9 @@ static ID3D11ShaderResourceView *d3d11_encode_ssr_pass(d3d11_context_t *ctx,
         0.5f);
     ssr_data.params0[1] = vgfx3d_d3d11_clamp_float_param(
         (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_max_roughness : 0.4f, 0.0f, 1.0f, 0.4f);
-    ssr_data.params0[2] = (float)vgfx3d_d3d11_clamp_int_param(
-        (snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps : 24, 1, 256);
+    ssr_data.params0[2] = (float)vgfx3d_d3d11_sanitize_ssr_steps(
+        (snapshot && snapshot->ssr_steps > 0) ? snapshot->ssr_steps
+                                              : VGFX3D_D3D11_SSR_STEPS_DEFAULT);
     ssr_data.inv_resolution[0] = width > 0 ? 1.0f / (float)width : 0.0f;
     ssr_data.inv_resolution[1] = height > 0 ? 1.0f / (float)height : 0.0f;
     hr = d3d11_update_constant_buffer(ctx, ctx->cb_ssr, &ssr_data, sizeof(ssr_data));
@@ -1006,8 +1056,8 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
     }
 
     need_postfx_target = force_offscreen_final || chain->effect_count > 1;
-    need_scratch_target = (force_offscreen_final && chain->effect_count > 1) ||
-                          (!force_offscreen_final && chain->effect_count > 2);
+    need_scratch_target =
+        force_offscreen_final || (!force_offscreen_final && chain->effect_count > 2);
     if (need_postfx_target &&
         FAILED(d3d11_ensure_postfx_target(ctx, ctx->scene_width, ctx->scene_height))) {
         return 0;
@@ -1039,8 +1089,12 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
          * result still lands in the caller's framebuffer. */
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
             chain->effects[i].snapshot.taa_enabled) {
-            ID3D11ShaderResourceView *resolved = d3d11_encode_taa_pass(
-                ctx, source_srv, ctx->scene_width, ctx->scene_height, pass_snapshot);
+            ID3D11ShaderResourceView *resolved = d3d11_encode_taa_pass(ctx,
+                                                                       source_srv,
+                                                                       ctx->scene_width,
+                                                                       ctx->scene_height,
+                                                                       pass_snapshot,
+                                                                       force_offscreen_final);
             if (resolved)
                 source_srv = resolved;
             pass_snapshot = NULL;
@@ -1474,7 +1528,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 
     if (d3d11_draw_needs_depth_bias(cmd))
         (void)d3d11_get_depth_biased_rasterizer(
-            ctx, cmd, 0, cmd->double_sided ? 0 : 1, &shadow_rasterizer);
+            ctx, cmd, 0, cmd->double_sided ? 0 : 1, 0, &shadow_rasterizer);
     if (!shadow_rasterizer)
         shadow_rasterizer = d3d11_choose_rasterizer(ctx, 0, cmd->double_sided ? 0 : 1);
     if (shadow_rasterizer)
@@ -1632,7 +1686,7 @@ static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &srv);
     ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
-    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state_readonly_lequal, 0);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, ctx->depth_state_skybox, 0);
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
