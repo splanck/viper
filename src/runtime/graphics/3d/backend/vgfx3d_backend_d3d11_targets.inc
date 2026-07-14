@@ -261,8 +261,12 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
     }
     ID3D11Texture2D_GetDesc(back_buffer, &back_buffer_desc);
     if (back_buffer_desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
-        !vgfx3d_d3d11_is_valid_texture2d_extent((int32_t)back_buffer_desc.Width,
-                                                (int32_t)back_buffer_desc.Height)) {
+        !vgfx3d_d3d11_is_single_subresource_texture2d(back_buffer_desc.Width,
+                                                      back_buffer_desc.Height,
+                                                      back_buffer_desc.MipLevels,
+                                                      back_buffer_desc.ArraySize,
+                                                      back_buffer_desc.SampleDesc.Count,
+                                                      back_buffer_desc.SampleDesc.Quality)) {
         SAFE_RELEASE(back_buffer);
         return 0;
     }
@@ -716,14 +720,25 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
                                                          : DXGI_FORMAT_R8G8B8A8_UNORM;
     ID3D11Texture2D_GetDesc(ctx->rtt_color_tex, &color_desc);
     ID3D11Texture2D_GetDesc(ctx->rtt_staging, &staging_desc);
-    if (color_desc.Width != (UINT)target->width || color_desc.Height != (UINT)target->height ||
-        color_desc.MipLevels != 1 || color_desc.ArraySize != 1 ||
-        color_desc.Format != expected_format || color_desc.SampleDesc.Count != 1 ||
-        staging_desc.Width != color_desc.Width || staging_desc.Height != color_desc.Height ||
-        staging_desc.MipLevels != 1 || staging_desc.ArraySize != 1 ||
-        staging_desc.Format != expected_format || staging_desc.SampleDesc.Count != 1 ||
-        staging_desc.Usage != D3D11_USAGE_STAGING ||
-        (staging_desc.CPUAccessFlags & D3D11_CPU_ACCESS_READ) == 0)
+    if (!vgfx3d_d3d11_is_single_subresource_texture2d(color_desc.Width,
+                                                      color_desc.Height,
+                                                      color_desc.MipLevels,
+                                                      color_desc.ArraySize,
+                                                      color_desc.SampleDesc.Count,
+                                                      color_desc.SampleDesc.Quality) ||
+        !vgfx3d_d3d11_is_single_subresource_texture2d(staging_desc.Width,
+                                                      staging_desc.Height,
+                                                      staging_desc.MipLevels,
+                                                      staging_desc.ArraySize,
+                                                      staging_desc.SampleDesc.Count,
+                                                      staging_desc.SampleDesc.Quality) ||
+        color_desc.Width != (UINT)target->width || color_desc.Height != (UINT)target->height ||
+        color_desc.Format != expected_format || color_desc.Usage != D3D11_USAGE_DEFAULT ||
+        (color_desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0 || color_desc.CPUAccessFlags != 0 ||
+        color_desc.MiscFlags != 0 || staging_desc.Width != color_desc.Width ||
+        staging_desc.Height != color_desc.Height || staging_desc.Format != expected_format ||
+        staging_desc.Usage != D3D11_USAGE_STAGING || staging_desc.BindFlags != 0 ||
+        staging_desc.CPUAccessFlags != D3D11_CPU_ACCESS_READ || staging_desc.MiscFlags != 0)
         return 0;
     if (!vgfx3d_rendertarget_ensure_color(target))
         return 0;
@@ -740,6 +755,7 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
         ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(rttStaging)", hr);
+        d3d11_log_device_removed_reason(ctx, "Map(rttStaging)", hr);
         goto cleanup;
     }
     mapped_ok = 1;

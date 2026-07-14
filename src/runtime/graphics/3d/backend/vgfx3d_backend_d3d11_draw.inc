@@ -952,11 +952,13 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 /// D3D11 forbids a texture being bound as both SRV and RTV simultaneously.
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
-    ID3D11ShaderResourceView *null_ps[17] = {NULL};
+    /* Main draws use t17 for the shadow atlas and t18 for the BRDF LUT. Leaving those
+     * slots live can keep an atlas resource tethered when it is resized or destroyed. */
+    ID3D11ShaderResourceView *null_ps[19] = {NULL};
     if (!ctx || !ctx->ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 17, null_ps);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 19, null_ps);
 }
 
 /// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.

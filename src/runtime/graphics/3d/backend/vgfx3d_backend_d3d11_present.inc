@@ -94,8 +94,21 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             }
         }
     }
-    if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
+    /* A finite view and projection can still overflow when multiplied, and a finite product
+     * can be singular. Keep VP/inverse/history as one coherent identity pair in either case;
+     * mixing a bad VP with an identity inverse creates full-screen TAA/SSAO reprojection streaks.
+     */
+    if (!vgfx3d_d3d11_float_array_is_finite(ctx->vp, 16u) ||
+        vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0) {
+        memcpy(ctx->vp, k_identity4x4, sizeof(ctx->vp));
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
+        ctx->taa_jitter_clip[0] = 0.0f;
+        ctx->taa_jitter_clip[1] = 0.0f;
+        ctx->taa_prev_jitter_clip[0] = 0.0f;
+        ctx->taa_prev_jitter_clip[1] = 0.0f;
+        ctx->taa_history_valid = 0;
+        ctx->scene_history_valid = 0;
+    }
     vgfx3d_d3d11_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
     {
         static const float forward_fallback[3] = {0.0f, 0.0f, -1.0f};
@@ -224,6 +237,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 /// @details One 1x1 CopySubresourceRegion per probe from the R32_TYPELESS scene depth
 ///   texture; the next frame's begin harvests the strip with a non-blocking Map.
 static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
+    int32_t pixels[VGFX3D_DEPTH_PROBE_MAX][2];
+
     if (!ctx || ctx->depth_probe_request_count <= 0)
         return;
     /* Never overwrite the single staging strip while a non-blocking Map is still pending.
@@ -235,6 +250,21 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
     if (!ctx->ctx || !ctx->scene_depth_tex || ctx->scene_width <= 0 || ctx->scene_height <= 0) {
         ctx->depth_probe_request_count = 0;
         return;
+    }
+    if (ctx->depth_probe_request_count > VGFX3D_DEPTH_PROBE_MAX) {
+        ctx->depth_probe_request_count = 0;
+        return;
+    }
+    /* Validate the whole batch before the first GPU copy. Publishing the original count after
+     * skipping one malformed request would expose stale staging data under that request's slot. */
+    for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
+        if (!vgfx3d_d3d11_ndc_to_pixel(
+                ctx->depth_probe_requests[i][0], ctx->scene_width, 0, &pixels[i][0]) ||
+            !vgfx3d_d3d11_ndc_to_pixel(
+                ctx->depth_probe_requests[i][1], ctx->scene_height, 1, &pixels[i][1])) {
+            ctx->depth_probe_request_count = 0;
+            return;
+        }
     }
     if (!ctx->depth_probe_staging) {
         if (FAILED(d3d11_create_staging_texture(ctx,
@@ -248,19 +278,12 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
         }
     }
     for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
-        float ndc_x = ctx->depth_probe_requests[i][0];
-        float ndc_y = ctx->depth_probe_requests[i][1];
         D3D11_BOX box;
-        int32_t px;
-        int32_t py;
-        if (!vgfx3d_d3d11_ndc_to_pixel(ndc_x, ctx->scene_width, 0, &px) ||
-            !vgfx3d_d3d11_ndc_to_pixel(ndc_y, ctx->scene_height, 1, &py))
-            continue;
-        box.left = (UINT)px;
-        box.top = (UINT)py;
+        box.left = (UINT)pixels[i][0];
+        box.top = (UINT)pixels[i][1];
         box.front = 0;
-        box.right = (UINT)px + 1;
-        box.bottom = (UINT)py + 1;
+        box.right = (UINT)pixels[i][0] + 1;
+        box.bottom = (UINT)pixels[i][1] + 1;
         box.back = 1;
         ID3D11DeviceContext_CopySubresourceRegion(ctx->ctx,
                                                   (ID3D11Resource *)ctx->depth_probe_staging,
@@ -537,6 +560,7 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
                                        int32_t stride) {
     ID3D11Texture2D *staging;
     D3D11_TEXTURE2D_DESC desc;
+    D3D11_TEXTURE2D_DESC staging_desc;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
     int32_t copy_w;
@@ -551,8 +575,14 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         return 0;
 
     ID3D11Texture2D_GetDesc(source_tex, &desc);
-    if (desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
-        desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT) {
+    if (!vgfx3d_d3d11_is_single_subresource_texture2d(desc.Width,
+                                                      desc.Height,
+                                                      desc.MipLevels,
+                                                      desc.ArraySize,
+                                                      desc.SampleDesc.Count,
+                                                      desc.SampleDesc.Quality) ||
+        (desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+         desc.Format != DXGI_FORMAT_R16G16B16A16_FLOAT)) {
         return 0;
     }
     hr = d3d11_ensure_readback_staging_texture(
@@ -563,6 +593,18 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     }
     staging = ctx->readback_staging;
     if (!staging)
+        return 0;
+    ID3D11Texture2D_GetDesc(staging, &staging_desc);
+    if (!vgfx3d_d3d11_is_single_subresource_texture2d(staging_desc.Width,
+                                                      staging_desc.Height,
+                                                      staging_desc.MipLevels,
+                                                      staging_desc.ArraySize,
+                                                      staging_desc.SampleDesc.Count,
+                                                      staging_desc.SampleDesc.Quality) ||
+        staging_desc.Width != desc.Width || staging_desc.Height != desc.Height ||
+        staging_desc.Format != desc.Format || staging_desc.Usage != D3D11_USAGE_STAGING ||
+        staging_desc.BindFlags != 0 || staging_desc.CPUAccessFlags != D3D11_CPU_ACCESS_READ ||
+        staging_desc.MiscFlags != 0)
         return 0;
 
     memset(dst_rgba, 0, clear_bytes);
@@ -575,6 +617,7 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         ID3D11DeviceContext_Map(ctx->ctx, (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(sceneStaging)", hr);
+        d3d11_log_device_removed_reason(ctx, "Map(sceneStaging)", hr);
         goto cleanup;
     }
     mapped_ok = 1;

@@ -853,7 +853,9 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
         return 0;
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp disjoint)", hr);
+        d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp disjoint)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_gpu_time_us = 0;
         return 0;
     }
     hr = ID3D11DeviceContext_GetData(ctx->ctx,
@@ -865,7 +867,9 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
         return 0;
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp start)", hr);
+        d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp start)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_gpu_time_us = 0;
         return 0;
     }
     hr = ID3D11DeviceContext_GetData(ctx->ctx,
@@ -877,15 +881,16 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
         return 0;
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp end)", hr);
+        d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp end)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_gpu_time_us = 0;
         return 0;
     }
     ctx->frame_time_pending = 0;
-    if (!disjoint.Disjoint && disjoint.Frequency > 0 && end_ticks >= start_ticks) {
-        double us = ((double)(end_ticks - start_ticks) * 1000000.0) / (double)disjoint.Frequency;
-        ctx->frame_gpu_time_us = us >= (double)UINT64_MAX ? UINT64_MAX : (uint64_t)(us + 0.5);
+    if (vgfx3d_d3d11_compute_gpu_time_us(
+            disjoint.Disjoint, disjoint.Frequency, start_ticks, end_ticks, &ctx->frame_gpu_time_us))
         return 1;
-    }
+    ctx->frame_gpu_time_us = 0;
     return 0;
 }
 
@@ -1693,13 +1698,11 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     if (*buffer && *srv && *capacity >= element_count)
         return S_OK;
 
-    if (!d3d11_checked_mul_size(element_count, sizeof(float), &bytes))
+    if (!vgfx3d_d3d11_is_valid_float_srv_element_count(element_count) ||
+        !d3d11_checked_mul_size(element_count, sizeof(float), &bytes))
         return E_OUTOFMEMORY;
     if (!vgfx3d_d3d11_compute_buffer_byte_width(bytes, &byte_width))
         return E_OUTOFMEMORY;
-    if (element_count > UINT_MAX)
-        return E_OUTOFMEMORY;
-
     memset(&desc, 0, sizeof(desc));
     desc.ByteWidth = (UINT)byte_width;
     desc.Usage = D3D11_USAGE_DEFAULT;

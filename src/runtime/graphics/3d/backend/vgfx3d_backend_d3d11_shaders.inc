@@ -4,17 +4,31 @@
 // vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 HLSL shader source
 // strings (scene, skybox, post-FX, overlay)
 //===----------------------------------------------------------------------===//
+#include "rt_platform.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
-static const char *d3d11_join_shader_chunks(char **cache, const char *const *chunks, size_t count) {
+/// @brief Join chunked HLSL once and publish the immutable source atomically.
+/// @details Canvas contexts can be created on independent host threads. A plain lazy global
+///   pointer races in that case and can expose a partially initialized pointer or leak every
+///   losing allocation. The compare/exchange publishes one winner; losing candidates are freed.
+static const char *d3d11_join_shader_chunks(void *volatile *cache,
+                                             const char *const *chunks,
+                                             size_t count) {
+    char *cached;
+    char *joined;
+    char *dst;
+    void *expected = NULL;
+    size_t total = 1u;
+
     if (!cache || (!chunks && count != 0))
         return NULL;
-    if (*cache)
-        return *cache;
+    cached = (char *)rt_atomic_load_ptr(cache, __ATOMIC_ACQUIRE);
+    if (cached)
+        return cached;
 
-    size_t total = 1u;
     for (size_t i = 0; i < count; i++) {
         size_t len;
         if (!chunks[i])
@@ -25,19 +39,22 @@ static const char *d3d11_join_shader_chunks(char **cache, const char *const *chu
         total += len;
     }
 
-    char *joined = (char *)malloc(total);
+    joined = (char *)malloc(total);
     if (!joined)
         return NULL;
 
-    char *dst = joined;
+    dst = joined;
     for (size_t i = 0; i < count; i++) {
         const size_t len = strlen(chunks[i]);
         memcpy(dst, chunks[i], len);
         dst += len;
     }
     *dst = '\0';
-    *cache = joined;
-    return joined;
+    if (rt_atomic_compare_exchange_ptr(
+            cache, &expected, joined, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
+        return joined;
+    free(joined);
+    return (const char *)expected;
 }
 
 static const char *const d3d11_shader_source_chunks[] = {
@@ -1186,7 +1203,7 @@ static const char *const d3d11_shader_source_chunks[] = {
     "}\n",
 };
 
-static char *d3d11_shader_source_cache;
+static void *volatile d3d11_shader_source_cache;
 static const char *d3d11_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_shader_source_cache, d3d11_shader_source_chunks, sizeof(d3d11_shader_source_chunks) / sizeof(d3d11_shader_source_chunks[0]));
 }
@@ -1233,7 +1250,7 @@ static const char *const d3d11_skybox_shader_source_chunks[] = {
     "}\n",
 };
 
-static char *d3d11_skybox_shader_source_cache;
+static void *volatile d3d11_skybox_shader_source_cache;
 static const char *d3d11_skybox_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_skybox_shader_source_cache, d3d11_skybox_shader_source_chunks, sizeof(d3d11_skybox_shader_source_chunks) / sizeof(d3d11_skybox_shader_source_chunks[0]));
 }
@@ -1295,16 +1312,29 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "    output.uv = float2((pos.x + 1.0) * 0.5, 1.0 - (pos.y + 1.0) * 0.5);\n"
     "    return output;\n"
     "}\n"
+    "bool postFinite1(float v) { return !isnan(v) && !isinf(v); }\n"
+    "bool postFinite2(float2 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
+    "bool postFinite3(float3 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
+    "bool postFinite4(float4 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
     "float luminance(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }\n"
-    "float depthAt(float2 uv) { return depthTex.Sample(postSampler, uv).r; }\n"
-    "float3 sceneAt(float2 uv) { return sceneTex.Sample(postSampler, uv).rgb; }\n"
+    "float depthAt(float2 uv) {\n"
+    "    float depth = depthTex.Sample(postSampler, uv).r;\n"
+    "    return postFinite1(depth) && depth >= 0.0 && depth <= 1.0 ? depth : 0.0;\n"
+    "}\n"
+    "float3 sceneAt(float2 uv) {\n"
+    "    float3 color = sceneTex.Sample(postSampler, uv).rgb;\n"
+    "    return postFinite3(color) ? color : float3(0.0, 0.0, 0.0);\n"
+    "}\n"
     "float2 uvToNdc(float2 uv) { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }\n"
     "float2 ndcDeltaToUvDelta(float2 delta) { return float2(delta.x * 0.5, -delta.y * 0.5); }\n"
-    "float3 reconstructWorld(float2 uv, float depth) {\n"
+    "bool reconstructWorld(float2 uv, float depth, out float3 worldOut) {\n"
     "    float4 clip = float4(uvToNdc(uv), depth * 2.0 - 1.0, 1.0);\n"
     "    float4 world = mul(invViewProjection, clip);\n"
-    "    float w = (world.w < 0.0 ? -1.0 : 1.0) * max(abs(world.w), 0.0001);\n"
-    "    return world.xyz / w;\n"
+    "    worldOut = float3(0.0, 0.0, 0.0);\n"
+    "    if (!postFinite4(world) || !(abs(world.w) > 0.0001 && abs(world.w) < 1e20))\n"
+    "        return false;\n"
+    "    worldOut = world.xyz / world.w;\n"
+    "    return postFinite3(worldOut);\n"
     "}\n"
     /* Plan 05: normal-aware hemispheric SSAO with a range check (see the GLSL/MSL
      * twins). Normals come from screen-space derivatives of the reconstructed position;
@@ -1316,7 +1346,9 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     /* Reversed-Z: cleared/far depth is 0, so the sky guard tests the low end. */
     "    if (depth <= 0.0001)\n"
     "        return 1.0;\n"
-    "    float3 P = reconstructWorld(uv, depth);\n"
+    "    float3 P;\n"
+    "    if (!reconstructWorld(uv, depth, P))\n"
+    "        return 1.0;\n"
     "    float3 N = cross(ddx(P), ddy(P));\n"
     "    float nlen2 = dot(N, N);\n"
     "    if (!(nlen2 > 1e-12 && nlen2 < 1e20))\n"
@@ -1341,7 +1373,9 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "        float rad = screenRadius * sqrt(((float)i + 0.5) / (float)taps);\n"
     "        float2 suv = uv + float2(cos(ang), sin(ang)) * rad;\n"
     "        float sd = depthAt(suv);\n"
-    "        float3 Ps = reconstructWorld(suv, sd);\n"
+    "        float3 Ps;\n"
+    "        if (!reconstructWorld(suv, sd, Ps))\n"
+    "            continue;\n"
     "        float3 d = Ps - P;\n"
     "        float dl2 = dot(d, d);\n"
     "        if (!(dl2 > 1e-12 && dl2 < 1e20))\n"
@@ -1354,21 +1388,29 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "    return 1.0 - saturate(occ / max(wsum, 1.0) * ssaoIntensity * 2.0);\n"
     "}\n"
     "float2 cameraVelocity(float2 uv, float depth) {\n"
-    "    float3 worldPos = reconstructWorld(uv, depth);\n"
+    "    float3 worldPos;\n"
+    "    if (!reconstructWorld(uv, depth, worldPos))\n"
+    "        return float2(0.0, 0.0);\n"
     "    float4 prevClip = mul(prevViewProjection, float4(worldPos, 1.0));\n"
-    "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(prevClip.w), 0.0001);\n"
-    "    float2 prevNdc = prevClip.xy / prevW;\n"
+    "    if (!postFinite4(prevClip) || !(abs(prevClip.w) > 0.0001 && abs(prevClip.w) < 1e20))\n"
+    "        return float2(0.0, 0.0);\n"
+    "    float2 prevNdc = prevClip.xy / prevClip.w;\n"
     "    float2 currNdc = uvToNdc(uv);\n"
-    "    return ndcDeltaToUvDelta(currNdc - prevNdc);\n"
+    "    float2 velocity = ndcDeltaToUvDelta(currNdc - prevNdc);\n"
+    "    return postFinite2(velocity) ? velocity : float2(0.0, 0.0);\n"
     "}\n"
     "float3 applyMotionBlur(float2 uv, float depth, float3 color) {\n"
     "    if (motionBlurEnabled == 0)\n"
     "        return color;\n"
     "    float4 motion = motionTex.Sample(postSampler, uv);\n"
+    "    if (!postFinite4(motion))\n"
+    "        return color;\n"
     "    float2 velocity = motion.xy * 2.0 - 1.0;\n"
     "    if (motion.z < 0.5)\n"
     "        velocity = cameraVelocity(uv, depth);\n"
     "    velocity *= motionBlurIntensity;\n"
+    "    if (!postFinite2(velocity))\n"
+    "        return color;\n"
     "    if (length(velocity) < 0.0005)\n"
     "        return color;\n"
     "    int taps = clamp(motionBlurSamples, 2, 8);\n"
@@ -1382,7 +1424,9 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "float3 applyDOF(float2 uv, float depth, float3 color) {\n"
     "    if (dofEnabled == 0)\n"
     "        return color;\n"
-    "    float3 worldPos = reconstructWorld(uv, depth);\n"
+    "    float3 worldPos;\n"
+    "    if (!reconstructWorld(uv, depth, worldPos))\n"
+    "        return color;\n"
     "    float dist = length(worldPos - cameraPosition.xyz);\n"
     "    float blur = clamp(abs(dist - dofFocusDistance) * max(dofAperture, 0.0) * 0.02, 0.0, "
     "max(dofMaxBlur, 0.0));\n"
@@ -1421,7 +1465,7 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "        return pow(saturate(color * tonemapExposure), 1.0 / 2.2);\n"
     "    if (tonemapMode != 1 && tonemapMode != 2)\n"
     "        return color;\n"
-    "    color *= tonemapExposure;\n"
+    "    color = max(color * tonemapExposure, float3(0.0, 0.0, 0.0));\n"
     "    if (tonemapMode == 1)\n"
     "        return pow(saturate(color / (1.0 + color)), 1.0 / 2.2);\n"
     "    if (tonemapMode == 2) {\n"
@@ -1490,7 +1534,7 @@ static const char *const d3d11_postfx_shader_source_chunks[] = {
     "}\n",
 };
 
-static char *d3d11_postfx_shader_source_cache;
+static void *volatile d3d11_postfx_shader_source_cache;
 static const char *d3d11_postfx_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_postfx_shader_source_cache, d3d11_postfx_shader_source_chunks, sizeof(d3d11_postfx_shader_source_chunks) / sizeof(d3d11_postfx_shader_source_chunks[0]));
 }
@@ -1512,9 +1556,16 @@ static const char *const d3d11_bloom_shader_source_chunks[] = {
     "    float4 pos : SV_POSITION;\n"
     "    float2 uv : TEXCOORD0;\n"
     "};\n"
+    "bool bloomFinite3(float3 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
+    "float3 bloomSafeColor(float3 c) {\n"
+    "    return bloomFinite3(c) ? clamp(c, 0.0, 65504.0) : float3(0.0, 0.0, 0.0);\n"
+    "}\n"
     "float bloomLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }\n"
-    "float3 bloomKaris(float3 c) { return c / (1.0 + bloomLuma(c)); }\n"
-    "float3 srcAt(float2 uv) { return srcTex.Sample(postSampler, uv).rgb; }\n"
+    "float3 bloomKaris(float3 c) {\n"
+    "    c = bloomSafeColor(c);\n"
+    "    return c / (1.0 + max(bloomLuma(c), 0.0));\n"
+    "}\n"
+    "float3 srcAt(float2 uv) { return bloomSafeColor(srcTex.Sample(postSampler, uv).rgb); }\n"
     "float4 PSBloomDown(VS_OUTPUT input) : SV_Target {\n"
     "    float2 uv = input.uv;\n"
     "    float2 ts = srcInvSize;\n"
@@ -1548,7 +1599,7 @@ static const char *const d3d11_bloom_shader_source_chunks[] = {
     "        col += (d + e + g + h) * (0.125 * 0.25);\n"
     "        col += (e + f + h + i2) * (0.125 * 0.25);\n"
     "    }\n"
-    "    return float4(col, 1.0);\n"
+    "    return float4(bloomSafeColor(col), 1.0);\n"
     "}\n"
     "float4 PSBloomUp(VS_OUTPUT input) : SV_Target {\n"
     "    float2 uv = input.uv;\n"
@@ -1562,11 +1613,11 @@ static const char *const d3d11_bloom_shader_source_chunks[] = {
     "    col += srcAt(uv + ts * float2(-1.0, 1.0));\n"
     "    col += srcAt(uv + ts * float2(0.0, 1.0)) * 2.0;\n"
     "    col += srcAt(uv + ts * float2(1.0, 1.0));\n"
-    "    return float4(col * (1.0 / 16.0), 1.0);\n"
+    "    return float4(bloomSafeColor(col * (1.0 / 16.0)), 1.0);\n"
     "}\n",
 };
 
-static char *d3d11_bloom_shader_source_cache;
+static void *volatile d3d11_bloom_shader_source_cache;
 static const char *d3d11_bloom_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_bloom_shader_source_cache, d3d11_bloom_shader_source_chunks, sizeof(d3d11_bloom_shader_source_chunks) / sizeof(d3d11_bloom_shader_source_chunks[0]));
 }
@@ -1598,7 +1649,9 @@ static const char *const d3d11_taa_shader_source_chunks[] = {
     "};\n"
     "float2 uvToNdc(float2 uv) { return float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); }\n"
     "float2 ndcDeltaToUvDelta(float2 delta) { return float2(delta.x * 0.5, -delta.y * 0.5); }\n"
+    "bool taaFinite1(float v) { return !isnan(v) && !isinf(v); }\n"
     "bool taaFinite3(float3 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
+    "bool taaFinite4(float4 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
     "float4 PSTAAResolve(VS_OUTPUT input) : SV_Target {\n"
     "    float3 curr = currTex.Sample(postSampler, input.uv).rgb;\n"
     "    if (!taaFinite3(curr))\n"
@@ -1606,15 +1659,23 @@ static const char *const d3d11_taa_shader_source_chunks[] = {
     "    if (historyValid == 0)\n"
     "        return float4(curr, 1.0);\n"
     "    float4 motion = motionTex.Sample(postSampler, input.uv);\n"
+    "    if (!taaFinite4(motion))\n"
+    "        return float4(curr, 1.0);\n"
     "    float2 velocity = motion.xy * 2.0 - 1.0;\n"
     "    if (motion.z < 0.5) {\n"
     "        float depth = depthTex.Sample(postSampler, input.uv).r;\n"
+    "        if (!taaFinite1(depth) || depth < 0.0 || depth > 1.0)\n"
+    "            return float4(curr, 1.0);\n"
     "        float4 clip = float4(uvToNdc(input.uv), depth * 2.0 - 1.0, 1.0);\n"
     "        float4 world = mul(invViewProjection, clip);\n"
-    "        world.xyz /= max(abs(world.w), 0.0001) * (world.w < 0.0 ? -1.0 : 1.0);\n"
+    "        if (!taaFinite4(world) || !(abs(world.w) > 0.0001 && abs(world.w) < 1e20))\n"
+    "            return float4(curr, 1.0);\n"
+    "        world.xyz /= world.w;\n"
     "        float4 prevClip = mul(prevViewProjection, float4(world.xyz, 1.0));\n"
-    "        float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(prevClip.w), 0.0001);\n"
-    "        velocity = ndcDeltaToUvDelta(uvToNdc(input.uv) - prevClip.xy / prevW);\n"
+    "        if (!taaFinite4(prevClip) ||\n"
+    "            !(abs(prevClip.w) > 0.0001 && abs(prevClip.w) < 1e20))\n"
+    "            return float4(curr, 1.0);\n"
+    "        velocity = ndcDeltaToUvDelta(uvToNdc(input.uv) - prevClip.xy / prevClip.w);\n"
     "    }\n"
     "    velocity -= jitterDelta;\n"
     "    if (any(isnan(velocity)) || any(isinf(velocity)))\n"
@@ -1649,7 +1710,7 @@ static const char *const d3d11_taa_shader_source_chunks[] = {
     "}\n",
 };
 
-static char *d3d11_taa_shader_source_cache;
+static void *volatile d3d11_taa_shader_source_cache;
 static const char *d3d11_taa_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_taa_shader_source_cache, d3d11_taa_shader_source_chunks, sizeof(d3d11_taa_shader_source_chunks) / sizeof(d3d11_taa_shader_source_chunks[0]));
 }
@@ -1683,28 +1744,46 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "    float len2 = dot(v, v);\n"
     "    return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;\n"
     "}\n"
+    "bool ssrFinite1(float v) { return !isnan(v) && !isinf(v); }\n"
     "bool ssrFinite3(float3 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
-    "float3 ssrWorldAt(float2 uv, float depth) {\n"
+    "bool ssrFinite4(float4 v) { return !any(isnan(v)) && !any(isinf(v)); }\n"
+    "bool ssrDepthAt(float2 uv, out float depth) {\n"
+    "    depth = depthTex.Sample(postSampler, uv).r;\n"
+    "    return ssrFinite1(depth) && depth >= 0.0 && depth <= 1.0;\n"
+    "}\n"
+    "bool ssrWorldAt(float2 uv, float depth, out float3 worldOut) {\n"
     "    float4 clip = float4(ssrUvToNdc(uv), depth * 2.0 - 1.0, 1.0);\n"
     "    float4 world = mul(invViewProjection, clip);\n"
-    "    float w = (world.w < 0.0 ? -1.0 : 1.0) * max(abs(world.w), 0.0001);\n"
-    "    return world.xyz / w;\n"
+    "    worldOut = float3(0.0, 0.0, 0.0);\n"
+    "    if (!ssrFinite4(world) || !(abs(world.w) > 0.0001 && abs(world.w) < 1e20))\n"
+    "        return false;\n"
+    "    worldOut = world.xyz / world.w;\n"
+    "    return ssrFinite3(worldOut);\n"
     "}\n"
     "float4 PSSSR(VS_OUTPUT input) : SV_Target {\n"
     "    float3 base = sceneTex.Sample(postSampler, input.uv).rgb;\n"
     "    if (!ssrFinite3(base))\n"
     "        base = float3(0.0, 0.0, 0.0);\n"
     "    float mask = motionTex.Sample(postSampler, input.uv).a;\n"
-    "    float depth = depthTex.Sample(postSampler, input.uv).r;\n"
+    "    float depth;\n"
+    "    if (!ssrFinite1(mask) || !ssrDepthAt(input.uv, depth))\n"
+    "        return float4(base, 1.0);\n"
+    "    mask = saturate(mask);\n"
     /* Reversed-Z: cleared/far depth is 0 and nearer is larger, so the sky guard and
      * every ray-vs-scene comparison below flip direction. */
     "    if (mask <= 0.004 || depth <= 0.0001)\n"
     "        return float4(base, 1.0);\n"
-    "    float3 world = ssrWorldAt(input.uv, depth);\n"
+    "    float3 world;\n"
+    "    float3 wx;\n"
+    "    float3 wy;\n"
     "    float2 du = float2(invResolution.x, 0.0);\n"
     "    float2 dv = float2(0.0, invResolution.y);\n"
-    "    float3 wx = ssrWorldAt(input.uv + du, depthTex.Sample(postSampler, input.uv + du).r);\n"
-    "    float3 wy = ssrWorldAt(input.uv + dv, depthTex.Sample(postSampler, input.uv + dv).r);\n"
+    "    float depthX;\n"
+    "    float depthY;\n"
+    "    if (!ssrWorldAt(input.uv, depth, world) ||\n"
+    "        !ssrDepthAt(input.uv + du, depthX) || !ssrWorldAt(input.uv + du, depthX, wx) ||\n"
+    "        !ssrDepthAt(input.uv + dv, depthY) || !ssrWorldAt(input.uv + dv, depthY, wy))\n"
+    "        return float4(base, 1.0);\n"
     "    float3 N = ssrSafeNormalize3(cross(wx - world, wy - world), float3(0.0, 1.0, 0.0));\n"
     "    float3 V = ssrSafeNormalize3(world - camPos.xyz, float3(0.0, 0.0, -1.0));\n"
     "    if (dot(N, V) > 0.0)\n"
@@ -1721,14 +1800,18 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "    for (int i = 0; i < steps; i++) {\n"
     "        float3 pos = world + R * t;\n"
     "        float4 pc = mul(viewProjection, float4(pos, 1.0));\n"
-    "        if (pc.w <= 0.0001)\n"
+    "        if (!ssrFinite4(pc) || !(pc.w > 0.0001 && pc.w < 1e20))\n"
     "            break;\n"
     "        float3 ndc = pc.xyz / pc.w;\n"
+    "        if (!ssrFinite3(ndc))\n"
+    "            break;\n"
     "        float2 uv2 = ssrNdcToUv(ndc.xy);\n"
     "        if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0)\n"
     "            break;\n"
     "        float rayD = ndc.z * 0.5 + 0.5;\n"
-    "        float sceneD = depthTex.Sample(postSampler, uv2).r;\n"
+    "        float sceneD;\n"
+    "        if (!ssrDepthAt(uv2, sceneD))\n"
+    "            break;\n"
     "        if (rayD < sceneD - 0.0002) {\n"
     "            float lo = prevT;\n"
     "            float hi = t;\n"
@@ -1737,17 +1820,26 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "            for (int r = 0; r < 4; r++) {\n"
     "                float mid = (lo + hi) * 0.5;\n"
     "                float4 mc = mul(viewProjection, float4(world + R * mid, 1.0));\n"
-    "                if (mc.w <= 0.0001) {\n",
+    "                if (!ssrFinite4(mc) || !(mc.w > 0.0001 && mc.w < 1e20)) {\n",
     "                    refineValid = false;\n"
     "                    break;\n"
     "                }\n"
     "                float3 mndc = mc.xyz / mc.w;\n"
+    "                if (!ssrFinite3(mndc)) {\n"
+    "                    refineValid = false;\n"
+    "                    break;\n"
+    "                }\n"
     "                float2 muv = ssrNdcToUv(mndc.xy);\n"
     "                if (muv.x < 0.0 || muv.x > 1.0 || muv.y < 0.0 || muv.y > 1.0) {\n"
     "                    refineValid = false;\n"
     "                    break;\n"
     "                }\n"
-    "                if (mndc.z * 0.5 + 0.5 < depthTex.Sample(postSampler, muv).r - 0.0002)\n"
+    "                float midSceneD;\n"
+    "                if (!ssrDepthAt(muv, midSceneD)) {\n"
+    "                    refineValid = false;\n"
+    "                    break;\n"
+    "                }\n"
+    "                if (mndc.z * 0.5 + 0.5 < midSceneD - 0.0002)\n"
     "                    hi = mid;\n"
     "                else\n"
     "                    lo = mid;\n"
@@ -1755,14 +1847,18 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "            if (!refineValid)\n"
     "                break;\n"
     "            float4 hc = mul(viewProjection, float4(world + R * hi, 1.0));\n"
-    "            if (hc.w <= 0.0001)\n"
+    "            if (!ssrFinite4(hc) || !(hc.w > 0.0001 && hc.w < 1e20))\n"
     "                break;\n"
     "            float3 hndc = hc.xyz / hc.w;\n"
+    "            if (!ssrFinite3(hndc))\n"
+    "                break;\n"
     "            hitUv = ssrNdcToUv(hndc.xy);\n"
     "            if (hitUv.x < 0.0 || hitUv.x > 1.0 || hitUv.y < 0.0 || hitUv.y > 1.0)\n"
     "                break;\n"
     "            float hitRayD = hndc.z * 0.5 + 0.5;\n"
-    "            float hitSceneD = depthTex.Sample(postSampler, hitUv).r;\n"
+    "            float hitSceneD;\n"
+    "            if (!ssrDepthAt(hitUv, hitSceneD) || !ssrFinite1(hitRayD))\n"
+    "                break;\n"
     "            hit = (hitSceneD - hitRayD) < 0.02;\n"
     "            break;\n"
     "        }\n"
@@ -1784,7 +1880,7 @@ static const char *const d3d11_ssr_shader_source_chunks[] = {
     "}\n",
 };
 
-static char *d3d11_ssr_shader_source_cache;
+static void *volatile d3d11_ssr_shader_source_cache;
 static const char *d3d11_ssr_shader_source_get(void) {
     return d3d11_join_shader_chunks(&d3d11_ssr_shader_source_cache, d3d11_ssr_shader_source_chunks, sizeof(d3d11_ssr_shader_source_chunks) / sizeof(d3d11_ssr_shader_source_chunks[0]));
 }

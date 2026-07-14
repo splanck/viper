@@ -957,11 +957,16 @@ int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
                                                 size_t *out_bytes) {
     if (out_bytes)
         *out_bytes = 0;
-    if (!out_bytes || element_count == 0 || element_count > capacity)
-        return 0;
-    if (element_count > (size_t)(UINT_MAX / sizeof(float)))
+    if (!out_bytes || element_count > capacity ||
+        !vgfx3d_d3d11_is_valid_float_srv_element_count(element_count))
         return 0;
     return vgfx3d_d3d11_checked_mul_size(element_count, sizeof(float), out_bytes);
+}
+
+/// @brief Check the element limit for a typed D3D11 buffer SRV.
+int vgfx3d_d3d11_is_valid_float_srv_element_count(size_t element_count) {
+    return element_count > 0 && element_count <= VGFX3D_D3D11_MAX_BUFFER_TEXELS &&
+           element_count <= (size_t)(UINT_MAX / sizeof(float));
 }
 
 /// @brief Validate an RGBA8 destination rectangle and optionally return its byte span.
@@ -1001,6 +1006,18 @@ int vgfx3d_d3d11_validate_row_span(int32_t extent, int32_t start, int32_t count)
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height) {
     return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
            height <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION;
+}
+
+/// @brief Validate the descriptor shape required by CopyResource into a single-mip staging tex.
+int vgfx3d_d3d11_is_single_subresource_texture2d(uint32_t width,
+                                                 uint32_t height,
+                                                 uint32_t mip_levels,
+                                                 uint32_t array_size,
+                                                 uint32_t sample_count,
+                                                 uint32_t sample_quality) {
+    return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
+           height <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION && mip_levels == 1 && array_size == 1 &&
+           sample_count == 1 && sample_quality == 0;
 }
 
 /// @brief Check a square cubemap face dimension against D3D11 limits.
@@ -1224,7 +1241,8 @@ int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
     if (!vgfx3d_d3d11_checked_mul_size(
             (size_t)shape_count, (size_t)vertex_count, &shaped_vertices) ||
         !vgfx3d_d3d11_checked_mul_size(shaped_vertices, 3u, &elements) ||
-        !vgfx3d_d3d11_checked_mul_size(elements, sizeof(float), &bytes) || bytes > UINT_MAX)
+        !vgfx3d_d3d11_checked_mul_size(elements, sizeof(float), &bytes) || bytes > UINT_MAX ||
+        !vgfx3d_d3d11_is_valid_float_srv_element_count(elements))
         return 0;
     *out_elements = elements;
     return 1;
@@ -1254,6 +1272,26 @@ int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
         return 1;
     remaining_after_current = total_count - scan_index - 1;
     return remaining_after_current >= max_resident - kept_count;
+}
+
+/// @brief Convert one completed timestamp query pair to rounded microseconds.
+int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
+                                     uint64_t frequency,
+                                     uint64_t start_ticks,
+                                     uint64_t end_ticks,
+                                     uint64_t *out_microseconds) {
+    double microseconds;
+
+    if (out_microseconds)
+        *out_microseconds = 0;
+    if (!out_microseconds || disjoint || frequency == 0 || end_ticks < start_ticks)
+        return 0;
+    microseconds = ((double)(end_ticks - start_ticks) * 1000000.0) / (double)frequency;
+    if (!isfinite(microseconds) || microseconds < 0.0)
+        return 0;
+    *out_microseconds =
+        microseconds >= (double)UINT64_MAX ? UINT64_MAX : (uint64_t)(microseconds + 0.5);
+    return 1;
 }
 
 /// @brief Pick the right render-target classification for the current draw context.

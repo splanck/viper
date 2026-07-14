@@ -601,6 +601,11 @@ static void test_capacity_and_mip_helpers(void) {
                 "Float-SRV update helper covers only live elements, not total capacity");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(9, 8, &bytes) == 0 && bytes == 0u,
                 "Float-SRV update helper rejects spans beyond allocated capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_float_srv_element_count(VGFX3D_D3D11_MAX_BUFFER_TEXELS) == 1,
+                "Float-SRV element validation accepts the D3D11 typed-buffer limit");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_float_srv_element_count(
+                    (size_t)VGFX3D_D3D11_MAX_BUFFER_TEXELS + 1u) == 0,
+                "Float-SRV element validation rejects descriptors beyond the typed-buffer limit");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes((size_t)UINT_MAX / sizeof(float) + 1u,
                                                             (size_t)UINT_MAX / sizeof(float) + 1u,
                                                             &bytes) == 0 &&
@@ -903,6 +908,10 @@ static void test_d3d11_sanitization_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(1u << 28, 8, &elements) == 0 &&
                     elements == 0u,
                 "Morph float-count helper rejects SRV ByteWidth overflow spans");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(
+                    VGFX3D_D3D11_MAX_BUFFER_TEXELS / 3u + 1u, 1, &elements) == 0 &&
+                    elements == 0u,
+                "Morph float-count helper rejects typed-SRV texel overflow before allocation");
 }
 
 static void test_d3d11_light_upload_sanitization_helpers(void) {
@@ -975,6 +984,8 @@ static void test_sampler_anisotropy_helpers(void) {
 }
 
 static void test_d3d11_limits_and_prune_helpers(void) {
+    uint64_t gpu_time_us = UINT64_MAX;
+
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(1, 1) == 1,
                 "Texture extent helper accepts the smallest valid texture");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION,
@@ -987,6 +998,32 @@ static void test_d3d11_limits_and_prune_helpers(void) {
                 "Cubemap extent helper rejects non-positive face sizes");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_cubemap_extent(VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION + 1) == 0,
                 "Cubemap extent helper rejects oversized faces");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(64, 32, 1, 1, 1, 0) == 1,
+                "Texture-copy descriptor validation accepts one single-sampled subresource");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(64, 32, 2, 1, 1, 0) == 0,
+                "Texture-copy descriptor validation rejects mip chains");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(64, 32, 1, 2, 1, 0) == 0,
+                "Texture-copy descriptor validation rejects array textures");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(64, 32, 1, 1, 4, 0) == 0,
+                "Texture-copy descriptor validation rejects multisampled sources");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(64, 32, 1, 1, 1, 1) == 0,
+                "Texture-copy descriptor validation rejects incompatible sample quality");
+    EXPECT_TRUE(vgfx3d_d3d11_is_single_subresource_texture2d(
+                    VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION + 1u, 32, 1, 1, 1, 0) == 0,
+                "Texture-copy descriptor validation rejects oversized unsigned extents");
+
+    EXPECT_TRUE(vgfx3d_d3d11_compute_gpu_time_us(0, 1000000u, 10u, 25u, &gpu_time_us) == 1 &&
+                    gpu_time_us == 15u,
+                "GPU timestamp conversion reports rounded microseconds");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_gpu_time_us(1, 1000000u, 10u, 25u, &gpu_time_us) == 0 &&
+                    gpu_time_us == 0u,
+                "GPU timestamp conversion clears disjoint telemetry");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_gpu_time_us(0, 0u, 10u, 25u, &gpu_time_us) == 0 &&
+                    gpu_time_us == 0u,
+                "GPU timestamp conversion rejects a zero-frequency query");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_gpu_time_us(0, 1000000u, 25u, 10u, &gpu_time_us) == 0 &&
+                    gpu_time_us == 0u,
+                "GPU timestamp conversion rejects reversed timestamp pairs");
 
     EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(1024u, 64) == VGFX3D_D3D11_MAX_MORPH_SHAPES,
                 "Morph shape helper applies the backend shape cap");
@@ -1587,21 +1624,43 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
     EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "Skybox D3D11 shader bounds safeNormalize before rsqrt");
     EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
-                              "float w = (world.w < 0.0 ? -1.0 : 1.0) * "
-                              "max(abs(world.w), 0.0001);"),
-                "PostFX D3D11 shader preserves homogeneous-W sign during reconstruction");
-    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "return world.xyz / w;"),
-                "PostFX D3D11 shader uses the signed homogeneous divide");
+                              "!postFinite4(world) || !(abs(world.w) > 0.0001 && "
+                              "abs(world.w) < 1e20)"),
+                "PostFX rejects invalid homogeneous world reconstruction");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "bool reconstructWorld(float2 uv, float depth, out float3 worldOut)"),
+                "PostFX reports failed world reconstruction to its callers");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "worldOut = world.xyz / world.w;"),
+                "PostFX divides only by a finite non-zero signed homogeneous W");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "return postFinite3(color) ? color : float3(0.0, 0.0, 0.0);"),
+                "PostFX isolates invalid neighboring scene samples");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "postFinite1(depth) && depth >= 0.0 && depth <= 1.0"),
+                "PostFX rejects invalid depth samples before reconstruction");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source, "if (!postFinite4(motion))"),
+                "Motion blur rejects malformed motion payloads");
+    EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,
+                              "color = max(color * tonemapExposure, float3(0.0, 0.0, 0.0));"),
+                "Tonemapping prevents negative HDR values from reaching rational curves");
     EXPECT_TRUE(contains_text(d3d11_bloom_shader_source, "PSBloomDown"),
                 "Bloom D3D11 shader source remains available to the compile path");
+    EXPECT_TRUE(contains_text(d3d11_bloom_shader_source, "clamp(c, 0.0, 65504.0)"),
+                "Bloom clamps finite values to the RGBA16F storage range");
+    EXPECT_TRUE(contains_text(d3d11_bloom_shader_source, "1.0 + max(bloomLuma(c), 0.0)"),
+                "Bloom Karis weighting keeps its denominator positive");
+    EXPECT_TRUE(
+        contains_text(d3d11_bloom_shader_source, "bloomFinite3(c) ? clamp(c, 0.0, 65504.0)"),
+        "Bloom replaces NaN and infinity before filtering");
     EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "PSTAA"),
                 "TAA D3D11 shader source remains available to the compile path");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "SSR D3D11 shader bounds safeNormalize before rsqrt");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "bool refineValid = true;"),
                 "SSR D3D11 shader tracks invalid binary-search samples");
-    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "if (mc.w <= 0.0001)"),
-                "SSR D3D11 shader rejects refined samples behind the camera");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source,
+                              "!ssrFinite4(mc) || !(mc.w > 0.0001 && mc.w < 1e20)"),
+                "SSR rejects invalid refined clip coordinates and samples behind the camera");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "float3 mndc = mc.xyz / mc.w;"),
                 "SSR D3D11 shader divides by guarded mid-sample W");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "float3 hndc = hc.xyz / hc.w;"),
@@ -1666,10 +1725,26 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                 "PostFX falls back to its finite source color after numeric failure");
     EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "bool taaFinite3(float3 v)"),
                 "TAA validates current, history, and resolved colors");
+    EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "if (!taaFinite4(motion))"),
+                "TAA rejects malformed motion payloads");
+    EXPECT_TRUE(
+        contains_text(d3d11_taa_shader_source, "!taaFinite1(depth) || depth < 0.0 || depth > 1.0"),
+        "TAA rejects malformed depth before world reconstruction");
+    EXPECT_TRUE(
+        contains_text(d3d11_taa_shader_source, "!taaFinite4(world) || !(abs(world.w) > 0.0001"),
+        "TAA validates homogeneous world coordinates before division");
     EXPECT_TRUE(contains_text(d3d11_taa_shader_source, "taaFinite3(resolved) ? resolved : curr"),
                 "TAA falls back to current color when resolve math is invalid");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "bool ssrFinite3(float3 v)"),
                 "SSR validates source and reflected colors");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source,
+                              "if (!ssrFinite1(mask) || !ssrDepthAt(input.uv, depth))"),
+                "SSR rejects malformed masks and primary depth samples");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "if (!ssrDepthAt(uv2, sceneD))"),
+                "SSR rejects invalid ray-march depth samples");
+    EXPECT_TRUE(contains_text(d3d11_ssr_shader_source,
+                              "if (!ssrFinite4(pc) || !(pc.w > 0.0001 && pc.w < 1e20))"),
+                "SSR validates projected ray coordinates before sampling");
     EXPECT_TRUE(contains_text(d3d11_ssr_shader_source, "ssrFinite3(reflected) ? reflected : base"),
                 "SSR falls back to the source pixel when reflection math is invalid");
     EXPECT_TRUE(!contains_text(d3d11_postfx_shader_source,
@@ -1696,9 +1771,10 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
 }
 
 static void test_d3d11_shader_chunk_join_validation(void) {
-    char *cache = NULL;
-    char *bad_cache = NULL;
-    char *empty_cache = NULL;
+    void *volatile cache = NULL;
+    void *volatile bad_cache = NULL;
+    void *volatile empty_cache = NULL;
+    void *volatile preset_cache = (void *)"already-published";
     const char *chunks[] = {"alpha", "", "omega"};
     const char *bad_chunks[] = {"alpha", NULL};
     const char *joined = d3d11_join_shader_chunks(&cache, chunks, 3);
@@ -1715,8 +1791,11 @@ static void test_d3d11_shader_chunk_join_validation(void) {
                 "Shader chunk join rejects null chunk entries atomically");
     EXPECT_TRUE(strcmp(d3d11_join_shader_chunks(&empty_cache, NULL, 0), "") == 0,
                 "Shader chunk join accepts an empty source");
-    free(cache);
-    free(empty_cache);
+    EXPECT_TRUE(strcmp(d3d11_join_shader_chunks(&preset_cache, chunks, 3), "already-published") ==
+                    0,
+                "Shader chunk join observes an already-published atomic winner");
+    free((void *)cache);
+    free((void *)empty_cache);
 }
 
 int main(void) {

@@ -67,12 +67,39 @@ static void d3d11_fill_swap_chain_desc(DXGI_SWAP_CHAIN_DESC *swap_desc,
     swap_desc->BufferDesc.Width = (UINT)width;
     swap_desc->BufferDesc.Height = (UINT)height;
     swap_desc->BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    swap_desc->BufferDesc.RefreshRate.Numerator = 60;
+    /* Windowed presentation follows the desktop/output refresh rate. Advertising 60 Hz here
+     * can make DXGI choose a mismatched mode on high-refresh and variable-refresh displays. */
+    swap_desc->BufferDesc.RefreshRate.Numerator = 0;
     swap_desc->BufferDesc.RefreshRate.Denominator = 1;
     swap_desc->BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swap_desc->OutputWindow = hwnd;
     swap_desc->SampleDesc.Count = 1;
     swap_desc->Windowed = TRUE;
+}
+
+/// @brief Keep fullscreen transitions under Canvas/window-system ownership.
+/// @details DXGI otherwise installs an implicit Alt+Enter handler that can change swapchain mode
+///   behind the backend's target-size and lifetime tracking. Failure is non-fatal because some
+///   remoting/composition environments do not expose a parent factory.
+static void d3d11_disable_implicit_fullscreen(d3d11_context_t *ctx, HWND hwnd) {
+    /* Keep the interface id in the adapter instead of referencing IID_IDXGIFactory from
+     * dxguid.lib. Viper's native-link pipeline does not consume MSVC #pragma comment records. */
+    static const GUID factory_iid = {
+        0x7b7166ec, 0x21c7, 0x44ae, {0xb2, 0x1a, 0xc9, 0xae, 0x32, 0x1a, 0xe3, 0x69}};
+    IDXGIFactory *factory = NULL;
+    HRESULT hr;
+
+    if (!ctx || !ctx->swap_chain || !hwnd)
+        return;
+    hr = IDXGISwapChain_GetParent(ctx->swap_chain, &factory_iid, (void **)&factory);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("IDXGISwapChain::GetParent(factory)", hr);
+        return;
+    }
+    hr = IDXGIFactory_MakeWindowAssociation(factory, hwnd, DXGI_MWA_NO_ALT_ENTER);
+    if (FAILED(hr))
+        d3d11_log_hresult("IDXGIFactory::MakeWindowAssociation", hr);
+    SAFE_RELEASE(factory);
 }
 
 /// @brief Create the swapchain render-target view and matching main depth target.
@@ -832,6 +859,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         free(ctx);
         return NULL;
     }
+    d3d11_disable_implicit_fullscreen(ctx, hwnd);
 
     hr = d3d11_create_swapchain_targets(ctx, width, height);
     if (FAILED(hr))

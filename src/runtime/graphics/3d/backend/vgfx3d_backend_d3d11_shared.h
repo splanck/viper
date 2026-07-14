@@ -45,6 +45,7 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION 16384
 #define VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY 16
 #define VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY
+#define VGFX3D_D3D11_MAX_BUFFER_TEXELS (1u << 27)
 #define VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
 #define VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS 16.0f
 #define VGFX3D_D3D11_MATERIAL_SHININESS_MAX 1000000.0f
@@ -361,6 +362,8 @@ int vgfx3d_d3d11_compute_instance_upload_bytes(int32_t instance_count,
 int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
                                                 size_t capacity,
                                                 size_t *out_bytes);
+/// @brief Check a float-buffer element count against D3D11's typed-buffer limit.
+int vgfx3d_d3d11_is_valid_float_srv_element_count(size_t element_count);
 /// @brief Validate an RGBA8 readback destination span.
 int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,
@@ -370,6 +373,13 @@ int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
 int vgfx3d_d3d11_validate_row_span(int32_t extent, int32_t start, int32_t count);
 /// @brief Check dimensions against D3D11 feature-level 11 texture limits.
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height);
+/// @brief Validate the structural fields required for a one-subresource Texture2D copy.
+int vgfx3d_d3d11_is_single_subresource_texture2d(uint32_t width,
+                                                 uint32_t height,
+                                                 uint32_t mip_levels,
+                                                 uint32_t array_size,
+                                                 uint32_t sample_count,
+                                                 uint32_t sample_quality);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size);
 /// @brief Validate a mapped texture row span before copying it into an RGBA8 destination.
@@ -410,6 +420,12 @@ int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
                                           uint64_t age,
                                           int32_t max_resident,
                                           uint64_t prune_age);
+/// @brief Convert a valid D3D11 timestamp pair to rounded microseconds.
+int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
+                                     uint64_t frequency,
+                                     uint64_t start_ticks,
+                                     uint64_t end_ticks,
+                                     uint64_t *out_microseconds);
 /// @brief Pick the right render-target classification (RTT > swapchain > overlay > scene).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
