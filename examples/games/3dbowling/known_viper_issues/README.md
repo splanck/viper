@@ -119,8 +119,10 @@ Because the failure is allocation/timing-sensitive and no longer deterministic,
 this item is recorded separately from the two confirmed defects. It should not
 be treated as fixed or as a reliable regression gate yet.
 
-Temporary demo impact: the maple asset supplies sampled colors for the oil-map
-preview while the regulation board geometry remains the 3D playing surface.
+Temporary demo impact: the Metal path keeps the stable procedural regulation
+boards and uses the separately decoded maple image only for sampled HUD colors.
+Composition-safe backends may bind a second, material-only decode to the active
+lane. The shipping path therefore does not depend on this defect being fixed.
 
 ## Compiler status
 

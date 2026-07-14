@@ -213,7 +213,7 @@ static int64_t clamp_u8_i64(int64_t value) {
 }
 
 /// @brief Saturating integer addition: returns INT64_MAX / INT64_MIN instead of wrapping.
-int64_t saturating_add_i64(int64_t a, int64_t b) {
+int64_t rt2d_saturating_add_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
     if (b < 0 && a < INT64_MIN - b)
@@ -221,9 +221,16 @@ int64_t saturating_add_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating integer subtraction: returns INT64_MAX / INT64_MIN instead of wrapping.
+static int64_t saturating_sub_i64(int64_t a, int64_t b) {
+    if (b >= 0)
+        return (a < INT64_MIN + b) ? INT64_MIN : a - b;
+    return (a > INT64_MAX + b) ? INT64_MAX : a - b;
+}
+
 /// @brief Saturating integer multiplication using `long double` to detect overflow before
 /// truncation.
-int64_t saturating_mul_i64(int64_t a, int64_t b) {
+int64_t rt2d_saturating_mul_i64(int64_t a, int64_t b) {
     long double value = (long double)a * (long double)b;
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -450,7 +457,7 @@ static int64_t normalized_dim(int64_t value) {
 /// @param elem_size Bytes per element (e.g. `sizeof(uint32_t)` for RGBA32).
 /// @param out_count Optional output — receives `width * height` on success.
 /// @return 1 on success, 0 on invalid dimensions or overflow.
-int32_t checked_count(int64_t width, int64_t height, int64_t elem_size, int64_t *out_count) {
+int32_t rt2d_checked_count(int64_t width, int64_t height, int64_t elem_size, int64_t *out_count) {
     if (width <= 0 || height <= 0 || elem_size <= 0)
         return 0;
     if (width > RT2D_MAX_DIM || height > RT2D_MAX_DIM)
@@ -472,7 +479,7 @@ int32_t checked_count(int64_t width, int64_t height, int64_t elem_size, int64_t 
 ///          thrash through tiny reallocs; ceiling 1Mi entries to cap a pathological
 ///          "reserve everything up front" caller. Negative / zero requests default
 ///          to the floor.
-int64_t initial_capacity(int64_t requested) {
+int64_t rt2d_initial_capacity(int64_t requested) {
     if (requested <= 0)
         return RT2D_INITIAL_CAP;
     if (requested > 1048576)
@@ -485,7 +492,7 @@ int64_t initial_capacity(int64_t requested) {
 ///          or opaque handles (constants, interned values) that don't need refcount
 ///          maintenance. `rt_heap_is_payload` distinguishes the two; this wrapper
 ///          means callers don't have to probe the heap bit themselves.
-void retain_ref(void *obj) {
+void rt2d_retain_ref(void *obj) {
     if (obj && rt_heap_is_payload(obj))
         rt_obj_retain_maybe(obj);
 }
@@ -494,8 +501,8 @@ void retain_ref(void *obj) {
 /// @details Used by every `_finalize` and every "replace slot" setter in this file.
 ///          The slot is cleared *before* the potential free so observers can't see
 ///          a dangling pointer mid-release. Non-payload handles are skipped just
-///          like `retain_ref`.
-void release_ref_slot(void **slot) {
+///          like `rt2d_retain_ref`.
+void rt2d_release_ref_slot(void **slot) {
     if (!slot || !*slot)
         return;
     void *obj = *slot;
@@ -508,7 +515,7 @@ void release_ref_slot(void **slot) {
 /// @details Shape/debug APIs accept Canvas-style `0x00RRGGBB`, raw
 ///          `0xRRGGBBAA`, or tagged Color.RGBA values. Alpha is ignored by
 ///          these RGB-only drawing primitives.
-int64_t draw_rgb(int64_t color) {
+int64_t rt2d_draw_rgb(int64_t color) {
     uint64_t full = (uint64_t)color;
     uint64_t c = full & 0xFFFFFFFFu;
     if ((full & (uint64_t)RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG) != 0)
@@ -602,7 +609,7 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
 /// @param tint 0x00RRGGBB multiplicative tint, or negative to skip tinting.
 /// @param alpha Alpha scale in [0, 255].
 /// @param blend_mode One of `RT_GRAPHICS2D_BLEND_*`.
-void blit_pixels(void *dst,
+void rt2d_blit_pixels(void *dst,
                  int64_t dx,
                  int64_t dy,
                  void *src,
@@ -637,18 +644,43 @@ void blit_pixels(void *dst,
         read_dst = snapshot;
     }
 
-    for (int64_t y = 0; y < height; y++) {
-        for (int64_t x = 0; x < width; x++) {
-            uint32_t source = (uint32_t)rt_pixels_get(read_src, sx + x, sy + y);
-            source = apply_tint_alpha(source, tint, alpha);
-            if ((source & 255u) == 0)
-                continue;
-            uint32_t dest = (uint32_t)rt_pixels_get(read_dst, dx + x, dy + y);
-            rt_pixels_set(dst, dx + x, dy + y, (int64_t)blend_pixel(dest, source, blend_mode));
+    /* Coordinates are pre-clipped to both buffers by blit_clip_axis above, so walk
+     * raw row pointers instead of paying a validated rt_pixels_get/set (each of
+     * which re-runs a class check + bounds test) per texel — this is the workhorse
+     * for every Renderer2D/RenderTarget draw. The single pixels_touch at the end
+     * preserves the generation bump that rt_pixels_set would have done per pixel,
+     * so alpha-scan / sprite / GPU-upload caches still invalidate. */
+    rt_pixels_impl *si = rt_pixels_checked_impl_or_null(read_src);
+    rt_pixels_impl *dri = rt_pixels_checked_impl_or_null(read_dst);
+    rt_pixels_impl *dwi = rt_pixels_checked_impl_or_null(dst);
+    if (si && si->data && dri && dri->data && dwi && dwi->data) {
+        for (int64_t y = 0; y < height; y++) {
+            const uint32_t *srow = &si->data[(sy + y) * si->width + sx];
+            const uint32_t *drow = &dri->data[(dy + y) * dri->width + dx];
+            uint32_t *wrow = &dwi->data[(dy + y) * dwi->width + dx];
+            for (int64_t x = 0; x < width; x++) {
+                uint32_t source = apply_tint_alpha(srow[x], tint, alpha);
+                if (blend_mode != RT_GRAPHICS2D_BLEND_OPAQUE && (source & 255u) == 0)
+                    continue;
+                wrow[x] = (uint32_t)blend_pixel(drow[x], source, blend_mode);
+            }
+        }
+        pixels_touch(dwi);
+    } else {
+        /* Defensive fallback (unreachable for valid handles): per-pixel validated. */
+        for (int64_t y = 0; y < height; y++) {
+            for (int64_t x = 0; x < width; x++) {
+                uint32_t source =
+                    apply_tint_alpha((uint32_t)rt_pixels_get(read_src, sx + x, sy + y), tint, alpha);
+                if (blend_mode != RT_GRAPHICS2D_BLEND_OPAQUE && (source & 255u) == 0)
+                    continue;
+                uint32_t dest = (uint32_t)rt_pixels_get(read_dst, dx + x, dy + y);
+                rt_pixels_set(dst, dx + x, dy + y, (int64_t)blend_pixel(dest, source, blend_mode));
+            }
         }
     }
 
-    release_ref_slot(&snapshot);
+    rt2d_release_ref_slot(&snapshot);
 }
 
 /// @brief Wrap or clamp a 1D source-pixel coordinate per the requested wrap mode.
@@ -688,7 +720,7 @@ static int64_t sampler_region_coord_i64(
     } else {
         local = clamp_i64(local_coord, 0, span - 1);
     }
-    return sampler_coord_i64(saturating_add_i64(origin, local), source_limit, wrap);
+    return sampler_coord_i64(rt2d_saturating_add_i64(origin, local), source_limit, wrap);
 }
 
 /// @brief Round and clamp a long-double color channel to a 0..255 byte.
@@ -816,10 +848,10 @@ static uint32_t sample_pixels_linear(void *src,
 
     int64_t x0 = sampler_region_coord_i64(sx, base_x, src_span_w, src_width, wrap);
     int64_t x1 =
-        sampler_region_coord_i64(sx, saturating_add_i64(base_x, 1), src_span_w, src_width, wrap);
+        sampler_region_coord_i64(sx, rt2d_saturating_add_i64(base_x, 1), src_span_w, src_width, wrap);
     int64_t y0 = sampler_region_coord_i64(sy, base_y, src_span_h, src_height, wrap);
     int64_t y1 =
-        sampler_region_coord_i64(sy, saturating_add_i64(base_y, 1), src_span_h, src_height, wrap);
+        sampler_region_coord_i64(sy, rt2d_saturating_add_i64(base_y, 1), src_span_h, src_height, wrap);
 
     uint32_t c00 = (uint32_t)rt_pixels_get(src, x0, y0);
     uint32_t c10 = (uint32_t)rt_pixels_get(src, x1, y0);
@@ -941,7 +973,12 @@ static void blit_pixels_sampled_scaled(void *dst,
                                             filter,
                                             wrap);
             source = apply_tint_alpha(source, tint, alpha);
-            if ((source & 255u) == 0)
+            /* OPAQUE means "source replaces destination" (rt_graphics2d.h), so it
+             * must write even fully-transparent texels to match the canvas raw-copy
+             * flush path — otherwise the same command produces different output on a
+             * RenderTarget vs the canvas. Only the blending modes skip transparent
+             * source texels (they contribute nothing and skipping is faster). */
+            if (blend_mode != RT_GRAPHICS2D_BLEND_OPAQUE && (source & 255u) == 0)
                 continue;
             uint32_t dest = (uint32_t)rt_pixels_get(dst, dx + x, dy + y);
             rt_pixels_set(dst, dx + x, dy + y, (int64_t)blend_pixel(dest, source, blend_mode));
@@ -1008,12 +1045,33 @@ static void blit_pixels_rotated(void *dst,
     filter = filter == RT_GRAPHICS2D_FILTER_LINEAR ? RT_GRAPHICS2D_FILTER_LINEAR
                                                    : RT_GRAPHICS2D_FILTER_NEAREST;
 
+    /* Clamp the rotated bounding box to the destination-visible range BEFORE the
+     * loops. out = base + o must satisfy 0 <= out < d, i.e. o in [-base, d-base).
+     * Without this a user-controlled pivot (via DrawTextureRotatedAt) makes the
+     * box span ~1e12 and the loop bodies merely `continue` for trillions of
+     * iterations — an effective hang. All arithmetic is saturating so extreme
+     * coordinates can never overflow (UB). */
+    int64_t dst_base_x = rt2d_saturating_add_i64(dx, pivot_x);
+    int64_t dst_base_y = rt2d_saturating_add_i64(dy, pivot_y);
+    int64_t x_lo = saturating_sub_i64(0, dst_base_x);
+    int64_t x_hi = saturating_sub_i64((int64_t)dw, dst_base_x);
+    int64_t y_lo = saturating_sub_i64(0, dst_base_y);
+    int64_t y_hi = saturating_sub_i64((int64_t)dh, dst_base_y);
+    if (x0 < x_lo)
+        x0 = x_lo;
+    if (x1 > x_hi)
+        x1 = x_hi;
+    if (y0 < y_lo)
+        y0 = y_lo;
+    if (y1 > y_hi)
+        y1 = y_hi;
+
     for (int64_t oy = y0; oy < y1; oy++) {
-        int64_t out_y = dy + pivot_y + oy;
+        int64_t out_y = rt2d_saturating_add_i64(dst_base_y, oy);
         if (out_y < 0 || out_y >= dh)
             continue;
         for (int64_t ox = x0; ox < x1; ox++) {
-            int64_t out_x = dx + pivot_x + ox;
+            int64_t out_x = rt2d_saturating_add_i64(dst_base_x, ox);
             if (out_x < 0 || out_x >= dw)
                 continue;
             double sx = (double)ox * cos_a + (double)oy * sin_a + (double)pivot_x;
@@ -1045,7 +1103,12 @@ static void blit_pixels_rotated(void *dst,
                 source = (uint32_t)rt_pixels_get(src, ix, iy);
             }
             source = apply_tint_alpha(source, tint, alpha);
-            if ((source & 255u) == 0)
+            /* OPAQUE means "source replaces destination" (rt_graphics2d.h), so it
+             * must write even fully-transparent texels to match the canvas raw-copy
+             * flush path — otherwise the same command produces different output on a
+             * RenderTarget vs the canvas. Only the blending modes skip transparent
+             * source texels (they contribute nothing and skipping is faster). */
+            if (blend_mode != RT_GRAPHICS2D_BLEND_OPAQUE && (source & 255u) == 0)
                 continue;
             uint32_t dest = (uint32_t)rt_pixels_get(dst, out_x, out_y);
             rt_pixels_set(dst, out_x, out_y, (int64_t)blend_pixel(dest, source, blend_mode));
@@ -1077,7 +1140,7 @@ static void apply_tint_alpha_in_place(void *pixels, int64_t tint, int64_t alpha)
 ///   The source coordinates are NOT clipped — callers that may have out-of-bounds regions
 ///   should call `clip_region_to_source` first. Returns NULL if allocation fails or inputs
 ///   are invalid.
-void *copy_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
+void *rt2d_copy_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
     if (!pixels || width <= 0 || height <= 0)
         return NULL;
     void *out = rt_pixels_new(width, height);

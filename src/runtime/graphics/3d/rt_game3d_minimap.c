@@ -485,17 +485,21 @@ void rt_game3d_minimap_draw(void *obj) {
                                 18,
                                 0x101820);
         static const char *kCardinals[4] = {"N", "E", "S", "W"};
+        /* Intern the four compass labels once (held for process life) instead of
+         * allocating a runtime string per label every frame; draw_text_3d borrows
+         * the string, so a cached reference is safe. Minimap draw is main-thread. */
+        static rt_string kCardinalLabels[4] = {NULL, NULL, NULL, NULL};
         for (int c = 0; c < 4; ++c) {
             double bearing = (double)c * MINIMAP3D_PI * 0.5;
             double rel = game3d_minimap_wrap_angle(bearing - yaw);
             if (fabs(rel) > MINIMAP3D_PI * 0.5)
                 continue;
             double x = cx + rel / (MINIMAP3D_PI * 0.5) * half;
-            rt_string label = rt_const_cstr(kCardinals[c]);
-            if (label) {
-                rt_canvas3d_draw_text_3d(canvas, (int64_t)(x - 4), (int64_t)top, label, 0xE8E8E8);
-                rt_string_unref(label);
-            }
+            if (!kCardinalLabels[c])
+                kCardinalLabels[c] = rt_const_cstr(kCardinals[c]);
+            if (kCardinalLabels[c])
+                rt_canvas3d_draw_text_3d(
+                    canvas, (int64_t)(x - 4), (int64_t)top, kCardinalLabels[c], 0xE8E8E8);
         }
         double center[3] = {0.0, 0.0, 0.0};
         rt_game3d_entity *tracked =

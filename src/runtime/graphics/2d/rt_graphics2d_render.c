@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - Class handles are validated via the *_checked casts before use.
-//   - All blitting routes through the shared blit_pixels so tint/alpha/blend
+//   - All blitting routes through the shared rt2d_blit_pixels so tint/alpha/blend
 //     behavior stays consistent with the rest of the 2D layer.
 //
 // Ownership/Lifetime:
@@ -140,7 +140,7 @@ void rt_shaperenderer2d_line(
     rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
     if (impl->stroke < 0)
         return;
-    rt_pixels_draw_line(pixels, x0, y0, x1, y1, draw_rgb(impl->stroke));
+    rt_pixels_draw_line(pixels, x0, y0, x1, y1, rt2d_draw_rgb(impl->stroke));
 }
 
 /// @brief Draw a rectangle at `(x, y)` with `width × height`.
@@ -153,9 +153,9 @@ void rt_shaperenderer2d_rect(
         return;
     rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
     if (impl->fill >= 0)
-        rt_pixels_draw_box(pixels, x, y, width, height, draw_rgb(impl->fill));
+        rt_pixels_draw_box(pixels, x, y, width, height, rt2d_draw_rgb(impl->fill));
     if (impl->stroke >= 0)
-        rt_pixels_draw_frame(pixels, x, y, width, height, draw_rgb(impl->stroke));
+        rt_pixels_draw_frame(pixels, x, y, width, height, rt2d_draw_rgb(impl->stroke));
 }
 
 /// @brief Draw a circle at `(x, y)` with the given `radius`.
@@ -166,9 +166,9 @@ void rt_shaperenderer2d_circle(void *renderer, void *pixels, int64_t x, int64_t 
         return;
     rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
     if (impl->fill >= 0)
-        rt_pixels_draw_disc(pixels, x, y, radius, draw_rgb(impl->fill));
+        rt_pixels_draw_disc(pixels, x, y, radius, rt2d_draw_rgb(impl->fill));
     if (impl->stroke >= 0)
-        rt_pixels_draw_ring(pixels, x, y, radius, draw_rgb(impl->stroke));
+        rt_pixels_draw_ring(pixels, x, y, radius, rt2d_draw_rgb(impl->stroke));
 }
 
 /// @brief Render a Path2D into `pixels` using the current stroke color.
@@ -196,7 +196,7 @@ static void textrenderer2d_finalize(void *obj) {
     if (!rt2d_has_class(obj, RT2D_TEXTRENDERER_CLASS_ID))
         return;
     rt_textrenderer2d_impl *renderer = (rt_textrenderer2d_impl *)obj;
-    release_ref_slot(&renderer->font);
+    rt2d_release_ref_slot(&renderer->font);
 }
 
 /// @brief Allocate a TextRenderer2D with default state (no font, 1x scale, white).
@@ -220,8 +220,8 @@ void rt_textrenderer2d_set_font(void *renderer, void *font) {
         (font && !rt2d_is_bitmap_font_handle(font)))
         return;
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
-    retain_ref(font);
-    release_ref_slot(&impl->font);
+    rt2d_retain_ref(font);
+    rt2d_release_ref_slot(&impl->font);
     impl->font = font;
 }
 
@@ -246,7 +246,7 @@ int64_t rt_textrenderer2d_measure_width(void *renderer, rt_string text) {
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     int64_t width =
         impl->font ? rt_bitmapfont_text_width(impl->font, text) : rt_canvas_text_width(text);
-    return saturating_mul_i64(width, impl->scale);
+    return rt2d_saturating_mul_i64(width, impl->scale);
 }
 
 /// @brief Measure the pixel height of one line of text with the bound font and scale.
@@ -258,7 +258,7 @@ int64_t rt_textrenderer2d_measure_height(void *renderer, rt_string text) {
         return rt_canvas_text_height();
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     int64_t height = impl->font ? rt_bitmapfont_text_height(impl->font) : rt_canvas_text_height();
-    return saturating_mul_i64(height, impl->scale);
+    return rt2d_saturating_mul_i64(height, impl->scale);
 }
 
 /// @brief Draw `text` at `(x, y)` into `canvas` using the bound font, scale, and color.
@@ -287,7 +287,7 @@ static void sdffont_finalize(void *obj) {
     if (!rt2d_has_class(obj, RT2D_SDFFONT_CLASS_ID))
         return;
     rt_sdffont_impl *font = (rt_sdffont_impl *)obj;
-    release_ref_slot(&font->bitmap_font);
+    rt2d_release_ref_slot(&font->bitmap_font);
 }
 
 /// @brief Wrap a BitmapFont as an SdfFont with the given SDF spread parameter.
@@ -297,12 +297,12 @@ static void sdffont_finalize(void *obj) {
 void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
     if (bitmap_font && !rt2d_is_bitmap_font_handle(bitmap_font))
         return NULL;
-    retain_ref(bitmap_font);
+    rt2d_retain_ref(bitmap_font);
     rt_sdffont_impl *font =
         (rt_sdffont_impl *)rt_obj_new_i64(RT2D_SDFFONT_CLASS_ID, (int64_t)sizeof(rt_sdffont_impl));
     if (!font) {
         void *owned_font = bitmap_font;
-        release_ref_slot(&owned_font);
+        rt2d_release_ref_slot(&owned_font);
         return NULL;
     }
     font->bitmap_font = bitmap_font;
@@ -336,7 +336,7 @@ static void nineslice2d_finalize(void *obj) {
     if (!rt2d_has_class(obj, RT2D_NINESLICE_CLASS_ID))
         return;
     rt_nineslice2d_impl *slice = (rt_nineslice2d_impl *)obj;
-    release_ref_slot(&slice->pixels);
+    rt2d_release_ref_slot(&slice->pixels);
 }
 
 /// @brief Wrap a source Pixels image as a nine-slice with the given border widths.
@@ -351,12 +351,12 @@ void *rt_nineslice2d_new(void *pixels, int64_t left, int64_t top, int64_t right,
         return NULL;
     int64_t pixels_width = rt_pixels_width(pixels);
     int64_t pixels_height = rt_pixels_height(pixels);
-    retain_ref(pixels);
+    rt2d_retain_ref(pixels);
     rt_nineslice2d_impl *slice = (rt_nineslice2d_impl *)rt_obj_new_i64(
         RT2D_NINESLICE_CLASS_ID, (int64_t)sizeof(rt_nineslice2d_impl));
     if (!slice) {
         void *owned_pixels = pixels;
-        release_ref_slot(&owned_pixels);
+        rt2d_release_ref_slot(&owned_pixels);
         return NULL;
     }
     slice->pixels = pixels;
@@ -371,8 +371,8 @@ void *rt_nineslice2d_new(void *pixels, int64_t left, int64_t top, int64_t right,
 /// @brief Copy one rectangular region from `source` into `target`, scaling as
 ///        needed. Used by the nine-slice draw to place each of the 9 sub-rects.
 /// @details Fast path when source and destination sizes match — a direct
-///          `blit_pixels` with no intermediate allocation. When they don't,
-///          allocates a temporary region copy (via `copy_region_pixels`),
+///          `rt2d_blit_pixels` with no intermediate allocation. When they don't,
+///          allocates a temporary region copy (via `rt2d_copy_region_pixels`),
 ///          scales it to the destination dimensions (`rt_pixels_scale`), and
 ///          blits the scaled result. Both temporaries are released before
 ///          returning. No-op if any dimension is non-positive.
@@ -389,17 +389,17 @@ static void nineslice_copy_scaled(void *target,
     if (!target || !source || dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0)
         return;
     if (dw == sw && dh == sh) {
-        blit_pixels(target, dx, dy, source, sx, sy, sw, sh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
+        rt2d_blit_pixels(target, dx, dy, source, sx, sy, sw, sh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
         return;
     }
-    void *region = copy_region_pixels(source, sx, sy, sw, sh);
+    void *region = rt2d_copy_region_pixels(source, sx, sy, sw, sh);
     if (!region)
         return;
     void *scaled = rt_pixels_scale(region, dw, dh);
     if (scaled)
-        blit_pixels(target, dx, dy, scaled, 0, 0, dw, dh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
-    release_ref_slot(&scaled);
-    release_ref_slot(&region);
+        rt2d_blit_pixels(target, dx, dy, scaled, 0, 0, dw, dh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
+    rt2d_release_ref_slot(&scaled);
+    rt2d_release_ref_slot(&region);
 }
 
 /// @brief Render the nine-slice into `target` at position `(x, y)`, stretched to
@@ -440,10 +440,10 @@ void rt_nineslice2d_draw_to_pixels(
     int64_t dcw = width - dl - dr;
     int64_t dch = height - dt - db;
 
-    int64_t x_dl = saturating_add_i64(x, dl);
-    int64_t x_dl_dcw = saturating_add_i64(x_dl, dcw);
-    int64_t y_dt = saturating_add_i64(y, dt);
-    int64_t y_dt_dch = saturating_add_i64(y_dt, dch);
+    int64_t x_dl = rt2d_saturating_add_i64(x, dl);
+    int64_t x_dl_dcw = rt2d_saturating_add_i64(x_dl, dcw);
+    int64_t y_dt = rt2d_saturating_add_i64(y, dt);
+    int64_t y_dt_dch = rt2d_saturating_add_i64(y_dt, dch);
 
     nineslice_copy_scaled(target, x, y, dl, dt, impl->pixels, 0, 0, sl, st);
     nineslice_copy_scaled(target, x_dl, y, dcw, dt, impl->pixels, sl, 0, scw, st);
@@ -476,14 +476,14 @@ static void debugdraw2d_finalize(void *obj) {
 }
 
 /// @brief Allocate a DebugDraw2D with the given initial command-buffer capacity.
-/// @details Capacity is clamped by `initial_capacity` (floor 16, ceiling 1Mi).
+/// @details Capacity is clamped by `rt2d_initial_capacity` (floor 16, ceiling 1Mi).
 ///          Returns NULL on allocation failure.
 void *rt_debugdraw2d_new(int64_t capacity) {
     rt_debugdraw2d_impl *debug_draw = (rt_debugdraw2d_impl *)rt_obj_new_i64(
         RT2D_DEBUGDRAW_CLASS_ID, (int64_t)sizeof(rt_debugdraw2d_impl));
     if (!debug_draw)
         return NULL;
-    debug_draw->capacity = initial_capacity(capacity);
+    debug_draw->capacity = rt2d_initial_capacity(capacity);
     debug_draw->cmds =
         (rt_debugdraw2d_cmd *)calloc((size_t)debug_draw->capacity, sizeof(*debug_draw->cmds));
     if (!debug_draw->cmds) {
@@ -602,7 +602,7 @@ void rt_debugdraw2d_draw_to_pixels(void *debug_draw, void *pixels) {
         return;
     for (int64_t i = 0; i < impl->count; i++) {
         rt_debugdraw2d_cmd *cmd = &impl->cmds[i];
-        int64_t color = draw_rgb(cmd->color);
+        int64_t color = rt2d_draw_rgb(cmd->color);
         if (cmd->type == 1)
             rt_pixels_draw_line(pixels, cmd->x0, cmd->y0, cmd->x1, cmd->y1, color);
         else if (cmd->type == 2)

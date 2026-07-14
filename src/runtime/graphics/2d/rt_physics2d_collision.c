@@ -42,6 +42,12 @@
 #define PHYSICS2D_CONTACT_SLOP 0.01
 #define PHYSICS2D_CONTACT_CORRECTION_PERCENT 0.4
 
+/* Approach speed (world units/sec) below which restitution is suppressed. Without
+ * this, a body resting on the floor keeps re-bouncing the tiny velocity gravity
+ * adds each frame (v = g*dt ≈ 0.16 at 60Hz) forever, since there is no sleeping
+ * system to hide the jitter. Matches Box2D's b2_velocityThreshold default. */
+#define PHYSICS2D_RESTITUTION_THRESHOLD 1.0
+
 //=============================================================================
 // Narrow-phase forward declarations (all file-local)
 //=============================================================================
@@ -53,6 +59,7 @@ static int8_t swept_bounds_pair(
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
 
 void maybe_resolve_pair(rt_world_impl *w, int ii, int jj, double dt) {
+    (void)dt; /* time-of-impact rollback no longer advances by the remainder */
     if (!w || ii < 0 || jj < 0 || ii >= w->body_count || jj >= w->body_count)
         return;
 
@@ -69,19 +76,16 @@ void maybe_resolve_pair(rt_world_impl *w, int ii, int jj, double dt) {
         world_record_contact(w, bi, bj, nx, ny, pen);
         resolve_collision(bi, bj, nx, ny, pen);
     } else if (swept_bounds_pair(bi, bj, &nx, &ny, &entry)) {
+        (void)entry;
         world_record_contact(w, bi, bj, nx, ny, 0.0);
         resolve_collision(bi, bj, nx, ny, 0.0);
-        double remaining = dt * (1.0 - entry);
-        if (remaining > 0.0 && isfinite(remaining)) {
-            if (bi->inv_mass > 0.0) {
-                bi->x += bi->vx * remaining;
-                bi->y += bi->vy * remaining;
-            }
-            if (bj->inv_mass > 0.0) {
-                bj->x += bj->vx * remaining;
-                bj->y += bj->vy * remaining;
-            }
-        }
+        /* Both bodies are left at their time-of-impact positions. We intentionally
+         * do NOT advance them by the post-impulse velocity for the remaining
+         * (1-entry) fraction: that advance was never collision-tested, and because
+         * the per-step pair-dedup skips any pair already resolved this step, a
+         * reflected body could slide straight through a wall it was heading toward
+         * (secondary tunnelling). Dropping the sub-step remainder is the safe
+         * trade-off; the next step continues cleanly from the contact position. */
     }
     sanitize_body_state(bi);
     sanitize_body_state(bj);
@@ -114,19 +118,44 @@ static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double 
     if (ax2 <= bx1 || bx2 <= ax1 || ay2 <= by1 || by2 <= ay1)
         return 0;
 
-    /* Calculate overlap on each axis */
-    ox = (ax2 < bx2 ? ax2 - bx1 : bx2 - ax1);
-    oy = (ay2 < by2 ? ay2 - by1 : by2 - ay1);
+    /* Minimum translation distance on each axis, paired with the sign that ejects
+     * B (A->B normal convention). Each axis has two candidate exits: push B toward
+     * +axis (ax2 - b_min) or toward -axis (b_max - ax1); the smaller is the true
+     * MTV. For a partial overlap this equals the intersection width and agrees with
+     * the old center-comparison sign; for containment (one box's extent inside the
+     * other's) the naive intersection-width formula returns the contained box's
+     * full width instead of the nearest exit distance, mispairing depth and normal
+     * and causing violent Baumgarte pops — this form selects the correct exit. */
+    double ox_pos = ax2 - bx1; /* eject B toward +x */
+    double ox_neg = bx2 - ax1; /* eject B toward -x */
+    double ox_sign;
+    if (ox_pos < ox_neg) {
+        ox = ox_pos;
+        ox_sign = 1.0;
+    } else {
+        ox = ox_neg;
+        ox_sign = -1.0;
+    }
+    double oy_pos = ay2 - by1; /* eject B toward +y */
+    double oy_neg = by2 - ay1; /* eject B toward -y */
+    double oy_sign;
+    if (oy_pos < oy_neg) {
+        oy = oy_pos;
+        oy_sign = 1.0;
+    } else {
+        oy = oy_neg;
+        oy_sign = -1.0;
+    }
 
     /* Use minimum overlap axis as contact normal (minimum translation vector) */
     if (ox < oy) {
         *pen = ox;
         *ny = 0.0;
-        *nx = ((a->x + a->w * 0.5) < (b->x + b->w * 0.5)) ? 1.0 : -1.0;
+        *nx = ox_sign;
     } else {
         *pen = oy;
         *nx = 0.0;
-        *ny = ((a->y + a->h * 0.5) < (b->y + b->h * 0.5)) ? 1.0 : -1.0;
+        *ny = oy_sign;
     }
     return 1;
 }
@@ -599,6 +628,11 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
          * concrete uses the concrete's zero restitution, not the ball's high one */
         e = a->restitution < b->restitution ? a->restitution : b->restitution;
 
+        /* Suppress restitution for low-speed contacts so resting bodies settle
+         * instead of jittering on the per-frame velocity gravity injects. */
+        if (-vel_along_n < PHYSICS2D_RESTITUTION_THRESHOLD)
+            e = 0.0;
+
         /* Scalar impulse magnitude. Derivation: we want the post-collision relative
          * velocity along n to equal -e * vel_along_n (restitution). Solving for j
          * gives: j = -(1+e)*vel_along_n / (1/mA + 1/mB) */
@@ -657,16 +691,3 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
         b->y += correction * b->inv_mass * ny;
     }
 }
-
-//=============================================================================
-// World finalisation
-//=============================================================================
-
-/// @brief GC finaliser for a physics world.
-///
-/// Called by the runtime's garbage collector when the world object is about to
-/// be freed. Releases the reference-counted body handles so their own memory
-/// can be reclaimed. After this call, all body pointers in the world are
-/// invalid — the finaliser zeroes body_count to make this explicit.
-///
-/// @param obj Pointer to the rt_world_impl being finalised.

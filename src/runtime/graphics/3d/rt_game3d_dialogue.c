@@ -308,7 +308,10 @@ int64_t rt_game3d_dialogue_last_choice(void *obj) {
 rt_string rt_game3d_dialogue_current_text(void *obj) {
     rt_game3d_dialogue *dialogue =
         game3d_dialogue_checked(obj, "Game3D.Dialogue3D.currentText: invalid dialogue");
-    static char revealed[RT_GAME3D_TL_TEXT_MAX];
+    /* Stack buffer, not TU-static: the result is copied into a runtime string
+     * before return, so a shared static only invited multi-instance/threading
+     * hazards (the overlay path already uses a stack buffer). */
+    char revealed[RT_GAME3D_TL_TEXT_MAX];
     revealed[0] = '\0';
     if (dialogue && dialogue->active && dialogue->line_index < dialogue->line_count) {
         const char *full = dialogue->lines[dialogue->line_index].text;

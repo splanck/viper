@@ -133,16 +133,47 @@ static int64_t camera_clamp_i64(int64_t value, int64_t min_value, int64_t max_va
     return value;
 }
 
-/// @brief Subtract two int64 values with saturation at INT64_MIN/MAX (delegates through long
-/// double).
+/// @brief Subtract two int64 values with saturation at INT64_MIN/MAX.
+/// @details Pure integer (not long double): the width of `long double` varies by
+///   platform (80-bit x86, 64-bit MSVC, 128-bit AArch64), so a long-double
+///   subtraction of two large int64 values is not exact everywhere and would make
+///   camera positions differ across builds — at odds with VM/native determinism.
 static int64_t camera_sub_saturating(int64_t a, int64_t b) {
-    return camera_ld_to_i64_sat((long double)a - (long double)b);
+    if (b < 0 && a > INT64_MAX + b)
+        return INT64_MAX;
+    if (b > 0 && a < INT64_MIN + b)
+        return INT64_MIN;
+    return a - b;
 }
 
-/// @brief Compute `value * mul / div` via long double with saturation; returns 0 on zero divisor.
+/// @brief Compute `round(value * mul / div)` with saturation; returns 0 on zero divisor.
+/// @details Exact 64-bit integer path when the product fits in int64 (the common
+///   camera case: bounded coordinates/dimensions times small factors such as a
+///   0–1000 zoom or 0–100 scroll factor), so those results are identical across
+///   platforms. Only a genuinely overflowing product falls back to long double —
+///   128-bit integer division is avoided because it pulls in a compiler-rt helper
+///   (__divti3) that the native-link runtime path must not depend on.
 static int64_t camera_mul_div_saturating(int64_t value, int64_t mul, int64_t div) {
     if (div == 0)
         return 0;
+    /* Does value*mul fit in int64? (Guard the divide-by-|mul| against mul==0.) */
+    int64_t amul = mul < 0 ? -mul : mul; /* |mul|; mul==INT64_MIN handled by fallback below */
+    if (mul != INT64_MIN && value != INT64_MIN &&
+        (mul == 0 || (value <= INT64_MAX / (amul == 0 ? 1 : amul) &&
+                      value >= INT64_MIN / (amul == 0 ? 1 : amul)))) {
+        int64_t num = value * mul;
+        int64_t adiv = (div < 0) ? -div : div; /* div==INT64_MIN: fallback handles it */
+        if (div != INT64_MIN) {
+            int64_t half = adiv / 2;
+            int neg = ((num < 0) ^ (div < 0));
+            /* round half away from zero, magnitude-based to avoid sign pitfalls */
+            int64_t unum = num < 0 ? -num : num;
+            if (num != INT64_MIN) {
+                int64_t q = (unum + half) / adiv;
+                return neg ? -q : q;
+            }
+        }
+    }
     return camera_ld_to_i64_sat(((long double)value * (long double)mul) / (long double)div);
 }
 
@@ -682,13 +713,19 @@ void rt_camera_smooth_follow(void *camera_ptr,
     int64_t desired_x = camera_sub_saturating(target_x, camera_world_width(camera) / 2);
     int64_t desired_y = camera_sub_saturating(target_y, camera_world_height(camera) / 2);
 
-    // Deadzone: skip if target is within deadzone of current position
+    // Deadzone: skip if target is within deadzone of current position. A zero axis
+    // means "no deadzone on that axis" (always considered inside), so e.g.
+    // SetDeadzone(64, 0) gives horizontal slack with tight vertical tracking —
+    // requiring BOTH axes inside would make a single-axis deadzone unsatisfiable and
+    // silently disable the whole thing.
     if (camera->deadzone_w > 0 || camera->deadzone_h > 0) {
         int64_t dx = camera_sub_saturating(desired_x, camera->x);
         int64_t dy = camera_sub_saturating(desired_y, camera->y);
         int64_t hw = camera->deadzone_w / 2;
         int64_t hh = camera->deadzone_h / 2;
-        if (dx > -hw && dx < hw && dy > -hh && dy < hh)
+        int8_t inside_x = (hw <= 0) || (dx > -hw && dx < hw);
+        int8_t inside_y = (hh <= 0) || (dy > -hh && dy < hh);
+        if (inside_x && inside_y)
             return;
     }
 
@@ -700,12 +737,15 @@ void rt_camera_smooth_follow(void *camera_ptr,
         camera->x = desired_x;
         camera->y = desired_y;
     } else if (lerp_pct > 0) {
-        camera->x = camera_add_saturating(
-            camera->x,
-            camera_mul_div_saturating(camera_sub_saturating(desired_x, camera->x), lerp_pct, 1000));
-        camera->y = camera_add_saturating(
-            camera->y,
-            camera_mul_div_saturating(camera_sub_saturating(desired_y, camera->y), lerp_pct, 1000));
+        int64_t dx = camera_sub_saturating(desired_x, camera->x);
+        int64_t dy = camera_sub_saturating(desired_y, camera->y);
+        int64_t step_x = camera_mul_div_saturating(dx, lerp_pct, 1000);
+        int64_t step_y = camera_mul_div_saturating(dy, lerp_pct, 1000);
+        // Snap the sub-pixel remainder: once the rounded step reaches 0 but the
+        // camera is not yet centered, move the last pixel(s) so it actually reaches
+        // the target instead of parking up to 500/lerp_pct px off-center forever.
+        camera->x = camera_add_saturating(camera->x, step_x != 0 ? step_x : dx);
+        camera->y = camera_add_saturating(camera->y, step_y != 0 ? step_y : dy);
     }
 
     camera_clamp_bounds(camera);
@@ -1020,8 +1060,19 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
             continue;
         }
 
-        int64_t span_x = camera_view_tile_span(camera->width, pw);
-        int64_t span_y = camera_view_tile_span(camera->height, ph);
+        /* Tile to cover the actual draw target: use the canvas size (falling back to
+         * the camera viewport if larger), not camera->width/height alone — otherwise
+         * a canvas bigger than the viewport (e.g. after a window resize) is left with
+         * an un-tiled band on the right/bottom. */
+        int64_t cov_w = rt_canvas_width(canvas);
+        int64_t cov_h = rt_canvas_height(canvas);
+        if (cov_w < camera->width)
+            cov_w = camera->width;
+        if (cov_h < camera->height)
+            cov_h = camera->height;
+
+        int64_t span_x = camera_view_tile_span(cov_w, pw);
+        int64_t span_y = camera_view_tile_span(cov_h, ph);
         if (!camera_tile_product_within_limit(span_x, span_y))
             continue;
 
@@ -1038,9 +1089,9 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
         if (start_y > 0)
             start_y -= ph;
 
-        /* Tile the pixels across the viewport */
-        for (int64_t ty = start_y; ty < camera->height; ty += ph) {
-            for (int64_t tx = start_x; tx < camera->width; tx += pw) {
+        /* Tile the pixels across the draw target */
+        for (int64_t ty = start_y; ty < cov_h; ty += ph) {
+            for (int64_t tx = start_x; tx < cov_w; tx += pw) {
                 rt_canvas_blit_alpha(canvas, tx, ty, layer->pixels);
             }
         }

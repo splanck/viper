@@ -20,6 +20,7 @@ class RidgeboundWeather {
     hide Float intensity;
     hide Float cloudCover;
     hide Float wetness;
+    hide Float qualityScale;
 
     expose func setup(softParticles: Boolean) {
         rain = Particles3D.New(config.WEATHER_RAIN_COUNT);
@@ -42,27 +43,50 @@ class RidgeboundWeather {
         Particles3D.SetDirection(snow, 0.0, -1.0, 0.0, 0.7);
         Particles3D.SetSpeed(snow, 0.8, 2.0);
         Particles3D.SetLifetime(snow, 4.0, 7.0);
-        Particles3D.SetSize(snow, 0.11, 0.09);
+        Particles3D.SetSize(snow, 0.055, 0.025);
         Particles3D.SetGravity(snow, 0.0, -0.4, 0.0);
         Particles3D.SetColor(snow, 0xFFFFFF, 0xDDE8F5);
-        Particles3D.SetAlpha(snow, 0.85, 0.0);
+        Particles3D.SetAlpha(snow, 0.58, 0.0);
         Particles3D.SetEmitterShape(snow, 1);
         Particles3D.SetEmitterSize(snow, 48.0, 2.0, 48.0);
         Particles3D.SetRate(snow, 0.0);
         if (softParticles) { Particles3D.SetSoftness(snow, config.WEATHER_SOFT_FADE); }
         Particles3D.Start(snow);
 
+        qualityScale = 1.0;
+        reset();
+    }
+
+    expose func applyQuality(level: Integer) {
+        if (level <= 0) {
+            qualityScale = 0.38;
+        } else if (level == 1) {
+            qualityScale = 0.68;
+        } else {
+            qualityScale = 1.0;
+        }
+    }
+
+    expose func reset() {
         clock = 0.0;
         intensity = 0.0;
         cloudCover = 0.0;
         wetness = 0.0;
+        if (rain != null) {
+            Particles3D.SetRate(rain, 0.0);
+            Particles3D.Clear(rain);
+        }
+        if (snow != null) {
+            Particles3D.SetRate(snow, 0.0);
+            Particles3D.Clear(snow);
+        }
     }
 
     // Advance the weather clock, follow the camera, and route the current
     // intensity to rain (low) or snow (up on the peaks) based on player altitude.
     expose func update(dt: Float, camera: Camera3D, playerY: Float) {
         clock = clock + dt;
-        var phase = clock / config.WEATHER_PERIOD_SEC;
+        var phase = clock / config.WEATHER_PERIOD_SEC + config.WEATHER_START_PHASE;
         phase = phase - (Convert.NumToInt(phase) + 0.0);
         if (phase < 0.0) { phase = phase + 1.0; }
         // Dry for most of the cycle, ramping to a full storm at the peak. Cloud
@@ -79,10 +103,10 @@ class RidgeboundWeather {
 
         var snowy = playerY > config.WATER_HEIGHT + config.WEATHER_SNOW_ALTITUDE;
         if (snowy) {
-            Particles3D.SetRate(snow, intensity * config.WEATHER_SNOW_RATE);
+            Particles3D.SetRate(snow, intensity * config.WEATHER_SNOW_RATE * qualityScale);
             Particles3D.SetRate(rain, 0.0);
         } else {
-            Particles3D.SetRate(rain, intensity * config.WEATHER_RAIN_RATE);
+            Particles3D.SetRate(rain, intensity * config.WEATHER_RAIN_RATE * qualityScale);
             Particles3D.SetRate(snow, 0.0);
         }
         Particles3D.SetPosition(rain, cx, cy + 24.0, cz);

@@ -16,7 +16,8 @@
 //   - Colors are packed integers: 0xRRGGBBAA for raw pixel/RGBA parameters and
 //     0x00RRGGBB for "rgb"/"tint" parameters, matching rt_pixels conventions.
 //   - Coordinates are 0-based from the top-left; out-of-range tile/region access
-//     is clipped or returns a zero/identity value rather than trapping.
+//     is clipped or returns a zero/identity/sentinel value rather than trapping
+//     (e.g. rt_tilelayer2d_get returns -1 for an out-of-bounds cell).
 //   - Percent-style parameters (lerp_pct, t_pct, opacity, alpha) are integers in
 //     0..100 unless a wider range is documented on the specific function; byte
 //     alpha parameters document 0..255.
@@ -182,8 +183,14 @@ void rt_renderer2d_draw_region(void *renderer,
                                int64_t width,
                                int64_t height);
 /// @brief Flush all queued draws into an offscreen render target.
+/// @details Unlike rt_renderer2d_end, this does NOT clear the command queue or
+///          deactivate the renderer — the queued commands remain and will be drawn
+///          again by a subsequent flush or End(). Call it once per target, or clear
+///          via End() afterwards; flushing the same alpha-blended queue twice
+///          double-composites.
 void rt_renderer2d_flush_to_target(void *renderer, void *target);
-/// @brief Flush all queued draws to the on-screen canvas and end the frame.
+/// @brief Flush all queued draws to the on-screen canvas, then clear the queue and
+///        end the frame (deactivates the renderer until the next Begin).
 void rt_renderer2d_end(void *renderer, void *canvas);
 
 //===----------------------------------------------------------------------===//
@@ -263,7 +270,10 @@ void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t heigh
 void rt_viewport2d_set_screen_size(void *viewport, int64_t width, int64_t height);
 /// @brief Enable/disable integer-only scaling (avoids fractional pixel shimmer).
 void rt_viewport2d_set_integer_scaling(void *viewport, int64_t enabled);
-/// @brief Get the computed scale factor.
+/// @brief Get the computed scale factor as fixed-point where 1000 == 1.0x.
+/// @details The virtual→screen scale is returned in thousandths (e.g. 1500 = 1.5x);
+///          divide by 1000.0 for a float factor. Returns 1000 (1.0x) for an invalid
+///          handle. Viewport offsets are in post-scale screen pixels.
 int64_t rt_viewport2d_get_scale(void *viewport);
 /// @brief Get the horizontal letterbox offset in screen pixels.
 int64_t rt_viewport2d_get_offset_x(void *viewport);
@@ -375,8 +385,11 @@ int64_t rt_path2d_count(void *path);
 int64_t rt_path2d_get_x(void *path, int64_t index);
 /// @brief Get the Y of the path point at @p index.
 int64_t rt_path2d_get_y(void *path, int64_t index);
-/// @brief Rasterize the path into a Pixels image with the given RGBA color.
-void rt_path2d_draw_to_pixels(void *path, void *pixels, int64_t rgba);
+/// @brief Rasterize the path into a Pixels image with the given color.
+/// @note The color is treated as 24-bit RGB (0x00RRGGBB); alpha is not composited
+///       on this path. A 0xRRGGBBAA value has its alpha byte dropped. (An opaque
+///       RGBA value whose red byte is 0 is ambiguous with 0x00GGBBxx — pass RGB.)
+void rt_path2d_draw_to_pixels(void *path, void *pixels, int64_t rgb);
 
 //===----------------------------------------------------------------------===//
 // ShapeRenderer2D — stroked/filled primitive rasterizer.
@@ -384,10 +397,12 @@ void rt_path2d_draw_to_pixels(void *path, void *pixels, int64_t rgba);
 
 /// @brief Create a shape renderer with default stroke/fill.
 void *rt_shaperenderer2d_new(void);
-/// @brief Set the stroke (outline) color (0xRRGGBBAA).
-void rt_shaperenderer2d_set_stroke(void *renderer, int64_t rgba);
-/// @brief Set the fill color (0xRRGGBBAA).
-void rt_shaperenderer2d_set_fill(void *renderer, int64_t rgba);
+/// @brief Set the stroke (outline) color as 24-bit RGB (0x00RRGGBB).
+/// @note Rendered opaque; alpha is not composited (a 0xRRGGBBAA value's alpha byte
+///       is dropped). Pass RGB — an opaque RGBA whose red byte is 0 is ambiguous.
+void rt_shaperenderer2d_set_stroke(void *renderer, int64_t rgb);
+/// @brief Set the fill color as 24-bit RGB (0x00RRGGBB); alpha not composited.
+void rt_shaperenderer2d_set_fill(void *renderer, int64_t rgb);
 /// @brief Draw a stroked line into @p pixels.
 void rt_shaperenderer2d_line(
     void *renderer, void *pixels, int64_t x0, int64_t y0, int64_t x1, int64_t y1);
@@ -441,6 +456,9 @@ void rt_nineslice2d_draw_to_pixels(
 
 //===----------------------------------------------------------------------===//
 // DebugDraw2D — queued debug overlay primitives (lines/rects/circles).
+// Color parameters named "rgba" below are rendered as 24-bit RGB (0x00RRGGBB):
+// alpha is not composited (a 0xRRGGBBAA value's alpha byte is dropped), so pass an
+// RGB value — an opaque RGBA whose red byte is 0 would be misread as RGB.
 //===----------------------------------------------------------------------===//
 
 /// @brief Create a debug-draw buffer with an initial capacity.

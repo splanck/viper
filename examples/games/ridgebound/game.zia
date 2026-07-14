@@ -52,6 +52,7 @@ class RidgeboundGame {
     hide RidgeboundMenu3D menuSys;
 
     hide Float worldTime;
+    hide Float presentationTime;
     hide Integer qualityLevel;
     hide Integer screenState;
     hide Integer previousMenuState;
@@ -74,7 +75,7 @@ class RidgeboundGame {
 
         player = new RidgeboundPlayer();
         camCtl = new RidgeboundCamera();
-        camCtl.setup(camera);
+        camCtl.setup(camera, world.Physics);
         menuSys = new RidgeboundMenu3D();
         menuSys.init();
 
@@ -134,16 +135,25 @@ class RidgeboundGame {
         effectsSys.setup();
         weatherSys = new RidgeboundWeather();
         weatherSys.setup(Canvas3D.BackendSupports(canvas, "soft-particles"));
-        sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
+        if (config.ENABLE_PHYSICS_TOYS) {
+            sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
+        }
         crittersSys = new RidgeboundCritters();
         // Bake a nav-mesh from the spawned world (terrain + tree/landmark
         // colliders) so critters path around obstacles instead of walking
         // straight lines through them.
-        var navMesh = world.BakeNavMesh(
-            config.NAV_AGENT_RADIUS, config.NAV_AGENT_HEIGHT, config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE);
-        crittersSys.setup(navMesh, land);
+        if (config.ENABLE_AMBIENT_CRITTERS) {
+            var navMesh = world.BakeNavMesh(
+                config.NAV_AGENT_RADIUS, config.NAV_AGENT_HEIGHT,
+                config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE);
+            crittersSys.setup(navMesh, land);
+        }
         survivalSys = new RidgeboundSurvival();
-        survivalSys.setup(world, land);
+        if (config.ENABLE_SURVIVAL_LAYER) {
+            survivalSys.setup(world, land);
+        } else {
+            survivalSys.setupDisabled();
+        }
         sim.setupObjective(land);
         hudSys = new RidgeboundHud();
         screenState = STATE_TITLE;
@@ -159,9 +169,50 @@ class RidgeboundGame {
     expose func getForest() -> RidgeboundForest { return forestSys; }
     expose func isPlaying() -> Boolean { return screenState == STATE_PLAYING; }
     expose func isTitle() -> Boolean { return screenState == STATE_TITLE; }
+    expose func isPaused() -> Boolean { return screenState == STATE_PAUSED; }
+    expose func isOptions() -> Boolean { return screenState == STATE_OPTIONS; }
+    expose func isControls() -> Boolean { return screenState == STATE_CONTROLS; }
+    expose func debugPlayerX() -> Float { return player.getX(); }
     expose func debugPlayerY() -> Float { return player.getY(); }
+    expose func debugPlayerZ() -> Float { return player.getZ(); }
     expose func debugGroundY() -> Float { return terrain.sampleGround(land, player.getX(), player.getZ()); }
     expose func debugCameraY() -> Float { return camCtl.getEyeY(); }
+    expose func debugPlayerGrounded() -> Boolean { return player.isGrounded(); }
+    expose func debugPlayerSwimming() -> Boolean { return player.isSwimming(); }
+    expose func debugWorldTime() -> Float { return worldTime; }
+    expose func debugWeatherIntensity() -> Float { return weatherSys.getIntensity(); }
+
+    // Probe-only controls keep long-running validation deterministic while all
+    // production movement still goes through Input3D and CharacterController3D.
+    expose func debugRespawnForProbe() {
+        player.respawn(land);
+        camCtl.reset();
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land, 0.016);
+    }
+
+    expose func debugSetTravelDirectionForProbe(dx: Float, dz: Float) {
+        camCtl.setTravelDirectionForProbe(dx, dz);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land, 0.016);
+    }
+
+    expose func debugSetWorldTimeForProbe(value: Float) {
+        worldTime = value;
+        if (worldTime < 0.0) { worldTime = 0.0; }
+        sim.updateTimeOfDay(world, worldTime, weatherSys.getCloudCover());
+        updateSkybox();
+    }
+
+    expose func debugSetQualityForProbe(level: Integer) {
+        qualityLevel = level;
+        if (qualityLevel < 0) { qualityLevel = 0; }
+        if (qualityLevel > 2) { qualityLevel = 2; }
+        menuSys.setQualityPreset(qualityLevel);
+        applyQualityPreset();
+    }
+
+    expose func debugRestartForProbe() {
+        restartGameplay();
+    }
 
     expose func startGameplayForSmoke() {
         startGameplay();
@@ -171,12 +222,14 @@ class RidgeboundGame {
         var stepDt = dt;
         if (stepDt <= 0.0) { stepDt = 0.016; }
         if (stepDt > config.DT_MAX_SEC) { stepDt = config.DT_MAX_SEC; }
-        worldTime = worldTime + stepDt;
-
         if (screenState != STATE_PLAYING) {
             stepMenu(stepDt);
             return;
         }
+
+        // Gameplay simulation owns this clock. Menus and pause never consume
+        // daylight, weather, warmth, or objective time.
+        worldTime = worldTime + stepDt;
 
         if (input.Pressed(Key.Escape)) { pauseGameplay(); return; }
         handleToggles();
@@ -185,27 +238,35 @@ class RidgeboundGame {
         // Orient the camera first: CharacterController3D.update moves relative to
         // the camera basis, so the camera must reflect this frame's look before
         // the character moves. Re-follow afterwards to track the moved character.
-        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land, stepDt);
         player.update(stepDt, input, camera, audioSys, effectsSys);
-        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land, stepDt);
 
         // Scanner first so the interact target (crosshair-on-beacon) is current
         // before updateBeacons reads it for the hold-E scan-to-activate.
         sim.updateScanner(canvas, camera);
         sim.updateBeacons(stepDt, world, camera, input, player.getX(), player.getY(), player.getZ(), audioSys, effectsSys);
-        sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Key.F));
+        if (config.ENABLE_PHYSICS_TOYS) {
+            sim.pushBoulders(stepDt, player.getX(), player.getZ(), input.Pressed(Key.F));
+        }
         sim.updateDynamicLights(player.getX(), player.getY(), player.getZ());
         sim.updateTimeOfDay(world, worldTime, weatherSys.getCloudCover());
         updateSkybox();
         waterSky.update(stepDt);
         terrainSys.updateVegetation(stepDt, camera);
-        effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
+        effectsSys.update(stepDt);
         weatherSys.update(stepDt, camera, player.getY());
         assets.applyTerrainWetness(weatherSys.getWetness());
-        crittersSys.update(stepDt, player.getX(), player.getZ(), player.isSprinting() == false);
-        survivalSys.update(stepDt, player.getX(), player.getZ(),
-            sim.isNight(), weatherSys.getCloudCover());
-        player.setRegenScale(survivalSys.getRegenScale());
+        if (config.ENABLE_AMBIENT_CRITTERS) {
+            crittersSys.update(stepDt, player.getX(), player.getZ(), player.isSprinting() == false);
+        }
+        if (config.ENABLE_SURVIVAL_LAYER) {
+            survivalSys.update(stepDt, player.getX(), player.getZ(),
+                sim.isNight(), weatherSys.getCloudCover());
+            player.setRegenScale(survivalSys.getRegenScale());
+        } else {
+            player.setRegenScale(1.0);
+        }
         audioSys.updateAmbient(stepDt);
         sim.updateObjective(camera, player.getX(), player.getY(), player.getZ(), audioSys);
         world.StepSimulation(stepDt);
@@ -220,14 +281,11 @@ class RidgeboundGame {
         forestSys.drawInstanced(canvas);
         sim.drawBeacons(canvas, assets.getCubeMesh(), assets.getBeaconMesh(), assets.getPedestalMat(),
             assets.getBeaconOffMat(), assets.getBeaconOnMat(), worldTime);
-        if (screenState == STATE_TITLE || screenState == STATE_OPTIONS || screenState == STATE_CONTROLS) {
-            menuSys.drawTitle3D(canvas, land, assets.getCubeMesh(), assets.getBeaconMesh(),
-                assets.getPedestalMat(), assets.getBeaconOffMat(), assets.getBeaconOnMat(), assets.getWaterMarkerMat());
-        } else {
+        if (screenState != STATE_TITLE && screenState != STATE_OPTIONS && screenState != STATE_CONTROLS) {
             drawPlayer();
         }
-        crittersSys.draw(canvas, land);
-        survivalSys.draw(canvas, camera);
+        if (config.ENABLE_AMBIENT_CRITTERS) { crittersSys.draw(canvas, land); }
+        if (config.ENABLE_SURVIVAL_LAYER) { survivalSys.draw(canvas, camera); }
         waterSky.drawReeds(canvas, worldTime);
         effectsSys.drawDecals(canvas);
         effectsSys.draw(canvas, camera);
@@ -238,12 +296,10 @@ class RidgeboundGame {
         Canvas3D.BeginOverlay(canvas);
         if (screenState == STATE_PLAYING) {
             hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(),
-                player.getStamina(), survivalSys.getWarmth(), survivalSys.getForagedCount(),
-                crittersSys.getSpottedCount(), crittersSys.getCritterCount(), helpOn, debugOn);
+                player.getStamina(), survivalSys.getWarmth(), helpOn, debugOn);
         } else if (screenState == STATE_PAUSED) {
             hudSys.draw(canvas, minimapSys, sim, player.getX(), player.getZ(),
-                player.getStamina(), survivalSys.getWarmth(), survivalSys.getForagedCount(),
-                crittersSys.getSpottedCount(), crittersSys.getCritterCount(), helpOn, debugOn);
+                player.getStamina(), survivalSys.getWarmth(), helpOn, debugOn);
             menuSys.drawOverlay(canvas, fullscreenOn);
         } else {
             menuSys.drawOverlay(canvas, fullscreenOn);
@@ -286,6 +342,7 @@ class RidgeboundGame {
         player.spawn(world, land);
         camCtl.reset();
         worldTime = 0.0;
+        presentationTime = 0.0;
         quitRequested = false;
         qualityLevel = 2;
         screenState = STATE_TITLE;
@@ -341,19 +398,16 @@ class RidgeboundGame {
         handleMenuCommand(cmd);
 
         if (screenState == STATE_TITLE || screenState == STATE_OPTIONS || screenState == STATE_CONTROLS) {
-            camCtl.titleView(worldTime, land);
-            sim.updateTimeOfDay(world, worldTime * 0.45, weatherSys.getCloudCover());
+            presentationTime = presentationTime + stepDt;
+            camCtl.titleView(presentationTime, land);
+            // The title is a stable authored morning tableau, not a hidden live
+            // simulation that can start the run at night or in a storm.
+            sim.updateTimeOfDay(world, 0.0, 0.0);
             updateSkybox();
             waterSky.update(stepDt);
             terrainSys.updateVegetation(stepDt, camera);
-            effectsSys.update(stepDt, player.getX(), player.getY(), player.getZ());
-            weatherSys.update(stepDt, camera, player.getY());
-            assets.applyTerrainWetness(weatherSys.getWetness());
-            crittersSys.update(stepDt, player.getX(), player.getZ(), true);
-            survivalSys.update(stepDt, player.getX(), player.getZ(),
-                sim.isNight(), weatherSys.getCloudCover());
+            effectsSys.update(stepDt);
             audioSys.updateAmbient(stepDt);
-            world.StepSimulation(stepDt);
         }
     }
 
@@ -397,9 +451,17 @@ class RidgeboundGame {
         applyMenuSettings();
         sim.resetProgress();
         worldTime = 0.0;
+        weatherSys.reset();
+        survivalSys.reset();
+        effectsSys.reset();
+        audioSys.reset();
+        assets.applyTerrainWetness(0.0);
+        skyPhaseCurrent = -1;
+        sim.updateTimeOfDay(world, worldTime, 0.0);
+        updateSkybox();
         helpOn = false;
         screenState = STATE_PLAYING;
-        camCtl.follow(player.getX(), player.getY(), player.getZ(), land);
+        camCtl.follow(player.getX(), player.getY(), player.getZ(), land, 0.016);
     }
 
     hide func pauseGameplay() {
@@ -417,10 +479,28 @@ class RidgeboundGame {
     }
 
     hide func returnToTitle() {
+        // Returning to the front end abandons the run and restores the same
+        // authored clear-morning tableau used at initial startup. Otherwise a
+        // late-game storm, wet ground, particles, or linked beacons could leak
+        // into the title scene even though its clock is intentionally frozen.
+        worldTime = 0.0;
+        presentationTime = 0.0;
+        player.respawn(land);
+        camCtl.reset();
+        sim.resetProgress();
+        weatherSys.reset();
+        survivalSys.reset();
+        effectsSys.reset();
+        audioSys.reset();
+        assets.applyTerrainWetness(0.0);
+        skyPhaseCurrent = -1;
+        sim.updateTimeOfDay(world, 0.0, 0.0);
+        updateSkybox();
         screenState = STATE_TITLE;
         previousMenuState = STATE_TITLE;
+        helpOn = false;
         menuSys.openTitle();
-        camCtl.titleView(worldTime, land);
+        camCtl.titleView(presentationTime, land);
         if (mouseCaptured) {
             input.ReleaseMouse();
             mouseCaptured = false;
@@ -472,6 +552,12 @@ class RidgeboundGame {
     hide func applyQualityPreset() {
         Canvas3D.SetQuality(canvas, qualityLevel);
         postfx.buildPostFXForQuality(canvas, qualityLevel);
+        terrainSys.applyQuality(qualityLevel);
+        waterSky.applyQuality(qualityLevel);
+        weatherSys.applyQuality(qualityLevel);
+        sim.applyQuality(qualityLevel);
+        Canvas3D.SetFrustumCulling(canvas, true);
+        Canvas3D.SetOcclusionCulling(canvas, qualityLevel > 0);
     }
 
     // Swap between the day and starfield night skyboxes when the sun crosses the
@@ -496,14 +582,54 @@ class RidgeboundGame {
         var px = player.getX();
         var py = player.getY();
         var pz = player.getZ();
-        var bob = Sin(worldTime * 5.0) * 0.035;
-        var body = Mat4.Mul(
-            Mat4.Translate(px, py + config.PLAYER_GROUND_OFFSET + bob, pz),
-            Mat4.Scale(1.0, 1.0, 1.0));
-        Canvas3D.DrawMesh(canvas, assets.getPlayerBodyMesh(), body, assets.getPlayerMat());
-        var core = Mat4.Mul(
-            Mat4.Translate(px, py + 1.20 + bob, pz),
-            Mat4.Scale(1.0, 1.0, 1.0));
-        Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(), core, assets.getWaterMarkerMat());
+        var yaw = player.getFacingYaw();
+        var moveAmount = player.getMoveAmount();
+        var stride = Sin(player.getGaitPhase()) * moveAmount;
+        var bob = mathutil.absFloat(Sin(player.getGaitPhase())) * 0.035 * moveAmount;
+        if (moveAmount < 0.02) { bob = Sin(worldTime * 1.5) * 0.006; }
+        if (player.isSwimming()) { bob = Sin(worldTime * 2.8) * 0.035; stride = 0.0; }
+
+        // A grounded contact shadow keeps the silhouette attached even on low
+        // shadow presets.
+        Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(),
+            Mat4.Mul(Mat4.Translate(px, py + 0.025, pz), Mat4.Scale(2.7, 0.10, 1.9)),
+            assets.getPlayerShadowMat());
+
+        var torso = Mat4.Mul(
+            Mat4.Translate(px, py + 1.02 + bob, pz), Mat4.RotateY(yaw));
+        Canvas3D.DrawMesh(canvas, assets.getPlayerBodyMesh(), torso, assets.getPlayerMat());
+
+        // Head + luminous signal lens establish a recognizable explorer rather
+        // than the former capsule-and-ball debug pawn.
+        Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(),
+            Mat4.Mul(Mat4.Translate(px, py + 1.57 + bob, pz), Mat4.Scale(1.06, 1.10, 1.06)),
+            assets.getPlayerTrimMat());
+        var fwdX = Sin(yaw);
+        var fwdZ = Cos(yaw);
+        Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(),
+            Mat4.Mul(
+                Mat4.Translate(px + fwdX * 0.19, py + 1.56 + bob, pz + fwdZ * 0.19),
+                Mat4.Scale(0.34, 0.34, 0.22)),
+            assets.getWaterMarkerMat());
+
+        // Backpack, arms, and alternating legs give the pawn readable facing
+        // and a distance-driven walk cycle without requiring an external rig.
+        Canvas3D.DrawMesh(canvas, assets.getPlayerPackMesh(),
+            Mat4.Mul(
+                Mat4.Translate(px - fwdX * 0.25, py + 1.02 + bob, pz - fwdZ * 0.25),
+                Mat4.RotateY(yaw)),
+            assets.getPlayerTrimMat());
+        drawPlayerLimb(px, py + 0.39 + bob, pz, yaw, -0.16, stride * 0.13, assets.getPlayerMat());
+        drawPlayerLimb(px, py + 0.39 + bob, pz, yaw, 0.16, 0.0 - stride * 0.13, assets.getPlayerMat());
+        drawPlayerLimb(px, py + 1.04 + bob, pz, yaw, -0.38, 0.0 - stride * 0.10, assets.getPlayerTrimMat());
+        drawPlayerLimb(px, py + 1.04 + bob, pz, yaw, 0.38, stride * 0.10, assets.getPlayerTrimMat());
+    }
+
+    hide func drawPlayerLimb(px: Float, py: Float, pz: Float, yaw: Float,
+                             side: Float, forward: Float, mat: Material3D) {
+        var wx = px + Cos(yaw) * side + Sin(yaw) * forward;
+        var wz = pz - Sin(yaw) * side + Cos(yaw) * forward;
+        Canvas3D.DrawMesh(canvas, assets.getPlayerLimbMesh(),
+            Mat4.Translate(wx, py, wz), mat);
     }
 }

@@ -7,6 +7,25 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
 
 ---
 
+## BUG-007 — Character horizontal motion stalls on shallow heightfield cells
+- **Date:** 2026-07-13
+- **Severity:** P1 (core third-person traversal can require repeated jumping)
+- **Area:** `Character3D` sweep-and-slide / heightfield support contacts
+- **Symptom:** Sustained horizontal input can stop at tiny rises in otherwise walkable rolling
+  terrain. The capsule sweep reports its supporting heightfield before consuming the horizontal
+  remainder; the solver only attempted its bounded lift/cross/settle step for non-walkable normals,
+  so repeated walkable cell contacts could consume nearly all forward motion.
+- **Fix:** `character3d_move_axis` now tries the existing step sequence for every horizontal
+  obstruction when stepping is enabled. The sequence remains bounded by `StepHeight`, requires a
+  clear lift and crossing, and commits only after settling on a slope-limit-compliant surface.
+- **Coverage:** `test_character_crosses_uneven_walkable_heightfield` drives 360 sustained frames
+  over a shallow graded/rippled heightfield and asserts forward travel, rise, and grounded state.
+  Ridgebound's standalone no-jump route replay additionally passes with the existing executable.
+- **Status:** Fixed in source. The C++ regression was not executed during this work because the
+  explicit task constraint prohibited rebuilding Viper and running CTest.
+
+---
+
 > Note on tooling: the in-tree `build/install-check/bin/viper` is **stale** (predates
 > `Viper.Game3D`) and must not be used for validation — it reports phantom errors such as
 > "Unknown runtime namespace: Viper.Game3D". The authoritative current binary is

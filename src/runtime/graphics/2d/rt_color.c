@@ -316,13 +316,35 @@ int64_t rt_color_from_hex(rt_string hex) {
 /// @brief Hex the to.
 rt_string rt_color_to_hex(int64_t color) {
     char buf[10];
-    int8_t has_explicit_alpha = (color & RT_COLOR_EXPLICIT_ALPHA_FLAG) != 0;
-    int64_t a = (color >> 24) & 0xFF;
-    int64_t r = (color >> 16) & 0xFF;
-    int64_t g = (color >> 8) & 0xFF;
-    int64_t b = color & 0xFF;
+    /* Decode with the same 3-way convention the pixel pipeline uses
+     * (rt_pixels_color_to_rgba): a tagged Color.RGBA is 0xAARRGGBB, an untagged
+     * value <= 0x00FFFFFF is opaque 0x00RRGGBB, and any larger untagged value is
+     * raw 0xRRGGBBAA. The previous code always assumed ARGB, so a hand-built raw
+     * RGBA value (e.g. 0x11223344) was mis-serialized (channels rotated). */
+    uint64_t c = (uint64_t)color;
+    int64_t r, g, b, a;
+    int emit_alpha;
+    if ((c & (uint64_t)RT_COLOR_EXPLICIT_ALPHA_FLAG) != 0) {
+        a = (int64_t)((c >> 24) & 0xFF);
+        r = (int64_t)((c >> 16) & 0xFF);
+        g = (int64_t)((c >> 8) & 0xFF);
+        b = (int64_t)(c & 0xFF);
+        emit_alpha = 1;
+    } else if (c <= 0x00FFFFFFu) {
+        r = (int64_t)((c >> 16) & 0xFF);
+        g = (int64_t)((c >> 8) & 0xFF);
+        b = (int64_t)(c & 0xFF);
+        a = 255;
+        emit_alpha = 0;
+    } else {
+        r = (int64_t)((c >> 24) & 0xFF);
+        g = (int64_t)((c >> 16) & 0xFF);
+        b = (int64_t)((c >> 8) & 0xFF);
+        a = (int64_t)(c & 0xFF);
+        emit_alpha = 1;
+    }
     int len;
-    if (has_explicit_alpha || a != 0)
+    if (emit_alpha)
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X%02X", (int)r, (int)g, (int)b, (int)a);
     else
         len = snprintf(buf, sizeof(buf), "#%02X%02X%02X", (int)r, (int)g, (int)b);

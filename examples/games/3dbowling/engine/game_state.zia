@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/game_state.zia
+// Purpose: Declares shared controller state for the layered bowling game.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: engine/game_state
 // PURPOSE: Shared controller state and dispatch hooks for 3D Bowling.
@@ -24,6 +42,10 @@ bind "../effects/particles";
 bind "../effects/celebrations";
 bind "../scoring/scoring";
 bind "../gameplay/release_meter";
+bind "../gameplay/shot_watchdog";
+bind "../gameplay/feedback_model";
+bind "../gameplay/ai_delivery";
+bind "../gameplay/impact_batch";
 bind "../gameplay/leaves";
 bind "../presentation/replay";
 bind "../progression/profile";
@@ -42,6 +64,11 @@ class BowlingGameState {
     hide ParticleManager particleMgr;
     hide CelebrationManager celebMgr;
     hide ReleaseMeter releaseMeter;
+    hide ShotWatchdog shotWatchdog;
+    hide ThrowResumeGate throwResumeGate;
+    hide FeedbackModel feedbackModel;
+    hide AiDeliveryModel aiDeliveryModel;
+    hide ImpactBatch impactBatch;
     hide LeaveAnalyzer leaveAnalyzer;
     hide ReplayRecorder replayRecorder;
     hide BowlerAvatar bowlerAvatar;
@@ -63,14 +90,19 @@ class BowlingGameState {
     hide Float lightFlashTimer;
 
     hide Float aimX;
+    hide Float stanceX;
+    hide Float targetX;
     hide Float power;
     hide Float spin;
+    hide Float lastReleaseOffset;
     hide Float lastReleaseAccuracy;
     hide Float lastShotSpeed;
     hide Boolean charging;
+    hide Boolean spareRelease;
     hide Boolean gutterLatched;
     hide Boolean ballHitPinsThisRoll;
     hide Boolean cinematicStarted;
+    hide Boolean watchdogResetShot;
 
     hide Float lastEntryAngle;
     hide Boolean entryCaptured;
@@ -79,6 +111,7 @@ class BowlingGameState {
     hide Integer lastLeaveDifficulty;
 
     hide Integer oilPattern;
+    hide Integer difficulty;
     hide Integer qualityMode;
     hide Integer currentMode;
     hide Integer playerCount;
@@ -94,6 +127,8 @@ class BowlingGameState {
     hide Integer resultsChallengeTier;
     hide Integer tutorialStep;
     hide Integer careerTier;
+    hide Integer matchSeed;
+    hide Integer rackNumber;
     hide Float pendingReplayDuration;
 
     hide Boolean pendingFrameAdvance;
@@ -121,20 +156,26 @@ class BowlingGameState {
         skidMarkTimer = 0.0;
         lightFlashTimer = 0.0;
         aimX = 0.0;
+        stanceX = 0.0;
+        targetX = 0.0;
         power = 0.0;
         spin = 0.0;
+        lastReleaseOffset = 0.0;
         lastReleaseAccuracy = 1.0;
         lastShotSpeed = 0.0;
         charging = false;
+        spareRelease = false;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
         cinematicStarted = false;
+        watchdogResetShot = false;
         lastEntryAngle = 0.0;
         entryCaptured = false;
         hasLastEntry = false;
         lastLeaveName = "Fresh rack";
         lastLeaveDifficulty = 0;
         oilPattern = config.OIL_HOUSE;
+        difficulty = config.DIFFICULTY_STANDARD;
         qualityMode = config.QUALITY_CINEMATIC;
         currentMode = config.MODE_SINGLE;
         playerCount = 1;
@@ -150,6 +191,8 @@ class BowlingGameState {
         resultsChallengeTier = 0;
         tutorialStep = -1;
         careerTier = 0;
+        matchSeed = 97;
+        rackNumber = 0;
         pendingReplayDuration = 0.0;
         scoreKeepers = [];
         playerNames = [];

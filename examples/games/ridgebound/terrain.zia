@@ -43,6 +43,60 @@ func sampleGround(land: Terrain3D, x: Float, z: Float) -> Float {
     return Terrain3D.GetHeightAt(land, sx, sz);
 }
 
+func lakeDistanceNormalized(nx: Float, nz: Float) -> Float {
+    var dx = (nx - config.LAKE_CENTER_X) / config.LAKE_RADIUS_X;
+    var dz = (nz - config.LAKE_CENTER_Z) / config.LAKE_RADIUS_Z;
+    return Sqrt(dx * dx + dz * dz);
+}
+
+func distanceToSegmentNormalized(px: Float, pz: Float,
+                                 ax: Float, az: Float, bx: Float, bz: Float) -> Float {
+    var vx = bx - ax;
+    var vz = bz - az;
+    var lenSq = vx * vx + vz * vz;
+    if (lenSq <= 0.0000001) {
+        var dx = px - ax;
+        var dz = pz - az;
+        return Sqrt(dx * dx + dz * dz);
+    }
+    var t = ((px - ax) * vx + (pz - az) * vz) / lenSq;
+    t = mathutil.clampFloat(t, 0.0, 1.0);
+    var qx = ax + vx * t;
+    var qz = az + vz * t;
+    var dx = px - qx;
+    var dz = pz - qz;
+    return Sqrt(dx * dx + dz * dz);
+}
+
+// Distance in normalized terrain coordinates to the authored path network.
+// Every system that needs route clearance calls this one definition.
+func authoredRouteDistance(nx: Float, nz: Float) -> Float {
+    var best = distanceToSegmentNormalized(
+        nx, nz, 0.50, 0.50, config.BEACON_0_X, config.BEACON_0_Z);
+    best = mathutil.minf(best, distanceToSegmentNormalized(
+        nx, nz, 0.50, 0.50, config.BEACON_1_X, config.BEACON_1_Z));
+    best = mathutil.minf(best, distanceToSegmentNormalized(
+        nx, nz, 0.50, 0.50, config.BEACON_4_X, config.BEACON_4_Z));
+    best = mathutil.minf(best, distanceToSegmentNormalized(
+        nx, nz, config.BEACON_4_X, config.BEACON_4_Z, config.BEACON_2_X, config.BEACON_2_Z));
+    best = mathutil.minf(best, distanceToSegmentNormalized(
+        nx, nz, config.BEACON_4_X, config.BEACON_4_Z, config.BEACON_3_X, config.BEACON_3_Z));
+    return best;
+}
+
+func isAuthoredRouteWorld(x: Float, z: Float) -> Boolean {
+    var nx = x / terrainWorldMaxX();
+    var nz = z / terrainWorldMaxZ();
+    return authoredRouteDistance(nx, nz) < config.ROUTE_HALF_WIDTH * 2.2;
+}
+
+func isDeepWater(land: Terrain3D, x: Float, z: Float) -> Boolean {
+    var nx = x / terrainWorldMaxX();
+    var nz = z / terrainWorldMaxZ();
+    return lakeDistanceNormalized(nx, nz) < 1.02
+        && sampleGround(land, x, z) < config.WATER_HEIGHT - 0.35;
+}
+
 func createStoneAlbedo(size: Integer) -> Pixels {
     var tex = Pixels.New(size, size);
 
@@ -172,6 +226,17 @@ class RidgeboundTerrain {
         }
     }
 
+    expose func applyQuality(level: Integer) {
+        if (grass == null) { return; }
+        if (level <= 0) {
+            Vegetation3D.SetLODDistances(grass, 22.0, 52.0);
+        } else if (level == 1) {
+            Vegetation3D.SetLODDistances(grass, 30.0, 74.0);
+        } else {
+            Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
+        }
+    }
+
     expose func getTerrain() -> Terrain3D {
         return land;
     }
@@ -283,26 +348,18 @@ class RidgeboundTerrain {
             config.TERRAIN_NOISE_PERSIST);
         var broad = noise01(noise, nx * 1.65 + 13.0, nz * 1.65 - 4.0, 3, 0.56);
         var detail = noise01(noise, nx * 15.0 + 2.0, nz * 15.0 + 9.0, 3, 0.48);
-        var h = 0.135 + rolling * 0.18 + broad * 0.055 + detail * 0.025;
+        // A restrained rolling valley keeps local slopes readable and walkable.
+        // Fine noise is surface character, never the dominant topology.
+        var h = 0.165 + rolling * 0.105 + broad * 0.035 + detail * 0.012;
 
-        var lakeDx = (nx - config.LAKE_CENTER_X) / config.LAKE_RADIUS_X;
-        var lakeDz = (nz - config.LAKE_CENTER_Z) / config.LAKE_RADIUS_Z;
-        var lakeDist = Sqrt(lakeDx * lakeDx + lakeDz * lakeDz);
-        var basin = 1.0 - mathutil.smoothStep(0.62, 1.10, lakeDist);
-        var lakeFloor = 0.035 + detail * 0.018;
+        // Preserve a genuinely submerged basin. The old mountain smooth-max had
+        // a 0.16 floor everywhere, silently filling this bowl to water level.
+        var lakeDist = lakeDistanceNormalized(nx, nz);
+        var basin = 1.0 - mathutil.smoothStep(
+            config.LAKE_SHORE_INNER, config.LAKE_SHORE_OUTER, lakeDist);
+        var lakeFloor = config.LAKE_FLOOR_HEIGHT / config.TERRAIN_SCALE_Y
+            + (detail - 0.5) * 0.006;
         h = mathutil.lerpFloat(h, lakeFloor, basin);
-
-        var shore = 1.0 - mathutil.smoothStep(0.94, 1.17, lakeDist);
-        if (lakeDist > 0.96) {
-            h = mathutil.lerpFloat(h, 0.135 + rolling * 0.035, shore * 0.48);
-        }
-
-        var homeDx = (nx - 0.50) / 0.085;
-        var homeDz = (nz - 0.50) / 0.075;
-        var homeDist = Sqrt(homeDx * homeDx + homeDz * homeDz);
-        var homeIsland = 1.0 - mathutil.smoothStep(0.62, 1.05, homeDist);
-        var homeHeight = 0.185 + rolling * 0.040 + broad * 0.015;
-        h = mathutil.lerpFloat(h, mathutil.maxf(h, homeHeight), homeIsland);
 
         // Raw border distance (0 at any edge, 0.5 at center) — used ONLY by the
         // containment rim, which must stay a hard square guarantee.
@@ -340,9 +397,10 @@ class RidgeboundTerrain {
             + config.MOUNTAIN_MASSIF_RANGE * noise01(noise, wx * 2.1 + 7.0, wz * 2.1 - 9.0, 2, 0.55);
         var mountainRaise = mountainBand * massif * (0.24 + ridge * 0.50 + crag * 0.16)
             + crestBand * massif * (ridge * 0.22 + crag * 0.12);
-        // Never let a warped foothill intrude into the lake bowl.
-        mountainRaise = mountainRaise * (1.0 - basin);
-        var mountain = 0.16 + mountainRaise;
+        // Keep mountains and foothills outside the entire shoreline transition.
+        var lakeProtection = mathutil.smoothStep(0.94, 1.24, lakeDist);
+        mountainRaise = mountainRaise * lakeProtection;
+        var mountain = 0.19 + mountainRaise;
 
         // 4. A wide, low foothill skirt reaching further into the interior, then a
         //    smooth-max blend so the range grows out of the rolling terrain with a
@@ -350,9 +408,10 @@ class RidgeboundTerrain {
         var foothill = (1.0 - mathutil.smoothStep(
             config.MOUNTAIN_RING_FADE,
             config.MOUNTAIN_RING_FADE + config.MOUNTAIN_FOOTHILL_FADE,
-            edgeW)) * (0.05 + broad * config.MOUNTAIN_FOOTHILL_HEIGHT) * (1.0 - basin);
+            edgeW)) * (0.04 + broad * config.MOUNTAIN_FOOTHILL_HEIGHT) * lakeProtection;
         h = h + foothill;
-        h = mathutil.smoothMax(h, mountain, config.MOUNTAIN_BLEND_K);
+        var mountainSurface = mathutil.smoothMax(h, mountain, config.MOUNTAIN_BLEND_K);
+        h = mathutil.lerpFloat(h, mountainSurface, mountainBand * lakeProtection);
 
         // Containment rim just beyond the player's bounds: guaranteed tall enough
         // to enclose the world. Kept on the RAW (unwarped) edge with a hard floor
@@ -366,10 +425,50 @@ class RidgeboundTerrain {
         if (blocker > 0.0) {
             var rim = config.MOUNTAIN_RIM_FLOOR + blocker * 0.10 + ridge * 0.36 + crag * 0.12
                 + massif * config.MOUNTAIN_RIM_MASSIF;
-            if (rim > h) { h = rim; }
+            // Blend the containment mass by its falloff. The previous hard max
+            // applied the rim's 0.50 base even when blocker was almost zero,
+            // creating a vertical inner wall at the bounds line.
+            var rimSurface = mathutil.smoothMax(h, rim, config.MOUNTAIN_BLEND_K);
+            h = mathutil.lerpFloat(h, rimSurface, blocker * blocker);
         }
 
+        // Grade one connected path network across the valley. Inside the basin
+        // it becomes a broad dry causeway; on land it gently levels noisy grades
+        // and becomes the dirt trail painted by createTerrainSplatMap.
+        var routeWidth = config.ROUTE_HALF_WIDTH;
+        if (lakeDist < 1.18) { routeWidth = config.LAKE_CAUSEWAY_HALF_WIDTH; }
+        var route = 1.0 - mathutil.smoothStep(
+            routeWidth, routeWidth * 2.5, authoredRouteDistance(nx, nz));
+        var routeTarget = 0.205 + (broad - 0.5) * 0.012;
+        if (lakeDist < 1.18) {
+            routeTarget = config.WATER_HEIGHT / config.TERRAIN_SCALE_Y + 0.032;
+        }
+        h = mathutil.lerpFloat(h, routeTarget, route * 0.92);
+
+        // Stable, nearly-flat arrival pads prevent beacon pedestals and the
+        // player spawn from landing on local noise or cross-slope terrain.
+        h = flattenSite(h, nx, nz, 0.50, 0.50, 0.055, 0.205);
+        h = flattenSite(h, nx, nz, config.BEACON_0_X, config.BEACON_0_Z,
+            config.BEACON_SITE_RADIUS, 0.225);
+        h = flattenSite(h, nx, nz, config.BEACON_1_X, config.BEACON_1_Z,
+            config.BEACON_SITE_RADIUS, 0.225);
+        h = flattenSite(h, nx, nz, config.BEACON_2_X, config.BEACON_2_Z,
+            config.BEACON_SITE_RADIUS, 0.215);
+        h = flattenSite(h, nx, nz, config.BEACON_3_X, config.BEACON_3_Z,
+            config.BEACON_SITE_RADIUS, 0.215);
+        h = flattenSite(h, nx, nz, config.BEACON_4_X, config.BEACON_4_Z,
+            config.BEACON_SITE_RADIUS, 0.205);
+
         return mathutil.clampFloat(h, 0.0, 1.0);
+    }
+
+    hide func flattenSite(h: Float, nx: Float, nz: Float,
+                          cx: Float, cz: Float, radius: Float, target: Float) -> Float {
+        var dx = nx - cx;
+        var dz = nz - cz;
+        var dist = Sqrt(dx * dx + dz * dz) / radius;
+        var amount = 1.0 - mathutil.smoothStep(0.58, 1.0, dist);
+        return mathutil.lerpFloat(h, target, amount);
     }
 
     hide func createTerrainSplatMap(srcTerrain: Terrain3D, width: Integer, depth: Integer) -> Pixels {
@@ -386,6 +485,13 @@ class RidgeboundTerrain {
                 var normal = Terrain3D.GetNormalAt(srcTerrain, wx, wz);
                 var ny = Vec3.get_Y(normal);
                 var h = Terrain3D.GetHeightAt(srcTerrain, wx, wz);
+                var nx = wx / maxX;
+                var nz = wz / maxZ;
+                var lakeDist = lakeDistanceNormalized(nx, nz);
+                var routeAmount = 1.0 - mathutil.smoothStep(
+                    config.ROUTE_HALF_WIDTH * 0.75,
+                    config.ROUTE_HALF_WIDTH * 2.4,
+                    authoredRouteDistance(nx, nz));
                 var grassLayer = 0;
                 var rockLayer = 0;
                 var dirtLayer = 0;
@@ -397,6 +503,12 @@ class RidgeboundTerrain {
 
                 if (h < config.WATER_HEIGHT + 0.9) {
                     dirtLayer = 255;                              // muddy shoreline
+                } else if (routeAmount > 0.05) {
+                    // A soft dirt/grass trail reads at a glance without looking
+                    // like a painted road. Causeways use the same material.
+                    dirtLayer = mathutil.clampByte(Convert.NumToInt(90.0 + routeAmount * 150.0));
+                    grassLayer = 255 - dirtLayer;
+                    if (lakeDist < 1.20) { dirtLayer = 220; grassLayer = 35; }
                 } else {
                     if (h > snowLine && ny > 0.58) {
                         // Snow cap blended over rock: accumulates toward the summit
@@ -443,9 +555,15 @@ class RidgeboundTerrain {
                 var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
                 var ny = Vec3.get_Y(Terrain3D.GetNormalAt(land, wx, wz));
                 var h = Terrain3D.GetHeightAt(land, wx, wz);
+                var nx = wx / maxX;
+                var nz = wz / maxZ;
                 var v = 0;
                 if (ny > 0.84 && h > config.WATER_HEIGHT + 0.6) {
                     v = mathutil.clampByte(Convert.NumToInt((ny - 0.84) / 0.16 * 255.0));
+                }
+                if (lakeDistanceNormalized(nx, nz) < 1.18
+                        || authoredRouteDistance(nx, nz) < config.ROUTE_HALF_WIDTH * 1.8) {
+                    v = 0;
                 }
                 density.Set(px, py, mathutil.packPixel(v, v, v, v));
             }

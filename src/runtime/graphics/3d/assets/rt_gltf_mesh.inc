@@ -1293,11 +1293,21 @@ static void gltf_mesh_import_mesh_primitives(gltf_mesh_load_context_t *ctx,
         mesh_prim_count[mesh_json_index] = *mesh_idx_io - mesh_start;
 }
 
+/// @brief Element stride of a decoded Draco attribute's output buffer.
+/// @details Every decoder allocates num_values*components elements EXCEPT the
+///          octahedral normal transform, which always emits 3 components. Parsing
+///          rejects NORMALS attributes whose declared components != 3, so this
+///          normally equals att->components; the explicit branch keeps the reader
+///          memory-safe even if that invariant is ever relaxed.
+static size_t gltf_draco_attribute_out_stride(const draco_attribute *att) {
+    return (att->decoder_type == DRACO_SEQ_NORMALS) ? 3u : (size_t)att->components;
+}
+
 /// @brief Read one float component from a decoded Draco attribute (handles both the
 ///        dequantized float and integer storage forms; integers are normalized when
 ///        the attribute was declared normalized).
 static float gltf_draco_attribute_float(const draco_attribute *att, uint32_t value, int component) {
-    size_t index = (size_t)value * att->components + (size_t)component;
+    size_t index = (size_t)value * gltf_draco_attribute_out_stride(att) + (size_t)component;
     if (att->out_floats)
         return att->out_floats[index];
     if (!att->out_ints)

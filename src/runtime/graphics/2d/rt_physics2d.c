@@ -25,8 +25,9 @@
 //     non-zero (bidirectional filter).
 //   - Broad-phase uses a stack-local 8×8 uniform grid rebuilt each step.
 //     The grid arrays live on the stack, making concurrent physics worlds safe.
-//   - A growable pair_checked bit-matrix ensures each candidate pair is tested
-//     at most once per step, even when they share multiple grid cells.
+//   - Broad-phase candidate pairs are collected into a growable scratch buffer,
+//     sorted, and de-duplicated so each pair resolves at most once per step, even
+//     when the two bodies share multiple grid cells.
 //   - Positional correction uses the Baumgarte stabilisation technique with
 //     a 1% slop and 40% correction factor to prevent sinking while avoiding
 //     jitter.
@@ -178,24 +179,51 @@ static int8_t ensure_force_capacity(rt_world_impl *w, int64_t needed) {
     return 1;
 }
 
-static int8_t ensure_pair_checked_capacity(rt_world_impl *w, int64_t body_count) {
-    if (!w || body_count < 0)
+/// @brief Ensure the broad-phase candidate-pair scratch can hold @p needed entries.
+/// @details Grows geometrically so repeated appends across a step amortize to O(1).
+///   Returns 0 on overflow/allocation failure, in which case the caller falls back
+///   to the exhaustive O(n^2) pair pass so collision correctness is preserved.
+static int8_t ensure_pair_scratch_capacity(rt_world_impl *w, int64_t needed) {
+    if (!w || needed < 0)
         return 0;
-    if (body_count <= 1)
+    if (needed <= w->pair_scratch_capacity)
         return 1;
-    if ((uint64_t)body_count > SIZE_MAX / (uint64_t)body_count)
+    int64_t new_capacity = 0;
+    if (!grow_capacity_i64(w->pair_scratch_capacity, needed, 256, &new_capacity) ||
+        (uint64_t)new_capacity > SIZE_MAX / sizeof(uint64_t))
         return 0;
-    size_t bits = (size_t)body_count * (size_t)body_count;
-    size_t bytes = bits / 8 + 1;
-    if (bytes <= w->pair_checked_bytes && w->pair_checked_span >= body_count)
-        return 1;
-    uint8_t *pair_checked = (uint8_t *)realloc(w->pair_checked, bytes);
-    if (!pair_checked)
+    uint64_t *scratch =
+        (uint64_t *)realloc(w->pair_scratch, (size_t)new_capacity * sizeof(uint64_t));
+    if (!scratch)
         return 0;
-    w->pair_checked = pair_checked;
-    w->pair_checked_bytes = bytes;
-    w->pair_checked_span = body_count;
+    w->pair_scratch = scratch;
+    w->pair_scratch_capacity = new_capacity;
     return 1;
+}
+
+/// @brief Append candidate pair (ii, jj) to the scratch list, ordered ii < jj.
+/// @return 1 on success, 0 if the scratch could not grow (caller must fall back).
+static int8_t pair_scratch_push(rt_world_impl *w, int ii, int jj) {
+    if (ii == jj)
+        return 1;
+    if (ii > jj) {
+        int t = ii;
+        ii = jj;
+        jj = t;
+    }
+    if (!ensure_pair_scratch_capacity(w, w->pair_scratch_count + 1))
+        return 0;
+    w->pair_scratch[w->pair_scratch_count++] =
+        ((uint64_t)(uint32_t)ii << 32) | (uint64_t)(uint32_t)jj;
+    return 1;
+}
+
+/// @brief qsort comparator over packed pair keys (ascending). Total order on
+///        distinct (ii, jj) pairs makes the resolution sweep deterministic.
+static int pair_key_cmp(const void *a, const void *b) {
+    uint64_t ka = *(const uint64_t *)a;
+    uint64_t kb = *(const uint64_t *)b;
+    return (ka < kb) ? -1 : (ka > kb) ? 1 : 0;
 }
 
 /// @brief Clear the world's per-step contact list (called at the start of
@@ -347,42 +375,46 @@ void sanitize_body_state(rt_body_impl *b) {
         b->radius = 0.0;
 }
 
-/// @brief Left edge of this body's current AABB (works for both circle and box).
+/* AABB edge accessors. The world uses positive-y-downward screen coordinates, so
+ * the stored (x, y) is the min corner (top-left): min_y is the top edge, max_y the
+ * bottom edge. */
+
+/// @brief Left edge (min x) of this body's current AABB (circle or box).
 static double body_min_x(rt_body_impl *b) {
     return b->is_circle ? b->x - b->radius : b->x;
 }
 
-/// @brief Bottom edge of this body's current AABB.
+/// @brief Top edge (min y) of this body's current AABB.
 static double body_min_y(rt_body_impl *b) {
     return b->is_circle ? b->y - b->radius : b->y;
 }
 
-/// @brief Right edge of this body's current AABB.
+/// @brief Right edge (max x) of this body's current AABB.
 static double body_max_x(rt_body_impl *b) {
     return b->is_circle ? b->x + b->radius : b->x + b->w;
 }
 
-/// @brief Top edge of this body's current AABB.
+/// @brief Bottom edge (max y) of this body's current AABB.
 static double body_max_y(rt_body_impl *b) {
     return b->is_circle ? b->y + b->radius : b->y + b->h;
 }
 
-/// @brief Left edge of this body's previous-frame AABB.
+/// @brief Left edge (min x) of this body's previous-frame AABB.
 double body_prev_min_x(rt_body_impl *b) {
     return b->is_circle ? b->prev_x - b->radius : b->prev_x;
 }
 
-/// @brief Bottom edge of this body's previous-frame AABB.
+/// @brief Top edge (min y) of this body's previous-frame AABB.
 double body_prev_min_y(rt_body_impl *b) {
     return b->is_circle ? b->prev_y - b->radius : b->prev_y;
 }
 
-/// @brief Right edge of this body's previous-frame AABB.
+/// @brief Right edge (max x) of this body's previous-frame AABB.
 double body_prev_max_x(rt_body_impl *b) {
     return b->is_circle ? b->prev_x + b->radius : b->prev_x + b->w;
 }
 
-/// @brief Top edge of this body's previous-frame AABB.
+/// @brief Bottom edge (max y) of this body's previous-frame AABB.
 double body_prev_max_y(rt_body_impl *b) {
     return b->is_circle ? b->prev_y + b->radius : b->prev_y + b->h;
 }
@@ -455,13 +487,14 @@ static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
     }
 }
 
-/// @brief Attempt narrow-phase collision detection and resolution for one body pair (ii, jj).
-/// @details Applies the bidirectional layer/mask filter first — only continues when
-///   (A.layer & B.mask) AND (B.layer & A.mask) are both nonzero.  Then tries exact
-///   shape_overlap; if that misses but the swept AABB test fires, the bodies tunnelled
-///   this step and the CCD path repositions them to the moment of first contact then
-///   applies the resolution impulse.  sanitize_body_state is called on both bodies
-///   afterward to clamp any divergent values produced by the impulse.
+/// @brief GC finalizer for a physics world.
+/// @details Runs when the world's reference count reaches zero. Releases every
+///   joint (marking each inactive first), clears and releases the per-step contact
+///   list, then releases each retained body — detaching it from this world so a
+///   body still referenced elsewhere can be re-added to another world. Finally
+///   frees all world-owned growable arrays (bodies, joints, contacts, pair scratch,
+///   force snapshot) and zeroes their sizes. Order (joints → contacts → bodies)
+///   matters: joints and contacts hold body references that must be released first.
 static void world_finalizer(void *obj) {
     rt_world_impl *w = (rt_world_impl *)obj;
     if (w) {
@@ -472,7 +505,15 @@ static void world_finalizer(void *obj) {
 
         int64_t i;
         for (i = 0; i < w->body_count; i++) {
-            if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
+            if (!w->bodies[i])
+                continue;
+            /* Detach the body from this world so a body that outlives the world
+             * (still referenced elsewhere) can be re-added to another world. */
+            if (w->bodies[i]->owner_world == w) {
+                w->bodies[i]->owner_world = NULL;
+                w->bodies[i]->world_index = -1;
+            }
+            if (rt_obj_release_check0(w->bodies[i]))
                 rt_obj_free(w->bodies[i]);
         }
         w->body_count = 0;
@@ -485,10 +526,10 @@ static void world_finalizer(void *obj) {
         free(w->contacts);
         w->contacts = NULL;
         w->contact_capacity = 0;
-        free(w->pair_checked);
-        w->pair_checked = NULL;
-        w->pair_checked_bytes = 0;
-        w->pair_checked_span = 0;
+        free(w->pair_scratch);
+        w->pair_scratch = NULL;
+        w->pair_scratch_count = 0;
+        w->pair_scratch_capacity = 0;
         free(w->force_bodies);
         w->force_bodies = NULL;
         free(w->force_x);
@@ -547,7 +588,10 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
     int64_t i;
     if (!w)
         return;
-    world_clear_contacts(w);
+    /* Contacts are cleared once per public step in rt_physics2d_world_step, not
+     * per substep — otherwise a multi-substep step (large/hitch dt) would leave
+     * only the final substep's contacts queryable, silently dropping collision
+     * events (damage/sound triggers) that occurred in earlier substeps. */
 
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
@@ -607,6 +651,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
      * the broad/narrow phase runs. */
     if (w->joint_count > 0) {
         rt_physics2d_solve_position_joints(obj, dt);
+        rt_physics2d_solve_joint_velocities(obj, dt);
         for (i = 0; i < w->body_count; i++)
             sanitize_body_state(w->bodies[i]);
     }
@@ -626,13 +671,10 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
      * overflows, the step falls back to an exhaustive O(n²) pair pass so
      * collision correctness is preserved in dense scenes.
      *
-     * Narrow phase: for each pair of bodies that share a grid cell, test with
-     * shape_overlap() or swept AABB and call resolve_collision() if they collide.
-     *
-     * De-duplication: a world-owned bit-matrix (pair_checked) ensures each pair
-     * (i, j) is resolved at most once per step, even when the two bodies share
-     * multiple grid cells (e.g., near a cell boundary). Bit (i,j) is stored at
-     * byte [i*body_count+j >> 3], bit [(i*body_count+j) & 7]. */
+     * Narrow phase: candidate pairs are collected into w->pair_scratch, sorted,
+     * and de-duplicated, then each unique pair is tested with shape_overlap() or
+     * swept AABB and resolved if it collides. This replaces the former O(n^2)
+     * bit-matrix (and its per-substep O(n^2) memset) with O(pairs) memory. */
 
 #define BPG_BASE_DIM 8  /* Small-world broad-phase grid cells per axis. */
 #define BPG_MAX_DIM 16  /* Largest stack-backed grid cells per axis. */
@@ -672,16 +714,27 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
         double cell_w = (wx1 - wx0) / (double)grid_dim;
         double cell_h = (wy1 - wy0) / (double)grid_dim;
 
-        /* --- Step 3b: Populate the broad-phase grid (stack-local) ---
-         * Each body is inserted into every cell its swept bounds touch. A body
-         * that straddles a cell boundary appears in both cells so it will be
-         * paired with neighbours on either side. */
+        /* A body whose swept AABB spans at least half the world on either axis is
+         * "large": a ground/wall platform, or a stray far-away body that would
+         * otherwise stretch every cell and collapse the scene into one. Large
+         * bodies are kept out of the grid and paired against all bodies, so one
+         * oversized body no longer degrades the whole broad-phase to O(n^2). */
+        double large_w = 0.5 * (wx1 - wx0);
+        double large_h = 0.5 * (wy1 - wy0);
+
+        /* --- Step 3b: Populate the broad-phase grid (stack-local) and collect
+         * candidate pairs into w->pair_scratch. Large bodies (and bodies spilled
+         * from an overflowing cell) are paired against every other body directly;
+         * normal bodies are gridded and paired with their cell neighbours. Pairs
+         * are de-duplicated later by sorting, so the overlap between against-all
+         * and grid pairs is harmless. */
         int32_t grid_bodies[BPG_MAX_DIM * BPG_MAX_DIM][BPG_CELL_MAX];
         int grid_count[BPG_MAX_DIM * BPG_MAX_DIM];
-        int grid_overflow = 0;
+        int use_exhaustive = 0;
         memset(grid_count, 0, sizeof(grid_count));
+        w->pair_scratch_count = 0;
 
-        for (i = 0; i < w->body_count; i++) {
+        for (i = 0; i < w->body_count && !use_exhaustive; i++) {
             rt_body_impl *b = w->bodies[i];
             if (!b)
                 continue;
@@ -689,6 +742,20 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
             double by0 = body_swept_min_y(b);
             double bx1 = body_swept_max_x(b);
             double by1 = body_swept_max_y(b);
+
+            int against_all = (bx1 - bx0) >= large_w || (by1 - by0) >= large_h;
+            if (against_all) {
+                for (int64_t j = 0; j < w->body_count; j++) {
+                    if (j == i || !w->bodies[j])
+                        continue;
+                    if (!pair_scratch_push(w, (int)i, (int)j)) {
+                        use_exhaustive = 1;
+                        break;
+                    }
+                }
+                continue;
+            }
+
             int cx0 = (int)((bx0 - wx0) / cell_w);
             if (cx0 < 0)
                 cx0 = 0;
@@ -709,50 +776,68 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
                 cy1 = 0;
             if (cy1 >= grid_dim)
                 cy1 = grid_dim - 1;
-            for (int cy = cy0; cy <= cy1; cy++) {
+
+            int spilled = 0;
+            for (int cy = cy0; cy <= cy1 && !spilled; cy++) {
                 for (int cx = cx0; cx <= cx1; cx++) {
                     int cell = cy * grid_dim + cx;
                     int cnt = grid_count[cell];
+                    /* Pair this body with everyone already registered in the cell. */
+                    for (int k = 0; k < cnt; k++) {
+                        if (!pair_scratch_push(w, (int)i, (int)grid_bodies[cell][k])) {
+                            use_exhaustive = 1;
+                            break;
+                        }
+                    }
+                    if (use_exhaustive)
+                        break;
                     if (cnt < BPG_CELL_MAX) {
                         grid_bodies[cell][cnt] = (int32_t)i;
                         grid_count[cell] = cnt + 1;
                     } else {
-                        grid_overflow = 1;
+                        /* Cell full: spill this body to the against-all set rather
+                         * than forcing a whole-world exhaustive pass. */
+                        for (int64_t j = 0; j < w->body_count; j++) {
+                            if (j == i || !w->bodies[j])
+                                continue;
+                            if (!pair_scratch_push(w, (int)i, (int)j)) {
+                                use_exhaustive = 1;
+                                break;
+                            }
+                        }
+                        spilled = 1;
+                        break;
                     }
                 }
+                if (use_exhaustive)
+                    break;
             }
         }
 
-        if (grid_overflow || !ensure_pair_checked_capacity(w, w->body_count)) {
+        if (use_exhaustive) {
+            /* Scratch could not grow — preserve correctness with the exhaustive
+             * O(n^2) pair pass. */
             for (int ii = 0; ii < w->body_count; ii++) {
                 for (int jj = ii + 1; jj < w->body_count; jj++)
                     maybe_resolve_pair(w, ii, jj, dt);
             }
-        } else {
-            /* --- Step 3c: Narrow phase — test each cell's candidate pairs ---
-             * pair_checked is a bit-matrix preventing duplicate pair resolution.
-             * Pairs are always stored with the lower index first (ii < jj) so the
-             * bit position is deterministic regardless of cell iteration order. */
-            memset(w->pair_checked, 0, w->pair_checked_bytes);
-
-            for (int cell = 0; cell < grid_dim * grid_dim; cell++) {
-                int cnt = grid_count[cell];
-                for (int a = 0; a < cnt; a++) {
-                    for (int b_idx = a + 1; b_idx < cnt; b_idx++) {
-                        int ii = (int)grid_bodies[cell][a];
-                        int jj = (int)grid_bodies[cell][b_idx];
-                        if (ii > jj) {
-                            int tmp = ii;
-                            ii = jj;
-                            jj = tmp;
-                        }
-                        size_t bit = (size_t)ii * (size_t)w->body_count + (size_t)jj;
-                        if (w->pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
-                            continue;
-                        w->pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
-                        maybe_resolve_pair(w, ii, jj, dt);
-                    }
-                }
+        } else if (w->pair_scratch_count > 0) {
+            /* --- Step 3c: Sort collected pairs and resolve each unique pair once.
+             * Sorting by packed (ii, jj) key gives a deterministic sweep order so
+             * VM and native runs agree. */
+            qsort(w->pair_scratch,
+                  (size_t)w->pair_scratch_count,
+                  sizeof(uint64_t),
+                  pair_key_cmp);
+            uint64_t prev_key = ~(uint64_t)0;
+            for (int64_t p = 0; p < w->pair_scratch_count; p++) {
+                uint64_t key = w->pair_scratch[p];
+                if (p > 0 && key == prev_key)
+                    continue;
+                prev_key = key;
+                int ii = (int)(uint32_t)(key >> 32);
+                int jj = (int)(uint32_t)(key & 0xFFFFFFFFu);
+                maybe_resolve_pair(w, ii, jj, dt);
             }
         }
     }
@@ -824,10 +909,19 @@ void rt_physics2d_world_add(void *obj, void *body) {
         rt_trap("Physics2D.World.Add: expected Physics2D.Body");
         return;
     }
-    sanitize_body_state((rt_body_impl *)body);
-    for (int64_t i = 0; i < w->body_count; i++) {
-        if (w->bodies[i] == (rt_body_impl *)body)
-            return;
+    rt_body_impl *bd = (rt_body_impl *)body;
+    sanitize_body_state(bd);
+    /* Duplicate detection in O(1) for the common single-world case: a body tracks
+     * its owning world. owner_world == w means it is already here; owner_world ==
+     * NULL means it belongs to no world and therefore cannot be a duplicate. Only
+     * the rare "already in a different world" case needs the linear scan. */
+    if (bd->owner_world == w)
+        return;
+    if (bd->owner_world != NULL) {
+        for (int64_t i = 0; i < w->body_count; i++) {
+            if (w->bodies[i] == bd)
+                return;
+        }
     }
     if (w->body_count >= INT_MAX) {
         rt_trap("Physics2D.World.Add: body count exceeds solver index range");
@@ -838,7 +932,9 @@ void rt_physics2d_world_add(void *obj, void *body) {
         return;
     }
     rt_obj_retain_maybe(body);
-    w->bodies[w->body_count++] = (rt_body_impl *)body;
+    bd->owner_world = w;
+    bd->world_index = w->body_count;
+    w->bodies[w->body_count++] = bd;
 }
 
 /// @brief Remove a body from the world (linear scan, O(n)). The body is released; if its refcount
@@ -855,19 +951,39 @@ void rt_physics2d_world_remove(void *obj, void *body) {
         rt_trap("Physics2D.World.Remove: expected Physics2D.Body");
         return;
     }
-    for (i = 0; i < w->body_count; i++) {
-        if (w->bodies[i] == (rt_body_impl *)body) {
-            world_remove_joints_for_body(w, w->bodies[i]);
-            world_clear_contacts(w);
-            if (rt_obj_release_check0(w->bodies[i]))
-                rt_obj_free(w->bodies[i]);
-            /* Swap with tail to maintain a compact, order-independent array */
-            w->bodies[i] = w->bodies[w->body_count - 1];
-            w->bodies[w->body_count - 1] = NULL;
-            w->body_count--;
-            return;
+    rt_body_impl *bd = (rt_body_impl *)body;
+    /* Fast path: the body records its own index, so removal is O(1). Validate the
+     * index against the live array before trusting it (guards against a stale index
+     * if the body was juggled between worlds), falling back to a linear scan. */
+    i = -1;
+    if (bd->owner_world == w && bd->world_index >= 0 && bd->world_index < w->body_count &&
+        w->bodies[bd->world_index] == bd) {
+        i = bd->world_index;
+    } else {
+        for (int64_t k = 0; k < w->body_count; k++) {
+            if (w->bodies[k] == bd) {
+                i = k;
+                break;
+            }
         }
     }
+    if (i < 0)
+        return;
+
+    world_remove_joints_for_body(w, bd);
+    world_clear_contacts(w);
+    bd->owner_world = NULL;
+    bd->world_index = -1;
+    if (rt_obj_release_check0(bd))
+        rt_obj_free(bd);
+    /* Swap with tail to maintain a compact, order-independent array, and update the
+     * moved body's recorded index so its own O(1) removal stays correct. */
+    int64_t last = w->body_count - 1;
+    w->bodies[i] = w->bodies[last];
+    w->bodies[last] = NULL;
+    w->body_count--;
+    if (w->bodies[i])
+        w->bodies[i]->world_index = i;
 }
 
 /// @brief Number of bodies currently registered with the world.
@@ -954,7 +1070,7 @@ double rt_physics2d_world_contact_depth(void *obj, int64_t index) {
 // Public API — Body
 //=============================================================================
 
-/// @brief Construct a 2D rigid body with bottom-left position (x, y), size (w, h), and `mass`.
+/// @brief Construct a 2D rigid body with top-left position (x, y), size (w, h), and `mass`.
 /// `mass <= 0` ⇒ static (immovable, infinite mass). Defaults: restitution 0.5 (moderately bouncy),
 /// friction 0.3, collision_layer 1, collision_mask -1 (collides with all 64 layers).
 void *rt_physics2d_body_new(double x, double y, double w, double h, double mass) {
@@ -988,19 +1104,21 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->collision_mask = INT64_C(-1); /* Default: collide with all 64 layers */
     b->radius = 0.0;
     b->is_circle = 0;
+    b->owner_world = NULL;
+    b->world_index = -1;
     return b;
 }
 
 // The next six functions are simple accessors over the body's stored state
 // (position, size, velocity). Each returns 0.0 for a NULL handle.
 
-/// @brief Bottom-left X position in world units.
+/// @brief Top-left X position in world units.
 double rt_physics2d_body_x(void *obj) {
     rt_body_impl *b = checked_body(obj, "Physics2D.Body.X: expected Physics2D.Body");
     return b ? b->x : 0.0;
 }
 
-/// @brief Bottom-left Y position in world units.
+/// @brief Top-left Y position in world units (positive y is downward).
 double rt_physics2d_body_y(void *obj) {
     rt_body_impl *b = checked_body(obj, "Physics2D.Body.Y: expected Physics2D.Body");
     return b ? b->y : 0.0;
@@ -1067,8 +1185,14 @@ void rt_physics2d_body_set_pos(void *obj, double x, double y) {
     body->prev_y = y;
 }
 
-/// @brief Override the body's linear velocity directly. Useful for kinematic motion (e.g.,
-/// platforms that move on a script). Static bodies (mass=0) ignore this.
+/// @brief Override the body's linear velocity directly.
+/// @details Applies only to dynamic bodies (mass > 0); static bodies (mass = 0)
+///   ignore this and are pinned to zero velocity. Note there is currently no true
+///   kinematic body category — a "moving platform" that carries/pushes dynamic
+///   bodies must be given a large finite mass (so collision impulses barely move
+///   it) and driven with SetVel, since a mass-0 body neither integrates position
+///   nor sweeps. SetPos teleports and resets the swept-motion history, so it does
+///   not carry bodies either.
 void rt_physics2d_body_set_vel(void *obj, double vx, double vy) {
     if (!obj)
         return;

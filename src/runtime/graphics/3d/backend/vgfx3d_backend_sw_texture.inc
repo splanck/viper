@@ -119,6 +119,14 @@ static int sw_wrap_index(int index, int size, int32_t mode) {
 /// Maps UV → texel center (subtract 0.5), looks up the 4 surrounding
 /// texels with selected wrap indexing, then weights them by the
 /// fractional component. Produces normalized [0,1] RGBA.
+///
+/// @note Accepted fallback limitation: this sampler is base-level only — it does
+///   no LOD/mip selection, so minified textures alias/shimmer where the GL/Metal/
+///   D3D11 backends use mipmapped trilinear minification. The software rasterizer
+///   is a fallback renderer, not the VM-vs-native determinism reference (the GPU
+///   backends are), so this parity gap is tolerated rather than closed with a full
+///   screen-space-derivative mip pipeline (which would carry its own determinism
+///   cost). Revisit if the SW path is ever promoted to the reference.
 static void sample_texture_ex(const sw_pixels_view *tex,
                               float u,
                               float v,

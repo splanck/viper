@@ -320,10 +320,10 @@ void rt_scene_draw_with_camera(void *scene, void *canvas, void *camera);
 ///              the hierarchy.
 void rt_scene_update(void *scene);
 
-/// @brief Get number of nodes in the scene.
+/// @brief Get the number of direct children of the scene's root node.
 /// @param scene The Scene object.
-/// @return The total number of nodes in the scene hierarchy (excluding
-///         the root node).
+/// @return The count of top-level nodes (direct children of the implicit root);
+///         nested descendants are not included. 0 if @p scene is invalid.
 int64_t rt_scene_node_count(void *scene);
 
 /// @brief Clear all nodes from the scene.

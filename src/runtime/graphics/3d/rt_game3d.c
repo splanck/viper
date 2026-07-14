@@ -895,6 +895,10 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
                 game3d_release_ref(&listener_pos);
             }
         }
+        /* Shift fixed-position sources and reverb/ambient-bed zone AABBs so a
+         * recenter doesn't pop looping playAt sounds or misplace the listener
+         * relative to its zones (node-bound sources follow the scene rebase). */
+        game3d_audio_rebase_origin(audio, clean_delta);
     }
 }
 
@@ -1788,10 +1792,18 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
         int32_t ai_count = world->entity_count;
         if (ai_count < 0 || ai_count > world->entity_capacity)
             ai_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
-        for (int32_t ai = 0; ai < ai_count; ++ai) {
+        for (int32_t ai = 0; ai < ai_count && ai < world->entity_count; ++ai) {
             rt_game3d_entity *ai_entity = world->entities ? world->entities[ai] : NULL;
-            if (ai_entity && ai_entity->alive && (ai_entity->perception || ai_entity->btree))
+            if (ai_entity && ai_entity->alive && (ai_entity->perception || ai_entity->btree)) {
+                int32_t before = world->entity_count;
                 game3d_ai_tick(world, ai_entity, dt);
+                /* A despawn during the tick compacts the registry (swap-remove);
+                 * revisit this slot so the moved-in survivor is not skipped. */
+                if (world->entity_count < before) {
+                    --ai;
+                    --ai_count;
+                }
+            }
         }
     }
     if (!timeline_owns_camera)
@@ -1810,12 +1822,24 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
         int32_t fs_count = world->entity_count;
         if (fs_count < 0 || fs_count > world->entity_capacity)
             fs_count = world->entity_capacity > 0 ? world->entity_capacity : 0;
-        for (int32_t fs = 0; fs < fs_count; ++fs) {
+        for (int32_t fs = 0; fs < fs_count && fs < world->entity_count; ++fs) {
             rt_game3d_entity *fs_entity = world->entities ? world->entities[fs] : NULL;
+            int32_t before = world->entity_count;
             if (fs_entity && fs_entity->alive && fs_entity->footsteps)
                 game3d_footsteps_tick(world, fs_entity, dt);
+            /* If a tick despawned this entity, the slot was compacted (swap-remove):
+             * don't touch fs_entity again, and revisit the slot for the survivor. */
+            if (world->entity_count < before) {
+                --fs;
+                --fs_count;
+                continue;
+            }
             if (fs_entity && fs_entity->alive && fs_entity->interactor)
                 game3d_interactor_tick(world, fs_entity, dt);
+            if (world->entity_count < before) {
+                --fs;
+                --fs_count;
+            }
         }
     }
     if (world->scene)

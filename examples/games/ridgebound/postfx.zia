@@ -29,9 +29,8 @@ func buildPostFXForQuality(canvas: Canvas3D, quality: Integer) {
     if (q >= 1 && Canvas3D.BackendSupports(canvas, "gpu_postfx")) {
         PostFX3D.AddSSAO(fx, 0.70, 0.90, 16);
     }
-    // Screen-space reflections: the lake (material flagged SsrEnabled, see
-    // water_sky) mirrors the shoreline/trees/sky in screen space, falling back to
-    // its environment cubemap where a ray leaves the screen. GPU window backends only.
+    // Screen-space reflections add local shoreline/tree detail to reflective
+    // water where the GPU path supports them; the cubemap remains the fallback.
     if (q >= 2 && Canvas3D.BackendSupports(canvas, "ssr")) {
         PostFX3D.AddSSR(fx, 0.55, 0.35);
     }
@@ -63,42 +62,14 @@ func buildPostFXForQuality(canvas: Canvas3D, quality: Integer) {
 }
 
 class RidgeboundEffects {
-    hide Particles3D fireflies;
-    hide Particles3D mist;
     hide Particles3D sprintDust;
     hide List[Decal3D] decals;
     hide Pixels scorchTex;
 
     expose func setup() {
-        fireflies = Particles3D.New(config.FIREFLY_COUNT);
-        Particles3D.SetDirection(fireflies, 0.0, 1.0, 0.0, 1.0);
-        Particles3D.SetSpeed(fireflies, 0.2, 0.7);
-        Particles3D.SetLifetime(fireflies, 2.5, 5.0);
-        Particles3D.SetSize(fireflies, 0.06, 0.02);
-        Particles3D.SetGravity(fireflies, 0.0, 0.05, 0.0);
-        Particles3D.SetColor(fireflies, 0xFFE08A, 0x88AA33);
-        Particles3D.SetAlpha(fireflies, 0.9, 0.0);
-        Particles3D.SetEmitterShape(fireflies, 1);
-        Particles3D.SetEmitterSize(fireflies, 14.0, 4.0, 14.0);
-        Particles3D.SetRate(fireflies, 40.0);
-        Particles3D.set_Additive(fireflies, true);
-        Particles3D.Start(fireflies);
-
-        mist = Particles3D.New(config.MIST_COUNT);
-        Particles3D.SetDirection(mist, 0.0, 1.0, 0.0, 0.4);
-        Particles3D.SetSpeed(mist, 0.1, 0.4);
-        Particles3D.SetLifetime(mist, 3.0, 6.0);
-        Particles3D.SetSize(mist, 0.8, 2.4);
-        Particles3D.SetGravity(mist, 0.0, 0.02, 0.0);
-        Particles3D.SetColor(mist, 0x99B8C8, 0x6688A0);
-        Particles3D.SetAlpha(mist, 0.28, 0.0);
-        Particles3D.SetEmitterShape(mist, 2);
-        Particles3D.SetEmitterSize(mist, 30.0, 1.0, 30.0);
-        Particles3D.SetPosition(
-            mist, terrain.terrainWorldMaxX() * 0.5, config.WATER_HEIGHT + 0.5, terrain.terrainWorldMaxZ() * 0.5);
-        Particles3D.SetRate(mist, 22.0);
-        Particles3D.Start(mist);
-
+        // Full-screen ambient billboards obscured the scene on the software
+        // renderer. Atmosphere now comes from fog, weather, reeds, and localized
+        // interaction bursts; no perpetual camera-facing discs are spawned.
         sprintDust = Particles3D.New(config.DUST_COUNT);
         Particles3D.SetDirection(sprintDust, 0.0, 1.0, 0.0, 0.5);
         Particles3D.SetSpeed(sprintDust, 0.4, 1.2);
@@ -113,19 +84,17 @@ class RidgeboundEffects {
         decals = [];
     }
 
-    expose func update(dt: Float, playerX: Float, playerY: Float, playerZ: Float) {
-        if (fireflies != null) {
-            Particles3D.SetPosition(fireflies, playerX, playerY + 1.5, playerZ);
-            Particles3D.Update(fireflies, dt);
-        }
-        if (mist != null) { Particles3D.Update(mist, dt); }
+    expose func reset() {
+        if (sprintDust != null) { Particles3D.Clear(sprintDust); }
+        decals = [];
+    }
+
+    expose func update(dt: Float) {
         if (sprintDust != null) { Particles3D.Update(sprintDust, dt); }
         updateDecals(dt);
     }
 
     expose func draw(canvas: Canvas3D, camera: Camera3D) {
-        if (fireflies != null) { Particles3D.Draw(fireflies, canvas, camera); }
-        if (mist != null) { Particles3D.Draw(mist, canvas, camera); }
         if (sprintDust != null) { Particles3D.Draw(sprintDust, canvas, camera); }
     }
 

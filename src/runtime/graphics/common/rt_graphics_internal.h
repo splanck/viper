@@ -509,3 +509,24 @@ static inline int8_t rt_canvas_clip_intersect_logical(
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */
+
+/// @brief Blit a sub-rectangle of @p pixels_ptr to (dx,dy) with straight-alpha
+///        compositing (internal; defined in rt_drawing.c). Region-cropped, blending
+///        counterpart of rt_canvas_blit_region — used by the SpriteBatch fast path so
+///        transparent sprite-sheet frames blend instead of overwriting. Declared
+///        outside the VIPER_ENABLE_GRAPHICS guard so translation units compiled
+///        without graphics (e.g. isolated contract tests that stub it) still see it.
+void rt_canvas_blit_region_alpha(void *canvas_ptr,
+                                 int64_t dx,
+                                 int64_t dy,
+                                 void *pixels_ptr,
+                                 int64_t sx,
+                                 int64_t sy,
+                                 int64_t w,
+                                 int64_t h);
+
+/// @brief Fill an inclusive horizontal span [x0..x1] at logical row @p y as a
+///        height-1 logical rect (scale-aware; internal, defined in rt_drawing.c).
+///        Scanline-fill primitives use this instead of rt_canvas_line so HiDPI
+///        canvases don't render striped fills.
+void rt_canvas_fill_hspan(void *canvas_ptr, int64_t x0, int64_t x1, int64_t y, int64_t color);

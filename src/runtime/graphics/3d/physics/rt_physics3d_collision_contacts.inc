@@ -990,6 +990,28 @@ int contact_pair_table_contains(const contact_pair_hash_entry *table,
     return 0;
 }
 
+/// @brief Return the stored contact whose (body_a,body_b,collider_a,collider_b) pair matches
+///   @p needle, or NULL if absent. With one manifold per pair the match is unique, so this
+///   returns the same contact a linear scan would — used to O(1) warm-start the solver.
+const rt_contact3d *contact_pair_table_find(const contact_pair_hash_entry *table,
+                                            int32_t capacity,
+                                            const rt_contact3d *needle) {
+    uintptr_t hash;
+    int32_t slot;
+    if (!table || capacity <= 0 || !needle)
+        return NULL;
+    hash = contact_pair_hash_value(needle);
+    slot = (int32_t)(hash & (uintptr_t)(capacity - 1));
+    for (int32_t probe = 0; probe < capacity; ++probe) {
+        int32_t idx = (slot + probe) & (capacity - 1);
+        if (!table[idx].contact)
+            return NULL;
+        if (table[idx].hash == hash && contact_pair_equals(table[idx].contact, needle))
+            return table[idx].contact;
+    }
+    return NULL;
+}
+
 /// @brief Compute the support point for a collider in a given direction.
 ///
 /// "Support" = farthest point on the shape along `direction`. Closed

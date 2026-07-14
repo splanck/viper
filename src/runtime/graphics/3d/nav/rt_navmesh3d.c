@@ -41,6 +41,7 @@
 #include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_threads.h"
 
 #include <float.h>
 #include <math.h>

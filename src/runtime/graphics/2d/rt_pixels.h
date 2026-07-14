@@ -74,6 +74,11 @@ void rt_pixels_set_color(void *pixels, int64_t x, int64_t y, int64_t color);
 /// @brief Get direct read-only access to the underlying RGBA pixel buffer.
 /// @param pixels Pixels object.
 /// @return Pointer to width*height uint32_t values (0xRRGGBBAA), or NULL.
+/// @warning The buffer length is width*height — query rt_pixels_width()/height()
+///   for bounds; no length is returned here. The pointer is only valid until the
+///   next operation that resizes or reallocates this Pixels object (scale, resize,
+///   transform) or a GC cycle that could move it. Do NOT cache it across such calls
+///   or across frames; re-fetch it (and the dimensions) each time you need it.
 const uint32_t *rt_pixels_raw_buffer(void *pixels);
 
 /// @brief Return the mutation generation for cache invalidation.

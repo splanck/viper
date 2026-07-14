@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/camera.zia
+// Purpose: Controls title, setup, follow, overhead, and cinematic camera motion.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: camera (CameraController)
 // PURPOSE: Camera state machine for the bowling demo. Five modes: title
@@ -53,17 +71,27 @@ class CameraController {
     hide Float titleAngle;
 
     hide Float cineTimer;
+    hide Float cineDuration;
     hide Path3D cinePath;
     hide Vec3 cineFocus;
+    hide Boolean reducedMotion;
 
     /// @brief Inject the Camera3D handle and start in title mode.
     expose func initCamera(camera: Camera3D) {
         cam = camera;
         titleAngle = 0.0;
         cineTimer = 0.0;
+        cineDuration = config.CAM_CINE_DURATION;
+        reducedMotion = false;
         cinePath = Path3D.New();
         cineFocus = new Vec3(0.0, config.CAM_CINE_LOOK_Y, config.PIN_Z_OFFSET);
         setTitleMode();
+    }
+
+    /// @brief Rebind after an aspect-only camera rebuild and preserve pose.
+    expose func replaceCamera(camera: Camera3D) {
+        cam = camera;
+        applyLookAt();
     }
 
     /// @brief Switch to the title-screen orbiting camera.
@@ -118,7 +146,9 @@ class CameraController {
     /// @brief Begin a 4-point Bezier swoop centered on (centerX, centerZ).
     expose func startCinematic(centerX: Float, centerZ: Float) {
         mode = MODE_CINEMATIC;
-        cineTimer = config.CAM_CINE_DURATION;
+        cineDuration = config.CAM_CINE_DURATION;
+        if (reducedMotion) { cineDuration = config.CAM_CINE_DURATION * 0.28; }
+        cineTimer = cineDuration;
         Path3D.Clear(cinePath);
         cinePath.AddPoint(new Vec3(centerX - config.CAM_CINE_RADIUS, 1.7, centerZ - 2.2));
         cinePath.AddPoint(new Vec3(centerX - 0.8, config.CAM_CINE_HEIGHT, centerZ - 4.0));
@@ -130,6 +160,17 @@ class CameraController {
     /// @brief Per-frame title-orbit rotation update.
     expose func updateTitle(dt: Float) {
         if (mode != MODE_TITLE) { return; }
+
+        if (reducedMotion) {
+            eyeX = 0.0;
+            eyeY = 3.5;
+            eyeZ = -2.1;
+            targetX = 0.0;
+            targetY = 0.48;
+            targetZ = config.PIN_Z_OFFSET - 0.55;
+            applyLookAt();
+            return;
+        }
 
         titleAngle = titleAngle + dt * 0.35;
         eyeX = Sin(titleAngle) * 1.25;
@@ -199,7 +240,7 @@ class CameraController {
             return true;
         }
 
-        var t = 1.0 - (cineTimer / config.CAM_CINE_DURATION);
+        var t = 1.0 - (cineTimer / cineDuration);
         var eye = cinePath.GetPositionAt(t);
         eyeX = Vec3.get_X(eye);
         eyeY = Vec3.get_Y(eye);
@@ -213,8 +254,13 @@ class CameraController {
 
     /// @brief Add a transient camera shake (intensity decays over duration).
     expose func shake(intensity: Float, duration: Float) {
+        if (reducedMotion) { return; }
         Camera3D.Shake(cam, intensity, duration, 6.0);
     }
+
+    expose func setReducedMotion(enabled: Boolean) { reducedMotion = enabled; }
+    expose func isReducedMotion() -> Boolean { return reducedMotion; }
+    expose func getCinematicDuration() -> Float { return cineDuration; }
 
     /// @brief Underlying Camera3D handle.
     expose func getCamera() -> Camera3D {

@@ -149,11 +149,14 @@ static void test_gradient_h_preserves_full_gradient_when_clipped() {
 
     rt_canvas_gradient_h(canvas, 0, 0, 4, 1, 0x00FF0000, 0x000000FF);
 
+    // R42: the gradient now interpolates channels at full precision (t = x/(w-1)),
+    // not quantized through rt_color_lerp's 0..100 percent. Width 4 => t = x/3, so
+    // red(0xFF0000)->blue(0x0000FF) gives r = 255 - 255*x/3, b = 255*x/3.
     assert(framebuffer_pixel(canvas, 0, 0) == 0);
     assert(framebuffer_pixel(canvas, 1, 0) ==
-           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
+           opaque_rgb((int64_t)(((255 - 255 * 1 / 3) << 16) | (255 * 1 / 3))));
     assert(framebuffer_pixel(canvas, 2, 0) ==
-           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
+           opaque_rgb((int64_t)(((255 - 255 * 2 / 3) << 16) | (255 * 2 / 3))));
     assert(framebuffer_pixel(canvas, 3, 0) == 0);
 }
 
@@ -167,11 +170,12 @@ static void test_gradient_v_preserves_full_gradient_when_clipped() {
 
     rt_canvas_gradient_v(canvas, 0, 0, 1, 4, 0x00FF0000, 0x000000FF);
 
+    // R42: full-precision per-channel interpolation (t = y/(h-1)); height 4 => t = y/3.
     assert(framebuffer_pixel(canvas, 0, 0) == 0);
     assert(framebuffer_pixel(canvas, 0, 1) ==
-           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 33)));
+           opaque_rgb((int64_t)(((255 - 255 * 1 / 3) << 16) | (255 * 1 / 3))));
     assert(framebuffer_pixel(canvas, 0, 2) ==
-           opaque_rgb(rt_color_lerp(0x00FF0000, 0x000000FF, 66)));
+           opaque_rgb((int64_t)(((255 - 255 * 2 / 3) << 16) | (255 * 2 / 3))));
     assert(framebuffer_pixel(canvas, 0, 3) == 0);
 }
 

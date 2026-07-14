@@ -96,7 +96,9 @@ class Objectives {
     expose func promptOf(i: Integer) -> String { return prompt[i]; }
     expose func isDone(i: Integer) -> Boolean { return done[i] == 1; }
     expose func progressOf(i: Integer) -> Integer { return progress[i]; }
+    expose func timerOf(i: Integer) -> Float { return timer[i]; }
     expose func targetOf(i: Integer) -> Integer { return targetCount[i]; }
+    expose func isOptional(i: Integer) -> Boolean { return optional[i] == 1; }
     /// Return the interaction or reach radius authored for an objective.
     expose func radiusOf(i: Integer) -> Float { return radius[i]; }
     /// Return the prerequisite objective index, or -1 when this objective is open.
@@ -113,6 +115,15 @@ class Objectives {
     expose func kindOf(i: Integer) -> Integer { return kind[i]; }
     expose func txAt(i: Integer) -> Float { return tx[i]; }
     expose func tzAt(i: Integer) -> Float { return tz[i]; }
+
+    // Restore checkpointed objective state after the authored objective table
+    // has been rebuilt for a level.
+    expose func restoreAt(i: Integer, wasDone: Boolean, progressNow: Integer, timerNow: Float) {
+        if i < 0 || i >= kind.Count { return; }
+        if wasDone { done[i] = 1; } else { done[i] = 0; }
+        progress[i] = M.clampi(progressNow, 0, 1000000);
+        timer[i] = M.maxf(0.0, timerNow);
+    }
 
     // The first not-yet-done required objective, or -1 if all required are done.
     expose func activeIndex() -> Integer {

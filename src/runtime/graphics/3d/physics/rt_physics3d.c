@@ -107,6 +107,10 @@ _Static_assert(offsetof(rt_body3d, mass) == offsetof(rt_body3d_kinematics, mass)
                "rt_body3d_kinematics.mass offset drift");
 _Static_assert(offsetof(rt_body3d, inv_mass) == offsetof(rt_body3d_kinematics, inv_mass),
                "rt_body3d_kinematics.inv_mass offset drift");
+_Static_assert(offsetof(rt_body3d, collider) == offsetof(rt_body3d_kinematics, collider),
+               "rt_body3d_kinematics.collider offset drift");
+_Static_assert(offsetof(rt_body3d, inv_inertia) == offsetof(rt_body3d_kinematics, inv_inertia),
+               "rt_body3d_kinematics.inv_inertia offset drift");
 
 /// @brief Validate @p obj as a World3D handle and return its typed pointer (NULL on mismatch).
 rt_world3d *world3d_checked(void *obj) {

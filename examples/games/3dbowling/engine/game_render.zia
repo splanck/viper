@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/game_render.zia
+// Purpose: Composes live world, replay, HUD, objectives, and result presentation.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: engine/game_render
 // PURPOSE: 3D scene and 2D overlay drawing for 3D Bowling.
@@ -14,19 +32,37 @@ bind "./game_scoring";
 class BowlingGameRender extends BowlingGameScoring {
     /// @brief 3D pass: draw lane / pins / sweep bar / ball / particles.
     override expose func drawScene() {
+        if (scoreKeepers.count() > activePlayer && activePlayer >= 0) {
+            laneObj.updateMonitor(getPlayerLabel(activePlayer),
+                scoreKeepers.get(activePlayer).getFrame(),
+                scoreKeepers.get(activePlayer).getTotalScore());
+        }
         laneObj.draw(render.getCanvas());
         if (screenState == config.SCREEN_PLAYING || screenState == config.SCREEN_PAUSED) {
             bowlerAvatar.draw(render.getCanvas());
         }
         if (gameState == config.STATE_AIMING && screenState == config.SCREEN_PLAYING) {
-            ballObj.drawAimPreview(render.getCanvas(), aimX, spin, laneObj.getOilEndZ());
+            var previewPower = power;
+            if (previewPower < 0.68) { previewPower = 0.78; }
+            var previewOffset = 0.0;
+            if (releaseMeter.isAwaitingAccuracy()) {
+                previewOffset = (releaseMeter.getNeedle() - 0.5) * 2.0;
+            }
+            ballObj.drawDeliveryPreview(render.getCanvas(), stanceX, targetX,
+                spin, previewPower, previewOffset, getReleaseAssist(), difficulty,
+                oilPattern, laneObj.getOilEndZ(), spareRelease,
+                menuObj.getHighContrast());
         }
         if (pinMgr.isSweeping()) {
             laneObj.drawSweepBar(render.getCanvas(), pinMgr.getSweepY());
         }
-        pinMgr.draw(render.getCanvas());
-        ballObj.drawTrail(render.getCanvas());
-        ballObj.draw(render.getCanvas());
+        // A replay owns the visible scene transforms; hiding the reset live
+        // rack prevents fresh pins from showing through recorded pinfall.
+        if (replayRecorder.isActive() == false) {
+            pinMgr.draw(render.getCanvas());
+            ballObj.drawTrail(render.getCanvas());
+            ballObj.draw(render.getCanvas());
+        }
         replayRecorder.draw(render.getCanvas());
         particleMgr.draw(render.getCanvas(), render.getCamera());
     }
@@ -42,6 +78,7 @@ class BowlingGameRender extends BowlingGameScoring {
         }
         hudObj.setShotContext(releaseMeter.getNeedle(), lastReleaseAccuracy, lastShotSpeed,
             displayName, lastLeaveName, lastLeaveDifficulty);
+        hudObj.setSetupContext(stanceX, targetX, spareRelease);
 
         if (screenState == config.SCREEN_PLAYING) {
             if (replayRecorder.isActive()) {
@@ -51,7 +88,7 @@ class BowlingGameRender extends BowlingGameScoring {
                     "HIGHLIGHT REPLAY  /  A SKIP", 0xFFFFFF, 0.82);
             }
             if (gameState == config.STATE_CELEBRATING) { celebMgr.draw(canvas, cw, ch); }
-            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
+            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin,
                 ballObj.getBallType(), gameState, playerCount, activePlayer,
                 scoreKeepers, laneObj.getOilPatternName() + " oil  " +
                     toString(laneObj.getOilWearPercent()) + "% wear");
@@ -63,7 +100,7 @@ class BowlingGameRender extends BowlingGameScoring {
                 hudObj.drawShotFeedback(canvas, lastEntryAngle, cw);
             }
         } else if (screenState == config.SCREEN_PAUSED) {
-            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
+            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin,
                 ballObj.getBallType(), gameState, playerCount, activePlayer,
                 scoreKeepers, laneObj.getOilPatternName() + " oil  " +
                     toString(laneObj.getOilWearPercent()) + "% wear");

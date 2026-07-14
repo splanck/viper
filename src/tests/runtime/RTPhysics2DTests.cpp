@@ -933,6 +933,103 @@ static void test_body_storage_grows_and_high_index_pair_resolves() {
     release_obj(world);
 }
 
+static void test_distance_joint_no_phantom_velocity() {
+    // A bob hanging on a distance joint below a static anchor, under gravity. The
+    // positional solver alone leaves the uncorrected radial velocity to accumulate
+    // (vy grows ~ g*t forever). The velocity-projection pass must cancel it so the
+    // bob settles instead of building unbounded "phantom" velocity.
+    void *world = rt_physics2d_world_new(0.0, 10.0);
+    void *anchor = rt_physics2d_body_new(0, 0, 2, 2, 0.0); // static
+    void *bob = rt_physics2d_body_new(0, 20, 2, 2, 1.0);   // hangs 20 below
+    rt_physics2d_world_add(world, anchor);
+    rt_physics2d_world_add(world, bob);
+    void *joint = rt_physics2d_distance_joint_new(anchor, bob, 20.0);
+    rt_physics2d_world_add_joint(world, joint);
+
+    for (int i = 0; i < 240; i++)
+        rt_physics2d_world_step(world, 1.0 / 60.0);
+
+    // Without the fix, vy ≈ g*t = 10*4 = 40 after 4s. With it, radial velocity is
+    // cancelled each step so vy stays near zero.
+    ASSERT(fabs(rt_physics2d_body_vy(bob)) < 5.0,
+           "distance joint cancels phantom radial velocity");
+
+    release_obj(joint);
+    release_obj(anchor);
+    release_obj(bob);
+    release_obj(world);
+}
+
+static void test_aabb_containment_ejects_nearest_side() {
+    // A small body sitting inside a large static box, near its right edge. The MTV
+    // must eject it the short way (out the right side), not pick the wrong axis with
+    // an inflated penetration depth (the old intersection-width bug).
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *big = rt_physics2d_body_new(0, 0, 100, 100, 0.0); // static, spans 0..100
+    void *small = rt_physics2d_body_new(90, 45, 5, 5, 1.0); // inside, near right edge
+    rt_physics2d_world_add(world, big);
+    rt_physics2d_world_add(world, small);
+
+    double x0 = rt_physics2d_body_x(small);
+    rt_physics2d_world_step(world, 0.001);
+
+    // Nearest exit is +x (10 units), not the y axis (50 units) the old formula chose.
+    ASSERT(rt_physics2d_body_x(small) > x0 + 1.0,
+           "contained body ejected toward nearest (right) side, not the wrong axis");
+    ASSERT(rt_physics2d_world_contact_depth(world, 0) < 20.0,
+           "containment penetration is the near-exit distance, not the far one");
+
+    release_obj(big);
+    release_obj(small);
+    release_obj(world);
+}
+
+static void test_low_speed_contact_no_bounce() {
+    // A body already overlapping a wall, approaching slowly (below the restitution
+    // threshold). Restitution must be suppressed so it does not rebound — otherwise
+    // resting bodies jitter forever.
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *wall = rt_physics2d_body_new(10, 0, 10, 10, 0.0); // static, 10..20
+    void *ball = rt_physics2d_body_new(5, 0, 10, 10, 1.0);  // overlaps, 5..15
+    rt_physics2d_body_set_restitution(ball, 1.0);
+    rt_physics2d_body_set_restitution(wall, 1.0);
+    rt_physics2d_body_set_vel(ball, 0.5, 0.0); // slow approach 0.5 < 1.0 threshold
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_add(world, ball);
+
+    rt_physics2d_world_step(world, 0.001);
+
+    // With the threshold, restitution is suppressed: the approach velocity is
+    // removed but not reflected, so vx settles near 0 instead of bouncing to -0.5.
+    ASSERT(rt_physics2d_body_vx(ball) > -0.1,
+           "low-speed contact does not rebound (restitution threshold)");
+
+    release_obj(wall);
+    release_obj(ball);
+    release_obj(world);
+}
+
+static void test_high_speed_contact_still_bounces() {
+    // Regression guard for the restitution threshold: a fast approach must still
+    // bounce (the threshold only suppresses low-speed rebound).
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *wall = rt_physics2d_body_new(10, 0, 10, 10, 0.0);
+    void *ball = rt_physics2d_body_new(5, 0, 10, 10, 1.0);
+    rt_physics2d_body_set_restitution(ball, 1.0);
+    rt_physics2d_body_set_restitution(wall, 1.0);
+    rt_physics2d_body_set_vel(ball, 50.0, 0.0); // fast approach, well above threshold
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_add(world, ball);
+
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_body_vx(ball) < 0.0, "high-speed contact still bounces back");
+
+    release_obj(wall);
+    release_obj(ball);
+    release_obj(world);
+}
+
 /// @brief Main.
 int main() {
     // World tests
@@ -994,6 +1091,12 @@ int main() {
 
     // GAME-C-4: PH_MAX_BODIES is an initial reservation
     test_body_storage_grows_and_high_index_pair_resolves();
+
+    // Solver-correctness fixes
+    test_distance_joint_no_phantom_velocity();
+    test_aabb_containment_ejects_nearest_side();
+    test_low_speed_contact_no_bounce();
+    test_high_speed_contact_still_bounces();
 
     printf("Physics2D tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

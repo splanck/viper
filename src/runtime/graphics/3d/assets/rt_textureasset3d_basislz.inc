@@ -721,6 +721,17 @@ static void **textureasset3d_decode_basislz_mips(const uint8_t *data,
             goto fail;
         if (mips[i].offset > (uint64_t)size || mips[i].length > (uint64_t)size - mips[i].offset)
             goto fail;
+        {
+            /* A tiny BasisLZ slice can declare huge dimensions; reject them before
+             * rt_pixels_new, which TRAPS (aborts) rather than returning NULL on an
+             * oversize allocation. Every other KTX2 decode path enforces this cap
+             * (see textureasset3d_rgba8_byte_count callers in core.inc/codecs.inc),
+             * so malformed input reports recoverably instead of killing the process. */
+            uint64_t needed = 0;
+            if (!textureasset3d_rgba8_byte_count(mips[i].width, mips[i].height, &needed) ||
+                needed > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES)
+                goto fail;
+        }
         pixels = rt_pixels_new((int64_t)mips[i].width, (int64_t)mips[i].height);
         if (!pixels) {
             rt_trap("TextureAsset3D.LoadKTX2: BasisLZ Pixels allocation failed");

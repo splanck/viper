@@ -511,6 +511,21 @@ void *rt_pixels_load_gif(void *path) {
         return NULL;
     }
 
+    // Defend against a decoder that returns a positive status but no usable frame.
+    if (!frames || frame_count < 1 || !frames[0].pixels) {
+        if (frames) {
+            for (int i = 0; i < frame_count; i++) {
+                if (frames[i].pixels && rt_obj_release_check0(frames[i].pixels))
+                    rt_obj_free(frames[i].pixels);
+            }
+            free(frames);
+        }
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_CORRUPT, "Pixels.LoadGif: '%s' produced no frames", filepath);
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+
     // Take ownership of the first frame's Pixels, free the rest
     void *result = frames[0].pixels;
     for (int i = 1; i < frame_count; i++) {
@@ -535,8 +550,14 @@ void *rt_pixels_load_gif(void *path) {
 /// based on the path's lowercase extension. Returns NULL for
 /// unrecognised extensions or on any underlying decode failure.
 void *rt_pixels_load(void *path) {
-    rt_asset_error_begin_load();
+    /* Do NOT open a load context spanning the delegation below: each format loader
+     * (rt_pixels_load_png/jpeg/bmp/gif) opens and closes its OWN begin/end load
+     * context. Wrapping the delegation in another begin/end nests them, so the
+     * delegate's inner end_load clears the state the outer end then misreports.
+     * Each wrapper-own error therefore gets its own begin/end pair, and the
+     * dispatch path returns the delegate result directly. */
     if (!path) {
+        rt_asset_error_begin_load();
         rt_asset_error_end_load_failure();
         rt_trap("Pixels.Load: path must not be null");
         return NULL;
@@ -544,6 +565,7 @@ void *rt_pixels_load(void *path) {
 
     const char *filepath = rt_string_cstr((rt_string)path);
     if (!filepath) {
+        rt_asset_error_begin_load();
         rt_asset_error_end_load_failure();
         rt_trap("Pixels.Load: invalid path");
         return NULL;
@@ -551,6 +573,7 @@ void *rt_pixels_load(void *path) {
 
     FILE *af = rt_file_stdio_open_utf8(filepath, "rb");
     if (!af) {
+        rt_asset_error_begin_load();
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.Load: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
         return NULL;
@@ -560,27 +583,25 @@ void *rt_pixels_load(void *path) {
     int read_error = ferror(af) != 0;
     fclose(af);
     if (read_error) {
+        rt_asset_error_begin_load();
         rt_asset_error_setf(
             RT_ASSET_ERROR_UNREADABLE, "Pixels.Load: failed to read '%s'", filepath);
         rt_asset_error_end_load_failure();
         return NULL;
     }
 
-    void *result = NULL;
     if (n >= 8 && hdr[0] == 137 && hdr[1] == 'P' && hdr[2] == 'N' && hdr[3] == 'G')
-        result = rt_pixels_load_png(path);
-    else if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
-        result = rt_pixels_load_jpeg(path);
-    else if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
-        result = rt_pixels_load_bmp(path);
-    else if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
-        result = rt_pixels_load_gif(path);
-    else
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_BAD_MAGIC, "Pixels.Load: '%s' is not a supported image", filepath);
-    if (result)
-        rt_asset_error_end_load_success();
-    else
-        rt_asset_error_end_load_failure();
-    return result;
+        return rt_pixels_load_png(path);
+    if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
+        return rt_pixels_load_jpeg(path);
+    if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
+        return rt_pixels_load_bmp(path);
+    if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
+        return rt_pixels_load_gif(path);
+
+    rt_asset_error_begin_load();
+    rt_asset_error_setf(
+        RT_ASSET_ERROR_BAD_MAGIC, "Pixels.Load: '%s' is not a supported image", filepath);
+    rt_asset_error_end_load_failure();
+    return NULL;
 }

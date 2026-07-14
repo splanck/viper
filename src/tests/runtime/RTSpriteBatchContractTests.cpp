@@ -150,6 +150,15 @@ extern "C" void rt_canvas_blit_region(
     g_region_calls[g_region_call_count++] = {static_cast<StubPixels *>(pixels)->id, x, y};
 }
 
+extern "C" void rt_canvas_blit_region_alpha(
+    void *canvas, int64_t x, int64_t y, void *pixels, int64_t, int64_t, int64_t, int64_t) {
+    // The SpriteBatch region fast path now blends; record identically to the opaque
+    // region blit so existing region-draw assertions still observe the call.
+    (void)canvas;
+    assert(g_region_call_count < (int)(sizeof(g_region_calls) / sizeof(g_region_calls[0])));
+    g_region_calls[g_region_call_count++] = {static_cast<StubPixels *>(pixels)->id, x, y};
+}
+
 extern "C" void rt_sprite_draw_transformed(
     void *, void *, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t) {}
 

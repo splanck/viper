@@ -8,13 +8,14 @@
 // File: src/runtime/graphics/rt_pixels_transform.c
 // Purpose: Geometric transforms and image processing effects for
 //   Viper.Graphics.Pixels. Includes flips, rotations (90/180/arbitrary),
-//   scaling, color inversion, grayscale conversion, tinting, Gaussian blur,
+//   scaling, color inversion, grayscale conversion, tinting, box blur,
 //   and high-quality bilinear resize.
 //
 // Key invariants:
 //   - All transforms return a NEW Pixels object; the source is never modified.
 //   - Arbitrary rotation uses bilinear interpolation for quality.
-//   - Gaussian blur uses separable convolution (horizontal then vertical).
+//   - Box blur uses separable convolution (horizontal then vertical); the kernel
+//     is a uniform (2r+1) box, not a Gaussian.
 //   - Resize uses bilinear interpolation with proper subpixel addressing.
 //   - Pixel format is 32-bit RGBA: 0xRRGGBBAA in row-major order.
 //
@@ -684,7 +685,7 @@ void *rt_pixels_grayscale(void *pixels) {
         uint8_t a = px & 0xFF;
 
         // Standard grayscale formula: 0.299*R + 0.587*G + 0.114*B
-        uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
+        uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29 + 128) >> 8); /* +128 rounds */
         result->data[i] =
             ((uint32_t)gray << 24) | ((uint32_t)gray << 16) | ((uint32_t)gray << 8) | a;
     }
@@ -831,8 +832,9 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
     return result;
 }
 
-/// @brief Resize via bilinear filtering. Use `_scale` for nearest-neighbor sampling when
-/// preserving hard pixel edges. Returns a NEW Pixels.
+/// @brief Resize via bilinear filtering, switching to an area (box) filter for large
+/// downscales (>2x on either axis) so shrunk images don't alias. Use `_scale` for
+/// nearest-neighbor sampling when preserving hard pixel edges. Returns a NEW Pixels.
 void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Resize: null pixels");
     if (!p)
@@ -849,6 +851,58 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
     rt_pixels_impl *result = pixels_alloc(new_width, new_height);
     if (!result)
         return NULL;
+
+    // Large downscale (>2x on either axis): average every source texel in each
+    // destination pixel's footprint (area/box filter). A 2x2 bilinear tap misses
+    // ~all source pixels when shrinking by a large factor, producing severe aliasing
+    // on thumbnails / mip levels. Mild resizes (<=2x, and all upscales) keep the
+    // bilinear path so the documented endpoint-preserving behavior is retained.
+    // Colors are averaged weighted by alpha (premultiplied) so transparent texels
+    // don't bleed color; alpha is a straight average of coverage.
+    if (new_width < p->width / 2 || new_height < p->height / 2) {
+        for (int64_t y = 0; y < new_height; y++) {
+            int64_t sy0 = y * p->height / new_height;
+            int64_t sy1 = (y + 1) * p->height / new_height;
+            if (sy1 <= sy0)
+                sy1 = sy0 + 1;
+            if (sy1 > p->height)
+                sy1 = p->height;
+            for (int64_t x = 0; x < new_width; x++) {
+                int64_t sx0 = x * p->width / new_width;
+                int64_t sx1 = (x + 1) * p->width / new_width;
+                if (sx1 <= sx0)
+                    sx1 = sx0 + 1;
+                if (sx1 > p->width)
+                    sx1 = p->width;
+
+                uint64_t sum_ra = 0, sum_ga = 0, sum_ba = 0, sum_a = 0, count = 0;
+                for (int64_t syy = sy0; syy < sy1; syy++) {
+                    const uint32_t *row = &p->data[syy * p->width];
+                    for (int64_t sxx = sx0; sxx < sx1; sxx++) {
+                        uint32_t c = row[sxx];
+                        uint64_t a = c & 0xFFu;
+                        sum_ra += (uint64_t)((c >> 24) & 0xFFu) * a;
+                        sum_ga += (uint64_t)((c >> 16) & 0xFFu) * a;
+                        sum_ba += (uint64_t)((c >> 8) & 0xFFu) * a;
+                        sum_a += a;
+                        count++;
+                    }
+                }
+                uint32_t out;
+                if (count == 0) {
+                    out = 0;
+                } else {
+                    uint32_t oa = (uint32_t)(sum_a / count);
+                    uint32_t orr = sum_a ? (uint32_t)(sum_ra / sum_a) : 0u;
+                    uint32_t ogg = sum_a ? (uint32_t)(sum_ga / sum_a) : 0u;
+                    uint32_t obb = sum_a ? (uint32_t)(sum_ba / sum_a) : 0u;
+                    out = (orr << 24) | (ogg << 16) | (obb << 8) | oa;
+                }
+                result->data[y * new_width + x] = out;
+            }
+        }
+        return result;
+    }
 
     // Bilinear interpolation scaling
     for (int64_t y = 0; y < new_height; y++) {

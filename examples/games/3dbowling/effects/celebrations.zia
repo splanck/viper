@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/effects/celebrations.zia
+// Purpose: Coordinates outcome-specific celebration timing and accessible visual treatment.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: celebrations (CelebrationManager)
 // PURPOSE: Owns post-roll celebration overlay state: pick a type
@@ -45,6 +63,7 @@ class CelebrationManager {
     hide Float flashTimer;
     hide Integer messageColor;
     hide Boolean active;
+    hide Boolean reducedFlash;
 
     // Streak tracking
     hide Integer strikeStreak;
@@ -56,6 +75,7 @@ class CelebrationManager {
         flashTimer = 0.0;
         messageColor = config.HUD_COLOR_WHITE;
         active = false;
+        reducedFlash = false;
         strikeStreak = 0;
     }
 
@@ -137,6 +157,11 @@ class CelebrationManager {
         flashTimer = 0.0;
     }
 
+    expose func clear() {
+        skip();
+        strikeStreak = 0;
+    }
+
     /// @brief Display string for the active celebration type.
     expose func getMessage() -> String {
         if (activeType == STRIKE) { return "STRIKE!"; }
@@ -173,6 +198,9 @@ class CelebrationManager {
         return strikeStreak;
     }
 
+    expose func setReducedFlash(enabled: Boolean) { reducedFlash = enabled; }
+    expose func getReducedFlash() -> Boolean { return reducedFlash; }
+
     /// @brief Render flash bands + center message + sub-message.
     /// @note Called between Canvas3D.End and Canvas3D.Flip.
     expose func draw(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
@@ -185,9 +213,18 @@ class CelebrationManager {
             if (activeType == SPARE) { flashColor = config.HUD_COLOR_GREEN; }
             if (activeType == PERFECT) { flashColor = config.HUD_COLOR_GOLD; }
 
-            // Semi-transparent flash rectangle
-            Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH / 8, flashColor);
-            Canvas3D.DrawRect2D(canvas, 0, screenH - screenH / 8, screenW, screenH / 8, flashColor);
+            if (reducedFlash) {
+                // A thin geometry pulse communicates the result without a
+                // broad luminance change across the playfield.
+                Canvas3D.DrawRect2D(canvas, 0, 0, screenW, 5, flashColor);
+                Canvas3D.DrawRect2D(canvas, 0, screenH - 5, screenW, 5, flashColor);
+                Canvas3D.DrawRect2D(canvas, 0, 0, 5, screenH, flashColor);
+                Canvas3D.DrawRect2D(canvas, screenW - 5, 0, 5, screenH, flashColor);
+            } else {
+                Canvas3D.DrawRect2D(canvas, 0, 0, screenW, screenH / 8, flashColor);
+                Canvas3D.DrawRect2D(canvas, 0, screenH - screenH / 8,
+                    screenW, screenH / 8, flashColor);
+            }
         }
 
         // Center message with pulsing

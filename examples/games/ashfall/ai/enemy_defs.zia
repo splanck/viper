@@ -95,6 +95,44 @@ class EnemyDefs {
     expose func silWof(a: Integer) -> Float { return silW[a]; }
     expose func silHof(a: Integer) -> Float { return silH[a]; }
     expose func blastRof(a: Integer) -> Float { return blastR[a]; }
-    expose func isFlyer(a: Integer) -> Boolean { return behavior[a] == BC_FLYER; }
-    expose func isBoss(a: Integer) -> Boolean { return behavior[a] == BC_BOSS; }
+    // Mobility and rank are traits, not behavior-class aliases. This matters for
+    // multi-phase bosses such as SHRIKE Prime, which remains aerial while using
+    // the boss state machine.
+    expose func isFlyer(a: Integer) -> Boolean {
+        return a == config.EN_DRONE || a == config.EN_SHRIKE || a == config.BOSS_SHRIKE;
+    }
+    expose func isBoss(a: Integer) -> Boolean {
+        return a == config.BOSS_WARDEN || a == config.BOSS_SHRIKE || a == config.BOSS_HELIX;
+    }
+    expose func hoverHeightOf(a: Integer) -> Float {
+        if a == config.BOSS_SHRIKE { return 7.0; }
+        if a == config.EN_SHRIKE { return 5.5; }
+        if a == config.EN_DRONE { return 4.2; }
+        return 0.0;
+    }
+    expose func projectileSpeedOf(a: Integer) -> Float {
+        if a == config.EN_TURRET { return 38.0; }
+        if a == config.EN_DRONE { return 26.0; }
+        if a == config.EN_SHRIKE || a == config.BOSS_SHRIKE { return 32.0; }
+        if a == config.EN_MARAUDER { return 20.0; }
+        if a == config.BOSS_HELIX { return 24.0; }
+        if a == config.BOSS_WARDEN { return 18.0; }
+        return 28.0;
+    }
+    expose func bodyHalfWidthOf(a: Integer) -> Float {
+        var v = silW[a] * 0.72;
+        if v < 0.16 { v = 0.16; }
+        return v;
+    }
+    expose func bodyHalfHeightOf(a: Integer) -> Float {
+        var v = silH[a] * 0.68;
+        if v < 0.14 { v = 0.14; }
+        return v;
+    }
+    expose func headHalfSizeOf(a: Integer) -> Float {
+        var v = silW[a] * 0.42;
+        if v < 0.10 { v = 0.10; }
+        if v > 0.46 { v = 0.46; }
+        return v;
+    }
 }

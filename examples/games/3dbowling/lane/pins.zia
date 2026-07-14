@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/lane/pins.zia
+// Purpose: Owns seeded pin bodies, physical pinfall, settling, resets, and rendering.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: pins (PinManager)
 // PURPOSE: Owns the ten bowling pins: their physics bodies, knock-down
@@ -53,6 +71,7 @@ class PinManager {
     hide List[Boolean] knocked;
     hide List[Boolean] previousKnocked;
     hide List[Boolean] impacted;
+    hide List[Float] downDwell;
     hide List[Float] savedX;
     hide List[Float] savedY;
     hide List[Float] savedZ;
@@ -67,6 +86,9 @@ class PinManager {
 
     hide Boolean resetting;
     hide Float resetTimer;
+    hide Float rackQuietTime;
+    hide Integer rackSeed;
+    hide Integer rackDifficulty;
 
     hide Mesh3D pinBodyMesh;
     hide Mesh3D pinBellyMesh;
@@ -88,6 +110,7 @@ class PinManager {
         knocked = [];
         previousKnocked = [];
         impacted = [];
+        downDwell = [];
         savedX = [];
         savedY = [];
         savedZ = [];
@@ -99,6 +122,9 @@ class PinManager {
         sweepTimer = 0.0;
         resetting = false;
         resetTimer = 0.0;
+        rackQuietTime = 0.0;
+        rackSeed = 1;
+        rackDifficulty = config.DIFFICULTY_STANDARD;
 
         pinBodyMesh = Mesh3D.Cylinder(config.PIN_RADIUS * 0.72, config.PIN_HEIGHT * 0.78, 24);
         pinBellyMesh = Mesh3D.Sphere(config.PIN_RADIUS * 1.18, 16);
@@ -123,6 +149,7 @@ class PinManager {
             knocked.add(false);
             previousKnocked.add(false);
             impacted.add(false);
+            downDwell.add(0.0);
             savedX.add(px);
             savedY.add(config.PIN_BODY_CENTER_Y);
             savedZ.add(pz);
@@ -173,11 +200,56 @@ class PinManager {
         return config.PIN_Z_OFFSET + (row + 0.0) * config.PIN_SPACING * 0.866;
     }
 
-    /// @brief Per-physics-step knock-down detection + tilt animation.
-    /// @details Hybrid threshold: knocked if displacement large OR
-    ///          (high speed AND smaller displacement). Standing pins
-    ///          near home with low speed get snapped back.
+    hide func rackJitter() -> Float {
+        if (rackDifficulty == config.DIFFICULTY_CASUAL) {
+            return config.RACK_JITTER_CASUAL;
+        }
+        if (rackDifficulty == config.DIFFICULTY_LEAGUE) {
+            return config.RACK_JITTER_LEAGUE;
+        }
+        return config.RACK_JITTER_STANDARD;
+    }
+
+    hide func seededUnit(index: Integer, salt: Integer) -> Float {
+        var value = (rackSeed * 31 + index * 73 + salt * 97 + 1009000) % 1009;
+        return (value + 0.0) / 504.0 - 1.0;
+    }
+
+    /// @brief Rebuild legal home positions from a bounded deterministic seed.
+    expose func setRackSeed(seed: Integer, difficulty: Integer) {
+        rackSeed = seed;
+        if (rackSeed < 0) { rackSeed = 0 - rackSeed; }
+        rackDifficulty = difficulty;
+        if (rackDifficulty < config.DIFFICULTY_CASUAL ||
+            rackDifficulty > config.DIFFICULTY_LEAGUE) {
+            rackDifficulty = config.DIFFICULTY_STANDARD;
+        }
+        var amount = rackJitter();
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            var px = computePinX(i) + seededUnit(i, 3) * amount;
+            var pz = computePinZ(i) + seededUnit(i, 7) * amount;
+            homeX.set(i, px);
+            homeZ.set(i, pz);
+            savedX.set(i, px);
+            savedY.set(i, config.PIN_BODY_CENTER_Y);
+            savedZ.set(i, pz);
+            knocked.set(i, false);
+            previousKnocked.set(i, false);
+            impacted.set(i, false);
+            downDwell.set(i, 0.0);
+            Physics3DBody.SetPosition(bodies.get(i), px,
+                config.PIN_BODY_CENTER_Y, pz);
+            Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
+            Physics3DBody.Sleep(bodies.get(i));
+        }
+        rackQuietTime = 0.0;
+    }
+
+    /// @brief Count only a sustained physical topple or legal deck displacement.
     expose func updateKnockdowns(dt: Float) {
+        var rackQuiet = true;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var body = bodies.get(i);
             var pos = Physics3DBody.get_Position(body);
@@ -198,26 +270,24 @@ class PinManager {
             var dz = pz - homeZ.get(i);
             var disp = Sqrt(dx * dx + dz * dz);
 
-            if (knocked.get(i) == false && impacted.get(i) == false &&
-                disp > config.PIN_KNOCKDOWN_DISPLACEMENT * 1.15) {
-                markKnocked(i, dx, dz, vx, vz, ax, az);
-            } else if (knocked.get(i) == false && impacted.get(i)) {
-                if (disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
-                    (speed > config.PIN_KNOCKDOWN_SPEED &&
-                     disp > config.PIN_KNOCKDOWN_SPEED_DISPLACEMENT) ||
-                    angularSpeed > config.PIN_KNOCKDOWN_ANGULAR_SPEED) {
+            var orientation = Physics3DBody.get_Orientation(body);
+            var up = Quat.RotateVec3(orientation, new Vec3(0.0, 1.0, 0.0));
+            var upY = Abs(Vec3.get_Y(up));
+            var physicallyDown = upY < config.PIN_DOWN_TILT_COS ||
+                Vec3.get_Y(pos) < config.PIN_DOWN_CENTER_Y ||
+                disp > config.PIN_DOWN_DISPLACEMENT;
+            if (knocked.get(i) == false && physicallyDown) {
+                downDwell.set(i, downDwell.get(i) + dt);
+                if (downDwell.get(i) >= config.PIN_DOWN_DWELL) {
                     markKnocked(i, dx, dz, vx, vz, ax, az);
-                } else if (speed < config.PIN_SETTLE_SNAP_SPEED && angularSpeed < config.PIN_KNOCKDOWN_ANGULAR_SPEED * 0.35) {
-                    Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
-                    Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
-                    if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
-                        Physics3DBody.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
-                        Physics3DBody.SetOrientation(body, Quat.Identity());
-                        Physics3DBody.Sleep(body);
-                    }
                 }
-            } else if (knocked.get(i) == false && speed < config.PIN_SETTLE_SNAP_SPEED &&
-                       angularSpeed < config.PIN_KNOCKDOWN_ANGULAR_SPEED * 0.35) {
+            } else if (knocked.get(i) == false) {
+                downDwell.set(i, 0.0);
+            }
+
+            if (knocked.get(i) == false && physicallyDown == false &&
+                speed < config.PIN_SETTLE_SNAP_SPEED &&
+                angularSpeed < config.SETTLE_ANGULAR_THRESHOLD && upY > 0.985) {
                 Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
                 Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
                 if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
@@ -227,15 +297,13 @@ class PinManager {
                 }
             }
 
-            if (knocked.get(i)) {
-                var tilt = tiltAngle.get(i);
-                if (tilt < config.PIN_TILT_MAX) {
-                    tilt = tilt + dt * config.PIN_TILT_SPEED;
-                    if (tilt > config.PIN_TILT_MAX) { tilt = config.PIN_TILT_MAX; }
-                    tiltAngle.set(i, tilt);
-                }
+            if (speed > config.SETTLE_SPEED_THRESHOLD ||
+                angularSpeed > config.SETTLE_ANGULAR_THRESHOLD) {
+                rackQuiet = false;
             }
         }
+        if (rackQuiet) { rackQuietTime = rackQuietTime + dt; }
+        else { rackQuietTime = 0.0; }
     }
 
     hide func markKnocked(index: Integer, dx: Float, dz: Float,
@@ -264,20 +332,15 @@ class PinManager {
             if (bodies.get(i) == body) {
                 if (impulse > 0.04 || relativeSpeed > 0.20) {
                     impacted.set(i, true);
-                }
-                if (knocked.get(i) == false &&
-                    (impulse > config.PIN_IMPACT_KNOCKDOWN_IMPULSE ||
-                     relativeSpeed > config.PIN_IMPACT_KNOCKDOWN_SPEED)) {
-                    var pos = Physics3DBody.get_Position(body);
-                    var px = Vec3.get_X(pos);
-                    var pz = Vec3.get_Z(pos);
-                    var ix = Vec3.get_X(point) - px;
-                    var iz = Vec3.get_Z(point) - pz;
-                    var vel = Physics3DBody.get_Velocity(body);
-                    var ang = Physics3DBody.get_AngularVelocity(body);
-                    markKnocked(i, ix, iz,
-                        Vec3.get_X(vel), Vec3.get_Z(vel),
-                        Vec3.get_X(ang), Vec3.get_Z(ang));
+                    Physics3DBody.Wake(bodies.get(i));
+                    var pos = Physics3DBody.get_Position(bodies.get(i));
+                    var ix = Vec3.get_X(point) - Vec3.get_X(pos);
+                    var iz = Vec3.get_Z(point) - Vec3.get_Z(pos);
+                    var ilen = Sqrt(ix * ix + iz * iz);
+                    if (ilen > 0.0001) {
+                        tiltAxisX.set(i, iz / ilen);
+                        tiltAxisZ.set(i, -ix / ilen);
+                    }
                 }
                 return true;
             }
@@ -303,6 +366,15 @@ class PinManager {
             if (knocked.get(i)) { count = count + 1; }
         }
         return count;
+    }
+
+    /// @brief Stable ten-bit signature of physically fallen pins.
+    expose func getKnockedMask() -> Integer {
+        var mask = 0;
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            if (knocked.get(i)) { mask = mask | (1 << i); }
+        }
+        return mask;
     }
 
     expose func maxStandingDisplacement() -> Float {
@@ -338,6 +410,7 @@ class PinManager {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             previousKnocked.set(i, knocked.get(i));
             impacted.set(i, false);
+            downDwell.set(i, 0.0);
             if (knocked.get(i)) {
                 savedX.set(i, 0.0);
                 savedY.set(i, -10.0);
@@ -354,9 +427,11 @@ class PinManager {
     /// @brief Restore standing pins to their saved positions; knocked pins
     ///        get pushed below the deck (Y = -10).
     expose func restoreSavedPinState() {
+        rackQuietTime = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, previousKnocked.get(i));
             impacted.set(i, false);
+            downDwell.set(i, 0.0);
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
@@ -368,17 +443,7 @@ class PinManager {
 
     /// @brief True when every pin has come to rest (or fallen below the deck).
     expose func allSettled() -> Boolean {
-        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
-            var pos = Physics3DBody.get_Position(bodies.get(i));
-            if (Vec3.get_Y(pos) < -5.0) { continue; }
-            var vel = Physics3DBody.get_Velocity(bodies.get(i));
-            var vx = Vec3.get_X(vel);
-            var vy = Vec3.get_Y(vel);
-            var vz = Vec3.get_Z(vel);
-            var speed = Sqrt(vx * vx + vy * vy + vz * vz);
-            if (speed > config.SETTLE_SPEED_THRESHOLD) { return false; }
-        }
-        return true;
+        return rackQuietTime >= config.SETTLE_QUIET_DWELL;
     }
 
     /// @brief Begin the sweep-bar animation.
@@ -427,10 +492,12 @@ class PinManager {
     expose func startFullReset() {
         resetting = true;
         resetTimer = config.RESET_DURATION;
+        rackQuietTime = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, false);
             previousKnocked.set(i, false);
             impacted.set(i, false);
+            downDwell.set(i, 0.0);
             savedX.set(i, homeX.get(i));
             savedY.set(i, config.PIN_BODY_CENTER_Y);
             savedZ.set(i, homeZ.get(i));
@@ -446,7 +513,9 @@ class PinManager {
     ///        the deck (out of physics), zero standing-pin velocities,
     ///        snapshot the new state.
     expose func prepareSecondRoll() {
+        rackQuietTime = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            downDwell.set(i, 0.0);
             if (knocked.get(i)) {
                 Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
                 Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
@@ -532,8 +601,7 @@ class PinManager {
         }
     }
 
-    /// @brief Render every pin. Knocked pins draw with their tilt
-    ///        rotation; standing pins also draw the red neck mesh.
+    /// @brief Render every pin using its real rigid-body orientation.
     expose func draw(canvas: Canvas3D) {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var pos = Physics3DBody.get_Position(bodies.get(i));
@@ -560,12 +628,8 @@ class PinManager {
 
     hide func makePinTransform(index: Integer, px: Float, py: Float, pz: Float) -> Mat4 {
         var translate = Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz);
-        if (knocked.get(index)) {
-            var tiltAxis = new Vec3(tiltAxisX.get(index), 0.0, tiltAxisZ.get(index));
-            var rotate = Mat4.RotateAxis(tiltAxis, tiltAngle.get(index));
-            return Mat4.Mul(translate, rotate);
-        }
-        return translate;
+        var orientation = Physics3DBody.get_Orientation(bodies.get(index));
+        return Mat4.Mul(translate, Quat.ToMat4(orientation));
     }
 
     hide func drawPinPart(canvas: Canvas3D, base: Mat4, mesh: Mesh3D,
@@ -580,6 +644,18 @@ class PinManager {
     expose func getPinPosition(index: Integer) -> Vec3 {
         return Physics3DBody.get_Position(bodies.get(index));
     }
+
+    expose func getPinOrientation(index: Integer) -> Quat {
+        return Physics3DBody.get_Orientation(bodies.get(index));
+    }
+
+    expose func getPinBody(index: Integer) -> Physics3DBody {
+        return bodies.get(index);
+    }
+
+    expose func getHomeX(index: Integer) -> Float { return homeX.get(index); }
+    expose func getHomeZ(index: Integer) -> Float { return homeZ.get(index); }
+    expose func getRackSeed() -> Integer { return rackSeed; }
 
     /// @brief Knock-down state for a specific pin.
     expose func isKnocked(index: Integer) -> Boolean {
@@ -597,11 +673,13 @@ class PinManager {
 
     /// @brief Replace the rack with a deterministic standing-pin practice mask.
     expose func setStandingMask(mask: Integer) {
+        rackQuietTime = 0.0;
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             var standing = (mask & (1 << i)) != 0;
             knocked.set(i, standing == false);
             previousKnocked.set(i, standing == false);
             impacted.set(i, false);
+            downDwell.set(i, 0.0);
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
             Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);

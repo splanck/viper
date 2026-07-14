@@ -74,7 +74,8 @@ int64_t rt_tilemap_get_tile_height(void *tilemap);
 /// @brief Set the tileset image (sprite sheet).
 /// @param tilemap Tilemap object.
 /// @param pixels Pixels object containing tile graphics arranged in a grid.
-/// @note Tiles are numbered left-to-right, top-to-bottom starting at 0.
+/// @note Tileset cells are numbered left-to-right, top-to-bottom starting at 1;
+///       tile index 0 means "empty" (transparent, nothing drawn).
 void rt_tilemap_set_tileset(void *tilemap, void *pixels);
 
 /// @brief Get number of tiles in the tileset.
@@ -214,7 +215,7 @@ int64_t rt_tilemap_to_pixel_y(void *tilemap, int64_t tile_y);
 
 /// @brief Set collision type for a tile ID.
 /// @param tilemap Tilemap object.
-/// @param tile_id Tile index (0-4095).
+/// @param tile_id Tile index (1-4095; 0 = empty and is rejected by collision setters).
 /// @param coll_type Collision type (RT_TILE_COLLISION_NONE, _SOLID, or _ONE_WAY_UP).
 void rt_tilemap_set_collision(void *tilemap, int64_t tile_id, int64_t coll_type);
 

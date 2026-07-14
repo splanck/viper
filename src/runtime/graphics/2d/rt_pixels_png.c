@@ -1071,7 +1071,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
 
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
-            uint32_t pixel = p->data[y * w + x];
+            /* Index in size_t: y*w computed in uint32_t would wrap for an image with
+             * more than 2^32 pixels, reading the wrong source pixel. */
+            uint32_t pixel = p->data[(size_t)y * (size_t)w + x];
             cur_row[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
             cur_row[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
             cur_row[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B

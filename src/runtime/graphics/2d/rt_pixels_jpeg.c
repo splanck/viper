@@ -1086,9 +1086,11 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
                             int cr_val = comp_data[2][cr_y * cr_stride + cr_x] - 128;
 
                             // YCbCr -> RGB (ITU-R BT.601)
-                            int r = yy_val + ((cr_val * 359) >> 8);
-                            int g = yy_val - ((cb_val * 88 + cr_val * 183) >> 8);
-                            int b = yy_val + ((cb_val * 454) >> 8);
+                            /* +128 before the >>8 rounds to nearest instead of
+                             * truncating (removes the consistent ≤1-LSB downward bias). */
+                            int r = yy_val + ((cr_val * 359 + 128) >> 8);
+                            int g = yy_val - ((cb_val * 88 + cr_val * 183 + 128) >> 8);
+                            int b = yy_val + ((cb_val * 454 + 128) >> 8);
 
                             pixels[y * ctx.width + x] = ((uint32_t)jpeg_clamp(r) << 24) |
                                                         ((uint32_t)jpeg_clamp(g) << 16) |

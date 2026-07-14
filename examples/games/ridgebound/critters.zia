@@ -65,8 +65,10 @@ class RidgeboundCritters {
         AnimController3D.Play(critterCtrl, "idle");
         crittersActive = false;
 
-        critterMat = Materials.Emissive(0.32, 0.84, 0.96, 0.55);
-        Material3D.SetEmissiveColor(critterMat, 0.05, 0.18, 0.22);
+        critterMat = Material3D.PBR(0.15, 0.34, 0.33);
+        critterMat.Roughness = 0.78;
+        critterMat.Metallic = 0.08;
+        Material3D.SetEmissiveColor(critterMat, 0.006, 0.018, 0.018);
 
         critterXs = [];
         critterZs = [];

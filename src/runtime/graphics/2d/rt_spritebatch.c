@@ -39,6 +39,7 @@
 
 #include "rt_spritebatch.h"
 #include "rt_graphics.h"
+#include "rt_graphics_internal.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -266,8 +267,13 @@ static int8_t ensure_capacity(spritebatch_impl *batch, int64_t needed) {
     if (needed > INT64_MAX - batch->count)
         return 0;
     int64_t required = batch->count + needed;
-    if (required > MAX_BATCH_CAPACITY)
+    if (required > MAX_BATCH_CAPACITY) {
+        /* The hard item cap (not the allocator) is the limiter — trap with a
+         * distinct message rather than silently dropping draw commands, which is
+         * near-impossible to diagnose in a particle-heavy frame. */
+        rt_trap("SpriteBatch: draw-command limit exceeded (1048576 items)");
         return 0;
+    }
     if (required <= batch->capacity)
         return 1;
 
@@ -389,13 +395,17 @@ static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t
 }
 
 /// @brief Draw one batch item to the canvas, applying scale, rotation, and color transforms.
-/// @details Fast path: if no transforms or color effects are needed, calls
-///   `rt_canvas_blit_region` directly without any allocation. Otherwise:
+/// @details Fast path: if no transforms or color effects are needed, blits the region
+///   with `rt_canvas_blit_region_alpha` (straight-alpha) so transparent sprite-sheet
+///   frames composite correctly — the same blending every other batch path uses.
+///   Otherwise:
 ///   1. Extracts the source region into a fresh Pixels object.
 ///   2. Scales it if scale_x/scale_y ≠ 100%.
 ///   3. Rotates it if rotation ≠ 0.
 ///   4. Applies batch-level tint and alpha via `apply_batch_color`.
-///   5. Blits the result with `rt_canvas_blit_alpha`.
+///   5. Blits the result with `rt_canvas_blit_alpha`, re-centering after rotation so
+///      the sprite spins about its own centre instead of drifting (rt_pixels_rotate
+///      enlarges the canvas around the centre).
 ///   Each stage uses `spritebatch_replace_temp` / `spritebatch_release_temp` to
 ///   ensure the previous intermediate is freed and the source Pixels is never mutated.
 static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_item *item) {
@@ -408,14 +418,14 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     const bool needsTransform = scale_x != 100 || scale_y != 100 || item->rotation != 0;
     const bool needsColor = batch->tint_color >= 0 || batch->alpha < 255;
     if (!needsTransform && !needsColor) {
-        rt_canvas_blit_region(canvas,
-                              item->x,
-                              item->y,
-                              item->source,
-                              item->src_x,
-                              item->src_y,
-                              item->src_w,
-                              item->src_h);
+        rt_canvas_blit_region_alpha(canvas,
+                                    item->x,
+                                    item->y,
+                                    item->source,
+                                    item->src_x,
+                                    item->src_y,
+                                    item->src_w,
+                                    item->src_h);
         return;
     }
 
@@ -423,6 +433,11 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         extract_region_pixels(item->source, item->src_x, item->src_y, item->src_w, item->src_h);
     if (!transformed)
         return;
+
+    /* Track the pre-rotation dimensions so the rotated (enlarged) result can be
+     * re-centred at the same point the unrotated image would have occupied. */
+    int64_t pre_rot_w = item->src_w;
+    int64_t pre_rot_h = item->src_h;
 
     if (scale_x != 100 || scale_y != 100) {
         int64_t new_w = spritebatch_saturating_scaled_dim(item->src_w, scale_x);
@@ -433,8 +448,12 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
             return;
         }
         spritebatch_replace_temp(&transformed, scaled, item->source);
+        pre_rot_w = new_w;
+        pre_rot_h = new_h;
     }
 
+    int64_t blit_x = item->x;
+    int64_t blit_y = item->y;
     if (item->rotation != 0) {
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
         if (!rotated) {
@@ -442,6 +461,12 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
             return;
         }
         spritebatch_replace_temp(&transformed, rotated, item->source);
+        /* rt_pixels_rotate expands the canvas around the centre; offset the blit so
+         * the enlarged image stays centred on the original region's centre. */
+        int64_t rot_w = rt_pixels_width(transformed);
+        int64_t rot_h = rt_pixels_height(transformed);
+        blit_x = item->x + pre_rot_w / 2 - rot_w / 2;
+        blit_y = item->y + pre_rot_h / 2 - rot_h / 2;
     }
 
     void *colored = apply_batch_color(transformed, batch->tint_color, batch->alpha);
@@ -451,7 +476,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     }
     spritebatch_replace_temp(&transformed, colored, item->source);
 
-    rt_canvas_blit_alpha(canvas, item->x, item->y, transformed);
+    rt_canvas_blit_alpha(canvas, blit_x, blit_y, transformed);
     spritebatch_release_temp(&transformed, item->source);
 }
 

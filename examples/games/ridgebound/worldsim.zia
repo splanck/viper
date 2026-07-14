@@ -16,6 +16,7 @@ bind "./postfx";
 // light. Replaces the former parallel beaconXs/Ys/Zs/State/Lights arrays so a
 // beacon's fields can never fall out of index-sync.
 class Beacon {
+    expose String name;
     expose Float x;
     expose Float y;
     expose Float z;
@@ -62,6 +63,8 @@ class RidgeboundWorldSim {
     hide Canvas3D simCanvas;
     hide Boolean iblActive;
     hide Integer skyPhase;
+    hide Float networkPulse;
+    hide Integer lastActivatedIndex;
 
     expose func init() {
         sunDirection = new Vec3(-0.36, -1.0, -0.22);
@@ -74,6 +77,8 @@ class RidgeboundWorldSim {
         scanProgress = 0.0;
         directLightingScale = 1.0;
         nightNow = false;
+        networkPulse = 0.0;
+        lastActivatedIndex = -1;
     }
 
     expose func reset(land: Terrain3D) {
@@ -82,11 +87,11 @@ class RidgeboundWorldSim {
         scanDist = 0.0;
         sanctuaryDone = false;
         beacons = [];
-        addBeaconPct(land, 0.18, 0.25);
-        addBeaconPct(land, 0.80, 0.23);
-        addBeaconPct(land, 0.73, 0.72);
-        addBeaconPct(land, 0.31, 0.80);
-        addBeaconPct(land, 0.52, 0.55);
+        addBeaconPct(land, "Windbreak Spire", config.BEACON_0_X, config.BEACON_0_Z);
+        addBeaconPct(land, "Mirror Shore", config.BEACON_1_X, config.BEACON_1_Z);
+        addBeaconPct(land, "Sunstep Watch", config.BEACON_2_X, config.BEACON_2_Z);
+        addBeaconPct(land, "Ember Grove", config.BEACON_3_X, config.BEACON_3_Z);
+        addBeaconPct(land, "Home Relay", config.BEACON_4_X, config.BEACON_4_Z);
     }
 
     expose func installOutdoorFillLight(world: World3D) {
@@ -110,11 +115,18 @@ class RidgeboundWorldSim {
     expose func spawnLandmarks(world: World3D, land: Terrain3D,
                                stoneMat: Material3D, archiveMat: Material3D, waterMarkerMat: Material3D) {
         landmarks = [];
-        spawnMonolithPct(world, land, "West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
-        spawnMonolithPct(world, land, "North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
-        spawnMonolithPct(world, land, "South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
-        spawnMonolithPct(world, land, "Ridge Tower", 0.38, 0.72, 4.8, 1.10, 1.00, archiveMat);
-        spawnMonolithPct(world, land, "Relay Stack", 0.52, 0.30, 3.6, 0.90, 0.90, waterMarkerMat);
+        // One readable silhouette near each beacon, offset from the route and
+        // activation pad so scenery never becomes a traversal blocker.
+        spawnMonolithPct(world, land, "Windbreak Stones", config.BEACON_0_X - 0.035,
+            config.BEACON_0_Z - 0.025, 5.4, 1.25, 0.90, stoneMat);
+        spawnMonolithPct(world, land, "Mirror Needle", config.BEACON_1_X + 0.035,
+            config.BEACON_1_Z - 0.020, 4.5, 0.85, 0.85, archiveMat);
+        spawnMonolithPct(world, land, "Sunstep Gate", config.BEACON_2_X + 0.040,
+            config.BEACON_2_Z + 0.010, 6.1, 1.30, 1.05, stoneMat);
+        spawnMonolithPct(world, land, "Ember Marker", config.BEACON_3_X - 0.040,
+            config.BEACON_3_Z + 0.015, 4.7, 0.95, 0.90, archiveMat);
+        spawnMonolithPct(world, land, "Relay Cairn", config.BEACON_4_X + 0.040,
+            config.BEACON_4_Z + 0.025, 3.4, 0.80, 0.80, waterMarkerMat);
     }
 
     expose func setupSun(world: World3D, canvas: Canvas3D) {
@@ -142,6 +154,23 @@ class RidgeboundWorldSim {
         moonLight = Light3D.Directional(new Vec3(0.30, -0.70, 0.38), 0.55, 0.62, 0.95);
         Light3D.SetIntensity(moonLight, 0.0);
         world.AddLight(9, moonLight);
+    }
+
+    expose func applyQuality(level: Integer) {
+        if (simCanvas == null) { return; }
+        if (level <= 0) {
+            Canvas3D.EnableShadows(simCanvas, 768);
+            Canvas3D.SetShadowCascades(simCanvas, 1);
+            Canvas3D.SetShadowQuality(simCanvas, 0);
+        } else if (level == 1) {
+            Canvas3D.EnableShadows(simCanvas, 1536);
+            Canvas3D.SetShadowCascades(simCanvas, 2);
+            Canvas3D.SetShadowQuality(simCanvas, 1);
+        } else {
+            Canvas3D.EnableShadows(simCanvas, 2048);
+            Canvas3D.SetShadowCascades(simCanvas, 3);
+            Canvas3D.SetShadowQuality(simCanvas, 2);
+        }
     }
 
     expose func updateTimeOfDay(world: World3D, worldTime: Float, cloudCover: Float) {
@@ -196,8 +225,12 @@ class RidgeboundWorldSim {
 
         // Cool directional fill opposite the warm sun models the terrain (raised
         // well above the old near-zero values); sky-fill stays a gentle flat lift.
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.03 + 0.11 * day) * directLightingScale * cloudDim); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.02 + 0.03 * day) * directLightingScale); }
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.07 + 0.09 * day) * directLightingScale * cloudDim); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.06 + 0.03 * day) * directLightingScale); }
+        if (playerLight != null) {
+            Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY *
+                mathutil.lerpFloat(config.PLAYER_LIGHT_DAY_SCALE, 1.0, night));
+        }
 
         var ambientScale = directLightingScale;
         if (iblActive) { ambientScale = ambientScale * config.IBL_AMBIENT_SCALE; }
@@ -245,6 +278,8 @@ class RidgeboundWorldSim {
         scanDist = 0.0;
         scanBeaconIndex = -1;
         scanProgress = 0.0;
+        networkPulse = 0.0;
+        lastActivatedIndex = -1;
         for i in 0..beacons.count() {
             var b = beacons.get(i);
             b.state = 0;
@@ -284,6 +319,10 @@ class RidgeboundWorldSim {
                               playerX: Float, playerY: Float, playerZ: Float,
                               audioObj: RidgeboundAudio, effectsObj: RidgeboundEffects) {
         rampBeaconGlow(dt);
+        if (networkPulse > 0.0) {
+            networkPulse = networkPulse - dt * 0.72;
+            if (networkPulse < 0.0) { networkPulse = 0.0; }
+        }
         if (scanBeaconIndex >= 0 && input.IsDown(Key.E)) {
             var b = beacons.get(scanBeaconIndex);
             var dx = playerX - b.x;
@@ -310,6 +349,8 @@ class RidgeboundWorldSim {
         if (b.state != 0) { return; }
         b.state = 1;
         beaconsLit = beaconsLit + 1;
+        lastActivatedIndex = i;
+        networkPulse = 1.0;
         var point = new Vec3(b.x, b.y + 2.0, b.z);
         Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
         onBeaconLit(camera, i, audioObj, effectsObj);
@@ -367,8 +408,8 @@ class RidgeboundWorldSim {
                 b.x, b.y + 2.2, b.z, 2.2);
             if (tb > 0.0 && tb < best) {
                 best = tb;
-                if (b.state != 0) { label = "Ridge beacon (linked)"; hitBeacon = -1; }
-                else { label = "Ridge beacon (dormant)"; hitBeacon = i; }
+                if (b.state != 0) { label = b.name + " (linked)"; hitBeacon = -1; }
+                else { label = b.name + " (dormant)"; hitBeacon = i; }
             }
         }
         // The dormant beacon under the crosshair (if any) is the interact target.
@@ -393,10 +434,63 @@ class RidgeboundWorldSim {
             drawBlock(canvas, cubeMesh, bx, by + 0.38, bz, 2.4, 0.76, 2.4, pedestalMat);
             drawBlock(canvas, cubeMesh, bx, by + 1.18, bz, 0.58, 1.06, 0.58, pedestalMat);
 
+            // Site-specific silhouettes make navigation possible without living
+            // in the minimap: split stones, mirror fins, gate posts, grove cairns,
+            // and the compact home relay each have a unique profile.
+            if (i == 0) {
+                drawBlock(canvas, cubeMesh, bx - 2.0, by + 1.0, bz + 0.4,
+                    0.45, 2.0, 0.45, pedestalMat);
+                drawBlock(canvas, cubeMesh, bx + 1.8, by + 0.7, bz - 0.5,
+                    0.38, 1.4, 0.38, pedestalMat);
+            } else if (i == 1) {
+                drawBlock(canvas, cubeMesh, bx - 1.5, by + 1.35, bz,
+                    0.22, 2.7, 1.4, beaconOffMat);
+                drawBlock(canvas, cubeMesh, bx + 1.5, by + 0.9, bz + 0.3,
+                    0.18, 1.8, 1.0, beaconOffMat);
+            } else if (i == 2) {
+                drawBlock(canvas, cubeMesh, bx - 1.8, by + 1.25, bz,
+                    0.50, 2.5, 0.50, pedestalMat);
+                drawBlock(canvas, cubeMesh, bx + 1.8, by + 1.25, bz,
+                    0.50, 2.5, 0.50, pedestalMat);
+                drawBlock(canvas, cubeMesh, bx, by + 2.35, bz,
+                    4.1, 0.35, 0.45, pedestalMat);
+            } else if (i == 3) {
+                drawBlock(canvas, cubeMesh, bx - 1.5, by + 0.45, bz + 1.2,
+                    0.65, 0.9, 0.65, pedestalMat);
+                drawBlock(canvas, cubeMesh, bx + 1.5, by + 0.32, bz - 1.0,
+                    0.82, 0.64, 0.82, pedestalMat);
+            } else {
+                drawBlock(canvas, cubeMesh, bx - 1.45, by + 0.28, bz,
+                    0.70, 0.56, 0.70, pedestalMat);
+                drawBlock(canvas, cubeMesh, bx + 1.45, by + 0.28, bz,
+                    0.70, 0.56, 0.70, pedestalMat);
+            }
+
             var bob = Sin(worldTime * 2.4 + i * 0.8) * 0.14;
             var mat = beaconOffMat;
             if (b.state != 0) { mat = beaconOnMat; }
             Canvas3D.DrawMesh(canvas, beaconMesh, Mat4.Translate(bx, by + 2.25 + bob, bz), mat);
+
+            if (b.state != 0) {
+                var glow = 0.18 + b.litProgress * 0.24;
+                var orbit = worldTime * 1.4 + (i + 0.0) * 1.1;
+                Canvas3D.DrawMesh(canvas, beaconMesh,
+                    Mat4.Mul(
+                        Mat4.Translate(bx + Sin(orbit) * 1.35, by + 2.25,
+                            bz + Cos(orbit) * 1.35),
+                        Mat4.Scale(glow, glow, glow)),
+                    beaconOnMat);
+                drawBlock(canvas, cubeMesh, bx, by + 4.4, bz,
+                    0.10, 3.7 + b.litProgress * 2.2, 0.10, beaconOnMat);
+            }
+
+            if (i == lastActivatedIndex && networkPulse > 0.0) {
+                var pulseScale = 1.0 + (1.0 - networkPulse) * 4.0;
+                Canvas3D.DrawMesh(canvas, beaconMesh,
+                    Mat4.Mul(Mat4.Translate(bx, by + 1.0, bz),
+                        Mat4.Scale(pulseScale, 0.10, pulseScale)),
+                    beaconOnMat);
+            }
         }
     }
 
@@ -501,6 +595,48 @@ class RidgeboundWorldSim {
         }
         return best;
     }
+    expose func nearestDormantBeaconName(playerX: Float, playerZ: Float) -> String {
+        var index = nearestDormantBeaconIndex(playerX, playerZ);
+        if (index < 0) { return "Sanctuary"; }
+        return beacons.get(index).name;
+    }
+    expose func nearestDormantBeaconDirection(playerX: Float, playerZ: Float) -> String {
+        var index = nearestDormantBeaconIndex(playerX, playerZ);
+        if (index < 0) { return "HOME"; }
+        var b = beacons.get(index);
+        var dx = b.x - playerX;
+        var dz = b.z - playerZ;
+        var ax = mathutil.absFloat(dx);
+        var az = mathutil.absFloat(dz);
+        if (ax > az * 2.0) {
+            if (dx > 0.0) { return "E"; }
+            return "W";
+        }
+        if (az > ax * 2.0) {
+            if (dz > 0.0) { return "S"; }
+            return "N";
+        }
+        if (dz > 0.0) {
+            if (dx > 0.0) { return "SE"; }
+            return "SW";
+        }
+        if (dx > 0.0) { return "NE"; }
+        return "NW";
+    }
+    hide func nearestDormantBeaconIndex(playerX: Float, playerZ: Float) -> Integer {
+        var best = -1.0;
+        var bestIndex = -1;
+        for i in 0..beacons.count() {
+            var b = beacons.get(i);
+            if (b.state == 0) {
+                var dx = playerX - b.x;
+                var dz = playerZ - b.z;
+                var d = dx * dx + dz * dz;
+                if (best < 0.0 || d < best) { best = d; bestIndex = i; }
+            }
+        }
+        return bestIndex;
+    }
     expose func isNight() -> Boolean { return nightNow; }
     expose func getSkyPhase() -> Integer { return skyPhase; }
 
@@ -531,12 +667,13 @@ class RidgeboundWorldSim {
         landmarks.add(lm);
     }
 
-    hide func addBeaconPct(land: Terrain3D, xPct: Float, zPct: Float) {
-        addBeacon(land, terrain.terrainWorldMaxX() * xPct, terrain.terrainWorldMaxZ() * zPct);
+    hide func addBeaconPct(land: Terrain3D, name: String, xPct: Float, zPct: Float) {
+        addBeacon(land, name, terrain.terrainWorldMaxX() * xPct, terrain.terrainWorldMaxZ() * zPct);
     }
 
-    hide func addBeacon(land: Terrain3D, x: Float, z: Float) {
+    hide func addBeacon(land: Terrain3D, name: String, x: Float, z: Float) {
         var b: Beacon = new Beacon();
+        b.name = name;
         b.x = x;
         b.y = terrain.sampleGround(land, x, z);
         b.z = z;

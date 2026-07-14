@@ -14,8 +14,8 @@ class RidgeboundWaterSky {
     hide Water3D water;
     hide CubeMap3D skybox;
     hide List[CubeMap3D] phaseSkies;
-    hide Mesh3D lakeMesh;
-    hide Material3D lakeMat;
+    hide Mesh3D shoreMesh;
+    hide Material3D shoreMat;
     hide Mesh3D saplingMesh;
     hide Material3D saplingMat;
     hide List[Float] reedXs;
@@ -38,39 +38,38 @@ class RidgeboundWaterSky {
         var waterTex = createWaterSurfaceTexture(config.WATER_TEXTURE_SIZE);
         var waterNormal = createWaterNormalTexture(config.WATER_TEXTURE_SIZE);
 
-        // Sized to cover the terrain (+margin) and centred over it. The grid is
-        // built around the origin, but the terrain spans [0,size], so without the
-        // SetPosition centre the surface was mis-aligned and half its resolution
-        // fell off-map — the reason the lake barely read as water.
-        water = Water3D.New(terrain.terrainWorldMaxX() * 1.15, terrain.terrainWorldMaxZ() * 1.15);
+        // One bounded water body, sized to the authored lake. The rectangle's
+        // corners sit under the raised elliptical shore and are depth-occluded;
+        // unlike the former world-sized plane + duplicate disc, water can no
+        // longer appear through low terrain elsewhere in the valley.
+        var lakeWidth = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X * 2.04;
+        var lakeDepth = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z * 2.04;
+        water = Water3D.New(lakeWidth, lakeDepth);
         Water3D.SetHeight(water, config.WATER_HEIGHT);
         Water3D.SetPosition(
-            water, terrain.terrainWorldMaxX() * 0.5, config.WATER_HEIGHT, terrain.terrainWorldMaxZ() * 0.5);
+            water,
+            terrain.terrainWorldMaxX() * config.LAKE_CENTER_X,
+            config.WATER_HEIGHT,
+            terrain.terrainWorldMaxZ() * config.LAKE_CENTER_Z);
         Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
-        Water3D.SetResolution(water, 160);
+        Water3D.SetResolution(water, 120);
         Water3D.SetTexture(water, waterTex);
         Water3D.SetNormalMap(water, waterNormal);
         Water3D.SetEnvMap(water, skybox);
         Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
-        Water3D.AddWave(water, 1.0, 0.30, 1.9, 0.18, 18.0);
-        Water3D.AddWave(water, -0.35, 0.82, 1.5, 0.10, 11.0);
-        Water3D.AddWave(water, 0.55, -0.25, 2.4, 0.055, 6.5);
+        Water3D.AddWave(water, 1.0, 0.30, 1.5, 0.09, 18.0);
+        Water3D.AddWave(water, -0.35, 0.82, 1.15, 0.05, 11.0);
+        Water3D.AddWave(water, 0.55, -0.25, 1.8, 0.025, 6.5);
 
-        lakeMesh = createLakeSurfaceMesh(56);
-        lakeMat = Material3D.PBR(0.02, 0.52, 0.86);
-        Material3D.SetAlbedoMap(lakeMat, waterTex);
-        Material3D.SetNormalMap(lakeMat, waterNormal);
-        lakeMat.Roughness = 0.18;
-        lakeMat.Metallic = 0.0;
-        lakeMat.Reflectivity = config.WATER_REFLECTIVITY;
-        Material3D.SetEnvMap(lakeMat, skybox);
-        lakeMat.Alpha = config.WATER_A;
-        lakeMat.AlphaMode = 2;
-        Material3D.SetEmissiveColor(lakeMat, 0.015, 0.20, 0.32);
-        lakeMat.DoubleSided = true;
-        // Opt the lake surface into screen-space reflections (a PostFX3D.AddSSR pass
-        // composites them where available; harmless otherwise).
-        lakeMat.SsrEnabled = true;
+        // A narrow translucent edge softens the geometric water/land seam. It
+        // is shoreline dressing, not a second water surface.
+        shoreMesh = createShoreRingMesh(72, 0.91);
+        shoreMat = Material3D.PBR(0.62, 0.72, 0.66);
+        shoreMat.Roughness = 0.72;
+        shoreMat.Metallic = 0.0;
+        shoreMat.Alpha = 0.42;
+        shoreMat.AlphaMode = 2;
+        shoreMat.DoubleSided = true;
 
         setupReeds(land);
     }
@@ -89,7 +88,6 @@ class RidgeboundWaterSky {
     expose func setPhaseReflections(phase: Integer) {
         var env = getPhaseSkybox(phase);
         Water3D.SetEnvMap(water, env);
-        if (lakeMat != null) { Material3D.SetEnvMap(lakeMat, env); }
     }
 
     expose func getWater() -> Water3D {
@@ -100,17 +98,31 @@ class RidgeboundWaterSky {
         Water3D.Update(water, dt);
     }
 
+    expose func applyQuality(level: Integer) {
+        if (water == null) { return; }
+        if (level <= 0) {
+            Water3D.SetResolution(water, 56);
+            Water3D.SetReflectivity(water, 0.34);
+        } else if (level == 1) {
+            Water3D.SetResolution(water, 84);
+            Water3D.SetReflectivity(water, 0.46);
+        } else {
+            Water3D.SetResolution(water, 120);
+            Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
+        }
+    }
+
     expose func drawWater(canvas: Canvas3D, camera: Camera3D) {
         Canvas3D.DrawWater(canvas, water, camera);
-        if (lakeMesh != null && lakeMat != null) {
+        if (shoreMesh != null && shoreMat != null) {
             var x = terrain.terrainWorldMaxX() * config.LAKE_CENTER_X;
             var z = terrain.terrainWorldMaxZ() * config.LAKE_CENTER_Z;
-            var sx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X * 1.08;
-            var sz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z * 1.08;
+            var sx = terrain.terrainWorldMaxX() * config.LAKE_RADIUS_X;
+            var sz = terrain.terrainWorldMaxZ() * config.LAKE_RADIUS_Z;
             var xform = Mat4.Mul(
-                Mat4.Translate(x, config.WATER_HEIGHT - 0.4, z),
+                Mat4.Translate(x, config.WATER_HEIGHT + 0.035, z),
                 Mat4.Scale(sx, 1.0, sz));
-            Canvas3D.DrawMesh(canvas, lakeMesh, xform, lakeMat);
+            Canvas3D.DrawMesh(canvas, shoreMesh, xform, shoreMat);
         }
     }
 
@@ -171,15 +183,16 @@ class RidgeboundWaterSky {
                 var g = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(26.0, 9.0, up)));
                 var b = mathutil.clampByte(Convert.NumToInt(mathutil.lerpFloat(44.0, 22.0, up)));
 
-                // Denser, brightness-varied starfield (skip the ground-facing face).
+                // Sparse single-texel stars: enough to read as a night sky after
+                // cubemap filtering, without turning into large white bloom discs.
                 if (faceId != 3) {
                     var s = mathutil.hash01(px * 131 + faceId * 17, py * 71 + faceId * 29);
-                    if (s > 0.984) {
-                        var t = (s - 0.984) / 0.016;
-                        var bright = mathutil.clampByte(120 + Convert.NumToInt(t * 135.0));
+                    if (s > 0.992) {
+                        var t = (s - 0.992) / 0.008;
+                        var bright = mathutil.clampByte(70 + Convert.NumToInt(t * 110.0));
                         r = mathutil.clampByte(r + bright);
                         g = mathutil.clampByte(g + bright);
-                        b = mathutil.clampByte(b + bright + 8);
+                        b = mathutil.clampByte(b + bright + 12);
                     }
                 }
                 face.Set(px, py, mathutil.packPixel(r, g, b, 255));
@@ -337,17 +350,19 @@ class RidgeboundWaterSky {
         return tex;
     }
 
-    hide func createLakeSurfaceMesh(segments: Integer) -> Mesh3D {
+    hide func createShoreRingMesh(segments: Integer, innerRadius: Float) -> Mesh3D {
         var mesh = Mesh3D.New();
-        Mesh3D.Reserve(mesh, segments + 1, segments);
-        Mesh3D.AddVertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.5);
+        Mesh3D.Reserve(mesh, segments * 2, segments * 2);
 
         var i = 0;
         while (i < segments) {
             var ang = (i + 0.0) / (segments + 0.0) * 6.2831853;
             var x = Sin(ang);
             var z = Cos(ang);
-            Mesh3D.AddVertex(mesh, x, 0.0, z, 0.0, 1.0, 0.0, 0.5 + x * 0.5, 0.5 + z * 0.5);
+            Mesh3D.AddVertex(mesh, x * innerRadius, 0.0, z * innerRadius,
+                0.0, 1.0, 0.0, (i + 0.0) / (segments + 0.0), 0.0);
+            Mesh3D.AddVertex(mesh, x, 0.0, z,
+                0.0, 1.0, 0.0, (i + 0.0) / (segments + 0.0), 1.0);
             i = i + 1;
         }
 
@@ -355,7 +370,12 @@ class RidgeboundWaterSky {
         while (i < segments) {
             var next = i + 1;
             if (next >= segments) { next = 0; }
-            Mesh3D.AddTriangle(mesh, 0, i + 1, next + 1);
+            var innerA = i * 2;
+            var outerA = innerA + 1;
+            var innerB = next * 2;
+            var outerB = innerB + 1;
+            Mesh3D.AddTriangle(mesh, innerA, outerA, outerB);
+            Mesh3D.AddTriangle(mesh, innerA, outerB, innerB);
             i = i + 1;
         }
 

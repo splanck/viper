@@ -24,16 +24,28 @@ bind "../config" as config;
 class SaveManager {
     hide String baseDir;
     hide Boolean ready;
+    hide Boolean transient;
 
     expose func init() {
         baseDir = "";
         ready = false;
+        transient = false;
     }
 
     // Real game: pass Path.DataDir("ashfall"). Probes: pass a temp directory.
     expose func setup(dir: String) {
         baseDir = dir;
+        transient = false;
         if Dir.Exists(baseDir) == false { Dir.MakeAll(baseDir); }
+        ready = true;
+    }
+
+    // Headless integration probes should never read or mutate the player's
+    // real profile. Transient mode keeps the normal serialization surface but
+    // backs it with fresh empty objects and successful no-op writes.
+    expose func setupTransient() {
+        baseDir = "";
+        transient = true;
         ready = true;
     }
 
@@ -50,6 +62,7 @@ class SaveManager {
     // Serialize a Map to JSON and write it durably (temp + move).
     hide func writeMap(name: String, m: Map) -> Boolean {
         if ready == false { return false; }
+        if transient { return true; }
         var path = pathFor(name);
         var tmp = path + ".tmp";
         var text = Json.FormatPretty(m, 2);
@@ -63,6 +76,7 @@ class SaveManager {
     // Read a Map back. Any failure (missing, unreadable, invalid JSON) returns a
     // fresh empty Map and renames the bad file aside for post-mortem.
     hide func readMap(name: String) -> Map {
+        if transient { return Json.NewObject(); }
         var path = pathFor(name);
         if ready == false || File.Exists(path) == false {
             return Json.NewObject();
@@ -101,11 +115,11 @@ class SaveManager {
     }
     expose func loadCheckpoint() -> Map { return readMap("checkpoint.json"); }
     expose func hasCheckpoint() -> Boolean {
-        if ready == false { return false; }
+        if ready == false || transient { return false; }
         return File.Exists(pathFor("checkpoint.json"));
     }
     expose func clearCheckpoint() {
-        if ready == false { return; }
+        if ready == false || transient { return; }
         var path = pathFor("checkpoint.json");
         if File.Exists(path) { File.Delete(path); }
     }

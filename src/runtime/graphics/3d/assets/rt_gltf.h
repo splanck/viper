@@ -151,6 +151,12 @@ int64_t rt_gltf_variant_count(void *asset);
 /// @brief Get the material-variant name at @p index (empty string if out of range).
 rt_string rt_gltf_get_variant_name(void *asset, int64_t index);
 
+/// @brief Fuzz/test hook: decode a raw KHR_draco_mesh_compression payload and free the
+///   result; returns nonzero on a successful decode. Not a scripting-surface method — it
+///   exercises the Draco decoder directly, which the load_assets=0 glTF preload fuzzer
+///   cannot reach. See src/tests/fuzz/fuzz_gltf_draco.cpp.
+int rt_gltf_draco_decode_probe(const unsigned char *data, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

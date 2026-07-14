@@ -1380,6 +1380,48 @@ static void test_character_step_up() {
     }
 }
 
+static void test_character_crosses_uneven_walkable_heightfield() {
+    constexpr int kWidth = 25;
+    constexpr int kDepth = 5;
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *pixels = rt_pixels_new(kWidth, kDepth);
+
+    /* A shallow uphill grade with low alternating undulations reproduces the
+     * cell-boundary contacts that used to consume sustained horizontal input.
+     * Every local slope is far below the default 45-degree walkable limit. */
+    for (int64_t z = 0; z < kDepth; ++z) {
+        for (int64_t x = 0; x < kWidth; ++x) {
+            double grade = 0.18 + (double)x * 0.012;
+            double ripple = ((x + z) & 1) != 0 ? 0.006 : -0.006;
+            double height = grade + ripple;
+            uint16_t encoded = (uint16_t)(height * 65535.0);
+            rt_pixels_set(pixels, x, z, encode_height16(encoded));
+        }
+    }
+
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain = rt_body3d_new(0.0);
+    rt_body3d_set_collider(terrain, heightfield);
+    rt_world3d_add(world, terrain);
+
+    void *character = rt_character3d_new(0.35, 1.8, 70.0);
+    rt_character3d_set_world(character, world);
+    rt_character3d_set_step_height(character, 0.3);
+    rt_character3d_set_position(character, -10.5, 1.13, 0.0);
+
+    void *velocity = rt_vec3_new(2.0, -3.0, 0.0);
+    for (int frame = 0; frame < 360; ++frame)
+        rt_character3d_move(character, velocity, 1.0 / 60.0);
+
+    void *position = rt_character3d_get_position(character);
+    EXPECT_TRUE(rt_vec3_x(position) > 0.5,
+                "Character sustains forward motion across an uneven walkable heightfield");
+    EXPECT_TRUE(rt_vec3_y(position) > 1.2,
+                "Character follows the rising heightfield instead of remaining below it");
+    EXPECT_TRUE(rt_character3d_is_grounded(character) != 0,
+                "Character remains grounded after crossing uneven walkable terrain");
+}
+
 /*==========================================================================
  * Trigger3D tests
  *=========================================================================*/
@@ -3527,6 +3569,7 @@ int main() {
     test_character_world_binding();
     test_character_slide_against_wall();
     test_character_step_up();
+    test_character_crosses_uneven_walkable_heightfield();
 
     /* Sphere-sphere collision tests — declared below */
 

@@ -20,6 +20,7 @@ bind "./ballistics" as ballistics;
 bind "./projectiles" as projectiles;
 bind "../player/camera_rig" as camera_rig;
 bind "../player/viewmodel" as viewmodel;
+bind "../meta/economy" as economy;
 
 class WeaponController {
     hide weapon_defs.WeaponDefs defs;
@@ -29,6 +30,7 @@ class WeaponController {
     hide viewmodel.ViewModel vm;
     hide events.EventBus bus;
     hide rng.RngStream recoilRng;
+    hide economy.Economy upgrades;
     hide List[Integer] mag;
     hide List[Integer] reserve;
     hide List[Integer] owned;
@@ -38,6 +40,8 @@ class WeaponController {
     hide Float reloadTimer;
     hide Float heat;               // beam overheat 0..1
     hide Boolean overheated;
+    hide Float beamChargeAccum;
+    hide Float beamFxTimer;
     hide Float bloom;             // sustained-fire spread bloom (deg)
     hide Integer shotCounter;
 
@@ -49,14 +53,17 @@ class WeaponController {
         reloadTimer = 0.0;
         heat = 0.0;
         overheated = false;
+        beamChargeAccum = 0.0;
+        beamFxTimer = 0.0;
         bloom = 0.0;
         shotCounter = 0;
     }
 
     expose func setup(d: weapon_defs.WeaponDefs, b: ballistics.Ballistics, p: projectiles.Projectiles,
                       cr: camera_rig.CameraRig, v: viewmodel.ViewModel, bus0: events.EventBus,
-                      rr: rng.RngStream) {
+                      rr: rng.RngStream, up: economy.Economy) {
         defs = d; ball = b; proj = p; camRig = cr; vm = v; bus = bus0; recoilRng = rr;
+        upgrades = up;
         var i = 0;
         while i < config.WEAPON_COUNT {
             mag.Add(0); reserve.Add(0); owned.Add(0);
@@ -83,6 +90,8 @@ class WeaponController {
         reloadTimer = 0.0;
         heat = 0.0;
         overheated = false;
+        beamChargeAccum = 0.0;
+        beamFxTimer = 0.0;
         bloom = 0.0;
     }
 
@@ -96,8 +105,18 @@ class WeaponController {
     expose func current3() -> Integer { return current; }
     expose func getCurrent() -> Integer { return current; }
     expose func getMag() -> Integer { return mag[current]; }
+    expose func getMagFor(w: Integer) -> Integer { return mag[w]; }
+    expose func getMagCapacity() -> Integer { return defs.magOf(current); }
     expose func getReserve() -> Integer { return reserve[current]; }
+    expose func getReserveFor(w: Integer) -> Integer { return reserve[w]; }
     expose func getHeat() -> Float { return heat; }
+    expose func isOverheated() -> Boolean { return overheated; }
+    expose func restoreSlot(w: Integer, own: Boolean, magNow: Integer, reserveNow: Integer) {
+        if w < 0 || w >= config.WEAPON_COUNT { return; }
+        if own { owned[w] = 1; } else { owned[w] = 0; }
+        mag[w] = M.clampi(magNow, 0, defs.magOf(w));
+        reserve[w] = M.clampi(reserveNow, 0, defs.reserveMaxOf(w));
+    }
     expose func isReloading() -> Boolean { return reloading; }
     expose func currentBloom() -> Float { return bloom; }
     expose func adsFov() -> Float { return defs.adsFovOf(current); }
@@ -119,6 +138,8 @@ class WeaponController {
         reloadTimer = 0.0;
         cooldown = 0.15;   // switch delay
         bloom = 0.0;
+        beamChargeAccum = 0.0;
+        beamFxTimer = 0.0;
     }
 
     expose func nextWeapon() {
@@ -153,6 +174,7 @@ class WeaponController {
     expose func update(dt: Float, firing: Boolean, ads: Boolean, reloadReq: Boolean,
                        ox: Float, oy: Float, oz: Float, dirX: Float, dirY: Float, dirZ: Float) {
         if cooldown > 0.0 { cooldown = cooldown - dt; }
+        if beamFxTimer > 0.0 { beamFxTimer = beamFxTimer - dt; }
 
         // Bloom recovery.
         bloom = bloom - bloom * M.clampf(4.0 * dt, 0.0, 1.0);
@@ -167,13 +189,15 @@ class WeaponController {
             beginReload();
         }
 
-        // Beam heat cooldown.
-        if defs.isBeam(current) {
-            if firing == false || overheated {
-                heat = heat - dt * 0.5;
-                if heat < 0.0 { heat = 0.0; }
-                if heat <= 0.2 { overheated = false; }
-            }
+        // Beam heat belongs to the shared power pack, so it must also cool while
+        // another weapon is equipped. Otherwise swapping away from an overheated
+        // Lance could preserve the lockout forever.
+        var beamActive = defs.isBeam(current) && firing && reloading == false &&
+                         cooldown <= 0.0 && overheated == false && mag[current] > 0;
+        if beamActive == false {
+            heat = heat - dt * 0.5;
+            if heat < 0.0 { heat = 0.0; }
+            if heat <= 0.2 { overheated = false; }
         }
 
         if firing && canFire() {
@@ -196,18 +220,28 @@ class WeaponController {
         var w = current;
         var spread = defs.spreadHipOf(w);
         if ads { spread = defs.spreadADSOf(w); }
+        spread = spread * upgrades.handlingMult(w);
         spread = spread + bloom;
+        var damage = defs.damageOf(w) * upgrades.damageMult(w);
 
         if defs.isBeam(w) {
             // Beam: continuous per-tick damage; consumes mag as a charge, heats up.
             ball.fireHitscan(ox, oy, oz, dirX, dirY, dirZ, 1, spread * 0.3,
-                             defs.damageOf(w) * dt, 1, defs.rangeOf(w), config.DMG_BEAM);
-            heat = heat + dt * 0.35;
+                             damage * dt, 1, defs.rangeOf(w), config.DMG_BEAM);
+            heat = heat + dt * 0.65;
             if heat >= 1.0 { overheated = true; }
-            mag[w] = mag[w] - 1;
-            if mag[w] < 0 { mag[w] = 0; }
+            // Charge is time-based: 20 units/s gives a five-second full cell,
+            // while heat forces a recovery break before the cell is exhausted.
+            beamChargeAccum = beamChargeAccum + dt * 20.0;
+            while beamChargeAccum >= 1.0 && mag[w] > 0 {
+                mag[w] = mag[w] - 1;
+                beamChargeAccum = beamChargeAccum - 1.0;
+            }
             camRig.addShake(0.01);
-            bus.pushAt(config.EV_GUNSHOT, w, 6, ox, oy, oz);
+            if beamFxTimer <= 0.0 {
+                bus.pushAt(config.EV_GUNSHOT, w, 6, ox, oy, oz);
+                beamFxTimer = 0.08;
+            }
             return;
         }
 
@@ -222,17 +256,23 @@ class WeaponController {
             if w == config.W_ARC { grav = -14.0; bounces = 3; }
             var dk = config.DMG_PROJECTILE;
             if w == config.W_EMP { dk = config.DMG_EMP; }
-            proj.spawn(ox, oy, oz, dirX, dirY, dirZ, defs.projSpeedOf(w),
-                       defs.damageOf(w), defs.blastRadiusOf(w), defs.dotDPSOf(w), defs.dotTimeOf(w),
+            var pdir = ball.spreadVector(dirX, dirY, dirZ, spread);
+            proj.spawn(ox, oy, oz, Math.Vec3.get_X(pdir), Math.Vec3.get_Y(pdir),
+                       Math.Vec3.get_Z(pdir), defs.projSpeedOf(w),
+                       damage, defs.blastRadiusOf(w),
+                       defs.dotDPSOf(w) * upgrades.damageMult(w), defs.dotTimeOf(w),
                        grav, bounces, 4.0, dk);
+        } else if defs.isRicochet(w) {
+            ball.fireRicochet(ox, oy, oz, dirX, dirY, dirZ, spread,
+                              damage, 3, defs.rangeOf(w), config.DMG_HITSCAN);
         } else {
             var pen = defs.penetrationOf(w);
             ball.fireHitscan(ox, oy, oz, dirX, dirY, dirZ, defs.pelletsOf(w), spread,
-                             defs.damageOf(w), pen, defs.rangeOf(w), config.DMG_HITSCAN);
+                             damage, pen, defs.rangeOf(w), config.DMG_HITSCAN);
         }
 
         // Recoil feel.
-        var kick = defs.recoilOf(w);
+        var kick = defs.recoilOf(w) * upgrades.handlingMult(w);
         camRig.addRecoil(kick * 0.35, recoilRng.jitter(kick * 0.12));
         camRig.addShake(kick * 0.01);
         vm.addKick(kick);

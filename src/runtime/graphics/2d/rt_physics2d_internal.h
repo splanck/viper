@@ -57,6 +57,10 @@ typedef struct {
     int64_t collision_mask;  ///< Bitmask: which layers this body can collide with.
     double radius;           ///< Circle radius (0 for AABB bodies).
     int8_t is_circle;        ///< 1 = circle shape, 0 = AABB shape.
+    void *owner_world;       ///< World this body was added to, or NULL. Enables O(1)
+                             ///< duplicate detection and removal (see rt_physics2d.c).
+    int64_t world_index;     ///< Index of this body in owner_world->bodies; valid only
+                             ///< while owner_world is non-NULL and points to that world.
 } rt_body_impl;
 
 /// Forward declaration for joint
@@ -87,9 +91,13 @@ typedef struct {
     int64_t contact_capacity;
     int8_t contact_overflow; ///< Set when the most recent step could not grow contact storage.
 
-    uint8_t *pair_checked;
-    size_t pair_checked_bytes;
-    int64_t pair_checked_span;
+    /* Broad-phase candidate-pair scratch. Each entry packs a body-index pair as
+     * ((uint64_t)ii << 32) | (uint32_t)jj with ii < jj. Collected per step, sorted,
+     * then de-duplicated — O(pairs) memory instead of the former O(n^2) bit-matrix
+     * (which also cost an O(n^2) memset every substep). */
+    uint64_t *pair_scratch;
+    int64_t pair_scratch_count;
+    int64_t pair_scratch_capacity;
 
     rt_body_impl **force_bodies;
     double *force_x;
@@ -132,6 +140,10 @@ void rt_physics2d_solve_spring_joints(void *world, double dt);
 /// @brief Positional (Baumgarte/NGS) correction pass for joints after the
 ///        velocity solve, to remove residual constraint drift.
 void rt_physics2d_solve_position_joints(void *world, double dt);
+/// @brief Velocity-projection pass for positional joints; removes the residual
+///        constraint-axis relative velocity left by the position solve so it
+///        cannot accumulate ("phantom velocity") across steps.
+void rt_physics2d_solve_joint_velocities(void *world, double dt);
 
 //=============================================================================
 // Collision broad/narrow-phase (defined in rt_physics2d_collision.c)

@@ -34,13 +34,20 @@ class RidgeboundSurvival {
     hide Float regenScale;
     hide Float clock;
 
-    expose func setup(world: World3D, land: Terrain3D) {
-        warmth = 1.0;
-        foragedCount = 0;
-        nearestFireDist = 999.0;
-        regenScale = 1.0;
-        clock = 0.0;
+    expose func setupDisabled() {
+        fireXs = [];
+        fireYs = [];
+        fireZs = [];
+        fireLights = [];
+        forageXs = [];
+        forageYs = [];
+        forageZs = [];
+        forageTaken = [];
+        embers = null;
+        reset();
+    }
 
+    expose func setup(world: World3D, land: Terrain3D) {
         var maxX = terrain.terrainWorldMaxX();
         var maxZ = terrain.terrainWorldMaxZ();
 
@@ -89,6 +96,16 @@ class RidgeboundSurvival {
             forageTaken.add(false);
             i = i + 1;
         }
+        reset();
+    }
+
+    expose func reset() {
+        warmth = 1.0;
+        foragedCount = 0;
+        nearestFireDist = 999.0;
+        regenScale = 1.0;
+        clock = 0.0;
+        for i in 0..forageTaken.count() { forageTaken.set(i, false); }
     }
 
     hide func addCampfire(world: World3D, land: Terrain3D, x: Float, z: Float, index: Integer) {

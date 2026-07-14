@@ -14,6 +14,7 @@ bind Viper.Terminal as Terminal;
 bind "../config" as config;
 bind "../game" as game;
 bind "../core/mathutil" as M;
+bind "../ui/menu" as menu;
 
 func fail(msg: String) { Terminal.Say("FAIL: " + msg); }
 
@@ -31,6 +32,10 @@ func start() {
     g.boot(true, false);
     g.devEnablePostfx();
     g.devSetGod(true);
+    g.scriptFlashlight(true);
+    tick(g);
+    g.scriptFlashlight(false);
+    if g.devFlashlightActive() == false { fail("retained flashlight spot did not enable"); return; }
     // Fire the SMG so particles + projectiles + hitmarkers are exercised.
     g.getWeapons().switchTo(config.W_CYCLER);
     var i = 0;
@@ -73,14 +78,38 @@ func start() {
         lv = lv + 1;
     }
 
-    // --- Title + menu frame (frontend overlay path). -------------------------
+    // --- Title + Armory + options frames (frontend overlay paths). -----------
     var t = new game.Game();
     t.initCore(0xAA30);
     t.setScripted(true);
+    // Generic headless boot uses SaveManager's in-memory transient backend;
+    // this render-only path needs no disk state and cannot race menu persistence.
     t.boot(true, false);
     t.enterTitle();
     tick(t);
     t.devRenderFrame();
+    t.devMenuNav(true);
+    t.devMenuNav(true);
+    t.devMenuConfirm();
+    if t.devMenuSub() != menu.SUB_ARMORY { fail("could not open rendered Armory"); return; }
+    t.devRenderFrame();
+    t.devMenuBack();
+    t.devMenuNav(true);
+    t.devMenuNav(true);
+    t.devMenuNav(true);
+    t.devMenuConfirm();
+    if t.devMenuSub() != menu.SUB_OPTIONS { fail("could not open rendered options"); return; }
+    t.devRenderFrame();
+
+    // Completion stats + expanded menu panel.
+    var cm = new game.Game();
+    cm.initCore(0xAA32);
+    cm.setScripted(true);
+    cm.setLevel(config.LV_L1);
+    cm.boot(true, false);
+    cm.requestState(config.ST_LEVEL_COMPLETE);
+    tick(cm);
+    cm.devRenderFrame();
 
     // --- View-model frame per weapon class (composite fallback path). --------
     var v = new game.Game();
@@ -115,7 +144,7 @@ func start() {
         return;
     }
 
-    Terminal.Say("renderedFrames=48 levelSweep=ok title=ok viewmodels=ok bob=" +
+    Terminal.Say("renderedFrames=72 levelSweep=ok menus=ok viewmodels=ok bob=" +
                  toString(M.roundi((maxY - minY) * 1000.0)) + " pipeline=ok");
     Terminal.Say("RESULT: ok");
     Terminal.Say("PASS");

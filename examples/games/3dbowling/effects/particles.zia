@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/effects/particles.zia
+// Purpose: Owns bounded delivery, collision, gutter, and celebration particle effects.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: particles (ParticleManager)
 // PURPOSE: All particle and decal effects: crash sparks (ball-pin
@@ -33,6 +51,7 @@ bind Viper.Graphics;
 bind Viper.Math;
 bind Viper.Core.Convert as Convert;
 bind "../config";
+bind "../gameplay/feedback_model";
 
 /// @brief Owns every particle emitter and persistent decal.
 class ParticleManager {
@@ -46,6 +65,7 @@ class ParticleManager {
     hide Pixels skidTexture;
     hide Pixels impactTexture;
     hide List[Decal3D] decals;
+    hide FeedbackModel feedbackModel;
 
     hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
         return (((r * 256) + g) * 256 + b) * 256 + a;
@@ -53,6 +73,7 @@ class ParticleManager {
 
     /// @brief Build all emitters + decal textures + decal list.
     expose func initParticles() {
+        feedbackModel = new FeedbackModel();
         crashSparks = Particles3D.New(100);
         Particles3D.SetDirection(crashSparks, 0.0, 1.0, 0.0, 0.9);
         Particles3D.SetSpeed(crashSparks, config.SPARK_SPEED_MIN, config.SPARK_SPEED_MAX);
@@ -155,15 +176,18 @@ class ParticleManager {
     }
 
     /// @brief Burst of sparks at a ball-pin impact point.
-    expose func spawnCrashSparks(x: Float, y: Float, z: Float) {
+    expose func spawnCrashSparks(x: Float, y: Float, z: Float, strength: Float) {
         Particles3D.SetPosition(crashSparks, x, y, z);
-        Particles3D.Burst(crashSparks, config.SPARK_COUNT);
+        Particles3D.Burst(crashSparks,
+            feedbackModel.impactParticleCount(strength));
         spawnImpactMark(x, y, z);
     }
 
     /// @brief Begin emitting continuous dust under the rolling ball.
-    expose func startLaneDust(x: Float, z: Float) {
+    expose func startLaneDust(x: Float, z: Float, power: Float) {
         Particles3D.SetPosition(laneDust, x, 0.05, z);
+        Particles3D.SetRate(laneDust,
+            config.DUST_RATE * feedbackModel.dustScale(power));
         Particles3D.Start(laneDust);
     }
 
@@ -176,6 +200,19 @@ class ParticleManager {
     expose func stopLaneDust() {
         Particles3D.Stop(laneDust);
     }
+
+    /// @brief Stop emitters and release bounded per-world decal references.
+    expose func clear() {
+        Particles3D.Stop(crashSparks);
+        Particles3D.Stop(laneDust);
+        Particles3D.Stop(fireworks1);
+        Particles3D.Stop(fireworks2);
+        Particles3D.Stop(fireworks3);
+        Particles3D.Stop(gutterSplash);
+        decals.clear();
+    }
+
+    expose func getDecalCount() -> Integer { return decals.count(); }
 
     /// @brief Trigger the three-colour firework starburst at the pin centre.
     expose func spawnFireworks() {

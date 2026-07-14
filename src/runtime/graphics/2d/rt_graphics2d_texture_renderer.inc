@@ -43,7 +43,7 @@
 static void texture2d_finalize(void *obj) {
     rt_texture2d_impl *texture = (rt_texture2d_impl *)obj;
     texture->magic = 0;
-    release_ref_slot(&texture->pixels);
+    rt2d_release_ref_slot(&texture->pixels);
 }
 
 /// @brief Wrap an existing `Pixels` buffer as a Texture2D with default sampling
@@ -57,12 +57,12 @@ static void *texture2d_new_with_class(void *pixels, int64_t class_id) {
         return NULL;
     if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
         return NULL;
-    retain_ref(pixels);
+    rt2d_retain_ref(pixels);
     rt_texture2d_impl *texture =
         (rt_texture2d_impl *)rt_obj_new_i64(class_id, (int64_t)sizeof(rt_texture2d_impl));
     if (!texture) {
         void *owned_pixels = pixels;
-        release_ref_slot(&owned_pixels);
+        rt2d_release_ref_slot(&owned_pixels);
         return NULL;
     }
     texture->magic = RT2D_TEXTURE_MAGIC;
@@ -90,7 +90,7 @@ static void *texture2d_from_file_with_class(rt_string path, int64_t class_id) {
     if (!pixels)
         return NULL;
     void *texture = texture2d_new_with_class(pixels, class_id);
-    release_ref_slot(&pixels);
+    rt2d_release_ref_slot(&pixels);
     return texture;
 }
 
@@ -160,7 +160,7 @@ int64_t rt_texture2d_get_wrap(void *texture) {
 static void renderer2d_release_cmd(rt_renderer2d_cmd *cmd) {
     if (!cmd)
         return;
-    release_ref_slot(&cmd->source);
+    rt2d_release_ref_slot(&cmd->source);
     memset(cmd, 0, sizeof(*cmd));
 }
 
@@ -181,7 +181,7 @@ static void renderer2d_finalize(void *obj) {
 // Retained command stream. `Begin` clears + arms the queue; `Draw*` calls append
 // commands with the current tint / alpha / blend mode snapshot; `End` (via the
 // `Flush` / `Present` API elsewhere in the file) walks the commands and blits
-// each one through `blit_pixels`. Works on any Pixels-compatible target.
+// each one through `rt2d_blit_pixels`. Works on any Pixels-compatible target.
 
 /// @brief Grow the command buffer to fit at least `needed` entries.
 /// @details Doubling-growth with overflow guards at both the element-count level
@@ -215,14 +215,14 @@ static int32_t renderer2d_reserve(rt_renderer2d_impl *renderer, int64_t needed) 
 /// @details Default render state: no tint (`tint = -1`), full alpha (`alpha = 255`),
 ///          ALPHA blend mode. The renderer starts inactive; call `Begin` before
 ///          the first `Draw*`. Initial capacity is clamped to a sensible range by
-///          `initial_capacity` (floor 16, ceiling 1Mi).
+///          `rt2d_initial_capacity` (floor 16, ceiling 1Mi).
 void *rt_renderer2d_new(int64_t capacity) {
     rt_renderer2d_impl *renderer = (rt_renderer2d_impl *)rt_obj_new_i64(
         RT2D_RENDERER_CLASS_ID, (int64_t)sizeof(rt_renderer2d_impl));
     if (!renderer)
         return NULL;
     renderer->magic = RT2D_RENDERER_MAGIC;
-    renderer->capacity = initial_capacity(capacity);
+    renderer->capacity = rt2d_initial_capacity(capacity);
     renderer->cmds =
         (rt_renderer2d_cmd *)calloc((size_t)renderer->capacity, sizeof(rt_renderer2d_cmd));
     if (!renderer->cmds) {
@@ -316,7 +316,7 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
         rt_trap("Renderer2D: command capacity overflow");
         return;
     }
-    retain_ref(source);
+    rt2d_retain_ref(source);
     rt_renderer2d_cmd *cmd = &renderer->cmds[renderer->count];
     cmd->source = source;
     cmd->source_kind = source_kind;
@@ -343,7 +343,9 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
 /// @brief Queue a draw command to blit the full @p pixels buffer at `(x, y)` with current render
 /// state.
 void rt_renderer2d_draw_pixels(void *renderer, void *pixels, int64_t x, int64_t y) {
-    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Renderer2D.DrawPixels: null pixels");
+    /* Soft-skip an invalid handle (no trap) to match rt_renderer2d_draw_texture, so
+     * a stale handle mid-frame drops the one draw rather than aborting the program. */
+    rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
     if (!p)
         return;
     renderer2d_queue(renderer2d_checked(renderer),
@@ -525,7 +527,7 @@ void rt_renderer2d_draw_region(void *renderer,
 
 /// @brief Execute one queued draw command against a Pixels render target.
 /// @details Resolves the source (Texture2D → its Pixels, or raw Pixels directly) then calls
-///   `blit_pixels` with the command's snapshot of tint, alpha, blend mode, and region.
+///   `rt2d_blit_pixels` with the command's snapshot of tint, alpha, blend mode, and region.
 static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_pixels) {
     void *pixels = cmd->source_kind == 1 ? rt_texture2d_get_pixels(cmd->source) : cmd->source;
     if (!pixels)
@@ -563,7 +565,7 @@ static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_
                                    cmd->sampler_wrap);
         return;
     }
-    blit_pixels(target_pixels,
+    rt2d_blit_pixels(target_pixels,
                 cmd->x,
                 cmd->y,
                 pixels,
@@ -579,7 +581,7 @@ static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_
 /// @brief Blit a Pixels buffer to a Canvas surface using the specified blend mode.
 /// @details Routes through the appropriate Canvas API function based on blend mode:
 ///   OPAQUE → `rt_canvas_blit`, ALPHA → `rt_canvas_blit_alpha`, ADD → read-modify-write
-///   via `rt_canvas_copy_rect` + `blit_pixels(ADD)` + `rt_canvas_blit`. The additive
+///   via `rt_canvas_copy_rect` + `rt2d_blit_pixels(ADD)` + `rt_canvas_blit`. The additive
 ///   path is the only one that needs a round-trip through a temporary Pixels buffer.
 static void renderer2d_blit_pixels_to_canvas(
     void *canvas, int64_t x, int64_t y, void *pixels, int64_t blend_mode) {
@@ -634,9 +636,9 @@ static void renderer2d_blit_pixels_to_canvas(
     void *dest = rt_canvas_copy_rect(canvas, dx, dy, width, height);
     if (!dest)
         return;
-    blit_pixels(dest, 0, 0, pixels, sx, sy, width, height, -1, 255, RT_GRAPHICS2D_BLEND_ADD);
+    rt2d_blit_pixels(dest, 0, 0, pixels, sx, sy, width, height, -1, 255, RT_GRAPHICS2D_BLEND_ADD);
     rt_canvas_blit(canvas, dx, dy, dest);
-    release_ref_slot(&dest);
+    rt2d_release_ref_slot(&dest);
 }
 
 /// @brief Execute all queued draw commands against a RenderTarget2D.
@@ -723,7 +725,7 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                     continue;
                 int64_t rw = x1 - x0;
                 int64_t rh = y1 - y0;
-                if (rw <= 0 || rh <= 0 || !checked_count(rw, rh, 4, NULL))
+                if (rw <= 0 || rh <= 0 || !rt2d_checked_count(rw, rh, 4, NULL))
                     continue;
                 region = rt_pixels_new(rw, rh);
                 if (!region)
@@ -741,15 +743,15 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                                     cmd->sampler_filter,
                                     cmd->sampler_wrap);
                 draw_pixels = region;
-                blit_x = cmd->x + cmd->pivot_x + x0;
-                blit_y = cmd->y + cmd->pivot_y + y0;
+                blit_x = rt2d_saturating_add_i64(rt2d_saturating_add_i64(cmd->x, cmd->pivot_x), x0);
+                blit_y = rt2d_saturating_add_i64(rt2d_saturating_add_i64(cmd->y, cmd->pivot_y), y0);
             } else if (cmd->source_kind == 1 &&
                        (cmd->sx != 0 || cmd->sy != 0 || cmd->width != rt_pixels_width(pixels) ||
                         cmd->height != rt_pixels_height(pixels) || cmd->dst_width != cmd->width ||
                         cmd->dst_height != cmd->height ||
                         cmd->sampler_wrap == RT_GRAPHICS2D_WRAP_REPEAT ||
                         cmd->sampler_filter == RT_GRAPHICS2D_FILTER_LINEAR)) {
-                if (!checked_count(cmd->dst_width, cmd->dst_height, 4, NULL))
+                if (!rt2d_checked_count(cmd->dst_width, cmd->dst_height, 4, NULL))
                     continue;
                 region = rt_pixels_new(cmd->dst_width, cmd->dst_height);
                 if (!region)
@@ -778,7 +780,7 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                 int64_t height = cmd->height;
                 if (!clip_region_to_source(pixels, &blit_x, &blit_y, &sx, &sy, &width, &height))
                     continue;
-                region = copy_region_pixels(pixels, sx, sy, width, height);
+                region = rt2d_copy_region_pixels(pixels, sx, sy, width, height);
                 draw_pixels = region;
             }
             void *processed = processed_pixels_or_null(draw_pixels,
@@ -789,8 +791,8 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
             if (draw_pixels)
                 renderer2d_blit_pixels_to_canvas(
                     canvas, blit_x, blit_y, draw_pixels, cmd->blend_mode);
-            release_ref_slot(&processed);
-            release_ref_slot(&region);
+            rt2d_release_ref_slot(&processed);
+            rt2d_release_ref_slot(&region);
         }
     }
     impl->active = 0;

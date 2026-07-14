@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/lane/lane.zia
+// Purpose: Builds venue geometry, physical lane surfaces, oil grid, assets, and monitors.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: lane (LaneBuilder)
 // PURPOSE: Build and own every static element of the lane scene: the
@@ -43,8 +61,13 @@ bind Viper.Core.Convert as Convert;
 bind Viper.IO;
 bind "../config";
 bind "../util/mathutil";
+bind "../util/assets";
 
-var sharedLaneTexture: Pixels = null;
+// Material and HUD pixels are deliberately separate decoded objects. Sharing
+// one object between a 3D material and a later 2D overlay reproduces
+// NL-VIPER-003 on Metal.
+var sharedLaneMaterialTexture: Pixels = null;
+var sharedLanePreviewTexture: Pixels = null;
 
 /// @brief Builds and owns every static lane mesh / body / trigger.
 class LaneBuilder {
@@ -85,6 +108,8 @@ class LaneBuilder {
     hide Material3D laneMat;
     hide Material3D boardLightMat;
     hide Material3D boardDarkMat;
+    hide Material3D sideBoardLightMat;
+    hide Material3D sideBoardDarkMat;
     hide Material3D oilMat;
     hide Material3D pinDeckMat;
     hide Material3D roomFloorMat;
@@ -115,9 +140,12 @@ class LaneBuilder {
     hide Material3D decorPinBandMat;
     hide Material3D rackBallCyanMat;
     hide Material3D rackBallCoralMat;
-    hide Pixels laneTexture;
+    hide Pixels laneMaterialTexture;
+    hide Pixels lanePreviewTexture;
     hide Integer lanePreviewLight;
     hide Integer lanePreviewDark;
+    hide Pixels monitorTexture;
+    hide String monitorLabel;
 
     hide Mat4 laneXform;
     hide Mat4 oilXform;
@@ -154,6 +182,8 @@ class LaneBuilder {
     hide InstanceBatch3D spectatorHeadBatch;
     hide InstanceBatch3D boardLightBatch;
     hide InstanceBatch3D boardDarkBatch;
+    hide InstanceBatch3D sideBoardLightBatch;
+    hide InstanceBatch3D sideBoardDarkBatch;
     hide InstanceBatch3D signCyanBatch;
     hide InstanceBatch3D signAmberBatch;
     hide InstanceBatch3D decorPinBodyBatch;
@@ -166,6 +196,7 @@ class LaneBuilder {
     hide Integer oilPattern;
     hide Float laneCenterZ;
     hide List[Float] oilWear;
+    hide List[Float] oilCarry;
 
     hide Physics3DBody laneFloorBody;
     hide Physics3DBody gutterFloorL;
@@ -191,8 +222,7 @@ class LaneBuilder {
         }
 
         laneCenterZ = (config.LANE_LENGTH - config.LANE_APPROACH) / 2.0;
-        oilWear = [];
-        for (var wi: Integer = 0; wi < 9; wi = wi + 1) { oilWear.add(0.0); }
+        resetOilGrid();
         lanePreviewLight = 0xD6A353;
         lanePreviewDark = 0xB97B35;
         buildMeshes();
@@ -223,6 +253,10 @@ class LaneBuilder {
         boardDarkMat.Metallic = 0.0;
         boardDarkMat.Roughness = 0.42;
         Material3D.SetShininess(boardDarkMat, config.LANE_SHININESS * 0.82);
+        sideBoardLightMat = Material3D.PBR(0.20, 0.145, 0.085);
+        sideBoardLightMat.Roughness = 0.58;
+        sideBoardDarkMat = Material3D.PBR(0.125, 0.082, 0.050);
+        sideBoardDarkMat.Roughness = 0.64;
 
         var oilLen = oilEndZ - config.OIL_START_Z;
         if (oilLen < 0.5) { oilLen = 0.5; }
@@ -295,6 +329,9 @@ class LaneBuilder {
         monitorMat = Material3D.PBR(0.035, 0.085, 0.12);
         monitorMat.Roughness = 0.28;
         Material3D.SetEmissiveColor(monitorMat, 0.05, 0.34, 0.42);
+        monitorTexture = Pixels.New(256, 112);
+        monitorLabel = "";
+        updateMonitor("NEON LANES", 1, 0);
 
         ballReturnMesh = Mesh3D.Box(0.46, 0.42, 1.55);
         ballReturnMat = Material3D.PBR(0.09, 0.12, 0.15);
@@ -349,33 +386,58 @@ class LaneBuilder {
     }
 
     hide func loadLaneTexture() {
-        if (sharedLaneTexture != null) {
-            laneTexture = sharedLaneTexture;
-            var sharedLight = laneTexture.Get(laneTexture.Width / 4, laneTexture.Height / 2);
-            var sharedDark = laneTexture.Get(laneTexture.Width / 8, laneTexture.Height / 2);
+        if (sharedLaneMaterialTexture != null && sharedLanePreviewTexture != null) {
+            laneMaterialTexture = sharedLaneMaterialTexture;
+            lanePreviewTexture = sharedLanePreviewTexture;
+            Material3D.SetAlbedoMap(laneMat, laneMaterialTexture);
+            Material3D.SetAlbedoMap(boardLightMat, laneMaterialTexture);
+            Material3D.SetAlbedoMap(boardDarkMat, laneMaterialTexture);
+            var sharedLight = lanePreviewTexture.Get(
+                lanePreviewTexture.Width / 4, lanePreviewTexture.Height / 2);
+            var sharedDark = lanePreviewTexture.Get(
+                lanePreviewTexture.Width / 8, lanePreviewTexture.Height / 2);
             lanePreviewLight = (sharedLight >> 8) & 0xFFFFFF;
             lanePreviewDark = (sharedDark >> 8) & 0xFFFFFF;
             return;
         }
-        var path = "assets/textures/lane-maple.png";
-        if (File.Exists(path) == false) {
-            path = "examples/games/3dbowling/assets/textures/lane-maple.png";
+        var path = assets.resolveOptionalAsset(
+            "assets/textures/lane-maple.png", "lane-maple.png");
+        if (path != "") {
+            // Decode twice: the first object is material-only; the second is
+            // CPU/HUD-only and is never submitted as a 3D albedo map.
+            laneMaterialTexture = Pixels.Load(path);
+            lanePreviewTexture = Pixels.Load(path);
         }
-        if (File.Exists(path) == false) {
-            path = "../games/3dbowling/assets/textures/lane-maple.png";
-        }
-        if (File.Exists(path)) {
-            laneTexture = Pixels.Load(path);
-            sharedLaneTexture = laneTexture;
-            var lightSample = laneTexture.Get(laneTexture.Width / 4, laneTexture.Height / 2);
-            var darkSample = laneTexture.Get(laneTexture.Width / 8, laneTexture.Height / 2);
+        if (laneMaterialTexture != null && lanePreviewTexture != null) {
+            sharedLaneMaterialTexture = laneMaterialTexture;
+            sharedLanePreviewTexture = lanePreviewTexture;
+            Material3D.SetAlbedoMap(laneMat, laneMaterialTexture);
+            Material3D.SetAlbedoMap(boardLightMat, laneMaterialTexture);
+            Material3D.SetAlbedoMap(boardDarkMat, laneMaterialTexture);
+            var lightSample = lanePreviewTexture.Get(
+                lanePreviewTexture.Width / 4, lanePreviewTexture.Height / 2);
+            var darkSample = lanePreviewTexture.Get(
+                lanePreviewTexture.Width / 8, lanePreviewTexture.Height / 2);
             lanePreviewLight = (lightSample >> 8) & 0xFFFFFF;
             lanePreviewDark = (darkSample >> 8) & 0xFFFFFF;
+        } else if (path != "") {
+            assets.reportOptionalMissing("lane-maple.png");
         }
     }
 
-    /// @brief Enable the authored maple surface once gameplay leaves the title.
-    expose func enableAuthoredSurface() { loadLaneTexture(); }
+    /// @brief Enable the authored maple surface on composition-safe backends.
+    /// @details NL-VIPER-003 corrupts final-overlay frames when a Pixels-backed
+    ///          material is active on the current Metal backend. Until that
+    ///          runtime defect is fixed, Metal keeps the stable procedural
+    ///          board geometry; other backends receive the authored material.
+    expose func enableAuthoredSurface(canvas: Canvas3D) {
+        if (canvas.Backend == "metal") { return; }
+        loadLaneTexture();
+    }
+
+    expose func hasAuthoredSurface() -> Boolean {
+        return laneMaterialTexture != null;
+    }
 
     /// @brief Pre-compute Mat4 transforms for every static mesh.
     hide func buildTransforms() {
@@ -429,6 +491,8 @@ class LaneBuilder {
         spectatorHeadBatch = InstanceBatch3D.New(spectatorHeadMesh, spectatorMat);
         boardLightBatch = InstanceBatch3D.New(boardMesh, boardLightMat);
         boardDarkBatch = InstanceBatch3D.New(boardMesh, boardDarkMat);
+        sideBoardLightBatch = InstanceBatch3D.New(boardMesh, sideBoardLightMat);
+        sideBoardDarkBatch = InstanceBatch3D.New(boardMesh, sideBoardDarkMat);
         signCyanBatch = InstanceBatch3D.New(venueSignBarMesh, neonCyanMat);
         signAmberBatch = InstanceBatch3D.New(venueSignBarMesh, neonCoralMat);
         decorPinBodyBatch = InstanceBatch3D.New(decorPinBodyMesh, decorPinMat);
@@ -445,8 +509,13 @@ class LaneBuilder {
                 var bx = laneOffset - config.LANE_WIDTH / 2.0 + boardW / 2.0 +
                     (bi + 0.0) * boardW;
                 var boardXform = Mat4.Translate(bx, 0.006, laneCenterZ);
-                if (bi % 2 == 0) { boardLightBatch.Add(boardXform); }
-                else { boardDarkBatch.Add(boardXform); }
+                if (laneIndex == 0) {
+                    if (bi % 2 == 0) { boardLightBatch.Add(boardXform); }
+                    else { boardDarkBatch.Add(boardXform); }
+                } else {
+                    if (bi % 2 == 0) { sideBoardLightBatch.Add(boardXform); }
+                    else { sideBoardDarkBatch.Add(boardXform); }
+                }
             }
         }
 
@@ -643,6 +712,8 @@ class LaneBuilder {
     hide func drawLaneBoards(canvas: Canvas3D) {
         Canvas3D.DrawInstanced(canvas, boardLightBatch);
         Canvas3D.DrawInstanced(canvas, boardDarkBatch);
+        Canvas3D.DrawInstanced(canvas, sideBoardLightBatch);
+        Canvas3D.DrawInstanced(canvas, sideBoardDarkBatch);
     }
 
     hide func drawLaneBoardSeams(canvas: Canvas3D) {
@@ -670,6 +741,10 @@ class LaneBuilder {
         boardLightMat.Reflectivity = config.LANE_REFLECTIVITY;
         Material3D.SetEnvMap(boardDarkMat, env);
         boardDarkMat.Reflectivity = config.LANE_REFLECTIVITY * 0.72;
+        Material3D.SetEnvMap(sideBoardLightMat, env);
+        sideBoardLightMat.Reflectivity = 0.025;
+        Material3D.SetEnvMap(sideBoardDarkMat, env);
+        sideBoardDarkMat.Reflectivity = 0.018;
 
         Material3D.SetEnvMap(oilMat, env);
         oilMat.Reflectivity = config.LANE_OIL_REFLECTIVITY;
@@ -757,14 +832,12 @@ class LaneBuilder {
             friction = friction + (config.OIL_FRICTION_DRY - friction) * backend;
         }
 
-        // Repeated shots open a slightly earlier friction window on their line;
-        // carried oil just behind the pattern delays hook by the inverse amount.
-        var wear = wearAtX(x);
-        if (z <= oilEndZ) {
-            friction = friction + wear * 0.10;
-        } else if (z < oilEndZ + 2.0) {
-            friction = friction - wear * 0.055 * (1.0 - (z - oilEndZ) / 2.0);
-        }
+        // The live grid is sampled at the ball's actual X/Z cell. Breakdown
+        // opens friction on the used board while carried oil delays response
+        // down-lane. Both stores are bounded and reset with every new lane.
+        var wear = wearAt(x, z);
+        var carry = carryAt(x, z);
+        friction = friction + wear * 0.10 - carry * 0.075;
 
         return mathutil.clampf(friction, config.OIL_FRICTION_OILED, config.OIL_FRICTION_DRY);
     }
@@ -779,12 +852,10 @@ class LaneBuilder {
         return oilEndZ;
     }
 
-    /// @brief Visual oil density 0..1 at (x, z), for HUD/preview rendering only.
-    /// @details Deliberately DECOUPLED from getFrictionAt (which must stay
-    ///          byte-identical for the deterministic trajectory). This is an
-    ///          approximation of the oil footprint: full through the oiled
-    ///          corridor, tapering past oilEndZ, with a per-pattern lateral
-    ///          falloff so the three patterns read differently in the preview.
+    /// @brief Visual oil density 0..1 at (x, z), including live grid changes.
+    /// @details The authored pattern supplies the base footprint. The same
+    ///          bounded wear/carry cells sampled by physical friction then
+    ///          open the used board and show downstream carry in the HUD map.
     expose func getOilConcentration(x: Float, z: Float) -> Float {
         if (z < config.OIL_START_Z) { return 0.0; }
         if (z > oilEndZ + 2.0) { return 0.0; }
@@ -806,17 +877,38 @@ class LaneBuilder {
             center = (1.0 - boardPct) * 0.6;
         }
         if (center < 0.0) { center = 0.0; }
-        var visibleWear = wearAtX(x);
-        return center * lengthwise * (1.0 - visibleWear * 0.62);
+        var visibleWear = wearAt(x, z);
+        var visibleCarry = carryAt(x, z);
+        var concentration = center * lengthwise * (1.0 - visibleWear * 0.62) +
+            visibleCarry * 0.42;
+        return mathutil.clampf(concentration, 0.0, 1.0);
     }
 
     /// @brief Accumulate gradual breakdown along the live ball track.
     expose func recordBallTrack(x: Float, z: Float, spinMagnitude: Float, dt: Float) {
         if (z < config.OIL_START_Z || z > oilEndZ + 1.2 || dt <= 0.0) { return; }
-        var index = wearIndex(x);
-        var value = oilWear.get(index) + dt * (0.012 + spinMagnitude * 0.020);
-        if (value > 0.55) { value = 0.55; }
+        var stepDt = dt;
+        if (stepDt > 0.05) { stepDt = 0.05; }
+        var xCell = oilXIndex(x);
+        var zCell = oilZIndex(z);
+        var index = oilIndex(xCell, zCell);
+        var rate = stepDt * (0.012 + spinMagnitude * 0.020);
+        var value = oilWear.get(index) + rate;
+        if (value > config.OIL_WEAR_MAX) { value = config.OIL_WEAR_MAX; }
         oilWear.set(index, value);
+
+        // Oil displaced by the coverstock is deposited only into the next two
+        // lengthwise cells on the same board group. The second cell receives
+        // half as much so carry-down is visible without growing without bound.
+        for (var offset: Integer = 1; offset <= config.OIL_CARRY_CELLS; offset = offset + 1) {
+            var carryZ = zCell + offset;
+            if (carryZ >= config.OIL_GRID_Z) { continue; }
+            var carryIndex = oilIndex(xCell, carryZ);
+            var carryRate = rate * 0.42 / (offset + 0.0);
+            var carryValue = oilCarry.get(carryIndex) + carryRate;
+            if (carryValue > config.OIL_CARRY_MAX) { carryValue = config.OIL_CARRY_MAX; }
+            oilCarry.set(carryIndex, carryValue);
+        }
     }
 
     expose func getOilWearPercent() -> Integer {
@@ -825,15 +917,51 @@ class LaneBuilder {
         return Convert.NumToInt(total / (oilWear.count() + 0.0) * 100.0);
     }
 
-    hide func wearAtX(x: Float) -> Float { return oilWear.get(wearIndex(x)); }
+    /// @brief Clear all per-match breakdown and carry-down state.
+    expose func resetOilGrid() {
+        oilWear = [];
+        oilCarry = [];
+        var cells = config.OIL_GRID_X * config.OIL_GRID_Z;
+        for (var i: Integer = 0; i < cells; i = i + 1) {
+            oilWear.add(0.0);
+            oilCarry.add(0.0);
+        }
+    }
 
-    hide func wearIndex(x: Float) -> Integer {
+    expose func getOilGridCellCount() -> Integer { return oilWear.count(); }
+    expose func getWearAt(x: Float, z: Float) -> Float { return wearAt(x, z); }
+    expose func getCarryAt(x: Float, z: Float) -> Float { return carryAt(x, z); }
+
+    hide func wearAt(x: Float, z: Float) -> Float {
+        return oilWear.get(oilIndex(oilXIndex(x), oilZIndex(z)));
+    }
+
+    hide func carryAt(x: Float, z: Float) -> Float {
+        return oilCarry.get(oilIndex(oilXIndex(x), oilZIndex(z)));
+    }
+
+    hide func oilIndex(xCell: Integer, zCell: Integer) -> Integer {
+        return zCell * config.OIL_GRID_X + xCell;
+    }
+
+    hide func oilXIndex(x: Float) -> Integer {
         var pct = (x + config.LANE_WIDTH / 2.0) / config.LANE_WIDTH;
         if (pct < 0.0) { pct = 0.0; }
         if (pct > 0.999) { pct = 0.999; }
-        var index = Convert.NumToInt(pct * 9.0);
+        var index = Convert.NumToInt(pct * (config.OIL_GRID_X + 0.0));
         if (index < 0) { index = 0; }
-        if (index > 8) { index = 8; }
+        if (index >= config.OIL_GRID_X) { index = config.OIL_GRID_X - 1; }
+        return index;
+    }
+
+    hide func oilZIndex(z: Float) -> Integer {
+        var pct = (z - config.OIL_START_Z) /
+            (config.LANE_LENGTH - config.OIL_START_Z);
+        if (pct < 0.0) { pct = 0.0; }
+        if (pct > 0.999) { pct = 0.999; }
+        var index = Convert.NumToInt(pct * (config.OIL_GRID_Z + 0.0));
+        if (index < 0) { index = 0; }
+        if (index >= config.OIL_GRID_Z) { index = config.OIL_GRID_Z - 1; }
         return index;
     }
 
@@ -881,6 +1009,22 @@ class LaneBuilder {
         if (oilPattern == config.OIL_DRY) { return "Dry"; }
         return "House";
     }
+
+    /// @brief Refresh venue monitors from live match state when it changes.
+    expose func updateMonitor(player: String, frame: Integer, score: Integer) {
+        var nextLabel = player + "  F" + toString(frame) +
+            "  SCORE " + toString(score);
+        if (nextLabel == monitorLabel) { return; }
+        monitorLabel = nextLabel;
+        monitorTexture.FillRGBA(0x07141FFF);
+        monitorTexture.DrawTextCenteredScaled(16, player, 0x56CFE1, 2);
+        monitorTexture.DrawTextCenteredScaled(58,
+            "FRAME " + toString(frame) + "   SCORE " + toString(score),
+            0xF7FBFF, 2);
+        Material3D.SetAlbedoMap(monitorMat, monitorTexture);
+    }
+
+    expose func getMonitorLabel() -> String { return monitorLabel; }
 
     /// @brief Left-gutter trigger volume (for ball entry detection).
     expose func getLeftGutterTrigger() -> Trigger3D {

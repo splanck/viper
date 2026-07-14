@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/game_scoring.zia
+// Purpose: Applies regulation scoring, mode rules, progression, and turn transitions.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: engine/game_scoring
 // PURPOSE: Scoring, turn advancement, results, and camera-mode transitions.
@@ -24,8 +42,9 @@ class BowlingGameScoring extends BowlingGameFlow {
         var newlyKnocked = pinMgr.countNewlyKnocked();
         var scoredKnocked = newlyKnocked;
         var trueGutter = ballObj.gutterBall() && ballHitPinsThisRoll == false;
+        var forcedWatchdogZero = watchdogResetShot && ballHitPinsThisRoll == false;
         var convertedLeaveDifficulty = lastLeaveDifficulty;
-        if (trueGutter) {
+        if (trueGutter || forcedWatchdogZero) {
             scoredKnocked = 0;
             if (newlyKnocked > 0) {
                 pinMgr.restoreSavedPinState();
@@ -117,6 +136,7 @@ class BowlingGameScoring extends BowlingGameFlow {
             + "  Total " + toString(current.getTotalScore()));
 
         pinMgr.startSweep();
+        playSound("sweep");
         gameState = config.STATE_SWEEPING;
     }
 
@@ -155,6 +175,7 @@ class BowlingGameScoring extends BowlingGameFlow {
         scoreTimer = 0.55;
         cinematicStarted = false;
         pinMgr.startSweep();
+        playSound("sweep");
         gameState = config.STATE_SWEEPING;
     }
 
@@ -162,10 +183,16 @@ class BowlingGameScoring extends BowlingGameFlow {
     override expose func updateSweeping(dt: Float) {
         if (pinMgr.updateSweep(dt)) {
             if (pendingFrameAdvance) {
+                if (currentMode != config.MODE_PRACTICE) {
+                    rackNumber = rackNumber + 1;
+                }
+                pinMgr.setRackSeed(currentRackSeed(), difficulty);
                 pinMgr.startFullReset();
+                playSound("pinsetter");
                 gameState = config.STATE_RESETTING;
             } else {
                 pinMgr.prepareSecondRoll();
+                playSound("pinsetter");
                 gameState = config.STATE_CELEBRATING;
             }
         }
@@ -217,22 +244,23 @@ class BowlingGameScoring extends BowlingGameFlow {
     hide func prepareNextTurn() {
         ballObj.resetBall();
         applyPracticeLeave();
-        aimX = 0.0;
         power = 0.0;
-        spin = 0.0;
         charging = false;
         releaseMeter.reset(getReleaseAssist());
         aiThinkTimer = 0.75;
         fixedStepAlpha = 0.0;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
+        watchdogResetShot = false;
+        throwResumeGate.reset();
         cinematicStarted = false;
         pendingReplayDuration = 0.0;
         pendingFrameAdvance = false;
         pendingPlayerSwitch = false;
         pendingResults = false;
         gameState = config.STATE_AIMING;
-        camCtrl.setAimMode(0.0);
+        ballObj.setSetupPosition(stanceX);
+        camCtrl.setAimMode(stanceX);
 
         var current = getActiveScoreKeeper();
         hudObj.showMessage(getPlayerLabel(activePlayer) + "  Frame " + toString(current.getFrame())

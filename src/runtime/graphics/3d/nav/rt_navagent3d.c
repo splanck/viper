@@ -1367,7 +1367,6 @@ void rt_navagent3d_update(void *obj, double dt) {
         agent->position[0] += agent->desired_velocity[0] * dt;
         agent->position[1] += agent->desired_velocity[1] * dt;
         agent->position[2] += agent->desired_velocity[2] * dt;
-        navagent_vec_copy(agent->position, agent->position);
         if (agent->navmesh)
             navagent_sample_point(agent, agent->position, agent->position);
         if (agent->bound_node)
@@ -1400,7 +1399,6 @@ void rt_navagent3d_warp(void *obj, void *position) {
     world[0] = rt_vec3_x(position);
     world[1] = rt_vec3_y(position);
     world[2] = rt_vec3_z(position);
-    navagent_vec_copy(world, world);
     navagent_sample_point(agent, world, agent->position);
     navagent_grid_refresh(agent); /* a warp can jump cells — realign the spatial grid immediately */
     navagent_push_position_to_bindings(agent);

@@ -134,9 +134,9 @@ static void rg_quat_align_y(const double dir[3], double out[4]) {
         out[3] = 0.0;
         return;
     }
-    double axis[3] = {dir[2] * 0.0 - (-dir[2]), 0.0, dir[0] * 0.0 - 0.0};
     /* cross(+Y, dir) = (1*dir.z - 0*dir.y, 0*dir.x - 0*dir.z, 0*dir.y - 1*dir.x)
      *               = (dir.z, 0, -dir.x) */
+    double axis[3];
     axis[0] = dir[2];
     axis[1] = 0.0;
     axis[2] = -dir[0];
@@ -773,7 +773,7 @@ void rt_ragdoll3d_activate(void *obj, void *world, void *controller, void *node)
         rt_trap("Ragdoll3D.Activate: world must be Physics3DWorld");
         return;
     }
-    if (!controller) {
+    if (!rt_g3d_has_class(controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
         rt_trap("Ragdoll3D.Activate: controller must be AnimController3D");
         return;
     }
@@ -930,6 +930,9 @@ void rt_ragdoll3d_deactivate(void *obj, double blend_seconds) {
     }
 }
 
+/// @brief Enable powered (PD-driven) ragdoll bones. @p bone_mask bit N selects
+///   skeleton bone N (bones 0..63; higher bones wrap via the 64-bit mask). Bones
+///   without a rig body are ignored. @p stiffness is the PD drive gain (0 disables).
 void rt_ragdoll3d_set_powered(void *obj, int64_t bone_mask, double stiffness) {
     rt_ragdoll3d *ragdoll = ragdoll3d_checked(obj, "Ragdoll3D.SetPowered: invalid ragdoll");
     if (!ragdoll)
@@ -1015,9 +1018,11 @@ static void ragdoll3d_step_active(rt_ragdoll3d *ragdoll, double dt) {
             dst[i] = (float)global[i];
         ragdoll->override_mask[slot->bone_index] = 1;
 
-        /* Powered drive: PD torque toward the animated relative pose. */
+        /* Powered drive: PD torque toward the animated relative pose. Bit N of
+         * powered_mask selects skeleton bone N (slot->bone_index), not the
+         * compacted slot index, so the mask is stable across rig-config changes. */
         if (ragdoll->powered_stiffness > 0.0 && slot->parent_slot >= 0 &&
-            (ragdoll->powered_mask & (INT64_C(1) << (s & 63)))) {
+            (ragdoll->powered_mask & (INT64_C(1) << (slot->bone_index & 63)))) {
             double anim_pos[3];
             double anim_quat[4];
             if (ragdoll3d_animated_bone_pose_slot(ragdoll->controller, slot, anim_pos, anim_quat)) {

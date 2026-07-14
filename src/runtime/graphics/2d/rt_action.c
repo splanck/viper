@@ -875,10 +875,15 @@ double rt_action_axis_raw(rt_string action) {
 void *rt_action_list(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
+    /* Make the seq own its elements and drop our creation reference after each push
+     * (the runtime seq<str> convention, cf. rt_dir_list.c) — otherwise every string
+     * keeps an extra reference that nothing ever releases, leaking one per action. */
+    rt_seq_set_owns_elements(seq, 1);
     Action *a = g_actions;
     while (a) {
         rt_string name = rt_string_from_bytes(a->name, strlen(a->name));
         rt_seq_push(seq, (void *)name);
+        rt_string_unref(name);
         a = a->next;
     }
     return seq;

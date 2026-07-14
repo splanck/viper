@@ -346,9 +346,13 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
             }
             {
                 void *pos = rt_path3d_get_position_at(path, behavior->path_distance);
-                if (pos)
-                    rt_scene_node3d_set_position(
-                        node, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+                if (pos) {
+                    /* Path points are world-space; convert through the parent so a
+                     * parented entity follows the path in world coordinates. */
+                    double world_pos[3] = {rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos)};
+                    game3d_set_node_world_position(node, world_pos);
+                }
+                game3d_release_ref(&pos); /* getter returns a +1 Vec3 */
             }
         }
     }
@@ -372,16 +376,12 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
                         double step = behavior->chase_speed * dt;
                         if (step > dist - behavior->chase_range)
                             step = dist - behavior->chase_range;
-                        {
-                            void *local = rt_scene_node3d_get_position(node);
-                            if (local) {
-                                rt_scene_node3d_set_position(
-                                    node,
-                                    rt_vec3_x(local) + dx / dist * step,
-                                    rt_vec3_y(local),
-                                    rt_vec3_z(local) + dz / dist * step);
-                            }
-                        }
+                        /* Step in world space (pos is world) and write through the
+                         * parent frame; the old code mixed a local read with a world
+                         * delta, drifting parented entities. */
+                        double world_pos[3] = {
+                            pos[0] + dx / dist * step, pos[1], pos[2] + dz / dist * step};
+                        game3d_set_node_world_position(node, world_pos);
                     }
                 }
             }
@@ -390,11 +390,13 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
 
     if (behavior->flags & BHV3D_ORBIT) {
         behavior->orbit_angle += behavior->orbit_deg_per_sec * dt * (3.14159265358979323846 / 180.0);
-        rt_scene_node3d_set_position(
-            node,
+        behavior->orbit_angle = fmod(behavior->orbit_angle, 2.0 * 3.14159265358979323846);
+        /* orbit_center is world-space; write through the parent frame. */
+        double world_pos[3] = {
             behavior->orbit_center[0] + cos(behavior->orbit_angle) * behavior->orbit_radius,
             behavior->orbit_center[1],
-            behavior->orbit_center[2] + sin(behavior->orbit_angle) * behavior->orbit_radius);
+            behavior->orbit_center[2] + sin(behavior->orbit_angle) * behavior->orbit_radius};
+        game3d_set_node_world_position(node, world_pos);
     }
 
     if (behavior->flags & BHV3D_SINE_FLOAT) {
@@ -405,16 +407,19 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
                 behavior->sine_base_captured = 1;
             }
             behavior->sine_phase += behavior->sine_speed * dt;
+            behavior->sine_phase = fmod(behavior->sine_phase, 2.0 * 3.14159265358979323846);
             rt_scene_node3d_set_position(
                 node,
                 rt_vec3_x(local),
                 behavior->sine_base_y + sin(behavior->sine_phase) * behavior->sine_amplitude,
                 rt_vec3_z(local));
         }
+        game3d_release_ref(&local); /* getter returns a +1 Vec3 */
     }
 
     if (behavior->flags & BHV3D_SPIN) {
         behavior->spin_angle += behavior->spin_deg_per_sec * dt * (3.14159265358979323846 / 180.0);
+        behavior->spin_angle = fmod(behavior->spin_angle, 2.0 * 3.14159265358979323846);
         {
             void *axis = rt_vec3_new(
                 behavior->spin_axis[0], behavior->spin_axis[1], behavior->spin_axis[2]);
@@ -439,7 +444,7 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
                 void *axis = rt_vec3_new(0.0, 1.0, 0.0);
                 void *quat = axis ? rt_quat_from_axis_angle(axis, yaw) : NULL;
                 if (quat)
-                    rt_scene_node3d_set_rotation(node, quat);
+                    game3d_set_node_world_rotation(node, quat); /* world yaw → parent-local */
                 game3d_release_ref(&quat);
                 game3d_release_ref(&axis);
             }

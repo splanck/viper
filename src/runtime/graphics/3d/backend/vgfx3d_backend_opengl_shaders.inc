@@ -538,7 +538,7 @@ static const char *const glsl_fragment_src[] = {
     "vec3(0.0, 0.0, 1.0));\n"
     "    float viewDistance = (uCameraIsOrtho != 0)\n"
     "        ? abs(dot(vWorldPos - uCameraPos, uCameraForward))\n"
-    "        : abs(vCurrClip.w) * 0.02;\n"
+    "        : length(cameraToWorld);\n"
     "    float envRoughness = clamp(uPbrScalars0.y, 0.0, 1.0);\n"
     "    float finalAlpha = materialAlpha * texAlpha;\n"
     "    if (uAlphaMode == 1) {\n"

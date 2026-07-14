@@ -88,6 +88,12 @@ typedef struct scene_node_impl {
 
 typedef struct scene_impl {
     scene_node_impl *root;
+    /* Reusable draw-order scratch (node_sort_entry array). Persisted across frames
+     * so a static scene performs no per-frame allocation for the collect+sort pass;
+     * grows on demand and is freed in scene_finalize. Typed void* here because
+     * node_sort_entry is defined later in this file. */
+    void *draw_scratch;
+    int64_t draw_scratch_cap;
 } scene_impl;
 
 /// @brief Validate-and-return a SceneNode pointer; NULL for NULL or wrong class.
@@ -177,7 +183,6 @@ static int scene_parent_chain_contains(scene_node_impl *start, scene_node_impl *
     return 0;
 }
 
-static void collect_visible_nodes(scene_node_impl *node, void *list);
 static int compare_depth(const void *a, const void *b);
 static void release_owned_ref(void **slot);
 static void scene_node_finalize(void *obj);
@@ -305,6 +310,9 @@ static void scene_finalize(void *obj) {
     if (scene->root)
         scene->root->parent = NULL;
     release_owned_ref((void **)&scene->root);
+    free(scene->draw_scratch);
+    scene->draw_scratch = NULL;
+    scene->draw_scratch_cap = 0;
 }
 
 //=============================================================================
@@ -387,6 +395,12 @@ static void mark_transform_dirty(scene_node_impl *node) {
     while (stack.count > 0) {
         scene_node_impl *cur = scene_node_stack_pop(&stack);
         if (!cur)
+            continue;
+        /* Short-circuit: marking always dirties a whole subtree, so an
+         * already-dirty node guarantees its descendants are dirty too. Skipping it
+         * makes repeated setter calls on the same node O(1) instead of O(subtree),
+         * as the doc above promises. */
+        if (cur->transform_dirty)
             continue;
         cur->transform_dirty = 1;
         if (!scene_node_stack_push_children_reverse(&stack, cur)) {
@@ -1088,7 +1102,12 @@ void *rt_scene_new(void) {
         rt_trap("Scene: root allocation failed");
         return NULL;
     }
-    rt_scene_node_set_name(scene->root, rt_const_cstr("root"));
+    /* rt_const_cstr allocates a +1 reference for non-empty input; set_name retains
+     * its own, so release the creation reference to avoid leaking one string per
+     * Scene. */
+    rt_string root_name = rt_const_cstr("root");
+    rt_scene_node_set_name(scene->root, root_name);
+    rt_string_unref(root_name);
     rt_obj_set_finalizer(scene, scene_finalize);
 
     return scene;
@@ -1160,39 +1179,6 @@ typedef struct {
     int64_t traversal_order;
 } node_sort_entry;
 
-/// @brief Depth-first traversal: collect all visible nodes that have a sprite into @p list.
-/// @details Stops descending into a node subtree if the root node is not visible.
-///   Only nodes with a non-NULL sprite field are appended; nodes used purely as
-///   transform containers are skipped.  Used by rt_scene_draw to build the depth-sort array.
-static void collect_visible_nodes(scene_node_impl *node, void *list) {
-    if (!node || !list)
-        return;
-
-    scene_node_stack stack;
-    scene_node_stack_init(&stack);
-    if (!scene_node_stack_push(&stack, node)) {
-        rt_trap("Scene.Draw: stack allocation failed");
-        scene_node_stack_destroy(&stack);
-        return;
-    }
-
-    while (stack.count > 0) {
-        scene_node_impl *cur = scene_node_stack_pop(&stack);
-        if (!cur || !cur->visible)
-            continue;
-
-        if (cur->sprite)
-            rt_seq_push(list, cur);
-
-        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
-            rt_trap("Scene.Draw: stack allocation failed");
-            break;
-        }
-    }
-
-    scene_node_stack_destroy(&stack);
-}
-
 /// @brief qsort comparator for node_sort_entry — sorts by depth ascending, ties by traversal order.
 /// @details Preserving traversal order for equal-depth nodes guarantees that sibling
 ///   insertion order and tree-traversal order remain stable across frames even when
@@ -1212,6 +1198,54 @@ static int compare_depth(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief Collect visible sprite nodes (with depth/traversal keys) into the scene's
+///        reusable draw scratch, growing it as needed. Returns the entry count, or
+///        -1 on allocation failure. Reusing @p *arr across frames avoids the
+///        per-frame rt_seq + malloc the previous implementation paid every draw.
+static int64_t scene_collect_draw_entries(scene_node_impl *root,
+                                          node_sort_entry **arr,
+                                          int64_t *cap) {
+    scene_node_stack stack;
+    scene_node_stack_init(&stack);
+    if (!scene_node_stack_push(&stack, root)) {
+        scene_node_stack_destroy(&stack);
+        return -1;
+    }
+    int64_t count = 0;
+    while (stack.count > 0) {
+        scene_node_impl *cur = scene_node_stack_pop(&stack);
+        if (!cur || !cur->visible)
+            continue;
+        if (cur->sprite) {
+            if (count >= *cap) {
+                int64_t new_cap = *cap > 0 ? *cap * 2 : 64;
+                if (new_cap > INT64_MAX / (int64_t)sizeof(node_sort_entry)) {
+                    scene_node_stack_destroy(&stack);
+                    return -1;
+                }
+                node_sort_entry *grown =
+                    (node_sort_entry *)realloc(*arr, (size_t)new_cap * sizeof(node_sort_entry));
+                if (!grown) {
+                    scene_node_stack_destroy(&stack);
+                    return -1;
+                }
+                *arr = grown;
+                *cap = new_cap;
+            }
+            (*arr)[count].node = cur;
+            (*arr)[count].effective_depth = cur->depth;
+            (*arr)[count].traversal_order = count;
+            count++;
+        }
+        if (!scene_node_stack_push_children_reverse(&stack, cur)) {
+            scene_node_stack_destroy(&stack);
+            return -1;
+        }
+    }
+    scene_node_stack_destroy(&stack);
+    return count;
+}
+
 /// @brief Draw all visible nodes to @p canvas, sorted by depth.
 /// @details Collects every visible node that has a sprite into a temporary list,
 ///   stable-sorts them by depth (ascending), and renders each in order using
@@ -1226,32 +1260,15 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
     if (!scene || !scene->root)
         return;
 
-    // Collect all visible nodes
-    void *nodes = rt_seq_new();
-    if (!nodes)
+    // Collect visible sprite nodes into the scene's reusable scratch (no per-frame
+    // allocation for a static scene), then depth-sort.
+    node_sort_entry *arr = (node_sort_entry *)scene->draw_scratch;
+    int64_t cap = scene->draw_scratch_cap;
+    int64_t count = scene_collect_draw_entries(scene->root, &arr, &cap);
+    scene->draw_scratch = arr;
+    scene->draw_scratch_cap = cap;
+    if (count <= 0)
         return;
-    collect_visible_nodes(scene->root, nodes);
-
-    int64_t count = rt_seq_len(nodes);
-    if (count == 0) {
-        if (rt_obj_release_check0(nodes))
-            rt_obj_free(nodes);
-        return;
-    }
-
-    // Sort by depth, preserving traversal order among equal-depth nodes.
-    node_sort_entry *arr = (node_sort_entry *)malloc((size_t)count * sizeof(node_sort_entry));
-    if (!arr) {
-        if (rt_obj_release_check0(nodes))
-            rt_obj_free(nodes);
-        return;
-    }
-
-    for (int64_t i = 0; i < count; i++) {
-        arr[i].node = (scene_node_impl *)rt_seq_get(nodes, i);
-        arr[i].effective_depth = arr[i].node ? arr[i].node->depth : 0;
-        arr[i].traversal_order = i;
-    }
 
     qsort(arr, (size_t)count, sizeof(node_sort_entry), compare_depth);
 
@@ -1271,10 +1288,6 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
                                        -1,
                                        255);
     }
-
-    free(arr);
-    if (rt_obj_release_check0(nodes))
-        rt_obj_free(nodes);
 }
 
 /// @brief Draw all visible nodes to @p canvas with camera-space transform applied.
@@ -1293,32 +1306,14 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
     if (!scene || !scene->root)
         return;
 
-    // Collect all visible nodes
-    void *nodes = rt_seq_new();
-    if (!nodes)
+    // Collect visible sprite nodes into the scene's reusable scratch, then depth-sort.
+    node_sort_entry *arr = (node_sort_entry *)scene->draw_scratch;
+    int64_t cap = scene->draw_scratch_cap;
+    int64_t count = scene_collect_draw_entries(scene->root, &arr, &cap);
+    scene->draw_scratch = arr;
+    scene->draw_scratch_cap = cap;
+    if (count <= 0)
         return;
-    collect_visible_nodes(scene->root, nodes);
-
-    int64_t count = rt_seq_len(nodes);
-    if (count == 0) {
-        if (rt_obj_release_check0(nodes))
-            rt_obj_free(nodes);
-        return;
-    }
-
-    // Sort by depth, preserving traversal order among equal-depth nodes.
-    node_sort_entry *arr = (node_sort_entry *)malloc((size_t)count * sizeof(node_sort_entry));
-    if (!arr) {
-        if (rt_obj_release_check0(nodes))
-            rt_obj_free(nodes);
-        return;
-    }
-
-    for (int64_t i = 0; i < count; i++) {
-        arr[i].node = (scene_node_impl *)rt_seq_get(nodes, i);
-        arr[i].effective_depth = arr[i].node ? arr[i].node->depth : 0;
-        arr[i].traversal_order = i;
-    }
 
     qsort(arr, (size_t)count, sizeof(node_sort_entry), compare_depth);
 
@@ -1347,10 +1342,6 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
                 node->sprite, canvas, screen_x, screen_y, final_sx, final_sy, rotation, -1, 255);
         }
     }
-
-    free(arr);
-    if (rt_obj_release_check0(nodes))
-        rt_obj_free(nodes);
 }
 
 /// @brief Advance all nodes in the scene by one frame — call once per game tick.

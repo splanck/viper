@@ -54,7 +54,34 @@ class Scoring {
 
     expose func getLevelTime() -> Float { return levelTime; }
     expose func getKills() -> Integer { return kills; }
+    expose func getDamageTaken() -> Integer { return damageTaken; }
+    expose func getSecrets() -> Integer { return secrets; }
+    expose func getSecretsTotal() -> Integer { return secretsTotal; }
+    expose func getParTime() -> Integer { return parTimeSec; }
     expose func getTotalKills() -> Integer { return totalKills; }
+    expose func getTotalDeaths() -> Integer { return totalDeaths; }
+    expose func getTotalTime() -> Float { return totalTime; }
+
+    expose func restoreRun(timeSec: Float, killCount: Integer, damage: Integer,
+                           foundSecrets: Integer, totalSecrets0: Integer, parSec: Integer) {
+        levelTime = M.maxf(0.0, timeSec);
+        kills = M.clampi(killCount, 0, 1000000);
+        damageTaken = M.clampi(damage, 0, 1000000000);
+        secrets = M.clampi(foundSecrets, 0, 1000000);
+        secretsTotal = M.clampi(totalSecrets0, 0, 1000000);
+        parTimeSec = M.clampi(parSec, 1, 1000000);
+    }
+
+    expose func restoreTotals(killCount: Integer, deaths: Integer, timeSec: Float) {
+        totalKills = M.clampi(killCount, 0, 1000000000);
+        totalDeaths = M.clampi(deaths, 0, 1000000000);
+        totalTime = M.maxf(0.0, timeSec);
+    }
+
+    expose func restoreMedal(levelId: Integer, value: Integer) {
+        if levelId < 0 || levelId >= levelMedals.Count { return; }
+        levelMedals[levelId] = M.clampi(value, MEDAL_NONE, MEDAL_ASHBORN);
+    }
 
     // Compute the level score.
     expose func score() -> Integer {

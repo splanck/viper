@@ -58,6 +58,16 @@ static void game3d_lipsync_finalize(void *obj) {
     game3d_release_ref(&lipsync->morph);
     game3d_release_ref(&lipsync->gaze_solver);
     game3d_release_ref(&lipsync->gaze_target);
+    for (int32_t i = 0; i < lipsync->shape_count; ++i) {
+        if (lipsync->shapes[i].name_interned) {
+            rt_string_unref(lipsync->shapes[i].name_interned);
+            lipsync->shapes[i].name_interned = NULL;
+        }
+    }
+    if (lipsync->blink_interned) {
+        rt_string_unref(lipsync->blink_interned);
+        lipsync->blink_interned = NULL;
+    }
 }
 
 /// @brief Create a facial component for @p entity_obj (attach stores it).
@@ -85,9 +95,11 @@ void *rt_game3d_lipsync_new(void *entity_obj) {
     if (previous && previous != lipsync)
         previous->entity = NULL;
     game3d_assign_typed_ref(&entity->lipsync, lipsync, RT_G3D_GAME3D_LIPSYNC_CLASS_ID);
-    if (rt_obj_release_check0(lipsync))
-        rt_obj_free(lipsync);
-    return entity->lipsync;
+    /* Return with the creation reference intact (+1 for the caller), matching every
+     * sibling component constructor (footsteps/interactable/interactor). Dropping it
+     * here left the object owned solely by entity->lipsync, so a caller releasing the
+     * expected owned reference would free it out from under the entity. */
+    return lipsync;
 }
 
 /// @brief Entity accessor for the attached LipSync3D (NULL when none).
@@ -133,6 +145,7 @@ void *rt_game3d_lipsync_bind_mouth_shape(void *obj, rt_string shape_name, double
     strncpy(shape->name, name, RT_GAME3D_DLG_NAME_MAX - 1);
     shape->name[RT_GAME3D_DLG_NAME_MAX - 1] = '\0';
     shape->scale = game3d_clamp(game3d_finite_or(weight_scale, 1.0), 0.0, 4.0);
+    shape->name_interned = rt_string_ref(shape_name); /* reused each tick; no per-frame alloc */
     return obj;
 }
 
@@ -186,9 +199,14 @@ void rt_game3d_lipsync_set_blink(
     lipsync->blink_enabled = enabled ? 1 : 0;
     const char *name = shape_name ? rt_string_cstr(shape_name) : NULL;
     lipsync->blink_shape[0] = '\0';
+    if (lipsync->blink_interned) {
+        rt_string_unref(lipsync->blink_interned);
+        lipsync->blink_interned = NULL;
+    }
     if (name) {
         strncpy(lipsync->blink_shape, name, RT_GAME3D_DLG_NAME_MAX - 1);
         lipsync->blink_shape[RT_GAME3D_DLG_NAME_MAX - 1] = '\0';
+        lipsync->blink_interned = rt_string_ref(shape_name); /* reused each tick */
     }
     lipsync->blink_min_interval = game3d_positive_clamped_or(min_interval, 2.0, 60.0);
     lipsync->blink_max_interval =
@@ -340,20 +358,17 @@ static void game3d_lipsync_tick_one(rt_game3d_lipsync *lipsync, double dt) {
                 strcmp(lipsync->shapes[i].name, lipsync->blink_shape) == 0 &&
                 blink_weight > shape_weight)
                 shape_weight = blink_weight; /* additive-max composition */
-            rt_string shape_name = rt_const_cstr(lipsync->shapes[i].name);
-            rt_morphtarget3d_set_weight_by_name(morph, shape_name, shape_weight);
-            rt_string_unref(shape_name);
+            if (lipsync->shapes[i].name_interned)
+                rt_morphtarget3d_set_weight_by_name(
+                    morph, lipsync->shapes[i].name_interned, shape_weight);
         }
         if (lipsync->blink_enabled && lipsync->blink_shape[0]) {
             int bound = 0;
             for (int32_t i = 0; i < lipsync->shape_count; ++i)
                 if (strcmp(lipsync->shapes[i].name, lipsync->blink_shape) == 0)
                     bound = 1;
-            if (!bound) {
-                rt_string shape_name = rt_const_cstr(lipsync->blink_shape);
-                rt_morphtarget3d_set_weight_by_name(morph, shape_name, blink_weight);
-                rt_string_unref(shape_name);
-            }
+            if (!bound && lipsync->blink_interned)
+                rt_morphtarget3d_set_weight_by_name(morph, lipsync->blink_interned, blink_weight);
         }
     }
 

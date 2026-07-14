@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/trajectory_probe.zia
+// Purpose: Calibrates physical delivery outcomes across rack, line, power, and timing matrices.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 module trajectory_probe;
 
 bind Viper.Graphics3D;
@@ -7,10 +25,28 @@ bind "./config";
 bind "./lane/lane";
 bind "./lane/pins";
 bind "./lane/ball";
+bind "./gameplay/impact_batch";
+
+var impactBatch = new ImpactBatch();
+var lastShotMask: Integer = 0;
+var lastLaunchVX: Float = 0.0;
+var lastLaunchVZ: Float = 0.0;
 
 func processImpacts(world: Physics3DWorld, pinMgr: PinManager, rackArmed: Boolean) -> Boolean {
-    var sawBallPin = false;
     var count = Physics3DWorld.get_CollisionEventCount(world);
+    impactBatch.reset(rackArmed);
+    // Pass one establishes cascade eligibility for the whole step. Event
+    // ordering may never decide whether an earlier pin-pin hit is accepted.
+    for (var i: Integer = 0; i < count; i = i + 1) {
+        var evt = Physics3DWorld.GetCollisionEvent(world, i);
+        var bodyA = CollisionEvent3D.get_BodyA(evt);
+        var bodyB = CollisionEvent3D.get_BodyB(evt);
+        var layerA = Physics3DBody.get_CollisionLayer(bodyA);
+        var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+        impactBatch.scanPair(layerA, layerB,
+            CollisionEvent3D.get_IsTrigger(evt));
+    }
+    impactBatch.finishScan();
     for (var i: Integer = 0; i < count; i = i + 1) {
         var evt = Physics3DWorld.GetCollisionEvent(world, i);
         if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
@@ -30,25 +66,14 @@ func processImpacts(world: Physics3DWorld, pinMgr: PinManager, rackArmed: Boolea
         }
         var impulse = CollisionEvent3D.get_NormalImpulse(evt);
         var speed = CollisionEvent3D.get_RelativeSpeed(evt);
-        if ((layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
-            (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL)) {
-            sawBallPin = true;
-        }
-        var allowPinCascade = rackArmed || sawBallPin ||
-            ((layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
-             (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL));
-        if (layerA == config.LAYER_PINS &&
-            (layerB == config.LAYER_BALL ||
-             (layerB == config.LAYER_PINS && allowPinCascade))) {
+        if (impactBatch.shouldRegisterPin(layerA, layerB)) {
             pinMgr.registerImpact(bodyA, point, impulse, speed);
         }
-        if (layerB == config.LAYER_PINS &&
-            (layerA == config.LAYER_BALL ||
-             (layerA == config.LAYER_PINS && allowPinCascade))) {
+        if (impactBatch.shouldRegisterPin(layerB, layerA)) {
             pinMgr.registerImpact(bodyB, point, impulse, speed);
         }
     }
-    return sawBallPin;
+    return impactBatch.sawBallPinContact();
 }
 
 func updateGutter(ballObj: Ball, sawBallPin: Boolean) {
@@ -109,7 +134,9 @@ func checkBallRoll() -> Boolean {
     var ballObj = new Ball();
     ballObj.initBall(world);
     ballObj.setSpin(0.0);
-    ballObj.doThrow(0.0, 0.82);
+    ballObj.doDelivery(0.0, 0.0, 0.82, 0.0,
+        config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        config.OIL_HOUSE, false);
 
     for (var step: Integer = 0; step < 80; step = step + 1) {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
@@ -138,21 +165,32 @@ func checkBallRoll() -> Boolean {
     return true;
 }
 
-func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
+func runShot(label: String, stance: Float, target: Float, power: Float,
+             spin: Float, releaseOffset: Float, rackSeed: Integer) -> Integer {
     var world = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
     var laneObj = new LaneBuilder();
     laneObj.initLane(world, config.OIL_HOUSE);
     var pinMgr = new PinManager();
     pinMgr.initPins(world);
+    pinMgr.setRackSeed(rackSeed, config.DIFFICULTY_STANDARD);
     pinMgr.savePinState();
     var ballObj = new Ball();
     ballObj.initBall(world);
     ballObj.setSpin(spin);
-    ballObj.doThrow(aim, power);
+    ballObj.doDelivery(stance, target, power, releaseOffset,
+        config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        config.OIL_HOUSE, false);
+    var launchVelocity = ballObj.getVelocity();
+    lastLaunchVX = Vec3.get_X(launchVelocity);
+    lastLaunchVZ = Vec3.get_Z(launchVelocity);
+    Terminal.Say(label + " launch vx=" + toString(Vec3.get_X(launchVelocity)) +
+        " vz=" + toString(Vec3.get_Z(launchVelocity)));
 
     var sawBallPin = false;
     var step = 0;
     var minLaneY = 999.0;
+    var entryX = 99.0;
+    var entryAngle = 0.0;
     while (step < 1800 && ballObj.getPosZ() < config.PIN_Z_OFFSET + 2.0 && ballObj.gutterBall() == false) {
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(config.PHYSICS_DT, friction, laneObj.getOilEndZ());
@@ -161,6 +199,10 @@ func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
         var lanePos = ballObj.getPosition();
         if (ballObj.getPosZ() < config.LANE_STABILIZE_END_Z && Vec3.get_Y(lanePos) < minLaneY) {
             minLaneY = Vec3.get_Y(lanePos);
+        }
+        if (entryX > 90.0 && ballObj.getPosZ() >= config.ENTRY_CAPTURE_Z) {
+            entryX = ballObj.getPosX();
+            entryAngle = ballObj.getTravelAngleDeg();
         }
         if (processImpacts(world, pinMgr, sawBallPin)) { sawBallPin = true; }
         updateGutter(ballObj, sawBallPin);
@@ -180,10 +222,13 @@ func runShot(label: String, aim: Float, power: Float, spin: Float) -> Integer {
     }
 
     var knocked = pinMgr.countTotalKnocked();
+    lastShotMask = pinMgr.getKnockedMask();
     Terminal.Say(label + ": knocked=" + toString(knocked)
         + " sawBallPin=" + toString(sawBallPin)
         + " gutter=" + toString(ballObj.gutterBall())
         + " minLaneY=" + toString(minLaneY)
+        + " entryX=" + toString(entryX)
+        + " entryDeg=" + toString(entryAngle)
         + " ballX=" + toString(ballObj.getPosX())
         + " ballZ=" + toString(ballObj.getPosZ()));
     if (ballObj.gutterBall() && sawBallPin == false) {
@@ -210,11 +255,43 @@ func main() {
     // Skill contract: well-placed shots carry the rack; a shot aimed at the
     // edge with compounding spin actually reaches the gutter (real failure
     // state, previously impossible). Pocket shots use aim + opposite hook.
-    var center = runShot("center-power", 0.0, 1.0, 0.0);
-    var leftPocket = runShot("left-pocket", -config.AIM_MAX * 0.35, config.THROW_POWER_MAX, config.SPIN_MAX * 0.55);
-    var rightPocket = runShot("right-pocket", config.AIM_MAX * 0.35, config.THROW_POWER_MAX, -config.SPIN_MAX * 0.55);
-    var softRoll = runShot("soft-roll", 0.0, config.THROW_POWER_MAX * 0.5, 0.0);
-    var gutterMiss = runShot("gutter-miss", config.AIM_MAX, config.THROW_POWER_MAX * 0.72, config.SPIN_MAX);
+    var pocketTarget = 0.065;
+    var center = runShot("center-power", 0.0, 0.0, 0.82, 0.0, 0.0, 37);
+    var leftPocket = runShot("left-pocket", 0.0, -pocketTarget, 0.82, 0.0, 0.0, 37);
+    var rightPocket = runShot("right-pocket", 0.0, pocketTarget, 0.82, 0.0, 0.0, 37);
+    var deterministicMask = lastShotMask;
+    var deterministicVX = lastLaunchVX;
+    var deterministicVZ = lastLaunchVZ;
+    var deterministicRepeat = runShot("right-pocket-repeat", 0.0,
+        pocketTarget, 0.82, 0.0, 0.0, 37);
+    if (deterministicRepeat != rightPocket || lastShotMask != deterministicMask ||
+        Abs(lastLaunchVX - deterministicVX) > 0.000001 ||
+        Abs(lastLaunchVZ - deterministicVZ) > 0.000001) {
+        Terminal.Say("RESULT: fail identical delivery and rack seed changed launch, mask, or score");
+        return;
+    }
+    var pocketSeed11 = runShot("pocket-seed-11", 0.0, pocketTarget, 0.82, 0.0, 0.0, 11);
+    var pocketSeed23 = runShot("pocket-seed-23", 0.0, pocketTarget, 0.82, 0.0, 0.0, 23);
+    var pocketSeed53 = runShot("pocket-seed-53", 0.0, pocketTarget, 0.82, 0.0, 0.0, 53);
+    var pocketSeed73 = runShot("pocket-seed-73", 0.0, pocketTarget, 0.82, 0.0, 0.0, 73);
+    var pocketSeed89 = runShot("pocket-seed-89", 0.0, pocketTarget, 0.82, 0.0, 0.0, 89);
+    var pocketSeed101 = runShot("pocket-seed-101", 0.0, pocketTarget, 0.82, 0.0, 0.0, 101);
+    var pocketSeed127 = runShot("pocket-seed-127", 0.0, pocketTarget, 0.82, 0.0, 0.0, 127);
+    var pocketSeed149 = runShot("pocket-seed-149", 0.0, pocketTarget, 0.82, 0.0, 0.0, 149);
+    var pocketSeed173 = runShot("pocket-seed-173", 0.0, pocketTarget, 0.82, 0.0, 0.0, 173);
+    var pocketSeed197 = runShot("pocket-seed-197", 0.0, pocketTarget, 0.82, 0.0, 0.0, 197);
+    var pocketSeed223 = runShot("pocket-seed-223", 0.0, pocketTarget, 0.82, 0.0, 0.0, 223);
+    var poorEarly = runShot("pocket-poor-early", 0.0, pocketTarget, 0.82, 0.0, -0.72, 37);
+    var poorLate = runShot("pocket-poor-late", 0.0, pocketTarget, 0.82, 0.0, 0.72, 37);
+    var poorFarEarly = runShot("pocket-poor-far-early", 0.0, pocketTarget, 0.82, 0.0, -0.94, 37);
+    var poorFarLate = runShot("pocket-poor-far-late", 0.0, pocketTarget, 0.82, 0.0, 0.94, 37);
+    var softRoll = runShot("soft-roll", 0.0, 0.0, 0.18, 0.0, 0.0, 37);
+    var gutterMiss = runShot("gutter-miss", config.STANCE_MAX, config.TARGET_MAX,
+        0.72, config.SPIN_MAX, 0.0, 37);
+    var centerSeed11 = runShot("center-seed-11", 0.0, 0.0, 0.82, 0.0, 0.0, 11);
+    var centerSeed73 = runShot("center-seed-73", 0.0, 0.0, 0.82, 0.0, 0.0, 73);
+    var centerSeed101 = runShot("center-seed-101", 0.0, 0.0, 0.82, 0.0, 0.0, 101);
+    var centerSeed149 = runShot("center-seed-149", 0.0, 0.0, 0.82, 0.0, 0.0, 149);
 
     if (center < 5) {
         Terminal.Say("RESULT: fail center power shot did not carry the rack");
@@ -228,12 +305,70 @@ func main() {
         Terminal.Say("RESULT: fail right pocket shot underperformed");
         return;
     }
-    if (softRoll < 3) {
-        Terminal.Say("RESULT: fail soft roll stopped or sank before the rack");
+    if (softRoll < 2 || softRoll > 7) {
+        Terminal.Say("RESULT: fail minimum-power carry left the two-to-seven pin band");
         return;
     }
     if (gutterMiss != -100) {
         Terminal.Say("RESULT: fail gutter miss no longer reaches the gutter");
+        return;
+    }
+    var centerStrikes = 0;
+    if (center == 10) { centerStrikes = centerStrikes + 1; }
+    if (centerSeed11 == 10) { centerStrikes = centerStrikes + 1; }
+    if (centerSeed73 == 10) { centerStrikes = centerStrikes + 1; }
+    if (centerSeed101 == 10) { centerStrikes = centerStrikes + 1; }
+    if (centerSeed149 == 10) { centerStrikes = centerStrikes + 1; }
+    if (centerStrikes > 1) {
+        Terminal.Say("RESULT: fail straight center line remains an automatic strike");
+        return;
+    }
+
+    var pocketStrikes = 0;
+    var pocketSevenPlus = 0;
+    if (rightPocket == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed11 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed23 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed53 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed73 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed89 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed101 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed127 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed149 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed173 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed197 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (pocketSeed223 == 10) { pocketStrikes = pocketStrikes + 1; }
+    if (rightPocket >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed11 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed23 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed53 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed73 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed89 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed101 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed127 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed149 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed173 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed197 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    if (pocketSeed223 >= 7) { pocketSevenPlus = pocketSevenPlus + 1; }
+    Terminal.Say("pocket-matrix: strikes=" + toString(pocketStrikes)
+        + "/12 seven-plus=" + toString(pocketSevenPlus) + "/12");
+    if (pocketStrikes < 5 || pocketStrikes > 9) {
+        Terminal.Say("RESULT: fail pocket strike rate left the 40-to-80 percent band");
+        return;
+    }
+    if (pocketSevenPlus < 10) {
+        Terminal.Say("RESULT: fail pocket carry fell below 80 percent");
+        return;
+    }
+
+    var poorStrikes = 0;
+    if (poorEarly == 10) { poorStrikes = poorStrikes + 1; }
+    if (poorLate == 10) { poorStrikes = poorStrikes + 1; }
+    if (poorFarEarly == 10) { poorStrikes = poorStrikes + 1; }
+    if (poorFarLate == 10) { poorStrikes = poorStrikes + 1; }
+    Terminal.Say("poor-release-matrix: strikes=" + toString(poorStrikes) + "/4");
+    if (poorStrikes > 2) {
+        Terminal.Say("RESULT: fail poor releases remain automatic strikes");
         return;
     }
 

@@ -137,7 +137,8 @@ class RidgeboundForest {
             if (wx > config.FOREST_MARGIN && wx < terrain.terrainWorldMaxX() - config.FOREST_MARGIN
                     && wz > config.FOREST_MARGIN && wz < terrain.terrainWorldMaxZ() - config.FOREST_MARGIN) {
                 var gy = terrain.sampleGround(land, wx, wz);
-                if (gy > config.WATER_HEIGHT + 0.4) {
+                if (canPlantTree(land, wx, wz,
+                        terrain.terrainWorldMaxX(), terrain.terrainWorldMaxZ())) {
                     var s = config.FOREST_SCALE_MIN
                         + mathutil.hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
                     plantTreeOrFallback(world, model, wx, wz, gy, s, mathutil.hash01(i, 13) * 360.0);
@@ -188,6 +189,7 @@ class RidgeboundForest {
         if (Vec3.get_Y(normal) < config.FOREST_MIN_NORMALY) { return false; }
         if (notNearBeacon(wx, wz) == false) { return false; }
         if (notNearPlayerStart(wx, wz) == false) { return false; }
+        if (terrain.isAuthoredRouteWorld(wx, wz)) { return false; }
         return true;
     }
 
@@ -310,8 +312,8 @@ class RidgeboundForest {
     // trunks and canopy lobes are drawn from these batches (hardware instancing)
     // instead of spawning a scene entity per part.
     hide func buildInstanceBatches() {
-        unitCylinder = Mesh3D.Cylinder(1.0, 1.0, 18);
-        unitSphere = Mesh3D.Sphere(1.0, 22);
+        unitCylinder = Mesh3D.Cylinder(1.0, 1.0, 12);
+        unitSphere = Mesh3D.Sphere(1.0, 14);
         trunkBatch = InstanceBatch3D.New(unitCylinder, barkMat);
         lobeBatches = [];
         for i in 0..treeMats.count() {
@@ -332,16 +334,16 @@ class RidgeboundForest {
 
     hide func buildFoliageMaterials() {
         treeMats = [];
-        treeMats.add(makeFoliage(0.28, 0.58, 0.20));
-        treeMats.add(makeFoliage(0.74, 0.56, 0.18));
-        treeMats.add(makeFoliage(0.68, 0.32, 0.14));
-        barkMat = Material3D.PBR(0.38, 0.23, 0.12);
+        treeMats.add(makeFoliage(0.20, 0.39, 0.16));
+        treeMats.add(makeFoliage(0.48, 0.37, 0.15));
+        treeMats.add(makeFoliage(0.45, 0.23, 0.11));
+        barkMat = Material3D.PBR(0.28, 0.17, 0.09);
         Material3D.SetAlbedoMap(barkMat, createBarkAlbedo(64));
         Material3D.SetNormalMap(barkMat, createBarkNormal(64));
         barkMat.Roughness = 0.88;
         barkMat.Metallic = 0.0;
         barkMat.NormalScale = 0.48;
-        Material3D.SetEmissiveColor(barkMat, 0.026, 0.014, 0.006);
+        Material3D.SetEmissiveColor(barkMat, 0.004, 0.002, 0.001);
     }
 
     hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
@@ -422,10 +424,10 @@ class RidgeboundForest {
         var m = Material3D.PBR(r, g, b);
         Material3D.SetAlbedoMap(m, createLeafAlbedo(64, r, g, b));
         Material3D.SetNormalMap(m, createLeafNormal(64));
-        m.Roughness = 0.94;
+        m.Roughness = 0.88;
         m.Metallic = 0.0;
         m.NormalScale = 0.36;
-        Material3D.SetEmissiveColor(m, r * 0.075, g * 0.105, b * 0.045);
+        Material3D.SetEmissiveColor(m, r * 0.012, g * 0.016, b * 0.008);
         m.DoubleSided = true;
         return m;
     }

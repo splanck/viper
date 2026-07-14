@@ -35,20 +35,34 @@ class Projectiles {
     hide List[Float] gravity;
     hide List[Integer] bouncesLeft;
     hide List[Integer] dmgKind;
+    hide G3D.Mesh3D orbMesh;
+    hide G3D.Mesh3D dartMesh;
+    hide List[G3D.Material3D] visualMat;
     hide Integer cap;
     hide Integer activeCount;
+    hide Integer dotAppliedCount;
 
     expose func init() {
         px = []; py = []; pz = []; vx = []; vy = []; vz = [];
         life = []; alive = []; damage = []; blastRadius = [];
         dotDPS = []; dotTime = []; gravity = []; bouncesLeft = []; dmgKind = [];
+        visualMat = [];
         cap = config.POOL_PROJECTILES;
         activeCount = 0;
+        dotAppliedCount = 0;
     }
 
     expose func setup(p: G3D.Physics3DWorld, b: events.EventBus,
                       bl: ballistics.Ballistics, r: targets.TargetRegistry) {
         phys = p; bus = b; ball = bl; reg = r;
+        orbMesh = G3D.Mesh3D.Sphere(0.11, 8);
+        // Local +Z dart so its retained transform can follow velocity.
+        dartMesh = G3D.Mesh3D.Box(0.08, 0.08, 0.34);
+        addMaterial(1.0, 0.62, 0.16);   // explosive
+        addMaterial(1.0, 0.32, 0.12);   // corrosive rivet
+        addMaterial(0.20, 0.90, 1.0);   // EMP
+        addMaterial(0.75, 0.38, 1.0);   // decoy
+        addMaterial(1.0, 0.88, 0.36);   // generic projectile
         var i = 0;
         while i < cap {
             px.Add(0.0); py.Add(0.0); pz.Add(0.0);
@@ -59,7 +73,15 @@ class Projectiles {
         }
     }
 
+    hide func addMaterial(r: Float, g: Float, b: Float) {
+        var m = G3D.Material3D.NewColor(r, g, b);
+        G3D.Material3D.SetEmissiveColor(m, r, g, b);
+        m.EmissiveIntensity = 3.4;
+        visualMat.Add(m);
+    }
+
     expose func activeProjectiles() -> Integer { return activeCount; }
+    expose func dotApplications() -> Integer { return dotAppliedCount; }
 
     hide func freeSlot() -> Integer {
         var i = 0;
@@ -83,6 +105,18 @@ class Projectiles {
         gravity[s] = grav; bouncesLeft[s] = bounces; life[s] = life0; dmgKind[s] = dk;
         alive[s] = 1;
         activeCount = activeCount + 1;
+        ball.recordProjectileShot();
+    }
+
+    /// Park every projectile when changing scenes or restoring a checkpoint.
+    expose func clear() {
+        var i = 0;
+        while i < cap {
+            alive[i] = 0;
+            i = i + 1;
+        }
+        activeCount = 0;
+        dotAppliedCount = 0;
     }
 
     hide func kill(s: Integer) {
@@ -100,7 +134,8 @@ class Projectiles {
             return;
         }
         if blastRadius[s] > 0.0 {
-            ball.blast(px[s], py[s], pz[s], blastRadius[s], damage[s], dmgKind[s]);
+            var hits = ball.blast(px[s], py[s], pz[s], blastRadius[s], damage[s], dmgKind[s]);
+            if hits > 0 { ball.recordProjectileHit(); }
         }
         kill(s);
     }
@@ -147,17 +182,21 @@ class Projectiles {
         px[s] = Math.Vec3.get_X(pt);
         py[s] = Math.Vec3.get_Y(pt);
         pz[s] = Math.Vec3.get_Z(pt);
+        bus.pushAt(config.EV_IMPACT, 0, dmgKind[s], px[s], py[s], pz[s]);
         if slot >= 0 {
             // Direct hit on a target.
             if blastRadius[s] > 0.0 {
                 detonate(s);
             } else {
+                var sourceBearing = M.toDeg(Math.Atan2(0.0 - vx[s], vz[s]));
                 ball.applyDamage(reg.kindAt(slot), reg.indexAt(slot), reg.regionAt(slot),
-                                 damage[s], dmgKind[s], config.TGT_PLAYER);
+                                 damage[s], dmgKind[s], sourceBearing);
+                ball.recordProjectileHit();
                 // DoT registration is posted as an event the target drains.
                 if dotDPS[s] > 0.0 {
                     bus.push(config.EV_DAMAGE, reg.kindAt(slot), reg.indexAt(slot),
-                             config.REGION_BODY, dotDPS[s] * dotTime[s] * 0.0, config.DMG_DOT + 0.0, dotTime[s]);
+                             config.REGION_BODY, dotDPS[s], config.DMG_DOT + 0.0, dotTime[s]);
+                    dotAppliedCount = dotAppliedCount + 1;
                 }
                 kill(s);
             }
@@ -185,14 +224,45 @@ class Projectiles {
     }
 
     // Immediate-mode draw of active projectiles.
-    expose func draw(canvas: G3D.Canvas3D, mesh: G3D.Mesh3D, mat: G3D.Material3D) {
+    expose func draw(canvas: G3D.Canvas3D) {
         var i = 0;
         while i < cap {
             if alive[i] == 1 {
+                var style = 4;
+                var mesh = dartMesh;
+                if blastRadius[i] > 0.0 { style = 0; mesh = orbMesh; }
+                if dotDPS[i] > 0.0 { style = 1; }
+                if dmgKind[i] == config.DMG_EMP { style = 2; mesh = orbMesh; }
+                if dmgKind[i] == config.DMG_DECOY { style = 3; mesh = orbMesh; }
                 var xf = Math.Mat4.Translate(px[i], py[i], pz[i]);
-                G3D.Canvas3D.DrawMesh(canvas, mesh, xf, mat);
+                if mesh == dartMesh { xf = dartTransform(i); }
+                G3D.Canvas3D.DrawMesh(canvas, mesh, xf, visualMat[style]);
             }
             i = i + 1;
         }
+    }
+
+    // Orient a dart's local +Z along its current velocity. The pole-safe basis
+    // avoids a degenerate cross product on nearly vertical grenade arcs.
+    hide func dartTransform(i: Integer) -> Math.Mat4 {
+        var dx = vx[i]; var dy = vy[i]; var dz = vz[i];
+        var len = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        if len < 0.001 { return Math.Mat4.Translate(px[i], py[i], pz[i]); }
+        dx = dx / len; dy = dy / len; dz = dz / len;
+        var ux = 0.0; var uy = 1.0; var uz = 0.0;
+        if M.absf(dy) > 0.99 { ux = 1.0; uy = 0.0; }
+        var rx = dy * uz - dz * uy;
+        var ry = dz * ux - dx * uz;
+        var rz = dx * uy - dy * ux;
+        var rl = Math.Sqrt(rx * rx + ry * ry + rz * rz);
+        rx = rx / rl; ry = ry / rl; rz = rz / rl;
+        var bx = ry * dz - rz * dy;
+        var by = rz * dx - rx * dz;
+        var bz = rx * dy - ry * dx;
+        return Math.Mat4.New(
+            rx, bx, dx, px[i],
+            ry, by, dy, py[i],
+            rz, bz, dz, pz[i],
+            0.0, 0.0, 0.0, 1.0);
     }
 }

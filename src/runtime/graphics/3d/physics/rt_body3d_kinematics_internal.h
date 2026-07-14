@@ -30,4 +30,6 @@ typedef struct rt_body3d_kinematics {
     double torque[3];
     double mass;
     double inv_mass;
+    void *collider;         /* layout filler: keeps inv_inertia at the rt_body3d offset */
+    double inv_inertia[3];  /* body-local principal-axis inverse inertia (see rt_body3d) */
 } rt_body3d_kinematics;

@@ -1,12 +1,11 @@
 // =============================================================================
-// world/levels.zia — the 9 campaign levels + the Redoubt hub (graybox builders)
+// world/levels.zia — nine combat arenas + the Redoubt hub
 // =============================================================================
 //
 // One builder per level fills a LevelBuilder (geometry/lights/spawns/pickups) +
-// Objectives. These are graybox blockouts — distinct silhouette, lighting mood,
-// encounter, and objective per level, matching each level's showcase in
-// 19-21-levels — playable before any art is downloaded. The level manager picks
-// the builder by level id.
+// Objectives. Each mission is a combat-first space with a distinct silhouette,
+// landmark, route, vertical option, encounter rhythm, and authored material
+// palette. The level manager picks the builder by level id.
 // =============================================================================
 module levels;
 
@@ -147,52 +146,103 @@ hide func addHazardLip(lb: level_base.LevelBuilder, x: Float, z: Float, hx: Floa
                  0.95, 0.68, 0.12, false);
 }
 
+/// Build collision-backed stairs whose individual rises stay within the player
+/// controller's step limit. `axis` 0 climbs X and 1 climbs Z; `dir` is -1 or 1.
+/// Accent nosings make the climb readable during a fight and keep raised routes
+/// from looking like unreachable background dressing.
+hide func addCombatStairs(lb: level_base.LevelBuilder, startX: Float, startZ: Float,
+                          axis: Integer, dir: Float, count: Integer,
+                          tread: Float, rise: Float, halfWidth: Float,
+                          surf: Integer) {
+    var i = 0;
+    while i < count {
+        var cx = startX;
+        var cz = startZ;
+        var hx = halfWidth;
+        var hz = halfWidth;
+        if axis == 0 {
+            cx = startX + dir * (i + 0.0) * tread;
+            hx = tread * 0.5 + 0.02;
+        } else {
+            cz = startZ + dir * (i + 0.0) * tread;
+            hz = tread * 0.5 + 0.02;
+        }
+        var top = (i + 1.0) * rise;
+        lb.addBoxMat(cx, top * 0.5, cz, hx, top * 0.5, hz, surf,
+                     0.44, 0.47, 0.52, true);
+        var noseX = cx;
+        var noseZ = cz;
+        var nhx = hx;
+        var nhz = 0.035;
+        if axis == 0 {
+            noseX = cx + dir * tread * 0.42;
+            nhx = 0.035;
+            nhz = hz;
+        } else {
+            noseZ = cz + dir * tread * 0.42;
+        }
+        lb.addBoxMat(noseX, top + 0.012, noseZ, nhx, 0.012, nhz,
+                     textures.SURF_ACCENT, 0.66, 0.82, 1.0, false);
+        i = i + 1;
+    }
+}
+
 hide func finishLevelMeta(levelId: Integer, lb: level_base.LevelBuilder) {
     if levelId == config.LV_L1 {
         markLandmark(lb, 0.0, -20.0, 0);
         markLandmark(lb, 0.0, -34.0, 1);
         markFlank(lb, -12.0, -8.0); markFlank(lb, 12.0, -12.0);
-        markBeat(lb, 0.0, 8.0, 0, 0); markBeat(lb, 0.0, -20.0, 1, 1);
+        markBeat(lb, 0.0, 24.0, 0, 0); markBeat(lb, -5.0, 8.0, 1, 1);
+        markBeat(lb, 4.0, -10.0, 1, 2); markBeat(lb, 0.0, -25.0, 1, 3);
     } else if levelId == config.LV_L2 {
         markLandmark(lb, 0.0, -18.0, 2);
         markLandmark(lb, 18.0, -20.0, 0);
         markFlank(lb, -13.0, -4.0); markFlank(lb, 13.0, -4.0);
-        markBeat(lb, 0.0, 12.0, 0, 0); markBeat(lb, 0.0, -16.0, 1, 0);
+        markBeat(lb, 0.0, 12.0, 2, 0); markBeat(lb, 0.0, 4.0, 2, 1);
+        markBeat(lb, 0.0, -6.0, 2, 2); markBeat(lb, 0.0, -16.0, 2, 3);
     } else if levelId == config.LV_L3 {
         markLandmark(lb, 0.0, -47.5, 1);
         markLandmark(lb, 0.0, 0.0, 0);
         markFlank(lb, -4.0, 20.0); markFlank(lb, 4.0, -20.0);
-        markBeat(lb, 0.0, 24.0, 0, 0); markBeat(lb, 0.0, -24.0, 1, 2);
+        markBeat(lb, 0.0, 30.0, 0, 0); markBeat(lb, 0.0, 10.0, 1, 1);
+        markBeat(lb, 0.0, -10.0, 1, 2); markBeat(lb, 0.0, -30.0, 1, 3);
     } else if levelId == config.LV_L4 {
         markLandmark(lb, 0.0, -33.4, 0);
         markLandmark(lb, 0.0, -24.0, 2);
         markFlank(lb, -18.0, 10.0); markFlank(lb, 18.0, 10.0);
-        markBeat(lb, 0.0, -24.0, 0, 0); markBeat(lb, 0.0, 0.0, 2, 0);
+        markBeat(lb, 0.0, 22.0, 0, 0); markBeat(lb, -16.0, 6.0, 1, 1);
+        markBeat(lb, 16.0, -8.0, 1, 2); markBeat(lb, 0.0, -24.0, 2, 3);
     } else if levelId == config.LV_L5 {
         markLandmark(lb, -12.0, -14.0, 3);
         markLandmark(lb, 0.0, -24.0, 2);
         markFlank(lb, -18.0, 12.0); markFlank(lb, 18.0, -12.0);
-        markBeat(lb, -24.0, 0.0, 1, 0); markBeat(lb, 0.0, -24.0, 0, 0);
+        markBeat(lb, 0.0, 20.0, 0, 0); markBeat(lb, -18.0, 6.0, 1, 1);
+        markBeat(lb, 16.0, -8.0, 1, 2); markBeat(lb, 0.0, -22.0, 1, 3);
     } else if levelId == config.LV_L6 {
         markLandmark(lb, 0.0, 0.0, 3);
         markLandmark(lb, 0.0, -14.0, 1);
         markFlank(lb, -16.0, 0.0); markFlank(lb, 16.0, 0.0);
-        markBeat(lb, 0.0, 0.0, 2, 0); markBeat(lb, 0.0, -14.0, 1, 2);
+        markBeat(lb, 0.0, 0.0, 2, 0); markBeat(lb, 0.0, 0.0, 2, 1);
+        markBeat(lb, 0.0, 0.0, 2, 2); markBeat(lb, 0.0, 0.0, 2, 3);
+        markBeat(lb, 0.0, 0.0, 2, 4);
     } else if levelId == config.LV_L7 {
         markLandmark(lb, 14.0, 4.0, 3);
         markLandmark(lb, 0.0, -22.0, 0);
         markFlank(lb, -16.0, 10.0); markFlank(lb, 16.0, 10.0);
-        markBeat(lb, 0.0, -22.0, 3, 0); markBeat(lb, 0.0, 0.0, 1, 1);
+        markBeat(lb, 0.0, -22.0, 3, 0); markBeat(lb, -12.0, 0.0, 2, 1);
+        markBeat(lb, 12.0, 0.0, 2, 2);
     } else if levelId == config.LV_L8 {
         markLandmark(lb, 0.0, -44.0, 0);
         markLandmark(lb, 0.0, 0.0, 3);
         markFlank(lb, -20.0, 0.0); markFlank(lb, 20.0, 0.0);
-        markBeat(lb, 0.0, -28.0, 3, 0); markBeat(lb, 0.0, 12.0, 1, 0);
+        markBeat(lb, 0.0, -28.0, 3, 0); markBeat(lb, -18.0, 8.0, 2, 1);
+        markBeat(lb, 18.0, -8.0, 2, 2);
     } else if levelId == config.LV_L9 {
         markLandmark(lb, 0.0, 0.0, 0);
         markLandmark(lb, 0.0, 26.0, 1);
         markFlank(lb, -14.0, 8.0); markFlank(lb, 14.0, 8.0);
-        markBeat(lb, 0.0, -26.0, 3, 0); markBeat(lb, -13.0, 8.0, 2, 0);
+        markBeat(lb, 0.0, -26.0, 3, 0); markBeat(lb, -13.0, 8.0, 2, 1);
+        markBeat(lb, 13.0, -8.0, 2, 2); markBeat(lb, 0.0, 16.0, 2, 3);
     } else if levelId == config.LV_HUB {
         markLandmark(lb, 0.0, -8.0, 2);
         markLandmark(lb, 0.0, -13.0, 0);
@@ -257,18 +307,33 @@ hide func buildL1(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     addObjectivePad(lb, 0.0, -34.0, 1.9, 1.1, 2);
     lb.addBoxMat(-8.0, 0.18, -31.0, 2.6, 0.18, 0.22, textures.SURF_HULL, 0.35, 0.30, 0.27, false);
     lb.addBoxMat(8.0, 0.18, -31.0, 2.6, 0.18, 0.22, textures.SURF_HULL, 0.35, 0.30, 0.27, false);
-    lb.addSpawnRoute(config.EN_HUSK, -20.0, 8.0, 0, -10.0, 8.0);
-    lb.addSpawnRoute(config.EN_HUSK, 20.0, 6.0, 0, 9.0, 5.0);
-    lb.addSpawnRoute(config.EN_HUSK, 0.0, -4.0, 0, 0.0, -10.0);
-    lb.addSpawnRoute(config.EN_SAPPER, -16.0, -18.0, 0, -6.0, -14.0);
-    lb.addSpawnRoute(config.EN_HUSK, 14.0, -20.0, 1, 6.0, -16.0);
-    lb.addSpawnRoute(config.EN_SAPPER, 0.0, -28.0, 1, 0.0, -18.0);
+    // Four combat beats: hot start, wreck ambush, ranged crossfire, relay push.
+    lb.addSpawnRoute(config.EN_HUSK, -12.0, 22.0, 0, -6.0, 20.0);
+    lb.addSpawnRoute(config.EN_HUSK, 12.0, 20.0, 0, 6.0, 18.0);
+    lb.addSpawnRoute(config.EN_HUSK, 0.0, 14.0, 0, 0.0, 9.0);
+    lb.addSpawnRoute(config.EN_SAPPER, -18.0, 12.0, 0, -8.0, 10.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 18.0, 10.0, 0, 8.0, 8.0);
+    lb.addSpawnRoute(config.EN_HUSK, -20.0, 4.0, 1, -8.0, 2.0);
+    lb.addSpawnRoute(config.EN_HUSK, 20.0, 2.0, 1, 8.0, 0.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 0.0, -2.0, 1, 0.0, -8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -18.0, -6.0, 1, -8.0, -8.0);
+    lb.addSpawnRoute(config.EN_RANGER, 18.0, -8.0, 1, 8.0, -10.0);
+    lb.addSpawnRoute(config.EN_HUSK, -22.0, -12.0, 2, -8.0, -14.0);
+    lb.addSpawnRoute(config.EN_HUSK, 22.0, -14.0, 2, 8.0, -16.0);
+    lb.addSpawnRoute(config.EN_RANGER, -14.0, -20.0, 2, -6.0, -18.0);
+    lb.addSpawnRoute(config.EN_DRONE, 0.0, -18.0, 2, 0.0, -14.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 14.0, -22.0, 2, 6.0, -20.0);
+    lb.addSpawnRoute(config.EN_HUSK, -18.0, -28.0, 3, -7.0, -24.0);
+    lb.addSpawnRoute(config.EN_HUSK, 18.0, -28.0, 3, 7.0, -24.0);
+    lb.addSpawnRoute(config.EN_RANGER, -10.0, -32.0, 3, -5.0, -26.0);
+    lb.addSpawnRoute(config.EN_DRONE, 0.0, -34.0, 3, 0.0, -25.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 10.0, -32.0, 3, 5.0, -26.0);
     lb.addPickup(config.PK_AMMO, 4.0, 0.0, 20.0, 40.0);
     lb.addPickup(config.PK_HEALTH, -4.0, 0.0, 20.0, 30.0);
-    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the crashsite", false);
-    obj.setPrompt(0, "CLEAR HOSTILES TO OPEN THE RELAY PATH");
-    obj.addAfter(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Reach the relay path", false, 0);
-    obj.setPrompt(1, "FOLLOW THE LIT EXIT BEACON");
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the crashsite counterattack", false);
+    obj.setPrompt(0, "PUSH THROUGH FOUR ENEMY WAVES");
+    obj.addAfter(objectives.OBJ_REACH, 0.0, -34.0, 5.0, 0, "Breach the relay path", false, 0);
+    obj.setPrompt(1, "MOVE THROUGH THE OPEN RELAY GATE");
 }
 
 // L2 — Relay Outpost: night interior — real rooms, cyan coves, console glow.
@@ -344,12 +409,27 @@ hide func buildL2(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addSpawnRoute(config.EN_RANGER, 18.0, 12.0, 0, 6.0, 2.0);
     lb.addSpawn(config.EN_TURRET, 0.0, -16.0, 0);
     lb.addSpawnRoute(config.EN_DRONE, 0.0, 18.0, 0, 0.0, 4.0);
+    lb.addSpawnRoute(config.EN_HUSK, -24.0, 4.0, 1, -10.0, 2.0);
+    lb.addSpawnRoute(config.EN_HUSK, 24.0, 4.0, 1, 10.0, 2.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 0.0, 20.0, 1, 0.0, 8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -20.0, -14.0, 1, -10.0, -10.0);
+    lb.addSpawnRoute(config.EN_RANGER, 20.0, -14.0, 1, 10.0, -10.0);
+    lb.addSpawnRoute(config.EN_DRONE, -20.0, 18.0, 2, -8.0, 8.0);
+    lb.addSpawnRoute(config.EN_DRONE, 20.0, 18.0, 2, 8.0, 8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -22.0, -4.0, 2, -10.0, -4.0);
+    lb.addSpawnRoute(config.EN_RANGER, 22.0, -4.0, 2, 10.0, -4.0);
+    lb.addSpawn(config.EN_TURRET, 0.0, 16.0, 2);
+    lb.addSpawnRoute(config.EN_MARAUDER, 0.0, -22.0, 3, 0.0, -14.0);
+    lb.addSpawnRoute(config.EN_HUSK, -22.0, 14.0, 3, -8.0, 8.0);
+    lb.addSpawnRoute(config.EN_HUSK, 22.0, 14.0, 3, 8.0, 8.0);
+    lb.addSpawnRoute(config.EN_SAPPER, -18.0, -18.0, 3, -8.0, -12.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 18.0, -18.0, 3, 8.0, -12.0);
     lb.addPickup(config.PK_SALVAGE, 0.0, 0.0, -16.0, 50.0);
     lb.addPickup(config.PK_DATACORE, -10.0, 0.0, -16.0, 1.0);
-    obj.add(objectives.OBJ_ACTIVATE, 0.0, -18.0, 3.0, 0, "Reach and activate the relay console", false);
-    obj.setPrompt(0, "FOLLOW THE CYAN BEACONS TO THE CONSOLE");
-    obj.add(objectives.OBJ_KILL, 0.0, 0.0, 0.0, 2, "Neutralize the garrison (optional)", true);
-    obj.setPrompt(1, "OPTIONAL: CLEAR THE RELAY ROOM");
+    obj.add(objectives.OBJ_SURVIVE, 0.0, -18.0, 0.0, 40, "Hold the relay upload for 40s", false);
+    obj.setPrompt(0, "DEFEND THE AUTOMATIC RELAY UPLOAD");
+    obj.addAfter(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Eliminate the remaining garrison", false, 0);
+    obj.setPrompt(1, "FINISH THE RELAY GARRISON");
 }
 
 // L3 — Ashveil Crossing: a girder span over an ash sea, vanishing into fog.
@@ -425,12 +505,19 @@ hide func buildL3(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
         var z = 30.0 - seg * 20.0;
         lb.addSpawnRoute(config.EN_RANGER, -9.0, z, seg, -4.0, z - 6.0);
         lb.addSpawnRoute(config.EN_DRONE, 9.0, z, seg, 4.0, z - 4.0);
+        lb.addSpawnRoute(config.EN_HUSK, -8.0, z - 5.0, seg, -3.0, z - 8.0);
+        lb.addSpawnRoute(config.EN_HUSK, 8.0, z - 7.0, seg, 3.0, z - 10.0);
+        var support = config.EN_SAPPER;
+        if seg >= 2 { support = config.EN_TURRET; }
+        lb.addSpawn(support, 0.0, z - 11.0, seg);
         seg = seg + 1;
     }
     lb.addPickup(config.PK_AMMO, 0.0, 0.0, 0.0, 60.0);
     lb.addPickup(config.PK_HEALTH, 0.0, 0.0, -20.0, 40.0);
-    obj.add(objectives.OBJ_REACH, 0.0, -46.0, 5.0, 0, "Cross to the far platform", false);
-    obj.setPrompt(0, "PUSH FORWARD TO THE FAR PLATFORM");
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the four ridge formations", false);
+    obj.setPrompt(0, "ADVANCE TO TRIGGER EACH COMBAT FORMATION");
+    obj.addAfter(objectives.OBJ_REACH, 0.0, -46.0, 5.0, 0, "Secure the far platform", false, 0);
+    obj.setPrompt(1, "CROSS THE SECURED BRIDGE");
 }
 
 // L4 — Habitat Arcology: sterile atrium — column grid, mezzanines, HELIX wall.
@@ -460,7 +547,9 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     markCover(lb, 22.0, 6.0, -1.0, 0.0);
     markCover(lb, 0.0, 10.0, 0.0, -1.0);
     markCover(lb, 0.0, -10.0, 0.0, 1.0);
-    // Mezzanine catwalk ring along the walls (visual, y=3.2).
+    // Mezzanine galleries along the walls. The rear gallery has a real
+    // collision deck and two step-limit-safe stair routes, turning the old
+    // unreachable decoration into a useful high-ground choice.
     var cw = -12.0;
     while cw < 13.0 {
         lb.addProp(props.PROP_CATWALK, cw, 3.2, -32.6, 0.0, 1.0);
@@ -468,6 +557,18 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
         lb.addProp(props.PROP_CATWALK, 32.6, 3.2, cw, 1.5707963, 1.0);
         cw = cw + 2.4;
     }
+    lb.addBoxMat(0.0, 3.08, -32.0, 13.8, 0.12, 1.30,
+                 textures.SURF_GRATE, 0.42, 0.46, 0.52, true);
+    addCombatStairs(lb, -9.5, -24.4, 1, -1.0, 11, 0.60, 0.29, 1.35,
+                    textures.SURF_GRATE);
+    addCombatStairs(lb, 9.5, -24.4, 1, -1.0, 11, 0.60, 0.29, 1.35,
+                    textures.SURF_GRATE);
+    // Waist-high gallery cover: exposed to fliers and grenades, protected from
+    // the direct shield wall below, so high ground is useful without being safe.
+    lb.addBoxMat(-5.5, 3.62, -32.0, 1.2, 0.42, 0.28,
+                 textures.SURF_CONCRETE, 0.44, 0.47, 0.52, true);
+    lb.addBoxMat(5.5, 3.62, -32.0, 1.2, 0.42, 0.28,
+                 textures.SURF_CONCRETE, 0.44, 0.47, 0.52, true);
     // Hero: the HELIX eye-wall at the far end.
     lb.addProp(props.PROP_EYESCREEN, 0.0, 0.0, -33.4, 0.0, 1.0);
     // Habitat dressing: dead planters, info consoles, cove pylons.
@@ -507,8 +608,23 @@ hide func buildL4(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addSpawnRoute(config.EN_VANGUARD, -24.0, -8.0, 0, -8.0, -10.0);
     lb.addSpawnRoute(config.EN_VANGUARD, 24.0, -8.0, 0, 8.0, -10.0);
     lb.addSpawnRoute(config.EN_RANGER, 0.0, 18.0, 0, 0.0, 6.0);
+    lb.addSpawnRoute(config.EN_HUSK, -28.0, 18.0, 1, -12.0, 12.0);
+    lb.addSpawnRoute(config.EN_HUSK, 28.0, 18.0, 1, 12.0, 12.0);
+    lb.addSpawnRoute(config.EN_RANGER, -28.0, 0.0, 1, -12.0, 0.0);
+    lb.addSpawnRoute(config.EN_RANGER, 28.0, 0.0, 1, 12.0, 0.0);
+    lb.addSpawnRoute(config.EN_DRONE, 0.0, 26.0, 1, 0.0, 14.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, -28.0, -10.0, 2, -10.0, -8.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, 28.0, -10.0, 2, 10.0, -8.0);
+    lb.addSpawnRoute(config.EN_SAPPER, -22.0, 22.0, 2, -8.0, 10.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 22.0, 22.0, 2, 8.0, 10.0);
+    lb.addSpawn(config.EN_TURRET, 0.0, -28.0, 2);
+    lb.addSpawnRoute(config.EN_MARAUDER, 0.0, -28.0, 3, 0.0, -18.0);
+    lb.addSpawnRoute(config.EN_RANGER, -28.0, -20.0, 3, -12.0, -16.0);
+    lb.addSpawnRoute(config.EN_RANGER, 28.0, -20.0, 3, 12.0, -16.0);
+    lb.addSpawnRoute(config.EN_DRONE, -18.0, 26.0, 3, -8.0, 12.0);
+    lb.addSpawnRoute(config.EN_DRONE, 18.0, 26.0, 3, 8.0, 12.0);
     lb.addPickup(config.PK_ARMOR, 0.0, 0.0, 24.0, 50.0);
-    lb.addPickup(config.PK_SALVAGE, 12.0, 0.0, -22.0, 80.0);
+    lb.addPickup(config.PK_SALVAGE, 9.0, 3.35, -32.0, 80.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Break the Warden garrison", false);
     obj.setPrompt(0, "BREAK THE SHIELDED PUSH");
 }
@@ -584,10 +700,25 @@ hide func buildL5(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addSpawnRoute(config.EN_WRAITH, 0.0, -24.0, 0, 0.0, -12.0);
     lb.addSpawnRoute(config.EN_MITE, -16.0, -12.0, 0, -4.0, -6.0);
     lb.addSpawnRoute(config.EN_MITE, 16.0, -12.0, 0, 4.0, -6.0);
+    lb.addSpawnRoute(config.EN_STALKER, -26.0, 18.0, 1, -10.0, 10.0);
+    lb.addSpawnRoute(config.EN_STALKER, 26.0, 18.0, 1, 10.0, 10.0);
+    lb.addSpawnRoute(config.EN_WRAITH, -24.0, -18.0, 1, -10.0, -10.0);
+    lb.addSpawnRoute(config.EN_MITE, 20.0, -20.0, 1, 8.0, -10.0);
+    lb.addSpawnRoute(config.EN_MITE, 24.0, -16.0, 1, 10.0, -8.0);
+    lb.addSpawnRoute(config.EN_WRAITH, 24.0, -20.0, 2, 10.0, -10.0);
+    lb.addSpawnRoute(config.EN_STALKER, -26.0, -8.0, 2, -10.0, -6.0);
+    lb.addSpawnRoute(config.EN_STALKER, 26.0, 8.0, 2, 10.0, 6.0);
+    lb.addSpawnRoute(config.EN_RANGER, -20.0, 22.0, 2, -8.0, 12.0);
+    lb.addSpawnRoute(config.EN_RANGER, 20.0, 22.0, 2, 8.0, 12.0);
+    lb.addSpawnRoute(config.EN_WRAITH, 0.0, -27.0, 3, 0.0, -14.0);
+    lb.addSpawnRoute(config.EN_STALKER, -26.0, 0.0, 3, -12.0, 0.0);
+    lb.addSpawnRoute(config.EN_STALKER, 26.0, 0.0, 3, 12.0, 0.0);
+    lb.addSpawnRoute(config.EN_DRONE, -18.0, 24.0, 3, -8.0, 12.0);
+    lb.addSpawnRoute(config.EN_DRONE, 18.0, 24.0, 3, 8.0, 12.0);
     lb.addPickup(config.PK_HEALTH, 0.0, 0.0, 20.0, 50.0);
     lb.addPickup(config.PK_DATACORE, 0.0, 0.0, -24.0, 1.0);
-    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Hunt the Wraith", false);
-    obj.setPrompt(0, "WATCH THE SIDE CAVES");
+    obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Survive the Wraith ambush", false);
+    obj.setPrompt(0, "COUNTER THE FLANKS—NO TRACKING REQUIRED");
 }
 
 // L6 — Storm Terraces: holdout defense, escalating waves.
@@ -599,11 +730,19 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addArenaShellMat(28.0, 6.0, textures.SURF_CONCRETE, textures.SURF_ROCK,
                         0.38, 0.38, 0.42, 0.36, 0.35, 0.38);
     scatterCoverMat(lb, 6, 8.0, textures.SURF_CONCRETE, 0.40, 0.40, 0.44);
-    // Perimeter terrace steps (visual rise toward the storm wall).
-    lb.addBoxMat(0.0, 0.5, -27.0, 28.0, 0.5, 1.2, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
+    // Playable rear terrace: a short staircase leads to an elevated resupply
+    // lane and two pieces of cover. Side terraces remain silhouette dressing so
+    // the five-way enemy ingress stays unobstructed.
+    lb.addBoxMat(0.0, 0.5, -27.0, 28.0, 0.5, 1.2, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, true);
     lb.addBoxMat(0.0, 1.1, -28.6, 28.0, 1.1, 0.6, textures.SURF_CONCRETE, 0.34, 0.34, 0.38, false);
     lb.addBoxMat(-27.0, 0.5, 0.0, 1.2, 0.5, 28.0, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
     lb.addBoxMat(27.0, 0.5, 0.0, 1.2, 0.5, 28.0, textures.SURF_CONCRETE, 0.36, 0.36, 0.40, false);
+    addCombatStairs(lb, 0.0, -24.5, 1, -1.0, 4, 0.40, 0.25, 1.6,
+                    textures.SURF_CONCRETE);
+    lb.addBoxMat(-8.0, 1.42, -27.0, 1.25, 0.42, 0.32,
+                 textures.SURF_CONCRETE, 0.40, 0.41, 0.46, true);
+    lb.addBoxMat(8.0, 1.42, -27.0, 1.25, 0.42, 0.32,
+                 textures.SURF_CONCRETE, 0.40, 0.41, 0.46, true);
     // Holdout hardware: barricade ring + storm lamps + supply drop.
     lb.addProp(props.PROP_BARRICADE, -6.0, 0.0, 10.0, 3.1415927, 1.0);
     lb.addProp(props.PROP_BARRICADE, 6.0, 0.0, 10.0, 3.1415927, 1.0);
@@ -637,23 +776,27 @@ hide func buildL6(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     addFloorArrow(lb, 10.0, 0.0, 1);
     addFloorArrow(lb, 0.0, -14.0, 0);
     var w = 0;
-    while w < 3 {
-        var per = 3 + w;
+    while w < 5 {
+        var per = 5;
         var j = 0;
         while j < per {
             var ang = (j + 0.0) / (per + 0.0) * 6.2831853 + w;
             var arche = config.EN_HUSK;
             if j % 3 == 2 { arche = config.EN_SAPPER; }
+            if w >= 1 && j == 1 { arche = config.EN_RANGER; }
+            if w >= 2 && j == 3 { arche = config.EN_DRONE; }
+            if w >= 3 && j == 4 { arche = config.EN_VANGUARD; }
+            if w >= 4 && j == 0 { arche = config.EN_MARAUDER; }
             lb.addSpawnRoute(arche, Math.Cos(ang) * 24.0, Math.Sin(ang) * 24.0, w,
                              Math.Cos(ang) * 13.0, Math.Sin(ang) * 13.0);
             j = j + 1;
         }
         w = w + 1;
     }
-    lb.addPickup(config.PK_AMMO, 0.0, 0.0, 6.0, 80.0);
+    lb.addPickup(config.PK_AMMO, 0.0, 1.28, -27.0, 80.0);
     lb.addPickup(config.PK_ARMOR, 0.0, 0.0, -6.0, 50.0);
-    obj.add(objectives.OBJ_SURVIVE, 0.0, 0.0, 0.0, 30, "Hold the terrace for 30s", false);
-    obj.setPrompt(0, "HOLD THE LIT TERRACE");
+    obj.add(objectives.OBJ_SURVIVE, 0.0, 0.0, 0.0, 60, "Hold the terrace for 60s", false);
+    obj.setPrompt(0, "SURVIVE FIVE OVERLAPPING ASSAULTS");
     obj.addAfter(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Clear the final wave", false, 0);
     obj.setPrompt(1, "FINISH THE LAST WAVE");
 }
@@ -701,8 +844,18 @@ hide func buildL7(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     addFloorArrow(lb, 10.0, -6.0, 1);
     addObjectivePad(lb, 0.0, -22.0, 2.2, 1.2, 1);
     lb.addSpawnRoute(config.BOSS_WARDEN, 0.0, -22.0, 0, 0.0, -14.0);
-    lb.addSpawnRoute(config.EN_HUSK, -24.0, -12.0, 1, -8.0, -8.0);
-    lb.addSpawnRoute(config.EN_HUSK, 24.0, -12.0, 1, 8.0, -8.0);
+    lb.addSpawnRoute(config.EN_HUSK, -24.0, -12.0, 0, -8.0, -8.0);
+    lb.addSpawnRoute(config.EN_HUSK, 24.0, -12.0, 0, 8.0, -8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -22.0, 18.0, 0, -10.0, 10.0);
+    lb.addSpawnRoute(config.EN_RANGER, 22.0, 18.0, 0, 10.0, 10.0);
+    lb.addSpawnRoute(config.EN_SAPPER, -26.0, 0.0, 1, -12.0, 0.0);
+    lb.addSpawnRoute(config.EN_SAPPER, 26.0, 0.0, 1, 12.0, 0.0);
+    lb.addSpawnRoute(config.EN_RANGER, -20.0, -20.0, 1, -10.0, -12.0);
+    lb.addSpawnRoute(config.EN_RANGER, 20.0, -20.0, 1, 10.0, -12.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, -26.0, 12.0, 2, -12.0, 8.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, 26.0, 12.0, 2, 12.0, 8.0);
+    lb.addSpawnRoute(config.EN_DRONE, -18.0, 24.0, 2, -8.0, 12.0);
+    lb.addSpawnRoute(config.EN_DRONE, 18.0, 24.0, 2, 8.0, 12.0);
     lb.addPickup(config.PK_AMMO, 8.0, 0.0, 20.0, 80.0);
     lb.addPickup(config.PK_HEALTH, -8.0, 0.0, 20.0, 50.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Destroy WARDEN Goliath", false);
@@ -750,6 +903,16 @@ hide func buildL8(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     lb.addSpawnRoute(config.BOSS_SHRIKE, 0.0, -28.0, 0, 0.0, -20.0);
     lb.addSpawnRoute(config.EN_DRONE, -24.0, 12.0, 0, -10.0, 6.0);
     lb.addSpawnRoute(config.EN_DRONE, 24.0, 12.0, 0, 10.0, 6.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, -30.0, 0.0, 0, -16.0, 0.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, 30.0, 0.0, 0, 16.0, 0.0);
+    lb.addSpawnRoute(config.EN_DRONE, -28.0, -16.0, 1, -14.0, -8.0);
+    lb.addSpawnRoute(config.EN_DRONE, 28.0, -16.0, 1, 14.0, -8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -28.0, 18.0, 1, -12.0, 10.0);
+    lb.addSpawnRoute(config.EN_RANGER, 28.0, 18.0, 1, 12.0, 10.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, -30.0, 10.0, 2, -16.0, 4.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, 30.0, 10.0, 2, 16.0, 4.0);
+    lb.addSpawnRoute(config.EN_DRONE, -24.0, -22.0, 2, -10.0, -10.0);
+    lb.addSpawnRoute(config.EN_DRONE, 24.0, -22.0, 2, 10.0, -10.0);
     lb.addPickup(config.PK_AMMO, 0.0, 0.0, 24.0, 100.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "Down SHRIKE Prime", false);
     obj.setPrompt(0, "KEEP MOVING BETWEEN SPIRE BEACONS");
@@ -804,6 +967,22 @@ hide func buildL9(lb: level_base.LevelBuilder, obj: objectives.Objectives) {
     addFloorArrow(lb, 13.0, 8.0, 1);
     addFloorArrow(lb, 0.0, -13.0, 0);
     lb.addSpawnRoute(config.BOSS_HELIX, 0.0, -26.0, 0, 0.0, -18.0);
+    lb.addSpawnRoute(config.EN_HUSK, -28.0, 12.0, 0, -12.0, 8.0);
+    lb.addSpawnRoute(config.EN_HUSK, 28.0, 12.0, 0, 12.0, 8.0);
+    lb.addSpawnRoute(config.EN_RANGER, -26.0, -12.0, 0, -12.0, -8.0);
+    lb.addSpawnRoute(config.EN_RANGER, 26.0, -12.0, 0, 12.0, -8.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, -30.0, 0.0, 1, -14.0, 0.0);
+    lb.addSpawnRoute(config.EN_VANGUARD, 30.0, 0.0, 1, 14.0, 0.0);
+    lb.addSpawnRoute(config.EN_DRONE, -24.0, 22.0, 1, -10.0, 12.0);
+    lb.addSpawnRoute(config.EN_DRONE, 24.0, 22.0, 1, 10.0, 12.0);
+    lb.addSpawnRoute(config.EN_WRAITH, -28.0, -18.0, 2, -12.0, -10.0);
+    lb.addSpawnRoute(config.EN_WRAITH, 28.0, -18.0, 2, 12.0, -10.0);
+    lb.addSpawnRoute(config.EN_MARAUDER, -24.0, 18.0, 2, -10.0, 10.0);
+    lb.addSpawnRoute(config.EN_MARAUDER, 24.0, 18.0, 2, 10.0, 10.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, -30.0, 8.0, 3, -14.0, 4.0);
+    lb.addSpawnRoute(config.EN_SHRIKE, 30.0, 8.0, 3, 14.0, 4.0);
+    lb.addSpawnRoute(config.EN_RANGER, -26.0, -22.0, 3, -12.0, -12.0);
+    lb.addSpawnRoute(config.EN_RANGER, 26.0, -22.0, 3, 12.0, -12.0);
     lb.addPickup(config.PK_AMMO, 10.0, 0.0, 24.0, 120.0);
     lb.addPickup(config.PK_HEALTH, -10.0, 0.0, 24.0, 60.0);
     obj.add(objectives.OBJ_CLEAR, 0.0, 0.0, 0.0, 0, "End HELIX", false);

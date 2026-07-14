@@ -59,6 +59,26 @@ typedef struct {
     int failed;
 } draco_buf;
 
+/* Draco payloads are entropy-coded, so element counts (faces/points/vertices)
+ * have no fixed byte cost. But a count wildly out of proportion to the payload
+ * is a corrupt or hostile header — a few-byte buffer cannot encode millions of
+ * elements. Cap declared counts to a very generous multiple of the payload size,
+ * far above any real compression ratio (edgebreaker connectivity floors near a
+ * few bits/face even before attribute data), so a tiny buffer cannot drive a
+ * multi-gigabyte allocation before decoding begins. Legitimate meshes stay well
+ * under this bound; over-claims that slip past it fail cleanly on the truncated
+ * symbol stream or the existing malloc NULL checks. */
+#define DRACO_MAX_ELEMENTS_PER_INPUT_BYTE 4096u
+
+/// @brief Reject an element count that is grossly disproportionate to the payload size.
+static int draco_count_fits_payload(uint64_t count, size_t payload_size) {
+    if (payload_size == 0u)
+        return count == 0u;
+    if (payload_size > (size_t)(UINT64_MAX / DRACO_MAX_ELEMENTS_PER_INPUT_BYTE))
+        return 1; /* product would overflow; downstream size overflow guards suffice */
+    return count <= (uint64_t)payload_size * DRACO_MAX_ELEMENTS_PER_INPUT_BYTE;
+}
+
 static uint8_t draco_read_u8(draco_buf *b) {
     if (b->pos >= b->size) {
         b->failed = 1;
@@ -430,6 +450,9 @@ static int draco_decode_sequential_connectivity(draco_buf *b, draco_mesh *mesh) 
     uint64_t num_points = draco_read_varint(b);
     uint8_t method = draco_read_u8(b);
     if (b->failed || num_faces > (uint64_t)UINT32_MAX / 3u || num_points > UINT32_MAX)
+        return 0;
+    if (!draco_count_fits_payload(num_faces, b->size) ||
+        !draco_count_fits_payload(num_points, b->size))
         return 0;
     mesh->num_faces = (uint32_t)num_faces;
     mesh->num_points = (uint32_t)num_points;
@@ -1347,6 +1370,10 @@ static int draco_eb_parse_and_alloc(draco_buf *b, draco_eb *eb) {
         return 0;
     if (nf == 0 || nf > (uint64_t)UINT32_MAX / 4u)
         return 0;
+    /* Bound the allocation drivers to the payload size; nss <= ns <= nf and
+     * total_verts = nv + nss, so capping nf and nv caps every derived buffer. */
+    if (!draco_count_fits_payload(nf, b->size) || !draco_count_fits_payload(nv, b->size))
+        return 0;
     if (ns > nf)
         return 0;
     /* Split symbols are a subset of the S symbols, so nss > ns is malformed.
@@ -1604,6 +1631,11 @@ static int draco_eb_recompute_vertices(draco_eb *eb, uint32_t a) {
         if (c < 0)
             continue;
         first_vert_id = (int32_t)num_new++;
+        /* num_new can reach corner_cap via seam splits before every outer vertex
+         * is processed; bound it here as the seam path below already does, so the
+         * leftmost_corner[first_vert_id] write cannot overflow (array is corner_cap). */
+        if (first_vert_id >= (int32_t)eb->corner_cap)
+            return 0;
         first_c = c;
         if (ad->vertex_on_seam[v]) {
             act_c = draco_eb_attr_swing_left(eb, a, first_c);
@@ -2866,8 +2898,16 @@ static int draco_decode_edgebreaker(draco_buf *b, draco_mesh *mesh) {
                     att->components > DRACO_MAX_COMPONENTS)
                     goto done;
             }
-            for (uint64_t j = 0; j < natts; j++)
-                mesh->attributes[total_atts + j].decoder_type = draco_read_u8(b);
+            for (uint64_t j = 0; j < natts; j++) {
+                draco_attribute *att = &mesh->attributes[total_atts + j];
+                att->decoder_type = draco_read_u8(b);
+                /* The octahedral normal transform always emits 3-component output
+                 * (see the stride-3 allocation in draco_decode_normals_attribute);
+                 * a mismatched declared component count would desync the output
+                 * stride from the reader's (value*components) indexing. */
+                if (att->decoder_type == DRACO_SEQ_NORMALS && att->components != 3)
+                    goto done;
+            }
             if (b->failed)
                 goto done;
             total_atts += (uint32_t)natts;
@@ -3081,8 +3121,14 @@ static int draco_decode_mesh(const uint8_t *data,
                     att->components > DRACO_MAX_COMPONENTS)
                     goto fail;
             }
-            for (uint32_t j = 0; j < total_attributes; j++)
+            for (uint32_t j = 0; j < total_attributes; j++) {
                 mesh->attributes[j].decoder_type = draco_read_u8(&b);
+                /* NORMALS transform emits stride-3 output regardless of the declared
+                 * component count; reject a mismatch that would desync the reader. */
+                if (mesh->attributes[j].decoder_type == DRACO_SEQ_NORMALS &&
+                    mesh->attributes[j].components != 3)
+                    goto fail;
+            }
             if (b.failed)
                 goto fail;
         }

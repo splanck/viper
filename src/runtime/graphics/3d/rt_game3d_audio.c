@@ -826,6 +826,46 @@ static void game3d_audio_ambientbed_tick(rt_game3d_ambientbed *bed,
     }
 }
 
+/// @brief Shift fixed-position audio by a floating-origin rebase delta.
+/// @details The world rebase already shifts scene nodes (so node-bound sources
+///          follow) and the listener; this moves the pieces the rebase otherwise
+///          missed: playAt / nodeless sources (via rt_soundsource3d_rebase_origin,
+///          which skips node-bound sources) and the reverb / ambient-bed zone AABBs,
+///          which are stored in world space and would otherwise leave the listener
+///          in the wrong zone after a recenter. Subtracts the delta to match the
+///          scene/physics rebase convention.
+void game3d_audio_rebase_origin(rt_game3d_audio *audio, const double delta[3]) {
+    if (!audio || !delta)
+        return;
+    for (int32_t i = 0; i < audio->source_count; ++i) {
+        void *source = rt_g3d_checked_or_null(audio->sources[i], RT_G3D_SOUNDSOURCE3D_CLASS_ID);
+        if (source)
+            rt_soundsource3d_rebase_origin(source, delta[0], delta[1], delta[2]);
+    }
+    for (int32_t z = 0; z < audio->reverb_zone_count; ++z) {
+        rt_game3d_reverbzone *zone = (rt_game3d_reverbzone *)rt_g3d_checked_or_null(
+            audio->reverb_zones[z], RT_G3D_GAME3D_REVERBZONE_CLASS_ID);
+        if (!zone)
+            continue;
+        for (int k = 0; k < 3; ++k) {
+            zone->min[k] -= delta[k];
+            zone->max[k] -= delta[k];
+        }
+    }
+    {
+        rt_game3d_ambientbed *bed = (rt_game3d_ambientbed *)rt_g3d_checked_or_null(
+            audio->ambient_bed, RT_G3D_GAME3D_AMBIENTBED_CLASS_ID);
+        if (bed) {
+            for (int32_t z = 0; z < bed->zone_count && z < GAME3D_AMBIENTBED_MAX_ZONES; ++z) {
+                for (int k = 0; k < 3; ++k) {
+                    bed->zones[z].min[k] -= delta[k];
+                    bed->zones[z].max[k] -= delta[k];
+                }
+            }
+        }
+    }
+}
+
 /// @brief Per-step audio-immersion pass: zone reverb, occlusion, ambient beds.
 void game3d_audio_immersion_tick(struct rt_game3d_world *world, double dt) {
     rt_game3d_audio *audio =

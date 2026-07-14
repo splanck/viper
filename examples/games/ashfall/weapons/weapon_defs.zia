@@ -86,6 +86,7 @@ class WeaponDefs {
     expose func dotTimeOf(w: Integer) -> Float { return dotTime[w]; }
     expose func blastRadiusOf(w: Integer) -> Float { return blastRadius[w]; }
     expose func isHitscan(w: Integer) -> Boolean { return fireMode[w] == FM_HITSCAN || fireMode[w] == FM_RICOCHET; }
+    expose func isRicochet(w: Integer) -> Boolean { return fireMode[w] == FM_RICOCHET; }
     expose func isBeam(w: Integer) -> Boolean { return fireMode[w] == FM_BEAM; }
     expose func isProjectile(w: Integer) -> Boolean { return fireMode[w] == FM_PROJECTILE; }
 }

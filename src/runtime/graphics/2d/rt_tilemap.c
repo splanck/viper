@@ -146,6 +146,22 @@ static rt_tilemap_impl *tilemap_checked(void *tilemap_ptr, const char *trap_mess
     return (rt_tilemap_impl *)tilemap_ptr;
 }
 
+/// @brief Resolve a tile id to its current animation frame, given an already-validated impl.
+/// @details Hot-loop variant of rt_tilemap_resolve_anim_tile for the per-tile draw
+///   paths: it takes the validated impl (skipping the per-call handle check) and
+///   short-circuits when the map has no animated tiles — the common case — so a
+///   full-viewport redraw no longer pays an O(tile_anim_count) scan plus an
+///   rt_obj_is_instance validation for every drawn tile.
+static inline int64_t tilemap_resolve_anim_tile_fast(rt_tilemap_impl *tm, int64_t tile_id) {
+    if (!tm || tm->tile_anim_count == 0)
+        return tile_id;
+    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
+        if (tm->tile_anims[i].base_tile_id == tile_id)
+            return tm->tile_anims[i].frame_tiles[tm->tile_anims[i].current_frame];
+    }
+    return tile_id;
+}
+
 /// @brief Return the absolute distance from @p value to zero as an unsigned integer.
 /// @details Equivalent to (uint64_t)(-value) but safe for all int64_t inputs including
 ///          INT64_MIN, which has no positive two's-complement representation. The result
@@ -578,7 +594,7 @@ static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
     for (int64_t ty = view_y; ty < end_y; ty++) {
         for (int64_t tx = view_x; tx < end_x; tx++) {
             int64_t tile_index =
-                rt_tilemap_resolve_anim_tile(tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+                tilemap_resolve_anim_tile_fast(tilemap, layer->tiles[ty * tilemap->width + tx]);
             if (tile_index <= 0 || tile_index > tile_count)
                 continue;
 
@@ -616,7 +632,7 @@ static int64_t rt_tilemap_count_drawn_region_layer_impl(rt_tilemap_impl *tilemap
     for (int64_t ty = view_y; ty < end_y; ty++) {
         for (int64_t tx = view_x; tx < end_x; tx++) {
             int64_t tile_index =
-                rt_tilemap_resolve_anim_tile(tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+                tilemap_resolve_anim_tile_fast(tilemap, layer->tiles[ty * tilemap->width + tx]);
             if (tile_index <= 0 || tile_index > tile_count)
                 continue;
             if (count < INT64_MAX)
@@ -894,8 +910,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
 
         for (int64_t ty = first_y; ty < end_y; ty++) {
             for (int64_t tx = first_x; tx < end_x; tx++) {
-                int64_t tile_index = rt_tilemap_resolve_anim_tile(
-                    tilemap_ptr, layer->tiles[ty * tilemap->width + tx]);
+                int64_t tile_index = tilemap_resolve_anim_tile_fast(
+                    tilemap, layer->tiles[ty * tilemap->width + tx]);
                 if (tile_index <= 0 || tile_index > tile_count)
                     continue;
                 int64_t ti = tile_index - 1;

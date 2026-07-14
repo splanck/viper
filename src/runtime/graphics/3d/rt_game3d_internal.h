@@ -753,6 +753,7 @@ typedef struct rt_game3d_timeline {
 typedef struct rt_game3d_ls_shape {
     char name[RT_GAME3D_DLG_NAME_MAX];
     double scale;
+    rt_string name_interned; ///< Retained shape name; avoids a per-frame rt_const_cstr alloc.
 } rt_game3d_ls_shape;
 
 /// @brief LipSync3D payload: amplitude-envelope mouth drive + procedural blink
@@ -770,6 +771,7 @@ typedef struct rt_game3d_lipsync {
     /* Blink layer (seeded LCG so replays match). */
     int8_t blink_enabled;
     char blink_shape[RT_GAME3D_DLG_NAME_MAX];
+    rt_string blink_interned; ///< Retained blink shape name; avoids a per-frame alloc.
     double blink_min_interval;
     double blink_max_interval;
     double blink_timer;  ///< Countdown to the next blink.
@@ -1401,6 +1403,8 @@ void game3d_input_move_axis_components(rt_game3d_input *input,
                                        double *out_z);
 double game3d_input_wheel_y_snapshot(const rt_game3d_input *input);
 void game3d_sync_body_from_entity_node(rt_game3d_entity *entity, int8_t force);
+void game3d_set_node_world_position(void *node, double world_pos[3]);
+void game3d_set_node_world_rotation(void *node, void *world_quat);
 /// @brief Shared planar character drive: integrate jump/gravity and move the wrapped
 ///   Character3D along an explicit XZ basis (already normalized), then sync the entity.
 /// @details Used by CharacterController3D.update (camera-derived basis) and the
@@ -1458,6 +1462,7 @@ int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed);
 void game3d_audio_repair_sources(rt_game3d_audio *audio);
 void game3d_audio_track_source(rt_game3d_audio *audio, void *source);
 void game3d_audio_prune_sources(rt_game3d_audio *audio);
+void game3d_audio_rebase_origin(rt_game3d_audio *audio, const double delta[3]);
 void game3d_audio_immersion_tick(struct rt_game3d_world *world, double dt);
 void game3d_cloth_tick(struct rt_game3d_world *world, double dt);
 void game3d_persistence_tick(struct rt_game3d_world *world);

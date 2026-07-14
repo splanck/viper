@@ -1445,18 +1445,24 @@ static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
             v2 = tmp;
             area = -area;
         }
-        bb_min_x = (int32_t)floorf(fminf(v0[0], fminf(v1[0], v2[0])));
-        bb_min_y = (int32_t)floorf(fminf(v0[1], fminf(v1[1], v2[1])));
-        bb_max_x = (int32_t)ceilf(fmaxf(v0[0], fmaxf(v1[0], v2[0])));
-        bb_max_y = (int32_t)ceilf(fmaxf(v0[1], fmaxf(v1[1], v2[1])));
-        if (bb_min_x < 0)
-            bb_min_x = 0;
-        if (bb_min_y < 0)
-            bb_min_y = 0;
-        if (bb_max_x > CANVAS3D_HIZ_W - 1)
-            bb_max_x = CANVAS3D_HIZ_W - 1;
-        if (bb_max_y > CANVAS3D_HIZ_H - 1)
-            bb_max_y = CANVAS3D_HIZ_H - 1;
+        {
+            /* A vertex just past the near plane but far off-axis projects to a
+             * screen coordinate far outside int32 range; clamp the bounding box
+             * to the buffer in FLOAT space before the cast (matching the main SW
+             * raster, sw_raster.inc) so (int32_t)floorf(...) can never be UB. The
+             * inside test below still uses the true v0/v1/v2 coords, so clamping
+             * the scan box does not distort the triangle. */
+            float fmin_x = floorf(fminf(v0[0], fminf(v1[0], v2[0])));
+            float fmin_y = floorf(fminf(v0[1], fminf(v1[1], v2[1])));
+            float fmax_x = ceilf(fmaxf(v0[0], fmaxf(v1[0], v2[0])));
+            float fmax_y = ceilf(fmaxf(v0[1], fmaxf(v1[1], v2[1])));
+            float max_x_f = (float)(CANVAS3D_HIZ_W - 1);
+            float max_y_f = (float)(CANVAS3D_HIZ_H - 1);
+            bb_min_x = (int32_t)fminf(fmaxf(fmin_x, 0.0f), max_x_f);
+            bb_min_y = (int32_t)fminf(fmaxf(fmin_y, 0.0f), max_y_f);
+            bb_max_x = (int32_t)fminf(fmaxf(fmax_x, 0.0f), max_x_f);
+            bb_max_y = (int32_t)fminf(fmaxf(fmax_y, 0.0f), max_y_f);
+        }
         if (bb_min_x > bb_max_x || bb_min_y > bb_max_y)
             continue;
         for (int32_t py = bb_min_y; py <= bb_max_y; py++) {

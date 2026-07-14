@@ -149,6 +149,10 @@ static inline void pixels_touch(rt_pixels_impl *p) {
 /// @details 3D material classification may query the same texture every draw. The Pixels content
 ///          generation already changes on mutation, so the alpha scan can be cached directly on the
 ///          image object without changing public Pixels behavior.
+/// @warning Not thread-safe: it writes alpha_scan_valid/generation/has_alpha without
+///          synchronization. Call it only from a single thread per Pixels object
+///          (the main render thread); concurrent classification of the same image
+///          could tear these fields and return a stale result.
 static inline int rt_pixels_has_alpha_texels_cached(rt_pixels_impl *p) {
     uint64_t count;
     if (!p || p->width <= 0 || p->height <= 0 || !p->data)

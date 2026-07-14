@@ -59,6 +59,10 @@ func start() {
         return;
     }
     if p.getFootstepCount() <= 0 { fail("no footstep events while walking"); return; }
+    if g.getBus().countKind(config.EV_GUNSHOT) > 0 {
+        fail("footsteps leaked into gunshot events");
+        return;
+    }
 
     // --- Stop and settle ----------------------------------------------------
     i = 0;

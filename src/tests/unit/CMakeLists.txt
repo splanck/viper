@@ -995,6 +995,11 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_physics3d test_rt_physics3d)
     viper_add_test_labels(test_rt_physics3d graphics3d unit)
 
+    viper_add_test(test_rt_gltf_draco_probe ${VIPER_TESTS_DIR}/unit/test_rt_gltf_draco_probe.cpp)
+    target_link_libraries(test_rt_gltf_draco_probe PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_gltf_draco_probe test_rt_gltf_draco_probe)
+    viper_add_test_labels(test_rt_gltf_draco_probe graphics3d unit)
+
     viper_add_test(test_rt_transform_path ${VIPER_TESTS_DIR}/unit/test_rt_transform_path.cpp)
     target_link_libraries(test_rt_transform_path PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_transform_path test_rt_transform_path)

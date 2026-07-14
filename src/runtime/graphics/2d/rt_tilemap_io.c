@@ -1020,8 +1020,12 @@ void *rt_tilemap_load_from_file(rt_string path) {
                 }
             }
 
-            int64_t vis = map_get_i64(layer_obj, "visible");
-            rt_tilemap_set_layer_visible(tm, layer_index, (int8_t)vis);
+            /* Default to visible when the key is absent — layers are created visible,
+             * and map_get_i64 returns 0 for a missing key, which would silently hide
+             * a hand-authored/tool-generated layer that simply omits "visible". */
+            int64_t vis = 1;
+            (void)map_get_i64_checked(layer_obj, "visible", &vis);
+            rt_tilemap_set_layer_visible(tm, layer_index, (int8_t)(vis != 0));
             rt_string lname = (rt_string)rt_map_get(layer_obj, rt_const_cstr("name"));
             if (lname) {
                 const char *name_cstr = rt_string_cstr(lname);

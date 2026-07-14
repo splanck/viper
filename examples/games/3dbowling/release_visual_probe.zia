@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/release_visual_probe.zia
+// Purpose: Captures release-scale title and gameplay presentation for visual validation.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: release_visual_probe
 // PURPOSE: Capture release-scale title and gameplay frames exercising authored
@@ -53,8 +71,8 @@ func main() {
     }
 
     camera.setAimMode(0.045);
-    lane.enableAuthoredSurface();
-    ball.setAimPosition(0.045);
+    lane.enableAuthoredSurface(renderer.getCanvas());
+    ball.setSetupPosition(0.045);
     var avatar = new BowlerAvatar(); avatar.setColor(config.HUD_COLOR_CYAN);
     avatar.update(0.35, 0.045, true);
     var keeper = new ScoreKeeper();
@@ -62,13 +80,24 @@ func main() {
     var hud = new HUD();
     hud.initHUD();
     hud.setShotContext(0.48, 0.94, 5.6, "Avery", "Fresh rack", 0);
+    hud.setSetupContext(0.045, 0.065, false);
+    lane.updateMonitor("Avery", 1, 0);
+    if (lane.getMonitorLabel() != "Avery  F1  SCORE 0") {
+        Say("RESULT: fail venue monitor state"); return;
+    }
+    if (renderer.getCanvas().Backend == "metal" && lane.hasAuthoredSurface()) {
+        Say("RESULT: fail unsafe Metal material path"); return;
+    }
     var gameShot: Pixels = null;
     for (var gameFrame: Integer = 0; gameFrame < 5; gameFrame = gameFrame + 1) {
         renderer.poll(); renderer.beginFrame();
         lane.draw(renderer.getCanvas()); avatar.draw(renderer.getCanvas());
-        ball.drawAimPreview(renderer.getCanvas(), 0.045, -0.16, lane.getOilEndZ());
+        ball.drawDeliveryPreview(renderer.getCanvas(), 0.045, 0.065,
+            -0.08, 0.78, 0.0, config.RELEASE_ASSIST_STANDARD,
+            config.DIFFICULTY_STANDARD, config.OIL_HOUSE,
+            lane.getOilEndZ(), false, false);
         pins.draw(renderer.getCanvas()); ball.draw(renderer.getCanvas()); renderer.endFrame();
-        hud.draw(renderer.getCanvas(), keeper, 0.58, true, -0.16, 0.045,
+        hud.draw(renderer.getCanvas(), keeper, 0.58, true, -0.16,
             ball.getBallType(), config.STATE_AIMING, 1, 0, keepers, "House oil  0% wear");
         lane.drawOilPreview(renderer.getCanvas(), captureW - 232, 182, 132, 60);
         gameShot = renderer.getCanvas().ScreenshotFinal();

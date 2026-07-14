@@ -195,7 +195,7 @@ static void *game3d_follow_controller_offset_ref(const rt_game3d_follow_controll
 
 /// @brief Write a world-space position into a node, converting through its
 ///        parent's inverse world matrix so parent transforms are preserved.
-static void game3d_set_node_world_position(void *node, double world_pos[3]) {
+void game3d_set_node_world_position(void *node, double world_pos[3]) {
     void *parent;
     if (!node || !world_pos)
         return;
@@ -225,6 +225,28 @@ static void game3d_set_node_world_position(void *node, double world_pos[3]) {
         game3d_release_ref(&world_vec);
         game3d_release_ref(&parent_inv);
         game3d_release_ref(&parent_world);
+    }
+}
+
+/// @brief Write a world-space rotation into a node, converting through its parent's
+///        inverse world rotation so parent orientation is preserved (world = parent * local).
+void game3d_set_node_world_rotation(void *node, void *world_quat) {
+    void *parent;
+    if (!node || !world_quat)
+        return;
+    parent = rt_scene_node3d_get_parent(node);
+    if (!parent) {
+        rt_scene_node3d_set_rotation(node, world_quat);
+        return;
+    }
+    {
+        void *parent_rot = rt_scene_node3d_get_world_rotation(parent);
+        void *parent_inv = parent_rot ? rt_quat_inverse(parent_rot) : NULL;
+        void *local = parent_inv ? rt_quat_mul(parent_inv, world_quat) : NULL;
+        rt_scene_node3d_set_rotation(node, local ? local : world_quat);
+        game3d_release_ref(&local);
+        game3d_release_ref(&parent_inv);
+        game3d_release_ref(&parent_rot);
     }
 }
 

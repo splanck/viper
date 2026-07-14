@@ -523,24 +523,27 @@ static void hinge_joint_apply_limits(rt_hinge_joint3d *j, const double *axis_wor
     w_rel = joint3d_vec3_dot(rel, axis_world);
     if (!((angle >= j->angle_max && w_rel > 0.0) || (angle <= j->angle_min && w_rel < 0.0)))
         return;
-    inv_sum = a->inv_mass + b->inv_mass;
+    /* Weight by effective inverse inertia about the hinge axis, not inverse mass. */
+    double w_a = joint3d_effective_inv_inertia_about_axis(a, axis_world);
+    double w_b = joint3d_effective_inv_inertia_about_axis(b, axis_world);
+    inv_sum = w_a + w_b;
     if (inv_sum <= 1e-9)
         return;
     correction = joint3d_clamp_force(w_rel / inv_sum); /* drive axial relative velocity to 0 */
     for (int i = 0; i < 3; i++) {
         a->angular_velocity[i] =
-            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * a->inv_mass);
+            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * w_a);
         b->angular_velocity[i] =
-            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * b->inv_mass);
+            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * w_b);
     }
 }
 
 /// @brief Drive the relative angular velocity about the hinge axis toward the
 ///   motor target velocity, with the per-step change bounded by
-///   motor_max_impulse (the motor's strength). The inv-mass terms cancel so an
-///   unbounded motor reaches the target in one step; the clamp models a finite
-///   motor. Runs after the perpendicular-twist constraint, which leaves the
-///   axial component free for the motor to drive.
+///   motor_max_impulse (the motor's strength). The inverse-inertia terms cancel
+///   so an unbounded motor reaches the target in one step; the clamp models a
+///   finite motor. Runs after the perpendicular-twist constraint, which leaves
+///   the axial component free for the motor to drive.
 static void hinge_joint_apply_motor(rt_hinge_joint3d *j, const double *axis_world) {
     rt_body3d_kinematics *a = j->body_a;
     rt_body3d_kinematics *b = j->body_b;
@@ -557,7 +560,10 @@ static void hinge_joint_apply_motor(rt_hinge_joint3d *j, const double *axis_worl
     joint3d_vec3_sub(b->angular_velocity, a->angular_velocity, rel);
     w_rel = joint3d_vec3_dot(rel, axis_world);
     violation = w_rel - j->motor_target_velocity;
-    inv_sum = a->inv_mass + b->inv_mass;
+    /* Weight by effective inverse inertia about the hinge axis, not inverse mass. */
+    double w_a = joint3d_effective_inv_inertia_about_axis(a, axis_world);
+    double w_b = joint3d_effective_inv_inertia_about_axis(b, axis_world);
+    inv_sum = w_a + w_b;
     if (inv_sum <= 1e-9)
         return;
     correction = joint3d_clamp_force(violation / inv_sum);
@@ -567,9 +573,9 @@ static void hinge_joint_apply_motor(rt_hinge_joint3d *j, const double *axis_worl
         correction = -j->motor_max_impulse;
     for (int i = 0; i < 3; i++) {
         a->angular_velocity[i] =
-            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * a->inv_mass);
+            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * w_a);
         b->angular_velocity[i] =
-            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * b->inv_mass);
+            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * w_b);
     }
 }
 
@@ -866,29 +872,27 @@ static void sixdof_joint_apply_pose_angle_correction(rt_sixdof_joint3d *j,
     if (!j || !axis_world || fabs(violation) < 1e-12 || !joint3d_body_is_finite(j->body_a) ||
         !joint3d_body_is_finite(j->body_b))
         return;
-    inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
+    /* Split the orientation correction by effective inverse inertia about the
+     * limit axis, not inverse mass. */
+    double w_a = joint3d_effective_inv_inertia_about_axis(j->body_a, axis_world);
+    double w_b = joint3d_effective_inv_inertia_about_axis(j->body_b, axis_world);
+    inv_sum = w_a + w_b;
     if (!isfinite(inv_sum) || inv_sum < 1e-12)
         return;
     violation = joint3d_clamp_force(violation);
-    joint3d_quat_prepend_axis_angle(
-        j->body_a->orientation, axis_world, violation * j->body_a->inv_mass / inv_sum);
-    joint3d_quat_prepend_axis_angle(
-        j->body_b->orientation, axis_world, -violation * j->body_b->inv_mass / inv_sum);
+    joint3d_quat_prepend_axis_angle(j->body_a->orientation, axis_world, violation * w_a / inv_sum);
+    joint3d_quat_prepend_axis_angle(j->body_b->orientation, axis_world, -violation * w_b / inv_sum);
 }
 
 /// @brief Remove relative angular velocity that would keep driving a pose-angle outside its limit.
 static void sixdof_joint_apply_pose_angle_velocity_stop(rt_sixdof_joint3d *j,
                                                         const double *pose_angles) {
     double rel[3];
-    double inv_sum;
     if (!j || !pose_angles || !joint3d_body_is_finite(j->body_a) ||
         !joint3d_body_is_finite(j->body_b))
         return;
     if (!joint3d_vec3_all_finite(j->body_a->angular_velocity) ||
         !joint3d_vec3_all_finite(j->body_b->angular_velocity))
-        return;
-    inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
-    if (!isfinite(inv_sum) || inv_sum < 1e-12)
         return;
     joint3d_vec3_sub(j->body_b->angular_velocity, j->body_a->angular_velocity, rel);
     if (!joint3d_vec3_all_finite(rel))
@@ -897,6 +901,9 @@ static void sixdof_joint_apply_pose_angle_velocity_stop(rt_sixdof_joint3d *j,
         double axis_world[3];
         double rel_axis;
         double correction;
+        double w_a;
+        double w_b;
+        double inv_sum;
         int stop = 0;
         sixdof_joint_world_axis(j, i, axis_world);
         rel_axis = joint3d_vec3_dot(rel, axis_world);
@@ -911,12 +918,18 @@ static void sixdof_joint_apply_pose_angle_velocity_stop(rt_sixdof_joint3d *j,
         }
         if (!stop)
             continue;
+        /* Effective inverse inertia about this limit axis, not inverse mass. */
+        w_a = joint3d_effective_inv_inertia_about_axis(j->body_a, axis_world);
+        w_b = joint3d_effective_inv_inertia_about_axis(j->body_b, axis_world);
+        inv_sum = w_a + w_b;
+        if (!isfinite(inv_sum) || inv_sum < 1e-12)
+            continue;
         correction = joint3d_clamp_force(rel_axis / inv_sum);
         for (int k = 0; k < 3; k++) {
             j->body_a->angular_velocity[k] = joint3d_clamp_force(
-                j->body_a->angular_velocity[k] + axis_world[k] * correction * j->body_a->inv_mass);
+                j->body_a->angular_velocity[k] + axis_world[k] * correction * w_a);
             j->body_b->angular_velocity[k] = joint3d_clamp_force(
-                j->body_b->angular_velocity[k] - axis_world[k] * correction * j->body_b->inv_mass);
+                j->body_b->angular_velocity[k] - axis_world[k] * correction * w_b);
         }
     }
 }

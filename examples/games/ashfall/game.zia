@@ -18,6 +18,7 @@ bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D as G3D;
 bind Viper.Math as Math;
 bind Viper.Terminal as Terminal;
+bind Viper.Collections.Map as Map;
 bind "./config" as config;
 bind "./core/mathutil" as M;
 bind "./core/entity" as entity;
@@ -91,8 +92,6 @@ class Game {
     hide projectiles.Projectiles proj;
     hide weapon_base.WeaponController weapons;
     hide weapon_models.WeaponModels weaponVis;
-    hide G3D.Mesh3D projMesh;
-    hide G3D.Material3D projMat;
     hide G3D.Mesh3D objBeaconMesh;
     hide G3D.Mesh3D objBeaconTopMesh;
     hide G3D.Material3D objBeaconMat;
@@ -129,6 +128,7 @@ class Game {
     hide economy.Economy econ;
     hide difficulty.Difficulty diffSys;
     hide scoring.Scoring score;
+    hide Integer highestUnlocked;
 
     // --- Per-tick input (real path fills from Input3D; probes set directly) --
     hide Boolean scripted;
@@ -137,13 +137,13 @@ class Game {
     hide Boolean inJump; hide Boolean inCrouch; hide Boolean inSprint;
     hide Boolean inFire; hide Boolean inADS; hide Boolean inInteract;
     hide Boolean inReload; hide Boolean inNextWeapon; hide Boolean inPrevWeapon;
+    hide Integer inDirectWeapon;
     hide Boolean inGrenade; hide Boolean inCycleGrenade; hide Boolean inMelee; hide Boolean inFlashlight;
     hide Integer grenadeSelected;
     hide List[Integer] grenadeStock;
     hide Float grenadeCd;
     hide Float meleeCd;
     hide Boolean flashlightOn;
-    hide Float flashlightPulseT;
 
     // --- State machine -------------------------------------------------------
     hide Integer state;
@@ -198,6 +198,7 @@ class Game {
         econ = new economy.Economy();
         diffSys = new difficulty.Difficulty();
         score = new scoring.Scoring();
+        highestUnlocked = config.LV_L1;
         graphicsUp = false;
         objBeaconReady = false;
         fullscreenWanted = true;
@@ -206,6 +207,7 @@ class Game {
         inJump = false; inCrouch = false; inSprint = false;
         inFire = false; inADS = false; inInteract = false;
         inReload = false; inNextWeapon = false; inPrevWeapon = false;
+        inDirectWeapon = -1;
         inGrenade = false; inCycleGrenade = false; inMelee = false; inFlashlight = false;
         grenadeSelected = config.GRENADE_FRAG;
         grenadeStock = [];
@@ -213,7 +215,6 @@ class Game {
         grenadeCd = 0.0;
         meleeCd = 0.0;
         flashlightOn = false;
-        flashlightPulseT = 0.0;
         state = config.ST_BOOT;
         prevState = config.ST_BOOT;
         pendingState = -1;
@@ -247,7 +248,13 @@ class Game {
     expose func getLevel() -> Integer { return currentLevel; }
     expose func setLevel(l: Integer) { currentLevel = l; }
     expose func getDifficulty() -> Integer { return difficulty; }
-    expose func setDifficulty(d: Integer) { difficulty = d; }
+    expose func setDifficulty(d: Integer) {
+        diffSys.setLevel(d);
+        difficulty = diffSys.getLevel();
+        enemies.setHealthScale(diffSys.enemyHealthScale());
+        enemies.setCombatTuning(diffSys.awarenessScale(), diffSys.meleeTokenCap(),
+                                diffSys.rangedTokenCap());
+    }
     expose func getTickCount() -> Integer { return tickCount; }
     expose func getPlayTime() -> Float { return playTime; }
     expose func isRunning() -> Boolean { return running; }
@@ -263,6 +270,7 @@ class Game {
     expose func scriptFire(v: Boolean) { inFire = v; }
     expose func scriptADS(v: Boolean) { inADS = v; }
     expose func scriptReload(v: Boolean) { inReload = v; }
+    expose func scriptWeapon(w: Integer) { inDirectWeapon = w; }
     /// Set scripted grenade input for headless probes.
     expose func scriptGrenade(v: Boolean) { inGrenade = v; }
     /// Set scripted grenade cycling input for headless probes.
@@ -320,10 +328,19 @@ class Game {
     // --- Boot ----------------------------------------------------------------
     expose func boot(hl: Boolean, fullscreen: Boolean) {
         headless = hl;
+        // Load settings before creating the window so the persisted fullscreen
+        // preference actually controls launch. Generic headless probes use an
+        // in-memory save backend unless they explicitly install a test folder.
+        if save.isReady() == false {
+            if hl { save.setupTransient(); } else { save.setupDefault(); }
+        }
+        menuSys.setup(save);
+        var launchFullscreen = fullscreen && fullscreenWanted;
+        if launchFullscreen { launchFullscreen = menuSys.fullscreenOn(); }
         if hl {
             world = Game3D.World3D.NewWithCamera(config.WINDOW_TITLE, 160, 90,
                 config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
-        } else if fullscreen {
+        } else if launchFullscreen {
             world = Game3D.World3D.NewFullscreenWithHorizontalCamera(config.WINDOW_TITLE,
                 config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         } else {
@@ -350,10 +367,9 @@ class Game {
         targetReg.clear();
         ball.setup(phys, bus, targetReg, rngs.getSpread());
         proj.setup(phys, bus, ball, targetReg);
-        weapons.setup(wdefs, ball, proj, camRig, vm, bus, rngs.getSpread());
+        econ.setup();
+        weapons.setup(wdefs, ball, proj, camRig, vm, bus, rngs.getSpread(), econ);
         weaponVis.setup(texLib, assetReg);
-        projMesh = G3D.Mesh3D.Sphere(0.08, 6);
-        projMat = G3D.Material3D.NewColor(1.0, 0.8, 0.3);
         setupObjectiveBeacon();
         giveStartingLoadout();
 
@@ -364,7 +380,8 @@ class Game {
         models.setup(world, texLib, assetReg, config.POOL_AI);
         enemies.setup(world, edefs, targetReg, ball, bus, rngs.getAi(), models);
         pickupSys.setup(world, bus, playerHealth);
-        levelMgr.setup(world, canvas, phys, enemies, pickupSys, bus, texLib);
+        levelMgr.setup(world, canvas, phys, enemies, pickupSys, bus, texLib, hl == false,
+                       ball, targetReg);
         playerHealth.reset();
 
         // Environment systems (env table, sky, light rig, texture library).
@@ -374,24 +391,20 @@ class Game {
         texLib.setup(headless);
 
         // UI / FX / audio / meta.
-        fx.setup();
-        econ.setup();
-        mixer.setup(headless);
+        fx.setup(canvas);
+        mixer.setup(world, headless);
         enemies.setHealthScale(diffSys.enemyHealthScale());
         if headless == false { postfxSys.setup(canvas, postfx.TIER_BALANCED); }
 
-        if save.isReady() == false { save.setupDefault(); }
-        menuSys.setup(save);
+        loadProfileProgress();
+        menuSys.setHighestLevel(highestUnlocked);
+        refreshArmory();
         applySettings();
         graphicsUp = true;
 
         // Build the initial scene: the standing arena (dev/probes) or a campaign level.
         if currentLevel == config.LV_ARENA {
-            prepareLevelMaterials(config.LV_ARENA);
-            arenaMap.setup(world, texLib);
-            arenaMap.registerTargets(targetReg);
-            applyEnvironment(config.LV_ARENA);
-            spawnIntoArena();
+            loadArenaScene();
         } else {
             loadCampaignLevel(currentLevel);
         }
@@ -404,12 +417,33 @@ class Game {
         camRig.setInvertY(menuSys.invertYOn());
         camRig.setShakeScale(menuSys.shakeValue());
         mixer.setMasterVolume(M.roundi(menuSys.volumeValue() * 100.0));
+        setDifficulty(menuSys.difficultyValue());
+        hudSys.setAccessibility(menuSys.flashValue(), menuSys.highContrastOn());
         if headless == false {
             lightRig.applyShadowTier(menuSys.qualityTier());
             var tier = postfx.TIER_BALANCED;
             if menuSys.qualityTier() == 0 { tier = postfx.TIER_PERFORMANCE; }
             if menuSys.qualityTier() == 2 { tier = postfx.TIER_CINEMATIC; }
             postfxSys.setup(canvas, tier);
+            // Public 3D visibility/scaling controls: preserve native resolution
+            // for the two quality tiers and use a conservative dynamic target
+            // for Performance. TrySetRenderScale is a no-trap capability probe,
+            // so unsupported window backends simply remain at native scale.
+            var renderScale = 1.0;
+            if menuSys.qualityTier() == 0 { renderScale = 0.85; }
+            G3D.Canvas3D.TrySetRenderScale(canvas, renderScale);
+        }
+        // These public visibility/light controls are deterministic on the
+        // software backend too, so render probes exercise the same path.
+        G3D.Canvas3D.SetFrustumCulling(canvas, true);
+        G3D.Canvas3D.SetOcclusionCulling(canvas, true);
+        // More than sixteen practical/pulse lights can be visible in boss
+        // rooms. The try-form preserves the fixed-forward fallback.
+        if G3D.Canvas3D.TrySetClusteredLighting(canvas, true) {
+            var lightBudget = 40;
+            if menuSys.qualityTier() == 0 { lightBudget = 24; }
+            if menuSys.qualityTier() == 2 { lightBudget = 64; }
+            G3D.Canvas3D.SetClusterLightBudget(canvas, lightBudget);
         }
     }
 
@@ -439,6 +473,18 @@ class Game {
     // ambient atmosphere. Runs AFTER the level builder (practicals at slots 8+).
     hide func applyEnvironment(l: Integer) {
         G3D.Canvas3D.SetSkybox(canvas, skyFactory.build(l));
+        // Let the authored sky light PBR surfaces instead of using only a flat
+        // ambient term. This is capability-gated because environment prefiltering
+        // is intended for the windowed GPU path; direct/fill lights remain the
+        // deterministic fallback on software and headless backends.
+        if headless == false && G3D.Canvas3D.BackendSupports(canvas, "gpu_postfx") {
+            G3D.Canvas3D.set_IblEnabled(canvas, true);
+            var ibl = 0.28;
+            if l == config.LV_L2 || l == config.LV_L5 || l == config.LV_L7 || l == config.LV_L9 {
+                ibl = 0.20;
+            }
+            G3D.Canvas3D.set_IblIntensity(canvas, ibl);
+        }
         lightRig.applyRig(l);
         clearR = env.horizonR(l); clearG = env.horizonG(l); clearB = env.horizonB(l);
         if headless == false {
@@ -451,7 +497,14 @@ class Game {
 
     // Load a campaign level: build it, spawn the player at its start, reset combat.
     expose func loadCampaignLevel(id: Integer) {
+        arenaMap.unload(targetReg);
+        proj.clear();
         currentLevel = id;
+        score.beginLevel(parForLevel(id), 0);
+        ball.resetStats();
+        mixer.beginLevel();
+        lastDamagerName = "combat systems failure";
+        bossName = ""; bossFrac = 0.0; bossPhase = 0;
         prepareLevelMaterials(id);
         levelMgr.load(id);
         applyEnvironment(id);
@@ -464,15 +517,46 @@ class Game {
         applyPending();
     }
 
+    // Load the standalone combat sandbox with the same teardown/reset contract
+    // used by campaign maps.
+    hide func loadArenaScene() {
+        levelMgr.unload();
+        arenaMap.unload(targetReg);
+        proj.clear();
+        currentLevel = config.LV_ARENA;
+        score.beginLevel(parForLevel(config.LV_ARENA), 0);
+        ball.resetStats();
+        mixer.beginLevel();
+        lastDamagerName = "combat systems failure";
+        bossName = ""; bossFrac = 0.0; bossPhase = 0;
+        prepareLevelMaterials(config.LV_ARENA);
+        giveStartingLoadout();
+        arenaMap.setup(world, texLib);
+        arenaMap.registerTargets(targetReg);
+        if headless == false {
+            enemies.setNavigation(world.BakeNavMesh(config.NAV_AGENT_RADIUS,
+                config.NAV_AGENT_HEIGHT, config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE));
+        }
+        applyEnvironment(config.LV_ARENA);
+        playerHealth.reset();
+        spawnIntoArena();
+    }
+
     // Interactive frontend entry (main.zia only; probes boot straight to PLAYING).
     expose func enterTitle() {
         // Vista backdrop: L1 built empty (no combatants) behind the logotype.
+        arenaMap.unload(targetReg);
+        proj.clear();
+        mixer.beginLevel();
+        bossName = ""; bossFrac = 0.0; bossPhase = 0;
         prepareLevelMaterials(config.LV_L1);
         levelMgr.load(config.LV_L1);
         applyEnvironment(config.LV_L1);
         enemies.clearAll();
         pickupSys.clear();
         currentLevel = config.LV_L1;
+        menuSys.setHighestLevel(highestUnlocked);
+        refreshArmory();
         menuSys.enterTitle(save.hasCheckpoint());
         forceState(config.ST_TITLE);
         applyPending();
@@ -481,13 +565,26 @@ class Game {
     // Menu-driven level start: load, then fly the intro in from the vantage.
     hide func startLevelFromMenu(id: Integer) {
         loadCampaignLevel(id);
-        score.beginLevel(180, 0);
+        saveCheckpointNow();
         var vx = levelMgr.startX() + env.vantageX(id);
         var vy = levelMgr.startY() + env.vantageY(id);
         var vz = levelMgr.startZ() + env.vantageZ(id);
         cine.startIntro(vx, vy, vz,
                         player.getX(), player.getFeetY() + 1.62, player.getZ(),
                         levelMgr.startYaw(), levelMgr.levelName());
+    }
+
+    hide func parForLevel(id: Integer) -> Integer {
+        if id == config.LV_L1 { return 210; }
+        if id == config.LV_L2 { return 190; }
+        if id == config.LV_L3 { return 220; }
+        if id == config.LV_L4 { return 230; }
+        if id == config.LV_L5 { return 210; }
+        if id == config.LV_L6 { return 180; }
+        if id == config.LV_L7 { return 200; }
+        if id == config.LV_L8 { return 210; }
+        if id == config.LV_L9 { return 240; }
+        return 180;
     }
 
     hide func giveStartingLoadout() {
@@ -525,17 +622,34 @@ class Game {
             return;
         }
         weapons.clearLoadout();
-        weapons.give(config.W_BOLT);
-        weapons.give(config.W_SCATTER);
-        if levelId >= config.LV_L2 { weapons.give(config.W_CYCLER); }
-        if levelId >= config.LV_L3 { weapons.give(config.W_RAIL); }
-        if levelId >= config.LV_L4 { weapons.give(config.W_PULSE); }
-        if levelId >= config.LV_L5 { weapons.give(config.W_ARC); }
-        if levelId >= config.LV_L6 { weapons.give(config.W_RIVET); }
-        if levelId >= config.LV_L7 { weapons.give(config.W_EMP); }
-        if levelId >= config.LV_L8 { weapons.give(config.W_SHARD); }
-        if levelId >= config.LV_L9 { weapons.give(config.W_LANCE); }
-        weapons.switchTo(config.W_BOLT);
+        var first = config.W_BOLT;
+        if levelId == config.LV_L1 {
+            weapons.give(config.W_BOLT); weapons.give(config.W_SCATTER); weapons.give(config.W_CYCLER);
+        } else if levelId == config.LV_L2 {
+            weapons.give(config.W_BOLT); weapons.give(config.W_CYCLER); weapons.give(config.W_PULSE);
+        } else if levelId == config.LV_L3 {
+            first = config.W_SCATTER;
+            weapons.give(config.W_SCATTER); weapons.give(config.W_PULSE); weapons.give(config.W_RAIL);
+        } else if levelId == config.LV_L4 {
+            first = config.W_PULSE;
+            weapons.give(config.W_PULSE); weapons.give(config.W_ARC); weapons.give(config.W_EMP);
+        } else if levelId == config.LV_L5 {
+            first = config.W_SCATTER;
+            weapons.give(config.W_SCATTER); weapons.give(config.W_RIVET); weapons.give(config.W_SHARD);
+        } else if levelId == config.LV_L6 {
+            first = config.W_CYCLER;
+            weapons.give(config.W_CYCLER); weapons.give(config.W_ARC); weapons.give(config.W_RIVET);
+        } else if levelId == config.LV_L7 {
+            first = config.W_PULSE;
+            weapons.give(config.W_PULSE); weapons.give(config.W_RAIL); weapons.give(config.W_EMP);
+        } else if levelId == config.LV_L8 {
+            first = config.W_CYCLER;
+            weapons.give(config.W_CYCLER); weapons.give(config.W_SHARD); weapons.give(config.W_EMP);
+        } else {
+            first = config.W_RAIL;
+            weapons.give(config.W_RAIL); weapons.give(config.W_SHARD); weapons.give(config.W_LANCE);
+        }
+        weapons.switchTo(first);
     }
 
     /// Reset grenade inventory for a newly loaded campaign level.
@@ -563,7 +677,196 @@ class Game {
         grenadeCd = 0.0;
         meleeCd = 0.0;
         flashlightOn = false;
-        flashlightPulseT = 0.0;
+    }
+
+    // --- Profile persistence ------------------------------------------------
+    hide func loadProfileProgress() {
+        var p = save.loadProfile();
+        highestUnlocked = M.clampi(Map.GetIntOr(p, "highestLevel", config.LV_L1),
+                                   config.LV_L1, config.LV_L9);
+        econ.setSalvage(Map.GetIntOr(p, "salvage", 0));
+        var w = 0;
+        while w < config.WEAPON_COUNT {
+            econ.setTier(w, Map.GetIntOr(p, "tier" + S.intStr(w), 0));
+            w = w + 1;
+        }
+        var l = config.LV_L1;
+        while l <= config.LV_L9 {
+            score.restoreMedal(l, Map.GetIntOr(p, "medal" + S.intStr(l), scoring.MEDAL_NONE));
+            l = l + 1;
+        }
+        score.restoreTotals(Map.GetIntOr(p, "totalKills", 0),
+                            Map.GetIntOr(p, "totalDeaths", 0),
+                            Map.GetFloatOr(p, "totalTime", 0.0));
+    }
+
+    hide func saveProfileProgress(completedLevel: Integer) {
+        if completedLevel >= config.LV_L1 && completedLevel < config.LV_L9 {
+            highestUnlocked = M.maxi(highestUnlocked, completedLevel + 1);
+        } else if completedLevel == config.LV_L9 {
+            highestUnlocked = config.LV_L9;
+        }
+        saveProfileState();
+    }
+
+    hide func saveProfileState() {
+        var p = Map.New();
+        Map.SetInt(p, "highestLevel", highestUnlocked);
+        Map.SetInt(p, "salvage", econ.available());
+        Map.SetInt(p, "totalKills", score.getTotalKills());
+        Map.SetInt(p, "totalDeaths", score.getTotalDeaths());
+        Map.SetFloat(p, "totalTime", score.getTotalTime());
+        var w = 0;
+        while w < config.WEAPON_COUNT {
+            Map.SetInt(p, "tier" + S.intStr(w), econ.tierOf(w));
+            w = w + 1;
+        }
+        var l = config.LV_L1;
+        while l <= config.LV_L9 {
+            Map.SetInt(p, "medal" + S.intStr(l), score.medalOf(l));
+            l = l + 1;
+        }
+        save.saveProfile(p);
+        menuSys.setHighestLevel(highestUnlocked);
+    }
+
+    // Refresh the menu-owned snapshot without coupling MenuSystem to Economy.
+    hide func refreshArmory() {
+        menuSys.setArmorySalvage(econ.available());
+        var w = 0;
+        while w < config.WEAPON_COUNT {
+            menuSys.setArmoryWeapon(w, econ.tierOf(w), econ.nextCost(w));
+            w = w + 1;
+        }
+    }
+
+    // Persist the beginning of the current encounter. Typed JSON fields keep
+    // Continue deterministic and make a malformed file fall back safely via
+    // SaveManager's existing corruption handling.
+    expose func saveCheckpointNow() -> Boolean {
+        if currentLevel < config.LV_L1 || currentLevel > config.LV_L9 { return false; }
+        var c = Map.New();
+        Map.SetInt(c, "level", currentLevel);
+        Map.SetInt(c, "wave", levelMgr.currentWaveIndex());
+        Map.SetFloat(c, "px", player.getX());
+        Map.SetFloat(c, "py", player.getFeetY());
+        Map.SetFloat(c, "pz", player.getZ());
+        Map.SetFloat(c, "yaw", camRig.getYaw());
+        Map.SetFloat(c, "pitch", camRig.getPitch());
+        Map.SetFloat(c, "health", playerHealth.getHealth());
+        Map.SetFloat(c, "shield", playerHealth.getShield());
+        Map.SetFloat(c, "armor", playerHealth.getArmor());
+        Map.SetInt(c, "difficulty", difficulty);
+        Map.SetInt(c, "salvage", econ.available());
+        Map.SetInt(c, "weapon", weapons.getCurrent());
+        var w = 0;
+        while w < config.WEAPON_COUNT {
+            Map.SetInt(c, "tier" + S.intStr(w), econ.tierOf(w));
+            Map.SetBool(c, "own" + S.intStr(w), weapons.isOwned(w));
+            Map.SetInt(c, "mag" + S.intStr(w), weapons.getMagFor(w));
+            Map.SetInt(c, "reserve" + S.intStr(w), weapons.getReserveFor(w));
+            w = w + 1;
+        }
+        var g = 0;
+        while g < config.GRENADE_COUNT {
+            Map.SetInt(c, "grenade" + S.intStr(g), grenadeStock[g]);
+            g = g + 1;
+        }
+        Map.SetInt(c, "grenadeSelected", grenadeSelected);
+        Map.SetInt(c, "rngGameplay", rngs.getGameplay().getState());
+        Map.SetInt(c, "rngSpread", rngs.getSpread().getState());
+        Map.SetInt(c, "rngAi", rngs.getAi().getState());
+        Map.SetFloat(c, "scoreTime", score.getLevelTime());
+        Map.SetInt(c, "scoreKills", score.getKills());
+        Map.SetInt(c, "scoreDamage", score.getDamageTaken());
+        Map.SetInt(c, "scoreSecrets", score.getSecrets());
+        Map.SetInt(c, "scoreSecretsTotal", score.getSecretsTotal());
+        Map.SetInt(c, "scorePar", score.getParTime());
+        Map.SetInt(c, "totalKills", score.getTotalKills());
+        Map.SetInt(c, "totalDeaths", score.getTotalDeaths());
+        Map.SetFloat(c, "totalTime", score.getTotalTime());
+        Map.SetInt(c, "shots", ball.getShotsFired());
+        Map.SetInt(c, "hits", ball.getHitsLanded());
+        var obj = levelMgr.getObjectives();
+        Map.SetInt(c, "objectiveCount", obj.count());
+        var oi = 0;
+        while oi < obj.count() {
+            Map.SetBool(c, "objDone" + S.intStr(oi), obj.isDone(oi));
+            Map.SetInt(c, "objProgress" + S.intStr(oi), obj.progressOf(oi));
+            Map.SetFloat(c, "objTimer" + S.intStr(oi), obj.timerOf(oi));
+            oi = oi + 1;
+        }
+        // A checkpoint also durably records salvage earned since the previous
+        // mission completion; armory purchases use the same profile writer.
+        saveProfileState();
+        return save.saveCheckpoint(c);
+    }
+
+    expose func continueCheckpoint() -> Boolean {
+        if save.hasCheckpoint() == false { return false; }
+        var c = save.loadCheckpoint();
+        var id = Map.GetIntOr(c, "level", -1);
+        if id < config.LV_L1 || id > config.LV_L9 { return false; }
+        setDifficulty(Map.GetIntOr(c, "difficulty", difficulty));
+        loadCampaignLevel(id);
+        econ.setSalvage(Map.GetIntOr(c, "salvage", econ.available()));
+        var tw = 0;
+        while tw < config.WEAPON_COUNT {
+            econ.setTier(tw, Map.GetIntOr(c, "tier" + S.intStr(tw), econ.tierOf(tw)));
+            tw = tw + 1;
+        }
+        levelMgr.resumeAtWave(Map.GetIntOr(c, "wave", 0));
+        player.spawn(Map.GetFloatOr(c, "px", levelMgr.startX()),
+                     Map.GetFloatOr(c, "py", levelMgr.startY()),
+                     Map.GetFloatOr(c, "pz", levelMgr.startZ()));
+        camRig.setYaw(Map.GetFloatOr(c, "yaw", levelMgr.startYaw()));
+        camRig.setPitchDeg(Map.GetFloatOr(c, "pitch", 0.0));
+        playerHealth.restore(Map.GetFloatOr(c, "health", config.PLAYER_HEALTH_MAX),
+                             Map.GetFloatOr(c, "shield", config.PLAYER_SHIELD_MAX),
+                             Map.GetFloatOr(c, "armor", 0.0));
+        weapons.clearLoadout();
+        var w = 0;
+        var ownedCount = 0;
+        while w < config.WEAPON_COUNT {
+            var own = Map.GetBoolOr(c, "own" + S.intStr(w), false);
+            weapons.restoreSlot(w, own,
+                                Map.GetIntOr(c, "mag" + S.intStr(w), 0),
+                                Map.GetIntOr(c, "reserve" + S.intStr(w), 0));
+            if own { ownedCount = ownedCount + 1; }
+            w = w + 1;
+        }
+        if ownedCount == 0 { grantCampaignLoadout(id); }
+        weapons.switchTo(Map.GetIntOr(c, "weapon", config.W_BOLT));
+        var g = 0;
+        while g < config.GRENADE_COUNT {
+            grenadeStock[g] = M.clampi(Map.GetIntOr(c, "grenade" + S.intStr(g), 0), 0, 99);
+            g = g + 1;
+        }
+        grenadeSelected = M.clampi(Map.GetIntOr(c, "grenadeSelected", 0), 0,
+                                   config.GRENADE_COUNT - 1);
+        rngs.getGameplay().setState(Map.GetIntOr(c, "rngGameplay", rngs.getGameplay().getState()));
+        rngs.getSpread().setState(Map.GetIntOr(c, "rngSpread", rngs.getSpread().getState()));
+        rngs.getAi().setState(Map.GetIntOr(c, "rngAi", rngs.getAi().getState()));
+        score.restoreRun(Map.GetFloatOr(c, "scoreTime", 0.0),
+                         Map.GetIntOr(c, "scoreKills", 0),
+                         Map.GetIntOr(c, "scoreDamage", 0),
+                         Map.GetIntOr(c, "scoreSecrets", 0),
+                         Map.GetIntOr(c, "scoreSecretsTotal", 0),
+                         Map.GetIntOr(c, "scorePar", parForLevel(id)));
+        score.restoreTotals(Map.GetIntOr(c, "totalKills", score.getTotalKills()),
+                            Map.GetIntOr(c, "totalDeaths", score.getTotalDeaths()),
+                            Map.GetFloatOr(c, "totalTime", score.getTotalTime()));
+        ball.restoreStats(Map.GetIntOr(c, "shots", 0), Map.GetIntOr(c, "hits", 0));
+        var obj = levelMgr.getObjectives();
+        var savedCount = Map.GetIntOr(c, "objectiveCount", 0);
+        var oi = 0;
+        while oi < obj.count() && oi < savedCount {
+            obj.restoreAt(oi, Map.GetBoolOr(c, "objDone" + S.intStr(oi), false),
+                          Map.GetIntOr(c, "objProgress" + S.intStr(oi), 0),
+                          Map.GetFloatOr(c, "objTimer" + S.intStr(oi), 0.0));
+            oi = oi + 1;
+        }
+        return true;
     }
 
     /// Return the display name for the currently selected grenade.
@@ -588,6 +891,7 @@ class Game {
     expose func devViewOffX() -> Float { return vm.getOffX(); }
     expose func devViewOffY() -> Float { return vm.getOffY(); }
     expose func devViewOffZ() -> Float { return vm.getOffZ(); }
+    expose func devFlashlightActive() -> Boolean { return lightRig.isFlashlightActive(); }
 
     // Probe helper: spawn an enemy of `archetype` at (x, z).
     expose func devSpawnEnemy(archetype: Integer, ex: Float, ez: Float) -> Integer {
@@ -624,13 +928,16 @@ class Game {
     expose func devMenuCtx() -> Integer { return menuSys.currentCtx(); }
     expose func devMenuSub() -> Integer { return menuSys.currentSub(); }
     expose func devMenuFov() -> Float { return menuSys.fovValue(); }
+    expose func devMenuFlash() -> Float { return menuSys.flashValue(); }
+    expose func devMenuHighContrast() -> Boolean { return menuSys.highContrastOn(); }
     expose func devCurrentLevel() -> Integer { return currentLevel; }
     expose func devGiveWeapon(w: Integer) { weapons.give(w); }
     expose func devSwitchWeapon(w: Integer) { weapons.switchTo(w); }
     /// Return remaining grenades of the selected type for gameplay probes.
     expose func devGrenadeCount() -> Integer { return grenadeCount(); }
     expose func devKillPlayer() {
-        bus.push(config.EV_DAMAGE, config.TGT_PLAYER, 0, config.REGION_BODY, 10000.0, 0.0, 0.0);
+        bus.push(config.EV_DAMAGE, config.TGT_PLAYER, -1, config.REGION_BODY,
+                 10000.0, 0.0, config.DMG_HITSCAN + 0.0);
     }
     expose func devInteract() { if currentLevel != config.LV_ARENA { levelMgr.onInteract(player.getX(), player.getZ()); } }
 
@@ -670,6 +977,20 @@ class Game {
         inReload = actionMap.pressed(input, config.A_RELOAD);
         inNextWeapon = actionMap.pressed(input, config.A_NEXT_WEAPON);
         inPrevWeapon = actionMap.pressed(input, config.A_PREV_WEAPON);
+        inDirectWeapon = -1;
+        if actionMap.pressed(input, config.A_WEAPON_1) { inDirectWeapon = config.W_BOLT; }
+        else if actionMap.pressed(input, config.A_WEAPON_2) { inDirectWeapon = config.W_SCATTER; }
+        else if actionMap.pressed(input, config.A_WEAPON_3) { inDirectWeapon = config.W_CYCLER; }
+        else if actionMap.pressed(input, config.A_WEAPON_4) { inDirectWeapon = config.W_PULSE; }
+        else if actionMap.pressed(input, config.A_WEAPON_5) { inDirectWeapon = config.W_RAIL; }
+        else if actionMap.pressed(input, config.A_WEAPON_6) { inDirectWeapon = config.W_ARC; }
+        else if actionMap.pressed(input, config.A_WEAPON_7) { inDirectWeapon = config.W_RIVET; }
+        else if actionMap.pressed(input, config.A_WEAPON_8) { inDirectWeapon = config.W_SHARD; }
+        else if actionMap.pressed(input, config.A_WEAPON_9) { inDirectWeapon = config.W_EMP; }
+        else if actionMap.pressed(input, config.A_WEAPON_10) { inDirectWeapon = config.W_LANCE; }
+        var wheel = input.WheelY();
+        if wheel > 0 { inPrevWeapon = true; }
+        if wheel < 0 { inNextWeapon = true; }
         inGrenade = actionMap.pressed(input, config.A_GRENADE);
         inCycleGrenade = actionMap.pressed(input, config.A_CYCLE_GRENADE);
         inMelee = actionMap.pressed(input, config.A_MELEE);
@@ -683,8 +1004,54 @@ class Game {
         }
     }
 
-    hide func adsZoomFov() -> Float {
-        return config.CAMERA_FOV * 0.62;   // default weapon zoom; per-weapon later
+    // Damaging EV_EXPLOSION rows carry enough metadata to resolve player splash.
+    // The player is intentionally not registered as a ballistics target, so this
+    // bridge applies the same linear falloff and half-damage cover rule here.
+    hide func applyExplosionDamageToPlayer() {
+        if playerHealth.isDead() { return; }
+        var n = bus.getCount();
+        var i = 0;
+        while i < n {
+            if bus.kindAt(i) == config.EV_EXPLOSION && bus.cAt(i) > 0 {
+                var radius = bus.bAt(i) + 0.0;
+                var damage = bus.aAt(i) + 0.0;
+                var cx = bus.xAt(i); var cy = bus.yAt(i); var cz = bus.zAt(i);
+                var px = player.getX(); var py = player.getFeetY() + 1.2; var pz = player.getZ();
+                var d = M.dist3(cx, cy, cz, px, py, pz);
+                if radius > 0.0 && d < radius {
+                    var cover = 1.0;
+                    if d > 0.05 {
+                        var dir = Math.Vec3.New((px - cx) / d, (py - cy) / d, (pz - cz) / d);
+                        var hit = phys.Raycast(Math.Vec3.New(cx, cy, cz), dir, d - 0.05,
+                                               config.LAYER_WORLD);
+                        if hit != null { cover = 0.5; }
+                    }
+                    var amount = damage * M.clampf(1.0 - d / radius, 0.0, 1.0) * cover;
+                    if amount > 0.5 {
+                        var bearing = M.toDeg(Math.Atan2(cx - px, 0.0 - (cz - pz)));
+                        bus.push(config.EV_DAMAGE, config.TGT_PLAYER, -1, config.REGION_BODY,
+                                 amount, bearing, bus.cAt(i) - 1.0);
+                    }
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    // Score events before evaluating completion. Otherwise a final-frame kill or
+    // damage event would miss the medal/profile snapshot and appear only on the
+    // following completion screen.
+    hide func applyScoringEvents() {
+        var n = bus.getCount();
+        var i = 0;
+        while i < n {
+            if bus.kindAt(i) == config.EV_KILL {
+                score.addKill();
+            } else if bus.kindAt(i) == config.EV_DAMAGE && bus.aAt(i) == config.TGT_PLAYER {
+                score.addDamage(M.roundi(bus.xAt(i)));
+            }
+            i = i + 1;
+        }
     }
 
     // Drain feedback rows: muzzle/blast particles, hitmarkers, kills, damage flash.
@@ -699,19 +1066,32 @@ class Game {
                 fx.explosion(bus.xAt(i), bus.yAt(i), bus.zAt(i), bus.bAt(i) + 0.0);
                 lightRig.pulse(bus.xAt(i), bus.yAt(i) + 0.5, bus.zAt(i),
                                1.6, 0.9, 0.35, (bus.bAt(i) + 0.0) * 2.0, 0.25);
+            } else if k == config.EV_ENEMY_SHOT {
+                fx.muzzleColored(bus.xAt(i), bus.yAt(i), bus.zAt(i), 1.0, 0.22, 0.12);
+                lightRig.pulse(bus.xAt(i), bus.yAt(i), bus.zAt(i), 1.4, 0.22, 0.10, 5.0, 0.10);
+            } else if k == config.EV_IMPACT {
+                fx.impact(bus.xAt(i), bus.yAt(i), bus.zAt(i));
             } else if k == config.EV_HITMARKER {
-                hudSys.pulseHitmarker();
+                hudSys.pulseHitmarker(bus.aAt(i));
+            } else if k == config.EV_CHECKPOINT {
+                // A gate can open on the same tick that a mission completes or
+                // the player dies. Never recreate a checkpoint after completion
+                // cleared it, and never snapshot a dead player.
+                if playerHealth.isDead() == false && levelMgr.isComplete() == false {
+                    saveCheckpointNow();
+                }
             } else if k == config.EV_KILL {
-                score.addKill();
                 hudSys.pushKill(edefs.nameOf(bus.bAt(i)));
             } else if k == config.EV_DAMAGE && bus.aAt(i) == config.TGT_PLAYER {
                 hudSys.pulseDamage();
                 hudSys.pulseDamageDir(bus.yAt(i) - camRig.getYaw());
-                score.addDamage(M.roundi(bus.xAt(i)));
-                var slot = bus.bAt(i);
-                if slot >= 0 && slot < config.POOL_AI {
-                    var da = enemies.archOf(slot);
-                    if da >= 0 { lastDamagerName = "killed by " + edefs.nameOf(da); }
+                var sourceArch = bus.bAt(i);
+                if sourceArch >= 0 && sourceArch < config.EN_TYPE_COUNT {
+                    lastDamagerName = "killed by " + edefs.nameOf(sourceArch);
+                } else if M.roundi(bus.zAt(i)) == config.DMG_EXPLOSION {
+                    lastDamagerName = "killed by an explosion";
+                } else {
+                    lastDamagerName = "combat systems failure";
                 }
             }
             i = i + 1;
@@ -736,8 +1116,22 @@ class Game {
         }
         // Hitscan visuals: tracer to the traced endpoint + impact on solids.
         if wdefs.isProjectile(w) == false {
-            fx.tracer(mx, my, mz, ball.lastEndX(), ball.lastEndY(), ball.lastEndZ(),
-                      cr, cg, cb, weapon_models.tracerTtl(w));
+            if wdefs.isRicochet(w) {
+                var rsx = mx; var rsy = my; var rsz = mz;
+                var ri = 0;
+                while ri < ball.ricochetPointCount() {
+                    var rex = ball.ricochetXat(ri);
+                    var rey = ball.ricochetYat(ri);
+                    var rez = ball.ricochetZat(ri);
+                    fx.tracer(rsx, rsy, rsz, rex, rey, rez,
+                              cr, cg, cb, weapon_models.tracerTtl(w));
+                    rsx = rex; rsy = rey; rsz = rez;
+                    ri = ri + 1;
+                }
+            } else {
+                fx.tracer(mx, my, mz, ball.lastEndX(), ball.lastEndY(), ball.lastEndZ(),
+                          cr, cg, cb, weapon_models.tracerTtl(w));
+            }
             if ball.lastHitSolid() {
                 fx.impact(ball.lastEndX(), ball.lastEndY(), ball.lastEndZ());
                 fx.scorch(ball.lastEndX(), ball.lastEndY(), ball.lastEndZ(),
@@ -788,6 +1182,7 @@ class Game {
                 return;
             }
             gatherInput();
+            score.tick(dt);
             camRig.applyLook(inLookDX, inLookDY);
             player.update(dt, inMoveX, inMoveZ, inJump, inCrouch, inSprint, camRig.getYaw(), bus);
             camRig.updateSim(dt, player, inADS, weapons.adsFov());
@@ -796,6 +1191,7 @@ class Game {
             // Weapon switch.
             if inNextWeapon { weapons.nextWeapon(); }
             if inPrevWeapon { weapons.prevWeapon(); }
+            if inDirectWeapon >= 0 { weapons.switchTo(inDirectWeapon); }
             if inCycleGrenade { cycleGrenade(); }
             if grenadeCd > 0.0 { grenadeCd = grenadeCd - dt; }
             if meleeCd > 0.0 { meleeCd = meleeCd - dt; }
@@ -805,7 +1201,7 @@ class Game {
             var fdx = camRig.forwardX(); var fdy = camRig.forwardY(); var fdz = camRig.forwardZ();
             if inGrenade { throwGrenade(ex, ey, ez, fdx, fdy, fdz); }
             if inMelee { meleeAttack(ex, ey, ez, fdx, fdy, fdz); }
-            updateFlashlight(dt, ex, ey, ez, fdx, fdy, fdz);
+            updateFlashlight(ex, ey, ez, fdx, fdy, fdz);
             weapons.update(dt, inFire, inADS, inReload, ex, ey, ez, fdx, fdy, fdz);
             weapons.autoReloadIfEmpty();
             proj.update(dt);
@@ -819,8 +1215,11 @@ class Game {
 
             // Consumers: apply this tick's damage events before the bus drains.
             if currentLevel == config.LV_ARENA { arenaMap.applyDamageEvents(bus, targetReg); }
+            if currentLevel != config.LV_ARENA { levelMgr.applyHazardDamageEvents(); }
             enemies.applyDamageEvents();
+            applyExplosionDamageToPlayer();
             playerHealth.update(dt, bus, diffSys.incomingDamageScale());
+            applyScoringEvents();
             if playerHealth.isDead() { requestState(config.ST_DEATH); }
 
             // Campaign world systems (arena is standalone).
@@ -830,8 +1229,12 @@ class Game {
                 drainCollectedPickups();
                 if inInteract { levelMgr.onInteract(player.getX(), player.getZ()); }
                 levelMgr.update(dt, player.getX(), player.getZ());
-                if levelMgr.isComplete() {
+                // Death wins a simultaneous trade. This prevents a final-frame
+                // enemy kill from replacing the death/retry checkpoint flow.
+                if levelMgr.isComplete() && playerHealth.isDead() == false {
                     score.recordLevel(currentLevel);
+                    saveProfileProgress(currentLevel);
+                    save.clearCheckpoint();
                     requestState(config.ST_LEVEL_COMPLETE);
                 }
             }
@@ -843,8 +1246,7 @@ class Game {
             scanBoss();
             if currentLevel == config.LV_L9 { lightRig.setHelixPhase(bossPhase); }
             drainFeedbackEvents();
-            mixer.update(dt, bus, false, enemies.aliveCount() > 0);
-            score.tick(dt);
+            mixer.update(dt, bus, bossFrac > 0.0, enemies.aliveCount() > 0);
             fx.update(dt);
             hudSys.tick(dt);
         }
@@ -869,6 +1271,8 @@ class Game {
             if state == config.ST_PAUSED { menuSys.enterPause(); }
             else if state == config.ST_DEATH {
                 score.addDeath();
+                saveProfileState();
+                mixer.playDefeat();
                 menuSys.enterDeath(lastDamagerName);
             } else if state == config.ST_LEVEL_COMPLETE { enterCompleteMenu(); }
             else if state == config.ST_CREDITS { menuSys.enterCredits(); }
@@ -894,6 +1298,8 @@ class Game {
     }
 
     hide func enterCompleteMenu() {
+        mixer.playVictory();
+        refreshArmory();
         var lines: List[String] = [];
         lines.Add("TIME      " + S.intStr(M.roundi(score.getLevelTime())) + "s");
         lines.Add("KILLS     " + S.intStr(score.getKills()));
@@ -904,9 +1310,9 @@ class Game {
         lines.Add("SALVAGE   " + S.intStr(econ.available()));
         var medalTxt = "";
         var md = score.medal();
-        if md >= 3 { medalTxt = "MEDAL: ASHBORN"; }
-        else if md == 2 { medalTxt = "MEDAL: GOLD"; }
-        else if md == 1 { medalTxt = "MEDAL: SILVER"; }
+        if md == scoring.MEDAL_ASHBORN { medalTxt = "MEDAL: ASHBORN"; }
+        else if md == scoring.MEDAL_GOLD { medalTxt = "MEDAL: GOLD"; }
+        else if md == scoring.MEDAL_SILVER { medalTxt = "MEDAL: SILVER"; }
         else { medalTxt = "MEDAL: BRONZE"; }
         menuSys.enterComplete(lines, medalTxt);
     }
@@ -914,23 +1320,37 @@ class Game {
     hide func runMenuCommand(cmd: Integer) {
         if cmd == menu.CMD_NONE { return; }
         if cmd == menu.CMD_SETTINGS_CHANGED { applySettings(); return; }
-        if cmd == menu.CMD_NEW_GAME || cmd == menu.CMD_CONTINUE {
+        if cmd == menu.CMD_BUY_UPGRADE {
+            var uw = menuSys.selectedUpgradeWeapon();
+            var cost = econ.nextCost(uw);
+            if cost < 0 {
+                menuSys.setArmoryMessage("WEAPON ALREADY AT MAXIMUM TIER");
+            } else if econ.buyUpgrade(uw) {
+                saveProfileState();
+                menuSys.setArmoryMessage("UPGRADE INSTALLED");
+            } else {
+                menuSys.setArmoryMessage("NEED " + S.intStr(cost) + " SALVAGE");
+            }
+            refreshArmory();
+            return;
+        }
+        if cmd == menu.CMD_NEW_GAME {
+            save.clearCheckpoint();
             forceState(config.ST_LOADING);
             applyPending();
             startLevelFromMenu(config.LV_L1);
             return;
         }
+        if cmd == menu.CMD_CONTINUE {
+            forceState(config.ST_LOADING);
+            applyPending();
+            if continueCheckpoint() == false { startLevelFromMenu(config.LV_L1); }
+            return;
+        }
         if cmd == menu.CMD_LOAD_LEVEL {
             var id = menuSys.selectedLevelId();
             if id == config.LV_ARENA {
-                currentLevel = config.LV_ARENA;
-                giveStartingLoadout();
-                arenaMap.setup(world, texLib);
-                arenaMap.registerTargets(targetReg);
-                applyEnvironment(config.LV_ARENA);
-                spawnIntoArena();
-                forceState(config.ST_PLAYING);
-                applyPending();
+                loadArenaScene();
                 return;
             }
             forceState(config.ST_LOADING);
@@ -942,6 +1362,16 @@ class Game {
         if cmd == menu.CMD_RESTART {
             forceState(config.ST_LOADING);
             applyPending();
+            if menuSys.currentCtx() == menu.CTX_DEATH {
+                var killsNow = score.getTotalKills();
+                var deathsNow = score.getTotalDeaths();
+                var timeNow = score.getTotalTime();
+                if continueCheckpoint() {
+                    score.restoreTotals(killsNow, deathsNow, timeNow);
+                    saveProfileState();
+                    return;
+                }
+            }
             startLevelFromMenu(currentLevel);
             return;
         }
@@ -978,14 +1408,14 @@ class Game {
     hide func scanBoss() {
         bossName = "";
         bossFrac = 0.0;
+        bossPhase = 0;
         var bi = 0;
         while bi < config.POOL_AI {
             if enemies.isAlive(bi) && edefs.isBoss(enemies.archOf(bi)) {
                 var ba = enemies.archOf(bi);
                 bossName = edefs.nameOf(ba);
-                var mx = edefs.hpOf(ba);
+                var mx = enemies.maxHealthOf(bi);
                 if mx > 0.5 { bossFrac = enemies.healthOf(bi) / mx; }
-                bossPhase = 0;
                 if bossFrac < 0.66 { bossPhase = 1; }
                 if bossFrac < 0.33 { bossPhase = 2; }
                 return;
@@ -1054,19 +1484,12 @@ class Game {
     }
 
     /// Toggle and pulse the flashlight as a narrow forward utility light.
-    hide func updateFlashlight(dt: Float, ox: Float, oy: Float, oz: Float,
+    hide func updateFlashlight(ox: Float, oy: Float, oz: Float,
                                fdx: Float, fdy: Float, fdz: Float) {
         if inFlashlight {
             flashlightOn = flashlightOn == false;
-            flashlightPulseT = 0.0;
         }
-        if flashlightOn == false { return; }
-        flashlightPulseT = flashlightPulseT - dt;
-        if flashlightPulseT <= 0.0 {
-            lightRig.pulse(ox + fdx * 5.0, oy + fdy * 5.0, oz + fdz * 5.0,
-                           0.95, 0.92, 0.76, 14.0, 0.10);
-            flashlightPulseT = 0.08;
-        }
+        lightRig.setFlashlight(flashlightOn, ox, oy, oz, fdx, fdy, fdz);
     }
 
     // Step the physics world one fixed increment (called after tickSim).
@@ -1136,8 +1559,9 @@ class Game {
         levelMgr.drawProps();
         drawObjectiveBeacon();
         if proj.activeProjectiles() > 0 {
-            proj.draw(canvas, projMesh, projMat);
+            proj.draw(canvas);
         }
+        if enemies.hostileProjectileCount() > 0 { enemies.drawProjectiles(canvas); }
         fx.draw(canvas, camera);
         if levelMgr.hasWater() { G3D.Canvas3D.DrawWater(canvas, levelMgr.waterObj(), camera); }
         world.DrawEffects();
@@ -1154,8 +1578,12 @@ class Game {
     }
 
     hide func drawHud() {
-        var w = config.WINDOW_WIDTH;
-        var h = config.WINDOW_HEIGHT;
+        // Overlay coordinates follow the live drawable, including fullscreen,
+        // resize and render-scale changes.
+        var w = canvas.Width;
+        var h = canvas.Height;
+        if w <= 0 { w = config.WINDOW_WIDTH; }
+        if h <= 0 { h = config.WINDOW_HEIGHT; }
         var campaign = currentLevel != config.LV_ARENA;
         if state == config.ST_PLAYING && cine.isIntroActive() == false {
             // Compass bearing toward the active positional objective.
@@ -1196,10 +1624,17 @@ class Game {
                     }
                 }
             }
+            var waveIndex = 0;
+            var waveCount = 0;
+            if campaign {
+                waveIndex = levelMgr.currentWaveIndex();
+                waveCount = levelMgr.waveTotal();
+            }
             hudSys.draw(canvas, w, h, playerHealth, weapons, levelMgr.getObjectives(),
-                        enemies.maxAwareness(), campaign, camRig.getYaw(),
+                        campaign, camRig.getYaw(),
                         objBearing, hasMarker, objDistance, objPrompt, objReady,
-                        grenadeName(), grenadeCount(), flashlightOn, bossName, bossFrac);
+                        grenadeName(), grenadeCount(), flashlightOn, bossName, bossFrac,
+                        enemies.aliveCount(), waveIndex, waveCount, econ.available());
         }
         if diag.isEnabled() {
             G3D.Canvas3D.DrawText2D(canvas, 8, 8, diag.line1(), 0xFFFFFF);
@@ -1215,7 +1650,7 @@ class Game {
             menuSys.drawLoading(canvas, w, h, currentLevel);
         }
         // L6 lightning strobe: a brief full-screen sky flash.
-        var sa = lightRig.strobeOverlayAlpha();
+        var sa = lightRig.strobeOverlayAlpha() * menuSys.flashValue();
         if sa > 0.01 { G3D.Canvas3D.DrawRect2DAlpha(canvas, 0, 0, w, h, 0xE8F0FF, sa); }
         // Cinematic bars + fades sit on top of everything.
         cine.drawOverlay(canvas, w, h);

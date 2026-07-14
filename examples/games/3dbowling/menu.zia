@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/menu.zia
+// Purpose: Owns title navigation, settings, save migration, progression, and menu drawing.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: menu
 // PURPOSE: Release-quality front end, pause/results flow, accessibility
@@ -16,6 +34,7 @@ bind Viper.Math;
 bind Viper.Core.Convert as Convert;
 bind "./config";
 bind "./content/ball_catalog";
+bind "./util/assets";
 
 var CMD_NONE: Integer = -1;
 var CMD_OPEN_OPTIONS: Integer = 2;
@@ -73,6 +92,11 @@ class BowlingMenu {
     hide Integer replayMode;
     hide Integer highContrast;
     hide Integer assistLevel;
+    hide Integer difficulty;
+    hide Integer bumpers;
+    hide Integer reducedMotion;
+    hide Integer reducedFlash;
+    hide Integer largeHud;
     hide Integer controlPreset;
     hide Integer selectedBall;
 
@@ -115,6 +139,11 @@ class BowlingMenu {
         replayMode = 1;
         highContrast = 0;
         assistLevel = 1;
+        difficulty = config.DIFFICULTY_STANDARD;
+        bumpers = 0;
+        reducedMotion = 0;
+        reducedFlash = 0;
+        largeHud = 0;
         controlPreset = 0;
         selectedBall = 0;
         challengeMedals = 0;
@@ -156,12 +185,12 @@ class BowlingMenu {
     }
 
     hide func loadTitleArt() {
-        titleKeyArt = Pixels.Load("assets/art/title-key-art.png");
-        if (titleKeyArt == null) {
-            titleKeyArt = Pixels.Load("examples/games/3dbowling/assets/art/title-key-art.png");
-        }
-        if (titleKeyArt == null) {
-            titleKeyArt = Pixels.Load("../games/3dbowling/assets/art/title-key-art.png");
+        var path = assets.resolveOptionalAsset(
+            "assets/art/title-key-art.png", "title-key-art.png");
+        titleKeyArt = null;
+        if (path != "") { titleKeyArt = Pixels.Load(path); }
+        if (path != "" && titleKeyArt == null) {
+            assets.reportOptionalMissing("title-key-art.png");
         }
         if (titleKeyArt != null &&
             (titleKeyArt.Width != config.WINDOW_WIDTH || titleKeyArt.Height != config.WINDOW_HEIGHT)) {
@@ -186,6 +215,11 @@ class BowlingMenu {
         replayMode = save.GetInt(config.SAVE_KEY_REPLAY_MODE, 1);
         highContrast = save.GetInt(config.SAVE_KEY_HIGH_CONTRAST, 0);
         assistLevel = save.GetInt(config.SAVE_KEY_ASSIST_LEVEL, 1);
+        difficulty = save.GetInt(config.SAVE_KEY_DIFFICULTY, config.DIFFICULTY_STANDARD);
+        bumpers = save.GetInt(config.SAVE_KEY_BUMPERS, 0);
+        reducedMotion = save.GetInt(config.SAVE_KEY_REDUCED_MOTION, 0);
+        reducedFlash = save.GetInt(config.SAVE_KEY_REDUCED_FLASH, 0);
+        largeHud = save.GetInt(config.SAVE_KEY_LARGE_HUD, 0);
         controlPreset = save.GetInt(config.SAVE_KEY_CONTROL_PRESET, 0);
         selectedBall = save.GetInt(config.SAVE_KEY_SELECTED_BALL, 0);
         challengeMedals = save.GetInt(config.SAVE_KEY_CHALLENGE_MEDALS, 0);
@@ -200,6 +234,26 @@ class BowlingMenu {
     }
 
     hide func clampSettings() {
+        if (bestScore < 0) { bestScore = 0; }
+        if (bestScore > config.MAX_SCORE) { bestScore = config.MAX_SCORE; }
+        if (gamesPlayed < 0) { gamesPlayed = 0; }
+        if (gamesPlayed > 999999) { gamesPlayed = 999999; }
+        if (oilPattern < config.OIL_HOUSE || oilPattern > config.OIL_DRY) {
+            oilPattern = config.OIL_HOUSE;
+        }
+        if (qualityMode < config.QUALITY_PERFORMANCE ||
+            qualityMode > config.QUALITY_CINEMATIC) {
+            qualityMode = config.QUALITY_CINEMATIC;
+        }
+        if (preferredMode < config.MODE_SINGLE || preferredMode > config.MODE_PARTY) {
+            preferredMode = config.MODE_SINGLE;
+        }
+        if (startMode < config.MODE_SINGLE || startMode > config.MODE_PARTY) {
+            startMode = config.MODE_SINGLE;
+        }
+        if (challengeId < 0 || challengeId > 2) { challengeId = 0; }
+        if (partyId < 0 || partyId > 2) { partyId = 0; }
+        if (practiceId < 0 || practiceId > 3) { practiceId = 0; }
         if (startPlayerCount < 1) { startPlayerCount = 1; }
         if (startPlayerCount > config.MAX_PLAYERS) { startPlayerCount = config.MAX_PLAYERS; }
         if (masterVolume < 0) { masterVolume = 0; }
@@ -208,12 +262,107 @@ class BowlingMenu {
         if (musicVolume > 100) { musicVolume = 100; }
         if (effectsVolume < 0) { effectsVolume = 0; }
         if (effectsVolume > 100) { effectsVolume = 100; }
+        if (cameraShake < 0) { cameraShake = 0; }
+        if (cameraShake > 100) { cameraShake = 100; }
+        if (replayMode < 0 || replayMode > 1) { replayMode = 1; }
+        if (highContrast < 0 || highContrast > 1) { highContrast = 0; }
         if (assistLevel < 0) { assistLevel = 0; }
         if (assistLevel > 2) { assistLevel = 2; }
+        if (difficulty < config.DIFFICULTY_CASUAL ||
+            difficulty > config.DIFFICULTY_LEAGUE) {
+            difficulty = config.DIFFICULTY_STANDARD;
+        }
+        if (bumpers < 0 || bumpers > 1) { bumpers = 0; }
+        if (reducedMotion < 0 || reducedMotion > 1) { reducedMotion = 0; }
+        if (reducedFlash < 0 || reducedFlash > 1) { reducedFlash = 0; }
+        if (largeHud < 0 || largeHud > 1) { largeHud = 0; }
         if (controlPreset < 0 || controlPreset > 1) { controlPreset = 0; }
         if (selectedBall < 0) { selectedBall = 0; }
         if (selectedBall >= config.BALL_CATALOG_COUNT) { selectedBall = 0; }
         if (ballCatalog.isUnlocked(selectedBall, bestScore) == false) { selectedBall = 0; }
+        if (challengeMedals < 0) { challengeMedals = 0; }
+        challengeMedals = challengeMedals & 63;
+        if (careerPoints < 0) { careerPoints = 0; }
+        if (careerPoints > 9999999) { careerPoints = 9999999; }
+        if (achievementMask < 0) { achievementMask = 0; }
+        achievementMask = achievementMask & 65535;
+        if (totalStrikes < 0) { totalStrikes = 0; }
+        if (totalStrikes > 999999999) { totalStrikes = 999999999; }
+        if (totalSpares < 0) { totalSpares = 0; }
+        if (totalSpares > 999999999) { totalSpares = 999999999; }
+        if (totalGutters < 0) { totalGutters = 0; }
+        if (totalGutters > 999999999) { totalGutters = 999999999; }
+        if (totalPins < 0) { totalPins = 0; }
+        if (totalPins > 999999999) { totalPins = 999999999; }
+    }
+
+    /// @brief Inject one hostile scalar into every persisted field for probes.
+    expose func applyOutOfRangeForProbe(value: Integer) {
+        bestScore = value;
+        gamesPlayed = value;
+        oilPattern = value;
+        qualityMode = value;
+        preferredMode = value;
+        startMode = value;
+        challengeId = value;
+        partyId = value;
+        practiceId = value;
+        startPlayerCount = value;
+        masterVolume = value;
+        musicVolume = value;
+        effectsVolume = value;
+        cameraShake = value;
+        replayMode = value;
+        highContrast = value;
+        assistLevel = value;
+        difficulty = value;
+        bumpers = value;
+        reducedMotion = value;
+        reducedFlash = value;
+        largeHud = value;
+        controlPreset = value;
+        selectedBall = value;
+        challengeMedals = value;
+        careerPoints = value;
+        achievementMask = value;
+        totalStrikes = value;
+        totalSpares = value;
+        totalGutters = value;
+        totalPins = value;
+        clampSettings();
+    }
+
+    expose func settingsInRangeForProbe() -> Boolean {
+        if (bestScore < 0 || bestScore > config.MAX_SCORE) { return false; }
+        if (gamesPlayed < 0 || gamesPlayed > 999999) { return false; }
+        if (oilPattern < config.OIL_HOUSE || oilPattern > config.OIL_DRY) { return false; }
+        if (qualityMode < config.QUALITY_PERFORMANCE ||
+            qualityMode > config.QUALITY_CINEMATIC) { return false; }
+        if (preferredMode < config.MODE_SINGLE || preferredMode > config.MODE_PARTY ||
+            startMode < config.MODE_SINGLE || startMode > config.MODE_PARTY) { return false; }
+        if (challengeId < 0 || challengeId > 2 || partyId < 0 || partyId > 2 ||
+            practiceId < 0 || practiceId > 3) { return false; }
+        if (startPlayerCount < 1 || startPlayerCount > config.MAX_PLAYERS) { return false; }
+        if (masterVolume < 0 || masterVolume > 100 || musicVolume < 0 ||
+            musicVolume > 100 || effectsVolume < 0 || effectsVolume > 100 ||
+            cameraShake < 0 || cameraShake > 100) { return false; }
+        if (replayMode < 0 || replayMode > 1 || highContrast < 0 ||
+            highContrast > 1 || bumpers < 0 || bumpers > 1 ||
+            reducedMotion < 0 || reducedMotion > 1 || reducedFlash < 0 ||
+            reducedFlash > 1 || largeHud < 0 || largeHud > 1 ||
+            controlPreset < 0 || controlPreset > 1) { return false; }
+        if (assistLevel < 0 || assistLevel > 2 ||
+            difficulty < config.DIFFICULTY_CASUAL ||
+            difficulty > config.DIFFICULTY_LEAGUE) { return false; }
+        if (selectedBall < 0 || selectedBall >= config.BALL_CATALOG_COUNT) { return false; }
+        if (challengeMedals < 0 || challengeMedals > 63 || careerPoints < 0 ||
+            careerPoints > 9999999 || achievementMask < 0 ||
+            achievementMask > 65535) { return false; }
+        if (totalStrikes < 0 || totalStrikes > 999999999 || totalSpares < 0 ||
+            totalSpares > 999999999 || totalGutters < 0 ||
+            totalGutters > 999999999 || totalPins < 0 ||
+            totalPins > 999999999) { return false; }
+        return true;
     }
 
     expose func savePreferences() {
@@ -232,6 +381,11 @@ class BowlingMenu {
         save.SetInt(config.SAVE_KEY_REPLAY_MODE, replayMode);
         save.SetInt(config.SAVE_KEY_HIGH_CONTRAST, highContrast);
         save.SetInt(config.SAVE_KEY_ASSIST_LEVEL, assistLevel);
+        save.SetInt(config.SAVE_KEY_DIFFICULTY, difficulty);
+        save.SetInt(config.SAVE_KEY_BUMPERS, bumpers);
+        save.SetInt(config.SAVE_KEY_REDUCED_MOTION, reducedMotion);
+        save.SetInt(config.SAVE_KEY_REDUCED_FLASH, reducedFlash);
+        save.SetInt(config.SAVE_KEY_LARGE_HUD, largeHud);
         save.SetInt(config.SAVE_KEY_CONTROL_PRESET, controlPreset);
         save.SetInt(config.SAVE_KEY_SELECTED_BALL, selectedBall);
         save.SetInt(config.SAVE_KEY_CHALLENGE_MEDALS, challengeMedals);
@@ -297,8 +451,18 @@ class BowlingMenu {
         return count;
     }
 
-    expose func updateTitle() -> Integer {
-        animationTime = animationTime + 0.016;
+    expose func advanceAnimation(dt: Float) {
+        if (dt <= 0.0 || reducedMotion != 0) { return; }
+        var stepDt = dt;
+        if (stepDt > 0.05) { stepDt = 0.05; }
+        animationTime = animationTime + stepDt;
+        if (animationTime > 100.0) { animationTime = animationTime - 100.0; }
+    }
+
+    expose func getAnimationTime() -> Float { return animationTime; }
+
+    expose func updateTitle(dt: Float) -> Integer {
+        advanceAnimation(dt);
         var up = Action.Pressed(config.ACT_MENU_UP);
         var down = Action.Pressed(config.ACT_MENU_DOWN);
         var confirm = Action.Pressed(config.ACT_CONFIRM);
@@ -446,7 +610,7 @@ class BowlingMenu {
     }
 
     expose func updateOptions() -> Integer {
-        var count = 13;
+        var count = 18;
         var up = Action.Pressed(config.ACT_MENU_UP);
         var down = Action.Pressed(config.ACT_MENU_DOWN);
         var confirm = Action.Pressed(config.ACT_CONFIRM);
@@ -467,18 +631,23 @@ class BowlingMenu {
         }
         if (confirm == false) { return CMD_NONE; }
 
-        if (optionSelection == 0) { oilPattern = (oilPattern + 1) % 3; }
-        else if (optionSelection == 1) { qualityMode = 1 - qualityMode; }
-        else if (optionSelection == 2) { startPlayerCount = startPlayerCount % config.MAX_PLAYERS + 1; }
-        else if (optionSelection == 3) { masterVolume = cyclePercent(masterVolume); }
-        else if (optionSelection == 4) { musicVolume = cyclePercent(musicVolume); }
-        else if (optionSelection == 5) { effectsVolume = cyclePercent(effectsVolume); }
-        else if (optionSelection == 6) { assistLevel = (assistLevel + 1) % 3; }
-        else if (optionSelection == 7) { controlPreset = 1 - controlPreset; }
-        else if (optionSelection == 8) { cameraShake = cycleQuarter(cameraShake); }
-        else if (optionSelection == 9) { replayMode = 1 - replayMode; }
-        else if (optionSelection == 10) { highContrast = 1 - highContrast; }
-        else if (optionSelection == 11) {
+        if (optionSelection == 0) { difficulty = (difficulty + 1) % 3; }
+        else if (optionSelection == 1) { oilPattern = (oilPattern + 1) % 3; }
+        else if (optionSelection == 2) { qualityMode = 1 - qualityMode; }
+        else if (optionSelection == 3) { startPlayerCount = startPlayerCount % config.MAX_PLAYERS + 1; }
+        else if (optionSelection == 4) { masterVolume = cyclePercent(masterVolume); }
+        else if (optionSelection == 5) { musicVolume = cyclePercent(musicVolume); }
+        else if (optionSelection == 6) { effectsVolume = cyclePercent(effectsVolume); }
+        else if (optionSelection == 7) { assistLevel = (assistLevel + 1) % 3; }
+        else if (optionSelection == 8) { controlPreset = 1 - controlPreset; }
+        else if (optionSelection == 9) { bumpers = 1 - bumpers; }
+        else if (optionSelection == 10) { cameraShake = cycleQuarter(cameraShake); }
+        else if (optionSelection == 11) { replayMode = 1 - replayMode; }
+        else if (optionSelection == 12) { highContrast = 1 - highContrast; }
+        else if (optionSelection == 13) { reducedMotion = 1 - reducedMotion; }
+        else if (optionSelection == 14) { reducedFlash = 1 - reducedFlash; }
+        else if (optionSelection == 15) { largeHud = 1 - largeHud; }
+        else if (optionSelection == 16) {
             if (resetConfirmArmed == false) {
                 resetConfirmArmed = true;
                 return CMD_NONE;
@@ -487,7 +656,7 @@ class BowlingMenu {
             resetConfirmArmed = false;
         }
         else { savePreferences(); return CMD_BACK; }
-        if (optionSelection != 11) { resetConfirmArmed = false; }
+        if (optionSelection != 16) { resetConfirmArmed = false; }
         savePreferences();
         return CMD_NONE;
     }
@@ -537,6 +706,11 @@ class BowlingMenu {
     expose func getReplayMode() -> Integer { return replayMode; }
     expose func getHighContrast() -> Boolean { return highContrast != 0; }
     expose func getAssistLevel() -> Integer { return assistLevel; }
+    expose func getDifficulty() -> Integer { return difficulty; }
+    expose func getBumpers() -> Boolean { return bumpers != 0; }
+    expose func getReducedMotion() -> Boolean { return reducedMotion != 0; }
+    expose func getReducedFlash() -> Boolean { return reducedFlash != 0; }
+    expose func getLargeHud() -> Boolean { return largeHud != 0; }
     expose func getControlPreset() -> Integer { return controlPreset; }
     expose func getSelectedBall() -> Integer { return selectedBall; }
     expose func setSelectedBall(value: Integer) { selectedBall = value; savePreferences(); }
@@ -560,6 +734,12 @@ class BowlingMenu {
     hide func assistName() -> String {
         if (assistLevel == 0) { return "Pro"; }
         if (assistLevel == 2) { return "Full"; }
+        return "Standard";
+    }
+
+    hide func difficultyName() -> String {
+        if (difficulty == config.DIFFICULTY_CASUAL) { return "Casual"; }
+        if (difficulty == config.DIFFICULTY_LEAGUE) { return "League"; }
         return "Standard";
     }
 
@@ -835,11 +1015,11 @@ class BowlingMenu {
         var py = h / 2 - 240;
         panel(canvas, px, py, 760, 480);
         centerText(canvas, w, py + 26, "HOW TO BOWL", config.HUD_COLOR_AMBER, 2.2);
-        helpLine(canvas, px + 54, py + 94, "1", "A / D or left stick", "Move your stance and target line.");
-        helpLine(canvas, px + 54, py + 154, "2", "Q / E or bumpers", "Shape the ball left or right.");
-        helpLine(canvas, px + 54, py + 214, "3", "Hold SPACE / A", "Build power; release near the center marker.");
-        helpLine(canvas, px + 54, py + 274, "4", "Watch the backend", "Oil delays hook. Dry boards create recovery.");
-        helpLine(canvas, px + 54, py + 334, "5", "C / Y", "Inspect the lane with the overhead camera.");
+        helpLine(canvas, px + 54, py + 94, "1", "A / D or left stick", "Move your stance at the foul line.");
+        helpLine(canvas, px + 54, py + 154, "2", "Arrows or D-pad", "Choose a separate target board down-lane.");
+        helpLine(canvas, px + 54, py + 214, "3", "Q / E; F or X", "Shape hook, or flatten it for a spare.");
+        helpLine(canvas, px + 54, py + 274, "4", "Hold, release, then tap", "Lock power; tap SPACE / A near center timing.");
+        helpLine(canvas, px + 54, py + 334, "5", "R reset; C / Y camera", "Reset your line or inspect lane and oil wear.");
         centerText(canvas, w, py + 428, "ENTER / B  RETURN", 0x7F95A3, 1.0);
     }
 
@@ -907,6 +1087,7 @@ class BowlingMenu {
 
     hide func optionRows() -> List[String] {
         var rows: List[String] = [];
+        rows.add("PLAY DIFFICULTY         < " + difficultyName() + " >");
         rows.add("OIL PATTERN             < " + getOilPatternName() + " >");
         rows.add("VISUAL QUALITY          < " + getQualityName() + " >");
         rows.add("LOCAL PLAYERS           < " + toString(startPlayerCount) + " >");
@@ -915,9 +1096,13 @@ class BowlingMenu {
         rows.add("EFFECTS VOLUME          < " + toString(effectsVolume) + "% >");
         rows.add("RELEASE ASSIST          < " + assistName() + " >");
         rows.add("CONTROL PRESET          < " + controlName() + " >");
+        rows.add("GUTTER BUMPERS          < " + onOff(bumpers) + " >");
         rows.add("CAMERA SHAKE            < " + toString(cameraShake) + "% >");
         rows.add("HIGHLIGHT REPLAYS       < " + onOff(replayMode) + " >");
-        rows.add("HIGH-CONTRAST PINS      < " + onOff(highContrast) + " >");
+        rows.add("HIGH CONTRAST           < " + onOff(highContrast) + " >");
+        rows.add("REDUCED MOTION          < " + onOff(reducedMotion) + " >");
+        rows.add("REDUCED FLASH           < " + onOff(reducedFlash) + " >");
+        rows.add("LARGE HUD               < " + onOff(largeHud) + " >");
         if (resetConfirmArmed) { rows.add("CONFIRM RESET          < PRESS AGAIN >"); }
         else { rows.add("RESET CAREER PROGRESS"); }
         rows.add("BACK");

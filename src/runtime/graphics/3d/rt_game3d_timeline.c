@@ -545,6 +545,23 @@ int game3d_world_timeline_pre(rt_game3d_world *world, double dt) {
     return timeline->has_camera_tracks && (timeline->playing || timeline->finished);
 }
 
+/// @brief Choose a look-at up vector, falling back to +X when the view is near-vertical.
+/// @details A cutscene camera looking straight up/down makes (0,1,0) parallel to the
+///          view direction, so the look-at cross product degenerates to zero and the
+///          camera basis becomes NaN. Mirrors the rail camera's near-vertical guard.
+static void game3d_timeline_safe_up(const double eye[3], const double look[3], double up[3]) {
+    double view[3] = {look[0] - eye[0], look[1] - eye[1], look[2] - eye[2]};
+    double len = sqrt(view[0] * view[0] + view[1] * view[1] + view[2] * view[2]);
+    up[0] = 0.0;
+    up[1] = 1.0;
+    up[2] = 0.0;
+    if (isfinite(len) && len > 1e-9 && fabs(view[1] / len) > 0.99) {
+        up[0] = 1.0;
+        up[1] = 0.0;
+        up[2] = 0.0;
+    }
+}
+
 /// @brief Camera application in the late-update slot. See internal header.
 void game3d_world_timeline_camera(rt_game3d_world *world) {
     if (!world || !world->camera)
@@ -603,6 +620,8 @@ void game3d_world_timeline_camera(rt_game3d_world *world) {
                     look[2] = lp[2];
                 }
             }
+            double up[3];
+            game3d_timeline_safe_up(eye, look, up);
             rt_camera3d_look_at_components(world->camera,
                                            game3d_clamp_coord_or(eye[0], 0.0),
                                            game3d_clamp_coord_or(eye[1], 0.0),
@@ -610,11 +629,13 @@ void game3d_world_timeline_camera(rt_game3d_world *world) {
                                            game3d_clamp_coord_or(look[0], 0.0),
                                            game3d_clamp_coord_or(look[1], 0.0),
                                            game3d_clamp_coord_or(look[2], 0.0),
-                                           0.0,
-                                           1.0,
-                                           0.0);
+                                           up[0],
+                                           up[1],
+                                           up[2]);
         }
     } else if (cut) {
+        double up[3];
+        game3d_timeline_safe_up(cut->vec_a, cut->vec_b, up);
         rt_camera3d_look_at_components(world->camera,
                                        cut->vec_a[0],
                                        cut->vec_a[1],
@@ -622,9 +643,9 @@ void game3d_world_timeline_camera(rt_game3d_world *world) {
                                        cut->vec_b[0],
                                        cut->vec_b[1],
                                        cut->vec_b[2],
-                                       0.0,
-                                       1.0,
-                                       0.0);
+                                       up[0],
+                                       up[1],
+                                       up[2]);
         rt_camera3d_set_fov(world->camera, cut->scalar_a);
     }
 

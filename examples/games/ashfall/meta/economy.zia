@@ -3,9 +3,10 @@
 // =============================================================================
 //
 // Salvage is earned from machine drops (the game routes collected salvage here)
-// and spent at the hub workbench on per-weapon upgrade tiers (0..3). Each tier
-// raises a weapon's damage and tightens handling (recoil/spread) via multipliers
-// the weapon controller reads. Standalone (no engine deps) so it unit-tests.
+// and spent through the Armory (also represented by the hub workbench) on
+// per-weapon upgrade tiers (0..3). Each tier raises damage and tightens handling
+// (recoil/spread) via multipliers the weapon controller reads. Standalone (no
+// engine deps) so it unit-tests.
 // =============================================================================
 module economy;
 
@@ -32,8 +33,16 @@ class Economy {
     }
 
     expose func addSalvage(n: Integer) { if n > 0 { salvage = salvage + n; } }
+    expose func setSalvage(n: Integer) { if n >= 0 { salvage = n; } }
     expose func available() -> Integer { return salvage; }
     expose func tierOf(w: Integer) -> Integer { return tier[w]; }
+    expose func setTier(w: Integer, value: Integer) {
+        if w < 0 || w >= tier.Count { return; }
+        var v = value;
+        if v < 0 { v = 0; }
+        if v > MAX_TIER { v = MAX_TIER; }
+        tier[w] = v;
+    }
 
     // Cost of the NEXT tier for a weapon (rises with tier); -1 if maxed.
     expose func nextCost(w: Integer) -> Integer {

@@ -14,6 +14,12 @@
 //     original submission order.
 //   - Batch size is bounded by RT_SPRITEBATCH_MAX_SPRITES per begin/end pair.
 //   - Nested Begin/End pairs are not supported.
+//   - For Sprite draw commands, the batch stores a retained reference to the
+//     Sprite and samples its mutable state (current frame, flip flags, origin,
+//     visibility) at End() time, NOT at the draw-submit call. Only the sort key
+//     (depth) is snapshotted at submission. Therefore mutating a Sprite between
+//     its draw-submit and End() affects that queued draw; submit a distinct
+//     Sprite (or a Pixels/region command) per visual state if that matters.
 //
 // Ownership/Lifetime:
 //   - SpriteBatch objects are heap-allocated opaque pointers.

@@ -42,6 +42,7 @@ var LOOK_SENS: Float = 0.10;             // degrees per raw mouse unit
 var SPRINT_FOV_ADD: Float = 6.0;
 var ADS_TIME_MIN: Float = 0.12;
 var ADS_TIME_MAX: Float = 0.22;
+var SLIDE_ROLL_DEG: Float = 5.0;
 var SHAKE_SCALE_DEFAULT: Float = 1.0;    // 0..1.5 accessibility
 
 // --- Player movement ---------------------------------------------------------
@@ -83,6 +84,10 @@ var POOL_DECALS: Integer = 64;
 var POOL_POPUPS: Integer = 32;
 var POOL_AI: Integer = 24;               // 12 active cap + margin
 var AI_ACTIVE_CAP: Integer = 12;
+var NAV_AGENT_RADIUS: Float = 0.38;
+var NAV_AGENT_HEIGHT: Float = 1.8;
+var NAV_MAX_SLOPE: Float = 50.0;
+var NAV_CELL_SIZE: Float = 0.30;
 
 // --- Game states (state machine) ---------------------------------------------
 var ST_BOOT: Integer = 0;
@@ -99,7 +104,7 @@ var ST_PHOTO: Integer = 9;
 // --- Event kinds (event bus) -------------------------------------------------
 var EV_NONE: Integer = 0;
 var EV_GUNSHOT: Integer = 1;             // a=pos-encoded, f0..2=pos, b=loudness
-var EV_EXPLOSION: Integer = 2;
+var EV_EXPLOSION: Integer = 2;           // a=damage, b=radius, c=dmgKind+1 (0 cosmetic), f0..2=center
 var EV_ENEMY_DIED: Integer = 3;          // a=archetype, b=handle
 var EV_PLAYER_DAMAGED: Integer = 4;      // b=amount
 var EV_OBJECTIVE: Integer = 5;           // a=objective id, b=state
@@ -111,9 +116,12 @@ var EV_ALERT_RAISED: Integer = 10;       // a=source handle
 var EV_STATE_CHANGE: Integer = 11;       // a=from, b=to
 var EV_MELEE: Integer = 12;
 var EV_DECOY: Integer = 13;              // f0..2=pos — feeds AI hearing
-var EV_DAMAGE: Integer = 14;             // a=targetKind, b=index, c=region*1000+dmgKind, f0=amount, f1=hitX/hitY packed? see ballistics
+var EV_DAMAGE: Integer = 14;             // a=targetKind, b=target index/source archetype, c=region, f0=amount, f1=dmgKind or source bearing, f2=source bearing or dmgKind
 var EV_HITMARKER: Integer = 15;          // a=region — HUD hit feedback
-var EV_KILL: Integer = 16;               // a=targetKind, b=index — confirmed kill
+var EV_KILL: Integer = 16;               // a=targetKind, b=archetype — confirmed kill
+var EV_FOOTSTEP: Integer = 17;           // a=surface id, b=loudness, f0..2=position
+var EV_ENEMY_SHOT: Integer = 18;         // a=archetype, b=projectile kind, f0..2=muzzle
+var EV_IMPACT: Integer = 19;              // a=material id, b=impact kind, f0..2=position
 
 // --- Damageable target kinds -------------------------------------------------
 var TGT_DUMMY: Integer = 0;
@@ -216,7 +224,17 @@ var A_DIAG: Integer = 16;                // F3 diagnostics
 var A_NEXT_WEAPON: Integer = 17;
 var A_PREV_WEAPON: Integer = 18;
 var A_DEV_LIGHTS: Integer = 19;          // arena lighting cycle
-var A_COUNT: Integer = 20;
+var A_WEAPON_1: Integer = 20;
+var A_WEAPON_2: Integer = 21;
+var A_WEAPON_3: Integer = 22;
+var A_WEAPON_4: Integer = 23;
+var A_WEAPON_5: Integer = 24;
+var A_WEAPON_6: Integer = 25;
+var A_WEAPON_7: Integer = 26;
+var A_WEAPON_8: Integer = 27;
+var A_WEAPON_9: Integer = 28;
+var A_WEAPON_10: Integer = 29;
+var A_COUNT: Integer = 30;
 
 // --- Levels ------------------------------------------------------------------
 var LV_ARENA: Integer = 0;

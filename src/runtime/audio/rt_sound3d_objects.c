@@ -1006,6 +1006,28 @@ void rt_soundsource3d_set_position_vec(void *obj, double x, double y, double z) 
     sound3d_release_local(position);
 }
 
+/// @brief Shift a source's stored position by a floating-origin rebase delta.
+/// @details Node-bound sources take their position from the scene node, which the
+///          scene rebase already shifted, so only unbound sources (playAt / nodeless
+///          playAttached) need their fallback position moved. Subtracts the delta to
+///          match the scene/physics/body rebase convention (contents move by -delta).
+void rt_soundsource3d_rebase_origin(void *obj, double dx, double dy, double dz) {
+    rt_soundsource3d *source = sound3d_source_checked(obj);
+    if (!source)
+        return;
+    if (source->bound_node && rt_g3d_has_class(source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID))
+        return;
+    source->position[0] -= dx;
+    source->position[1] -= dy;
+    source->position[2] -= dz;
+    if (source->has_last_sync_position) {
+        source->last_sync_position[0] -= dx;
+        source->last_sync_position[1] -= dy;
+        source->last_sync_position[2] -= dz;
+    }
+    sound3d_source_apply_spatial(source);
+}
+
 /// @brief Read the source's velocity (Doppler input). Re-syncs binding before returning.
 void *rt_soundsource3d_get_velocity(void *obj) {
     rt_soundsource3d *source = sound3d_source_checked(obj);

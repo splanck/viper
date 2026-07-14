@@ -80,6 +80,11 @@ void joint3d_world_anchor(const rt_body3d_kinematics *body,
 void joint3d_local_from_world(const rt_body3d_kinematics *body,
                               const double *world_point,
                               double *out);
+void joint3d_world_inv_inertia_mul(const rt_body3d_kinematics *body,
+                                   const double *v,
+                                   double *out);
+double joint3d_effective_inv_inertia_about_axis(const rt_body3d_kinematics *body,
+                                                const double *axis);
 void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
                                    const double *local_axis,
                                    double *out);

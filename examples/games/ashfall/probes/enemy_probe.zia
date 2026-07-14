@@ -128,6 +128,49 @@ func start() {
     }
     if maxEngaged > 6 { fail("token cap exceeded: " + toString(maxEngaged) + " > 6"); return; }
 
+    // Ranged attacks must exist in world space for at least one simulation step;
+    // damage may not be posted directly when the wind-up expires.
+    var gShot = newGame(0x5556);
+    var ranger = gShot.devSpawnEnemy(config.EN_RANGER, 0.0, -12.0);
+    gShot.devFaceEnemy(ranger, 0.0, 0.0);
+    var shotTicks = 0;
+    while gShot.getEnemies().hostileShotsFired() == 0 && shotTicks < 400 {
+        gShot.devFaceEnemy(ranger, 0.0, 0.0);
+        tick(gShot);
+        shotTicks = shotTicks + 1;
+    }
+    if gShot.getEnemies().hostileShotsFired() == 0 { fail("ranger never launched a projectile"); return; }
+    if gShot.getEnemies().hostileProjectileCount() == 0 { fail("ranged damage was not world-space"); return; }
+
+    // Boss rank and aerial mobility are independent traits.
+    var prime = gShot.devSpawnEnemy(config.BOSS_SHRIKE, 8.0, -12.0);
+    if gShot.getEnemies().posY(prime) < 6.0 { fail("SHRIKE Prime did not spawn airborne"); return; }
+
+    // Vanguard shields protect only the readable frontal arc. A rear shot must
+    // bypass the energy shield instead of turning the unit into a health sponge.
+    var gShield = newGame(0x5557);
+    var vanguard = gShield.devSpawnEnemy(config.EN_VANGUARD, 0.0, -8.0);
+    gShield.devFaceEnemy(vanguard, 0.0, 0.0);
+    var vHp0 = gShield.getEnemies().healthOf(vanguard);
+    var vSh0 = gShield.getEnemies().shieldOf(vanguard);
+    gShield.getBus().push(config.EV_DAMAGE, config.TGT_ENEMY, vanguard,
+                          config.REGION_BODY, 50.0, config.DMG_HITSCAN + 0.0, 180.0);
+    gShield.getEnemies().applyDamageEvents();
+    gShield.getBus().drain();
+    if gShield.getEnemies().healthOf(vanguard) < vHp0 ||
+       gShield.getEnemies().shieldOf(vanguard) >= vSh0 {
+        fail("Vanguard frontal shield did not absorb damage"); return;
+    }
+    var vShFront = gShield.getEnemies().shieldOf(vanguard);
+    gShield.getBus().push(config.EV_DAMAGE, config.TGT_ENEMY, vanguard,
+                          config.REGION_BODY, 50.0, config.DMG_HITSCAN + 0.0, 0.0);
+    gShield.getEnemies().applyDamageEvents();
+    gShield.getBus().drain();
+    if gShield.getEnemies().healthOf(vanguard) >= vHp0 ||
+       M.absf(gShield.getEnemies().shieldOf(vanguard) - vShFront) > 0.01 {
+        fail("Vanguard rear shot did not bypass shield"); return;
+    }
+
     // --- 6. Sapper detonation chains into an adjacent machine ---------------
     var g6 = newGame(0x6666);
     g6.devSetGod(true);

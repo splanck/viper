@@ -37,5 +37,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         rt_string_unref(runtime_path);
     }
     viper_fuzz3d::remove_temp_asset(path);
+
+    /* Also exercise the in-memory entry point, which has its own length handling
+     * before delegating to the shared parser (rt_scene3d_load_from_memory). */
+    rt_asset_error_clear();
+    void *mem_scene =
+        rt_scene3d_load_from_memory(nullptr, reinterpret_cast<const char *>(data), size);
+    viper_fuzz3d::release_runtime_object(mem_scene);
     return 0;
 }

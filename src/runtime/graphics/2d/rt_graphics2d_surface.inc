@@ -35,18 +35,21 @@
 // RenderTarget2D (aliased as Surface2D)
 //=============================================================================
 // Offscreen RGBA surface. Wraps a `Pixels` buffer and exposes alpha-aware
-// DrawPixels / DrawRegion that route through the shared `blit_pixels` blitter.
+// DrawPixels / DrawRegion that route through the shared `rt2d_blit_pixels` blitter.
 
 /// @brief GC finalizer — releases the owned Pixels buffer.
 static void rendertarget2d_finalize(void *obj) {
     rt_rendertarget2d_impl *target = (rt_rendertarget2d_impl *)obj;
     target->magic = 0;
-    release_ref_slot(&target->pixels);
+    rt2d_release_ref_slot(&target->pixels);
 }
 
-static void *rendertarget2d_new_with_class(int64_t width, int64_t height, int64_t class_id) {
-    if (!checked_count(width, height, 4, NULL)) {
-        rt_trap("RenderTarget2D.New: invalid dimensions");
+static void *rendertarget2d_new_with_class(int64_t width,
+                                           int64_t height,
+                                           int64_t class_id,
+                                           const char *api) {
+    if (!rt2d_checked_count(width, height, 4, NULL)) {
+        rt_trap(api ? api : "RenderTarget2D.New: invalid dimensions");
         return NULL;
     }
     rt_rendertarget2d_impl *target =
@@ -65,7 +68,7 @@ static void *rendertarget2d_new_with_class(int64_t width, int64_t height, int64_
 }
 
 /// @brief Allocate a new offscreen render target sized `width × height` (RGBA).
-/// @details Validates the dimensions through `checked_count` (caps at RT2D_MAX_DIM
+/// @details Validates the dimensions through `rt2d_checked_count` (caps at RT2D_MAX_DIM
 ///          and rejects overflowing byte counts) and traps on invalid inputs — the
 ///          caller gets a clear error instead of a silent NULL return for a bad
 ///          size. The owned `Pixels` buffer is allocated separately; if that
@@ -73,12 +76,14 @@ static void *rendertarget2d_new_with_class(int64_t width, int64_t height, int64_
 /// @return RenderTarget2D handle, or NULL on allocation failure (trap already
 ///         fired for invalid dimensions).
 void *rt_rendertarget2d_new(int64_t width, int64_t height) {
-    return rendertarget2d_new_with_class(width, height, RT2D_RENDERTARGET_CLASS_ID);
+    return rendertarget2d_new_with_class(
+        width, height, RT2D_RENDERTARGET_CLASS_ID, "RenderTarget2D.New: invalid dimensions");
 }
 
 /// @brief Allocate a Surface2D with distinct runtime type identity and RenderTarget2D behavior.
 void *rt_surface2d_new(int64_t width, int64_t height) {
-    return rendertarget2d_new_with_class(width, height, RT2D_SURFACE_CLASS_ID);
+    return rendertarget2d_new_with_class(
+        width, height, RT2D_SURFACE_CLASS_ID, "Surface2D.New: invalid dimensions");
 }
 
 /// @brief Return the width of the render target's backing Pixels buffer in pixels, or 0 if invalid.
@@ -117,14 +122,14 @@ void rt_rendertarget2d_resize(void *target, int64_t width, int64_t height) {
     rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
     if (!impl)
         return;
-    if (!checked_count(width, height, 4, NULL)) {
+    if (!rt2d_checked_count(width, height, 4, NULL)) {
         rt_trap("RenderTarget2D.Resize: invalid dimensions");
         return;
     }
     void *pixels = rt_pixels_new(width, height);
     if (!pixels)
         return;
-    release_ref_slot(&impl->pixels);
+    rt2d_release_ref_slot(&impl->pixels);
     impl->pixels = pixels;
 }
 
@@ -135,7 +140,7 @@ void rt_rendertarget2d_draw_pixels(void *target, int64_t x, int64_t y, void *pix
     rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
     if (!impl || !pixels)
         return;
-    blit_pixels(impl->pixels,
+    rt2d_blit_pixels(impl->pixels,
                 x,
                 y,
                 pixels,
@@ -151,7 +156,7 @@ void rt_rendertarget2d_draw_pixels(void *target, int64_t x, int64_t y, void *pix
 /// @brief Blit a sub-rectangle `(sx, sy, width, height)` of @p pixels onto the target at `(x, y)`.
 /// @details Selects a region of the source Pixels and blits it with straight-alpha compositing,
 ///   no tint, and full opacity. Both source and destination coordinates are clipped to their
-///   respective buffer bounds by `blit_pixels`.
+///   respective buffer bounds by `rt2d_blit_pixels`.
 void rt_rendertarget2d_draw_region(void *target,
                                    int64_t x,
                                    int64_t y,
@@ -163,6 +168,6 @@ void rt_rendertarget2d_draw_region(void *target,
     rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
     if (!impl || !pixels)
         return;
-    blit_pixels(
+    rt2d_blit_pixels(
         impl->pixels, x, y, pixels, sx, sy, width, height, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
 }

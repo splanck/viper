@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/release_upgrade_probe.zia
+// Purpose: Verifies deterministic release, equipment, scoring, progression, and HUD contracts.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: release_upgrade_probe
 // PURPOSE: Deterministic contract probe for the commercial-quality gameplay
@@ -9,6 +27,7 @@ module release_upgrade_probe;
 bind Viper.Terminal;
 bind "./content/ball_catalog";
 bind "./gameplay/release_meter";
+bind "./gameplay/delivery_model";
 bind "./gameplay/leaves";
 bind "./progression/profile";
 bind "./scoring/scoring";
@@ -26,6 +45,16 @@ func require(ok: Boolean, message: String) {
     }
 }
 
+func advanceMeter(meter: ReleaseMeter, seconds: Float) {
+    var remaining = seconds;
+    while (remaining > 0.000001) {
+        var dt = remaining;
+        if (dt > 0.05) { dt = 0.05; }
+        meter.update(dt);
+        remaining = remaining - dt;
+    }
+}
+
 func main() {
     menu.PERSISTENCE_ENABLED = false;
     var catalog = new BallCatalog();
@@ -37,17 +66,137 @@ func main() {
         "locked equipment must be skipped");
     require(catalog.firstUnlockedFrom(0, 1, 100) == 1,
         "equipment must unlock at its stated score");
+    for (var candidate: Integer = 0; candidate < catalog.count(); candidate = candidate + 1) {
+        var bestSpeed = true;
+        var bestHook = true;
+        var bestControl = true;
+        var bestOilFit = true;
+        for (var other: Integer = 0; other < catalog.count(); other = other + 1) {
+            if (catalog.get(candidate).getMaxSpeed() < catalog.get(other).getMaxSpeed()) {
+                bestSpeed = false;
+            }
+            if (catalog.get(candidate).getHook() < catalog.get(other).getHook()) {
+                bestHook = false;
+            }
+            if (catalog.get(candidate).getControl() < catalog.get(other).getControl()) {
+                bestControl = false;
+            }
+            if (catalog.get(candidate).getOilFit() < catalog.get(other).getOilFit()) {
+                bestOilFit = false;
+            }
+        }
+        require((bestSpeed && bestHook && bestControl && bestOilFit) == false,
+            "equipment catalog must not contain an all-category best ball");
+    }
 
     var meter = new ReleaseMeter();
-    meter.reset(1.0);
+    meter.reset(config.RELEASE_ASSIST_STANDARD);
     meter.beginCharge();
-    meter.update(0.50);
+    advanceMeter(meter, 0.50);
     require(meter.getPower() > 0.0, "charging must build power");
+    var lockedPower = meter.getPower();
+    meter.lockPower();
+    require(meter.isAwaitingAccuracy(), "first release must lock power and start accuracy");
+    advanceMeter(meter, 0.11);
+    require(Abs(meter.getPower() - lockedPower) < 0.0001,
+        "accuracy timing must not change locked power");
     var firstAccuracy = meter.release();
     require(firstAccuracy >= 0.0 && firstAccuracy <= 1.0,
         "release accuracy must be normalized");
-    meter.reset(1.0);
+    meter.reset(config.RELEASE_ASSIST_STANDARD);
     require(meter.getPower() < 0.0001, "reset must clear the meter");
+
+    var earlyPower = new ReleaseMeter();
+    earlyPower.reset(0.0);
+    earlyPower.beginCharge();
+    advanceMeter(earlyPower, 0.20);
+    earlyPower.lockPower();
+    advanceMeter(earlyPower, 0.17);
+    var earlyNeedle = earlyPower.getNeedle();
+
+    var latePower = new ReleaseMeter();
+    latePower.reset(0.0);
+    latePower.beginCharge();
+    advanceMeter(latePower, 0.73);
+    latePower.lockPower();
+    advanceMeter(latePower, 0.17);
+    require(Abs(earlyNeedle - latePower.getNeedle()) < 0.0001,
+        "accuracy oscillator must be independent of power charge duration");
+    advanceMeter(latePower, config.RELEASE_CONFIRM_TIMEOUT);
+    require(latePower.confirmTimedOut(), "second-stage release must have a bounded timeout");
+
+    var delivery = new DeliveryModel();
+    var perfectLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    var repeatedLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    require(Abs(perfectLine.sideSpeed - repeatedLine.sideSpeed) < 0.000001 &&
+        Abs(perfectLine.forwardSpeed - repeatedLine.forwardSpeed) < 0.000001,
+        "delivery solver must be deterministic");
+    require(Abs(perfectLine.projectedTargetX - perfectLine.targetX) < 0.0001,
+        "perfect preview projection must reach the selected target board");
+
+    var poorLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.92, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    require(poorLine.forwardSpeed < perfectLine.forwardSpeed,
+        "poor timing must reduce launch speed");
+    require(Abs(poorLine.sideSpeed - perfectLine.sideSpeed) > 0.025,
+        "poor timing must alter launch angle");
+    require(Abs(poorLine.projectedTargetX - perfectLine.projectedTargetX) > 0.10,
+        "preview projection must expose the physical timing miss");
+    require(poorLine.uncertaintyWidth > perfectLine.uncertaintyWidth,
+        "poor timing must widen the preview corridor");
+
+    var casualLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.92, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_CASUAL,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    var leagueLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.92, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_LEAGUE,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    require(casualLine.uncertaintyWidth < leagueLine.uncertaintyWidth,
+        "difficulty must scale delivery uncertainty");
+
+    var controlLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.92, 0.0, config.DIFFICULTY_STANDARD, 96, 2,
+        config.OIL_HOUSE, "Solid", 5.9, false);
+    var angularLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.92, 0.0, config.DIFFICULTY_STANDARD, 66, 2,
+        config.OIL_HOUSE, "Pearl", 5.9, false);
+    require(controlLine.uncertaintyWidth < angularLine.uncertaintyWidth,
+        "catalog control must physically narrow error");
+
+    var dryFitLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, 0.0, config.DIFFICULTY_STANDARD, 82, 0,
+        config.OIL_DRY, "Solid", 5.9, false);
+    var heavyFitOnDry = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, 0.0, config.DIFFICULTY_STANDARD, 82, 3,
+        config.OIL_DRY, "Solid", 5.9, false);
+    require(dryFitLine.oilResponse > heavyFitOnDry.oilResponse,
+        "oil-fit rating must change physical cover response by pattern");
+
+    var plasticLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, 0.0, config.DIFFICULTY_STANDARD, 82, 1,
+        config.OIL_HOUSE, "Plastic", 5.9, false);
+    var pearlLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, 0.0, config.DIFFICULTY_STANDARD, 82, 1,
+        config.OIL_HOUSE, "Pearl", 5.9, false);
+    require(Abs(pearlLine.axisRotation) > Abs(plasticLine.axisRotation) * 2.5,
+        "cover family must physically change axis retention");
+
+    var spareLine = delivery.solve(0.12, -0.08, 0.78, -0.16,
+        0.0, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, true);
+    require(Abs(spareLine.effectiveHook) < Abs(perfectLine.effectiveHook) * 0.25,
+        "spare release must flatten hook by at least seventy-five percent");
+
+    var softLine = delivery.solve(0.12, -0.08, 0.24, -0.16,
+        0.0, config.RELEASE_ASSIST_STANDARD, config.DIFFICULTY_STANDARD,
+        82, 2, config.OIL_HOUSE, "Solid", 5.9, false);
+    require(softLine.forwardSpeed < perfectLine.forwardSpeed * 0.82,
+        "low power must materially reduce ball speed and carry");
 
     var leaves = new LeaveAnalyzer();
     require(leaves.describe(1) == "Head pin", "pin-one leave name");

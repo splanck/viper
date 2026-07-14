@@ -18,7 +18,10 @@ bind "./level_base" as level_base;
 bind "./objectives" as objectives;
 bind "./levels" as levels;
 bind "./pickups" as pickups;
+bind "./hazards" as hazards;
 bind "../ai/ai_core" as ai_core;
+bind "../weapons/ballistics" as ballistics;
+bind "../weapons/targets" as targets;
 bind "../assets/textures" as textures;
 bind "./props" as props;
 
@@ -33,27 +36,42 @@ class LevelManager {
     hide objectives.Objectives obj;
     hide textures.TextureLib texLib;
     hide props.PropSet propSet;
+    hide hazards.Hazards hazardSet;
     hide Integer currentLevel;
     hide Integer currentWave;
     hide Float waveDelay;
     hide Boolean loaded;
+    hide Boolean useNavigation;
+    hide Float waveAge;
+    hide Float stragglerTimer;
+    hide Boolean bossSeen;
+    hide Boolean bossResolved;
 
     expose func init() {
         lb = new level_base.LevelBuilder();
         obj = new objectives.Objectives();
         propSet = new props.PropSet();
+        hazardSet = new hazards.Hazards();
         currentLevel = config.LV_L1;
         currentWave = 0;
         waveDelay = 0.0;
         loaded = false;
+        useNavigation = false;
+        waveAge = 0.0;
+        stragglerTimer = 0.0;
+        bossSeen = false;
+        bossResolved = false;
     }
 
     expose func setup(w: Game3D.World3D, c: G3D.Canvas3D, p: G3D.Physics3DWorld,
                       en: ai_core.EnemyManager, pk: pickups.Pickups, bus0: events.EventBus,
-                      tex: textures.TextureLib) {
+                      tex: textures.TextureLib, navEnabled: Boolean,
+                      ball: ballistics.Ballistics, registry: targets.TargetRegistry) {
         world = w; canvas = c; phys = p; enemies = en; pickupSys = pk; bus = bus0;
         texLib = tex;
+        useNavigation = navEnabled;
         propSet.setup(w, tex, c);
+        hazardSet.setup(w, p, bus0, ball, registry);
     }
 
     expose func getObjectives() -> objectives.Objectives { return obj; }
@@ -63,14 +81,35 @@ class LevelManager {
     expose func startY() -> Float { return lb.startYv(); }
     expose func startZ() -> Float { return lb.startZv(); }
     expose func startYaw() -> Float { return lb.startYawv(); }
-    expose func isComplete() -> Boolean { return loaded && obj.allRequiredDone(); }
+    expose func isComplete() -> Boolean {
+        if loaded == false || obj.allRequiredDone() == false { return false; }
+        if lb.waveTotal() > 0 && currentWave < lb.waveTotal() - 1 { return false; }
+        return enemies.aliveCount() == 0;
+    }
     expose func currentLevelId() -> Integer { return currentLevel; }
 
-    expose func load(levelId: Integer) {
+    // Tear down the current campaign map without immediately constructing a
+    // replacement. The arena/title transitions use this to guarantee that
+    // retained geometry, hazards, actors and navigation never overlap scenes.
+    expose func unload() {
         if loaded { lb.unload(world, phys); }
         propSet.clear();
+        hazardSet.clear();
         enemies.clearAll();
+        enemies.disableNavigation();
         pickupSys.clear();
+        obj.clear();
+        currentWave = 0;
+        waveDelay = 0.0;
+        waveAge = 0.0;
+        stragglerTimer = 0.0;
+        bossSeen = false;
+        bossResolved = false;
+        loaded = false;
+    }
+
+    expose func load(levelId: Integer) {
+        unload();
         currentLevel = levelId;
         levels.build(levelId, lb, obj);
         lb.build(world, phys, canvas, texLib);
@@ -89,9 +128,22 @@ class LevelManager {
         // Instantiate the level's props (entities + instance batches).
         var pi = 0;
         while pi < lb.propCount() {
-            propSet.place(lb.propKindAt(pi), lb.propXat(pi), lb.propYat(pi), lb.propZat(pi),
-                          lb.propYawAt(pi), lb.propScaleAt(pi));
+            if lb.propKindAt(pi) == props.PROP_BARREL {
+                hazardSet.spawnBarrel(lb.propXat(pi), lb.propYat(pi), lb.propZat(pi),
+                                      lb.propScaleAt(pi));
+            } else {
+                propSet.place(lb.propKindAt(pi), lb.propXat(pi), lb.propYat(pi), lb.propZat(pi),
+                              lb.propYawAt(pi), lb.propScaleAt(pi));
+            }
             pi = pi + 1;
+        }
+        // Bake only after static level geometry/props exist and before enemies
+        // spawn, so query-only hitboxes never contaminate the walkable mesh.
+        if useNavigation {
+            enemies.setNavigation(world.BakeNavMesh(config.NAV_AGENT_RADIUS,
+                config.NAV_AGENT_HEIGHT, config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE));
+        } else {
+            enemies.disableNavigation();
         }
         // Wave 0 enemies + all pickups.
         spawnWave(0);
@@ -104,6 +156,10 @@ class LevelManager {
         obj.setKillBaseline(enemies.killCountTotal());
         currentWave = 0;
         waveDelay = 0.0;
+        waveAge = 0.0;
+        stragglerTimer = 0.0;
+        bossSeen = enemies.bossAliveCount() > 0;
+        bossResolved = false;
         loaded = true;
     }
 
@@ -120,9 +176,22 @@ class LevelManager {
         }
     }
 
+    hide func spawnCountForWave(wave: Integer) -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < lb.spawnCount() {
+            if lb.spawnWaveAt(i) == wave { count = count + 1; }
+            i = i + 1;
+        }
+        return count;
+    }
+
     expose func update(dt: Float, px: Float, pz: Float) {
         if loaded == false { return; }
-        obj.update(dt, px, pz, enemies.killCountTotal(), enemies.aliveCount(), bus);
+        waveAge = waveAge + dt;
+        var objectiveAlive = enemies.aliveCount();
+        if currentWave < lb.waveTotal() - 1 { objectiveAlive = objectiveAlive + 1; }
+        obj.update(dt, px, pz, enemies.killCountTotal(), objectiveAlive, bus);
         var gi = 0;
         while gi < lb.gateCount() {
             var unlock = lb.gateUnlockAt(gi);
@@ -132,29 +201,99 @@ class LevelManager {
             }
             gi = gi + 1;
         }
-        // Wave progression: when the field clears, stage the next wave.
+        // Encounter progression: spatial beats reward forward motion, holdout
+        // beats overlap on a timer, and low-threat fields receive reinforcements
+        // before the last straggler produces dead air.
         if currentWave < lb.waveTotal() - 1 {
-            if enemies.aliveCount() == 0 {
-                waveDelay = waveDelay + dt;
-                if waveDelay > 1.5 {
-                    currentWave = currentWave + 1;
-                    spawnWave(currentWave);
-                    waveDelay = 0.0;
+            var next = currentWave + 1;
+            var trigger = beatForWave(next);
+            var shouldSpawn = false;
+            var hasRoom = enemies.aliveCount() + spawnCountForWave(next) <= config.AI_ACTIVE_CAP;
+            if trigger >= 0 {
+                var kind = lb.encounterBeatKindAt(trigger);
+                var near = distanceXZ(px, pz, lb.encounterBeatXat(trigger), lb.encounterBeatZat(trigger)) <= 12.0;
+                if kind == 2 {
+                    shouldSpawn = waveAge >= 10.0;
+                } else {
+                    shouldSpawn = near && enemies.aliveCount() <= 6;
                 }
-            } else {
+            }
+            if enemies.aliveCount() <= 2 && waveAge >= 4.0 { shouldSpawn = true; }
+            if shouldSpawn && hasRoom {
+                currentWave = next;
+                spawnWave(currentWave);
+                waveAge = 0.0;
                 waveDelay = 0.0;
+                bus.pushKind(config.EV_CHECKPOINT, currentWave, currentLevel);
             }
         }
+
+        if enemies.bossAliveCount() > 0 { bossSeen = true; }
+        if bossSeen && bossResolved == false && enemies.bossAliveCount() == 0 {
+            bossResolved = true;
+            enemies.retreatNonBosses();
+            if lb.waveTotal() > 0 { currentWave = lb.waveTotal() - 1; }
+        }
+        if enemies.aliveCount() <= 2 && enemies.aliveCount() > 0 {
+            stragglerTimer = stragglerTimer + dt;
+            if stragglerTimer >= 6.0 {
+                enemies.recoverStragglers(px, pz, 38.0);
+                stragglerTimer = 0.0;
+            }
+        } else {
+            stragglerTimer = 0.0;
+        }
+    }
+
+    hide func beatForWave(wave: Integer) -> Integer {
+        var i = 0;
+        while i < lb.encounterBeatCount() {
+            if lb.encounterBeatWaveAt(i) == wave { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    hide func distanceXZ(ax: Float, az: Float, bx: Float, bz: Float) -> Float {
+        var dx = ax - bx; var dz = az - bz;
+        return Sqrt(dx * dx + dz * dz);
+    }
+
+    expose func currentWaveIndex() -> Integer { return currentWave; }
+    expose func waveTotal() -> Integer { return lb.waveTotal(); }
+    expose func allWavesSpawned() -> Boolean { return currentWave >= lb.waveTotal() - 1; }
+
+    // Resume at the beginning of an authored encounter wave. Earlier waves are
+    // intentionally absent; objective state is restored by Game immediately
+    // afterward from the checkpoint snapshot.
+    expose func resumeAtWave(wave: Integer) {
+        var w = wave;
+        if w < 0 { w = 0; }
+        if w >= lb.waveTotal() { w = lb.waveTotal() - 1; }
+        if w < 0 { w = 0; }
+        enemies.clearAll();
+        currentWave = w;
+        spawnWave(currentWave);
+        obj.setKillBaseline(enemies.killCountTotal());
+        waveDelay = 0.0;
+        waveAge = 0.0;
+        stragglerTimer = 0.0;
+        bossSeen = enemies.bossAliveCount() > 0;
+        bossResolved = false;
     }
 
     // The player interacted at (px, pz): advance ACTIVATE objectives.
     expose func onInteract(px: Float, pz: Float) {
+        if enemies.aliveCount() > 0 { return; }
         obj.markInteract(px, pz, bus);
     }
 
     // --- Render/tick delegation for props + terrain ---------------------------
     expose func updateProps(dt: Float) { propSet.update(dt); }
     expose func drawProps() { propSet.drawBatches(); }
+    expose func applyHazardDamageEvents() { hazardSet.applyDamageEvents(); }
+    expose func hazardCount() -> Integer { return hazardSet.count(); }
+    expose func hazardHealthAt(i: Integer) -> Float { return hazardSet.healthAt(i); }
     expose func hasTerrain() -> Boolean { return loaded && lb.hasTerrain(); }
     expose func hasWater() -> Boolean { return loaded && lb.hasWater(); }
     expose func waterObj() -> G3D.Water3D { return lb.waterObj(); }

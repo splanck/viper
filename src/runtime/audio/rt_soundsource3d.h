@@ -27,6 +27,8 @@ void *rt_soundsource3d_get_position(void *source);
 void rt_soundsource3d_set_position(void *source, void *position);
 /// @brief Set the source's position from raw scalar coordinates.
 void rt_soundsource3d_set_position_vec(void *source, double x, double y, double z);
+/// @brief Shift an unbound source's position by a floating-origin rebase delta (subtracts it).
+void rt_soundsource3d_rebase_origin(void *source, double dx, double dy, double dz);
 
 /// @brief Get the source's velocity as a Vec3 (used for Doppler shift).
 void *rt_soundsource3d_get_velocity(void *source);

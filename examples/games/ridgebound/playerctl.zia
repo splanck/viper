@@ -22,6 +22,7 @@ class RidgeboundPlayer {
     hide Entity3D entity;
     hide CharacterController3D controller;
     hide Character3D character;
+    hide Terrain3D land;
     hide Float px;
     hide Float py;
     hide Float pz;
@@ -29,8 +30,14 @@ class RidgeboundPlayer {
     hide Float stamina;
     hide Float regenScale;
     hide Boolean sprintingNow;
+    hide Boolean swimmingNow;
+    hide Boolean wasSwimming;
+    hide Float facingYaw;
+    hide Float gaitPhase;
+    hide Float moveAmount;
 
     expose func spawn(world: World3D, land: Terrain3D) {
+        self.land = land;
         var sx = terrain.terrainWorldMaxX() * 0.50;
         var sz = terrain.terrainWorldMaxZ() * 0.50;
         var sy = terrain.sampleGround(land, sx, sz);
@@ -49,6 +56,8 @@ class RidgeboundPlayer {
         controller.JumpSpeed = config.PLAYER_JUMP_SPEED;
         controller.Gravity = config.PLAYER_GRAVITY;
         character = controller.Character;
+        character.StepHeight = config.PLAYER_STEP_HEIGHT;
+        character.SetSlopeLimit(config.PLAYER_SLOPE_LIMIT);
 
         px = sx;
         py = sy;
@@ -57,6 +66,11 @@ class RidgeboundPlayer {
         stamina = 1.0;
         regenScale = 1.0;
         sprintingNow = false;
+        swimmingNow = false;
+        wasSwimming = false;
+        facingYaw = 3.14159265;
+        gaitPhase = 0.0;
+        moveAmount = 0.0;
     }
 
     expose func respawn(land: Terrain3D) {
@@ -72,6 +86,11 @@ class RidgeboundPlayer {
         stamina = 1.0;
         regenScale = 1.0;
         sprintingNow = false;
+        swimmingNow = false;
+        wasSwimming = false;
+        facingYaw = 3.14159265;
+        gaitPhase = 0.0;
+        moveAmount = 0.0;
     }
 
     // Drive the character (camera-relative move + gravity + jump), then mirror
@@ -84,6 +103,7 @@ class RidgeboundPlayer {
         var sprinting = wantSprint && stamina > 0.0;
         var spd = config.PLAYER_MOVE_SPEED;
         if (sprinting) { spd = spd * config.PLAYER_SPRINT_MULT; }
+        if (swimmingNow) { spd = spd * 0.48; }
         controller.Speed = spd;
         controller.Update(input, camera, dt);
 
@@ -105,10 +125,30 @@ class RidgeboundPlayer {
         if (clamped) { controller.Teleport(nx, ny, nz); }
 
         var feetY = ny - config.PLAYER_CAPSULE_HEIGHT * 0.5;
+        wasSwimming = swimmingNow;
+        swimmingNow = terrain.isDeepWater(land, nx, nz);
+        if (swimmingNow) {
+            // Character collision still follows the lake floor. Keep the
+            // capsule at a deliberate surface-swim depth instead of letting
+            // the player walk invisibly underwater; authored causeways remain
+            // the faster route across the basin.
+            feetY = config.WATER_HEIGHT - 0.52;
+            ny = feetY + config.PLAYER_CAPSULE_HEIGHT * 0.5;
+            controller.Teleport(nx, ny, nz);
+        }
+        if (swimmingNow && wasSwimming == false) {
+            audioObj.playSplash(nx, config.WATER_HEIGHT, nz);
+        }
 
         var dx = nx - px;
         var dz = nz - pz;
         var moved = Sqrt(dx * dx + dz * dz);
+        moveAmount = moved / (config.PLAYER_MOVE_SPEED * dt + 0.0001);
+        if (moveAmount > 1.0) { moveAmount = 1.0; }
+        if (moved > 0.001) {
+            facingYaw = Atan2(dx, dz);
+            gaitPhase = gaitPhase + moved * 2.6;
+        }
         px = nx;
         // Character3D.Position is the capsule CENTER; the camera + player-mesh
         // math is all relative to the feet/ground, so report the feet Y (center
@@ -118,9 +158,12 @@ class RidgeboundPlayer {
         pz = nz;
 
         stepPhase = stepPhase + moved;
-        if (stepPhase >= config.STEP_DISTANCE) {
+        if (stepPhase >= config.STEP_DISTANCE && swimmingNow == false) {
             stepPhase = 0.0;
-            audioObj.playFootfall(px, py, pz);
+            var surface = 0;
+            if (terrain.isAuthoredRouteWorld(px, pz)) { surface = 1; }
+            if (py > config.WATER_HEIGHT + 12.0) { surface = 2; }
+            audioObj.playFootfall(px, py, pz, surface);
             if (sprinting && moved > 0.001) { effectsObj.burstSprintDust(px, py, pz); }
         }
 
@@ -145,6 +188,10 @@ class RidgeboundPlayer {
     expose func isGrounded() -> Boolean { return controller.Grounded(); }
     expose func getStamina() -> Float { return stamina; }
     expose func isSprinting() -> Boolean { return sprintingNow; }
+    expose func isSwimming() -> Boolean { return swimmingNow; }
+    expose func getFacingYaw() -> Float { return facingYaw; }
+    expose func getGaitPhase() -> Float { return gaitPhase; }
+    expose func getMoveAmount() -> Float { return moveAmount; }
 
     expose func getX() -> Float { return px; }
     expose func getY() -> Float { return py; }

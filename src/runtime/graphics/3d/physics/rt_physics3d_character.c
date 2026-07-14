@@ -589,8 +589,8 @@ static void character3d_push_dynamic(rt_character3d *ctrl,
 /// @brief Slide-and-iterate motion solver — the heart of the controller's `Move`.
 ///
 /// Up to 4 iterations of: resolve penetration → sweep → if hit,
-/// project leftover motion onto the contact plane (or try step-up
-/// for non-walkable hits) → continue with the leftover motion. This
+/// project leftover motion onto the contact plane (or try the bounded
+/// step-up path for a horizontal obstruction) → continue with the motion. This
 /// gives the "slide along walls" feel typical of FPS controllers.
 /// Vertical hits onto walkable surfaces also set the grounded flag
 /// so gravity stops compounding.
@@ -619,8 +619,19 @@ static void character3d_move_axis(rt_character3d *ctrl,
         leftover[2] = remaining[2] * (1.0 - hit.fraction);
         character3d_sanitize_delta(leftover, leftover);
 
-        if (allow_step && !character3d_normal_is_walkable(ctrl, hit.normal) &&
-            character3d_try_step(ctrl, leftover))
+        /* A horizontal capsule sweep intersects the supporting heightfield as
+         * soon as the ground rises, even when the sampled surface is almost
+         * flat.  Treating that walkable contact only as a slide can repeatedly
+         * consume the tiny horizontal remainder at cell boundaries, leaving a
+         * controller unable to cross otherwise navigable rolling terrain.
+         *
+         * The existing three-phase step is also the correct bounded traversal
+         * for this case: lift by the configured step height, cross the
+         * remainder, then settle onto a walkable surface.  Applying it to every
+         * horizontal obstruction (not just wall-like contacts) preserves the
+         * slope limit and step-height contract while preventing ground contact
+         * from becoming an invisible wall. */
+        if (allow_step && character3d_try_step(ctrl, leftover))
             return;
 
         if (remaining[1] < 0.0 && character3d_normal_is_walkable(ctrl, hit.normal)) {

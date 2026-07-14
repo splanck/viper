@@ -427,8 +427,16 @@ int8_t rt_physics2d_joint_is_active(void *joint) {
 static int8_t world_has_body(rt_world_impl *w, void *body) {
     if (!w || !body)
         return 0;
+    rt_body_impl *bd = (rt_body_impl *)body;
+    /* O(1) for the common single-world case: owner_world == w is a definitive yes,
+     * owner_world == NULL a definitive no. Only a body juggled between worlds needs
+     * the linear scan. */
+    if (bd->owner_world == w)
+        return 1;
+    if (bd->owner_world == NULL)
+        return 0;
     for (int64_t i = 0; i < w->body_count; i++) {
-        if (w->bodies[i] == (rt_body_impl *)body)
+        if (w->bodies[i] == bd)
             return 1;
     }
     return 0;
@@ -577,6 +585,21 @@ static void solve_spring(ph_joint *j, double dt) {
     double rel_vn = (b->vx - a->vx) * nx + (b->vy - a->vy) * ny;
     double force = j->stiffness * stretch + j->damping * rel_vn;
 
+    // Stability clamp. Explicit-Euler spring integration diverges once a single
+    // step overshoots the rest length (the classic k > 4m/dt^2 blow-up). Cap the
+    // relative-velocity change this force would produce so the spring can at most
+    // cancel the current relative normal velocity and close the remaining stretch
+    // within this step — never inject more. For normal frame steps |stretch|/dt is
+    // large, so the clamp never engages and behaviour is bit-identical to the raw
+    // Hooke integration; it only bounds the impulse on large (post-hitch) dt.
+    double total_inv = a->inv_mass + b->inv_mass;
+    if (total_inv < 1e-12)
+        return;
+    double d_rel_v = force * dt * total_inv; // magnitude of induced |Δ(rel_vn)|
+    double max_d_rel_v = fabs(rel_vn) + fabs(stretch) / dt;
+    if (fabs(d_rel_v) > max_d_rel_v && fabs(d_rel_v) > 0.0)
+        force *= max_d_rel_v / fabs(d_rel_v);
+
     double fx = force * nx;
     double fy = force * ny;
 
@@ -659,6 +682,122 @@ static void solve_rope(ph_joint *j, double dt) {
 
     body_set_center(a, body_cx(a) + cx_a, body_cy(a) + cy_a);
     body_set_center(b, body_cx(b) - cx_b, body_cy(b) - cy_b);
+}
+
+/// @brief Cancel the relative velocity along a distance joint's axis (rigid rod).
+/// @details The positional solvers (solve_distance/hinge/rope) only project
+///   positions; they never touch velocity, and body_set_center shifts prev_x/prev_y
+///   by the same delta so the correction is invisible to velocity as well. Without
+///   this pass a body hanging on a distance joint under gravity accumulates the
+///   uncorrected radial velocity every step (vy += g*dt forever) — "phantom
+///   velocity" that balloons its swept AABB and launches it if the joint is
+///   removed. Removing the constraint-axis relative velocity (an e=0 normal impulse
+///   along the joint axis) is the velocity half of position-based dynamics.
+static void solve_distance_velocity(ph_joint *j) {
+    rt_body_impl *a = (rt_body_impl *)j->body_a;
+    rt_body_impl *b = (rt_body_impl *)j->body_b;
+    if (!a || !b)
+        return;
+    double total_inv = a->inv_mass + b->inv_mass;
+    if (total_inv < 1e-12)
+        return;
+    double dx = body_cx(b) - body_cx(a);
+    double dy = body_cy(b) - body_cy(a);
+    double dist = sqrt(dx * dx + dy * dy);
+    if (dist < 1e-8)
+        return;
+    double nx = dx / dist;
+    double ny = dy / dist;
+    double rel_vn = (b->vx - a->vx) * nx + (b->vy - a->vy) * ny;
+    double jn = -rel_vn / total_inv;
+    a->vx -= jn * a->inv_mass * nx;
+    a->vy -= jn * a->inv_mass * ny;
+    b->vx += jn * b->inv_mass * nx;
+    b->vy += jn * b->inv_mass * ny;
+}
+
+/// @brief Cancel the full relative velocity at a hinge's shared anchor.
+/// @details These bodies carry no angular state, so a hinge pins their motion
+///   together at the anchor: the correct velocity constraint zeroes the relative
+///   linear velocity, mass-weighted. Mirrors solve_distance_velocity for the pin
+///   case and prevents the same phantom-velocity accumulation.
+static void solve_hinge_velocity(ph_joint *j) {
+    rt_body_impl *a = (rt_body_impl *)j->body_a;
+    rt_body_impl *b = (rt_body_impl *)j->body_b;
+    if (!a || !b)
+        return;
+    double total_inv = a->inv_mass + b->inv_mass;
+    if (total_inv < 1e-12)
+        return;
+    double jx = -(b->vx - a->vx) / total_inv;
+    double jy = -(b->vy - a->vy) / total_inv;
+    a->vx -= jx * a->inv_mass;
+    a->vy -= jy * a->inv_mass;
+    b->vx += jx * b->inv_mass;
+    b->vy += jy * b->inv_mass;
+}
+
+/// @brief Cancel only the separating velocity of a rope joint when it is taut.
+/// @details A rope resists extension but not approach, so this removes the
+///   relative velocity along the axis only when the bodies are at/over max length
+///   and still separating (rel_vn > 0). Approaching bodies keep their velocity so
+///   the rope can go slack, matching solve_rope's position behaviour.
+static void solve_rope_velocity(ph_joint *j) {
+    rt_body_impl *a = (rt_body_impl *)j->body_a;
+    rt_body_impl *b = (rt_body_impl *)j->body_b;
+    if (!a || !b)
+        return;
+    double total_inv = a->inv_mass + b->inv_mass;
+    if (total_inv < 1e-12)
+        return;
+    double dx = body_cx(b) - body_cx(a);
+    double dy = body_cy(b) - body_cy(a);
+    double dist = sqrt(dx * dx + dy * dy);
+    if (dist <= j->length || dist < 1e-8)
+        return;
+    double nx = dx / dist;
+    double ny = dy / dist;
+    double rel_vn = (b->vx - a->vx) * nx + (b->vy - a->vy) * ny;
+    if (rel_vn <= 0.0)
+        return; /* approaching — rope allows it to slacken */
+    double jn = -rel_vn / total_inv;
+    a->vx -= jn * a->inv_mass * nx;
+    a->vy -= jn * a->inv_mass * ny;
+    b->vx += jn * b->inv_mass * nx;
+    b->vy += jn * b->inv_mass * ny;
+}
+
+/// @brief Velocity-projection pass for positional joints, run once per step after
+///        the positional (Gauss-Seidel) correction.
+/// @details Distance/hinge/rope joints correct position only; this pass removes the
+///   residual constraint-axis relative velocity so it cannot accumulate across
+///   steps. Spring joints are velocity-based already and are skipped here.
+/// @param world  Physics2D.World handle.
+/// @param dt     Time step (unused; velocity projection is time-independent).
+void rt_physics2d_solve_joint_velocities(void *world, double dt) {
+    (void)dt;
+    rt_world_impl *w = checked_world(world, "Physics2D.World: expected Physics2D.World");
+    if (!w)
+        return;
+
+    for (int64_t i = 0; i < w->joint_count; i++) {
+        ph_joint *j = w->joints[i];
+        if (!j || !j->active)
+            continue;
+        switch (j->type) {
+            case RT_JOINT_DISTANCE:
+                solve_distance_velocity(j);
+                break;
+            case RT_JOINT_HINGE:
+                solve_hinge_velocity(j);
+                break;
+            case RT_JOINT_ROPE:
+                solve_rope_velocity(j);
+                break;
+            case RT_JOINT_SPRING:
+                break;
+        }
+    }
 }
 
 /// @brief Iterate all spring joints in the world and apply velocity impulses.
@@ -765,6 +904,8 @@ void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double m
     b->collision_mask = INT64_C(-1);
     b->radius = radius;
     b->is_circle = 1;
+    b->owner_world = NULL;
+    b->world_index = -1;
     return b;
 }
 

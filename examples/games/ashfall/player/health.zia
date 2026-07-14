@@ -55,6 +55,14 @@ class PlayerHealth {
         armor = M.clampf(armor + amt, 0.0, config.PLAYER_ARMOR_MAX);
     }
 
+    expose func restore(healthNow: Float, shieldNow: Float, armorNow: Float) {
+        health = M.clampf(healthNow, 1.0, config.PLAYER_HEALTH_MAX);
+        shield = M.clampf(shieldNow, 0.0, config.PLAYER_SHIELD_MAX);
+        armor = M.clampf(armorNow, 0.0, config.PLAYER_ARMOR_MAX);
+        timeSinceDamage = 0.0;
+        lastDamageDir = 0.0;
+    }
+
     // Apply raw incoming damage through the shield/armor/health cascade.
     expose func applyDamage(amount: Float, dirDeg: Float) {
         if godMode || amount <= 0.0 { return; }

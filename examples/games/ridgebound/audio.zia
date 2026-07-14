@@ -11,9 +11,12 @@ class RidgeboundAudio {
     hide Sound3D audio;
     hide Sound chimeClip;
     hide Sound humClip;
-    hide Sound stepClip;
+    hide Sound stepGrassClip;
+    hide Sound stepTrailClip;
+    hide Sound stepStoneClip;
+    hide Sound splashClip;
+    hide Sound resonanceClip;
     hide Sound victoryClip;
-    hide Sound gustClip;
     hide Float ambientTimer;
     hide Vec3 ambientSoundPos;
     hide Vec3 footfallPos;
@@ -24,10 +27,13 @@ class RidgeboundAudio {
         audio.ListenerFollowCamera(true);
         audio.SetAttenuation(config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
         chimeClip = Synth.Sweep(520, 1040, 280, 45);
-        humClip = Synth.Tone(190, 460, 30);
-        stepClip = Synth.Noise(70, 22);
+        humClip = Synth.Tone(146, 900, 12);
+        stepGrassClip = Synth.Noise(64, 15);
+        stepTrailClip = Synth.Noise(78, 20);
+        stepStoneClip = Synth.Noise(48, 24);
+        splashClip = Synth.Noise(150, 18);
+        resonanceClip = Synth.Tone(260, 520, 20);
         victoryClip = Synth.Sweep(440, 1320, 620, 55);
-        gustClip = Synth.Noise(180, 60);
         ambientSoundPos = new Vec3(0.0, 0.0, 0.0);
         footfallPos = new Vec3(0.0, 0.0, 0.0);
         beaconSoundPos = new Vec3(0.0, 0.0, 0.0);
@@ -35,25 +41,36 @@ class RidgeboundAudio {
     }
 
     expose func reset() {
-        ambientTimer = 2.0;
+        if (audio != null) { audio.ClearSources(); }
+        ambientTimer = 14.0;
     }
 
     expose func updateAmbient(dt: Float) {
         ambientTimer = ambientTimer - dt;
         if (ambientTimer <= 0.0 && audio != null) {
-            ambientTimer = 5.5;
+            ambientTimer = 19.0;
             ambientSoundPos.Set(
                 terrain.terrainWorldMaxX() * 0.5,
                 config.WATER_HEIGHT + 1.5,
                 terrain.terrainWorldMaxZ() * 0.5);
-            audio.PlayAt(gustClip, ambientSoundPos);
+            audio.PlayAt(humClip, ambientSoundPos);
         }
     }
 
-    expose func playFootfall(x: Float, y: Float, z: Float) {
+    expose func playFootfall(x: Float, y: Float, z: Float, surface: Integer) {
         if (audio != null) {
             footfallPos.Set(x, y, z);
-            audio.PlayAt(stepClip, footfallPos);
+            var clip = stepGrassClip;
+            if (surface == 1) { clip = stepTrailClip; }
+            if (surface == 2) { clip = stepStoneClip; }
+            audio.PlayAt(clip, footfallPos);
+        }
+    }
+
+    expose func playSplash(x: Float, y: Float, z: Float) {
+        if (audio != null) {
+            footfallPos.Set(x, y, z);
+            audio.PlayAt(splashClip, footfallPos);
         }
     }
 
@@ -61,10 +78,14 @@ class RidgeboundAudio {
         if (audio != null) {
             beaconSoundPos.Set(x, y + 2.0, z);
             audio.PlayAt(chimeClip, beaconSoundPos);
+            audio.PlayAt(resonanceClip, beaconSoundPos);
         }
     }
 
     expose func playVictory() {
-        if (audio != null) { audio.Play2D(victoryClip); }
+        if (audio != null) {
+            audio.Play2D(victoryClip);
+            audio.Play2D(resonanceClip);
+        }
     }
 }

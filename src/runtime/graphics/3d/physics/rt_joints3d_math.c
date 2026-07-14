@@ -458,6 +458,90 @@ void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
         joint3d_vec3_set(out, 0.0, 1.0, 0.0);
 }
 
+/// @brief out = I^-1 * v in world space, from the body's local diagonal inverse inertia.
+/// @details Mirrors body3d_world_inv_inertia_mul: rotate the vector into the body's
+///          principal-axis frame, scale by the diagonal inverse inertia, rotate back.
+///          Angular constraints must weight by this, not by inverse mass.
+void joint3d_world_inv_inertia_mul(const rt_body3d_kinematics *body,
+                                   const double *v,
+                                   double *out) {
+    double inv_rotation[4];
+    double local_v[3];
+    double local_out[3];
+    if (!out)
+        return;
+    joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+    if (!body || !v || !joint3d_vec3_all_finite(v))
+        return;
+    joint3d_quat_conjugate(body->orientation, inv_rotation);
+    joint3d_quat_rotate_vec3(inv_rotation, v, local_v);
+    local_out[0] = local_v[0] * body->inv_inertia[0];
+    local_out[1] = local_v[1] * body->inv_inertia[1];
+    local_out[2] = local_v[2] * body->inv_inertia[2];
+    joint3d_quat_rotate_vec3(body->orientation, local_out, out);
+    if (!joint3d_vec3_all_finite(out))
+        joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+}
+
+/// @brief Scalar effective inverse inertia of @p body about the (unit) world @p axis.
+/// @details axis · (I^-1 axis); the rotational analogue of inverse mass along a
+///          direction. Zero for static/kinematic bodies (inv_inertia all zero).
+double joint3d_effective_inv_inertia_about_axis(const rt_body3d_kinematics *body,
+                                                const double *axis) {
+    double inv_i_axis[3];
+    double w;
+    if (!body || !axis)
+        return 0.0;
+    joint3d_world_inv_inertia_mul(body, axis, inv_i_axis);
+    w = joint3d_vec3_dot(axis, inv_i_axis);
+    return (isfinite(w) && w > 0.0) ? w : 0.0;
+}
+
+/// @brief Build the 3x3 world-space inverse inertia tensor (row-major) of @p body.
+/// @details Columns are I^-1 applied to each world basis vector; the tensor is
+///          symmetric, so this equals R * diag(inv_inertia) * R^T.
+static void joint3d_world_inv_inertia_tensor(const rt_body3d_kinematics *body, double m[9]) {
+    int c;
+    for (c = 0; c < 9; c++)
+        m[c] = 0.0;
+    if (!body)
+        return;
+    for (c = 0; c < 3; c++) {
+        double e[3] = {0.0, 0.0, 0.0};
+        double col[3];
+        e[c] = 1.0;
+        joint3d_world_inv_inertia_mul(body, e, col);
+        m[0 * 3 + c] = col[0];
+        m[1 * 3 + c] = col[1];
+        m[2 * 3 + c] = col[2];
+    }
+}
+
+/// @brief Solve the 3x3 system @p m * x = @p rhs via the cofactor inverse.
+/// @return 1 with @p x set on success, 0 if @p m is singular (leaving x untouched).
+static int joint3d_solve3(const double m[9], const double *rhs, double *x) {
+    double c00 = m[4] * m[8] - m[5] * m[7];
+    double c01 = m[5] * m[6] - m[3] * m[8];
+    double c02 = m[3] * m[7] - m[4] * m[6];
+    double det = m[0] * c00 + m[1] * c01 + m[2] * c02;
+    double inv_det;
+    double c10, c11, c12, c20, c21, c22;
+    if (!isfinite(det) || fabs(det) < 1e-12)
+        return 0;
+    inv_det = 1.0 / det;
+    c10 = m[2] * m[7] - m[1] * m[8];
+    c11 = m[0] * m[8] - m[2] * m[6];
+    c12 = m[1] * m[6] - m[0] * m[7];
+    c20 = m[1] * m[5] - m[2] * m[4];
+    c21 = m[2] * m[3] - m[0] * m[5];
+    c22 = m[0] * m[4] - m[1] * m[3];
+    /* x = M^-1 rhs; M^-1 = adj(M)^T / det, adj rows are the cofactors above. */
+    x[0] = (c00 * rhs[0] + c10 * rhs[1] + c20 * rhs[2]) * inv_det;
+    x[1] = (c01 * rhs[0] + c11 * rhs[1] + c21 * rhs[2]) * inv_det;
+    x[2] = (c02 * rhs[0] + c12 * rhs[1] + c22 * rhs[2]) * inv_det;
+    return joint3d_vec3_all_finite(x);
+}
+
 /// @brief Positionally pull two bodies' world anchors together (a ball-socket positional
 /// constraint).
 /// @details Splits the anchor gap between the bodies in inverse-mass proportion, scaled by
@@ -608,14 +692,17 @@ void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a,
                                                      const double *allowed_axis) {
     double rel[3];
     double remove[3];
-    double inv_sum;
+    double ka[9];
+    double kb[9];
+    double k[9];
+    double impulse[3];
+    double dv_a[3];
+    double dv_b[3];
+    int i;
     if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b))
         return;
     if (!joint3d_vec3_all_finite(body_a->angular_velocity) ||
         !joint3d_vec3_all_finite(body_b->angular_velocity))
-        return;
-    inv_sum = body_a->inv_mass + body_b->inv_mass;
-    if (!isfinite(inv_sum) || inv_sum < 1e-12)
         return;
     joint3d_vec3_sub(body_b->angular_velocity, body_a->angular_velocity, rel);
     remove[0] = rel[0];
@@ -629,12 +716,20 @@ void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a,
     }
     if (!joint3d_vec3_all_finite(remove))
         return;
-    for (int i = 0; i < 3; i++) {
-        double correction = remove[i] / inv_sum;
-        correction = joint3d_clamp_force(correction);
-        body_a->angular_velocity[i] =
-            joint3d_clamp_force(body_a->angular_velocity[i] + correction * body_a->inv_mass);
-        body_b->angular_velocity[i] =
-            joint3d_clamp_force(body_b->angular_velocity[i] - correction * body_b->inv_mass);
+    /* Cancel the off-axis relative angular velocity with an angular impulse L
+     * satisfying (Ia^-1 + Ib^-1) L = remove, then wa += Ia^-1 L, wb -= Ib^-1 L.
+     * Weighting by inverse inertia (not inverse mass) is what distributes the
+     * correction correctly between heavy/light and non-uniform bodies. */
+    joint3d_world_inv_inertia_tensor(body_a, ka);
+    joint3d_world_inv_inertia_tensor(body_b, kb);
+    for (i = 0; i < 9; i++)
+        k[i] = ka[i] + kb[i];
+    if (!joint3d_solve3(k, remove, impulse))
+        return; /* neither body can rotate on this constraint */
+    joint3d_world_inv_inertia_mul(body_a, impulse, dv_a);
+    joint3d_world_inv_inertia_mul(body_b, impulse, dv_b);
+    for (i = 0; i < 3; i++) {
+        body_a->angular_velocity[i] = joint3d_clamp_force(body_a->angular_velocity[i] + dv_a[i]);
+        body_b->angular_velocity[i] = joint3d_clamp_force(body_b->angular_velocity[i] - dv_b[i]);
     }
 }

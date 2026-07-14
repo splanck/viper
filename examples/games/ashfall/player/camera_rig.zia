@@ -106,15 +106,17 @@ class CameraRig {
         // ADS blend + FOV.
         var adsTarget = 0.0;
         if adsHeld { adsTarget = 1.0; }
-        adsT = M.approach(adsT, adsTarget, 0.4, dt);
+        var adsSeconds = config.ADS_TIME_MAX;
+        if adsTarget > adsT { adsSeconds = config.ADS_TIME_MIN; }
+        adsT = approachDuration(adsT, adsTarget, adsSeconds, dt);
         var hipFov = fovBase;
         if player.isSprinting() { hipFov = fovBase + config.SPRINT_FOV_ADD; }
         fovCur = M.lerpf(hipFov, zoomFov, adsT);
 
         // Slide roll.
         var rollTarget = 0.0;
-        if player.getStance() == 2 { rollTarget = 2.0; }
-        roll = M.approach(roll, rollTarget, 0.3, dt);
+        if player.getStance() == 2 { rollTarget = config.SLIDE_ROLL_DEG; }
+        roll = M.approach(roll, rollTarget, 0.35, dt);
 
         // Shake decay.
         if shakeAmp > 0.0 {
@@ -159,7 +161,13 @@ class CameraRig {
         var fwd = forward(pitch);
         var eye = Math.Vec3.New(ex, ey, ez);
         var target = Math.Vec3.New(ex + Math.Vec3.get_X(fwd), ey + Math.Vec3.get_Y(fwd), ez + Math.Vec3.get_Z(fwd));
-        var up = Math.Vec3.New(0.0, 1.0, 0.0);
+        // Roll the camera up vector around the view direction during a slide.
+        var rr = M.toRad(roll);
+        var rx = 0.0 - Math.Vec3.get_Z(fwd);
+        var rz = Math.Vec3.get_X(fwd);
+        var rl = Math.Sqrt(rx * rx + rz * rz);
+        if rl > 0.001 { rx = rx / rl; rz = rz / rl; }
+        var up = Math.Vec3.New(rx * Math.Sin(rr), Math.Cos(rr), rz * Math.Sin(rr));
         cam.LookAt(eye, target, up);
         cam.Fov = fovCur;
     }
@@ -171,4 +179,12 @@ class CameraRig {
     expose func forwardX() -> Float { return Math.Vec3.get_X(forward(pitch)); }
     expose func forwardY() -> Float { return Math.Vec3.get_Y(forward(pitch)); }
     expose func forwardZ() -> Float { return Math.Vec3.get_Z(forward(pitch)); }
+
+    hide func approachDuration(cur: Float, target: Float, seconds: Float, dt: Float) -> Float {
+        if seconds <= 0.001 { return target; }
+        var step = dt / seconds;
+        if step > 1.0 { step = 1.0; }
+        if target > cur { return M.minf(target, cur + step); }
+        return M.maxf(target, cur - step);
+    }
 }

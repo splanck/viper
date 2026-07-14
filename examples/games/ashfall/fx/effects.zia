@@ -43,6 +43,7 @@ class Effects {
     // Ambient atmosphere loop (one continuous emitter tracking the player).
     hide G3D.Particles3D ambient;
     hide Boolean ambientOn;
+    hide Boolean softParticles;
 
     expose func init() {
         emitters = []; life = [];
@@ -55,12 +56,15 @@ class Effects {
         decals = []; decalLive = [];
         nextDecal = 0;
         ambientOn = false;
+        softParticles = false;
     }
 
-    expose func setup() {
+    expose func setup(canvas: G3D.Canvas3D) {
+        softParticles = G3D.Canvas3D.BackendSupports(canvas, "soft-particles");
         var i = 0;
         while i < COUNT {
             var p = G3D.Particles3D.New(64);
+            if softParticles { G3D.Particles3D.SetSoftness(p, 0.25); }
             emitters.Add(p);
             life.Add(0.0);
             i = i + 1;
@@ -106,6 +110,7 @@ class Effects {
         ambientOn = false;
         if ready == false || kind <= 0 || count <= 0 { return; }
         ambient = G3D.Particles3D.New(count);
+        if softParticles { G3D.Particles3D.SetSoftness(ambient, 0.45); }
         G3D.Particles3D.SetEmitterShape(ambient, 1);
         G3D.Particles3D.SetEmitterSize(ambient, 34.0, 12.0, 34.0);
         G3D.Particles3D.SetRate(ambient, (count + 0.0) / 4.0);

@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/game_flow.zia
+// Purpose: Runs input dispatch, fixed-step gameplay, watchdogs, and collision handling.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: engine/game_flow
 // PURPOSE: Main loop, input dispatch, fixed-step physics, and impacts.
@@ -24,9 +42,12 @@ class BowlingGameFlow extends BowlingGameSetup {
             if (render.shouldClose()) {
                 break;
             }
+            if (render.syncViewport()) {
+                camCtrl.replaceCamera(render.getCamera());
+            }
             var dt = render.getDeltaTime();
 
-            if (lightFlashTimer > 0.0) {
+            if (screenState != config.SCREEN_PAUSED && lightFlashTimer > 0.0) {
                 lightFlashTimer = lightFlashTimer - dt;
                 if (lightFlashTimer <= 0.0) {
                     render.resetPinLight();
@@ -35,7 +56,7 @@ class BowlingGameFlow extends BowlingGameSetup {
 
             if (screenState == config.SCREEN_TITLE) {
                 camCtrl.updateTitle(dt);
-                handleTitleInput();
+                handleTitleInput(dt);
             } else if (screenState == config.SCREEN_OPTIONS) {
                 camCtrl.updateTitle(dt);
                 handleOptionsInput();
@@ -48,10 +69,12 @@ class BowlingGameFlow extends BowlingGameSetup {
                 handleResultsInput();
             }
 
-            particleMgr.update(dt);
-            if (gameState == config.STATE_CELEBRATING) { celebMgr.update(dt); }
-            hudObj.update(dt);
-            bowlerAvatar.update(dt, aimX, charging);
+            if (screenState != config.SCREEN_PAUSED) {
+                particleMgr.update(dt);
+                if (gameState == config.STATE_CELEBRATING) { celebMgr.update(dt); }
+                hudObj.update(dt);
+                bowlerAvatar.update(dt, aimX, charging);
+            }
             updateAudioListener();
 
             render.beginFrame();
@@ -63,8 +86,8 @@ class BowlingGameFlow extends BowlingGameSetup {
     }
 
     /// @brief Title-screen menu dispatch.
-    hide func handleTitleInput() {
-        var cmd = menuObj.updateTitle();
+    hide func handleTitleInput(dt: Float) {
+        var cmd = menuObj.updateTitle(dt);
         if (menuObj.consumeUiEvent()) { playSound("ui"); }
         if (cmd == menu.CMD_START_MATCH) {
             startNewMatchMode(menuObj.getStartPlayerCount(), menuObj.getStartMode());
@@ -130,11 +153,26 @@ class BowlingGameFlow extends BowlingGameSetup {
             scoreTimer = 0.0;
         }
         if (Action.Pressed(config.ACT_PAUSE) || Action.Pressed(config.ACT_BACK)) {
+            throwResumeGate.block();
             screenState = config.SCREEN_PAUSED;
             return;
         }
         if (Action.Pressed(config.ACT_RESET)) {
-            restartCurrentMatch();
+            if (gameState == config.STATE_AIMING) {
+                stanceX = 0.0;
+                targetX = 0.0;
+                aimX = 0.0;
+                spin = 0.0;
+                spareRelease = false;
+                releaseMeter.cancel();
+                releaseMeter.reset(getReleaseAssist());
+                charging = false;
+                power = 0.0;
+                hudObj.showMessage("SETUP RESET", config.HUD_COLOR_CYAN,
+                    config.MSG_DURATION_SHORT);
+            } else {
+                restartCurrentMatch();
+            }
             return;
         }
         if (Action.Pressed(config.ACT_CAMERA)) {
@@ -163,10 +201,13 @@ class BowlingGameFlow extends BowlingGameSetup {
         var steps = Physics3DWorld.StepFixed(physWorld, dt, config.PHYSICS_DT, config.MAX_FIXED_STEPS);
         var i = 0;
         while (i < steps) {
-            if (rolling) {
+            if (rolling && gameState == config.STATE_ROLLING) {
                 updateRollingStep(config.PHYSICS_DT);
-            } else {
+            } else if (rolling == false && gameState == config.STATE_SETTLING) {
                 updateSettlingStep(config.PHYSICS_DT);
+            } else {
+                i = steps;
+                continue;
             }
             i = i + 1;
         }
@@ -185,13 +226,44 @@ class BowlingGameFlow extends BowlingGameSetup {
             return;
         }
 
-        aimX = aimX + Action.Axis(config.ACT_AIM_X) * config.AIM_SPEED * dt;
-        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
-        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+        // A pause can hide a release edge from polling. Consume a neutral
+        // frame first; an interrupted power charge restarts, while an already
+        // locked accuracy stage remains exactly where it was paused.
+        if (throwResumeGate.isBlocked()) {
+            throwResumeGate.allowsCharge(Action.Held(config.ACT_THROW));
+            if (throwResumeGate.isBlocked() == false && charging &&
+                releaseMeter.isAwaitingAccuracy() == false) {
+                releaseMeter.cancel();
+                releaseMeter.reset(getReleaseAssist());
+                charging = false;
+                power = 0.0;
+            }
+            ballObj.setSetupPosition(stanceX);
+            camCtrl.updateAim(stanceX, dt);
+            return;
+        }
+
+        stanceX = stanceX + Action.Axis(config.ACT_STANCE_X) * config.STANCE_SPEED * dt;
+        if (stanceX < -config.STANCE_MAX) { stanceX = -config.STANCE_MAX; }
+        if (stanceX > config.STANCE_MAX) { stanceX = config.STANCE_MAX; }
+        targetX = targetX + Action.Axis(config.ACT_TARGET_X) * config.TARGET_SPEED * dt;
+        if (targetX < -config.TARGET_MAX) { targetX = -config.TARGET_MAX; }
+        if (targetX > config.TARGET_MAX) { targetX = config.TARGET_MAX; }
+        aimX = stanceX;
 
         spin = spin + Action.Axis(config.ACT_SPIN_X) * config.SPIN_RATE * dt;
         if (spin < -config.SPIN_MAX) { spin = -config.SPIN_MAX; }
         if (spin > config.SPIN_MAX) { spin = config.SPIN_MAX; }
+        if (Action.Pressed(config.ACT_SPARE_RELEASE)) {
+            spareRelease = !spareRelease;
+            if (spareRelease) {
+                hudObj.showMessage("SPARE RELEASE", config.HUD_COLOR_AMBER,
+                    config.MSG_DURATION_SHORT);
+            } else {
+                hudObj.showMessage("HOOK RELEASE", config.HUD_COLOR_CYAN,
+                    config.MSG_DURATION_SHORT);
+            }
+        }
         updateTutorialCoach();
 
         if (Action.Pressed(config.ACT_BALL_PREV)) {
@@ -207,38 +279,44 @@ class BowlingGameFlow extends BowlingGameSetup {
             playSound("ui");
         }
 
-        if (Action.Held(config.ACT_THROW)) {
+        if (releaseMeter.isAwaitingAccuracy()) {
+            releaseMeter.update(dt);
+            if (Action.Pressed(config.ACT_THROW) || releaseMeter.confirmTimedOut()) {
+                var needle = releaseMeter.getNeedle();
+                lastReleaseOffset = (needle - 0.5) * 2.0;
+                lastReleaseAccuracy = releaseMeter.release();
+                launchBall(stanceX, targetX, power, lastReleaseOffset);
+            }
+        } else if (Action.Held(config.ACT_THROW)) {
             if (charging == false) {
                 charging = true;
                 releaseMeter.beginCharge();
             }
             releaseMeter.update(dt);
-            power = releaseMeter.getPower() * config.THROW_POWER_MAX;
+            power = releaseMeter.getPower();
         } else if (charging) {
             charging = false;
-            var needle = releaseMeter.getNeedle();
-            lastReleaseAccuracy = releaseMeter.release();
-            var releaseError = (needle - 0.5) * 2.0 *
-                (1.0 - lastReleaseAccuracy) * config.RELEASE_ERROR_X;
-            launchBall(aimX + releaseError, power);
+            releaseMeter.lockPower();
+            hudObj.showMessage("POWER LOCKED  TAP THROW FOR RELEASE",
+                config.HUD_COLOR_GREEN, config.MSG_DURATION_SHORT);
         }
 
-        ballObj.setAimPosition(aimX);
-        camCtrl.updateAim(aimX, dt);
+        ballObj.setSetupPosition(stanceX);
+        camCtrl.updateAim(stanceX, dt);
     }
 
     hide func updateTutorialCoach() {
-        if (tutorialStep == 0 && Abs(aimX) > 0.025) {
+        if (tutorialStep == 0 && (Abs(stanceX) > 0.025 || Abs(targetX) > 0.025)) {
             tutorialStep = 1;
             hudObj.showMessage("GOOD  Add curve with Q / E or the bumpers.",
                 config.HUD_COLOR_CYAN, config.MSG_DURATION_LONG);
         } else if (tutorialStep == 1 && Abs(spin) > 0.045) {
             tutorialStep = 2;
-            hudObj.showMessage("NOW HOLD SPACE / A  Build power and watch release timing.",
+            hudObj.showMessage("NOW HOLD SPACE / A  Build power, then tap again for timing.",
                 config.HUD_COLOR_AMBER, config.MSG_DURATION_LONG);
         } else if (tutorialStep == 2 && charging) {
             tutorialStep = 3;
-            hudObj.showMessage("RELEASE near the green center zone for an accurate shot.",
+            hudObj.showMessage("TAP again near the green center for an accurate release.",
                 config.HUD_COLOR_GREEN, config.MSG_DURATION_LONG);
         }
     }
@@ -247,17 +325,19 @@ class BowlingGameFlow extends BowlingGameSetup {
     hide func updateAiAiming(dt: Float) {
         aiThinkTimer = aiThinkTimer - dt;
         var current = scoreKeepers.get(activePlayer);
-        var variation = ((current.getFrame() * 7 + current.getRollInFrame() * 3) % 5) - 2;
-        var spread = 0.011 - (careerTier + 0.0) * 0.002;
-        aimX = 0.035 + (variation + 0.0) * spread;
-        spin = -0.17 - (variation + 0.0) * (spread * 0.82);
-        ballObj.setAimPosition(aimX);
-        camCtrl.updateAim(aimX, dt);
-        power = config.THROW_POWER_MAX *
-            (0.74 + (careerTier + 0.0) * 0.055 + (variation + 0.0) * 0.014);
+        var plan = aiDeliveryModel.solve(current.getFrame(),
+            current.getRollInFrame(), careerTier, difficulty);
+        stanceX = plan.stanceX;
+        targetX = plan.targetX;
+        aimX = stanceX;
+        spin = plan.hook;
+        ballObj.setSetupPosition(stanceX);
+        camCtrl.updateAim(stanceX, dt);
+        power = plan.power;
         if (aiThinkTimer <= 0.0) {
-            lastReleaseAccuracy = 0.84 + (careerTier + 0.0) * 0.06;
-            launchBall(aimX, power);
+            lastReleaseOffset = plan.releaseOffset;
+            launchBallWithAssist(stanceX, targetX, power,
+                lastReleaseOffset, 0.0);
         }
     }
 
@@ -266,19 +346,34 @@ class BowlingGameFlow extends BowlingGameSetup {
     }
 
     /// @brief Commit one human or AI release and initialize roll feedback.
-    hide func launchBall(releaseAim: Float, releasePower: Float) {
+    hide func launchBall(releaseStance: Float, releaseTarget: Float,
+                         releasePower: Float, releaseOffset: Float) {
+        launchBallWithAssist(releaseStance, releaseTarget, releasePower,
+            releaseOffset, getReleaseAssist());
+    }
+
+    /// @brief Commit a delivery with explicit timing assistance.
+    hide func launchBallWithAssist(releaseStance: Float, releaseTarget: Float,
+                                   releasePower: Float, releaseOffset: Float,
+                                   assist: Float) {
         ballObj.setSpin(spin);
-        ballObj.doThrow(releaseAim, releasePower);
+        ballObj.doDelivery(releaseStance, releaseTarget, releasePower,
+            releaseOffset, assist, difficulty, oilPattern, spareRelease);
+        lastReleaseAccuracy = ballObj.getLastDeliveryAccuracy();
+        lastShotSpeed = ballObj.getLastDeliverySpeed();
         bowlerAvatar.onRelease();
         if (tutorialStep >= 0) { tutorialStep = -1; }
         replayRecorder.beginCapture();
         pendingReplayDuration = 0.0;
-        replayRecorder.capture(ballObj.getPosition());
-        particleMgr.startLaneDust(releaseAim, config.BALL_THROW_Z);
+        replayRecorder.captureScene(ballObj.getPosition(), pinMgr);
+        particleMgr.startLaneDust(releaseStance, config.BALL_THROW_Z, releasePower);
         playSound("release");
-        playSpatialSound("roll", ballObj.getPosition(), 12.0, 72);
+        playSpatialSound(feedbackModel.rollLayer(lastShotSpeed),
+            ballObj.getPosition(), 12.0, 72);
         gutterLatched = false;
         ballHitPinsThisRoll = false;
+        watchdogResetShot = false;
+        shotWatchdog.reset(config.BALL_THROW_Z);
         entryCaptured = false;
         hasLastEntry = false;
         impactCooldown = 0.0;
@@ -293,11 +388,26 @@ class BowlingGameFlow extends BowlingGameSetup {
         impactCooldown = impactCooldown - dt;
         skidMarkTimer = skidMarkTimer - dt;
 
+        var watchdogPos = ballObj.getPosition();
+        if (shotWatchdog.update(dt, Vec3.get_X(watchdogPos),
+            Vec3.get_Y(watchdogPos), Vec3.get_Z(watchdogPos))) {
+            watchdogResetShot = true;
+            ballObj.stopAtSafePosition(shotWatchdog.getSafeX(), shotWatchdog.getSafeZ());
+            particleMgr.stopLaneDust();
+            fixedStepAlpha = 0.0;
+            settleTimer = 0.0;
+            hudObj.showMessage("SHOT RESET: ball stalled", config.HUD_COLOR_AMBER,
+                config.MSG_DURATION_LONG);
+            gameState = config.STATE_SETTLING;
+            return;
+        }
+
         var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
         ballObj.updateMotion(dt, friction, laneObj.getOilEndZ());
         laneObj.recordBallTrack(ballObj.getPosX(), ballObj.getPosZ(), Abs(ballObj.getSpin()), dt);
-        replayRecorder.capture(ballObj.getPosition());
+        replayRecorder.captureScene(ballObj.getPosition(), pinMgr);
         ballObj.stabilizeLaneRoll();
+        ballObj.sampleTrail(dt);
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
         updateTriggerZones();
@@ -334,6 +444,7 @@ class BowlingGameFlow extends BowlingGameSetup {
     /// @brief STATE_SETTLING per-step update: wait for pins/ball to come to rest.
     hide func updateSettlingStep(dt: Float) {
         impactCooldown = impactCooldown - dt;
+        replayRecorder.captureScene(ballObj.getPosition(), pinMgr);
         pinMgr.updateKnockdowns(dt);
         handlePinImpacts();
 
@@ -400,7 +511,20 @@ class BowlingGameFlow extends BowlingGameSetup {
         var bestStrength = 0.0;
         var bestPos = new Vec3(0.0, 0.0, 0.0);
         var ballPinImpact = false;
-        var sawBallPinImpact = false;
+        impactBatch.reset(ballHitPinsThisRoll);
+
+        // Pass one makes pin-pin cascade eligibility independent of the
+        // runtime's collision-event ordering for this fixed step.
+        for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
+            var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
+            var bodyA = CollisionEvent3D.get_BodyA(evt);
+            var bodyB = CollisionEvent3D.get_BodyB(evt);
+            var layerA = Physics3DBody.get_CollisionLayer(bodyA);
+            var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+            impactBatch.scanPair(layerA, layerB,
+                CollisionEvent3D.get_IsTrigger(evt));
+        }
+        impactBatch.finishScan();
 
         for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
             var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
@@ -419,23 +543,12 @@ class BowlingGameFlow extends BowlingGameSetup {
             var impulse = CollisionEvent3D.get_NormalImpulse(evt);
             var relativeSpeed = CollisionEvent3D.get_RelativeSpeed(evt);
             var strength = impulse + relativeSpeed * 0.18;
-            var isBallPinPair =
-                (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
-                (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
+            var isBallPinPair = impactBatch.isBallPinPair(layerA, layerB);
 
-            if (isBallPinPair) {
-                sawBallPinImpact = true;
-            }
-
-            var allowPinCascade = ballHitPinsThisRoll || sawBallPinImpact || isBallPinPair;
-            if (layerA == config.LAYER_PINS &&
-                (layerB == config.LAYER_BALL ||
-                 (layerB == config.LAYER_PINS && allowPinCascade))) {
+            if (impactBatch.shouldRegisterPin(layerA, layerB)) {
                 pinMgr.registerImpact(bodyA, point, impulse, relativeSpeed);
             }
-            if (layerB == config.LAYER_PINS &&
-                (layerA == config.LAYER_BALL ||
-                 (layerA == config.LAYER_PINS && allowPinCascade))) {
+            if (impactBatch.shouldRegisterPin(layerB, layerA)) {
                 pinMgr.registerImpact(bodyB, point, impulse, relativeSpeed);
             }
 
@@ -454,7 +567,7 @@ class BowlingGameFlow extends BowlingGameSetup {
             }
         }
 
-        if (sawBallPinImpact) {
+        if (impactBatch.sawBallPinContact()) {
             ballHitPinsThisRoll = true;
         }
 
@@ -467,8 +580,10 @@ class BowlingGameFlow extends BowlingGameSetup {
             if (ballPinImpact && config.BUMPERS_ENABLED == 1) {
                 ballObj.dampForPinDeckImpact(bestStrength * 0.006);
             }
-            particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos), Vec3.get_Z(bestPos));
-            playSpatialSound("crash", bestPos, 16.0, 90);
+            particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos),
+                Vec3.get_Z(bestPos), bestStrength);
+            playSpatialSound(feedbackModel.impactLayer(bestStrength),
+                bestPos, 16.0, 90);
             camCtrl.shake(config.SHAKE_PIN_INTENSITY *
                 (menuObj.getCameraShake() + 0.0) / 100.0, config.SHAKE_PIN_DURATION);
             render.flashPinLight(1.25 + bestStrength * 0.35);

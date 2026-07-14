@@ -1,92 +1,128 @@
 # ASHFALL
 
-A single-player sci-fi campaign FPS built entirely in Zia on the Viper engine.
-Salvager **Rook Ryder** fights inward through nine levels of the ash-world
-Erebos-4 against **HELIX**, a corrupted terraforming AI, and its all-machine
-garrisons.
+A single-player, combat-first sci-fi FPS campaign built entirely in Zia on the
+Viper engine. Salvager **Rook Ryder** fights through nine missions on the ash
+world Erebos-4 against **HELIX**, a corrupted terraforming AI, its machine army,
+and three distinct bosses.
 
-Everything here is from-scratch Zia — no external dependencies — and 100%
-cross-platform (Metal / D3D11 / OpenGL, plus the software backend). The build
-ships fully playable with procedural graybox art (the asset-optional contract);
-downloaded models swap in over the same material/mesh factory.
+Ashfall has no product dependencies and stays cross-platform across Metal,
+D3D11, OpenGL, and the software backend. Optional GLTF/GLB enemy and weapon art
+ships beside procedural PBR fallback meshes, so missing assets never make the
+game unplayable.
+
+The campaign was overhauled around direct action: three-to-five-wave encounters,
+clear combat state, focused mission loadouts, enemy navigation and formation
+logic, explosive hazards, real progression/checkpoints, spatial audio, and
+stronger lighting/feedback. Required clue, console, and collectible objectives
+were removed from all nine missions.
 
 ## Running
 
 ```sh
 # From a built Viper checkout:
-build/src/tools/viper/viper run examples/games/ashfall/main.zia            # fullscreen
+build/src/tools/viper/viper run examples/games/ashfall/main.zia
 build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --windowed
 build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --level 1
-build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --smoke  # headless self-check
+build/src/tools/viper/viper run examples/games/ashfall/main.zia -- --smoke
 ```
 
-Fullscreen is the default; F11 toggles. `--windowed` forces a window.
+Fullscreen is the default. `--windowed` forces a window, `--level 1` through
+`--level 9` jumps to a campaign mission, and `--smoke` runs a bounded headless
+self-check.
 
 ## Controls
 
-| Action | Key / Mouse |
-|--------|-------------|
-| Move | WASD |
-| Look | Mouse (raw relative) |
-| Jump | Space (coyote-time + input buffer) |
-| Crouch / slide | Left Ctrl (sprint + crouch = slide) |
+| Action | Key / mouse |
+|---|---|
+| Move / look | WASD / mouse |
+| Jump | Space |
 | Sprint | Left Shift |
-| Fire / ADS | LMB / RMB |
+| Crouch / sprint-slide | Left Ctrl |
+| Fire / aim down sights | LMB / RMB |
 | Reload | R |
-| Interact | E |
-| Next / prev weapon | `]` / `[` |
-| Grenade / cycle | G / Q |
+| Weapon slot | 1–9, 0 |
+| Previous / next weapon | Mouse wheel or `[` / `]` |
+| Throw / cycle grenade | G / Q |
 | Melee | V |
-| Diagnostics (F3) | F3 |
+| Flashlight | F |
+| Interact | E |
+| Diagnostics | F3 |
 | Pause | Esc |
 
-## What's inside
+The options screen applies quality, FOV, sensitivity, invert Y, master volume,
+screen shake, difficulty, flash intensity, and the high-contrast HUD live.
 
-- **Fixed-timestep sim** (60 Hz) on a game-owned accumulator with render
-  interpolation; deterministic (VM == native) so every system is headless-probe
-  testable.
-- **Player feel**: Character3D movement (accel/friction/air-control), jump with
-  coyote-time + buffering, crouch-slide, stances that drive AI-audible noise, a
-  sprung first-person camera with landing dip / sprint FOV / ADS / shake, and a
-  procedural view-model motion stack (sway / bob / recoil).
-- **10 weapons + 3 grenades + melee**, each a distinct mechanic: hitscan pistol,
-  8-pellet scattergun, high-ROF SMG, ADS pulse rifle, penetrating rail, bouncing
-  arc launcher, DoT rivet driver, ricochet shard caster, EMP projector, overheat
-  beam lance. One event-driven damage pipeline feeds hitscan, projectiles, and
-  occlusion-aware blasts, with locational (head/weakpoint/plate) multipliers.
-- **11 enemy archetypes + 3 bosses** on a shared AI substrate: sight-cone + LOS
-  perception, an awareness meter, event-bus hearing, an int FSM
-  (idle/patrol/suspicious/searching/combat/stagger/disabled/dead), per-archetype
-  behavior (swarm, kamikaze, ranged-cover, flyer, turret, shielded, flanker,
-  cloak), and a squad director that caps engaged AIs and hands out attack tokens.
-- **9 campaign levels + hub + a permanent arena**, built through a LevelBuilder
-  that a JSON manifest loader also targets; objectives (reach / kill / activate /
-  survive / clear / collect), wave progression, pickups, and level transitions.
-- **Meta**: salvage economy + tiered workbench upgrades, per-level scoring +
-  medals, three difficulties + NG+ scalars, run stats.
-- **Presentation**: combat HUD (health/shield/armor, ammo, objective, detection,
-  hitmarkers), particle FX, a post-FX chain, and a headless-safe audio mixer with
-  a combat-intensity music state machine.
+## Game systems
+
+- **Combat:** ten genuinely different weapons, three grenades, melee, penetration,
+  ricochets, swept projectiles, timed damage-over-time, locational damage,
+  directional shields, occlusion-aware self-dangerous blasts, charge/heat,
+  recoil, tracers, decals, soft particles, and dynamic light pulses.
+- **Movement:** fixed-step `Character3D` acceleration, friction and air control;
+  coyote time and jump buffering; physical crouching; sprint-sliding; stance-aware
+  footsteps and hearing; camera sway, bob, landing, roll, shake, sprint FOV, and
+  per-weapon ADS zoom.
+- **Enemies:** eleven regular archetypes and three bosses with line-of-sight and
+  hearing perception, NavMesh/NavAgent routing, local avoidance, deterministic
+  sweep fallback, cover/flank selection, a squad token director, enemy projectile
+  pools, and archetype-specific attack/defense behavior.
+- **Campaign:** nine action missions, a hub, and a permanent test arena. Required
+  objectives are clear, survive, or reach-after-clear. Every mission has authored
+  waves, routes, landmarks, cover, flank pockets, encounter beats, pickups, and
+  focused loadouts.
+- **Progression:** Story/Soldier/Veteran combat scaling, a title/completion
+  Armory where salvage upgrades change live weapon stats, per-level
+  score/par/medals, campaign unlocks, run totals, and profile persistence.
+- **Checkpoints:** Continue and Retry restore the level/wave, player transform and
+  defenses, weapon ownership/ammo, grenades, objective state, score, shot stats,
+  and deterministic RNG streams.
+- **Presentation:** per-level skies, fog, clustered practical lighting,
+  terrain/water and atmosphere; PBR materials, IBL, guarded cascaded shadows,
+  SSAO/SSR and soft-particle intersections where supported, ACES tonemapping,
+  a retained moving spot flashlight, instanced props, animated landmarks,
+  spatially occluded procedural audio, reverb, adaptive music, and a
+  resolution-aware combat HUD.
+- **Performance fallbacks:** public capability checks guard GPU-only effects;
+  Performance mode requests a safe reduced render scale; software/headless paths
+  retain direct lighting, FXAA, fixed budgets, and deterministic behavior.
+
+See [OVERHAUL_REPORT.md](OVERHAUL_REPORT.md) for the full source review,
+54 implemented recommendations, level-by-level redesign, and public 3D API
+assessment.
 
 ## Layout
 
-```
+```text
 main.zia game.zia config.zia
-core/   bits mathutil rng events entity strings savegame devtools
-player/ actions playerctl camera_rig viewmodel health
-weapons/ weapon_defs targets ballistics projectiles weapon_base
-ai/     enemy_defs ai_core
-world/  level_base levels level_manager loader objectives pickups arena
-ui/ hud   fx/ effects postfx   audio/ mix   meta/ economy scoring difficulty
-assets/ fallbacks   probes/ (headless deterministic self-tests)
+core/       events, handles, RNG streams, saves, diagnostics
+player/     actions, movement, camera, viewmodel, defenses
+weapons/    definitions, controller, ballistics, projectile pools, targets
+ai/         definitions, AI/director/navigation, hostile projectiles
+world/      level specs/manager, objectives, props, pickups, hazards, arena
+assets/     generated textures/meshes, optional-asset registry and fallbacks
+fx/         particles/tracers/decals, lighting, sky, post-processing
+audio/      spatial mixer, procedural cues, adaptive music
+ui/         combat HUD, frontend, cinematics
+meta/       difficulty, economy/upgrades, scoring/medals
+probes/     deterministic Ashfall-specific validation programs
 ```
 
-## Tests
+## Direct validation
 
-Ten headless deterministic probes under `probes/` are registered in ctest
-(`zia_smoke_ashfall_*`): core systems, movement course, weapons/damage, AI +
-enemies + bosses, level tech + all 9 levels, JSON manifest round-trip, meta
-systems, the full render pipeline, and a full-campaign playthrough. All run on
-the software backend and are VM==native.
+The 13 probes can be run without ctest:
 
-See `misc/plans/fps/` for the design docs and `CREDITS.md` for licensing.
+```sh
+viper check examples/games/ashfall --diagnostic-format=json
+
+for probe in core movement perf combat enemy level manifest meta render campaign menu assets smoke; do
+  viper run "examples/games/ashfall/probes/${probe}_probe.zia"
+done
+```
+
+They cover compiler cleanliness, deterministic simulation, movement, budgets,
+weapons/damage/audio mapping, AI/navigation/bosses, every level and hazard,
+manifest round-trip, meta progression, rendering, the full nine-level campaign,
+menus/accessibility/checkpoints, asset fallback, and bounded smoke execution.
+
+See `misc/plans/fps/` for the original design material and [CREDITS.md](CREDITS.md)
+for asset licensing.

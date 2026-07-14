@@ -74,6 +74,7 @@ function(viper_add_3d_loader_fuzzer target source)
 endfunction()
 
 viper_add_3d_loader_fuzzer(fuzz_gltf_loader fuzz_gltf_loader.cpp)
+viper_add_3d_loader_fuzzer(fuzz_gltf_draco fuzz_gltf_draco.cpp)
 viper_add_3d_loader_fuzzer(fuzz_vw3dsav_reader fuzz_vw3dsav_reader.cpp)
 viper_add_3d_loader_fuzzer(fuzz_fbx_loader fuzz_fbx_loader.cpp)
 viper_add_3d_loader_fuzzer(fuzz_vscn_loader fuzz_vscn_loader.cpp)

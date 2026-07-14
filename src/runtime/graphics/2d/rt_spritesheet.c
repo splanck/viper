@@ -23,8 +23,8 @@
 //   - The atlas Pixels buffer is retained by the sheet and released on destroy.
 //     Extracted frame Pixels objects are independent copies (or views, per
 //     implementation); they do not hold a reference back to the atlas.
-//   - Frame indices out of range return a 1×1 transparent fallback Pixels
-//     buffer rather than trapping, to avoid crashes on misspelled frame IDs.
+//   - A missing/unknown region name returns NULL rather than trapping, so callers
+//     can detect a misspelled frame ID without crashing.
 //
 // Ownership/Lifetime:
 //   - SpriteSheet objects are GC-managed (rt_obj_new_i64). The atlas Pixels

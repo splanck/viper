@@ -13,6 +13,7 @@ typedef navmesh3d_heap_entry_t heap_entry_t;
 /// @brief Serialize use of one navmesh's reusable A* workspace.
 static void navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
     int expected;
+    int spins = 0;
     if (!nm)
         return;
     for (;;) {
@@ -20,6 +21,13 @@ static void navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
         if (rt_atomic_compare_exchange_i32(
                 &nm->path_workspace_lock, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
             return;
+        /* The whole A* run holds this lock, so a concurrent multi-agent query on
+         * the same navmesh would otherwise burn a core spinning. Brief spin, then
+         * yield the timeslice to the thread that holds the workspace. */
+        if (++spins >= 64) {
+            rt_thread_yield();
+            spins = 0;
+        }
     }
 }
 

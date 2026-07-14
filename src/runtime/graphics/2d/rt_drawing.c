@@ -347,15 +347,24 @@ void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
         if (radius < 0)
             return;
         vgfx_color_t rgb = rt_canvas_color_to_vgfx_rgb(color);
-        if (rtg_i64_fits_i32(cx) && rtg_i64_fits_i32(cy) && rtg_i64_fits_i32(radius)) {
-            vgfx_fill_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, rgb);
-            return;
-        }
         int64_t clip_x = 0;
         int64_t clip_y = 0;
         int64_t clip_w = 0;
         int64_t clip_h = 0;
-        if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        int8_t have_clip =
+            rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h);
+        /* For a radius that dwarfs the viewport, the clipped scanline path visits
+         * only the visible rows (O(clip_h)); vgfx_fill_circle would spin the full
+         * O(radius) octant even when almost everything is off-screen. */
+        if (have_clip && radius > clip_w + clip_h) {
+            rt_canvas_disc_clipped_safe(canvas, cx, cy, radius, rgb, clip_x, clip_y, clip_w, clip_h);
+            return;
+        }
+        if (rtg_i64_fits_i32(cx) && rtg_i64_fits_i32(cy) && rtg_i64_fits_i32(radius)) {
+            vgfx_fill_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, rgb);
+            return;
+        }
+        if (!have_clip)
             return;
         rt_canvas_disc_clipped_safe(canvas, cx, cy, radius, rgb, clip_x, clip_y, clip_w, clip_h);
     }
@@ -372,15 +381,23 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
         if (radius < 0)
             return;
         vgfx_color_t rgb = rt_canvas_color_to_vgfx_rgb(color);
-        if (rtg_i64_fits_i32(cx) && rtg_i64_fits_i32(cy) && rtg_i64_fits_i32(radius)) {
-            vgfx_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, rgb);
-            return;
-        }
         int64_t clip_x = 0;
         int64_t clip_y = 0;
         int64_t clip_w = 0;
         int64_t clip_h = 0;
-        if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        int8_t have_clip =
+            rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h);
+        /* Huge radius vs a small viewport: the clipped scanline path visits only the
+         * visible rows rather than vgfx_circle's full O(radius) octant. */
+        if (have_clip && radius > clip_w + clip_h) {
+            rt_canvas_ring_clipped_safe(canvas, cx, cy, radius, rgb, clip_x, clip_y, clip_w, clip_h);
+            return;
+        }
+        if (rtg_i64_fits_i32(cx) && rtg_i64_fits_i32(cy) && rtg_i64_fits_i32(radius)) {
+            vgfx_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, rgb);
+            return;
+        }
+        if (!have_clip)
             return;
         rt_canvas_ring_clipped_safe(canvas, cx, cy, radius, rgb, clip_x, clip_y, clip_w, clip_h);
     }
@@ -547,6 +564,33 @@ static int64_t rt_canvas_span_width_sat(int64_t x0, int64_t x1) {
     return (int64_t)width;
 }
 
+/// @brief Fill an inclusive horizontal span [x0..x1] at logical row @p y.
+/// @details Internal helper for scanline-fill primitives (triangle/polygon/ellipse/
+///   rounded-box/thick-line). Draws the run as a height-1 *logical* rectangle via
+///   the scale-aware rect path, so on a HiDPI canvas (coord_scale > 1) the row is
+///   thickened to fill the corresponding physical rows. Using rt_canvas_line for
+///   these spans instead leaves gaps between physical rows (vgfx_line scales only
+///   its endpoints, not the stroke width), producing striped fills.
+void rt_canvas_fill_hspan(void *canvas_ptr, int64_t x0, int64_t x1, int64_t y, int64_t color) {
+    if (!canvas_ptr)
+        return;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
+        return;
+    if (x1 < x0) {
+        int64_t tmp = x0;
+        x0 = x1;
+        x1 = tmp;
+    }
+    rt_canvas_resync_window_state(canvas);
+    int64_t clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    int64_t span = rt_canvas_span_width_sat(x0, x1);
+    rt_canvas_fill_rect_clipped(
+        canvas, x0, y, span, 1, rt_canvas_color_to_vgfx_rgb(color), clip_x, clip_y, clip_w, clip_h);
+}
+
 static void rt_canvas_disc_clipped_safe(rt_canvas *canvas,
                                         int64_t cx,
                                         int64_t cy,
@@ -623,17 +667,45 @@ static void rt_canvas_ring_clipped_safe(rt_canvas *canvas,
         return;
 
     long double r2 = (long double)radius * (long double)radius;
+    int64_t prev_left = 0, prev_right = 0;
+    int8_t have_prev = 0;
     for (int64_t py = y0; py <= y1; py++) {
         long double dy = (long double)py - (long double)cy;
         long double rem = r2 - dy * dy;
-        if (rem < 0.0L)
+        if (rem < 0.0L) {
+            have_prev = 0;
             continue;
+        }
         long double dx = sqrtl(rem);
         int64_t left = rt_canvas_round_ld_to_i64_sat((long double)cx - dx);
         int64_t right = rt_canvas_round_ld_to_i64_sat((long double)cx + dx);
-        rt_canvas_pset_clipped(canvas, left, py, color, clip_x, clip_y, clip_w, clip_h);
-        if (right != left)
-            rt_canvas_pset_clipped(canvas, right, py, color, clip_x, clip_y, clip_w, clip_h);
+        /* Where the circle is near-horizontal (top/bottom), dx jumps by many pixels
+         * between adjacent rows. Plotting only the two endpoints leaves gaps, so
+         * fill the horizontal run on each arc from this row's x toward the previous
+         * row's x — keeping the outline connected (Bresenham-circle behaviour). */
+        if (have_prev) {
+            int64_t l_lo = left < prev_left ? left : prev_left;
+            int64_t l_hi = left < prev_left ? prev_left : left;
+            for (int64_t x = l_lo; x <= l_hi; x++) {
+                rt_canvas_pset_clipped(canvas, x, py, color, clip_x, clip_y, clip_w, clip_h);
+                if (x == INT64_MAX)
+                    break;
+            }
+            int64_t r_lo = right < prev_right ? right : prev_right;
+            int64_t r_hi = right < prev_right ? prev_right : right;
+            for (int64_t x = r_lo; x <= r_hi; x++) {
+                rt_canvas_pset_clipped(canvas, x, py, color, clip_x, clip_y, clip_w, clip_h);
+                if (x == INT64_MAX)
+                    break;
+            }
+        } else {
+            rt_canvas_pset_clipped(canvas, left, py, color, clip_x, clip_y, clip_w, clip_h);
+            if (right != left)
+                rt_canvas_pset_clipped(canvas, right, py, color, clip_x, clip_y, clip_w, clip_h);
+        }
+        prev_left = left;
+        prev_right = right;
+        have_prev = 1;
         if (py == INT64_MAX)
             break;
     }
@@ -1238,6 +1310,112 @@ void rt_canvas_blit_region(void *canvas_ptr,
                     dst[1] = g;
                     dst[2] = b;
                     dst[3] = a;
+                    dst += 4;
+                }
+            }
+        }
+    }
+}
+
+/// @brief Blit a sub-rectangle of a Pixels source with per-pixel alpha blending.
+/// @details Region-cropped counterpart of rt_canvas_blit_alpha (and the blending
+///          counterpart of rt_canvas_blit_region): copies the [sx,sy,w,h] source
+///          rectangle to (dx,dy) compositing each texel with straight alpha rather
+///          than overwriting. Internal helper (declared in rt_graphics_internal.h)
+///          so the SpriteBatch region fast path can blend transparent sprite-sheet
+///          frames instead of stamping opaque rectangles.
+void rt_canvas_blit_region_alpha(void *canvas_ptr,
+                                 int64_t dx,
+                                 int64_t dy,
+                                 void *pixels_ptr,
+                                 int64_t sx,
+                                 int64_t sy,
+                                 int64_t w,
+                                 int64_t h) {
+    if (!canvas_ptr || !pixels_ptr)
+        return;
+
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    rt_pixels_impl *pixels =
+        rt_pixels_checked_impl(pixels_ptr, "Canvas.BlitRegionAlpha: invalid pixels");
+    if (!canvas || !canvas->gfx_win || !pixels || !pixels->data)
+        return;
+
+    rt_canvas_resync_window_state(canvas);
+
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
+        return;
+
+    if (!rt_canvas_prepare_blit_region(canvas, pixels, &dx, &dy, &sx, &sy, &w, &h))
+        return;
+
+    float scale = rt_canvas_effective_coord_scale(canvas);
+
+    for (int64_t row = 0; row < h; row++) {
+        int64_t py0 = rtg_scale_up_i64(dy + row, scale);
+        int64_t py1 = rtg_scale_up_i64(dy + row + 1, scale);
+        if (py1 <= py0)
+            py1 = py0 + 1;
+        if (py0 < 0)
+            py0 = 0;
+        if (py1 > fb.height)
+            py1 = fb.height;
+        if (py1 <= py0)
+            continue;
+
+        uint32_t *src_row = &pixels->data[(sy + row) * pixels->width + sx];
+        for (int64_t col = 0; col < w; col++) {
+            int64_t px0 = rtg_scale_up_i64(dx + col, scale);
+            int64_t px1 = rtg_scale_up_i64(dx + col + 1, scale);
+            if (px1 <= px0)
+                px1 = px0 + 1;
+            if (px0 < 0)
+                px0 = 0;
+            if (px1 > fb.width)
+                px1 = fb.width;
+            if (px1 <= px0)
+                continue;
+
+            uint32_t rgba = src_row[col];
+            uint8_t sr = (rgba >> 24) & 0xFF;
+            uint8_t sg = (rgba >> 16) & 0xFF;
+            uint8_t sb = (rgba >> 8) & 0xFF;
+            uint8_t sa = rgba & 0xFF;
+
+            if (sa == 0)
+                continue;
+
+            for (int64_t py = py0; py < py1; py++) {
+                uint8_t *dst = &fb.pixels[(size_t)py * (size_t)fb.stride + (size_t)px0 * 4u];
+                for (int64_t px = px0; px < px1; px++) {
+                    if (sa == 255) {
+                        dst[0] = sr;
+                        dst[1] = sg;
+                        dst[2] = sb;
+                        dst[3] = 255;
+                    } else {
+                        uint32_t inv_alpha = 255u - sa;
+                        uint32_t da = dst[3];
+                        uint32_t out_a = sa + (da * inv_alpha + 127u) / 255u;
+                        if (out_a == 0) {
+                            dst[0] = 0;
+                            dst[1] = 0;
+                            dst[2] = 0;
+                            dst[3] = 0;
+                        } else {
+                            uint32_t r_pm = sr * sa + (dst[0] * da * inv_alpha + 127u) / 255u;
+                            uint32_t g_pm = sg * sa + (dst[1] * da * inv_alpha + 127u) / 255u;
+                            uint32_t b_pm = sb * sa + (dst[2] * da * inv_alpha + 127u) / 255u;
+                            uint32_t r = (r_pm + out_a / 2u) / out_a;
+                            uint32_t g = (g_pm + out_a / 2u) / out_a;
+                            uint32_t b = (b_pm + out_a / 2u) / out_a;
+                            dst[0] = (uint8_t)(r > 255u ? 255u : r);
+                            dst[1] = (uint8_t)(g > 255u ? 255u : g);
+                            dst[2] = (uint8_t)(b > 255u ? 255u : b);
+                            dst[3] = (uint8_t)out_a;
+                        }
+                    }
                     dst += 4;
                 }
             }

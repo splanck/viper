@@ -289,8 +289,6 @@ void rt_canvas_thick_line(void *canvas_ptr,
         return;
     rt_canvas_resync_window_state(canvas);
 
-    vgfx_color_t col = rt_canvas_adv_color_to_vgfx_rgb(color);
-
     if (thickness == 1) {
         rt_canvas_line(canvas, x1, y1, x2, y2, color);
         return;
@@ -388,12 +386,9 @@ void rt_canvas_thick_line(void *canvas_ptr,
                 lx = clip_x;
             if (rx > clip_last_x)
                 rx = clip_last_x;
-            vgfx_line(canvas->gfx_win,
-                      rtg_clamp_i64_to_i32(lx),
-                      rtg_clamp_i64_to_i32(scan_y),
-                      rtg_clamp_i64_to_i32(rx),
-                      rtg_clamp_i64_to_i32(scan_y),
-                      col);
+            /* Height-1 logical rect (scale-aware) rather than vgfx_line, which would
+             * leave gaps between physical rows on a HiDPI canvas (striped fill). */
+            rt_canvas_fill_hspan(canvas_ptr, lx, rx, scan_y, color);
         }
     }
 }
@@ -440,15 +435,15 @@ void rt_canvas_round_box(
         long double rem = r2 - (long double)dy * (long double)dy;
         int64_t span = rem <= 0.0L ? 0 : rt_canvas_adv_floor_ld_to_i64_sat(sqrtl(rem));
         int64_t row = rtg_add_sat64(cy_top, dy);
-        rt_canvas_line(
-            canvas, rtg_add_sat64(cx_left, -span), row, rtg_add_sat64(cx_right, span), row, color);
+        rt_canvas_fill_hspan(
+            canvas, rtg_add_sat64(cx_left, -span), rtg_add_sat64(cx_right, span), row, color);
     }
     for (int64_t dy = 1; dy <= radius; dy++) {
         long double rem = r2 - (long double)dy * (long double)dy;
         int64_t span = rem <= 0.0L ? 0 : rt_canvas_adv_floor_ld_to_i64_sat(sqrtl(rem));
         int64_t row = rtg_add_sat64(cy_bottom, dy);
-        rt_canvas_line(
-            canvas, rtg_add_sat64(cx_left, -span), row, rtg_add_sat64(cx_right, span), row, color);
+        rt_canvas_fill_hspan(
+            canvas, rtg_add_sat64(cx_left, -span), rtg_add_sat64(cx_right, span), row, color);
     }
 }
 
@@ -723,7 +718,7 @@ void rt_canvas_triangle(void *canvas_ptr,
         // Horizontal line
         int64_t min_x = rtg_min64(rtg_min64(x1, x2), x3);
         int64_t max_x = rtg_max64(rtg_max64(x1, x2), x3);
-        rt_canvas_line(canvas, min_x, y1, max_x, y1, color);
+        rt_canvas_fill_hspan(canvas, min_x, max_x, y1, color);
         return;
     }
 
@@ -761,7 +756,7 @@ void rt_canvas_triangle(void *canvas_ptr,
             xb = tmp;
         }
 
-        rt_canvas_line(canvas, xa, y, xb, y, color);
+        rt_canvas_fill_hspan(canvas, xa, xb, y, color);
     }
 }
 
@@ -822,7 +817,6 @@ void rt_canvas_ellipse(
     long double rx_ld = (long double)rx;
     long double ry_ld = (long double)ry;
     int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w) - 1;
-    vgfx_color_t col = rt_canvas_adv_color_to_vgfx_rgb(color);
     for (int64_t py = y0; py <= y1; ++py) {
         long double dy = (long double)py - (long double)cy;
         long double norm = 1.0L - (dy * dy) / (ry_ld * ry_ld);
@@ -836,12 +830,8 @@ void rt_canvas_ellipse(
         if (x1 > clip_x1)
             x1 = clip_x1;
         if (x1 >= x0)
-            vgfx_line(canvas->gfx_win,
-                      rtg_clamp_i64_to_i32(x0),
-                      rtg_clamp_i64_to_i32(py),
-                      rtg_clamp_i64_to_i32(x1),
-                      rtg_clamp_i64_to_i32(py),
-                      col);
+            /* Scale-aware height-1 rect so the ellipse fill has no HiDPI row gaps. */
+            rt_canvas_fill_hspan(canvas_ptr, x0, x1, py, color);
     }
 }
 
@@ -1083,12 +1073,12 @@ void rt_canvas_arc_frame(void *canvas_ptr,
     }
 }
 
-/// @brief Stroke a cubic Bezier curve from `(x1,y1)` to `(x4,y4)` with two control points.
+/// @brief Stroke a quadratic Bezier curve from `(x1,y1)` to `(x2,y2)` with one
+///        control point `(cx,cy)`.
 ///
-/// Tessellates the curve via De Casteljau subdivision and renders
-/// the resulting polyline as a thick line. Step count is chosen
-/// adaptively from the chord/curve length ratio so straight curves
-/// don't over-tessellate.
+/// Evaluates B(t) = (1-t)^2*P1 + 2(1-t)t*C + t^2*P2 at a step count chosen
+/// adaptively from the control-polygon length, so a short curve isn't
+/// over-tessellated and a long one doesn't show visible facets.
 void rt_canvas_bezier(void *canvas_ptr,
                       int64_t x1,
                       int64_t y1,
@@ -1104,8 +1094,19 @@ void rt_canvas_bezier(void *canvas_ptr,
     if (!canvas || !canvas->gfx_win)
         return;
 
-    // Quadratic Bezier: B(t) = (1-t)^2*P1 + 2(1-t)t*C + t^2*P2.
-    int64_t steps = 50;
+    // Quadratic Bezier: B(t) = (1-t)^2*P1 + 2(1-t)t*C + t^2*P2. Choose the segment
+    // count from the control-polygon length (|P1-C| + |C-P2|) at ~4 px/segment,
+    // clamped to [4, 256] so tiny curves stay cheap and huge ones stay smooth.
+    long double d1x = (long double)cx - (long double)x1;
+    long double d1y = (long double)cy - (long double)y1;
+    long double d2x = (long double)x2 - (long double)cx;
+    long double d2y = (long double)y2 - (long double)cy;
+    long double approx_len = sqrtl(d1x * d1x + d1y * d1y) + sqrtl(d2x * d2x + d2y * d2y);
+    int64_t steps = (int64_t)(approx_len / 4.0L);
+    if (steps < 4)
+        steps = 4;
+    if (steps > 256)
+        steps = 256;
     int64_t px = x1, py = y1;
 
     for (int64_t i = 1; i <= steps; i++) {
@@ -1219,7 +1220,7 @@ static void rt_canvas_polygon_points(void *canvas_ptr,
 
         // Fill between pairs of intersections
         for (int64_t i = 0; i + 1 < num_intersections; i += 2) {
-            rt_canvas_line(canvas_ptr, intersections[i], y, intersections[i + 1], y, color);
+            rt_canvas_fill_hspan(canvas_ptr, intersections[i], intersections[i + 1], y, color);
         }
     }
 
@@ -1429,6 +1430,15 @@ void rt_canvas_gradient_h(
         return;
 
     int64_t w_minus1 = orig_w > 1 ? orig_w - 1 : 1;
+    /* Interpolate channels directly (full 256-level precision) instead of routing
+     * through rt_color_lerp's 0..100 percent parameter, which quantizes a wide
+     * gradient to at most 101 distinct colors and shows visible banding. */
+    uint32_t rgba1 = rt_pixels_color_to_rgba(c1);
+    uint32_t rgba2 = rt_pixels_color_to_rgba(c2);
+    int64_t r1 = (int64_t)((rgba1 >> 24) & 0xFF), g1 = (int64_t)((rgba1 >> 16) & 0xFF),
+            b1 = (int64_t)((rgba1 >> 8) & 0xFF), a1 = (int64_t)(rgba1 & 0xFF);
+    int64_t r2 = (int64_t)((rgba2 >> 24) & 0xFF), g2 = (int64_t)((rgba2 >> 16) & 0xFF),
+            b2 = (int64_t)((rgba2 >> 8) & 0xFF), a2 = (int64_t)(rgba2 & 0xFF);
     memset(row_buf, 0, row_bytes);
     for (int64_t col = 0; col < w; col++) {
         int64_t logical_x = rtg_add_sat64(x, col);
@@ -1443,13 +1453,15 @@ void rt_canvas_gradient_h(
         if (col_px1 <= col_px0)
             continue;
 
-        int64_t gradient_col = rtg_add_sat64(logical_x, -orig_x);
-        uint32_t rgba = rt_pixels_color_to_rgba(
-            rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_col, 100) / w_minus1));
-        uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
-        uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
-        uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);
-        uint8_t ca = (uint8_t)(rgba & 0xFF);
+        int64_t gc = rtg_add_sat64(logical_x, -orig_x);
+        if (gc < 0)
+            gc = 0;
+        if (gc > w_minus1)
+            gc = w_minus1;
+        uint8_t cr = (uint8_t)(r1 + (r2 - r1) * gc / w_minus1);
+        uint8_t cg = (uint8_t)(g1 + (g2 - g1) * gc / w_minus1);
+        uint8_t cb = (uint8_t)(b1 + (b2 - b1) * gc / w_minus1);
+        uint8_t ca = (uint8_t)(a1 + (a2 - a1) * gc / w_minus1);
         for (int64_t px = col_px0; px < col_px1; px++) {
             size_t idx = (size_t)(px - px0) * 4u;
             row_buf[idx + 0u] = cr;
@@ -1526,9 +1538,18 @@ void rt_canvas_gradient_v(
     /* Each logical row is a single solid colour (the gradient runs down the rows), so build one
      * row of `draw_w` pixels and memcpy it across that row's scale-expanded scanlines instead of
      * a per-pixel inner loop — mirrors rt_canvas_gradient_h. draw_w is framebuffer-bounded. */
+    if ((uint64_t)draw_w > SIZE_MAX / 4u) /* overflow guard, matching gradient_h */
+        return;
     uint8_t *row_buf = (uint8_t *)malloc((size_t)draw_w * 4u);
     if (!row_buf)
         return;
+    /* Full-precision per-channel interpolation (avoids rt_color_lerp's 101-step banding). */
+    uint32_t rgba1 = rt_pixels_color_to_rgba(c1);
+    uint32_t rgba2 = rt_pixels_color_to_rgba(c2);
+    int64_t r1 = (int64_t)((rgba1 >> 24) & 0xFF), g1 = (int64_t)((rgba1 >> 16) & 0xFF),
+            b1 = (int64_t)((rgba1 >> 8) & 0xFF), a1 = (int64_t)(rgba1 & 0xFF);
+    int64_t r2 = (int64_t)((rgba2 >> 24) & 0xFF), g2 = (int64_t)((rgba2 >> 16) & 0xFF),
+            b2 = (int64_t)((rgba2 >> 8) & 0xFF), a2 = (int64_t)(rgba2 & 0xFF);
     for (int64_t row = 0; row < h; row++) {
         int64_t logical_y = rtg_add_sat64(y, row);
         int64_t row_py0 = rtg_scale_up_i64(logical_y, scale);
@@ -1542,13 +1563,15 @@ void rt_canvas_gradient_v(
         if (row_py1 <= row_py0)
             continue;
 
-        int64_t gradient_row = rtg_add_sat64(logical_y, -orig_y);
-        uint32_t rgba = rt_pixels_color_to_rgba(
-            rt_color_lerp(c1, c2, rtg_mul_sat64(gradient_row, 100) / h_minus1));
-        uint8_t cr = (uint8_t)((rgba >> 24) & 0xFF);
-        uint8_t cg = (uint8_t)((rgba >> 16) & 0xFF);
-        uint8_t cb = (uint8_t)((rgba >> 8) & 0xFF);
-        uint8_t ca = (uint8_t)(rgba & 0xFF);
+        int64_t gr = rtg_add_sat64(logical_y, -orig_y);
+        if (gr < 0)
+            gr = 0;
+        if (gr > h_minus1)
+            gr = h_minus1;
+        uint8_t cr = (uint8_t)(r1 + (r2 - r1) * gr / h_minus1);
+        uint8_t cg = (uint8_t)(g1 + (g2 - g1) * gr / h_minus1);
+        uint8_t cb = (uint8_t)(b1 + (b2 - b1) * gr / h_minus1);
+        uint8_t ca = (uint8_t)(a1 + (a2 - a1) * gr / h_minus1);
         for (int64_t i = 0; i < draw_w; i++) {
             row_buf[i * 4 + 0] = cr;
             row_buf[i * 4 + 1] = cg;

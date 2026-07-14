@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/config.zia
+// Purpose: Defines all bounded tuning, state IDs, controls, and save keys for Neon Lanes.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: config
 // PURPOSE: Centralised constants for the 3D Bowling demo. Every tuning
@@ -67,6 +85,11 @@ var MAX_PLAYERS: Integer = 4;
 var QUALITY_PERFORMANCE: Integer = 0;
 var QUALITY_CINEMATIC: Integer = 1;
 
+// Difficulty changes delivery uncertainty and rack variation, never scoring.
+var DIFFICULTY_CASUAL: Integer = 0;
+var DIFFICULTY_STANDARD: Integer = 1;
+var DIFFICULTY_LEAGUE: Integer = 2;
+
 // =========================================================================
 // Window
 // =========================================================================
@@ -129,6 +152,19 @@ var OIL_END_DRY: Float = 5.8;
 var OIL_FRICTION_OILED: Float = 0.08;
 var OIL_FRICTION_BLEND: Float = 0.22;
 var OIL_FRICTION_DRY: Float = 0.48;
+var OIL_GRID_X: Integer = 13;
+var OIL_GRID_Z: Integer = 24;
+var OIL_WEAR_MAX: Float = 0.65;
+var OIL_CARRY_MAX: Float = 0.30;
+var OIL_CARRY_CELLS: Integer = 2;
+
+// Every delivery must reach a terminal state even if physics data is corrupt
+// or a body stops making forward progress.
+var ROLL_WATCHDOG_SECONDS: Float = 12.0;
+var ROLL_PROGRESS_TIMEOUT: Float = 2.0;
+var ROLL_PROGRESS_EPSILON: Float = 0.035;
+var REPLAY_SAMPLE_STEPS: Integer = 2;
+var REPLAY_MAX: Integer = 480;
 
 var OIL_HOUSE: Integer = 0;
 var OIL_SPORT: Integer = 1;
@@ -145,13 +181,13 @@ var PIN_CAPSULE_HEIGHT: Float = PIN_HEIGHT;
 var PIN_BODY_RADIUS: Float = PIN_RADIUS * 1.08;
 var PIN_BODY_CENTER_Y: Float = PIN_CAPSULE_HEIGHT / 2.0;
 var PIN_DRAW_Y_OFFSET: Float = 0.0;
-var PIN_MASS: Float = 1.55;
-var PIN_RESTITUTION: Float = 0.26;
-var PIN_FRICTION: Float = 0.72;
+var PIN_MASS: Float = 2.35;
+var PIN_RESTITUTION: Float = 0.08;
+var PIN_FRICTION: Float = 0.82;
 // Lower than the old 0.26/0.72: pins now tumble and slide into neighbors
 // instead of resisting the topple, so a good pocket hit carries the rack.
-var PIN_LINEAR_DAMPING: Float = 0.16;
-var PIN_ANGULAR_DAMPING: Float = 0.35;
+var PIN_LINEAR_DAMPING: Float = 0.34;
+var PIN_ANGULAR_DAMPING: Float = 0.62;
 var PIN_Z_OFFSET: Float = 15.5;
 var PIN_KNOCKDOWN_SPEED: Float = 0.62;
 var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.062;
@@ -163,6 +199,13 @@ var PIN_REST_SNAP_DISPLACEMENT: Float = 0.012;
 var PIN_SETTLE_SNAP_SPEED: Float = 0.045;
 var PIN_TILT_SPEED: Float = 5.8;
 var PIN_TILT_MAX: Float = 1.57;
+var PIN_DOWN_TILT_COS: Float = 0.72;
+var PIN_DOWN_CENTER_Y: Float = 0.145;
+var PIN_DOWN_DISPLACEMENT: Float = 0.105;
+var PIN_DOWN_DWELL: Float = 0.10;
+var RACK_JITTER_CASUAL: Float = 0.0020;
+var RACK_JITTER_STANDARD: Float = 0.0035;
+var RACK_JITTER_LEAGUE: Float = 0.0045;
 
 var SWEEP_SPEED: Float = 3.0;
 var SWEEP_Y_START: Float = 2.0;
@@ -176,6 +219,9 @@ var RESET_DROP_HEIGHT: Float = 2.6;
 // Ball
 // =========================================================================
 var BALL_RADIUS: Float = 0.109;
+// Runtime sphere/capsule impulses need a gameplay scale below catalog kg so
+// pin carry is earned by pocket geometry instead of every head-on collision.
+var BALL_MASS_PHYSICS_SCALE: Float = 0.34;
 var BALL_RESTITUTION: Float = 0.12;
 var BALL_FRICTION: Float = 0.38;
 var BALL_SHININESS: Float = 200.0;
@@ -186,16 +232,27 @@ var BALL_CATALOG_COUNT: Integer = 6;
 // =========================================================================
 // Throw Mechanics
 // =========================================================================
-var THROW_SPEED_MIN: Float = 3.15;
+var THROW_SPEED_MIN: Float = 2.35;
 var THROW_POWER_RATE: Float = 0.34;
-var THROW_POWER_MAX: Float = 0.72;
+var THROW_POWER_MAX: Float = 1.0;
 var RELEASE_ERROR_X: Float = 0.052;
 var RELEASE_ASSIST_OFF: Float = 0.08;
 var RELEASE_ASSIST_STANDARD: Float = 0.38;
 var RELEASE_ASSIST_FULL: Float = 0.72;
-var AIM_SPEED: Float = 0.46;
-var AIM_MAX: Float = 0.16;
-var AIM_RELEASE_ANGLE: Float = 0.11;
+var POWER_NEEDLE_RATE: Float = 0.78;
+var ACCURACY_NEEDLE_RATE: Float = 7.35;
+var ACCURACY_NEEDLE_PHASE: Float = 1.17;
+var RELEASE_CONFIRM_TIMEOUT: Float = 1.10;
+var RELEASE_ANGLE_ERROR_MAX: Float = 0.030;
+var RELEASE_SPEED_ERROR_MAX: Float = 0.22;
+var RELEASE_AXIS_ERROR_MAX: Float = 0.16;
+var DIFFICULTY_ERROR_CASUAL: Float = 0.72;
+var DIFFICULTY_ERROR_STANDARD: Float = 1.00;
+var DIFFICULTY_ERROR_LEAGUE: Float = 1.22;
+var STANCE_SPEED: Float = 0.42;
+var STANCE_MAX: Float = 0.30;
+var TARGET_SPEED: Float = 0.46;
+var TARGET_MAX: Float = 0.42;
 var SPIN_RATE: Float = 0.48;
 var SPIN_MAX: Float = 0.32;
 var SPIN_VISUAL_SPEED: Float = 7.0;
@@ -224,11 +281,11 @@ var BALL_START_X: Float = 0.0;
 var BALL_START_Y_OFFSET: Float = 0.026;
 var BALL_START_Z: Float = -1.5;
 var BALL_THROW_Z: Float = -0.85;
-var BALL_RELEASE_X_SCALE: Float = 0.50;
-var BALL_TARGET_X_SCALE: Float = 0.85;
 var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
+// Runtime sphere-floor coupling amplifies lateral velocity during a roll. The
+// shared solver and preview both apply this calibrated conversion factor.
 var BALL_SIDE_SPEED_SCALE: Float = 0.18;
-var BALL_SIDE_SPEED_MAX: Float = 0.28;
+var BALL_SIDE_SPEED_MAX: Float = 0.62;
 // Z just short of the head pin where we sample the ball's entry angle for
 // the shot-feedback HUD readout (teaches pocket-angle cause/effect).
 var ENTRY_CAPTURE_Z: Float = PIN_Z_OFFSET - 0.6;
@@ -241,9 +298,12 @@ var HOOK_GUIDE_SCALE: Float = 0.0135;
 var TRAIL_MAX: Integer = 40;
 var TRAIL_MIN_SPEED: Float = 0.6;
 var TRAIL_FADE: Float = 2.4;
-var BALL_ROLL_MIN_SPEED: Float = 3.28;
+var TRAIL_SAMPLE_SECONDS: Float = 0.024;
+var BALL_ROLL_MIN_SPEED: Float = 2.40;
 var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
 var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;
+var CARRY_POWER_FLOOR: Float = 0.44;
+var CARRY_POWER_PEAK_END: Float = 0.90;
 
 var GUTTER_Y: Float = -0.11;
 var GUTTER_TRIGGER_WIDTH: Float = 0.04;
@@ -260,7 +320,9 @@ var PHYSICS_DT: Float = 0.012;
 var DT_CLAMP: Float = 0.05;
 var MAX_FIXED_STEPS: Integer = 8;
 var SETTLE_TIME: Float = 2.2;
-var SETTLE_SPEED_THRESHOLD: Float = 0.08;
+var SETTLE_SPEED_THRESHOLD: Float = 0.065;
+var SETTLE_ANGULAR_THRESHOLD: Float = 0.34;
+var SETTLE_QUIET_DWELL: Float = 0.28;
 var IMPACT_COOLDOWN: Float = 0.08;
 
 var LAYER_STATIC: Integer = 1;
@@ -497,9 +559,11 @@ var ACT_MENU_UP: String = "menu_up";
 var ACT_MENU_DOWN: String = "menu_down";
 var ACT_CONFIRM: String = "confirm";
 var ACT_BACK: String = "back";
-var ACT_AIM_X: String = "aim_x";
+var ACT_STANCE_X: String = "stance_x";
+var ACT_TARGET_X: String = "target_x";
 var ACT_SPIN_X: String = "spin_x";
 var ACT_THROW: String = "throw";
+var ACT_SPARE_RELEASE: String = "spare_release";
 var ACT_BALL_PREV: String = "ball_prev";
 var ACT_BALL_NEXT: String = "ball_next";
 var ACT_RESET: String = "reset";
@@ -510,7 +574,7 @@ var ACT_CAMERA: String = "camera_cycle";
 // Save Keys
 // =========================================================================
 var SAVE_NAME: String = "3dbowling";
-var SAVE_VERSION: Integer = 3;
+var SAVE_VERSION: Integer = 4;
 var SAVE_KEY_BEST_SCORE: String = "best_score";
 var SAVE_KEY_GAMES_PLAYED: String = "games_played";
 var SAVE_KEY_OIL_PATTERN: String = "oil_pattern";
@@ -525,6 +589,11 @@ var SAVE_KEY_CAMERA_SHAKE: String = "camera_shake";
 var SAVE_KEY_REPLAY_MODE: String = "replay_mode";
 var SAVE_KEY_HIGH_CONTRAST: String = "high_contrast";
 var SAVE_KEY_ASSIST_LEVEL: String = "assist_level";
+var SAVE_KEY_DIFFICULTY: String = "difficulty";
+var SAVE_KEY_BUMPERS: String = "bumpers";
+var SAVE_KEY_REDUCED_MOTION: String = "reduced_motion";
+var SAVE_KEY_REDUCED_FLASH: String = "reduced_flash";
+var SAVE_KEY_LARGE_HUD: String = "large_hud";
 var SAVE_KEY_CONTROL_PRESET: String = "control_preset";
 var SAVE_KEY_SELECTED_BALL: String = "selected_ball";
 var SAVE_KEY_CHALLENGE_MEDALS: String = "challenge_medals";

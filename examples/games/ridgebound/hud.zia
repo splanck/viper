@@ -12,87 +12,100 @@ bind "./worldsim";
 class RidgeboundHud {
     expose func draw(canvas: Canvas3D, map: RidgeboundMinimap, sim: RidgeboundWorldSim,
                      playerX: Float, playerZ: Float, stamina: Float,
-                     warmth: Float, foraged: Integer, spotted: Integer, critterTotal: Integer,
-                     helpOn: Boolean, debugOn: Boolean) {
+                     warmth: Float, helpOn: Boolean, debugOn: Boolean) {
         var w = canvas.Width;
         var h = canvas.Height;
         var total = sim.getBeaconCount();
         var statusColor = config.HUD_WARN;
-        var statusText = "Restore the ridge network.";
+        var statusText = "Find a beacon. Aim + hold E.";
 
         if (sim.getBeaconsLit() >= total) {
             statusColor = config.HUD_GOOD;
-            statusText = "All linked. Return home.";
+            statusText = "All linked. Return to sanctuary.";
         }
         if (sim.getSanctuaryDone()) {
             statusColor = config.HUD_GOOD;
-            statusText = "Sanctuary restored!";
+            statusText = "SANCTUARY RESTORED";
         }
 
-        Canvas3D.DrawRect2D(
-            canvas,
-            config.HUD_PANEL_X,
-            config.HUD_PANEL_Y,
-            config.HUD_PANEL_W,
-            config.HUD_PANEL_H,
-            config.HUD_PANEL);
-        Canvas3D.DrawRect2D(
-            canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, 24, 28, "RIDGEBOUND", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "Restore the ridge.", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Link five beacons.", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 104, "Beacons linked: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
-        Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
+        var compact = w < 760 || h < 520;
+        var panelX = 14;
+        var panelY = 14;
+        var panelW = 404;
+        var panelH = 112;
+        if (compact) { panelW = w - 28; panelH = 102; }
+        if (panelW > 404) { panelW = 404; }
+        if (panelW < 292) { panelW = 292; }
 
-        map.draw(canvas, w - 172, h - 172, 144, 144, playerX, playerZ,
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, panelH, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, panelX + 12, panelY + 13,
+            "RIDGEBOUND   SIGNAL " + toString(sim.getBeaconsLit()) + " / " + toString(total),
+            statusColor);
+        Canvas3D.DrawText2D(canvas, panelX + 12, panelY + 38, statusText, config.HUD_TEXT);
+
+        var od = sim.nearestDormantBeaconDist(playerX, playerZ);
+        if (od >= 0.0) {
+            Canvas3D.DrawText2D(canvas, panelX + 12, panelY + 66,
+                "NEXT  " + sim.nearestDormantBeaconDirection(playerX, playerZ) + "  "
+                    + sim.nearestDormantBeaconName(playerX, playerZ) + "  "
+                    + toString(Convert.NumToInt(od)) + "m",
+                config.HUD_ACCENT);
+        } else {
+            Canvas3D.DrawText2D(canvas, panelX + 12, panelY + 66,
+                "NEXT  HOME  Central Sanctuary", config.HUD_GOOD);
+        }
+        if (sim.getBeaconsLit() == 0 && compact == false) {
+            Canvas3D.DrawText2D(canvas, panelX + 12, panelY + 88,
+                "WASD move   Shift sprint   H help", config.HUD_MUTED);
+        }
+
+        var mapSize = 124;
+        if (compact) { mapSize = 92; }
+        if (w < 420) { mapSize = 76; }
+        map.draw(canvas, w - mapSize - 16, h - mapSize - 16, mapSize, mapSize, playerX, playerZ,
             sim.getBeaconXs(), sim.getBeaconZs(), sim.getBeaconState());
-        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(canvas.Fps), config.HUD_MUTED);
 
         Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
         if (sim.getScanLabel() != "") {
+            Canvas3D.DrawRect2D(canvas, w / 2 - 150, h / 2 + 14, 300, 58, config.HUD_PANEL);
             Canvas3D.DrawText2D(
-                canvas, w / 2 - 100, h / 2 + 18,
+                canvas, w / 2 - 136, h / 2 + 24,
                 sim.getScanLabel() + "  " + toString(Convert.NumToInt(sim.getScanDist())) + "m", config.HUD_TEXT);
         }
         if (sim.hasInteractTarget()) {
             var prog = sim.getScanProgress();
             if (prog > 0.0) {
-                Canvas3D.DrawRect2D(canvas, w / 2 - 60, h / 2 + 40, 120, 8, config.HUD_CARD);
-                Canvas3D.DrawRect2D(canvas, w / 2 - 60, h / 2 + 40,
-                    Convert.NumToInt(120.0 * prog), 8, config.HUD_ACCENT);
+                Canvas3D.DrawRect2D(canvas, w / 2 - 112, h / 2 + 52, 224, 8, config.HUD_CARD);
+                Canvas3D.DrawRect2D(canvas, w / 2 - 112, h / 2 + 52,
+                    Convert.NumToInt(224.0 * prog), 8, config.HUD_ACCENT);
             } else {
-                Canvas3D.DrawText2D(canvas, w / 2 - 44, h / 2 + 40, "Hold E to scan", config.HUD_GOOD);
+                Canvas3D.DrawText2D(canvas, w / 2 - 64, h / 2 + 50, "HOLD E TO LINK", config.HUD_GOOD);
             }
         }
 
-        // Stamina bar + objective distance, below the main panel.
-        var sbY = config.HUD_PANEL_Y + config.HUD_PANEL_H + 8;
-        Canvas3D.DrawText2D(canvas, 24, sbY, "STAMINA", config.HUD_MUTED);
-        Canvas3D.DrawRect2D(canvas, 100, sbY - 1, 150, 10, config.HUD_CARD);
+        // One compact movement meter, anchored clear of the objective panel and
+        // minimap at every supported aspect ratio.
+        var meterX = 18;
+        var meterY = h - 28;
+        var meterW = 190;
+        if (compact) { meterW = 132; }
+        Canvas3D.DrawText2D(canvas, meterX, meterY - 1, "STAMINA", config.HUD_MUTED);
+        Canvas3D.DrawRect2D(canvas, meterX + 76, meterY, meterW, 9, config.HUD_CARD);
         var scol = config.HUD_GOOD;
         if (stamina < 0.3) { scol = config.HUD_WARN; }
-        Canvas3D.DrawRect2D(canvas, 100, sbY - 1, Convert.NumToInt(150.0 * stamina), 10, scol);
+        Canvas3D.DrawRect2D(canvas, meterX + 76, meterY,
+            Convert.NumToInt((meterW + 0.0) * stamina), 9, scol);
 
-        // Warmth bar (survival): warm amber when toasty, danger red when freezing.
-        var wY = sbY + 16;
-        Canvas3D.DrawText2D(canvas, 24, wY, "WARMTH", config.HUD_MUTED);
-        Canvas3D.DrawRect2D(canvas, 100, wY - 1, 150, 10, config.HUD_CARD);
-        var wcol = config.HUD_WARN;
-        if (warmth < 0.3) { wcol = config.HUD_DANGER; }
-        if (warmth > 0.7) { wcol = config.HUD_GOOD; }
-        Canvas3D.DrawRect2D(canvas, 100, wY - 1, Convert.NumToInt(150.0 * warmth), 10, wcol);
-
-        // Forage + wildlife-spotting tally.
-        Canvas3D.DrawText2D(canvas, 24, wY + 18,
-            "Foraged " + toString(foraged) + "   Spotted " + toString(spotted) + " / " + toString(critterTotal),
-            config.HUD_ACCENT);
-
-        var od = sim.nearestDormantBeaconDist(playerX, playerZ);
-        if (od >= 0.0) {
-            Canvas3D.DrawText2D(canvas, 24, wY + 38,
-                "Nearest beacon: " + toString(Convert.NumToInt(od)) + "m", config.HUD_MUTED);
-        } else {
-            Canvas3D.DrawText2D(canvas, 24, wY + 38, "All linked - return home", config.HUD_GOOD);
+        if (config.ENABLE_SURVIVAL_LAYER) {
+            var warmY = meterY - 18;
+            Canvas3D.DrawText2D(canvas, meterX, warmY - 1, "WARMTH", config.HUD_MUTED);
+            Canvas3D.DrawRect2D(canvas, meterX + 76, warmY, meterW, 9, config.HUD_CARD);
+            var wcol = config.HUD_WARN;
+            if (warmth < 0.3) { wcol = config.HUD_DANGER; }
+            if (warmth > 0.7) { wcol = config.HUD_GOOD; }
+            Canvas3D.DrawRect2D(canvas, meterX + 76, warmY,
+                Convert.NumToInt((meterW + 0.0) * warmth), 9, wcol);
         }
 
         if (helpOn) { drawControlsOverlay(canvas, w, h); }
@@ -101,10 +114,12 @@ class RidgeboundHud {
 
     // Toggleable controls reference (H). A centered card listing every binding.
     hide func drawControlsOverlay(canvas: Canvas3D, w: Integer, h: Integer) {
-        var px = w / 2 - 170;
-        var py = h / 2 - 120;
-        Canvas3D.DrawRect2D(canvas, px, py, 340, 234, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, px, py, 340, 3, config.HUD_ACCENT);
+        var cardW = 360;
+        if (w < 400) { cardW = w - 24; }
+        var px = w / 2 - cardW / 2;
+        var py = h / 2 - 108;
+        Canvas3D.DrawRect2D(canvas, px, py, cardW, 216, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, px, py, cardW, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, px + 14, py + 18, "CONTROLS", config.HUD_TEXT);
         Canvas3D.DrawText2D(canvas, px + 14, py + 44, "WASD - move", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, px + 14, py + 64, "Mouse - look   (click to capture)", config.HUD_MUTED);
@@ -112,9 +127,8 @@ class RidgeboundHud {
         Canvas3D.DrawText2D(canvas, px + 14, py + 104, "Space - jump", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, px + 14, py + 124, "V - toggle first-person / orbit", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, px + 14, py + 144, "E - hold to scan a beacon", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, px + 14, py + 164, "F - kick nearby boulders", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, px + 14, py + 184, "Wheel - zoom   Ctrl - debug   F11 - fullscreen", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, px + 14, py + 210, "H - close this help", config.HUD_GOOD);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 164, "Wheel - zoom   Ctrl - debug", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, px + 14, py + 188, "H - close help   Esc - pause", config.HUD_GOOD);
     }
 
     hide func drawDebugPanel(canvas: Canvas3D, w: Integer) {

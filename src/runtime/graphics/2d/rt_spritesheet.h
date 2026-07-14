@@ -9,7 +9,8 @@
 //
 // Key invariants:
 //   - Regions are stored by name; duplicate names overwrite the previous region.
-//   - rt_spritesheet_get_region returns coordinates into the atlas; it does not copy pixels.
+//   - rt_spritesheet_get_region extracts a region into a new Pixels buffer (a copy),
+//     returning NULL when the named region does not exist.
 //   - All regions must reference valid coordinates within the atlas bounds.
 //   - The atlas Pixels object is retained while the spritesheet is in use.
 //

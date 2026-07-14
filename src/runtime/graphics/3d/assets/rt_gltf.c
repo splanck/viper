@@ -1902,6 +1902,24 @@ rt_string rt_gltf_get_variant_name(void *obj, int64_t index) {
     return rt_const_cstr(a->variant_names[index]);
 }
 
+int rt_gltf_draco_decode_probe(const unsigned char *data, size_t size) {
+    draco_mesh mesh;
+    int unsupported = 0;
+    int ok;
+    if (!data || size == 0)
+        return 0;
+    ok = draco_decode_mesh(data, size, &mesh, &unsupported);
+    if (ok)
+        draco_mesh_free(&mesh);
+    return ok;
+}
+
 #else
 typedef int rt_graphics_disabled_tu_guard;
+
+int rt_gltf_draco_decode_probe(const unsigned char *data, size_t size) {
+    (void)data;
+    (void)size;
+    return 0;
+}
 #endif /* VIPER_ENABLE_GRAPHICS */

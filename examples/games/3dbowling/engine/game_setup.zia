@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/game_setup.zia
+// Purpose: Constructs game subsystems, input actions, audio, and gameplay worlds.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: engine/game_setup
 // PURPOSE: Startup, menu settings, action bindings, audio, and world creation.
@@ -24,6 +42,10 @@ bind "../effects/particles";
 bind "../effects/celebrations";
 bind "../scoring/scoring";
 bind "../gameplay/release_meter";
+bind "../gameplay/shot_watchdog";
+bind "../gameplay/feedback_model";
+bind "../gameplay/ai_delivery";
+bind "../gameplay/impact_batch";
 bind "../gameplay/leaves";
 bind "../presentation/replay";
 bind "../progression/profile";
@@ -67,6 +89,14 @@ class BowlingGameSetup extends BowlingGameState {
 
         releaseMeter = new ReleaseMeter();
         releaseMeter.reset(getReleaseAssist());
+        shotWatchdog = new ShotWatchdog();
+        shotWatchdog.reset(config.BALL_THROW_Z);
+        throwResumeGate = new ThrowResumeGate();
+        throwResumeGate.reset();
+        feedbackModel = new FeedbackModel();
+        impactBatch = new ImpactBatch();
+        impactBatch.reset(false);
+        aiDeliveryModel = new AiDeliveryModel();
         leaveAnalyzer = new LeaveAnalyzer();
         replayRecorder = new ReplayRecorder();
         bowlerAvatar = new BowlerAvatar();
@@ -93,13 +123,16 @@ class BowlingGameSetup extends BowlingGameState {
         Action.BindPadButton(config.ACT_BACK, -1, Pad.get_ButtonB());
         Action.BindPadButton(config.ACT_BACK, -1, Pad.get_ButtonStart());
 
-        Action.DefineAxis(config.ACT_AIM_X);
-        Action.BindKeyAxis(config.ACT_AIM_X, Key.A, -1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Key.Left, -1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Key.D, 1.0);
-        Action.BindKeyAxis(config.ACT_AIM_X, Key.Right, 1.0);
-        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_ButtonLeft(), -1.0);
-        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_ButtonRight(), 1.0);
+        Action.DefineAxis(config.ACT_STANCE_X);
+        Action.BindKeyAxis(config.ACT_STANCE_X, Key.A, -1.0);
+        Action.BindKeyAxis(config.ACT_STANCE_X, Key.D, 1.0);
+        Action.BindPadAxis(config.ACT_STANCE_X, -1, Action.get_AxisLeftX(), 0.16);
+
+        Action.DefineAxis(config.ACT_TARGET_X);
+        Action.BindKeyAxis(config.ACT_TARGET_X, Key.Left, -1.0);
+        Action.BindKeyAxis(config.ACT_TARGET_X, Key.Right, 1.0);
+        Action.BindPadButtonAxis(config.ACT_TARGET_X, -1, Pad.get_ButtonLeft(), -1.0);
+        Action.BindPadButtonAxis(config.ACT_TARGET_X, -1, Pad.get_ButtonRight(), 1.0);
 
         Action.DefineAxis(config.ACT_SPIN_X);
         if (menuObj.getControlPreset() == 1) {
@@ -118,6 +151,10 @@ class BowlingGameSetup extends BowlingGameState {
         Action.BindKey(config.ACT_THROW, Key.Space);
         Action.BindPadButton(config.ACT_THROW, -1, Pad.get_ButtonA());
 
+        Action.Define(config.ACT_SPARE_RELEASE);
+        Action.BindKey(config.ACT_SPARE_RELEASE, Key.F);
+        Action.BindPadButton(config.ACT_SPARE_RELEASE, -1, Pad.get_ButtonX());
+
         Action.Define(config.ACT_BALL_PREV);
         Action.BindKey(config.ACT_BALL_PREV, Key.Digit1);
         Action.BindPadButton(config.ACT_BALL_PREV, -1, Pad.get_ButtonLeftStick());
@@ -128,7 +165,6 @@ class BowlingGameSetup extends BowlingGameState {
 
         Action.Define(config.ACT_RESET);
         Action.BindKey(config.ACT_RESET, Key.R);
-        Action.BindPadButton(config.ACT_RESET, -1, Pad.get_ButtonX());
 
         Action.Define(config.ACT_PAUSE);
         Action.BindKey(config.ACT_PAUSE, Key.P);
@@ -150,8 +186,12 @@ class BowlingGameSetup extends BowlingGameState {
 
         Audio.SetMasterVolume(menuObj.getMasterVolume());
         soundBank = SoundBank.New();
-        soundBank.RegisterSound("roll", Synth.Noise(520, 24));
-        soundBank.RegisterSound("crash", Synth.Noise(210, 88));
+        soundBank.RegisterSound("roll_soft", Synth.Noise(360, 12));
+        soundBank.RegisterSound("roll_medium", Synth.Noise(520, 24));
+        soundBank.RegisterSound("roll_hard", Synth.Noise(680, 38));
+        soundBank.RegisterSound("pins_soft", Synth.Noise(120, 34));
+        soundBank.RegisterSound("pins_medium", Synth.Noise(210, 72));
+        soundBank.RegisterSound("pins_hard", Synth.Noise(280, 108));
         soundBank.RegisterSound("strike", Synth.Sweep(420, 1480, 520, 1));
         soundBank.RegisterSound("spare", Synth.Sweep(520, 1080, 280, 1));
         soundBank.RegisterSound("gutter", Synth.Sweep(240, 90, 340, 2));
@@ -162,6 +202,8 @@ class BowlingGameSetup extends BowlingGameState {
         soundBank.RegisterSound("defeat", Synth.Sweep(460, 120, 520, 2));
         soundBank.RegisterSound("crowd_strike", Synth.Noise(720, 58));
         soundBank.RegisterSound("crowd_spare", Synth.Noise(420, 34));
+        soundBank.RegisterSound("sweep", Synth.Noise(620, 18));
+        soundBank.RegisterSound("pinsetter", Synth.Sweep(110, 260, 240, 0));
         soundBank.RegisterSound("venue_ambience", Synth.Noise(4800, 8));
         buildMusic();
         soundReady = true;
@@ -254,6 +296,7 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Build a fresh physics world plus lane / pins / ball /
     ///        particle / celebration managers; wire up env reflections.
     hide func createGameplayWorld() {
+        clearGameplayWorld();
         physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
         // More solver passes stabilize the 10-pin contact island so a hit
         // rack resolves cleanly and pins carry into each other (default 6).
@@ -278,11 +321,25 @@ class BowlingGameSetup extends BowlingGameState {
 
         celebMgr = new CelebrationManager();
         celebMgr.initCelebrations();
+        celebMgr.setReducedFlash(menuObj.getReducedFlash());
 
         var env = render.getSkybox();
         laneObj.applyEnvironment(env);
         pinMgr.applyEnvironment(env);
         ballObj.applyEnvironment(env);
+    }
+
+    /// @brief Drop all references owned by the previous gameplay world.
+    hide func clearGameplayWorld() {
+        if (replayRecorder != null) { replayRecorder.clear(); }
+        if (particleMgr != null) { particleMgr.clear(); }
+        if (celebMgr != null) { celebMgr.clear(); }
+        ballObj = null;
+        pinMgr = null;
+        laneObj = null;
+        particleMgr = null;
+        celebMgr = null;
+        physWorld = null;
     }
 
     /// @brief Allocate one fresh ScoreKeeper (and default name) per player.
@@ -331,8 +388,20 @@ class BowlingGameSetup extends BowlingGameState {
     /// @brief Pull oilPattern / qualityMode from the menu and apply.
     hide func applyMenuSettings() {
         oilPattern = menuObj.getOilPattern();
+        difficulty = menuObj.getDifficulty();
+        if (menuObj.getBumpers()) { config.BUMPERS_ENABLED = 1; }
+        else { config.BUMPERS_ENABLED = 0; }
         qualityMode = menuObj.getQualityMode();
         render.applyQuality(qualityMode);
+        if (camCtrl != null) { camCtrl.setReducedMotion(menuObj.getReducedMotion()); }
+        if (replayRecorder != null) { replayRecorder.setReducedMotion(menuObj.getReducedMotion()); }
+        if (celebMgr != null) { celebMgr.setReducedFlash(menuObj.getReducedFlash()); }
+        if (hudObj != null) {
+            hudObj.setAccessibility(menuObj.getHighContrast(), menuObj.getLargeHud());
+        }
+        if (bowlerAvatar != null) {
+            bowlerAvatar.setReducedMotion(menuObj.getReducedMotion());
+        }
         if (soundReady) { Audio.SetMasterVolume(menuObj.getMasterVolume()); }
     }
 
@@ -343,11 +412,16 @@ class BowlingGameSetup extends BowlingGameState {
         screenState = config.SCREEN_TITLE;
         gameState = config.STATE_AIMING;
         aimX = 0.0;
+        stanceX = 0.0;
+        targetX = 0.0;
         power = 0.0;
         spin = 0.0;
         charging = false;
+        spareRelease = false;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
+        watchdogResetShot = false;
+        throwResumeGate.reset();
         fixedStepAlpha = 0.0;
         camCtrl.setTitleMode();
         render.applyVenueTheme(config.MODE_SINGLE);
@@ -367,7 +441,7 @@ class BowlingGameSetup extends BowlingGameState {
     hide func startNewMatchMode(count: Integer, mode: Integer) {
         applyMenuSettings();
         createGameplayWorld();
-        laneObj.enableAuthoredSurface();
+        laneObj.enableAuthoredSurface(render.getCanvas());
 
         playerCount = count;
         if (playerCount < 1) { playerCount = 1; }
@@ -381,15 +455,22 @@ class BowlingGameSetup extends BowlingGameState {
         practiceId = menuObj.getPracticeId();
         activePlayer = 0;
         initScoreKeepers();
+        matchSeed = 97 + menuObj.getGamesPlayed() * 31 + currentMode * 101;
+        rackNumber = 0;
+        pinMgr.setRackSeed(currentRackSeed(), difficulty);
+        pinMgr.savePinState();
         bowlerAvatar.setColor(playerProfiles.get(0).getColor());
         bowlerAvatar.setLeftHanded(playerProfiles.get(0).getLeftHanded());
         partyScores = [];
         for (var psi: Integer = 0; psi < playerCount; psi = psi + 1) { partyScores.add(0); }
 
         aimX = 0.0;
+        stanceX = 0.0;
+        targetX = 0.0;
         power = 0.0;
         spin = 0.0;
         charging = false;
+        spareRelease = false;
         fixedStepAlpha = 0.0;
         settleTimer = 0.0;
         scoreTimer = 0.0;
@@ -398,6 +479,8 @@ class BowlingGameSetup extends BowlingGameState {
         lightFlashTimer = 0.0;
         gutterLatched = false;
         ballHitPinsThisRoll = false;
+        watchdogResetShot = false;
+        throwResumeGate.reset();
         cinematicStarted = false;
         lastReleaseAccuracy = 1.0;
         lastShotSpeed = 0.0;
@@ -455,6 +538,14 @@ class BowlingGameSetup extends BowlingGameState {
         if (menuObj.getAssistLevel() == 0) { return config.RELEASE_ASSIST_OFF; }
         if (menuObj.getAssistLevel() == 2) { return config.RELEASE_ASSIST_FULL; }
         return config.RELEASE_ASSIST_STANDARD;
+    }
+
+    hide func currentRackSeed() -> Integer {
+        var frame = 1;
+        if (scoreKeepers.count() > activePlayer && activePlayer >= 0) {
+            frame = scoreKeepers.get(activePlayer).getFrame();
+        }
+        return matchSeed + activePlayer * 211 + frame * 37 + rackNumber * 73;
     }
 
     hide func applyPracticeLeave() {

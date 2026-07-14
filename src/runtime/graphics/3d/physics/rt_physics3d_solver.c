@@ -143,6 +143,12 @@ static int ph3d_body_is_active(const rt_body3d *b) {
 ///   sleeping, or sleeping-vs-static) is skipped — this is what freezes a fully
 ///   settled island so a resting stack stays put instead of being re-solved
 ///   (and slowly drifting) every frame.
+/// @note The one-layer-per-step wake front is a deliberate tradeoff: poking the
+///   base of a tall settled stack ripples up over a few frames rather than waking
+///   the whole island at once. Whole-island waking was considered and rejected —
+///   it would re-solve (and let drift) bodies that should stay asleep, and it
+///   changes solver trajectories (VM-vs-native determinism). The contact-driven
+///   propagation here is the accepted behavior.
 static int ph3d_contact_should_solve(rt_body3d *a, rt_body3d *b) {
     int active_a = ph3d_body_is_active(a);
     int active_b = ph3d_body_is_active(b);
@@ -417,7 +423,10 @@ int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *b
 /// @brief Match this frame's contacts to the previous frame, seed accumulated
 ///   impulses (warm starting), capture per-point restitution bias, and re-apply
 ///   the seeded impulse so the velocity solver starts near the converged answer.
-static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
+static void world3d_warm_start_contact(rt_world3d *w,
+                                       rt_contact3d *c,
+                                       const contact_pair_hash_entry *prev_table,
+                                       int32_t prev_capacity) {
     rt_body3d *a;
     rt_body3d *b;
     const rt_contact3d *prev = NULL;
@@ -434,13 +443,19 @@ static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
         e = (ra < rb) ? ra : rb;
     }
 
-    /* Identical body/collider ordering keeps stored impulse directions valid. */
-    for (int32_t p = 0; p < w->previous_contact_count; ++p) {
-        const rt_contact3d *q = &w->previous_contacts[p];
-        if (q->body_a == c->body_a && q->body_b == c->body_b && q->collider_a == c->collider_a &&
-            q->collider_b == c->collider_b) {
-            prev = q;
-            break;
+    /* Identical body/collider ordering keeps stored impulse directions valid.
+     * Use the prebuilt previous-frame index when available (O(1)); fall back to a
+     * linear scan if the table couldn't be built. */
+    if (prev_table) {
+        prev = contact_pair_table_find(prev_table, prev_capacity, c);
+    } else {
+        for (int32_t p = 0; p < w->previous_contact_count; ++p) {
+            const rt_contact3d *q = &w->previous_contacts[p];
+            if (q->body_a == c->body_a && q->body_b == c->body_b &&
+                q->collider_a == c->collider_a && q->collider_b == c->collider_b) {
+                prev = q;
+                break;
+            }
         }
     }
 
@@ -607,6 +622,18 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
         return;
     vec3_copy(a->position, next_a);
     vec3_copy(b->position, next_b);
+    /* Record the penetration removed this pass so the next position iteration
+     * reads the reduced overlap instead of re-applying the detection-time
+     * separation. Without this, raising position_iterations multiplies the
+     * ejection (~beta*pen per pass) and blows stacks apart; with it, extra
+     * iterations converge (nonlinear Gauss-Seidel). The position solve is a pure
+     * translation along the unit normal, so every manifold point's separation
+     * grows by the same corr*inv_sum == beta*pen. */
+    {
+        double applied = corr * inv_sum;
+        for (int32_t k = 0; k < c->contact_count; ++k)
+            c->separations[k] += applied;
+    }
     if (a->inv_mass > 0.0)
         body3d_touch_broadphase(a);
     if (b->inv_mass > 0.0)
@@ -615,14 +642,23 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
 
 /// @brief Warm-start every solvable contact, walking the batch island by island.
 void world3d_warm_start_solver_islands(rt_world3d *w, const ph3d_solver_island_batch *batch) {
+    contact_pair_hash_entry *prev_table;
+    int32_t prev_capacity = 0;
     if (!w || !batch)
         return;
+    /* Index the previous frame's contacts once so each current contact matches in
+     * O(1) instead of scanning all previous contacts (was O(current x previous) per
+     * substep). NULL on empty/alloc-failure falls back to the linear scan. */
+    prev_table =
+        contact_pair_table_build(w->previous_contacts, w->previous_contact_count, &prev_capacity);
     for (int32_t island = 0; island < batch->island_count; ++island) {
         int32_t begin = batch->island_offsets[island];
         int32_t end = batch->island_offsets[island + 1];
         for (int32_t i = begin; i < end; ++i)
-            world3d_warm_start_contact(w, &w->contacts[batch->contact_indices[i]]);
+            world3d_warm_start_contact(
+                w, &w->contacts[batch->contact_indices[i]], prev_table, prev_capacity);
     }
+    free(prev_table);
 }
 
 /// @brief Run one velocity-solve pass over every solvable contact, island by island.

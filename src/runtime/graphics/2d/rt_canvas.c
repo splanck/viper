@@ -211,6 +211,13 @@ void rt_canvas_destroy(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
 
+    /* Validate before releasing — every other canvas entry point goes through
+     * rt_canvas_checked, so a stale/wrong-type handle (or a second Destroy after
+     * the finalizer zeroed the magic) is rejected here instead of underflowing the
+     * refcount or freeing a non-canvas object. */
+    if (!rt_canvas_checked(canvas_ptr))
+        return;
+
     if (rt_obj_release_check0(canvas_ptr))
         rt_obj_free(canvas_ptr);
 }
@@ -432,6 +439,14 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
                 canvas, canvas->last_event.data.scroll.x, canvas->last_event.data.scroll.y);
             rt_mouse_update_wheel((double)canvas->last_event.data.scroll.delta_x,
                                   (double)canvas->last_event.data.scroll.delta_y);
+        } else if (canvas->last_event.type == VGFX_EVENT_RESIZE) {
+            /* Keep the cached logical size in sync with OS-driven resizes (user drag,
+             * Maximize/Restore); otherwise Canvas.Width/Height report the creation
+             * size forever while draw/clip use the live window size. */
+            if (canvas->last_event.data.resize.logical_width > 0)
+                canvas->logical_width = (int64_t)canvas->last_event.data.resize.logical_width;
+            if (canvas->last_event.data.resize.logical_height > 0)
+                canvas->logical_height = (int64_t)canvas->last_event.data.resize.logical_height;
         }
     }
 

@@ -247,51 +247,104 @@ class RidgeboundMenu3D {
     }
 
     hide func drawTitleOverlay(canvas: Canvas3D, h: Integer) {
-        drawTitleMark(canvas, 40, 34);
-        Canvas3D.DrawText2D(canvas, 44, 104, "THE FIVE BEACONS", config.HUD_WARN);
-        drawMenuRows(canvas, 54, h / 2 - 46, 288, 42, 4, titleSelected, MENU_TITLE, false);
+        var w = canvas.Width;
+        var cardW = 374;
+        if (w < 430) { cardW = w - 32; }
+        var x = 24;
+        var y = 24;
+        var cardH = 150;
+        var titleScale = 5;
+        var compact = w < 520 || h < 420;
+        if (compact) {
+            x = 14;
+            y = 14;
+            cardW = w - 28;
+            if (cardW > 374) { cardW = 374; }
+            cardH = 124;
+            titleScale = 4;
+        }
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, cardH, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, 4, cardH, config.HUD_ACCENT);
+        drawTitleMark(canvas, x + 18, y + 16, titleScale);
+        var subtitleY = y + 88;
+        var taglineY = y + 112;
+        if (compact) { subtitleY = y + 69; taglineY = y + 93; }
+        Canvas3D.DrawText2D(canvas, x + 22, subtitleY,
+            "THE FIVE BEACONS", config.HUD_WARN);
+        Canvas3D.DrawText2D(canvas, x + 22, taglineY,
+            "Restore the five beacons.", config.HUD_MUTED);
+
+        var menuY = h - 202;
+        if (menuY < 184) { menuY = 184; }
+        var rowH = 39;
+        if (compact) {
+            menuY = y + cardH + 8;
+            rowH = (h - menuY - 6) / 4;
+            if (rowH < 24) { rowH = 24; }
+        }
+        drawMenuRows(canvas, x + 4, menuY, cardW - 8, rowH,
+            4, titleSelected, MENU_TITLE, false);
     }
 
     hide func drawPauseOverlay(canvas: Canvas3D, w: Integer, h: Integer) {
-        var x = w / 2 - 172;
-        var y = h / 2 - 132;
-        Canvas3D.DrawRect2D(canvas, x, y, 344, 278, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, x, y, 344, 3, config.HUD_ACCENT);
-        drawTextShadow(canvas, x + 24, y + 24, "PAUSED", config.HUD_TEXT);
-        drawMenuRows(canvas, x + 24, y + 70, 296, 38, 5, pauseSelected, MENU_PAUSE, false);
+        var cardW = 344;
+        var cardH = 278;
+        if (cardW > w - 24) { cardW = w - 24; }
+        if (cardH > h - 20) { cardH = h - 20; }
+        var x = w / 2 - cardW / 2;
+        var y = h / 2 - cardH / 2;
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, cardH, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, 3, config.HUD_ACCENT);
+        drawTextShadow(canvas, x + 24, y + 18, "PAUSED", config.HUD_TEXT);
+        var rowH = (cardH - 62) / 5;
+        drawMenuRows(canvas, x + 24, y + 56, cardW - 48, rowH,
+            5, pauseSelected, MENU_PAUSE, false);
     }
 
     hide func drawOptionsOverlay(canvas: Canvas3D, w: Integer, h: Integer, fullscreenOn: Boolean) {
-        var x = w / 2 - 210;
-        var y = h / 2 - 142;
-        Canvas3D.DrawRect2D(canvas, x, y, 420, 298, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, x, y, 420, 3, config.HUD_ACCENT);
-        drawTextShadow(canvas, x + 24, y + 22, "OPTIONS", config.HUD_TEXT);
-        drawMenuRows(canvas, x + 24, y + 66, 372, 36, 6, optionsSelected, MENU_OPTIONS, fullscreenOn);
+        var cardW = 420;
+        var cardH = 298;
+        if (cardW > w - 24) { cardW = w - 24; }
+        if (cardH > h - 20) { cardH = h - 20; }
+        var x = w / 2 - cardW / 2;
+        var y = h / 2 - cardH / 2;
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, cardH, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, 3, config.HUD_ACCENT);
+        drawTextShadow(canvas, x + 24, y + 18, "OPTIONS", config.HUD_TEXT);
+        var rowH = (cardH - 58) / 6;
+        drawMenuRows(canvas, x + 24, y + 52, cardW - 48, rowH,
+            6, optionsSelected, MENU_OPTIONS, fullscreenOn);
     }
 
     hide func drawControlsOverlay(canvas: Canvas3D, w: Integer, h: Integer) {
-        var x = w / 2 - 210;
-        var y = h / 2 - 148;
-        Canvas3D.DrawRect2D(canvas, x, y, 420, 296, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, x, y, 420, 3, config.HUD_ACCENT);
-        drawTextShadow(canvas, x + 24, y + 22, "CONTROLS", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 66, "Move            WASD / arrows", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 88, "Look            mouse", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 110, "Jump            Space", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 132, "Sprint          Shift", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 154, "Link beacon     hold E", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 176, "View            V", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 198, "Quality         right mouse", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 220, "Pause           Esc", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 28, y + 254, "Back", config.HUD_GOOD);
+        var cardW = 420;
+        var cardH = 296;
+        if (cardW > w - 24) { cardW = w - 24; }
+        if (cardH > h - 20) { cardH = h - 20; }
+        var x = w / 2 - cardW / 2;
+        var y = h / 2 - cardH / 2;
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, cardH, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, cardW, 3, config.HUD_ACCENT);
+        drawTextShadow(canvas, x + 24, y + 18, "CONTROLS", config.HUD_TEXT);
+        var firstY = y + 58;
+        var lineH = 22;
+        if (cardH < 280) { firstY = y + 48; lineH = 20; }
+        Canvas3D.DrawText2D(canvas, x + 28, firstY, "Move            WASD / arrows", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH, "Look            mouse", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 2, "Jump            Space", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 3, "Sprint          Shift", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 4, "Link beacon     hold E", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 5, "View            V", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 6, "Quality         right mouse", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, firstY + lineH * 7, "Pause           Esc", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 28, y + cardH - 28, "Back", config.HUD_GOOD);
     }
 
-    hide func drawTitleMark(canvas: Canvas3D, x: Integer, y: Integer) {
-        drawBlockTitle(canvas, x + 3, y + 4, 5, 0x06101A);
-        drawBlockTitle(canvas, x + 1, y + 2, 5, 0x123049);
-        drawBlockTitle(canvas, x, y, 5, config.HUD_TEXT);
-        Canvas3D.DrawRect2D(canvas, x, y + 46, 228, 3, config.HUD_ACCENT);
+    hide func drawTitleMark(canvas: Canvas3D, x: Integer, y: Integer, scale: Integer) {
+        drawBlockTitle(canvas, x + 3, y + 4, scale, 0x06101A);
+        drawBlockTitle(canvas, x + 1, y + 2, scale, 0x123049);
+        drawBlockTitle(canvas, x, y, scale, config.HUD_TEXT);
+        Canvas3D.DrawRect2D(canvas, x, y + scale * 9 + 1, scale * 46, 3, config.HUD_ACCENT);
     }
 
     hide func drawBlockTitle(canvas: Canvas3D, x: Integer, y: Integer, s: Integer, color: Integer) {
@@ -405,9 +458,13 @@ class RidgeboundMenu3D {
             }
             Canvas3D.DrawRect2D(canvas, x, rowY, rowW, rowH - 6, fill);
             Canvas3D.DrawRect2D(canvas, x, rowY, rowW, 1, config.HUD_PANEL);
-            Canvas3D.DrawText2D(canvas, x + 14, rowY + 11, rowLabel(i, page, fullscreenOn), color);
+            var textY = rowY + 11;
+            if (rowH < 34) { textY = rowY + 7; }
+            Canvas3D.DrawText2D(canvas, x + 14, textY, rowLabel(i, page, fullscreenOn), color);
             if (i == active) {
-                Canvas3D.DrawRect2D(canvas, x - 10, rowY + 10, 5, rowH - 26, config.HUD_WARN);
+                var markerH = rowH - 18;
+                if (markerH < 4) { markerH = 4; }
+                Canvas3D.DrawRect2D(canvas, x - 10, rowY + 7, 5, markerH, config.HUD_WARN);
             }
             i = i + 1;
         }

@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/engine/renderer.zia
+// Purpose: Owns Canvas3D setup, aspect-safe camera rebinding, lighting, and post effects.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: renderer (Renderer)
 // PURPOSE: Wraps Canvas3D + Camera3D setup, the procedurally-generated
@@ -34,6 +52,7 @@ module renderer;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics;
+bind Viper.Math;
 bind Viper.Terminal;
 bind Viper.Core.Convert as Convert;
 bind "../config";
@@ -51,6 +70,10 @@ class Renderer {
     hide Light3D deckFill;
     hide Integer qualityMode;
     hide Boolean qualityApplied;
+    hide Integer lastWidth;
+    hide Integer lastHeight;
+    hide Float lastValidAspect;
+    hide Boolean compactLayout;
 
     /// @brief Pack 0..255 RGBA into a single 32-bit pixel int.
     hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
@@ -70,8 +93,12 @@ class Renderer {
         Canvas3D.SetOcclusionCulling(canvas, true);
         Say("Backend: " + canvas.Backend);
 
-        var aspect: Float = (width + 0.0) / (height + 0.0);
-        cam = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
+        lastWidth = 0;
+        lastHeight = 0;
+        lastValidAspect = (config.WINDOW_WIDTH + 0.0) /
+            (config.WINDOW_HEIGHT + 0.0);
+        compactLayout = false;
+        updateDimensions(width, height);
         alleySkybox = createAlleySkybox();
         Canvas3D.SetSkybox(canvas, alleySkybox);
 
@@ -97,13 +124,13 @@ class Renderer {
         Canvas3D.SetLight(canvas, 2, pinSpot);
 
         var laneGlowPos = new Vec3(0.0, 4.35, 6.2);
-        lanePractical = Light3D.Point(laneGlowPos, 0.92, 0.96, 1.0, 0.035);
-        Light3D.SetIntensity(lanePractical, 0.58);
+        lanePractical = Light3D.Point(laneGlowPos, 1.0, 0.78, 0.48, 0.035);
+        Light3D.SetIntensity(lanePractical, 0.66);
         Canvas3D.SetLight(canvas, 3, lanePractical);
 
         var deckFillPos = new Vec3(-0.78, 2.9, 16.2);
-        deckFill = Light3D.Point(deckFillPos, 0.78, 0.90, 1.0, 0.045);
-        Light3D.SetIntensity(deckFill, 1.06);
+        deckFill = Light3D.Point(deckFillPos, 1.0, 0.76, 0.48, 0.045);
+        Light3D.SetIntensity(deckFill, 1.12);
         Canvas3D.SetLight(canvas, 4, deckFill);
 
         Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
@@ -183,6 +210,33 @@ class Renderer {
         Canvas3D.Poll(canvas);
     }
 
+    /// @brief Synchronize aspect and compact layout to the live render target.
+    expose func syncViewport() -> Boolean {
+        return updateDimensions(canvas.Width, canvas.Height);
+    }
+
+    /// @brief Apply dimensions without rebuilding the gameplay world.
+    /// @return True only when a new aspect-correct camera was created.
+    expose func updateDimensions(width: Integer, height: Integer) -> Boolean {
+        if (width <= 0 || height <= 0) { return false; }
+        var nextCompact = width < 760 || height < 520;
+        compactLayout = nextCompact;
+        lastWidth = width;
+        lastHeight = height;
+        var nextAspect = (width + 0.0) / (height + 0.0);
+        if (cam != null && Abs(nextAspect - lastValidAspect) <= 0.0001) {
+            lastValidAspect = nextAspect;
+            return false;
+        }
+        lastValidAspect = nextAspect;
+        cam = Camera3D.New(config.CAMERA_FOV, lastValidAspect,
+            config.CAMERA_NEAR, config.CAMERA_FAR);
+        return true;
+    }
+
+    expose func getLastValidAspect() -> Float { return lastValidAspect; }
+    expose func isCompactLayout() -> Boolean { return compactLayout; }
+
     /// @brief Clear back buffer + Begin scene with the active camera.
     expose func beginFrame() {
         Canvas3D.Clear(canvas, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
@@ -258,10 +312,10 @@ class Renderer {
             Light3D.SetIntensity(sunLight, 0.76);
             Light3D.SetColor(fillLight, config.LIGHT_FILL_R, config.LIGHT_FILL_G, config.LIGHT_FILL_B);
             Light3D.SetIntensity(fillLight, 0.46);
-            Light3D.SetColor(lanePractical, 0.92, 0.96, 1.0);
-            Light3D.SetIntensity(lanePractical, 0.58);
-            Light3D.SetColor(deckFill, 0.78, 0.90, 1.0);
-            Light3D.SetIntensity(deckFill, 1.06);
+            Light3D.SetColor(lanePractical, 1.0, 0.78, 0.48);
+            Light3D.SetIntensity(lanePractical, 0.66);
+            Light3D.SetColor(deckFill, 1.0, 0.76, 0.48);
+            Light3D.SetIntensity(deckFill, 1.12);
             Canvas3D.SetAmbient(canvas, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
             Canvas3D.SetFog(canvas, 25.0, 80.0, config.CLEAR_R, config.CLEAR_G, config.CLEAR_B);
         }

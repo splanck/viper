@@ -47,14 +47,14 @@ static void path2d_finalize(void *obj) {
 }
 
 /// @brief Allocate a Path2D with the given initial point capacity.
-/// @details Capacity is clamped by `initial_capacity`. On allocation failure
+/// @details Capacity is clamped by `rt2d_initial_capacity`. On allocation failure
 ///          the impl is torn down cleanly and NULL is returned.
 void *rt_path2d_new(int64_t capacity) {
     rt_path2d_impl *path =
         (rt_path2d_impl *)rt_obj_new_i64(RT2D_PATH_CLASS_ID, (int64_t)sizeof(rt_path2d_impl));
     if (!path)
         return NULL;
-    path->capacity = initial_capacity(capacity);
+    path->capacity = rt2d_initial_capacity(capacity);
     path->points = (rt_path2d_point *)calloc((size_t)path->capacity, sizeof(*path->points));
     if (!path->points) {
         if (rt_obj_release_check0(path))
@@ -151,12 +151,12 @@ int64_t rt_path2d_get_y(void *path, int64_t index) {
 ///          The first point is always treated as a move (no line drawn to it);
 ///          subsequent move points introduce pen-up breaks so you can emit
 ///          multiple disconnected subpaths from the same Path2D. Colors accept
-///          either `0xRRGGBBAA` or `0x00RRGGBB` form via `draw_rgb`.
+///          either `0xRRGGBBAA` or `0x00RRGGBB` form via `rt2d_draw_rgb`.
 void rt_path2d_draw_to_pixels(void *path, void *pixels, int64_t rgba) {
     rt_path2d_impl *impl = rt2d_has_class(path, RT2D_PATH_CLASS_ID) ? (rt_path2d_impl *)path : NULL;
     if (!impl || !pixels || impl->count < 2)
         return;
-    int64_t color = draw_rgb(rgba);
+    int64_t color = rt2d_draw_rgb(rgba);
     for (int64_t i = 1; i < impl->count; i++) {
         if (impl->points[i].move)
             continue;

@@ -466,6 +466,9 @@ contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
 int contact_pair_table_contains(const contact_pair_hash_entry *table,
                                 int32_t capacity,
                                 const rt_contact3d *needle);
+const rt_contact3d *contact_pair_table_find(const contact_pair_hash_entry *table,
+                                            int32_t capacity,
+                                            const rt_contact3d *needle);
 int world3d_append_frame_contact_unique(rt_world3d *w, const rt_contact3d *contact);
 int world3d_publish_frame_contacts(rt_world3d *w);
 int test_collision(const rt_body3d *a,

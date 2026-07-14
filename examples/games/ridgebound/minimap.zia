@@ -19,6 +19,7 @@ class RidgeboundMinimap {
     expose func draw(canvas: Canvas3D, x: Integer, y: Integer, width: Integer, height: Integer,
                      playerX: Float, playerZ: Float,
                      beaconXs: List[Float], beaconZs: List[Float], beaconState: List[Integer]) {
+        Canvas3D.DrawRect2D(canvas, x - 8, y - 8, width + 16, height + 16, config.HUD_PANEL);
         if (minimapBase != null) {
             Canvas3D.DrawImage2D(canvas, x, y, width, height, minimapBase);
         } else {
@@ -48,7 +49,13 @@ class RidgeboundMinimap {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var wx = (px + 0.0) * maxX / (last + 0.0);
                 var wz = (py + 0.0) * maxZ / (last + 0.0);
-                img.Set(px, py, minimapHeightColor(Terrain3D.GetHeightAt(land, wx, wz)));
+                var nx = wx / maxX;
+                var nz = wz / maxZ;
+                var color = minimapHeightColor(Terrain3D.GetHeightAt(land, wx, wz));
+                if (terrain.authoredRouteDistance(nx, nz) < config.ROUTE_HALF_WIDTH * 1.35) {
+                    color = mathutil.packPixel(168, 136, 82, 255);
+                }
+                img.Set(px, py, color);
             }
         }
         return img;

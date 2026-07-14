@@ -78,6 +78,30 @@ typedef struct rt_sprite_impl {
     int64_t flip_y;           ///< Vertical flip flag
     void **frames;            ///< Frame pixel buffers
     int64_t *frame_delays_ms; ///< Per-frame delays
+    // Transformed-frame cache. sprite_prepare_pixels reuses cache_pixels when every
+    // input below is unchanged, so a rotating/scaled/tinted sprite does not re-run
+    // the flip→scale→pad→rotate→tint→alpha pipeline (and its allocations) every
+    // frame. The cache OWNS its buffer and hands callers a borrowed pointer (they
+    // must not release it); it is evicted on the next miss and freed in the
+    // finalizer. Keyed on all transform inputs plus the frame pointer, so any
+    // changed setter simply misses and recomputes — no explicit invalidation.
+    // Note: an in-place mutation of a frame's own pixels (same frame pointer, same
+    // params) is not detected; re-set the frame or a transform param to refresh.
+    void *cache_pixels;        ///< Cache-owned transformed result, or NULL.
+    void *cache_frame;         ///< Frame pointer the cached result was built from.
+    int64_t cache_flip_x;      ///< Cached flip_x.
+    int64_t cache_flip_y;      ///< Cached flip_y.
+    int64_t cache_origin_x;    ///< Cached sprite origin_x input.
+    int64_t cache_origin_y;    ///< Cached sprite origin_y input.
+    int64_t cache_scale_x;     ///< Cached (normalized) scale_x.
+    int64_t cache_scale_y;     ///< Cached (normalized) scale_y.
+    int64_t cache_rotation;    ///< Cached rotation.
+    int64_t cache_tint;        ///< Cached tint_color.
+    int64_t cache_alpha;       ///< Cached alpha.
+    int64_t cache_out_origin_x; ///< Cached computed origin_x output.
+    int64_t cache_out_origin_y; ///< Cached computed origin_y output.
+    int8_t cache_out_centered;  ///< Cached origin_centered output.
+    int8_t cache_valid;         ///< 1 when cache_pixels holds a usable result.
 } rt_sprite_impl;
 
 /// @brief Validate-and-cast an opaque sprite pointer to its impl, trapping on failure.
@@ -412,12 +436,14 @@ static void *sprite_replace_pixels(void *replacement, void **slot, void *frame) 
 
 /// @brief Apply the sprite's flip / scale / rotation / tint / alpha to its current frame.
 ///
-/// Returns a Pixels object suitable for blitting. The result is
-/// either the unmodified frame (when no transforms apply) or a
-/// freshly-allocated buffer; in the latter case the caller is
-/// responsible for releasing it via `sprite_release_if_owned`.
-/// Also fills in the post-transform origin and a flag indicating
-/// whether the rotation step expanded the canvas to a centered square.
+/// Returns a Pixels object suitable for blitting: either the unmodified frame
+/// (when no transforms apply) or a transformed buffer owned by the sprite's
+/// transform cache. In BOTH cases the returned pointer is BORROWED — the caller
+/// must NOT release it. The cache buffer is evicted on the next call whose
+/// transform key differs, and freed in the sprite finalizer. On internal failure
+/// the partial buffer is released here and NULL is returned.
+/// Also fills in the post-transform origin and a flag indicating whether the
+/// rotation step expanded the canvas to a centered square.
 static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
                                    int64_t scale_x,
                                    int64_t scale_y,
@@ -433,6 +459,25 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
 
     scale_x = sprite_normalize_scale(scale_x);
     scale_y = sprite_normalize_scale(scale_y);
+
+    /* Cache lookup: if every transform input matches the last prepared result,
+     * return the cache-owned buffer directly (the caller borrows it and must not
+     * release it — see rt_sprite_draw_transformed). */
+    int64_t tint_key = sprite_normalize_tint(tint_color);
+    if (sprite->cache_valid && sprite->cache_pixels && sprite->cache_frame == frame &&
+        sprite->cache_flip_x == sprite->flip_x && sprite->cache_flip_y == sprite->flip_y &&
+        sprite->cache_origin_x == sprite->origin_x &&
+        sprite->cache_origin_y == sprite->origin_y && sprite->cache_scale_x == scale_x &&
+        sprite->cache_scale_y == scale_y && sprite->cache_rotation == rotation &&
+        sprite->cache_tint == tint_key && sprite->cache_alpha == alpha) {
+        if (origin_x_out)
+            *origin_x_out = sprite->cache_out_origin_x;
+        if (origin_y_out)
+            *origin_y_out = sprite->cache_out_origin_y;
+        if (origin_centered_out)
+            *origin_centered_out = sprite->cache_out_centered;
+        return sprite->cache_pixels;
+    }
 
     void *transformed = frame;
 
@@ -465,6 +510,12 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
             return NULL;
     }
 
+    /* Flip semantics: rt_pixels_flip_h/v mirror the frame around its center and the
+     * origin is a fixed rect-space reference (not an artwork-feature anchor), so a
+     * flipped sprite mirrors in place within the same screen rectangle — the
+     * standard flip_h/flip_v convention. The origin is therefore NOT remapped on
+     * flip; center the origin (width/2, height/2) if you need a pivot that stays on
+     * the same artwork feature across a flip. */
     int64_t origin_x = sprite_scale_origin(sprite->origin_x, scale_x);
     int64_t origin_y = sprite_scale_origin(sprite->origin_y, scale_y);
     int8_t origin_centered = 0;
@@ -536,6 +587,30 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
         *origin_y_out = origin_y;
     if (origin_centered_out)
         *origin_centered_out = origin_centered;
+
+    /* Store the freshly computed result in the cache (only an owned buffer, never
+     * the frame itself). The cache takes over the single reference this function's
+     * pipeline produced; evict the previous cached buffer first. The caller borrows
+     * the returned pointer and does not release it. */
+    if (transformed && transformed != frame) {
+        if (sprite->cache_pixels && sprite->cache_pixels != transformed)
+            rt_heap_release(sprite->cache_pixels);
+        sprite->cache_pixels = transformed;
+        sprite->cache_frame = frame;
+        sprite->cache_flip_x = sprite->flip_x;
+        sprite->cache_flip_y = sprite->flip_y;
+        sprite->cache_origin_x = sprite->origin_x;
+        sprite->cache_origin_y = sprite->origin_y;
+        sprite->cache_scale_x = scale_x;
+        sprite->cache_scale_y = scale_y;
+        sprite->cache_rotation = rotation;
+        sprite->cache_tint = tint_key;
+        sprite->cache_alpha = alpha;
+        sprite->cache_out_origin_x = origin_x;
+        sprite->cache_out_origin_y = origin_y;
+        sprite->cache_out_centered = origin_centered;
+        sprite->cache_valid = 1;
+    }
     return transformed;
 }
 
@@ -547,6 +622,11 @@ static void sprite_finalize(void *obj) {
     for (int64_t i = 0; i < sprite->frame_count; i++) {
         if (sprite->frames && sprite->frames[i])
             rt_heap_release(sprite->frames[i]);
+    }
+    if (sprite->cache_pixels) {
+        rt_heap_release(sprite->cache_pixels);
+        sprite->cache_pixels = NULL;
+        sprite->cache_valid = 0;
     }
     free(sprite->frames);
     free(sprite->frame_delays_ms);
@@ -581,6 +661,8 @@ static rt_sprite_impl *sprite_alloc(void) {
     sprite->flip_y = 0;
     sprite->frames = NULL;
     sprite->frame_delays_ms = NULL;
+    sprite->cache_pixels = NULL;
+    sprite->cache_valid = 0;
 
     rt_obj_set_finalizer(sprite, sprite_finalize);
     return sprite;
@@ -746,8 +828,10 @@ void *rt_sprite_from_file(void *path) {
 // Property accessors — straight getters and setters for the visible
 // state of a sprite. All take a `void *sprite_ptr` (the GC-managed
 // `rt_sprite_impl`) and return / accept an `int64_t` so they can
-// match the runtime calling convention. Each is null-safe; getters
-// on a null sprite return 0 (or false), setters silently no-op.
+// match the runtime calling convention. These accessors validate the
+// handle strictly: a NULL or wrong-class handle traps (programmer
+// error), unlike the draw/update/overlap paths which soft-skip a stale
+// handle. The `return 0` after each check is therefore unreachable.
 // `scale_x`, `scale_y`, `rotation` are stored as integers (percent
 // or degrees); `tint_color` accepts 0xAARRGGBB / 0x00RRGGBB and uses
 // -1 as the no-tint sentinel.
@@ -1018,7 +1102,9 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     }
 
     rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);
-    sprite_release_if_owned(transformed, frame);
+    /* Do not release `transformed`: sprite_prepare_pixels returns a cache-owned
+     * (or frame-borrowed) pointer. The cache is evicted on the next transform-key
+     * change and freed in the finalizer. */
 }
 
 /// @brief Draw the sprite onto a Canvas using its current properties.
@@ -1186,6 +1272,12 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     if (!s1->visible || !s2->visible)
         return false;
 
+    // A sprite with no frames has zero extent and no real hitbox — clamping to a
+    // 1×1 box below would report phantom collisions, so reject it up front.
+    if (rt_sprite_get_width(sprite_ptr) <= 0 || rt_sprite_get_height(sprite_ptr) <= 0 ||
+        rt_sprite_get_width(other_ptr) <= 0 || rt_sprite_get_height(other_ptr) <= 0)
+        return false;
+
     // Get bounding boxes
     int64_t w1 = sprite_saturating_scale(rt_sprite_get_width(sprite_ptr), s1->scale_x);
     int64_t h1 = sprite_saturating_scale(rt_sprite_get_height(sprite_ptr), s1->scale_y);
@@ -1217,6 +1309,10 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     if (!sprite)
         return false;
     if (!sprite->visible)
+        return false;
+
+    // Frameless sprites have no real hitbox (see rt_sprite_overlaps).
+    if (rt_sprite_get_width(sprite_ptr) <= 0 || rt_sprite_get_height(sprite_ptr) <= 0)
         return false;
 
     int64_t w = sprite_saturating_scale(rt_sprite_get_width(sprite_ptr), sprite->scale_x);

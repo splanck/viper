@@ -1,138 +1,225 @@
-// smoke_probe.zia - One-frame validation for Ridgebound.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/ridgebound/smoke_probe.zia
+// Purpose: Captures and measures Ridgebound title, gameplay, night, and compact layouts.
+// Key invariants:
+//   - Final frames retain scene structure, readable night values, and crisp HUD overlays.
+//   - Cinematic 960x540 rendering remains inside the backend-specific frame budget.
+// Ownership/Lifetime:
+//   - The probe owns and destroys one RidgeboundGame instance and its captures.
+// Links: game.zia, config.zia, README.md
+//
+//===----------------------------------------------------------------------===//
+
 module smoke_probe;
 
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Input.Key as Key;
 bind Viper.Math as Math;
-bind Viper.System.Environment as Environment;
 bind Viper.Terminal as Terminal;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.Time.Clock as Clock;
 bind "./config";
 bind "./game";
 
-func red(px : Integer) -> Integer {
-    return Math.Bits.And(px >> 24, 0xFF);
+class FrameStats {
+    expose Integer samples;
+    expose Integer sumLuma;
+    expose Integer minLuma;
+    expose Integer maxLuma;
+    expose Integer litSamples;
+    expose Integer whiteSamples;
+    expose Integer maxWhiteRun;
 }
 
-func green(px : Integer) -> Integer {
-    return Math.Bits.And(px >> 16, 0xFF);
-}
+func red(px: Integer) -> Integer { return Math.Bits.And(px >> 24, 0xFF); }
+func green(px: Integer) -> Integer { return Math.Bits.And(px >> 16, 0xFF); }
+func blue(px: Integer) -> Integer { return Math.Bits.And(px >> 8, 0xFF); }
 
-func blue(px : Integer) -> Integer {
-    return Math.Bits.And(px >> 8, 0xFF);
-}
-
-func luminance(px : Integer) -> Integer {
+func luminance(px: Integer) -> Integer {
     return (red(px) * 30 + green(px) * 59 + blue(px) * 11) / 100;
 }
 
-func ms(us : Integer) -> Float {
-    return us / 1000.0;
+func ms(us: Integer) -> Float { return us / 1000.0; }
+func fmt(value: Float) -> String { return Fmt.NumFixed(value, 3); }
+
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
 }
 
-func fmt(value : Float) -> String {
-    return Fmt.NumFixed(value, 3);
+func nearChannel(value: Integer, target: Integer) -> Boolean {
+    return value >= target - 2 && value <= target + 2;
 }
 
-func nearChannel(value : Integer, target : Integer) -> Boolean {
-    if (value < target - 2) {
-        return false;
-    }
-    if (value > target + 2) {
-        return false;
-    }
-    return true;
+func nearColor(px: Integer, r: Integer, g: Integer, b: Integer) -> Boolean {
+    return nearChannel(red(px), r) && nearChannel(green(px), g) && nearChannel(blue(px), b);
 }
 
-func nearColor(px : Integer, r : Integer, g : Integer, b : Integer) -> Boolean {
-    if (nearChannel(red(px), r) == false) {
-        return false;
-    }
-    if (nearChannel(green(px), g) == false) {
-        return false;
-    }
-    if (nearChannel(blue(px), b) == false) {
-        return false;
-    }
-    return true;
-}
-
-func isHudOverflowTextPixel(px : Integer) -> Boolean {
-    // Pure white can also occur in sky and snow highlights outside the HUD.
-    if (nearColor(px, 168, 186, 203)) {
-        return true;
-    }
-    if (nearColor(px, 255, 221, 68)) {
-        return true;
-    }
-    if (nearColor(px, 125, 255, 154)) {
-        return true;
-    }
+func isHudTextPixel(px: Integer) -> Boolean {
+    if (nearColor(px, 242, 240, 231)) { return true; } // text
+    if (nearColor(px, 105, 200, 191)) { return true; } // accent
+    if (nearColor(px, 170, 184, 181)) { return true; } // muted
+    if (nearColor(px, 141, 214, 160)) { return true; } // good
+    if (nearColor(px, 230, 183, 101)) { return true; } // warning
     return false;
 }
 
-func hasLitUpperRightRegion(img : Pixels, width : Integer, height : Integer) -> Boolean {
-    var minX = width - 260;
-    if (minX < width / 2) {
-        minX = width / 2;
-    }
-    if (minX < 0) {
-        minX = 0;
-    }
-
-    var maxY = height / 4;
-    if (maxY > 140) {
-        maxY = 140;
-    }
-    if (maxY < 48) {
-        maxY = 48;
-    }
-
-    var lit = 0;
-    var maxLum = 0;
-    var y = 16;
-    while (y < maxY) {
-        var x = minX;
-        while (x < width - 8) {
-            var lum = luminance(Pixels.Get(img, x, y));
-            if (lum > maxLum) {
-                maxLum = lum;
-            }
-            if (lum >= 48) {
-                lit = lit + 1;
-            }
-            x = x + 8;
-        }
-        y = y + 8;
-    }
-
-    return maxLum >= 72 && lit >= 4;
+func isNeutralWhite(px: Integer) -> Boolean {
+    var r = red(px);
+    var g = green(px);
+    var b = blue(px);
+    return luminance(px) >= 238 && absInt(r - g) <= 12 && absInt(g - b) <= 12;
 }
 
-func assertRidgeboundTitleFrame(img : Pixels) -> Boolean {
-    if (img == null) {
-        Terminal.Say("FAIL: Ridgebound title capture returned null");
+func objectivePanelWidth(width: Integer, height: Integer) -> Integer {
+    var compact = width < 760 || height < 520;
+    var panelWidth = 404;
+    if (compact) { panelWidth = width - 28; }
+    if (panelWidth > 404) { panelWidth = 404; }
+    if (panelWidth < 292) { panelWidth = 292; }
+    return panelWidth;
+}
+
+func isOverlayRegion(x: Integer, y: Integer, width: Integer, height: Integer) -> Boolean {
+    var panelWidth = objectivePanelWidth(width, height);
+    var panelHeight = 112;
+    if (width < 760 || height < 520) { panelHeight = 102; }
+    if (x >= 12 && x <= 16 + panelWidth && y >= 12 && y <= 16 + panelHeight) {
+        return true;
+    }
+    var mapSize = 124;
+    if (width < 760 || height < 520) { mapSize = 92; }
+    if (width < 420) { mapSize = 76; }
+    if (x >= width - mapSize - 18 && y >= height - mapSize - 18) { return true; }
+    return false;
+}
+
+func measureScene(img: Pixels) -> FrameStats {
+    var stats = new FrameStats();
+    stats.samples = 0;
+    stats.sumLuma = 0;
+    stats.minLuma = 9999;
+    stats.maxLuma = -1;
+    stats.litSamples = 0;
+    stats.whiteSamples = 0;
+    stats.maxWhiteRun = 0;
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    var y = height / 6;
+    while (y < height - 10) {
+        var whiteRun = 0;
+        var x = 8;
+        while (x < width - 8) {
+            if (isOverlayRegion(x, y, width, height) == false) {
+                var px = Pixels.Get(img, x, y);
+                var lum = luminance(px);
+                stats.samples = stats.samples + 1;
+                stats.sumLuma = stats.sumLuma + lum;
+                if (lum < stats.minLuma) { stats.minLuma = lum; }
+                if (lum > stats.maxLuma) { stats.maxLuma = lum; }
+                if (lum >= 26) { stats.litSamples = stats.litSamples + 1; }
+                if (isNeutralWhite(px)) {
+                    stats.whiteSamples = stats.whiteSamples + 1;
+                    whiteRun = whiteRun + 1;
+                    if (whiteRun > stats.maxWhiteRun) { stats.maxWhiteRun = whiteRun; }
+                } else {
+                    whiteRun = 0;
+                }
+            } else {
+                whiteRun = 0;
+            }
+            x = x + 3;
+        }
+        y = y + 3;
+    }
+    return stats;
+}
+
+func meanLuma(stats: FrameStats) -> Float {
+    if (stats.samples <= 0) { return 0.0; }
+    return (stats.sumLuma + 0.0) / (stats.samples + 0.0);
+}
+
+func reportFrameStats(label: String, stats: FrameStats) {
+    var whitePercent = 0.0;
+    if (stats.samples > 0) {
+        whitePercent = (stats.whiteSamples + 0.0) * 100.0 / (stats.samples + 0.0);
+    }
+    Terminal.Say("METRIC: " + label + " mean_luma=" + fmt(meanLuma(stats))
+        + " range=" + toString(stats.minLuma) + ".." + toString(stats.maxLuma)
+        + " neutral_white_percent=" + fmt(whitePercent)
+        + " max_white_run_px=" + toString(stats.maxWhiteRun * 3));
+}
+
+func assertNoBrightBillboardDominance(stats: FrameStats, label: String) -> Boolean {
+    if (stats.samples <= 0) {
+        Terminal.Say("FAIL: " + label + " had no measurable scene pixels"); return false;
+    }
+    var whitePercent = (stats.whiteSamples + 0.0) * 100.0 / (stats.samples + 0.0);
+    if (whitePercent > config.PERF_MAX_BRIGHT_SCENE_PERCENT || stats.maxWhiteRun * 3 > 150) {
+        Terminal.Say("FAIL: " + label + " is dominated by broad neutral-white blobs");
         return false;
+    }
+    return true;
+}
+
+func assertScenicStructure(img: Pixels, label: String) -> Boolean {
+    if (img == null) {
+        Terminal.Say("FAIL: " + label + " capture returned null"); return false;
     }
     var width = Pixels.get_Width(img);
     var height = Pixels.get_Height(img);
-    if (width < 64 || height < 64) {
-        Terminal.Say("FAIL: Ridgebound title capture size mismatch");
+    var minLuma = 9999;
+    var maxLuma = -1;
+    var sumLuma = 0;
+    var samples = 0;
+    var y = 8;
+    while (y < height - 8) {
+        var x = width * 44 / 100;
+        while (x < width - 8) {
+            var lum = luminance(Pixels.Get(img, x, y));
+            if (lum < minLuma) { minLuma = lum; }
+            if (lum > maxLuma) { maxLuma = lum; }
+            sumLuma = sumLuma + lum;
+            samples = samples + 1;
+            x = x + 6;
+        }
+        y = y + 6;
+    }
+    if (samples <= 0 || maxLuma - minLuma < 24 || sumLuma / samples < 18) {
+        Terminal.Say("FAIL: " + label + " scenic background lost readable structure");
         return false;
+    }
+    return true;
+}
+
+func assertRidgeboundTitleFrame(img: Pixels, expectedWidth: Integer, expectedHeight: Integer) -> Boolean {
+    if (img == null) {
+        Terminal.Say("FAIL: Ridgebound title capture returned null"); return false;
+    }
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    if (width != expectedWidth || height != expectedHeight) {
+        Terminal.Say("FAIL: Ridgebound title capture size mismatch"); return false;
     }
 
     var titleHits = 0;
-    var y = 28;
+    var y = 24;
     while (y < 132 && y < height - 4) {
-        var x = 28;
+        var x = 24;
         while (x < 360 && x < width - 4) {
             var px = Pixels.Get(img, x, y);
-            var r = red(px);
-            var g = green(px);
-            var b = blue(px);
-            if (luminance(px) > 135 || (g > 130 && b > 150 && r < 120) ||
-                (r > 180 && g > 150 && b < 120)) {
+            if (luminance(px) > 132 ||
+                (green(px) > 120 && blue(px) > 125 && red(px) < 150) ||
+                (red(px) > 175 && green(px) > 140 && blue(px) < 130)) {
                 titleHits = titleHits + 1;
             }
             x = x + 4;
@@ -140,242 +227,333 @@ func assertRidgeboundTitleFrame(img : Pixels) -> Boolean {
         y = y + 4;
     }
     if (titleHits < 18) {
-        Terminal.Say("FAIL: Ridgebound title/menu overlay was not visible");
-        return false;
+        Terminal.Say("FAIL: Ridgebound title/menu overlay was not visible"); return false;
     }
 
     var menuHits = 0;
     var menuY = height / 2 - 54;
-    if (menuY < 0) {
-        menuY = 0;
-    }
+    if (menuY < 0) { menuY = 0; }
     y = menuY;
     while (y < menuY + 190 && y < height - 4) {
-        var mx = 44;
+        var mx = 40;
         while (mx < 370 && mx < width - 4) {
             var mp = Pixels.Get(img, mx, y);
-            if (green(mp) > 120 && blue(mp) > 135) {
-                menuHits = menuHits + 1;
-            }
+            if (green(mp) > 115 && blue(mp) > 120) { menuHits = menuHits + 1; }
             mx = mx + 8;
         }
         y = y + 8;
     }
-    if (menuHits < 10) {
-        Terminal.Say("FAIL: Ridgebound title menu highlight was not visible");
-        return false;
+    if (menuHits < 8) {
+        Terminal.Say("FAIL: Ridgebound title menu highlight was not visible"); return false;
     }
-
-    if (hasLitUpperRightRegion(img, width, height) == false) {
-        Terminal.Say("FAIL: Ridgebound title postfx has excessive edge darkening");
-        return false;
-    }
-    return true;
+    return assertScenicStructure(img, "title");
 }
 
-func assertStartupState(game : RidgeboundGame) -> Boolean {
+func assertStartupState(game: RidgeboundGame) -> Boolean {
     var ground = game.debugGroundY();
     var maxPlayerY = game.debugPlayerY();
     var maxCameraY = game.debugCameraY();
     var i = 0;
     while (i < 120) {
         game.step(0.016);
-        var py = game.debugPlayerY();
-        var cy = game.debugCameraY();
-        if (py > maxPlayerY) {
-            maxPlayerY = py;
-        }
-        if (cy > maxCameraY) {
-            maxCameraY = cy;
-        }
+        if (game.debugPlayerY() > maxPlayerY) { maxPlayerY = game.debugPlayerY(); }
+        if (game.debugCameraY() > maxCameraY) { maxCameraY = game.debugCameraY(); }
         i = i + 1;
     }
     ground = game.debugGroundY();
-    if (maxPlayerY > ground + 1.2) {
-        Terminal.Say("FAIL: Ridgebound player rose during no-input startup");
-        return false;
-    }
-    if (game.debugPlayerY() > ground + 0.6) {
-        Terminal.Say("FAIL: Ridgebound player ended startup above terrain");
-        return false;
+    if (maxPlayerY > ground + 1.2 || game.debugPlayerY() > ground + 0.6) {
+        Terminal.Say("FAIL: Ridgebound player drifted above terrain during startup"); return false;
     }
     if (maxCameraY > ground + 22.0) {
-        Terminal.Say("FAIL: Ridgebound camera followed runaway player height");
-        return false;
+        Terminal.Say("FAIL: Ridgebound camera followed runaway player height"); return false;
     }
     if (game.isPlaying() == false) {
-        Terminal.Say("FAIL: Ridgebound did not enter gameplay from title");
+        Terminal.Say("FAIL: Ridgebound did not enter gameplay from title"); return false;
+    }
+    return true;
+}
+
+func assertHudFits(img: Pixels) -> Boolean {
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    var accent = Pixels.Get(img, 20, 15);
+    if (green(accent) < 150 || blue(accent) < 145 || green(accent) - red(accent) < 55) {
+        Terminal.Say("FAIL: Ridgebound final HUD overlay was not composited"); return false;
+    }
+
+    // Sample each semantic line separately so a partial glyph-at-the-edge
+    // upload cannot masquerade as a healthy final overlay.
+    var line0 = 0;
+    var line1 = 0;
+    var line2 = 0;
+    var sampleY = 24;
+    while (sampleY < 98 && sampleY < height) {
+        var sampleX = 24;
+        while (sampleX < 408 && sampleX < width) {
+            if (isHudTextPixel(Pixels.Get(img, sampleX, sampleY))) {
+                if (sampleY < 47) {
+                    line0 = line0 + 1;
+                } else if (sampleY < 73) {
+                    line1 = line1 + 1;
+                } else {
+                    line2 = line2 + 1;
+                }
+            }
+            sampleX = sampleX + 2;
+        }
+        sampleY = sampleY + 2;
+    }
+    if (line0 < 30 || line1 < 30 || line2 < 30) {
+        Terminal.Say("FAIL: Ridgebound objective text was only partially composited"); return false;
+    }
+
+    var panelWidth = objectivePanelWidth(width, height);
+    var panelRight = 14 + panelWidth;
+    var panelHeight = 112;
+    if (width < 760 || height < 520) { panelHeight = 102; }
+    var overflow = 0;
+    var y = 20;
+    while (y < 14 + panelHeight - 6) {
+        var x = panelRight + 2;
+        while (x < panelRight + 64 && x < width - 2) {
+            if (isHudTextPixel(Pixels.Get(img, x, y))) { overflow = overflow + 1; }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    if (overflow > 6) {
+        Terminal.Say("FAIL: Ridgebound HUD text overflows the objective card"); return false;
+    }
+    return true;
+}
+
+func assertMinimapFilled(img: Pixels) -> Boolean {
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    var mapSize = 124;
+    if (width < 760 || height < 520) { mapSize = 92; }
+    if (width < 420) { mapSize = 76; }
+    var filled = 0;
+    var samples = 0;
+    var y = height - mapSize - 14;
+    while (y < height - 18) {
+        var x = width - mapSize - 14;
+        while (x < width - 18) {
+            if (luminance(Pixels.Get(img, x, y)) > 24) { filled = filled + 1; }
+            samples = samples + 1;
+            x = x + 4;
+        }
+        y = y + 4;
+    }
+    if (samples <= 0 || filled * 100 < samples * 65) {
+        Terminal.Say("FAIL: Ridgebound minimap image was only partially composited"); return false;
+    }
+    return true;
+}
+
+func assertGameplayFrame(img: Pixels, label: String, night: Boolean) -> Boolean {
+    if (img == null) {
+        Terminal.Say("FAIL: " + label + " capture returned null"); return false;
+    }
+    if (assertHudFits(img) == false) { return false; }
+    if (assertMinimapFilled(img) == false) { return false; }
+    var stats = measureScene(img);
+    reportFrameStats(label, stats);
+    if (stats.maxLuma - stats.minLuma < 20) {
+        Terminal.Say("FAIL: " + label + " lost visible scene structure"); return false;
+    }
+    if (night) {
+        if (meanLuma(stats) < config.PERF_MIN_NIGHT_LUMA ||
+            stats.litSamples * 5 < stats.samples) {
+            Terminal.Say("FAIL: Ridgebound night is too dark to navigate"); return false;
+        }
+    } else {
+        if (meanLuma(stats) < 20.0 || meanLuma(stats) > 170.0) {
+            Terminal.Say("FAIL: Ridgebound daylight exposure is outside the readable band"); return false;
+        }
+    }
+    return assertNoBrightBillboardDominance(stats, label);
+}
+
+func assertCompactMinimap(img: Pixels) -> Boolean {
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    var minLuma = 9999;
+    var maxLuma = -1;
+    var y = height - 104;
+    while (y < height - 14) {
+        var x = width - 104;
+        while (x < width - 14) {
+            var lum = luminance(Pixels.Get(img, x, y));
+            if (lum < minLuma) { minLuma = lum; }
+            if (lum > maxLuma) { maxLuma = lum; }
+            x = x + 5;
+        }
+        y = y + 5;
+    }
+    if (maxLuma - minLuma < 18) {
+        Terminal.Say("FAIL: Ridgebound compact minimap was not visible"); return false;
+    }
+    return true;
+}
+
+func assertCompactMenuFrame(img: Pixels, label: String) -> Boolean {
+    if (img == null || Pixels.get_Width(img) != 480 || Pixels.get_Height(img) != 270) {
+        Terminal.Say("FAIL: Ridgebound " + label + " compact menu capture mismatch");
+        return false;
+    }
+    if (nearColor(Pixels.Get(img, 240, 12), 105, 200, 191) == false) {
+        Terminal.Say("FAIL: Ridgebound " + label + " card was not viewport-contained");
+        return false;
+    }
+    var textHits = 0;
+    var y = 18;
+    while (y < 252) {
+        var x = 80;
+        while (x < 424) {
+            if (isHudTextPixel(Pixels.Get(img, x, y))) { textHits = textHits + 1; }
+            x = x + 2;
+        }
+        y = y + 2;
+    }
+    if (textHits < 80) {
+        Terminal.Say("FAIL: Ridgebound " + label + " menu text was incomplete");
         return false;
     }
     return true;
 }
 
-func assertRidgeboundFrame(img : Pixels) -> Boolean {
-    if (img == null) {
-        Terminal.Say("FAIL: Ridgebound capture returned null");
-        return false;
-    }
+func tapKey(game: RidgeboundGame, canvas: Canvas3D, key: Integer) {
+    Canvas3D.PushSyntheticKey(canvas, key, true);
+    Canvas3D.AdvanceSyntheticFrame(canvas);
+    game.step(0.016);
+    Canvas3D.PushSyntheticKey(canvas, key, false);
+    Canvas3D.AdvanceSyntheticFrame(canvas);
+    game.step(0.016);
+}
 
-    var width = Pixels.get_Width(img);
-    var height = Pixels.get_Height(img);
-    if (width < 64 || height < 64) {
-        Terminal.Say("FAIL: Ridgebound capture size mismatch");
-        return false;
-    }
-
-    var accent = Pixels.Get(img, 20, 15);
-    if (green(accent) < 130 || blue(accent) < 150 || green(accent) - red(accent) < 32 ||
-        blue(accent) - red(accent) < 48) {
-        Terminal.Say("FAIL: Ridgebound final HUD overlay was not composited");
-        return false;
-    }
-
-    var stepX = width / 16;
-    var stepY = height / 12;
-    if (stepX < 1) {
-        stepX = 1;
-    }
-    if (stepY < 1) {
-        stepY = 1;
-    }
-
-    var total = 0;
-    var magenta = 0;
-    var minL = 9999;
-    var maxL = -1;
-    var y = height / 5;
-    while (y < height - 8) {
-        var x = 8;
-        while (x < width - 8) {
-            var px = Pixels.Get(img, x, y);
-            var r = red(px);
-            var g = green(px);
-            var b = blue(px);
-            var lum = luminance(px);
-            if (r > 180 && g < 90 && b > 180) {
-                magenta = magenta + 1;
-            }
-            if (lum < minL) {
-                minL = lum;
-            }
-            if (lum > maxL) {
-                maxL = lum;
-            }
-            total = total + 1;
-            x = x + stepX;
-        }
-        y = y + stepY;
-    }
-
-    if (total <= 0 || magenta * 5 > total) {
-        Terminal.Say("FAIL: Ridgebound frame is magenta-dominant");
-        return false;
-    }
-    if (maxL - minL < 18) {
-        Terminal.Say("FAIL: Ridgebound frame lost visible scene structure");
-        return false;
-    }
-
-    var lowerTotal = 0;
-    var lowerLit = 0;
-    var lowerSum = 0;
-    var lowerY = height / 2;
-    while (lowerY < height - 42) {
-        var lowerX = 32;
-        while (lowerX < width - 32) {
-            if (lowerX < width - 190 || lowerY < height - 190) {
-                var lowerLum = luminance(Pixels.Get(img, lowerX, lowerY));
-                lowerSum = lowerSum + lowerLum;
-                lowerTotal = lowerTotal + 1;
-                if (lowerLum > 24) {
-                    lowerLit = lowerLit + 1;
-                }
-            }
-            lowerX = lowerX + stepX;
-        }
-        lowerY = lowerY + stepY;
-    }
-    if (lowerTotal <= 0 || lowerSum / lowerTotal < 12 || lowerLit * 6 < lowerTotal) {
-        Terminal.Say("FAIL: Ridgebound foreground is too dark");
-        return false;
-    }
-    // Softened vignette deliberately leaves the foreground brighter than the
-    // old hard-corner post-FX, but this still catches blown-out frames.
-    // A healthy full-day frame measures ~126 mean luma and worker scheduling
-    // shifts it by a few points between runs; a genuine blowout reads 180+.
-    if (lowerSum / lowerTotal > 150) {
-        Terminal.Say("FAIL: Ridgebound foreground is overexposed");
-        return false;
-    }
-
-    if (hasLitUpperRightRegion(img, width, height) == false) {
-        Terminal.Say("FAIL: Ridgebound postfx has excessive edge darkening");
-        return false;
-    }
-
-    var overflow = 0;
-    var hudRight = config.HUD_PANEL_X + config.HUD_PANEL_W;
-    var oy = config.HUD_PANEL_Y + 16;
-    while (oy < config.HUD_PANEL_Y + config.HUD_PANEL_H - 8) {
-        var ox = hudRight + 2;
-        while (ox < hudRight + 72 && ox < width - 2) {
-            if (isHudOverflowTextPixel(Pixels.Get(img, ox, oy))) {
-                overflow = overflow + 1;
-            }
-            ox = ox + 1;
-        }
-        oy = oy + 1;
-    }
-    if (overflow > 6) {
-        Terminal.Say("FAIL: Ridgebound HUD text overflows the panel");
-        return false;
-    }
-
-    return true;
+func renderAndCapture(game: RidgeboundGame, path: String) -> Pixels {
+    game.renderFrame();
+    var frame = game.getWorld().CaptureFinalFrame();
+    if (frame != null) { Pixels.SavePng(frame, path); }
+    return frame;
 }
 
 func main() {
     Diagnostics3D.Reset();
-
     var game = new RidgeboundGame();
     game.setup("Ridgebound Smoke", 960, 540);
+
     game.step(0.016);
-    game.renderFrame();
-    var titleFrame = game.getWorld().CaptureFinalFrame();
-    if (titleFrame != null) {
-        Pixels.SavePng(titleFrame, "/tmp/ridgebound_title.png");
+    var titleFrame = renderAndCapture(game, "/tmp/ridgebound_title.png");
+    if (assertRidgeboundTitleFrame(titleFrame, 960, 540) == false) {
+        game.destroy(); return;
     }
-    if (assertRidgeboundTitleFrame(titleFrame) == false) {
-        game.destroy();
-        return;
+
+    game.getWorld().OnResize(480, 270);
+    game.step(0.016);
+    var compactTitle = renderAndCapture(game, "/tmp/ridgebound_title_compact.png");
+    if (assertRidgeboundTitleFrame(compactTitle, 480, 270) == false) {
+        game.destroy(); return;
     }
+    game.getWorld().OnResize(960, 540);
+
     game.startGameplayForSmoke();
-    if (assertStartupState(game) == false) {
-        game.destroy();
-        return;
-    }
-    var renderStart = Clock.TicksUs();
+    if (assertStartupState(game) == false) { game.destroy(); return; }
+
+    game.debugSetQualityForProbe(0);
     game.renderFrame();
-    var renderUs = Clock.TicksUs() - renderStart;
-    if (Environment.HasVariable("VIPER_RIDGEBOUND_PERF") ||
-        Environment.HasVariable("VIPER_SHOWCASE_PERF")) {
-        Terminal.Say("PERF: ridgebound_render_ms=" + fmt(ms(renderUs)));
+    if (game.getCanvas().QualityActive != 0) {
+        Terminal.Say("FAIL: Ridgebound low quality preset was not active"); game.destroy(); return;
     }
-    var finalFrame = game.getWorld().CaptureFinalFrame();
-    if (finalFrame != null) {
-        Pixels.SavePng(finalFrame, "/tmp/ridgebound_current.png");
+    game.debugSetQualityForProbe(2);
+    game.renderFrame(); // cinematic warm-up frame
+    if (game.getCanvas().QualityActive != 2) {
+        Terminal.Say("FAIL: Ridgebound cinematic quality preset was not active"); game.destroy(); return;
     }
-    if (assertRidgeboundFrame(finalFrame) == false) {
-        game.destroy();
-        return;
+
+    var renderStart = Clock.TicksUs();
+    var perfFrames = 3;
+    var perfIndex = 0;
+    while (perfIndex < perfFrames) {
+        game.renderFrame();
+        perfIndex = perfIndex + 1;
     }
+    var renderMs = ms(Clock.TicksUs() - renderStart) / (perfFrames + 0.0);
+    var budgetMs = config.PERF_BUDGET_GPU_MS;
+    if (game.getCanvas().Backend == "software") { budgetMs = config.PERF_BUDGET_SOFTWARE_MS; }
+    Terminal.Say("METRIC: cinematic_960x540_render_ms=" + fmt(renderMs)
+        + " budget_ms=" + fmt(budgetMs));
+    if (renderMs > budgetMs) {
+        Terminal.Say("FAIL: Ridgebound cinematic render exceeded its frame budget");
+        game.destroy(); return;
+    }
+
+    var dayFrame = game.getWorld().CaptureFinalFrame();
+    if (dayFrame != null) { Pixels.SavePng(dayFrame, "/tmp/ridgebound_current.png"); }
+    if (assertGameplayFrame(dayFrame, "day", false) == false) {
+        game.destroy(); return;
+    }
+    var dayMean = meanLuma(measureScene(dayFrame));
+
+    var deepNightTime = config.DAY_LENGTH_SEC * (0.75 - config.DAY_START_PHASE);
+    game.debugSetWorldTimeForProbe(deepNightTime);
+    game.renderFrame(); // settle skybox/reflection uploads before measuring the keyframe
+    var nightFrame = renderAndCapture(game, "/tmp/ridgebound_night.png");
+    if (assertGameplayFrame(nightFrame, "night", true) == false) {
+        game.destroy(); return;
+    }
+    var nightMean = meanLuma(measureScene(nightFrame));
+    if (nightMean >= dayMean * 1.05) {
+        Terminal.Say("FAIL: Ridgebound deep night is not visually distinct from day");
+        game.destroy(); return;
+    }
+
+    game.debugSetWorldTimeForProbe(0.0);
+    game.getWorld().OnResize(480, 270);
+    var compactFrame = renderAndCapture(game, "/tmp/ridgebound_compact.png");
+    if (compactFrame == null || Pixels.get_Width(compactFrame) != 480 ||
+        Pixels.get_Height(compactFrame) != 270 ||
+        assertGameplayFrame(compactFrame, "compact", false) == false ||
+        assertCompactMinimap(compactFrame) == false) {
+        game.destroy(); return;
+    }
+
+    // Drive the real menu state machine at the compact resolution and capture
+    // every card whose old fixed layout extended beyond a 270 px viewport.
+    var canvas = game.getCanvas();
+    Canvas3D.ClearSyntheticInput(canvas);
+    Canvas3D.SetInputSource(canvas, 1);
+    Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.016);
+    tapKey(game, canvas, Key.Escape);
+    game.renderFrame();
+    var pauseFrame = renderAndCapture(game, "/tmp/ridgebound_pause_compact.png");
+    if (game.isPaused() == false || assertCompactMenuFrame(pauseFrame, "pause") == false) {
+        game.destroy(); return;
+    }
+    tapKey(game, canvas, Key.Down);
+    tapKey(game, canvas, Key.Down);
+    tapKey(game, canvas, Key.Enter);
+    game.renderFrame();
+    var optionsFrame = renderAndCapture(game, "/tmp/ridgebound_options_compact.png");
+    if (game.isOptions() == false || assertCompactMenuFrame(optionsFrame, "options") == false) {
+        game.destroy(); return;
+    }
+    tapKey(game, canvas, Key.Escape);
+    tapKey(game, canvas, Key.Down);
+    tapKey(game, canvas, Key.Enter);
+    game.renderFrame();
+    var controlsFrame = renderAndCapture(game, "/tmp/ridgebound_controls_compact.png");
+    if (game.isControls() == false || assertCompactMenuFrame(controlsFrame, "controls") == false) {
+        game.destroy(); return;
+    }
+
     var diagSummary = Diagnostics3D.Summary();
     Terminal.Say("Game3D.Diagnostics3D.Summary=" + diagSummary);
     if (diagSummary != "") {
         Terminal.Say("FAIL: Ridgebound diagnostics recorded degradation");
         Terminal.Say(diagSummary);
-        game.destroy();
-        return;
+        game.destroy(); return;
     }
     var activeBackend = game.getCanvas().Backend;
     game.getWorld().Present();

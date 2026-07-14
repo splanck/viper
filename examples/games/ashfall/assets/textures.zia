@@ -117,8 +117,13 @@ class TextureLib {
             var n = normalFor(surf);
             if n != null { G3D.Material3D.SetNormalMap(m, n); }
         }
-        // Env reflections on metallic classes.
-        if hasEnv && metal >= 0.4 { G3D.Material3D.SetEnvMap(m, envMap); }
+        // Env reflections on metallic classes. SSR is an opt-in material flag;
+        // it remains inert without the capability-gated Cinematic pass and uses
+        // this cubemap as the miss/fallback term when that pass is active.
+        if metal >= 0.4 {
+            if hasEnv { G3D.Material3D.SetEnvMap(m, envMap); }
+            m.SsrEnabled = true;
+        }
         // Emissive: accent strips + screens glow in the level hue; solids get the
         // anti-crush floor.
         if surf == SURF_ACCENT {

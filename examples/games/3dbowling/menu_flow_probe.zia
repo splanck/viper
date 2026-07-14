@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/3dbowling/menu_flow_probe.zia
+// Purpose: Verifies menu navigation and release-facing flow without persistent writes.
+// Key invariants:
+//   - State and resource bounds follow LONG_TERM_IMPROVEMENT_SPEC.md.
+//   - The implementation remains dependency-free and deterministic where specified.
+// Ownership/Lifetime:
+//   - Runtime resources are owned by the declaring game subsystem or probe scope.
+// Links: LONG_TERM_IMPROVEMENT_SPEC.md, UPGRADE_AUDIT.md
+//
+//===----------------------------------------------------------------------===//
+//
 // ============================================================================
 // MODULE: menu_flow_probe
 // PURPOSE: Synthetic-input regression for release front-end commands and the
@@ -28,7 +46,7 @@ func bindMenuActions() {
 func tap(canvas: Canvas3D, key: Integer, menuObj: BowlingMenu) -> Integer {
     Canvas3D.PushSyntheticKey(canvas, key, true);
     Canvas3D.AdvanceSyntheticFrame(canvas);
-    var command = menuObj.updateTitle();
+    var command = menuObj.updateTitle(1.0 / 60.0);
     Canvas3D.PushSyntheticKey(canvas, key, false);
     Canvas3D.AdvanceSyntheticFrame(canvas);
     return command;

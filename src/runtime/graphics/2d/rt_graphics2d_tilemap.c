@@ -116,7 +116,7 @@ static void tileset2d_finalize(void *obj) {
     rt_tileset2d_impl *tileset = tileset2d_checked(obj);
     if (!tileset)
         return;
-    release_ref_slot(&tileset->pixels);
+    rt2d_release_ref_slot(&tileset->pixels);
 }
 
 /// @brief Wrap a Pixels image as a tileset with fixed `tile_width × tile_height`
@@ -135,12 +135,12 @@ void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
     int64_t pixels_height = rt_pixels_height(pixels);
     if (pixels_width < tile_width || pixels_height < tile_height)
         return NULL;
-    retain_ref(pixels);
+    rt2d_retain_ref(pixels);
     rt_tileset2d_impl *tileset = (rt_tileset2d_impl *)rt_obj_new_i64(
         RT2D_TILESET_CLASS_ID, (int64_t)sizeof(rt_tileset2d_impl));
     if (!tileset) {
         void *owned_pixels = pixels;
-        release_ref_slot(&owned_pixels);
+        rt2d_release_ref_slot(&owned_pixels);
         return NULL;
     }
     tileset->pixels = pixels;
@@ -185,7 +185,7 @@ void *rt_tileset2d_get_tile_pixels(void *tileset, int64_t tile_index) {
         return NULL;
     int64_t sx = (tile_index % columns) * impl->tile_width;
     int64_t sy = (tile_index / columns) * impl->tile_height;
-    return copy_region_pixels(impl->pixels, sx, sy, impl->tile_width, impl->tile_height);
+    return rt2d_copy_region_pixels(impl->pixels, sx, sy, impl->tile_width, impl->tile_height);
 }
 
 //=============================================================================
@@ -206,14 +206,14 @@ static void tilelayer2d_finalize(void *obj) {
 
 /// @brief Allocate a tile-grid layer `width × height`, zero-initialized and visible
 ///        at full opacity.
-/// @details Validates dimensions through `checked_count` with an int64-sized
+/// @details Validates dimensions through `rt2d_checked_count` with an int64-sized
 ///          element cost (one int64 per tile ID) so an enormous grid can't
 ///          overflow the total byte count. Traps on invalid dimensions — the
 ///          caller gets a clear error rather than a silent NULL. On malloc
 ///          failure the partially-constructed impl is torn down cleanly.
 void *rt_tilelayer2d_new(int64_t width, int64_t height) {
     int64_t count = 0;
-    if (!checked_count(width, height, (int64_t)sizeof(int64_t), &count)) {
+    if (!rt2d_checked_count(width, height, (int64_t)sizeof(int64_t), &count)) {
         rt_trap("TileLayer2D.New: invalid dimensions");
         return NULL;
     }
@@ -327,7 +327,7 @@ static void objectlayer2d_finalize(void *obj) {
 }
 
 /// @brief Allocate an object layer with the given initial capacity.
-/// @details Capacity is clamped by `initial_capacity` (floor 16, ceiling 1Mi).
+/// @details Capacity is clamped by `rt2d_initial_capacity` (floor 16, ceiling 1Mi).
 ///          Returns NULL on allocation failure without trapping — the caller
 ///          can fall back to a smaller capacity or handle the error.
 void *rt_objectlayer2d_new(int64_t capacity) {
@@ -335,7 +335,7 @@ void *rt_objectlayer2d_new(int64_t capacity) {
         RT2D_OBJECTLAYER_CLASS_ID, (int64_t)sizeof(rt_objectlayer2d_impl));
     if (!layer)
         return NULL;
-    layer->capacity = initial_capacity(capacity);
+    layer->capacity = rt2d_initial_capacity(capacity);
     layer->items = (rt_objectlayer2d_entry *)calloc((size_t)layer->capacity, sizeof(*layer->items));
     if (!layer->items) {
         if (rt_obj_release_check0(layer))
@@ -390,11 +390,11 @@ int64_t rt_objectlayer2d_add_rect(
     if (width == INT64_MIN || height == INT64_MIN)
         return -1;
     if (width < 0) {
-        x = saturating_add_i64(x, width);
+        x = rt2d_saturating_add_i64(x, width);
         width = -width;
     }
     if (height < 0) {
-        y = saturating_add_i64(y, height);
+        y = rt2d_saturating_add_i64(y, height);
         height = -height;
     }
     if (width <= 0 || height <= 0)

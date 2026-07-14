@@ -9,9 +9,8 @@
 // velocity*dt and resolves collisions). Stances (walk/sprint/crouch/slide) set
 // the speed cap, camera eye height, and the noise radius the AI hears.
 //
-// Note: the engine's Character3D capsule height is fixed at construction, so
-// crouch/slide model the eye-height drop and speed change rather than physically
-// shrinking the capsule (no low-ceiling crouch-through in this build).
+// Character3D.TrySetHeight keeps the feet planted while crouching and rejects a
+// stand request under low cover. Camera and collision stance therefore agree.
 // =============================================================================
 module playerctl;
 
@@ -42,6 +41,7 @@ class PlayerCtl {
     hide Float fallSpeed;         // downward speed captured at landing (dip strength)
     hide Float noiseRadius;
     hide Float footstepAccum;
+    hide Float actualTravel;
     hide Integer footstepCount;
     hide Float px;
     hide Float py;
@@ -59,6 +59,7 @@ class PlayerCtl {
         fallSpeed = 0.0;
         noiseRadius = 0.0;
         footstepAccum = 0.0;
+        actualTravel = 0.0;
         footstepCount = 0;
         px = 0.0; py = 0.0; pz = 0.0;
         halfHeight = config.PLAYER_HEIGHT * 0.5;
@@ -72,12 +73,21 @@ class PlayerCtl {
     }
 
     expose func spawn(x: Float, y: Float, z: Float) {
+        // Move clear of the previous scene before restoring standing height so
+        // a low ceiling at the old position cannot leak a crouched capsule into
+        // the new spawn.
+        char.SetPosition(x, y + 10.0, z);
+        char.TrySetHeight(config.PLAYER_HEIGHT);
+        halfHeight = config.PLAYER_HEIGHT * 0.5;
         // y is the desired feet height; Character3D position is the capsule center.
         px = x; py = y + halfHeight; pz = z;
         char.SetPosition(px, py, pz);
         vx = 0.0; vy = 0.0; vz = 0.0;
         stance = STANCE_STAND;
-        grounded = false;
+        grounded = false; wasGrounded = false; justLanded = false;
+        coyote = 0.0; jumpBuffer = 0.0;
+        slideTimer = 0.0; sprinting = false; fallSpeed = 0.0;
+        noiseRadius = 0.0; footstepAccum = 0.0; actualTravel = 0.0;
         spawned = true;
     }
 
@@ -114,10 +124,15 @@ class PlayerCtl {
         // this callback *before* StepSimulation, so Character3D.Position here
         // reflects the last completed step; the manual probe loop uses the same
         // order, keeping probe == game.
+        var oldX = px; var oldZ = pz;
         var pRead = char.Position;
         px = Math.Vec3.get_X(pRead);
         py = Math.Vec3.get_Y(pRead);
         pz = Math.Vec3.get_Z(pRead);
+        if spawned {
+            var travelX = px - oldX; var travelZ = pz - oldZ;
+            actualTravel = Math.Sqrt(travelX * travelX + travelZ * travelZ);
+        }
         wasGrounded = grounded;
         grounded = char.Grounded;
         justLanded = grounded && wasGrounded == false;
@@ -186,7 +201,7 @@ class PlayerCtl {
         char.Move(vel, dt);
 
         // Noise + footsteps for AI hearing.
-        updateNoise(dt, bus);
+        updateNoise(bus);
     }
 
     hide func updateStance(dt: Float, wantCrouch: Boolean, wantSprint: Boolean) {
@@ -194,13 +209,18 @@ class PlayerCtl {
             slideTimer = slideTimer - dt;
             if slideTimer <= 0.0 || getSpeed() < config.SPEED_CROUCH {
                 stance = STANCE_CROUCH;
-                if wantCrouch == false { stance = STANCE_STAND; }
+                if wantCrouch == false && setCapsuleHeight(config.PLAYER_HEIGHT) {
+                    stance = STANCE_STAND;
+                } else {
+                    setCapsuleHeight(config.PLAYER_HEIGHT_CROUCH);
+                }
             }
             return;
         }
         // Start a slide from a sprint into crouch.
         if wantCrouch && wantSprint && grounded && getSpeed() > config.SPEED_WALK * 0.8 {
             stance = STANCE_SLIDE;
+            setCapsuleHeight(config.PLAYER_HEIGHT_CROUCH);
             slideTimer = config.SLIDE_TIME;
             // Preserve/boost momentum along current heading.
             var sp = getSpeed();
@@ -211,7 +231,26 @@ class PlayerCtl {
             }
             return;
         }
-        if wantCrouch { stance = STANCE_CROUCH; } else { stance = STANCE_STAND; }
+        if wantCrouch {
+            stance = STANCE_CROUCH;
+            setCapsuleHeight(config.PLAYER_HEIGHT_CROUCH);
+        } else if setCapsuleHeight(config.PLAYER_HEIGHT) {
+            stance = STANCE_STAND;
+        } else {
+            // A low ceiling keeps the player crouched until standing is safe.
+            stance = STANCE_CROUCH;
+        }
+    }
+
+    hide func setCapsuleHeight(h: Float) -> Boolean {
+        if M.absf(halfHeight * 2.0 - h) < 0.001 { return true; }
+        if char.TrySetHeight(h) == false { return false; }
+        halfHeight = h * 0.5;
+        var p = char.Position;
+        px = Math.Vec3.get_X(p);
+        py = Math.Vec3.get_Y(p);
+        pz = Math.Vec3.get_Z(p);
+        return true;
     }
 
     hide func speedForStance() -> Float {
@@ -220,27 +259,27 @@ class PlayerCtl {
         return config.SPEED_WALK;
     }
 
-    hide func updateNoise(dt: Float, bus: events.EventBus) {
+    hide func updateNoise(bus: events.EventBus) {
         // Noise radius by stance (what enemies can hear).
         if stance == STANCE_CROUCH || stance == STANCE_SLIDE {
             noiseRadius = config.NOISE_CROUCH;
         } else if sprinting {
             noiseRadius = config.NOISE_SPRINT;
-        } else if getSpeed() > 0.5 {
+        } else if actualTravel > 0.01 {
             noiseRadius = config.NOISE_WALK;
         } else {
             noiseRadius = 0.0;
         }
         // Footstep pulse: accumulate distance, emit a hearing event per stride.
-        if grounded && getSpeed() > 0.5 {
-            footstepAccum = footstepAccum + getSpeed() * dt;
+        if grounded && actualTravel > 0.001 {
+            footstepAccum = footstepAccum + actualTravel;
             var stride = 2.4;
             if sprinting { stride = 3.0; }
             if footstepAccum >= stride {
                 footstepAccum = footstepAccum - stride;
                 footstepCount = footstepCount + 1;
                 var loud = M.clampi(M.roundi(noiseRadius), 0, 20);
-                bus.pushAt(config.EV_GUNSHOT, 0, loud, px, getFeetY(), pz);
+                bus.pushAt(config.EV_FOOTSTEP, 0, loud, px, getFeetY(), pz);
             }
         } else {
             footstepAccum = 0.0;

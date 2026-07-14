@@ -54,6 +54,16 @@ class ActionMap {
         bindKey(config.A_NEXT_WEAPON, Key.get_RightBracket());
         bindKey(config.A_PREV_WEAPON, Key.get_LeftBracket());
         bindKey(config.A_DEV_LIGHTS, Key.get_L());
+        bindKey(config.A_WEAPON_1, Key.get_Digit1());
+        bindKey(config.A_WEAPON_2, Key.get_Digit2());
+        bindKey(config.A_WEAPON_3, Key.get_Digit3());
+        bindKey(config.A_WEAPON_4, Key.get_Digit4());
+        bindKey(config.A_WEAPON_5, Key.get_Digit5());
+        bindKey(config.A_WEAPON_6, Key.get_Digit6());
+        bindKey(config.A_WEAPON_7, Key.get_Digit7());
+        bindKey(config.A_WEAPON_8, Key.get_Digit8());
+        bindKey(config.A_WEAPON_9, Key.get_Digit9());
+        bindKey(config.A_WEAPON_10, Key.get_Digit0());
     }
 
     expose func bindKey(action: Integer, keycode: Integer) {

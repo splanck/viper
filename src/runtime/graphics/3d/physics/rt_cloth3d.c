@@ -818,9 +818,12 @@ static void cloth3d_write_mesh(rt_cloth3d *cloth) {
             double ty[3] = {cloth->pos[yd * 3] - cloth->pos[yu * 3],
                             cloth->pos[yd * 3 + 1] - cloth->pos[yu * 3 + 1],
                             cloth->pos[yd * 3 + 2] - cloth->pos[yu * 3 + 2]};
-            double n[3] = {tx[1] * ty[2] - tx[2] * ty[1],
-                           tx[2] * ty[0] - tx[0] * ty[2],
-                           tx[0] * ty[1] - tx[1] * ty[0]};
+            /* ty x tx (not tx x ty): the grid is X-right / Y-down (pos.y = -dy*iy),
+             * so tx x ty points -Z at rest, opposite the seeded bind normal (+Z)
+             * and the CCW triangle winding's front face. Use ty x tx for +Z. */
+            double n[3] = {ty[1] * tx[2] - ty[2] * tx[1],
+                           ty[2] * tx[0] - ty[0] * tx[2],
+                           ty[0] * tx[1] - ty[1] * tx[0]};
             double nlen = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
             if (!isfinite(nlen) || nlen < 1e-12) {
                 n[0] = 0.0;

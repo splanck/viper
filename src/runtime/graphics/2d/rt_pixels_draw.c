@@ -702,8 +702,13 @@ void rt_pixels_draw_thick_line(void *pixels,
     int64_t x = x1;
     int64_t y = y1;
 
+    /* Stamp with the image-clamped radius, not the raw thickness/2: an enormous
+     * thickness (up to INT64_MAX) would otherwise make each Bresenham-step disc
+     * attempt to fill a radius-sized area, turning one call into an unbounded
+     * hang. A disc larger than the image already fills it, so clamping to
+     * clip_radius is visually identical while bounding the work. */
     for (;;) {
-        rt_pixels_draw_disc(pixels, x, y, radius, color);
+        rt_pixels_draw_disc(pixels, x, y, clip_radius, color);
         if (x == x2 && y == y2)
             break;
         int64_t e2 = err > INT64_MAX / 2 ? INT64_MAX : err < INT64_MIN / 2 ? INT64_MIN : err * 2;

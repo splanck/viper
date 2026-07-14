@@ -15,8 +15,8 @@
 //   - The atlas retains a reference to its backing Pixels object.
 //   - Region names longer than 31 bytes are rejected.
 //   - Maximum 512 named regions per atlas.
-//   - Region coordinates are not bounds-checked against the Pixels dimensions
-//     at add time; out-of-bounds regions are clipped at draw time.
+//   - Region coordinates are bounds-checked against the Pixels dimensions at add
+//     time; a region that falls outside the backing Pixels is rejected (traps).
 //
 // Ownership/Lifetime:
 //   - TextureAtlas objects are GC-managed (rt_obj_new_i64).
@@ -58,7 +58,7 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h);
 
 /// @brief Add a named rectangular region to the atlas.
 /// @param atlas TextureAtlas object.
-/// @param name Region name (max 31 characters, truncated if longer).
+/// @param name Region name (max 31 characters; rejected/traps if longer).
 /// @param x Left edge of the region in the backing Pixels.
 /// @param y Top edge of the region.
 /// @param w Width of the region.

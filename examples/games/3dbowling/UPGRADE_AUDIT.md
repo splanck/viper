@@ -13,28 +13,70 @@ is changed by this demo work.
 | 1 | Distinct release identity | **Neon Lanes Championship** title treatment, version 2.0.0, original key art, and consistent in-game/window branding in `menu.zia`, `config.zia`, and `viper.project`. |
 | 2 | Commercial front end | Home hub for Quick Game, Local Match, Championship, Challenges, Practice, Cosmic Party, Ball Locker, Settings, Statistics, Help, Credits, and Quit in `menu.zia`. |
 | 3 | Responsive menu/HUD layouts | Full 1280x720 and compact layouts, responsive pause/options/results panels, compact scorecard, and release-resolution captures in `release_visual_probe.zia` and `release_menu_probe.zia`. |
-| 4 | Settings and accessibility | Oil pattern, graphics tier, local seats, three volume buses, release assist, left-handed controls/avatar placement, camera-shake strength, replay toggle, and high-contrast pins. |
-| 5 | Persistent save migration | Version-three preferences, progression, challenge medals, achievements, equipment, and career statistics with bounded/defaulted migration in `menu.zia`. |
+| 4 | Settings and accessibility | Oil pattern, graphics tier, local seats, three volume buses, release assist, difficulty, bumpers, left-handed controls/avatar placement, camera-shake strength, replay, high contrast, large HUD, reduced motion, and reduced flash. |
+| 5 | Persistent save migration | Version-four preferences, progression, challenge medals, achievements, equipment, and career statistics with bounded/defaulted migration in `menu.zia`. |
 | 6 | Dressed bowling venue | Three visible lanes, regulation boards, gutters, pinsetter, deck marquee, scoring displays, ball returns, lounge furniture, spectators, neon strips, and adjacent racks in `lane/lane.zia`. |
 | 7 | Release lighting/material pipeline | PBR materials, glossy oil-aware boards, cubemap reflections, five-light venue rig, cosmic theme, cascaded shadows, SSR/TAA capability fallbacks, bloom, tonemap, grade, and Performance/Cinematic tiers. |
-| 8 | Animated player presence | Procedural bowler with stance tracking, charge, release, footwork, celebration, player colors, and handedness in `presentation/bowler.zia`. |
+| 8 | Animated player presence | Time-based procedural bowler with stance tracking, charge, release, follow-through, celebration, player colors, handedness, reduced-motion behavior, and a bounded side-of-lane footprint in `presentation/bowler.zia`. |
 | 9 | Broadcast camera direction | Approach, ball-follow, pin-deck settle, overhead inspection, title orbit, strike cinematic, and configurable impact shake in `engine/camera.zia`. |
-| 10 | Highlight replay | Bounded shot-path recorder, post-pinsetter ghost-ball replay, trail, replay banner, skip control, and replay preference in `presentation/replay.zia` and `engine/game_scoring.zia`. |
+| 10 | Highlight replay | Bounded scene recorder with actual ball and ten-pin positions/quaternions, live-scene hiding, replay banner, skip control, incomplete-data fallback, and replay preference in `presentation/replay.zia` and `engine/game_scoring.zia`. |
 | 11 | VFX and celebrations | Crash sparks, dust, skid marks, gutter splash, fireworks, light flashes, strike/spare/turkey/gutter/perfect sequences, and queued achievement toasts. |
 | 12 | Complete audio pass | Original procedural menu/game music, venue ambience, spatial roll/crash/gutter sounds, crowd reactions, UI navigation feedback, release/strike/spare/perfect cues, and result stings. |
-| 13 | Skill-based release mechanic | Oscillating power and centered accuracy timing, three assist levels, release error, keyboard/gamepad input, and live HUD timing strip in `gameplay/release_meter.zia`. |
-| 14 | Aiming and shot education | Board-level line, predicted hook curve, pocket target, live aim/curve meters, speed/release/entry-angle telemetry, and pocket-quality feedback. |
-| 15 | Lane-condition gameplay | House/Sport/Dry patterns, real gutters, backend hook, lateral friction, nine-zone oil breakdown/carry-down, live wear percentage, and authored-palette oil map. |
+| 13 | Skill-based release mechanic | Independent power lock and accuracy confirmation, bounded confirmation timeout, three exact assist levels, physical launch error, keyboard/gamepad input, and live HUD timing strip in `gameplay/release_meter.zia`. |
+| 14 | Aiming and shot education | Separate stance and target boards, narrow predicted delivery corridor, error-width rails, pocket target, live curve/release meters, speed/release/entry-angle telemetry, and pocket-quality feedback. |
+| 15 | Lane-condition gameplay | House/Sport/Dry patterns, real gutters, backend hook, lateral friction, a 13-by-24 oil wear/carry grid, live wear percentage, and authored-palette oil map. |
 | 16 | Tactical equipment | Six data-driven balls with mass, speed, hook, control, oil fit, family, color, descriptions, score unlocks, per-player selection, and Ball Locker comparison bars. |
 | 17 | Regulation scoring and broadcast HUD | Ten-frame scoring including correct tenth-frame bonus racks, four-seat score state, named leave analysis, full scorecard, standings, and mode objectives. |
 | 18 | Local multiplayer | Two-to-four-player hot seat, named/color-coded profiles, per-seat ball choice, round-robin handoff, completed-player skipping, ties, standings, and faithful rematches. |
-| 19 | Championship tour | Physics-driven AI on the same throw/scoring path, Riley Chen/Mateo Cruz/Nova King tiers, visible tour-point thresholds, difficulty growth, win bonus, and Tour Victory achievement. |
+| 19 | Championship tour | AI plans through a pure difficulty/career model and launches through the same delivery, physics, pinfall, and scoring path as players, with Riley Chen/Mateo Cruz/Nova King tiers, visible tour-point thresholds, win bonus, and Tour Victory achievement. |
 | 20 | Challenge tour | Pocket Master, Spare School, and Clutch Tenth with distinct targets, persistent bronze/silver/gold upgrades, results messaging, and medal achievement. |
 | 21 | Practice Lab | Free bowling plus repeatable 7-10, 10-pin, and 3-6-10 racks, conversion feedback, split replay, automatic pinsetter reset, and no forced session end. |
 | 22 | Cosmic Party variants | Cosmic lighting plus Strike Rush, gutter-penalized Low Ball with ascending ranking, and Target Bowling scored from pins, release precision, and pocket angle. |
 | 23 | Progression and statistics | Best game, games, pinfall, strikes, spares, gutters, tour points, six ball unlocks, eight inspectable achievements, medal state, and safe career reset confirmation. |
 | 24 | Onboarding and player guidance | Contextual first-game tutorial, persistent mode-objective ribbon, full How to Play page, control tables, oil/hook coaching, Credits, and README controls. |
-| 25 | Release packaging and evidence | Package name/identifier/icon/assets/license metadata, original 1280 key art/1024 lane texture/512 icon, README, native/package checks, deterministic system probes, and visual captures. |
+| 25 | Release packaging and evidence | Package name/identifier/icon/assets/license metadata, original 1280 key art/1024 lane texture/512 icon, README, cross-platform no-build probe runners, deterministic system probes, and visual captures. |
+
+## Long-term challenge and stability pass
+
+The follow-up plan has 34 implementation requirements. This table records the
+shipping evidence rather than restating recommendations as future work.
+
+| # | Implemented requirement | Evidence |
+|---:|---|---|
+| 1 | Two-stage delivery | `ReleaseMeter` locks power, independently cycles accuracy, and times out after 1.10 seconds. |
+| 2 | Independent setup controls | A/D or left stick moves stance; arrows or D-pad move target; Q/E or bumpers shape hook. |
+| 3 | Shared pure launch solver | `gameplay/delivery_model.zia` feeds physical throws and the visual corridor from identical inputs. |
+| 4 | Bounded human assistance | Pro/Standard/Full recover 8%/38%/72%; control adds at most 18%; AI passes zero assist. |
+| 5 | Non-automatic center line | The trajectory matrix permits at most one center strike across five seeds. |
+| 6 | Physical equipment sidegrades | Speed, hook, control, oil fit, and cover family affect motion; no catalog entry is globally best. |
+| 7 | Live two-dimensional oil | A bounded 13-by-24 grid records same-board wear and at most two carry-down cells. |
+| 8 | Seeded legal racks | Match/player/frame/rack-derived seeds produce bounded difficulty-specific jitter and repeatable practice racks. |
+| 9 | Persistent line setup | Stance, target, hook, and ball survive turn changes; R resets only the setup line. |
+| 10 | Spare release | F/gamepad X reduces hook and axis by 82% and announces `SPARE RELEASE`. |
+| 11 | Recalibrated opponents and modes | AI bands, pocket line, medal thresholds, unlocks, and party scoring use the new physics path. |
+| 12 | Order-independent impacts | `ImpactBatch` scans every event before admitting pin cascades; forward/reverse masks match. |
+| 13 | Physical-only pinfall | Collision registration wakes/labels contact; orientation, height, or sustained displacement awards pinfall. |
+| 14 | Live pin orientation | Rendering uses each physics body's quaternion, including replay samples. |
+| 15 | Angular settling | Both linear and angular quiet must remain below thresholds for the configured dwell. |
+| 16 | Power-dependent carry | Smooth launch momentum and bounded response keep minimum-power center shots below seven pins. |
+| 17 | Safe maple asset use | Material and HUD decodes are isolated; Metal uses procedural boards while NL-VIPER-003 remains. |
+| 18 | Readable venue hierarchy | Warm lane/deck key, cool audience fill, darker side lanes, readable pins, and restrained bloom. |
+| 19 | Bounded bowler presence | The time-based avatar sits beside the line and leaves ball, target, pocket, and meters uncovered. |
+| 20 | Readable ball rotation | Every catalog ball keeps finger holes and gains a contrasting rolling stripe. |
+| 21 | Live venue scoring displays | Monitor texture changes with player, frame, and score; adjacent activity stays lower contrast. |
+| 22 | Narrow prediction ribbon | Dashed center prediction and error-width rails replace the oversized wire sphere. |
+| 23 | HUD hierarchy | Score leads; stance/target/release follows; coaching and oil telemetry remain tertiary. |
+| 24 | Complete accessibility propagation | High contrast, large HUD, reduced motion, reduced flash, and bumpers affect their real systems. |
+| 25 | Scene-accurate replay | Samples contain one ball and ten pin transforms; fresh live bodies are hidden during playback. |
+| 26 | Measured visual feedback | Dust and 8/24/48 crash particles scale from delivery/impact energy; fireworks require strike outcomes. |
+| 27 | Layered audio feedback | Soft/medium/hard roll and pin layers coexist with distinct gutter, sweep, pinsetter, crowd, and UI cues. |
+| 28 | True pause | Physics, meters, replay, effects, bowler, toast, camera, and flashes freeze; a neutral input frame is required. |
+| 29 | Terminal shot watchdog | Non-finite, two-second no-progress, and twelve-second shots safely end once with the required toast. |
+| 30 | Bounded world lifecycle | Replay/effect lists and world references clear before reconstruction; a 50-transition probe remains bounded. |
+| 31 | Defensive schema-four saves | Every stored enum, count, mask, statistic, volume, ball, and career field is validated. |
+| 32 | Central asset resolution | Repository, project, executable/package, and direct-relative candidates share one fallback/logger. |
+| 33 | Resize and timestep independence | Camera-only aspect rebinds preserve worlds; zero height is safe; 30/60/144 Hz probes agree. |
+| 34 | Runtime-defect isolation | NL-VIPER-001 through -003 stay documented and shipping presentation uses stable geometry/opaque fallbacks. |
 
 ## Game defects found and corrected
 
@@ -85,7 +127,7 @@ All validation for this upgrade uses the existing Viper binaries. Per the
 explicit repository-work constraint, this work does not rebuild Viper and does
 not run the Viper CTest suite.
 
-## Final verification
+## Prior release baseline
 
 Validated on 2026-07-10 with the existing macOS arm64/Metal Viper binary:
 
@@ -110,3 +152,32 @@ The issue reproductions under `known_viper_issues/` are evidence probes rather
 than release gates: the two confirmed defects reproduce as documented, the
 control case passes, and the intermittent material/overlay harness currently
 renders all four expected regions.
+
+The long-term challenge pass is validated separately through `run_probes.sh`
+or `run_probes.cmd`; both use an existing Viper executable and cannot build
+Viper or invoke CTest.
+
+## Long-term pass verification
+
+Validated on 2026-07-13 with `/usr/local/bin/viper` on macOS arm64/Metal,
+without rebuilding Viper and without running CTest:
+
+- All 27 gates selected by `run_probes.sh` passed. The Windows runner selects
+  the same list and applies the same exit-status plus exact `RESULT: ok` rule.
+- All 70 Zia files under the demo passed individual existing-binary
+  `viper check` validation with no diagnostics.
+- Twelve useful-power pocket seeds produced eight strikes and twelve seven-plus
+  leaves; five straight center seeds produced one strike; four poor releases
+  produced zero strikes; minimum power knocked six pins.
+- Repeating one delivery and rack seed reproduced launch X/Z velocity, the
+  ten-bit knocked mask, and pin count. Forward and reverse synthetic collision
+  batches produced identical impacted and physical-down masks.
+- The two-stage meter, oil grid, AI planner, feedback tiers, pause/resume gate,
+  watchdog, full-scene replay, 50-transition lifecycle stress, asset resolver,
+  corrupt save migration, 30/60/144 Hz cadence, resize layout, accessibility,
+  menu/mode flows, and release visual captures all reported `RESULT: ok`.
+- Metal visual capture confirmed the NL-VIPER-003 procedural-board fallback;
+  the final frame retained the lane, prediction ribbon, HUD, monitor state,
+  pins, and bounded bowler without the material/overlay corruption.
+- POSIX runner syntax, full source headers, scoped whitespace/diff checks, and
+  strict platform-policy lint for the demo completed cleanly.

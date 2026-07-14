@@ -641,6 +641,18 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
         int32_t top = 0;
         int32_t stack_capacity = 0;
         int overflow = 0;
+        /* Transform the ray into mesh-local space once and test the stored local
+         * node AABBs directly, instead of transforming each node's 8 AABB corners
+         * to world on every visit. transform_vector_to_local does NOT renormalize,
+         * so the local t-parameter equals the world t (same trick as
+         * raycast_box_pose_raw), keeping box_t comparable to the world-space best_t
+         * from the leaf triangle test below. */
+        double local_origin[3];
+        double local_dir[3];
+        transform_point_to_local(pose, origin, local_origin);
+        transform_vector_to_local(pose, dir, local_dir);
+        ph3d_vec3_sanitize_state(local_origin);
+        ph3d_vec3_sanitize_state(local_dir);
         if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0))
             overflow = 1;
         while (top > 0) {
@@ -650,8 +662,16 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
             if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
                 continue;
             node = &nodes[node_index];
-            transform_local_aabb_to_world(pose, node->min, node->max, node_min, node_max);
-            if (!raycast_aabb_raw(origin, dir, node_min, node_max, best_t, &box_t, NULL, NULL))
+            /* Widen the stored float AABB to double for the local-space test (cheaper
+             * than the previous 8-corner world transform per node). */
+            node_min[0] = node->min[0];
+            node_min[1] = node->min[1];
+            node_min[2] = node->min[2];
+            node_max[0] = node->max[0];
+            node_max[1] = node->max[1];
+            node_max[2] = node->max[2];
+            if (!raycast_aabb_raw(
+                    local_origin, local_dir, node_min, node_max, best_t, &box_t, NULL, NULL))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
                 if (node->right >= 0 &&

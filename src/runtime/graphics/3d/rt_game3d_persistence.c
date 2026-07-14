@@ -28,6 +28,7 @@
 #include "rt_game3d_internal.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
+#include "rt_quat.h"
 #include "rt_savedata.h"
 #include "rt_scene3d.h"
 #include "rt_string.h"
@@ -113,6 +114,29 @@ static void game3d_persist_capture_pose(rt_game3d_entity *entity,
     record->state_tag = entity->state_tag;
 }
 
+/// @brief Restore an alive record's saved pose (position + rotation) and state tag.
+/// @details Rotation is applied to the entity node before the position write so the
+///          subsequent body sync (game3d_sync_body_from_entity_node, invoked by
+///          set_position) mirrors the full transform. The capture stores the world
+///          rotation; persistent entities are top-level, so node-local == world here,
+///          matching the position round-trip convention.
+static void game3d_persist_apply_alive_record(rt_game3d_entity *entity,
+                                              const rt_game3d_persist_record *record) {
+    void *node = game3d_entity_node_ref(entity);
+    if (node) {
+        void *quat = rt_quat_new(record->rotation[0],
+                                 record->rotation[1],
+                                 record->rotation[2],
+                                 record->rotation[3]);
+        if (quat)
+            rt_scene_node3d_set_rotation(node, quat);
+        game3d_release_ref(&quat);
+    }
+    rt_game3d_entity_set_position(
+        entity, record->position[0], record->position[1], record->position[2]);
+    entity->state_tag = record->state_tag;
+}
+
 /// @brief Fluent: opt the entity into persistence under a game-stable key.
 /// @details Traps when another live spawned entity already holds the key.
 ///   When a record for the key already exists (from LoadState or an earlier
@@ -155,9 +179,7 @@ void *rt_game3d_entity_set_persistent(void *obj, rt_string key) {
             /* A loaded snapshot recorded this key: apply the stored state. */
             record->applied_pending = 0;
             if (record->alive) {
-                rt_game3d_entity_set_position(
-                    entity, record->position[0], record->position[1], record->position[2]);
-                entity->state_tag = record->state_tag;
+                game3d_persist_apply_alive_record(entity, record);
             }
         } else if (record) {
             game3d_persist_capture_pose(entity, record);
@@ -510,8 +532,12 @@ int8_t rt_game3d_persistence_validate(const void *data, int64_t size) {
     uint32_t flag_count = persist3d_read_u32(&reader);
     if (reader.failed || record_count > PERSIST3D_MAX_RECORDS || flag_count > PERSIST3D_MAX_RECORDS)
         return 0;
-    for (int i = 0; i < 4; ++i)
-        (void)persist3d_read_f64(&reader); /* origin xyz + elapsed */
+    for (int i = 0; i < 4; ++i) {
+        /* origin xyz + elapsed: reject non-finite so NaN/Inf from a corrupt but
+         * structurally-valid file cannot poison streaming distance / time-of-day. */
+        if (!isfinite(persist3d_read_f64(&reader)))
+            return 0;
+    }
     char key[PERSIST3D_MAX_KEY + 1];
     for (uint32_t r = 0; r < record_count && !reader.failed; ++r) {
         if (!persist3d_read_key(&reader, key, sizeof(key)))
@@ -519,9 +545,11 @@ int8_t rt_game3d_persistence_validate(const void *data, int64_t size) {
         uint8_t alive;
         if (!persist3d_read(&reader, &alive, 1))
             return 0;
-        for (int i = 0; i < 10; ++i)
-            (void)persist3d_read_f64(&reader); /* pos3 + quat4 + scale3 */
-        (void)persist3d_read_i64(&reader);     /* tag */
+        for (int i = 0; i < 10; ++i) {
+            if (!isfinite(persist3d_read_f64(&reader))) /* pos3 + quat4 + scale3 */
+                return 0;
+        }
+        (void)persist3d_read_i64(&reader); /* tag */
     }
     for (uint32_t f = 0; f < flag_count && !reader.failed; ++f) {
         if (!persist3d_read_key(&reader, key, sizeof(key)))
@@ -732,9 +760,7 @@ int8_t rt_game3d_world_load_state(void *obj, rt_string app_name, rt_string slot)
         if (!record->alive) {
             rt_game3d_world_despawn(world, entity);
         } else {
-            rt_game3d_entity_set_position(
-                entity, record->position[0], record->position[1], record->position[2]);
-            entity->state_tag = record->state_tag;
+            game3d_persist_apply_alive_record(entity, record);
         }
     }
     free(data);
