@@ -41,6 +41,25 @@ void vgfx3d_skinning_scratch_free(vgfx3d_skinning_scratch_t *scratch) {
     scratch->normal_palette = NULL;
     scratch->normal_palette_capacity = 0;
     scratch->normal_palette_grow_count = 0;
+    free(scratch->bone_valid);
+    scratch->bone_valid = NULL;
+    scratch->bone_valid_capacity = 0;
+}
+
+/// @brief Ensure @p scratch can hold one validity flag per effective bone.
+static uint8_t *skin_ensure_bone_valid_scratch(vgfx3d_skinning_scratch_t *scratch,
+                                               int32_t bone_count) {
+    uint8_t *grown;
+    if (!scratch || bone_count <= 0)
+        return NULL;
+    if (scratch->bone_valid && scratch->bone_valid_capacity >= bone_count)
+        return scratch->bone_valid;
+    grown = (uint8_t *)realloc(scratch->bone_valid, (size_t)bone_count);
+    if (!grown)
+        return NULL;
+    scratch->bone_valid = grown;
+    scratch->bone_valid_capacity = bone_count;
+    return scratch->bone_valid;
 }
 
 /// @brief Clamp a bone count to the usable skinning range [0, VGFX3D_SKIN_INDEX_RANGE].
@@ -199,16 +218,27 @@ void vgfx3d_skin_vertices_extra(const vgfx3d_vertex_t *src,
     if (bone_count <= 0)
         return;
 
-    /* A bone's normal matrix (inverse-transpose of its skinning matrix) depends
-     * only on the bone, not the vertex, so precompute the whole palette once
-     * rather than recomputing it per vertex per influence. Falls back to inline
-     * per-influence computation if caller scratch is unavailable or cannot grow. */
+    /* A bone's normal matrix (inverse-transpose of its skinning matrix) and
+     * its finiteness depend only on the bone, not the vertex, so precompute
+     * BOTH once per palette rather than re-deriving them per vertex per
+     * influence (the finiteness checks alone were ~128 isfinite() calls per
+     * vertex). Falls back to inline per-influence computation if caller
+     * scratch is unavailable or cannot grow. */
     int32_t normal_bone_count = bone_count;
     float *normal_palette = skin_ensure_normal_palette_scratch(scratch, normal_bone_count);
+    uint8_t *bone_valid = skin_ensure_bone_valid_scratch(scratch, bone_count);
+    if (bone_valid) {
+        for (int32_t b = 0; b < bone_count; b++)
+            bone_valid[b] = skin_matrix4_is_finite(&palette[(size_t)b * 16u]) ? 1 : 0;
+    }
     if (normal_palette) {
-        for (int32_t b = 0; b < normal_bone_count; b++)
-            vgfx3d_compute_normal_matrix4(&palette[(size_t)b * 16u],
-                                          &normal_palette[(size_t)b * 16u]);
+        for (int32_t b = 0; b < normal_bone_count; b++) {
+            if (!bone_valid || bone_valid[b])
+                vgfx3d_compute_normal_matrix4(&palette[(size_t)b * 16u],
+                                              &normal_palette[(size_t)b * 16u]);
+            else
+                memset(&normal_palette[(size_t)b * 16u], 0, 16u * sizeof(float));
+        }
     }
 
     for (uint32_t v = 0; v < vertex_count; v++) {
@@ -231,12 +261,16 @@ void vgfx3d_skin_vertices_extra(const vgfx3d_vertex_t *src,
                 continue;
 
             const float *m = &palette[(size_t)idx * 16u];
-            if (!skin_matrix4_is_finite(m))
+            /* Per-bone validity precomputed above; the inline check only runs
+             * on the scratch-less fallback path. */
+            if (bone_valid ? !bone_valid[idx] : !skin_matrix4_is_finite(m))
                 continue;
             float nm_local[16];
             const float *nm;
+            int nm_known_finite = 0;
             if (normal_palette && idx < normal_bone_count) {
                 nm = &normal_palette[(size_t)idx * 16u];
+                nm_known_finite = bone_valid != NULL; /* zeroed slots are finite too */
             } else {
                 vgfx3d_compute_normal_matrix4(m, nm_local);
                 nm = nm_local;
@@ -247,7 +281,7 @@ void vgfx3d_skin_vertices_extra(const vgfx3d_vertex_t *src,
                                (double)m[i * 4 + 1] * (double)base.pos[1] +
                                (double)m[i * 4 + 2] * (double)base.pos[2] + (double)m[i * 4 + 3]);
             }
-            if (skin_matrix4_is_finite(nm)) {
+            if (nm_known_finite || skin_matrix4_is_finite(nm)) {
                 for (int i = 0; i < 3; i++) {
                     nrm[i] += w * ((double)nm[i * 4 + 0] * (double)base.normal[0] +
                                    (double)nm[i * 4 + 1] * (double)base.normal[1] +

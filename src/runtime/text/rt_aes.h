@@ -4,14 +4,18 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_aes.h
-// Purpose: AES-128 and AES-256 encryption in CBC mode with PKCS7 padding, implemented in pure C
-// with no external dependencies.
+// Purpose: AES-128/AES-256 CBC compatibility helpers, authenticated GCM byte
+// encryption, and PBKDF2-derived AES-128-GCM string encryption, implemented in
+// pure C with no external dependencies.
 //
 // Key invariants:
 //   - Supports AES-128 (16-byte key) and AES-256 (32-byte key).
 //   - CBC mode requires a 16-byte initialization vector (IV).
 //   - PKCS7 padding is applied automatically; output is always a multiple of 16 bytes.
 //   - Decryption validates and removes PKCS7 padding; returns NULL on invalid padding.
+//   - Authenticated byte frames are [VAK1 magic(4)][nonce(12)][ciphertext][tag(16)].
+//   - Authenticated string frames are [VAG1 magic(4)][iterations(4)][salt(16)]
+//     [nonce(12)][ciphertext][tag(16)].
 //
 // Ownership/Lifetime:
 //   - Returned strings/Bytes objects are newly allocated; caller must release.
@@ -103,6 +107,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password);
 /// @brief Decrypt to string using the authenticated string format.
 /// @details Accepts the current AES-128-GCM format and the legacy
 ///          [16-byte IV | AES-256-CBC ciphertext] format for compatibility.
+///          Legacy password derivation considers at most the first 256 bytes;
+///          a legacy IV beginning with `VAG1` is ambiguous with current framing.
 /// @param data Bytes object containing encrypted string payload
 /// @param password Password string used for key derivation
 /// @return Decrypted string

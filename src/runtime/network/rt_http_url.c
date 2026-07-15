@@ -726,7 +726,9 @@ static void rt_url_finalize(void *obj) {
 // return fresh rt_string objects.
 // ===========================================================================
 
-/// @brief Parse `url_str` per RFC 3986 into a Url object; traps on syntactic failure.
+/// @brief Parse the runtime's permissive URL-reference grammar into a Url object.
+/// @details A scheme is recognized only when followed by `://`; this parser is not a complete RFC
+/// 3986 validator and does not apply every check used by `rt_url_is_valid` or the field setters.
 void *rt_url_parse(rt_string url_str) {
     const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str) {
@@ -773,8 +775,8 @@ void *rt_url_new(void) {
 // ---------------------------------------------------------------------------
 // Per-component getters/setters — each pair reads or writes one
 // piece of the URL: scheme, host, port, path, query, fragment,
-// user, pass. Setters validate (e.g. scheme syntax) and lower-case
-// scheme/host (case-insensitive per RFC 3986). Getters return a
+// user, pass. Setters validate where noted (e.g. scheme syntax) and
+// lower-case the scheme. Host spelling is preserved. Getters return a
 // fresh `rt_string` (or empty string for unset fields).
 // ---------------------------------------------------------------------------
 

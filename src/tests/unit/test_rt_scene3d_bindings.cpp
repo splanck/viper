@@ -349,6 +349,8 @@ static void test_scene_draw_uses_bound_animator_palette() {
     const float *palette;
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = test_begin_frame;
     backend.end_frame = test_end_frame;
     backend.submit_draw = test_submit_draw;
@@ -446,6 +448,8 @@ static void test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backe
     void *anim;
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = test_begin_frame;
     backend.end_frame = test_end_frame;
     backend.submit_draw = test_submit_draw;

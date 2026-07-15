@@ -1107,22 +1107,26 @@ static int raycast_body(rt_body3d *body,
 /// Uses collider-specific tests for boxes, spheres, capsules, meshes, hulls,
 /// compounds, and heightfields. Returns NULL when the direction is zero or
 /// `maxDistance <= 0`.
-void *rt_world3d_raycast(
-    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
-    rt_world3d *w = world3d_checked(obj);
+/// @brief Closest-hit raycast core over sanitized raw components.
+/// @details `origin`/`dir` are mutated in place by sanitization. Returns 1 and
+///   fills @p out_hit with the nearest hit, or 0 for no hit / invalid input.
+///   Allocation-free — both the boxed public raycast and the raw closest-body
+///   entry share this loop.
+static int world3d_raycast_closest_core(rt_world3d *w,
+                                        double *origin,
+                                        double *dir,
+                                        double max_distance,
+                                        int64_t mask,
+                                        const void *ignore_body,
+                                        rt_query_hit3d *out_hit) {
     rt_query_hit3d best_hit = {0};
     int found = 0;
-    double origin[3];
-    double dir[3];
     double query_min[3], query_max[3], end[3];
-    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
-        !isfinite(max_distance) || max_distance <= 0.0)
-        return NULL;
-    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
-        return NULL;
+    if (!w || !origin || !dir || !out_hit || !isfinite(max_distance) || max_distance <= 0.0)
+        return 0;
     max_distance = query_sanitize_distance(max_distance);
     if (!query_normalize_direction(dir))
-        return NULL;
+        return 0;
     end[0] = query_saturate_coord(origin[0] + dir[0] * max_distance);
     end[1] = query_saturate_coord(origin[1] + dir[1] * max_distance);
     end[2] = query_saturate_coord(origin[2] + dir[2] * max_distance);
@@ -1140,7 +1144,8 @@ void *rt_world3d_raycast(
             if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
-        if (!body || !body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
+        if (!body || body == (const rt_body3d *)ignore_body ||
+            !body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (!raycast_body(body, origin, dir, max_distance, &hit))
             continue;
@@ -1149,7 +1154,56 @@ void *rt_world3d_raycast(
             found = 1;
         }
     }
-    return found ? physics_hit3d_new(&best_hit) : NULL;
+    if (found)
+        *out_hit = best_hit;
+    return found;
+}
+
+void *rt_world3d_raycast(
+    void *obj, void *origin_obj, void *direction_obj, double max_distance, int64_t mask) {
+    rt_world3d *w = world3d_checked(obj);
+    rt_query_hit3d best_hit;
+    double origin[3];
+    double dir[3];
+    if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
+        !isfinite(max_distance) || max_distance <= 0.0)
+        return NULL;
+    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
+        return NULL;
+    if (!world3d_raycast_closest_core(w, origin, dir, max_distance, mask, NULL, &best_hit))
+        return NULL;
+    return physics_hit3d_new(&best_hit);
+}
+
+/// @brief Allocation-free closest-hit raycast: raw components in, borrowed body out.
+/// @details Internal engine entry (AI line-of-sight, gameplay probes) that skips
+///   Vec3 boxing and hit-object allocation entirely. Returns the closest hit
+///   body (borrowed — do NOT release) and writes the hit distance to
+///   @p out_distance when non-NULL, or returns NULL for no hit.
+void *rt_world3d_raycast_closest_body_raw(void *obj,
+                                          double ox,
+                                          double oy,
+                                          double oz,
+                                          double dx,
+                                          double dy,
+                                          double dz,
+                                          double max_distance,
+                                          int64_t mask,
+                                          const void *ignore_body,
+                                          double *out_distance) {
+    rt_world3d *w = world3d_checked(obj);
+    rt_query_hit3d hit;
+    double origin[3] = {ox, oy, oz};
+    double dir[3] = {dx, dy, dz};
+    if (out_distance)
+        *out_distance = -1.0;
+    if (!w)
+        return NULL;
+    if (!world3d_raycast_closest_core(w, origin, dir, max_distance, mask, ignore_body, &hit))
+        return NULL;
+    if (out_distance)
+        *out_distance = hit.distance;
+    return hit.body;
 }
 
 /// @brief Shared raycast-all core: fill the world's sorted hit scratch from raw inputs.

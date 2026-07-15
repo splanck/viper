@@ -1124,10 +1124,24 @@ static void sw_shade_apply_fog(const sw_context_t *fog_ctx,
     float fog_b = fog_ctx->fog_color[2];
     if (fog_ctx->height_fog_enabled) {
         /* Exponential height fog: density pools below the base height; combine
-         * with distance fog via combined transmittance. */
-        float hd = fog_ctx->height_fog_density *
-                   expf(-(wy - fog_ctx->height_fog_base) * fog_ctx->height_fog_falloff);
-        float hf = 1.0f - expf(-hd * dist);
+         * with distance fog via combined transmittance. Clamps mirror the
+         * D3D11/GL twins: an unclamped exponent overflows expf() to Inf ~88
+         * units below the fog base (step-function fog instead of a gradient),
+         * and Inf * 0 at zero view distance produces NaN fog. */
+        float fog_exponent = -(wy - fog_ctx->height_fog_base) * fog_ctx->height_fog_falloff;
+        if (!(fog_exponent >= -80.0f))
+            fog_exponent = -80.0f; /* also catches NaN */
+        if (fog_exponent > 80.0f)
+            fog_exponent = 80.0f;
+        float hd = fog_ctx->height_fog_density * expf(fog_exponent);
+        if (!(hd >= 0.0f))
+            hd = 0.0f;
+        if (hd > 1e20f)
+            hd = 1e20f;
+        float optical_depth = hd * (dist > 0.0f ? dist : 0.0f);
+        if (optical_depth > 80.0f)
+            optical_depth = 80.0f;
+        float hf = 1.0f - expf(-optical_depth);
         if (!isfinite(hf))
             hf = 1.0f;
         hf = (hf < 0.0f ? 0.0f : (hf > 1.0f ? 1.0f : hf)) * fog_ctx->height_fog_blend;

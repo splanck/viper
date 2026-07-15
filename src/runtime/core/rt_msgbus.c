@@ -108,13 +108,13 @@ typedef struct {
 
 // --- FNV-1a hash ---
 
-/// @brief Compute the FNV-1a 64-bit hash of a NUL-terminated string.
+/// @brief Compute the FNV-1a 64-bit hash of an explicit byte span.
 /// @details Standard FNV-1a constants: 64-bit offset basis
 ///          `0xcbf29ce484222325` and prime `0x100000001b3`. Good
 ///          distribution for short topic strings ("user.login",
 ///          "tick", etc.) without the cost of a CSPRNG-seeded
 ///          hash like SipHash. Used only to bucket topic names —
-///          collisions are handled by per-bucket linear probe.
+///          collisions are handled by per-bucket chaining.
 static uint64_t mb_hash_bytes(const char *s, size_t len) {
     uint64_t h = 14695981039346656037ULL;
     for (size_t i = 0; i < len; ++i) {

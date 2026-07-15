@@ -8,14 +8,12 @@
 // based on elapsed time up to a maximum capacity.
 //
 // Key invariants:
-//   - Tokens refill continuously based on elapsed wall-clock time.
+//   - Tokens refill continuously using a monotonic clock when the platform provides one.
 //   - Available tokens never exceed max capacity.
-//   - rt_ratelimit_acquire blocks until the requested tokens are available.
 //   - rt_ratelimit_try_acquire returns immediately; returns 1 if tokens available, 0 otherwise.
 //
 // Ownership/Lifetime:
-//   - Rate limiter objects are heap-allocated; caller is responsible for lifetime management.
-//   - No reference counting; explicit destruction is required.
+//   - Rate limiter objects are runtime-managed heap objects.
 //
 // Links: src/runtime/network/rt_ratelimit.c (implementation)
 //

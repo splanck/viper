@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-07-14
 ---
 
 # Encoding & Identity
@@ -38,7 +38,7 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
     - Decoding treats `+` as space (form encoding convention)
     - Invalid or incomplete `%XX` escapes are left unchanged
 - **Base64:** RFC 4648 standard alphabet with `=` padding
-- **Hex:** Lowercase hex encoding (e.g., "Hello" → "48656c6c6f")
+- **Hex:** Encoding emits lowercase digits; decoding accepts uppercase or lowercase input
 - Invalid input to `Base64Dec` or `HexDec` will trap
 
 ### Zia Example
@@ -90,7 +90,9 @@ PRINT unhex  ' Output: "ABC"
 
 ## Viper.Text.Uuid
 
-UUID version 4 (random) generation and manipulation per RFC 4122.
+UUID version 4 (random) generation and canonical byte/string conversion. The layout follows
+[RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html), which supersedes RFC 4122 while retaining
+the UUIDv4 representation used here.
 
 **Type:** Static utility class
 
@@ -105,21 +107,27 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
 | Method             | Signature         | Description                            |
 |--------------------|-------------------|----------------------------------------|
 | `New()`            | `String()`        | Generate a new random UUID v4          |
-| `IsValid(guid)`    | `Boolean(String)` | Check if string is a valid UUID format |
+| `IsValid(guid)`    | `Boolean(String)` | Check the canonical 36-character UUID syntax |
 | `ToBytes(guid)`    | `Bytes(String)`   | Convert UUID string to 16-byte array   |
 | `FromBytes(bytes)` | `String(Bytes)`   | Convert 16-byte array to UUID string   |
 
 ### Notes
 
-- Generated UUIDs follow UUID version 4 format (random)
+- Generated UUIDs set the UUIDv4 version and RFC variant bits
 - Format: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` where:
     - `4` indicates version 4 (random UUID)
     - `y` is one of `8`, `9`, `a`, or `b` (variant indicator)
-- All hex characters are lowercase
-- Uses cryptographically secure random source where available (/dev/urandom on Unix, CryptGenRandom on Windows)
+- `New()` and `FromBytes()` emit lowercase hex; `IsValid()` accepts either hex case
+- `IsValid()` checks shape and hexadecimal digits only; it does not require any particular version
+  or variant bits, so the nil UUID and non-v4 UUID strings are valid inputs
+- `New()` uses Viper's cryptographic RNG: the approved-mode DRBG when enabled, otherwise
+  `BCryptGenRandom` on Windows, `getrandom()` with `/dev/urandom` fallback on Linux, and
+  `arc4random_buf()` on macOS. Entropy failure traps and aborts instead of using weak randomness
 - `Empty` returns a fresh string handle containing the nil UUID
 - `IsValid()` checks the runtime string byte length; extra embedded bytes make the value invalid
 - `ToBytes()` traps if the UUID format is invalid
+- `ToBytes()` and `FromBytes()` use the canonical UUID byte order and do not transform version or
+  variant bits
 - `FromBytes()` traps if the Bytes object is not exactly 16 bytes
 
 ### Zia Example
@@ -133,7 +141,7 @@ bind Viper.Text.Fmt as Fmt;
 
 func start() {
     var id = Uuid.New();
-    Say("UUID: " + id);                                    // e.g. a1b2c3d4-...
+    Say("UUID: " + id);                                    // canonical 36-character form
     Say("Valid: " + Fmt.Bool(Uuid.IsValid(id)));            // true
     Say("Invalid: " + Fmt.Bool(Uuid.IsValid("not-uuid"))); // false
 }

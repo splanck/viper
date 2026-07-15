@@ -703,6 +703,9 @@ void *rt_game3d_behavior_add_chase(void *behavior, void *target_entity, double s
 void *rt_game3d_behavior_add_follow_path(void *behavior, void *path, double speed, int8_t loop);
 /// @brief Fluent: despawn the entity after the given seconds of simulation time.
 void *rt_game3d_behavior_add_lifetime(void *behavior, double seconds);
+/// @brief C-internal one-shot preset: despawn @p target_entity on next update.
+///   Not script-visible; exercises mid-sweep registry compaction in tests.
+void *rt_game3d_behavior_add_despawn_target_internal(void *behavior, void *target_entity);
 /// @brief Fluent: route chase movement through a NavAgent3D (null clears).
 void *rt_game3d_behavior_set_nav_agent(void *behavior, void *agent);
 /// @brief Advance one behavior for one entity by dt seconds (world tick entry).

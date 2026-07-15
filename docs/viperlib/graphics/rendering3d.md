@@ -525,6 +525,8 @@ existing sampler objects once created.
 | `SetTextureStreaming(enabled)` | `Void(Boolean)` method | Enable automatic `TextureAsset3D` mip-residency streaming (default off) |
 | `SetTextureStreamingBias(bias)` | `Void(Number)` method | Bias streaming's desired mip; positive drops more detail, clamped to `[-16, 16]` |
 | `TextureStreamingDemotions` | `Integer` property | Lifetime count of resident-window demotions applied by streaming |
+| `PassCount` | `Integer` property | Number of CPU-timed render passes (currently 4) |
+| `PassCpuMs(i)` | `Number(Integer)` method | CPU milliseconds spent in pass `i` of the latest ended frame: `0` shadow, `1` main scene, `2` overlay, `3` backend end/present |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
 Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps
@@ -545,6 +547,12 @@ percentages, and final-frame tolerance after the budgeted native mip upload
 drains. Use these members with
 `Game3D.Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
+
+`PassCpuMs` complements `FrameGpuTimeUs` on the CPU side: the frame loop stamps
+a monotonic clock at the shadow → main → overlay → backend-end boundaries, so
+`PassCpuMs(1)` isolates scene submission cost from present/blit time in
+`PassCpuMs(3)`. Values describe the latest **ended** frame and read `0` before
+the first `End`. Indices are stable; `PassCount` future-proofs iteration.
 
 `FrameGpuTimeUs` is backend-owned timing telemetry. The D3D11 backend records it
 with `D3D11_QUERY_TIMESTAMP` plus a disjoint query and reports the latest
@@ -732,6 +740,15 @@ draws, morphing meshes, and CPU-skinned draws always use the full layout.
 Toggling the flag bumps the geometry revision so backend caches re-upload in
 the newly selected encoding. `SceneAsset.LoadWithOptionsEx(path,
 "compactStreams")` enables it for every imported mesh in one call.
+
+`Mesh3D.ReleaseCpuScratch()` frees a mesh's rebuildable CPU side buffers — the
+double-precision position sidecar used for floating-origin rebasing and the
+normal-recalculation accumulator — and returns the bytes released. The
+authored vertex/index payload, GPU caches, raycasts, and physics are
+untouched. Call it on static meshes after load in scenes that do not use
+floating-origin rebasing; a later `RebaseOrigin` on such a mesh falls back to
+float precision, so streamed far-origin worlds should leave the sidecar in
+place.
 
 ### Viper.Graphics3D.SceneNode
 
@@ -1496,6 +1513,7 @@ mutating the emitter's live particle order.
 |------------|---------|--------|-------------|
 | `Count`    | Integer | Read   | Currently active particle count |
 | `Emitting` | Boolean | Read   | True while the emitter is running |
+| `Seed`     | Integer | Read/Write | Deterministic RNG seed for this emitter's spawn stream. Emitters no longer share a process-global sequence, so setting an explicit seed makes an effect bit-identical across runs regardless of construction order |
 
 #### Methods
 
@@ -1880,6 +1898,12 @@ Animated water plane with wave simulation, reflections, and normal mapping.
 
 **Type:** Instance (obj)
 **Constructor:** `Water3D.New(scene)`
+
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `SimDistance` | Number | Read/Write | Camera distance beyond which the per-frame CPU wave rebuild is skipped (the last simulated surface keeps rendering). `0` (default) always simulates. Large or many water bodies should set this to their visible range — a 256-resolution surface rebuilds ~66K vertices per frame otherwise |
 
 #### Methods
 

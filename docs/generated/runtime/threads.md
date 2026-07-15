@@ -143,7 +143,7 @@ Constructor: `Viper.Threads.ConcurrentMap.New`
 <a id="viper-threads-monitor"></a>
 ### `Viper.Threads.Monitor`
 
-Provides fIFO-fair, re-entrant monitor primitive.
+Provides FIFO-fair, re-entrant monitor primitive.
 
 `Viper.Threads.Monitor` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `Enter`,
@@ -165,7 +165,7 @@ construct the class directly. Its public surface exposes operations including `E
 <a id="viper-threads-safei64"></a>
 ### `Viper.Threads.SafeI64`
 
-Provides fIFO-safe integer cell.
+Provides thread-safe integer cell.
 
 Create `Viper.Threads.SafeI64` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes operations including `Get`,
@@ -186,7 +186,7 @@ Constructor: `Viper.Threads.SafeI64.New`
 <a id="viper-threads-gate"></a>
 ### `Viper.Threads.Gate`
 
-Provides fIFO-fair permit gate (semaphore).
+Provides FIFO-fair permit gate (semaphore).
 
 Create `Viper.Threads.Gate` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes a property such as `Permits`
@@ -270,7 +270,7 @@ Constructor: `Viper.Threads.RwLock.New`
 <a id="viper-threads-thread"></a>
 ### `Viper.Threads.Thread`
 
-Provides oS thread handle.
+Provides OS thread handle.
 
 `Viper.Threads.Thread` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Id`, `IsAlive`,

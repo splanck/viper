@@ -1,0 +1,203 @@
+// =============================================================================
+// soak_scene.zia — long-run render + physics + entity-churn soak
+// =============================================================================
+//
+// Drives a continuously animated scene (orbiting camera, prop animation, a
+// spawn/despawn churn ring of dynamic bodies) for a configurable number of
+// fixed-dt frames, then asserts the Game3D degradation counters did not grow
+// after warmup. scripts/run_3d_soak.sh wraps this with external RSS sampling
+// so multi-hour runs can also assert flat process memory.
+//
+// Environment:
+//   VIPER_SOAK_FRAMES   frames to run (default 3600 ≈ one simulated minute)
+//   VIPER_SOAK_REPORT   report interval in frames (default 600)
+//
+// Prints "SOAK:" progress lines and a final "RESULT: ok" / "RESULT: fail".
+// =============================================================================
+module soak_scene;
+
+bind Viper.Core.Convert as Convert;
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.System.Environment as Env;
+bind Viper.Terminal as Terminal;
+
+func intStr(i: Integer) -> String {
+    return Convert.ToString_Int(i);
+}
+
+func envInt(name: String, fallback: Integer) -> Integer {
+    var raw = Env.GetVariable(name);
+    if (raw == "") { return fallback; }
+    var parsed = Convert.ToInt64(raw);
+    if (parsed <= 0) { return fallback; }
+    return parsed;
+}
+
+class SoakScene {
+    hide World3D world;
+    hide Canvas3D canvas;
+    hide Camera3D camera;
+    hide Entity3D orbEntity;
+    hide List[Entity3D] churn;
+    hide Float sceneTime;
+    hide Integer churnPhase;
+
+    expose func setup() {
+        world = World3D.New("3D Soak", 480, 270);
+        canvas = world.Canvas;
+        camera = world.Camera;
+        Canvas3D.SetMaxDeltaTime(canvas, 50);
+
+        world.SetFog(0.030, 0.034, 0.048, 14.0, 40.0);
+        world.SetAmbient(0.22, 0.24, 0.28);
+        world.SetQuality(QualityLevel.get_Balanced());
+
+        camera.Pitch = -18.0;
+
+        var groundMesh = Mesh3D.Plane(24.0, 24.0);
+        var groundMat = Material3D.FromColor(0.25, 0.34, 0.28);
+        var ground = Entity3D.Of(groundMesh, groundMat);
+        ground.Name = "Ground";
+        world.Spawn(ground);
+
+        var groundBody = Physics3DBody.NewAABB(12.0, 0.1, 12.0, 0.0);
+        var groundCol = Entity3D.New();
+        groundCol.Name = "GroundCollider";
+        groundCol.AttachBody(groundBody);
+        groundCol.SetPosition(0.0, -0.1, 0.0);
+        world.Spawn(groundCol);
+
+        var orbMat = Material3D.FromColor(0.10, 0.40, 0.92);
+        Material3D.SetEmissiveColor(orbMat, 0.03, 0.15, 0.50);
+        orbMat.EmissiveIntensity = 0.8;
+        orbEntity = Entity3D.Of(Mesh3D.Sphere(0.6, 20), orbMat);
+        orbEntity.Name = "Orb";
+        orbEntity.SetPosition(0.0, 1.0, 0.0);
+        world.Spawn(orbEntity);
+
+        churn = [];
+        sceneTime = 0.0;
+        churnPhase = 0;
+    }
+
+    // Every 120 frames despawn the previous churn ring and spawn a fresh one:
+    // eight dynamic crates dropped in a circle. Exercises entity lifecycle,
+    // physics broadphase turnover, and per-frame draw-path transients.
+    hide func churnEntities(frame: Integer) {
+        if (frame % 120 != 0) { return; }
+        var i = 0;
+        while (i < churn.Count) {
+            world.Despawn(churn[i]);
+            i = i + 1;
+        }
+        churn = [];
+        churnPhase = churnPhase + 1;
+        var crateMesh = Mesh3D.Box(0.5, 0.5, 0.5);
+        var crateMat = Material3D.FromColor(0.74, 0.32, 0.16);
+        var k = 0;
+        while (k < 8) {
+            var ang = (k + churnPhase) * 0.7853981633974483;
+            var crate = Entity3D.Of(crateMesh, crateMat);
+            crate.Name = "Crate" + intStr(churnPhase) + "_" + intStr(k);
+            var body = Physics3DBody.NewAABB(0.25, 0.25, 0.25, 1.0);
+            crate.AttachBody(body);
+            crate.SetPosition(Cos(ang) * 3.0, 2.0 + 0.25 * k, Sin(ang) * 3.0);
+            world.Spawn(crate);
+            churn.Add(crate);
+            k = k + 1;
+        }
+    }
+
+    expose func runFrames(frames: Integer, reportEvery: Integer) -> Boolean {
+        // Warmup settles allocator pools, shadow caches, and streaming before
+        // the degradation-counter baseline snapshot.
+        var warmup = 240;
+        if (warmup > frames / 2) { warmup = frames / 2; }
+
+        var baseBroadphase = 0;
+        var baseEpa = 0;
+        var baseStale = 0;
+        var baseAnimDrops = 0;
+        var baseStagingErrors = 0;
+
+        var frame = 0;
+        while (frame < frames) {
+            var dt = 0.016;
+            sceneTime = sceneTime + dt;
+
+            churnEntities(frame);
+            camera.Yaw = sceneTime * 12.0;
+            camera.Position = Vec3.New(Cos(sceneTime * 0.2) * 7.0, 3.2,
+                                       Sin(sceneTime * 0.2) * 7.0);
+            orbEntity.SetPosition(0.0, 1.0 + 0.2 * Sin(sceneTime * 2.0), 0.0);
+
+            world.StepSimulation(dt);
+            world.BeginFrame();
+            world.DrawScene();
+            world.DrawEffects();
+            world.EndScene();
+            world.Present();
+
+            if (frame == warmup) {
+                baseBroadphase = Diagnostics3D.BroadphaseFallbackCount;
+                baseEpa = Diagnostics3D.EpaFallbacks;
+                baseStale = Diagnostics3D.StaleEntityCalls;
+                baseAnimDrops = Diagnostics3D.AnimEventsDropped;
+                baseStagingErrors = Diagnostics3D.StreamStagingErrors;
+            }
+            if (frame % reportEvery == 0) {
+                Terminal.Say("SOAK: frame=" + intStr(frame) +
+                             " broadphaseFallbacks=" + intStr(Diagnostics3D.BroadphaseFallbackCount) +
+                             " epaFallbacks=" + intStr(Diagnostics3D.EpaFallbacks) +
+                             " staleEntityCalls=" + intStr(Diagnostics3D.StaleEntityCalls));
+            }
+            frame = frame + 1;
+        }
+
+        var ok = true;
+        if (Diagnostics3D.BroadphaseFallbackCount > baseBroadphase) {
+            Terminal.Say("SOAK: broadphase fallbacks grew after warmup");
+            ok = false;
+        }
+        if (Diagnostics3D.EpaFallbacks > baseEpa) {
+            Terminal.Say("SOAK: EPA fallbacks grew after warmup");
+            ok = false;
+        }
+        if (Diagnostics3D.StaleEntityCalls > baseStale) {
+            Terminal.Say("SOAK: stale entity calls grew after warmup");
+            ok = false;
+        }
+        if (Diagnostics3D.AnimEventsDropped > baseAnimDrops) {
+            Terminal.Say("SOAK: anim events dropped after warmup");
+            ok = false;
+        }
+        if (Diagnostics3D.StreamStagingErrors > baseStagingErrors) {
+            Terminal.Say("SOAK: stream staging errors after warmup");
+            ok = false;
+        }
+        return ok;
+    }
+
+    expose func destroy() {
+        world.Destroy();
+    }
+}
+
+func main() {
+    var frames = envInt("VIPER_SOAK_FRAMES", 3600);
+    var reportEvery = envInt("VIPER_SOAK_REPORT", 600);
+
+    var scene = new SoakScene();
+    scene.setup();
+    var ok = scene.runFrames(frames, reportEvery);
+    scene.destroy();
+
+    Terminal.Say("SOAK: frames=" + intStr(frames) + " done");
+    if (ok) {
+        Terminal.Say("RESULT: ok");
+    } else {
+        Terminal.Say("RESULT: fail degradation counters grew");
+    }
+}

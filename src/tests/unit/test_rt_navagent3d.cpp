@@ -27,6 +27,14 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_mesh3d_new_plane(double sx, double sz);
+extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_add_vertex(
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2);
+extern void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
+extern double rt_path3d_get_length(void *path);
+extern int64_t rt_path3d_get_point_count(void *path);
+extern void *rt_path3d_get_position_at(void *path, double t);
 }
 
 struct NavAgent3DTestLayout {
@@ -623,7 +631,55 @@ static void test_navagent_invalid_handle_numeric_getters_return_sentinel() {
                 "NavAgent3D.AvoidanceRadius is non-negative for a valid agent");
 }
 
+/// Funnel regression: an L-shaped corridor must string-pull a tight path that
+/// hugs the inside corner and never leaves the walkable area. A wrong-side
+/// left/right assignment in the portal ordering would emit a corner on the far
+/// wall — visible here as excess length or an out-of-corridor sample.
+static void test_navmesh_funnel_hugs_l_corridor_corner() {
+    void *mesh = rt_mesh3d_new();
+    /* Corridor legs (y=0, width 2): leg A x[0,2] z[0,8]; leg B x[2,8] z[6,8].
+     * Shared edge (2,6)-(2,8) uses shared vertex indices for adjacency. */
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0, 1, 0, 0, 0); /* v0 */
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 0.0, 0, 1, 0, 0, 0); /* v1 */
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 6.0, 0, 1, 0, 0, 0); /* v2 */
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 6.0, 0, 1, 0, 0, 0); /* v3 */
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 8.0, 0, 1, 0, 0, 0); /* v4 */
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 8.0, 0, 1, 0, 0, 0); /* v5 */
+    rt_mesh3d_add_vertex(mesh, 8.0, 0.0, 6.0, 0, 1, 0, 0, 0); /* v6 */
+    rt_mesh3d_add_vertex(mesh, 8.0, 0.0, 8.0, 0, 1, 0, 0, 0); /* v7 */
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 3);
+    rt_mesh3d_add_triangle(mesh, 3, 2, 4);
+    rt_mesh3d_add_triangle(mesh, 3, 4, 5);
+    rt_mesh3d_add_triangle(mesh, 2, 6, 7);
+    rt_mesh3d_add_triangle(mesh, 2, 7, 4);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.1, 1.8);
+    EXPECT_TRUE(navmesh != nullptr, "L-corridor navmesh builds");
+    if (!navmesh)
+        return;
+    void *path =
+        rt_navmesh3d_find_path(navmesh, rt_vec3_new(1.0, 0.0, 1.0), rt_vec3_new(7.0, 0.0, 7.0));
+    EXPECT_TRUE(path != nullptr, "L-corridor path found");
+    if (!path)
+        return;
+    double length = rt_path3d_get_length(path);
+    /* Straight-line lower bound sqrt(72)=8.49; corner-hugging optimum ~10.2;
+     * a wrong-side corner or centroid chain lands well above 11.5. */
+    EXPECT_TRUE(length > 8.4, "funnel path respects the corner (not a wall clip)");
+    EXPECT_TRUE(length < 11.5, "funnel path stays near the corner-hugging optimum");
+    for (int i = 0; i <= 32; i++) {
+        double t = (double)i / 32.0;
+        void *pt = rt_path3d_get_position_at(path, t);
+        double x = pt ? rt_vec3_x(pt) : 0.0;
+        double z = pt ? rt_vec3_z(pt) : 0.0;
+        int in_leg_a = (x >= -0.15 && x <= 2.15 && z >= -0.15 && z <= 8.15);
+        int in_leg_b = (x >= 1.85 && x <= 8.15 && z >= 5.85 && z <= 8.15);
+        EXPECT_TRUE(in_leg_a || in_leg_b, "funnel path sample stays inside the corridor");
+    }
+}
+
 int main() {
+    test_navmesh_funnel_hugs_l_corridor_corner();
     test_navagent_bound_node_reaches_target_in_world_space();
     test_navagent_bound_character_moves_controller();
     test_navagent_warp_resets_motion_and_rebuilds_path();

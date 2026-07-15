@@ -41,7 +41,10 @@ extern uint64_t rt_siphash_k0_;
 extern uint64_t rt_siphash_k1_;
 extern int rt_siphash_seeded_;
 
-/// @brief Ensure the SipHash key is seeded (thread-safe, called once per process).
+/// @brief Ensure the SipHash key is seeded through the platform once primitive.
+/// @details The native-MSVC inline fast flag is currently a plain `int`, so
+///          concurrent first-use access still needs repair despite InitOnce
+///          serializing the callback.
 void rt_hash_ensure_seeded_(void);
 
 //=============================================================================

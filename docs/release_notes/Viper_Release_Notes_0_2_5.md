@@ -16,7 +16,7 @@ A hardening-and-polish cycle with several notable new capabilities.
 - **Structured diagnostics & tooling.** Source-location snippet printing with caret underlines, JSON diagnostic output, `--diagnostic-format`, `--strict-diagnostics`, `--pass-stats`, and `--fast-link` CLI flags; VM step-over/step-out debugger; typo suggestions on undefined identifiers.
 - **Compiler throughput.** Parallel IL optimizer and codegen (hardware-concurrency thread pool), zero-copy codegen pipeline, analytical AArch64 instruction sizing, bitset-backed liveness, fast-link mode. `viper run` skips optimization by default for fast script invocations.
 
-The biggest user-visible new thing is a text-mode baseball-franchise simulator.
+The main user-visible new thing is a text-mode baseball-franchise simulator.
 
 ### By the Numbers
 

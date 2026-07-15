@@ -463,17 +463,17 @@ canvas = NEW Viper.Graphics.Canvas("Key Chords", 400, 300)
 
 ' Register Ctrl+S chord
 DIM saveKeys AS OBJECT = NEW Viper.Collections.Seq()
-saveKeys.Push(Viper.Input.Key.LeftControl)
-saveKeys.Push(Viper.Input.Key.S)
+saveKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.LeftControl))
+saveKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.S))
 detector.Define("save", saveKeys)
 
 ' Register Konami code combo (timing window: 30 frames)
 DIM konamiKeys AS OBJECT = NEW Viper.Collections.Seq()
 ' Up, Up, Down, Down
-konamiKeys.Push(Viper.Input.Key.Up)
-konamiKeys.Push(Viper.Input.Key.Up)
-konamiKeys.Push(Viper.Input.Key.Down)
-konamiKeys.Push(Viper.Input.Key.Down)
+konamiKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.Up))
+konamiKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.Up))
+konamiKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.Down))
+konamiKeys.Push(Viper.Core.Box.I64(Viper.Input.Key.Down))
 detector.DefineCombo("konami", konamiKeys, 30)
 
 ' In game loop
@@ -593,14 +593,17 @@ integer precision. `RelativeModeNative` distinguishes the native path from the f
 | `RelativeModeNative`      | `Boolean`        | True when native raw deltas are active            |
 
 ```zia
+module RelativeMouseRequest;
+
 bind Viper.Input.Mouse as Mouse;
 
-Mouse.SetRelativeMode(true);      // request Canvas3D mouse-look
-// each frame after Canvas3D.Poll():
-var lookX = Mouse.DeltaXF();      // sub-pixel, unbounded
-var lookY = Mouse.DeltaYF();
-// ...
-Mouse.SetRelativeMode(false);     // back to a normal cursor
+func start() {
+    Mouse.SetRelativeMode(true);  // request Canvas3D mouse-look
+    // Each frame after Canvas3D.Poll():
+    var lookX = Mouse.DeltaXF();  // sub-pixel, unbounded
+    var lookY = Mouse.DeltaYF();
+    Mouse.SetRelativeMode(false); // back to a normal cursor
+}
 ```
 
 In `Viper.Game3D`, prefer `Input3D.SetRelativeLook(true)` — it enables the
@@ -783,7 +786,7 @@ DO WHILE NOT canvas.ShouldClose
     END IF
 
     canvas.Clear(0.0, 0.0, 0.0)
-    ' Render scene based on cameraYaw and cameraPitch...
+    ' Render the scene using cameraYaw and cameraPitch here
     canvas.Flip()
 LOOP
 ```
@@ -1071,7 +1074,7 @@ DO WHILE NOT canvas.ShouldClose
         DIM rx AS DOUBLE = Viper.Input.Pad.RightX(0)
         DIM ry AS DOUBLE = Viper.Input.Pad.RightY(0)
         IF ABS(rx) > 0.1 OR ABS(ry) > 0.1 THEN
-            aimAngle = ATN2(ry, rx)
+            aimAngle = Viper.Math.Atan2(ry, rx)
         END IF
     END IF
 
@@ -1185,7 +1188,7 @@ The Action class provides an abstraction layer over raw input devices. Instead o
 - **Axis actions** for analog input (movement, camera control)
 - **Consistent state tracking** - pressed, released, and held states
 
-Action state is updated automatically when you call `Canvas.Poll()`.
+Action state is updated automatically after Canvas or Canvas3D polling.
 
 ### Action System Lifecycle
 
@@ -1216,9 +1219,13 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 | Method                        | Signature                 | Description                                           |
 |-------------------------------|---------------------------|-------------------------------------------------------|
-| `BindChord(action, keys)`     | `Boolean(String, Seq)`    | Bind a key chord (multi-key combo) to a button action |
+| `BindChord(action, keys)`     | `Boolean(String, Seq)`    | Bind a simultaneous 2-8-key chord to a button action  |
 | `ChordCount(action)`          | `Integer(String)`         | Get the number of chord bindings for an action        |
-| `UnbindChord(action, keys)`   | `Boolean(String, Seq)`    | Remove a key chord binding from an action             |
+| `UnbindChord(action, keys)`   | `Boolean(String, Seq)`    | Remove an exact ordered chord definition              |
+
+Action chords are simultaneous only; use `KeyChord` when you need a sequential combo. Detection
+does not care which order chord keys are pressed, but `UnbindChord()` matches the same keys in the
+same sequence order supplied to `BindChord()`.
 
 ### Mouse Binding Methods
 
@@ -1241,7 +1248,8 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | `UnbindPadAxis(action, pad, axis)`              | `Boolean(String, Integer, Integer)`         | Remove a gamepad axis binding                    |
 | `UnbindPadButton(action, pad, button)`          | `Boolean(String, Integer, Integer)`         | Remove a gamepad button binding                  |
 
-**Note:** Use pad index `-1` to match any connected controller.
+**Note:** Use pad index `-1` to match any connected controller. An any-pad axis binding uses the
+first nonzero value found in slot order; it does not sum the same axis across controllers.
 
 ### Button Action Query Methods
 
@@ -1265,7 +1273,7 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 |-------------------------|--------------------|---------------------------------------------------------|
 | `BindingCount(action)`  | `Integer(String)`  | Returns the number of bindings for an action             |
 | `BindingsStr(action)`   | `String(String)`   | Returns human-readable description of bindings           |
-| `List()`                | `Seq()`            | Returns a Seq of all defined action names                |
+| `List()`                | `Seq()`            | Returns action-name strings in newest-defined-first order|
 
 ### Conflict Detection Methods
 
@@ -1279,32 +1287,41 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 
 | Method        | Signature          | Description                                                           |
 |---------------|--------------------|-----------------------------------------------------------------------|
-| `Load(json)`  | `Boolean(String)`  | Load actions and bindings from a JSON string; returns true on success |
+| `Load(json)`  | `Boolean(String)`  | Atomically replace all actions from JSON; false preserves current state |
 | `Save()`      | `String()`         | Serialize all actions and bindings to a JSON string                   |
 
 ### Action Presets
 
-`LoadPreset()` loads a predefined set of input bindings in one call, eliminating 30-50 lines of boilerplate per game.
+`LoadPreset()` loads a predefined action set and returns false for an unknown preset name. Existing
+actions are retained; compatible preset bindings are added to them instead of replacing them.
 
 #### Available Presets
 
-| Preset Name | Actions Defined | Key Bindings |
-|-------------|----------------|--------------|
-| `"standard_movement"` | `move_up`, `move_down`, `move_left`, `move_right` | WASD + Arrow keys |
-| `"menu_navigation"` | `menu_up`, `menu_down`, `menu_left`, `menu_right`, `confirm`, `back` | Arrows + Enter/Escape |
-| `"platformer"` | `left`, `right`, `jump`, `shoot`, `pause` | A/D or Left/Right, Space/W/Up, E, Escape |
-| `"topdown"` | `up`, `down`, `left`, `right`, `fire`, `pause` | WASD + Arrows, Space, Escape |
+| Preset Name | Actions Defined | Principal Bindings |
+|-------------|-----------------|--------------------|
+| `"standard_movement"` | Buttons `move_up/down/left/right`; axes `move_x/y` | WASD, arrows, D-pad, left stick |
+| `"menu_navigation"` | `menu_up/down/left/right`, `confirm`, `back` | WASD/arrows/D-pad; Enter or Space/A; Escape/B |
+| `"platformer"` | `move_left/right`, `jump`, `shoot`, `pause`; axis `move_x` | A/D or arrows/D-pad/stick; Space/W/Up or A; J/X or pad X; Escape/Start |
+| `"topdown"` | `move_up/down/left/right`, `fire`, `pause`; axes `move_x/y` | WASD/arrows/D-pad/stick; Space/J or A; Escape/Start |
+| `"fps3d"` | `jump`, `sprint`, `crouch`, `interact`, `fire`, `aim`, `pause`; axes `move_x/y` | Space/Shift/Ctrl/E, mouse buttons, WASD; A/LB/B/X/Start, left stick |
 
 #### Example
 ```rust
-// Instead of 30+ lines of Action.Define + Action.BindKey...
-Action.LoadPreset("platformer");
-Action.LoadPreset("menu_navigation");
+module PresetDemo;
 
-// Presets can be combined — later bindings don't overwrite earlier ones
-// Custom actions can still be added on top
-Action.Define("special_attack");
-Action.BindKey("special_attack", 81);  // Q
+bind Viper.Input.Action as Action;
+bind Viper.Input.Key as Key;
+
+func start() {
+    Action.Clear();
+    Action.LoadPreset("platformer");
+    Action.LoadPreset("menu_navigation");
+
+    // Compatible preset bindings are added to existing actions.
+    Action.Define("special_attack");
+    Action.BindKey("special_attack", Key.Q);
+    Action.Clear();
+}
 ```
 
 ### Axis Constants
@@ -1365,7 +1382,7 @@ func start() {
         py = py + Action.Axis("move_y") * 5.0;
 
         if Action.Pressed("jump") { Say("Jump!"); }
-        if Action.Held("fire") { Say("Firing..."); }
+        if Action.Held("fire") { Say("Firing"); }
 
         c.Clear(Color.RGB(0, 0, 0));
         c.Flip();
@@ -1419,7 +1436,7 @@ DO WHILE NOT canvas.ShouldClose
 
     ' Fire action (works with Z OR gamepad X)
     IF Viper.Input.Action.Held("fire") THEN
-        PRINT "Firing..."
+        PRINT "Firing"
     END IF
 
     canvas.Clear(0)
@@ -1431,8 +1448,8 @@ LOOP
 ### Example: Mouse Look with Action Mapping
 
 ```basic
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("FPS Camera", 800, 600)
+DIM canvas AS Viper.Graphics3D.Canvas3D
+canvas = Viper.Graphics3D.Canvas3D.New("FPS Camera", 800, 600)
 
 ' Define look actions
 Viper.Input.Action.DefineAxis("look_x")
@@ -1449,7 +1466,8 @@ Viper.Input.Action.BindPadAxis("look_y", -1, Viper.Input.Action.AxisRightY, 0.05
 DIM yaw AS DOUBLE = 0.0
 DIM pitch AS DOUBLE = 0.0
 
-Viper.Input.Mouse.Capture()
+' Relative mode is applied by Canvas3D.Poll()
+Viper.Input.Mouse.SetRelativeMode(TRUE)
 
 DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
@@ -1461,12 +1479,12 @@ DO WHILE NOT canvas.ShouldClose
     IF pitch > 1.57 THEN pitch = 1.57
     IF pitch < -1.57 THEN pitch = -1.57
 
-    canvas.Clear(0)
-    ' Render scene using yaw/pitch...
+    canvas.Clear(0.0, 0.0, 0.0)
+    ' Render the scene using yaw and pitch here
     canvas.Flip()
 LOOP
 
-Viper.Input.Mouse.Release()
+Viper.Input.Mouse.SetRelativeMode(FALSE)
 ```
 
 ### Example: Rebindable Controls
@@ -1491,13 +1509,15 @@ Viper.Input.Action.BindKey("jump", Viper.Input.Key.W)
 
 ### Notes
 
-- Action state is updated when `Canvas.Poll()` is called
-- `Pressed()` and `Released()` only return true for one frame
+- Action state is updated after Canvas or Canvas3D polling
+- `Pressed()`/`Released()` report any bound input edge received during that poll
 - Multiple bindings on a button action trigger if ANY binding is active
 - Axis bindings are combined (summed) and clamped to -1.0 to 1.0
 - Use `AxisRaw()` to get the unclamped sum for advanced use cases
+- Mouse-axis bindings use rounded integer mouse deltas; scroll-axis bindings preserve fractional
+  wheel input
 - Binding the same input to multiple actions is allowed
-- Use pad index `-1` for "any controller" in local multiplayer setups
+- Use pad index `-1` on Action gamepad bindings for “any controller”
 
 ### Design Philosophy
 
@@ -1516,8 +1536,7 @@ This separation means:
 
 ## Viper.Input.Manager
 
-High-level input manager with debouncing and unified direction input. Simplifies input handling for games by providing
-device-agnostic direction queries and built-in debouncing for menu navigation.
+High-level input wrapper with a per-key edge gate and unified direction input.
 
 **Type:** Instance class (requires `New()`)
 
@@ -1534,13 +1553,13 @@ unified "direction" input that automatically combines keyboard arrows, WASD, D-p
 
 | Property       | Type    | Description                                    |
 |----------------|---------|------------------------------------------------|
-| `DebounceDelay`| Integer | Frames to wait before allowing repeat (r/w)    |
+| `DebounceDelay`| Integer | Edge-gate timer in frames (r/w; default 12)    |
 
 ### Core Methods
 
 | Method     | Signature | Description                                                      |
 |------------|-----------|------------------------------------------------------------------|
-| `Update()` | `Void()`  | Update input state; call once per frame after `Canvas.Poll()`    |
+| `Update()` | `Void()`  | Decrement edge-gate timers; call after the window poll          |
 
 ### Unified Direction Properties
 
@@ -1548,14 +1567,18 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 
 | Property  | Type    | Access | Description                                              |
 |-----------|---------|--------|----------------------------------------------------------|
-| `Up`      | Boolean | Read   | Arrow Up, W, D-pad Up, or left stick up                  |
-| `Down`    | Boolean | Read   | Arrow Down, S, D-pad Down, or left stick down            |
-| `Left`    | Boolean | Read   | Arrow Left, A, D-pad Left, or left stick left            |
-| `Right`   | Boolean | Read   | Arrow Right, D, D-pad Right, or left stick right         |
-| `Confirm` | Boolean | Read   | Enter, Space, or gamepad A button                        |
-| `Cancel`  | Boolean | Read   | Escape or gamepad B button                               |
-| `AxisX`   | Double  | Read   | Combined horizontal axis (-1.0 to 1.0)                   |
-| `AxisY`   | Double  | Read   | Combined vertical axis (-1.0 to 1.0)                     |
+| `Up`      | Boolean | Read   | Held: Arrow Up, W, D-pad Up, or left stick below -0.5    |
+| `Down`    | Boolean | Read   | Held: Arrow Down, S, D-pad Down, or left stick above 0.5 |
+| `Left`    | Boolean | Read   | Held: Arrow Left, A, D-pad Left, or left stick below -0.5|
+| `Right`   | Boolean | Read   | Held: Arrow Right, D, D-pad Right, or left stick above 0.5|
+| `Confirm` | Boolean | Read   | Press edge: Enter, Space, or gamepad A                    |
+| `Cancel`  | Boolean | Read   | Press edge: Escape or gamepad B                           |
+| `AxisX`   | Double  | Read   | Unified horizontal axis, clamped to -1.0 through 1.0     |
+| `AxisY`   | Double  | Read   | Unified vertical axis, clamped to -1.0 through 1.0       |
+
+The direction properties are level-triggered and therefore remain true every poll while held.
+`AxisX`/`AxisY` combine keyboard, D-pad, and all four left sticks by selection rather than by
+summing their values. Digital input can force `-1.0` or `1.0`; vertical negative is up.
 
 ### Keyboard Methods
 
@@ -1563,7 +1586,7 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 |----------------------------|---------------------|------------------------------------------------------|
 | `KeyHeld(key)`             | `Boolean(Integer)`  | True if key is currently held down                   |
 | `KeyPressed(key)`          | `Boolean(Integer)`  | True if key was pressed this frame (edge detection)  |
-| `KeyPressedDebounced(key)` | `Boolean(Integer)`  | True if pressed with debouncing (for menus)          |
+| `KeyPressedDebounced(key)` | `Boolean(Integer)`  | Accept a down edge only while that key's timer is zero|
 | `KeyReleased(key)`         | `Boolean(Integer)`  | True if key was released this frame                  |
 
 ### Mouse Methods
@@ -1601,7 +1624,8 @@ These properties check ALL input sources (keyboard, D-pad, analog sticks) and re
 | `PadRightX(pad)`           | `Double(Integer)`           | Right stick X (-1.0 to 1.0)           |
 | `PadRightY(pad)`           | `Double(Integer)`           | Right stick Y (-1.0 to 1.0)           |
 
-**Note:** Use pad index `-1` to check any connected controller.
+**Note:** `PadPressed`, `PadReleased`, and `PadHeld` accept exactly `-1` for any connected
+controller. Axis and trigger methods pass the index directly to `Pad`; `-1` returns zero.
 
 ### Zia Example: Menu Navigation
 
@@ -1620,14 +1644,24 @@ func start() {
     input.set_DebounceDelay(12);
 
     var selected = 0;
+    var directionReady = true;
 
     while !c.get_ShouldClose() {
         c.Poll();
         input.Update();
 
-        // Unified direction (keyboard + gamepad)
-        if input.get_Up() { selected = selected - 1; }
-        if input.get_Down() { selected = selected + 1; }
+        // Unified directions are held-state properties, so latch one move per press.
+        var up = input.get_Up();
+        var down = input.get_Down();
+        if directionReady && up {
+            selected = selected - 1;
+            directionReady = false;
+        }
+        if directionReady && down {
+            selected = selected + 1;
+            directionReady = false;
+        }
+        if !up && !down { directionReady = true; }
         if selected < 0 { selected = 3; }
         if selected > 3 { selected = 0; }
 
@@ -1648,10 +1682,10 @@ func start() {
 DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("Menu Demo", 800, 600)
 
-DIM input AS OBJECT = Viper.Input.Manager.New()
-input.DebounceDelay = 12  ' Wait 12 frames between repeat inputs
+DIM mgr AS OBJECT = Viper.Input.Manager.New()
 
 DIM selectedItem AS INTEGER = 0
+DIM directionReady AS INTEGER = 1
 DIM menuItems(3) AS STRING
 menuItems(0) = "New Game"
 menuItems(1) = "Continue"
@@ -1660,40 +1694,45 @@ menuItems(3) = "Exit"
 
 DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    input.Update()
+    mgr.Update()
 
-    ' Navigation with unified direction (works with keyboard AND gamepad)
-    IF input.Up() THEN
+    ' Unified directions are properties and stay true while held.
+    IF directionReady = 1 AND mgr.Up THEN
         selectedItem = selectedItem - 1
         IF selectedItem < 0 THEN selectedItem = 3
+        directionReady = 0
     END IF
 
-    IF input.Down() THEN
+    IF directionReady = 1 AND mgr.Down THEN
         selectedItem = selectedItem + 1
         IF selectedItem > 3 THEN selectedItem = 0
+        directionReady = 0
     END IF
 
+    IF NOT mgr.Up AND NOT mgr.Down THEN directionReady = 1
+
     ' Confirm selection
-    IF input.Confirm() THEN
+    IF mgr.Confirm THEN
         SELECT CASE selectedItem
-            CASE 0: StartNewGame()
-            CASE 1: ContinueGame()
-            CASE 2: ShowOptions()
+            CASE 0: PRINT "New Game"
+            CASE 1: PRINT "Continue"
+            CASE 2: PRINT "Options"
             CASE 3: EXIT DO
         END SELECT
     END IF
 
     ' Back/Cancel
-    IF input.Cancel() THEN
+    IF mgr.Cancel THEN
         EXIT DO
     END IF
 
-    ' Render menu...
+    ' Render the menu background
     canvas.Clear(0)
+    DIM i AS INTEGER
     FOR i = 0 TO 3
         DIM color AS INTEGER = 16777215
         IF i = selectedItem THEN color = 16776960
-        ' Draw menu item at y position...
+        ' Draw menuItems(i) at its row here
     NEXT i
     canvas.Flip()
 LOOP
@@ -1705,7 +1744,7 @@ LOOP
 DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("Game", 800, 600)
 
-DIM input AS OBJECT = Viper.Input.Manager.New()
+DIM mgr AS OBJECT = Viper.Input.Manager.New()
 
 DIM playerX AS DOUBLE = 400.0
 DIM playerY AS DOUBLE = 300.0
@@ -1713,17 +1752,17 @@ DIM speed AS DOUBLE = 5.0
 
 DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    input.Update()
+    mgr.Update()
 
     ' Smooth movement using axis values (works with WASD, arrows, AND analog stick)
-    playerX = playerX + input.AxisX() * speed
-    playerY = playerY + input.AxisY() * speed
+    playerX = playerX + mgr.AxisX * speed
+    playerY = playerY + mgr.AxisY * speed
 
     ' Or use digital direction for grid-based movement
-    IF input.Left() THEN playerX = playerX - speed
-    IF input.Right() THEN playerX = playerX + speed
-    IF input.Up() THEN playerY = playerY - speed
-    IF input.Down() THEN playerY = playerY + speed
+    IF mgr.Left THEN playerX = playerX - speed
+    IF mgr.Right THEN playerX = playerX + speed
+    IF mgr.Up THEN playerY = playerY - speed
+    IF mgr.Down THEN playerY = playerY + speed
 
     canvas.Clear(0)
     canvas.Disc(INT(playerX), INT(playerY), 20, 16711680)
@@ -1734,49 +1773,63 @@ LOOP
 ### Example: Debounced Key Input
 
 ```basic
-DIM input AS OBJECT = Viper.Input.Manager.New()
-input.DebounceDelay = 15  ' About 250ms at 60fps
+DIM mgr AS OBJECT = Viper.Input.Manager.New()
+mgr.DebounceDelay = 15
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Input Gate", 400, 300)
 
-DO WHILE running
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    input.Update()
+    mgr.Update()
 
-    ' Non-debounced: fires every frame while held
-    IF input.KeyHeld(Viper.Input.Key.Space) THEN
-        FireWeapon()  ' Continuous fire
+    ' Held is level-triggered and fires every poll while held.
+    IF mgr.KeyHeld(Viper.Input.Key.Space) THEN
+        PRINT "Fire"
     END IF
 
-    ' Debounced: fires once, then requires release or wait
-    IF input.KeyPressedDebounced(Viper.Input.Key.P) THEN
-        TogglePause()  ' Won't rapid-toggle
+    ' This accepts only a down edge while the per-key timer is zero.
+    ' Calling it while P is up resets the timer; holding P never repeats.
+    IF mgr.KeyPressedDebounced(Viper.Input.Key.P) THEN
+        PRINT "Toggle pause"
     END IF
+
+    canvas.Clear(0)
+    canvas.Flip()
 LOOP
 ```
 
 ### Notes
 
-- Call `Update()` once per frame after `Canvas.Poll()`
-- Unified direction methods combine all input sources automatically
-- Debouncing prevents rapid repeated inputs from held keys
-- AxisX/AxisY return smooth analog values from sticks, or -1/0/1 from digital inputs
-- Use pad index `-1` to accept input from any connected gamepad
+- Call `Update()` after each window poll when using `KeyPressedDebounced`; all other members read
+  global input state directly
+- Negative `DebounceDelay` assignments are ignored. The manager tracks at most 32 key codes and
+  reuses the slot with the shortest remaining timer when saturated
+- `KeyPressedDebounced` still requires a `WasPressed` down edge; it does not generate held-key
+  repeat. Calling it while the key is up clears that key's timer
+- Unified directions inspect keyboard, D-pad, and all four gamepad slots automatically
+- `AxisX`/`AxisY` select among digital and analog contributions and clamp the result; they do not
+  sum all devices
+- Use `-1` for any gamepad only with the three Manager button methods
+- **Known issue:** the edge gate does not implement the commonly expected repeat-delay behavior;
+  see [VDOC-010](../documentation-review-findings.md#vdoc-010--inputmanager-debounce-delay-does-not-implement-held-key-repeat)
 
 ### InputManager vs Low-Level Classes
 
 | Feature                | InputManager                    | Keyboard/Mouse/Pad            |
 |------------------------|---------------------------------|-------------------------------|
 | Unified directions     | Yes (Up/Down/Left/Right)        | No (check each device)        |
-| Built-in debouncing    | Yes (`KeyPressedDebounced`)     | No (must implement manually)  |
+| Per-key edge gate      | Yes (`KeyPressedDebounced`)     | No                            |
 | Device-agnostic axes   | Yes (`AxisX`, `AxisY`)          | No                            |
 | Confirm/Cancel actions | Yes (built-in mappings)         | No                            |
 | Per-key control        | Yes (falls through to low-level)| Yes                           |
-| State tracking         | Automatic                       | Must track manually           |
+| Input state ownership  | Delegates to global low-level state | Global low-level state    |
 
 ### Use Cases
 
-- **Menu navigation:** Unified Up/Down/Confirm/Cancel
+- **Menu navigation:** Unified held directions plus edge-triggered Confirm/Cancel; add a latch or
+  repeat policy for one-step selection
 - **Character movement:** Combined axis input from all devices
-- **Dialog systems:** Debounced input to prevent skipping
+- **Dialog systems:** Per-key edge gating to prevent duplicate consumption
 - **Inventory screens:** Device-agnostic selection
 - **Quick prototyping:** Less boilerplate than raw input classes
 

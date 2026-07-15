@@ -35,17 +35,17 @@ Dynamic array that grows automatically. Stores object references.
 | `Get(index)`             | `Object(Integer)`       | Gets the item at the specified index                                                  |
 | `Set(index, value)`      | `Void(Integer, Object)` | Sets the item at the specified index                                                  |
 | `Clear()`                | `Void()`                | Removes all items from the list                                                       |
-| `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains the object (reference equality)                     |
+| `Has(item)`              | `Boolean(Object)`       | Returns true if the list contains a matching object                                   |
 | `Find(item)`             | `Integer(Object)`       | Returns index of the first matching object, or `-1` if not found                      |
 | `FindOption(item)`       | `Option[Integer](Object)` | Returns `Some(index)` for the first matching object, or `None` if not found        |
 | `Insert(index, item)`    | `Void(Integer, Object)` | Inserts the item at `index` (0..Count); `index == Len` appends; traps if out of range   |
-| `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object (reference equality); returns true if removed       |
+| `Remove(item)`           | `Boolean(Object)`       | Removes the first matching object; returns true if removed                            |
 | `RemoveAt(index)`        | `Void(Integer)`         | Removes the item at the specified index                                               |
 | `Slice(start, end)`      | `List(Integer, Integer)`| Returns a new list with elements from start (inclusive) to end (exclusive)            |
 | `Reverse()`              | `Void()`                | Reverses the elements of the list in place                                            |
-| `First()`                | `Object()`              | Returns the first element in the list                                                 |
-| `Last()`                 | `Object()`              | Returns the last element in the list                                                  |
-| `Sort()`                 | `Void()`                | Sorts the list in ascending order (strings lexicographic, otherwise by object identity) |
+| `First()`                | `Object()`              | Returns the first element, or null when empty                                         |
+| `Last()`                 | `Object()`              | Returns the last element, or null when empty                                          |
+| `Sort()`                 | `Void()`                | Stable ascending default sort; see the comparison notes below                         |
 | `SortDesc()`             | `Void()`                | Sorts the list in descending order                                                    |
 | `Pop()`                  | `Object()`              | Removes and returns the last element (traps if empty)                                 |
 | `Shuffle()`              | `Void()`                | Shuffles the list in place (Fisher-Yates)                                             |
@@ -60,6 +60,14 @@ Dynamic array that grows automatically. Stores object references.
 - List retains stored objects and releases them when removed, overwritten, cleared, or finalized.
 - `Get()`, `First()`, `Last()`, and `Pop()` return owned object references, so callers can keep the result after the list changes or is released.
 - `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
+- `Has()`, `Find()`, and `Remove()` compare boxed integers, booleans, floats, and strings by value
+  (including treating boxed NaNs as equal); other objects use identity. Queue, Stack, Deque, and
+  Ring membership use identity for every object, so membership semantics are not uniform across
+  the sequential collection classes (VDOC-086).
+- The default stable sort compares raw or boxed strings lexicographically and boxed integers
+  numerically. Null sorts first; other and mixed-type pairs fall back to raw pointer order. That
+  fallback is not a portable semantic order, and mixed-type default sorting should not be relied
+  on (VDOC-089).
 - Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
 
 ### Zia Example
@@ -147,8 +155,8 @@ list.Clear()
 
 ## Viper.Collections.Queue
 
-A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front. Implemented as a
-circular buffer for O(1) add and take operations.
+A FIFO (first-in-first-out) collection. Elements are added at the back and removed from the front.
+It uses a circular buffer for amortized O(1) pushes and O(1) pops.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Collections.Queue()`
@@ -177,8 +185,13 @@ circular buffer for O(1) add and take operations.
 
 ### Notes
 
-- Queue stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty queue. Runtime conversion helpers return owning queues or owning snapshots.
+- The registered `Queue.New` constructor creates a borrowed-element queue, and the class surface
+  does not expose the C-only ownership switch. Keep every stored object alive independently, or
+  create an owning queue through `List.ToQueue()` / `Seq.ToQueue()` (VDOC-087). `ToList()` and
+  `ToSeq()` always return owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the queue's retained reference is transferred to the caller.
+- `Peek()` returns a borrowed reference whose lifetime is bounded by the stored element's owner
+  (and, for an owning queue produced by a conversion, by the queue entry).
 - Prefer `TryPopOption()` for new code. It distinguishes an empty queue from a stored null object; `TryPop()` remains as a compatibility helper.
 
 ### Zia Example
@@ -272,8 +285,13 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 ### Notes
 
 - Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
-- Stack stores borrowed elements when used directly through the C runtime API unless `set_owns_elements(true)` is selected on an empty stack. Runtime conversion helpers return owning stacks or owning snapshots.
+- The registered `Stack.New` constructor creates a borrowed-element stack, and the class surface
+  does not expose the C-only ownership switch. Keep every stored object alive independently, or
+  create an owning stack through `List.ToStack()` / `Seq.ToStack()` (VDOC-087). `ToList()` and
+  `ToSeq()` always return owning snapshots.
 - `Pop()` and `TryPop()` return owned object references. In owning mode, the stack's retained reference is transferred to the caller.
+- `Peek()` returns a borrowed reference whose lifetime is bounded by the stored element's owner
+  (and, for an owning stack produced by a conversion, by the stack entry).
 - Prefer `TryPopOption()` for new code. It distinguishes an empty stack from a stored null object; `TryPop()` remains as a compatibility helper.
 - Constructor allocation failures trap cleanly instead of returning a partial stack.
 
@@ -342,13 +360,16 @@ A double-ended queue (deque) that supports efficient insertion and removal at bo
 stacks and queues while also supporting indexed access.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Deque()`
+**Factories:** `NEW Viper.Collections.Deque()` or
+`Viper.Collections.Deque.WithCapacity(capacity)`. The capacity factory clamps values below 1 to
+one slot.
 
 ### Properties
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
 | `Count`   | Integer | Number of elements in the deque           |
+| `Cap`     | Integer | Compatibility alias for `Capacity`        |
 | `Capacity` | Integer | Current allocated capacity              |
 | `IsEmpty` | Boolean | Returns true if the deque has no elements |
 
@@ -456,8 +477,8 @@ PRINT deque.Get(0)       ' Output: "c" (was last)
 
 | Feature          | Deque          | Queue         | Stack         |
 |------------------|----------------|---------------|---------------|
-| Add front        | O(1)           | No            | No            |
-| Add back         | O(1)           | O(1)          | O(1)          |
+| Add front        | O(1) amortized | No            | No            |
+| Add back         | O(1) amortized | O(1) amortized | O(1) amortized |
 | Remove front     | O(1)           | O(1)          | No            |
 | Remove back      | O(1)           | No            | O(1)          |
 | Random access    | O(1)           | No            | No            |
@@ -495,6 +516,8 @@ elements.
 | `IsEmpty` | `Boolean` | True if ring has no elements         |
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
 | `OwnsElements` | `Boolean` | True when the ring retains/releases stored runtime objects |
+| `First`   | `Object`  | Oldest element, or null when empty        |
+| `Last`    | `Object`  | Newest element, or null when empty        |
 
 `Cap` remains available as a compatibility alias for `Capacity`.
 
@@ -507,8 +530,6 @@ elements.
 | `Peek()`     | Object  | Return oldest item without removing (NULL if empty) |
 | `Get(index)` | Object  | Get item by logical index (0 = oldest)              |
 | `Has(value)` | Boolean | Check if an element is in the ring (by reference)   |
-| `First()`    | Object  | Return the oldest element (same as Peek)            |
-| `Last()`     | Object  | Return the newest element                           |
 | `Reverse()`  | void    | Reverse all elements in place                       |
 | `SetOwnsElements(owns)` | void | Select owned or borrowed element mode while empty |
 | `Clone()`    | Ring    | Create a shallow copy of the ring                   |
@@ -517,6 +538,8 @@ elements.
 
 Rings retain stored runtime objects by default and release overwritten, popped, cleared, or finalized values. Runtime
 callers can switch an empty ring to borrowed-element mode before pushing values with `SetOwnsElements(false)`.
+`Get()`, `Peek()`, `First`, and `Last` return borrowed references; `Pop()` returns a retained
+transfer in owning mode. `Clone()` preserves the source ring's ownership mode.
 
 ### Zia Example
 
@@ -627,6 +650,11 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 - `Pop()` and `TryPop()` transfer the heap's retained object reference to the caller. `Peek()` and `TryPeek()` return an additional owned reference without removing the item.
 - Prefer `TryPopOption()` and `TryPeekOption()` for new code. They distinguish an empty heap from a stored null object; the nullable forms remain for compatibility.
 - `ToSeq()` returns an independent owning snapshot in priority order.
+- Equal-priority entries have no stable FIFO/LIFO guarantee.
+- `ToSeq()` is implemented as a Seq but registered with an unqualified `obj` return. In Zia,
+  annotate the result (`var values: Viper.Collections.Seq = heap.ToSeq()`) or use an explicit Seq
+  receiver. Chaining `heap.ToSeq().Count` currently resolves `Count` as a Heap property and traps
+  on the returned Seq (VDOC-020).
 
 ### Zia Example
 

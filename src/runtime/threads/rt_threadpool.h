@@ -41,11 +41,13 @@ void *rt_threadpool_new(int64_t size);
 
 /// @brief Submit a task to the pool for async execution.
 /// @details The task is queued and executed by the next available worker.
-///          The callback receives @p arg as its parameter.
+///          The callback receives @p arg as its parameter. Both callback and
+///          argument are borrowed; the pool has no argument cleanup hook.
 /// @param pool Pool object pointer.
 /// @param callback Task function to execute (signature: void(*)(void*)).
 /// @param arg Argument passed to the callback.
-/// @return 1 if submitted, 0 if pool is shut down.
+/// @return 1 if submitted; 0 for invalid inputs, shutdown, pending-queue
+///         backpressure, or task-node allocation failure.
 int8_t rt_threadpool_submit(void *pool, void *callback, void *arg);
 
 /// @brief Wait for all pending tasks to complete.
@@ -69,8 +71,9 @@ int8_t rt_threadpool_wait_for(void *pool, int64_t ms);
 void rt_threadpool_shutdown(void *pool);
 
 /// @brief Shut down the pool immediately.
-/// @details Stops accepting new tasks and terminates workers without
-///          waiting for pending tasks. Tasks in the queue are discarded.
+/// @details Stops accepting new tasks and discards queued tasks. Callbacks
+///          already running are not interrupted; this call joins their workers
+///          after those callbacks return.
 /// @param pool Pool object pointer.
 void rt_threadpool_shutdown_now(void *pool);
 

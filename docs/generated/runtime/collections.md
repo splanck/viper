@@ -796,7 +796,7 @@ Constructor: `Viper.Collections.MultiMap.New`
 <a id="viper-collections-queue"></a>
 ### `Viper.Collections.Queue`
 
-Provides fIFO collection.
+Provides FIFO collection.
 
 Create `Viper.Collections.Queue` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
@@ -975,7 +975,7 @@ Constructor: `Viper.Collections.Seq.New`
 <a id="viper-collections-stack"></a>
 ### `Viper.Collections.Stack`
 
-Provides lIFO collection.
+Provides LIFO collection.
 
 Create `Viper.Collections.Stack` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `IsEmpty`,

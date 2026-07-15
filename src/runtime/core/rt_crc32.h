@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Uses the bit-reversed IEEE 802.3 polynomial, producing the same output as zlib crc32.
 //   - The lookup table is initialized lazily on first call to rt_crc32_compute.
-//   - Initialization is idempotent but not thread-safe for concurrent first calls.
+//   - Atomic once-state makes initialization safe for concurrent first calls.
 //   - Input NULL with len 0 returns 0xFFFFFFFF XOR 0xFFFFFFFF = 0.
 //
 // Ownership/Lifetime:
@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 /// @brief Initialize the CRC32 lookup table.
-/// @details Thread-safe initialization using a simple flag.
+/// @details Thread-safe initialization using acquire/release atomic state and CAS.
 ///          Called automatically by rt_crc32_compute if needed.
 void rt_crc32_init(void);
 

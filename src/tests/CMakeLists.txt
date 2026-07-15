@@ -1484,6 +1484,18 @@ set_tests_properties(zia_smoke_ashfall_stress PROPERTIES
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 180)
 
+# Software-rasterizer determinism gate for the backend-conformance harness:
+# renders the fixed conformance scene twice and requires byte-identical output.
+# GPU backends are compared by hand via scripts/run_backend_conformance.sh.
+add_test(NAME zia_graphics_conformance_sw_determinism
+        COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/run_backend_conformance.sh"
+                --self-check --zia $<TARGET_FILE:zia>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(zia_graphics_conformance_sw_determinism PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d"
+        TIMEOUT 180)
+
 add_test(NAME zia_smoke_ashfall_combat
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/combat_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")

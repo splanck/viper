@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_async_socket.h
-// Purpose: Non-blocking socket wrapper integrated with Threads.Future.
+// Purpose: Future wrapper that runs blocking socket work on a shared worker pool.
 // Key invariants:
 //   - Async operations submit work to a thread pool and return Futures.
 //   - Each Future resolves with the result of the blocking operation.
-//   - Thread pool is shared (default global pool).
+//   - One fixed four-worker pool is shared by all AsyncSocket operations.
 // Ownership/Lifetime:
 //   - Returned Futures are GC-managed.
 // Links: rt_network.h (blocking sockets), rt_threadpool.h (thread pool)
@@ -31,7 +31,7 @@ void *rt_async_connect(rt_string host, int64_t port);
 /// @brief Asynchronously connect to host:port with an explicit timeout.
 void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
 
-/// @brief Asynchronously send data over a TCP connection. Returns a Future[Integer].
+/// @brief Submit a send; the generic Future currently stores its count as a raw ABI scalar.
 void *rt_async_send(void *tcp, void *data);
 
 /// @brief Asynchronously receive data. Returns a Future[Bytes].

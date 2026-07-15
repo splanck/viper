@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Core Types
@@ -13,17 +13,21 @@ last-verified: 2026-07-14
 ## Contents
 
 - [Viper.Core.Box](#vipercorebox)
+- [Viper.Core.Convert](#vipercoreconvert)
 - [Viper.Core.Diagnostics](#vipercorediagnostics)
 - [Viper.Core.MessageBus](#vipercoremessagebus)
 - [Viper.Core.Object](#vipercoreobject)
 - [Viper.Core.Parse](#vipercoreparse)
 - [Viper.String](#viperstring)
+- [Viper.Text.Char](#vipertextchar)
 
 ---
 
 ## Viper.Core.Object
 
-Base class for all Viper reference types. Provides fundamental object operations.
+Common base facade for Viper reference types. It also recognizes built-in runtime strings and
+boxes, which have content/value equality rather than the identity-only fallback used by other
+objects.
 
 **Type:** Base class (not instantiated directly)
 
@@ -34,17 +38,16 @@ Base class for all Viper reference types. Provides fundamental object operations
 | `Equals(other)` | `Boolean(Object)` | Compares this object with another for equality |
 | `HashCode()`    | `Integer()`       | Returns a hash code for the object             |
 | `IsNull()`      | `Boolean()`       | Returns true if this reference is null         |
-| `IsNull(obj)`   | `Boolean(Object)` | Static null test that is safe for null inputs  |
 | `ToString()`    | `String()`        | Returns a string representation of the object  |
 | `TypeId()`      | `Integer()`       | Returns a numeric type identifier for the object's runtime type |
 | `TypeName()`    | `String()`        | Returns the runtime type name of the object    |
-| `RefEquals(a, b)` | `Boolean(Object, Object)` | Class method equivalent of `Viper.Core.Object.RefEquals(a, b)` |
 
-### Static Functions
+### Class-Call Forms
 
-| Function                                    | Signature                 | Description                                               |
-|---------------------------------------------|---------------------------|-----------------------------------------------------------|
-| `Viper.Core.Object.RefEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
+| Function                             | Signature                 | Description                                               |
+|--------------------------------------|---------------------------|-----------------------------------------------------------|
+| `Viper.Core.Object.IsNull(obj)`      | `Boolean(Object)`         | Null test that is safe for a null input                    |
+| `Viper.Core.Object.RefEquals(a, b)`  | `Boolean(Object, Object)` | Tests whether two references are the same instance         |
 
 ### Zia Example
 
@@ -53,6 +56,8 @@ Base class for all Viper reference types. Provides fundamental object operations
 
 `TypeId()` returns stable built-in identifiers for strings, boxes, boxed value types, `Viper.Option`, `Viper.Core.MessageBus`, and `MessageBus.Callback` objects in addition to user/runtime class IDs.
 Runtime string handles compare and hash by byte content through `Equals` and `HashCode`, so distinct handles with identical bytes behave as equal object keys.
+Boxes compare and hash by tag and value; all other recognized objects use reference equality and a
+pointer-derived hash. `RefEquals` always uses reference identity, including for strings and boxes.
 `TypeName()` and `ToString()` report useful built-in names for opaque runtime objects such as boxed value types, options, message buses, and callback wrappers instead of falling back to a generic `Object` label.
 
 ### BASIC Example
@@ -102,7 +107,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 | `ToF64Option(box)`  | `Option<Double>(Object)`  | Return `Some(double)` or `None` on wrong type                     |
 | `ToI1Option(box)`   | `Option<Boolean>(Object)` | Return `Some(boolean)` or `None` on wrong type                    |
 | `ToStrOption(box)`  | `Option<String>(Object)`  | Return `Some(string)` or `None` on wrong type                     |
-| `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str)           |
+| `Type(box)`         | `Integer(Object)`         | Return type tag (0=i64, 1=f64, 2=i1, 3=str), or -1 for a non-box |
 | `EqI64(box,val)`    | `Boolean(Object,Integer)` | Compare boxed value to integer                         |
 | `EqF64(box,val)`    | `Boolean(Object,Double)`  | Compare boxed value to double                          |
 | `EqStr(box,val)`    | `Boolean(Object,String)`  | Compare boxed value to string                          |
@@ -118,6 +123,8 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - The `To*Option` forms do not trap for type mismatch and return managed `Option` values, so Zia and BASIC never need output pointers.
 - Boxed values report `Viper.Core.Box` through `Viper.Core.Object.TypeName` and use value equality/hash semantics for `Object.Equals` and collection lookup.
 - Floating-point box hashes canonicalize `+0.0`/`-0.0` and all NaN payloads. Boxed NaN values compare equal to other boxed NaNs so collection hashing and equality stay compatible.
+- `EqF64(box, value)` is the raw-value convenience comparison and follows IEEE `==`; unlike
+  box-to-box equality, `EqF64(Box.F64(NaN), NaN)` is false.
 - `ValueType(size)` and `ValueTypeAddField(...)` are compiler/runtime hooks. New user code should call `Viper.Runtime.Unsafe.ValueType` and `Viper.Runtime.Unsafe.ValueTypeAddField` only when intentionally integrating with boxed value-type payloads.
 - `Viper.Core.ValueType` is the catalog/introspection class for boxed value-type payloads. The compiler copies the inline payload into heap storage, then registers managed object/string fields with the unsafe value-type field registration hook so boxed structs retain referenced values, participate in GC traversal, and release fields when finalized. Registering the same offset with the same field kind is idempotent and does not touch the current slot's reference count; registering the same offset with a different kind traps. When `retainNow` is true, the current slot value is validated before it is retained. If the value-type object already has a finalizer, managed-field cleanup chains it instead of replacing it.
 
@@ -172,7 +179,7 @@ unhandled trap terminates execution.
 | `Assert(cond, msg)`         | `Void(Boolean, String)`            | Trap with `msg` if `cond` is false                        |
 | `AssertEq(a, b, msg)`       | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are not equal                         |
 | `AssertNeq(a, b, msg)`      | `Void(Integer, Integer, String)`   | Trap if `a` and `b` are equal                             |
-| `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap if two numbers are not equal within relative epsilon |
+| `AssertEqNum(a, b, msg)`    | `Void(Double, Double, String)`     | Trap unless numbers pass the runtime's `1e-9` approximate comparison |
 | `AssertEqStr(a, b, msg)`    | `Void(String, String, String)`     | Trap if two strings are not equal                         |
 | `AssertNull(obj, msg)`      | `Void(Object, String)`             | Trap if `obj` is not null                                 |
 | `AssertNotNull(obj, msg)`   | `Void(Object, String)`             | Trap if `obj` is null                                     |
@@ -185,9 +192,13 @@ unhandled trap terminates execution.
 
 ### Notes
 
-- All assertion failures use the runtime trap mechanism (equivalent to a bounds-check failure). An unhandled trap
-  terminates the program; a host or VM trap hook may intercept it.
-- `Trap` is an unconditional halt; prefer `AssertFail` when the intent is a named assertion failure.
+- All assertion failures use the structured runtime trap mechanism. An unhandled trap terminates
+  the program; a host, VM recovery point, or trap hook may intercept it.
+- `AssertEqNum` first accepts exact equality (including equal infinities) and treats two NaNs as
+  equal. Otherwise it requires absolute difference `< 1e-9` when both magnitudes are below 1, or
+  relative difference `< 1e-9` for larger magnitudes.
+- `Trap` unconditionally raises a trap request; prefer `AssertFail` when the intent is a named
+  assertion failure.
 - `Trap(msg)` accepts a managed `String` handle. Embedded NUL bytes in the message are preserved for validation and escaped in the diagnostic path.
 - `AssertEqStr` compares full runtime string contents, including embedded NUL bytes, and escapes non-printable bytes in failure messages. Invalid string handles produce a trap diagnostic instead of a native crash.
 - These are intended for invariant checking during development and internal consistency validation.
@@ -221,18 +232,22 @@ func start() {
 
 ```basic
 ' Basic assertions
+DIM x AS INTEGER = 1
+DIM name AS STRING = "Alice"
 Viper.Core.Diagnostics.Assert(x > 0, "x must be positive")
 Viper.Core.Diagnostics.AssertEqStr(name, "Alice", "unexpected name")
 
 ' Null checks
-DIM obj AS OBJECT = GetSomething()
+DIM obj AS OBJECT = Viper.Core.Box.I64(1)
 Viper.Core.Diagnostics.AssertNotNull(obj, "GetSomething returned null")
 
 ' Ordering assertions
+DIM score AS INTEGER = 50
 Viper.Core.Diagnostics.AssertGte(score, 0, "score out of range")
 Viper.Core.Diagnostics.AssertLte(score, 100, "score out of range")
 
 ' Unconditional trap
+DIM unrecoverableError AS INTEGER = 0
 IF unrecoverableError THEN
     Viper.Core.Diagnostics.Trap("fatal: unrecoverable error in pipeline")
 END IF
@@ -252,9 +267,11 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 |-----------------------------|-------------------------------------|--------------------------------------------------------------------|
 | `TryInt(s)`                 | `Option<Integer>(String)`           | Parse integer; returns `None` if invalid                           |
 | `TryDouble(s)`              | `Option<Double>(String)`            | Parse double; returns `None` if invalid                            |
+| `TryNum(s)`                 | `Option<Double>(String)`            | Compatibility alias for `TryDouble`                               |
 | `TryBool(s)`                | `Option<Boolean>(String)`           | Parse boolean; returns `None` if invalid                           |
 | `IntOr(s, default)`         | `Integer(String, Integer)`          | Parse `s` as integer; return `default` on failure                  |
 | `DoubleOr(s, default)`      | `Double(String, Double)`            | Parse `s` as double; return `default` on failure                   |
+| `NumOr(s, default)`         | `Double(String, Double)`            | Compatibility alias for `DoubleOr`                                |
 | `BoolOr(s, default)`        | `Boolean(String, Boolean)`          | Parse `s` as boolean; return `default` on failure                  |
 | `IsInt(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid integer (no side effects)            |
 | `IsNum(s)`                  | `Boolean(String)`                   | Return true if `s` is a valid number (no side effects)             |
@@ -263,12 +280,18 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 ### Notes
 
 - `TryInt`, `TryDouble`, and `TryBool` return managed `Option` values. The lower-level C output-pointer helpers remain runtime-internal.
-- `TryNum` and `NumOr` remain available as compatibility aliases for
-  `TryDouble` and `DoubleOr`.
+- Decimal integers accept an optional sign. Decimal numbers use the strict grammar
+  `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?`; commas, underscores, hexadecimal
+  prefixes, and trailing text are rejected.
+- `TryBool` accepts `true`/`yes`/`1`/`on` and `false`/`no`/`0`/`off`, case-insensitively.
 - Null input is treated as parse failure: `Try*` returns `None`, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
 - `IntRadix` supports bases 2 through 36 (e.g., 16 for hex, 2 for binary). Leading `+` and `-` signs are accepted for radix 10 only; non-decimal radices parse unsigned 64-bit bit patterns so formatted hex/binary values can round-trip.
 - Leading/trailing ASCII whitespace is accepted; non-whitespace trailing characters and embedded NUL bytes are rejected.
-- Numeric parsing accepts explicit `NaN`, `Inf`, `+Inf`, and `-Inf` spellings. Decimal overflow and non-finite decimal results are rejected; finite underflow to zero or a subnormal value is accepted.
+- Numeric parsing accepts signed, case-insensitive `NaN` and `Inf` spellings. Decimal overflow and
+  non-finite decimal results are rejected; finite underflow to zero or a subnormal value is
+  accepted. Numeric parsing is isolated to the C numeric locale, so the decimal separator is
+  always `.`.
+
 ### Parse.TryDouble and Parse.TryInt Example
 
 ```rust
@@ -324,11 +347,13 @@ func start() {
 
 ```basic
 ' Safe parsing with defaults
+DIM userInput AS STRING = "yes"
 DIM n AS INTEGER = Viper.Core.Parse.IntOr(userInput, 0)
 DIM f AS DOUBLE  = Viper.Core.Parse.DoubleOr(userInput, 0.0)
 DIM b AS INTEGER = Viper.Core.Parse.BoolOr(userInput, 0)
 
 ' Validation before use
+DIM inputStr AS STRING = "42"
 IF Viper.Core.Parse.IsInt(inputStr) THEN
     DIM value AS INTEGER = Viper.Core.Parse.IntOr(inputStr, 0)
     PRINT "Value: "; value
@@ -346,11 +371,34 @@ PRINT "Bin 1010 = "; binVal    ' Output: 10
 
 ---
 
+## Viper.Core.Convert
+
+Strict string conversions and scalar formatting helpers. String-to-number failures raise a runtime
+trap; use [`Viper.Core.Parse`](#vipercoreparse) when invalid user input should produce `Option` or a
+default value.
+
+**Type:** Static utility class
+
+| Function                                  | Signature                  | Description                                |
+|-------------------------------------------|----------------------------|--------------------------------------------|
+| `ToStringInt(value)`                      | `String(Integer)`          | Convert an integer to decimal text         |
+| `ToStringDouble(value)`                   | `String(Double)`           | Convert a double to round-trip text        |
+| `ToInt64(text)`                           | `Integer(String)`          | Strictly parse a decimal integer; trap on failure |
+| `ToDouble(text)`                          | `Double(String)`           | Strictly parse a decimal double or signed `NaN`/`Inf`; trap on failure |
+| `NumToInt(value)`                         | `Integer(Number)`          | Truncate toward zero; map NaN to 0 and clamp overflow |
+
+`ToString_Int` and `ToString_Double` remain available as compatibility aliases. `NumToInt(3.7)`
+returns `3`; infinities and finite out-of-range values clamp to the nearest signed 64-bit endpoint.
+This is distinct from `ToInt64(text)`, which parses a string.
+
+---
+
 ## Viper.String
 
-String manipulation class. Viper strings are immutable byte strings and commonly contain UTF-8. Some APIs operate on
-bytes while `Mid`/`MidLen` translate one-based UTF-8 code-point positions to byte slices; the distinctions are noted
-below.
+String manipulation class. Viper strings are immutable byte strings and commonly contain UTF-8.
+Most positions and lengths are bytes. `Mid`/`MidLen`, `Flip`, and the SQL-LIKE wildcards instead
+advance by UTF-8-shaped units; those helpers do not perform full Unicode scalar validation (see
+[VDOC-166](../documentation-review-findings.md#vdoc-166--flip-and-mid-treat-malformed-utf-8-as-characters)).
 
 **Type:** Instance (opaque*)
 
@@ -365,21 +413,25 @@ below.
 
 | Method                       | Signature                  | Description                                                                   |
 |------------------------------|----------------------------|-------------------------------------------------------------------------------|
-| `Substring(start, length)`   | `String(Integer, Integer)` | Extracts `length` bytes from zero-based byte offset `start`                    |
+| `Substring(start, length)`   | `String(Integer, Integer)` | Extracts bytes from zero-based offset `start`; negative values clamp to zero   |
 | `Concat(other)`              | `String(String)`           | Concatenates another string and returns the result                            |
-| `Left(count)`                | `String(Integer)`          | Returns the leftmost `count` bytes                                             |
-| `Right(count)`               | `String(Integer)`          | Returns the rightmost `count` bytes                                            |
-| `Mid(start)`                 | `String(Integer)`          | Returns UTF-8 code points from one-based position `start` to the end           |
-| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` UTF-8 code points from one-based position `start`             |
-| `Trim()`                     | `String()`                 | Removes leading and trailing whitespace                                       |
-| `TrimStart()`                | `String()`                 | Removes leading whitespace                                                    |
-| `TrimEnd()`                  | `String()`                 | Removes trailing whitespace                                                   |
+| `Left(count)`                | `String(Integer)`          | Returns the leftmost `count` bytes; a negative count traps                     |
+| `Right(count)`               | `String(Integer)`          | Returns the rightmost `count` bytes; a negative count traps                    |
+| `Mid(start)`                 | `String(Integer)`          | Returns UTF-8-shaped units from one-based position `start`; `start < 1` traps  |
+| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` UTF-8-shaped units; invalid negative/range inputs trap or clamp as noted below |
+| `Trim()`                     | `String()`                 | Removes leading and trailing ASCII whitespace                                 |
+| `TrimStart()`                | `String()`                 | Removes leading ASCII whitespace                                              |
+| `TrimEnd()`                  | `String()`                 | Removes trailing ASCII whitespace                                             |
 | `ToUpper()`                  | `String()`                 | Converts ASCII `a`–`z` to uppercase; non-ASCII UTF-8 bytes are unchanged      |
 | `ToLower()`                  | `String()`                 | Converts ASCII `A`–`Z` to lowercase; non-ASCII UTF-8 bytes are unchanged      |
-| `IndexOf(search)`            | `Integer(String)`          | Returns the 1-based position of `search`, or 0 if not found                   |
-| `IndexOfFrom(start, search)` | `Integer(Integer, String)` | Searches from 1-based position `start`; returns 0 if not found                |
+| `IndexOf(search)`            | `Integer(String)`          | Returns the one-based byte position of `search`, or 0 if not found            |
+| `IndexOfFrom(start, search)` | `Integer(Integer, String)` | Searches from a one-based byte position; returns 0 if not found                |
 | `Chr(code)`                  | `String(Integer)`          | Returns a one-byte string for code 0–255; other values trap                    |
 | `Asc()`                      | `Integer()`                | Returns the unsigned value of the first byte, or 0 for an empty string         |
+
+`Substring`, `Left`, `Right`, and the search methods clamp slices/search starts to the available
+byte range. `MidLen` clamps an overlong result to the end and returns empty for a zero length or a
+start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and form feed.
 
 ### Extended Methods
 
@@ -390,6 +442,7 @@ below.
 | `StartsWith(prefix)` | `Boolean(String)` | Returns true if string starts with prefix    |
 | `EndsWith(suffix)`   | `Boolean(String)` | Returns true if string ends with suffix      |
 | `Has(needle)`        | `Boolean(String)` | Returns true if string contains needle       |
+| `Contains(needle)`   | `Boolean(String)` | Zia/BASIC instance alias for `Has`           |
 | `Count(needle)`      | `Integer(String)` | Counts non-overlapping occurrences of needle |
 
 **Transformation:**
@@ -397,10 +450,10 @@ below.
 | Method                         | Signature                 | Description                                                     |
 |--------------------------------|---------------------------|-----------------------------------------------------------------|
 | `Replace(needle, replacement)` | `String(String, String)`  | Replaces all occurrences of needle with replacement             |
-| `PadLeft(width, padChar)`      | `String(Integer, String)` | Pads string on left to reach width using first char of padChar  |
-| `PadRight(width, padChar)`     | `String(Integer, String)` | Pads string on right to reach width using first char of padChar |
-| `Repeat(count)`                | `String(Integer)`         | Repeats the string count times                                  |
-| `Flip()`                       | `String()`                | Reverses the string (byte-level, ASCII-safe)                    |
+| `PadLeft(width, padChar)`      | `String(Integer, String)` | Pads to a byte width using the first byte of `padChar`           |
+| `PadRight(width, padChar)`     | `String(Integer, String)` | Pads to a byte width using the first byte of `padChar`           |
+| `Repeat(count)`                | `String(Integer)`         | Repeats the string; a non-positive count returns empty           |
+| `Flip()`                       | `String()`                | Reverses UTF-8-shaped units while preserving each unit's bytes   |
 | `Split(delimiter)`             | `Seq(String)`             | Splits string by delimiter into a Seq of strings                |
 | `Lines()`                      | `Seq(String)`             | Splits into logical lines on `\n`, dropping a trailing `\r` (CRLF→LF); segment count matches `Split("\n")` |
 
@@ -408,75 +461,91 @@ below.
 
 | Method              | Signature    | Description                                                    |
 |---------------------|-------------|----------------------------------------------------------------|
-| `Capitalize()`      | `String()`  | Uppercase the first ASCII byte; leave the remainder unchanged  |
-| `Title()`           | `String()`  | Uppercase the first ASCII byte after whitespace                |
-| `CamelCase()`       | `String()`  | Convert to camelCase                                           |
-| `PascalCase()`      | `String()`  | Convert to PascalCase                                          |
-| `SnakeCase()`       | `String()`  | Convert to snake_case                                          |
-| `KebabCase()`       | `String()`  | Convert to kebab-case                                          |
-| `ScreamingSnake()`  | `String()`  | Convert to SCREAMING_SNAKE_CASE                                |
+| `Capitalize()`      | `String()`  | Apply C-locale uppercase to the first byte; leave the rest unchanged |
+| `Title()`           | `String()`  | Uppercase the first byte and the first byte after C-locale whitespace |
+| `CamelCase()`       | `String()`  | Convert byte words to camelCase                                |
+| `PascalCase()`      | `String()`  | Convert byte words to PascalCase                               |
+| `SnakeCase()`       | `String()`  | Convert byte words to snake_case                               |
+| `KebabCase()`       | `String()`  | Convert byte words to kebab-case                               |
+| `ScreamingSnake()`  | `String()`  | Convert byte words to SCREAMING_SNAKE_CASE                     |
 
 **Additional Search:**
 
 | Method                | Signature          | Description                                               |
 |-----------------------|--------------------|-----------------------------------------------------------|
-| `LastIndexOf(search)` | `Integer(String)`  | Returns the last position of `search`, or -1 if not found |
+| `LastIndexOf(search)` | `Integer(String)`  | Returns the last one-based byte position, or 0 if not found |
 | `RemovePrefix(prefix)`| `String(String)`   | Removes prefix if present, otherwise returns original     |
 | `RemoveSuffix(suffix)`| `String(String)`   | Removes suffix if present, otherwise returns original     |
-| `TrimChar(chars)`     | `String(String)`   | Removes specified characters from both ends               |
-| `Slug()`              | `String()`         | Convert to URL-friendly slug form                         |
+| `TrimChar(chars)`     | `String(String)`   | Removes repetitions of the first byte of `chars` from both ends |
+| `Slug()`              | `String()`         | Lowercase C-locale alphanumerics and collapse other byte runs to `-` |
 
 **String Distance:**
 
 | Method                | Signature          | Description                                              |
 |-----------------------|--------------------|----------------------------------------------------------|
-| `Levenshtein(other)`  | `Integer(String)`  | Compute Levenshtein edit distance between two strings    |
-| `Jaro(other)`         | `Double(String)`   | Compute Jaro similarity score (0.0 to 1.0)              |
-| `JaroWinkler(other)`  | `Double(String)`   | Compute Jaro-Winkler similarity score (0.0 to 1.0)     |
-| `Hamming(other)`      | `Integer(String)`  | Compute Hamming distance (strings must be equal length)  |
+| `Levenshtein(other)`  | `Integer(String)`  | Compute byte-level edit distance; allocation failure returns -1 |
+| `Jaro(other)`         | `Double(String)`   | Compute byte-level Jaro similarity (0.0 to 1.0)          |
+| `JaroWinkler(other)`  | `Double(String)`   | Compute byte-level Jaro plus a four-byte prefix bonus     |
+| `Hamming(other)`      | `Integer(String)`  | Count differing bytes, or return -1 for unequal byte lengths |
 
 **Pattern Matching:**
 
 | Method           | Signature         | Description                                              |
 |------------------|-------------------|----------------------------------------------------------|
-| `Like(pattern)`  | `Boolean(String)` | Wildcard match against pattern (`*` = any, `?` = one char) |
-| `LikeCI(pattern)` | `Boolean(String)` | Case-insensitive wildcard match                         |
+| `Like(pattern)`   | `Boolean(String)` | Whole-string SQL LIKE match (`%` = any sequence, `_` = one UTF-8-shaped unit) |
+| `LikeCI(pattern)` | `Boolean(String)` | C-locale byte-folded SQL LIKE match                    |
 
 **Comparison:**
 
 | Method             | Signature         | Description                                      |
 |--------------------|-------------------|--------------------------------------------------|
-| `Cmp(other)`       | `Integer(String)` | Compares strings, returns -1, 0, or 1            |
-| `CmpNoCase(other)` | `Integer(String)` | Case-insensitive comparison, returns -1, 0, or 1 |
+| `Cmp(other)`       | `Integer(String)` | Bytewise comparison, returning -1, 0, or 1                 |
+| `CmpNoCase(other)` | `Integer(String)` | C-locale byte-folded comparison, returning -1, 0, or 1     |
+
+Empty needles are deliberately special but not uniform: `StartsWith`, `EndsWith`, and `Has` return
+true; `Count` returns 0; `Replace` returns the original; `IndexOf` returns 1; and `LastIndexOf`
+returns 0. The last two results are tracked as
+[VDOC-168](../documentation-review-findings.md#vdoc-168--string-index-methods-disagree-on-an-empty-needle).
+`Split` with an empty delimiter returns a one-element sequence containing the original string.
+
+The five identifier-style case conversions split only on space, tab, `_`, `-`, lower-to-upper
+transitions, and acronym boundaries. Digits remain in the surrounding byte word. Their C-library
+case classification is process-locale dependent (see
+[VDOC-063](../documentation-review-findings.md#vdoc-063--case-insensitive-pattern-helpers-depend-on-the-process-c-locale)),
+and embedded NUL bytes currently truncate their output (see
+[VDOC-165](../documentation-review-findings.md#vdoc-165--string-case-shape-methods-truncate-at-embedded-nul)).
+Passing a multibyte padding character can also create malformed UTF-8 because padding repeats only
+its first byte; see
+[VDOC-167](../documentation-review-findings.md#vdoc-167--string-padding-can-create-malformed-utf-8).
+
+`Like` and `LikeCI` match the whole string. A backslash quotes the next pattern byte; a final
+backslash is literal. See [Pattern Matching](text/patterns.md#stringlike--stringlikeci) for the full
+contract and malformed-UTF-8 limitations.
 
 ### Static Functions (Viper.String)
 
 | Function                                       | Signature                  | Description                                                      |
 |------------------------------------------------|----------------------------|------------------------------------------------------------------|
 | `Viper.String.Equals(a, b)`                    | `Boolean(String, String)`  | Compare two strings for equality                                 |
-| `Viper.String.FromI16(value)`                  | `String(Integer)`          | Convert a 16-bit integer to string                               |
-| `Viper.String.FromI32(value)`                  | `String(Integer)`          | Convert a 32-bit integer to string                               |
-| `Viper.String.FromSingle(value)`               | `String(Double)`           | Convert a double formatted as single-precision (f32) to string   |
-| `Viper.String.FromStr(text)`                   | `String(String)`           | Create a runtime string from text                                |
-| `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator                         |
-| `Viper.String.SplitFields(text)`                | `Seq(String)`                   | Split by whitespace/CSV-style fields into a managed sequence |
+| `Viper.String.FromI16(value)`                  | `String(i16)`              | Format a signed 16-bit integer                                  |
+| `Viper.String.FromI32(value)`                  | `String(i32)`              | Format a signed 32-bit integer                                  |
+| `Viper.String.FromSingle(value)`               | `String(Double)`           | Intended to narrow to f32 and format that value                 |
+| `Viper.String.FromStr(text)`                   | `String(String)`           | Return the same immutable string handle with an owned reference |
+| `Viper.String.Join(separator, items)`          | `String(String, Seq<String>)` | Join string elements; null elements are empty and other types trap |
+| `Viper.String.SplitFields(text)`               | `Seq<String>(String)`      | Parse trimmed comma-separated fields, double quotes, and doubled quotes |
 
-### Conversion Functions (Viper.Core.Convert)
+`FromI16` and `FromI32` are registry-level narrow-integer surfaces. Zia currently emits an i64
+argument without narrowing and fails IL verification; BASIC also does not resolve the public
+`FromI16` name. See
+[VDOC-163](../documentation-review-findings.md#vdoc-163--stringfromi16-and-fromi32-reach-invalid-il-from-zia).
+`FromSingle`'s public f64 signature and float C implementation currently disagree, corrupting direct
+runtime calls; see
+[VDOC-162](../documentation-review-findings.md#vdoc-162--stringfromsingle-has-a-mismatched-c-abi).
 
-| Function                                       | Signature                  | Description                              |
-|------------------------------------------------|----------------------------|------------------------------------------|
-| `Viper.Core.Convert.ToStringInt(value)`             | `String(Integer)`          | Convert integer to string                |
-| `Viper.Core.Convert.ToStringDouble(value)`          | `String(Double)`           | Convert double to round-trip string      |
-| `Viper.Core.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer (traps on failure) |
-| `Viper.Core.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double, including `NaN` / `Inf` / `-Inf` (traps on failure) |
-| `Viper.Core.Convert.NumToInt(value)`                | `Integer(Number)`          | Convert floating-point Number to Integer (truncates/clamps) |
-
-`ToString_Int` and `ToString_Double` remain available as compatibility aliases.
-
-**Note:** `Convert.NumToInt(3.7)` returns `3`, `NaN` returns `0`, and out-of-range values clamp to the nearest signed 64-bit endpoint. This is distinct from `Convert.ToInt64(str)` which parses from a string.
-
-**Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
-for multi-byte UTF-8 characters.
+`SplitFields` trims each field with the process C character locale. Quoted fields may contain commas
+and doubled `""` becomes `"`; empty and trailing fields are preserved. The parser is permissive
+rather than RFC 4180-validating and currently accepts malformed/unclosed quote structure; see
+[VDOC-164](../documentation-review-findings.md#vdoc-164--stringsplitfields-silently-accepts-malformed-quoting).
 
 ### Zia Example
 
@@ -557,14 +626,14 @@ PRINT s.Count("l")           ' Output: 3
 ' Transformation
 PRINT s.Replace("world", "universe")  ' Output: "hello universe"
 PRINT "42".PadLeft(5, "0")            ' Output: "00042"
-PRINT "hi".PadRight(5, ".")           ' Output: "hi..."
+PRINT "hi".PadRight(5, "_")           ' Output: "hi___"
 PRINT "ab".Repeat(3)                   ' Output: "ababab"
 PRINT "hello".Flip()                   ' Output: "olleh"
 
 ' Split and join
 DIM parts AS Viper.Collections.Seq
 parts = "a,b,c".Split(",")
-PRINT parts.Length                        ' Output: 3
+PRINT parts.Count                         ' Output: 3
 PRINT Viper.String.Join("-", parts)   ' Output: "a-b-c"
 
 ' Comparison
@@ -577,9 +646,8 @@ PRINT "ABC".CmpNoCase("abc")           ' Output: 0
 ## Viper.Text.Char
 
 Static ASCII character-classification helpers for identifier scanning (completion triggers,
-word selection, tokenization). Each takes a string and classifies its **first character**, so it
-drops directly into a char-by-char scan; an empty string or a non-ASCII leading character returns
-`false`.
+word selection, tokenization). Each takes a string and classifies its **first byte**, so it drops
+directly into a byte-by-byte scan; an empty string or a non-ASCII leading byte returns `false`.
 
 | Method                     | Signature       | Description                                              |
 |----------------------------|-----------------|---------------------------------------------------------|
@@ -588,10 +656,17 @@ drops directly into a char-by-char scan; an empty string or a non-ASCII leading 
 | `IsAlnum(ch)`              | `Boolean(String)` | First character is ASCII alphanumeric (letter or digit) |
 
 ```rust
-// Zia — scan an identifier instead of hand-writing the character ranges.
-bind Char = Viper.Text.Char;
-if Char.IsIdentifierStart(Str.MidLen(text, 1, 1)) {
-    // ... consume Char.IsIdentifierPart(...) characters
+module CharDemo;
+
+bind Viper.Text.Char as Char;
+bind Viper.String as Str;
+bind Viper.Terminal;
+
+func start() {
+    var text = "name1";
+    if Char.IsIdentifierStart(Str.MidLen(text, 1, 1)) {
+        Say("identifier start");
+    }
 }
 ```
 
@@ -624,23 +699,36 @@ In-process publish/subscribe message bus for decoupled communication between com
 | `Unsubscribe(id)`          | `Boolean(Integer)`           | Remove a subscription by ID; returns true if found              |
 | `Publish(topic, data)`     | `Integer(String, Object)`    | Publish data to all subscribers of a topic; returns count notified |
 | `SubscriberCount(topic)`   | `Integer(String)`            | Returns the number of subscribers for a topic                   |
-| `Topics()`                 | `Seq()`                      | Returns a Seq of all topic names with active subscribers        |
+| `Topics()`                 | `Seq<String>()`              | Returns copied names for all topics with active subscribers      |
 | `ClearTopic(topic)`        | `Void(String)`               | Remove all subscribers for a specific topic                     |
 | `Clear()`                  | `Void()`                     | Remove all subscriptions from all topics                        |
 
 ### Notes
 
-- `Subscribe` returns a unique integer ID that can be used with `Unsubscribe`
-- `Publish` invokes all handlers for the given topic synchronously; returns the number of handlers called
-- Handler functions receive the published data as their argument
-- Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes, not the in-flight one
-- Publish retains managed string handles and object/array payloads for the duration of dispatch so one handler cannot free the payload before later handlers run. Raw string byte pointers are borrowed.
+- `Subscribe` returns a positive, monotonically increasing ID that can be used with `Unsubscribe`;
+  null inputs return `-1`, and the bus traps rather than reusing IDs after signed 64-bit exhaustion.
+- `Publish` invokes handlers synchronously in subscription order and returns the number called.
+  Handler functions receive the published data as their argument.
+- Publish uses a stable subscriber snapshot; unsubscribes during a handler affect later publishes,
+  not the in-flight one. A handler trap aborts the remaining calls, releases the snapshot, and
+  re-raises the trap.
+- Publish retains managed string handles and object/array payloads for the duration of dispatch so
+  one handler cannot free the payload before later handlers run. Arbitrary foreign pointers remain
+  borrowed and must outlive the call.
 - Subscribe accepts a managed callback returned by `Callback(&handler)` in Zia or `Callback(ADDRESSOF Handler)` in BASIC. Native callback pointers stay inside the runtime bridge.
 - Topic matching is byte-length aware; topic names containing embedded NUL bytes remain distinct.
-- `Topics()` returns an owning `Seq` of copied topic strings; the result remains valid after the bus is cleared or destroyed.
+- Empty topic names are valid. `Topics()` returns an owning `Seq` of copied topic strings in
+  unspecified hash-bucket order; the result remains valid after the bus is cleared or destroyed.
+- The implementation returns a Seq, but both registry entries declare unqualified `obj`. Zia
+  therefore infers the declaring `MessageBus` class and rejects natural chains such as
+  `bus.Topics().Count`; use an explicitly typed local or
+  `Viper.Collections.Seq.get_Count(bus.Topics())`. This is tracked in
+  [VDOC-020](../documentation-review-findings.md#vdoc-020--untyped-concrete-object-results-break-member-typing-or-infer-the-declaring-class).
 - `Unsubscribe`, `ClearTopic`, and `Clear` remove empty topic records, so a later `Topics()` call reports only active topics.
 - If a handler traps during `Publish`, the in-flight snapshot is released before the trap is re-raised.
-- MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers, serialize public operations with an internal lock, and retain the bus for the duration of each public operation so callbacks can release their last external bus reference safely.
+- MessageBus instances are typed runtime objects, participate in GC traversal for retained handlers,
+  serialize state access with an internal lock, and retain the bus for each public operation.
+  Handlers run after that lock is released, so they may publish, unsubscribe, or clear safely.
 
 ### Zia Example
 

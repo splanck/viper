@@ -598,9 +598,9 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
 
 /// @brief Read up to `max_bytes` from the socket; returns a Bytes object (possibly empty).
 ///
-/// Single-call recv — may return fewer bytes than requested. An
-/// empty Bytes signals connection closed by peer; a trap means a
-/// real socket error.
+/// Single-call recv — may return fewer bytes than requested. Empty Bytes means
+/// either orderly peer close or expiry of a persistent receive timeout; peer
+/// close also clears `is_open`. Other socket errors trap.
 void *rt_tcp_recv(void *obj, int64_t max_bytes) {
     if (!obj) {
         rt_trap("Network: NULL connection");
@@ -741,7 +741,8 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
 /// @brief Read until `\n` is seen (CR is also stripped) and return the line as a string.
 ///
 /// Caps at 64 KB to prevent unbounded growth from a malicious peer.
-/// Returns the empty string on connection close.
+/// Traps if the connection closes or a configured receive timeout expires
+/// before a newline is received.
 rt_string rt_tcp_recv_line(void *obj) {
     if (!obj) {
         rt_trap("Network: NULL connection");
@@ -892,7 +893,7 @@ void rt_tcp_detach_socket(void *obj) {
 // TcpServer - Creation
 //=============================================================================
 
-/// @brief Internal listener factory — bind to `address:port`, listen with backlog 128.
+/// @brief Internal listener factory — bind to `address:port`, listen with `SOMAXCONN` backlog.
 ///
 /// Used by both `rt_tcp_server_listen` (binds to all interfaces)
 /// and `rt_tcp_server_listen_at` (binds to a specific interface).

@@ -1067,23 +1067,38 @@ void rt_canvas3d_end(void *obj) {
         c->shadow_count = 0;
         memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
     }
+    /* Per-pass CPU timing: encode cost of each stage on this thread. GPU time
+     * stays a single frame counter (canvas3d_refresh_frame_gpu_time). */
+    memset(c->pass_cpu_ms, 0, sizeof(c->pass_cpu_ms));
     if (!c->frame_is_2d && !c->frame_is_view_model && main_count > 0) {
+        int64_t pass_t0 = rt_clock_ticks_us();
         canvas3d_render_shadow_pass(c, cmds);
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_SHADOW] =
+            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
 
     if (main_count > 0) {
+        int64_t pass_t0 = rt_clock_ticks_us();
         canvas3d_render_main_pass(c, cmds);
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_MAIN] =
+            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
     /* Catch-all: frames whose main pass culled everything (or had only overlay draws)
      * still need their sky; the latch makes this a no-op when the pass drew it. */
     canvas3d_draw_backend_skybox_after_opaque(c);
 
-    c->backend->end_frame(c->backend_ctx);
+    {
+        int64_t pass_t0 = rt_clock_ticks_us();
+        c->backend->end_frame(c->backend_ctx);
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_BACKEND_END] =
+            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
+    }
     canvas3d_refresh_texture_upload_bytes(c);
     canvas3d_refresh_frame_gpu_time(c);
     c->in_frame = 0;
 
     if (!c->frame_is_2d && overlay_count > 0) {
+        int64_t pass_t0 = rt_clock_ticks_us();
         if (canvas3d_begin_overlay_frame(c, 1)) {
             for (int32_t i = 0; i < queued_draw_count; i++) {
                 if (cmds[i].pass_kind != DEFERRED_PASS_SCREEN_OVERLAY)
@@ -1094,6 +1109,8 @@ void rt_canvas3d_end(void *obj) {
             canvas3d_refresh_texture_upload_bytes(c);
             canvas3d_refresh_frame_gpu_time(c);
         }
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_OVERLAY] =
+            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
 
     c->in_frame = 0;

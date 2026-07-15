@@ -583,7 +583,7 @@ RT_CLASS_BEGIN("Viper.Collections.MultiMap", MultiMap, "obj", MultiMapNew)
 RT_CLASS_END()
 
 // Viper.Collections.Queue - FIFO collection
-/// @summary Provides fIFO collection.
+/// @summary Provides FIFO collection.
 /// @details
 /// Create `Viper.Collections.Queue` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
@@ -706,7 +706,7 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
 RT_CLASS_END()
 
 // Viper.Collections.Stack - LIFO collection
-/// @summary Provides lIFO collection.
+/// @summary Provides LIFO collection.
 /// @details
 /// Create `Viper.Collections.Stack` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `IsEmpty`,
@@ -934,7 +934,7 @@ RT_CLASS_BEGIN("Viper.Crypto.Cipher", Cipher, "obj", none)
 RT_CLASS_END()
 
 // Viper.Crypto.Tls - TLS 1.3 secure connections
-/// @summary Provides tLS 1.3 secure connections.
+/// @summary Provides TLS 1.3 secure connections.
 /// @details
 /// `Viper.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,

@@ -188,8 +188,15 @@ static const uint8_t uastc_pattern2_3_anchors[19][2] = {
     {0, 8}, {2, 0}, {0, 1}, {0, 7}, {12, 0}, {2, 0}, {9, 0}, {0, 2}, {4, 0}};
 
 /// @brief Read @p count bits from the 128-bit block starting at bit @p *cursor.
+/// @details Bounds-guarded like the BC6H reader: blocks come from disk, so a
+///   per-mode bit-budget table error must return zeros (cursor saturated past
+///   the block) instead of reading past the 16-byte block.
 static uint32_t uastc_read_bits(const uint8_t *block, uint32_t *cursor, uint32_t count) {
     uint32_t value = 0;
+    if (*cursor > 128u || count > 128u - *cursor) {
+        *cursor = 129u; /* saturate: all further reads fail closed */
+        return 0;
+    }
     for (uint32_t i = 0; i < count; i++) {
         uint32_t bit_index = *cursor + i;
         uint32_t bit = (block[bit_index >> 3] >> (bit_index & 7u)) & 1u;

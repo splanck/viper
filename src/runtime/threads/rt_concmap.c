@@ -323,7 +323,7 @@ static void cm_finalizer(void *obj) {
 // Public API
 //=============================================================================
 
-/// @brief Create a new thread-safe concurrent hash map (string keys, mutex-per-bucket striping).
+/// @brief Create a new thread-safe concurrent hash map (string keys, one map-wide mutex).
 void *rt_concmap_new(void) {
     rt_concmap_impl *cm =
         (rt_concmap_impl *)rt_obj_new_i64(RT_CONCMAP_CLASS_ID, (int64_t)sizeof(rt_concmap_impl));
@@ -449,7 +449,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
 
 /// @brief Look up a value by string key. Returns a freshly-retained reference (caller releases)
 /// or NULL if absent. The string key is hashed via FNV-1a and the bucket is scanned linearly
-/// (collision chaining); thread-safe via the queue's mutex.
+/// (collision chaining); thread-safe via the map's mutex.
 void *rt_concmap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;

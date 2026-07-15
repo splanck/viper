@@ -286,7 +286,7 @@ RT_CLASS_BEGIN("Viper.Network.RateLimiter", RateLimiter, "obj", RateLimitNew)
 RT_CLASS_END()
 
 // Viper.Network.HttpRouter - URL pattern matching with parameter extraction
-/// @summary Provides uRL pattern matching with parameter extraction.
+/// @summary Provides URL pattern matching with parameter extraction.
 /// @details
 /// Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes a property such as `Count`
@@ -331,8 +331,8 @@ RT_CLASS_BEGIN("Viper.Network.HttpServer", HttpServer, "obj", HttpServerNew)
     RT_PROP("IsRunning", "i1", HttpServerIsRunning, none)
 RT_CLASS_END()
 
-// Viper.Network.HttpsServer - threaded TLS-backed HTTP/1.1 server
-/// @summary Provides threaded TLS-backed HTTP/1.1 server.
+// Viper.Network.HttpsServer - threaded TLS-backed HTTP/1.1 and HTTP/2 server
+/// @summary Provides threaded TLS-backed HTTP/1.1 and HTTP/2 server.
 /// @details
 /// Create `Viper.Network.HttpsServer` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
@@ -421,7 +421,7 @@ RT_CLASS_BEGIN("Viper.Network.NetUtils", NetUtils, "none", none)
 RT_CLASS_END()
 
 // Viper.Network.WsServer - WebSocket server
-/// @summary Provides webSocket server.
+/// @summary Provides WebSocket server.
 /// @details
 /// Create `Viper.Network.WsServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
@@ -440,7 +440,7 @@ RT_CLASS_BEGIN("Viper.Network.WsServer", WsServer, "obj", WsServerNew)
 RT_CLASS_END()
 
 // Viper.Network.WssServer - TLS-backed WebSocket server
-/// @summary Provides tLS-backed WebSocket server.
+/// @summary Provides TLS-backed WebSocket server.
 /// @details
 /// Create `Viper.Network.WssServer` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
@@ -459,7 +459,7 @@ RT_CLASS_BEGIN("Viper.Network.WssServer", WssServer, "obj", WssServerNew)
 RT_CLASS_END()
 
 // Viper.Network.SseClient - Server-Sent Events client
-/// @summary Provides server-Sent Events client.
+/// @summary Provides Server-Sent Events client.
 /// @details
 /// `Viper.Network.SseClient` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `IsOpen`,
@@ -511,8 +511,8 @@ RT_CLASS_BEGIN("Viper.Network.SmtpClient", SmtpClient, "obj", SmtpNew)
     RT_PROP("LastError", "str", SmtpLastError, none)
 RT_CLASS_END()
 
-// Viper.Network.AsyncSocket - non-blocking socket with Future integration
-/// @summary Provides non-blocking socket with Future integration.
+// Viper.Network.AsyncSocket - blocking socket work with Future integration
+/// @summary Runs blocking socket work through Future-returning worker-pool tasks.
 /// @details
 /// `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance. Its
 /// public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `SendAsync`,

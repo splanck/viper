@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_https_server.h
-// Purpose: TLS-backed HTTP/1.1 server using the in-tree TLS 1.3 runtime.
+// Purpose: TLS-backed HTTP/1.1 and HTTP/2 server using the in-tree TLS 1.3 runtime.
 //
 //===----------------------------------------------------------------------===//
 #pragma once

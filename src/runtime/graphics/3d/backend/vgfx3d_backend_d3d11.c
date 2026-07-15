@@ -1944,6 +1944,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
      * clears are 0 with Greater compares). Shadow maps stay standard. */
     .reversed_z = 1,
     .name = "d3d11",
+    .gpu_skinning = 1,
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas (t17). */
     .shadow_atlas_slots = 1,
     .create_ctx = d3d11_create_ctx,

@@ -321,6 +321,11 @@ int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj);
 int64_t rt_canvas3d_get_texture_upload_bytes(void *obj);
 /// @brief Latest completed backend GPU frame time in microseconds, or 0 when unsupported.
 int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj);
+/// @brief CPU milliseconds one render stage took last frame (0=shadow, 1=main,
+///   2=overlay, 3=backend end-of-frame).
+double rt_canvas3d_get_pass_cpu_ms(void *obj, int64_t pass);
+/// @brief Number of PassCpuMs stages.
+int64_t rt_canvas3d_get_pass_count(void *obj);
 /// @brief Backend draw submissions issued since the latest public Begin/Begin2D.
 int64_t rt_canvas3d_get_draws_submitted(void *obj);
 /// @brief World-AABB transform computations performed since the latest public Begin/Begin2D.
@@ -461,6 +466,9 @@ void rt_mesh3d_set_compact_streams(void *obj, int8_t enabled);
 int8_t rt_mesh3d_get_compact_streams(void *obj);
 /// @brief Estimated retained CPU vertex/index bytes regardless of resident draw state.
 int64_t rt_mesh3d_get_retained_bytes(void *obj);
+/// @brief Free auxiliary CPU geometry (double positions, normal scratch) a
+///   finished static mesh no longer needs; returns bytes released.
+int64_t rt_mesh3d_release_cpu_scratch(void *obj);
 /// @brief Append a vertex with position, normal, and UV.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);

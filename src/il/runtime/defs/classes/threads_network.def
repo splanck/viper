@@ -60,7 +60,7 @@ RT_CLASS_BEGIN("Viper.Threads.ConcurrentMap", ConcurrentMap, "obj", ConcMapNew)
 RT_CLASS_END()
 
 // Viper.Threads.Monitor - FIFO-fair, re-entrant monitor primitive
-/// @summary Provides fIFO-fair, re-entrant monitor primitive.
+/// @summary Provides FIFO-fair, re-entrant monitor primitive.
 /// @details
 /// `Viper.Threads.Monitor` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes operations including `Enter`,
@@ -76,8 +76,8 @@ RT_CLASS_BEGIN("Viper.Threads.Monitor", ThreadsMonitor, "obj", none)
     RT_METHOD("PauseAll", "void(obj)", MonitorPauseAll)
 RT_CLASS_END()
 
-// Viper.Threads.SafeI64 - FIFO-safe integer cell
-/// @summary Provides fIFO-safe integer cell.
+// Viper.Threads.SafeI64 - thread-safe integer cell
+/// @summary Provides thread-safe integer cell.
 /// @details
 /// Create `Viper.Threads.SafeI64` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including `Get`,
@@ -90,7 +90,7 @@ RT_CLASS_BEGIN("Viper.Threads.SafeI64", ThreadsSafeI64, "obj", SafeI64New)
 RT_CLASS_END()
 
 // Viper.Threads.Gate - FIFO-fair permit gate (semaphore)
-/// @summary Provides fIFO-fair permit gate (semaphore).
+/// @summary Provides FIFO-fair permit gate (semaphore).
 /// @details
 /// Create `Viper.Threads.Gate` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes a property such as `Permits`
@@ -135,7 +135,7 @@ RT_CLASS_BEGIN("Viper.Threads.RwLock", ThreadsRwLock, "obj", RwLockNew)
 RT_CLASS_END()
 
 // Viper.Threads.Thread - OS thread handle
-/// @summary Provides oS thread handle.
+/// @summary Provides OS thread handle.
 /// @details
 /// `Viper.Threads.Thread` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Id`, `IsAlive`,
@@ -450,7 +450,7 @@ RT_CLASS_BEGIN("Viper.Math.Spline", Spline, "obj", none)
 RT_CLASS_END()
 
 // Viper.Network.Tcp - TCP client connection
-/// @summary Provides tCP client connection.
+/// @summary Provides TCP client connection.
 /// @details
 /// `Viper.Network.Tcp` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
@@ -481,7 +481,7 @@ RT_CLASS_BEGIN("Viper.Network.Tcp", Tcp, "obj", none)
 RT_CLASS_END()
 
 // Viper.Network.TcpServer - TCP server (listener)
-/// @summary Provides tCP server (listener).
+/// @summary Provides TCP server (listener).
 /// @details
 /// `Viper.Network.TcpServer` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Port`, `Address`,
@@ -501,7 +501,7 @@ RT_CLASS_BEGIN("Viper.Network.TcpServer", TcpServer, "obj", none)
 RT_CLASS_END()
 
 // Viper.Network.Udp - UDP datagram socket
-/// @summary Provides uDP datagram socket.
+/// @summary Provides UDP datagram socket.
 /// @details
 /// Create `Viper.Network.Udp` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Port`,
@@ -533,7 +533,7 @@ RT_CLASS_BEGIN("Viper.Network.Udp", Udp, "obj", UdpNew)
 RT_CLASS_END()
 
 // Viper.Network.Dns - DNS resolution utility class (static)
-/// @summary Provides dNS resolution utility class (static).
+/// @summary Provides DNS resolution utility class (static).
 /// @details
 /// `Viper.Network.Dns` is a static runtime surface and does not require an instance. Its public
 /// surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resolve6`.
@@ -571,7 +571,7 @@ RT_CLASS_BEGIN("Viper.Network.Http", Http, "none", none)
 RT_CLASS_END()
 
 // Viper.Network.HttpReq - HTTP request builder (instance class)
-/// @summary Provides hTTP request builder.
+/// @summary Provides HTTP request builder.
 /// @details
 /// Create `Viper.Network.HttpReq` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
@@ -594,7 +594,7 @@ RT_CLASS_BEGIN("Viper.Network.HttpReq", HttpReq, "obj", HttpReqNew)
 RT_CLASS_END()
 
 // Viper.Network.HttpRes - HTTP response (instance class)
-/// @summary Provides hTTP response.
+/// @summary Provides HTTP response.
 /// @details
 /// `Viper.Network.HttpRes` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Status`,
@@ -612,7 +612,7 @@ RT_CLASS_BEGIN("Viper.Network.HttpRes", HttpRes, "obj", none)
 RT_CLASS_END()
 
 // Viper.Network.Url - URL parsing and construction (instance class)
-/// @summary Provides uRL parsing and construction.
+/// @summary Provides URL parsing and construction.
 /// @details
 /// Create `Viper.Network.Url` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Scheme`, `Host`,
@@ -652,7 +652,7 @@ RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", UrlNew)
 RT_CLASS_END()
 
 // Viper.Network.WebSocket - WebSocket client for real-time communication
-/// @summary Provides webSocket client for real-time communication.
+/// @summary Provides WebSocket client for real-time communication.
 /// @details
 /// `Viper.Network.WebSocket` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `Url`, `IsOpen`,
@@ -734,7 +734,7 @@ RT_FUNC(RestClientDeleteJson,   rt_restclient_delete_json,   "Viper.Network.Rest
 RT_FUNC(RestClientLastStatus,   rt_restclient_last_status,   "Viper.Network.RestClient.LastStatus",   "i64(obj)")
 RT_FUNC(RestClientLastResponse, rt_restclient_last_response, "Viper.Network.RestClient.LastResponse", "obj(obj)")
 RT_FUNC(RestClientLastOk,       rt_restclient_last_ok,       "Viper.Network.RestClient.LastOk",       "i1(obj)")
-/// @summary Provides Rest Client functionality for networked applications.
+/// @summary Provides REST client functionality for networked applications.
 /// @details
 /// Create `Viper.Network.RestClient` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `BaseUrl`,

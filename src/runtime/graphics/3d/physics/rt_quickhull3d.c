@@ -245,7 +245,9 @@ int rt_quickhull3d_build(const double *points,
         *out_index_count = 0;
     if (!points || point_count < 4 || !out_vertices || !out_vertex_count)
         return 0;
-    for (int32_t i = 0; i < point_count * 3; i++) {
+    if (point_count > INT32_MAX / 8 - 64)
+        return 0; /* keeps point_count*3 and the 8*n+64 face guard in int32 range */
+    for (int64_t i = 0; i < (int64_t)point_count * 3; i++) {
         if (!isfinite(points[i]))
             return 0;
     }

@@ -6,10 +6,10 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_parse.c
-// Purpose: Implements safe parsing utility functions for the Viper.Core.Parse
-//          namespace. Provides TryParseInt, TryParseLong, TryParseFloat,
-//          TryParseBool, TryParseDate, and related functions that return
-//          false instead of trapping on invalid input.
+// Purpose: Implements safe integer, double, Boolean, validation, default-value,
+//          radix, and Option parsing helpers for the Viper.Core.Parse namespace.
+//          Ordinary invalid input returns false/None/a caller-supplied default
+//          instead of trapping.
 //
 // Key invariants:
 //   - All TryParse* functions return false on invalid input; they never trap.
@@ -18,9 +18,11 @@
 //     cannot leak a caller's previous value.
 //   - Empty strings are treated as invalid for all types.
 //   - Integer overflow causes false return; the output is not written.
-//   - Floating-point parsing uses the C locale's decimal separator.
+//   - Floating-point parsing is isolated to the C numeric locale, so the
+//     decimal separator is always '.'.
 //   - Embedded NUL bytes are rejected so hidden suffixes cannot be ignored.
-//   - Bool parsing accepts "true"/"false" case-insensitively.
+//   - Bool parsing accepts true/yes/1/on and false/no/0/off
+//     case-insensitively.
 //
 // Ownership/Lifetime:
 //   - All functions are purely computational; no heap allocations or retained

@@ -8,12 +8,13 @@
 // cryptographic keys from passwords with configurable cost parameters.
 //
 // Key invariants:
-//   - Minimum 100,000 PBKDF2 iterations; lower requests are rejected.
-//   - PBKDF2 iterations are capped to prevent attacker-controlled CPU exhaustion.
-//   - scrypt N must be a power of two and is capped by memory policy.
+//   - PBKDF2 iterations are accepted from 100,000 through 10,000,000.
+//   - scrypt N must be a power of two through 2^20; r/p are capped at 32 and
+//     the ROMix allocation is capped at 64 MiB.
 //   - Key length must be in [1, 1024] bytes.
-//   - The salt should be randomly generated per password and stored alongside the hash.
-//   - Output is a Bytes object containing the derived key.
+//   - Callers should generate an independent salt for each derivation context and
+//     retain it wherever the same key must be reproduced.
+//   - Output is either a Bytes object or lowercase hex string, by entry point.
 //
 // Ownership/Lifetime:
 //   - Returned objects are newly allocated; caller must release.
@@ -35,7 +36,7 @@ extern "C" {
 /// @brief Derive a key using PBKDF2-SHA256.
 /// @param password The password string.
 /// @param salt The salt as a Bytes object.
-/// @param iterations Number of iterations (minimum 100,000).
+/// @param iterations Number of iterations (100,000 through 10,000,000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as a Bytes object.
 /// @note Traps if iterations are outside policy or key_len is not in [1, 1024].
@@ -47,7 +48,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 /// @brief Derive a key using PBKDF2-SHA256 and return as hex string.
 /// @param password The password string.
 /// @param salt The salt as a Bytes object.
-/// @param iterations Number of iterations (minimum 100,000).
+/// @param iterations Number of iterations (100,000 through 10,000,000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as lowercase hex string.
 /// @note Traps if iterations are outside policy or key_len is not in [1, 1024].

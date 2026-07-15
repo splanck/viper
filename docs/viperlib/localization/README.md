@@ -29,13 +29,17 @@ last-verified: 2026-07-14
 `Viper.Localization.*` exposes public classes built on top of a shared **locale record**
 (internally `rt_locale_data_t`) that carries number separators, currency conventions,
 month/day names, date patterns, plural rules, relative-time templates, list-formatting
-templates, and collation tailorings for a single language/region pair. The exact public
+templates, and internal collation settings for one canonical locale tag. The exact public
 class inventory is source-generated in the
 [localization API reference](../../generated/runtime/localization.md). Named IANA time
 zones live under `Viper.Time.TimeZone`; they are separate from locale data because
 time-zone transitions are instant/region rules, not language-formatting rules.
 
-**What ships baked in:** only **en-US**. Every other locale is loaded at runtime from JSON — either from the filesystem via `LocaleManager.LoadFromJson(path)` or through the asset system via `LocaleManager.LoadFromAsset(name)`.
+**What ships baked in:** only **en-US**. Every other locale is loaded at runtime from JSON—either
+from the filesystem via `LocaleManager.LoadFromJson(path)` or through the asset system via
+`LocaleManager.LoadFromAsset(name)`. The runtime accepts a constrained BCP-47-shaped tag grammar;
+see the [Locale parser limitations](locale.md#notes) before using arbitrary external language
+tags as registry identifiers.
 
 ## Quick start
 

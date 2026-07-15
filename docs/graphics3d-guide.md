@@ -60,6 +60,7 @@ library.
 - [Character3D](#character3d) — Character controller
 - [Trigger3D](#trigger3d) — Trigger volumes
 - [DistanceJoint3D, SpringJoint3D](#distancejoint3d) — Constraints
+- [Vehicle3D](#vehicle3d) — Raycast vehicle (suspension, drive, steering)
 
 **Navigation**
 - [NavMesh3D](#navmesh3d) — Navigation mesh pathfinding
@@ -2293,7 +2294,7 @@ AABB zone for enter/exit detection.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Contains(position)` | `i1(obj)` | Point-in-zone test (Vec3) |
-| `Update(body)` | `void(obj)` | Check body against zone (call per frame per body) |
+| `Update(body)` | `void(obj)` | Check body against zone (call per frame per body). Overlap tests the body's world AABB against the zone, so large bodies straddling the boundary register; tracked-body count is unbounded |
 | `SetBounds(x0, y0, z0, x1, y1, z1)` | `void(f64 x6)` | Update zone bounds |
 
 ---
@@ -2332,6 +2333,32 @@ Hooke's law spring with configurable stiffness and damping.
 Spring joints retain both body handles for the joint lifetime. Rest length, stiffness, and damping
 are non-negative finite values; invalid inputs become zero and very large values are clamped to keep
 solver impulses finite.
+
+### Vehicle3D
+
+Raycast vehicle on a dynamic chassis body: wheels are suspension rays rather
+than rigid bodies, so vehicles stay stable at speed. Lateral grip is a
+load-scaled friction circle — unloaded wheels slide first.
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `New(world, chassisBody)` | `obj(obj, obj)` | Create a vehicle around a dynamic chassis |
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Speed` | Float | read | Signed m/s along the chassis local +Z forward axis |
+| `WheelCount` | Integer | read | Wheels added so far |
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddWheel(x, y, z, radius, suspRest, stiffness, damping, steers, driven)` | `i64(f64 x7, i1, i1)` | Add a wheel at a chassis-local anchor; returns its index |
+| `SetInput(throttle, brake, steer)` | `void(f64, f64, f64)` | Per-step controls: throttle/brake `0..1`, steer `-1..1` |
+| `SetDriveForce(n)` / `SetBrakeForce(n)` | `void(f64)` | Force in newtons at driven/braked contact patches |
+| `SetMaxSteer(degrees)` | `void(f64)` | Max steering angle for steerable wheels (clamped to 85°) |
+| `SetGrip(longitudinal, lateral)` | `void(f64, f64)` | Tire friction-circle coefficients |
+| `SetCollisionMask(mask)` | `void(i64)` | Layers the suspension rays treat as ground |
+| `Step(dt)` | `void(f64)` | Cast suspension rays and apply forces; call before `Physics3DWorld.Step` |
+| `WheelInContact(i)` / `WheelTravel(i)` / `WheelLoad(i)` | telemetry | Contact flag, current suspension length (m), suspension force (N) |
 
 ### Zia Example
 

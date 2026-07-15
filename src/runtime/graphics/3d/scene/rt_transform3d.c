@@ -73,6 +73,10 @@ typedef struct {
     double scale[3];
     double matrix[16]; /* cached TRS, row-major */
     int8_t dirty;
+    /* 1 while position/rotation/scale are known-sanitized; mutators clear it
+     * so repair_components pays its isfinite/normalize cost once per mutation
+     * instead of on every read (getters are hot in per-frame script loops). */
+    int8_t components_clean;
 } rt_transform3d;
 
 /// @brief Validate @p obj as a Transform3D handle and return its typed pointer (NULL on mismatch).
@@ -234,11 +238,12 @@ static int transform3d_matrix_is_finite(const double *m) {
 
 /// @brief Re-apply component invariants before exposing getters or rebuilding the matrix.
 static void transform3d_repair_components(rt_transform3d *xf) {
-    if (!xf)
+    if (!xf || xf->components_clean)
         return;
     transform3d_sanitize_position3(xf->position);
     transform3d_sanitize_scale3(xf->scale);
     transform3d_quat_normalize(xf->rotation);
+    xf->components_clean = 1;
 }
 
 /// @brief Square root helper for rotation extraction, treating tiny negative drift as zero.
@@ -337,6 +342,7 @@ void *rt_transform3d_new(void) {
     memset(xf->matrix, 0, sizeof(xf->matrix));
     xf->matrix[0] = xf->matrix[5] = xf->matrix[10] = xf->matrix[15] = 1.0;
     xf->dirty = 1;
+    xf->components_clean = 0;
     rt_obj_set_finalizer(xf, transform3d_finalizer);
     return xf;
 }
@@ -350,6 +356,7 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     xf->position[1] = transform3d_clamp_abs_or(y, 0.0);
     xf->position[2] = transform3d_clamp_abs_or(z, 0.0);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Get the current position as a new Vec3 (returns origin if NULL).
@@ -372,6 +379,7 @@ void rt_transform3d_set_rotation(void *obj, void *quat) {
     xf->rotation[3] = rt_quat_w(quat);
     transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Get the current rotation as a new Quat (returns identity if NULL).
@@ -411,6 +419,7 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) 
     xf->rotation[3] = cp * cy * cr + sp * sy * sr;
     transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Set non-uniform scale factors for each axis (marks matrix dirty).
@@ -422,6 +431,7 @@ void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
     xf->scale[1] = transform3d_scale_or_unit(y);
     xf->scale[2] = transform3d_scale_or_unit(z);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Get the current scale as a new Vec3 (returns (1,1,1) if NULL).
@@ -472,6 +482,7 @@ void rt_transform3d_translate(void *obj, void *delta) {
     xf->position[1] = transform3d_clamp_abs_or(ny, 0.0);
     xf->position[2] = transform3d_clamp_abs_or(nz, 0.0);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Apply an incremental rotation around an arbitrary axis (radians).
@@ -511,6 +522,7 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     xf->rotation[3] = qw * cw - qx * cx - qy * cy - qz * cz;
     transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 /// @brief Orient the transform to face a target point.
@@ -611,6 +623,7 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     }
     transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
+    xf->components_clean = 0;
 }
 
 #else

@@ -209,6 +209,9 @@ typedef struct rt_game3d_entity {
     int8_t interp_pose_blended;
     rt_string persistent_key; ///< Retained persistence key, or NULL (plan 17).
     int64_t state_tag;        ///< Free-form persisted state tag.
+    /// Last world sweep stamp that ticked this entity (despawn-safe sweeps).
+    /// Appended at the end: test fixtures mirror prefixes of this layout.
+    uint32_t sim_tick_stamp;
 } rt_game3d_entity;
 
 /// @brief Return the entity's SceneNode3D slot only when it still has the expected class.
@@ -891,6 +894,11 @@ typedef struct rt_game3d_hitbox {
     int8_t was_live;                 ///< Previous-step liveness (rehit reset edge).
     rt_game3d_hitbox_window windows[RT_GAME3D_HITBOX_MAX_WINDOWS];
     int32_t window_count;
+    /// Previous liveness sample so a coarse step cannot jump OVER a narrow
+    /// window (liveness tests [prev_time, now] crossing, loop-aware).
+    double window_prev_time;
+    int8_t window_prev_valid;
+    int8_t window_prev_playing[RT_GAME3D_HITBOX_MAX_WINDOWS];
     /// Victims already hit during the current activation (one hit per swing).
     struct rt_game3d_entity *hit_victims[RT_GAME3D_HITBOX_MAX_VICTIMS];
     int32_t hit_victim_count;
@@ -1044,6 +1052,12 @@ typedef struct rt_game3d_world {
     int32_t hitch_head;                /* oldest entry index once the ring wraps */
     double hitch_threshold_ms;         /* FrameTotal threshold (default 25) */
     double hitch_last_stream_stall_ms; /* stream stall watermark at last step */
+    /* Monotonic stamp for despawn-safe entity sweeps (see
+     * game3d_world_sweep_entities): each sweep bumps it; entities record the
+     * stamp when ticked so swap-remove compaction can neither double-tick a
+     * survivor nor skip one moved into an already-visited slot. Appended at
+     * the end: test fixtures mirror prefixes of this layout. */
+    uint32_t sim_tick_stamp;
 } rt_game3d_world;
 
 #if defined(_MSC_VER)

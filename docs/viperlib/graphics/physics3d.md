@@ -396,11 +396,17 @@ sleeping, and optional CCD.
 - `CollisionLayer` must be a positive bitmask. Use `CollisionMask = 0` when you
   need a body to collide with no layers.
 - `Sleep()` and `Wake()` only affect dynamic bodies. Static and kinematic bodies do not enter
-  the sleeping state.
+  the sleeping state. Contacts and joints both wake sleeping partners: a
+  sleeping body attached to a moving one is re-woken by any non-trivial joint
+  impulse or position correction, so jointed assemblies never freeze mid-air.
 - `Kinematic = true` makes the body move from explicit `Velocity` / `AngularVelocity` only.
 - `UseCcd` uses additional substeps to reduce tunneling for fast-moving bodies. It is
   **off by default**; enable it explicitly on small or fast bodies (projectiles, balls).
   Without it, a fast body can tunnel through thin geometry within a single step.
+  When a body moves faster than the world substep cap can cover, it gets
+  per-body swept catch-up segments on top of the world substeps, so a single
+  bullet no longer multiplies the whole world's simulation cost and still
+  cannot tunnel; the clamp diagnostics record requested-vs-applied demand.
 - Position, velocity, angular velocity, force, torque, and integrated state are
   sanitized to finite values and saturated to the runtime state bounds, so
   extreme impulses or forces cannot create `NaN`/`Inf` body state. CCD keeps
@@ -660,6 +666,10 @@ relative orientation as the zero pose.
 
 - `frameA` and `frameB` are `Mat4` values. Their translation components define
   the local anchor points.
+- Linear limits, locked linear axes, and the linear motor all operate in
+  **body A's joint frame** (frameA composed with body A's rotation) — the
+  same frame the angular limits use. A "local X" slider therefore keeps
+  sliding along the base body's X after the base rotates.
 - Angular limits are per-axis pose-angle bounds. Equal min/max values lock that
   rotary axis; the solver also removes angular velocity that would drive a
   locked axis or already-limited pose farther out of range.
@@ -707,6 +717,51 @@ world.AddCloth(flag);
   Anchor jumps beyond half the rest length rigid-translate the whole cloth,
   so teleports never inject phantom velocity.
 - One-way coupling by design: cloth never feeds back into rigid physics.
+
+## Viper.Graphics3D.Vehicle3D
+
+Raycast vehicle on top of a dynamic chassis body: each wheel is a suspension
+ray (not a rigid body), so there is nothing to tip over or joint-explode at
+speed. Suspension is a spring/damper along the ray, drive and brake are
+longitudinal forces at the contact patch, and lateral grip is a friction
+circle scaled by the per-wheel suspension load — unloaded inner wheels slide
+first, exactly like a real car.
+
+```zia
+var chassis = Physics3DBody.NewAABB(0.9, 0.4, 1.8, 1200.0);
+Physics3DBody.SetPosition(chassis, 0.0, 1.0, 0.0);
+world.Add(chassis);
+
+var car = Vehicle3D.New(world, chassis);
+// AddWheel(x, y, z, radius, suspensionRest, stiffness, damping, steers, driven)
+car.AddWheel(-0.8, -0.3,  1.4, 0.34, 0.35, 42000.0, 3200.0, true,  false);
+car.AddWheel( 0.8, -0.3,  1.4, 0.34, 0.35, 42000.0, 3200.0, true,  false);
+car.AddWheel(-0.8, -0.3, -1.4, 0.34, 0.35, 42000.0, 3200.0, false, true);
+car.AddWheel( 0.8, -0.3, -1.4, 0.34, 0.35, 42000.0, 3200.0, false, true);
+
+// Per fixed step: throttle 0..1, brake 0..1, steer -1..1.
+car.SetInput(throttle, brake, steer);
+car.Step(dt);           // before world.Step(dt)
+world.Step(dt);
+```
+
+- Wheel anchors are in **chassis-local** space; the ray casts down the
+  chassis's local -Y through `suspensionRest + radius`. Suspension rays
+  ignore the chassis itself, and `SetCollisionMask` filters what counts as
+  ground.
+- Tuning: `SetDriveForce` / `SetBrakeForce` (newtons at the patch),
+  `SetMaxSteer` (degrees, clamped to 85, applied to `steers` wheels),
+  `SetGrip(longitudinal, lateral)` scales the friction circle. Stiffness
+  around `35 * mass` and damping near `0.1 * stiffness` are sensible
+  starting points.
+- Telemetry: `Speed` (signed m/s along the chassis forward axis, +Z local),
+  `WheelCount`, and per wheel `WheelInContact(i)`, `WheelTravel(i)` (current
+  suspension length in meters — `suspensionRest` when airborne, smaller as
+  it compresses), `WheelLoad(i)` (newtons) — enough for skid audio,
+  suspension meshes, and dust effects without touching the solver.
+- `Step` applies forces only; the world integrates them on its next step, so
+  vehicles are deterministic under the same fixed-dt replay contract as the
+  rest of the world.
 
 ## See Also
 

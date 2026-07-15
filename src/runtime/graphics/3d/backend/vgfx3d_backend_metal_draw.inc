@@ -106,6 +106,7 @@ static void metal_submit_draw(void *ctx_ptr,
         obj.flags1[2] = 0;
         obj.flags1[3] = morph_status.has_normal_deltas;
         obj.flags2[0] = cmd->instance_bone_stride;
+        obj.flags2[1] = has_skinning ? metal_bind_extra_influences(ctx, cmd) : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* Image-based lighting resolution for this draw (also used at env bind). */
@@ -775,6 +776,8 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         obj.flags0[0] = has_skinning;
         obj.flags0[2] = morph_status.shape_count;
         obj.flags0[3] = morph_status.shape_count > 0 ? (int32_t)cmd->vertex_count : 0;
+        /* Shadow pose must match the main pass: bind influences 5-8 too. */
+        obj.flags2[1] = has_skinning ? metal_bind_extra_influences(ctx, cmd) : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
         {
             mtl_per_material_t mat;
@@ -989,6 +992,7 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         obj.flags1[2] = cmd->has_prev_instance_matrices ? 1 : 0;
         obj.flags1[3] = morph_status.has_normal_deltas;
         obj.flags2[0] = cmd->instance_bone_stride;
+        obj.flags2[1] = has_skinning ? metal_bind_extra_influences(ctx, cmd) : 0;
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
 
         /* Image-based lighting resolution for this draw (also used at env bind). */
@@ -1608,8 +1612,10 @@ static id<MTLTexture> metal_encode_taa_pass(VGFXMetalContext *ctx,
     transpose4x4(ctx.frameHistory.scene_prev_vp, tp.prevViewProjection);
     tp.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
     tp.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    /* Clip-space (Y-up) jitter delta converted to the TEXTURE-space (top-left)
+     * convention the motion/velocity path now uses: Y negates. */
     tp.jitterDelta[0] = (ctx->_taaJitterClip[0] - ctx->_taaPrevJitterClip[0]) * 0.5f;
-    tp.jitterDelta[1] = (ctx->_taaJitterClip[1] - ctx->_taaPrevJitterClip[1]) * 0.5f;
+    tp.jitterDelta[1] = -(ctx->_taaJitterClip[1] - ctx->_taaPrevJitterClip[1]) * 0.5f;
     tp.blend = (postfx && postfx->taa_enabled) ? postfx->taa_blend : 0.9f;
     tp.historyValid = (ctx.taaHistoryValid && ctx.frameHistory.scene_history_valid) ? 1 : 0;
 

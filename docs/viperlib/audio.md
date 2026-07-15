@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-15
 ---
 
 # Audio
@@ -10,14 +10,26 @@ last-verified: 2026-06-20
 
 **Part of the [Viper Runtime Library](README.md)**
 
-All audio classes live in the `Viper.Sound` namespace.
+Core playback, synthesis, and low-level spatial classes live in the `Viper.Sound` namespace.
+Scene-bound `SoundListener3D` and `SoundSource3D` wrappers live in `Viper.Graphics3D`.
+
+`Audio.IsAvailable()` reports whether audio support was compiled into the runtime; it does **not**
+probe the current device. `Audio.Init()` is the device/backend check and returns 0 on failure.
+Sound and music loads initialize the backend lazily, so an explicit `Init()` is optional when the
+program does not need to handle initialization failure separately.
+
+In an audio-disabled build, `IsAvailable()` and `Init()` return false/0. Master and mix-group
+volume settings still round-trip, and `Synth`/`MusicGen.Build` return `null`; non-null direct
+Sound/Music load and playback operations raise an `InvalidOperation` trap because no usable
+handle can be produced.
 
 ## Contents
 
 - [Viper.Sound.Sound](#vipersoundsound)
 - [Viper.Sound.Music](#vipersoundmusic)
 - [Viper.Sound.Voice](#vipersoundvoice)
-- [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
+- [Viper.Sound.Audio (Static)](#vipersoundaudio)
+- [Viper.Sound.Playlist](#vipersoundplaylist)
 - [Viper.Sound.SoundBank](#vipersoundsoundbank)
 - [Viper.Sound.Synth](#vipersoundsynth)
 - [Viper.Sound.MusicGen](#vipersoundmusicgen)
@@ -42,7 +54,7 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
 | `Load(path)` | `Sound(String)`  | Load a sound from WAV, OGG Vorbis, or MP3. Returns `null` on failure |
-| `LoadAsset(path)` | `Sound(String)` | Load WAV, OGG Vorbis, or MP3 bytes through `Viper.IO.Assets`; accepts plain asset paths and `asset://` URIs |
+| `LoadAsset(path)` | `Sound(String)` | Resolve WAV, OGG Vorbis, or MP3 bytes through `Viper.IO.Assets`; accepts plain asset paths and `asset://` URIs |
 
 ### Methods
 
@@ -52,11 +64,23 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 | `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play through the SFX mix group with volume (0–100) and pan (−100 to +100) |
 | `PlayEx2(volume, pan, pitch)` | `Integer(Integer, Integer, Float)` | `PlayEx` plus a playback-rate multiplier (0.25–4.0; 1.0 = native) |
 | `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped through the SFX mix group with volume and pan |
+| `Free()`                 | `Void()`                            | Release this Sound reference and its decoded buffer when no references remain |
 
 > **Voice limit:** Up to 32 sounds may play simultaneously. A 33rd `Play()` call stops
-> the **oldest** playing (non-looping) sound to make room — called LRU eviction. The
+> the **oldest-started** playing non-looping sound to make room. This is voice stealing,
+> not access-based LRU. The
 > evicted sound stops with no error or notification. Looping sounds are evicted only
 > when all 32 voices are looping.
+
+Playback arguments are clamped to their documented ranges. Every `Play*` method returns `-1`
+when the Sound is null, detached, or otherwise cannot start. A successful voice ID is positive;
+0 and -1 are never issued as live IDs. At most 256 distinct Sound buffers can be loaded in one
+audio context, including synthesized and `MusicGen.Build()` results.
+
+`LoadAsset` searches embedded assets, mounted packs, then the filesystem. A missing or zero-byte
+asset raises `Sound.LoadAsset: asset not found`; decode/backend failure after successful asset
+resolution returns `null`. `Free()` consumes one retained reference: do not use that reference
+again unless another owner (for example, a `SoundBank`) retained the Sound.
 
 ### Voice Control
 
@@ -147,6 +171,10 @@ Buffered music class for longer audio tracks. Playback uses incremental decode a
 > `Music.Load()` returns `null` if this limit is exceeded. Stop and free unused
 > streams before loading new ones.
 
+Ordinary `Play()` and `Resume()` promote a track to the foreground and stop unrelated unpaused
+music. A crossfade temporarily plays its source and destination together; paused unrelated tracks
+remain paused and retain their load slots.
+
 > **Formats and sample rates:** Music accepts WAV, OGG Vorbis, and MP3. Any supported
 > sample rate is resampled to the engine mix rate during playback.
 
@@ -162,21 +190,28 @@ Buffered music class for longer audio tracks. Playback uses incremental decode a
 |------------|---------|--------|------------------------------------|
 | `Duration` | Integer | Read   | Total duration in milliseconds     |
 | `Position` | Integer | Read   | Current position in milliseconds   |
-| `Volume`   | Integer | R/W    | Playback volume (0–100)            |
+| `Volume`   | Integer | R/W    | Logical playback volume (0–100, clamped) |
 
 ### Methods
 
 | Method         | Signature           | Description                              |
 |----------------|---------------------|------------------------------------------|
-| `IsPlaying()`  | `Boolean()`         | Returns `true` if currently playing |
+| `CrossfadeTo(next, duration)` | `Void(Music, Integer)` | Fade to `next` over `duration` milliseconds |
+| `Free()`       | `Void()`            | Release this stream reference and its load slot when no references remain |
+| `IsPlaying()`  | `Boolean()`         | Returns `true` only while actively playing (not while paused) |
 | `Pause()`      | `Void()`            | Pause playback; also freezes an active crossfade involving this track |
-| `Play(loop)`   | `Void(Integer)`     | Start playback (1 = loop, 0 = one-shot)  |
-| `Resume()`     | `Void()`            | Resume paused playback and reclaim foreground ownership |
-| `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds without stopping unrelated music |
-| `Stop()`       | `Void()`            | Stop playback                            |
+| `Play(loop)`   | `Void(Integer)`     | Play the track; stopped tracks restart at zero, and any nonzero `loop` enables looping |
+| `Resume()`     | `Void()`            | Resume a track paused by `Pause()` and reclaim foreground ownership |
+| `Seek(ms)`     | `Void(Integer)`     | Seek to a clamped position in `[0, Duration]` milliseconds |
+| `SetLoop(loop)` | `Void(Boolean)`    | Change the loop preference without restarting the track |
+| `Stop()`       | `Void()`            | Stop playback and reset this stream's position to zero |
 
 > **Seek behavior:** `Music.Seek(ms)` only repositions that stream. It does not cancel
 > unrelated music or active playlist playback.
+
+After `Free()`, the released reference must not be used again. `Audio.Shutdown()` instead leaves
+the wrapper safe to release but permanently detaches its backend stream; that wrapper remains
+inert, so load a new Music object after reinitializing audio.
 
 ### Zia Example
 
@@ -220,7 +255,7 @@ func start() {
 Viper.Sound.Audio.Init()
 DIM canvas AS Viper.Graphics.Canvas = Viper.Graphics.Canvas.New("Music Player", 400, 200)
 
-' Load background music (WAV, any sample rate)
+' Load background music (WAV, at a supported sample rate)
 DIM bgMusic AS Viper.Sound.Music
 bgMusic = Viper.Sound.Music.Load("background.wav")
 
@@ -273,7 +308,9 @@ Static class for controlling individual playing voices (sound instances).
 | Method                     | Signature                      | Description                                              |
 |----------------------------|--------------------------------|----------------------------------------------------------|
 | `GetPitch(id)`             | `Float(Integer)`               | Current playback-rate multiplier (1.0 default)           |
+| `GetLevel(id)`             | `Float(Integer)`               | Last mixed-block RMS source level; 0 when disabled/stopped |
 | `IsPlaying(id)`            | `Boolean(Integer)`             | Check if voice is playing                                |
+| `EnableMetering(id, enabled)` | `Void(Integer, Boolean)`    | Enable the per-voice RMS level tap used by `GetLevel`    |
 | `SetLowpass(id, hz)`       | `Void(Integer, Float)`         | Direct lowpass cutoff in Hz (≤ 0 disables)               |
 | `SetOcclusion(id, amt)`    | `Void(Integer, Float)`         | Occlusion 0 (open) … 1 (occluded); smoothed ~80 ms       |
 | `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Pan: −100 = hard left, 0 = center, +100 = hard right     |
@@ -296,9 +333,13 @@ Static class for controlling individual playing voices (sound instances).
 > cover flips never click. `SetLowpass` composes with occlusion — the lower
 > cutoff wins (useful for scoped-focus or underwater effects).
 
-> **Invalid IDs:** All voice functions are safe to call with any integer ID. If the
-> voice has already stopped or the ID was never valid, the call is a no-op.
+> **Invalid IDs:** Mutators are safe no-ops for stopped or unknown IDs. Queries return
+> `false` from `IsPlaying`, `1.0` from `GetPitch`, and `0.0` from `GetLevel`.
 > Voice IDs never use 0 or -1 and are not reused while the older voice is still active.
+
+Metering is disabled by default and has zero per-sample accumulation cost while off. Its level is
+the pre-gain source RMS, so voice/group/master volume and spatial attenuation do not reduce the
+value. This makes it suitable for lip-sync rather than output-bus metering.
 
 ### Zia Example
 
@@ -340,12 +381,31 @@ Global audio system control functions.
 
 **Type:** Static utility class
 
+### Properties
+
+The counters are read-only snapshots for the current backend context. They return 0 before a live
+context exists, after `Shutdown()`, in audio-disabled builds, or when a platform backend does not
+expose that event. A new explicit or lazily initialized context starts them from zero.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `RenderCalls` | Integer | Mixer render callback/chunk count |
+| `MixerLockMisses` | Integer | Render chunks that could not acquire mixer state and used the fallback output path |
+| `BackendWriteCalls` | Integer | Platform device write calls |
+| `BackendPartialWrites` | Integer | Writes that accepted fewer frames than requested |
+| `BackendWaits` | Integer | Backend waits for temporary write unavailability |
+| `BackendXruns` | Integer | Backend underrun or suspend observations |
+| `BackendRecoveries` | Integer | Backend recovery attempts, successful or not |
+| `BackendWriteFailures` | Integer | Device writes that ultimately failed |
+| `IsCrossfading` | Boolean | Whether any music crossfade slot is active; this query does not advance time |
+
 ### Methods
 
 | Method                          | Signature                      | Description                                       |
 |---------------------------------|--------------------------------|---------------------------------------------------|
 | `GetMasterVolume()`             | `Integer()`                    | Get current master volume (0–100)                 |
 | `Init()`                        | `Integer()`                    | Initialize the audio system. Returns 1 on success |
+| `IsAvailable()`                 | `Boolean()`                    | Return whether audio support is compiled in (not whether device initialization will succeed) |
 | `PauseAll()`                    | `Void()`                       | Pause all audio playback                          |
 | `ResumeAll()`                   | `Void()`                       | Resume all audio playback                         |
 | `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0–100)           |
@@ -360,6 +420,10 @@ loaded again.
 Call `Audio.Update()` once per frame when using streaming `Music` or direct
 `Music.CrossfadeTo`; `Playlist.Update()` already forwards through the same update path.
 The mixer also attempts a locked buffer prefill if playback reaches an empty music buffer before end-of-stream has been reported, so transient stream-buffer gaps do not force the rest of the render block to silence.
+
+Master volume is clamped to 0–100 and persists as logical settings state across shutdown/re-init.
+`PauseAll()` freezes the mixer globally without changing each Music object's individual pause
+flag. `StopAllSounds()` affects Sound voices only; it does not stop Music or playlists.
 
 ### Zia Example
 
@@ -416,7 +480,95 @@ Viper.Sound.Audio.Shutdown()
 
 ---
 
-> **See also:** `Viper.Sound.Playlist` provides queue-based music playlist management with shuffle, repeat modes, and auto-advance.
+## Viper.Sound.Playlist
+
+Mutable queue of music paths with navigation, shuffle, repeat, volume, auto-advance, and optional
+crossfades. A Playlist owns its path strings and only loads its current Music stream; during a
+crossfade it temporarily retains both streams.
+
+**Type:** Instance (obj)
+**Constructor:** `Playlist.New()`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Count` | Integer | Read | Number of queued path entries |
+| `Current` | Integer | Read | Actual zero-based track index, or -1 before selection/when empty |
+| `IsPlaying` | Boolean | Read | Cached playlist state; false while paused or after a failed load |
+| `IsPaused` | Boolean | Read | Whether playlist playback is paused |
+| `Volume` | Integer | R/W | Logical volume, clamped to 0–100 and applied immediately |
+| `Shuffle` | Boolean | R/W | Use a runtime-RNG permutation while preserving `Current` as the actual index |
+| `Repeat` | Integer | R/W | 0 = none, 1 = all, 2 = current track; other values clamp into this range |
+| `Crossfade` | Integer | R/W | Auto-transition fade duration in ms; negative values become 0 |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Add(path)` | `Void(String)` | Append a path |
+| `Insert(index, path)` | `Void(Integer, String)` | Insert at an index clamped to `[0, Count]` |
+| `Remove(index)` | `Void(Integer)` | Remove an entry; invalid indices are ignored |
+| `Clear()` | `Void()` | Stop playback and remove every entry |
+| `Get(index)` | `String(Integer)` | Return a retained path, or an empty String when out of range |
+| `Play()` | `Void()` | Resume the paused current track or load/play the current (initially first) entry |
+| `Pause()` | `Void()` | Pause the current track and any crossfade that owns it |
+| `Stop()` | `Void()` | Stop and rewind the current track without changing `Current` |
+| `Next()` | `Void()` | Move forward; repeat-all wraps, while repeat-none stops at the last entry |
+| `Prev()` | `Void()` | Move backward; repeat-all wraps, while other modes clamp at the first entry |
+| `Jump(index)` | `Void(Integer)` | Select an actual queue index; invalid indices are ignored |
+| `Update()` | `Void()` | Service streaming/crossfades and auto-advance a successfully playing track |
+
+`Add(null)` and `Insert(index, null)` store an empty path. `Get` therefore cannot distinguish an
+out-of-range index from a deliberately empty entry. Paths are not validated until selected;
+`Play()` has no result value, so inspect `IsPlaying`. An empty, missing, malformed, or otherwise
+unloadable current path leaves the playlist stopped at that entry. `Update()` does not skip it;
+call `Next()`, `Jump()`, `Remove()`, or repair the queue explicitly.
+
+Changing `Next`, `Prev`, or `Jump` preserves the stopped/paused/playing state. Crossfade applies
+only when changing tracks while playback is active and both old and new Music handles exist;
+paused or stopped navigation is immediate. `Update()` must be called regularly while playing. It
+also calls `Audio.Update()`, so a separate audio update is unnecessary for that playlist.
+
+Shuffle uses the global runtime RNG. Enabling it creates a fresh permutation, edits rebuild the
+permutation, and repeat-all reshuffles when `Next()` wraps. `Viper.Math.Random.Seed()` can make
+this deterministic. `Jump(index)` and `Current` always refer to the original queue index, not the
+permutation slot. Playlist objects are not thread-safe.
+
+### Zia Example
+
+```rust
+module PlaylistDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound;
+
+func start() {
+    var tracks = Playlist.New();
+    tracks.Add("music/title.ogg");
+    tracks.Add("music/level.ogg");
+    tracks.Insert(1, "music/menu.ogg");
+
+    tracks.Volume = 70;
+    tracks.Repeat = 1;       // repeat all
+    tracks.Shuffle = true;
+    tracks.Crossfade = 750;
+
+    SayInt(tracks.Count);    // 3
+    Say(tracks.Get(0));
+
+    // A real frame loop calls Play once, then Update every frame.
+    // Failure to load these example paths simply leaves IsPlaying false.
+    if Audio.Init() != 0 {
+        tracks.Play();
+        tracks.Update();
+        tracks.Stop();
+        Audio.Shutdown();
+    }
+
+    tracks.Clear();
+}
+```
 
 ---
 
@@ -446,9 +598,17 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 | `Remove(name)`            | `Void(String)`                     | Remove a named entry                                                |
 | `Clear()`                 | `Void()`                           | Remove all entries                                                  |
 
-Max 64 entries per bank. Names are matched exactly and are not truncated.
-`RegisterSound` accepts only real `Sound` objects returned by `Sound.Load`,
-`Synth`, or `MusicGen.Build`; generic objects are rejected and return 0.
+Max 64 entries per bank. Non-null names, including the empty String, are matched by full runtime
+String value and are not truncated; the bank is not thread-safe. Registering an existing name
+replaces it without increasing `Count`. `Register` first loads the replacement, so a failed load
+returns 0 and preserves the old entry. It also returns 0 (rather than trapping) in an
+audio-disabled build.
+
+`RegisterSound` accepts only a recognized Sound wrapper returned by `Sound.Load`, `Synth`, or
+`MusicGen.Build`; generic objects are rejected and return 0. Wrapper validation does not establish
+that the buffer is still attached after `Audio.Shutdown()`, so reload before registering in a new
+audio context. The bank retains registered Sounds. `Get` returns another retained reference;
+removing or clearing the bank does not invalidate references already returned to the caller.
 
 ### Zia Example
 
@@ -515,11 +675,15 @@ playback APIs still report that audio support is unavailable.
 |-------------------------------------|--------------------------------------------|---------------------------------------------------------------------------------------------------|
 | `Tone(freq, duration, wave)`        | `Sound(Integer, Integer, Integer)`         | Generate a fixed-frequency tone. freq: Hz (20-20000), duration: ms (1-10000), wave: waveform type |
 | `Sweep(startHz, endHz, duration, wave)` | `Sound(Integer, Integer, Integer, Integer)` | Generate a frequency sweep between two frequencies                                              |
-| `Noise(duration, volume)`           | `Sound(Integer, Integer)`                  | Generate white noise with exponential decay. volume: 0-100                                        |
+| `Noise(duration, volume)`           | `Sound(Integer, Integer)`                  | Generate white noise with quadratic decay. volume: 0-100                                          |
 | `Sfx(type)`                         | `Sound(Integer)`                           | Generate a preset game sound effect                                                               |
 
-`Tone` and `Sweep` use their waveform argument for oscillator shape, not volume.
-Use `Sound.PlayEx`, `Sound.PlayLoop`, or `Voice.SetVolume` to control playback volume.
+`Tone` and `Sweep` clamp frequency to 20–20,000 Hz, duration to 1–10,000 ms, and waveform
+to 0–3; the waveform argument selects oscillator shape, not volume. `Noise` clamps the same
+duration range and volume to 0–100, and seeds its local generator from the runtime RNG. Unknown
+`Sfx` preset values return `null`. Generated results consume ordinary Sound-buffer slots and use
+the same playback/lifetime rules as file-loaded Sounds. Use `Sound.PlayEx`, `Sound.PlayLoop`, or
+`Voice.SetVolume` to control playback volume.
 
 ### Zia Example
 
@@ -566,7 +730,7 @@ func start() {
 
 ## Viper.Sound.MusicGen
 
-Procedural music composition — a tracker-style sequencer that builds multi-channel songs with ADSR envelopes and chiptune effects. Generates a standard Sound object via pre-rendering, requiring zero external audio assets. Think NES/SNES-era music but at 44.1kHz with full ADSR envelopes.
+Procedural music composition — a tracker-style sequencer that builds multi-channel songs with ADSR envelopes and chiptune effects. It pre-renders stereo 16-bit PCM at 44100 Hz into a standard Sound object, requiring zero external audio assets. Think NES/SNES-era music but at 44.1kHz with full ADSR envelopes.
 
 **Type:** Mutable builder class
 
@@ -591,8 +755,8 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 
 | Method                                        | Signature                                          | Description                                                                |
 |-----------------------------------------------|----------------------------------------------------|----------------------------------------------------------------------------|
-| `New(bpm)`                                    | `MusicGen(Integer)`                                | Create a new song at the given tempo (20-300 BPM)                          |
-| `AddChannel(waveform)`                        | `Integer(Integer)`                                 | Add a channel with waveform type (0-4). Returns channel index, or -1 if full |
+| `New(bpm)`                                    | `MusicGen(Integer)`                                | Create a new song; BPM is clamped to 20–300                                |
+| `AddChannel(waveform)`                        | `Integer(Integer)`                                 | Add a channel (waveform clamps to 0–4). Returns index, or -1 if full/invalid |
 | `SetEnvelope(ch, attack, decay, sustain, release)` | `void(Integer, Integer, Integer, Integer, Integer)` | Set ADSR envelope: attack/decay/release in ms (0-5000), sustain in % (0-100) |
 | `SetChannelVol(ch, volume)`                   | `void(Integer, Integer)`                           | Set channel volume (0-100, default 80)                                     |
 | `SetDuty(ch, duty)`                           | `void(Integer, Integer)`                           | Set square wave duty cycle (1-99, default 50). NES values: 12, 25, 50, 75 |
@@ -637,12 +801,23 @@ maximum span are rejected. `Build()` returns `null` in audio-disabled builds.
 Loopable output keeps the requested length and blends only the loop boundary; it
 does not shorten the generated sound.
 
+`Length` is not inferred from notes: `Build()` requires at least one channel and a positive
+explicit length, although a song with no audible notes can still build as silence. Negative note
+positions become 0; MIDI note and velocity values clamp to 0–127 and 0–100, and durations below
+one centbeat become one. `AddNote*` returns 0 for an invalid channel, a full channel, or a start at
+the five-minute boundary. Invalid channel indices on configuration setters are silent no-ops.
+
+Effect setters clamp speed to 0–5,000 centi-Hz, arpeggio intervals to 0–24 semitones, and
+portamento to 0–2,000 ms in addition to the ranges shown above. Builders are mutable and not
+thread-safe. `Build()` allocates the entire stereo render and can return `null` on allocation or
+Sound-buffer failure, especially near the five-minute maximum.
+
 ### Noise Channel — Percussion
 
-The noise channel (type 4) uses the MIDI note number to control timbre rather than pitch:
-- **Low notes (0-30):** Dark, rumbly noise — kicks, toms
-- **Mid notes (40-70):** Medium noise — snares, claps
-- **High notes (80-127):** Bright, hissy noise — hi-hats, cymbals
+The noise channel (type 4) uses the MIDI note number as a one-pole low-pass cutoff rather than as
+an oscillator pitch. The cutoff follows the standard frequency of the note after clamping it to
+10–120: low values produce darker noise for kicks/toms, middle values suit snares/claps, and high
+values produce brighter hi-hat/cymbal noise.
 
 ### Limits
 
@@ -696,10 +871,10 @@ func start() {
     song.AddNote(bass, 200, 48, 200);
 
     // Drums: kick on 1 & 3, snare on 2 & 4
-    song.AddNote(drums, 0, 2, 25);      // kick
-    song.AddNote(drums, 100, 8, 30);    // snare
-    song.AddNote(drums, 200, 2, 25);    // kick
-    song.AddNote(drums, 300, 8, 30);    // snare
+    song.AddNote(drums, 0, 24, 25);      // dark kick noise
+    song.AddNote(drums, 100, 60, 30);    // mid-band snare noise
+    song.AddNote(drums, 200, 24, 25);    // dark kick noise
+    song.AddNote(drums, 300, 60, 30);    // mid-band snare noise
 
     // Build and play
     song.Length = 400;         // 4 beats
@@ -751,7 +926,7 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 |----------|-------|-------------|
 | `MUSIC` | 0 | Music tracks (Music, Playlist) |
 | `SFX` | 1 | Sound effects (Sound) |
-| named groups | 100+ | Runtime-registered groups for custom categories |
+| named groups | 100–255 | Up to 156 runtime-registered custom categories; ids 2–99 are not allocated |
 
 ### Audio Methods (Mix Groups)
 
@@ -770,17 +945,25 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Audio.GroupAddPeaking(group, freqHz, q, gainDb)` | `Integer(Integer, Float, Float, Float)` | Add a peaking EQ insert and return an effect ID |
 | `Audio.GroupAddDelay(group, ms, feedback, wet)` | `Integer(Integer, Float, Float, Float)` | Add a delay insert and return an effect ID |
 | `Audio.GroupAddReverb(group, roomSize, damping, wet)` | `Integer(Integer, Float, Float, Float)` | Add a reverb insert and return an effect ID |
+| `Audio.GroupSetReverb(group, fxId, roomSize, damping, wet)` | `Void(Integer, Integer, Float, Float, Float)` | Update an existing reverb without reallocating its delay lines |
 | `Audio.GroupSetFxBypass(group, fxId, bypass)` | `Void(Integer, Integer, Boolean)` | Enable or bypass one group effect |
 | `Audio.GroupRemoveFx(group, fxId)` | `Void(Integer, Integer)` | Remove one group effect |
 | `Audio.GroupClearFx(group)` | `Void(Integer)` | Remove every effect from the group |
 | `Audio.SetGroupDucking(trigger, target, amount, attackSec, releaseSec)` | `Void(String, String, Float, Float, Float)` | Sidechain duck: while `trigger` is audible, `target`'s gain eases toward `1 − amount` |
 
 > **Ducking:** Groups are resolved (and registered on first use) by name. While
-> anything in the trigger group is audible, the target group's gain follows an
+> any backend voice/music stream in the trigger group is in the playing state with stored
+> volume above 0.001, the target group's gain follows an
 > exponential envelope toward `1 − amount` over `attackSec` and recovers to
 > unity over `releaseSec`. Re-registering the same (trigger, target) pair
 > replaces the rule; `amount <= 0` removes it. Up to 8 rules may be active.
 > Classic use: `Audio.SetGroupDucking("weapons", "music", 0.35, 0.03, 0.4)`.
+
+This is activity detection, not a sample-level sidechain: master mute, silent sample data, and
+post-voice filtering do not prevent a nominally active trigger. Amount above 1 clamps to 1;
+non-positive or NaN amount removes the rule. Non-positive or NaN attack/release becomes 1 ms;
+positive infinity is retained and effectively freezes that envelope direction. A ninth distinct
+rule is silently ignored.
 
 ### Sound Methods (Group-Aware)
 
@@ -793,16 +976,21 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 Plain `Sound.Play`, `Sound.PlayEx`, and `Sound.PlayLoop` use the SFX group by default.
 Group-specific play methods apply the requested group volume exactly once. Effective
 volume = `voice_volume × group_volume / 100`; master volume is applied on top by the
-audio system. Group volume setters/getters are safe to call concurrently with playback,
-including audio-disabled builds where they remain pure settings state.
+audio system. An invalid group passed to a Sound `Play*Group` method falls back to SFX;
+`SetGroupVolume` ignores invalid groups and `GetGroupVolume` returns 100.
 
 Named groups are useful for settings such as UI, ambience, dialogue, and cutscene sound
 without overloading the two built-ins. Registered named groups receive stable ids within
 the current process and can be passed to `PlayGroup`, `PlayExGroup`, and
-`PlayLoopGroup`.
+`PlayLoopGroup`. Registration returns -1 for an empty canonical name or after all 156 slots
+are used.
 
-Group names are stored as fixed-size C backend names. Embedded `NUL` bytes are sanitized
-to `_` before registration and lookup so `"amb\0x"` cannot alias `"amb"`.
+Names are case-sensitive but are canonicalized before both registration and lookup: leading and
+trailing spaces/tabs are removed, embedded `NUL` bytes become `_`, and only the first 31 bytes are
+stored. Consequently, distinct long names with the same 31-byte prefix alias the same group, and
+`GroupName` returns the trimmed/truncated form. The real-audio implementation serializes group
+state with playback. The audio-disabled implementation currently does not synchronize first-use
+initialization or named-group registration; do not call those settings APIs concurrently there.
 
 ## Mix Group Effects
 
@@ -823,6 +1011,14 @@ The built-in effects are:
 Effect creation allocates any needed delay/reverb buffers up front. The mixer
 process path performs no per-block allocations, and bypassed effects remain in
 the chain without changing the signal.
+
+Add methods return a positive process-wide effect ID or -1 for an unregistered group/allocation
+failure. There is no fixed chain-length cap. Filter frequency is bounded to 10–19,845 Hz; Q above
+20 clamps to 20, while non-finite or Q below 0.05 selects 0.707. Delay time is bounded to
+1–2,000 ms, feedback to 0–0.95, and wet mix to 0–1. Reverb room size, damping, and wet mix clamp
+to 0–1. `GroupSetReverb` changes only a matching reverb ID in the named group; wrong kind/group/id
+is a no-op. Peaking `gainDb` is not range- or non-finite-sanitized, so callers must supply a finite,
+practical value.
 
 ### Zia Example
 
@@ -863,15 +1059,24 @@ remain available as settings state in audio-disabled builds.
 
 `Viper.Sound.SpatialAudio3D` is the low-level spatial audio surface. Its
 implementation lives under `src/runtime/audio/` with the rest of the audio
-runtime. It computes distance attenuation, stereo pan, per-voice falloff state,
-and Doppler metadata before delegating to normal `Sound` voice playback.
+runtime. It computes linear distance attenuation and stereo pan before
+delegating to normal `Sound` voice playback. The registry types the object
+arguments generically, but callers must pass a `Viper.Sound.Sound` and
+`Viper.Math.Vec3` handles in the positions shown below.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SpatialAudio3D.SetListener(position, forward)` | `Void(Object, Object)` | Set the fallback listener position and forward direction |
-| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `Integer(Object, Object, Float, Integer)` | Play a sound from a world position |
-| `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `Void(Integer, Object, Float)` | Recompute attenuation and pan for a moving voice |
+| `SpatialAudio3D.SetListener(position, forward)` | `Void(Vec3, Vec3)` | Set the fallback listener position and forward direction |
+| `SpatialAudio3D.PlayAt(sound, position, maxDist, volume)` | `Integer(Sound, Vec3, Float, Integer)` | Play at a world position; returns a positive voice ID, or 0 on failure |
+| `SpatialAudio3D.UpdateVoice(voice, position, maxDist)` | `Void(Integer, Vec3, Float)` | Recompute attenuation and pan for a moving voice |
 | `SpatialAudio3D.SyncBindings(dt)` | `Void(Float)` | Sync object-backed listeners/sources bound to scene nodes or cameras |
+
+`SetListener` changes only the fallback listener; an active `SoundListener3D` overrides it.
+`PlayAt` clamps volume to 0–100. A non-positive or non-finite `maxDist` means infinite range at
+play time. `UpdateVoice` instead reuses the distance recorded for that voice when `maxDist` is
+non-positive or non-finite; an untracked voice defaults to 50 units. The low-level public methods
+do not accept source velocity, so they update only attenuation and pan. Doppler playback-rate
+changes come from the object-backed `SoundSource3D` path.
 
 `SoundListener3D` and `SoundSource3D` remain in the
 `Viper.Graphics3D` namespace because those object wrappers bind to
@@ -887,6 +1092,9 @@ Scene-driven games usually update transforms, call `SceneGraph.SyncBindings(dt)`
 then trigger `SoundSource3D.Play()` or `SpatialAudio3D.PlayAt(...)` for the
 frame. Direct spatial callers can skip the object wrappers and call
 `SpatialAudio3D.SetListener`, `PlayAt`, and `UpdateVoice` with `Vec3` handles.
+Spatial state and object binding are main-thread facilities. `SyncBindings` treats non-finite or
+negative `dt` as zero and caps a large step at one second; it is a no-op when graphics support is
+not compiled in.
 
 ---
 
@@ -894,10 +1102,19 @@ frame. Direct spatial callers can skip the object wrappers and call
 
 Smooth transitions between music tracks — the old track fades out while the new one fades in simultaneously.
 
-Unrelated playlist or direct-music crossfades can run independently; starting one transition no longer cancels another unrelated fade.
+One unpaused transition owns the foreground at a time. Starting another direct or playlist
+crossfade cancels unrelated **unpaused** fades and stops both of their tracks. An unrelated paused
+fade is preserved and can reclaim the foreground when resumed.
 
 Pausing a track or playlist that owns a crossfade now pauses the fade clock too; `Audio.Update()`
 and `Playlist.Update()` do not advance a paused transition.
+
+The volume envelopes are linear. A non-positive duration performs an immediate cut, and a
+same-track transition is a no-op. Passing `null` for one side, where the source language permits
+it, fades in from silence or fades out to silence. Direct crossfades advance from wall-clock time
+when `Audio.Update()` runs; playlist updates call that method internally. Playlist auto-crossfade
+is used only when a current Music handle is actively playing and the replacement track loads
+successfully—otherwise the playlist swaps or stops without a fade.
 
 ### Music Methods (Crossfade)
 
@@ -956,13 +1173,14 @@ auto-detected from file magic bytes — no extension matching required.
 | Format      | PCM or 32-bit IEEE float                 | Vorbis I (baseline, Huffman-coded) | MPEG-1/2/2.5 Layer III              |
 | Bit depth   | 8/16/24/32-bit PCM, or 32-bit float     | N/A (lossy compressed)             | N/A (lossy compressed)              |
 | Channels    | Mono or Stereo                           | Mono or Stereo                     | Mono, Stereo, or Joint Stereo       |
-| Sample rate | Any supported rate (resampled to 44100) | Any supported rate (resampled to 44100) | Any supported rate (resampled to 44100) |
+| Sample rate | 1–384000 Hz (resampled to 44100) | 1–384000 Hz (resampled to 44100) | 1–384000 Hz (resampled to 44100) |
 
 ### Tips
 
-1. **Sound effects:** Any sample rate works — the engine resamples to 44100 Hz at load time.
-2. **Music playback:** Any supported sample rate works — the engine resamples during buffered playback.
-3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
+1. **Sound effects:** Rates from 1 through 384000 Hz are accepted and resampled to 44100 Hz at load time.
+2. **Music playback:** Rates from 1 through 384000 Hz are resampled during buffered playback.
+3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short. Eager WAV
+   decode is capped at 512 MiB, while compressed Sound decode is capped at 100 MiB.
 4. **Buffered decode:** WAV and OGG music read incrementally; MP3 music keeps the compressed file in memory and decodes frame-by-frame during playback.
 5. **Float WAV endpoints:** 32-bit float WAV samples map full-scale `-1.0` to `-32768` and `+1.0` to `32767` when converted to the engine's 16-bit mix format.
 6. **MP3 decoder scope:** Unsupported MP3 Huffman codebooks now fail at load time instead of producing corrupted audio. Re-encode the file if a specific MP3 is rejected.
@@ -980,8 +1198,9 @@ auto-detected from file magic bytes — no extension matching required.
 
 | Limit | Value | Notes |
 |-------|-------|-------|
-| Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
-| Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
+| Max simultaneous Sound voices | **32** | Oldest-started non-looping voice is evicted when full; looping voices are considered only if every voice loops |
+| Max distinct loaded Sound buffers | **256** | Includes file-loaded, synthesized, and MusicGen-built Sounds |
+| Max loaded Music streams | **4** | `Music.Load()` returns `null` when exceeded |
 | Supported audio formats | **WAV, OGG Vorbis, MP3** | Sounds load fully into memory; music uses buffered incremental playback |
 | Music sample rate | **1-384000 Hz** | Automatically resampled to 44100 Hz |
 | Sound sample rate | **1-384000 Hz** | Resampled to 44100 Hz at load time |
@@ -991,7 +1210,8 @@ auto-detected from file magic bytes — no extension matching required.
 | Max MusicGen channels | **8** | Per song builder instance |
 | Max MusicGen notes/channel | **4,096** | `AddNote()` returns 0 when full |
 | Max MusicGen duration | **5 min** | `Build()` caps at 5 minutes |
-| Max decoded Sound data | **100 MB** | Compressed sounds that decode beyond this return `null` |
+| Max decoded compressed Sound data | **100 MiB** | OGG/MP3 Sounds that decode beyond this return `null` |
+| Max eager WAV decoded data | **512 MiB** | Oversized WAV Sounds are rejected by the audio backend |
 
 Behavior notes:
 `Sound.Load(path)` and `Music.Load(path)` reject paths containing embedded `NUL` bytes and return `null` instead of passing a truncated path to the backend.

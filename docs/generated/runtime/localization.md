@@ -9,7 +9,7 @@
 <a id="viper-localization-locale"></a>
 ### `Viper.Localization.Locale`
 
-Provides immutable BCP-47 language tag handle.
+Provides an immutable canonical locale-tag handle.
 
 Create `Viper.Localization.Locale` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
@@ -217,7 +217,7 @@ Constructor: `Viper.Localization.RelativeTimeFormat.New`
 <a id="viper-localization-pluralrules"></a>
 ### `Viper.Localization.PluralRules`
 
-Provides cLDR plural category selection.
+Provides CLDR-style plural category selection.
 
 `Viper.Localization.PluralRules` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes operations including

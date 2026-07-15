@@ -29,6 +29,11 @@ typedef struct {
     float *normal_palette;
     int32_t normal_palette_capacity;
     uint64_t normal_palette_grow_count;
+    /* Per-bone finiteness flags, computed once per palette. Matrix validity
+     * is a bone property, so hoisting it out of the vertex loop removes up
+     * to ~128 isfinite() calls per vertex from the CPU-skinning inner loop. */
+    uint8_t *bone_valid;
+    int32_t bone_valid_capacity;
 } vgfx3d_skinning_scratch_t;
 
 /// @brief Release all owned CPU skinning scratch buffers and reset counters.

@@ -1240,3 +1240,69 @@ int64_t rt_scene_node3d_get_lod_resident_bytes(void *n, int64_t index) {
     (void)index;
     return 0;
 }
+
+/* Stub-parity audit additions: entry points registered in the 3D runtime
+ * defs whose implementations compile only in graphics-enabled builds. */
+
+/// @brief Trapping stub for `SceneNode.GenerateLODs` (graphics-disabled build).
+void rt_scene_node3d_generate_lods(void *o, int64_t a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("SceneNode.GenerateLODs: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `SceneNode.SetTransform` (graphics-disabled build).
+void rt_scene_node3d_set_transform(void *o,
+                                   double a1,
+                                   double a2,
+                                   double a3,
+                                   double a4,
+                                   double a5,
+                                   double a6,
+                                   double a7,
+                                   double a8,
+                                   double a9,
+                                   double a10) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    (void)a7;
+    (void)a8;
+    (void)a9;
+    (void)a10;
+    RT_GRAPHICS_TRAP_VOID("SceneNode.SetTransform: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `SceneGraph.get_PortalClipping` (graphics-disabled build).
+int8_t rt_scene3d_get_portal_clipping(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("SceneGraph.get_PortalClipping: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Silent fallback stub for `SceneGraph.get_PortalTraversalCount` (graphics-disabled build).
+int64_t rt_scene3d_get_portal_traversal_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "SceneGraph.get_PortalTraversalCount: graphics support not compiled in", 0);
+}
+
+/// @brief Trapping stub for `SceneGraph.SetNodeTransforms` (graphics-disabled build).
+void rt_scene3d_set_node_transforms(void *o, void *a1, void *a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("SceneGraph.SetNodeTransforms: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `SceneGraph.set_PortalClipping` (graphics-disabled build).
+void rt_scene3d_set_portal_clipping(void *o, int8_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("SceneGraph.set_PortalClipping: graphics support not compiled in");
+}

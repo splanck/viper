@@ -109,6 +109,7 @@ Constructor: `Viper.Graphics3D.Canvas3D.New`
 | <a id="viper-graphics3d-canvas3d-textureuploadpendingbytes"></a>`TextureUploadPendingBytes` | `i64` | read-only |
 | <a id="viper-graphics3d-canvas3d-texturestreamingdemotions"></a>`TextureStreamingDemotions` | `i64` | read-only |
 | <a id="viper-graphics3d-canvas3d-backenddrawcalls"></a>`BackendDrawCalls` | `i64` | read-only |
+| <a id="viper-graphics3d-canvas3d-passcount"></a>`PassCount` | `i64` | read-only |
 | <a id="viper-graphics3d-canvas3d-backenddroppeddraws"></a>`BackendDroppedDraws` | `i64` | read-only |
 | <a id="viper-graphics3d-canvas3d-backendmeshcachehits"></a>`BackendMeshCacheHits` | `i64` | read-only |
 | <a id="viper-graphics3d-canvas3d-backendmeshcachemisses"></a>`BackendMeshCacheMisses` | `i64` | read-only |
@@ -141,6 +142,7 @@ Constructor: `Viper.Graphics3D.Canvas3D.New`
 | <a id="viper-graphics3d-canvas3d-setforcecpuskinning"></a>`SetForceCpuSkinning` | `void(i1)` | `Viper.Graphics3D.Canvas3D.SetForceCpuSkinning` |
 | <a id="viper-graphics3d-canvas3d-setshadowbudget"></a>`SetShadowBudget` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetShadowBudget` |
 | <a id="viper-graphics3d-canvas3d-setclusterlightbudget"></a>`SetClusterLightBudget` | `void(i64)` | `Viper.Graphics3D.Canvas3D.SetClusterLightBudget` |
+| <a id="viper-graphics3d-canvas3d-passcpums"></a>`PassCpuMs` | `f64(i64)` | `Viper.Graphics3D.Canvas3D.PassCpuMs` |
 | <a id="viper-graphics3d-canvas3d-clear"></a>`Clear` | `void(f64,f64,f64)` | `Viper.Graphics3D.Canvas3D.Clear` |
 | <a id="viper-graphics3d-canvas3d-resize"></a>`Resize` | `void(i64,i64)` | `Viper.Graphics3D.Canvas3D.Resize` |
 | <a id="viper-graphics3d-canvas3d-setfullscreen"></a>`SetFullscreen` | `void(i1)` | `Viper.Graphics3D.Canvas3D.SetFullscreen` |
@@ -290,6 +292,7 @@ Constructor: `Viper.Graphics3D.Mesh3D.New`
 | <a id="viper-graphics3d-mesh3d-recalcnormals"></a>`RecalcNormals` | `void()` | `Viper.Graphics3D.Mesh3D.RecalcNormals` |
 | <a id="viper-graphics3d-mesh3d-clone"></a>`Clone` | `obj()` | `Viper.Graphics3D.Mesh3D.Clone` |
 | <a id="viper-graphics3d-mesh3d-transform"></a>`Transform` | `void(obj)` | `Viper.Graphics3D.Mesh3D.Transform` |
+| <a id="viper-graphics3d-mesh3d-releasecpuscratch"></a>`ReleaseCpuScratch` | `i64()` | `Viper.Graphics3D.Mesh3D.ReleaseCpuScratch` |
 | <a id="viper-graphics3d-mesh3d-calctangents"></a>`CalcTangents` | `void()` | `Viper.Graphics3D.Mesh3D.CalcTangents` |
 | <a id="viper-graphics3d-mesh3d-setskeleton"></a>`SetSkeleton` | `void(obj)` | `Viper.Graphics3D.Mesh3D.SetSkeleton` |
 | <a id="viper-graphics3d-mesh3d-setboneweights"></a>`SetBoneWeights` | `void(i64,i64,f64,i64,f64,i64,f64,i64,f64)` | `Viper.Graphics3D.Mesh3D.SetBoneWeights` |
@@ -944,6 +947,7 @@ Constructor: `Viper.Graphics3D.Particles3D.New`
 | <a id="viper-graphics3d-particles3d-count"></a>`Count` | `i64` | read-only |
 | <a id="viper-graphics3d-particles3d-emitting"></a>`Emitting` | `i1` | read-only |
 | <a id="viper-graphics3d-particles3d-additive"></a>`Additive` | `i1` | read/write |
+| <a id="viper-graphics3d-particles3d-seed"></a>`Seed` | `i64` | read/write |
 
 #### Methods
 
@@ -1605,6 +1609,45 @@ Constructor: `Viper.Graphics3D.SixDofJoint3D.New`
 | <a id="viper-graphics3d-sixdofjoint3d-setlinearmotor"></a>`SetLinearMotor` | `void(i1,obj,f64)` | `Viper.Graphics3D.SixDofJoint3D.SetLinearMotor` |
 | <a id="viper-graphics3d-sixdofjoint3d-new"></a>`New` | `obj(obj,obj,obj,obj)` | `Viper.Graphics3D.SixDofJoint3D.New` |
 
+<a id="viper-graphics3d-vehicle3d"></a>
+### `Viper.Graphics3D.Vehicle3D`
+
+Raycast vehicle simulation: suspension, tire grip, drive and brake forces on a rigid chassis.
+
+Create a `Viper.Graphics3D.Vehicle3D` with `New(world, chassisBody)` around a dynamic
+`Physics3DBody`, add suspension wheels with `AddWheel` (chassis-local anchor, wheel radius,
+suspension rest length, spring stiffness, damping, steering/driven flags), feed controls with
+`SetInput(throttle, brake, steer)`, and call `Step(dt)` once per frame BEFORE
+`Physics3DWorld.Step(dt)` so the wheel forces are integrated by that step. Tuning:
+`SetDriveForce`, `SetBrakeForce`, `SetMaxSteer`, `SetGrip`, `SetCollisionMask`. Telemetry:
+`Speed`, `WheelCount`, `WheelInContact`, `WheelTravel`, `WheelLoad`.
+
+Constructor: `Viper.Graphics3D.Vehicle3D.New`
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-graphics3d-vehicle3d-speed"></a>`Speed` | `f64` | read-only |
+| <a id="viper-graphics3d-vehicle3d-wheelcount"></a>`WheelCount` | `i64` | read-only |
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-graphics3d-vehicle3d-addwheel"></a>`AddWheel` | `i64(f64,f64,f64,f64,f64,f64,f64,i1,i1)` | `Viper.Graphics3D.Vehicle3D.AddWheel` |
+| <a id="viper-graphics3d-vehicle3d-setinput"></a>`SetInput` | `void(f64,f64,f64)` | `Viper.Graphics3D.Vehicle3D.SetInput` |
+| <a id="viper-graphics3d-vehicle3d-setdriveforce"></a>`SetDriveForce` | `void(f64)` | `Viper.Graphics3D.Vehicle3D.SetDriveForce` |
+| <a id="viper-graphics3d-vehicle3d-setbrakeforce"></a>`SetBrakeForce` | `void(f64)` | `Viper.Graphics3D.Vehicle3D.SetBrakeForce` |
+| <a id="viper-graphics3d-vehicle3d-setmaxsteer"></a>`SetMaxSteer` | `void(f64)` | `Viper.Graphics3D.Vehicle3D.SetMaxSteer` |
+| <a id="viper-graphics3d-vehicle3d-setgrip"></a>`SetGrip` | `void(f64,f64)` | `Viper.Graphics3D.Vehicle3D.SetGrip` |
+| <a id="viper-graphics3d-vehicle3d-setcollisionmask"></a>`SetCollisionMask` | `void(i64)` | `Viper.Graphics3D.Vehicle3D.SetCollisionMask` |
+| <a id="viper-graphics3d-vehicle3d-step"></a>`Step` | `void(f64)` | `Viper.Graphics3D.Vehicle3D.Step` |
+| <a id="viper-graphics3d-vehicle3d-wheelincontact"></a>`WheelInContact` | `i1(i64)` | `Viper.Graphics3D.Vehicle3D.WheelInContact` |
+| <a id="viper-graphics3d-vehicle3d-wheeltravel"></a>`WheelTravel` | `f64(i64)` | `Viper.Graphics3D.Vehicle3D.WheelTravel` |
+| <a id="viper-graphics3d-vehicle3d-wheelload"></a>`WheelLoad` | `f64(i64)` | `Viper.Graphics3D.Vehicle3D.WheelLoad` |
+| <a id="viper-graphics3d-vehicle3d-new"></a>`New` | `obj(obj,obj)` | `Viper.Graphics3D.Vehicle3D.New` |
+
 <a id="viper-graphics3d-cloth3d"></a>
 ### `Viper.Graphics3D.Cloth3D`
 
@@ -2239,6 +2282,12 @@ object with the instance members below. Its public surface exposes operations in
 
 Constructor: `Viper.Graphics3D.Water3D.New`
 
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-graphics3d-water3d-simdistance"></a>`SimDistance` | `f64` | read/write |
+
 #### Methods
 
 | Method | Signature | Runtime target |
@@ -2427,6 +2476,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Canvas3D.SetTextureStreamingBias` | `void(obj,f64)` | `rt_canvas3d_set_texture_streaming_bias` |
 | <a id="viper-graphics3d-canvas3d-get-texturestreamingdemotions"></a>`Viper.Graphics3D.Canvas3D.get_TextureStreamingDemotions` | `i64(obj)` | `rt_canvas3d_get_texture_streaming_demotions` |
 | <a id="viper-graphics3d-canvas3d-get-backenddrawcalls"></a>`Viper.Graphics3D.Canvas3D.get_BackendDrawCalls` | `i64(obj)` | `rt_canvas3d_get_backend_draw_calls` |
+| `Viper.Graphics3D.Canvas3D.PassCpuMs` | `f64(obj,i64)` | `rt_canvas3d_get_pass_cpu_ms` |
+| <a id="viper-graphics3d-canvas3d-get-passcount"></a>`Viper.Graphics3D.Canvas3D.get_PassCount` | `i64(obj)` | `rt_canvas3d_get_pass_count` |
 | <a id="viper-graphics3d-canvas3d-get-backenddroppeddraws"></a>`Viper.Graphics3D.Canvas3D.get_BackendDroppedDraws` | `i64(obj)` | `rt_canvas3d_get_backend_dropped_draws` |
 | <a id="viper-graphics3d-canvas3d-get-backendmeshcachehits"></a>`Viper.Graphics3D.Canvas3D.get_BackendMeshCacheHits` | `i64(obj)` | `rt_canvas3d_get_backend_mesh_cache_hits` |
 | <a id="viper-graphics3d-canvas3d-get-backendmeshcachemisses"></a>`Viper.Graphics3D.Canvas3D.get_BackendMeshCacheMisses` | `i64(obj)` | `rt_canvas3d_get_backend_mesh_cache_misses` |
@@ -2479,6 +2530,7 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-mesh3d-get-compactstreams"></a>`Viper.Graphics3D.Mesh3D.get_CompactStreams` | `i1(obj)` | `rt_mesh3d_get_compact_streams` |
 | <a id="viper-graphics3d-mesh3d-set-compactstreams"></a>`Viper.Graphics3D.Mesh3D.set_CompactStreams` | `void(obj,i1)` | `rt_mesh3d_set_compact_streams` |
 | <a id="viper-graphics3d-mesh3d-get-retainedbytes"></a>`Viper.Graphics3D.Mesh3D.get_RetainedBytes` | `i64(obj)` | `rt_mesh3d_get_retained_bytes` |
+| `Viper.Graphics3D.Mesh3D.ReleaseCpuScratch` | `i64(obj)` | `rt_mesh3d_release_cpu_scratch` |
 | `Viper.Graphics3D.Mesh3D.Reserve` | `void(obj,i64,i64)` | `rt_mesh3d_reserve` |
 | `Viper.Graphics3D.Mesh3D.AddVertex` | `void(obj,f64,f64,f64,f64,f64,f64,f64,f64)` | `rt_mesh3d_add_vertex` |
 | `Viper.Graphics3D.Mesh3D.AddTriangle` | `void(obj,i64,i64,i64)` | `rt_mesh3d_add_triangle` |
@@ -2834,6 +2886,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Particles3D.Draw` | `void(obj,obj,obj)` | `rt_particles3d_draw` |
 | <a id="viper-graphics3d-particles3d-get-count"></a>`Viper.Graphics3D.Particles3D.get_Count` | `i64(obj)` | `rt_particles3d_get_count` |
 | <a id="viper-graphics3d-particles3d-get-emitting"></a>`Viper.Graphics3D.Particles3D.get_Emitting` | `i1(obj)` | `rt_particles3d_get_emitting` |
+| <a id="viper-graphics3d-particles3d-set-seed"></a>`Viper.Graphics3D.Particles3D.set_Seed` | `void(obj,i64)` | `rt_particles3d_set_seed` |
+| <a id="viper-graphics3d-particles3d-get-seed"></a>`Viper.Graphics3D.Particles3D.get_Seed` | `i64(obj)` | `rt_particles3d_get_seed` |
 | `Viper.Graphics3D.PostFX3D.New` | `obj()` | `rt_postfx3d_new` |
 | `Viper.Graphics3D.PostFX3D.AddBloom` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_bloom` |
 | `Viper.Graphics3D.PostFX3D.AddTonemap` | `void(obj,i64,f64)` | `rt_postfx3d_add_tonemap` |
@@ -3163,6 +3217,20 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | <a id="viper-graphics3d-trigger3d-get-entercount"></a>`Viper.Graphics3D.Trigger3D.get_EnterCount` | `i64(obj)` | `rt_trigger3d_get_enter_count` |
 | <a id="viper-graphics3d-trigger3d-get-exitcount"></a>`Viper.Graphics3D.Trigger3D.get_ExitCount` | `i64(obj)` | `rt_trigger3d_get_exit_count` |
 | `Viper.Graphics3D.Trigger3D.SetBounds` | `void(obj,f64,f64,f64,f64,f64,f64)` | `rt_trigger3d_set_bounds` |
+| `Viper.Graphics3D.Vehicle3D.New` | `obj(obj,obj)` | `rt_vehicle3d_new` |
+| `Viper.Graphics3D.Vehicle3D.AddWheel` | `i64(obj,f64,f64,f64,f64,f64,f64,f64,i1,i1)` | `rt_vehicle3d_add_wheel` |
+| `Viper.Graphics3D.Vehicle3D.SetInput` | `void(obj,f64,f64,f64)` | `rt_vehicle3d_set_input` |
+| `Viper.Graphics3D.Vehicle3D.SetDriveForce` | `void(obj,f64)` | `rt_vehicle3d_set_drive_force` |
+| `Viper.Graphics3D.Vehicle3D.SetBrakeForce` | `void(obj,f64)` | `rt_vehicle3d_set_brake_force` |
+| `Viper.Graphics3D.Vehicle3D.SetMaxSteer` | `void(obj,f64)` | `rt_vehicle3d_set_max_steer` |
+| `Viper.Graphics3D.Vehicle3D.SetGrip` | `void(obj,f64,f64)` | `rt_vehicle3d_set_grip` |
+| `Viper.Graphics3D.Vehicle3D.SetCollisionMask` | `void(obj,i64)` | `rt_vehicle3d_set_collision_mask` |
+| `Viper.Graphics3D.Vehicle3D.Step` | `void(obj,f64)` | `rt_vehicle3d_step` |
+| <a id="viper-graphics3d-vehicle3d-get-speed"></a>`Viper.Graphics3D.Vehicle3D.get_Speed` | `f64(obj)` | `rt_vehicle3d_get_speed` |
+| <a id="viper-graphics3d-vehicle3d-get-wheelcount"></a>`Viper.Graphics3D.Vehicle3D.get_WheelCount` | `i64(obj)` | `rt_vehicle3d_get_wheel_count` |
+| `Viper.Graphics3D.Vehicle3D.WheelInContact` | `i1(obj,i64)` | `rt_vehicle3d_wheel_in_contact` |
+| `Viper.Graphics3D.Vehicle3D.WheelTravel` | `f64(obj,i64)` | `rt_vehicle3d_wheel_travel` |
+| `Viper.Graphics3D.Vehicle3D.WheelLoad` | `f64(obj,i64)` | `rt_vehicle3d_wheel_load` |
 | `Viper.Graphics3D.Cloth3D.NewChain` | `obj(i64,f64)` | `rt_cloth3d_new_chain` |
 | `Viper.Graphics3D.Cloth3D.NewPatch` | `obj(i64,i64,f64,f64)` | `rt_cloth3d_new_patch` |
 | <a id="viper-graphics3d-cloth3d-get-damping"></a>`Viper.Graphics3D.Cloth3D.get_Damping` | `f64(obj)` | `rt_cloth3d_get_damping` |
@@ -3441,6 +3509,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.Water3D.SetResolution` | `void(obj,i64)` | `rt_water3d_set_resolution` |
 | `Viper.Graphics3D.Water3D.AddWave` | `void(obj,f64,f64,f64,f64,f64)` | `rt_water3d_add_wave` |
 | `Viper.Graphics3D.Water3D.ClearWaves` | `void(obj)` | `rt_water3d_clear_waves` |
+| <a id="viper-graphics3d-water3d-set-simdistance"></a>`Viper.Graphics3D.Water3D.set_SimDistance` | `void(obj,f64)` | `rt_water3d_set_sim_distance` |
+| <a id="viper-graphics3d-water3d-get-simdistance"></a>`Viper.Graphics3D.Water3D.get_SimDistance` | `f64(obj)` | `rt_water3d_get_sim_distance` |
 | `Viper.Graphics3D.Canvas3D.DrawWater` | `void(obj,obj,obj)` | `rt_canvas3d_draw_water` |
 | `Viper.Graphics3D.PostFX3D.AddSSAO` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_ssao` |
 | `Viper.Graphics3D.PostFX3D.AddDOF` | `void(obj,f64,f64,f64)` | `rt_postfx3d_add_dof` |

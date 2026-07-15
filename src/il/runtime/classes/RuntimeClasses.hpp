@@ -523,6 +523,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_HingeJoint3D,
     RTCLS_RopeJoint3D,
     RTCLS_SixDofJoint3D,
+    RTCLS_Vehicle3D,
     RTCLS_Game3DLayers,
     RTCLS_Game3DBodyShape,
     RTCLS_Game3DSyncMode,

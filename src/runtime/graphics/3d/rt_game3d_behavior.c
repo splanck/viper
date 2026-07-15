@@ -58,6 +58,7 @@ enum {
     BHV3D_FOLLOW_PATH = 1 << 4,
     BHV3D_CHASE = 1 << 5,
     BHV3D_LIFETIME = 1 << 6,
+    BHV3D_DESPAWN_TARGET = 1 << 7,
 };
 
 /// @brief Behavior3D payload: preset flag set plus per-preset parameters and
@@ -100,6 +101,10 @@ typedef struct rt_game3d_behavior {
 
     /* Lifetime */
     double lifetime_remaining;
+
+    /* Despawn target (C-internal trap/test preset): despawned once on the
+     * next update — exercises cross-entity registry compaction mid-sweep. */
+    void *despawn_target; /* retained Entity3D */
 } rt_game3d_behavior;
 
 /// @brief Class-checked cast to a Behavior3D (traps with @p method on mismatch).
@@ -119,6 +124,7 @@ static void game3d_behavior_finalize(void *obj) {
     game3d_release_ref(&behavior->target_entity);
     game3d_release_ref(&behavior->path);
     game3d_release_ref(&behavior->nav_agent);
+    game3d_release_ref(&behavior->despawn_target);
 }
 
 /// @brief Create an empty behavior; add presets with the fluent Add* methods.
@@ -219,6 +225,26 @@ void *rt_game3d_behavior_add_face_target(void *obj, void *target_entity) {
     }
     game3d_assign_ref(&behavior->target_entity, target_entity);
     behavior->flags |= BHV3D_FACE_TARGET;
+    return obj;
+}
+
+/// @brief C-internal fluent preset: despawn @p target_entity on this
+///   behavior's next update (one-shot).
+/// @details Not part of the script-visible registry. Exists so tests (and
+///   trap-volume style C fixtures) can exercise cross-entity registry
+///   compaction while an entity sweep is in flight — the failure mode the
+///   stamped sweep in game3d_world_sweep_entities guards against.
+void *rt_game3d_behavior_add_despawn_target_internal(void *obj, void *target_entity) {
+    rt_game3d_behavior *behavior =
+        game3d_behavior_checked(obj, "Game3D.Behavior3D.addDespawnTarget: invalid behavior");
+    if (!behavior)
+        return obj;
+    if (!target_entity || !rt_g3d_has_class(target_entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+        rt_trap("Game3D.Behavior3D.addDespawnTarget: target must be an Entity3D");
+        return obj;
+    }
+    game3d_assign_ref(&behavior->despawn_target, target_entity);
+    behavior->flags |= BHV3D_DESPAWN_TARGET;
     return obj;
 }
 
@@ -324,6 +350,18 @@ void rt_game3d_behavior_update(void *behavior_obj, void *entity_obj, double dt) 
     node = game3d_entity_node_ref(entity);
     if (!node)
         return;
+
+    if (behavior->flags & BHV3D_DESPAWN_TARGET) {
+        void *victim = rt_g3d_checked_or_null(behavior->despawn_target,
+                                              RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        behavior->flags &= ~(uint32_t)BHV3D_DESPAWN_TARGET;
+        if (victim) {
+            rt_game3d_entity *victim_entity = (rt_game3d_entity *)victim;
+            if (victim_entity->spawned && victim_entity->world)
+                rt_game3d_world_despawn(victim_entity->world, victim);
+        }
+        game3d_release_ref(&behavior->despawn_target);
+    }
 
     if (behavior->flags & BHV3D_LIFETIME) {
         behavior->lifetime_remaining -= dt;

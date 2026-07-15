@@ -7,7 +7,7 @@
 //
 // File: src/runtime/network/rt_tls_api.c
 // Purpose: Viper-facing wrappers for the TLS runtime — the boxed rt_viper_tls
-//          object plus the Viper.Net.TLS methods (connect, send/recv, close,
+//          object plus the Viper.Crypto.Tls methods (connect, send/recv, close,
 //          accessors). Split out of rt_tls.c; calls the low-level rt_tls_*
 //          API declared in rt_tls.h.
 //
@@ -303,14 +303,15 @@ void *rt_viper_tls_connect_for_result(rt_string host, int64_t port, int64_t time
 /// @brief Connect to @p host:@p port with explicit verification and ALPN policy.
 /// @details Full-feature constructor: caller supplies a CA bundle path (or
 ///          empty for the system store), an ALPN preference list, the
-///          verify-cert flag, and a per-handshake timeout. All four
+///          verify-cert flag, and a timeout reused by each address attempt and
+///          socket I/O operation. All four
 ///          options thread directly into @c rt_tls_connect.
 /// @param host TLS hostname (also used for SNI and cert verification).
 /// @param port TCP port.
 /// @param ca_file Optional PEM bundle path; empty string falls back to the OS store.
 /// @param alpn Optional comma-separated ALPN list (e.g. "h2,http/1.1").
 /// @param verify_cert 0 to skip chain verification (development only); 1 (default) to enforce.
-/// @param timeout_ms Handshake timeout in ms; 0 uses the runtime default (30 s).
+/// @param timeout_ms Per-attempt/per-I/O timeout in ms; nonpositive uses the 30 s default.
 /// @return New TLS connection handle, or NULL on failure.
 void *rt_viper_tls_connect_options(rt_string host,
                                    int64_t port,
@@ -327,7 +328,7 @@ void *rt_viper_tls_connect_options(rt_string host,
 /// @param ca_file Optional PEM bundle path.
 /// @param alpn Optional comma-separated ALPN list.
 /// @param verify_cert 1 to verify certificates, 0 to skip verification.
-/// @param timeout_ms Handshake timeout in milliseconds.
+/// @param timeout_ms Per-attempt/per-I/O timeout in milliseconds.
 /// @return Owned `Viper.Result` carrying the TLS handle or an error string.
 void *rt_viper_tls_connect_options_result(rt_string host,
                                           int64_t port,
@@ -421,7 +422,7 @@ int64_t rt_viper_tls_send(void *obj, void *data) {
     return (int64_t)result;
 }
 
-/// @brief Send string over TLS connection.
+/// @brief Send a string's complete stored byte sequence over TLS.
 /// @param obj TLS object.
 /// @param text String to send.
 /// @return Number of bytes sent, or -1 on error.
@@ -484,7 +485,7 @@ void *rt_viper_tls_recv(void *obj, int64_t max_bytes) {
     return result;
 }
 
-/// @brief Receive string from TLS connection.
+/// @brief Receive bytes into a length-aware string without UTF-8 validation.
 /// @param obj TLS object.
 /// @param max_bytes Maximum bytes to receive.
 /// @return String with received data, or empty string on error.
@@ -518,7 +519,9 @@ rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes) {
     return result;
 }
 
-/// @brief Read a line (up to \n) from the TLS connection.
+/// @brief Read through LF, strip a preceding CR, and return the completed line.
+/// @details Returns empty when EOF/error occurs before LF or a nonterminated line
+///          grows beyond 64 KiB; partial bytes are discarded.
 rt_string rt_viper_tls_recv_line(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -582,7 +585,7 @@ rt_string rt_viper_tls_recv_line(void *obj) {
     return result;
 }
 
-/// @brief Close the TLS connection.
+/// @brief Send close_notify, perform the bounded peer-alert drain, and close.
 void rt_viper_tls_close(void *obj) {
     if (!obj)
         return;

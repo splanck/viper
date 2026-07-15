@@ -60,7 +60,8 @@ typedef struct {
 
 /// @brief Optional per-vertex bone influences 5-8 (palette-slot indices + weights),
 ///   carried as a mesh side stream so the fixed vertex record stays 92 bytes.
-///   Applied by the CPU skinning path; meshes with this stream bypass GPU skinning.
+///   Consumed on the GPU by backends with gpu_skinning_extras (bound as a
+///   per-vertex side buffer); other backends fall back to CPU skinning.
 typedef struct {
     uint16_t indices[4];
     float weights[4];
@@ -929,6 +930,24 @@ typedef struct {
     size_t final_overlay_arena_capacity;
     size_t final_overlay_arena_used;
     size_t final_overlay_arena_peak;
+
+    /* Per-frame bump arena for draw-path transients (CPU-skinned vertex
+     * buffers, gathered bone palettes). Chunked so growth NEVER relocates —
+     * recorded draw commands hold pointers into it until frame flush. One
+     * reset per frame replaces what used to be a malloc + dedup-set insert +
+     * free per skinned draw. */
+    struct canvas3d_frame_arena_chunk *frame_arena_head;
+    struct canvas3d_frame_arena_chunk *frame_arena_current;
+    size_t frame_arena_frame_bytes; /* bytes handed out this frame */
+
+/* Per-pass CPU milliseconds for the LAST flushed frame (diagnostics; never
+ * read by simulation, so VM==native determinism is unaffected). */
+#define RT_CANVAS3D_PASS_SHADOW 0
+#define RT_CANVAS3D_PASS_MAIN 1
+#define RT_CANVAS3D_PASS_OVERLAY 2
+#define RT_CANVAS3D_PASS_BACKEND_END 3
+#define RT_CANVAS3D_PASS_COUNT 4
+    double pass_cpu_ms[RT_CANVAS3D_PASS_COUNT];
     int8_t final_overlay_recording;
     int8_t frame_finalized;
     int8_t frame_presented_by_finalize;
@@ -1640,5 +1659,20 @@ int canvas3d_track_temp_object(rt_canvas3d *c, void *obj);
 void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj);
 void canvas3d_clear_temp_buffers(rt_canvas3d *c);
 void canvas3d_clear_temp_objects(rt_canvas3d *c);
+#ifdef __cplusplus
+extern "C" {
+#endif
+/// @brief Bump-allocate @p bytes of frame-transient storage (16-byte aligned).
+/// @details Chunked: growth adds chunks and never relocates, so recorded draw
+///   commands keep valid pointers until the end-of-frame reset. Returns NULL
+///   only on allocation failure (callers treat it like a malloc failure).
+void *canvas3d_frame_arena_alloc(rt_canvas3d *c, size_t bytes);
+/// @brief Rewind the frame arena (frame flush); retains a bounded chunk set.
+void canvas3d_frame_arena_reset(rt_canvas3d *c);
+/// @brief Free every frame-arena chunk (canvas teardown).
+void canvas3d_frame_arena_free(rt_canvas3d *c);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* VIPER_ENABLE_GRAPHICS */

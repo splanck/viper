@@ -2462,6 +2462,8 @@ static void test_canvas3d_per_instance_skinning_chunking() {
     std::vector<float> palettes_large((size_t)3 * 200u * 16u, 0.0f);
 
     fake.name = "metal";
+
+    fake.gpu_skinning = 1; /* mock mirrors real GPU backends */
     fake.submit_draw_instanced = r18_dummy_submit_draw_instanced;
     canvas.backend = &fake;
     canvas.gfx_win = (vgfx_window_t)1;
@@ -5052,6 +5054,7 @@ static void test_canvas_postfx_bind_time_capability_validation() {
 
     cpu_backend.name = "software";
     gpu_backend.name = "metal";
+    gpu_backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     gpu_backend.present_postfx = bindcheck_present_postfx;
 
     rt_postfx3d_add_ssao(fx, 0.5, 0.65, 8);
@@ -5267,6 +5270,8 @@ static void test_canvas_light_params_sanitize_corrupt_type() {
     assert(cam != NULL && mesh != NULL && mat != NULL && xf != NULL && light != NULL);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -5331,6 +5336,7 @@ static void test_canvas_clustered_lighting_capability_gate() {
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &backend;
 
@@ -5547,6 +5553,8 @@ static void test_canvas_light_revision_stamps() {
         rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = revision_tracking_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -5605,6 +5613,8 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -2.0, 0.0, 0.0, 0.0, 1.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -5658,6 +5668,8 @@ static void test_backend_reversed_z_negates_projection_z_row() {
     void *up = rt_vec3_new(0.0, 1.0, 0.0);
 
     standard_backend.name = "opengl";
+
+    standard_backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     standard_backend.begin_frame = tracked_begin_frame;
     standard_backend.end_frame = tracked_end_frame;
     reversed_backend = standard_backend;
@@ -5712,6 +5724,8 @@ static void test_canvas_hiz_rasterizer_culls_behind_rotated_occluder() {
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -3.0, 0.0, 0.0, 0.0, 1.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -5757,6 +5771,8 @@ static void test_frame_light_flatten_cache_shares_snapshot_across_draws() {
     void *light = rt_light3d_new_directional(light_dir, 1.0, 1.0, 1.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -5842,6 +5858,8 @@ static void test_instanced_draw_precomputes_world_bounds_in_snapshot_pass() {
     float matrices[kInstanceCount * 16];
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -6099,6 +6117,8 @@ static void test_canvas_begin2d_uses_render_target_dimensions() {
     assert(rt != NULL);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
 
@@ -6138,6 +6158,8 @@ static void test_canvas_begin_uses_active_output_aspect_without_mutating_camera(
     std::memcpy(original_projection, cam->projection, sizeof(original_projection));
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
 
@@ -6608,6 +6630,8 @@ static void test_canvas_resize_updates_backend_and_projection_aspect() {
     assert(cam != NULL);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.resize = tracked_backend_resize;
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
@@ -6681,6 +6705,8 @@ static void test_canvas_begin_applies_camera_shake_without_follow() {
     void *up = rt_vec3_new(0.0, 1.0, 0.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
 
@@ -6711,6 +6737,8 @@ static void test_canvas_overlay_draws_replay_after_3d_frame() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -6742,6 +6770,8 @@ static void test_canvas_overlay_clip_and_new_primitives() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -6796,6 +6826,8 @@ static void test_canvas_round_rect_clip_bounds_vertices() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -6844,6 +6876,8 @@ static void test_gameui_widgets_draw_on_canvas3d() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7025,6 +7059,8 @@ static void test_canvas_texture_upload_bytes_telemetry() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
     backend.get_texture_upload_bytes = tracked_texture_upload_bytes;
@@ -7061,6 +7097,8 @@ static void test_canvas_frame_gpu_time_telemetry() {
     void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
 
     backend.name = "d3d11";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.end_frame = tracked_end_frame;
     backend.get_frame_gpu_time_us = tracked_frame_gpu_time_us;
@@ -7096,6 +7134,8 @@ static void test_canvas_texture_upload_budget_controls_backend() {
     rt_canvas3d canvas;
 
     backend.name = "metal";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.set_texture_upload_budget = tracked_set_texture_upload_budget;
     backend.get_texture_upload_pending_bytes = tracked_texture_upload_pending_bytes;
 
@@ -7239,6 +7279,7 @@ static void test_canvas_material_shading_model_mapping() {
     void *mat = rt_material3d_new();
     void *xf = rt_mat4_identity();
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7291,6 +7332,7 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     auto *mat = (rt_material3d *)rt_material3d_new();
     void *xf = rt_mat4_identity();
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7401,6 +7443,8 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
     mip0 = rt_textureasset3d_get_pixels(asset);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7490,6 +7534,8 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     EXPECT_EQ(rt_pixels_get_rgba(checker, 1, 1), 0xFF00FFFFu);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7574,6 +7620,8 @@ static void test_canvas_draw_mesh_sanitizes_pending_splat_scales() {
         return;
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7617,6 +7665,8 @@ static void test_canvas_draw_mesh_rejects_corrupt_raw_morph_shape_count() {
     static const float tiny_weight[1] = {1.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7688,6 +7738,8 @@ static void test_canvas_reuses_float_payload_snapshots_within_frame() {
                               1.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7757,6 +7809,8 @@ static void test_canvas_draw_terrain_sanitizes_nonfinite_lod_distance() {
     void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7796,6 +7850,8 @@ static void test_canvas_draw_terrain_disables_cpu_occlusion_by_default() {
     void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7843,6 +7899,8 @@ static void test_canvas_draw_terrain_culls_before_building_lod0() {
     auto *terrain_view = (Terrain3DTestLayout *)terrain;
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -7997,6 +8055,8 @@ static void test_terrain_single_pixel_splat_map_draws() {
     void *layer = rt_pixels_new(2, 2);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8039,6 +8099,8 @@ static void test_terrain_splat_bake_uses_base_texture_for_missing_layers() {
     void *material;
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8093,6 +8155,8 @@ static void test_terrain_splat_bake_uses_material_color_for_missing_layers() {
     void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8159,6 +8223,8 @@ static void test_terrain_splat_layers_resolve_texture_assets() {
     asset_pixels = rt_textureasset3d_get_pixels(asset);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8222,6 +8288,8 @@ static void test_terrain_splat_bake_falls_back_when_textureasset_layer_loses_res
     rt_string_unref(path_s);
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8285,6 +8353,8 @@ static void test_terrain_draw_repairs_invalid_splat_map_and_restores_base_textur
     void *wrong_splat = rt_material3d_new();
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.end_frame = tracked_end_frame;
@@ -8838,6 +8908,8 @@ static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
     float instances[32] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -8877,6 +8949,8 @@ static void test_canvas_instanced_repairs_corrupt_mesh_counts_before_tangents() 
     float instances[16] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -8921,6 +8995,8 @@ static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
     float instances[16] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -8964,6 +9040,8 @@ static void test_canvas_instanced_gpu_uses_explicit_previous_matrices() {
     float prev_instances[16] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -9055,6 +9133,8 @@ static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
     float instances[32] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = tracked_begin_frame;
     backend.submit_draw = tracked_submit_draw;
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
@@ -9119,6 +9199,8 @@ static void test_canvas_instanced_previous_matrices_require_pointer() {
     float instance[16] = {0.0f};
 
     backend.name = "opengl";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.submit_draw_instanced = tracked_submit_draw_instanced;
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &backend;

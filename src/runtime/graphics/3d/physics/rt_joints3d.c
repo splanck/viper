@@ -188,6 +188,12 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
         joint3d_clamp_coord(j->body_b->position[1] - correction * j->body_b->inv_mass * ny);
     j->body_b->position[2] =
         joint3d_clamp_coord(j->body_b->position[2] - correction * j->body_b->inv_mass * nz);
+    if (fabs(correction) > 1e-12) {
+        if (j->body_a->inv_mass > 0.0)
+            joint3d_mark_body_moved(j->body_a);
+        if (j->body_b->inv_mass > 0.0)
+            joint3d_mark_body_moved(j->body_b);
+    }
 
     /* Velocity correction: remove relative velocity along constraint axis */
     double rvx = j->body_b->velocity[0] - j->body_a->velocity[0];
@@ -739,6 +745,12 @@ static void solve_rope(rt_rope_joint3d *j, double dt) {
         j->body_b->position[i] =
             joint3d_clamp_coord(j->body_b->position[i] - correction * j->body_b->inv_mass * n[i]);
     }
+    if (fabs(correction) > 1e-12) {
+        if (j->body_a->inv_mass > 0.0)
+            joint3d_mark_body_moved(j->body_a);
+        if (j->body_b->inv_mass > 0.0)
+            joint3d_mark_body_moved(j->body_b);
+    }
 
     joint3d_vec3_sub(j->body_b->velocity, j->body_a->velocity, rel_velocity);
     rel_along = joint3d_vec3_dot(rel_velocity, n);
@@ -959,14 +971,22 @@ static void sixdof_joint_apply_angular_limits(rt_sixdof_joint3d *j) {
     sixdof_joint_apply_pose_angle_velocity_stop(j, clamped_angles);
 }
 
-/// @brief Drive the relative linear velocity along each *unlocked* axis toward
-///   the motor target (locked axes are held by the limit solver), bounded by the
-///   motor's max-impulse strength. Powers sliders/pistons/elevators.
+/// @brief Drive the relative linear velocity along each *unlocked* joint-frame
+///   axis toward the motor target (locked axes are held by the limit solver),
+///   bounded by the motor's max-impulse strength. Powers sliders/pistons/
+///   elevators. The joint frame is body A's axes — matching the angular limits
+///   — so a piston authored along local X keeps driving along body A's X after
+///   body A rotates.
 static void sixdof_joint_apply_linear_motor(rt_sixdof_joint3d *j) {
     rt_body3d_kinematics *a = j->body_a;
     rt_body3d_kinematics *b = j->body_b;
     double rel[3];
+    double rel_frame[3];
+    double impulse_frame[3] = {0.0, 0.0, 0.0};
+    double impulse_world[3];
+    double inv_frame[4];
     double inv_sum;
+    int any_driven = 0;
     if (!joint3d_body_is_finite(a) || !joint3d_body_is_finite(b))
         return;
     if (!joint3d_vec3_all_finite(a->velocity) || !joint3d_vec3_all_finite(b->velocity))
@@ -975,19 +995,32 @@ static void sixdof_joint_apply_linear_motor(rt_sixdof_joint3d *j) {
     if (inv_sum <= 1e-9)
         return;
     joint3d_vec3_sub(b->velocity, a->velocity, rel);
+    joint3d_quat_conjugate(a->orientation, inv_frame);
+    joint3d_quat_rotate_vec3(inv_frame, rel, rel_frame);
+    if (!joint3d_vec3_all_finite(rel_frame))
+        return;
     for (int i = 0; i < 3; i++) {
         double violation;
         double correction;
         if (fabs(j->linear_max[i] - j->linear_min[i]) <= 1e-12)
             continue; /* axis is locked — leave it to the limit solver */
-        violation = rel[i] - j->linear_motor_velocity[i];
+        violation = rel_frame[i] - j->linear_motor_velocity[i];
         correction = joint3d_clamp_force(violation / inv_sum);
         if (correction > j->linear_motor_max_impulse)
             correction = j->linear_motor_max_impulse;
         else if (correction < -j->linear_motor_max_impulse)
             correction = -j->linear_motor_max_impulse;
-        a->velocity[i] = joint3d_clamp_force(a->velocity[i] + correction * a->inv_mass);
-        b->velocity[i] = joint3d_clamp_force(b->velocity[i] - correction * b->inv_mass);
+        impulse_frame[i] = correction;
+        any_driven = 1;
+    }
+    if (!any_driven)
+        return;
+    joint3d_quat_rotate_vec3(a->orientation, impulse_frame, impulse_world);
+    if (!joint3d_vec3_all_finite(impulse_world))
+        return;
+    for (int i = 0; i < 3; i++) {
+        a->velocity[i] = joint3d_clamp_force(a->velocity[i] + impulse_world[i] * a->inv_mass);
+        b->velocity[i] = joint3d_clamp_force(b->velocity[i] - impulse_world[i] * b->inv_mass);
     }
 }
 
@@ -1055,10 +1088,18 @@ static void solve_sixdof(rt_sixdof_joint3d *j, double dt) {
     (void)dt;
     if (!j)
         return;
-    joint3d_correct_anchor_pair_limited(
-        j->body_a, j->body_b, j->local_anchor_a, j->local_anchor_b, j->linear_min, j->linear_max);
-    joint3d_remove_relative_linear_velocity_locked_axes(
-        j->body_a, j->body_b, j->linear_min, j->linear_max);
+    /* Linear limits, locked axes, and the motor all operate in body A's joint
+     * frame — the same frame the angular limits use — so constraints authored
+     * against the creation pose keep tracking body A as it rotates. */
+    joint3d_correct_anchor_pair_limited_frame(j->body_a,
+                                              j->body_b,
+                                              j->local_anchor_a,
+                                              j->local_anchor_b,
+                                              j->linear_min,
+                                              j->linear_max,
+                                              j->body_a->orientation);
+    joint3d_remove_relative_linear_velocity_locked_axes_frame(
+        j->body_a, j->body_b, j->linear_min, j->linear_max, j->body_a->orientation);
     sixdof_joint_apply_angular_limits(j);
     if (j->linear_motor_enabled)
         sixdof_joint_apply_linear_motor(j);
@@ -1117,6 +1158,18 @@ int rt_joint3d_get_bodies(void *joint, int32_t joint_type, void **out_body_a, vo
 void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
     if (!joint)
         return;
+    /* Skip pairs with no active driver (both asleep / static / motionless
+     * kinematic); wake both dynamics otherwise so a sleeping partner rejoins
+     * the solve instead of silently discarding impulses. rt_joint3d_get_bodies
+     * validates the class tag before the pair prefix is trusted. */
+    {
+        void *gate_a = NULL;
+        void *gate_b = NULL;
+        if (rt_joint3d_get_bodies(joint, joint_type, &gate_a, &gate_b) &&
+            !joint3d_pair_begin_solve((rt_body3d_kinematics *)gate_a,
+                                      (rt_body3d_kinematics *)gate_b))
+            return;
+    }
     if (joint_type == RT_JOINT_DISTANCE && rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID))
         solve_distance((rt_distance_joint3d *)joint, dt);
     else if (joint_type == RT_JOINT_SPRING &&

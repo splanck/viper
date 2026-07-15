@@ -352,23 +352,24 @@ void game3d_perception_tick(rt_game3d_world *world, rt_game3d_entity *owner, dou
             if (align >= cone_cos) {
                 visible = 1;
                 /* Skip the occlusion ray for near-touching targets: the epsilon
-                 * pull-back would drive the ray length negative. */
+                 * pull-back would drive the ray length negative. The raw
+                 * closest-body raycast is allocation-free — the old boxed path
+                 * created two Vec3 handles plus a hit object per in-cone
+                 * target per perceiver per step. */
                 if (world->physics && dist > 0.05) {
-                    void *o = rt_vec3_new(origin[0], origin[1], origin[2]);
-                    void *d = rt_vec3_new(to[0] / dist, to[1] / dist, to[2] / dist);
-                    if (o && d) {
-                        void *hit =
-                            rt_world3d_raycast(world->physics, o, d, dist - 0.05, sense->los_mask);
-                        if (hit) {
-                            /* rt_physics_hit3d_get_body returns a borrowed reference. */
-                            void *hit_body = rt_physics_hit3d_get_body(hit);
-                            if (hit_body != target->body)
-                                visible = 0;
-                            game3d_release_ref(&hit);
-                        }
-                    }
-                    game3d_release_ref(&o);
-                    game3d_release_ref(&d);
+                    void *hit_body = rt_world3d_raycast_closest_body_raw(world->physics,
+                                                                         origin[0],
+                                                                         origin[1],
+                                                                         origin[2],
+                                                                         to[0] / dist,
+                                                                         to[1] / dist,
+                                                                         to[2] / dist,
+                                                                         dist - 0.05,
+                                                                         sense->los_mask,
+                                                                         NULL,
+                                                                         NULL);
+                    if (hit_body && hit_body != target->body)
+                        visible = 0;
                 }
             }
         }

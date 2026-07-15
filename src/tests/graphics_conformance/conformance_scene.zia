@@ -1,0 +1,166 @@
+// =============================================================================
+// conformance_scene.zia — fixed reference scene for cross-backend image diffs
+// =============================================================================
+//
+// Renders a deterministic composition (ground plane, rotated crates, emissive
+// orb, column, fog, ambient + default directional lighting, optional PostFX
+// chain) and writes the finalized frame to a PNG. The software rasterizer is
+// the golden reference; scripts/run_backend_conformance.sh renders this scene
+// once per backend and diffs the images with conformance_compare.zia.
+//
+// Environment:
+//   VIPER_CONFORMANCE_OUT     output PNG path (default /tmp/viper_conformance.png)
+//   VIPER_CONFORMANCE_POSTFX  "1" appends tonemap+bloom+vignette; "tonemap",
+//                             "bloom", or "vignette" isolates a single effect
+//
+// Prints "RESULT: ok" on success so smoke harnesses can gate on it.
+// =============================================================================
+module conformance_scene;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.System.Environment as Env;
+bind Viper.Terminal as Terminal;
+
+class ConformanceScene {
+    hide World3D world;
+    hide Canvas3D canvas;
+    hide Camera3D camera;
+    hide Entity3D orbEntity;
+    hide Entity3D spinCrate;
+    hide Float sceneTime;
+
+    expose func setup(width: Integer, height: Integer, postfxMode: String) {
+        world = World3D.New("Backend Conformance", width, height);
+        canvas = world.Canvas;
+        camera = world.Camera;
+        Canvas3D.SetMaxDeltaTime(canvas, 50);
+
+        world.SetFog(0.030, 0.034, 0.048, 14.0, 40.0);
+        world.SetAmbient(0.22, 0.24, 0.28);
+        world.SetQuality(QualityLevel.get_Balanced());
+
+        camera.Yaw = -34.0;
+        camera.Pitch = -16.0;
+        camera.Position = Vec3.New(4.4, 2.6, 6.2);
+
+        var groundMesh = Mesh3D.Plane(20.0, 20.0);
+        var boxMesh = Mesh3D.Box(1.0, 1.0, 1.0);
+        var sphereMesh = Mesh3D.Sphere(0.6, 24);
+        var cylinderMesh = Mesh3D.Cylinder(0.4, 1.6, 20);
+
+        var groundMat = Material3D.FromColor(0.25, 0.34, 0.28);
+        groundMat.Roughness = 0.85;
+
+        var crateMat = Material3D.FromColor(0.74, 0.32, 0.16);
+        crateMat.Roughness = 0.55;
+
+        var orbMat = Material3D.FromColor(0.10, 0.40, 0.92);
+        Material3D.SetEmissiveColor(orbMat, 0.03, 0.15, 0.50);
+        orbMat.EmissiveIntensity = 0.8;
+        orbMat.Roughness = 0.30;
+
+        var columnMat = Material3D.FromColor(0.76, 0.70, 0.50);
+        columnMat.Roughness = 0.45;
+
+        if (postfxMode != "" && postfxMode != "0") {
+            var postfx = PostFX3D.New();
+            if (postfxMode == "1" || postfxMode == "tonemap") {
+                PostFX3D.AddTonemap(postfx, 1, 1.12);
+            }
+            if (postfxMode == "1" || postfxMode == "bloom") {
+                PostFX3D.AddBloom(postfx, 0.80, 0.20, 2);
+            }
+            if (postfxMode == "1" || postfxMode == "vignette") {
+                PostFX3D.AddVignette(postfx, 0.70, 0.15);
+            }
+            Canvas3D.SetPostFX(canvas, postfx);
+        }
+
+        spawnProp("Ground", groundMesh, groundMat, 0.0, 0.0, 0.0, 1.0, 0.0);
+        spawnProp("CrateA", boxMesh, crateMat, -1.4, 0.5, 0.2, 1.0, 24.0);
+        spinCrate = spawnProp("CrateB", boxMesh, crateMat, 0.5, 0.5, -1.1, 0.8, 0.0);
+        orbEntity = spawnProp("Orb", sphereMesh, orbMat, 1.3, 0.8, 0.6, 1.0, 0.0);
+        spawnProp("Column", cylinderMesh, columnMat, -0.2, 0.8, 1.6, 1.0, 0.0);
+
+        sceneTime = 0.0;
+    }
+
+    expose func stepAndRender(dt: Float) {
+        sceneTime = sceneTime + dt;
+        // Deterministic prop animation: pure functions of accumulated time.
+        orbEntity.SetPosition(1.3, 0.8 + 0.1 * Sin(sceneTime * 2.0), 0.6);
+        spinCrate.SetRotationEuler(0.0, sceneTime * 40.0, 0.0);
+
+        world.StepSimulation(dt);
+        world.BeginFrame();
+        world.DrawScene();
+        world.DrawEffects();
+        world.EndScene();
+    }
+
+    expose func capture() -> Pixels {
+        return world.CaptureFinalFrame();
+    }
+
+    expose func present() {
+        world.Present();
+    }
+
+    expose func destroy() {
+        world.Destroy();
+    }
+
+    hide func spawnProp(
+        name: String,
+        mesh: Mesh3D,
+        material: Material3D,
+        x: Float,
+        y: Float,
+        z: Float,
+        scale: Float,
+        yawDeg: Float) -> Entity3D {
+        var entity = Entity3D.Of(mesh, material);
+        entity.Name = name;
+        entity.SetPosition(x, y, z);
+        entity.SetScale(scale);
+        entity.SetRotationEuler(0.0, yawDeg, 0.0);
+        world.Spawn(entity);
+        return entity;
+    }
+}
+
+func main() {
+    var out = Env.GetVariable("VIPER_CONFORMANCE_OUT");
+    if (out == "") {
+        out = "/tmp/viper_conformance.png";
+    }
+    var postfxMode = Env.GetVariable("VIPER_CONFORMANCE_POSTFX");
+
+    var scene = new ConformanceScene();
+    scene.setup(640, 360, postfxMode);
+
+    // A few fixed-dt frames settle shadow/streaming caches before capture.
+    var frame = 0;
+    while (frame < 4) {
+        scene.stepAndRender(0.016);
+        frame = frame + 1;
+    }
+
+    var snap = scene.capture();
+    if (snap == null) {
+        Terminal.Say("RESULT: fail capture null");
+        return;
+    }
+    if (Pixels.SavePng(snap, out) != 1) {
+        Terminal.Say("RESULT: fail save " + out);
+        return;
+    }
+
+    scene.present();
+    scene.destroy();
+    Terminal.Say("CONFORMANCE: wrote " + out);
+    Terminal.Say("RESULT: ok");
+}

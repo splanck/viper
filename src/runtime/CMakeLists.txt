@@ -361,6 +361,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/physics/rt_physics3d_character.c
         graphics/3d/physics/rt_physics3d_probes.c
         graphics/3d/physics/rt_ragdoll3d.c
+        graphics/3d/physics/rt_vehicle3d.c
         graphics/3d/physics/rt_physics3d_collision.c
         graphics/3d/physics/rt_physics3d_query.c
         graphics/3d/physics/rt_physics3d_raycast.c
@@ -472,6 +473,12 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/3d/rt_game3d_input.c
         graphics/3d/rt_game3d_presets.c
         graphics/3d/rt_game3d_diagnostics.c
+        graphics/3d/rt_game3d_ai.c
+        graphics/3d/rt_game3d_interact.c
+        graphics/3d/rt_game3d_minimap.c
+        graphics/3d/rt_game3d_persistence.c
+        graphics/3d/rt_game3d_footsteps.c
+        graphics/3d/rt_game3d_surfaces.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c
         graphics/media/rt_theora_recon.c
@@ -619,7 +626,7 @@ else ()
 endif ()
 
 # TLS certificate verification is split by platform: CryptoAPI trust store on
-# Windows, native Security.framework / manual verification elsewhere. The common
+# Windows and the in-tree PEM-bundle verifier on macOS/Linux. The common
 # DER/SAN/hostname parsing (rt_tls_verify_common.c) is compiled everywhere.
 if (WIN32)
     list(APPEND RT_NETWORK_SOURCES network/rt_tls_verify_win.c)

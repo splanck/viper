@@ -861,8 +861,10 @@ void rt_cloth3d_step(void *obj, double dt) {
         cloth->accumulator -= cloth->substep_dt;
         ++steps;
     }
-    if (steps == CLOTH3D_MAX_SUBSTEPS && cloth->accumulator > cloth->substep_dt)
-        cloth->accumulator = cloth->substep_dt; /* spiral guard: drop the excess */
+    if (steps == CLOTH3D_MAX_SUBSTEPS && cloth->accumulator >= cloth->substep_dt)
+        cloth->accumulator = 0.0; /* spiral guard: drop the excess entirely so the
+                                   * next Step starts fresh instead of instantly
+                                   * consuming one stale leftover substep */
     if (steps > 0) {
         cloth3d_write_bone_overrides(cloth);
         cloth3d_write_mesh(cloth);

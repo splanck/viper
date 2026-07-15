@@ -1268,6 +1268,37 @@ int64_t rt_mesh3d_get_retained_bytes(void *obj) {
     return mesh3d_estimate_payload_bytes(m);
 }
 
+/// @brief `Mesh3D.ReleaseCpuScratch()` — free auxiliary CPU-side geometry a
+///   finished static mesh no longer needs.
+/// @details Releases the double-precision position stream (24 bytes/vertex,
+///   kept by AddVertex-built meshes for raycast/rebase precision) and the
+///   normal-recalculation accumulator. The float vertex/index arrays are
+///   RETAINED: backends re-upload from them after GPU cache eviction, the
+///   software backend and CPU skinning read them every frame, and raycasts
+///   fall back to them (float precision) once positions64 is gone. Returns the
+///   number of bytes released. Safe to call at any time; a later AddVertex
+///   simply re-promotes precision from that point on.
+int64_t rt_mesh3d_release_cpu_scratch(void *obj) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    int64_t released = 0;
+    if (!m)
+        return 0;
+    if (m->positions64) {
+        released += (int64_t)((size_t)m->vertex_capacity * 3u * sizeof(double));
+        free(m->positions64);
+        m->positions64 = NULL;
+        m->positions64_rebase_revision = 0;
+        m->positions64_rebase_needed = 0;
+    }
+    if (m->normal_accum_scratch) {
+        released += (int64_t)(m->normal_accum_scratch_values * sizeof(double));
+        free(m->normal_accum_scratch);
+        m->normal_accum_scratch = NULL;
+        m->normal_accum_scratch_values = 0;
+    }
+    return released;
+}
+
 /// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);

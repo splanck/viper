@@ -8,8 +8,8 @@
 // File: src/runtime/network/rt_multipart.h
 // Purpose: Multipart form-data builder/parser for HTTP file uploads.
 // Key invariants:
-//   - Builder creates RFC 2046 compliant multipart/form-data bodies.
-//   - Parser extracts fields and files from multipart bodies.
+//   - Builder creates conventional CRLF-framed multipart/form-data bodies.
+//   - Parser is deliberately bounded and returns partial/empty results for malformed input.
 //   - Boundary is randomly generated for each builder instance.
 // Ownership/Lifetime:
 //   - Multipart objects are GC-managed via rt_obj_set_finalizer.

@@ -3249,8 +3249,9 @@ int rt_tls_get_socket(rt_tls_session_t *session) {
 ///
 /// Resolves `host` via `getaddrinfo` (AF_UNSPEC accepts both IPv4
 /// and IPv6), iterates the candidate addresses connecting to the
-/// first that responds within the configured timeout
-/// (non-blocking + `select`), applies recv/send timeouts to the
+/// first that responds; each address receives the configured timeout
+/// independently (non-blocking + `select`). The same value is then applied as
+/// the recv/send timeout for individual socket operations before the
 /// socket, then runs the TLS handshake. On any failure the socket
 /// is closed and NULL is returned. Initialises Winsock once on
 /// Windows. The host name is forwarded into the config for SNI and

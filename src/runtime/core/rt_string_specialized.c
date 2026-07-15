@@ -13,10 +13,11 @@
 //   SQL LIKE pattern matching.
 //
 // Key invariants:
-//   - Case conversions use a shared split_words() helper that handles camelCase
-//     word boundaries, separators, and digit transitions.
-//   - Distance metrics return int64_t values (edit distance or similarity scaled
-//     to 0-10000 for Jaro/Jaro-Winkler).
+//   - Identifier-style case conversions use a shared split_words() helper that
+//     handles explicit separators, lower-to-upper boundaries, and acronym
+//     boundaries. They are byte/C-locale operations, not Unicode casing.
+//   - Levenshtein and Hamming return byte distances; Jaro and Jaro-Winkler
+//     return double similarity scores in the range 0.0-1.0.
 //   - LIKE matching supports % (any sequence) and _ (single char) wildcards.
 //
 // Ownership/Lifetime:
@@ -870,8 +871,8 @@ static int8_t like_match(
     return pi == plen ? 1 : 0;
 }
 
-/// @brief SQL LIKE-style pattern match (case-sensitive). `%` matches any byte sequence,
-/// `_` matches a single byte. Returns 1 on match, 0 otherwise.
+/// @brief SQL LIKE-style pattern match (case-sensitive). `%` matches any sequence of
+/// UTF-8-shaped units and `_` matches one such unit. Returns 1 on match, 0 otherwise.
 int8_t rt_str_like(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);

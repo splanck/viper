@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_http_router.h
-// Purpose: HTTP URL pattern matching with parameter extraction and middleware.
+// Purpose: HTTP URL pattern matching with parameter extraction.
 // Key invariants:
 //   - Routes are matched in registration order (first match wins).
 //   - Pattern parameters use :name syntax (e.g., "/users/:id").
-//   - Wildcard *name matches the rest of the path.
+//   - Wildcard *name matches the rest of the path and should be the final segment.
+//   - Operations are not internally synchronized.
 // Ownership/Lifetime:
 //   - Router objects are GC-managed via rt_obj_set_finalizer.
 // Links: rt_http_server.h (consumer), rt_network.h

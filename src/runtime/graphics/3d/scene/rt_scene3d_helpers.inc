@@ -560,15 +560,26 @@ static void recompute_world_matrix_single(rt_scene_node3d *node) {
         return;
 
     build_trs_matrix(node->position, node->rotation, node->scale_xyz, local);
-    if (node->parent)
-        mat4d_mul(node->parent->world_matrix, local, node->world_matrix);
-    else
-        memcpy(node->world_matrix, local, sizeof(double) * 16);
-    if (!scene3d_matrix_is_finite(node->world_matrix))
-        mat4d_identity(node->world_matrix);
-    node->parent_world_revision_seen = parent_revision;
-    node->world_dirty = 0;
-    node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
+    {
+        double next_world[16];
+        if (node->parent)
+            mat4d_mul(node->parent->world_matrix, local, next_world);
+        else
+            memcpy(next_world, local, sizeof(double) * 16);
+        if (!scene3d_matrix_is_finite(next_world))
+            mat4d_identity(next_world);
+        node->parent_world_revision_seen = parent_revision;
+        node->world_dirty = 0;
+        /* Bump the revision only when the matrix actually changed: children
+         * compare parent_world_revision_seen and the spatial index refits by
+         * revision, so a recompute that lands on the identical matrix (parent
+         * refreshed to the same pose, redundant dirty) must not cascade
+         * recomputes and BVH refits through the whole subtree. */
+        if (memcmp(next_world, node->world_matrix, sizeof(next_world)) != 0) {
+            memcpy(node->world_matrix, next_world, sizeof(next_world));
+            node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
+        }
+    }
 }
 
 /// @brief Recompute the world matrix if local or parent state changed.

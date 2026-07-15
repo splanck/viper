@@ -7,7 +7,7 @@
 //
 // File: src/runtime/oop/rt_box.c
 // Purpose: Implements boxing and unboxing primitives that wrap scalar values
-//          (i64, f64, bool, string, pointer) into heap-allocated objects for
+//          (i64, f64, bool, and string) into heap-allocated objects for
 //          use in generic collections (Seq, Map, List). Each boxed value
 //          carries a type tag for runtime type discrimination.
 //

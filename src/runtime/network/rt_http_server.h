@@ -64,7 +64,7 @@ void rt_http_server_bind_handler_dispatch(
 /// @brief Start accepting connections (blocks on accept loop in background thread).
 void rt_http_server_start(void *server);
 
-/// @brief Stop the server gracefully.
+/// @brief Stop accepting, interrupt active connections, and wait for workers to exit.
 void rt_http_server_stop(void *server);
 
 /// @brief Get the listening port.

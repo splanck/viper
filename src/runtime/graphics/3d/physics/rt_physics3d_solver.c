@@ -272,36 +272,14 @@ static int ph3d_contact_should_solve(rt_body3d *a, rt_body3d *b) {
     return 1;
 }
 
-/// @brief Free every scratch array owned by a solver-island batch and zero it. Safe on NULL.
+/// @brief Reset a solver-island batch. Safe on NULL.
+/// @details The batch arrays are carved out of the world's
+///   PH3D_SCRATCH_SOLVER_BATCH slot (persistent, reused every substep), so
+///   there is nothing to free here — only the view is cleared.
 void ph3d_solver_island_batch_free(ph3d_solver_island_batch *batch) {
     if (!batch)
         return;
-    free(batch->parent);
-    free(batch->active_body);
-    free(batch->root_to_island);
-    free(batch->body_island);
-    free(batch->island_contact_counts);
-    free(batch->island_write_offsets);
-    free(batch->island_offsets);
-    free(batch->contact_indices);
     memset(batch, 0, sizeof(*batch));
-}
-
-/// @brief Allocate an int32 array of @p count elements — zero-filled when @p zeroed, else
-///   uninitialized — with overflow checks, writing the buffer to @p out.
-/// @return 1 on success (including count==0, which yields a NULL buffer), 0 on overflow or OOM.
-static int ph3d_alloc_i32_array(int32_t count, int zeroed, int32_t **out) {
-    size_t bytes;
-    if (!out)
-        return 0;
-    *out = NULL;
-    if (count < 0)
-        return 0;
-    if ((size_t)count > SIZE_MAX / sizeof(int32_t))
-        return 0;
-    bytes = (size_t)count * sizeof(int32_t);
-    *out = zeroed ? (int32_t *)calloc((size_t)count, sizeof(int32_t)) : (int32_t *)malloc(bytes);
-    return *out || count == 0;
 }
 
 /// @brief Push a non-negative @p value onto a growable int32 stack (initial capacity 128,
@@ -330,25 +308,45 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
     return 1;
 }
 
-/// @brief Allocate the per-body and per-contact scratch arrays for one island-solver batch:
-///   union-find parent, active-body flags, root/body→island maps, per-island contact counts
-///   and write offsets, the island offset table, and the contact-index buffer.
-/// @return 1 if every allocation succeeds, 0 on bad world state or any allocation failure.
+/// @brief Carve the per-body and per-contact scratch arrays for one island-solver batch
+///   (union-find parent, active-body flags, root/body→island maps, per-island contact
+///   counts/write offsets, island offset table, contact-index buffer) out of the world's
+///   persistent PH3D_SCRATCH_SOLVER_BATCH slot.
+/// @details One zeroed block per substep replaces what used to be 8 malloc/calloc + 8 free
+///   pairs per substep. The slot grows geometrically and lives until world teardown, so the
+///   solver's hottest path performs no allocator round-trips once warmed.
+/// @return 1 when the scratch is available, 0 on bad world state or allocation failure.
 static int ph3d_solver_island_batch_alloc(rt_world3d *w, ph3d_solver_island_batch *batch) {
-    int32_t island_offset_count;
+    size_t body_slots;
+    size_t contact_slots;
+    size_t total_slots;
+    int32_t *mem;
     if (!w || !batch || w->body_count < 0 || w->contact_count < 0)
         return 0;
     if (w->body_count == INT32_MAX)
         return 0;
-    island_offset_count = w->body_count + 1;
-    return ph3d_alloc_i32_array(w->body_count, 0, &batch->parent) &&
-           ph3d_alloc_i32_array(w->body_count, 1, &batch->active_body) &&
-           ph3d_alloc_i32_array(w->body_count, 0, &batch->root_to_island) &&
-           ph3d_alloc_i32_array(w->body_count, 0, &batch->body_island) &&
-           ph3d_alloc_i32_array(w->body_count, 1, &batch->island_contact_counts) &&
-           ph3d_alloc_i32_array(w->body_count, 1, &batch->island_write_offsets) &&
-           ph3d_alloc_i32_array(island_offset_count, 1, &batch->island_offsets) &&
-           ph3d_alloc_i32_array(w->contact_count, 0, &batch->contact_indices);
+    body_slots = (size_t)w->body_count;
+    contact_slots = (size_t)w->contact_count;
+    /* 6 per-body arrays + island_offsets (body_slots + 1) + contact_indices. */
+    if (body_slots > (SIZE_MAX / sizeof(int32_t) - 1u) / 7u)
+        return 0;
+    total_slots = body_slots * 7u + 1u;
+    if (contact_slots > SIZE_MAX / sizeof(int32_t) - total_slots)
+        return 0;
+    total_slots += contact_slots;
+    mem = (int32_t *)world3d_step_scratch_acquire(
+        w, PH3D_SCRATCH_SOLVER_BATCH, total_slots * sizeof(int32_t), 1);
+    if (!mem)
+        return 0;
+    batch->parent = mem;
+    batch->active_body = mem + body_slots;
+    batch->root_to_island = mem + body_slots * 2u;
+    batch->body_island = mem + body_slots * 3u;
+    batch->island_contact_counts = mem + body_slots * 4u;
+    batch->island_write_offsets = mem + body_slots * 5u;
+    batch->island_offsets = mem + body_slots * 6u;
+    batch->contact_indices = mem + body_slots * 7u + 1u;
+    return 1;
 }
 
 /// @brief Return the world's index for @p body, using cached owner metadata first.
@@ -602,13 +600,14 @@ static void world3d_warm_start_contact(rt_world3d *w,
         vec3_sub(c->points[k], b->position, r_b);
         vn0 = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
         /* Restitution is an impact phenomenon: apply it only on the first
-         * frame of a contact (no warm-start seed). A persistent/resting
-         * contact gets zero restitution bias, so a stack cannot bounce
-         * itself apart if a body momentarily speeds up. */
+         * frame of a PAIR (prev == NULL). Persistence is judged at pair
+         * level, not from the warm-start seed: a seed rejected for other
+         * reasons (normal-agreement guard, manifold point-count change)
+         * must not re-inject an impact bounce into a resting stack. */
         {
             double threshold = ph3d_clamp_nonnegative_finite(w->restitution_threshold,
                                                              PH3D_DEFAULT_RESTITUTION_THRESHOLD);
-            c->restitution_bias[k] = (seed_n == 0.0 && vn0 < -threshold) ? -e * vn0 : 0.0;
+            c->restitution_bias[k] = (prev == NULL && vn0 < -threshold) ? -e * vn0 : 0.0;
         }
 
         ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, seed_n);
@@ -788,17 +787,20 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     }
     if (!ph3d_vec3_all_finite(next_a) || !ph3d_vec3_all_finite(next_b))
         return;
-    /* Angular pseudo-impulse: dtheta = I^-1 (r x J), clamped per pass. */
+    /* Angular pseudo-impulse: dtheta = I^-1 (r x J), clamped per pass. The
+     * torque is a world-space vector, so it must go through the world-space
+     * inverse inertia (R * I_local^-1 * R^T) — the same transform the scalar
+     * `denom` above used — not the raw body-local diagonal. */
     {
         double torque_a[3];
         double torque_b[3];
         double mag;
         vec3_cross(r_a, impulse, torque_a);
         vec3_cross(r_b, impulse, torque_b);
-        for (int axis = 0; axis < 3; axis++) {
-            dtheta_a[axis] = -torque_a[axis] * a->inv_inertia[axis];
-            dtheta_b[axis] = torque_b[axis] * b->inv_inertia[axis];
-        }
+        body3d_world_inv_inertia_mul(a, torque_a, dtheta_a);
+        body3d_world_inv_inertia_mul(b, torque_b, dtheta_b);
+        for (int axis = 0; axis < 3; axis++)
+            dtheta_a[axis] = -dtheta_a[axis];
         mag = vec3_len(dtheta_a);
         if (isfinite(mag) && mag > PH3D_MAX_ANGULAR_CORRECTION)
             vec3_scale_in_place(dtheta_a, PH3D_MAX_ANGULAR_CORRECTION / mag);
@@ -810,10 +812,19 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
         if (!ph3d_vec3_all_finite(dtheta_b))
             vec3_set(dtheta_b, 0.0, 0.0, 0.0);
     }
-    vec3_copy(a->position, next_a);
-    vec3_copy(b->position, next_b);
-    ph3d_apply_position_rotation(a, dtheta_a);
-    ph3d_apply_position_rotation(b, dtheta_b);
+    /* Only dynamic bodies can move here (inv_mass/inv_inertia are zero for the
+     * rest, so next == position and dtheta == 0). Skipping the writes for
+     * non-dynamic bodies also removes a formal data race: a static body shared
+     * by two islands would otherwise be written (with identical values) from
+     * two solver threads at once. */
+    if (a->motion_mode == PH3D_MODE_DYNAMIC) {
+        vec3_copy(a->position, next_a);
+        ph3d_apply_position_rotation(a, dtheta_a);
+    }
+    if (b->motion_mode == PH3D_MODE_DYNAMIC) {
+        vec3_copy(b->position, next_b);
+        ph3d_apply_position_rotation(b, dtheta_b);
+    }
     /* Record the penetration removed this pass so the next position iteration
      * reads the reduced overlap instead of re-applying the detection-time
      * separation (nonlinear Gauss-Seidel; without this, raising
@@ -855,9 +866,13 @@ void world3d_warm_start_solver_islands(rt_world3d *w, const ph3d_solver_island_b
         return;
     /* Index the previous frame's contacts once so each current contact matches in
      * O(1) instead of scanning all previous contacts (was O(current x previous) per
-     * substep). NULL on empty/alloc-failure falls back to the linear scan. */
-    prev_table =
-        contact_pair_table_build(w->previous_contacts, w->previous_contact_count, &prev_capacity);
+     * substep). Built in the world's persistent pair-table scratch — no per-substep
+     * malloc/free. NULL on empty/alloc-failure falls back to the linear scan. */
+    prev_table = contact_pair_table_build_scratch(w,
+                                                  PH3D_SCRATCH_PAIR_TABLE_A,
+                                                  w->previous_contacts,
+                                                  w->previous_contact_count,
+                                                  &prev_capacity);
     for (int32_t island = 0; island < batch->island_count; ++island) {
         int32_t begin = batch->island_offsets[island];
         int32_t end = batch->island_offsets[island + 1];
@@ -865,7 +880,6 @@ void world3d_warm_start_solver_islands(rt_world3d *w, const ph3d_solver_island_b
             world3d_warm_start_contact(
                 w, &w->contacts[batch->contact_indices[i]], prev_table, prev_capacity);
     }
-    free(prev_table);
 }
 
 /// @brief Run one velocity-solve pass over every solvable contact, island by island
@@ -1131,6 +1145,17 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
 
     if (!w || !a || !b || a == b)
         return 1;
+    /* Canonicalize pair order by stable body index so a persistent pair keeps
+     * the same A/B roles (and manifold normal sign) when the broadphase sweep
+     * axis flips between frames. Index-based warm-start matching compares
+     * body_a/body_b directly; without a canonical order an axis flip swaps the
+     * roles, the normal-agreement guard rejects the seed, and settled stacks
+     * transiently soften. Deterministic: indices come from creation order. */
+    if (world3d_body_index_of(w, b) < world3d_body_index_of(w, a)) {
+        rt_body3d *swap_body = a;
+        a = b;
+        b = swap_body;
+    }
     if (a->motion_mode == PH3D_MODE_STATIC && b->motion_mode == PH3D_MODE_STATIC)
         return 1;
     if (!(a->collision_layer & b->collision_mask))

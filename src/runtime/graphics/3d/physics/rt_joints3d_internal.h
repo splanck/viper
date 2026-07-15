@@ -88,6 +88,22 @@ double joint3d_effective_inv_inertia_about_axis(const rt_body3d_kinematics *body
 void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
                                    const double *local_axis,
                                    double *out);
+/* Sleep/wake + broadphase bridge (defined in rt_physics3d.c, where the full
+ * rt_body3d layout is known). Joint solvers only see the kinematics prefix
+ * view, so they cannot touch motion_mode/is_sleeping/broadphase directly. */
+
+/// @brief Gate a joint solve on pair activity and wake the pair when it runs.
+/// @details Returns 0 (skip solving) when neither endpoint can drive the
+///   constraint: both dynamics asleep, static anchors, and motionless
+///   kinematics don't need the joint enforced this substep. When any endpoint
+///   is an active driver, both dynamic endpoints are woken (so a sleeping
+///   partner picks impulses up again) and 1 is returned.
+int joint3d_pair_begin_solve(rt_body3d_kinematics *body_a, rt_body3d_kinematics *body_b);
+
+/// @brief Record that a joint position-correction moved @p body, so cached
+///   query-broadphase entries revalidate against the new pose.
+void joint3d_mark_body_moved(rt_body3d_kinematics *body);
+
 void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
                                  rt_body3d_kinematics *body_b,
                                  const double *local_anchor_a,
@@ -99,6 +115,18 @@ void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
                                          const double *local_anchor_b,
                                          const double *linear_min,
                                          const double *linear_max);
+void joint3d_correct_anchor_pair_limited_frame(rt_body3d_kinematics *body_a,
+                                               rt_body3d_kinematics *body_b,
+                                               const double *local_anchor_a,
+                                               const double *local_anchor_b,
+                                               const double *linear_min,
+                                               const double *linear_max,
+                                               const double *frame_quat);
+void joint3d_remove_relative_linear_velocity_locked_axes_frame(rt_body3d_kinematics *body_a,
+                                                               rt_body3d_kinematics *body_b,
+                                                               const double *linear_min,
+                                                               const double *linear_max,
+                                                               const double *frame_quat);
 void joint3d_remove_relative_linear_velocity(rt_body3d_kinematics *body_a,
                                              rt_body3d_kinematics *body_b,
                                              double amount);

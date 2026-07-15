@@ -6,7 +6,7 @@
 
 ### What this release is about
 
-The largest release in the project's history. Five themes:
+This release spans five themes:
 
 - **GPU backend maturity.** Metal and D3D11 reach ~94% parity with the software renderer; OpenGL gains shared infrastructure. 53 per-plan feature implementations across all four backends cover lit textures, spot lights, normal/specular/emissive maps, fog, wireframe, GPU skinning + morph targets, HDR post-FX (bloom / FXAA / tonemap / vignette / color grade), shadow mapping with PCF, instancing, terrain splatting, skybox, and environment reflections.
 - **Native toolchain, end-to-end.** `viper build` goes from Zia source to `.exe` / Mach-O / ELF with zero external tools on all three platforms. From-scratch PE/COFF linker, full ELF dynamic-linking, platform-aware Mach-O symbol resolution, Windows ARM64 import-stub emission, and a new `NativeEHLowering` pass that rewrites structured IL EH into ordinary calls before backend lowering.

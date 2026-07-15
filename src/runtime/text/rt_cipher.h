@@ -13,7 +13,9 @@
 // Key invariants:
 //   - Password-based format: [magic][iterations][16 bytes salt][12 bytes nonce][ciphertext][tag].
 //   - Key-based format: [magic][12 bytes nonce][ciphertext][16 bytes tag].
-//   - Nonces are generated automatically from a secure random source.
+//   - Nonces use a 4-byte CSPRNG prefix plus an 8-byte process-local counter;
+//     callers reusing a raw key across processes must account for the 32-bit
+//     cross-process collision margin.
 //   - Decryption returns NULL for invalid/corrupt ciphertext (authentication failure).
 //
 // Ownership/Lifetime:
@@ -41,7 +43,7 @@ extern "C" {
 /// @brief Encrypt data using a password.
 /// @details Derives a 256-bit key from the password using PBKDF2-HMAC-SHA256
 ///          with a random 16-byte salt and a fixed strong work factor.
-///          Generates a random 12-byte nonce.
+///          Generates a 12-byte random-prefix/counter nonce.
 ///          Uses ChaCha20-Poly1305 AEAD in compatibility mode and AES-256-GCM in approved mode.
 /// @param plaintext Bytes object containing data to encrypt.
 /// @param password Password string used for key derivation.
@@ -56,7 +58,7 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad);
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param password Password string used for key derivation.
 /// @return Bytes object containing decrypted plaintext.
-/// @note Traps if authentication fails or ciphertext is malformed.
+/// @note Returns NULL on authentication failure; malformed arguments may trap.
 void *rt_cipher_decrypt(void *ciphertext, rt_string password);
 
 /// @brief Decrypt password-encrypted data and report failures as a Result.
@@ -109,7 +111,8 @@ void *rt_cipher_try_decrypt_aad(void *ciphertext, rt_string password, void *aad)
 //=========================================================================
 
 /// @brief Encrypt data using a raw 256-bit key.
-/// @details Generates a random 12-byte nonce. Uses ChaCha20-Poly1305 AEAD.
+/// @details Generates a 12-byte random-prefix/counter nonce. Uses
+///          ChaCha20-Poly1305 in compatibility mode or AES-256-GCM in approved mode.
 /// @param plaintext Bytes object containing data to encrypt.
 /// @param key Bytes object containing exactly 32 bytes (256-bit key).
 /// @return Bytes object: [magic(4) | nonce(12) | ciphertext | tag(16)]

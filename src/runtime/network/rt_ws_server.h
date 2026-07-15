@@ -9,8 +9,8 @@
 // Purpose: WebSocket server that accepts upgrade requests on a TCP port.
 // Key invariants:
 //   - Performs HTTP upgrade handshake per RFC 6455.
-//   - Each client handled in a dedicated thread.
-//   - Broadcast sends to all connected clients.
+//   - The accept loop tracks upgraded raw TCP clients but does not drain their inbound frames.
+//   - Broadcast sends synchronously to all tracked clients under the client-list mutex.
 // Ownership/Lifetime:
 //   - Server and client objects are GC-managed.
 // Links: rt_websocket.h (client-side framing), rt_network.h (TCP)
@@ -37,7 +37,7 @@ void rt_ws_server_set_subprotocol(void *server, rt_string subprotocol);
 void rt_ws_server_broadcast(void *server, rt_string message);
 /// @brief Send a binary frame (Bytes) to every connected client.
 void rt_ws_server_broadcast_bytes(void *server, void *data);
-/// @brief Count of currently-connected clients.
+/// @brief Count of client slots still marked active (remote liveness is not proactively probed).
 int64_t rt_ws_server_client_count(void *server);
 /// @brief Negotiated subprotocol required for new clients, or empty string.
 rt_string rt_ws_server_subprotocol(void *server);

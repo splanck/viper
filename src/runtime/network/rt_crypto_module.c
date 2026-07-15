@@ -408,8 +408,8 @@ int rt_crypto_module_init(void) {
 /// @brief Switch the module between COMPAT and APPROVED.
 /// @details Transitioning to APPROVED forces an @c init call (which
 ///          re-runs the self-tests) so a freshly switched module is
-///          always known to be in a passing state. COMPAT transitions
-///          are unconditional.
+///          always known to be in a passing state. COMPAT transitions are
+///          accepted from READY but rejected once ERROR pins the module.
 /// @return 1 on success; 0 when self-tests block the APPROVED move.
 int rt_crypto_module_set_mode(rt_crypto_module_mode_t mode) {
     if (mode == RT_CRYPTO_MODULE_MODE_APPROVED) {
@@ -461,7 +461,7 @@ int rt_crypto_module_is_approved_mode(void) {
 }
 
 /// @brief Policy gate for individual primitives.
-/// @details In COMPAT mode every service is allowed. In APPROVED only
+/// @details In COMPAT mode every service is allowed unless state is ERROR. In APPROVED only
 ///          the FIPS-aligned subset (AES-GCM, SHA-2, HMAC-SHA-2,
 ///          HKDF-SHA-2, PBKDF2-SHA-256, DRBG, ECDSA-P256, RSA-PSS)
 ///          returns non-zero — legacy services refuse.

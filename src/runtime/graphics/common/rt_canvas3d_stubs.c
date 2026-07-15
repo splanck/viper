@@ -2240,3 +2240,479 @@ void rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_
     (void)cl;
     RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawText3D: graphics support not compiled in");
 }
+
+/// @brief Stub for `Mesh3D.ReleaseCpuScratch`. Silent stub returning 0.
+int64_t rt_mesh3d_release_cpu_scratch(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.PassCpuMs`. Silent stub returning 0.
+double rt_canvas3d_get_pass_cpu_ms(void *obj, int64_t pass) {
+    (void)obj;
+    (void)pass;
+    return 0.0;
+}
+
+/// @brief Stub for `Canvas3D.get_PassCount`. Silent stub returning 0.
+int64_t rt_canvas3d_get_pass_count(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+/* Stub-parity audit additions: entry points registered in the 3D runtime
+ * defs whose implementations compile only in graphics-enabled builds. */
+
+/// @brief Silent fallback stub for `Camera3D.WorldToScreen` (graphics-disabled build).
+void *rt_camera3d_world_to_screen_vec(void *o, void *a1, int64_t a2, int64_t a3) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Camera3D.WorldToScreen: graphics support not compiled in", NULL);
+}
+
+/// @brief Trapping stub for `Canvas3D.BeginViewModel` (graphics-disabled build).
+void rt_canvas3d_begin_view_model(void *o, void *a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.BeginViewModel: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.ClearClipRect2D` (graphics-disabled build).
+void rt_canvas3d_clear_clip_rect2d(void *o) {
+    (void)o;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.ClearClipRect2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawFrame2D` (graphics-disabled build).
+void rt_canvas3d_draw_frame2d(
+    void *o, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, double a6) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawFrame2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawImage2DNineSlice` (graphics-disabled build).
+void rt_canvas3d_draw_image2d_nine_slice(void *o,
+                                         int64_t a1,
+                                         int64_t a2,
+                                         int64_t a3,
+                                         int64_t a4,
+                                         void *a5,
+                                         int64_t a6,
+                                         int64_t a7,
+                                         int64_t a8,
+                                         int64_t a9) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    (void)a7;
+    (void)a8;
+    (void)a9;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawImage2DNineSlice: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawImage2DRegion` (graphics-disabled build).
+void rt_canvas3d_draw_image2d_region(void *o,
+                                     int64_t a1,
+                                     int64_t a2,
+                                     int64_t a3,
+                                     int64_t a4,
+                                     void *a5,
+                                     int64_t a6,
+                                     int64_t a7,
+                                     int64_t a8,
+                                     int64_t a9) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    (void)a7;
+    (void)a8;
+    (void)a9;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawImage2DRegion: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawLensFlare` (graphics-disabled build).
+void rt_canvas3d_draw_lens_flare(void *o, void *a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawLensFlare: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawLine2D` (graphics-disabled build).
+void rt_canvas3d_draw_line2d(
+    void *o, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, double a6) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawLine2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawRoundFrame2D` (graphics-disabled build).
+void rt_canvas3d_draw_round_frame2d(
+    void *o, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, int64_t a6, double a7) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    (void)a7;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawRoundFrame2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawRoundRect2D` (graphics-disabled build).
+void rt_canvas3d_draw_round_rect2d(
+    void *o, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, int64_t a6, double a7) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    (void)a6;
+    (void)a7;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawRoundRect2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawText2DAA` (graphics-disabled build).
+void rt_canvas3d_draw_text2d_aa(
+    void *o, int64_t a1, int64_t a2, rt_string a3, int64_t a4, double a5) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawText2DAA: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.DrawText2DScaled` (graphics-disabled build).
+void rt_canvas3d_draw_text2d_scaled(
+    void *o, int64_t a1, int64_t a2, rt_string a3, int64_t a4, double a5) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    (void)a5;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.DrawText2DScaled: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_ClusterOverflowCount` (graphics-disabled build).
+int64_t rt_canvas3d_get_cluster_overflow_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_ClusterOverflowCount: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_DroppedLightCount` (graphics-disabled build).
+int64_t rt_canvas3d_get_dropped_light_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_DroppedLightCount: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_GpuSkinnedDrawCount` (graphics-disabled build).
+int64_t rt_canvas3d_get_gpu_skinned_draw_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_GpuSkinnedDrawCount: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_InstancedFallbackCount` (graphics-disabled build).
+int64_t rt_canvas3d_get_instanced_fallback_count(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_InstancedFallbackCount: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_RenderScale` (graphics-disabled build).
+double rt_canvas3d_get_render_scale(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.get_RenderScale: graphics support not compiled in",
+                                  0.0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_ShadowDistance` (graphics-disabled build).
+double rt_canvas3d_get_shadow_distance(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.get_ShadowDistance: graphics support not compiled in",
+                                  0.0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_ShadowRequestsDropped` (graphics-disabled build).
+int64_t rt_canvas3d_get_shadow_requests_dropped(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_ShadowRequestsDropped: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_ShadowSlotsUsed` (graphics-disabled build).
+int64_t rt_canvas3d_get_shadow_slots_used(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.get_ShadowSlotsUsed: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_SkinningUploadBytes` (graphics-disabled build).
+int64_t rt_canvas3d_get_skinning_upload_bytes(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "Canvas3D.get_SkinningUploadBytes: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.get_VSync` (graphics-disabled build).
+int8_t rt_canvas3d_get_vsync(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.get_VSync: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.MeasureText2D` (graphics-disabled build).
+int64_t rt_canvas3d_measure_text2d(void *o, rt_string a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.MeasureText2D: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.MeasureText2DAA` (graphics-disabled build).
+int64_t rt_canvas3d_measure_text2d_aa(void *o, rt_string a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.MeasureText2DAA: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.PassDrawCount` (graphics-disabled build).
+int64_t rt_canvas3d_pass_draw_count(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.PassDrawCount: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `Canvas3D.PassInstanceCount` (graphics-disabled build).
+int64_t rt_canvas3d_pass_instance_count(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.PassInstanceCount: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Trapping stub for `Canvas3D.SetClipRect2D` (graphics-disabled build).
+void rt_canvas3d_set_clip_rect2d(void *o, int64_t a1, int64_t a2, int64_t a3, int64_t a4) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetClipRect2D: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetClusterLightBudget` (graphics-disabled build).
+void rt_canvas3d_set_cluster_light_budget(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetClusterLightBudget: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetForceCpuSkinning` (graphics-disabled build).
+void rt_canvas3d_set_force_cpu_skinning(void *o, int8_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetForceCpuSkinning: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetShadowBudget` (graphics-disabled build).
+void rt_canvas3d_set_shadow_budget(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetShadowBudget: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetShadowDistance` (graphics-disabled build).
+void rt_canvas3d_set_shadow_distance(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetShadowDistance: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetShadowQuality` (graphics-disabled build).
+void rt_canvas3d_set_shadow_quality(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetShadowQuality: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetShadowStrength` (graphics-disabled build).
+void rt_canvas3d_set_shadow_strength(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetShadowStrength: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `Canvas3D.SetVSync` (graphics-disabled build).
+void rt_canvas3d_set_vsync(void *o, int8_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("Canvas3D.SetVSync: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `Canvas3D.TrySetRenderScale` (graphics-disabled build).
+int8_t rt_canvas3d_try_set_render_scale(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("Canvas3D.TrySetRenderScale: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Trapping stub for `CubeMap3D.LoadHdrPanorama` (graphics-disabled build).
+void *rt_cubemap3d_load_hdr_panorama(rt_string a0, double a1) {
+    (void)a0;
+    (void)a1;
+    RT_GRAPHICS_TRAP_RET("CubeMap3D.LoadHdrPanorama: graphics support not compiled in", NULL);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_GrabPoint` (graphics-disabled build).
+void *rt_ledge_hit3d_get_grab_point(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_GrabPoint: graphics support not compiled in",
+                                  NULL);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_HasLanding` (graphics-disabled build).
+int8_t rt_ledge_hit3d_get_has_landing(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_HasLanding: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_HasStandingRoom` (graphics-disabled build).
+int8_t rt_ledge_hit3d_get_has_standing_room(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET(
+        "LedgeHit3D.get_HasStandingRoom: graphics support not compiled in", 0);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_Height` (graphics-disabled build).
+double rt_ledge_hit3d_get_height(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_Height: graphics support not compiled in", 0.0);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_LandingPoint` (graphics-disabled build).
+void *rt_ledge_hit3d_get_landing_point(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_LandingPoint: graphics support not compiled in",
+                                  NULL);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_SurfaceNormal` (graphics-disabled build).
+void *rt_ledge_hit3d_get_surface_normal(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_SurfaceNormal: graphics support not compiled in",
+                                  NULL);
+}
+
+/// @brief Silent fallback stub for `LedgeHit3D.get_WallNormal` (graphics-disabled build).
+void *rt_ledge_hit3d_get_wall_normal(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("LedgeHit3D.get_WallNormal: graphics support not compiled in",
+                                  NULL);
+}
+
+/// @brief Trapping stub for `LensFlare3D.AddElement` (graphics-disabled build).
+void rt_lensflare3d_add_element(void *o, double a1, double a2, int64_t a3, double a4) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    (void)a4;
+    RT_GRAPHICS_TRAP_VOID("LensFlare3D.AddElement: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `LensFlare3D.New` (graphics-disabled build).
+void *rt_lensflare3d_new(void *o) {
+    (void)o;
+    RT_GRAPHICS_TRAP_RET("LensFlare3D.New: graphics support not compiled in", NULL);
+}
+
+/// @brief Trapping stub for `PostFX3D.AddAutoExposure` (graphics-disabled build).
+void rt_postfx3d_add_auto_exposure(void *o, double a1, double a2, double a3) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    RT_GRAPHICS_TRAP_VOID("PostFX3D.AddAutoExposure: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `PostFX3D.AddColorLUT` (graphics-disabled build).
+void rt_postfx3d_add_color_lut(void *o, void *a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("PostFX3D.AddColorLUT: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `PostFX3D.AddSSR` (graphics-disabled build).
+void rt_postfx3d_add_ssr(void *o, double a1, double a2) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    RT_GRAPHICS_TRAP_VOID("PostFX3D.AddSSR: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `PostFX3D.AddSunShafts` (graphics-disabled build).
+void rt_postfx3d_add_sun_shafts(void *o, double a1, double a2, int64_t a3) {
+    (void)o;
+    (void)a1;
+    (void)a2;
+    (void)a3;
+    RT_GRAPHICS_TRAP_VOID("PostFX3D.AddSunShafts: graphics support not compiled in");
+}
+
+/// @brief Trapping stub for `PostFX3D.AddTAA` (graphics-disabled build).
+void rt_postfx3d_add_taa(void *o, double a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("PostFX3D.AddTAA: graphics support not compiled in");
+}
+
+/// @brief Silent fallback stub for `PostFX3D.get_LastError` (graphics-disabled build).
+rt_string rt_postfx3d_get_last_error(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("PostFX3D.get_LastError: graphics support not compiled in",
+                                  rt_string_from_bytes("", 0));
+}
+
+/// @brief Silent fallback stub for `PostFX3D.MakeIdentityLUT` (graphics-disabled build).
+void *rt_postfx3d_make_identity_lut(void) {
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("PostFX3D.MakeIdentityLUT: graphics support not compiled in",
+                                  NULL);
+}
+
+/// @brief Trapping stub for `RenderTarget3D.CopyTo` (graphics-disabled build).
+void rt_rendertarget3d_copy_to(void *o, void *a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("RenderTarget3D.CopyTo: graphics support not compiled in");
+}

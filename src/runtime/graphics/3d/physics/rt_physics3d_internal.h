@@ -93,6 +93,15 @@ extern double rt_quat_w(void *q);
 #define PH3D_MAX_MANIFOLD_POINTS 4
 #define PH3D_INITIAL_CONTACTS 128
 #define PH3D_MAX_QUERY_HITS 256
+/* World-persistent step scratch slots (see world3d_step_scratch_acquire).
+ * Buffers grow on demand, are reused every substep, and are freed only at
+ * world teardown — the solver's hottest path performs no per-substep
+ * malloc/free. Distinct slots exist for buffers alive at the same time. */
+#define PH3D_SCRATCH_SOLVER_BATCH 0
+#define PH3D_SCRATCH_PAIR_TABLE_A 1
+#define PH3D_SCRATCH_PAIR_TABLE_B 2
+#define PH3D_SCRATCH_EVENT_FLAGS 3
+#define PH3D_WORLD_SCRATCH_SLOTS 4
 /* Slop added to each cached query-broadphase AABB. Bodies that move without
  * escaping their fattened bounds do not invalidate the cache: the fat entry
  * remains a conservative candidate filter and narrow phase tests live body
@@ -217,6 +226,10 @@ struct rt_world3d {
     ph3d_broadphase_entry *broadphase_sort_scratch;
     int32_t broadphase_capacity;
     int32_t broadphase_sort_scratch_capacity;
+    /* Step-scratch slots (island batch, warm-start/event pair tables, event
+     * flags): world-owned, grown on demand, never freed mid-simulation. */
+    void *step_scratch[PH3D_WORLD_SCRATCH_SLOTS];
+    size_t step_scratch_capacity[PH3D_WORLD_SCRATCH_SLOTS];
     uint64_t broadphase_world_revision;
     /* Query-broadphase cache. Entries live in their own array (never shared
      * with the per-step solver broadphase, which re-sorts on the widest axis
@@ -451,6 +464,7 @@ void body3d_update_shape_cache_from_collider(rt_body3d *body);
 void body3d_contact_velocity(const rt_body3d *b, const double *r, double *out);
 double body3d_contact_impulse_denominator(const rt_body3d *b, const double *r, const double *dir);
 void body3d_apply_contact_impulse(rt_body3d *b, const double *impulse, const double *r);
+void body3d_world_inv_inertia_mul(const rt_body3d *b, const double *v, double *out);
 
 // --- World book-keeping / validation (defined in rt_physics3d.c) ---
 rt_world3d *world3d_checked(void *obj);
@@ -459,6 +473,8 @@ int world3d_reserve_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed);
 int world3d_reserve_query_broadphase_capacity(rt_world3d *w, int32_t needed);
+void *world3d_step_scratch_acquire(rt_world3d *w, int32_t slot, size_t bytes, int zeroed);
+void world3d_step_scratch_free_all(rt_world3d *w);
 void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled);
 void *physics_hit3d_new(const rt_query_hit3d *src);
 void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,
@@ -504,6 +520,11 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
                                               void *b_leaf,
                                               const rt_collider_pose *b_pose);
 int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b);
+contact_pair_hash_entry *contact_pair_table_build_scratch(rt_world3d *w,
+                                                          int32_t scratch_slot,
+                                                          const rt_contact3d *contacts,
+                                                          int32_t count,
+                                                          int32_t *out_capacity);
 contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
                                                   int32_t count,
                                                   int32_t *out_capacity);

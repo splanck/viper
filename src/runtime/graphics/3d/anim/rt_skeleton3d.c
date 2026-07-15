@@ -59,22 +59,15 @@
 #define SKELETON3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define SKELETON3D_ANIM_ABS_MAX 1.0e12f
 
-/// @brief Heuristic — should we hand bone matrices to the GPU instead of skinning on the CPU?
+/// @brief Should we hand bone matrices to the GPU instead of skinning on the CPU?
 ///
-/// GPU backends can skin directly while the active palette fits the backend's
-/// shader-visible upload limit. The software backend always returns 0 and uses
-/// CPU skinning.
-/// The Software backend always returns 0 (CPU-skin path).
-static int vgfx3d_backend_prefers_gpu_skinning(const char *backend_name, int32_t bone_count) {
-    if (!backend_name || bone_count <= 0)
-        return 0;
-    if (strcmp(backend_name, "metal") == 0)
-        return bone_count <= VGFX3D_MAX_BONES;
-    if (strcmp(backend_name, "opengl") == 0)
-        return bone_count <= VGFX3D_MAX_BONES;
-    if (strcmp(backend_name, "d3d11") == 0)
-        return bone_count <= VGFX3D_MAX_BONES;
-    return 0;
+/// Driven by the backend's `gpu_skinning` capability bit (its draw path
+/// consumes bone palettes in the vertex shader) while the active palette fits
+/// the shader-visible upload limit. The software backend leaves the bit clear
+/// and takes the CPU-skin path.
+static int vgfx3d_backend_prefers_gpu_skinning(const vgfx3d_backend_t *backend,
+                                               int32_t bone_count) {
+    return backend && backend->gpu_skinning && bone_count > 0 && bone_count <= VGFX3D_MAX_BONES;
 }
 
 // clang-format off

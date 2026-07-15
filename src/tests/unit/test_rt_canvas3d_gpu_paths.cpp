@@ -161,6 +161,8 @@ typedef struct {
 static vgfx3d_backend_t make_backend(const char *name) {
     vgfx3d_backend_t backend = {};
     backend.name = name;
+    /* Mocks mirror the real vtables: GPU backends consume bone palettes. */
+    backend.gpu_skinning = (name != nullptr && std::strcmp(name, "software") != 0) ? 1 : 0;
     return backend;
 }
 
@@ -496,6 +498,7 @@ static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backen
 }
 
 static void cleanup_fake_canvas(rt_canvas3d *canvas) {
+    canvas3d_frame_arena_free(canvas);
     for (int32_t i = 0; i < canvas->temp_buf_count; i++)
         std::free(canvas->temp_buffers[i]);
     for (int32_t i = 0; i < canvas->temp_obj_count; i++) {
@@ -730,7 +733,12 @@ static void test_cpu_skinning_fallback_for_software(void) {
     rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Software skinned draw enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 1, "Software skinned draw allocates CPU temp buffer");
+    /* CPU-skinned vertices live in the per-frame bump arena now (stable until
+     * frame flush) instead of a tracked malloc — no temp-buffer entry. */
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Software skinned draw takes no tracked temp buffer (frame arena)");
+    EXPECT_TRUE(canvas.frame_arena_frame_bytes > 0,
+                "Software skinned draw consumes frame-arena bytes");
     EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
                 "Software skinned draw uses CPU-skinned vertex buffer");
     EXPECT_TRUE(draws[0].cmd.bone_palette == nullptr && draws[0].cmd.bone_count == 0,
@@ -1370,6 +1378,7 @@ static void test_env_map_payload_forwarded(void) {
 static void test_backend_skybox_hook_used(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.draw_skybox = record_draw_skybox;
 
@@ -1394,6 +1403,7 @@ static void test_backend_skybox_hook_used(void) {
 static void test_incomplete_cubemaps_are_not_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.draw_skybox = record_draw_skybox;
 
@@ -1683,6 +1693,7 @@ static void test_terrain_chunk_aabb_includes_skirt_depth(void) {
 static void test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forward(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = record_begin_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.draw_skybox = record_draw_skybox;
@@ -1827,6 +1838,7 @@ static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
 static void test_mesh_draw_traps_when_deferred_queue_cannot_grow(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.submit_draw = record_draw_with_lights;
 
     rt_canvas3d canvas;
@@ -1980,6 +1992,7 @@ static void test_skinning_missing_previous_palette_disables_history(void) {
 static void test_instanced_transform_history_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2034,6 +2047,7 @@ static void test_instanced_transform_history_forwarded(void) {
 static void test_instanced_transform_history_survives_count_changes(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2083,6 +2097,7 @@ static void test_instanced_transform_history_survives_count_changes(void) {
 static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2125,6 +2140,7 @@ static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
 static void test_instanced_transform_history_skips_payload_without_motion_blur(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2155,6 +2171,7 @@ static void test_instanced_transform_history_skips_payload_without_motion_blur(v
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2341,6 +2358,7 @@ static void test_material_draw_uses_neutral_fallbacks_for_nonfinite_private_scal
 static void test_instanced_runtime_culls_outside_frustum(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2389,6 +2407,7 @@ static void test_instanced_runtime_culls_outside_frustum(void) {
 static void test_instanced_shadow_pass_includes_instances(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
     backend.shadow_begin = record_shadow_begin;
@@ -2469,6 +2488,7 @@ static void test_transparent_sort_key_uses_mesh_bounds_depth(void) {
 static void test_frame_stats_count_submissions_and_cache_repeated_world_bounds(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
 
@@ -2504,6 +2524,7 @@ static void test_frame_stats_count_submissions_and_cache_repeated_world_bounds(v
 static void test_opaque_sort_groups_material_state_before_depth(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
 
@@ -2600,6 +2621,7 @@ static void test_opaque_sort_keeps_depth_order_on_software_backend(void) {
 static void test_transparent_sort_preserves_stable_sort_id_tie_break(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
 
@@ -2639,6 +2661,7 @@ static void test_transparent_sort_preserves_stable_sort_id_tie_break(void) {
 static void test_transparent_sort_refines_depth_within_bucket(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
 
@@ -2685,6 +2708,7 @@ static void test_transparent_sort_refines_depth_within_bucket(void) {
 static void test_instanced_batch_sort_key_uses_aggregate_bounds_center(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw_instanced = record_draw_instanced;
 
@@ -2717,6 +2741,7 @@ static void test_instanced_batch_sort_key_uses_aggregate_bounds_center(void) {
 static void test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -2810,6 +2835,7 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
 static void test_shadow_cascades_render_primary_directional_light_slots(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -2872,6 +2898,7 @@ static void test_shadow_cascades_render_primary_directional_light_slots(void) {
 static void test_spot_shadow_selection_fills_budget_after_directionals(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -2968,6 +2995,7 @@ static void test_spot_shadow_selection_fills_budget_after_directionals(void) {
 static void test_spot_shadow_selection_uses_single_slot_without_cascades(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -3023,6 +3051,7 @@ static void test_spot_shadow_selection_uses_single_slot_without_cascades(void) {
 static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -3074,6 +3103,7 @@ static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
 static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
 
@@ -3103,6 +3133,7 @@ static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void
 static void test_casts_shadows_false_skips_shadow_selection(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.end_frame = noop_end_frame;
     backend.submit_draw = record_draw_with_lights;
     backend.shadow_begin = record_shadow_begin;
@@ -3264,6 +3295,7 @@ static void test_screenshot_prefers_backend_readback(void) {
 
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.readback_rgba = record_readback_rgba;
 
     rt_canvas3d canvas;
@@ -3299,6 +3331,7 @@ static void test_screenshot_copy_reuses_destination_and_gpu_scratch(void) {
 
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.readback_rgba = record_readback_rgba;
 
     rt_canvas3d canvas;
@@ -3349,6 +3382,7 @@ static void test_screenshot_reads_physical_framebuffer_to_logical_pixels(void) {
 
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.readback_rgba = record_hidpi_readback_rgba;
 
     rt_canvas3d canvas;
@@ -3580,6 +3614,8 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
     void *fx = rt_postfx3d_new();
 
     backend.name = "d3d11";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = record_begin_frame;
     backend.submit_draw = noop_draw;
     backend.end_frame = noop_end_frame;
@@ -3645,6 +3681,8 @@ static void test_begin_frame_forwards_camera_forward_and_ortho_flag(void) {
     rt_camera3d camera = {};
 
     backend.name = "metal";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.begin_frame = record_begin_frame;
     backend.end_frame = noop_end_frame;
 
@@ -3774,6 +3812,8 @@ static void test_quality_profile_enables_gpu_effects_when_backend_supports_postf
     vgfx3d_postfx_chain_t chain = {};
 
     backend.name = "metal";
+
+    backend.gpu_skinning = 1; /* mock mirrors real GPU backends */
     backend.present_postfx = noop_present_postfx;
     init_fake_canvas(&canvas, &backend);
 

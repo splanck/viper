@@ -615,6 +615,8 @@ RT_FUNC(Particles3DUpdate,       rt_particles3d_update,         "Viper.Graphics3
 RT_FUNC(Particles3DDraw,         rt_particles3d_draw,           "Viper.Graphics3D.Particles3D.Draw",         "void(obj,obj,obj)")
 RT_FUNC(Particles3DGetCount,     rt_particles3d_get_count,      "Viper.Graphics3D.Particles3D.get_Count",    "i64(obj)")
 RT_FUNC(Particles3DGetEmitting,  rt_particles3d_get_emitting,   "Viper.Graphics3D.Particles3D.get_Emitting", "i1(obj)")
+RT_FUNC(Particles3DSetSeed,      rt_particles3d_set_seed,       "Viper.Graphics3D.Particles3D.set_Seed",     "void(obj,i64)")
+RT_FUNC(Particles3DGetSeed,      rt_particles3d_get_seed,       "Viper.Graphics3D.Particles3D.get_Seed",     "i64(obj)")
 
 /// @summary Provides Particles 3D functionality for 3D rendering and scene applications.
 /// @details
@@ -626,6 +628,10 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNe
     RT_PROP("Count", "i64", Particles3DGetCount, none)
     RT_PROP("Emitting", "i1", Particles3DGetEmitting, none)
     RT_PROP("Additive", "i1", none, Particles3DSetAdditive)
+    // Live PRNG state: set for reproducible spawn streams (determinism/replay),
+    // read to checkpoint the stream. Emitters otherwise seed from a process
+    // counter, so streams depend on global construction order.
+    RT_PROP("Seed", "i64", Particles3DGetSeed, Particles3DSetSeed)
     // Velocity-aligned stretch + ribbon trails (tracers, rivets, EMP ribbons).
     RT_METHOD("SetStretch", "void(f64)", Particles3DSetStretch)
     RT_METHOD("SetTrail", "void(f64,i64)", Particles3DSetTrail)
@@ -1444,6 +1450,47 @@ RT_CLASS_BEGIN("Viper.Graphics3D.SixDofJoint3D", SixDofJoint3D, "obj", SixDofJoi
     RT_METHOD("SetLinearLimits", "void(obj,obj)", SixDofJoint3DSetLinearLimits)
     RT_METHOD("SetAngularLimits", "void(obj,obj)", SixDofJoint3DSetAngularLimits)
     RT_METHOD("SetLinearMotor", "void(i1,obj,f64)", SixDofJoint3DSetLinearMotor)
+RT_CLASS_END()
+
+// Vehicle3D — raycast vehicle on a dynamic chassis body
+RT_FUNC(Vehicle3DNew,             rt_vehicle3d_new,               "Viper.Graphics3D.Vehicle3D.New",             "obj(obj,obj)")
+RT_FUNC(Vehicle3DAddWheel,        rt_vehicle3d_add_wheel,         "Viper.Graphics3D.Vehicle3D.AddWheel",        "i64(obj,f64,f64,f64,f64,f64,f64,f64,i1,i1)")
+RT_FUNC(Vehicle3DSetInput,        rt_vehicle3d_set_input,         "Viper.Graphics3D.Vehicle3D.SetInput",        "void(obj,f64,f64,f64)")
+RT_FUNC(Vehicle3DSetDriveForce,   rt_vehicle3d_set_drive_force,   "Viper.Graphics3D.Vehicle3D.SetDriveForce",   "void(obj,f64)")
+RT_FUNC(Vehicle3DSetBrakeForce,   rt_vehicle3d_set_brake_force,   "Viper.Graphics3D.Vehicle3D.SetBrakeForce",   "void(obj,f64)")
+RT_FUNC(Vehicle3DSetMaxSteer,     rt_vehicle3d_set_max_steer,     "Viper.Graphics3D.Vehicle3D.SetMaxSteer",     "void(obj,f64)")
+RT_FUNC(Vehicle3DSetGrip,         rt_vehicle3d_set_grip,          "Viper.Graphics3D.Vehicle3D.SetGrip",         "void(obj,f64,f64)")
+RT_FUNC(Vehicle3DSetCollisionMask,rt_vehicle3d_set_collision_mask,"Viper.Graphics3D.Vehicle3D.SetCollisionMask","void(obj,i64)")
+RT_FUNC(Vehicle3DStep,            rt_vehicle3d_step,              "Viper.Graphics3D.Vehicle3D.Step",            "void(obj,f64)")
+RT_FUNC(Vehicle3DGetSpeed,        rt_vehicle3d_get_speed,         "Viper.Graphics3D.Vehicle3D.get_Speed",       "f64(obj)")
+RT_FUNC(Vehicle3DGetWheelCount,   rt_vehicle3d_get_wheel_count,   "Viper.Graphics3D.Vehicle3D.get_WheelCount",  "i64(obj)")
+RT_FUNC(Vehicle3DWheelInContact,  rt_vehicle3d_wheel_in_contact,  "Viper.Graphics3D.Vehicle3D.WheelInContact",  "i1(obj,i64)")
+RT_FUNC(Vehicle3DWheelTravel,     rt_vehicle3d_wheel_travel,      "Viper.Graphics3D.Vehicle3D.WheelTravel",     "f64(obj,i64)")
+RT_FUNC(Vehicle3DWheelLoad,       rt_vehicle3d_wheel_load,        "Viper.Graphics3D.Vehicle3D.WheelLoad",       "f64(obj,i64)")
+
+/// @summary Raycast vehicle simulation: suspension, tire grip, drive and brake forces on a rigid chassis.
+/// @details
+/// Create a `Viper.Graphics3D.Vehicle3D` with `New(world, chassisBody)` around a dynamic
+/// `Physics3DBody`, add suspension wheels with `AddWheel` (chassis-local anchor, wheel radius,
+/// suspension rest length, spring stiffness, damping, steering/driven flags), feed controls with
+/// `SetInput(throttle, brake, steer)`, and call `Step(dt)` once per frame BEFORE
+/// `Physics3DWorld.Step(dt)` so the wheel forces are integrated by that step. Tuning:
+/// `SetDriveForce`, `SetBrakeForce`, `SetMaxSteer`, `SetGrip`, `SetCollisionMask`. Telemetry:
+/// `Speed`, `WheelCount`, `WheelInContact`, `WheelTravel`, `WheelLoad`.
+RT_CLASS_BEGIN("Viper.Graphics3D.Vehicle3D", Vehicle3D, "obj", Vehicle3DNew)
+    RT_PROP("Speed", "f64", Vehicle3DGetSpeed, none)
+    RT_PROP("WheelCount", "i64", Vehicle3DGetWheelCount, none)
+    RT_METHOD("AddWheel", "i64(f64,f64,f64,f64,f64,f64,f64,i1,i1)", Vehicle3DAddWheel)
+    RT_METHOD("SetInput", "void(f64,f64,f64)", Vehicle3DSetInput)
+    RT_METHOD("SetDriveForce", "void(f64)", Vehicle3DSetDriveForce)
+    RT_METHOD("SetBrakeForce", "void(f64)", Vehicle3DSetBrakeForce)
+    RT_METHOD("SetMaxSteer", "void(f64)", Vehicle3DSetMaxSteer)
+    RT_METHOD("SetGrip", "void(f64,f64)", Vehicle3DSetGrip)
+    RT_METHOD("SetCollisionMask", "void(i64)", Vehicle3DSetCollisionMask)
+    RT_METHOD("Step", "void(f64)", Vehicle3DStep)
+    RT_METHOD("WheelInContact", "i1(i64)", Vehicle3DWheelInContact)
+    RT_METHOD("WheelTravel", "f64(i64)", Vehicle3DWheelTravel)
+    RT_METHOD("WheelLoad", "f64(i64)", Vehicle3DWheelLoad)
 RT_CLASS_END()
 
 //=============================================================================

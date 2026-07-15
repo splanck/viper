@@ -7,15 +7,17 @@
 //
 // File: src/runtime/text/rt_password.c
 // Purpose: Implements secure password hashing and verification for the
-//          Viper.Crypto.Password class using scrypt-SHA256 or legacy
-//          PBKDF2-SHA256 with automatically generated random salts.
+//          Viper.Crypto.Password class using scrypt-SHA256 in compatibility
+//          mode or PBKDF2-HMAC-SHA256 in approved/explicit-iteration paths,
+//          with automatically generated random salts.
 //
 // Key invariants:
-//   - Salts are 16 bytes of CSPRNG output, unique per hash call.
+//   - Salts are independently generated 16-byte CSPRNG values per hash call.
 //   - Hash output format: "SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>".
 //   - Legacy PBKDF2 format remains accepted: "PBKDF2$<iterations>$<salt_b64>$<hash_b64>".
-//   - Verification uses constant-time comparison to prevent timing attacks.
-//   - Default Hash uses bounded memory-hard scrypt parameters.
+//   - Verification uses fixed-time comparison for the final 32-byte derived values;
+//     parsing, dispatch, validation, and KDF work are data-dependent.
+//   - Default Hash uses bounded scrypt in compatibility mode and PBKDF2 in approved mode.
 //   - Custom PBKDF2 requests below 100,000 trap instead of silently clamping.
 //   - Verify returns false (not trap) for mismatched passwords or invalid format.
 //   - The stored hash string is self-describing (includes algorithm and params).
@@ -355,10 +357,9 @@ static rt_string password_format_hash(const char *prefix,
     return result;
 }
 
-/// @brief Public Viper.Crypto.Password.Hash — hash with default scrypt parameters.
-/// @details Delegates to rt_password_hash_scrypt with the policy-default
-///          (N, r, p). Returns the encoded SCRYPT$<log2N>$<r>$<p>$<salt>$<hash>
-///          form ready to store in a database.
+/// @brief Public Viper.Crypto.Password.Hash — hash under the active module policy.
+/// @details Uses policy-default scrypt and the SCRYPT$ format in compatibility
+///          mode, or PBKDF2-HMAC-SHA256 and the PBKDF2$ format in approved mode.
 rt_string rt_password_hash(rt_string password) {
     if (rt_crypto_module_is_approved_mode())
         return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
@@ -427,8 +428,8 @@ rt_string rt_password_hash_scrypt(rt_string password) {
 ///          `SCRYPT$<log2N>$<r>$<p>$<salt_b64>$<hash_b64>`. Validates that
 ///          parameters are positive, fit the runtime caps, and meet the
 ///          password-policy minimum strength — any violation traps. Used
-///          by callers that want to pin specific cost parameters (e.g.
-///          slower for high-value credentials, faster for migration).
+///          by callers that want to pin supported cost parameters at or above
+///          every current password-policy minimum.
 rt_string rt_password_hash_scrypt_params(rt_string password,
                                          int64_t n64,
                                          int64_t r64,
@@ -552,8 +553,8 @@ static int password_decode_salt_hash(const char *salt_start,
 ///          PBKDF2-HMAC-SHA256 with the same parameters, and compares
 ///          using constant-time equality. Returns 1 only on match;
 ///          returns 0 for any parse failure, format mismatch, or
-///          incorrect password (never traps so login flows can produce
-///          a uniform "invalid credentials" response).
+///          incorrect password. Allocation or primitive failures can still trap;
+///          login flows should expose one uniform authentication failure.
 static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
     const char *p = hash_str + 7;
     char *end;
@@ -621,7 +622,7 @@ static int password_verify_pbkdf2(rt_string password, const char *hash_str) {
 ///          decodes salt and expected hash, runs scrypt-SHA256 with the
 ///          stored parameters, and compares using constant-time equality.
 ///          Returns 1 only on match; returns 0 for any parse / format /
-///          parameter / password mismatch (never traps).
+///          parameter / password mismatch. Allocation or primitive failures can trap.
 static int password_verify_scrypt(rt_string password, const char *hash_str) {
     const char *p = hash_str + 7;
     char *end;
@@ -702,7 +703,7 @@ static int password_verify_scrypt(rt_string password, const char *hash_str) {
 
 /// @brief Parse log2N / r / p out of a SCRYPT$ hash string without doing the actual verify.
 /// @details Used by rt_password_needs_rehash to compare the stored
-///          parameters against the current policy minimum without
+///          parameters against the exact current default tuple without
 ///          re-running the (potentially slow) scrypt computation. Returns
 ///          1 on successful parse, 0 if the format is wrong or any
 ///          numeric field is out of range.
@@ -861,8 +862,11 @@ int8_t rt_password_verify(rt_string password, rt_string hash) {
 }
 
 /// @brief Public Viper.Crypto.Password.NeedsRehash — does this stored hash need upgrading?
-/// @details Returns 1 if the stored hash uses an obsolete format (PBKDF2)
-///          or scrypt parameters below the current policy minimum.
+/// @details In compatibility mode, returns 0 only for a fully valid scrypt
+///          record whose N/r/p exactly equal the current defaults; PBKDF2 and
+///          every different scrypt tuple (including stronger ones) return 1.
+///          In approved mode, fully valid PBKDF2 at or above the default
+///          iteration count returns 0.
 ///          Applications should call this on successful login and, if it
 ///          returns 1, re-hash the just-verified plaintext password and
 ///          replace the stored hash. This is the standard rolling-upgrade

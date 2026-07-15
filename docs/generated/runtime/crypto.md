@@ -215,7 +215,7 @@ construct the class directly. Its public surface exposes operations including `E
 <a id="viper-crypto-tls"></a>
 ### `Viper.Crypto.Tls`
 
-Provides tLS 1.3 secure connections.
+Provides TLS 1.3 secure connections.
 
 `Viper.Crypto.Tls` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Host`, `Port`,

@@ -190,16 +190,27 @@ void rt_timeofday3d_get_sun_direction_raw(void *obj, double out_dir[3]) {
     rt_timeofday3d *tod = timeofday3d_checked(obj, "TimeOfDay3D.SunDirection: invalid clock");
     if (!tod || !out_dir)
         return;
-    /* Hour angle: 12h = solar noon; the sun wheels east (-X at 6h) to west. */
+    /* Hour angle: 12h = solar noon; the sun wheels east (-X at 6h) to west.
+     * The horizontal component traces a full CIRCLE over the day (bearing =
+     * hour angle), so both the direction and its time-derivative stay
+     * continuous across the 24h→0h wrap — at midnight the sun/moon vector
+     * points north behind the world instead of snapping back through the
+     * south meridian. Matches the old stylized daytime arc at noon exactly
+     * and stays within a few degrees of it through the morning/afternoon. */
     double hour_angle = (tod->hours - 12.0) / 12.0 * 3.14159265358979323846;
     double lat = tod->latitude_degrees * (3.14159265358979323846 / 180.0);
     double elevation = cos(hour_angle) * cos(lat) * 0.9 + 0.1 * sin(lat);
-    double azimuth = sin(hour_angle);
-    out_dir[0] = -azimuth;
+    double horizontal = sqrt(fmax(0.0, 1.0 - elevation * elevation));
+    out_dir[0] = -horizontal * sin(hour_angle);
     out_dir[1] = elevation;
-    out_dir[2] =
-        -sqrt(fmax(0.0, 1.0 - elevation * elevation - azimuth * azimuth * 0.5)) * 0.4 - 0.1;
+    out_dir[2] = -horizontal * cos(hour_angle) * 0.4 - 0.1;
     double len = sqrt(out_dir[0] * out_dir[0] + out_dir[1] * out_dir[1] + out_dir[2] * out_dir[2]);
+    if (!isfinite(len) || len <= 1e-12) {
+        out_dir[0] = 0.0;
+        out_dir[1] = 1.0;
+        out_dir[2] = 0.0;
+        return;
+    }
     out_dir[0] /= len;
     out_dir[1] /= len;
     out_dir[2] /= len;

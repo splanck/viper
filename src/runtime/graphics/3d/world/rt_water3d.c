@@ -53,6 +53,11 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int32_t rt_obj_release_check0(void *p);
 extern void rt_obj_free(void *p);
+/* Allocation-free camera position read (defined in rt_camera3d.c). Optional:
+ * isolated contract tests link Water3D without the camera module; the
+ * SetSimDistance gate simply stays inactive there. */
+extern int8_t rt_camera3d_get_position_components(void *obj, double *x, double *y, double *z)
+    WATER3D_OPTIONAL_SYMBOL;
 #include "rt_trap.h"
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_clear(void *m);
@@ -125,6 +130,14 @@ typedef struct {
     int32_t wave_count;
     int32_t resolution; /* grid resolution (default WATER_GRID) */
     int8_t mesh_dirty;
+    /* Distance-gated simulation (SetSimDistance): beyond this range from the
+     * last drawing camera, Update advances wave TIME but skips the CPU grid
+     * rebuild — re-entering cameras see correctly-phased waves without the
+     * world having paid ~(res+1)^2 vertex evaluations per frame for
+     * off-screen water. 0 disables the gate (always rebuild). */
+    double sim_distance;
+    double last_camera_pos[3];
+    int8_t has_camera_pos;
 } rt_water3d;
 
 /// @brief Validate @p obj as a Water3D handle and return its typed pointer (NULL on mismatch).
@@ -509,6 +522,28 @@ void rt_water3d_set_reflectivity(void *obj, double r) {
         rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
 }
 
+/// @brief `Water3D.SetSimDistance(distance)` — distance-gate the CPU wave rebuild.
+/// @details While the camera that last drew this water is farther than
+///   @p distance from the water rectangle, `Update` advances wave time but
+///   skips the per-vertex grid rebuild (the dominant cost). 0 disables the
+///   gate. Non-finite/negative values clamp to 0.
+void rt_water3d_set_sim_distance(void *obj, double distance) {
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
+        return;
+    if (!isfinite(distance) || distance < 0.0)
+        distance = 0.0;
+    if (distance > WATER3D_SIZE_MAX)
+        distance = WATER3D_SIZE_MAX;
+    w->sim_distance = distance;
+}
+
+/// @brief `Water3D.get_SimDistance` — current simulation gate distance (0 = off).
+double rt_water3d_get_sim_distance(void *obj) {
+    rt_water3d *w = water3d_checked(obj);
+    return w ? w->sim_distance : 0.0;
+}
+
 /// @brief Set grid resolution (clamped to [8, 256]).
 void rt_water3d_set_resolution(void *obj, int64_t res) {
     rt_water3d *w = water3d_checked(obj);
@@ -740,6 +775,21 @@ void rt_water3d_update(void *obj, double dt) {
     if (w->time > WATER3D_TIME_MAX)
         w->time = fmod(w->time, WATER3D_TIME_MAX);
 
+    /* Distance gate: when the last drawing camera is beyond sim_distance of
+     * the water's surface rectangle, keep the phase advance above but skip the
+     * grid rebuild entirely. First build (no mesh yet) always runs so the
+     * water has geometry to draw when it comes into range. */
+    if (w->sim_distance > 0.0 && w->has_camera_pos && w->mesh && w->material && !w->mesh_dirty) {
+        double half_w = w->width * 0.5;
+        double half_d = w->depth * 0.5;
+        double dx = fmax(fabs(w->last_camera_pos[0] - w->center_x) - half_w, 0.0);
+        double dy = w->last_camera_pos[1] - w->height;
+        double dz = fmax(fabs(w->last_camera_pos[2] - w->center_z) - half_d, 0.0);
+        double dist_sq = dx * dx + dy * dy + dz * dz;
+        if (isfinite(dist_sq) && dist_sq > w->sim_distance * w->sim_distance)
+            return;
+    }
+
     w->width = water3d_clamp_positive_or(w->width, 1.0, WATER3D_SIZE_MAX);
     w->depth = water3d_clamp_positive_or(w->depth, 1.0, WATER3D_SIZE_MAX);
     w->height = water3d_clamp_abs_or(w->height, 0.0, WATER3D_HEIGHT_ABS_MAX);
@@ -836,7 +886,21 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     rt_water3d *w = water3d_checked(obj);
     if (!c || !w)
         return;
-    (void)camera;
+    /* Remember the drawing camera's position for the SetSimDistance gate in
+     * rt_water3d_update (allocation-free component read; optional symbol —
+     * see the extern above). */
+    {
+        double cx;
+        double cy;
+        double cz;
+        if (camera && rt_camera3d_get_position_components &&
+            rt_camera3d_get_position_components(camera, &cx, &cy, &cz)) {
+            w->last_camera_pos[0] = cx;
+            w->last_camera_pos[1] = cy;
+            w->last_camera_pos[2] = cz;
+            w->has_camera_pos = 1;
+        }
+    }
     water3d_repair_resource_handles(w);
     if (!w->mesh || !w->material || w->mesh_dirty)
         rt_water3d_update(w, 0.0);

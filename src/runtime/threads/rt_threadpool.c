@@ -188,9 +188,11 @@ static int8_t pool_take_error_locked(pool_impl *pool, char *out, size_t out_size
     return 1;
 }
 
-/// @brief Drain the first worker-task trap message under the pool's monitor.
-/// @details Used by Wait / Shutdown callers after releasing any temporary pool
-///          retain so trap unwinding cannot leak the self-retain.
+/// @brief Drain the accumulated worker-task trap state under the pool's monitor.
+/// @details The pool counts every unobserved trap but stores only the most
+///          recently captured message. Used by Wait / Shutdown callers after
+///          releasing any temporary pool retain so trap unwinding cannot leak
+///          the self-retain.
 static int8_t pool_take_error(pool_impl *pool, char *error, size_t error_size) {
     if (error && error_size > 0)
         error[0] = '\0';

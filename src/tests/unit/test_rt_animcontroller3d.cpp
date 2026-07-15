@@ -646,6 +646,65 @@ static void test_two_bone_ik_pole_vector() {
     EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 1.0, 0.05, "Pole keeps the foot on target y");
 }
 
+/// Regression for translation-only IK: solving must write chain-bone
+/// ROTATIONS (aim/swing toward the solved child joint), not just joint
+/// translations — skinned vertices follow bone rotations, so without this a
+/// bent limb shears its mesh instead of articulating.
+static void test_two_bone_ik_bends_bone_rotations() {
+    void *skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t knee =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    void *solver = rt_ik_solver3d_two_bone(skel, root, knee, foot);
+    rt_ik_solver3d_set_target(solver, rt_vec3_new(1.0, 1.0, 0.0));
+    rt_ik_solver3d_set_weight(solver, 1.0);
+    rt_ik_solver3d_solve(solver);
+    rt_anim_controller3d_set_ik_solver(controller, solver);
+
+    void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, root);
+    void *knee_mat = rt_anim_controller3d_get_bone_matrix(controller, knee);
+    void *foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+
+    /* Root bone's local +X (its bind-pose child direction) must now AIM at
+     * the solved knee joint, i.e. the root carries a real rotation. */
+    double ax = rt_mat4_get(root_mat, 0, 0);
+    double ay = rt_mat4_get(root_mat, 1, 0);
+    double az = rt_mat4_get(root_mat, 2, 0);
+    double kx = rt_mat4_get(knee_mat, 0, 3) - rt_mat4_get(root_mat, 0, 3);
+    double ky = rt_mat4_get(knee_mat, 1, 3) - rt_mat4_get(root_mat, 1, 3);
+    double kz = rt_mat4_get(knee_mat, 2, 3) - rt_mat4_get(root_mat, 2, 3);
+    double alen = std::sqrt(ax * ax + ay * ay + az * az);
+    double klen = std::sqrt(kx * kx + ky * ky + kz * kz);
+    EXPECT_TRUE(alen > 1e-6 && klen > 1e-6, "IK bend: root axis and knee offset are non-degenerate");
+    double align = (ax * kx + ay * ky + az * kz) / (alen * klen);
+    EXPECT_TRUE(align > 0.99, "IK writes a root rotation that aims at the solved knee");
+
+    /* Knee bone's local +X must aim at the foot joint the same way. */
+    double bx = rt_mat4_get(knee_mat, 0, 0);
+    double by = rt_mat4_get(knee_mat, 1, 0);
+    double bz = rt_mat4_get(knee_mat, 2, 0);
+    double fx = rt_mat4_get(foot_mat, 0, 3) - rt_mat4_get(knee_mat, 0, 3);
+    double fy = rt_mat4_get(foot_mat, 1, 3) - rt_mat4_get(knee_mat, 1, 3);
+    double fz = rt_mat4_get(foot_mat, 2, 3) - rt_mat4_get(knee_mat, 2, 3);
+    double blen = std::sqrt(bx * bx + by * by + bz * bz);
+    double flen = std::sqrt(fx * fx + fy * fy + fz * fz);
+    EXPECT_TRUE(blen > 1e-6 && flen > 1e-6, "IK bend: knee axis and foot offset are non-degenerate");
+    double align_knee = (bx * fx + by * fy + bz * fz) / (blen * flen);
+    EXPECT_TRUE(align_knee > 0.99, "IK writes a knee rotation that aims at the solved foot");
+    /* The knee->foot segment leaves the bind axis (+X), so the knee bone must
+     * carry a REAL rotation — translation-only IK left it at bind (by == 0). */
+    EXPECT_TRUE(std::fabs(by) > 0.5, "IK knee rotation is a genuine bend (not bind pose)");
+
+    /* And the end effector still reaches the target. */
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 3), 1.0, 0.05, "IK bend keeps the foot on target x");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 1.0, 0.05, "IK bend keeps the foot on target y");
+}
+
 static void test_controller_ik_solver_drives_end_effector() {
     void *skel = rt_skeleton3d_new();
     int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -1317,6 +1376,7 @@ int main() {
     test_controller_private_skeleton_growth_stays_in_bounds();
     test_skeletal_state_registration_rejects_out_of_range_clip_bones();
     test_two_bone_ik_pole_vector();
+    test_two_bone_ik_bends_bone_rotations();
     test_controller_ik_solver_drives_end_effector();
     test_two_bone_ik_foot_aligns_to_ground_normal();
     test_ik_solver_look_at_and_fabrik_factories();

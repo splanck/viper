@@ -9,7 +9,7 @@
 <a id="viper-network-tcp"></a>
 ### `Viper.Network.Tcp`
 
-Provides tCP client connection.
+Provides TCP client connection.
 
 `Viper.Network.Tcp` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Host`, `Port`,
@@ -45,7 +45,7 @@ construct the class directly. Its public surface exposes properties such as `Hos
 <a id="viper-network-tcpserver"></a>
 ### `Viper.Network.TcpServer`
 
-Provides tCP server (listener).
+Provides TCP server (listener).
 
 `Viper.Network.TcpServer` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Port`, `Address`,
@@ -72,7 +72,7 @@ construct the class directly. Its public surface exposes properties such as `Por
 <a id="viper-network-udp"></a>
 ### `Viper.Network.Udp`
 
-Provides uDP datagram socket.
+Provides UDP datagram socket.
 
 Create `Viper.Network.Udp` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `Port`,
@@ -111,7 +111,7 @@ Constructor: `Viper.Network.Udp.New`
 <a id="viper-network-dns"></a>
 ### `Viper.Network.Dns`
 
-Provides dNS resolution utility class (static).
+Provides DNS resolution utility class (static).
 
 `Viper.Network.Dns` is a static runtime surface and does not require an instance. Its public
 surface exposes operations including `Resolve`, `ResolveAll`, `Resolve4`, `Resolve6`.
@@ -159,7 +159,7 @@ surface exposes operations including `Get`, `GetBytes`, `Post`, `PostBytes`.
 <a id="viper-network-httpreq"></a>
 ### `Viper.Network.HttpReq`
 
-Provides hTTP request builder.
+Provides HTTP request builder.
 
 Create `Viper.Network.HttpReq` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes operations including
@@ -186,7 +186,7 @@ Constructor: `Viper.Network.HttpReq.New`
 <a id="viper-network-httpres"></a>
 ### `Viper.Network.HttpRes`
 
-Provides hTTP response.
+Provides HTTP response.
 
 `Viper.Network.HttpRes` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Status`,
@@ -212,7 +212,7 @@ construct the class directly. Its public surface exposes properties such as `Sta
 <a id="viper-network-url"></a>
 ### `Viper.Network.Url`
 
-Provides uRL parsing and construction.
+Provides URL parsing and construction.
 
 Create `Viper.Network.Url` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `Scheme`, `Host`,
@@ -258,7 +258,7 @@ Constructor: `Viper.Network.Url.New`
 <a id="viper-network-websocket"></a>
 ### `Viper.Network.WebSocket`
 
-Provides webSocket client for real-time communication.
+Provides WebSocket client for real-time communication.
 
 `Viper.Network.WebSocket` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `Url`, `IsOpen`,
@@ -327,7 +327,7 @@ Constructor: `Viper.Network.RetryPolicy.New`
 <a id="viper-network-restclient"></a>
 ### `Viper.Network.RestClient`
 
-Provides Rest Client functionality for networked applications.
+Provides REST client functionality for networked applications.
 
 Create `Viper.Network.RestClient` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `BaseUrl`,
@@ -406,7 +406,7 @@ Constructor: `Viper.Network.RateLimiter.New`
 <a id="viper-network-httprouter"></a>
 ### `Viper.Network.HttpRouter`
 
-Provides uRL pattern matching with parameter extraction.
+Provides URL pattern matching with parameter extraction.
 
 Create `Viper.Network.HttpRouter` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes a property such as `Count`
@@ -488,7 +488,7 @@ Constructor: `Viper.Network.HttpServer.New`
 <a id="viper-network-httpsserver"></a>
 ### `Viper.Network.HttpsServer`
 
-Provides threaded TLS-backed HTTP/1.1 server.
+Provides threaded TLS-backed HTTP/1.1 and HTTP/2 server.
 
 Create `Viper.Network.HttpsServer` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
@@ -638,7 +638,7 @@ public surface exposes operations including `IsPortOpen`, `GetFreePort`, `MatchC
 <a id="viper-network-wsserver"></a>
 ### `Viper.Network.WsServer`
 
-Provides webSocket server.
+Provides WebSocket server.
 
 Create `Viper.Network.WsServer` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
@@ -670,7 +670,7 @@ Constructor: `Viper.Network.WsServer.New`
 <a id="viper-network-wssserver"></a>
 ### `Viper.Network.WssServer`
 
-Provides tLS-backed WebSocket server.
+Provides TLS-backed WebSocket server.
 
 Create `Viper.Network.WssServer` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
@@ -702,7 +702,7 @@ Constructor: `Viper.Network.WssServer.New`
 <a id="viper-network-sseclient"></a>
 ### `Viper.Network.SseClient`
 
-Provides server-Sent Events client.
+Provides Server-Sent Events client.
 
 `Viper.Network.SseClient` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `IsOpen`,
@@ -792,7 +792,7 @@ Constructor: `Viper.Network.SmtpClient.New`
 <a id="viper-network-asyncsocket"></a>
 ### `Viper.Network.AsyncSocket`
 
-Provides non-blocking socket with Future integration.
+Runs blocking socket work through Future-returning worker-pool tasks.
 
 `Viper.Network.AsyncSocket` is a static runtime surface and does not require an instance. Its
 public surface exposes operations including `ConnectAsync`, `ConnectForAsync`, `SendAsync`,

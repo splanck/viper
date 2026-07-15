@@ -1555,3 +1555,52 @@ void rt_vegetation3d_update(void *v, double dt, double cx, double cy, double cz)
     (void)cy;
     (void)cz;
 }
+
+/// @brief Stub for `Water3D.set_SimDistance`. Silent no-op stub.
+void rt_water3d_set_sim_distance(void *water, double distance) {
+    (void)water;
+    (void)distance;
+}
+
+/// @brief Stub for `Water3D.get_SimDistance`. Silent stub returning 0.
+double rt_water3d_get_sim_distance(void *water) {
+    (void)water;
+    return 0.0;
+}
+
+/* Stub-parity audit additions: entry points registered in the 3D runtime
+ * defs whose implementations compile only in graphics-enabled builds. */
+
+/// @brief Silent fallback stub for `NavAgent3D.get_LinkKind` (graphics-disabled build).
+rt_string rt_navagent3d_get_link_kind(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("NavAgent3D.get_LinkKind: graphics support not compiled in",
+                                  rt_string_from_bytes("", 0));
+}
+
+/// @brief Silent fallback stub for `NavAgent3D.get_OnOffMeshLink` (graphics-disabled build).
+int8_t rt_navagent3d_get_on_offmesh_link(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("NavAgent3D.get_OnOffMeshLink: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Silent fallback stub for `NavMesh3D.get_HeuristicMode` (graphics-disabled build).
+int64_t rt_navmesh3d_get_heuristic_mode(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("NavMesh3D.get_HeuristicMode: graphics support not compiled in",
+                                  0);
+}
+
+/// @brief Silent fallback stub for `NavMesh3D.get_TileSize` (graphics-disabled build).
+double rt_navmesh3d_get_tile_size(void *o) {
+    (void)o;
+    RT_GRAPHICS_OPTIONAL_TRAP_RET("NavMesh3D.get_TileSize: graphics support not compiled in", 0.0);
+}
+
+/// @brief Trapping stub for `NavMesh3D.SetHeuristicMode` (graphics-disabled build).
+void rt_navmesh3d_set_heuristic_mode(void *o, int64_t a1) {
+    (void)o;
+    (void)a1;
+    RT_GRAPHICS_TRAP_VOID("NavMesh3D.SetHeuristicMode: graphics support not compiled in");
+}

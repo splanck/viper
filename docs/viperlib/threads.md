@@ -1,12 +1,12 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-15
 ---
 
 # Threads
 
-> Shared-memory threading primitives with FIFO fairness.
+> Threads, async composition, synchronization primitives, and concurrent containers.
 
 **Part of the [Viper Runtime Library](README.md)**
 
@@ -48,7 +48,7 @@ OS threads for Viper programs (VM and native backends).
 | `SafeGetId()`            | `Integer()`                      | Get the ID of a safe thread handle         |
 | `SafeIsAlive()`          | `Boolean()`                      | Check if a safe thread is still running    |
 | `SafeJoin()`             | `Void()`                         | Join a safe thread handle                  |
-| `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped)     |
+| `Sleep(ms)`              | `Void(Integer)`                  | Sleep the current thread (ms, clamped to `0..2147483647`) |
 | `Start(entry, arg)`      | `Thread(Function, Object)`       | Start a new thread with a managed callback reference |
 | `StartOwned(entry, arg)` | `Thread(Function, Object)`       | Start a new thread and retain a runtime object argument until the entry returns |
 | `StartSafe(entry, arg)`  | `Thread(Function, Object)`       | Start a bridged Zia thread with error boundaries; traps are captured instead of crashing |
@@ -156,9 +156,16 @@ The safe-specific methods also accept regular thread handles.
 | `> 0`      | Wait up to `ms` milliseconds     |
 
 `Join()`, `TryJoin()`, and `JoinFor()` are repeatable after the thread has
-finished. The first successful join reclaims the underlying OS thread resource;
-later joins on the same handle return success without trapping. Query-only
-properties such as `Id`, `IsAlive`, `HasError`, and `Error` remain usable.
+finished; there is no one-time "joined" state. POSIX workers are detached when
+created, so their native resources are reclaimed when they exit whether or not
+`Join()` is called. On Windows, the native thread handle remains open until the
+runtime Thread wrapper is finalized. Query-only properties such as `Id`,
+`IsAlive`, `HasError`, and `Error` remain usable after a successful join.
+
+On Windows only, a positive `JoinFor` timeout is currently capped to one Win32
+wait interval (`4294967295` ms, about 49.7 days). A larger request can therefore
+return false before the full requested duration; POSIX uses the full 64-bit
+duration. This cross-platform discrepancy is tracked in the review findings.
 
 ### Errors (Traps)
 
@@ -533,6 +540,8 @@ Writer-preference reader-writer lock.
 
 - **Writer preference:** new readers block while any writer is waiting.
 - `ReadExit` must be called by the same thread that acquired the read lock.
+- Write acquisition is recursive for the owning thread. Every successful
+  `WriteEnter` or `TryWriteEnter` requires a matching `WriteExit`.
 - Read-to-write upgrades are not supported: `WriteEnter` traps while the current thread holds a read lock, and `TryWriteEnter` returns false.
 - A thread that already owns the write lock may also enter the read side; this supports explicit write-to-read downgrade patterns when the matching `ReadExit` and `WriteExit` calls are balanced.
 
@@ -617,11 +626,11 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 
 | Method           | Signature             | Description                                                     |
 |------------------|-----------------------|-----------------------------------------------------------------|
-| `Submit(cb, arg)`| `Boolean(Function, Object)` | Submit a managed callback task; returns false if shut down |
+| `Submit(cb, arg)`| `Boolean(Function, Object)` | Submit a callback task; false on invalid input, shutdown, queue backpressure, or allocation failure |
 | `Wait()`         | `Void()`              | Block until all pending tasks complete                          |
 | `WaitFor(ms)`    | `Boolean(Integer)`    | Wait with timeout; returns true if all tasks completed          |
 | `Shutdown()`     | `Void()`              | Graceful shutdown: finish pending tasks, then stop workers      |
-| `ShutdownNow()`  | `Void()`              | Immediate shutdown: discard queued tasks, stop workers          |
+| `ShutdownNow()`  | `Void()`              | Discard queued tasks, then wait for already-running tasks and workers |
 
 ### Properties
 
@@ -635,15 +644,32 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 ### Notes
 
 - Tasks are executed in FIFO order.
-- `Submit` returns false after `Shutdown` or `ShutdownNow` has been called.
-- `ShutdownNow` discards queued tasks; `Shutdown` allows them to finish.
+- A native pool accepts at most 65,536 queued (not yet running) tasks by default.
+  A positive integer in `VIPER_THREADPOOL_MAX_PENDING` replaces that limit for
+  pools constructed afterward. `Submit` returns false at the limit as well as
+  after `Shutdown` or `ShutdownNow`.
+- `ShutdownNow` discards queued tasks but cannot interrupt callbacks that have
+  already started; it joins the workers after those callbacks return. `Shutdown`
+  drains both queued and active work.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
+- `WaitFor(ms <= 0)` is an immediate drain-state check.
+- On the native backend, `Submit` borrows `arg`: the pool neither retains nor
+  releases it, and there is no `SubmitOwned` variant. Keep runtime-managed
+  arguments alive until their callback finishes. A rejected submission or a
+  task discarded by `ShutdownNow` does not invoke an argument cleanup hook.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
 - `Pool.Submit(pool, callback, arg)` accepts a managed Zia function reference such as `&worker`.
   The runtime owns the native callback adaptation internally. The current BASIC frontend supports
   `ADDRESSOF` with direct callback parameters such as `Thread.Start` and `Parallel.For`, but does
   not yet lower the callback parameter of `Pool.Submit`; submit pool work from Zia or the IL/C ABI.
+
+**VM behavior:** the standard VM and BytecodeVM do not enqueue `Pool.Submit`
+work. They invoke the callback synchronously on the submitting thread and report
+success, without consulting pool shutdown state or the native pending-task
+limit. A callback trap therefore propagates from `Submit` immediately rather
+than being deferred to `Wait`. Use a native build when actual pool concurrency
+or native submission/backpressure behavior is required.
 
 ### Zia Example
 
@@ -694,7 +720,7 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 
 | Method           | Signature           | Description                                      |
 |------------------|---------------------|--------------------------------------------------|
-| `GetFuture()`    | `Future()`          | Get the linked Future (always returns same one)  |
+| `GetFuture()`    | `Future()`          | Get the linked Future (reuses its live cached wrapper) |
 | `Set(value)`     | `Void(Object)`      | Complete with a value and retain runtime-managed values (can only call once) |
 | `SetOwned(value)`| `Void(Object)`      | Explicit ownership-retaining alias for `Set`     |
 | `SetError(msg)`  | `Void(String)`      | Complete with an error (can only call once)      |
@@ -712,22 +738,27 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 DIM promise AS OBJECT = Viper.Threads.Promise.New()
 DIM future AS OBJECT = promise.GetFuture()
 
-' Pass future to another thread, keep promise here
-' ... later, complete the promise
+' Complete exactly once with a runtime object
+DIM result AS OBJECT = Viper.Core.Box.I64(42)
 promise.Set(result)
-
-' Or complete with an error
-promise.SetError("Operation failed")
-
-' Or document that a runtime-managed object result should be retained
-promise.SetOwned(someObject)
+PRINT "Done: "; future.IsDone
+PRINT "Value: "; Viper.Core.Box.ToI64(future.Get())
 ```
+
+On a different fresh Promise, use `SetError("Operation failed")` to reject it,
+or `SetOwned(someObject)` when the retaining contract should be explicit. Do
+not call more than one completion method on the same Promise.
 
 ### Notes
 
-- `Set(value)` retains runtime-managed object and string handles until the result is consumed or the Promise/Future pair is finalized.
+- `Set(value)` retains runtime-managed object and string handles for the
+  Promise/Future pair. Each successful Future value getter returns its own
+  retained handle; getters do not consume or clear the stored result.
 - `SetOwned(value)` is kept for call sites that want to document ownership explicitly; it has the same retain semantics as `Set`.
 - A Promise can only be completed once (either `Set`, `SetOwned`, or `SetError`).
+- `SetError(null)` stores `"Unknown error"`; a non-null message is copied.
+- `GetFuture()` returns the cached Future while that wrapper is alive. If it has
+  been finalized, a later call creates a new wrapper over the same Promise state.
 
 ### Errors (Traps)
 
@@ -750,9 +781,9 @@ Promise which is used to set the value.
 | Method          | Signature           | Description                                          |
 |-----------------|---------------------|------------------------------------------------------|
 | `Get()`         | `Object()`          | Block until resolved, return value (traps on error)  |
-| `TryGet()`      | `Object()`          | Non-blocking get: returns value if resolved, NULL otherwise |
+| `TryGet()`      | `Object()`          | Non-blocking value; NULL if pending, errored, or successfully resolved with NULL |
 | `TryGetOption()`| `Option[Object]()`  | Non-blocking get: returns `Some(value)` if resolved, `None` if pending or errored |
-| `GetFor(ms)`    | `Object(Integer)`   | Timed get: returns value if resolved within `ms` milliseconds, NULL on timeout |
+| `GetFor(ms)`    | `Object(Integer)`   | Timed value; NULL on timeout, error, or a successful NULL result |
 | `Wait()`        | `Void()`            | Block until resolved (value or error)                |
 | `WaitFor(ms)`   | `Boolean(Integer)`  | Wait with timeout, returns true if resolved          |
 
@@ -772,10 +803,12 @@ DIM promise AS OBJECT = Viper.Threads.Promise.New()
 DIM future AS OBJECT = promise.GetFuture()
 
 ' In producer thread: set the result
+DIM result AS OBJECT = Viper.Core.Box.I64(42)
 promise.Set(result)
 
 ' In consumer thread: get the result
-DIM value AS PTR = future.Get()
+DIM value AS OBJECT = future.Get()
+PRINT Viper.Core.Box.ToI64(value)
 ```
 
 ### Async Task Example
@@ -798,7 +831,7 @@ DIM t AS OBJECT = Viper.Threads.Thread.Start(ADDRESSOF ComputeAsync, promise)
 DoOtherWork()
 
 ' Wait for result
-DIM result AS PTR = future.Get()
+DIM result AS OBJECT = future.Get()
 t.Join()
 ```
 
@@ -810,7 +843,7 @@ DIM future AS OBJECT = GetFutureFromSomewhere()
 ' Wait up to 5 seconds for result
 IF future.WaitFor(5000) THEN
     IF NOT future.IsError THEN
-        DIM value AS PTR = future.Get()
+        DIM value AS OBJECT = future.Get()
         PRINT "Got result"
     ELSE
         PRINT "Error: "; future.Error
@@ -833,7 +866,7 @@ DO WHILE NOT future.IsDone
 LOOP
 
 IF NOT future.IsError THEN
-    DIM value AS PTR = future.Get()
+    DIM value AS OBJECT = future.Get()
 END IF
 ```
 
@@ -854,22 +887,30 @@ END IF
 IF future.IsError THEN
     PRINT "Error: "; future.Error
 ELSE
-    DIM value AS PTR = future.Get()  ' Safe - we know it's not an error
+    DIM value AS OBJECT = future.Get()  ' Safe - we know it's not an error
 END IF
 ```
 
 ### Errors (Traps)
 
-- `Future: null object`
-- `Future: resolved with error` (calling `Get()` on error-resolved future)
+- `Future: null object` (`Get`; the convenience queries/getters use their
+  false/empty/null result for a null handle instead)
+- the message supplied to `Promise.SetError` (calling `Get()` on an
+  error-resolved Future; `"Unknown error"` when no message was supplied)
 
 ### Notes
 
-- A Promise can only be completed once (either `Set` or `SetError`)
+- A Promise can only be completed once (`Set`, `SetOwned`, or `SetError`).
 - `GetFuture()` returns the cached Future and each call receives its own retained handle.
-- Calling `Get()` on an error-resolved Future will trap
-- `WaitFor()` returns false on timeout without trapping
-- Multiple threads can wait on the same Future
+- Calling `Get()` on an error-resolved Future traps with the stored error text;
+  `Wait()` and `WaitFor()` merely wait for settlement and do not rethrow it.
+- `GetFor(ms <= 0)` and `WaitFor(ms <= 0)` perform immediate checks.
+- `WaitFor()` returns true for either a value or an error and false on timeout.
+- `TryGetOption()` distinguishes a successful null result (`Some(null)`) from
+  pending/error (`None`), but deliberately does not distinguish pending from
+  error. Inspect `IsError`/`Error` when that distinction matters.
+- Multiple threads can wait on the same Future. Every retrieval of an owned
+  runtime value receives a fresh retain and must be balanced at the C ABI layer.
 - Completion listeners run outside the Promise lock. Listener traps are isolated after cleanup so remaining listeners still run and promise completion is not converted into a listener trap.
 - Cancelling a pending completion listener runs its cleanup hook after removing it. Cleanup-hook traps are isolated after the listener and retained Future reference are released.
 
@@ -897,7 +938,7 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 | `ForPool(start, end, func, pool)` | `Void(Integer, Integer, Function, Pool)`  | Parallel callback loop with custom pool                |
 | `Reduce(seq, func, identity)`     | `Object(Seq, Function, Object)`           | Reduce using a managed combine function                |
 | `ReducePool(seq, func, id, pool)` | `Object(Seq, Function, Object, Pool)`     | Reduce with custom thread pool                         |
-| `DefaultWorkers()`                | `Integer()`                               | Get number of CPU cores                               |
+| `DefaultWorkers()`                | `Integer()`                               | Get online logical processor count (fallback 4)       |
 | `DefaultPool()`                   | `Pool()`                                  | Get or create the shared default thread pool          |
 
 ### Zia Example
@@ -938,6 +979,10 @@ NEXT i
 
 - `Parallel.Map` retains runtime-managed mapper results before placing them in the returned sequence, so exact input elements and other shared/borrowed runtime objects remain valid after the original owner is released.
 - `Parallel.Reduce` returns the accumulator exactly as the reducer produces it. The runtime does not retain or release intermediate accumulator objects; reducers that allocate replacement accumulators are responsible for their own intermediate ownership discipline.
+
+Input sequences, callback handles, custom pools, and non-result callback data
+are borrowed for the duration of the blocking call. Do not mutate or release an
+input sequence concurrently with a native parallel operation.
 
 ### Parallel For Example
 
@@ -984,18 +1029,45 @@ pool.Shutdown()
 
 ### Notes
 
-- **Default pool:** Operations without explicit pool use a shared pool with `DefaultWorkers()` threads
+- **Default pool:** Operations without an explicit pool use a shared pool sized
+  from the online logical processor count, with the Pool constructor's
+  `1..1024` clamp. On a machine reporting more than 1024 processors,
+  `DefaultWorkers()` can therefore exceed the returned Pool's `Size`.
 - **Default pool handle:** `DefaultPool()` returns a retained handle; release it like other runtime objects when using the C ABI directly.
+- **Default pool typing:** Zia currently cannot chain Pool members directly
+  from the untyped `DefaultPool()` result. Use an explicit receiver such as
+  `Viper.Threads.Pool.get_Size(Viper.Threads.Parallel.DefaultPool())`.
 - **Order preservation:** `Map` guarantees output order matches input order
 - **Map result ownership:** Runtime-managed objects returned by a `Map` callback are retained for the result Seq, which releases those retained references when the Seq is freed.
 - **Blocking:** All parallel operations block until work is complete
 - **Thread safety:** Functions passed to parallel operations must be thread-safe
-- **Work distribution:** Work is distributed in small chunks for load balancing
-- **Reduce identity:** `Reduce` applies the identity value once on the calling thread after per-chunk reduction; workers do not share or mutate the identity concurrently
+- **Work distribution:** Tiny workloads use one task per element. Larger
+  workloads target four tasks per worker and at least 16 elements per task.
+- **Reduce grouping:** Empty input returns `identity`; inputs of up to four
+  elements are folded serially. Larger native inputs are folded left-to-right
+  within contiguous chunks, then the chunk results are combined in chunk order
+  with `identity` applied exactly once on the calling thread. The reducer must
+  be associative if this regrouping is expected to match a sequential fold.
 - **For range bounds:** `For(start, end, func)` traps if the half-open range is larger than `Integer` can represent.
 - **Task traps:** If a worker callback traps, the operation wakes its caller and rethrows the callback's trap message instead of hanging.
 - **Nested pool calls:** A `Parallel.*Pool` call made from a worker already running in the target pool executes inline to avoid self-deadlock.
 - **Callback bridge:** `Parallel` callback APIs take managed function references at the frontend boundary; native worker callbacks remain internal.
+- **Null/empty inputs:** `ForEach` and `Invoke` are no-ops for null/empty
+  sequences; `Map` returns an empty Seq; `Reduce` returns its identity. A null
+  callback similarly produces the operation's empty/no-op result.
+
+### VM and BytecodeVM Behavior
+
+The callback bridge is not feature-equivalent to native execution:
+
+- `For`/`ForPool` and `Invoke`/`InvokePool` execute callbacks sequentially on
+  the calling VM thread; an explicit pool is only a native concurrency hint.
+- `ForEach`, `Map`, `Reduce`, and their `*Pool` variants currently trap with
+  `sequence-callback execution is not yet supported ... compile to native`.
+- Only native execution uses worker chunks and the shared/custom thread pool.
+
+These differences are backend limitations, not a promise that callbacks are
+safe to run concurrently on every backend.
 
 ### Use Cases
 
@@ -1025,7 +1097,7 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 |---------------------------|------------------------|----------------------------------------------------------|
 | `Cancel()`                | `Void()`               | Request cancellation on this token                        |
 | `Reset()`                 | `Void()`               | Reset the token for reuse                                |
-| `Linked()`                | `CancelToken()`  | Create a child token that cancels when parent cancels    |
+| `Linked(parent)`          | `CancelToken(CancelToken)` | Class-level factory for a child linked to `parent` |
 | `Check()`                 | `Boolean()`            | Check if this or parent token is cancelled               |
 | `ThrowIfCancelled()`      | `Void()`               | Trap if the token has been cancelled                     |
 
@@ -1033,9 +1105,15 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 
 - **Thread-safe:** Local cancellation state uses atomic memory operations; linked parent/child bookkeeping is synchronized internally.
 - **Reusable:** `Reset()` clears this token's local cancelled bit so it can be reused.
-- **Linked tokens:** Child tokens created with `Linked()` are cancelled when the parent is cancelled. Parent cancellation is propagated into children and is sticky: resetting the parent later does not clear already-cancelled children.
+- **Linked tokens:** Invoke `Viper.Threads.CancelToken.Linked(parent)` to create
+  a child. Parent cancellation is propagated into children and is sticky:
+  resetting the parent later does not clear a directly linked child's local
+  cancellation bit.
 - **Child reset:** After a parent has been reset, a linked child may be reset independently to clear its propagated cancellation state. If the parent is still cancelled, the child continues to report cancelled.
 - **Cooperative:** Cancellation is advisory. The operation must check the token and respond appropriately.
+- **Trap kind:** `ThrowIfCancelled()` raises an interrupt-kind trap with
+  `OperationCancelledException: cancellation was requested`; it is not an
+  ordinary runtime-error trap.
 
 ### BASIC Example
 
@@ -1067,7 +1145,7 @@ PRINT childToken.IsCancelled  ' Output: 1 (true - parent was cancelled)
 PRINT childToken.Check()      ' Output: 1
 
 ' ThrowIfCancelled traps if cancelled
-token.ThrowIfCancelled()  ' Traps: "operation cancelled"
+token.ThrowIfCancelled()  ' Traps: OperationCancelledException: cancellation was requested
 ```
 
 ### Use Cases
@@ -1092,7 +1170,7 @@ Time-based debouncer that delays execution until a quiet period has elapsed. Use
 |---------------|------------------------|--------------------------------------------------|
 | `Delay`       | `Integer` (read-only)  | Configured delay in milliseconds                 |
 | `IsReady`     | `Boolean` (read-only)  | True if delay has elapsed since last signal      |
-| `SignalCount` | `Integer` (read-only)  | Number of signals since last ready state         |
+| `SignalCount` | `Integer` (read-only)  | Number of signals since construction or `Reset`  |
 
 ### Methods
 
@@ -1107,6 +1185,11 @@ Time-based debouncer that delays execution until a quiet period has elapsed. Use
 2. The timer resets on each signal
 3. `IsReady` returns true only after the full delay has elapsed with no new signals
 4. This ensures the action fires only after events stop arriving
+
+`IsReady` is a level, not a one-shot event: once ready, it stays true until the
+next `Signal()` or `Reset()`. The Debouncer stores no callback or event payload;
+the polling caller decides what action to run. Non-positive constructor delays
+are clamped to zero, and `SignalCount` saturates at the largest Integer.
 
 ### BASIC Example
 
@@ -1197,7 +1280,7 @@ PRINT "Time until next allowed: "; throttle.RemainingMs; "ms"
 |------------------|------------------------------|--------------------------------|
 | Timing           | After quiet period           | At regular intervals           |
 | First event      | Delayed                      | Immediate                      |
-| Rapid events     | Only last event fires        | First event fires, rest skip   |
+| Rapid events     | One readiness after quiet    | First attempt passes, rest skip |
 | Use case         | Wait for user to stop        | Limit rate of execution        |
 
 ### Use Cases
@@ -1207,6 +1290,9 @@ PRINT "Time until next allowed: "; throttle.RemainingMs; "ms"
 - **Logging:** Limit log output rate
 - **Polling:** Control polling frequency
 - **Thread-safe:** Throttler state is synchronized internally; multiple threads can call `Try`, `Reset`, and properties safely.
+- Non-positive constructor intervals are clamped to zero, so every `Try()`
+  succeeds. `Count` counts successful attempts only and saturates at the largest
+  Integer; `Reset()` clears both timing state and the count.
 
 ---
 
@@ -1243,7 +1329,18 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 - **Revision-aware scheduling:** `ScheduleGen(name, delayMs, generation)` stamps an entry with a caller-defined generation (e.g. a document revision). Because re-scheduling a name replaces its entry, `IsDueGen(name, g)` fires only for the *latest* generation — a newer `ScheduleGen` supersedes an older one, so stale work is discarded in a single call (`GenerationOf(name)` answers "is my revision still the one queued?"). This is the canonical primitive for debounced, edit-superseding background work — live diagnostics, search-as-you-type, incremental indexing — and should be preferred over hand-rolled `Viper.Time.Clock.Ticks()` timers. Plain `Schedule` records generation `0`.
 - **Full string keys:** Task names compare by byte length and contents, so strings with embedded NUL bytes remain distinct.
 - **Poll ownership:** `Poll()` returns a Seq that owns the returned task-name strings.
-- **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.
+- **Clock:** Uses a monotonic clock when the platform exposes one and falls back
+  to the realtime clock if that query fails.
+- **Delay bounds:** Negative delays are treated as zero. Addition overflow
+  saturates the due time at the largest Integer, making the task effectively
+  never due.
+- **Poll order:** New names are inserted at the head of an internal list, so
+  due names are returned newest-scheduled first, not sorted by deadline. Replacing
+  an existing name does not move its list position.
+- **Generation sentinel:** `GenerationOf` uses `-1` for "not scheduled," while
+  `ScheduleGen` accepts any Integer. A scheduled generation of `-1` is therefore
+  indistinguishable from absence through `GenerationOf`; reserve `-1` when that
+  query is part of the protocol.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
 - **Thread-safe:** Scheduler operations are internally synchronized; multiple threads may schedule, cancel, poll, and clear the same instance.
 
@@ -1306,28 +1403,54 @@ Async task combinators for composing asynchronous results. Built on Future/Promi
 | `Delay(ms)`                       | `Future(Integer)`                  | Return a Future that resolves after `ms` milliseconds with NULL |
 | `All(futures)`                    | `Future(Seq)`                      | Return a Future that resolves when all input futures resolve (with a Seq of results) |
 | `Any(futures)`                    | `Future(Object)`                   | Return a Future that resolves with the value of whichever input future completes first |
-| `Run(callback, arg)`              | `Future(Function, Object)`         | Spawn a bridged function reference and return a Future |
-| `RunOwned(callback, arg)`         | `Future(Function, Object)`         | Retain a runtime-managed argument until the callback finishes |
-| `Map(future, mapper, arg)`        | `Future(Future, Function, Object)` | Chain a mapper on a Future result |
-| `MapOwned(future, mapper, arg)`   | `Future(Future, Function, Object)` | Retain mapper argument until the callback finishes |
+| `Run(callback, arg)`              | `Future(Function, Object)`         | Run `(arg) -> Object` on a new background thread; native `arg` is borrowed |
+| `RunOwned(callback, arg)`         | `Future(Function, Object)`         | Native retaining form of `Run` for a runtime-managed argument |
+| `Map(future, mapper, arg)`        | `Future(Future, Function, Object)` | Apply `(value, arg) -> Object` when the source settles; native `arg` is borrowed |
+| `MapOwned(future, mapper, arg)`   | `Future(Future, Function, Object)` | Retaining form of `Map` for the extra mapper argument |
 | `RunCancellable(callback, arg, token)` | `Future(Function, Object, CancelToken)` | Cancellable callback variant |
 | `RunCancellableOwned(callback, arg, token)` | `Future(Function, Object, CancelToken)` | Cancellable owned-arg variant |
 
 ### Notes
 
 - All methods are thread-safe.
-- `Delay` returns a Future that resolves with NULL after the specified delay.
+- `Delay` returns a Future that resolves with NULL after the specified delay;
+  negative delays are treated as zero.
 - `All` returns a Future resolving to a Seq of results. If any input future has an error, the combined Future resolves with that error without waiting for the remaining inputs.
 - The Seq returned by `All` owns retained runtime-managed result values, so results remain valid after the source futures are released.
-- `Any` returns a Future resolving with the value of the first completed input future.
-- `Run` spawns a new thread to execute the callback and returns a Future that resolves with the callback's return value. Zia may pass `&function`; BASIC may pass `ADDRESSOF Function`.
-- `Map` chains a transformation: when the input future resolves, `mapper` is called with the result and `arg`, producing a new Future.
-- `RunCancellable` is like `Run` but associates the spawned task with a `CancelToken` for cooperative cancellation.
+- `All(null)` and `All` of an empty Seq resolve successfully with an empty Seq.
+  `Any(null)` and `Any` of an empty Seq resolve as an error with
+  `Async.Any: empty futures`.
+- `Any` forwards either the value or error from the first input that wins the
+  completion race. If inputs are already settled while listeners are being
+  registered, the earliest such input in Seq order wins.
+- `Run` spawns a new native thread and resolves with the callback's return
+  value. Zia may pass `&function`; BASIC may pass `ADDRESSOF Function`.
+- `Map` propagates a source error without calling the mapper. On success, the
+  mapper runs synchronously on the thread that delivers completion; if the
+  source was already settled, that may be the thread calling `Map`.
+- `RunCancellable` checks the token before and after the callback. Cancellation
+  does not preempt the callback; the callback must inspect the token
+  cooperatively. A cancelled task resolves as an error with `cancelled`.
 - Traps raised inside `Run`, `RunCancellable`, or `Map` callbacks are converted into Future errors.
-- Callback `arg` values passed to `Async.Run` are treated as managed values and retained for the worker lifetime.
-- The `Owned` variants remain as explicit retaining forms for code that wants that contract visible at the call site.
+- On the native backend, the non-`Owned` `Run`, `RunCancellable`, and `Map`
+  variants borrow their extra `arg`; callers must keep it alive until the
+  callback finishes. The corresponding `Owned` variants retain a
+  runtime-managed argument for that lifetime.
 - Runtime-managed values returned from `Run`, `RunCancellable`, and `Map` are retained before being published through the returned Future, so borrowed argument/input values and shared runtime objects remain valid after the original owner is released.
 - If a callback wants to document ownership explicitly in custom promise/future flows, use `Promise.SetOwned`; it has the same retaining behavior as `Promise.Set`.
+
+### VM and BytecodeVM Behavior
+
+`Async.Run` has a dedicated managed callback bridge on both VMs. It creates a
+worker VM and, unlike the native non-owned path, retains a non-null
+runtime-managed argument for the worker lifetime. `Delay`, `All`, and `Any` do
+not invoke user callbacks and use the shared C runtime implementation.
+
+`RunOwned`, `RunCancellable`, `RunCancellableOwned`, `Map`, and `MapOwned`
+currently have no corresponding VM/BytecodeVM callback handler even though the
+frontends accept function references for them. Do not invoke those callback
+variants under either VM; compile to native. This bridge-coverage defect is
+tracked in the review findings.
 
 ---
 
@@ -1364,8 +1487,15 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 - Uses mutex protection; safe for concurrent reads and writes from any thread.
 - Keys are copied on insert (not retained by reference).
 - Keys compare by byte length and contents, so strings with embedded NUL bytes are supported.
+- A null key is normalized to the empty byte string and therefore aliases `""`.
 - Values are retained while in the map.
 - `Get`, found-value `GetOr`, and `Values` return stable retained references/snapshots that remain valid even if the map is concurrently updated after the call returns. At the C ABI layer, callers release those returned references.
+- Null values are valid. Use `Has(key)` to distinguish a present null value from
+  an absent key. `GetOr` returns a present null rather than its default, and an
+  absent-key default is passed through without an extra retain.
+- `Keys()` and `Values()` are owning snapshots in hash-bucket walk order, not
+  insertion or sorted order. Separate snapshots can describe different map
+  states when writes occur between the calls.
 - Uses FNV-1a hash with separate chaining for collision resolution.
 - For single-threaded use, prefer `Viper.Collections.Map` which has no locking overhead.
 
@@ -1450,8 +1580,8 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 
 | Property  | Type                   | Description                              |
 |-----------|------------------------|------------------------------------------|
-| `Count`      | `Integer` (read-only)  | Approximate number of elements           |
-| `IsEmpty` | `Boolean` (read-only)  | True if the queue is approximately empty |
+| `Count`      | `Integer` (read-only)  | Mutex-protected element-count snapshot   |
+| `IsEmpty` | `Boolean` (read-only)  | Mutex-protected empty-state snapshot      |
 | `IsClosed` | `Boolean` (read-only) | True after `Close()` has been called     |
 
 ### Methods
@@ -1473,9 +1603,17 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 - `Dequeue` blocks until an item is available or the queue is closed and drained.
 - `TryDequeue` returns NULL immediately if the queue is empty.
 - Prefer `TryDequeueOption` for new code. It distinguishes an empty queue from a queued null object.
+- Null items are valid. `Dequeue`, `DequeueTimeout`, and `Peek` return null both
+  for a null item and for their empty/closed/timeout cases; only
+  `TryDequeueOption` distinguishes a queued null non-blockingly.
 - `Peek` returns a stable retained reference to the current front item, or NULL if empty.
 - `Dequeue`, `TryDequeue`, and `DequeueTimeout` transfer the queue's retained item reference to the caller. At the C ABI layer, callers release returned runtime-managed values.
 - `Close()` wakes blocked `Dequeue`/`DequeueTimeout` calls; once the queue is empty they return NULL.
+- `Close()` is idempotent. `Enqueue()` after close traps with
+  `ConcurrentQueue.Enqueue: queue is closed`.
+- `DequeueTimeout(ms <= 0)` is a non-blocking dequeue.
+- `Count` and `IsEmpty` are exact while their internal lock is held, but another
+  thread may change the queue immediately after the property returns.
 - Values are retained while in the queue.
 
 ### Zia Example
@@ -1567,7 +1705,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 | Method           | Signature          | Description                                         |
 |------------------|--------------------|-----------------------------------------------------|
-| `New(capacity)`  | `Channel(Integer)` | Create a bounded channel (0 for synchronous channel)|
+| `New(capacity)`  | `Channel(Integer)` | Create a channel; capacity is clamped to `0..1000000` |
 
 ### Methods
 
@@ -1595,14 +1733,27 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 ### Notes
 
 - Closing a channel prevents further sends but receivers can still drain remaining items.
+- Negative capacities are treated as 0 (synchronous); capacities above
+  1,000,000 are clamped to that maximum.
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
 - On a synchronous channel, `TrySend()` succeeds only when a receiver is already waiting, publishes one retained handoff value, and returns without waiting for the receiver to acknowledge consumption.
 - On a synchronous channel, `TryRecv()` is strictly non-blocking. It only consumes an already-published handoff value; it does not wait to rendezvous with a merely waiting sender. Use `Recv()` or `RecvFor()` for rendezvous receives.
 - Prefer `TryRecvOption()` for new code. It distinguishes no available item from a transmitted null object.
+- Null items are valid. `Recv`, `TryRecv`, and `RecvFor` cannot distinguish a
+  transmitted null from closed-and-drained, unavailable, or timeout
+  respectively; `TryRecvOption` is the only Option-returning receive.
 - At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks only an already-queued value without consuming or releasing it; it does not advertise a merely waiting synchronous sender as available.
 - `IsFull` means a send would block. For synchronous channels it is false when a receiver is already waiting and no handoff value is queued.
 - `SendFor` includes both the wait for a receiver/space and the synchronous handoff acknowledgement in its timeout budget.
+- `SendFor(item, ms <= 0)` is `TrySend(item)` and `RecvFor(ms <= 0)` is a
+  non-blocking receive.
 - `Send` traps if the channel is closed.
+- `TrySend`/`SendFor` return false instead of trapping for a closed channel, and
+  `Close()` is idempotent.
+- Sends retain runtime-managed items; receives transfer that retained reference
+  to the caller. Sending does not consume the caller's existing reference.
+- On a synchronous channel, `Count` can transiently be 1 while a published
+  handoff awaits consumption even though `Capacity` is 0.
 - `Cap` remains available as a compatibility alias for `Capacity`.
 
 ### Zia Example
@@ -1700,5 +1851,5 @@ PRINT "IsClosed: "; ch.IsClosed  ' Output: 1
 
 ## See Also
 
-- [Collections](collections/README.md) - Thread-safe access to shared data structures
+- [Collections](collections/README.md) - Single-threaded and specialized collection types
 - [Time & Timing](time.md) - `Clock.Sleep()` and timing utilities

@@ -2788,7 +2788,8 @@ static void test_heightfield_box_upside_down_still_contacts() {
                                nullptr,
                                nullptr) != 0,
                 "heightfield: upside-down box still generates a contact");
-    EXPECT_TRUE(depth > 0.02 && depth < 0.09, "heightfield: upside-down box depth is the true 0.05");
+    EXPECT_TRUE(depth > 0.02 && depth < 0.09,
+                "heightfield: upside-down box depth is the true 0.05");
     EXPECT_TRUE(normal[1] > 0.9, "heightfield: upside-down box contact normal points up");
 }
 
@@ -2953,8 +2954,7 @@ static void test_box_on_mesh_floor_gets_support_manifold() {
     {
         void *event = rt_world3d_get_collision_event(world, 0);
         int64_t contact_count = rt_collision_event3d_get_contact_count(event);
-        EXPECT_TRUE(contact_count >= 3,
-                    "mesh support manifold: box rests on a multi-point patch");
+        EXPECT_TRUE(contact_count >= 3, "mesh support manifold: box rests on a multi-point patch");
     }
 }
 
@@ -3010,7 +3010,8 @@ static void test_heightfield_long_raycast_hits_distant_terrain() {
         if (hit) {
             void *point = rt_physics_hit3d_get_point(hit);
             EXPECT_NEAR(rt_vec3_x(point), 500.0, 1.5, "heightfield raycast: hit lands at x=500");
-            EXPECT_NEAR(rt_vec3_y(point), 0.0, 0.05, "heightfield raycast: hit lands on the ground");
+            EXPECT_NEAR(
+                rt_vec3_y(point), 0.0, 0.05, "heightfield raycast: hit lands on the ground");
         }
     }
 }
@@ -4070,7 +4071,7 @@ static void test_query_broadphase_flavors_after_mixed_moves() {
         EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 3,
                     "flavors: three hits before moves");
     }
-    rt_body3d_set_position(mid_box, 6.2, 0.0, 0.0); /* sub-margin */
+    rt_body3d_set_position(mid_box, 6.2, 0.0, 0.0);  /* sub-margin */
     rt_body3d_set_position(far_box, 11.0, 0.0, 0.0); /* escape */
     rt_world3d_step(world, 1.0 / 60.0);
     {
@@ -4091,6 +4092,382 @@ static void test_query_broadphase_flavors_after_mixed_moves() {
                         rt_physics_hit3d_get_body(rt_physics_hit_list3d_get(hits, 0)) == mid_box,
                     "flavors: overlap sphere finds the sub-margin-moved body at its live position");
     }
+}
+
+/* --- Vehicle3D: raycast car on a dynamic chassis --- */
+
+/// Shared rig: big static ground slab (top at y=0), 1200 kg box chassis with
+/// four suspension wheels at the corners (fronts steer, all driven).
+static void *vehicle_test_rig(void **out_world, void **out_chassis) {
+    void *w = rt_world3d_new(0.0, -9.8, 0.0);
+    void *ground = rt_body3d_new_aabb(100.0, 0.5, 100.0, 0.0);
+    void *chassis = rt_body3d_new_aabb(1.0, 0.4, 2.0, 1200.0);
+    rt_body3d_set_position(ground, 0.0, -0.5, 0.0);
+    rt_body3d_set_position(chassis, 0.0, 1.0, 0.0);
+    rt_world3d_add(w, ground);
+    rt_world3d_add(w, chassis);
+    void *vehicle = rt_vehicle3d_new(w, chassis);
+    /* anchors near the chassis floor; rest 0.5, radius 0.3, k tuned so the
+     * equilibrium compression is ~0.25 (load 2940 N / 12000 N/m). */
+    rt_vehicle3d_add_wheel(vehicle, -0.9, -0.3, 1.5, 0.3, 0.5, 12000.0, 1900.0, 1, 1);
+    rt_vehicle3d_add_wheel(vehicle, 0.9, -0.3, 1.5, 0.3, 0.5, 12000.0, 1900.0, 1, 1);
+    rt_vehicle3d_add_wheel(vehicle, -0.9, -0.3, -1.5, 0.3, 0.5, 12000.0, 1900.0, 0, 1);
+    rt_vehicle3d_add_wheel(vehicle, 0.9, -0.3, -1.5, 0.3, 0.5, 12000.0, 1900.0, 0, 1);
+    if (out_world)
+        *out_world = w;
+    if (out_chassis)
+        *out_chassis = chassis;
+    return vehicle;
+}
+
+static void test_vehicle_settles_on_suspension() {
+    void *w = nullptr;
+    void *chassis = nullptr;
+    void *vehicle = vehicle_test_rig(&w, &chassis);
+    EXPECT_TRUE(vehicle != nullptr, "vehicle created");
+    EXPECT_TRUE(rt_vehicle3d_get_wheel_count(vehicle) == 4, "four wheels added");
+    for (int i = 0; i < 240; i++) {
+        rt_vehicle3d_step(vehicle, 1.0 / 60.0);
+        rt_world3d_step(w, 1.0 / 60.0);
+    }
+    for (int64_t i = 0; i < 4; i++)
+        EXPECT_TRUE(rt_vehicle3d_wheel_in_contact(vehicle, i) == 1,
+                    "settled vehicle keeps every wheel in ground contact");
+    {
+        void *pos = rt_body3d_get_position(chassis);
+        double y = rt_vec3_y(pos);
+        EXPECT_TRUE(y > 0.6 && y < 1.1, "chassis settles onto the suspension (~0.85)");
+    }
+    {
+        void *rot = rt_body3d_get_orientation(chassis);
+        EXPECT_TRUE(std::fabs(rt_quat_x(rot)) < 0.1 && std::fabs(rt_quat_z(rot)) < 0.1,
+                    "settled chassis stays upright");
+    }
+    {
+        double load = rt_vehicle3d_wheel_load(vehicle, 0);
+        EXPECT_TRUE(load > 1500.0 && load < 4500.0,
+                    "per-wheel suspension load is near the static share (~2940 N)");
+    }
+}
+
+static void test_vehicle_drives_and_steers() {
+    void *w = nullptr;
+    void *chassis = nullptr;
+    void *vehicle = vehicle_test_rig(&w, &chassis);
+    /* Settle first so the drive phase starts from rest contact. */
+    for (int i = 0; i < 120; i++) {
+        rt_vehicle3d_step(vehicle, 1.0 / 60.0);
+        rt_world3d_step(w, 1.0 / 60.0);
+    }
+    rt_vehicle3d_set_input(vehicle, 1.0, 0.0, 0.0);
+    for (int i = 0; i < 120; i++) {
+        rt_vehicle3d_step(vehicle, 1.0 / 60.0);
+        rt_world3d_step(w, 1.0 / 60.0);
+    }
+    {
+        void *pos = rt_body3d_get_position(chassis);
+        EXPECT_TRUE(rt_vehicle3d_get_speed(vehicle) > 2.0,
+                    "full throttle accelerates the vehicle forward");
+        EXPECT_TRUE(rt_vec3_z(pos) > 2.0, "vehicle advanced along its forward axis");
+    }
+    {
+        double x_before;
+        {
+            void *pos = rt_body3d_get_position(chassis);
+            x_before = rt_vec3_x(pos);
+        }
+        rt_vehicle3d_set_input(vehicle, 1.0, 0.0, 1.0);
+        for (int i = 0; i < 120; i++) {
+            rt_vehicle3d_step(vehicle, 1.0 / 60.0);
+            rt_world3d_step(w, 1.0 / 60.0);
+        }
+        void *pos = rt_body3d_get_position(chassis);
+        EXPECT_TRUE(std::fabs(rt_vec3_x(pos) - x_before) > 0.5,
+                    "steering input curves the vehicle's path");
+    }
+    /* Brake to (near) rest. */
+    rt_vehicle3d_set_input(vehicle, 0.0, 1.0, 0.0);
+    for (int i = 0; i < 240; i++) {
+        rt_vehicle3d_step(vehicle, 1.0 / 60.0);
+        rt_world3d_step(w, 1.0 / 60.0);
+    }
+    EXPECT_TRUE(std::fabs(rt_vehicle3d_get_speed(vehicle)) < 1.0,
+                "full brake brings the vehicle near rest");
+}
+
+/* --- Joint wake + sleep gating (joint3d_pair_begin_solve) --- */
+
+static void test_joint_wakes_sleeping_partner() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 2.0, 0.0, 0.0);
+    rt_world3d_add(w, a);
+    rt_world3d_add(w, b);
+    void *joint = rt_distance_joint3d_new(a, b, 2.0);
+    rt_world3d_add_joint(w, joint, RT_JOINT_DISTANCE);
+    rt_body3d_sleep(a);
+    rt_body3d_sleep(b);
+
+    /* Teleporting one endpoint must re-activate its sleeping joint partner
+     * (world3d_wake_joint_partners), and the joint must then pull the pair
+     * back to the target distance instead of leaving the sleeper frozen. */
+    rt_body3d_set_position(a, -3.0, 0.0, 0.0);
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) == 0, "teleporting A wakes sleeping joint partner B");
+    for (int i = 0; i < 60; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+    {
+        void *pa = rt_body3d_get_position(a);
+        void *pb = rt_body3d_get_position(b);
+        double dx = rt_vec3_x(pb) - rt_vec3_x(pa);
+        double dy = rt_vec3_y(pb) - rt_vec3_y(pa);
+        double dz = rt_vec3_z(pb) - rt_vec3_z(pa);
+        double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        EXPECT_TRUE(std::fabs(dist - 2.0) < 0.25,
+                    "woken pair re-solves the distance joint (dist ~= 2)");
+    }
+}
+
+static void test_fully_sleeping_joint_pair_stays_asleep() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 2.0, 0.0, 0.0);
+    rt_world3d_add(w, a);
+    rt_world3d_add(w, b);
+    void *joint = rt_distance_joint3d_new(a, b, 2.0);
+    rt_world3d_add_joint(w, joint, RT_JOINT_DISTANCE);
+    rt_body3d_sleep(a);
+    rt_body3d_sleep(b);
+    /* A satisfied joint between two sleeping bodies must not wake them:
+     * the solve is skipped entirely (no drift, sleep preserved). */
+    for (int i = 0; i < 30; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_body3d_is_sleeping(a) != 0, "satisfied sleeping joint pair: A stays asleep");
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) != 0, "satisfied sleeping joint pair: B stays asleep");
+}
+
+/* --- SixDof linear limits operate in body A's joint frame --- */
+
+static void test_sixdof_linear_limits_follow_body_a_frame() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(0.25, 0.25, 0.25, 0.0); /* static anchor */
+    void *free_b = rt_body3d_new_sphere(0.25, 1.0);
+    void *locked_b = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    /* Yaw A by +90 degrees: its local +X now points along world -Z. */
+    rt_body3d_set_orientation(a, rt_quat_new(0.0, 0.70710678118654752, 0.0, 0.70710678118654752));
+    rt_world3d_add(w, a);
+
+    /* free_b sits along A's local +X (world -Z): within the [0, 2] slider
+     * range on local X, so the joint must NOT drag it anywhere. */
+    rt_body3d_set_position(free_b, 0.0, 0.0, -1.5);
+    rt_world3d_add(w, free_b);
+    void *slider = rt_sixdof_joint3d_new(a, free_b, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_linear_limits(
+        slider, rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(2.0, 0.0, 0.0));
+    rt_world3d_add_joint(w, slider, RT_JOINT_SIXDOF);
+    for (int i = 0; i < 30; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+    {
+        void *p = rt_body3d_get_position(free_b);
+        EXPECT_TRUE(std::fabs(rt_vec3_z(p) + 1.5) < 0.1,
+                    "slider along A's local X leaves in-range body untouched (world -Z)");
+    }
+
+    /* locked_b sits along A's local -Z (world -X is local +Z? use world +X =
+     * local -Z): local Y/Z are locked ([0,0]), so its offset must be
+     * projected out and the body pulled to the anchor axis. */
+    rt_body3d_set_position(locked_b, 1.5, 0.0, 0.0);
+    rt_world3d_add(w, locked_b);
+    void *locked_joint = rt_sixdof_joint3d_new(a, locked_b, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_linear_limits(
+        locked_joint, rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(2.0, 0.0, 0.0));
+    rt_world3d_add_joint(w, locked_joint, RT_JOINT_SIXDOF);
+    for (int i = 0; i < 60; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+    {
+        void *p = rt_body3d_get_position(locked_b);
+        EXPECT_TRUE(std::fabs(rt_vec3_x(p)) < 0.2,
+                    "locked local-Z axis projects out the world-X offset");
+    }
+}
+
+/* --- Trigger3D: volume overlap + uncapped tracking --- */
+
+static void test_trigger_detects_straddling_large_body() {
+    void *w = rt_world3d_new(0, 0, 0);
+    /* Center (2,0,0) is outside the [-1,1] trigger, but the body's AABB
+     * spans x in [0.8, 3.2] and overlaps it — must register as inside. */
+    void *big = rt_body3d_new_aabb(1.2, 1.2, 1.2, 1.0);
+    rt_body3d_set_position(big, 2.0, 0.0, 0.0);
+    rt_world3d_add(w, big);
+    void *t = rt_trigger3d_new(-1, -1, -1, 1, 1, 1);
+    rt_trigger3d_update(t, w);
+    EXPECT_TRUE(rt_trigger3d_get_enter_count(t) == 1,
+                "straddling body's AABB overlap registers an enter");
+    rt_body3d_set_position(big, 10.0, 0.0, 0.0);
+    rt_trigger3d_update(t, w);
+    EXPECT_TRUE(rt_trigger3d_get_exit_count(t) == 1, "straddling body exit registers");
+}
+
+static void test_trigger_tracks_beyond_legacy_cap() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *t = rt_trigger3d_new(-10, -10, -10, 10, 10, 10);
+    const int kBodies = 96; /* old fixed table capped at 64 */
+    for (int i = 0; i < kBodies; i++) {
+        void *b = rt_body3d_new_sphere(0.05, 1.0);
+        rt_body3d_set_position(b, (double)(i % 10), 0.0, (double)(i / 10));
+        rt_world3d_add(w, b);
+    }
+    rt_trigger3d_update(t, w);
+    EXPECT_TRUE(rt_trigger3d_get_enter_count(t) == kBodies,
+                "trigger tracks every occupant past the old 64-body cap");
+}
+
+/* --- CCD per-body catch-up segments (clamped-substep regime) --- */
+
+static void test_ccd_clamped_body_catchup_segments_no_tunnel() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *wall = rt_body3d_new_aabb(0.1, 4.0, 4.0, 0.0);
+    void *bullet = rt_body3d_new_sphere(0.05, 1.0);
+    rt_body3d_set_position(wall, 30.0, 0.0, 0.0);
+    rt_body3d_set_position(bullet, 0.0, 0.0, 0.0);
+    /* 2000 u/s at dt=0.1 wants ~hundreds of substeps — far past the global
+     * cap of 8. The per-body swept segments must still stop it at the wall. */
+    rt_body3d_set_velocity(bullet, 2000.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(bullet, 1);
+    rt_world3d_add(w, wall);
+    rt_world3d_add(w, bullet);
+    rt_world3d_step(w, 0.1);
+    {
+        void *pos = rt_body3d_get_position(bullet);
+        EXPECT_TRUE(rt_vec3_x(pos) < 30.5,
+                    "clamped-regime CCD bullet is stopped by per-body catch-up segments");
+    }
+    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(w) > rt_world3d_get_last_ccd_substeps(w),
+                "clamp diagnostics still record the capped demand");
+}
+
+/* --- Determinism replay checksum -------------------------------------- */
+
+extern "C" int64_t rt_parallel_default_workers(void);
+
+/// @brief FNV-1a accumulator over raw IEEE-754 bit patterns so replay
+///        comparisons are bit-exact, not tolerance-based.
+struct ReplayChecksum {
+    uint64_t value = 14695981039346656037ULL;
+
+    void add(double d) {
+        uint64_t bits = 0;
+        std::memcpy(&bits, &d, sizeof(bits));
+        for (unsigned shift = 0; shift < 64; shift += 8) {
+            value ^= (bits >> shift) & 0xffU;
+            value *= 1099511628211ULL;
+        }
+    }
+};
+
+struct ReplayResult {
+    uint64_t checksum;
+    int32_t last_island_count;
+    int32_t last_contact_count;
+    int pool_created;
+};
+
+/// @brief Step a scripted 96-box two-cluster pile and checksum every body's
+///        full state each 10 steps. The two clusters are disjoint contact
+///        islands, and their combined contact count crosses the parallel
+///        solver threshold, so the run exercises the island-dispatch path
+///        unless @p force_serial disables the solver pool.
+static ReplayResult run_replay_scene(int force_serial) {
+    void *world = rt_world3d_new(0.0, -9.81, 0.0);
+    if (force_serial)
+        ((rt_world3d *)world)->solver_pool_failed = 1;
+
+    void *ground = rt_body3d_new_aabb(60.0, 0.5, 60.0, 0.0);
+    rt_body3d_set_position(ground, 0.0, -0.5, 0.0);
+    rt_world3d_add(world, ground);
+
+    void *bodies[97];
+    int body_count = 0;
+    bodies[body_count++] = ground;
+    const double cluster_centers[2] = {-16.0, 16.0};
+    for (int cluster = 0; cluster < 2; ++cluster) {
+        for (int layer = 0; layer < 3; ++layer) {
+            for (int gx = 0; gx < 4; ++gx) {
+                for (int gz = 0; gz < 4; ++gz) {
+                    void *box = rt_body3d_new_aabb(0.45, 0.45, 0.45, 1.0);
+                    rt_body3d_set_position(box,
+                                           cluster_centers[cluster] + (double)gx * 0.95,
+                                           0.46 + (double)layer * 0.95,
+                                           (double)gz * 0.95);
+                    rt_world3d_add(world, box);
+                    bodies[body_count++] = box;
+                }
+            }
+        }
+    }
+
+    ReplayChecksum checksum;
+    for (int step = 0; step < 240; ++step) {
+        rt_world3d_step(world, 1.0 / 60.0);
+        if (step % 10 != 9)
+            continue;
+        for (int i = 0; i < body_count; ++i) {
+            const rt_body3d *b = (const rt_body3d *)bodies[i];
+            for (int k = 0; k < 3; ++k)
+                checksum.add(b->position[k]);
+            for (int k = 0; k < 4; ++k)
+                checksum.add(b->orientation[k]);
+            for (int k = 0; k < 3; ++k)
+                checksum.add(b->velocity[k]);
+            for (int k = 0; k < 3; ++k)
+                checksum.add(b->angular_velocity[k]);
+        }
+    }
+
+    const rt_world3d *w = (const rt_world3d *)world;
+    ReplayResult result;
+    result.checksum = checksum.value;
+    result.last_island_count = w->last_solver_island_count;
+    result.last_contact_count = w->last_solver_contact_count;
+    result.pool_created = w->solver_pool != NULL;
+    return result;
+}
+
+static void test_replay_checksum_is_run_to_run_deterministic() {
+    ReplayResult first = run_replay_scene(0);
+    ReplayResult second = run_replay_scene(0);
+    if (first.checksum != second.checksum)
+        printf("replay checksums diverged: 0x%llx vs 0x%llx\n",
+               (unsigned long long)first.checksum,
+               (unsigned long long)second.checksum);
+    EXPECT_TRUE(first.checksum == second.checksum,
+                "identical scripted scenes replay to bit-identical state streams");
+    EXPECT_TRUE(first.last_island_count >= 2,
+                "replay scene settles into at least two solver islands");
+}
+
+static void test_replay_checksum_parallel_matches_serial() {
+    ReplayResult parallel = run_replay_scene(0);
+    ReplayResult serial = run_replay_scene(1);
+    /* Guard non-vacuity: the scene must actually cross the parallel-dispatch
+     * contact threshold, and the parallel run must have built its pool (on
+     * multi-core hosts) while the forced-serial run must not. */
+    EXPECT_TRUE(parallel.last_contact_count >= 64,
+                "replay scene crosses the parallel solver contact threshold");
+    if (rt_parallel_default_workers() >= 2)
+        EXPECT_TRUE(parallel.pool_created, "parallel replay run created the island worker pool");
+    EXPECT_TRUE(!serial.pool_created, "forced-serial replay run never builds the pool");
+    if (parallel.checksum != serial.checksum)
+        printf("parallel/serial checksums diverged: 0x%llx vs 0x%llx\n",
+               (unsigned long long)parallel.checksum,
+               (unsigned long long)serial.checksum);
+    EXPECT_TRUE(parallel.checksum == serial.checksum,
+                "parallel island dispatch is bit-identical to the serial solver");
 }
 
 int main() {
@@ -4125,6 +4502,16 @@ int main() {
     test_body_auto_sleep();
     test_kinematic_body_ignores_gravity_but_integrates_velocity();
     test_ccd_prevents_fast_sphere_tunneling();
+    test_ccd_clamped_body_catchup_segments_no_tunnel();
+
+    /* Vehicle3D */
+    test_vehicle_settles_on_suspension();
+    test_vehicle_drives_and_steers();
+
+    /* Joint sleep/wake gating */
+    test_joint_wakes_sleeping_partner();
+    test_fully_sleeping_joint_pair_stays_asleep();
+    test_sixdof_linear_limits_follow_body_a_frame();
 
     /* World */
     test_world_create();
@@ -4171,6 +4558,8 @@ int main() {
     test_trigger_exit_detection();
     test_trigger_multiple_bodies();
     test_trigger_set_bounds();
+    test_trigger_detects_straddling_large_body();
+    test_trigger_tracks_beyond_legacy_cap();
 
     /* Sphere-sphere collision */
     test_sphere_sphere_collision();
@@ -4258,6 +4647,8 @@ int main() {
     test_sixdof_joint_linear_motor();
     test_joint_type_validation_for_new_joint_classes();
     test_world_step_fixed_accumulator_and_determinism();
+    test_replay_checksum_is_run_to_run_deterministic();
+    test_replay_checksum_parallel_matches_serial();
     test_world_solver_iteration_controls();
     test_world_joint_management();
 

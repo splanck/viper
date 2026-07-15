@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-15
 ---
 
 # Zia Tooling
@@ -12,9 +12,156 @@ last-verified: 2026-07-14
 
 ## Contents
 
+- [Viper.Zia.Completion](#viperziacompletion)
 - [Viper.Zia.Toolchain](#viperziatoolchain)
+- [Viper.Zia.Document](#viperziadocument)
 - [Viper.Zia.SemanticJob](#viperziasemanticjob)
 - [Viper.Zia.ProjectIndex](#viperziaprojectindex)
+
+---
+
+## Viper.Zia.Completion
+
+Completion, signature, hover, symbol, diagnostic, and semantic-token services
+for an in-memory Zia source buffer.
+
+**Type:** Static utility class
+
+All cursor-taking methods use a 1-based `line` and a 0-based byte `col`.
+Prefer the `*ForFile` forms in an editor: the path is part of the analysis
+cache key and supplies the base directory for relative `bind` resolution.
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `Complete` | `String(String, Integer, Integer)` | Return legacy tab-delimited completion rows. |
+| `CompleteForFile` | `String(String, String, Integer, Integer)` | Path-aware legacy completion rows. |
+| `Items` | `Seq(String, Integer, Integer)` | Return structured completion-item maps. |
+| `ItemsForFile` | `Seq(String, String, Integer, Integer)` | Path-aware structured completion-item maps. |
+| `BeginItemsForFile` | `SemanticJobHandle(String, String, Integer, Integer)` | Start an asynchronous structured completion query. |
+| `SignatureHelp` | `String(String, Integer, Integer)` | Return display text for the active call, or empty. |
+| `SignatureHelpForFile` | `String(String, String, Integer, Integer)` | Path-aware signature display text. |
+| `SignatureInfo` | `Map(String, Integer, Integer)` | Return structured signature information. |
+| `SignatureInfoForFile` | `Map(String, String, Integer, Integer)` | Path-aware structured signature information. |
+| `BeginSignatureInfoForFile` | `SemanticJobHandle(String, String, Integer, Integer)` | Start an asynchronous signature query. |
+| `Check` | `String(String)` | Return legacy tab-delimited diagnostics. |
+| `CheckForFile` | `String(String, String)` | Return path-aware legacy diagnostics. |
+| `Hover` | `String(String, Integer, Integer)` | Return human-readable information for the symbol at the cursor, or empty. |
+| `HoverForFile` | `String(String, String, Integer, Integer)` | Path-aware hover text. |
+| `HoverInfo` | `Map(String, Integer, Integer)` | Return structured hover information. |
+| `HoverInfoForFile` | `Map(String, String, Integer, Integer)` | Path-aware structured hover information. |
+| `BeginHoverInfoForFile` | `SemanticJobHandle(String, String, Integer, Integer)` | Start an asynchronous hover query. |
+| `Symbols` | `String(String)` | Return serialized symbol rows. |
+| `SymbolsForFile` | `String(String, String)` | Return path-aware serialized symbol rows. |
+| `BeginSymbolsForFile` | `SemanticJobHandle(String, String)` | Start an asynchronous symbol query. |
+| `BeginTokensForFile` | `SemanticJobHandle(String, String)` | Start an asynchronous semantic-token query. |
+| `ClearCache` | `Void()` | Drop the singleton completion/signature analysis cache. |
+
+`ClearCache` affects the synchronous `Complete*`, `Items*`, and
+`Signature*` calls that share the singleton completion engine. Hover and
+symbol calls parse independently, and each asynchronous job uses its own
+engine.
+
+### Completion Item Map
+
+`Items*` and `SemanticJob.CompletionItems` return a `Seq` of maps with these
+fields:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `label` | String | Text displayed in the completion list. |
+| `insertText` | String | Text to insert; snippets can contain newlines. |
+| `kind` | Integer | Numeric completion kind, listed below. |
+| `kindName` | String | Stable textual kind name. |
+| `detail` | String | Type, signature, or short auxiliary text. |
+| `documentation` | String | Documentation when available. |
+| `source` | String | Provider such as `scope`, `runtime`, `keyword`, or `snippet`. |
+| `commitCharacters` | String | Characters that may commit the item. |
+| `isSnippet` | Boolean | True when `insertText` is a snippet. |
+| `cursorOffset` | Integer | Byte offset for the cursor after insertion; `-1` means after all inserted text. |
+| `replacementStartLine` / `replacementEndLine` | Integer | 1-based replacement lines. |
+| `replacementStartColumn` / `replacementEndColumn` | Integer | 0-based, end-exclusive replacement columns. |
+
+Completion kinds are `0` keyword, `1` snippet, `2` variable, `3` parameter,
+`4` field, `5` method, `6` function, `7` entity, `8` value, `9` interface,
+`10` module, `11` runtime class, and `12` property. Their `kindName` values are
+the corresponding lower-case names, except `runtimeClass` uses camel case.
+
+### Signature Information Map
+
+`SignatureInfo*` and `SemanticJob.SignatureInfo` always return a map. With the
+full service, `available` is false when no call resolves; the remaining scalar
+fields are then empty or zero and the sequences are empty. The weak-stub shape
+exception is described under SemanticJob below.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `available` | Boolean | True when an active callable resolved. |
+| `display` | String | First-line display text for the active signature. |
+| `name` | String | Callable name parsed from `display`. |
+| `returnType` | String | Display return type, or empty. |
+| `activeParameter` | Integer | 0-based active argument index. |
+| `activeSignature` | Integer | 0-based active overload; currently always `0`. |
+| `overloadCount` | Integer | Number of returned overload records. |
+| `documentation` | String | Documentation for the active signature. |
+| `source` | String | `zia` from the full service, or `unavailable` from the weak stub. |
+| `parameters` | Seq | Active-signature parameter maps. |
+| `overloads` | Seq | One signature map per overload. |
+
+Each parameter map has `name`, `type`, and `documentation`. Each overload map
+has `display`, `name`, `returnType`, `documentation`, and its own `parameters`
+sequence.
+
+### Hover Information Map
+
+`HoverInfo*` and `SemanticJob.HoverInfo` return `available`, `display`,
+`title`, `kind`, `name`, `type`, `documentation`, and `source`. A miss returns
+the same map shape with `available = false` and empty display fields.
+
+### Serialized Compatibility Formats
+
+The String-returning methods are compatibility protocols:
+
+- `Complete*`: `label<TAB>insertText<TAB>kind<TAB>detail<LF>`.
+- `Check*`: `severity<TAB>line<TAB>column<TAB>code<TAB>message<LF>`, with
+  severity `0` error, `1` warning, and `2` note; line and column are 1-based.
+- `Symbols*`: `name<TAB>kind<TAB>type<TAB>line<LF>`, with a 1-based source
+  line and `0` for symbols not declared in the active file.
+- `SemanticJob.Tokens`: `line<TAB>start<TAB>end<TAB>kind<LF>`, using 0-based
+  byte coordinates and an end-exclusive column.
+
+Prefer the structured item, signature, hover, and Toolchain APIs. In
+particular, the legacy completion serializer does not escape the embedded
+newlines in snippet `insertText`, so its nominal one-row-per-item framing does
+not hold for snippets.
+
+`Symbols*` currently includes the complete runtime function inventory as
+line-zero rows and adds declared types a second time as line-zero rows. It also
+includes symbols imported from bound source files with the imported file's
+positive line number, but the wire row has no file field. Filtering line `0`
+removes the runtime noise but cannot distinguish imported declarations from
+the active document. This behavior is tracked as a tooling defect in the
+[review findings](../documentation-review-findings.md).
+
+### Zia Example
+
+```rust
+module CompletionDemo;
+
+bind Viper.Zia.Completion as Completion;
+bind Viper.Collections.Map as Map;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var source = "module Demo;\nfu\n";
+    var items = Completion.ItemsForFile(source, "demo.zia", 2, 2);
+    if Seq.get_Count(items) > 0 {
+        Terminal.Say(Map.GetStr(Seq.Get(items, 0), "label"));
+    }
+}
+```
 
 ---
 
@@ -28,11 +175,11 @@ Structured diagnostics and compile results for Zia source buffers.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Check` | `Object(String)` | Analyze source and return a `Viper.Collections.Seq` of diagnostic maps. |
-| `CheckForFile` | `Object(String, String)` | Analyze source using the supplied path for diagnostics and relative `bind` resolution. |
-| `BeginCheckForFile` | `Object(String, String)` | Start the path-aware analysis on a semantic worker and return a `SemanticJobHandle`. |
-| `Compile` | `Object(String)` | Compile source and return a result map. |
-| `CompileForFile` | `Object(String, String)` | Compile source using the supplied path for diagnostics and relative `bind` resolution. |
+| `Check` | `Seq(String)` | Analyze source and return diagnostic maps. |
+| `CheckForFile` | `Seq(String, String)` | Analyze source using the supplied path for diagnostics and relative `bind` resolution. |
+| `BeginCheckForFile` | `SemanticJobHandle(String, String)` | Start the path-aware analysis on a semantic worker. |
+| `Compile` | `Map(String)` | Compile source and return a result map. |
+| `CompileForFile` | `Map(String, String)` | Compile source using the supplied path for diagnostics and relative `bind` resolution. |
 
 ### Diagnostic Map
 
@@ -53,7 +200,7 @@ Structured diagnostics and compile results for Zia source buffers.
 | `stage` | String | Compiler stage when available. |
 | `help` | String | Extra help text when available. |
 | `hasFixit` | Boolean | True when at least one machine-applicable fix is attached. |
-| `fixits` | Object | `Seq` of all fix-it maps; each has `message`, `replacement`, and 1-based `startLine`, `startColumn`, `endLine`, and `endColumn`. |
+| `fixits` | Seq | All fix-it maps; each has `message`, `replacement`, and 1-based `startLine`, `startColumn`, `endLine`, and `endColumn`. |
 | `fixitMessage` | String | Compatibility copy of the first fix-it message, or empty. |
 | `fixitReplacement` | String | Compatibility copy of the first replacement, or empty. |
 | `fixitStartLine` / `fixitStartColumn` | Integer | Compatibility copy of the first fix-it start, or 0. |
@@ -71,7 +218,7 @@ not the `fixits` sequence.
 | Key | Type | Description |
 |-----|------|-------------|
 | `success` | Boolean | True when compilation completed without error diagnostics. |
-| `diagnostics` | Object | `Viper.Collections.Seq` of diagnostic maps. |
+| `diagnostics` | Seq | `Viper.Collections.Seq` of diagnostic maps. |
 | `sourcePath` | String | Normalized primary source path. |
 | `outputPath` | String | Reserved for future file-emitting compile flows. Currently empty. |
 | `il` | String | Serialized IL when `success` is true; empty on failure. |
@@ -105,8 +252,89 @@ func start() {
 
 - Use `CheckForFile`, `BeginCheckForFile`, and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
 - The legacy `Viper.Zia.Completion.CheckForFile` API still returns tab-delimited text for compatibility. New IDE surfaces should consume `Viper.Zia.Toolchain` instead.
-- The weak runtime stub returns empty diagnostics, a null async-job handle, and a failed compile result when the editor-service bridge is absent.
+- At most two semantic workers run concurrently. A request made while both slots are occupied returns a completed job whose error is `semantic worker pool busy`.
+- The weak runtime stub returns empty diagnostics, a null async-job handle, and a failed compile result with empty diagnostics, paths, and IL when the editor-service bridge is absent. Consequently, an empty Check result alone does not prove that analysis ran.
 - Statically linked IDE hosts must force-load `zia_editor_services` (which links `fe_zia`) so its strong `rt_zia_*` definitions override the weak runtime stubs. The repository's `zia` executable does this with the platform-equivalent whole-archive option.
+
+---
+
+## Viper.Zia.Document
+
+An incremental, process-wide source mirror for editor buffers. The mirror is
+keyed by the exact path String supplied by the caller; unlike ProjectIndex,
+Document does not normalize or canonicalize that key.
+
+**Type:** Static utility class
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SyncFull` | `Void(String, String, Integer)` | Replace a path's mirror text and record the supplied revision. An empty path is ignored. |
+| `SyncDelta` | `Boolean(String, String, Integer)` | Apply a batch of edit deltas sequentially and record `endRevision`. |
+| `Close` | `Void(String)` | Remove the mirror for a path. |
+| `Text` | `String(String)` | Return the mirrored bytes, or empty when the path is absent. |
+| `CheckForFile` | `String(String)` | Run the legacy tab-delimited diagnostic check against mirrored text. |
+| `BeginCheckForFile` | `SemanticJobHandle(String)` | Start a structured diagnostic job from mirrored text. |
+
+`SyncDelta` consumes the compact JSON produced by
+`Viper.GUI.CodeEditor.TakeDeltas(sinceRevision)`:
+
+```json
+[
+  {"r": 12, "sl": 3, "sc": 4, "el": 3, "ec": 7, "t": "new text"}
+]
+```
+
+The start (`sl`, `sc`) and end (`el`, `ec`) coordinates are 0-based byte
+positions, and the replaced range is half-open. Batches are applied in array
+order, so each later range addresses the text produced by earlier entries.
+Use the producer's JSON directly; this is a deliberately small parser, not a
+general JSON interchange surface.
+
+The safe editor loop is:
+
+1. Call `SyncFull` on first use, after a path change, or after a cold edit.
+2. Read `CodeEditor.Revision`, then call `TakeDeltas(lastSyncedRevision)`.
+3. If `TakeDeltas` returns `"overflow"`, or `SyncDelta` returns false, recover
+   with `SyncFull`.
+4. Advance the caller's `lastSyncedRevision` only after a successful sync.
+5. Call `Close` when the document is no longer needed.
+
+There are two current limitations. The mirror stores revision values but does
+not validate the per-delta `r` values or `endRevision`; stale and out-of-order
+deltas can therefore be accepted. It also clamps out-of-range or reversed
+coordinates rather than rejecting them. Only pass journal output associated
+with the mirror's own last successful sync. These defects are recorded in the
+[review findings](../documentation-review-findings.md).
+
+`Text` returns empty for both an absent mirror and a present empty document.
+Likewise, synchronous `CheckForFile` returns empty for an absent mirror, a
+clean document, or an unavailable weak bridge. Use `BeginCheckForFile` when
+the missing-mirror distinction matters: the full service returns null when no
+mirror exists. The weak bridge also returns null, so callers should still have
+a full-buffer Toolchain fallback.
+
+### Zia Example
+
+```rust
+module DocumentDemo;
+
+bind Viper.Zia.Document as Document;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var path = "demo.zia";
+    Document.SyncFull(path, "module Demo;\n", 1);
+
+    var delta = "[{\"r\":2,\"sl\":1,\"sc\":0,\"el\":1,\"ec\":0,\"t\":\"func f() {}\"}]";
+    if Document.SyncDelta(path, delta, 2) {
+        Terminal.Say(Document.Text(path));
+    }
+
+    Document.Close(path);
+}
+```
 
 ---
 
@@ -117,11 +345,15 @@ Pollable background language-service jobs returned by
 
 **Type:** Static utility class operating on `SemanticJobHandle` objects
 
+The registry exposes each handle parameter as generic `Object`; passing some
+other object is treated like an invalid handle rather than rejected by the
+method signature.
+
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `IsDone(job)` | `Boolean(Object)` | True when the background job has completed or the weak stub has no work to run. |
+| `IsDone(job)` | `Boolean(Object)` | True when a valid background job has completed. See the null-handle caveat below. |
 | `IsError(job)` | `Boolean(Object)` | True when a completed job has an error payload. |
 | `ErrorOption(job)` | `Option[String](Object)` | Preferred error accessor: `SomeStr(message)` when an error exists, otherwise `None`. |
 | `Error(job)` | `String(Object)` | Compatibility accessor that returns `""` when no error is present. |
@@ -132,16 +364,31 @@ Pollable background language-service jobs returned by
 | `HoverInfo(job)` | `Map(Object)` | Materialize hover results for hover jobs. |
 | `Symbols(job)` | `String(Object)` | Materialize serialized symbol rows for symbol jobs. |
 | `Tokens(job)` | `String(Object)` | Materialize serialized semantic-token rows for token jobs. |
-| `Diagnostics(job)` | `Seq(Object)` | Materialize diagnostic maps for diagnostics jobs. |
+| `Diagnostics(job)` | `Seq(Object)` | Materialize diagnostic maps for diagnostic jobs. |
 
 Prefer `ErrorOption(job)` in new editor code. It avoids treating an empty string
 as a status sentinel and matches the runtime's Option-based absence model.
 
 `Kind(job)` returns `0` unknown, `1` completion items, `2` signature info, `3`
 hover info, `4` symbols, `5` diagnostics, or `6` semantic tokens. Result
-materializers return an empty/default payload until the job is complete or when
-called for the wrong job kind. `Cancel(job)` marks the job cancelled; an
-already-running worker can continue to completion, but its result is discarded.
+materializers in the full service return an empty/default payload until the job
+is complete, on error, or when called for the wrong job kind. `Cancel(job)`
+marks the job cancelled; an already-running worker can continue to completion,
+but its result is discarded. Letting the handle become unreachable also asks
+for cancellation; no explicit destroy call is required.
+
+Check for null immediately after every `Begin*` call. Null-handle polling is
+currently bridge-dependent: the full editor service reports
+`IsDone(null) == false`, while the weak stub reports true. The other status
+methods return no error/kind for null. This inconsistency is tracked in the
+[review findings](../documentation-review-findings.md).
+
+Weak-stub materializers return compatibility payloads rather than uniformly
+empty values: `CompletionItems(null)` contains one `source = "unavailable"`
+row, and signature/hover maps use `source = "unavailable"`. The weak
+completion row omits `cursorOffset`, and its signature map omits `overloads`,
+so consumers should use default-valued map access and should not materialize a
+null job unless they deliberately want a fallback payload.
 
 ---
 
@@ -154,23 +401,30 @@ when resolving `bind` imports.
 **Type:** Static utility class returning an opaque
 `Viper.Zia.ProjectIndex.ProjectIndexHandle`
 
+The public registry types the receiver parameters as generic `Object`; callers
+must pass the handle returned by `New`. `IsValid` is the safe validity check.
+
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `New` | `Object(String)` | Create a project index rooted at the supplied project directory. |
+| `New` | `ProjectIndexHandle(String)` | Create a project index rooted at the supplied project directory. |
 | `IsValid` | `Boolean(Object)` | Return true when the handle still owns a native index. |
 | `UpdateFile` | `Boolean(Object, String, String)` | Store current source text for a file path. This may be unsaved editor text. |
-| `RemoveFile` | `Boolean(Object, String)` | Remove one file from the index. |
-| `Clear` | `Void(Object)` | Remove every indexed file. |
+| `RemoveFile` | `Boolean(Object, String)` | Remove one file from the index; false when absent or invalid. |
+| `Clear` | `Void(Object)` | Remove every indexed file. Invalid handles are ignored. |
 | `Destroy` | `Void(Object)` | Dispose the native index payload. The handle becomes inert. |
-| `Definition` | `Object(Object, String, String, Integer, Integer)` | Return a definition map for the identifier at `line`, `col`. |
-| `References` | `Object(Object, String, String, Integer, Integer)` | Return a `Seq` of semantic reference maps. |
-| `RenameEdits` | `Object(Object, String, String, Integer, Integer, String)` | Return workspace edits for a semantic rename without changing files. |
+| `Definition` | `Map(Object, String, String, Integer, Integer)` | Return a definition map for the identifier at `line`, `col`. |
+| `References` | `Seq(Object, String, String, Integer, Integer)` | Return semantic reference maps. |
+| `RenameEdits` | `Map(Object, String, String, Integer, Integer, String)` | Return workspace edits for a semantic rename without changing files. |
 
 `Definition`, `References`, and `RenameEdits` also update the queried file with
 the supplied source text before analysis. Cursor `line` is 1-based and cursor
 `col` is 0-based, matching the existing completion APIs.
+
+An empty root is treated as `.`. Other roots become lexically normalized
+absolute paths. Relative file paths are resolved under that root; result paths
+are normalized absolute paths except for the special `<editor>` virtual path.
 
 ### Definition Map
 
@@ -228,8 +482,8 @@ locals from globals/imports.
 | `reason` | String | Empty on success; otherwise `invalid_index`, `invalid_name`, `not_found`, `collision`, or weak-stub `unavailable`. |
 | `name` | String | Original source-visible name; present on success only. |
 | `newName` | String | Requested replacement; present on success only. |
-| `references` | Object | `Seq` of reference maps used to build the edit set; present on success only. |
-| `edits` | Object | `Seq` of workspace edit maps; present on success and failure. |
+| `references` | Seq | Reference maps used to build the edit set; present on success only. |
+| `edits` | Seq | Workspace edit maps; present on success and failure. |
 
 Each edit map contains `file`, `startLine`, `startColumn`, `endLine`,
 `endColumn`, `editorStartLine`, `editorStartColumn`, `editorEndLine`,
@@ -263,6 +517,10 @@ func start() {
 
 - Always call `UpdateFile` when a buffer changes. Query calls also accept current source to cover the active dirty buffer.
 - Add all open project files to the index for best reference and rename results. Files absent from the index can still be resolved from disk through normal `bind` loading, but they are not scanned for references.
+- `References` returns an empty Seq for both an invalid index and an unresolved cursor; it does not return a reason field.
+- Rename accepts a non-keyword identifier beginning with `_` or a byte that the active C locale classifies as a letter; later bytes may also be locale-classified letters or digits. This differs from the lexer's deterministic ASCII and 1,024-byte identifier rules, so callers should enforce those stricter rules before applying edits. A successful call still only returns edits; it never changes indexed buffers or files.
+- Reference rows are ordered by normalized indexed path and then source order. ProjectIndex instances have no internal lock; serialize updates and queries for a given handle.
+- `Destroy` is optional when ordinary garbage collection owns the handle, but it can release the native index early. Repeated `Destroy`, `Clear`, and invalid-handle calls are safe no-ops.
 - Native IDE builds must link and force-load `zia_editor_services`; the weak runtime stub returns an invalid handle and empty or `unavailable` results.
 
 ---
@@ -271,3 +529,5 @@ func start() {
 
 - [Collections](collections/README.md) - `Map` and `Seq` result containers
 - [Diagnostics](diagnostics.md) - runtime assertion and trap helpers
+- [Generated Zia surface](../generated/runtime/zia.md) - registry-derived signatures and runtime symbols
+- [Documentation review findings](../documentation-review-findings.md) - open Zia tooling defects and inconsistencies

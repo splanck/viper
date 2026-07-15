@@ -1152,6 +1152,7 @@ static void test_scene_spatial_queries_flat_walk_reference() {
 
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1262,6 +1263,7 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
 static void test_scene_draw_spatial_index_matches_flat_reference() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1325,6 +1327,7 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
 
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1448,6 +1451,7 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
 static void test_scene_occlusion_grid_uses_spatial_candidates() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1509,6 +1513,7 @@ static void test_scene_occlusion_grid_uses_spatial_candidates() {
 static void test_scene_shadow_caster_sweep_keeps_offscreen_casters() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1565,6 +1570,7 @@ static void test_scene_shadow_caster_sweep_keeps_offscreen_casters() {
 static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1663,6 +1669,7 @@ static void test_scene_spatial_index_preserves_far_origin_precision() {
 static void test_scene_draw_reuses_active_frame() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -1702,6 +1709,7 @@ static void test_scene_draw_reuses_active_frame() {
 static void test_scene_draw_culling_uses_canvas_output_aspect() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -2983,6 +2991,7 @@ static void test_frustum_culled_count_initial() {
 static void test_lod_culling_uses_stable_union_mesh_bounds() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3026,6 +3035,7 @@ static void test_lod_culling_uses_stable_union_mesh_bounds() {
 static void test_auto_lod_uses_screen_error_selection() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3074,6 +3084,7 @@ static void test_auto_lod_uses_screen_error_selection() {
 static void test_lod_residency_falls_back_and_reports_bytes() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3141,6 +3152,7 @@ static void test_lod_residency_falls_back_and_reports_bytes() {
 static void test_impostor_proxy_draws_textured_quad() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3188,6 +3200,7 @@ static void test_impostor_proxy_draws_textured_quad() {
 static void test_scene_draw_rejects_corrupt_draw_handles() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3253,6 +3266,7 @@ static void test_scene_draw_rejects_corrupt_draw_handles() {
 static void test_dynamic_deformation_uses_conservative_frustum_culling() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3288,6 +3302,7 @@ static void test_dynamic_deformation_uses_conservative_frustum_culling() {
 static void test_morph_delta_bounds_keep_deformed_mesh_visible() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3340,6 +3355,7 @@ static void test_raw_morph_delta_bounds_handle_large_finite_values() {
 static void test_dynamic_deformation_rejects_corrupt_morph_delta_span() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3378,6 +3394,7 @@ static void test_dynamic_deformation_rejects_corrupt_morph_delta_span() {
 static void test_parent_animator_drives_child_skinned_meshes() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3435,6 +3452,7 @@ static void test_parent_animator_drives_child_skinned_meshes() {
 static void test_scene_draw_includes_node_attached_lights() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
+    backend.gpu_skinning = 1;
     backend.begin_frame = scene_test_begin_frame;
     backend.end_frame = scene_test_end_frame;
     backend.submit_draw = scene_test_submit_draw;
@@ -3520,6 +3538,47 @@ static void test_scene_roundtrip_preserves_node_lights() {
                 "SceneGraph.Load restores light shadow-caster flag");
     EXPECT_TRUE(loaded_light->inner_cos > loaded_light->outer_cos,
                 "SceneGraph.Load restores spot cone cosines");
+}
+
+/// @brief Authoring metadata (bake/static flags, physics sync mode, auto-LOD
+///        policy, visibility) must survive a full save/load cycle — the scene
+///        editor depends on `.vscn` being a lossless authoring format.
+static void test_scene_roundtrip_preserves_authoring_metadata() {
+    const char *path = "/tmp/viper_scene_authoring_roundtrip.vscn";
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("bake_probe"));
+    rt_scene_node3d_set_position(node, 4.0, 5.0, 6.0);
+    rt_scene_node3d_set_visible(node, 0);
+    rt_scene_node3d_set_static(node, 1);
+    rt_scene_node3d_set_sync_mode(node, RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC);
+    rt_scene_node3d_set_auto_lod(node, 1, 12.5);
+    rt_scene3d_add(scene, node);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "SceneGraph.Save writes authoring-metadata fixtures");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr, "SceneGraph.Load reads authoring-metadata fixtures");
+    if (!loaded)
+        return;
+    void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("bake_probe"));
+    EXPECT_TRUE(loaded_node != nullptr, "SceneGraph.Load restores named authoring nodes");
+    if (!loaded_node)
+        return;
+    EXPECT_TRUE(rt_scene_node3d_get_visible(loaded_node) == 0,
+                "SceneGraph.Load restores node visibility");
+    EXPECT_TRUE(rt_scene_node3d_get_static(loaded_node) == 1,
+                "SceneGraph.Load restores the static-bake flag");
+    EXPECT_TRUE(rt_scene_node3d_get_sync_mode(loaded_node) ==
+                    RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC,
+                "SceneGraph.Load restores the physics sync mode");
+    const rt_scene_node3d *view = (const rt_scene_node3d *)loaded_node;
+    EXPECT_TRUE(view->auto_lod_enabled == 1, "SceneGraph.Load restores the auto-LOD flag");
+    EXPECT_NEAR(view->auto_lod_screen_error_px,
+                12.5,
+                0.0001,
+                "SceneGraph.Load restores the auto-LOD screen error");
 }
 
 static void test_scene_save_rejects_wrong_handle() {
@@ -3750,7 +3809,53 @@ static void test_scene_extreme_finite_transforms_and_queries_remain_bounded() {
     EXPECT_TRUE(ray_hit == node, "Extreme finite RaycastNodes stays bounded and hits the node");
 }
 
+/// UAF regression: the animator's channel-target cache must retain its nodes.
+/// A playing clip whose target is detached (and its last external reference
+/// dropped) previously left a dangling weak pointer in the cache; the next
+/// update dereferenced freed memory inside the descendant re-check.
+static void test_node_animator_survives_target_removal_mid_clip() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    rt_scene_node3d_set_name(child, rt_const_cstr("limb"));
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    double times[2] = {0.0, 1.0};
+    float translation_values[6] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    void *clip = rt_node_animation3d_new(rt_const_cstr("limb_clip"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(clip,
+                                                rt_const_cstr("limb"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                translation_values) == 0,
+                "limb channel is created");
+    void *clips[1] = {clip};
+    void *animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(parent, animator);
+
+    /* First update resolves and caches the child target. */
+    rt_scene3d_sync_bindings(scene, 0.1);
+    void *pos = rt_scene_node3d_get_position(child);
+    EXPECT_TRUE(rt_vec3_x(pos) > 0.0, "clip drives the named child before removal");
+
+    /* Drop our reference, then detach: the parent's release is the LAST
+     * external one, so without the cache retaining the node this frees it. */
+    if (rt_obj_release_check0(child))
+        rt_obj_free(child);
+    rt_scene_node3d_remove_child(parent, child);
+
+    /* Next updates must not touch freed memory (cache re-validates safely). */
+    rt_scene3d_sync_bindings(scene, 0.1);
+    rt_scene3d_sync_bindings(scene, 0.1);
+    EXPECT_TRUE(1, "animator update after target removal is memory-safe");
+}
+
 int main() {
+    test_node_animator_survives_target_removal_mid_clip();
     test_create_scene_and_node();
     test_add_remove_child();
     test_try_add_reports_parenting_success();
@@ -3811,6 +3916,7 @@ int main() {
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
+    test_scene_roundtrip_preserves_authoring_metadata();
     test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit();
     test_scene_save_skips_invalid_material_asset_refs();
     test_node_animator_handles_large_morph_weight_channels();

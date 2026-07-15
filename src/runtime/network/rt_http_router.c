@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Routes matched in registration order (first match wins).
 //   - :name captures a single path segment; *name captures the rest.
-//   - Thread-safe for concurrent matching (routes are immutable after start).
+//   - Router operations are unsynchronized; callers must serialize adds and matches.
 // Ownership/Lifetime:
 //   - Router and match objects are GC-managed.
 // Links: rt_http_router.h (API), rt_http_server.c (consumer)
@@ -156,8 +156,9 @@ static int reserve_routes(rt_http_router_impl *router, int needed) {
 ///          - **`SEG_WILDCARD`**: prefix `*` marks a multi-segment capture
 ///            that consumes the remainder of the path. E.g. `*path` in
 ///            `/static/*path` matches `assets/img/foo.png` and binds the
-///            full remainder to `path`. Wildcards are typically last but
-///            this parser doesn't enforce that — the matcher does.
+///            full remainder to `path`. Wildcards should be last; neither the
+///            parser nor matcher rejects suffix segments, and the matcher
+///            returns immediately when it reaches the wildcard.
 ///
 ///          A leading `/` is skipped before parsing. Empty segments
 ///          (consecutive slashes like `/users//profile`) are ignored.
@@ -461,7 +462,8 @@ void *rt_http_router_delete(void *router, rt_string pattern) {
 }
 
 /// @brief Find the first registered route that matches `(method, path)` and return a Match
-/// object with extracted params. Method comparison is **case-insensitive** (per RFC 7230).
+/// object with extracted params. Method comparison is **case-insensitive** (a runtime behavior,
+/// even though HTTP method tokens are ordinarily case-sensitive).
 /// Walks routes in registration order — earlier wins on ties. Returns NULL if no route matches
 /// (the server can then return 404). The returned Match object is GC-managed; caller releases.
 void *rt_http_router_match(void *obj, rt_string method, rt_string path) {

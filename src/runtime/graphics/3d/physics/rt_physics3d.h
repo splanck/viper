@@ -160,6 +160,21 @@ int32_t rt_world3d_raycast_all_bodies_raw(void *world,
                                           int64_t mask,
                                           void **out_bodies,
                                           int32_t out_cap);
+/// @brief C-internal closest-hit raycast fast path over raw components — no Vec3
+///   or hit-object boxing. Not part of the script-visible registry.
+/// @return Borrowed closest hit body (do NOT release), or NULL; writes the hit
+///   distance to @p out_distance when non-NULL (-1 when no hit).
+void *rt_world3d_raycast_closest_body_raw(void *world,
+                                          double ox,
+                                          double oy,
+                                          double oz,
+                                          double dx,
+                                          double dy,
+                                          double dz,
+                                          double max_distance,
+                                          int64_t mask,
+                                          const void *ignore_body,
+                                          double *out_distance);
 /// @brief Sweep a sphere along @p delta; returns the first PhysicsHit3D or NULL.
 void *rt_world3d_sweep_sphere(void *world, void *center, double radius, void *delta, int64_t mask);
 /// @brief Sweep a capsule (segment between @p a and @p b, radius @p radius) along @p delta.
@@ -456,6 +471,49 @@ int8_t rt_character3d_get_ride_platforms(void *ctrl);
 int8_t rt_character3d_is_sliding(void *ctrl);
 /// @brief Borrowed body under the controller's feet (NULL while airborne).
 void *rt_character3d_get_ground_body(void *ctrl);
+
+/*===========================================================================
+ * Vehicle3D — raycast vehicle on a dynamic chassis body
+ *==========================================================================*/
+
+/// @brief Create a raycast vehicle around @p chassis (a dynamic Body3D in @p world).
+void *rt_vehicle3d_new(void *world, void *chassis);
+/// @brief Add a suspension wheel (chassis-local anchor, radius, suspension tuning).
+/// @return Wheel index, or -1 when the table is full or inputs are degenerate.
+int64_t rt_vehicle3d_add_wheel(void *vehicle,
+                               double x,
+                               double y,
+                               double z,
+                               double radius,
+                               double suspension_rest,
+                               double stiffness,
+                               double damping,
+                               int8_t steers,
+                               int8_t driven);
+/// @brief Per-frame controls: throttle [-1,1], brake [0,1], steer [-1,1].
+void rt_vehicle3d_set_input(void *vehicle, double throttle, double brake, double steer);
+/// @brief Total drive force budget split across driven wheels (newtons).
+void rt_vehicle3d_set_drive_force(void *vehicle, double newtons);
+/// @brief Total brake force budget split across all wheels (newtons).
+void rt_vehicle3d_set_brake_force(void *vehicle, double newtons);
+/// @brief Full-lock steering angle in degrees (clamped to [0, 85]).
+void rt_vehicle3d_set_max_steer(void *vehicle, double degrees);
+/// @brief Tire friction coefficients (longitudinal, lateral).
+void rt_vehicle3d_set_grip(void *vehicle, double longitudinal, double lateral);
+/// @brief Collision layers the wheel suspension rays may hit (default -1 = all).
+void rt_vehicle3d_set_collision_mask(void *vehicle, int64_t mask);
+/// @brief Cast suspension rays and apply wheel forces; call BEFORE World3D.Step.
+void rt_vehicle3d_step(void *vehicle, double dt);
+/// @brief Signed speed along the chassis forward axis (m/s).
+double rt_vehicle3d_get_speed(void *vehicle);
+/// @brief Number of wheels added.
+int64_t rt_vehicle3d_get_wheel_count(void *vehicle);
+/// @brief Whether wheel @p index touched ground during the last Step.
+int8_t rt_vehicle3d_wheel_in_contact(void *vehicle, int64_t index);
+/// @brief Current suspension length of wheel @p index (rest when airborne).
+double rt_vehicle3d_wheel_travel(void *vehicle, int64_t index);
+/// @brief Suspension load on wheel @p index from the last Step (newtons).
+double rt_vehicle3d_wheel_load(void *vehicle, int64_t index);
 
 #ifdef __cplusplus
 }

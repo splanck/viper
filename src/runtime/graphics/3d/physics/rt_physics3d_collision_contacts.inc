@@ -986,14 +986,48 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
         uint32_t vertex_count = mesh ? rt_mesh3d_safe_vertex_count(mesh) : 0u;
         if (!mesh || vertex_count == 0)
             return 0;
-        if (vertex_count > 4096u)
-            vertex_count = 4096u;
+        /* Two-pass support scan in LOCAL space so hulls of any vertex count
+         * stay exact (the old first-4096 truncation could miss the true
+         * resting face). world_rel·(sign·n) = local·m + C where
+         * m = scale ⊙ (R⁻¹·(sign·n)) and C is constant per pose, so the
+         * local dot ranks support depth identically. Pass 1 (3 mults/vert)
+         * finds the minimum; pass 2 transforms only vertices within the
+         * feature tolerance of it. */
+        double signed_n[3] = {solid_sign * n[0], solid_sign * n[1], solid_sign * n[2]};
+        double inv_rotation[4];
+        double m_axis[3];
+        double local_min_value = DBL_MAX;
+        double support_tol;
+        quat_conjugate(solid_pose->rotation, inv_rotation);
+        quat_rotate_vec3(inv_rotation, signed_n, m_axis);
+        m_axis[0] *= solid_pose->scale[0];
+        m_axis[1] *= solid_pose->scale[1];
+        m_axis[2] *= solid_pose->scale[2];
         for (uint32_t i = 0; i < vertex_count; ++i) {
-            double local[3] = {mesh->vertices[i].pos[0],
-                               mesh->vertices[i].pos[1],
-                               mesh->vertices[i].pos[2]};
+            const float *vp = mesh->vertices[i].pos;
+            double value = (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] +
+                           (double)vp[2] * m_axis[2];
+            if (isfinite(value) && value < local_min_value)
+                local_min_value = value;
+        }
+        if (local_min_value == DBL_MAX)
+            return 0;
+        /* Same tolerance the quadrant filter applies below (kept in sync). */
+        support_tol = fmax(2.0 * fabs(contact->separation) + 0.005, 0.05 * char_size);
+        if (support_tol > 0.45 * char_size)
+            support_tol = 0.45 * char_size;
+        for (uint32_t i = 0; i < vertex_count; ++i) {
+            const float *vp = mesh->vertices[i].pos;
+            double value = (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] +
+                           (double)vp[2] * m_axis[2];
+            double local[3];
             double world[3];
             double rel[3];
+            if (!isfinite(value) || value > local_min_value + support_tol)
+                continue;
+            local[0] = vp[0];
+            local[1] = vp[1];
+            local[2] = vp[2];
             transform_point_from_pose(solid_pose, local, world);
             vec3_sub(world, contact->point, rel);
             ph3d_support_plane_push(
@@ -1167,6 +1201,25 @@ static int contact_pair_table_capacity(int32_t count, int32_t *out_capacity) {
     return 1;
 }
 
+/// @brief Insert every contact into a zeroed linear-probe table of @p capacity slots.
+static void contact_pair_table_fill(contact_pair_hash_entry *table,
+                                    int32_t capacity,
+                                    const rt_contact3d *contacts,
+                                    int32_t count) {
+    for (int32_t i = 0; i < count; ++i) {
+        uintptr_t hash = contact_pair_hash_value(&contacts[i]);
+        int32_t slot = (int32_t)(hash & (uintptr_t)(capacity - 1));
+        for (int32_t probe = 0; probe < capacity; ++probe) {
+            int32_t idx = (slot + probe) & (capacity - 1);
+            if (!table[idx].contact) {
+                table[idx].contact = &contacts[i];
+                table[idx].hash = hash;
+                break;
+            }
+        }
+    }
+}
+
 /// @brief Build an open-addressing (linear-probe) hash set over `count` contacts so
 ///   membership can be tested in O(1); returns the table (caller frees) and its
 ///   capacity via @p out_capacity, or NULL on allocation failure.
@@ -1182,18 +1235,31 @@ contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
     table = (contact_pair_hash_entry *)calloc((size_t)capacity, sizeof(*table));
     if (!table)
         return NULL;
-    for (int32_t i = 0; i < count; ++i) {
-        uintptr_t hash = contact_pair_hash_value(&contacts[i]);
-        int32_t slot = (int32_t)(hash & (uintptr_t)(capacity - 1));
-        for (int32_t probe = 0; probe < capacity; ++probe) {
-            int32_t idx = (slot + probe) & (capacity - 1);
-            if (!table[idx].contact) {
-                table[idx].contact = &contacts[i];
-                table[idx].hash = hash;
-                break;
-            }
-        }
-    }
+    contact_pair_table_fill(table, capacity, contacts, count);
+    *out_capacity = capacity;
+    return table;
+}
+
+/// @brief contact_pair_table_build, but backed by a world step-scratch slot.
+/// @details Used on the per-substep warm-start path and the per-step event diff,
+///   where a malloc/free per call would churn the allocator. The returned table
+///   is only valid until the slot's next acquire; callers must NOT free it.
+contact_pair_hash_entry *contact_pair_table_build_scratch(rt_world3d *w,
+                                                          int32_t scratch_slot,
+                                                          const rt_contact3d *contacts,
+                                                          int32_t count,
+                                                          int32_t *out_capacity) {
+    int32_t capacity = 0;
+    contact_pair_hash_entry *table;
+    if (!w || !contacts || count <= 0 || !out_capacity)
+        return NULL;
+    if (!contact_pair_table_capacity(count, &capacity))
+        return NULL;
+    table = (contact_pair_hash_entry *)world3d_step_scratch_acquire(
+        w, scratch_slot, (size_t)capacity * sizeof(*table), 1);
+    if (!table)
+        return NULL;
+    contact_pair_table_fill(table, capacity, contacts, count);
     *out_capacity = capacity;
     return table;
 }

@@ -294,6 +294,7 @@ static VGFXMetalContext *metal_create_context_base(id<MTLDevice> device,
     ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
     ctx.geometryCache = [NSMutableDictionary dictionaryWithCapacity:32];
     ctx.morphCache = [NSMutableDictionary dictionaryWithCapacity:16];
+    ctx.extraInfluenceCache = [NSMutableDictionary dictionaryWithCapacity:8];
     ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
     ctx.samplerCache = [NSMutableDictionary dictionaryWithCapacity:8];
     ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
@@ -841,9 +842,12 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "depthTex.sample(s, uv); }\n"
                         "float3 sampleMotion(texture2d<float> motionTex, sampler s, float2 uv) { "
                         "return motionTex.sample(s, uv).rgb; }\n"
+                        /* Top-left texture uv -> Y-up NDC needs the Y flip (the D3D11 twin's
+                         * uvToNdc); inv VP follows the engine's GL-convention z in [-1,1]. */
                         "float3 reconstructWorld(constant PostFXParams &p, float2 uv, float depth) "
                         "{\n"
-                        "    float4 clip = float4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);\n"
+                        "    float4 clip = float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, "
+                        "depth * 2.0 - 1.0, 1.0);\n"
                         "    float4 world = p.invViewProjection * clip;\n"
                         "    return world.xyz / max(world.w, 0.0001);\n"
                         "}\n"
@@ -896,7 +900,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "    float4 prevClip = p.prevViewProjection * float4(worldPos, 1.0);\n"
                         "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(prevClip.w), "
                         "0.0001);\n"
-                        "    float2 prevUv = prevClip.xy / prevW * 0.5 + 0.5;\n"
+                        /* Y-up NDC -> top-left uv: flip Y so the delta is texture-space. */
+                        "    float2 prevUv = float2(prevClip.x / prevW * 0.5 + 0.5, "
+                        "0.5 - prevClip.y / prevW * 0.5);\n"
                         "    return uv - prevUv;\n"
                         "}\n"],
                 [NSString
@@ -1041,8 +1047,13 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "        color = clamp(color, 0.0, 1.0);\n"
                               "    }\n"
                               "    if (p.vignetteEnabled) {\n"
-                              "        float2 ctr = in.uv - 0.5;\n"
-                              "        float d = length(ctr) * 1.41421356;\n"
+                              /* Pixel-space distance over the half-diagonal so the falloff is
+                               * radial at any aspect ratio (matches the CPU reference). */
+                              "        float2 vres = 1.0 / max(p.invResolution, "
+                              "float2(0.000001));\n"
+                              "        float2 vpx = (in.uv - 0.5) * vres;\n"
+                              "        float d = length(vpx) / max(0.5 * length(vres), "
+                              "0.000001);\n"
                               "        float vig = 1.0;\n"
                               "        if (d > p.vigRadius) vig = 1.0 - clamp((d - "
                               "p.vigRadius) / max(p.vigSoftness, 0.000001), 0.0, 1.0);\n"
@@ -1149,8 +1160,9 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         /* Static geometry: analytic camera reprojection through the
                          * current inverse VP and the previous VP. */
                         "        float depth = depthTex.sample(s, in.uv);\n"
-                        "        float4 clip = float4(in.uv * 2.0 - 1.0, depth * 2.0 - 1.0, "
-                        "1.0);\n"
+                        /* Same top-left <-> Y-up NDC flips as reconstructWorld/cameraVelocity. */
+                        "        float4 clip = float4(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0, "
+                        "depth * 2.0 - 1.0, 1.0);\n"
                         "        float4 world = p.invViewProjection * clip;\n"
                         "        world /= max(abs(world.w), 0.0001) * (world.w < 0.0 ? -1.0 : "
                         "1.0);\n"
@@ -1158,7 +1170,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "1.0);\n"
                         "        float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * "
                         "max(fabs(prevClip.w), 0.0001);\n"
-                        "        float2 prevUv = prevClip.xy / prevW * 0.5 + 0.5;\n"
+                        "        float2 prevUv = float2(prevClip.x / prevW * 0.5 + 0.5, "
+                        "0.5 - prevClip.y / prevW * 0.5);\n"
                         "        velocity = in.uv - prevUv;\n"
                         "    }\n"
                         /* Motion vectors were rendered under projection jitter; remove the

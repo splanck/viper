@@ -709,6 +709,8 @@ RT_FUNC(Water3DSetReflect,     rt_water3d_set_reflectivity,"Viper.Graphics3D.Wat
 RT_FUNC(Water3DSetResolution,  rt_water3d_set_resolution, "Viper.Graphics3D.Water3D.SetResolution",  "void(obj,i64)")
 RT_FUNC(Water3DAddWave,        rt_water3d_add_wave,       "Viper.Graphics3D.Water3D.AddWave",        "void(obj,f64,f64,f64,f64,f64)")
 RT_FUNC(Water3DClearWaves,     rt_water3d_clear_waves,    "Viper.Graphics3D.Water3D.ClearWaves",     "void(obj)")
+RT_FUNC(Water3DSetSimDistance, rt_water3d_set_sim_distance,"Viper.Graphics3D.Water3D.set_SimDistance","void(obj,f64)")
+RT_FUNC(Water3DGetSimDistance, rt_water3d_get_sim_distance,"Viper.Graphics3D.Water3D.get_SimDistance","f64(obj)")
 RT_FUNC(Canvas3DDrawWater,     rt_canvas3d_draw_water,    "Viper.Graphics3D.Canvas3D.DrawWater",     "void(obj,obj,obj)")
 
 /// @summary Provides Water 3D functionality for 3D rendering and scene applications.
@@ -729,6 +731,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.Water3D", Water3D, "obj", Water3DNew)
     RT_METHOD("AddWave", "void(f64,f64,f64,f64,f64)", Water3DAddWave)
     RT_METHOD("ClearWaves", "void()", Water3DClearWaves)
     RT_METHOD("Update", "void(f64)", Water3DUpdate)
+    RT_PROP("SimDistance", "f64", Water3DGetSimDistance, Water3DSetSimDistance)
 RT_CLASS_END()
 
 // PostFX additions (F5-F7)

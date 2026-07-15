@@ -104,10 +104,39 @@ static void node_animator_repair_clips(rt_node_animator3d *animator) {
 }
 
 /// @brief Clear per-animator resolved-target cache entries without touching retained clips.
+/// @brief Store @p target in the animator's channel-target cache slot,
+///   retaining it and releasing any previous occupant.
+/// @details Cached targets are STRONG references: a playing clip may outlive a
+///   target node that was detached from the scene (remove_child releases the
+///   parent's reference and can free the node). Retaining here guarantees the
+///   cached pointer stays valid until the cache slot is overwritten, cleared,
+///   or the animator is finalized — the descendant re-check in
+///   node_anim_resolve_target then safely rejects detached nodes.
+static void node_animator_cache_store(rt_node_animator3d *animator,
+                                      int32_t channel_index,
+                                      rt_scene_node3d *target) {
+    rt_scene_node3d *previous;
+    if (!animator || channel_index < 0 || channel_index >= animator->cached_target_capacity)
+        return;
+    previous = animator->cached_targets[channel_index];
+    if (previous == target)
+        return;
+    if (target)
+        rt_obj_retain_maybe(target);
+    animator->cached_targets[channel_index] = target;
+    if (previous && rt_obj_release_check0(previous))
+        rt_obj_free(previous);
+}
+
 static void node_animator_clear_target_cache(rt_node_animator3d *animator) {
     if (!animator)
         return;
     if (animator->cached_targets && animator->cached_target_capacity > 0) {
+        for (int32_t i = 0; i < animator->cached_target_capacity; i++) {
+            rt_scene_node3d *entry = animator->cached_targets[i];
+            if (entry && rt_obj_release_check0(entry))
+                rt_obj_free(entry);
+        }
         memset(animator->cached_targets,
                0,
                (size_t)animator->cached_target_capacity * sizeof(*animator->cached_targets));
@@ -573,6 +602,7 @@ static void rt_node_animator3d_finalize(void *obj) {
     for (int32_t i = 0; i < clip_count; i++)
         node_anim_release_clip_slot(&animator->animations[i]);
     free(animator->animations);
+    node_animator_clear_target_cache(animator); /* releases retained targets */
     free(animator->cached_targets);
     free(animator->sample_scratch);
     free(animator->traversal_stack);
@@ -1164,8 +1194,7 @@ static rt_scene_node3d *node_anim_resolve_target(rt_node_animator3d *animator,
             scene_node_is_descendant_of(root, cached_target))
             return cached_target;
         cached_target = node_anim_find_by_import_index(animator, root, channel->target_node_index);
-        if (channel_index >= 0 && channel_index < animator->cached_target_capacity)
-            animator->cached_targets[channel_index] = cached_target;
+        node_animator_cache_store(animator, channel_index, cached_target);
         if (cached_target)
             return cached_target;
         return NULL;
@@ -1179,8 +1208,7 @@ static rt_scene_node3d *node_anim_resolve_target(rt_node_animator3d *animator,
             return cached_target;
     }
     cached_target = find_by_name(root, target_name);
-    if (channel_index >= 0 && channel_index < animator->cached_target_capacity)
-        animator->cached_targets[channel_index] = cached_target;
+    node_animator_cache_store(animator, channel_index, cached_target);
     return cached_target;
 }
 

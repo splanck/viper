@@ -577,6 +577,12 @@ void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
         body_b->position[i] =
             joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
     }
+    if (joint3d_vec3_dot(delta, delta) > 1e-24) {
+        if (body_a->inv_mass > 0.0)
+            joint3d_mark_body_moved(body_a);
+        if (body_b->inv_mass > 0.0)
+            joint3d_mark_body_moved(body_b);
+    }
 }
 
 /// @brief Positionally correct only the per-axis anchor-gap components that exceed [min, max].
@@ -625,6 +631,10 @@ void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
         body_b->position[i] =
             joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
     }
+    if (body_a->inv_mass > 0.0)
+        joint3d_mark_body_moved(body_a);
+    if (body_b->inv_mass > 0.0)
+        joint3d_mark_body_moved(body_b);
 }
 
 /// @brief Cancel @p amount (0..1) of the bodies' relative linear velocity, inverse-mass weighted.
@@ -676,6 +686,127 @@ void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinematics *b
             continue;
         double correction = rel[i] / inv_sum;
         correction = joint3d_clamp_force(correction);
+        body_a->velocity[i] =
+            joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
+        body_b->velocity[i] =
+            joint3d_clamp_force(body_b->velocity[i] - correction * body_b->inv_mass);
+    }
+}
+
+/// @brief joint3d_correct_anchor_pair_limited, but with the [min, max] box expressed
+///   in the joint frame given by @p frame_quat (body-A axes for the SixDof joint).
+/// @details The anchor gap is rotated into the frame, per-axis violations are
+///   computed there, and the correction is rotated back to world before the
+///   inverse-mass split — so a slider constrained along "local X" keeps tracking
+///   body A's X as it rotates. NULL @p frame_quat means world axes.
+void joint3d_correct_anchor_pair_limited_frame(rt_body3d_kinematics *body_a,
+                                               rt_body3d_kinematics *body_b,
+                                               const double *local_anchor_a,
+                                               const double *local_anchor_b,
+                                               const double *linear_min,
+                                               const double *linear_max,
+                                               const double *frame_quat) {
+    double anchor_a[3];
+    double anchor_b[3];
+    double delta[3];
+    double delta_frame[3];
+    double violation_frame[3] = {0.0, 0.0, 0.0};
+    double violation_world[3];
+    double inv_frame[4];
+    double inv_sum;
+    int has_violation = 0;
+    if (!frame_quat) {
+        joint3d_correct_anchor_pair_limited(
+            body_a, body_b, local_anchor_a, local_anchor_b, linear_min, linear_max);
+        return;
+    }
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b) || !linear_min ||
+        !linear_max)
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_world_anchor(body_a, local_anchor_a, anchor_a);
+    joint3d_world_anchor(body_b, local_anchor_b, anchor_b);
+    joint3d_vec3_sub(anchor_b, anchor_a, delta);
+    if (!joint3d_vec3_all_finite(delta))
+        return;
+    joint3d_quat_conjugate(frame_quat, inv_frame);
+    joint3d_quat_rotate_vec3(inv_frame, delta, delta_frame);
+    if (!joint3d_vec3_all_finite(delta_frame))
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (delta_frame[i] < linear_min[i]) {
+            violation_frame[i] = delta_frame[i] - linear_min[i];
+            has_violation = 1;
+        } else if (delta_frame[i] > linear_max[i]) {
+            violation_frame[i] = delta_frame[i] - linear_max[i];
+            has_violation = 1;
+        }
+    }
+    if (!has_violation)
+        return;
+    joint3d_quat_rotate_vec3(frame_quat, violation_frame, violation_world);
+    if (!joint3d_vec3_all_finite(violation_world))
+        return;
+    for (int i = 0; i < 3; i++) {
+        double correction = joint3d_clamp_coord(violation_world[i] / inv_sum);
+        body_a->position[i] =
+            joint3d_clamp_coord(body_a->position[i] + correction * body_a->inv_mass);
+        body_b->position[i] =
+            joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
+    }
+    if (body_a->inv_mass > 0.0)
+        joint3d_mark_body_moved(body_a);
+    if (body_b->inv_mass > 0.0)
+        joint3d_mark_body_moved(body_b);
+}
+
+/// @brief joint3d_remove_relative_linear_velocity_locked_axes, but with the locked
+///   axes expressed in the joint frame given by @p frame_quat. NULL means world axes.
+void joint3d_remove_relative_linear_velocity_locked_axes_frame(rt_body3d_kinematics *body_a,
+                                                               rt_body3d_kinematics *body_b,
+                                                               const double *linear_min,
+                                                               const double *linear_max,
+                                                               const double *frame_quat) {
+    double inv_sum;
+    double rel[3];
+    double rel_frame[3];
+    double removal_frame[3] = {0.0, 0.0, 0.0};
+    double removal_world[3];
+    double inv_frame[4];
+    int any_locked = 0;
+    if (!frame_quat) {
+        joint3d_remove_relative_linear_velocity_locked_axes(
+            body_a, body_b, linear_min, linear_max);
+        return;
+    }
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b) || !linear_min ||
+        !linear_max)
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_vec3_sub(body_b->velocity, body_a->velocity, rel);
+    if (!joint3d_vec3_all_finite(rel))
+        return;
+    joint3d_quat_conjugate(frame_quat, inv_frame);
+    joint3d_quat_rotate_vec3(inv_frame, rel, rel_frame);
+    if (!joint3d_vec3_all_finite(rel_frame))
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (fabs(linear_max[i] - linear_min[i]) > 1e-12)
+            continue;
+        removal_frame[i] = rel_frame[i];
+        any_locked = 1;
+    }
+    if (!any_locked)
+        return;
+    joint3d_quat_rotate_vec3(frame_quat, removal_frame, removal_world);
+    if (!joint3d_vec3_all_finite(removal_world))
+        return;
+    for (int i = 0; i < 3; i++) {
+        double correction = joint3d_clamp_force(removal_world[i] / inv_sum);
         body_a->velocity[i] =
             joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
         body_b->velocity[i] =

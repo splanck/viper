@@ -65,11 +65,11 @@ void rt_string_registry_shutdown(void);
 /// @brief Convert a character (codepoint) position to a byte offset in a UTF-8 string.
 /// @param data The string bytes.
 /// @param byte_len Total byte length.
-/// @param char_pos Character position (0-based).
+/// @param char_pos Character position (1-based; values <= 1 map to byte offset 0).
 /// @return Byte offset corresponding to char_pos, clamped to byte_len.
 size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos);
 
 /// @brief Get the byte length of a UTF-8 character from its lead byte.
 /// @param c Lead byte of the UTF-8 sequence.
-/// @return Number of bytes in the sequence (1-4), or 1 for invalid lead bytes.
+/// @return Number of bytes implied by the lead byte (1-4), or 0 for an invalid lead byte.
 size_t utf8_char_len(unsigned char c);

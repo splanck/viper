@@ -25,13 +25,23 @@ audit_runtime_header() {
     lines[NR]=$0
     # Skip comment-only lines from consideration.
     if ($0 ~ /^[[:space:]]*\/\// || $0 ~ /^[[:space:]]*\/\*/) next
-    if ($0 ~ /^[^\/].*\)\s*;[[:space:]]*$/) {
+    if ($0 ~ /^[^\/].*\)[[:space:]]*;[[:space:]]*$/) {
       # Heuristic guard: ignore obvious statements.
       if ($0 ~ /return / || $0 ~ /=/ || $0 ~ /^[[:space:]]*,/) next
+      candidate=$0
+      sub(/^[[:space:]]*/, "", candidate)
+      # A bare identifier followed by an argument list is a call, not a C
+      # declaration (which has a return type before the function name).
+      if (candidate ~ /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(/) next
       has_doc=0
-      for (i=NR-3; i<NR; ++i) {
-        if (i>0 && lines[i] ~ /\/\/\//) { has_doc=1; break }
-        if (i>0 && lines[i] ~ /\/\*/) { has_doc=1; break }
+      # Walk back across a multiline declaration, but never borrow a comment
+      # from the preceding declaration or section.
+      for (i=NR-1; i>0; --i) {
+        if (lines[i] ~ /\/\/\// || lines[i] ~ /\/\*/) { has_doc=1; break }
+        if (lines[i] ~ /^[[:space:]]*$/ ||
+            lines[i] ~ /;[[:space:]]*$/ ||
+            lines[i] ~ /[{}][[:space:]]*$/ ||
+            lines[i] ~ /^[[:space:]]*#/) break
       }
       if (!has_doc) {
         printf("%s:%d:%s\n", FILENAME, NR, $0) >> OUT
@@ -50,7 +60,7 @@ for rel in "${FILES[@]}"; do
   if ! has_header "$path"; then
     missing_headers+=("$rel")
   fi
-  if [[ "$rel" == src/runtime/*.[ch]* ]]; then
+  if [[ "$rel" =~ ^src/runtime/.*\.(h|hh|hpp|hxx)$ ]]; then
     audit_runtime_header "$path"
   fi
 done

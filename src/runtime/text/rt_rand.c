@@ -6,22 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/text/rt_rand.c
-// Purpose: Implements cryptographically secure random generation for the
-//          Viper.Crypto.Rand class. Uses OS-provided CSPRNGs: /dev/urandom
-//          on Linux/macOS, BCryptGenRandom on Windows. Provides RandomBytes,
-//          RandomInt (range), RandomString (alphanumeric), and Token (hex).
-//          Used by the password and cipher modules to source salts, nonces,
-//          and IVs; also exposed directly to applications that need
-//          high-quality random material.
+// Purpose: Implements Viper.Crypto.Rand.Bytes and Int. Compatibility mode uses
+//          platform CSPRNGs (`getrandom` with `/dev/urandom` fallback on Linux,
+//          `arc4random_buf` on macOS, BCryptGenRandom on Windows); approved mode
+//          uses the locked module HMAC-DRBG.
 //
 // Key invariants:
-//   - All random output is sourced from the OS CSPRNG; never from rand() or srand().
+//   - Compatibility output comes directly from the OS CSPRNG; approved output
+//     comes from an HMAC-DRBG seeded/reseeded by OS entropy. Neither uses rand().
 //   - RandomInt(min, max) is inclusive on both ends; bias is eliminated via
 //     rejection sampling.
-//   - RandomString produces characters from the base62 alphabet (A-Za-z0-9).
-//   - Token produces a lowercase hex string of the requested byte length * 2 chars.
 //   - Failure to read from the CSPRNG traps with a descriptive error.
-//   - All functions are thread-safe.
+//   - Direct platform calls and approved DRBG access are thread-safe. The cached
+//     non-Apple POSIX `/dev/urandom` descriptor has a known first-use data race.
 //
 // Ownership/Lifetime:
 //   - All returned rt_string and rt_bytes values are fresh allocations.
@@ -73,9 +70,9 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 
 /// @brief Return a cached `/dev/urandom` descriptor for Unix fallback reads.
 /// @details The descriptor is opened once with close-on-exec where supported and
-///          retained for process lifetime. A mutex protects first-use creation so
-///          concurrent random calls neither race on the static descriptor nor leak
-///          duplicate opens.
+///          retained for process lifetime. Creation is mutex-protected, but the
+///          unlocked fast-path read currently races with the first write under
+///          concurrent initialization.
 /// @return Non-negative file descriptor on success; -1 when opening failed.
 static int rand_urandom_fd(void) {
     static int fd = -1;

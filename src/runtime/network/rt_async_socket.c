@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_async_socket.c
-// Purpose: Non-blocking socket wrapper that bridges blocking I/O with Futures.
+// Purpose: Future wrapper that bridges blocking I/O through a fixed worker pool.
 // Key invariants:
 //   - Each async operation creates a Future, submits blocking work to the
 //     thread pool, and resolves the Future when the operation completes.
-//   - Uses a shared default thread pool (lazy-initialized).
+//   - Uses one shared four-worker pool (lazy-initialized).
 // Ownership/Lifetime:
 //   - Returned Futures are GC-managed.
 //   - Closure args are heap-allocated and freed by the worker.
@@ -220,7 +220,7 @@ static void async_connect_worker(void *arg) {
     free(a);
 }
 
-/// @brief Initiate a non-blocking TCP connect with an explicit timeout.
+/// @brief Submit a blocking TCP connect to the worker pool with an explicit timeout.
 /// @details Submits the blocking `rt_tcp_connect_for(host, port, timeout_ms)` to the
 ///          shared 4-thread pool and returns immediately with a future
 ///          the caller can `Await` or chain on. Heap-copies the host
@@ -264,7 +264,7 @@ void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     return future;
 }
 
-/// @brief Initiate a non-blocking TCP connect using the default TCP connect timeout.
+/// @brief Submit a TCP connect using the default TCP connect timeout.
 void *rt_async_connect(rt_string host, int64_t port) {
     return rt_async_connect_for(host, port, 30000);
 }
@@ -300,7 +300,7 @@ static void async_send_worker(void *arg) {
     free(a);
 }
 
-/// @brief Initiate a non-blocking TCP send and return a Future[Integer].
+/// @brief Submit a blocking TCP send and return a generic Future result.
 /// @details Retains both the TCP handle and the data object before
 ///          submission so the worker can read them after the caller's
 ///          frame returns. On thread-pool refusal the promise is
@@ -365,7 +365,7 @@ static void async_recv_worker(void *arg) {
     free(a);
 }
 
-/// @brief Initiate a non-blocking TCP recv and return a Future[Bytes].
+/// @brief Submit a blocking TCP receive and return a Future[Bytes].
 /// @details Retains the TCP handle so the worker thread can hold a
 ///          stable reference. The blocking `rt_tcp_recv` runs on the
 ///          pool thread and the promise is resolved with the resulting

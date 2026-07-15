@@ -20,8 +20,8 @@ engine written entirely in Zia — as the flagship showcase project.
 
 #### Runtime Library — 197 Classes (up from 70)
 
-The largest single expansion in runtime coverage since the project began. 127 new classes land
-across every namespace, bringing production-grade data formats, cryptography, concurrency, and
+Runtime coverage expands: 127 new classes land
+across every namespace, bringing data formats, cryptography, concurrency, and
 game development support into the standard library.
 
 **Data Formats (`Viper.Text.*`)**
@@ -459,14 +459,6 @@ psql -h localhost -p 5432 -U admin viper
 | `demos/zia/viperide/` | Zia | IDE application with editor, build, and services panels |
 | `demos/zia/pacman/` | Zia | Pac-Man rewritten using new game abstraction classes |
 | `demos/basic/particles/` | BASIC | Particle system showcase |
-
-#### ViperDOS
-
-ViperDOS received substantial architectural work this cycle: transition from microkernel to
-hybrid monolithic kernel, major memory management improvements (swap support, page table
-hardening, Amiga-style global menu bar protocol), FAT32 filesystem driver, and a full
-Workbench desktop environment with file browser and pulldown menus. Details are tracked
-in the ViperDOS-specific changelog.
 
 ---
 

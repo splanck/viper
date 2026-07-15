@@ -6,10 +6,10 @@
 
 ### What this release is about
 
-A hardening cycle pushing toward alpha quality that also delivered substantial new capability. The headline new work is a code-first `Viper.Game3D` engine layered over the 3D runtime and a real ViperIDE editor with build/run and language services; the hardening backbone swept memory, threads, crypto, IO, graphics, the bytecode VM, the native toolchain, and packaging, while the Zia frontend closed its major language gaps and raw pointers left both source languages.
+A hardening cycle pushing toward alpha quality that also delivered new capability. The headline new work is a code-first `Viper.Game3D` engine layered over the 3D runtime and a real ViperIDE editor with build/run and language services; the hardening backbone swept memory, threads, crypto, IO, graphics, the bytecode VM, the native toolchain, and packaging, while the Zia frontend closed its major language gaps and raw pointers left both source languages.
 
 - **Zia frontend stability.** `defer`; structured `try`/`catch`/`finally`, multi-catch, bare rethrow; `Result[T]` with `?` propagation; weak fields, function references, constrained generics, default interface methods; declaration-order independence.
-- **Pointer-safety gate.** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the typed surface is now the only surface. (Biggest user-visible change.)
+- **Pointer-safety gate.** Zia and BASIC reject raw `Ptr` types and pointer-signature runtime APIs; the typed surface is now the only surface. (A major user-visible change.)
 - **Memory, GC & threads ownership.** Validated retain/release wrappers, weak-ref CAS retain inside the GC lock, trap-safe finalizers, class-ID validation on every public threads / MessageBus entry, and saturated wait deadlines.
 - **Crypto, TLS & IO security.** Canonical `Viper.Crypto.*` (scrypt, AES-GCM+AAD, approved-mode module, fixed-schedule ECDSA P-256); TLS Key-Usage / Basic-Constraints / EKU enforcement; hardened temp-file, archive, and ZIP64 paths.
 - **Network protocol correctness.** Independent HPACK tables, strict RFC 7230 `Transfer-Encoding` parsing (closes a request-smuggling avenue), and WebSocket frame/close-code validation.

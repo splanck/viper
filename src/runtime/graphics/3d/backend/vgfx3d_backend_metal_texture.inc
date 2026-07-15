@@ -754,6 +754,55 @@ static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
     return 1;
 }
 
+/// @brief Bind a mesh's influences 5-8 side stream (vertex buffer index 10).
+/// @details Import-time data cached by geometry identity + revision (like the
+///   morph cache); cache misses upload a shared buffer and keep it alive via
+///   frameBuffers until the cache entry takes over. Returns 1 when bound (the
+///   caller sets PerObject flags2.y), 0 when the draw has no extras or the
+///   upload failed (CPU fallback already handled 8-weight meshes before the
+///   backend advertised gpu_skinning_extras, so failure = fewer influences,
+///   never corruption).
+static int metal_bind_extra_influences(VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    id<MTLBuffer> buf = nil;
+    const void *key;
+    NSNumber *dict_key;
+    VGFXMetalExtraInfluenceCacheEntry *entry;
+    size_t bytes;
+    if (!ctx || !cmd || !cmd->extra_influences || cmd->bone_count <= 0 || cmd->vertex_count == 0)
+        return 0;
+    if ((size_t)cmd->vertex_count > SIZE_MAX / sizeof(vgfx3d_extra_influences_t))
+        return 0;
+    bytes = (size_t)cmd->vertex_count * sizeof(vgfx3d_extra_influences_t);
+    key = cmd->geometry_key ? cmd->geometry_key : (const void *)cmd->extra_influences;
+    dict_key = [NSNumber numberWithUnsignedLongLong:(unsigned long long)(uintptr_t)key];
+    entry = ctx.extraInfluenceCache ? ctx.extraInfluenceCache[dict_key] : nil;
+    if (entry && entry.key == key && entry.revision == cmd->geometry_revision &&
+        entry.vertexCount == cmd->vertex_count) {
+        buf = entry.buffer;
+        entry.lastUsedFrame = ctx.frameSerial;
+    } else {
+        buf = metal_new_shared_buffer(ctx, cmd->extra_influences, bytes);
+        if (!buf)
+            return 0;
+        if (ctx.extraInfluenceCache) {
+            VGFXMetalExtraInfluenceCacheEntry *fresh =
+                [[VGFXMetalExtraInfluenceCacheEntry alloc] init];
+            fresh.buffer = buf;
+            fresh.key = key;
+            fresh.revision = cmd->geometry_revision;
+            fresh.vertexCount = cmd->vertex_count;
+            fresh.lastUsedFrame = ctx.frameSerial;
+            ctx.extraInfluenceCache[dict_key] = fresh;
+        } else if (ctx.frameBuffers) {
+            [ctx.frameBuffers addObject:buf];
+        }
+    }
+    if (!buf)
+        return 0;
+    [ctx.encoder setVertexBuffer:buf offset:0 atIndex:10];
+    return 1;
+}
+
 /// @brief Bind a mesh's morph delta buffer and per-shape weights for a draw.
 /// @return A status enum indicating whether morphing is bound, skipped, or failed.
 static metal_morph_bind_status_t metal_bind_morph_payload(VGFXMetalContext *ctx,

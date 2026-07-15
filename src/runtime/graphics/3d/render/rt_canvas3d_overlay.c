@@ -1482,6 +1482,25 @@ int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj) {
     return c ? c->last_frame_gpu_time_us : 0;
 }
 
+/// @brief `Canvas3D.PassCpuMs(pass)` — CPU milliseconds one render stage took
+///   during the last flushed frame.
+/// @details Pass ids: 0 = shadow pass, 1 = main pass (opaque + transparent +
+///   post-FX submission), 2 = screen overlay pass, 3 = backend end-of-frame
+///   (encode/present). Diagnostics only — a profiler HUD can render these
+///   without touching simulation state. Unknown ids return 0.
+double rt_canvas3d_get_pass_cpu_ms(void *obj, int64_t pass) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || pass < 0 || pass >= RT_CANVAS3D_PASS_COUNT)
+        return 0.0;
+    return c->pass_cpu_ms[pass];
+}
+
+/// @brief `Canvas3D.get_PassCount` — number of PassCpuMs stages (currently 4).
+int64_t rt_canvas3d_get_pass_count(void *obj) {
+    (void)obj;
+    return RT_CANVAS3D_PASS_COUNT;
+}
+
 /// @brief Backend draw submissions issued since the latest public frame begin.
 int64_t rt_canvas3d_get_draws_submitted(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);

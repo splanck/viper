@@ -153,8 +153,8 @@ RT_FUNC(LocMgrAddSearchPath,    rt_locale_manager_add_search_path,      "Viper.L
 RT_FUNC(LocMgrUnload,           rt_locale_manager_unload,               "Viper.Localization.LocaleManager.Unload",           "i1(obj)")
 RT_FUNC(LocMgrReset,            rt_locale_manager_reset,                "Viper.Localization.LocaleManager.Reset",            "void()")
 
-// Viper.Localization.Locale - immutable BCP-47 language tag handle
-/// @summary Provides immutable BCP-47 language tag handle.
+// Viper.Localization.Locale - immutable canonical locale-tag handle
+/// @summary Provides an immutable canonical locale-tag handle.
 /// @details
 /// Create `Viper.Localization.Locale` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
@@ -287,7 +287,7 @@ RT_CLASS_BEGIN("Viper.Localization.RelativeTimeFormat", LocRelTimeFormat, "obj",
 RT_CLASS_END()
 
 // Viper.Localization.PluralRules - CLDR plural category selection
-/// @summary Provides cLDR plural category selection.
+/// @summary Provides CLDR-style plural category selection.
 /// @details
 /// `Viper.Localization.PluralRules` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes operations including

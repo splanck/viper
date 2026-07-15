@@ -562,7 +562,11 @@ static void character3d_push_dynamic(rt_character3d *ctrl,
     if (!isfinite(v_into) || v_into <= 0.0)
         return;
     double other_mass = hit->body->mass > 1e-9 ? hit->body->mass : 1e-9;
-    double ratio = ctrl->body->mass / other_mass;
+    /* A kinematic capsule is often authored with mass 0; the configured
+     * push_strength must still act, so floor the effective controller mass at
+     * the blocker's mass (ratio 1) instead of silently zeroing the push. */
+    double controller_mass = ctrl->body->mass > 1e-9 ? ctrl->body->mass : other_mass;
+    double ratio = controller_mass / other_mass;
     if (!isfinite(ratio) || ratio > 1.0)
         ratio = 1.0;
     double mag = ctrl->push_strength * ratio * v_into;
@@ -1017,16 +1021,20 @@ void *rt_character3d_get_ground_body(void *o) {
  * Trigger3D — standalone AABB zone with enter/exit edge detection
  *=========================================================================*/
 
-#define TRG3D_MAX_TRACKED 64
-
 typedef struct {
     void *vptr;
     double bounds_min[3];
     double bounds_max[3];
-    void *tracked_bodies[TRG3D_MAX_TRACKED];
-    int8_t was_inside[TRG3D_MAX_TRACKED];
-    int8_t is_inside[TRG3D_MAX_TRACKED];
+    /* Tracked set = bodies inside the trigger (plus this frame's transients).
+     * Grown on demand — no fixed cap — and parallel-indexed. Body pointers are
+     * weak: the trigger only observes, and Update prunes stale entries. */
+    void **tracked_bodies;
+    int8_t *was_inside;
+    int8_t *is_inside;
+    uint32_t *seen_stamp;
     int32_t tracked_count;
+    int32_t tracked_capacity;
+    uint32_t update_stamp;
     int32_t enter_count;
     int32_t exit_count;
 } rt_trigger3d;
@@ -1036,14 +1044,26 @@ static rt_trigger3d *trigger3d_checked(void *obj) {
     return (rt_trigger3d *)rt_g3d_checked_or_null(obj, RT_G3D_TRIGGER3D_CLASS_ID);
 }
 
-/// @brief GC finalizer for `Trigger3D` — no-op (tracked-body refs are weak).
+/// @brief GC finalizer for `Trigger3D` — releases the tracking arrays.
 ///
 /// Tracked bodies are stored as raw pointers (we don't retain them
 /// because the trigger is only an observer). Weak refs is fine here:
 /// if a tracked body is destroyed the next `Update` will discover the
 /// stale pointer and clean it up.
 static void trigger3d_finalizer(void *obj) {
-    (void)obj;
+    rt_trigger3d *t = (rt_trigger3d *)obj;
+    if (!t)
+        return;
+    free(t->tracked_bodies);
+    free(t->was_inside);
+    free(t->is_inside);
+    free(t->seen_stamp);
+    t->tracked_bodies = NULL;
+    t->was_inside = NULL;
+    t->is_inside = NULL;
+    t->seen_stamp = NULL;
+    t->tracked_count = 0;
+    t->tracked_capacity = 0;
 }
 
 /// @brief Store ordered, finite trigger bounds.
@@ -1067,8 +1087,8 @@ static void trigger3d_set_bounds_raw(
 
 /// @brief `Trigger3D.New(x0, y0, z0, x1, y1, z1)` — make an axis-aligned trigger zone.
 ///
-/// Auto-orders the corners so caller can pass them in any order. Up to
-/// 64 bodies are tracked for enter/exit edge detection.
+/// Auto-orders the corners so caller can pass them in any order. Occupancy
+/// tracking grows on demand — any number of bodies can be inside at once.
 void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
     rt_trigger3d *t =
         (rt_trigger3d *)rt_obj_new_i64(RT_G3D_TRIGGER3D_CLASS_ID, (int64_t)sizeof(rt_trigger3d));
@@ -1106,37 +1126,90 @@ int8_t rt_trigger3d_contains(void *obj, void *point) {
                : 0;
 }
 
-/// @brief Find a tracked body's slot, or claim a new slot if the table has room.
-///
-/// Returns -1 when the 64-slot table is full; the caller skips the
-/// body for this frame in that case.
-static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body) {
+/// @brief Find a tracked body's slot, or -1 when it is not tracked.
+static int32_t trigger3d_find_index(const rt_trigger3d *t, const void *body) {
     for (int32_t i = 0; i < t->tracked_count; i++)
         if (t->tracked_bodies[i] == body)
             return i;
-    if (t->tracked_count >= TRG3D_MAX_TRACKED)
-        return -1;
-    int32_t idx = t->tracked_count++;
-    t->tracked_bodies[idx] = body;
-    t->was_inside[idx] = 0;
-    t->is_inside[idx] = 0;
-    return idx;
+    return -1;
+}
+
+/// @brief Claim a new tracked slot, growing the parallel arrays on demand.
+/// @return Slot index, or -1 on allocation failure (the body is skipped this
+///   frame and retried on the next Update — graceful degradation, no cap).
+static int32_t trigger3d_add(rt_trigger3d *t, void *body) {
+    if (t->tracked_count >= t->tracked_capacity) {
+        int32_t new_cap = t->tracked_capacity == 0 ? 16 : t->tracked_capacity * 2;
+        void **grown_bodies;
+        int8_t *grown_was;
+        int8_t *grown_is;
+        uint32_t *grown_seen;
+        if (t->tracked_capacity > INT32_MAX / 2)
+            return -1;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+            return -1;
+        grown_bodies = (void **)realloc(t->tracked_bodies, (size_t)new_cap * sizeof(void *));
+        if (!grown_bodies)
+            return -1;
+        t->tracked_bodies = grown_bodies;
+        grown_was = (int8_t *)realloc(t->was_inside, (size_t)new_cap * sizeof(int8_t));
+        if (!grown_was)
+            return -1;
+        t->was_inside = grown_was;
+        grown_is = (int8_t *)realloc(t->is_inside, (size_t)new_cap * sizeof(int8_t));
+        if (!grown_is)
+            return -1;
+        t->is_inside = grown_is;
+        grown_seen = (uint32_t *)realloc(t->seen_stamp, (size_t)new_cap * sizeof(uint32_t));
+        if (!grown_seen)
+            return -1;
+        t->seen_stamp = grown_seen;
+        t->tracked_capacity = new_cap;
+    }
+    {
+        int32_t idx = t->tracked_count++;
+        t->tracked_bodies[idx] = body;
+        t->was_inside[idx] = 0;
+        t->is_inside[idx] = 0;
+        t->seen_stamp[idx] = 0;
+        return idx;
+    }
+}
+
+/// @brief Swap-remove a tracked slot (order is not meaningful).
+static void trigger3d_remove_at(rt_trigger3d *t, int32_t i) {
+    int32_t last = t->tracked_count - 1;
+    t->tracked_bodies[i] = t->tracked_bodies[last];
+    t->was_inside[i] = t->was_inside[last];
+    t->is_inside[i] = t->is_inside[last];
+    t->seen_stamp[i] = t->seen_stamp[last];
+    t->tracked_bodies[last] = NULL;
+    t->tracked_count = last;
 }
 
 /// @brief `Trigger3D.Update(world)` — recompute occupancy and edge counts.
 ///
-/// Tests every body in `world` for point-in-AABB inclusion (using body
-/// center as the query point). Diffs current frame vs. previous to
-/// produce `enter_count` and `exit_count` totals — no per-body events
-/// are stored, so callers learn "how many entered" but not "which".
+/// Tests every body's world AABB (not just its center) against the trigger
+/// box, so large bodies straddling the boundary register correctly. Only
+/// bodies currently inside (or leaving this frame) are tracked, so the
+/// tracked set stays small and has no fixed cap. Diffs current frame vs.
+/// previous to produce `enter_count` and `exit_count` totals — no per-body
+/// events are stored, so callers learn "how many entered" but not "which".
 /// Run once per frame after `World3D.Step`.
 void rt_trigger3d_update(void *obj, void *world_obj) {
     rt_trigger3d *t = trigger3d_checked(obj);
     rt_world3d *w = world3d_checked(world_obj);
-    int8_t seen[TRG3D_MAX_TRACKED];
     if (!t || !w)
         return;
-    memset(seen, 0, sizeof(seen));
+
+    /* Advance the seen stamp; on wrap, reset every slot's stamp so no stale
+     * slot can alias the new epoch. */
+    t->update_stamp++;
+    if (t->update_stamp == 0) {
+        for (int32_t i = 0; i < t->tracked_count; i++)
+            t->seen_stamp[i] = 0;
+        t->update_stamp = 1;
+    }
 
     /* Swap current → previous */
     for (int32_t i = 0; i < t->tracked_count; i++) {
@@ -1146,26 +1219,33 @@ void rt_trigger3d_update(void *obj, void *world_obj) {
     t->enter_count = 0;
     t->exit_count = 0;
 
-    /* Test every body in the world */
     for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *b = w->bodies[i];
+        double bmn[3];
+        double bmx[3];
+        int8_t inside;
+        int32_t idx;
         if (!b)
             continue;
 
-        /* Point-in-AABB test using body center */
-        double pos[3] = {b->position[0], b->position[1], b->position[2]};
-        character3d_sanitize_vec3(pos);
-        int8_t inside = (pos[0] >= t->bounds_min[0] && pos[0] <= t->bounds_max[0] &&
-                         pos[1] >= t->bounds_min[1] && pos[1] <= t->bounds_max[1] &&
-                         pos[2] >= t->bounds_min[2] && pos[2] <= t->bounds_max[2])
-                            ? 1
-                            : 0;
+        /* Body AABB vs trigger AABB. */
+        body_aabb(b, bmn, bmx);
+        inside = (bmx[0] >= t->bounds_min[0] && bmn[0] <= t->bounds_max[0] &&
+                  bmx[1] >= t->bounds_min[1] && bmn[1] <= t->bounds_max[1] &&
+                  bmx[2] >= t->bounds_min[2] && bmn[2] <= t->bounds_max[2])
+                     ? 1
+                     : 0;
 
-        int32_t idx = trigger3d_find_or_add(t, b);
-        if (idx < 0)
-            continue; /* tracking full */
+        idx = trigger3d_find_index(t, b);
+        if (idx < 0) {
+            if (!inside)
+                continue; /* untracked and outside: nothing to observe */
+            idx = trigger3d_add(t, b);
+            if (idx < 0)
+                continue; /* allocation failure: retry next frame */
+        }
 
-        seen[idx] = 1;
+        t->seen_stamp[idx] = t->update_stamp;
         t->is_inside[idx] = inside;
         if (inside && !t->was_inside[idx])
             t->enter_count++;
@@ -1173,26 +1253,17 @@ void rt_trigger3d_update(void *obj, void *world_obj) {
             t->exit_count++;
     }
 
-    /* Weakly tracked bodies absent from the world left the trigger/world.
-     * Emit exit once for bodies that were previously inside, then forget them. */
+    /* Prune: bodies that left the world (unseen) fire exit if they were
+     * inside; bodies observed outside already fired exit above. Either way
+     * the slot is dropped — the tracked set holds only current occupants. */
     for (int32_t i = 0; i < t->tracked_count;) {
-        if (seen[i]) {
+        if (t->seen_stamp[i] == t->update_stamp && t->is_inside[i]) {
             i++;
             continue;
         }
-        if (t->was_inside[i])
+        if (t->seen_stamp[i] != t->update_stamp && t->was_inside[i])
             t->exit_count++;
-        for (int32_t j = i; j < t->tracked_count - 1; j++) {
-            t->tracked_bodies[j] = t->tracked_bodies[j + 1];
-            t->was_inside[j] = t->was_inside[j + 1];
-            t->is_inside[j] = t->is_inside[j + 1];
-            seen[j] = seen[j + 1];
-        }
-        t->tracked_count--;
-        t->tracked_bodies[t->tracked_count] = NULL;
-        t->was_inside[t->tracked_count] = 0;
-        t->is_inside[t->tracked_count] = 0;
-        seen[t->tracked_count] = 0;
+        trigger3d_remove_at(t, i);
     }
 }
 

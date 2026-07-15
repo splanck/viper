@@ -909,6 +909,24 @@ int64_t rt_particles3d_get_count(void *o) {
     return p->count > p->max_particles ? p->max_particles : p->count;
 }
 
+/// @brief `Particles3D.set_Seed` — set the live spawn PRNG state.
+/// @details Emitters default to a process-wide counter seed, so spawn streams
+///   depend on global construction order; setting an explicit seed makes the
+///   stream reproducible for determinism-sensitive content and replays. Zero
+///   maps to the non-zero xorshift fallback constant.
+void rt_particles3d_set_seed(void *o, int64_t seed) {
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
+        return;
+    p->prng_state = (uint32_t)seed ? (uint32_t)seed : 0xA341316Cu;
+}
+
+/// @brief `Particles3D.get_Seed` — current spawn PRNG state (checkpointable).
+int64_t rt_particles3d_get_seed(void *o) {
+    rt_particles3d *p = particles3d_checked(o);
+    return p ? (int64_t)p->prng_state : 0;
+}
+
 /// @brief Copy the emitter world position into @p out. Used by floating-origin rebase tests to
 ///   verify the emitter shifted; zeroed if the handle is invalid or @p out is NULL.
 void rt_particles3d_get_position(void *o, double out[3]) {
@@ -1143,16 +1161,42 @@ void rt_particles3d_update(void *o, double delta_time) {
             float spacing = ps->trail_lifetime / (float)ps->trail_segments;
             ps->trail_age[slot] += (float)dt;
             if (ps->trail_age[slot] >= spacing || ps->trail_len[slot] == 0) {
+                /* Emit one control point per elapsed spacing interval (capped
+                 * at the ring size), interpolated along this update's motion —
+                 * so a low-FPS frame lays down the same samples a run of
+                 * high-FPS frames would, keeping trail shape frame-rate
+                 * independent instead of collapsing to a single jump. */
                 size_t stride = (size_t)ps->trail_segments * 3u;
-                int16_t head = ps->trail_head[slot];
-                float *dst = &ps->trail_pos[(size_t)slot * stride + (size_t)head * 3u];
-                dst[0] = (float)p->pos[0];
-                dst[1] = (float)p->pos[1];
-                dst[2] = (float)p->pos[2];
-                ps->trail_head[slot] = (int16_t)((head + 1) % ps->trail_segments);
-                if (ps->trail_len[slot] < (int16_t)ps->trail_segments)
-                    ps->trail_len[slot]++;
-                ps->trail_age[slot] = 0.0f;
+                int32_t emit = 1;
+                float prev[3] = {(float)(p->pos[0] - p->vel[0] * dt),
+                                 (float)(p->pos[1] - p->vel[1] * dt),
+                                 (float)(p->pos[2] - p->vel[2] * dt)};
+                if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
+                    float intervals = ps->trail_age[slot] / spacing;
+                    if (isfinite(intervals) && intervals > 1.0f)
+                        emit = intervals >= (float)ps->trail_segments ? ps->trail_segments
+                                                                      : (int32_t)intervals;
+                }
+                for (int32_t e = 1; e <= emit; e++) {
+                    float t = (float)e / (float)emit;
+                    int16_t head = ps->trail_head[slot];
+                    float *dst = &ps->trail_pos[(size_t)slot * stride + (size_t)head * 3u];
+                    dst[0] = prev[0] + ((float)p->pos[0] - prev[0]) * t;
+                    dst[1] = prev[1] + ((float)p->pos[1] - prev[1]) * t;
+                    dst[2] = prev[2] + ((float)p->pos[2] - prev[2]) * t;
+                    ps->trail_head[slot] = (int16_t)((head + 1) % ps->trail_segments);
+                    if (ps->trail_len[slot] < (int16_t)ps->trail_segments)
+                        ps->trail_len[slot]++;
+                }
+                /* Keep the fractional remainder so the emission cadence stays
+                 * steady across frames instead of resetting each burst. */
+                if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
+                    float remainder = ps->trail_age[slot] - (float)emit * spacing;
+                    ps->trail_age[slot] = (isfinite(remainder) && remainder > 0.0f) ? remainder
+                                                                                    : 0.0f;
+                } else {
+                    ps->trail_age[slot] = 0.0f;
+                }
             }
         }
 

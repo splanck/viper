@@ -1178,9 +1178,9 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     return result;
 }
 
-/// @brief Check whether the SSE connection is still open and the underlying TCP socket is alive.
-/// @brief Returns 1 if the SSE connection is still open (transport is alive). Becomes 0 once
-/// the server closes or the client calls `_close`.
+/// @brief Return whether the local SSE state still owns an open-looking transport.
+/// @details This does not probe remote liveness. It becomes 0 after a detected transport failure
+///          or `_close`; an unobserved peer close can still report 1.
 int8_t rt_sse_is_open(void *obj) {
     if (!obj)
         return 0;

@@ -35,8 +35,9 @@ void rt_smtp_set_tls(void *client, int8_t enable);
 int8_t rt_smtp_send(void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
 /// @brief Send a plain-text email and return a Result instead of using LastError.
 /// @details This performs the same SMTP session as rt_smtp_send(). Success is
-///          returned as OkI64(1); SMTP, network, and validation failures are
-///          returned as ErrStr(message). Use this in new code instead of calling
+///          returned as OkI64(1); failures converted to the legacy Boolean/LastError
+///          path are returned as ErrStr(message). Lower-level transport traps can
+///          still escape. Use this in new code instead of calling
 ///          rt_smtp_send() and then rt_smtp_last_error().
 /// @param client Opaque Viper.Network.SmtpClient object.
 /// @param from Sender mailbox path.
@@ -62,7 +63,7 @@ void *rt_smtp_send_html_result(
     void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
 /// @brief Get the last SMTP error message (response code + text), empty if no error.
 rt_string rt_smtp_last_error(void *client);
-/// @brief Send QUIT and close the connection.
+/// @brief Force-close any active transport without sending QUIT.
 void rt_smtp_close(void *client);
 
 #ifdef __cplusplus

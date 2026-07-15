@@ -123,18 +123,30 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
 
 ## Field rules
 
-- **`tag`** — required; must parse as a valid non-`root` BCP-47 tag. It is canonicalized on load.
+- **`tag`** — required; must pass Viper's constrained non-`root` locale-tag parser and is
+  canonicalized on load. This is not full RFC 5646 validation; see
+  [Locale parser limitations](locale.md#notes).
 - **Missing optional fields** — inherit the baked en-US default for that field.
 - **Top-level values** — `text_direction` is `"ltr"` or `"rtl"`; `first_day_of_week` is `0..6` (`0` = Sunday); `measurement` is `"metric"`, `"us"`, or `"uk"`.
 - **Months/Days arrays** — exact lengths required: 12 months, 7 days (index 0 = Sunday).
-- **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`.
-- **Digits** — `numbers.digits` must contain exactly 10 UTF-8 codepoints.
-- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; `fraction_digits` must be `0..9`; currency patterns may contain only literal text plus `{n}` and `{s}` and must include both placeholders.
-- **Relative time** — `past` and `future` must contain `{n}` and `{unit}`. `now`, `short_past`, `short_future`, and `short_units` are optional and inherit en-US defaults when absent.
+- **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`. Separator and sign strings must have the right JSON type, but the loader does not require them to be distinct or otherwise unambiguous.
+- **Digits** — `numbers.digits` is intended to contain exactly 10 UTF-8 codepoints. The current
+  validator counts leading-byte spans rather than fully validating UTF-8 (VDOC-069), so locale
+  authors should validate this field independently.
+- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; `fraction_digits` must be `0..9`; currency patterns may contain only literal text plus `{n}` and `{s}` and must include both placeholders. The loader currently permits either placeholder more than once, even though duplicate `{n}` forms need not parse back (VDOC-070).
+- **Relative time** — `past` and `future` must contain `{n}` and `{unit}`. `now`, `short_past`, `short_future`, and `short_units` are optional and inherit en-US defaults when absent. Short templates are not checked for placeholders.
 - **Plural rules** — each cardinal/ordinal chain must contain `1..32` entries. A single predicate range list is capped at 64 ranges.
-- **Collation** — the optional internal `strength` value is `1..4`. Other collation keys, including `reorder` and `overrides`, are currently ignored because `Collator` is not on the public frontend surface.
-- **String length** — recognized individual string fields and array elements are capped at 256 bytes.
+- **Collation** — the loader accepts internal `strength` values `1..4`, but the internal collator
+  currently clamps 4 to 3 because quaternary strength is not implemented (VDOC-082). Other
+  collation keys, including `reorder` and `overrides`, are ignored because `Collator` is not on
+  the public frontend surface.
+- **Formatter-template validation** — date patterns and list templates are not parsed during
+  loading. An unsupported date pattern can therefore load successfully and trap only when used;
+  list templates missing `{0}` or `{1}` can silently discard items (VDOC-070).
+- **String length** — recognized individual string fields and array elements are capped at 256 bytes. Escaped U+0000 is not rejected; downstream C-string use truncates at that byte and can bypass validation (VDOC-068).
 - **File size** — total capped at 256 KB.
+- **Encoding envelope** — after ASCII space, tab, CR, or LF, the first byte must be `{`; a UTF-8
+  BOM is not skipped by the loader's object pre-check.
 - **Unknown keys** — ignored.
 - **Loaded data lifetime** — `Unload` and `Reset` free JSON/asset data only when no live `Locale` handle or localization object retains it.
 
@@ -148,7 +160,7 @@ OrExpr      = AndExpr ("or" AndExpr)*
 AndExpr     = Comparison ("and" Comparison)*
 Comparison  = Expr (("=" | "!=") (Expr | RangeList))
             | Expr ("in" | "not in" | "within" | "not within") RangeList
-Expr        = Var ("mod" Integer)?
+Expr        = Integer | Var ("mod" Integer)?
 Var         = "n" | "i" | "v" | "f" | "t"
 RangeList   = Range ("," Range)*
 Range       = Integer | Integer ".." Integer
@@ -162,9 +174,14 @@ Variables (per CLDR):
 - `f` — visible fraction digits as integer (with trailing zeros)
 - `t` — visible fraction digits without trailing zeros
 
-Rule length is capped at 256 chars.
+Rule length is capped at 256 bytes.
 
 `in` requires the evaluated expression to be integral; `within` accepts fractional values. `not in` and `not within` are logical inverses.
+
+Loading validates this grammar but does not require a final catch-all rule. When no entry matches,
+selection falls back to `other`. Float operands involving `v`, `f`, or `t` also have a known
+exponent-notation defect, and integer rule evaluation loses precision above 2^53; see
+[PluralRules](messages.md#viperlocalizationpluralrules).
 
 ## Currency patterns
 
