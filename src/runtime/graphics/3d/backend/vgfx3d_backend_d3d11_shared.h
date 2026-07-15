@@ -61,6 +61,9 @@ extern "C" {
 #define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
 #define VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX 6
 #define VGFX3D_D3D11_BLOOM_MIN_DOWNSAMPLE_EXTENT 8
+#define VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS 4
+#define VGFX3D_D3D11_SHADOW_ATLAS_ROWS 2
+#define VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT 120u
 #define VGFX3D_D3D11_SSR_STEPS_MIN 8
 #define VGFX3D_D3D11_SSR_STEPS_MAX 48
 #define VGFX3D_D3D11_SSR_STEPS_DEFAULT 24
@@ -234,7 +237,7 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
 int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested);
 /// @brief Normalize light type constants to the shader-visible range.
 int32_t vgfx3d_d3d11_sanitize_light_type(int32_t requested);
-/// @brief Normalize shadow projection type, disabling perspective for unshadowed lights.
+/// @brief Normalize shadow projection type, disabling projected modes for unshadowed lights.
 int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_index,
                                                      int32_t requested_projection_type);
 /// @brief Clamp and order spot-light cone cosines before shader upload.
@@ -456,6 +459,8 @@ int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
                                      uint64_t start_ticks,
                                      uint64_t end_ticks,
                                      uint64_t *out_microseconds);
+/// @brief Decide when a perpetually busy timestamp query should be abandoned.
+int vgfx3d_d3d11_should_abandon_frame_timing(uint32_t pending_polls);
 /// @brief Pick the right render-target classification (RTT > swapchain > overlay > scene).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,
@@ -478,10 +483,15 @@ int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_co
 /// @brief Clamp or disable a light's shadow slot against the advertised slot range.
 int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count);
+/// @brief Validate that a projected shadow owns every slot its projection mode requires.
+int32_t vgfx3d_d3d11_sanitize_shadow_index_for_projection(int32_t requested_shadow_index,
+                                                          int32_t advertised_shadow_count,
+                                                          int32_t projection_type);
 /// @brief Clamp a light's cascade count so it cannot address beyond advertised shadow slots.
 int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_count,
                                                    int32_t sanitized_shadow_index,
-                                                   int32_t advertised_shadow_count);
+                                                   int32_t advertised_shadow_count,
+                                                   int32_t projection_type);
 /// @brief Clamp a shadow-count value to the D3D11 shader-visible shadow slots.
 int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count);
 /// @brief Select the depth texture that represents the active scene route.
@@ -512,6 +522,10 @@ int vgfx3d_d3d11_rtt_readback_state_matches(int32_t target_width,
                                             int32_t resource_format);
 /// @brief Validate the public render-target color-format discriminator.
 int vgfx3d_d3d11_is_valid_rtt_color_format(int32_t color_format);
+/// @brief Validate the internal D3D11 target color-format class.
+int vgfx3d_d3d11_is_valid_color_format(int32_t color_format);
+/// @brief Validate a cached bloom mip count before indexing fixed backend arrays.
+int vgfx3d_d3d11_is_valid_bloom_mip_count(int32_t mip_count);
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd);
 /// @brief Pick the color format — HDR16F for the scene pass, UNORM8 elsewhere.
@@ -531,6 +545,8 @@ int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer1,
                                     int has_layer2,
                                     int has_layer3);
+/// @brief Report whether an SRV is a completed resource rather than a streaming fallback.
+int vgfx3d_d3d11_srv_is_ready(int has_srv, int is_fallback_srv);
 /// @brief Decide whether scene color should be composited to the swapchain now.
 int vgfx3d_d3d11_should_composite_to_swapchain(int8_t rtt_active,
                                                int8_t gpu_postfx_enabled,

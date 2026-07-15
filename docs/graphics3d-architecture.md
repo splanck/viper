@@ -239,6 +239,31 @@ The D3D11 backend now uses two window-backed presentation modes:
 - descriptor validation: D3D11 samplers are initialized with valid comparison/max-anisotropy defaults, constant/static/dynamic/SRV buffers clear stale output pointers and validate device state plus `ByteWidth` bounds before D3D calls, constant-buffer updates require the exact dynamic/constant-bind/CPU-write descriptor contract and report device-removal context on failed maps, typed float SRVs honor the feature-level 11 texel-count ceiling and grow geometrically, constant-buffer structs have compile-time HLSL size/offset checks, constant buffers are aligned, bounded, and zero-pad unwritten aligned bytes, dynamic uploads recheck capacity after growth, compact and instanced uploads use checked size arithmetic before CPU scratch growth, mesh index uploads use the validated draw index count, texture uploads validate RGBA row pitches and saturate byte counters, readback staging accepts only the RGBA8/HDR16F color formats or typeless R32 depth format that the selected path can consume, invalid target/readback classifications fall back to backbuffer-safe policy, all twelve custom parameters, clear colors, camera/fog state, object/instance/bone/shadow matrices, material scalars/UV transforms/enums, light types/positions/directions/spot cones/cascade splits, shadow bias, material UV selectors, complete clustered-light counts/offsets/indices, post-FX sample counts, tonemap mode, post-FX float parameters, and post-FX chain storage are sanitized before cbuffer upload or indexed iteration, native compressed uploads validate resident mip count, chain dimensions, block layout, payload size, previous-mip consistency, and continued-upload mip state, IBL cubemap mip overlays validate the whole layout and every payload extent before atomic destination updates, and morph-target cache reuse includes normal-delta presence so position-only payloads cannot satisfy normal-morphed draws
 - depth/presentation ordering: depth-bias rasterizers account for reversed-Z scene passes versus standard-Z shadow passes and cache the convention as part of the state key; windowed swapchains leave refresh-rate selection to the desktop and disable DXGI's implicit Alt+Enter transition so window ownership cannot drift behind backend state; finite-but-overflowing or singular VP products fall back coherently with their inverse and invalidate temporal history; GPU timing queries are harvested without blocking the caller and clear stale telemetry on disjoint or failed results; soft-particle depth snapshots follow the actual RTT, scene, or direct-swapchain target; each bloom entry filters the current chain source with its own threshold; and repeated bloom entries retain authored order instead of sharing a scene-only prefilter
 
+#### D3D11 Boundary Hardening Audit (July 2026)
+
+The D3D11 backend's focused boundary audit closed these 20 correctness and robustness findings. The portable regressions live in `test_vgfx3d_backend_d3d11_shared`; shader-source assertions keep the CPU/HLSL contracts testable on non-Windows builders, while `g3d_test_canvas3d_point_shadows_d3d11` exercises the six-face path on a live Windows device.
+
+1. Preserve the valid cube-shadow projection discriminator during light upload.
+2. Apply the homogeneous divide to cube-face projections, matching perspective shadows and HLSL.
+3. Reject unknown projection discriminators in the CPU shadow-coordinate helper.
+4. Disable cube shadows unless all six consecutive face slots are complete.
+5. Force cube shadows to a single selected face instead of treating malformed metadata as cascades.
+6. Cap CPU-uploaded cascade counts to the four available split values.
+7. Apply the same four-cascade cap defensively in both HLSL shadow paths.
+8. Return a validated cube face directly from HLSL before directional cascade selection.
+9. Clamp atlas comparison samples to half a texel inside their tile so PCF cannot bleed into a neighbor.
+10. Share atlas row/column constants across allocation, viewports, and HLSL, with compile-time slot-capacity checks.
+11. Do not advertise pending 2D streaming fallbacks as completed material maps.
+12. Require the splat control map and all four layers to be completed resources before enabling splatting.
+13. Do not advertise the pending white cubemap fallback as a resident reflection/IBL environment.
+14. On bloom constant-buffer failure, log the device error, unbind the source SRV, restore opaque blending, and clear transient bloom state.
+15. Reject cached bloom mip counts outside the fixed six-entry target arrays before iteration.
+16. Bound camera coordinates at frame ingress and again for post-FX/SSR constant upload.
+17. Bound the height-fog base coordinate before shader subtraction/exponent math.
+18. Validate both the live element count and recorded capacity before a typed-float SRV update.
+19. Reject unknown internal color-target formats instead of silently creating UNORM storage.
+20. Abandon a timestamp query after 120 non-blocking busy polls so one lost query cannot disable GPU telemetry permanently.
+
 This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
 
 ### OpenGL Window Presentation Model

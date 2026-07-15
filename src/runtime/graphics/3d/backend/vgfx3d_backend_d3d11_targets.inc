@@ -30,7 +30,7 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
     if (out_srv)
         *out_srv = NULL;
     if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
-        !out_tex || !out_rtv)
+        !vgfx3d_d3d11_is_valid_color_format((int32_t)format_class) || !out_tex || !out_rtv)
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));
@@ -517,7 +517,7 @@ static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
     d3d11_unbind_postfx_resources(ctx);
-    for (int32_t i = 0; i < 6; i++) {
+    for (int32_t i = 0; i < VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX; i++) {
         SAFE_RELEASE(ctx->bloom_mip_srv[i]);
         SAFE_RELEASE(ctx->bloom_mip_rtv[i]);
         SAFE_RELEASE(ctx->bloom_mip_tex[i]);
@@ -532,8 +532,8 @@ static void d3d11_destroy_bloom_targets(d3d11_context_t *ctx) {
 
 /// @brief Whether the cached bloom target chain is complete for the requested scene size.
 static int d3d11_bloom_targets_complete(const d3d11_context_t *ctx, int32_t width, int32_t height) {
-    if (!ctx || ctx->bloom_mip_count <= 0 || ctx->bloom_base_width != width ||
-        ctx->bloom_base_height != height)
+    if (!ctx || !vgfx3d_d3d11_is_valid_bloom_mip_count(ctx->bloom_mip_count) ||
+        ctx->bloom_base_width != width || ctx->bloom_base_height != height)
         return 0;
     for (int32_t i = 0; i < ctx->bloom_mip_count; i++) {
         if (!ctx->bloom_mip_tex[i] || !ctx->bloom_mip_rtv[i] || !ctx->bloom_mip_srv[i] ||
@@ -1018,17 +1018,19 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
 }
 
 /// @brief Allocate (or resize) the shared shadow atlas for slots >= VGFX3D_CSM_SLOTS.
-/// @details One depth target holding a 4x2 tile grid at the per-slot resolution;
+/// @details One depth target holding the fixed tile grid at the per-slot resolution;
 ///   the main pass samples it at t17 through static per-tile UV rects.
 static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, int32_t tile_h) {
     HRESULT hr;
     int32_t atlas_w;
     int32_t atlas_h;
 
-    if (!ctx || tile_w <= 0 || tile_h <= 0 || tile_w > INT32_MAX / 4 || tile_h > INT32_MAX / 2)
+    if (!ctx || tile_w <= 0 || tile_h <= 0 ||
+        tile_w > INT32_MAX / VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS ||
+        tile_h > INT32_MAX / VGFX3D_D3D11_SHADOW_ATLAS_ROWS)
         return E_INVALIDARG;
-    atlas_w = tile_w * 4;
-    atlas_h = tile_h * 2;
+    atlas_w = tile_w * VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS;
+    atlas_h = tile_h * VGFX3D_D3D11_SHADOW_ATLAS_ROWS;
     if (!vgfx3d_d3d11_is_valid_texture2d_extent(atlas_w, atlas_h))
         return E_INVALIDARG;
     if (ctx->shadow_atlas_tex && ctx->shadow_atlas_dsv && ctx->shadow_atlas_srv &&

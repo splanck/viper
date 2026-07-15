@@ -206,6 +206,12 @@ typedef struct {
 
 _Static_assert(sizeof(d3d_light_t) == 96u,
                "D3D11 Light cbuffer element must match its HLSL layout");
+_Static_assert(VGFX3D_MAX_SHADOW_LIGHTS - VGFX3D_CSM_SLOTS ==
+                   VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS * VGFX3D_D3D11_SHADOW_ATLAS_ROWS,
+               "D3D11 shadow atlas grid must cover every non-CSM shadow slot");
+_Static_assert(VGFX3D_SHADOW_CUBE_FACES <=
+                   VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS * VGFX3D_D3D11_SHADOW_ATLAS_ROWS,
+               "D3D11 shadow atlas must fit one point-light cube");
 
 typedef struct {
     float inverse_projection[16];
@@ -617,6 +623,7 @@ typedef struct {
     uint64_t frame_gpu_time_us;
     int8_t frame_time_active;
     int8_t frame_time_pending;
+    uint32_t frame_time_pending_polls;
 } d3d11_context_t;
 
 #define SAFE_RELEASE(x)                                                                            \
@@ -833,6 +840,19 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     }
 }
 
+/// @brief Age one busy timestamp poll and abandon a query that never becomes readable.
+static void d3d11_note_pending_frame_timing_poll(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->frame_time_pending)
+        return;
+    if (ctx->frame_time_pending_polls < UINT32_MAX)
+        ctx->frame_time_pending_polls++;
+    if (vgfx3d_d3d11_should_abandon_frame_timing(ctx->frame_time_pending_polls)) {
+        ctx->frame_time_pending = 0;
+        ctx->frame_time_pending_polls = 0;
+        ctx->frame_gpu_time_us = 0;
+    }
+}
+
 /// @brief Try to read the pending timestamp query into `frame_gpu_time_us`.
 static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
     D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint;
@@ -850,12 +870,15 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
                                      &disjoint,
                                      sizeof(disjoint),
                                      flags);
-    if (hr == S_FALSE)
+    if (hr == S_FALSE) {
+        d3d11_note_pending_frame_timing_poll(ctx);
         return 0;
+    }
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp disjoint)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp disjoint)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_time_pending_polls = 0;
         ctx->frame_gpu_time_us = 0;
         return 0;
     }
@@ -864,12 +887,15 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
                                      &start_ticks,
                                      sizeof(start_ticks),
                                      flags);
-    if (hr == S_FALSE)
+    if (hr == S_FALSE) {
+        d3d11_note_pending_frame_timing_poll(ctx);
         return 0;
+    }
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp start)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp start)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_time_pending_polls = 0;
         ctx->frame_gpu_time_us = 0;
         return 0;
     }
@@ -878,16 +904,20 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
                                      &end_ticks,
                                      sizeof(end_ticks),
                                      flags);
-    if (hr == S_FALSE)
+    if (hr == S_FALSE) {
+        d3d11_note_pending_frame_timing_poll(ctx);
         return 0;
+    }
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp end)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp end)", hr);
         ctx->frame_time_pending = 0;
+        ctx->frame_time_pending_polls = 0;
         ctx->frame_gpu_time_us = 0;
         return 0;
     }
     ctx->frame_time_pending = 0;
+    ctx->frame_time_pending_polls = 0;
     if (vgfx3d_d3d11_compute_gpu_time_us(
             disjoint.Disjoint, disjoint.Frequency, start_ticks, end_ticks, &ctx->frame_gpu_time_us))
         return 1;
@@ -919,6 +949,7 @@ static void d3d11_end_frame_timing(d3d11_context_t *ctx) {
     ID3D11DeviceContext_End(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_disjoint_query);
     ctx->frame_time_active = 0;
     ctx->frame_time_pending = 1;
+    ctx->frame_time_pending_polls = 0;
 }
 
 /// @brief Return the latest completed D3D11 GPU frame timing in microseconds.
@@ -1248,10 +1279,13 @@ static void d3d11_restore_current_target_bindings(d3d11_context_t *ctx) {
 /// @brief Map our color-format class to a DXGI texture format.
 ///
 /// HDR16F → R16G16B16A16_FLOAT (linear, 16 bits/channel for HDR);
-/// otherwise R8G8B8A8_UNORM (sRGB-style 8-bit).
+/// UNORM8 → R8G8B8A8_UNORM; invalid classes map to DXGI_FORMAT_UNKNOWN.
 static DXGI_FORMAT d3d11_color_format_to_dxgi(vgfx3d_d3d11_color_format_t format_class) {
-    return format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F ? DXGI_FORMAT_R16G16B16A16_FLOAT
-                                                            : DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (format_class == VGFX3D_D3D11_COLOR_FORMAT_UNORM8)
+        return DXGI_FORMAT_R8G8B8A8_UNORM;
+    if (format_class == VGFX3D_D3D11_COLOR_FORMAT_HDR16F)
+        return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    return DXGI_FORMAT_UNKNOWN;
 }
 
 /// @brief Reset scene-history and overlay-pass state after target lifetime changes.
@@ -1794,7 +1828,8 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
 /// newly requested material resource can therefore exist in the cache while its
 /// pixel payload is incomplete. These 1x1 immutable resources give draw code a
 /// valid SRV to bind until the real upload completes, matching the OpenGL
-/// backend's fallback semantics and keeping shader feature flags stable.
+/// backend's bindable-fallback semantics. Material feature flags remain disabled
+/// until the requested SRV itself is complete.
 /// @param ctx Backend context that owns the D3D11 device and receives the SRVs.
 /// @return `S_OK` when both fallback resources exist; otherwise the failing HRESULT.
 static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
