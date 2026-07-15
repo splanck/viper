@@ -445,9 +445,10 @@ int32_t vgfx3d_d3d11_sanitize_shadow_projection_type(int32_t sanitized_shadow_in
                                                      int32_t requested_projection_type) {
     if (sanitized_shadow_index < 0)
         return VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
-    return requested_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
-               ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
-               : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+    if (requested_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE ||
+        requested_projection_type == VGFX3D_SHADOW_PROJECTION_CUBE)
+        return requested_projection_type;
+    return VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
 }
 
 /// @brief Clamp and order spot-light cone cosines before shader upload.
@@ -1012,7 +1013,8 @@ int vgfx3d_d3d11_compute_float_srv_update_bytes(size_t element_count,
     if (out_bytes)
         *out_bytes = 0;
     if (!out_bytes || element_count > capacity ||
-        !vgfx3d_d3d11_is_valid_float_srv_element_count(element_count))
+        !vgfx3d_d3d11_is_valid_float_srv_element_count(element_count) ||
+        !vgfx3d_d3d11_is_valid_float_srv_element_count(capacity))
         return 0;
     return vgfx3d_d3d11_checked_mul_size(element_count, sizeof(float), out_bytes);
 }
@@ -1412,6 +1414,11 @@ int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
     return 1;
 }
 
+/// @brief Bound non-blocking timestamp polling so one lost query cannot disable telemetry forever.
+int vgfx3d_d3d11_should_abandon_frame_timing(uint32_t pending_polls) {
+    return pending_polls >= VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT;
+}
+
 /// @brief Pick the right render-target classification for the current draw context.
 /// Order of priority: explicit RTT > swapchain (no postfx) > overlay (loading existing
 /// color) > scene (HDR intermediate that postfx will tonemap).
@@ -1523,16 +1530,36 @@ int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
     return requested_shadow_index;
 }
 
+/// @brief Require every cube face to fit in the completed contiguous shadow prefix.
+int32_t vgfx3d_d3d11_sanitize_shadow_index_for_projection(int32_t requested_shadow_index,
+                                                          int32_t advertised_shadow_count,
+                                                          int32_t projection_type) {
+    int32_t shadow_index =
+        vgfx3d_d3d11_sanitize_shadow_index(requested_shadow_index, advertised_shadow_count);
+
+    if (shadow_index < 0 || projection_type != VGFX3D_SHADOW_PROJECTION_CUBE)
+        return shadow_index;
+    advertised_shadow_count = vgfx3d_d3d11_clamp_shadow_count(advertised_shadow_count);
+    if (advertised_shadow_count - shadow_index < VGFX3D_SHADOW_CUBE_FACES)
+        return -1;
+    return shadow_index;
+}
+
 /// @brief Clamp a light's cascade count so it cannot address beyond advertised shadow slots.
 int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_count,
                                                    int32_t sanitized_shadow_index,
-                                                   int32_t advertised_shadow_count) {
+                                                   int32_t advertised_shadow_count,
+                                                   int32_t projection_type) {
     int32_t remaining_slots;
 
     advertised_shadow_count = vgfx3d_d3d11_clamp_shadow_count(advertised_shadow_count);
     if (sanitized_shadow_index < 0 || sanitized_shadow_index >= advertised_shadow_count)
         return 1;
+    if (projection_type == VGFX3D_SHADOW_PROJECTION_CUBE)
+        return 1;
     remaining_slots = advertised_shadow_count - sanitized_shadow_index;
+    if (remaining_slots > VGFX3D_CSM_SLOTS)
+        remaining_slots = VGFX3D_CSM_SLOTS;
     if (requested_cascade_count < 1)
         return 1;
     return requested_cascade_count > remaining_slots ? remaining_slots : requested_cascade_count;
@@ -1582,6 +1609,10 @@ int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
     if (!vgfx3d_d3d11_shadow_matrix_is_usable(shadow_vp) || !world_pos || !out_uv_depth ||
         !vgfx3d_d3d11_float_array_is_bounded(world_pos, 3u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX))
         return 0;
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_PERSPECTIVE &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_CUBE)
+        return 0;
     lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
          shadow_vp[3];
     ly = world_pos[0] * shadow_vp[4] + world_pos[1] * shadow_vp[5] + world_pos[2] * shadow_vp[6] +
@@ -1590,7 +1621,7 @@ int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
          shadow_vp[11];
     lw = world_pos[0] * shadow_vp[12] + world_pos[1] * shadow_vp[13] +
          world_pos[2] * shadow_vp[14] + shadow_vp[15];
-    if (projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) {
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) {
         if (!isfinite(lw) || lw <= 0.0001f || lw >= 1.0e20f)
             return 0;
         ndc_x = lx / lw;
@@ -1644,6 +1675,17 @@ int vgfx3d_d3d11_is_valid_rtt_color_format(int32_t color_format) {
            color_format == (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
 }
 
+/// @brief Validate the two internal color classes accepted by D3D11 target creation.
+int vgfx3d_d3d11_is_valid_color_format(int32_t color_format) {
+    return color_format == (int32_t)VGFX3D_D3D11_COLOR_FORMAT_UNORM8 ||
+           color_format == (int32_t)VGFX3D_D3D11_COLOR_FORMAT_HDR16F;
+}
+
+/// @brief Keep cached bloom counts within the fixed context arrays.
+int vgfx3d_d3d11_is_valid_bloom_mip_count(int32_t mip_count) {
+    return mip_count > 0 && mip_count <= VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX;
+}
+
 /// @brief Map a draw command to its required blend state (alpha vs opaque).
 vgfx3d_d3d11_blend_mode_t vgfx3d_d3d11_choose_blend_mode(const vgfx3d_draw_cmd_t *cmd) {
     if (cmd && cmd->additive_blend)
@@ -1686,6 +1728,11 @@ int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer2,
                                     int has_layer3) {
     return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 && has_layer3;
+}
+
+/// @brief A streaming fallback is bindable but must not advertise the authored map as resident.
+int vgfx3d_d3d11_srv_is_ready(int has_srv, int is_fallback_srv) {
+    return has_srv && !is_fallback_srv;
 }
 
 /// @brief Decide whether the offscreen scene still needs a swapchain composite.

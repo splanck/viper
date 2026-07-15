@@ -703,12 +703,15 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         return;
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
         light_data[i].type = vgfx3d_d3d11_sanitize_light_type(lights[i].type);
-        light_data[i].shadow_index =
-            vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
-        light_data[i].shadow_cascade_count = vgfx3d_d3d11_sanitize_shadow_cascade_count(
-            lights[i].shadow_cascade_count, light_data[i].shadow_index, advertised_shadow_count);
+        light_data[i].shadow_index = vgfx3d_d3d11_sanitize_shadow_index_for_projection(
+            lights[i].shadow_index, advertised_shadow_count, lights[i].shadow_projection_type);
         light_data[i].shadow_projection_type = vgfx3d_d3d11_sanitize_shadow_projection_type(
             light_data[i].shadow_index, lights[i].shadow_projection_type);
+        light_data[i].shadow_cascade_count =
+            vgfx3d_d3d11_sanitize_shadow_cascade_count(lights[i].shadow_cascade_count,
+                                                       light_data[i].shadow_index,
+                                                       advertised_shadow_count,
+                                                       light_data[i].shadow_projection_type);
         vgfx3d_d3d11_copy_vec3_direction_or(
             light_data[i].direction, lights[i].direction, default_light_direction);
         vgfx3d_d3d11_copy_float_array_clamped_finite_or(light_data[i].position,
@@ -1045,7 +1048,12 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     memset(postfx_data, 0, sizeof(*postfx_data));
     vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->inv_vp, ctx->scene_inv_vp);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->prev_vp, ctx->scene_prev_vp);
-    vgfx3d_d3d11_copy_float_array_finite_or(postfx_data->camera_pos, ctx->scene_cam_pos, 3u, 0.0f);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(postfx_data->camera_pos,
+                                                    ctx->scene_cam_pos,
+                                                    3u,
+                                                    -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    0.0f);
     postfx_data->camera_pos[3] = 1.0f;
     postfx_data->inv_resolution[0] = ctx->scene_width > 0 ? 1.0f / (float)ctx->scene_width : 0.0f;
     postfx_data->inv_resolution[1] = ctx->scene_height > 0 ? 1.0f / (float)ctx->scene_height : 0.0f;
@@ -1194,19 +1202,27 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO],
         &resources->textures[10]);
 
-    resources->has_texture = srvs[0] != NULL;
-    resources->has_normal_map = srvs[1] != NULL;
-    resources->has_specular_map = srvs[2] != NULL;
-    resources->has_emissive_map = srvs[3] != NULL;
-    resources->has_env_map = srvs[13] != NULL;
-    resources->has_metallic_roughness_map = srvs[14] != NULL;
-    resources->has_ao_map = srvs[15] != NULL;
-    resources->has_splat = vgfx3d_d3d11_has_complete_splat(cmd->has_splat,
-                                                           srvs[8] != NULL,
-                                                           srvs[9] != NULL,
-                                                           srvs[10] != NULL,
-                                                           srvs[11] != NULL,
-                                                           srvs[12] != NULL);
+    resources->has_texture =
+        vgfx3d_d3d11_srv_is_ready(srvs[0] != NULL, srvs[0] == ctx->fallback_white_srv);
+    resources->has_normal_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[1] != NULL, srvs[1] == ctx->fallback_white_srv);
+    resources->has_specular_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[2] != NULL, srvs[2] == ctx->fallback_white_srv);
+    resources->has_emissive_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[3] != NULL, srvs[3] == ctx->fallback_white_srv);
+    resources->has_env_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[13] != NULL, srvs[13] == ctx->fallback_white_cube_srv);
+    resources->has_metallic_roughness_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[14] != NULL, srvs[14] == ctx->fallback_white_srv);
+    resources->has_ao_map =
+        vgfx3d_d3d11_srv_is_ready(srvs[15] != NULL, srvs[15] == ctx->fallback_white_srv);
+    resources->has_splat = vgfx3d_d3d11_has_complete_splat(
+        cmd->has_splat,
+        vgfx3d_d3d11_srv_is_ready(srvs[8] != NULL, srvs[8] == ctx->fallback_white_srv),
+        vgfx3d_d3d11_srv_is_ready(srvs[9] != NULL, srvs[9] == ctx->fallback_white_srv),
+        vgfx3d_d3d11_srv_is_ready(srvs[10] != NULL, srvs[10] == ctx->fallback_white_srv),
+        vgfx3d_d3d11_srv_is_ready(srvs[11] != NULL, srvs[11] == ctx->fallback_white_srv),
+        vgfx3d_d3d11_srv_is_ready(srvs[12] != NULL, srvs[12] == ctx->fallback_white_srv));
     if (!resources->has_splat) {
         srvs[8] = NULL;
         srvs[9] = NULL;

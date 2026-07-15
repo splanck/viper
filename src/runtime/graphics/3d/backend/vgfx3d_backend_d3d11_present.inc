@@ -109,14 +109,22 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->taa_history_valid = 0;
         ctx->scene_history_valid = 0;
     }
-    vgfx3d_d3d11_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(ctx->cam_pos,
+                                                    cam->position,
+                                                    3u,
+                                                    -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    0.0f);
     {
         static const float forward_fallback[3] = {0.0f, 0.0f, -1.0f};
         vgfx3d_d3d11_copy_vec3_direction_or(ctx->cam_forward, cam->forward, forward_fallback);
     }
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
-    ctx->height_fog[0] = vgfx3d_d3d11_finite_or(cam->height_fog_base, 0.0f);
+    ctx->height_fog[0] = vgfx3d_d3d11_clamp_float_param(cam->height_fog_base,
+                                                        -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                        VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                        0.0f);
     ctx->height_fog[1] = vgfx3d_d3d11_clamp_float_param(
         cam->height_fog_falloff, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 0.1f);
     ctx->height_fog[2] =
@@ -776,9 +784,10 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
                                                           int32_t height,
                                                           float threshold) {
     ID3D11ShaderResourceView *null_srv = NULL;
+    ID3D11ShaderResourceView *result = NULL;
     float blend_factor[4] = {0, 0, 0, 0};
 
-    if (!ctx || !source_srv || !ctx->ps_bloom_down || !ctx->ps_bloom_up ||
+    if (!ctx || !ctx->ctx || !source_srv || !ctx->ps_bloom_down || !ctx->ps_bloom_up ||
         FAILED(d3d11_ensure_bloom_targets(ctx, width, height)))
         return NULL;
 
@@ -807,8 +816,11 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
             vgfx3d_d3d11_clamp_float_param(threshold, 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 1.0f);
         bloom_data.first_pass = (i == 0) ? 1 : 0;
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
-        if (FAILED(hr))
-            return NULL;
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbBloom downsample)", hr);
+            d3d11_log_device_removed_reason(ctx, "Map(cbBloom downsample)", hr);
+            goto cleanup;
+        }
         d3d11_bind_postfx_target(
             ctx, ctx->bloom_mip_rtv[i], ctx->bloom_mip_w[i], ctx->bloom_mip_h[i]);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
@@ -830,17 +842,26 @@ static ID3D11ShaderResourceView *d3d11_encode_bloom_chain(d3d11_context_t *ctx,
         bloom_data.threshold = 0.0f;
         bloom_data.first_pass = 0;
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bloom, &bloom_data, sizeof(bloom_data));
-        if (FAILED(hr))
-            return NULL;
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Map(cbBloom upsample)", hr);
+            d3d11_log_device_removed_reason(ctx, "Map(cbBloom upsample)", hr);
+            goto cleanup;
+        }
         d3d11_bind_postfx_target(
             ctx, ctx->bloom_mip_rtv[i - 1], ctx->bloom_mip_w[i - 1], ctx->bloom_mip_h[i - 1]);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &src);
         ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
         ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
     }
+    result = ctx->bloom_mip_srv[0];
+
+cleanup:
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, &null_srv);
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
-    return ctx->bloom_mip_srv[0];
+    if (!result)
+        ctx->postfx_current_bloom_srv = NULL;
+    return result;
 }
 
 /// @brief Encode the Plan 05 TAA resolve into history or a transient readback target.
@@ -953,7 +974,12 @@ static ID3D11ShaderResourceView *d3d11_encode_ssr_pass(d3d11_context_t *ctx,
     memset(&ssr_data, 0, sizeof(ssr_data));
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ssr_data.inv_vp, ctx->scene_inv_vp);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(ssr_data.vp, ctx->scene_vp);
-    vgfx3d_d3d11_copy_float_array_finite_or(ssr_data.cam_pos, ctx->scene_cam_pos, 3u, 0.0f);
+    vgfx3d_d3d11_copy_float_array_clamped_finite_or(ssr_data.cam_pos,
+                                                    ctx->scene_cam_pos,
+                                                    3u,
+                                                    -VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX,
+                                                    0.0f);
     ssr_data.params0[0] = vgfx3d_d3d11_clamp_float_param(
         (snapshot && snapshot->ssr_enabled) ? snapshot->ssr_intensity : 0.5f,
         0.0f,
@@ -1515,7 +1541,7 @@ static void d3d11_shadow_begin(void *ctx_ptr,
         !vgfx3d_d3d11_shadow_matrix_is_usable(light_vp))
         return;
     if (slot >= VGFX3D_CSM_SLOTS) {
-        /* Atlas tile pass: render into the shared 4x2 depth atlas with a tile
+        /* Atlas tile pass: render into the shared depth atlas with a tile
          * viewport; the atlas clears once per frame on its first tile pass. */
         int32_t tile = slot - VGFX3D_CSM_SLOTS;
         hr = d3d11_ensure_shadow_atlas(ctx, width, height);
@@ -1535,8 +1561,8 @@ static void d3d11_shadow_begin(void *ctx_ptr,
             ctx->shadow_atlas_cleared = 1;
         }
         memset(&viewport, 0, sizeof(viewport));
-        viewport.TopLeftX = (FLOAT)((tile % 4) * width);
-        viewport.TopLeftY = (FLOAT)((tile / 4) * height);
+        viewport.TopLeftX = (FLOAT)((tile % VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS) * width);
+        viewport.TopLeftY = (FLOAT)((tile / VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS) * height);
         viewport.Width = (FLOAT)width;
         viewport.Height = (FLOAT)height;
         viewport.MinDepth = 0.0f;

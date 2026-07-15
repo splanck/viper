@@ -513,6 +513,22 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
                     vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_OVERLAY) ==
                         VGFX3D_D3D11_COLOR_FORMAT_UNORM8,
                 "Swapchain and overlay targets use UNORM8 output");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_color_format(VGFX3D_D3D11_COLOR_FORMAT_UNORM8) == 1 &&
+                    vgfx3d_d3d11_is_valid_color_format(VGFX3D_D3D11_COLOR_FORMAT_HDR16F) == 1,
+                "D3D11 target validation accepts both internal color formats");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_color_format(99) == 0,
+                "D3D11 target validation rejects unknown color formats");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_bloom_mip_count(1) == 1 &&
+                    vgfx3d_d3d11_is_valid_bloom_mip_count(VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX) == 1,
+                "Bloom validation accepts every fixed-array mip count");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_bloom_mip_count(0) == 0 &&
+                    vgfx3d_d3d11_is_valid_bloom_mip_count(VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX + 1) ==
+                        0,
+                "Bloom validation rejects empty and out-of-bounds cached chains");
+    EXPECT_TRUE(vgfx3d_d3d11_srv_is_ready(1, 0) == 1,
+                "Completed D3D11 SRVs advertise their authored material feature");
+    EXPECT_TRUE(vgfx3d_d3d11_srv_is_ready(1, 1) == 0 && vgfx3d_d3d11_srv_is_ready(0, 0) == 0,
+                "Missing and streaming-fallback SRVs do not masquerade as resident maps");
     EXPECT_TRUE(vgfx3d_d3d11_has_complete_splat(1, 1, 1, 1, 1, 1) == 1,
                 "Splatting is enabled when the weight map and all four layers are bound");
     EXPECT_TRUE(vgfx3d_d3d11_has_complete_splat(1, 1, 1, 0, 1, 1) == 0,
@@ -635,6 +651,10 @@ static void test_capacity_and_mip_helpers(void) {
                 "Float-SRV update helper covers only live elements, not total capacity");
     EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(9, 8, &bytes) == 0 && bytes == 0u,
                 "Float-SRV update helper rejects spans beyond allocated capacity");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_float_srv_update_bytes(
+                    1u, (size_t)VGFX3D_D3D11_MAX_BUFFER_TEXELS + 1u, &bytes) == 0 &&
+                    bytes == 0u,
+                "Float-SRV update helper rejects a corrupted oversized capacity");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_float_srv_element_count(VGFX3D_D3D11_MAX_BUFFER_TEXELS) == 1,
                 "Float-SRV element validation accepts the D3D11 typed-buffer limit");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_float_srv_element_count(
@@ -999,6 +1019,9 @@ static void test_d3d11_light_upload_sanitization_helpers(void) {
         vgfx3d_d3d11_sanitize_shadow_projection_type(0, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
             VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
         "Shadow projection sanitizer preserves perspective for shadowed lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_projection_type(0, VGFX3D_SHADOW_PROJECTION_CUBE) ==
+                    VGFX3D_SHADOW_PROJECTION_CUBE,
+                "Shadow projection sanitizer preserves cube projection for point lights");
     EXPECT_TRUE(
         vgfx3d_d3d11_sanitize_shadow_projection_type(-1, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) ==
             VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC,
@@ -1089,6 +1112,12 @@ static void test_d3d11_limits_and_prune_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_gpu_time_us(0, 1000000u, 25u, 10u, &gpu_time_us) == 0 &&
                     gpu_time_us == 0u,
                 "GPU timestamp conversion rejects reversed timestamp pairs");
+    EXPECT_TRUE(vgfx3d_d3d11_should_abandon_frame_timing(
+                    VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT - 1u) == 0,
+                "GPU timing keeps polling below the bounded stale-query threshold");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_should_abandon_frame_timing(VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT) == 1,
+        "GPU timing abandons a query that remains busy for the full poll budget");
 
     EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(1024u, 64) == VGFX3D_D3D11_MAX_MORPH_SHAPES,
                 "Morph shape helper applies the backend shape cap");
@@ -1396,13 +1425,35 @@ static void test_shadow_and_rtt_policy_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index(VGFX3D_MAX_SHADOW_LIGHTS,
                                                    VGFX3D_MAX_SHADOW_LIGHTS + 4) == -1,
                 "Shadow index sanitizer clamps oversized advertised counts before validation");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(3, 0, 3) == 3,
+    EXPECT_TRUE(
+        vgfx3d_d3d11_sanitize_shadow_index_for_projection(2, 8, VGFX3D_SHADOW_PROJECTION_CUBE) == 2,
+        "Cube shadow validation preserves a complete six-face span");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index_for_projection(
+                    3, 8, VGFX3D_SHADOW_PROJECTION_CUBE) == -1,
+                "Cube shadow validation disables an incomplete six-face span");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index_for_projection(
+                    3, 4, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) == 3,
+                "Single-map projected shadows do not require six slots");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(
+                    3, 0, 3, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) == 3,
                 "Shadow cascade sanitizer preserves complete advertised cascade ranges");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(4, 2, 3) == 1,
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(
+                    4, 2, 3, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) == 1,
                 "Shadow cascade sanitizer clamps cascades to the remaining advertised slots");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(0, 0, 3) == 1,
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(VGFX3D_MAX_SHADOW_LIGHTS,
+                                                           0,
+                                                           VGFX3D_MAX_SHADOW_LIGHTS,
+                                                           VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) ==
+                    VGFX3D_CSM_SLOTS,
+                "Shadow cascade sanitizer cannot exceed the shader float4 split payload");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_sanitize_shadow_cascade_count(4, 0, 6, VGFX3D_SHADOW_PROJECTION_CUBE) == 1,
+        "Cube shadows select one face and never fan out as cascades");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(
+                    0, 0, 3, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) == 1,
                 "Shadow cascade sanitizer normalizes invalid cascade counts to one");
-    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(2, -1, 3) == 1,
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(
+                    2, -1, 3, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) == 1,
                 "Shadow cascade sanitizer disables cascade fan-out for unshadowed lights");
 
     EXPECT_TRUE(vgfx3d_d3d11_choose_depth_probe_target(1, 0, 1, 1, 1) == VGFX3D_D3D11_TARGET_RTT,
@@ -1644,7 +1695,7 @@ static void test_postfx_readback_policy_helpers(void) {
                 "Readback treats invalid target kinds as backbuffer state");
 }
 
-static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
+static void test_shadow_projection_helper_handles_all_projection_modes(void) {
     float m[16];
     float world[3] = {0.25f, -0.25f, 2.0f};
     float uv_depth[3];
@@ -1671,6 +1722,16 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
     EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "D3D11 perspective shadow UV divides by W");
     EXPECT_NEAR(uv_depth[1], 0.5625f, 1e-6f, "D3D11 perspective shadow UV flips Y after divide");
     EXPECT_NEAR(uv_depth[2], 0.75f, 1e-6f, "D3D11 perspective shadow depth divides by W");
+
+    EXPECT_TRUE(
+        vgfx3d_d3d11_project_shadow_coord(m, VGFX3D_SHADOW_PROJECTION_CUBE, world, uv_depth) == 1,
+        "D3D11 cube-face shadow projection accepts positive W");
+    EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "D3D11 cube-face shadow UV divides by W");
+    EXPECT_NEAR(uv_depth[2], 0.75f, 1e-6f, "D3D11 cube-face shadow depth divides by W");
+
+    EXPECT_TRUE(vgfx3d_d3d11_project_shadow_coord(m, 99, world, uv_depth) == 0,
+                "D3D11 shadow projection rejects unknown projection modes");
+    EXPECT_NEAR(uv_depth[0], 0.0f, 1e-6f, "Invalid shadow modes clear stale projected output");
 
     world[2] = 0.0f;
     uv_depth[0] = 9.0f;
@@ -1720,6 +1781,24 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                 "Shadow sampling rejects malformed homogeneous coordinates");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "if (!mainFinite3(ndc))"),
                 "Shadow sampling rejects invalid projected coordinates before texture lookup");
+    EXPECT_TRUE(
+        contains_text(d3d11_shader_source,
+                      "return shadowIndex >= 0 && shadowIndex < shadowCount ? shadowIndex : -1;"),
+        "Cube shadows return their selected face without entering cascade selection");
+    EXPECT_TRUE(
+        count_text(d3d11_shader_source, "clamp(light.shadowCascadeCount, 1, kShadowCsmSlots)") == 2,
+        "Both shadow paths cap cascades to the four uploaded split lanes");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float2 halfTexel = 0.5 / tileSize;\n"
+                              "        float2 localUv = clamp(uv, halfTexel, 1.0 - halfTexel);"),
+                "Shadow-atlas comparison footprints stay inside their owning tile");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float2(atlasWidth, atlasHeight) /\n"
+                              "                  float2(kShadowAtlasColumns, kShadowAtlasRows)"),
+                "Shadow-atlas PCF derives texels from the per-tile dimensions");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "int tile = shadowIndex - kShadowCsmSlots;") &&
+                    contains_text(d3d11_shader_source, "tile % kShadowAtlasColumns"),
+                "Shadow HLSL consumes the shared CSM and atlas-grid constants");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
                 "Main D3D11 shader source remains available to the compile path");
     EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),
@@ -1924,7 +2003,7 @@ int main(void) {
     test_shadow_and_rtt_policy_helpers();
     test_depth_probe_bias_instancing_and_rtt_guards();
     test_postfx_readback_policy_helpers();
-    test_shadow_projection_helper_handles_orthographic_and_perspective();
+    test_shadow_projection_helper_handles_all_projection_modes();
     test_d3d11_shader_chunk_join_validation();
     test_d3d11_shader_sources_keep_numeric_guards();
 
