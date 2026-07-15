@@ -175,6 +175,13 @@ void InstallerStubGen::movRegMem(X64Reg dst, X64Reg base, int32_t disp) {
     emitModRMDisp32(regBits(dst), base, disp);
 }
 
+/// @brief Emit mov dst32, dword [base + disp32] -- a zero-extending 32-bit memory load.
+void InstallerStubGen::movRegMem32(X64Reg dst, X64Reg base, int32_t disp) {
+    emitREX(false, dst, base);
+    emit(0x8B);
+    emitModRMDisp32(regBits(dst), base, disp);
+}
+
 /// @brief Emit mov [base + disp32], src — 64-bit store to memory (REX.W + 89 /r).
 void InstallerStubGen::movMemReg(X64Reg base, int32_t disp, X64Reg src) {
     // REX.W + 89 /r (mov r/m64, r64)

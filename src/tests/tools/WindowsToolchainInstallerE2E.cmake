@@ -12,20 +12,59 @@ endif ()
 
 include("${CMAKE_CURRENT_LIST_DIR}/ToolchainInstallerSmokeHelpers.cmake")
 
-if (NOT DEFINED ENV{LOCALAPPDATA} OR "$ENV{LOCALAPPDATA}" STREQUAL "")
-    message(FATAL_ERROR "LOCALAPPDATA is not set; cannot locate per-user install root")
-endif ()
+foreach (_required_environment LOCALAPPDATA APPDATA)
+    if (NOT DEFINED ENV{${_required_environment}} OR "$ENV{${_required_environment}}" STREQUAL "")
+        message(FATAL_ERROR
+                "${_required_environment} is not set; cannot locate per-user installer paths")
+    endif ()
+endforeach ()
+
+function (_viper_installer_assert_exists path context)
+    if (NOT EXISTS "${path}")
+        message(FATAL_ERROR "${context} is missing: ${path}")
+    endif ()
+endfunction ()
+
+function (_viper_installer_assert_absent path context)
+    if (EXISTS "${path}")
+        message(FATAL_ERROR "${context} was not removed: ${path}")
+    endif ()
+endfunction ()
+
+function (_viper_installer_assert_manifest_contains manifest needle context)
+    string(FIND "${manifest}" "${needle}" _needle_offset)
+    if (_needle_offset EQUAL -1)
+        message(FATAL_ERROR "${context} is missing '${needle}'")
+    endif ()
+endfunction ()
+
+function (_viper_installer_assert_manifest_excludes manifest needle context)
+    string(FIND "${manifest}" "${needle}" _needle_offset)
+    if (NOT _needle_offset EQUAL -1)
+        message(FATAL_ERROR "${context} unexpectedly contains '${needle}'")
+    endif ()
+endfunction ()
 
 set(_tmp_root "${VIPER_BUILD_DIR}/tests/windows-toolchain-installer-e2e")
 set(_stage_dir "${_tmp_root}/stage")
 set(_installer "${_tmp_root}/viper-toolchain-e2e.exe")
 set(_install_dir_name "ViperInstallerE2E")
+set(_package_identifier "org.viper.toolchain.e2e")
 set(_install_root "$ENV{LOCALAPPDATA}/${_install_dir_name}")
 set(_installed_viper "${_install_root}/bin/viper.exe")
+set(_installed_viperide "${_install_root}/bin/viperide.exe")
+set(_installed_viperide_icon "${_install_root}/bin/viperide.ico")
+set(_installed_samples "${_install_root}/share/viper/samples")
+set(_installed_vscode "${_install_root}/share/viper/vscode")
+set(_installed_vscode_helper "${_install_root}/bin/viper-install-vscode-extension.cmd")
 set(_developer_prompt "${_install_root}/bin/viper-dev.cmd")
 set(_uninstaller "${_install_root}/uninstall.exe")
 set(_installed_manifest "${_install_root}/.viper-install-manifest.txt")
-set(_setup_log "$ENV{TEMP}/ViperInstaller-org.viper.toolchain.log")
+set(_start_menu "$ENV{APPDATA}/Microsoft/Windows/Start Menu/Programs/${_install_dir_name}")
+set(_developer_prompt_shortcut "${_start_menu}/Viper Developer Prompt.lnk")
+set(_viperide_shortcut "${_start_menu}/ViperIDE.lnk")
+set(_vscode_shortcut "${_start_menu}/Install VS Code Extension.lnk")
+set(_setup_log "$ENV{TEMP}/ViperInstaller-${_package_identifier}.log")
 set(_src_dir "${_tmp_root}/consumer-src")
 set(_build_dir "${_tmp_root}/consumer-build")
 
@@ -46,14 +85,37 @@ if (NOT _stage_rv EQUAL 0)
             "cmake --install failed while staging toolchain installer e2e payload\nstdout:\n${_stage_out}\nstderr:\n${_stage_err}")
 endif ()
 
+file(GLOB_RECURSE _staged_sample_files LIST_DIRECTORIES FALSE
+        "${_stage_dir}/share/viper/samples/*")
+file(GLOB_RECURSE _staged_vscode_files LIST_DIRECTORIES FALSE
+        "${_stage_dir}/share/viper/vscode/*")
+file(GLOB _staged_vsix_files LIST_DIRECTORIES FALSE
+        "${_stage_dir}/share/viper/vscode/*.vsix")
+if (NOT EXISTS "${_stage_dir}/bin/viperide.exe")
+    message(FATAL_ERROR "staged Windows toolchain omitted the ViperIDE component")
+endif ()
+if (NOT _staged_sample_files)
+    message(FATAL_ERROR "staged Windows toolchain omitted the samples component")
+endif ()
+if (NOT _staged_vscode_files)
+    message(FATAL_ERROR "staged Windows toolchain omitted the VS Code component")
+endif ()
+list(GET _staged_sample_files 0 _staged_sample_probe)
+list(GET _staged_vscode_files 0 _staged_vscode_probe)
+file(RELATIVE_PATH _sample_probe_relative "${_stage_dir}" "${_staged_sample_probe}")
+file(RELATIVE_PATH _vscode_probe_relative "${_stage_dir}" "${_staged_vscode_probe}")
+set(_installed_sample_probe "${_install_root}/${_sample_probe_relative}")
+set(_installed_vscode_probe "${_install_root}/${_vscode_probe_relative}")
+
 set(_package_cmd
         "${VIPER_BIN}" install-package
         --stage-dir "${_stage_dir}"
         --target windows
         --windows-install-scope user
         --windows-install-dir "${_install_dir_name}"
+        --windows-identifier "${_package_identifier}"
         --windows-file-associations off
-        --windows-shortcuts off
+        --windows-shortcuts on
         -o "${_installer}")
 
 execute_process(
@@ -80,6 +142,7 @@ if (EXISTS "${_uninstaller}")
     endif ()
 endif ()
 file(REMOVE_RECURSE "${_install_root}")
+file(REMOVE_RECURSE "${_start_menu}")
 
 # A random collision must still be rejected, and the backend reason must survive in a setup log.
 file(MAKE_DIRECTORY "${_install_root}/bin")
@@ -115,6 +178,25 @@ if (NOT _install_rv EQUAL 0)
             "per-user Viper installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
+_viper_installer_assert_exists("${_installed_viperide}" "default ViperIDE component")
+_viper_installer_assert_exists("${_installed_viperide_icon}" "default ViperIDE icon")
+_viper_installer_assert_exists("${_installed_sample_probe}" "default samples component")
+_viper_installer_assert_exists("${_installed_vscode_probe}" "default VS Code component")
+_viper_installer_assert_exists("${_installed_vscode_helper}" "default VS Code helper")
+_viper_installer_assert_exists("${_developer_prompt_shortcut}" "developer prompt shortcut")
+_viper_installer_assert_exists("${_viperide_shortcut}" "default ViperIDE shortcut")
+if (_staged_vsix_files)
+    _viper_installer_assert_exists("${_vscode_shortcut}" "default VS Code shortcut")
+endif ()
+file(READ "${_installed_manifest}" _default_component_manifest)
+string(REPLACE "\\" "/" _default_component_manifest "${_default_component_manifest}")
+_viper_installer_assert_manifest_contains(
+        "${_default_component_manifest}" "bin/viperide.exe" "default component manifest")
+_viper_installer_assert_manifest_contains(
+        "${_default_component_manifest}" "share/viper/samples/" "default component manifest")
+_viper_installer_assert_manifest_contains(
+        "${_default_component_manifest}" "share/viper/vscode/" "default component manifest")
+
 # Pre-manifest generated installers are trusted only through their generated uninstaller marker.
 # This mirrors the real upgrade regression: the payload exists, but its ownership manifest and
 # Add/Remove Programs registration are missing.
@@ -124,7 +206,7 @@ endif ()
 file(REMOVE "${_installed_manifest}")
 execute_process(
         COMMAND "$ENV{SystemRoot}/System32/reg.exe" delete
-                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.toolchain"
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${_package_identifier}"
                 /f
         RESULT_VARIABLE _legacy_reg_rv
         OUTPUT_QUIET
@@ -148,6 +230,73 @@ file(READ "${_setup_log}" _legacy_upgrade_log)
 if (NOT _legacy_upgrade_log MATCHES "migrating generated legacy installation")
     message(FATAL_ERROR "legacy migration was not recorded in the setup log:\n${_legacy_upgrade_log}")
 endif ()
+
+# Component opt-outs are upgrade-safe: stale owned files and shortcuts are removed while core
+# tools and unrelated developer files remain untouched.
+set(_unowned_sentinel "${_install_root}/developer-unowned-sentinel.txt")
+file(WRITE "${_unowned_sentinel}" "preserve-me")
+execute_process(
+        COMMAND "${_installer}" /quiet /norestart /no-viperide /no-samples /no-vscode
+        RESULT_VARIABLE _minimal_upgrade_rv
+        OUTPUT_VARIABLE _minimal_upgrade_out
+        ERROR_VARIABLE _minimal_upgrade_err)
+if (NOT _minimal_upgrade_rv EQUAL 0)
+    message(FATAL_ERROR
+            "component opt-out upgrade failed\nstdout:\n${_minimal_upgrade_out}\nstderr:\n${_minimal_upgrade_err}")
+endif ()
+_viper_installer_assert_exists("${_installed_viper}" "core tool after component opt-out")
+_viper_installer_assert_exists("${_developer_prompt}" "developer prompt after component opt-out")
+_viper_installer_assert_exists(
+        "${_developer_prompt_shortcut}" "core shortcut after component opt-out")
+_viper_installer_assert_exists("${_unowned_sentinel}" "unowned developer file")
+_viper_installer_assert_absent("${_installed_viperide}" "opted-out ViperIDE executable")
+_viper_installer_assert_absent("${_installed_viperide_icon}" "opted-out ViperIDE icon")
+_viper_installer_assert_absent("${_installed_sample_probe}" "opted-out sample")
+_viper_installer_assert_absent("${_installed_vscode_probe}" "opted-out VS Code payload")
+_viper_installer_assert_absent("${_installed_vscode_helper}" "opted-out VS Code helper")
+_viper_installer_assert_absent("${_viperide_shortcut}" "opted-out ViperIDE shortcut")
+if (_staged_vsix_files)
+    _viper_installer_assert_absent("${_vscode_shortcut}" "opted-out VS Code shortcut")
+endif ()
+file(READ "${_installed_manifest}" _minimal_component_manifest)
+string(REPLACE "\\" "/" _minimal_component_manifest "${_minimal_component_manifest}")
+_viper_installer_assert_manifest_excludes(
+        "${_minimal_component_manifest}" "bin/viperide.exe" "minimal component manifest")
+_viper_installer_assert_manifest_excludes(
+        "${_minimal_component_manifest}" "share/viper/samples/" "minimal component manifest")
+_viper_installer_assert_manifest_excludes(
+        "${_minimal_component_manifest}" "share/viper/vscode/" "minimal component manifest")
+_viper_installer_assert_manifest_excludes(
+        "${_minimal_component_manifest}"
+        "bin/viper-install-vscode-extension.cmd"
+        "minimal component manifest")
+
+# A normal upgrade restores every default-enabled component and its owned shortcut.
+execute_process(COMMAND "${_installer}" /quiet /norestart
+        RESULT_VARIABLE _restore_upgrade_rv
+        OUTPUT_VARIABLE _restore_upgrade_out
+        ERROR_VARIABLE _restore_upgrade_err)
+if (NOT _restore_upgrade_rv EQUAL 0)
+    message(FATAL_ERROR
+            "default component restore failed\nstdout:\n${_restore_upgrade_out}\nstderr:\n${_restore_upgrade_err}")
+endif ()
+_viper_installer_assert_exists("${_installed_viperide}" "restored ViperIDE component")
+_viper_installer_assert_exists("${_installed_viperide_icon}" "restored ViperIDE icon")
+_viper_installer_assert_exists("${_installed_sample_probe}" "restored samples component")
+_viper_installer_assert_exists("${_installed_vscode_probe}" "restored VS Code component")
+_viper_installer_assert_exists("${_installed_vscode_helper}" "restored VS Code helper")
+_viper_installer_assert_exists("${_viperide_shortcut}" "restored ViperIDE shortcut")
+if (_staged_vsix_files)
+    _viper_installer_assert_exists("${_vscode_shortcut}" "restored VS Code shortcut")
+endif ()
+file(READ "${_installed_manifest}" _restored_component_manifest)
+string(REPLACE "\\" "/" _restored_component_manifest "${_restored_component_manifest}")
+_viper_installer_assert_manifest_contains(
+        "${_restored_component_manifest}" "bin/viperide.exe" "restored component manifest")
+_viper_installer_assert_manifest_contains(
+        "${_restored_component_manifest}" "share/viper/samples/" "restored component manifest")
+_viper_installer_assert_manifest_contains(
+        "${_restored_component_manifest}" "share/viper/vscode/" "restored component manifest")
 viper_installer_smoke_verify_installed_tools("${_install_root}/bin" ".exe" "Windows installer E2E")
 
 set(_path_probe_ps [=[$machine=[Environment]::GetEnvironmentVariable('Path','Machine'); $user=[Environment]::GetEnvironmentVariable('Path','User'); $env:Path=($machine + ';' + $user); viper --version]=])
@@ -294,5 +443,12 @@ endif ()
 if (EXISTS "${_installed_viper}")
     message(FATAL_ERROR "uninstaller left viper.exe behind: ${_installed_viper}")
 endif ()
+_viper_installer_assert_absent("${_viperide_shortcut}" "uninstalled ViperIDE shortcut")
+_viper_installer_assert_absent(
+        "${_developer_prompt_shortcut}" "uninstalled developer prompt shortcut")
+if (_staged_vsix_files)
+    _viper_installer_assert_absent("${_vscode_shortcut}" "uninstalled VS Code shortcut")
+endif ()
 file(REMOVE "${_uninstaller}")
 file(REMOVE_RECURSE "${_install_root}")
+file(REMOVE_RECURSE "${_start_menu}")

@@ -782,6 +782,27 @@ if(BUILD_EXAMPLES)
   target_include_directories(example_vm_smoke_combined PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 endif()
 
+# Install source-level samples as a selectable toolchain payload. Native Windows
+# setup presents this tree as a default-on optional component; other package
+# formats retain the complete developer distribution.
+option(VIPER_INSTALL_SAMPLES "Install Viper sample projects and games" ON)
+if(VIPER_INSTALL_SAMPLES)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/samples
+          PATTERN ".git*" EXCLUDE
+          PATTERN "__pycache__" EXCLUDE
+          PATTERN "node_modules" EXCLUDE
+          PATTERN "build" EXCLUDE)
+endif()
+
+# Canonical project artwork used by native installers, shortcuts, file
+# associations, and installed developer applications.
+install(FILES
+  ${CMAKE_SOURCE_DIR}/misc/images/viperlogo2.png
+  ${CMAKE_SOURCE_DIR}/misc/images/viperwallpaper2.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/viper/branding
+)
+
 # Man pages (sections 1 and 7)
 if(EXISTS ${CMAKE_SOURCE_DIR}/docs/man/man1)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/docs/man/man1/

@@ -785,6 +785,47 @@ static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &s
 #endif
 }
 
+/// @brief Add deterministic branding and samples to exercise optional Windows toolchain payloads.
+static void addMockWindowsToolchainBranding(const std::filesystem::path &stage) {
+    namespace fs = std::filesystem;
+    fs::create_directories(stage / "share" / "viper" / "branding");
+    fs::create_directories(stage / "share" / "viper" / "samples" / "hello");
+    PkgImage logo;
+    logo.width = 64;
+    logo.height = 64;
+    logo.pixels.resize(64u * 64u * 4u);
+    for (uint32_t y = 0; y < logo.height; ++y) {
+        for (uint32_t x = 0; x < logo.width; ++x) {
+            uint8_t *pixel = logo.at(x, y);
+            pixel[0] = static_cast<uint8_t>(48u + x * 2u);
+            pixel[1] = static_cast<uint8_t>(112u + y * 2u);
+            pixel[2] = 54;
+            pixel[3] = 255;
+        }
+    }
+    PkgImage wallpaper;
+    wallpaper.width = 192;
+    wallpaper.height = 128;
+    wallpaper.pixels.resize(192u * 128u * 4u);
+    for (uint32_t y = 0; y < wallpaper.height; ++y) {
+        for (uint32_t x = 0; x < wallpaper.width; ++x) {
+            uint8_t *pixel = wallpaper.at(x, y);
+            pixel[0] = static_cast<uint8_t>(4u + (x * 19u) / wallpaper.width);
+            pixel[1] = static_cast<uint8_t>(24u + (y * 65u) / wallpaper.height);
+            pixel[2] = static_cast<uint8_t>(24u + (x * 36u) / wallpaper.width);
+            pixel[3] = 255;
+        }
+    }
+    pngWrite((stage / "share" / "viper" / "branding" / "viperlogo2.png").string(), logo);
+    pngWrite((stage / "share" / "viper" / "branding" / "viperwallpaper2.png").string(), wallpaper);
+    std::ofstream sample(stage / "share" / "viper" / "samples" / "hello" / "main.zia");
+    sample << "func main() { print(\"hello\") }\n";
+    std::ofstream sampleReadme(stage / "share" / "viper" / "samples" / "hello" / "README.md");
+    sampleReadme << "Sample documentation, not the toolchain README.\n";
+    std::ofstream sampleLicense(stage / "share" / "viper" / "samples" / "hello" / "LICENSE");
+    sampleLicense << "Sample-specific terms, not the toolchain license.\n";
+}
+
 static void addMockMacOSFileHandler(const std::filesystem::path &stage) {
     namespace fs = std::filesystem;
     fs::create_directories(stage / "libexec" / "viper");
@@ -2857,6 +2898,14 @@ TEST(StubGen, EmitsDwordRegisterStore) {
     EXPECT_EQ(code, expected);
 }
 
+TEST(StubGen, EmitsZeroExtendingDwordMemoryLoad) {
+    InstallerStubGen gen;
+    gen.movRegMem32(X64Reg::R10, X64Reg::RAX, 48);
+    const auto code = gen.finishText(0x1000, 0x2000, {}, 0x3000);
+    const std::vector<uint8_t> expected = {0x44, 0x8B, 0x90, 0x30, 0x00, 0x00, 0x00};
+    EXPECT_EQ(code, expected);
+}
+
 TEST(StubGenA64, EmitsBasicInstructionsAndBranchFixup) {
     InstallerStubGenA64 gen;
     const auto done = gen.newLabel();
@@ -3031,11 +3080,14 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     EXPECT_TRUE(stubHasImport(installer, "uxtheme.dll", "SetWindowTheme"));
     EXPECT_TRUE(stubHasImport(installer, "dwmapi.dll", "DwmSetWindowAttribute"));
     EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "SetDCBrushColor"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "CreateDialogIndirectParamW"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "PeekMessageW"));
+    EXPECT_TRUE(stubHasImport(installer, "kernel32.dll", "GetPrivateProfileIntW"));
     EXPECT_FALSE(stubHasImport(installer, "gdi32.dll", "CreateDIBSection"));
     EXPECT_FALSE(stubHasImport(installer, "kernel32.dll", "CreateThread"));
     EXPECT_TRUE(stubHasImport(uninstaller, "user32.dll", "DialogBoxIndirectParamW"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "I accept the license agreement"));
-    EXPECT_FALSE(containsUtf16LE(installer.stubData, "msctls_progress32"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "msctls_progress32"));
     EXPECT_FALSE(containsUtf16LE(installer.stubData, "< Back"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "Install"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "TEST LICENSE TERMS"));
@@ -3045,6 +3097,42 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     EXPECT_TRUE(containsUtf16LEStringData(machineInstaller.stubData, "All users"));
     EXPECT_TRUE(containsUtf16LE(machineInstaller.stubData, "%ProgramFiles%\\TestApp"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "I understand and want to continue"));
+}
+
+TEST(InstallerStub, EmbedsBrandedComponentWizardAndResponsiveProgress) {
+    WindowsPackageLayout layout;
+    layout.displayName = "Viper Toolchain";
+    layout.installDirName = "Viper";
+    layout.executableName = "viper.exe";
+    layout.licenseText = "GPL-3.0-only";
+    layout.wizardImageWidth = 2;
+    layout.wizardImageHeight = 1;
+    layout.wizardImageRgba = {10, 20, 30, 255, 40, 50, 60, 255};
+    layout.optionalComponents = {{"viperide", "ViperIDE", "Integrated developer environment", true},
+                                 {"samples", "Samples", "Example projects", true}};
+    layout.installFiles.push_back(
+        {WindowsInstallRoot::InstallDir, "bin/viperide.exe", 0, 4, 0, "", "viperide"});
+    layout.installFiles.push_back(
+        {WindowsInstallRoot::InstallDir, "share/viper/samples/main.zia", 4, 4, 0, "", "samples"});
+
+    const auto installer = buildInstallerStub(layout, "x64");
+    EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "StretchDIBits"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SetWindowLongPtrW"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "DispatchMessageW"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ViperIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "Samples"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-viperide"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-samples"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VIPER_INSTALLER_COMPONENT_VIPERIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VIPER_INSTALLER_PROGRESS"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData,
+                                "Setup stays visible while files are verified and installed. "
+                                "Please wait."));
+    const std::array<uint8_t, 8> expectedBgra = {30, 20, 10, 255, 60, 50, 40, 255};
+    EXPECT_TRUE(std::search(installer.stubData.begin(),
+                            installer.stubData.end(),
+                            expectedBgra.begin(),
+                            expectedBgra.end()) != installer.stubData.end());
 }
 
 TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
@@ -5395,6 +5483,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
     normalizeMockStageForWindowsToolchain(stage);
+    addMockWindowsToolchainBranding(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
     manifest.platform = "windows";
@@ -5416,8 +5505,16 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                                            "meta/viperide.lnk",
                                            "meta/manifest.sha256"},
                                           payloadErr));
-    EXPECT_FALSE(
-        zipContainsEntries(extractFirstZipOverlay(pe), {"meta/viper_vscode_extension.lnk"}));
+    const auto outerZip = extractFirstZipOverlay(pe);
+    EXPECT_FALSE(zipContainsEntries(outerZip, {"meta/viper_vscode_extension.lnk"}));
+    const auto licenseMetadata = extractZipEntry(outerZip, "meta/license.txt");
+    const auto readmeMetadata = extractZipEntry(outerZip, "meta/readme.txt");
+    const std::string licenseMetadataText(licenseMetadata.begin(), licenseMetadata.end());
+    const std::string readmeMetadataText(readmeMetadata.begin(), readmeMetadata.end());
+    EXPECT_CONTAINS(licenseMetadataText, "GPL");
+    EXPECT_TRUE(licenseMetadataText.find("Sample-specific") == std::string::npos);
+    EXPECT_CONTAINS(readmeMetadataText, "Viper");
+    EXPECT_TRUE(readmeMetadataText.find("Sample documentation") == std::string::npos);
     EXPECT_GE(peOptionalHeaderField64(pe, 72), static_cast<uint64_t>(0x200000));
     EXPECT_GE(peOptionalHeaderField64(pe, 80), static_cast<uint64_t>(0x100000));
     EXPECT_TRUE(containsUtf16LE(pe, "Environment"));
@@ -5430,11 +5527,26 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_SELF"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_MODE"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_LOG"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_PROGRESS"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_COMPONENT_VIPERIDE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_COMPONENT_SAMPLES"));
+    EXPECT_TRUE(containsUtf16LE(pe, "/no-viperide"));
+    EXPECT_TRUE(containsUtf16LE(pe, "/no-samples"));
+    EXPECT_TRUE(containsUtf16LE(pe, "msctls_progress32"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_NATIVE_STAGE"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "PATH registration"));
     EXPECT_TRUE(containsUtf16LE(pe, "DarkMode_Explorer"));
     const std::string transactionScript = decodedEmbeddedPowerShellSource(pe);
     EXPECT_CONTAINS(transactionScript, "function BeginTransaction");
+    EXPECT_CONTAINS(transactionScript, "function ExtractPayload");
+    EXPECT_CONTAINS(transactionScript, "ZipFile]::OpenRead");
+    EXPECT_CONTAINS(transactionScript, "$payloadComponentPrefixes");
+    EXPECT_CONTAINS(transactionScript, "$payloadComponents");
+    EXPECT_CONTAINS(transactionScript, "function PayloadComponent");
+    EXPECT_CONTAINS(transactionScript, "share\\viper\\samples\\");
+    EXPECT_TRUE(transactionScript.find("share\\viper\\samples\\hello\\main.zia") ==
+                std::string::npos);
+    EXPECT_CONTAINS(transactionScript, "Installing the selected developer tools");
     EXPECT_CONTAINS(transactionScript, "function LegacyInstallOwned");
     EXPECT_CONTAINS(transactionScript, "migrating generated legacy installation");
     EXPECT_CONTAINS(transactionScript, "WriteInstallerLog 'ERROR'");
@@ -5471,16 +5583,28 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     requiredWindowsPayload.push_back("bin/viper-install-vscode-extension.cmd");
     requiredWindowsPayload.push_back("share/viper/README.windows-prerequisites.txt");
     requiredWindowsPayload.push_back("share/viper/viper.ico");
+    requiredWindowsPayload.push_back("bin/viperide.ico");
     requiredWindowsPayload.push_back("uninstall.exe");
     requiredWindowsPayload.push_back(".viper-install-manifest.txt");
     EXPECT_TRUE(zipContainsEntries(payloadZip, requiredWindowsPayload));
+    const auto viperIdeIcon = extractZipEntry(payloadZip, "bin/viperide.ico");
+    ASSERT_GE(viperIdeIcon.size(), static_cast<size_t>(6));
+    EXPECT_EQ(readLE16(viperIdeIcon.data()), static_cast<uint16_t>(0));
+    EXPECT_EQ(readLE16(viperIdeIcon.data() + 2), static_cast<uint16_t>(1));
+    EXPECT_GE(readLE16(viperIdeIcon.data() + 4), static_cast<uint16_t>(4));
     const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
     ASSERT_FALSE(uninstaller.empty());
     std::ostringstream uninstallerErr;
     EXPECT_TRUE(verifyPE(uninstaller, uninstallerErr));
     EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "VIPER_INSTALLER_MODE"));
-    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "rollback"));
-    EXPECT_CONTAINS(decodedEmbeddedPowerShellSource(uninstaller), "function RestoreTransaction");
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "uninstall-files"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, "org.viper.toolchain"));
+    EXPECT_TRUE(containsUtf16LEStringData(uninstaller, ".viper-install-manifest.txt"));
+    const std::string uninstallerScript = decodedEmbeddedPowerShellSource(uninstaller);
+    EXPECT_CONTAINS(uninstallerScript, "function RestoreTransaction");
+    EXPECT_CONTAINS(uninstallerScript, "if($mode -eq 'uninstall-files')");
+    EXPECT_CONTAINS(uninstallerScript, "VAPSShortcutPaths");
+    EXPECT_CONTAINS(uninstallerScript, "selected payload files and shortcuts removed");
     fs::remove_all(tmpRoot);
 }
 

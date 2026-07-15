@@ -86,6 +86,9 @@ class InstallerStubGen {
     /// @brief mov dst, [src + disp32]  (load 64-bit from memory)
     void movRegMem(X64Reg dst, X64Reg base, int32_t disp);
 
+    /// @brief mov dst32, dword [src + disp32] (load 32-bit and zero-extend to 64-bit)
+    void movRegMem32(X64Reg dst, X64Reg base, int32_t disp);
+
     /// @brief mov [dst + disp32], src  (store 64-bit to memory)
     void movMemReg(X64Reg base, int32_t disp, X64Reg src);
 

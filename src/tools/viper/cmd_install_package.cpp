@@ -88,6 +88,7 @@ struct InstallPackageArgs {
     std::string linuxSignKey;
     std::string windowsInstallScope{"user"};
     std::string windowsInstallDir{"Viper"};
+    std::string windowsIdentifier{"org.viper.toolchain"};
     bool windowsAddToPath{true};
     bool windowsFileAssociations{true};
     bool windowsShortcuts{true};
@@ -150,6 +151,8 @@ void installPackageUsage() {
         << "  --linux-sign-key <id> GPG key id/name to sign generated .deb/.rpm packages\n"
         << "  --windows-install-scope <scope> user | machine (default: user)\n"
         << "  --windows-install-dir <name> Directory name under install root (default: Viper)\n"
+        << "  --windows-identifier <id> Unique Apps & Features product id "
+           "(default: org.viper.toolchain)\n"
         << "  --windows-no-path    Do not add bin/ to PATH\n"
         << "  --windows-file-associations on|off Register .zia/.bas/.il (default: on)\n"
         << "  --windows-shortcuts on|off Create Start Menu developer shortcuts (default: on)\n"
@@ -984,6 +987,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             }
         } else if (arg == "--windows-install-dir" && i + 1 < expandedArgs.size()) {
             args.windowsInstallDir = expandedArgs[++i];
+        } else if (arg == "--windows-identifier" && i + 1 < expandedArgs.size()) {
+            args.windowsIdentifier = expandedArgs[++i];
         } else if (arg == "--windows-no-path") {
             args.windowsAddToPath = false;
         } else if (arg == "--windows-file-associations" && i + 1 < expandedArgs.size()) {
@@ -1075,6 +1080,7 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         viper::pkg::validateHttpsPackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
         viper::pkg::validateSingleLineField(args.windowsSigntoolPath, "Windows signtool path");
         viper::pkg::validateWindowsFileName(args.windowsInstallDir, "Windows install directory");
+        viper::pkg::validateWindowsProgIdBase(args.windowsIdentifier, "Windows package identifier");
         viper::pkg::validateWindowsCertificateThumbprint(args.windowsSignThumbprint,
                                                          "Windows signing thumbprint");
         viper::pkg::validateSingleLineField(args.macosSignIdentity,
@@ -2300,6 +2306,7 @@ int cmdInstallPackage(int argc, char **argv) {
                     params.archStr = manifest.arch;
                     params.installScope = args.windowsInstallScope;
                     params.installDirName = args.windowsInstallDir;
+                    params.identifier = args.windowsIdentifier;
                     params.publisher = manifest.maintainer;
                     if (!manifest.homepage.empty())
                         params.homepage = manifest.homepage;

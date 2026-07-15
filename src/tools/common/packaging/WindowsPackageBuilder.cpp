@@ -27,6 +27,7 @@
 #include "InstallerStub.hpp"
 #include "LnkWriter.hpp"
 #include "PEBuilder.hpp"
+#include "PkgPNG.hpp"
 #include "PkgUtils.hpp"
 #include "ZipWriter.hpp"
 
@@ -52,6 +53,109 @@ namespace {
 constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
+constexpr std::string_view kComponentViperIDE = "viperide";
+constexpr std::string_view kComponentSamples = "samples";
+constexpr std::string_view kComponentVSCode = "vscode";
+
+std::string lowerAscii(std::string text);
+
+/// @brief Return the optional Windows toolchain component owning an install path.
+std::string toolchainComponentForPath(const std::string &relativePath) {
+    const std::string lower = lowerAscii(relativePath);
+    if (lower == "bin/viperide.exe" || lower == "bin/viperide.buildinfo" ||
+        lower == "bin/viperide.ico") {
+        return std::string(kComponentViperIDE);
+    }
+    if (lower.rfind("share/viper/samples/", 0) == 0)
+        return std::string(kComponentSamples);
+    if (lower.rfind("share/viper/vscode/", 0) == 0 ||
+        lower == "bin/viper-install-vscode-extension.cmd") {
+        return std::string(kComponentVSCode);
+    }
+    return {};
+}
+
+/// @brief Find and decode one staged PNG by its normalized install-relative path.
+std::optional<PkgImage> stagedToolchainPng(const ToolchainInstallManifest &manifest,
+                                           std::string_view relativePath) {
+    const std::string wanted = lowerAscii(std::string(relativePath));
+    for (const ToolchainFileEntry &file : manifest.files) {
+        if (lowerAscii(file.stagedRelativePath) == wanted)
+            return pngRead(file.stagedAbsolutePath.string());
+    }
+    return std::nullopt;
+}
+
+/// @brief Crop an image around its centre to @p targetWidth:@p targetHeight, then resize it.
+PkgImage imageCover(const PkgImage &source, uint32_t targetWidth, uint32_t targetHeight) {
+    if (source.width == 0 || source.height == 0 || source.pixels.empty() || targetWidth == 0 ||
+        targetHeight == 0) {
+        throw std::runtime_error("Windows wizard branding image is empty");
+    }
+
+    uint32_t cropWidth = source.width;
+    uint32_t cropHeight = source.height;
+    const uint64_t sourceScaled = static_cast<uint64_t>(source.width) * targetHeight;
+    const uint64_t targetScaled = static_cast<uint64_t>(targetWidth) * source.height;
+    if (sourceScaled > targetScaled) {
+        cropWidth = static_cast<uint32_t>((static_cast<uint64_t>(source.height) * targetWidth) /
+                                          targetHeight);
+    } else if (sourceScaled < targetScaled) {
+        cropHeight = static_cast<uint32_t>((static_cast<uint64_t>(source.width) * targetHeight) /
+                                           targetWidth);
+    }
+    cropWidth = std::max<uint32_t>(1, std::min(cropWidth, source.width));
+    cropHeight = std::max<uint32_t>(1, std::min(cropHeight, source.height));
+    const uint32_t originX = (source.width - cropWidth) / 2;
+    const uint32_t originY = (source.height - cropHeight) / 2;
+
+    PkgImage crop;
+    crop.width = cropWidth;
+    crop.height = cropHeight;
+    crop.pixels.resize(static_cast<size_t>(cropWidth) * cropHeight * 4u);
+    for (uint32_t y = 0; y < cropHeight; ++y) {
+        for (uint32_t x = 0; x < cropWidth; ++x)
+            std::copy_n(source.at(originX + x, originY + y), 4, crop.at(x, y));
+    }
+    return imageResize(crop, targetWidth, targetHeight);
+}
+
+/// @brief Alpha-compose @p foreground into @p background at the requested pixel origin.
+void alphaComposite(PkgImage &background,
+                    const PkgImage &foreground,
+                    uint32_t originX,
+                    uint32_t originY) {
+    for (uint32_t y = 0; y < foreground.height && originY + y < background.height; ++y) {
+        for (uint32_t x = 0; x < foreground.width && originX + x < background.width; ++x) {
+            const uint8_t *src = foreground.at(x, y);
+            uint8_t *dst = background.at(originX + x, originY + y);
+            const uint32_t alpha = src[3];
+            const uint32_t inverse = 255u - alpha;
+            for (size_t channel = 0; channel < 3; ++channel) {
+                dst[channel] =
+                    static_cast<uint8_t>((static_cast<uint32_t>(src[channel]) * alpha +
+                                          static_cast<uint32_t>(dst[channel]) * inverse + 127u) /
+                                         255u);
+            }
+            dst[3] = 255;
+        }
+    }
+}
+
+/// @brief Compose the wide setup banner from the canonical wallpaper and logo artwork.
+PkgImage buildViperWizardBanner(const PkgImage &wallpaper, const PkgImage &logo) {
+    constexpr uint32_t kWidth = 960;
+    constexpr uint32_t kHeight = 200;
+    PkgImage banner = imageCover(wallpaper, kWidth, kHeight);
+    for (uint8_t &channel : banner.pixels)
+        channel = static_cast<uint8_t>((static_cast<uint32_t>(channel) * 58u) / 100u);
+    for (size_t i = 3; i < banner.pixels.size(); i += 4)
+        banner.pixels[i] = 255;
+
+    const PkgImage mark = imageResize(logo, 168, 168);
+    alphaComposite(banner, mark, 24, 16);
+    return banner;
+}
 
 /// @brief One Windows runtime dependency to bundle with an app installer.
 struct WindowsDllDependency {
@@ -169,6 +273,37 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     const std::string rootProbe = windowsRootProbeFor(layout, WindowsInstallRoot::InstallDir);
     validateStubPathFits(rootProbe, "Windows install directory");
     std::set<std::string> caseFoldedPaths;
+    if (layout.optionalComponents.size() > 8)
+        throw std::runtime_error("Windows installer supports at most 8 optional components");
+    std::set<std::string> componentIds;
+    for (const WindowsOptionalComponent &component : layout.optionalComponents) {
+        if (component.id.empty())
+            throw std::runtime_error("Windows optional component id must not be empty");
+        for (char c : component.id) {
+            if (!(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '-') {
+                throw std::runtime_error("Windows optional component id contains an unsafe "
+                                         "character: " +
+                                         component.id);
+            }
+        }
+        if (!componentIds.insert(component.id).second)
+            throw std::runtime_error("duplicate Windows optional component id: " + component.id);
+        validateSingleLineField(component.label, "Windows optional component label");
+        validateSingleLineField(component.description, "Windows optional component description");
+    }
+    const uint64_t wizardPixels =
+        static_cast<uint64_t>(layout.wizardImageWidth) * layout.wizardImageHeight;
+    if ((layout.wizardImageWidth == 0) != (layout.wizardImageHeight == 0) ||
+        wizardPixels > 4u * 1024u * 1024u || wizardPixels * 4u != layout.wizardImageRgba.size()) {
+        throw std::runtime_error("Windows wizard branding image has invalid RGBA dimensions");
+    }
+    auto validateComponent = [&](const WindowsPackageFileEntry &file) {
+        if (!file.componentId.empty() &&
+            componentIds.find(file.componentId) == componentIds.end()) {
+            throw std::runtime_error(
+                "Windows install file references unknown optional component: " + file.componentId);
+        }
+    };
     for (const auto &dir : layout.installDirectories) {
         validateWindowsRelativePath(dir.relativePath, "Windows install directory path");
         validateStubPathFits(windowsRootProbeFor(layout, dir.root) + "\\" + dir.relativePath,
@@ -177,6 +312,7 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
             caseFoldedPaths, dir.root, dir.relativePath, "Windows install directory path");
     }
     for (const auto &file : layout.installFiles) {
+        validateComponent(file);
         validateWindowsRelativePath(file.relativePath, "Windows install file path");
         validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
                              "Windows install file path");
@@ -184,6 +320,7 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
             caseFoldedPaths, file.root, file.relativePath, "Windows install file path");
     }
     for (const auto &file : layout.installedFiles) {
+        validateComponent(file);
         validateWindowsRelativePath(file.relativePath, "Windows installed file path");
         validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
                              "Windows installed file path");
@@ -206,6 +343,7 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
                              "Windows display icon path");
     }
     for (const auto &file : layout.uninstallFiles) {
+        validateComponent(file);
         validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
         validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
                              "Windows uninstall file path");
@@ -1050,10 +1188,11 @@ void registerInstalledFile(WindowsPackageLayout &layout,
                            WindowsInstallRoot root,
                            const std::string &installRelativePath,
                            uint64_t sizeBytes,
-                           bool deleteOnUninstall) {
+                           bool deleteOnUninstall,
+                           const std::string &componentId = {}) {
     if (deleteOnUninstall) {
         layout.uninstallFiles.push_back(
-            WindowsPackageFileEntry{root, installRelativePath, 0, sizeBytes, 0});
+            WindowsPackageFileEntry{root, installRelativePath, 0, sizeBytes, 0, {}, componentId});
     }
 }
 
@@ -1072,7 +1211,8 @@ void addStoredOverlayFile(ZipWriter &zip,
                           WindowsInstallRoot root,
                           const std::string &installRelativePath,
                           bool deleteOnUninstall,
-                          std::ostringstream *payloadManifest = nullptr) {
+                          std::ostringstream *payloadManifest = nullptr,
+                          const std::string &componentId = {}) {
     zip.addFile(overlayName, data, len, unixMode);
     const auto &entry = zip.layoutEntries().back();
     if (entry.method != 0 || entry.compressedSize != entry.uncompressedSize) {
@@ -1085,10 +1225,11 @@ void addStoredOverlayFile(ZipWriter &zip,
                                                           entry.localDataOffset,
                                                           entry.uncompressedSize,
                                                           entry.crc32,
-                                                          sha256Hex(data, len)});
+                                                          sha256Hex(data, len),
+                                                          componentId});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
     registerInstalledFile(
-        layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);
+        layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall, componentId);
 }
 
 /// @brief Add a file to the compressed inner payload ZIP and register it.
@@ -1105,10 +1246,12 @@ void addCompressedPayloadFile(ZipWriter &payloadZip,
                               WindowsInstallRoot root,
                               const std::string &installRelativePath,
                               bool deleteOnUninstall,
-                              std::vector<std::string> *installManifestPaths = nullptr) {
+                              std::vector<std::string> *installManifestPaths = nullptr,
+                              const std::string &componentId = {}) {
     payloadZip.addFile(payloadName, data, len, unixMode);
-    layout.installedFiles.push_back(WindowsPackageFileEntry{root, installRelativePath, 0, len, 0});
-    registerInstalledFile(layout, root, installRelativePath, len, deleteOnUninstall);
+    layout.installedFiles.push_back(
+        WindowsPackageFileEntry{root, installRelativePath, 0, len, 0, {}, componentId});
+    registerInstalledFile(layout, root, installRelativePath, len, deleteOnUninstall, componentId);
     if (installManifestPaths != nullptr && root == WindowsInstallRoot::InstallDir) {
         installManifestPaths->push_back(
             sanitizePackageRelativePath(installRelativePath, "Windows installed manifest path"));
@@ -1582,6 +1725,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.contact = params.manifest.maintainerEmail.empty() ? params.publisher
                                                              : params.manifest.maintainerEmail;
     layout.licenseText = params.manifest.license;
+    layout.wizardSummary =
+        "Choose the developer tools you want, review the license, and install Viper.";
     layout.executableName = "viper.exe";
     layout.homepage = params.homepage;
     layout.displayIconRelativePath = "share\\viper\\viper.ico";
@@ -1619,8 +1764,53 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.installedManifestRelativePath = ".viper-install-manifest.txt";
     std::ostringstream payloadManifest;
     std::string stagedLicenseText;
+    bool hasLicenseOverlay = false;
+    bool hasReadmeOverlay = false;
     bool hasPackagedVSIX = false;
-    const std::vector<uint8_t> toolchainIcon = generateIco(defaultViperToolchainIconImage());
+    const auto stagedLogo =
+        stagedToolchainPng(params.manifest, "share/viper/branding/viperlogo2.png");
+    const auto stagedWallpaper =
+        stagedToolchainPng(params.manifest, "share/viper/branding/viperwallpaper2.png");
+    const PkgImage toolchainIconImage =
+        stagedLogo.has_value() ? *stagedLogo : defaultViperToolchainIconImage();
+    const std::vector<uint8_t> toolchainIcon = generateIco(toolchainIconImage);
+    if (stagedLogo.has_value() && stagedWallpaper.has_value()) {
+        const PkgImage banner = buildViperWizardBanner(*stagedWallpaper, *stagedLogo);
+        layout.wizardImageWidth = banner.width;
+        layout.wizardImageHeight = banner.height;
+        layout.wizardImageRgba = banner.pixels;
+    }
+
+    bool hasViperIDEComponent = false;
+    bool hasSamplesComponent = false;
+    bool hasVSCodeComponent = false;
+    for (const ToolchainFileEntry &file : params.manifest.files) {
+        const std::string component = toolchainComponentForPath(file.stagedRelativePath);
+        hasViperIDEComponent = hasViperIDEComponent || component == kComponentViperIDE;
+        hasSamplesComponent = hasSamplesComponent || component == kComponentSamples;
+        hasVSCodeComponent = hasVSCodeComponent || component == kComponentVSCode;
+    }
+    if (hasViperIDEComponent) {
+        layout.optionalComponents.push_back(
+            {std::string(kComponentViperIDE),
+             "ViperIDE",
+             "Native editor, project workflow, debugger, and language services",
+             true});
+    }
+    if (hasSamplesComponent) {
+        layout.optionalComponents.push_back(
+            {std::string(kComponentSamples),
+             "Samples and example projects",
+             "Install the complete source-level examples under share/viper/samples",
+             true});
+    }
+    if (hasVSCodeComponent) {
+        layout.optionalComponents.push_back(
+            {std::string(kComponentVSCode),
+             "VS Code integration",
+             "Zia extension sources, packaged extension, and installation helper",
+             true});
+    }
 
     for (const auto &file : params.manifest.files) {
         const std::string relInstall =
@@ -1634,6 +1824,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         addParentDirs(
             layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
         const auto data = readFile(file.stagedAbsolutePath.string());
+        const std::string componentId = toolchainComponentForPath(relInstall);
         addCompressedPayloadFile(payloadZip,
                                  relInstall,
                                  data.data(),
@@ -1643,7 +1834,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  WindowsInstallRoot::InstallDir,
                                  relInstall,
                                  true,
-                                 &installedManifestPaths);
+                                 &installedManifestPaths,
+                                 componentId);
 
         const std::string lowerName = lowerAscii(fs::path(relInstall).filename().generic_string());
         const std::string lowerRel = lowerAscii(relInstall);
@@ -1651,13 +1843,22 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             lowerName.substr(lowerName.size() - 5) == ".vsix") {
             hasPackagedVSIX = true;
         }
-        if (lowerName == "license" || lowerName == "readme.md") {
+        const bool isCanonicalLicense =
+            lowerRel == "license" || lowerRel == "share/doc/viper/license";
+        const bool isCanonicalReadme =
+            lowerRel == "readme.md" || lowerRel == "share/doc/viper/readme.md";
+        if ((isCanonicalLicense && !hasLicenseOverlay) ||
+            (isCanonicalReadme && !hasReadmeOverlay)) {
             const std::string overlayName =
-                lowerName == "license" ? "meta/license.txt" : "meta/readme.txt";
+                isCanonicalLicense ? "meta/license.txt" : "meta/readme.txt";
             zip.addFile(overlayName, data.data(), data.size(), 0100644);
             appendPayloadManifestEntry(&payloadManifest, overlayName, data.data(), data.size());
-            if (lowerName == "license")
+            if (isCanonicalLicense) {
                 stagedLicenseText = textFromBytes(data);
+                hasLicenseOverlay = true;
+            } else {
+                hasReadmeOverlay = true;
+            }
         }
     }
     if (!stagedLicenseText.empty())
@@ -1688,7 +1889,9 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  WindowsInstallRoot::InstallDir,
                                  "bin/viper-install-vscode-extension.cmd",
                                  true,
-                                 &installedManifestPaths);
+                                 &installedManifestPaths,
+                                 hasVSCodeComponent ? std::string(kComponentVSCode)
+                                                    : std::string{});
     }
     {
         addUniqueDir(layout.installDirectories,
@@ -1705,6 +1908,19 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  "share/viper/viper.ico",
                                  true,
                                  &installedManifestPaths);
+        if (hasViperIDEComponent) {
+            addCompressedPayloadFile(payloadZip,
+                                     "bin/viperide.ico",
+                                     toolchainIcon.data(),
+                                     toolchainIcon.size(),
+                                     0100644,
+                                     layout,
+                                     WindowsInstallRoot::InstallDir,
+                                     "bin/viperide.ico",
+                                     true,
+                                     &installedManifestPaths,
+                                     std::string(kComponentViperIDE));
+        }
         const std::string readme = toolchainWindowsPrerequisitesReadme();
         addCompressedPayloadFile(payloadZip,
                                  "share/viper/README.windows-prerequisites.txt",
@@ -1762,27 +1978,31 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  WindowsInstallRoot::StartMenuDir,
                                  "Install VS Code Extension.lnk",
                                  true,
-                                 &payloadManifest);
+                                 &payloadManifest,
+                                 std::string(kComponentVSCode));
         }
 
-        LnkParams ideLnk;
-        ideLnk.targetPath = windowsInstallEnvPath(
-            params.installDirName, layout.perUserInstall, "bin\\viperide.exe");
-        ideLnk.workingDir = "%USERPROFILE%";
-        ideLnk.description = "ViperIDE";
-        ideLnk.iconPath = windowsInstallEnvPath(
-            params.installDirName, layout.perUserInstall, layout.displayIconRelativePath);
-        const auto ideData = generateLnk(ideLnk);
-        addStoredOverlayFile(zip,
-                             "meta/viperide.lnk",
-                             ideData.data(),
-                             ideData.size(),
-                             0100644,
-                             layout,
-                             WindowsInstallRoot::StartMenuDir,
-                             "ViperIDE.lnk",
-                             true,
-                             &payloadManifest);
+        if (hasViperIDEComponent) {
+            LnkParams ideLnk;
+            ideLnk.targetPath = windowsInstallEnvPath(
+                params.installDirName, layout.perUserInstall, "bin\\viperide.exe");
+            ideLnk.workingDir = "%USERPROFILE%";
+            ideLnk.description = "ViperIDE";
+            ideLnk.iconPath = windowsInstallEnvPath(
+                params.installDirName, layout.perUserInstall, "bin\\viperide.ico");
+            const auto ideData = generateLnk(ideLnk);
+            addStoredOverlayFile(zip,
+                                 "meta/viperide.lnk",
+                                 ideData.data(),
+                                 ideData.size(),
+                                 0100644,
+                                 layout,
+                                 WindowsInstallRoot::StartMenuDir,
+                                 "ViperIDE.lnk",
+                                 true,
+                                 &payloadManifest,
+                                 std::string(kComponentViperIDE));
+        }
     }
 
     registerInstalledFile(

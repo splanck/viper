@@ -61,10 +61,11 @@ struct WindowsPackageFileEntry {
                             uint64_t overlayDataOffsetValue,
                             uint64_t sizeBytesValue,
                             uint32_t crc32Value = 0,
-                            std::string sha256Value = {})
+                            std::string sha256Value = {},
+                            std::string componentIdValue = {})
         : root(rootValue), relativePath(std::move(relativePathValue)),
           overlayDataOffset(overlayDataOffsetValue), sizeBytes(sizeBytesValue), crc32(crc32Value),
-          sha256(std::move(sha256Value)) {}
+          sha256(std::move(sha256Value)), componentId(std::move(componentIdValue)) {}
 
     WindowsInstallRoot root{WindowsInstallRoot::InstallDir}; ///< Base directory anchor
     std::string relativePath;                                ///< Destination path relative to root
@@ -72,6 +73,15 @@ struct WindowsPackageFileEntry {
     uint64_t sizeBytes{0};         ///< Uncompressed file size in bytes
     uint32_t crc32{0};             ///< CRC-32 checksum of the uncompressed data
     std::string sha256;            ///< Lowercase SHA-256 of stored overlay data when available
+    std::string componentId;       ///< Empty for core; otherwise an optional-component id
+};
+
+/// @brief One user-selectable installer component.
+struct WindowsOptionalComponent {
+    std::string id;             ///< Stable ASCII id used by silent flags and payload metadata
+    std::string label;          ///< Checkbox label shown in the native setup wizard
+    std::string description;    ///< Short explanatory text for diagnostics and future UIs
+    bool defaultSelected{true}; ///< Initial checkbox state and quiet-install behavior
 };
 
 /// @brief A file-type association to register in the Windows registry.
@@ -114,7 +124,11 @@ struct WindowsPackageLayout {
     bool perUserInstall{false}; ///< Install under the current user profile and HKCU.
     std::string homepage;       ///< Optional support/update URL for Add/Remove Programs.
     std::string
-        displayIconRelativePath; ///< Icon path relative to installDir for Add/Remove Programs.
+        displayIconRelativePath;   ///< Icon path relative to installDir for Add/Remove Programs.
+    uint32_t wizardImageWidth{0};  ///< Width of wizardImageRgba in pixels.
+    uint32_t wizardImageHeight{0}; ///< Height of wizardImageRgba in pixels.
+    std::vector<uint8_t>
+        wizardImageRgba;         ///< Optional top-down RGBA artwork drawn by the native x64 wizard.
     uint32_t estimatedSizeKb{0}; ///< Approximate installed size in KiB for ARP.
     std::string installDate;     ///< YYYYMMDD packaging/install metadata date.
     std::vector<WindowsPackageDirEntry> installDirectories; ///< Directories to create on install
@@ -123,6 +137,8 @@ struct WindowsPackageLayout {
     std::vector<WindowsPackageFileEntry> installFiles;   ///< Files to extract on install
     std::vector<WindowsPackageFileEntry> installedFiles; ///< Files left on disk after install
     std::vector<WindowsPackageFileEntry> uninstallFiles; ///< Files to delete on uninstall
+    std::vector<WindowsOptionalComponent>
+        optionalComponents; ///< Default-on payload groups exposed by the setup wizard
     std::vector<WindowsFileAssociationEntry>
         fileAssociations; ///< File associations to register/deregister
 };

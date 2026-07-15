@@ -223,9 +223,12 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     std::ostringstream err;
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
                                        {"ExitProcess",
+                                        "GetModuleFileNameW",
                                         "InitializeCriticalSectionAndSpinCount",
                                         "BringWindowToTop",
                                         "CreateWindowExW",
+                                        "LoadIconW",
+                                        "LoadImageW",
                                         "CreateWaitableTimerExW",
                                         "ClipCursor",
                                         "SetWaitableTimer",
@@ -300,6 +303,9 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "ClipCursor"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "GetRawInputData"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "SetFocus"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadIconW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadImageW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "GetModuleFileNameW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
     EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));

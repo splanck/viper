@@ -301,6 +301,39 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
     return TRUE;
 }
 
+/// @brief Load an application icon placed beside the running executable.
+/// @details The convention `<executable-basename>.ico` lets packaged Viper applications carry
+///          their own identity without adding icon concerns to the runtime C ABI.  ViperIDE is
+///          installed as `viperide.exe` plus `viperide.ico`; other applications fall back to the
+///          standard Windows application icon when no adjacent icon is present.
+static HICON win32_load_adjacent_application_icon(int width, int height) {
+    WCHAR path[32768];
+    DWORD length = GetModuleFileNameW(NULL, path, (DWORD)(sizeof(path) / sizeof(path[0])));
+    if (length == 0 || length >= (DWORD)(sizeof(path) / sizeof(path[0]) - 5))
+        return NULL;
+
+    WCHAR *filename = path;
+    WCHAR *extension = NULL;
+    for (WCHAR *cursor = path; *cursor; ++cursor) {
+        if (*cursor == L'\\' || *cursor == L'/') {
+            filename = cursor + 1;
+            extension = NULL;
+        } else if (*cursor == L'.') {
+            extension = cursor;
+        }
+    }
+    if (!extension || extension < filename)
+        extension = path + length;
+    extension[0] = L'.';
+    extension[1] = L'i';
+    extension[2] = L'c';
+    extension[3] = L'o';
+    extension[4] = L'\0';
+
+    return (HICON)LoadImageW(
+        NULL, path, IMAGE_ICON, width, height, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+}
+
 /// @brief Register the ViperGFX Win32 window class exactly once per process.
 /// @details Multiple windows may be created from different threads.  This
 ///          callback is executed by InitOnceExecuteOnce so RegisterClassExW is
@@ -322,6 +355,14 @@ static BOOL CALLBACK win32_register_window_class_once(PINIT_ONCE init_once,
     wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wc.lpfnWndProc = vgfx_win32_wndproc;
     wc.hInstance = hInstance;
+    wc.hIcon = win32_load_adjacent_application_icon(GetSystemMetrics(SM_CXICON),
+                                                    GetSystemMetrics(SM_CYICON));
+    wc.hIconSm = win32_load_adjacent_application_icon(GetSystemMetrics(SM_CXSMICON),
+                                                      GetSystemMetrics(SM_CYSMICON));
+    if (!wc.hIcon)
+        wc.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(32512));
+    if (!wc.hIconSm)
+        wc.hIconSm = LoadIconW(NULL, MAKEINTRESOURCEW(32512));
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName = L"ViperGFXClass";
