@@ -189,6 +189,14 @@ static void scene3d_mark_spatial_refit_dirty(rt_scene3d *scene) {
         scene->spatial_index.topology_dirty = 1;
 }
 
+/// @brief Mark the spatial index stale after a visibility toggle.
+/// @details Hidden nodes stay in the BVH as filtered entries, so a visibility
+///   change is a refit (per-entry flag refresh), NOT a topology rebuild — a
+///   blinking or LOD-hidden object no longer costs O(n log n) per toggle.
+void scene3d_mark_spatial_visibility_dirty(rt_scene3d *scene) {
+    scene3d_mark_spatial_refit_dirty(scene);
+}
+
 /// @brief Return @p value if it is a finite number, otherwise return @p fallback.
 /// @details Used to sanitize every numeric input that comes from external data (glTF
 ///   assets, caller-supplied transforms) before it can corrupt a matrix multiply or

@@ -833,11 +833,33 @@ static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
             return;
         [ctx.encoder endEncoding];
         ctx.encoder = nil;
-        ctx->_shadowComplete[slot] = ctx->_shadowDepthTexture[slot] ? 1 : 0;
+        ctx->_shadowComplete[slot] = metal_shadow_slot_texture_ready(ctx, slot) ? 1 : 0;
         ctx->_shadowPassSlot = -1;
         ctx->_shadowBias = bias;
         metal_recompute_shadow_count(ctx);
         metal_begin_scene_encoder(ctx, YES, YES);
+    }
+}
+
+/// @brief Backend `shadow_reuse` op — re-arm a slot from its previous-frame depth texture.
+/// @details Only the classic per-slot CSM textures persist untouched across frames; the
+///   shared atlas texture is whole-cleared on its first tile pass each frame, so a reused
+///   atlas tile would be wiped whenever any other tile re-renders — atlas slots decline
+///   reuse and take the normal render path.
+static int8_t metal_shadow_reuse(
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    @autoreleasepool {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        (void)depth_buf;
+        if (!ctx || slot < 0 || slot >= VGFX3D_CSM_SLOTS || !light_vp || w <= 0 || h <= 0)
+            return 0;
+        if (!ctx->_shadowDepthTexture[slot] || (int32_t)ctx->_shadowDepthTexture[slot].width != w ||
+            (int32_t)ctx->_shadowDepthTexture[slot].height != h)
+            return 0;
+        memcpy(ctx->_shadowLightVP[slot], light_vp, 16 * sizeof(float));
+        ctx->_shadowComplete[slot] = 1;
+        metal_recompute_shadow_count(ctx);
+        return 1;
     }
 }
 

@@ -358,6 +358,8 @@ RT_FUNC(NavMesh3DGetArea,        rt_navmesh3d_get_area,         "Viper.Graphics3
 RT_FUNC(NavMesh3DGetTraversalCost, rt_navmesh3d_get_traversal_cost, "Viper.Graphics3D.NavMesh3D.GetTraversalCost", "f64(obj,obj)")
 RT_FUNC(NavMesh3DRebuildTile,    rt_navmesh3d_rebuild_tile,     "Viper.Graphics3D.NavMesh3D.RebuildTile",    "i1(obj,i64,i64)")
 RT_FUNC(NavMesh3DSetMaxSlope,    rt_navmesh3d_set_max_slope,    "Viper.Graphics3D.NavMesh3D.SetMaxSlope",    "void(obj,f64)")
+RT_FUNC(NavMesh3DSetHeuristicMode, rt_navmesh3d_set_heuristic_mode, "Viper.Graphics3D.NavMesh3D.SetHeuristicMode", "void(obj,i64)")
+RT_FUNC(NavMesh3DGetHeuristicMode, rt_navmesh3d_get_heuristic_mode, "Viper.Graphics3D.NavMesh3D.get_HeuristicMode", "i64(obj)")
 RT_FUNC(NavMesh3DDebugDraw,      rt_navmesh3d_debug_draw,       "Viper.Graphics3D.NavMesh3D.DebugDraw",      "void(obj,obj)")
 
 /// @summary Provides Nav Mesh 3D constants and static operations for 3D rendering and scene applications.
@@ -392,6 +394,8 @@ RT_CLASS_BEGIN("Viper.Graphics3D.NavMesh3D", NavMesh3D, "none", none)
     RT_METHOD("GetTraversalCost", "f64(obj)", NavMesh3DGetTraversalCost)
     RT_METHOD("RebuildTile", "i1(i64,i64)", NavMesh3DRebuildTile)
     RT_METHOD("SetMaxSlope", "void(f64)", NavMesh3DSetMaxSlope)
+    RT_METHOD("SetHeuristicMode", "void(i64)", NavMesh3DSetHeuristicMode)
+    RT_PROP("HeuristicMode", "i64", NavMesh3DGetHeuristicMode, none)
     RT_METHOD("DebugDraw", "void(obj)", NavMesh3DDebugDraw)
     // Tile edge length used by O(tile) rebuilds; every Bake auto-tiles.
     RT_PROP("TileSize", "f64", NavMesh3DTileSize, none)

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-14
 ---
 
 # Input
@@ -36,6 +36,7 @@ state/query behavior.
 
 | Group | Properties |
 |---|---|
+| Sentinel | `Unknown` (value 0) |
 | Letters | `A`-`Z` |
 | Digits | `Digit0`-`Digit9` |
 | Function keys | `F1`-`F12` |
@@ -59,7 +60,8 @@ The Keyboard class provides two complementary input models:
 - **Polling**: Check the current state of any key at any time
 - **Event-based**: Query which keys were pressed or released since the last frame
 
-Keyboard state is updated automatically when you call `Canvas.Poll()`.
+Keyboard state is updated by the active window event poll (`Canvas.Poll()`,
+`Canvas3D.Poll()`, or GUI application polling).
 
 ### Polling Methods (Current State)
 
@@ -74,8 +76,8 @@ Keyboard state is updated automatically when you call `Canvas.Poll()`.
 
 | Method              | Signature          | Description                                          |
 |---------------------|--------------------|------------------------------------------------------|
-| `GetPressed()`      | `Seq()`            | Returns a Seq of all key codes pressed this frame    |
-| `GetReleased()`     | `Seq()`            | Returns a Seq of all key codes released this frame   |
+| `GetPressed()`      | `Seq()`            | Returns boxed integer key codes pressed this frame   |
+| `GetReleased()`     | `Seq()`            | Returns boxed integer key codes released this frame  |
 | `WasPressed(key)`   | `Boolean(Integer)` | Returns true if the key was pressed this frame       |
 | `WasReleased(key)`  | `Boolean(Integer)` | Returns true if the key was released this frame      |
 
@@ -85,7 +87,7 @@ Keyboard state is updated automatically when you call `Canvas.Poll()`.
 |----------------------|------------|-------------------------------------------------|
 | `DisableTextInput()` | `Void()`   | Disable text input mode                         |
 | `EnableTextInput()`  | `Void()`   | Enable text input mode (for text fields)        |
-| `GetText()`          | `String()` | Returns text typed since last poll              |
+| `GetText()`          | `String()` | Returns UTF-8 text received during the last poll|
 
 ### Modifier State Methods
 
@@ -292,7 +294,7 @@ DO WHILE NOT canvas.ShouldClose
     DIM i AS INTEGER
     FOR i = 0 TO Viper.Collections.Seq.get_Count(pressed) - 1
         DIM key AS INTEGER
-        key = pressed.Get(i)
+        key = Viper.Core.Box.ToI64(pressed.Get(i))
         PRINT "Pressed: "; Viper.Input.Keyboard.KeyName(key)
     NEXT i
 
@@ -343,23 +345,28 @@ Viper.Input.Keyboard.DisableTextInput()
 
 ### Notes
 
-- Keyboard state is only updated when `Canvas.Poll()` is called
-- `WasPressed()` and `WasReleased()` only return true for one frame after the event
+- Keyboard state advances when the active Canvas, Canvas3D, or GUI application polls events
+- `WasPressed()` and `WasReleased()` only return true for the poll that receives the event
 - Use polling (`IsDown()`) for continuous input like movement
 - Use events (`WasPressed()`) for discrete actions like menu selection or jumping
 - Key codes are GLFW-compatible values for portability
-- Text input mode should be enabled for text fields and disabled otherwise
+- `GetPressed()` and `GetReleased()` contain boxed integers; BASIC callers must use
+  `Viper.Core.Box.ToI64()` when reading a `Seq` element
+- Text input mode should be enabled for text fields and disabled otherwise. `GetText()` contains
+  UTF-8 text only while the mode is enabled, and its per-poll buffer is cleared before the next
+  event collection
 
 ### Integration with Canvas
 
-The Keyboard class automatically integrates with Canvas. When you call `Canvas.Poll()`:
+The Keyboard class automatically integrates with each windowing frontend. During an event poll:
 
 1. Platform keyboard events are collected
 2. Key state arrays are updated
 3. Pressed/released event lists are populated
 4. Text input buffer is updated
 
-You don't need to explicitly initialize the keyboard - it's ready when you create a Canvas.
+You do not initialize the keyboard separately; creating a Canvas, Canvas3D, or GUI application
+provides the event source.
 
 ---
 
@@ -383,8 +390,8 @@ configurable timing windows.
 |------------------------------------|------------------------------------|-------------------------------------------------------|
 | `Active(name)`                      | `Boolean(String)`                  | Check if a chord is currently active (all keys held)  |
 | `Clear()`                           | `Void()`                           | Remove all registered chords and combos               |
-| `Define(name, keys)`                | `Void(String, Seq)`                | Register a named chord (simultaneous key combination) |
-| `DefineCombo(name, keys, frames)`   | `Void(String, Seq, Integer)`       | Register a named combo (sequential, with frame window)|
+| `Define(name, keys)`                | `Void(String, Seq)`                | Register a named simultaneous chord (1-16 keys)       |
+| `DefineCombo(name, keys, frames)`   | `Void(String, Seq, Integer)`       | Register a named sequence (1-16 keys; maximum gap)    |
 | `Progress(name)`                    | `Integer(String)`                  | Get combo progress (number of keys matched so far)    |
 | `Remove(name)`                      | `Boolean(String)`                  | Remove a named chord or combo; returns true if found  |
 | `Triggered(name)`                   | `Boolean(String)`                  | Check if a chord/combo was triggered this frame       |
@@ -392,13 +399,17 @@ configurable timing windows.
 
 ### Notes
 
-- **Chords** detect simultaneous key presses (e.g., Ctrl+Shift+S). All keys must be held down at the same time.
-- **Combos** detect sequential key presses within a timing window (e.g., up-up-down-down). Keys must be pressed in
-  order within the frame window.
+- **Chords** detect simultaneous key presses (e.g., Ctrl+Shift+S). `Active` remains true while
+  every key is held; `Triggered` is true only when the chord transitions from inactive to active.
+- **Combos** detect ordered key presses (e.g., up-up-down-down). `frames` is the maximum gap
+  between consecutive matches, not a limit on the entire sequence. Values less than or equal to
+  zero select the 15-frame default. Pressing another key that also occurs in the sequence but is
+  not the next expected key resets progress.
+- Each definition must contain 1-16 boxed integer key codes. Defining an existing name replaces
+  its prior chord or combo.
 - Call `Update()` once per frame after `Canvas.Poll()` to refresh detection state.
-- `Triggered` returns true only on the frame when the chord/combo is detected.
-- `Active` returns true as long as all chord keys remain held (not just on the trigger frame).
-- `Progress` is useful for showing combo progress to the player (e.g., a progress bar).
+- A completed combo has `Active` and `Triggered` set only until the next `Update()`; its progress
+  resets to zero. For a chord, `Progress` is its key count while active and zero otherwise.
 
 ### Zia Example
 
@@ -408,22 +419,23 @@ module KeyChordDemo;
 bind Viper.Input;
 bind Viper.Terminal;
 bind Viper.Collections;
+bind Viper.Input.Key as Key;
 
 func start() {
     var kc = KeyChord.New();
 
     // Define a chord (Ctrl+S)
     var saveKeys = Seq.New();
-    saveKeys.Push(341);  // Left Ctrl
-    saveKeys.Push(83);   // S
+    saveKeys.Push(Key.LeftControl);
+    saveKeys.Push(Key.S);
     kc.Define("save", saveKeys);
 
     // Define a combo (sequential keys with frame window)
     var konamiKeys = Seq.New();
-    konamiKeys.Push(265);  // Up
-    konamiKeys.Push(265);  // Up
-    konamiKeys.Push(264);  // Down
-    konamiKeys.Push(264);  // Down
+    konamiKeys.Push(Key.Up);
+    konamiKeys.Push(Key.Up);
+    konamiKeys.Push(Key.Down);
+    konamiKeys.Push(Key.Down);
     kc.DefineCombo("konami", konamiKeys, 60);
 
     SayInt(kc.Count);  // 2
@@ -446,20 +458,22 @@ func start() {
 
 ```basic
 DIM detector AS OBJECT = Viper.Input.KeyChord.New()
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Key Chords", 400, 300)
 
-' Register Ctrl+S chord (keys 341=Left Ctrl, 83=S)
+' Register Ctrl+S chord
 DIM saveKeys AS OBJECT = NEW Viper.Collections.Seq()
-saveKeys.Push(341)
-saveKeys.Push(83)
+saveKeys.Push(Viper.Input.Key.LeftControl)
+saveKeys.Push(Viper.Input.Key.S)
 detector.Define("save", saveKeys)
 
 ' Register Konami code combo (timing window: 30 frames)
 DIM konamiKeys AS OBJECT = NEW Viper.Collections.Seq()
-' Up, Up, Down, Down (265, 265, 264, 264)
-konamiKeys.Push(265)
-konamiKeys.Push(265)
-konamiKeys.Push(264)
-konamiKeys.Push(264)
+' Up, Up, Down, Down
+konamiKeys.Push(Viper.Input.Key.Up)
+konamiKeys.Push(Viper.Input.Key.Up)
+konamiKeys.Push(Viper.Input.Key.Down)
+konamiKeys.Push(Viper.Input.Key.Down)
 detector.DefineCombo("konami", konamiKeys, 30)
 
 ' In game loop
@@ -468,7 +482,7 @@ DO WHILE NOT canvas.ShouldClose
     detector.Update()
 
     IF detector.Triggered("save") THEN
-        SaveGame()
+        PRINT "Save chord triggered"
     END IF
     IF detector.Triggered("konami") THEN
         PRINT "Cheat activated!"
@@ -498,9 +512,10 @@ The Mouse class provides:
 - **Button state polling**: Check if buttons are currently pressed
 - **Button events**: Query presses, releases, clicks, and double-clicks since last frame
 - **Scroll wheel**: Horizontal and vertical scroll amounts
-- **Cursor control**: Show, hide, capture, and position the cursor
+- **Cursor control**: Show, hide, mark as captured, and position the cursor
 
-Mouse state is updated automatically when you call `Canvas.Poll()`.
+Mouse state is updated by the active window event poll. Coordinates use the canvas's logical
+coordinate system: the origin is at the top left and positive Y points down.
 
 ### Position Methods
 
@@ -527,43 +542,49 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 
 | Method                     | Signature          | Description                                           |
 |----------------------------|--------------------|-------------------------------------------------------|
-| `WasClicked(button)`       | `Boolean(Integer)` | Returns true if a quick press-release occurred        |
-| `WasDoubleClicked(button)` | `Boolean(Integer)` | Returns true if a double-click was detected           |
+| `WasClicked(button)`       | `Boolean(Integer)` | True on release after a press lasting at most 300 ms  |
+| `WasDoubleClicked(button)` | `Boolean(Integer)` | True when that click follows one within 400 ms        |
 | `WasPressed(button)`       | `Boolean(Integer)` | Returns true if the button was pressed this frame     |
 | `WasReleased(button)`      | `Boolean(Integer)` | Returns true if the button was released this frame    |
 
 ### Scroll Wheel Methods
 
-| Method     | Signature   | Description                                      |
-|------------|-------------|--------------------------------------------------|
-| `WheelX()` | `Integer()` | Horizontal scroll amount this frame              |
-| `WheelY()` | `Integer()` | Vertical scroll amount this frame (+ = up)       |
+| Method      | Signature   | Description                                           |
+|-------------|-------------|-------------------------------------------------------|
+| `WheelX()`  | `Integer()` | Horizontal scroll sum, truncated toward zero          |
+| `WheelY()`  | `Integer()` | Vertical scroll sum, truncated toward zero (+ = up)   |
+| `WheelXF()` | `Double()`  | Horizontal scroll sum with fractional precision       |
+| `WheelYF()` | `Double()`  | Vertical scroll sum with fractional precision (+ = up)|
 
 ### Cursor Control Methods
 
-| Method           | Signature                 | Description                                    |
-|------------------|---------------------------|------------------------------------------------|
-| `Capture()`      | `Void()`                  | Lock the cursor to the window (for FPS games)  |
-| `Hide()`         | `Void()`                  | Hide the cursor                                |
-| `IsCaptured()`   | `Boolean()`               | Returns true if the cursor is captured         |
-| `IsHidden()`     | `Boolean()`               | Returns true if the cursor is hidden           |
-| `Release()`      | `Void()`                  | Release the cursor lock                        |
-| `SetPos(x, y)`   | `Void(Integer, Integer)`  | Move the cursor to a specific position         |
-| `Show()`         | `Void()`                  | Show the cursor                                |
+| Method           | Signature                 | Description                                         |
+|------------------|---------------------------|-----------------------------------------------------|
+| `Capture()`      | `Void()`                  | Set the capture flag and hide the cursor             |
+| `Hide()`         | `Void()`                  | Hide the cursor                                     |
+| `IsCaptured()`   | `Boolean()`               | Return the runtime capture flag                      |
+| `IsHidden()`     | `Boolean()`               | Return whether the cursor is hidden                  |
+| `Release()`      | `Void()`                  | Clear the capture flag and show the cursor           |
+| `SetPos(x, y)`   | `Void(Integer, Integer)`  | Update the stored position and warp the bound cursor |
+| `Show()`         | `Void()`                  | Show the cursor                                     |
+
+`Capture()` is not an operating-system pointer lock or confinement API. By itself it leaves
+absolute motion bounded by the desktop/window. Use Canvas3D relative mode for unbounded camera
+input.
 
 ### Relative (Raw) Mouse Mode — FPS Mouse-Look
 
-Relative mode delivers unbounded, sub-pixel mouse motion for first-person
-camera control. While enabled the cursor is hidden and the absolute position
-freezes; read motion through `DeltaXF()`/`DeltaYF()` (or `DeltaX()`/`DeltaY()`
-rounded). Enabling implies `Capture()`; disabling releases it.
+`SetRelativeMode(true)` requests unbounded mouse motion and implies `Capture()`;
+`SetRelativeMode(false)` releases capture. The request is applied only while `Canvas3D.Poll()`
+drives input. A 2D Canvas or GUI poll records the request and hides the cursor but does not engage
+native relative input or the center-warp fallback.
 
-On platforms with native raw input (Windows raw input, macOS cursor
-dissociation, Linux XInput2) the deltas are hardware motion — unbounded and
-unaccelerated where the OS allows. When native raw motion is unavailable the
-runtime transparently falls back to warp-to-center capture, which produces the
-same unbounded deltas at integer precision; `RelativeModeNative` reports which
-path is active.
+With Canvas3D polling, the absolute position freezes and motion is exposed through
+`DeltaXF()`/`DeltaYF()`; `DeltaX()`/`DeltaY()` return rounded integer deltas.
+
+Canvas3D uses Windows raw input, macOS cursor dissociation, or Linux XInput2 when available. If
+native relative input cannot be enabled, it falls back to warping to the window center, with
+integer precision. `RelativeModeNative` distinguishes the native path from the fallback.
 
 | Method / Property         | Signature        | Description                                       |
 |---------------------------|------------------|---------------------------------------------------|
@@ -574,8 +595,8 @@ path is active.
 ```zia
 bind Viper.Input.Mouse as Mouse;
 
-Mouse.SetRelativeMode(true);      // enter FPS mouse-look
-// each frame after Canvas.Poll():
+Mouse.SetRelativeMode(true);      // request Canvas3D mouse-look
+// each frame after Canvas3D.Poll():
 var lookX = Mouse.DeltaXF();      // sub-pixel, unbounded
 var lookY = Mouse.DeltaYF();
 // ...
@@ -728,42 +749,40 @@ DO WHILE NOT canvas.ShouldClose
 LOOP
 ```
 
-### Example: First-Person Camera
+### Example: First-Person Camera Input
 
 ```basic
-DIM canvas AS Viper.Graphics.Canvas
-canvas = NEW Viper.Graphics.Canvas("FPS Camera", 800, 600)
+DIM canvas AS Viper.Graphics3D.Canvas3D
+canvas = Viper.Graphics3D.Canvas3D.New("FPS Camera", 800, 600)
 
-DIM cameraYaw AS INTEGER = 0
-DIM cameraPitch AS INTEGER = 0
-DIM sensitivity AS INTEGER = 1
+DIM cameraYaw AS DOUBLE = 0.0
+DIM cameraPitch AS DOUBLE = 0.0
+DIM sensitivity AS DOUBLE = 0.002
 
-' Capture and hide cursor for FPS mode
-Viper.Input.Mouse.Capture()
-Viper.Input.Mouse.Hide()
+' Canvas3D.Poll applies native relative mode or its center-warp fallback
+Viper.Input.Mouse.SetRelativeMode(TRUE)
 
 DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Use mouse delta for camera rotation
-    DIM dx AS INTEGER = Viper.Input.Mouse.DeltaX()
-    DIM dy AS INTEGER = Viper.Input.Mouse.DeltaY()
+    DIM dx AS DOUBLE = Viper.Input.Mouse.DeltaXF()
+    DIM dy AS DOUBLE = Viper.Input.Mouse.DeltaYF()
 
     cameraYaw = cameraYaw + dx * sensitivity
     cameraPitch = cameraPitch - dy * sensitivity
 
     ' Clamp pitch
-    IF cameraPitch > 90 THEN cameraPitch = 90
-    IF cameraPitch < -90 THEN cameraPitch = -90
+    IF cameraPitch > 1.55 THEN cameraPitch = 1.55
+    IF cameraPitch < -1.55 THEN cameraPitch = -1.55
 
     ' Escape to release cursor and exit
     IF Viper.Input.Keyboard.WasPressed(Viper.Input.Key.Escape) THEN
-        Viper.Input.Mouse.Release()
-        Viper.Input.Mouse.Show()
+        Viper.Input.Mouse.SetRelativeMode(FALSE)
         EXIT DO
     END IF
 
-    canvas.Clear(0)
+    canvas.Clear(0.0, 0.0, 0.0)
     ' Render scene based on cameraYaw and cameraPitch...
     canvas.Flip()
 LOOP
@@ -802,25 +821,27 @@ LOOP
 
 ### Notes
 
-- Mouse state is only updated when `Canvas.Poll()` is called
-- `WasPressed()`, `WasReleased()`, and `WasClicked()` only return true for one frame
-- Delta values (DeltaX/DeltaY) are reset at the start of each frame
-- Click detection uses a timing threshold (quick press-release)
-- Double-click detection requires two clicks within a short time window
+- Mouse state advances when the active Canvas, Canvas3D, or GUI application polls events
+- `WasPressed()`, `WasReleased()`, `WasClicked()`, and `WasDoubleClicked()` are per-poll flags
+- Delta and wheel values are reset at the start of each poll
+- A click is a press/release of at most 300 ms; a second click within 400 ms also sets the
+  double-click flag
 - Use `Left()`, `Right()`, `Middle()` as shortcuts for common button checks
-- Cursor capture is useful for FPS-style camera controls
+- `Capture()` only hides and records state; Canvas3D relative mode provides FPS-style motion
+- **Known issue:** in ordinary absolute mode, `DeltaX()`/`DeltaY()` are calculated before current
+  events are pumped and therefore trail `X()`/`Y()` by one poll (see
+  [VDOC-006](../documentation-review-findings.md#vdoc-006--absolute-mouse-deltas-lag-one-poll-behind))
 
 ### Integration with Canvas
 
-The Mouse class automatically integrates with Canvas. When you call `Canvas.Poll()`:
+The Mouse class automatically integrates with each windowing frontend. During an event poll:
 
-1. Platform mouse events are collected
-2. Position and delta are updated
-3. Button state arrays are updated
-4. Click/double-click detection is processed
-5. Scroll wheel values are accumulated
+1. Per-poll edge, click, delta, and wheel state is reset
+2. Platform events update position, buttons, click detection, and scroll accumulators
+3. A Canvas3D poll applies requested native or fallback relative motion
 
-You don't need to explicitly initialize the mouse - it's ready when you create a Canvas.
+You do not initialize the mouse separately; creating a Canvas, Canvas3D, or GUI application
+provides the event source.
 
 ---
 
@@ -830,9 +851,9 @@ Gamepad/controller input handling for games and interactive applications.
 
 **Type:** Static utility class
 
-The Pad class provides unified gamepad input across Xbox, PlayStation, and generic controllers:
+The Pad class maps supported controllers to one standard logical layout:
 
-- **Controller enumeration**: Detect connected controllers (0-3)
+- **Controller enumeration**: Four fixed slots with indices 0-3
 - **Button state polling**: Check if buttons are currently pressed
 - **Button events**: Query presses and releases since last frame
 - **Analog sticks**: Left and right stick X/Y axes (-1.0 to 1.0)
@@ -840,13 +861,13 @@ The Pad class provides unified gamepad input across Xbox, PlayStation, and gener
 - **Deadzone handling**: Configurable stick deadzone
 - **Vibration/rumble**: Control haptic feedback motors
 
-Gamepad state is updated automatically when you call `Canvas.Poll()`.
+Gamepad state is updated by Canvas or Canvas3D polling.
 
 ### Controller Enumeration Methods
 
 | Method               | Signature          | Description                                     |
 |----------------------|--------------------|------------------------------------------------------|
-| `Count()`            | `Integer()`        | Number of connected controllers (0-4)           |
+| `Count()`            | `Integer()`        | Number of connected slots (0-4)                 |
 | `IsConnected(index)` | `Boolean(Integer)` | Returns true if controller is connected         |
 | `Name(index)`        | `String(Integer)`  | Controller name/description (empty if invalid)  |
 
@@ -882,12 +903,19 @@ Gamepad state is updated automatically when you call `Canvas.Poll()`.
 | `GetDeadzone()`       | `Double()`      | Get current deadzone radius (default 0.1)        |
 | `SetDeadzone(radius)` | `Void(Double)`  | Set stick deadzone radius (0.0 to 1.0)           |
 
+The runtime clamps the configured radius to `[0.0, 1.0]`. It applies a radial deadzone to each
+stick: values inside the radius become zero and values outside it are rescaled over the remaining
+range. Triggers are clamped to `[0.0, 1.0]` but do not use this deadzone.
+
 ### Vibration Methods
 
 | Method                        | Signature                       | Description                              |
 |-------------------------------|---------------------------------|------------------------------------------|
 | `StopVibration(index)`        | `Void(Integer)`                 | Stop vibration on controller             |
 | `Vibrate(index, left, right)` | `Void(Integer, Double, Double)` | Set motor intensities (0.0 to 1.0)       |
+
+Finite vibration values are clamped to `[0.0, 1.0]`. Unsupported devices/platforms ignore the
+request.
 
 ### Button Constants
 
@@ -1112,26 +1140,27 @@ LOOP
 
 ### Notes
 
-- Gamepad state is only updated when `Canvas.Poll()` is called
-- `WasPressed()` and `WasReleased()` only return true for one frame
-- Deadzone is applied to stick values, not triggers
-- Values below the deadzone are rescaled (not clamped) for smooth movement
-- Controller indices 0-3 are valid; invalid indices return 0/false
-- Disconnected controllers return 0/false for all queries (no errors)
+- Gamepad state advances when Canvas or Canvas3D polls; button edges last for that poll
+- The four valid slot indices are 0-3. `Count()` counts connected slots, but slots need not be
+  contiguous, so enumerate 0-3 and call `IsConnected()`
+- Invalid or disconnected slots return an empty name and zero/false for most queries;
+  `IsUp()` returns true
+- Raw `Pad` methods do not treat `-1` as “any controller”; that convention belongs to selected
+  `Action` and `Manager` button methods
 - Vibration intensity may vary by controller model
-- macOS rumble requests are ignored (no HID rumble support)
+- macOS rumble requests are ignored
 
 ### Platform Support
 
 | Platform | API Used                    | Notes                                              |
 |----------|-----------------------------|----------------------------------------------------|
-| Windows  | XInput                      | Xbox-compatible controllers; rumble supported      |
-| Linux    | evdev (`/dev/input/event*`) | Requires input permissions; rumble when supported  |
-| macOS    | IOHIDManager (HID)          | Generic HID gamepads; rumble not available         |
+| Windows  | XInput                      | Xbox-compatible controllers; rumble supported             |
+| Linux    | evdev (`/dev/input/event*`) | Requires read permission; rumble also needs writable FF support |
+| macOS    | IOHIDManager (HID)          | Generic HID gamepads; rumble is a no-op                   |
 
 ### Integration with Canvas
 
-The Pad class automatically integrates with Canvas. When you call `Canvas.Poll()`:
+The Pad class automatically integrates with Canvas and Canvas3D. During polling:
 
 1. Platform gamepad APIs are queried
 2. Controller connection state is updated
@@ -1139,7 +1168,7 @@ The Pad class automatically integrates with Canvas. When you call `Canvas.Poll()
 4. Analog values are read and deadzone applied
 5. Press/release events are detected
 
-You don't need to explicitly initialize gamepads - they're ready when you create a Canvas.
+You do not initialize gamepads separately.
 
 ---
 

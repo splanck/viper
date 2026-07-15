@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-14
+last-verified: 2026-07-14
 ---
 
 # Cryptography
@@ -563,32 +563,13 @@ PRINT "Derived key: "; keyHex
 ### Password Storage Example
 
 ```basic
-' Storing a password hash
 FUNCTION HashPassword(password AS STRING) AS STRING
-    ' Generate random salt
-    DIM salt AS OBJECT = Viper.Crypto.Rand.Bytes(16)
-
-    ' Derive key with high iteration count
-    DIM hash AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, 300000, 32)
-
-    ' Convert salt to hex for storage
-    DIM saltHex AS STRING = Viper.Codec.HexEncode(salt)
-
-    ' Store iterations:salt:hash
-    RETURN "300000:" & saltHex & ":" & hash
+    ' Password.Hash generates a salt and returns a self-describing record.
+    RETURN Viper.Crypto.Password.Hash(password)
 END FUNCTION
 
 FUNCTION VerifyPassword(password AS STRING, stored AS STRING) AS BOOLEAN
-    ' Parse stored format: iterations:salt:hash
-    DIM parts() AS STRING = SPLIT(stored, ":")
-    DIM iterations AS INTEGER = VAL(parts(0))
-    DIM salt AS OBJECT = Viper.Codec.HexDecode(parts(1))
-    DIM storedHash AS STRING = parts(2)
-
-    ' Recompute hash with same parameters
-    DIM computedHash AS STRING = Viper.Crypto.KeyDerive.Pbkdf2SHA256Str(password, salt, iterations, 32)
-
-    RETURN Viper.Crypto.Hash.ConstantTimeEquals(computedHash, storedHash)
+    RETURN Viper.Crypto.Password.Verify(password, stored)
 END FUNCTION
 ```
 
@@ -739,7 +720,7 @@ PRINT "API Token: "; apiToken
 ' Fisher-Yates shuffle using secure random
 SUB SecureShuffle(arr() AS INTEGER)
     DIM n AS INTEGER = UBOUND(arr)
-    FOR i AS INTEGER = n - 1 TO 1 STEP -1
+    FOR i = n TO 1 STEP -1
         DIM j AS INTEGER = Viper.Crypto.Rand.Int(0, i)
         ' Swap arr(i) and arr(j)
         DIM temp AS INTEGER = arr(i)
@@ -759,10 +740,11 @@ END SUB
 
 ### Security Guarantees
 
-- Uses operating system's cryptographic random number generator (CSPRNG)
-- Suitable for all cryptographic purposes
-- Unpredictable output even with partial state disclosure
-- Thread-safe on all platforms
+- Compatibility mode reads from the operating system CSPRNG; approved mode uses the locked in-tree HMAC-DRBG seeded
+  and periodically reseeded from that CSPRNG.
+- Output is intended for keys, salts, nonces, tokens, and secure selection; callers must still follow each protocol's
+  size, uniqueness, and encoding requirements.
+- Calls are safe to make concurrently on the supported platforms.
 
 ---
 

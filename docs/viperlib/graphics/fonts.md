@@ -122,4 +122,4 @@ var height = bodyFont.CharHeight;
 ## See Also
 
 - [Canvas & Color](canvas.md) — Canvas drawing surface (built-in 8x8 font via `Canvas.Text`)
-- [Game UI](../../game/ui.md) — UI widgets that support BitmapFont (planned)
+- [Game UI](../game/ui.md) — UI widgets that support BitmapFont

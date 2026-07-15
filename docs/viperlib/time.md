@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-14
 ---
 
 # Time & Timing
@@ -42,7 +42,7 @@ Basic timing utilities for sleeping and measuring elapsed time.
 
 - `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
 - The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
-- `TicksUs()` provides microsecond resolution for high-precision timing
+- `TicksUs()` reports microsecond units; the clock's actual resolution is platform-dependent
 - Tick conversions trap on signed 64-bit overflow instead of wrapping
 - `Sleep(0)` returns immediately without sleeping
 - Negative values passed to `Sleep()` are treated as 0
@@ -129,19 +129,36 @@ interval has expired.
 - `Remaining` returns 0 once expired (never negative)
 - `Expired` becomes true when elapsed time reaches or exceeds the interval
 - `Wait()` blocks the current thread until expiration; returns immediately if already expired
+- `Wait()` starts a stopped countdown before waiting
 - `Wait()` handles intervals larger than the platform's single-sleep limit by sleeping in chunks until expired
 - Changing `Interval` while running affects when `Expired` becomes true
-- Instance methods and properties require a valid Countdown object; null receivers trap as runtime errors
+- Constructor and assigned interval values less than or equal to zero are clamped to zero; such a countdown reports expired immediately
+- Countdown instances are not thread-safe; synchronize externally if an instance is shared
+- Instance methods and properties require a valid Countdown object; a null receiver traps
 
 ### Zia Example
 
-> Countdown is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module CountdownDemo;
+
+bind Viper.Terminal;
+bind Viper.Time.Countdown as Countdown;
+bind Viper.Text.Fmt as Fmt;
+
+func start() {
+    var timer = Countdown.New(5000);
+    Say("Interval: " + Fmt.Int(timer.get_Interval()));  // 5000
+    Say("Running: " + Fmt.Bool(timer.get_IsRunning())); // false
+    timer.Start();
+    timer.Stop();
+}
+```
 
 ### BASIC Example
 
 ```basic
 ' Create a 5-second countdown
-DIM timer AS OBJECT = Viper.Time.Countdown.New(5000)
+DIM timer AS Viper.Time.Countdown = Viper.Time.Countdown.New(5000)
 timer.Start()
 
 ' Game loop with timeout
@@ -152,7 +169,7 @@ WEND
 PRINT "Time's up!"
 
 ' Use for operation timeout
-DIM timeout AS OBJECT = Viper.Time.Countdown.New(1000)
+DIM timeout AS Viper.Time.Countdown = Viper.Time.Countdown.New(1000)
 timeout.Start()
 
 WHILE NOT operationComplete AND NOT timeout.Expired
@@ -164,7 +181,7 @@ IF timeout.Expired THEN
 END IF
 
 ' Blocking wait
-DIM delay AS OBJECT = Viper.Time.Countdown.New(2000)
+DIM delay AS Viper.Time.Countdown = Viper.Time.Countdown.New(2000)
 delay.Start()
 PRINT "Waiting 2 seconds..."
 delay.Wait()
@@ -244,6 +261,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `ParseDate` parses exact `YYYY-MM-DD` strings and returns the timestamp at local midnight
 - `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM`, `HH:MM:SS`, or `HH:MM:SS.fraction` strings
 - Invalid calendar values, out-of-range times, and trailing characters are rejected
+- On failure, `ParseISO` and `ParseDate` return `0`, while `ParseTime` returns `-1`; use `TryParseOption` when the Unix epoch must be distinguishable from failure
 - Prefer `TryParseOption` for new code. It preserves a valid Unix epoch parse as `Some(0)`, while `TryParse` remains available as the legacy 0-sentinel helper.
 
 ### Zia Example
@@ -286,8 +304,8 @@ bind Viper.Time.TimeZone as TimeZone;
 func start() {
     var ny = TimeZone.Find("America/New_York");
     var instant = DateTime.ParseISO("2025-03-09T07:00:00Z");
-    Say(DateTime.ToZone(instant, ny));                         # 2025-03-09T03:00:00-04:00
-    Say(DateTime.FormatInZone(instant, ny, "%F %T %z %Z"));    # 2025-03-09 03:00:00 -0400 EDT
+    Say(DateTime.ToZone(instant, ny));                         // 2025-03-09T03:00:00-04:00
+    Say(DateTime.FormatInZone(instant, ny, "%F %T %z %Z"));    // 2025-03-09 03:00:00 -0400 EDT
 }
 ```
 
@@ -320,6 +338,9 @@ The initial deterministic subset covers:
 | `Australia/Sydney` | 2025-2026 AEST/AEDT transitions |
 
 `Find` is exact and case-sensitive. Unknown zones trap with a runtime error rather than falling back to local time.
+The New York and Sydney rules are authoritative only for the listed 2025-2026 window. Before the first embedded
+transition the table uses its configured base rule; after the last transition it keeps the final rule indefinitely,
+so dates outside the window are deterministic but may not match historical or future IANA data.
 
 ### DST Policy
 
@@ -384,8 +405,8 @@ age_seconds = Viper.Time.DateTime.Diff(now, birthday)
 
 ## Viper.Time.Stopwatch
 
-High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing with nanosecond
-resolution.
+High-precision stopwatch for benchmarking and performance measurement. Supports pause/resume timing and reports
+elapsed values down to nanosecond units.
 
 **Type:** Instance class (requires `New()` or `StartNew()`)
 
@@ -416,23 +437,38 @@ resolution.
 
 ### Notes
 
-- Stopwatch provides nanosecond resolution on supported platforms
+- `ElapsedNs` reports nanosecond units; actual clock resolution is platform-dependent
 - Time accumulates across multiple Start/Stop cycles until Reset
 - Reading `ElapsedMs`/`ElapsedUs`/`ElapsedNs` while running returns current elapsed time
 - Stopwatch timestamp conversions trap on signed 64-bit overflow instead of wrapping
 - `Start()` has no effect if already running (doesn't reset)
 - `Stop()` has no effect if already stopped
-- Instance methods and properties require a valid Stopwatch object; null receivers trap as runtime errors
+- Instance methods and properties require a valid Stopwatch object; a null receiver traps
+- Stopwatch instances are not thread-safe; synchronize externally if an instance is shared
 
 ### Zia Example
 
-> Stopwatch is not yet available as a constructible type in Zia. Use `Viper.Time.Clock.Ticks()` for timing measurements.
+```rust
+module StopwatchDemo;
+
+bind Viper.Terminal;
+bind Viper.Time.Stopwatch as Stopwatch;
+bind Viper.Text.Fmt as Fmt;
+
+func start() {
+    var sw = Stopwatch.New();
+    sw.Start();
+    // ... work to measure ...
+    sw.Stop();
+    Say("Elapsed: " + Fmt.Int(sw.get_ElapsedUs()) + " us");
+}
+```
 
 ### BASIC Example
 
 ```basic
 ' Create and start a stopwatch
-DIM sw AS OBJECT = Viper.Time.Stopwatch.StartNew()
+DIM sw AS Viper.Time.Stopwatch = Viper.Time.Stopwatch.StartNew()
 
 ' Code to benchmark
 FOR i = 1 TO 1000000
@@ -637,8 +673,9 @@ Duration type for representing and manipulating time spans. Duration is a static
 ### Notes
 
 - Duration is a value type -- all methods take and return `i64` millisecond values
-- No heap allocation is needed; durations are plain integers
+- Duration values themselves require no heap object; `ToString` and `ToISO` allocate their returned strings
 - Negative durations are supported and represent time spans in the past
+- Component accessors (`Days`, `Hours`, `Minutes`, `Seconds`, and `Millis`) use the duration's magnitude; use total accessors when the sign must be preserved
 - `TotalSecondsF` returns a `f64` for sub-second precision
 - Factories and arithmetic methods trap on signed 64-bit overflow
 - `Abs(INT64_MIN)` and `Neg(INT64_MIN)` trap because the positive magnitude cannot be represented as a signed 64-bit value
@@ -725,11 +762,12 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 ### Notes
 
 - Timestamps are Unix timestamps in seconds (not milliseconds)
+- The constructor normalizes reversed endpoints by swapping them, so stored ranges always satisfy `Start <= End`
 - `Contains` checks if `Start <= ts <= End`
 - `Intersection` returns `null` if the ranges do not overlap (does not trap)
-- `Union` returns `null` if the ranges are neither overlapping nor contiguous
+- `Union` returns `null` if the ranges are neither overlapping nor contiguous; endpoints one second apart are considered contiguous
 - `Days`, `Hours`, and `Duration` trap if the range span cannot be represented as a signed 64-bit integer
-- `ToString` returns an empty string if either endpoint cannot be represented by the platform time APIs
+- `ToString` formats both endpoints in UTC as `YYYY-MM-DD HH:MM - YYYY-MM-DD HH:MM`, without a zone suffix, and returns an empty string if either endpoint cannot be represented by the platform time APIs
 
 ### Zia Example
 
@@ -798,10 +836,11 @@ Formats time durations and timestamps into human-readable relative descriptions.
 
 ### Notes
 
-- `Format` produces verbose, locale-friendly strings like "2 hours ago", "in 3 days", "just now"
+- `Format` produces hard-coded English strings like "2 hours ago", "in 3 days", and "just now"; it is not locale-aware
 - `FormatShort` produces compact single-unit strings with direction, like "2h ago", "in 3d", "5m ago", "now"
 - `FormatDuration` produces compact multi-unit strings like "45s", "2h 30m", "1d 5h 20m"
 - `Format` and `FormatShort` compare against the current system time
+- Relative month and year buckets use fixed 30-day and 365-day lengths, and displayed units are truncated rather than rounded
 
 ### Zia Example
 

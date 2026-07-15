@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-28
+last-verified: 2026-07-14
 ---
 
 # GUI Widgets
@@ -18,8 +18,8 @@ last-verified: 2026-05-28
 | [Core & Application](core.md) | App, Font, and common widget functions |
 | [Layout Widgets](layout.md) | VBox, HBox, and other layout containers |
 | [Basic Widgets](widgets.md) | Label, Button, TextInput, Checkbox, Slider, RadioButton, and more |
-| [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
-| [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes, IDE test/virtualization helpers |
+| [Containers & Advanced](containers.md) | ScrollView, SplitPane, FloatingPanel, TabBar, TreeView, and CodeEditor |
+| [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Breadcrumb, Minimap, dialogs, notifications, utilities, themes, VideoWidget, and IDE helpers |
 
 Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown/toolbar/statusbar/menu capacity handling, GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels, drag/drop and path/filter C-string payloads that reject embedded NUL bytes, concrete widget classes exposing the common `Widget` layout/state/tooltip/drag-drop methods directly, fallback layout for simple widgets that receive runtime children through `AddChild`, active menu shortcut dispatch on non-native menu bars, per-frame shortcut trigger retention, runtime-managed subobject handles that stay safe after owner destruction, a `Command`/`CommandRegistry` binding layer that routes a menu item, toolbar button, keyboard shortcut and command-palette entry to one action, and corrected edge reporting for ListBox/TreeView removals.
 
@@ -44,10 +44,12 @@ func start() {
     var vbox = VBox.New();
     vbox.SetSpacing(5.0);
     vbox.SetPadding(10.0);
+    root.AddChild(vbox);
 
     // Toolbar
     var toolbar = HBox.New();
     toolbar.SetSpacing(5.0);
+    vbox.AddChild(toolbar);
     var newBtn = Button.New(toolbar, "New");
     newBtn.SetSize(60, 28);
     var saveBtn = Button.New(toolbar, "Save");
@@ -55,20 +57,20 @@ func start() {
     saveBtn.SetSize(60, 28);
 
     // Editor
-    var editor = CodeEditor.New(root);
+    var editor = CodeEditor.New(vbox);
     editor.SetSize(780, 500);
 
     // Status bar
-    var status = Label.New(root, "Ready");
+    var status = Label.New(vbox, "Ready");
 
     while !app.get_ShouldClose() {
         app.Poll();
 
-        if newBtn.WasClicked() == 1 {
+        if newBtn.WasClicked() {
             editor.SetText("");
             status.SetText("New file");
         }
-        if saveBtn.WasClicked() == 1 {
+        if saveBtn.WasClicked() {
             editor.ClearModified();
             status.SetText("Saved!");
         }
@@ -88,6 +90,9 @@ func start() {
 DIM app AS Viper.GUI.App
 app = NEW Viper.GUI.App("Note Editor", 800, 600)
 
+DIM root AS Viper.GUI.Widget
+root = app.Root
+
 ' Load font
 DIM font AS Viper.GUI.Font
 font = Viper.GUI.Font.Load("consola.ttf")
@@ -98,7 +103,7 @@ DIM vbox AS Viper.GUI.VBox
 vbox = NEW Viper.GUI.VBox()
 vbox.SetSpacing(5)
 vbox.SetPadding(10)
-app.Root.AddChild(vbox)
+root.AddChild(vbox)
 
 ' Toolbar
 DIM toolbar AS Viper.GUI.HBox
@@ -133,20 +138,20 @@ DO WHILE NOT app.ShouldClose
     app.Poll()
 
     ' Handle buttons
-    IF newBtn.WasClicked = 1 THEN
+    IF newBtn.WasClicked() THEN
         editor.SetText("")
         status.SetText("New file")
     END IF
 
-    IF saveBtn.WasClicked = 1 THEN
+    IF saveBtn.WasClicked() THEN
         ' Save logic here
         editor.ClearModified()
         status.SetText("Saved!")
     END IF
 
     ' Update status
-    IF editor.IsModified() = 1 THEN
-        status.SetText("Modified - " + STR$(editor.GetLineCount()) + " lines")
+    IF editor.IsModified() THEN
+        status.SetText("Modified - " + STR$(editor.LineCount) + " lines")
     END IF
 
     app.Render()

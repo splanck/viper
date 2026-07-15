@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-30
+last-verified: 2026-07-14
 ---
 
 # Pattern Matching
@@ -135,7 +135,7 @@ IF pos.IsSome THEN
 END IF
 
 ' Find all matches
-DIM words AS OBJECT = Viper.Text.Pattern.FindAll(text, "\w+")
+DIM words AS Viper.Collections.Seq = Viper.Text.Pattern.FindAll(text, "\w+")
 PRINT words.Count  ' Output: 2 (Hello, World)
 ```
 
@@ -159,11 +159,11 @@ PRINT result  ' Output: "helloworldtest"
 
 ```basic
 ' Split by whitespace
-DIM parts AS OBJECT = Viper.Text.Pattern.Split("hello   world  test", "\s+")
+DIM parts AS Viper.Collections.Seq = Viper.Text.Pattern.Split("hello   world  test", "\s+")
 PRINT parts.Count  ' Output: 3
-PRINT parts.Get(0) ' Output: "hello"
-PRINT parts.Get(1) ' Output: "world"
-PRINT parts.Get(2) ' Output: "test"
+PRINT Viper.Collections.Seq.GetStr(parts, 0) ' Output: "hello"
+PRINT Viper.Collections.Seq.GetStr(parts, 1) ' Output: "world"
+PRINT Viper.Collections.Seq.GetStr(parts, 2) ' Output: "test"
 
 ' Split by comma
 parts = Viper.Text.Pattern.Split("a,b,c,d", ",")
@@ -178,11 +178,11 @@ DIM pattern AS STRING = Viper.Text.Pattern.Escape("file.txt")
 PRINT pattern  ' Output: "file\.txt"
 
 ' Use escaped pattern to match literal dot
-DIM matches AS INTEGER = Viper.Text.Pattern.IsMatch(pattern, "file.txt")
+DIM matches AS INTEGER = Viper.Text.Pattern.IsMatch("file.txt", pattern)
 PRINT matches  ' Output: 1 (true)
 
 ' Without escaping, dot matches any character
-matches = Viper.Text.Pattern.IsMatch("file.txt", "fileXtxt")
+matches = Viper.Text.Pattern.IsMatch("fileXtxt", "file.txt")
 PRINT matches  ' Output: 1 (true - dot matched X)
 ```
 
@@ -190,10 +190,10 @@ PRINT matches  ' Output: 1 (true - dot matched X)
 
 ```basic
 ' Simple email pattern (not comprehensive)
-DIM email_pattern AS STRING = "^\\w+@\\w+\\.\\w+$"
+DIM email_pattern AS STRING = "^\w+@\w+\.\w+$"
 
 FUNCTION IsValidEmail(email AS STRING) AS BOOLEAN
-    RETURN Viper.Text.Pattern.IsMatch(email_pattern, email)
+    RETURN Viper.Text.Pattern.IsMatch(email, email_pattern)
 END FUNCTION
 
 PRINT IsValidEmail("user@example.com")  ' Output: 1 (true)
@@ -262,22 +262,33 @@ when the pattern itself can match an empty string.
 
 ### Zia Example
 
-> CompiledPattern is not yet available as a constructible type in Zia. Use the static `Viper.Text.Pattern` functions instead.
+```rust
+module CompiledPatternDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.CompiledPattern as CompiledPattern;
+
+func start() {
+    var numbers = CompiledPattern.New("\\d+");
+    Say(numbers.Find("abc123def"));  // 123
+    Say(numbers.Replace("a1 b22", "#"));  // a# b#
+}
+```
 
 ### BASIC Example
 
 ```basic
 ' Compile a pattern once for multiple uses
-DIM numberPattern AS OBJECT = NEW Viper.Text.CompiledPattern("\d+")
+DIM numberPattern AS Viper.Text.CompiledPattern = NEW Viper.Text.CompiledPattern("\d+")
 
 ' Process multiple strings efficiently
-DIM texts AS OBJECT = NEW Viper.Collections.Seq()
+DIM texts AS Viper.Collections.Seq = NEW Viper.Collections.Seq()
 texts.Push("abc123def")
 texts.Push("foo456bar")
 texts.Push("no digits here")
 
-FOR i = 0 TO texts.Length - 1
-    DIM text AS STRING = texts.Get(i)
+FOR i = 0 TO texts.Count - 1
+    DIM text AS STRING = Viper.Collections.Seq.GetStr(texts, i)
     IF numberPattern.IsMatch(text) THEN
         PRINT "Found number: "; numberPattern.Find(text)
     ELSE
@@ -294,41 +305,41 @@ NEXT
 
 ```basic
 ' Pattern with capture groups
-DIM datePattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\d{4})-(\d{2})-(\d{2})")
+DIM datePattern AS Viper.Text.CompiledPattern = NEW Viper.Text.CompiledPattern("(\d\d\d\d)-(\d\d)-(\d\d)")
 
-DIM groups AS OBJECT = datePattern.Captures("Today is 2024-01-15")
-IF groups.Length > 0 THEN
-    PRINT "Full match: "; groups.Get(0)   ' Output: 2024-01-15
-    PRINT "Year: "; groups.Get(1)         ' Output: 2024
-    PRINT "Month: "; groups.Get(2)        ' Output: 01
-    PRINT "Day: "; groups.Get(3)          ' Output: 15
+DIM groups AS Viper.Collections.Seq = datePattern.Captures("Today is 2024-01-15")
+IF groups.Count > 0 THEN
+    PRINT "Full match: "; Viper.Collections.Seq.GetStr(groups, 0) ' Output: 2024-01-15
+    PRINT "Year: "; Viper.Collections.Seq.GetStr(groups, 1)       ' Output: 2024
+    PRINT "Month: "; Viper.Collections.Seq.GetStr(groups, 2)      ' Output: 01
+    PRINT "Day: "; Viper.Collections.Seq.GetStr(groups, 3)        ' Output: 15
 END IF
 
 ' Email extraction
-DIM emailPattern AS OBJECT = NEW Viper.Text.CompiledPattern("(\w+)@(\w+)\.(\w+)")
+DIM emailPattern AS Viper.Text.CompiledPattern = NEW Viper.Text.CompiledPattern("(\w+)@(\w+)\.(\w+)")
 groups = emailPattern.Captures("Contact: user@example.com")
-IF groups.Length > 0 THEN
-    PRINT "User: "; groups.Get(1)         ' Output: user
-    PRINT "Domain: "; groups.Get(2)       ' Output: example
-    PRINT "TLD: "; groups.Get(3)          ' Output: com
+IF groups.Count > 0 THEN
+    PRINT "User: "; Viper.Collections.Seq.GetStr(groups, 1)   ' Output: user
+    PRINT "Domain: "; Viper.Collections.Seq.GetStr(groups, 2) ' Output: example
+    PRINT "TLD: "; Viper.Collections.Seq.GetStr(groups, 3)    ' Output: com
 END IF
 ```
 
 ### Split with Limit Example
 
 ```basic
-DIM commaPattern AS OBJECT = NEW Viper.Text.CompiledPattern(",")
+DIM commaPattern AS Viper.Text.CompiledPattern = NEW Viper.Text.CompiledPattern(",")
 
 ' Split all
-DIM all AS OBJECT = commaPattern.Split("a,b,c,d,e")
-PRINT all.Length  ' Output: 5
+DIM all AS Viper.Collections.Seq = commaPattern.Split("a,b,c,d,e")
+PRINT all.Count  ' Output: 5
 
 ' Split with limit (max 3 parts)
-DIM limited AS OBJECT = commaPattern.SplitN("a,b,c,d,e", 3)
-PRINT limited.Length        ' Output: 3
-PRINT limited.Get(0)     ' Output: a
-PRINT limited.Get(1)     ' Output: b
-PRINT limited.Get(2)     ' Output: c,d,e (rest in last element)
+DIM limited AS Viper.Collections.Seq = commaPattern.SplitN("a,b,c,d,e", 3)
+PRINT limited.Count        ' Output: 3
+PRINT Viper.Collections.Seq.GetStr(limited, 0) ' Output: a
+PRINT Viper.Collections.Seq.GetStr(limited, 1) ' Output: b
+PRINT Viper.Collections.Seq.GetStr(limited, 2) ' Output: c,d,e (rest in last element)
 ```
 
 ### When to Use CompiledPattern vs Pattern
@@ -343,10 +354,10 @@ PRINT limited.Get(2)     ' Output: c,d,e (rest in last element)
 
 ### Performance Notes
 
-- Compiling a pattern takes time proportional to pattern complexity
-- Once compiled, matching is fast regardless of pattern complexity
-- For patterns used more than 2-3 times, `CompiledPattern` is more efficient
-- The internal `Pattern` class caches 16 patterns, but explicit `CompiledPattern` avoids cache thrashing
+- Compilation is paid once per `CompiledPattern` instance, while matching still depends on both pattern and input complexity
+- The matcher is a backtracking engine with a per-attempt step cap; pathological patterns can stop matching at that cap rather than backtrack indefinitely
+- Static `Pattern` operations share a lock-protected 16-entry LRU compile cache. An explicit `CompiledPattern` is useful when a pattern must remain compiled independently of that cache.
+- Capture extraction uses fixed storage for 32 explicit groups, plus element 0 for the whole match; keep capture patterns within that limit. Captures inside quantified groups are best-effort rather than fully PCRE-compatible.
 
 ---
 
@@ -500,7 +511,7 @@ LOOP
 
 ## Viper.Text.Diff
 
-Line-based text differencing using the Myers diff algorithm. Computes changes between two strings and can produce unified diffs or apply patches.
+Line-based text differencing using a longest-common-subsequence table. It computes a minimal insertion/deletion script for typical inputs, can render a compact diff, and can reconstruct the modified text.
 
 **Type:** Static utility class
 
@@ -511,14 +522,15 @@ Line-based text differencing using the Myers diff algorithm. Computes changes be
 | `CountChanges(a, b)`        | `Integer(String, String)`    | Count number of added + removed lines between two texts  |
 | `Lines(a, b)`               | `Seq(String, String)`        | Compute line-by-line diff with `" "`, `"+"`, `"-"` prefixes |
 | `Patch(original, diff)`     | `String(String, Seq)`        | Apply a diff (from `Lines`) to reconstruct modified text |
-| `Unified(a, b, context)`    | `String(String, String, Integer)` | Produce unified diff format with context lines     |
+| `Unified(a, b, context)`    | `String(String, String, Integer)` | Produce compact unified-diff-style text with context lines |
 
 ### Notes
 
 - Each entry in the `Lines` result is prefixed: `" "` (unchanged), `"+"` (added), `"-"` (removed)
 - `Patch` takes the original text and a Seq of diff lines (as returned by `Lines`) and reconstructs the modified text
-- `Unified` produces standard unified diff output similar to `diff -u`, with the specified number of context lines around each change
+- `Unified` emits `--- a` / `+++ b` headers and selected prefixed lines, but no `@@` hunk headers; it is diagnostic text, not a patch-applicable standard unified diff
 - All methods operate on line boundaries (splitting on newlines)
+- The implementation uses O(n*m) time and space for n and m input lines, so it is intended for modest text rather than very large files
 - Diffing and patching use runtime string byte lengths, so lines containing embedded `NUL` bytes are compared and reconstructed without truncation
 - `Lines` returns an owned sequence of owned line strings
 
@@ -530,6 +542,7 @@ module DiffDemo;
 bind Viper.Terminal;
 bind Viper.Text.Diff as Diff;
 bind Viper.Text.Fmt as Fmt;
+bind Viper.Collections.Seq as Seq;
 
 func start() {
     var a = "hello world";
@@ -539,7 +552,7 @@ func start() {
     var orig = "hello\nworld\nfoo";
     var modified = "hello\nthere\nfoo";
     var diff = Diff.Lines(orig, modified);
-    Say("Diff lines: " + Fmt.Int(diff.Length));
+    Say("Diff lines: " + Fmt.Int(Seq.get_Count(diff)));
 
     var unified = Diff.Unified(orig, modified, 1);
     Say(unified);
@@ -562,8 +575,8 @@ PRINT changes  ' Output: 2
 ' Compute line-by-line diff
 DIM orig AS STRING = "hello" + CHR$(10) + "world" + CHR$(10) + "foo"
 DIM modified AS STRING = "hello" + CHR$(10) + "there" + CHR$(10) + "foo"
-DIM diff AS OBJECT = Viper.Text.Diff.Lines(orig, modified)
-PRINT diff.Length  ' Output: 4 (one unchanged, one removed, one added, one unchanged)
+DIM diff AS Viper.Collections.Seq = Viper.Text.Diff.Lines(orig, modified)
+PRINT diff.Count  ' Output: 4 (one unchanged, one removed, one added, one unchanged)
 
 ' Produce unified diff
 DIM unified AS STRING = Viper.Text.Diff.Unified(orig, modified, 1)
@@ -603,6 +616,8 @@ SQL-style LIKE pattern matching on strings. These are methods available on any S
 | `%`     | Matches any sequence of zero or more characters | `"hello".Like("%llo")` is true   |
 | `_`     | Matches exactly one character                   | `"hello".Like("h_llo")` is true  |
 | `\`     | Escape character for literal `%`, `_`, or `\`   | `"100%".Like("100\%")` is true   |
+
+`_` consumes one UTF-8 code point and `%` advances on UTF-8 code-point boundaries. Literal matching remains bytewise, and `LikeCI` performs ASCII-only case folding.
 
 ### Zia Example
 
@@ -669,7 +684,7 @@ Reusable scoring and highlight ranges for command palettes, quick-open, and symb
 | `Score(query, candidate)` | `Integer(String, String)` | Return a deterministic match score, or `-1` when the query does not match |
 | `Match(query, candidate)` | `Map(String, String)` | Return `matched`, `score`, `query`, `candidate`, and matched `ranges` |
 
-`Match` returns ranges as a `Seq` of maps with `start`, `end`, and `length` fields. Ranges are candidate string offsets and can be used directly for UI highlight spans.
+`Match` returns ranges as a `Seq` of maps with `start` and `end` fields. The offsets are zero-based byte offsets into the candidate, and `end` is exclusive.
 
 ### Notes
 

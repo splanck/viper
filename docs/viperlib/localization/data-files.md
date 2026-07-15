@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-07-14
 ---
 
 # Locale Data Files
@@ -117,23 +117,26 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
               "middle": "{0} {1}",   "end": "{0} {1}" }
   },
 
-  "collation": { "strength": 3, "reorder": [], "overrides": [] }
+  "collation": { "strength": 3 }
 }
 ```
 
 ## Field rules
 
-- **`tag`** — must parse as valid BCP-47. Canonicalized on load.
+- **`tag`** — required; must parse as a valid non-`root` BCP-47 tag. It is canonicalized on load.
 - **Missing optional fields** — inherit the baked en-US default for that field.
+- **Top-level values** — `text_direction` is `"ltr"` or `"rtl"`; `first_day_of_week` is `0..6` (`0` = Sunday); `measurement` is `"metric"`, `"us"`, or `"uk"`.
 - **Months/Days arrays** — exact lengths required: 12 months, 7 days (index 0 = Sunday).
 - **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`.
 - **Digits** — `numbers.digits` must contain exactly 10 UTF-8 codepoints.
-- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; currency patterns must contain only literal text plus `{n}` and `{s}` and include both placeholders.
+- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; `fraction_digits` must be `0..9`; currency patterns may contain only literal text plus `{n}` and `{s}` and must include both placeholders.
 - **Relative time** — `past` and `future` must contain `{n}` and `{unit}`. `now`, `short_past`, `short_future`, and `short_units` are optional and inherit en-US defaults when absent.
-- **String length** — individual string fields capped at 256 bytes.
+- **Plural rules** — each cardinal/ordinal chain must contain `1..32` entries. A single predicate range list is capped at 64 ranges.
+- **Collation** — the optional internal `strength` value is `1..4`. Other collation keys, including `reorder` and `overrides`, are currently ignored because `Collator` is not on the public frontend surface.
+- **String length** — recognized individual string fields and array elements are capped at 256 bytes.
 - **File size** — total capped at 256 KB.
 - **Unknown keys** — ignored.
-- **Loaded data lifetime** — `Unload` and `Reset` free JSON/VPA data only when no live formatter/collator/message object is retaining it.
+- **Loaded data lifetime** — `Unload` and `Reset` free JSON/asset data only when no live `Locale` handle or localization object retains it.
 
 ## Plural rule mini-language
 
@@ -184,14 +187,14 @@ Each style (`and`, `or`, `unit`) has four templates using `{0}` / `{1}` placehol
 
 Join algorithm for N ≥ 3: apply `end` to `items[N-2], items[N-1]`, then `middle` from right-to-left, then `start` with `items[0]`.
 
-## VPA asset packaging
+## Asset packaging
 
-Locale data files can be embedded in the compiled binary via VPA (see [Viper.IO.Assets](../io/assets.md)):
+Locale data files can be embedded in the executable's asset blob (see [Viper.IO.Assets](../io/assets.md)):
 
 ```
 # viper.project
-pack-compressed locales/fr-FR.json
-pack-compressed locales/de-DE.json
+embed locales/fr-FR.json
+embed locales/de-DE.json
 ```
 
 Load at runtime:
@@ -199,7 +202,17 @@ Load at runtime:
 LocaleManager.LoadFromAsset("locales/fr-FR.json")
 ```
 
-VPA-embedded locale files are resolved independently of the filesystem search path.
+For sidecar VPA files, the directive requires both a pack name and a source path:
+
+```
+# Both entries go into <project-name>-locales.vpa
+pack-compressed locales locales/fr-FR.json
+pack-compressed locales locales/de-DE.json
+```
+
+Mount the generated VPA with `Viper.IO.Assets.Mount` before calling
+`LoadFromAsset`. Embedded and mounted assets are resolved independently of the
+locale filesystem search path.
 
 ## See Also
 

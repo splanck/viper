@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build demo binaries on Linux using Viper object generation plus the system
-# linker. Optional smoke-run validation can be enabled with --run.
+# Build curated Zia showcase binaries on Linux using Viper's native backend and
+# selected linker. Optional smoke-run validation can be enabled with --run.
 # Usage: ./scripts/build_demos_linux.sh [options]
 
 set -euo pipefail
@@ -9,8 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
 BIN_DIR="$ROOT_DIR/examples/bin"
-GAMES_DIR="$ROOT_DIR/examples/games"
-APPS_DIR="$ROOT_DIR/examples/apps"
+DEMO_MANIFEST="$SCRIPT_DIR/demo_projects.list"
 
 VIPER="$BUILD_DIR/src/tools/viper/viper"
 LINK_CMD="${CXX:-c++}"
@@ -180,28 +179,39 @@ if [[ $CLEAN -eq 1 ]]; then
     mkdir -p "$STAMP_DIR"
 fi
 
-ZIA_DEMOS=(
-    "paint:${APPS_DIR}/paint"
-    "3dbowling:${GAMES_DIR}/3dbowling"
-    "ridgebound:${GAMES_DIR}/ridgebound"
-    "ashfall:${GAMES_DIR}/ashfall"
-    "crackman:${GAMES_DIR}/crackman"
-    "vipersql:${APPS_DIR}/vipersql"
-    "chess:${GAMES_DIR}/chess"
-    "xenoscape:${GAMES_DIR}/xenoscape"
-    "baseball:${GAMES_DIR}/baseball"
-    "centipede:${GAMES_DIR}/centipede"
-    "frogger:${GAMES_DIR}/frogger"
-    "vtris:${GAMES_DIR}/vtris"
-    "3dscene:${GAMES_DIR}/3dscene"
-    "asset_demo:${APPS_DIR}/asset_demo"
-)
+SHOWCASE_DEMOS=()
+load_demo_manifest() {
+    if [[ ! -f "$DEMO_MANIFEST" ]]; then
+        echo -e "${RED}Error: demo manifest not found: $DEMO_MANIFEST${NC}"
+        exit 1
+    fi
 
-BASIC_DEMOS=(
-    "pacman-basic:${GAMES_DIR}/pacman-basic"
-    "frogger-basic:${GAMES_DIR}/frogger-basic"
-    "centipede-basic:${GAMES_DIR}/centipede-basic"
-)
+    local name category directory extra
+    local line_number=0
+    while IFS='|' read -r name category directory extra || [[ -n "${name:-}" ]]; do
+        line_number=$((line_number + 1))
+        [[ -z "${name:-}" || "${name:0:1}" == "#" ]] && continue
+        if [[ -z "${category:-}" || -z "${directory:-}" || -n "${extra:-}" ]]; then
+            echo -e "${RED}Error: invalid demo manifest entry at line $line_number${NC}"
+            exit 1
+        fi
+        case "$category" in
+            games|apps) ;;
+            *)
+                echo -e "${RED}Error: invalid demo category '$category' at line $line_number${NC}"
+                exit 1
+                ;;
+        esac
+        SHOWCASE_DEMOS+=("$name:$ROOT_DIR/examples/$category/$directory")
+    done < "$DEMO_MANIFEST"
+
+    if [[ ${#SHOWCASE_DEMOS[@]} -eq 0 ]]; then
+        echo -e "${RED}Error: demo manifest contains no projects${NC}"
+        exit 1
+    fi
+}
+
+load_demo_manifest
 
 link_demo() {
     local obj_file="$1"
@@ -466,7 +476,7 @@ FAILED=0
 SUCCEEDED=0
 SKIPPED=0
 
-echo "=== Zia Demos ==="
+echo "=== Zia Showcase Demos ==="
 echo ""
 
 build_demo_group() {
@@ -527,11 +537,7 @@ build_demo_group() {
     done
 }
 
-build_demo_group ZIA_DEMOS
-
-echo "=== BASIC Demos ==="
-echo ""
-build_demo_group BASIC_DEMOS
+build_demo_group SHOWCASE_DEMOS
 
 echo "=============================================="
 TOTAL=$((SUCCEEDED + FAILED + SKIPPED))

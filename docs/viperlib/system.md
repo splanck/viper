@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-14
 ---
 
 # System
@@ -12,17 +12,17 @@ last-verified: 2026-06-20
 
 ## Contents
 
-- [Viper.System.Environment](#viperenvironment)
+- [Viper.System.Environment](#vipersystemenvironment)
 - [Viper.System.Clipboard](#vipersystemclipboard)
 - [Viper.System.Shutdown](#vipersystemshutdown)
-- [Viper.System.Exec](#viperexec)
+- [Viper.System.Exec](#vipersystemexec)
 - [Viper.System.Process](#vipersystemprocess)
 - [Viper.System.Pty](#vipersystempty)
-- [Viper.System.Machine](#vipermachine)
+- [Viper.System.Machine](#vipersystemmachine)
 - [Viper.Runtime.Unsafe](#viperruntimeunsafe)
 - [Viper.Runtime.GC](#viperruntimegc)
 - [Viper.Memory](#vipermemory)
-- [Viper.Memory.GC](#vipermemory-gc)
+- [Viper.Memory.GC](#vipermemorygc)
 - [Viper.Terminal](#viperterminal)
 
 ---
@@ -69,7 +69,7 @@ func start() {
 ### BASIC Example
 
 ```basic
-' Program invoked as: viper front basic -run app.bas -- arg1 arg2 arg3
+' Program invoked as: viper run app.bas -- arg1 arg2 arg3
 
 DIM count AS INTEGER
 count = Viper.System.Environment.GetArgumentCount()
@@ -129,11 +129,15 @@ UTF-8 text clipboard access backed by the active desktop clipboard backend.
 ### Zia Example
 
 ```rust
+module ClipboardDemo;
+
 bind Viper.System.Clipboard as Clipboard;
 
-Clipboard.Set("Copied from Viper")
-if Clipboard.HasText() {
-    var text = Clipboard.Get()
+func start() {
+    Clipboard.Set("Copied from Viper");
+    if (Clipboard.HasText()) {
+        var text = Clipboard.Get();
+    }
 }
 ```
 
@@ -348,21 +352,21 @@ END IF
 
 Streaming child-process control for tools, build jobs, and long-running IDE tasks.
 
-**Type:** Static utility class plus process handle object
+**Type:** Static utility class returning `Viper.System.Process.ProcessHandle` objects
 
 ### Static Methods
 
 | Method                         | Signature                  | Description                                             |
 |--------------------------------|----------------------------|---------------------------------------------------------|
-| `Start(program, args)`         | `Process.Handle(String, Seq)` | Start a process with inherited cwd and environment   |
-| `StartIn(program, args, cwd)`  | `Process.Handle(String, Seq, String)` | Start a process in a working directory        |
-| `StartWithEnv(program, args, cwd, env)` | `Process.Handle(String, Seq, String, Seq)` | Start with explicit cwd and environment |
+| `Start(program, args)`         | `ProcessHandle(String, Seq)` | Start a process with inherited cwd and environment   |
+| `StartIn(program, args, cwd)`  | `ProcessHandle(String, Seq, String)` | Start a process in a working directory        |
+| `StartWithEnv(program, args, cwd, env)` | `ProcessHandle(String, Seq, String, Seq)` | Start with explicit cwd and environment |
 
 `args` is a `Seq` of argument strings and does not include the program name. `env` is either `NULL` to inherit the
 current environment or a `Seq` of `KEY=value` strings. `cwd` may be `NULL` or empty to inherit the current working
 directory.
 
-### Handle Methods
+### Viper.System.Process.ProcessHandle
 
 | Method         | Signature    | Description                                                  |
 |----------------|--------------|--------------------------------------------------------------|
@@ -373,12 +377,16 @@ directory.
 | `ReadStderr()` | `String()`   | Returns buffered stderr bytes available now, then clears them |
 | `ReadStdoutResult()` | `Map()` | Returns `text` and `truncated` for buffered stdout |
 | `ReadStderrResult()` | `Map()` | Returns `text` and `truncated` for buffered stderr |
+| `WriteStdin(data)` | `Integer(String)` | Write bytes to the child's standard input |
 | `ExitCode()`   | `Integer()`  | Returns exit code, or `-1` while running/invalid             |
 | `Kill()`       | `Boolean()`  | Requests process termination                                |
 | `Wait()`       | `Integer()`  | Blocks until process exit and returns the exit code          |
 | `Destroy()`    | `Void()`     | Closes process resources; terminates a still-running child   |
 
 ### Zia Example
+
+The command below is a POSIX example. On Windows, use `cmd.exe` with arguments such as `/c` and a Windows command
+string, or start the desired executable directly without a shell.
 
 ```rust
 module ProcessDemo;
@@ -397,8 +405,8 @@ func start() {
     while proc.IsRunning() {
         var out = proc.ReadStdout();
         var err = proc.ReadStderr();
-        if out.Len() > 0 { Say(out); }
-        if err.Len() > 0 { Say(err); }
+        if Viper.String.get_Length(out) > 0 { Say(out); }
+        if Viper.String.get_Length(err) > 0 { Say(err); }
     }
 
     Say(proc.ReadStdout());
@@ -437,7 +445,7 @@ terminal-like IDE surfaces.
 | `IsSupported()` | `Boolean()` | Returns `TRUE` when the current platform can create PTYs |
 | `LastError()` | `String()` | Compatibility diagnostic for legacy `Open()` / support checks |
 
-### Handle Methods
+### Viper.System.Pty.PtySession
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -475,8 +483,8 @@ System information queries providing read-only access to machine properties.
 
 | Property   | Type      | Description                                                              |
 |------------|-----------|--------------------------------------------------------------------------|
-| `OS`       | `String`  | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
-| `OSVer`    | `String`  | Operating system version string (e.g., `"14.2.1"` on macOS)              |
+| `Os`       | `String`  | Operating system name: `"linux"`, `"macos"`, `"windows"`, or `"unknown"` |
+| `OsVer`    | `String`  | Operating system version string (e.g., `"14.2.1"` on macOS)              |
 | `Host`     | `String`  | Machine hostname                                                         |
 | `User`     | `String`  | Current username                                                         |
 | `Home`     | `String`  | Path to user's home directory                                            |

@@ -221,7 +221,8 @@ The engine targets cross-platform parity through:
 3. **No external dependencies** — nothing to install, configure, or version-match per platform
 4. **Host-capability smoke tests** — `scripts/run_cross_platform_smoke.sh` runs the checks available on the current host; full parity claims require current macOS, Linux, and Windows results
 
-See [Cross-Platform](cross-platform.md) for platform-specific details.
+See [Platform Behavioral Differences](../cross-platform/platform-differences.md) for
+platform-specific details.
 
 ---
 

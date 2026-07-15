@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-14
 ---
 
 # Zia Language Server Reference
@@ -112,7 +112,7 @@ For detailed JSON schemas and examples, see [MCP Tool Specification](zia-server-
 
 ```jsonl
 → {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"zia-server","version":"0.1.0"}}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"zia-server","version":"0.2.99.20260704"}}}
 
 → {"jsonrpc":"2.0","method":"initialized"}
 

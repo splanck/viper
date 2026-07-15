@@ -348,10 +348,10 @@ void contact3d_init_single_point(rt_contact3d *contact,
 }
 
 /// @brief Add a manifold point if it is finite, non-duplicate, and the manifold isn't full.
-static void contact3d_try_add_manifold_point(rt_contact3d *contact,
-                                             const double *point,
-                                             const double *normal,
-                                             double separation) {
+void contact3d_try_add_manifold_point(rt_contact3d *contact,
+                                      const double *point,
+                                      const double *normal,
+                                      double separation) {
     if (!contact || !point || !normal || !ph3d_vec3_all_finite(point) ||
         !ph3d_vec3_all_finite(normal))
         return;
@@ -842,6 +842,235 @@ int contact3d_expand_obb_manifold(rt_contact3d *contact,
     return 1;
 }
 
+/// @brief Deterministic orthonormal tangent basis for a unit plane normal.
+/// @details Mirrors the solver's ph3d_contact_tangents construction so spread
+///   selection over a contact plane is stable frame to frame.
+static void contact3d_plane_tangents(const double *n, double *t1, double *t2) {
+    if (fabs(n[0]) >= 0.57735) {
+        vec3_set(t1, n[1], -n[0], 0.0);
+    } else {
+        vec3_set(t1, 0.0, n[2], -n[1]);
+    }
+    if (vec3_normalize_in_place(t1) < 1e-12)
+        vec3_set(t1, 1.0, 0.0, 0.0);
+    vec3_cross(n, t1, t2);
+    if (vec3_normalize_in_place(t2) < 1e-12)
+        vec3_set(t2, 0.0, 0.0, 1.0);
+}
+
+#define PH3D_SUPPORT_PLANE_MAX_CANDIDATES 64
+
+typedef struct {
+    double point[3];
+    double distance; /* signed distance along the oriented contact normal */
+} ph3d_support_plane_candidate;
+
+/// @brief Append a support-plane candidate, keeping the deepest
+///   PH3D_SUPPORT_PLANE_MAX_CANDIDATES when the buffer saturates.
+static void ph3d_support_plane_push(ph3d_support_plane_candidate *candidates,
+                                    int32_t *count,
+                                    const double *point,
+                                    double distance) {
+    if (!candidates || !count || !isfinite(distance) || !ph3d_vec3_all_finite(point))
+        return;
+    if (*count < PH3D_SUPPORT_PLANE_MAX_CANDIDATES) {
+        vec3_copy(candidates[*count].point, point);
+        candidates[*count].distance = distance;
+        (*count)++;
+        return;
+    }
+    {
+        int32_t worst = 0;
+        for (int32_t i = 1; i < *count; ++i) {
+            if (candidates[i].distance > candidates[worst].distance)
+                worst = i;
+        }
+        if (distance < candidates[worst].distance) {
+            vec3_copy(candidates[worst].point, point);
+            candidates[worst].distance = distance;
+        }
+    }
+}
+
+/// @brief Expand a single-point contact against a mesh or heightfield surface into a
+///   stable multi-point manifold from the OTHER shape's support vertices.
+/// @details Mesh and heightfield narrow phases report only the deepest point, so a
+///   crate or convex hull resting on terrain balances on ONE contact — it micro-rocks,
+///   never settles, and slowly drifts. This pass treats the contact plane (through the
+///   reported point, along the reported normal) as the local surface and collects the
+///   solid side's support vertices (box corners, hull vertices) that lie within a
+///   feature-scaled tolerance of the deepest one, spread-selecting up to
+///   PH3D_MAX_MANIFOLD_POINTS well-separated points. Per-point separations grow with
+///   the vertex's height above the deepest support so the solver loads them softly.
+/// @return 1 when the manifold gained points, 0 to keep the single-point contact.
+int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
+                                              void *a_leaf,
+                                              const rt_collider_pose *a_pose,
+                                              void *b_leaf,
+                                              const rt_collider_pose *b_pose) {
+    void *surface_leaf = NULL;
+    void *solid_leaf = NULL;
+    const rt_collider_pose *solid_pose = NULL;
+    int solid_is_a = 0;
+    int64_t a_type;
+    int64_t b_type;
+    double n[3];
+    double solid_sign;
+    ph3d_support_plane_candidate candidates[PH3D_SUPPORT_PLANE_MAX_CANDIDATES];
+    int32_t candidate_count = 0;
+    double char_size = 0.0;
+    double d_min = DBL_MAX;
+    double tol;
+
+    if (!contact || contact->contact_count != 1 || !a_leaf || !b_leaf || !a_pose || !b_pose)
+        return 0;
+    a_type = rt_collider3d_get_type(a_leaf);
+    b_type = rt_collider3d_get_type(b_leaf);
+    if ((a_type == RT_COLLIDER3D_TYPE_MESH || a_type == RT_COLLIDER3D_TYPE_HEIGHTFIELD) &&
+        (b_type == RT_COLLIDER3D_TYPE_BOX || b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL)) {
+        surface_leaf = a_leaf;
+        solid_leaf = b_leaf;
+        solid_pose = b_pose;
+        solid_is_a = 0;
+    } else if ((b_type == RT_COLLIDER3D_TYPE_MESH || b_type == RT_COLLIDER3D_TYPE_HEIGHTFIELD) &&
+               (a_type == RT_COLLIDER3D_TYPE_BOX || a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL)) {
+        surface_leaf = b_leaf;
+        solid_leaf = a_leaf;
+        solid_pose = a_pose;
+        solid_is_a = 1;
+    } else {
+        return 0;
+    }
+    (void)surface_leaf;
+
+    vec3_copy(n, contact->normal);
+    if (vec3_normalize_in_place(n) <= 1e-12)
+        return 0;
+    /* The contact normal points A->B. The solid's resting-face vertices sit on
+     * its -n side when the solid is B (floor below pushes B up along +n) and on
+     * its +n side when the solid is A; fold the sign so "smaller distance means
+     * deeper support" in both arrangements. */
+    solid_sign = solid_is_a ? -1.0 : 1.0;
+
+    {
+        double local_min[3];
+        double local_max[3];
+        rt_collider3d_get_local_bounds_raw(solid_leaf, local_min, local_max);
+        char_size = DBL_MAX;
+        for (int axis = 0; axis < 3; ++axis) {
+            double extent = (local_max[axis] - local_min[axis]) *
+                            pose_abs_scale_or_unit(solid_pose->scale[axis]) * 0.5;
+            if (isfinite(extent) && extent < char_size)
+                char_size = extent;
+        }
+        if (char_size == DBL_MAX || char_size <= 1e-9)
+            return 0;
+    }
+
+    if (rt_collider3d_get_type(solid_leaf) == RT_COLLIDER3D_TYPE_BOX) {
+        double he[3];
+        rt_collider3d_get_box_half_extents_raw(solid_leaf, he);
+        for (int i = 0; i < 8; ++i) {
+            double local[3] = {(i & 1) ? he[0] : -he[0],
+                               (i & 2) ? he[1] : -he[1],
+                               (i & 4) ? he[2] : -he[2]};
+            double world[3];
+            double rel[3];
+            transform_point_from_pose(solid_pose, local, world);
+            vec3_sub(world, contact->point, rel);
+            ph3d_support_plane_push(
+                candidates, &candidate_count, world, solid_sign * vec3_dot(rel, n));
+        }
+    } else {
+        rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(solid_leaf);
+        uint32_t vertex_count = mesh ? rt_mesh3d_safe_vertex_count(mesh) : 0u;
+        if (!mesh || vertex_count == 0)
+            return 0;
+        if (vertex_count > 4096u)
+            vertex_count = 4096u;
+        for (uint32_t i = 0; i < vertex_count; ++i) {
+            double local[3] = {mesh->vertices[i].pos[0],
+                               mesh->vertices[i].pos[1],
+                               mesh->vertices[i].pos[2]};
+            double world[3];
+            double rel[3];
+            transform_point_from_pose(solid_pose, local, world);
+            vec3_sub(world, contact->point, rel);
+            ph3d_support_plane_push(
+                candidates, &candidate_count, world, solid_sign * vec3_dot(rel, n));
+        }
+    }
+    if (candidate_count < 2)
+        return 0;
+
+    for (int32_t i = 0; i < candidate_count; ++i) {
+        if (candidates[i].distance < d_min)
+            d_min = candidates[i].distance;
+    }
+    if (!isfinite(d_min))
+        return 0;
+    /* Feature-scaled tolerance: wide enough to keep a mildly tilted resting face
+     * (corners spread by extent*sin(tilt)), narrow enough to never reach the
+     * opposite face (2x the minimum half-extent away). The 0.005 pad mirrors the
+     * solver's PH3D_PENETRATION_SLOP. */
+    tol = fmax(2.0 * fabs(contact->separation) + 0.005, 0.05 * char_size);
+    if (tol > 0.45 * char_size)
+        tol = 0.45 * char_size;
+
+    {
+        double t1[3];
+        double t2[3];
+        int32_t added = 0;
+        contact3d_plane_tangents(n, t1, t2);
+        for (int quadrant = 0; quadrant < 4 && contact->contact_count < PH3D_MAX_MANIFOLD_POINTS;
+             ++quadrant) {
+            double best_score = -DBL_MAX;
+            int32_t best_index = -1;
+            for (int32_t i = 0; i < candidate_count; ++i) {
+                double rel[3];
+                double cu;
+                double cv;
+                double score;
+                if (candidates[i].distance > d_min + tol)
+                    continue;
+                vec3_sub(candidates[i].point, contact->point, rel);
+                cu = vec3_dot(rel, t1);
+                cv = vec3_dot(rel, t2);
+                switch (quadrant) {
+                    case 0:
+                        score = -cu - cv;
+                        break;
+                    case 1:
+                        score = cu - cv;
+                        break;
+                    case 2:
+                        score = cu + cv;
+                        break;
+                    default:
+                        score = -cu + cv;
+                        break;
+                }
+                if (score > best_score) {
+                    best_score = score;
+                    best_index = i;
+                }
+            }
+            if (best_index < 0)
+                continue;
+            {
+                int32_t before = contact->contact_count;
+                double separation =
+                    contact->separation + (candidates[best_index].distance - d_min);
+                contact3d_try_add_manifold_point(
+                    contact, candidates[best_index].point, contact->normal, separation);
+                if (contact->contact_count > before)
+                    added++;
+            }
+        }
+        return added > 0 ? 1 : 0;
+    }
+}
+
 /// @brief Identity test for contacts: same body pair AND same collider pair.
 ///
 /// The collider check matters for compound bodies — same body pair but
@@ -1091,22 +1320,37 @@ static void collider_support_point(void *collider,
             rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(collider);
             double best_dot = -DBL_MAX;
             if (mesh && mesh->vertex_count > 0) {
+                /* Argmax in LOCAL space: with world = R*(S o v) + T,
+                 * dot(world, d) = dot(v, S o (R^-1 d)) + const, so scanning raw
+                 * local vertices against the once-transformed direction picks the
+                 * exact same vertex while skipping a full pose transform per
+                 * vertex — this is GJK/EPA's hottest inner loop (30-80 support
+                 * calls per pair per substep). Only the winner is transformed. */
+                double inv_rotation[4];
+                double local_dir[3];
+                uint32_t best_index = 0;
                 rt_mesh3d_refresh_bounds(mesh);
+                quat_conjugate(pose->rotation, inv_rotation);
+                quat_rotate_vec3(inv_rotation, dir, local_dir);
+                local_dir[0] *= pose->scale[0];
+                local_dir[1] *= pose->scale[1];
+                local_dir[2] *= pose->scale[2];
                 for (uint32_t i = 0; i < mesh->vertex_count; ++i) {
-                    double local[3] = {mesh->vertices[i].pos[0],
-                                       mesh->vertices[i].pos[1],
-                                       mesh->vertices[i].pos[2]};
-                    double world[3];
-                    double d;
-                    transform_point_from_pose(pose, local, world);
-                    d = vec3_dot(world, dir);
+                    double d = (double)mesh->vertices[i].pos[0] * local_dir[0] +
+                               (double)mesh->vertices[i].pos[1] * local_dir[1] +
+                               (double)mesh->vertices[i].pos[2] * local_dir[2];
                     if (d > best_dot) {
                         best_dot = d;
-                        vec3_copy(out_point, world);
+                        best_index = i;
                     }
                 }
-                if (best_dot > -DBL_MAX)
+                if (best_dot > -DBL_MAX) {
+                    double local[3] = {mesh->vertices[best_index].pos[0],
+                                       mesh->vertices[best_index].pos[1],
+                                       mesh->vertices[best_index].pos[2]};
+                    transform_point_from_pose(pose, local, out_point);
                     return;
+                }
             }
             break;
         }

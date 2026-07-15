@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Build native binaries for Zia demos using viper project format
+REM Build curated Zia showcase binaries using viper project format
 REM Usage: scripts\build_demos_win.cmd [--clean] [--arch arm64|x64]
 
 set "SCRIPT_DIR=%~dp0"
@@ -24,8 +24,7 @@ if not "%VIPER_DEMO_TOOL_BUILD_DIR%"=="" (
     set "TOOL_BUILD_DIR=%ROOT_DIR%\build"
 )
 set "BIN_DIR=%ROOT_DIR%\examples\bin"
-set "GAMES_DIR=%ROOT_DIR%\examples\games"
-set "APPS_DIR=%ROOT_DIR%\examples\apps"
+set "DEMO_MANIFEST=%SCRIPT_DIR%demo_projects.list"
 
 if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
 if "%JOBS%"=="" set "JOBS=%NUMBER_OF_PROCESSORS%"
@@ -111,6 +110,10 @@ echo Using target runtime build: %BUILD_DIR%
 echo.
 
 REM Check prerequisites
+if not exist "%DEMO_MANIFEST%" (
+    echo ERROR: demo manifest not found: %DEMO_MANIFEST%
+    exit /b 1
+)
 if not exist "%VIPER%" (
     call :ensure_tool_build
     if errorlevel 1 exit /b 1
@@ -131,19 +134,29 @@ if %CLEAN%==1 (
     for /d %%D in ("%BIN_DIR%\*") do rmdir /s /q "%%~fD" 2>nul
 )
 
-echo === Zia Demos ===
+echo === Zia Showcase Demos ===
 echo.
 
-REM Build Zia demos
-call :build_demo paint "%APPS_DIR%\paint"
-call :build_demo 3dbowling "%GAMES_DIR%\3dbowling"
-call :build_demo ridgebound "%GAMES_DIR%\ridgebound"
-call :build_demo ashfall "%GAMES_DIR%\ashfall"
-call :build_demo crackman "%GAMES_DIR%\crackman"
-call :build_demo vipersql "%APPS_DIR%\vipersql"
-call :build_demo chess "%GAMES_DIR%\chess"
-call :build_demo xenoscape "%GAMES_DIR%\xenoscape"
-call :build_demo baseball "%GAMES_DIR%\baseball"
+REM Build every project in the shared showcase manifest.
+set MANIFEST_ENTRIES=0
+for /f "usebackq eol=# tokens=1-3 delims=|" %%A in ("%DEMO_MANIFEST%") do (
+    set /a MANIFEST_ENTRIES+=1
+    if "%%C"=="" (
+        echo ERROR: invalid demo manifest entry for "%%A"
+        set /a FAILED+=1
+    ) else if /I "%%B"=="games" (
+        call :build_demo "%%A" "%ROOT_DIR%\examples\games\%%C"
+    ) else if /I "%%B"=="apps" (
+        call :build_demo "%%A" "%ROOT_DIR%\examples\apps\%%C"
+    ) else (
+        echo ERROR: invalid demo category "%%B" for "%%A"
+        set /a FAILED+=1
+    )
+)
+if %MANIFEST_ENTRIES%==0 (
+    echo ERROR: demo manifest contains no projects
+    exit /b 1
+)
 
 echo ==============================================
 if %FAILED%==0 (

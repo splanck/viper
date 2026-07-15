@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Functional & Lazy
@@ -13,7 +13,7 @@ last-verified: 2026-05-13
 
 ## Viper.Collections.Seq
 
-Dynamic sequence (growable array) with stack and queue operations. Viper's primary growable collection type, supporting
+Dynamic sequence (growable array) with stack operations. Viper's primary growable collection type, supporting
 push/pop, insert/remove, and slicing operations.
 
 **Type:** Instance (obj)
@@ -23,7 +23,7 @@ push/pop, insert/remove, and slicing operations.
 
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
-| `Length`  | Integer | Number of elements currently in the sequence   |
+| `Count`   | Integer | Number of elements currently in the sequence   |
 | `Capacity` | Integer | Current allocated capacity                   |
 | `IsEmpty` | Boolean | Returns true if the sequence has zero elements |
 
@@ -76,7 +76,7 @@ push/pop, insert/remove, and slicing operations.
 ### Notes
 
 - Public `Seq` constructors (`new Seq()`, `Seq.New()`, `Seq.New(size)`, and `Seq.WithCapacity(cap)`) create owning sequences, so pushed strings and objects remain valid until removed or the sequence is released.
-- `Seq.New(size)` creates a sequence with `Length == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing length.
+- `Seq.New(size)` creates a sequence with `Count == size` and null-initialized slots. Use `Seq.WithCapacity(cap)` to reserve capacity without changing the count.
 - `Cap` remains available as a compatibility alias for `Capacity`.
 - The lower-level C helpers `rt_seq_new` and `rt_seq_with_capacity` still create borrowed-element sequences for internal runtime views; ownership mode must be selected while the sequence is empty.
 - `Pop()` and `Remove(index)` return an owned object reference. When the sequence owns elements, the removed element's retained reference is transferred to the caller.
@@ -178,7 +178,7 @@ seq.Shuffle()
 seq.Clear()
 ```
 
-### Creating with Initial Length or Capacity
+### Creating with Initial Count or Capacity
 
 Use `Seq.New(size)` when you want indexed slots immediately, and `Seq.WithCapacity(cap)` when you only want to reserve append space:
 
@@ -218,59 +218,51 @@ names.SortDesc()
 
 Seq provides functional-style operations for filtering, transforming, and querying elements.
 
+The callback-taking operations use C-ABI function-pointer slots. The Zia and BASIC frontends accept
+`&FunctionName` and `ADDRESSOF FunctionName`, respectively, but the current `viper run` VM cannot
+dispatch those language callbacks through the C slots. Use explicit loops for code that must run on
+the VM. The following shows the accepted BASIC callback shape; it is not a VM-runnable example.
+
 ```basic
+FUNCTION IsEven(item AS OBJECT) AS BOOLEAN
+    IsEven = (Viper.Core.Box.ToI64(item) MOD 2 = 0)
+END FUNCTION
+
+FUNCTION DoubleValue(item AS OBJECT) AS OBJECT
+    DoubleValue = Viper.Core.Box.I64(Viper.Core.Box.ToI64(item) * 2)
+END FUNCTION
+
+FUNCTION AddValues(accumulator AS OBJECT, item AS OBJECT) AS OBJECT
+    AddValues = Viper.Core.Box.I64(Viper.Core.Box.ToI64(accumulator) + Viper.Core.Box.ToI64(item))
+END FUNCTION
+
 DIM numbers AS Viper.Collections.Seq
 numbers = NEW Viper.Collections.Seq()
+' ...populate numbers with boxed integers...
 FOR i = 1 TO 10
-    numbers.Push(i)
+    numbers.Push(Viper.Core.Box.I64(i))
 NEXT i
 
-' Keep only even numbers (filter)
 DIM evens AS Viper.Collections.Seq
-evens = numbers.Keep(FUNCTION(n) RETURN n MOD 2 = 0)
-' evens contains: 2, 4, 6, 8, 10
+evens = Viper.Collections.Seq.Keep(numbers, ADDRESSOF IsEven)
 
-' Reject odd numbers (inverse filter)
-DIM alsoEvens AS Viper.Collections.Seq
-alsoEvens = numbers.Reject(FUNCTION(n) RETURN n MOD 2 = 1)
-
-' Transform each element (map)
 DIM doubled AS Viper.Collections.Seq
-doubled = numbers.Apply(FUNCTION(n) RETURN n * 2)
-' doubled contains: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20
+doubled = Viper.Collections.Seq.Apply(numbers, ADDRESSOF DoubleValue)
 
-' Check predicates
-DIM allPositive AS INTEGER = numbers.All(FUNCTION(n) RETURN n > 0)  ' True
-DIM anyLarge AS INTEGER = numbers.Any(FUNCTION(n) RETURN n > 100)   ' False
-DIM noneTiny AS INTEGER = numbers.None(FUNCTION(n) RETURN n < 0)    ' True
+DIM evenCount AS INTEGER = Viper.Collections.Seq.CountWhere(numbers, ADDRESSOF IsEven)
 
-' Count matching elements
-DIM evenCount AS INTEGER = numbers.CountWhere(FUNCTION(n) RETURN n MOD 2 = 0)
-' evenCount = 5
+DIM firstEvenBox AS OBJECT = Viper.Collections.Seq.FindWhere(numbers, ADDRESSOF IsEven)
+DIM firstEven AS INTEGER = Viper.Core.Box.ToI64(firstEvenBox)
 
-' Find first matching element
-DIM firstEven AS INTEGER = numbers.FindWhere(FUNCTION(n) RETURN n MOD 2 = 0)
-' firstEven = 2
-
-' Take and Drop
-DIM firstThree AS Viper.Collections.Seq = numbers.Take(3)   ' 1, 2, 3
-DIM afterThree AS Viper.Collections.Seq = numbers.Drop(3)   ' 4, 5, 6, 7, 8, 9, 10
-
-' TakeWhile and DropWhile
-DIM smallNums AS Viper.Collections.Seq = numbers.TakeWhile(FUNCTION(n) RETURN n < 5)
-' smallNums contains: 1, 2, 3, 4
-DIM largeNums AS Viper.Collections.Seq = numbers.DropWhile(FUNCTION(n) RETURN n < 5)
-' largeNums contains: 5, 6, 7, 8, 9, 10
-
-' Fold (reduce) to compute sum
-DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
-' sum = 55
+DIM sumBox AS OBJECT
+sumBox = Viper.Collections.Seq.Fold(numbers, Viper.Core.Box.I64(0), ADDRESSOF AddValues)
+DIM sum AS INTEGER = Viper.Core.Box.ToI64(sumBox)            ' 55
 ```
 
 ### Use Cases
 
 - **Stack:** Use `Push()` and `Pop()` for LIFO operations
-- **Queue:** Use `Push()` to add and `Pop()` to remove from the front (FIFO)
+- **FIFO queues:** Use the dedicated `Viper.Collections.Queue`; `Seq.Pop()` always removes the last element
 - **Dynamic Array:** Use `Get()`/`Set()` for random access
 - **Slicing:** Use `Slice()` to extract sub-sequences
 - **Filtering:** Use `Keep()` and `Reject()` to filter by condition
@@ -282,9 +274,9 @@ DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
 
 ## Viper.Functional.LazySeq
 
-A lazy sequence that generates elements on demand rather than storing them all in memory. Useful for infinite sequences,
-computed sequences, and memory-efficient processing of large datasets. Supports functional-style transformations and
-collectors.
+A lazy sequence that generates elements on demand rather than storing yielded history. Its public factories create
+integer ranges and finite or infinite repetitions; pipelines can then bound, combine, transform, or collect those
+sources.
 
 > **Note:** The canonical namespace is `Viper.Functional.LazySeq`, not `Viper.Collections.LazySeq`.
 
@@ -299,7 +291,7 @@ collectors.
 | Property      | Type    | Description                                        |
 |---------------|---------|----------------------------------------------------|
 | `Index`       | Integer | Current position (number of elements consumed)     |
-| `IsExhausted` | Boolean | True if sequence has no more elements              |
+| `IsExhausted` | Boolean | True after a read has observed end-of-sequence      |
 
 ### Methods
 
@@ -309,7 +301,7 @@ collectors.
 |-----------|-----------------|---------------------------------------------------------|
 | `Next()`  | `Object()`      | Get next element and advance; returns null if exhausted |
 | `Peek()`  | `Object()`      | Get next element without advancing                      |
-| `Reset()` | `Void()`        | Reset sequence to beginning                             |
+| `Reset()` | `Void()`        | Clear cursor/exhaustion state; does not rewind `Range` or finite `Repeat` |
 
 #### Transformations (return new LazySeq)
 
@@ -337,70 +329,64 @@ collectors.
 
 ### Zia Example
 
-> LazySeq is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module LazySeqDemo;
+
+bind Viper.Functional.LazySeq as LS;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+
+func start() {
+    // Range is half-open: this counts 1 through 10.
+    var numbers = LS.Range(1, 11, 1);
+    SayInt(numbers.Count());
+
+    // Repeat yields the object supplied by the caller.
+    var values = LS.Repeat(Box.I64(7), 3);
+    SayInt(Box.ToI64(values.Peek()));
+    SayInt(values.Index);                    // 0: Peek did not consume it
+    SayInt(Box.ToI64(values.Next()));
+    SayInt(values.Index);                    // 1
+
+    // Bound an infinite source before collecting it.
+    var x = Box.Str("x");
+    var xs = LS.Repeat(x, -1).Take(2).ToSeq();
+    SayInt(xs.Count);                        // 2
+}
+```
 
 ### BASIC Example
 
 ```basic
-' Create a range (like Python's range)
-DIM nums AS OBJECT = Viper.Functional.LazySeq.Range(1, 11, 1)
-' Generates: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+DIM numbers AS Viper.Functional.LazySeq
+numbers = Viper.Functional.LazySeq.Range(1, 11, 1)
+PRINT numbers.Count()                                      ' 10
 
-' Manual iteration
-WHILE NOT nums.IsExhausted
-    DIM n AS OBJECT = nums.Next()
-    PRINT n
-WEND
+DIM values AS Viper.Functional.LazySeq
+DIM seven AS OBJECT = Viper.Core.Box.I64(7)
+values = Viper.Functional.LazySeq.Repeat(seven, 3)
+PRINT Viper.Core.Box.ToI64(values.Peek())                  ' 7
+PRINT values.Index                                         ' 0
+PRINT Viper.Core.Box.ToI64(values.Next())                  ' 7
+PRINT values.Index                                         ' 1
 
-' Create and transform lazily
-DIM evens AS OBJECT = Viper.Functional.LazySeq.Range(1, 100, 1) _
-    .Filter(FUNCTION(n) RETURN n MOD 2 = 0) _
-    .Take(5)
-' Generates: 2, 4, 6, 8, 10 (only computes what's needed)
-
-' Collect into a Seq
-DIM evenSeq AS OBJECT = evens.ToSeq()
-PRINT evenSeq.Count    ' Output: 5
-
-' Infinite sequence with Take
-DIM ones AS OBJECT = Viper.Functional.LazySeq.Repeat(1, -1)  ' Infinite 1s
-DIM firstTen AS OBJECT = ones.Take(10).ToSeq()
-PRINT firstTen.Count   ' Output: 10
-
-' Find first element matching condition
-DIM firstBig AS OBJECT = Viper.Functional.LazySeq.Range(1, 1000000, 1) _
-    .FindOption(FUNCTION(n) RETURN n > 500)
-IF firstBig.IsSome THEN
-    PRINT firstBig.Unwrap()  ' Output: 501 (stops immediately, doesn't check all million)
-END IF
-
-' Check predicates
-DIM allPositive AS INTEGER = Viper.Functional.LazySeq.Range(1, 100, 1) _
-    .All(FUNCTION(n) RETURN n > 0)
-PRINT allPositive    ' Output: 1 (true)
-
-' Peek without consuming
-DIM seq AS OBJECT = Viper.Functional.LazySeq.Range(1, 5, 1)
-PRINT seq.Peek()     ' Output: 1
-PRINT seq.Peek()     ' Output: 1 (still 1)
-PRINT seq.Next()     ' Output: 1 (now consumed)
-PRINT seq.Peek()     ' Output: 2
-
-' Reset to beginning
-seq.Reset()
-PRINT seq.Next()     ' Output: 1 (back to start)
-
+DIM forever AS Viper.Functional.LazySeq
+DIM x AS OBJECT = Viper.Core.Box.Str("x")
+forever = Viper.Functional.LazySeq.Repeat(x, -1)
+DIM firstTwo AS Viper.Collections.Seq
+firstTwo = forever.Take(2).ToSeq()
+PRINT firstTwo.Count                                       ' 2
 ```
 
 ### LazySeq vs Seq
 
 | Feature               | LazySeq              | Seq                  |
 |-----------------------|----------------------|----------------------|
-| Memory                | O(1)                 | O(n)                 |
+| Retained elements     | None (before collection) | All elements   |
 | Element generation    | On demand            | Upfront              |
 | Infinite sequences    | Supported            | Not possible         |
 | Random access         | No (sequential only) | O(1)                 |
-| Multiple iterations   | Requires Reset()     | Automatic            |
+| Multiple iterations   | Recreate the source  | Automatic            |
 | Chain transformations | Deferred             | Immediate            |
 
 ### Important Notes
@@ -408,16 +394,23 @@ PRINT seq.Next()     ' Output: 1 (back to start)
 - **Infinite sequences:** Methods like `ToSeq()`, `Count()`, and `All()` may never
   terminate on infinite sequences. Always use `Take(n)` to bound infinite sequences before
   collecting.
-- **Single-pass:** LazySeq is consumed as you iterate. Use `Reset()` to iterate again, or
-  `ToSeq()` to materialize into a reusable collection.
+- **Single-pass:** LazySeq is consumed as you iterate. Recreate `Range` and finite `Repeat`
+  sources for another pass, or use `ToSeq()` to materialize a reusable collection. `Reset()`
+  clears cursor flags but does not restore either source's original range position or repeat count.
+- **Range values:** `Range` currently exposes each integer through transient internal storage rather
+  than as a boxed runtime object. `Count()` and other operations that only count/skip values are
+  safe, but do not retain, unbox, collect, or pass `Range` elements to object callbacks. Use
+  `Repeat()` with explicitly boxed values when object-valued elements are required.
 - **Transformation chaining:** Transformations like `Map()`, `Filter()`, `Take()` return new
   LazySeq instances and do no work until elements are requested.
+- **Language callbacks:** The same VM callback limitation described for `Seq` applies to
+  `Map()`, `Filter()`, `TakeWhile()`, `DropWhile()`, `Find()`, `FindOption()`, `Any()`, and `All()`.
 
 ### Use Cases
 
-- **Large datasets:** Process files or data too large to fit in memory
-- **Infinite sequences:** Mathematical sequences like Fibonacci, primes
-- **Early termination:** Find first match without computing everything
+- **Large numeric ranges:** Count or skip values without storing the whole range
+- **Infinite repeated values:** Create an unbounded source with `Repeat(value, -1)`, then bound it with `Take`
+- **Early termination:** Stop an object-valued repeated source without collecting every value
 - **Pipeline processing:** Chain transformations efficiently
 - **Generator patterns:** Produce values on demand
 
@@ -425,18 +418,29 @@ PRINT seq.Next()     ' Output: 1 (back to start)
 
 ## Viper.Collections.Iterator
 
-A sequential cursor over a Seq that provides controlled, single-pass traversal with peek-ahead, skip, and reset
-capabilities.
+A sequential cursor over a collection that provides controlled traversal with peek-ahead, skip, and reset capabilities.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Collections.Iterator.FromSeq(seq)` - creates an iterator over an existing Seq
+
+### Factories
+
+| Factory | Source behavior |
+|---------|-----------------|
+| `FromSeq(seq)` | Live indexed view; length is captured at creation |
+| `FromList(list)` | Live indexed view; length is captured at creation |
+| `FromRing(ring)` | Live indexed view; length is captured at creation |
+| `FromDeque(deque)` | Snapshot |
+| `FromMapKeys(map)` | Snapshot of keys in insertion order |
+| `FromMapValues(map)` | Snapshot of values in insertion order |
+| `FromSet(set)` | Snapshot in unspecified hash order |
+| `FromStack(stack)` | Snapshot in bottom-to-top order; source stack is unchanged |
 
 ### Properties
 
 | Property | Type    | Description                                      |
 |----------|---------|--------------------------------------------------|
 | `Index`  | Integer | Current position (number of elements consumed)   |
-| `Count`  | Integer | Total number of elements in the underlying Seq   |
+| `Count`  | Integer | Number of elements captured when the iterator was created |
 
 ### Methods
 
@@ -454,8 +458,10 @@ capabilities.
 - `Next()` and `Peek()` return owned object references. In Zia these are usually boxed values; use `Box.ToStr()`, `Box.ToI64()`, etc. to unwrap
 - In BASIC, `Next()` and `Peek()` return values directly
 - `Skip(n)` returns the actual number of elements skipped, which may be less than n if the iterator is near the end
-- `ToSeq()` collects only the *remaining* elements from the current position onward
+- `ToSeq()` collects only the *remaining* elements from the current position onward and advances the iterator to its end
 - Stack iterators snapshot the stack in bottom-to-top order and restore the source stack unchanged
+- Seq, List, and Ring iterators retain a live source reference but cache its length. Avoid changing a live source while
+  iterating: inserted elements do not extend `Count`, and shrinking a source can invalidate a cached position.
 
 ### Zia Example
 
@@ -475,7 +481,7 @@ func start() {
     seq.Push(Box.Str("d"));
     seq.Push(Box.Str("e"));
 
-    var it = Iterator.FromSeq(seq);
+    var it: Viper.Collections.Iterator = Iterator.FromSeq(seq);
     SayInt(it.Count);                         // 5
 
     // Peek without advancing
@@ -495,7 +501,7 @@ func start() {
     it.Reset();
     it.Next();   // consume a
     it.Next();   // consume b
-    var rest = it.ToSeq();
+    var rest: Seq = it.ToSeq();
     SayInt(rest.Count);                         // 3 (c, d, e)
 }
 ```
@@ -511,7 +517,7 @@ seq.Push("c")
 seq.Push("d")
 seq.Push("e")
 
-DIM it AS OBJECT
+DIM it AS Viper.Collections.Iterator
 it = Viper.Collections.Iterator.FromSeq(seq)
 PRINT it.Count          ' 5
 
@@ -535,7 +541,7 @@ PRINT it.Peek()          ' e
 
 ' Iterate to exhaustion
 PRINT it.Next()          ' e
-PRINT it.HasNext         ' 0
+PRINT it.HasNext()       ' 0
 
 ' Reset to beginning
 it.Reset()
@@ -545,7 +551,7 @@ PRINT it.Peek()          ' a
 ' Collect remaining after consuming some
 it.Next()   ' consume a
 it.Next()   ' consume b
-DIM rest AS OBJECT
+DIM rest AS Viper.Collections.Seq
 rest = it.ToSeq()
 PRINT rest.Count           ' 3 (c, d, e)
 PRINT rest.Get(0)        ' c
@@ -558,7 +564,7 @@ PRINT rest.Get(2)        ' e
 - **Parser input:** Iterate over tokens with peek-ahead for lookahead parsing
 - **Streaming processing:** Process elements one at a time with position tracking
 - **Batch processing:** Skip forward to a specific position, then collect a batch with `ToSeq`
-- **Resumable iteration:** Use `Index` and `Reset` to save and restore position
+- **Repeated traversal:** Use `Reset()` to return an iterator cursor to position zero
 
 ---
 

@@ -478,13 +478,13 @@ world.Step(1.0)
 ```
 
 For a runnable headless example, see
-[`examples/apiaudit/graphics3d/physics3d_rotation_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/physics3d_rotation_demo.zia).
+[`examples/apiaudit/graphics3d/physics3d_rotation_demo.zia`](../../../examples/apiaudit/graphics3d/physics3d_rotation_demo.zia).
 For the advanced collider surface, see
-[`examples/apiaudit/graphics3d/collider3d_advanced_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/collider3d_advanced_demo.zia).
+[`examples/apiaudit/graphics3d/collider3d_advanced_demo.zia`](../../../examples/apiaudit/graphics3d/collider3d_advanced_demo.zia).
 For world-space query coverage, see
-[`examples/apiaudit/graphics3d/physics3d_queries_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/physics3d_queries_demo.zia).
+[`examples/apiaudit/graphics3d/physics3d_queries_demo.zia`](../../../examples/apiaudit/graphics3d/physics3d_queries_demo.zia).
 For structured collision events, see
-[`examples/apiaudit/graphics3d/collisionevent3d_demo.zia`](/Users/stephen/git/viper/examples/apiaudit/graphics3d/collisionevent3d_demo.zia).
+[`examples/apiaudit/graphics3d/collisionevent3d_demo.zia`](../../../examples/apiaudit/graphics3d/collisionevent3d_demo.zia).
 
 ---
 

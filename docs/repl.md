@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-14
 ---
 
 # Viper REPL
@@ -27,7 +27,7 @@ vbasic                  # zero-arg vbasic launches the BASIC REPL directly
 You'll see a prompt where you can type code:
 
 ```text
-Viper zia REPL v0.2.7-dev
+Viper zia REPL v0.2.99.20260704
 Type .help for commands, .quit to exit.
 
 zia> 2 + 3

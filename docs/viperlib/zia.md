@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-22
+last-verified: 2026-07-14
 ---
 
 # Zia Tooling
@@ -30,6 +30,7 @@ Structured diagnostics and compile results for Zia source buffers.
 |--------|-----------|-------------|
 | `Check` | `Object(String)` | Analyze source and return a `Viper.Collections.Seq` of diagnostic maps. |
 | `CheckForFile` | `Object(String, String)` | Analyze source using the supplied path for diagnostics and relative `bind` resolution. |
+| `BeginCheckForFile` | `Object(String, String)` | Start the path-aware analysis on a semantic worker and return a `SemanticJobHandle`. |
 | `Compile` | `Object(String)` | Compile source and return a result map. |
 | `CompileForFile` | `Object(String, String)` | Compile source using the supplied path for diagnostics and relative `bind` resolution. |
 
@@ -51,6 +52,17 @@ Structured diagnostics and compile results for Zia source buffers.
 | `message` | String | Human-readable diagnostic text. |
 | `stage` | String | Compiler stage when available. |
 | `help` | String | Extra help text when available. |
+| `hasFixit` | Boolean | True when at least one machine-applicable fix is attached. |
+| `fixits` | Object | `Seq` of all fix-it maps; each has `message`, `replacement`, and 1-based `startLine`, `startColumn`, `endLine`, and `endColumn`. |
+| `fixitMessage` | String | Compatibility copy of the first fix-it message, or empty. |
+| `fixitReplacement` | String | Compatibility copy of the first replacement, or empty. |
+| `fixitStartLine` / `fixitStartColumn` | Integer | Compatibility copy of the first fix-it start, or 0. |
+| `fixitEndLine` / `fixitEndColumn` | Integer | Compatibility copy of the first fix-it end, or 0. |
+
+`Check*` and `Compile*` include both the complete `fixits` sequence and the
+legacy first-fix fields. Diagnostics materialized from an asynchronous
+`SemanticJob` currently include `hasFixit` and the legacy first-fix fields, but
+not the `fixits` sequence.
 
 ### Compile Result Map
 
@@ -91,9 +103,10 @@ func start() {
 
 ### Notes
 
-- Use `CheckForFile` and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
+- Use `CheckForFile`, `BeginCheckForFile`, and `CompileForFile` from editors so relative `bind` paths resolve against the active document.
 - The legacy `Viper.Zia.Completion.CheckForFile` API still returns tab-delimited text for compatibility. New IDE surfaces should consume `Viper.Zia.Toolchain` instead.
-- The weak runtime stub returns empty diagnostics and a failed compile result when `fe_zia` is not linked. Native IDE builds must force-load `fe_zia` to get real compiler services.
+- The weak runtime stub returns empty diagnostics, a null async-job handle, and a failed compile result when the editor-service bridge is absent.
+- Statically linked IDE hosts must force-load `zia_editor_services` (which links `fe_zia`) so its strong `rt_zia_*` definitions override the weak runtime stubs. The repository's `zia` executable does this with the platform-equivalent whole-archive option.
 
 ---
 
@@ -124,6 +137,12 @@ Pollable background language-service jobs returned by
 Prefer `ErrorOption(job)` in new editor code. It avoids treating an empty string
 as a status sentinel and matches the runtime's Option-based absence model.
 
+`Kind(job)` returns `0` unknown, `1` completion items, `2` signature info, `3`
+hover info, `4` symbols, `5` diagnostics, or `6` semantic tokens. Result
+materializers return an empty/default payload until the job is complete or when
+called for the wrong job kind. `Cancel(job)` marks the job cancelled; an
+already-running worker can continue to completion, but its result is discarded.
+
 ---
 
 ## Viper.Zia.ProjectIndex
@@ -132,7 +151,8 @@ Project-wide semantic navigation for Zia source buffers. The index stores
 editor-supplied source text, including unsaved dirty buffers, and uses that text
 when resolving `bind` imports.
 
-**Type:** Static utility class returning an opaque `ProjectIndex.Handle`
+**Type:** Static utility class returning an opaque
+`Viper.Zia.ProjectIndex.ProjectIndexHandle`
 
 ### Methods
 
@@ -159,21 +179,24 @@ the supplied source text before analysis. Cursor `line` is 1-based and cursor
 | Key | Type | Description |
 |-----|------|-------------|
 | `found` | Boolean | True when a semantic definition was found. |
-| `reason` | String | Present for misses such as `not_found` or `invalid_index`. |
-| `file` | String | Normalized source path for the definition. |
-| `line` | Integer | 1-based definition start line. |
-| `column` | Integer | 1-based definition start column. |
-| `endLine` | Integer | 1-based definition end line. |
-| `endColumn` | Integer | 1-based exclusive definition end column. |
-| `editorLine` | Integer | 0-based start line for `CodeEditor`. |
-| `editorColumn` | Integer | 0-based start column for `CodeEditor`. |
-| `editorEndLine` | Integer | 0-based end line for `CodeEditor`. |
-| `editorEndColumn` | Integer | 0-based exclusive end column for `CodeEditor`. |
-| `name` | String | Source-visible symbol name. |
-| `semanticName` | String | Internal semantic name used for comparison. |
-| `kind` | String | `variable`, `parameter`, `function`, `method`, `field`, `type`, or `module`. |
-| `type` | String | Display type when known. |
-| `ownerType` | String | Enclosing type for members when known. |
+| `reason` | String | Miss reason: `not_found`, `invalid_index`, or `unavailable` from the weak stub. |
+| `file` | String | On success, normalized source path for the definition. |
+| `line` | Integer | On success, 1-based definition start line. |
+| `column` | Integer | On success, 1-based definition start column. |
+| `endLine` | Integer | On success, 1-based definition end line. |
+| `endColumn` | Integer | On success, 1-based exclusive definition end column. |
+| `editorLine` | Integer | On success, 0-based start line for `CodeEditor`. |
+| `editorColumn` | Integer | On success, 0-based start column for `CodeEditor`. |
+| `editorEndLine` | Integer | On success, 0-based end line for `CodeEditor`. |
+| `editorEndColumn` | Integer | On success, 0-based exclusive end column for `CodeEditor`. |
+| `name` | String | On success, source-visible symbol name. |
+| `semanticName` | String | On success, internal semantic name used for comparison. |
+| `kind` | String | On success, `variable`, `parameter`, `function`, `method`, `field`, `type`, or `module`. |
+| `type` | String | On success, display type when known. |
+| `ownerType` | String | On success, enclosing type for members when known. |
+
+Miss maps contain only `found = false` and `reason`; the location and symbol
+fields are success-only.
 
 ### Reference Map
 
@@ -202,11 +225,11 @@ locals from globals/imports.
 | Key | Type | Description |
 |-----|------|-------------|
 | `success` | Boolean | True when edits were produced. |
-| `reason` | String | Empty on success; otherwise `invalid_index`, `invalid_name`, `not_found`, or `collision`. |
-| `name` | String | Original source-visible name on success. |
-| `newName` | String | Requested replacement on success. |
-| `references` | Object | `Seq` of reference maps used to build the edit set. |
-| `edits` | Object | `Seq` of workspace edit maps. |
+| `reason` | String | Empty on success; otherwise `invalid_index`, `invalid_name`, `not_found`, `collision`, or weak-stub `unavailable`. |
+| `name` | String | Original source-visible name; present on success only. |
+| `newName` | String | Requested replacement; present on success only. |
+| `references` | Object | `Seq` of reference maps used to build the edit set; present on success only. |
+| `edits` | Object | `Seq` of workspace edit maps; present on success and failure. |
 
 Each edit map contains `file`, `startLine`, `startColumn`, `endLine`,
 `endColumn`, `editorStartLine`, `editorStartColumn`, `editorEndLine`,
@@ -240,7 +263,7 @@ func start() {
 
 - Always call `UpdateFile` when a buffer changes. Query calls also accept current source to cover the active dirty buffer.
 - Add all open project files to the index for best reference and rename results. Files absent from the index can still be resolved from disk through normal `bind` loading, but they are not scanned for references.
-- Native IDE builds must link `fe_zia`; the weak runtime stub returns an invalid handle and empty results.
+- Native IDE builds must link and force-load `zia_editor_services`; the weak runtime stub returns an invalid handle and empty or `unavailable` results.
 
 ---
 

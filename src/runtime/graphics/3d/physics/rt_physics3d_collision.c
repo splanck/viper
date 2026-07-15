@@ -27,6 +27,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_collider3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_physics3d.h"
 #include "rt_physics3d_internal.h"

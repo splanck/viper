@@ -1745,6 +1745,28 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     d3d11_select_current_targets(ctx);
 }
 
+/// @brief Backend `shadow_reuse` op — re-arm a slot from its previous-frame depth texture.
+///
+/// Only the classic per-slot CSM depth textures persist untouched across frames;
+/// the shared shadow atlas is whole-cleared on its first tile pass each frame, so
+/// atlas slots (>= VGFX3D_CSM_SLOTS) decline reuse and take the normal render path.
+static int8_t d3d11_shadow_reuse(
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    (void)depth_buf;
+    if (!ctx || slot < 0 || slot >= VGFX3D_CSM_SLOTS || !light_vp || w <= 0 || h <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_shadow_matrix_is_usable(light_vp))
+        return 0;
+    if (!ctx->shadow_dsv[slot] || !ctx->shadow_srv[slot] || ctx->shadow_width[slot] != w ||
+        ctx->shadow_height[slot] != h)
+        return 0;
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->shadow_vp[slot], light_vp);
+    ctx->shadow_slot_complete[slot] = 1;
+    d3d11_recompute_shadow_count(ctx);
+    return 1;
+}
+
 /// @brief Backend `draw_skybox` — full-screen triangle draw with the cubemap shader.
 ///
 /// Sets up skybox VS/PS, the fullscreen-triangle VB built at context creation,

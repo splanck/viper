@@ -1,11 +1,11 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-28
+last-verified: 2026-07-14
 ---
 
 # Containers & Advanced
-> ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap
+> ScrollView, SplitPane, FloatingPanel, TabBar, TreeView, and CodeEditor
 
 **Part of [Viper Runtime Library](../README.md) › [GUI Widgets](README.md)**
 
@@ -68,8 +68,8 @@ split = NEW Viper.GUI.SplitPane(root, 1)  ' Horizontal
 split.SetPosition(0.3)  ' 30% / 70%
 
 ' Add content to panes
-DIM leftPane AS Object = split.GetFirst()
-DIM rightPane AS Object = split.GetSecond()
+DIM leftPane AS Object = split.First
+DIM rightPane AS Object = split.Second
 ```
 
 ```rust
@@ -91,9 +91,9 @@ A floating overlay panel that appears above normal content. Floating panels are 
 
 | Method                  | Signature                  | Description                                |
 |-------------------------|----------------------------|--------------------------------------------|
-| `SetPosition(x, y)`     | `Void(Integer, Integer)`   | Set panel position in window coordinates   |
+| `SetPosition(x, y)`     | `Void(Number, Number)`     | Set panel position in logical window coordinates |
 | `CenterInParent()`      | `Void()`                   | Center the panel within the window, clamped to the top-left (size and attach it first) |
-| `SetSize(w, h)`         | `Void(Integer, Integer)`   | Set panel dimensions                       |
+| `SetSize(w, h)`         | `Void(Number, Number)`     | Set panel dimensions in logical units      |
 | `SetVisible(flag)`      | `Void(Boolean)`            | Show or hide the panel                     |
 | `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |
 | `Destroy()`             | `Void()`                   | Destroy the panel and disconnect its runtime handle |
@@ -139,8 +139,8 @@ Mouse activation and close actions now commit on mouse-up instead of mouse-down,
 | `RemoveTab(tab)`         | `Void(Object)`            | Remove a tab                             |
 | `SetActive(tab)`         | `Void(Object)`            | Set active tab                           |
 | `SetAutoClose(enabled)`  | `Void(Boolean)`           | Enable/disable auto-close on close click |
-| `WasChanged()`           | `Integer()`               | 1 if active tab changed this frame       |
-| `WasCloseClicked()`      | `Integer()`               | 1 if a close button was clicked          |
+| `WasChanged()`           | `Boolean()`               | True if the active tab changed this frame |
+| `WasCloseClicked()`      | `Boolean()`               | True if a close button was clicked        |
 
 ### Tab Methods
 
@@ -181,10 +181,10 @@ var tab1 = tabs.AddTab("File.txt", 1);
 var tab2 = tabs.AddTab("Config.ini", 1);
 tab1.SetModified(true);  // Unsaved indicator
 
-if tabs.WasChanged() == 1 {
+if tabs.WasChanged() {
     var active = tabs.GetActive();
 }
-if tabs.WasCloseClicked() == 1 {
+if tabs.WasCloseClicked() {
     var idx = tabs.GetCloseClickedIndex();
     tabs.RemoveTab(tabs.GetTabAt(idx));
 }
@@ -214,13 +214,14 @@ Node glyph icons are rendered when present, and lazy/loading nodes now show an i
 | `RemoveNode(node)`      | `Void(Object)`           | Remove node and children          |
 | `Select(node)`          | `Void(Object)`           | Select a node                     |
 | `SetFont(font, size)`   | `Void(Font, Double)`     | Set font                          |
-| `WasSelectionChanged()` | `Integer()`              | 1 if selection changed this frame |
+| `WasSelectionChanged()` | `Boolean()`              | True if selection changed this frame |
 
 ### Node Methods
 
 Node handles returned by `AddNode()` support these methods:
 
-Keyboard navigation keeps the selected node scrolled into view, matching mouse selection and explicit `ScrollTo` behavior.
+Keyboard navigation keeps the selected node scrolled into view, matching mouse selection and
+explicit `Select(node)` behavior.
 Node handles are runtime-managed and become inert after `RemoveNode()`, `Clear()`, or tree destruction; later node method calls return empty/0 values or no-op safely.
 
 | Method                    | Signature          | Description                    |
@@ -228,7 +229,7 @@ Node handles are runtime-managed and become inert after `RemoveNode()`, `Clear()
 | `node.GetText()`          | `String()`         | Get node display text          |
 | `node.SetData(data)`      | `Void(String)`     | Set node user data             |
 | `node.GetData()`          | `String()`         | Get node user data             |
-| `node.IsExpanded()`       | `Integer()`        | 1 if node is expanded          |
+| `node.IsExpanded()`       | `Boolean()`        | True if node is expanded       |
 
 ```rust
 // Zia example
@@ -251,7 +252,7 @@ tree = NEW Viper.GUI.TreeView(root)
 tree.SetSize(250, 400)
 
 ' Build tree structure
-DIM rootNode AS Object = tree.AddNode(NULL, "Project")
+DIM rootNode AS Object = tree.AddNode(NOTHING, "Project")
 DIM srcNode AS Object = tree.AddNode(rootNode, "src")
 tree.AddNode(srcNode, "main.bas")
 tree.AddNode(srcNode, "utils.bas")
@@ -275,9 +276,14 @@ When word wrap is enabled, the editor uses wrapped visual rows for painting, cur
 Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
 Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
 Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
-`SetText()` uses the runtime string byte length when replacing the document, so `GetText()` round-trips embedded NUL bytes instead of truncating at the first NUL.
+`SetText()` uses the runtime string byte length when replacing the document, so the `Text` property
+round-trips embedded NUL bytes instead of truncating at the first NUL.
 `GetWordAtCursor()` and `ReplaceWordAtCursor()` keep non-ASCII UTF-8 bytes with the surrounding identifier instead of splitting a multibyte word in the middle.
-Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`; consuming the event clears the stored line and slot back to `-1`.
+Gutter icon slots are validated as `0..3`; invalid slots are ignored. Prefer
+`TakeGutterClick()`, which atomically consumes the pending event and returns a map with `clicked`,
+`line`, and `slot`. With the legacy accessors, read `GetGutterClickLine()` and
+`GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`; consuming the event
+clears the stored line and slot back to `-1`.
 `ScrollTopLine` exposes the zero-based source line nearest the top of the viewport, so applications can persist and restore editor scroll state without inferring it from pixels.
 Selection range getters return normalized zero-based source coordinates for the requested cursor; if the cursor has no active selection or the cursor index is invalid, they return `0`.
 Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl`/`Cmd` + click to add a secondary cursor at the clicked text position.
@@ -291,7 +297,6 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `CursorLine` | Integer | Read   | Current cursor line                                            |
 | `CursorCol`  | Integer | Read   | Current cursor column                                          |
 | `ScrollTopLine` | Integer | R/W | Source line nearest the top of the viewport                    |
-| `WordWrap`   | Boolean | R/W    | Enable visual word-wrap — long lines are split at the viewport edge without changing the underlying text buffer |
 
 | Method                                     | Signature                        | Description                              |
 |--------------------------------------------|----------------------------------|------------------------------------------|
@@ -300,35 +305,36 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `AddHighlight(startLine, startCol, endLine, endCol, color)` | `Void(Int, Int, Int, Int, Int)` | Add colored text highlight region |
 | `ClearCursors()`                           | `Void()`                         | Remove extra cursors (keep primary)      |
 | `ClearFoldRegions()`                       | `Void()`                         | Remove all fold regions                  |
-| `ClearGutterIcons(type)`                   | `Void(Integer)`                  | Clear gutter icons of given type         |
+| `ClearGutterIcons(slot)`                   | `Void(Integer)`                  | Clear every gutter icon in a slot        |
 | `ClearHighlights()`                        | `Void()`                         | Remove all highlights                    |
 | `ClearModified()`                          | `Void()`                         | Clear modified flag                      |
-| `Copy()`                                   | `Integer()`                      | Copy selection to clipboard              |
-| `CursorHasSelection(cursorIdx)`            | `Integer(Integer)`               | Check if cursor has selection            |
-| `Cut()`                                    | `Integer()`                      | Cut selection to clipboard               |
+| `Copy()`                                   | `Integer()`                      | Copy selection to clipboard; 1 on success |
+| `CursorHasSelection(cursorIdx)`            | `Boolean(Integer)`               | Check if cursor has selection            |
+| `Cut()`                                    | `Integer()`                      | Cut selection to clipboard; 1 on success |
 | `Fold(line)`                               | `Void(Integer)`                  | Fold region at line                      |
 | `FoldAll()`                                | `Void()`                         | Fold all registered regions              |
 | `GetCursorCount()`                         | `Integer()`                      | Get number of cursors (multi-cursor)     |
 | `GetColAtPixel(x, y)`                     | `Integer(Integer, Integer)`      | Map a screen-space pixel to a logical column using the current wrap/scroll geometry |
 | `GetGutterClickLine()`                     | `Integer()`                      | Get line of gutter click                 |
 | `GetGutterClickSlot()`                     | `Integer()`                      | Get gutter icon slot of the current click |
+| `TakeGutterClick()`                        | `Map()`                          | Atomically consume click; returns `clicked`, `line`, and `slot` |
 | `GetLineAtPixel(y)`                       | `Integer(Integer)`               | Map a screen-space pixel to a logical line using the current wrap/scroll geometry |
 | `GetSelectionStartLineAt(cursorIdx)`       | `Integer(Integer)`               | Get normalized selection start line for a cursor |
 | `GetSelectionStartColAt(cursorIdx)`        | `Integer(Integer)`               | Get normalized selection start column for a cursor |
 | `GetSelectionEndLineAt(cursorIdx)`         | `Integer(Integer)`               | Get normalized selection end line for a cursor |
 | `GetSelectionEndColAt(cursorIdx)`          | `Integer(Integer)`               | Get normalized selection end column for a cursor |
 | `GetSelectedText()`                        | `String()`                       | Get currently selected text (empty string if no selection) |
-| `IsFolded(line)`                           | `Integer(Integer)`               | Check if line is folded                  |
+| `IsFolded(line)`                           | `Boolean(Integer)`               | Check if line is folded                  |
 | `IsModified()`                             | `Boolean()`                      | Check if modified                        |
-| `Paste()`                                  | `Integer()`                      | Paste from clipboard                     |
+| `Paste()`                                  | `Integer()`                      | Paste from clipboard; 1 on success       |
 | `Redo()`                                   | `Void()`                         | Redo last undone edit                    |
 | `RemoveFoldRegion(startLine)`              | `Void(Integer)`                  | Remove the fold region starting on a line |
 | `ScrollToLine(line)`                       | `Void(Integer)`                  | Scroll to line                           |
 | `SetAutoFoldDetection(enabled)`            | `Void(Boolean)`                  | Enable or disable automatic fold detection |
 | `SelectAll()`                              | `Void()`                         | Select all text                          |
 | `SetCursor(line, col)`                     | `Void(Integer, Integer)`         | Set cursor position                      |
-| `SetFont(font, size)`                      | `Void(Font, Double)`             | Set monospace font                       |
-| `SetGutterIcon(line, icon, type)`          | `Void(Integer, Object, Integer)` | Set gutter icon on a line                |
+| `SetFont(font, size)`                      | `Void(Font, Double)`             | Set the editor font (normally monospace) |
+| `SetGutterIcon(line, icon, slot)`          | `Void(Integer, Object, Integer)` | Set a gutter icon in slot 0–3 on a line  |
 | `SetLanguage(name)`                        | `Void(String)`                   | Set syntax highlighting language         |
 | `SetLineNumberWidth(width)`                | `Void(Integer)`                  | Set line-number gutter width in character cells |
 | `SetShowFoldGutter(show)`                  | `Void(Boolean)`                  | Show or hide fold markers in the gutter  |
@@ -339,7 +345,7 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `Unfold(line)`                             | `Void(Integer)`                  | Unfold region at line                    |
 | `UnfoldAll()`                              | `Void()`                         | Unfold all registered regions            |
 | `Undo()`                                   | `Void()`                         | Undo last edit                           |
-| `WasGutterClicked()`                       | `Integer()`                      | 1 if gutter was clicked                  |
+| `WasGutterClicked()`                       | `Boolean()`                      | True if a gutter was clicked             |
 
 ### Advanced Methods
 
@@ -350,7 +356,7 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `SetTabSize(size)`           | `Void(Integer)`    | Set tab width in spaces                          |
 | `GetTabSize()`               | `Integer()`        | Get current tab width in spaces                  |
 | `SetWordWrap(enabled)`       | `Void(Boolean)`    | Enable or disable word wrapping                  |
-| `GetWordWrap()`              | `Boolean()`        | Check if word wrap is enabled                    |
+| `GetWordWrap()`              | `Integer()`        | Read word-wrap state (`1` enabled, `0` disabled) |
 
 ```basic
 DIM editor AS Viper.GUI.CodeEditor
@@ -363,9 +369,9 @@ content = Viper.IO.File.ReadAllText("main.bas")
 editor.SetText(content)
 
 ' Save on Ctrl+S
-IF Viper.Input.Keyboard.Held(341) AND Viper.Input.Keyboard.Pressed(83) THEN
-    IF editor.IsModified() = 1 THEN
-        Viper.IO.File.WriteAllText("main.bas", editor.GetText())
+IF Viper.Input.Keyboard.Ctrl() AND Viper.Input.Keyboard.WasPressed(Viper.Input.Key.S) THEN
+    IF editor.IsModified() THEN
+        Viper.IO.File.WriteAllText("main.bas", editor.Text)
         editor.ClearModified()
     END IF
 END IF
@@ -379,7 +385,7 @@ editor.SetLanguage("zia");
 editor.SetShowLineNumbers(true);
 editor.SetText("func main() {\n    Say(\"hello\");\n}");
 
-if editor.IsModified() == 1 {
+if editor.IsModified() {
     editor.ClearModified();
 }
 ```

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-07-14
 ---
 
 # Messages & Plural Rules
@@ -23,17 +23,17 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 | `New()` | `MessageBundle()` | Empty bundle bound to the current locale. |
 | `LoadFromJson(loc, path)` | `MessageBundle(Locale, String)` | Load from filesystem JSON. |
 | `LoadFromAsset(loc, name)` | `MessageBundle(Locale, String)` | Load from VPA asset. |
-| `FromMap(loc, map)` | `MessageBundle(Locale, Map[String, String])` | Use an existing map. |
+| `FromMap(loc, map)` | `MessageBundle(Locale, runtime Map of String)` | Use an existing raw-string map. |
 | `Get(key)` | `String(String)` | Traps when no bundle in the chain has `key`. |
 | `TryGet(key)` | `String(String)` | Returns `""` when missing. |
 | `TryGetOption(key)` | `Option[String](String)` | Returns `Some(value)` when present, including empty translations; `None` when missing. |
 | `GetOr(key, default)` | `String(String, String)` | Returns the resolved value or the provided fallback string. |
 | `Has(key)` | `Bool(String)` | |
-| `Format(key, vars)` | `String(String, Map[String, String])` | `{name}`-style placeholders. |
-| `FormatWith(key, values)` | `String(String, List[String])` | Positional `{0}`, `{1}`, … |
-| `Plural(key, n, vars)` | `String(String, Int, Map[String, String])` | Plural-aware lookup (see Notes). |
-| `Fallback(other)` | `MessageBundle(MessageBundle)` | Attach a fallback; traps on cycle. |
-| `Keys()` | `List[String]()` | Keys defined by this bundle (excludes fallback). |
+| `Format(key, vars)` | `String(String, runtime Map of String)` | `{name}`-style placeholders. |
+| `FormatWith(key, values)` | `String(String, runtime List of String)` | Positional `{0}`, `{1}`, … |
+| `Plural(key, n, vars)` | `String(String, Int, runtime Map of String)` | Plural-aware lookup (see Notes). |
+| `Fallback(other)` | `MessageBundle(MessageBundle)` | Attach a fallback and return this bundle; traps when the proposed chain reaches this bundle. |
+| `Keys()` | `List[String]()` | Snapshot of keys defined by this bundle (excludes fallback); order is unspecified. |
 
 Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for compatibility, but its empty-string sentinel cannot distinguish a missing key from an intentional empty translation.
 
@@ -46,9 +46,9 @@ Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for co
 
 ### Notes
 
-- **Fallback chain.** `Get` first checks the raw key, then locale-qualified keys inside the same bundle using `<locale-tag>:<key>` across the locale fallback chain, then walks explicit fallback bundles depth-first up to 16 bundles. `Fallback` detects self-cycles and traps.
+- **Fallback chain.** Each bundle lookup checks the raw key, then locale-qualified keys using `<locale-tag>:<key>` across that bundle's locale fallback chain, then repeats on its explicit fallback. A lookup examines at most 16 bundles. `Fallback` rejects a proposed chain that reaches the receiver within that bound.
 - **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is added to a temporary copy of `vars`; the caller's map is not mutated.
-- **Value types.** `FromMap`, JSON loaders, `Format(vars)`, and `Plural(vars)` require string values. `FormatWith(values)` requires a list of strings; oversized positional indices are preserved literally.
+- **Value types.** `FromMap`, JSON loaders, `Format(vars)`, and `Plural(vars)` require raw runtime string values. In Zia, create the runtime map with `Viper.Collections.Map.New()` and populate it with `Map.SetStr`; a typed `Map[String, String]` currently boxes its values and is not compatible. `FormatWith(values)` likewise requires a runtime list containing raw strings; a string `Split(...).ToList()` result is one compatible source. Oversized positional indices are preserved literally.
 - **Missing placeholders.** Placeholders referencing absent keys in `vars` are preserved literally, e.g. `{name}` stays `{name}`.
 - **Escaping.** Use `{{` and `}}` for literal braces.
 - JSON loaders expect a flat `{"key": "value", ...}` object and reject non-string values.
@@ -56,37 +56,53 @@ Prefer `TryGetOption` or `GetOr` for new code. `TryGet` remains available for co
 ### Zia Example
 
 ```rust
-bind MessageBundle : Viper.Localization.MessageBundle
-bind Locale        : Viper.Localization.Locale
+module MessageBundleDemo;
 
-var msgs = MessageBundle.FromMap(
-    Locale.Parse("en-US"),
-    {
-        "greet": "Hello, {name}!",
-        "items.one": "1 item",
-        "items.other": "{n} items"
-    }
-)
+bind Viper.Terminal;
+bind Viper.Collections.Map as Map;
+bind Viper.Localization.Locale as Locale;
+bind Viper.Localization.MessageBundle as MessageBundle;
 
-Say(msgs.Format("greet", {"name": "Alice"}))   # "Hello, Alice!"
-Say(msgs.Plural("items", 1, {}))               # "1 item"
-Say(msgs.Plural("items", 5, {}))               # "5 items"
+func start() {
+    var entries = Map.New();
+    Map.SetStr(entries, "greet", "Hello, {name}!");
+    Map.SetStr(entries, "items.one", "1 item");
+    Map.SetStr(entries, "items.other", "{n} items");
+    var msgs = MessageBundle.FromMap(Locale.Parse("en-US"), entries);
+
+    var vars = Map.New();
+    Map.SetStr(vars, "name", "Alice");
+    Say(msgs.Format("greet", vars)); // "Hello, Alice!"
+
+    var empty = Map.New();
+    Say(msgs.Plural("items", 1, empty)); // "1 item"
+    Say(msgs.Plural("items", 5, empty)); // "5 items"
+}
 ```
 
 Locale-qualified fallback example:
 
 ```rust
-var msgs = MessageBundle.FromMap(Locale.Parse("fr-CA"), {
-    "fr:greet": "Bonjour",
-    "root:greet": "Hello"
-})
+module QualifiedMessages;
 
-Say(msgs.Get("greet"))  # "Bonjour"
+bind Viper.Terminal;
+bind Viper.Collections.Map as Map;
+bind Viper.Localization.Locale as Locale;
+bind Viper.Localization.MessageBundle as MessageBundle;
+
+func start() {
+    var entries = Map.New();
+    Map.SetStr(entries, "fr:greet", "Bonjour");
+    Map.SetStr(entries, "root:greet", "Hello");
+    var msgs = MessageBundle.FromMap(Locale.Parse("fr-CA"), entries);
+
+    Say(msgs.Get("greet")); // "Bonjour"
+}
 ```
 
 ### See Also
 
-- [PluralRules](#viperslocalizationpluralrules) — underlying category evaluator.
+- [PluralRules](#viperlocalizationpluralrules) — underlying category evaluator.
 - [Data files](data-files.md) — JSON schema for loaded messages.
 
 ---
@@ -103,17 +119,17 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
 | `Cardinal(n)` | `String(Float)` | Returns `"zero"/"one"/"two"/"few"/"many"/"other"`. |
 | `CardinalInt(n)` | `String(Int)` | Integer fast path. |
 | `Ordinal(n)` | `String(Int)` | English: `"one"/"two"/"few"/"other"` (1st/2nd/3rd/4th). |
-| `Categories()` | `List[String]()` | Distinct categories used by this locale. |
+| `Categories()` | `List[String]()` | Distinct categories appearing across this locale's cardinal and ordinal rule chains, preserving first occurrence. |
 
 ### Notes
 
-- **Operands.** CLDR plural operands (`n`, `i`, `v`, `f`, `t`) are computed from the input:
+- **Operands.** CLDR plural operands (`n`, `i`, `v`, `f`, `t`) are computed from the numeric input:
   - `n` = absolute value
   - `i` = integer part
   - `v` = visible fraction digit count (incl. trailing zeros)
   - `f` = visible fraction digits as integer (with trailing zeros)
   - `t` = visible fraction digits without trailing zeros
-- Integer-valued doubles skip the decimal-string pass: `v=f=t=0`.
+- A `Float` does not retain source spelling, so lexical trailing zeros cannot survive the call (`1.20` has the same value as `1.2`). Non-integer floats are rendered with 15 significant digits before deriving `v`, `f`, and `t`; integer-valued doubles use `v=f=t=0`.
 - Loaded locale plural rules support CLDR-style range/list predicates: `in`, `not in`, `within`, `not within`, comma-separated lists, and `a..b` ranges. `in` matches integral values only; `within` also matches fractional values.
 - Nonfinite `Cardinal` inputs return `"other"`.
 - **en-US** cardinal: `one` for `i=1 && v=0`; else `other`.
@@ -122,16 +138,21 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
 ### Zia Example
 
 ```rust
-bind PluralRules : Viper.Localization.PluralRules
-bind Locale      : Viper.Localization.Locale
+module PluralRulesDemo;
 
-var pr = PluralRules.ForLocale(Locale.Parse("en-US"))
-Say(pr.CardinalInt(1))    # "one"
-Say(pr.CardinalInt(5))    # "other"
-Say(pr.Ordinal(11))       # "other"  (11th, not 11st)
-Say(pr.Ordinal(21))       # "one"    (21st)
+bind Viper.Terminal;
+bind Viper.Localization.Locale as Locale;
+bind Viper.Localization.PluralRules as PluralRules;
+
+func start() {
+    var pr = PluralRules.ForLocale(Locale.Parse("en-US"));
+    Say(pr.CardinalInt(1)); // "one"
+    Say(pr.CardinalInt(5)); // "other"
+    Say(pr.Ordinal(11));    // "other" (11th)
+    Say(pr.Ordinal(21));    // "one" (21st)
+}
 ```
 
 ### See Also
 
-- [Formatting › RelativeTimeFormat](formatting.md#viperslocalizationrelativetimeformat) — the primary consumer of `PluralRules` inside the runtime.
+- [Formatting › RelativeTimeFormat](formatting.md#viperlocalizationrelativetimeformat) — the primary consumer of `PluralRules` inside the runtime.

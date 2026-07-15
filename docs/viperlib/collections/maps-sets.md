@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Maps & Sets
@@ -22,7 +22,7 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Length`  | Integer | Number of key-value pairs in the map   |
+| `Count`   | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
@@ -99,31 +99,31 @@ func start() {
 DIM scores AS Viper.Collections.Map
 scores = NEW Viper.Collections.Map()
 
-' Add entries
-scores.Set("Alice", 95)
-scores.Set("Bob", 87)
-scores.Set("Carol", 92)
+' Add typed entries
+scores.SetInt("Alice", 95)
+scores.SetInt("Bob", 87)
+scores.SetInt("Carol", 92)
 
 PRINT scores.Count      ' Output: 3
 PRINT scores.IsEmpty  ' Output: False
 
 ' Check existence and get value
 IF scores.Has("Alice") THEN
-    PRINT "Alice's score: "; scores.Get("Alice")
+    PRINT "Alice's score: "; scores.GetInt("Alice")
 END IF
 
 ' Get-or-default without inserting
-PRINT scores.GetOr("Dave", 0)   ' Output: 0 (and "Dave" is still missing)
+PRINT scores.GetIntOr("Dave", 0)   ' Output: 0 (and "Dave" is still missing)
 
 ' Insert only if missing
-IF scores.SetIfMissing("Bob", 123) THEN
+IF scores.SetIfMissing("Bob", Viper.Core.Box.I64(123)) THEN
     PRINT "Inserted Bob"
 ELSE
     PRINT "Bob already exists"
 END IF
 
 ' Update existing entry
-scores.Set("Bob", 91)
+scores.SetInt("Bob", 91)
 
 ' Remove an entry
 IF scores.Remove("Carol") THEN
@@ -134,7 +134,7 @@ END IF
 DIM names AS Viper.Collections.Seq
 names = scores.Keys()
 FOR i = 0 TO names.Count - 1
-    PRINT names.Get(i)
+    PRINT Viper.Collections.Seq.GetStr(names, i)
 NEXT i
 
 ' Clear all
@@ -163,7 +163,7 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 | Property  | Type    | Description                       |
 |-----------|---------|-----------------------------------|
-| `Length`  | Integer | Number of objects in the set      |
+| `Count`   | Integer | Number of objects in the set      |
 | `IsEmpty` | Boolean | True if set contains no objects   |
 
 ### Methods
@@ -196,7 +196,25 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 
 ### Zia Example
 
-> Set is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module SetDemo;
+
+bind Viper.Collections.Set as Set;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+
+func start() {
+    var items: Set = Set.New();
+    var one = Box.I64(1);
+    var two = Box.I64(2);
+
+    SayBool(items.Add(one));       // true
+    SayBool(items.Add(one));       // false: identical object reference
+    SayBool(items.Add(two));       // true
+    SayBool(items.Has(one));       // true
+    SayInt(items.Count);           // 2
+}
+```
 
 ### BASIC Example
 
@@ -298,7 +316,7 @@ regardless of updates.
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries         |
-| `Length`  | Integer | Number of key-value pairs in the map   |
+| `Count`   | Integer | Number of key-value pairs in the map   |
 
 ### Methods
 
@@ -448,7 +466,7 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
-| `Length`  | Integer | Number of strings in the set            |
+| `Count`   | Integer | Number of strings in the set            |
 | `IsEmpty` | Boolean | True if set contains no strings         |
 
 ### Methods
@@ -486,12 +504,30 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 
 ### Zia Example
 
-> SortedSet is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module SortedSetDemo;
+
+bind Viper.Collections.SortedSet as SortedSet;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Terminal;
+
+func start() {
+    var words: SortedSet = SortedSet.New();
+    words.Add("cherry");
+    words.Add("apple");
+    words.Add("banana");
+
+    Say(words.First());             // apple
+    Say(words.Last());              // cherry
+    var ordered: Seq = words.Items();
+    Say(Seq.GetStr(ordered, 1));    // banana
+}
+```
 
 ### BASIC Example
 
 ```basic
-DIM words AS OBJECT = NEW Viper.Collections.SortedSet()
+DIM words AS Viper.Collections.SortedSet = NEW Viper.Collections.SortedSet()
 
 ' Add words (stored in sorted order)
 words.Add("cherry")
@@ -516,38 +552,38 @@ PRINT words.Lower("cherry")    ' Output: "banana" (largest < "cherry")
 PRINT words.Higher("cherry")   ' Output: "date" (smallest > "cherry")
 
 ' Get all items in sorted order
-DIM all AS OBJECT = words.Items()
+DIM all AS Viper.Collections.Seq = words.Items()
 FOR i = 0 TO all.Count - 1
-    PRINT all.Get(i)     ' Output: apple, banana, cherry, date
+    PRINT Viper.Collections.Seq.GetStr(all, i)  ' apple, banana, cherry, date
 NEXT
 
-' Get range [b, d] - from "b" through "d" inclusive
-DIM range AS OBJECT = words.Range("b", "d")
+' Get range [b, date], with both endpoints inclusive
+DIM range AS Viper.Collections.Seq = words.Range("b", "date")
 FOR i = 0 TO range.Count - 1
-    PRINT range.Get(i)   ' Output: banana, cherry, date
+    PRINT Viper.Collections.Seq.GetStr(range, i)  ' banana, cherry, date
 NEXT
 
 ' Set operations
-DIM set1 AS OBJECT = NEW Viper.Collections.SortedSet()
+DIM set1 AS Viper.Collections.SortedSet = NEW Viper.Collections.SortedSet()
 set1.Add("a")
 set1.Add("b")
 set1.Add("c")
 
-DIM set2 AS OBJECT = NEW Viper.Collections.SortedSet()
+DIM set2 AS Viper.Collections.SortedSet = NEW Viper.Collections.SortedSet()
 set2.Add("b")
 set2.Add("c")
 set2.Add("d")
 
 ' Union
-DIM merged AS OBJECT = set1.Union(set2)
+DIM merged AS Viper.Collections.SortedSet = set1.Union(set2)
 PRINT merged.Count         ' Output: 4 (a, b, c, d)
 
 ' Intersection
-DIM common AS OBJECT = set1.Intersect(set2)
+DIM common AS Viper.Collections.SortedSet = set1.Intersect(set2)
 PRINT common.Count         ' Output: 2 (b, c)
 
 ' Difference
-DIM diff AS OBJECT = set1.Diff(set2)
+DIM diff AS Viper.Collections.SortedSet = set1.Diff(set2)
 PRINT diff.Count           ' Output: 1 (a only)
 
 ' Subset check
@@ -597,7 +633,7 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries         |
-| `Length`  | Integer | Number of key-value pairs in the map   |
+| `Count`   | Integer | Number of key-value pairs in the map   |
 
 ### Methods
 
@@ -742,7 +778,7 @@ that return new FrozenSet instances.
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
 | `IsEmpty` | Boolean | True if the set has no elements         |
-| `Length`  | Integer | Number of unique elements in the set    |
+| `Count`   | Integer | Number of unique elements in the set    |
 
 ### Methods
 
@@ -888,7 +924,7 @@ Supports range queries via Floor/Ceil operations.
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Length`  | Integer | Number of key-value pairs in the map   |
+| `Count`   | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods

@@ -73,9 +73,9 @@ last-verified: 2026-05-17
 | `Plot(x, y, color)`                   | `Void(Integer, Integer, Integer)`     | Sets a single pixel                                        |
 | `Poll()`                              | `Integer()`                           | Polls for input events; returns event type (0 = none); destroys the window and sets `ShouldClose` when a close event arrives or the backend event pump fails |
 | `PreventClose(prevent)`               | `Void(Integer)`                       | Blocks (1) or allows (0) the window close button           |
-| `Polygon(points, count, color)`       | `Void(Pointer, Integer, Integer)`     | Draws a filled polygon                                     |
-| `PolygonFrame(points, count, color)`  | `Void(Pointer, Integer, Integer)`     | Draws a polygon outline                                    |
-| `Polyline(points, count, color)`      | `Void(Pointer, Integer, Integer)`     | Draws connected line segments                              |
+| `PolygonPath(path, color)`            | `Void(Path2D, Integer)`               | Draws a filled polygon from a Path2D                       |
+| `PolygonFramePath(path, color)`       | `Void(Path2D, Integer)`               | Draws a polygon outline from a Path2D                      |
+| `PolylinePath(path, color)`           | `Void(Path2D, Integer)`               | Draws connected line segments from a Path2D                |
 | `Ring(cx, cy, r, color)`              | `Void(Integer...)`                    | Draws a circle outline                                     |
 | `Restore()`                           | `Void()`                              | Restores the window after minimize or maximize             |
 | `RoundBox(x, y, w, h, radius, color)` | `Void(Integer...)`                    | Draws a filled rectangle with rounded corners              |

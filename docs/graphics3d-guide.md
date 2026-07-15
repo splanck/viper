@@ -73,8 +73,8 @@ library.
 - [VideoPlayer](#videoplayer) — Video playback (MJPEG/AVI, OGV)
 
 **Format Loaders**
-- [FBX](#fbx) — Low-level FBX extractor API
-- [GLTF](#gltf) — Low-level glTF extractor API
+- [FBX](#fbx-loader) — Low-level FBX extractor API
+- [GLTF](#gltf-loader) — Low-level glTF extractor API
 
 **Operational Reference**
 - [Backend Selection](#backend-selection) — GPU vs. software rendering

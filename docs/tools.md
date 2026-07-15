@@ -402,12 +402,16 @@ should leave backend IL optimization enabled.
 
 ### Demo build driver
 
-On Linux, `scripts/build_demos_linux.sh` builds Zia and BASIC demos through the
-in-process project-to-native path. It defaults to O1, the fast linker, host CPU
-parallelism, and dependency stamps. Useful controls are `--release` (O2),
-`--opt O1|O2`, `--jobs N`, `--timings`, `--rebuild`, and the diagnostic legacy
-path `--linker system`. `--run` intentionally serializes smoke launches because
-the graphical demos share display, audio, and output-directory state.
+The platform demo drivers read `scripts/demo_projects.list`, a shared curated
+selection of Zia showcase projects. The default selection contains seven games
+and two applications; BASIC and smaller feature examples remain available for
+individual builds but are not part of the showcase build. On Linux,
+`scripts/build_demos_linux.sh` uses the in-process project-to-native path and
+defaults to O1, the fast linker, host CPU parallelism, and dependency stamps.
+Useful controls are `--release` (O2), `--opt O1|O2`, `--jobs N`, `--timings`,
+`--rebuild`, and the diagnostic legacy path `--linker system`. `--run`
+intentionally serializes smoke launches because the graphical demos share
+display, audio, and output-directory state.
 
 ### viper package
 

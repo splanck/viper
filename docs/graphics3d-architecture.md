@@ -276,8 +276,8 @@ other through the depth buffer.
 GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU mirrors instead of forcing a readback at the end of every RTT frame.
 
 - backends mark the render target color as dirty when an RTT pass finishes
-- [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
-- [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
+- [`rt_rendertarget3d_as_pixels()`](../src/runtime/graphics/3d/render/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](../src/runtime/graphics/3d/render/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
+- [`rt_canvas3d_begin()`](../src/runtime/graphics/3d/render/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
 - `SetRenderTarget` validates the Canvas3D and RenderTarget3D handles and ensures color/depth backing storage before changing canvas/backend state
 - `SetRenderTarget` and `ResetRenderTarget` are rejected while `Canvas3D` is inside `Begin`/`End`, so all queued draws in a frame flush to one consistent output

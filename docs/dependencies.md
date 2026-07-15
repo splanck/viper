@@ -1,12 +1,15 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-29
+last-verified: 2026-07-14
 ---
 
 # ViperDOS Dependencies for Viper Compiler Toolchain
 
-This document catalogs all external environment dependencies required to port the Viper compiler toolchain (vbasic, zia, viper, runtime/VM) to ViperDOS. Dependencies are grouped by category and prioritized by criticality.
+This document is the core host-interface checklist for porting the Viper compiler toolchain
+(`vbasic`, `zia`, `viper`, runtime, and VM) to ViperDOS. It focuses on the minimum compiler,
+VM, and runtime substrate; optional graphics, audio, networking, GUI, and installer backends
+also require the platform libraries called out near the end of this document.
 
 ## Quick Reference: Minimum Viable Port
 
@@ -55,17 +58,18 @@ To get basic compilation and VM execution working, ViperDOS must provide:
 | `__atomic_load_n` | Runtime | Atomic read |
 | `__atomic_store_n` | Runtime | Atomic write |
 | `__atomic_thread_fence` | Runtime | Memory barrier |
-| `atomic_flag_clear_explicit` | Graphics | Event queue spin lock release |
-| `atomic_flag_test_and_set_explicit` | Graphics | Event queue spin lock acquire |
+| `atomic_exchange_explicit` | Graphics | Event queue spin lock acquire |
+| `atomic_store_explicit` | Graphics | Event queue spin lock release |
 
 **Source locations:**
-- `src/runtime/core/rt_heap.c:51,67,146,169,178,201,210` - Reference counting atomics
-- `src/runtime/threads/rt_threads.c:500` - Thread ID generation (POSIX)
+- `src/runtime/core/rt_heap.c` - Reference counting and heap-registry atomics
+- `src/runtime/threads/rt_threads_posix.c` - POSIX thread ID generation
 - `src/lib/graphics/src/vgfx_internal.h` - C11 `atomic_flag` for the synchronized VGFX event queue
 
 **Notes:**
 - No `mmap`/`munmap` usage - all allocation through malloc
-- Runtime atomics use GCC/Clang builtins; VGFX uses C11 `<stdatomic.h>` `atomic_flag`
+- Runtime atomics use GCC/Clang builtins (with MSVC compatibility shims); VGFX uses an
+  `atomic_bool` wrapper on C11 compilers and Interlocked operations on MSVC.
 
 ---
 
@@ -96,9 +100,7 @@ S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH
 ```
 
 **Source locations:**
-- `src/runtime/io/rt_file_io.c:323-360` - File open implementation
-- `src/runtime/io/rt_file_io.c:397-439` - Read byte
-- `src/runtime/io/rt_file_io.c:599-643` - Write with retry
+- `src/runtime/io/rt_file_io.c` - File open/read/write implementation and retry logic
 
 #### Extended (Directory operations)
 
@@ -139,8 +141,7 @@ S_IRUSR, S_IWUSR, S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH
 - `stderr` - Standard error (FILE*)
 
 **Source locations:**
-- `src/runtime/core/rt_output.c:57` - `setvbuf` for output buffering
-- `src/runtime/core/rt_output.c:66-78` - `fputs`, `fwrite`, `fflush` (exact lines)
+- `src/runtime/core/rt_output.c` - Output buffering, `fputs`, `fwrite`, and `fflush`
 - `src/runtime/core/rt_io.c` - Core I/O operations
 
 #### Terminal Control (Optional - for interactive programs)
@@ -164,9 +165,7 @@ TCSANOW   // Apply changes immediately
 ```
 
 **Source locations:**
-- `src/runtime/core/rt_term.c:99-148` - Terminal raw mode handling (`init_term_cache`, `rt_term_enable_raw_mode`)
-- `src/runtime/core/rt_term.c:397-508` - Non-blocking key input (`readkey_nonblocking`)
-- `src/runtime/core/rt_term.c:171-181` - TTY detection (`stdout_isatty`)
+- `src/runtime/core/rt_term.c` - Raw mode, non-blocking key input, and TTY detection
 
 ---
 
@@ -187,9 +186,8 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 ```
 
 **Source locations:**
-- `src/runtime/core/rt_time.c:281-335` - `clock_gettime` for timer (CLOCK_MONOTONIC and CLOCK_REALTIME)
-- `src/runtime/core/rt_time.c:182-244` - `nanosleep` with EINTR retry
-- `src/runtime/core/rt_datetime.c:197` - `localtime` for timestamps
+- `src/runtime/core/rt_time.c` - `clock_gettime` timers and `nanosleep` with EINTR retry
+- `src/runtime/core/rt_datetime.c` - Local/UTC timestamp conversion
 
 #### Date/Time (Optional - for DateTime class)
 
@@ -202,9 +200,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `strftime(buf, max, fmt, tm)` | `<time.h>` | Runtime | Format time string |
 
 **Source locations:**
-- `src/runtime/core/rt_datetime.c:144-165` - Platform-specific ms time (gettimeofday on macOS)
-- `src/runtime/core/rt_datetime.c:197-408` - Date component extraction
-- `src/runtime/core/rt_datetime.c:450-482` - Time formatting
+- `src/runtime/core/rt_datetime.c` - Platform time acquisition, date components, and formatting
 
 ---
 
@@ -221,8 +217,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `sched_yield()` | `<sched.h>` | Runtime | Yield CPU |
 
 **Source locations:**
-- `src/runtime/threads/rt_threads.c:604-660` - Thread creation with `pthread_create`
-- `src/runtime/threads/rt_threads.c:984-988` - `sched_yield` wrapper
+- `src/runtime/threads/rt_threads_posix.c` - `pthread_create`, detach/join, and `sched_yield`
 
 #### Mutex Operations
 
@@ -231,12 +226,11 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `pthread_mutex_destroy(mutex)` | `<pthread.h>` | Runtime | Destroy mutex |
 | `pthread_mutex_init(mutex, attr)` | `<pthread.h>` | Runtime | Initialize mutex |
 | `pthread_mutex_lock(mutex)` | `<pthread.h>` | Runtime | Lock mutex |
-| `pthread_mutex_trylock(mutex)` | `<pthread.h>` | Runtime | Try to lock mutex without blocking |
 | `pthread_mutex_unlock(mutex)` | `<pthread.h>` | Runtime | Unlock mutex |
 
 **Source locations:**
-- `src/runtime/threads/rt_threads.c:641` - Mutex init (`pthread_mutex_init`)
-- `src/runtime/threads/rt_monitor.c:794,810-835` - Global monitor table mutex usage
+- `src/runtime/threads/rt_threads_posix.c` - Per-thread mutex initialization and locking
+- `src/runtime/threads/rt_monitor_posix.c` - Monitor-table and per-monitor mutexes
 
 #### Condition Variables
 
@@ -250,9 +244,8 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `pthread_cond_wait(cond, mutex)` | `<pthread.h>` | Runtime | Wait on condition |
 
 **Source locations:**
-- `src/runtime/threads/rt_threads.c:719` - `pthread_cond_wait`
-- `src/runtime/threads/rt_threads.c:860` - `pthread_cond_timedwait`
-- `src/runtime/threads/rt_monitor.c:858,1436,1502` - Condition signaling (`pthread_cond_signal`)
+- `src/runtime/threads/rt_threads_posix.c` - Join condition waits and timed waits
+- `src/runtime/threads/rt_monitor_posix.c` - Monitor condition waits and signaling
 
 ---
 
@@ -302,7 +295,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `trunc(x)` | `<math.h>` | Runtime | Truncate toward zero |
 
 **Source locations:**
-- `src/runtime/core/rt_math.c:41-464` - All math wrappers
+- `src/runtime/core/rt_math.c` - Math wrappers
 
 ---
 
@@ -333,8 +326,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `waitpid(pid, status, options)` | `<sys/wait.h>` | Runtime | Wait for child |
 
 **Source locations:**
-- `src/runtime/system/rt_exec.c:203,253` - `posix_spawn` usage
-- `src/runtime/system/rt_exec.c:108,114` - `environ` global (conditional declarations)
+- `src/runtime/system/rt_exec.c` - `posix_spawn`, capture pipes, waits, and environment handling
 
 ---
 
@@ -346,12 +338,10 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 |----------|--------|--------------|---------|
 | `getenv(name)` | `<stdlib.h>` | All | Get environment variable |
 | `setenv(name, value, overwrite)` | `<stdlib.h>` | Runtime | Set environment variable |
-| `unsetenv(name)` | `<stdlib.h>` | Runtime | Unset environment variable |
 
 **Source locations:**
-- `src/runtime/core/rt_args.c:400` - Get environment variable
-- `src/runtime/core/rt_args.c:449` - Set environment variable
-- `src/runtime/system/rt_machine.c:196-265` - Get user/home/temp directories
+- `src/runtime/core/rt_args.c` - Get and set environment variables
+- `src/runtime/system/rt_machine.c` - User, home, and temporary-directory queries
 
 ---
 
@@ -362,7 +352,6 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | Function | Header | Component(s) | Purpose |
 |----------|--------|--------------|---------|
 | `memcmp(s1, s2, n)` | `<string.h>` | All | Compare memory |
-| `strcat(dst, src)` | `<string.h>` | Runtime | Concatenate strings |
 | `strcmp(s1, s2)` | `<string.h>` | All | Compare strings |
 | `strcpy(dst, src)` | `<string.h>` | All | Copy string |
 | `strlen(str)` | `<string.h>` | All | String length |
@@ -425,12 +414,12 @@ The codebase uses `#ifdef` blocks for platform differences:
 ```
 
 **Files with platform conditionals:**
-- `src/runtime/io/rt_dir.c:92-107` - Directory operations
-- `src/runtime/system/rt_exec.c:97-108` - Process spawning (platform conditional)
-- `src/runtime/io/rt_file_io.c:40-91` - Windows CRT mappings
-- `src/runtime/core/rt_term.c:31-71` - Terminal headers (platform conditionals)
-- `src/runtime/threads/rt_threads.c:127` - Windows thread stubs (`#if defined(_WIN32)`)
-- `src/runtime/core/rt_time.c:58-168` - Time implementations (platform selection)
+- `src/runtime/io/rt_dir.c` - Directory operations
+- `src/runtime/system/rt_exec.c` - Process spawning
+- `src/runtime/io/rt_file_io.c` - Windows CRT mappings
+- `src/runtime/core/rt_term.c` - Terminal adapters
+- `src/runtime/threads/rt_threads_posix.c` and `rt_threads_win.c` - Native thread backends
+- `src/runtime/core/rt_time.c` - Time implementations
 
 ### macOS-Specific
 
@@ -441,7 +430,7 @@ The codebase uses `#ifdef` blocks for platform differences:
 ```
 
 **Source locations:**
-- `src/runtime/core/rt_datetime.c:82,161-163` - macOS time functions (`RT_PLATFORM_MACOS`, `gettimeofday`)
+- `src/runtime/core/rt_datetime.c` - macOS `gettimeofday` path
 - `src/runtime/rt_platform.h` - Platform detection macros
 
 ---
@@ -463,35 +452,29 @@ The runtime uses C++ for some threading primitives:
 | `<thread>` | `std::thread::id`, `std::this_thread::get_id()` |
 
 **Source locations:**
-- `src/runtime/threads/rt_threads_primitives.cpp:34-41` - C++ headers for threading
+- `src/runtime/threads/rt_threads_primitives.cpp` - C++ threading primitives
 
-**Note:** These are only needed for the advanced threading primitives (Gate, Barrier, RwLock). The core threading (`rt_threads.c`) uses pthreads directly.
+**Note:** These are only needed for the advanced threading primitives (Gate, Barrier,
+RwLock). Core threads use `rt_threads_posix.c` on POSIX and `rt_threads_win.c` on Windows.
 
 ---
 
 ## Third-Party Libraries
 
-**None required.** The Viper runtime is self-contained and only depends on:
-- Standard C library (libc)
-- POSIX threads (pthreads) - for threading support
-- C++ standard library - for some threading primitives
+Viper has no downloaded or vendored product dependencies. It does use host libraries and OS
+frameworks:
+
+- standard C/C++ libraries and the platform thread API
+- X11 and ALSA when Linux graphics/audio are enabled
+- Cocoa, AudioToolbox, IOKit, CoreFoundation, and Security on macOS as required by enabled features
+- Win32 system libraries such as `ws2_32`, `ole32`, `user32`, and `gdi32` on Windows
+
+Feature-disabled builds omit their corresponding optional host libraries.
 
 ---
 
-## Summary Statistics
+## Maintenance Note
 
-| Category | Critical | Extended | Total |
-|----------|----------|----------|-------|
-| Memory | 7 | 5 atomics | 12 |
-| File I/O | 5 | 11 | 16 |
-| Console | 4 | 6 | 10 |
-| Time | 3 | 5 | 8 |
-| Threading | 0 | 13 | 13 |
-| Math | 6 | 18 | 24 |
-| Process | 2 | 5 | 7 |
-| Environment | 0 | 3 | 3 |
-| String | 11 | 0 | 11 |
-| Error | 2 + errno values | 0 | ~15 |
-
-**Total unique functions: ~120**
-**Critical path functions: ~35**
+This checklist intentionally groups interfaces by porting capability instead of publishing a
+brittle function count. Re-audit the source files named above whenever a ViperDOS port changes
+its enabled runtime, graphics, audio, network, GUI, or packaging feature set.

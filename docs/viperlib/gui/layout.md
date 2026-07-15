@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-07-14
 ---
 
 # Layout Widgets
@@ -25,14 +25,23 @@ Horizontal box layout - arranges children left to right.
 
 **Constructor:** `NEW Viper.GUI.HBox()`
 
-HBox and VBox spacing/alignment account for child margins when centering or end-aligning content.
-VBox, HBox, Flex, Grid, and Dock containers apply preferred, minimum, and maximum size constraints during measurement. Arrange passes clamp content and child dimensions at zero, so excessive padding or margins cannot produce negative child sizes. Spacing, gaps, and explicit Grid track sizes also sanitize non-finite or negative values to zero.
+HBox and VBox spacing accounts for child margins. Native alignment settings also account for those
+margins when centering or end-aligning content.
+The public runtime currently constructs `VBox` and `HBox` layouts. The native GUI layer also has
+Flex, Grid, and Dock layouts for C/C++ integrations; those native layouts apply preferred, minimum,
+and maximum size constraints during measurement. Arrange passes clamp content and child dimensions
+at zero, so excessive padding or margins cannot produce negative child sizes. Spacing and padding
+also sanitize non-finite or negative values to zero.
 Children positioned with `Widget.SetPosition(x, y)` are treated as manual children
 and are skipped by parent layout passes. Use manual positioning for overlays or
 absolute placement, and use preferred sizes, flex, margins, spacing, and padding
 for children that should be arranged by a layout container.
 
-Grid layouts keep declared row and column counts within a bounded runtime range and grow an effective implicit row count for auto-flow or explicit placements beyond the declared rows. Extra children are placed into real rows with nonzero cell bounds instead of falling back to the top-left cell.
+Native Grid layouts keep declared row and column counts within a bounded runtime range and grow an
+effective implicit row count for auto-flow or explicit placements beyond the declared rows. Extra
+children are placed into real rows with nonzero cell bounds instead of falling back to the top-left
+cell. `Viper.GUI.Grid`, documented with the application components, is instead a tabular data widget;
+it is not this native layout manager.
 
 ### Layout Methods
 
@@ -40,6 +49,11 @@ Grid layouts keep declared row and column counts within a bounded runtime range 
 |------------------------|--------------------|-----------------------------------|
 | `SetSpacing(spacing)`  | `Void(Double)`     | Set space between children        |
 | `SetPadding(padding)`  | `Void(Double)`     | Set internal padding              |
+
+These methods are registered on `Viper.GUI.Container`, but the public objects that implement
+spacing are `VBox` and `HBox` (plus native Flex objects supplied by an integration). Calling
+`SetSpacing()` on another widget handle is safely ignored. `SetPadding()` uses the common widget
+padding field and works on a valid widget handle.
 
 ### Example
 
@@ -50,8 +64,8 @@ vbox = NEW Viper.GUI.VBox()
 vbox.SetSpacing(10)
 vbox.SetPadding(20)
 
-' Add to root
-app.Root.AddChild(vbox)
+' Add to the root variable obtained from app.Root
+root.AddChild(vbox)
 
 ' Add widgets to vbox
 DIM label1 AS Viper.GUI.Label
@@ -78,7 +92,39 @@ var l3 = Label.New(vbox, "Third");
 
 ---
 
-> **Note:** For grid-like layouts, nest HBox and VBox containers. In the native GUI layer, wrapped flex layouts and dynamically resized grids are also supported when you need lower-level control.
+### GroupBox
+
+A titled container for grouping related controls. The constructor attaches the group box to its
+parent immediately; `AddChild()` attaches a child to its content area.
+
+**Constructor:** `NEW Viper.GUI.GroupBox(parent, title)`
+
+| Method            | Signature          | Description                              |
+|-------------------|--------------------|------------------------------------------|
+| `AddChild(child)` | `Void(Object)`     | Add a widget to the group box            |
+| `SetTitle(title)` | `Void(String)`     | Replace the displayed title              |
+| `Destroy()`       | `Void()`           | Destroy the group box and its descendants |
+
+```basic
+DIM group AS Viper.GUI.GroupBox
+group = NEW Viper.GUI.GroupBox(root, "Connection")
+
+DIM host AS Viper.GUI.TextInput
+host = NEW Viper.GUI.TextInput(group)
+host.SetPlaceholder("Host name")
+```
+
+```rust
+var group = GroupBox.New(root, "Connection");
+var host = TextInput.New(group);
+host.SetPlaceholder("Host name");
+```
+
+---
+
+> **Note:** For grid-like public layouts, nest HBox and VBox containers. The native GUI layer also
+> supports wrapped Flex layouts and dynamically resized Grid layouts when an integration needs
+> lower-level control.
 
 
 ## See Also

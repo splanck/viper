@@ -487,7 +487,9 @@ static int gjk_epa_with_support(ph3d_gjk_support_fn support_fn,
              * contact still enforces the velocity-level non-penetration constraint in the
              * solver (the shapes stop approaching) while contributing no Baumgarte push-out,
              * which avoids both tunneling and an explosive correction from a fabricated
-             * depth. */
+             * depth. Persistent counts of this fallback (Diagnostics3D.EpaFallbacks)
+             * usually mean an over-detailed hull collider that should be decimated. */
+            rt_game3d_diag_record_epa_fallback();
             if (seed_direction) {
                 vec3_copy(normal, seed_direction);
                 if (vec3_normalize_in_place(normal) <= 1e-12)
@@ -552,6 +554,7 @@ static int test_convex_hull_gjk_epa(void *a_collider,
                 }
                 return 1;
             }
+            rt_game3d_diag_record_epa_fallback();
             if (a_center && b_center) {
                 vec3_sub(b_center, a_center, normal);
                 if (vec3_normalize_in_place(normal) <= 1e-12)
@@ -635,6 +638,12 @@ static int test_meshlike_convex_hull(rt_mesh3d *mesh,
         int32_t top = 0;
         int32_t stack_capacity = 0;
         int overflow = 0;
+        double local_hull_min[3], local_hull_max[3];
+        /* Traverse in mesh-local space: convert the hull AABB once instead of
+         * transforming every visited node's 8 corners to world (same trick the
+         * ray path uses). */
+        ph3d_world_aabb_to_local_bounds(mesh_pose, hull_min, hull_max, local_hull_min,
+                                        local_hull_max);
         if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0))
             overflow = 1;
         while (top > 0) {
@@ -644,8 +653,13 @@ static int test_meshlike_convex_hull(rt_mesh3d *mesh,
             if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
                 continue;
             node = &nodes[node_index];
-            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
-            if (!aabb_overlap_raw(node_min, node_max, hull_min, hull_max))
+            node_min[0] = node->min[0];
+            node_min[1] = node->min[1];
+            node_min[2] = node->min[2];
+            node_max[0] = node->max[0];
+            node_max[1] = node->max[1];
+            node_max[2] = node->max[2];
+            if (!aabb_overlap_raw(node_min, node_max, local_hull_min, local_hull_max))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
                 if (node->right >= 0 &&
@@ -767,7 +781,9 @@ static int test_heightfield_sphere(void *heightfield,
     if (penetration <= 0.0)
         return 0;
     transform_normal_from_local(field_pose, local_normal, normal);
-    *depth = penetration * scale_y;
+    /* Penetration was measured vertically; project onto the surface normal (the
+     * solver's push direction) so steep slopes do not eject with 1/cos inflation. */
+    *depth = penetration * clampd(local_normal[1], 0.0, 1.0) * scale_y;
     if (!isfinite(*depth) || *depth <= 0.0) {
         /* A malformed heightfield sample can yield a non-finite or absurd surface
          * height; reject rather than hand the solver an explosive positional
@@ -779,7 +795,9 @@ static int test_heightfield_sphere(void *heightfield,
 
 /// @brief Capsule-vs-heightfield narrow phase.
 ///
-/// Samples along the oriented capsule axis and keeps the deepest hit.
+/// Samples along the oriented capsule axis and keeps the deepest hit. The sample
+/// count adapts to the axis length (like the box-capsule path) so a long capsule
+/// lying across a narrow ridge cannot straddle it between fixed samples.
 static int test_heightfield_capsule(void *heightfield,
                                     const rt_collider_pose *field_pose,
                                     const rt_body3d *capsule,
@@ -789,7 +807,7 @@ static int test_heightfield_capsule(void *heightfield,
     double axis_a[3], axis_b[3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
-    int samples = half_axis > 1e-9 ? 5 : 1;
+    int samples = capsule_axis_sample_count(half_axis * 2.0, capsule->radius);
     capsule_axis_endpoints(capsule, axis_a, axis_b);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
@@ -814,11 +832,45 @@ static int test_heightfield_capsule(void *heightfield,
     return 1;
 }
 
-/// @brief Box-vs-heightfield narrow phase via 3x3 bottom probe.
+/// @brief Choose the box's local face whose outward world normal points most downward.
+/// @details A tumbled box's local -Y face can be sideways or on top; probing it lets the
+///   box sink into the heightfield before any contact fires. Selecting the face by its
+///   world orientation keeps the 3x3 probe on the true lowest face for any rotation.
+/// @param axis_out Local axis index (0..2) of the chosen face.
+/// @param sign_out +1/-1 selecting the positive/negative face along that axis.
+static void heightfield_box_lowest_face(const rt_collider_pose *box_pose,
+                                        int *axis_out,
+                                        double *sign_out) {
+    double best_y = DBL_MAX;
+    int best_axis = 1;
+    double best_sign = -1.0;
+    for (int axis = 0; axis < 3; ++axis) {
+        double local_axis[3] = {0.0, 0.0, 0.0};
+        double world_axis[3];
+        local_axis[axis] = 1.0;
+        quat_rotate_vec3(box_pose->rotation, local_axis, world_axis);
+        for (int s = -1; s <= 1; s += 2) {
+            double y = (double)s * world_axis[1];
+            if (isfinite(y) && y < best_y) {
+                best_y = y;
+                best_axis = axis;
+                best_sign = (double)s;
+            }
+        }
+    }
+    if (axis_out)
+        *axis_out = best_axis;
+    if (sign_out)
+        *sign_out = best_sign;
+}
+
+/// @brief Box-vs-heightfield narrow phase via a 3x3 probe of the lowest face.
 ///
-/// Samples the heightfield at the oriented box's bottom corners, edge midpoints,
-/// and center; the deepest penetration wins. The edge samples catch narrow ridges
-/// that can pass between the old corner+center probe pattern.
+/// Picks the box face whose world normal points most downward (so tumbled or
+/// upside-down boxes still probe their true lowest geometry), then samples the
+/// heightfield at that face's corners, edge midpoints, and center; the deepest
+/// penetration wins. The edge samples catch narrow ridges that can pass between
+/// the old corner+center probe pattern.
 static int test_heightfield_box(void *heightfield,
                                 const rt_collider_pose *field_pose,
                                 const rt_body3d *box,
@@ -828,17 +880,25 @@ static int test_heightfield_box(void *heightfield,
     double samples[9][3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
+    double best_normal_cos = 1.0;
     double local_samples[9][3];
     int sample_count = 0;
+    int face_axis = 1;
+    double face_sign = -1.0;
     if (!box)
         return 0;
     body_pose_from_proxy(box, &box_pose);
-    for (int ix = -1; ix <= 1; ++ix) {
-        for (int iz = -1; iz <= 1; ++iz) {
-            vec3_set(local_samples[sample_count++],
-                     (double)ix * box->half_extents[0],
-                     -box->half_extents[1],
-                     (double)iz * box->half_extents[2]);
+    heightfield_box_lowest_face(&box_pose, &face_axis, &face_sign);
+    {
+        int u = (face_axis + 1) % 3;
+        int v = (face_axis + 2) % 3;
+        for (int iu = -1; iu <= 1; ++iu) {
+            for (int iv = -1; iv <= 1; ++iv) {
+                double *sample = local_samples[sample_count++];
+                sample[face_axis] = face_sign * box->half_extents[face_axis];
+                sample[u] = (double)iu * box->half_extents[u];
+                sample[v] = (double)iv * box->half_extents[v];
+            }
         }
     }
     for (int i = 0; i < sample_count; i++)
@@ -855,6 +915,7 @@ static int test_heightfield_box(void *heightfield,
             double cur_depth = surface_height - local_point[1];
             if (cur_depth > best_depth) {
                 best_depth = cur_depth;
+                best_normal_cos = clampd(local_normal[1], 0.0, 1.0);
                 transform_normal_from_local(field_pose, local_normal, best_normal);
             }
         }
@@ -874,7 +935,12 @@ static int test_heightfield_box(void *heightfield,
         }
     }
     vec3_copy(normal, best_normal);
-    *depth = best_depth * pose_abs_scale_or_unit(field_pose->scale[1]);
+    /* The probe measures penetration vertically (local +Y); the solver pushes along
+     * the surface normal, so project onto it (cos of the slope) or steep slopes get
+     * a 1/cos-inflated ejection. */
+    *depth = best_depth * best_normal_cos * pose_abs_scale_or_unit(field_pose->scale[1]);
+    if (!isfinite(*depth) || *depth <= 0.0)
+        return 0;
     return 1;
 }
 
@@ -928,11 +994,15 @@ static int test_collider_pair(const rt_body3d *a_body,
                               void **leaf_a_out,
                               rt_collider_pose *leaf_a_pose_out,
                               void **leaf_b_out,
-                              rt_collider_pose *leaf_b_pose_out);
+                              rt_collider_pose *leaf_b_pose_out,
+                              rt_contact3d *manifold_acc);
 
 /// @brief Collide a compound collider (the @p compound_is_a side) against the other collider by
 ///        testing each child shape and keeping the deepest penetration. Mirrors the two formerly
 ///        duplicated compound branches of test_collider_pair; recurses back into it per child.
+///        When @p manifold_acc is provided, every touching leaf contributes a manifold point
+///        during THIS pass, so the solver no longer re-runs the whole compound narrow phase a
+///        second time just to expand the manifold.
 static int test_compound_collider(const rt_body3d *a_body,
                                   void *a_collider,
                                   const rt_collider_pose *a_pose,
@@ -946,7 +1016,8 @@ static int test_compound_collider(const rt_body3d *a_body,
                                   void **leaf_a_out,
                                   rt_collider_pose *leaf_a_pose_out,
                                   void **leaf_b_out,
-                                  rt_collider_pose *leaf_b_pose_out) {
+                                  rt_collider_pose *leaf_b_pose_out,
+                                  rt_contact3d *manifold_acc) {
     void *compound = compound_is_a ? a_collider : b_collider;
     const rt_collider_pose *compound_pose = compound_is_a ? a_pose : b_pose;
     double best_depth = 0.0;
@@ -978,7 +1049,8 @@ static int test_compound_collider(const rt_body3d *a_body,
                                                          &cur_leaf_a,
                                                          &cur_leaf_a_pose,
                                                          &cur_leaf_b,
-                                                         &cur_leaf_b_pose)
+                                                         &cur_leaf_b_pose,
+                                                         manifold_acc)
                                     : test_collider_pair(a_body,
                                                          a_collider,
                                                          a_pose,
@@ -991,7 +1063,20 @@ static int test_compound_collider(const rt_body3d *a_body,
                                                          &cur_leaf_a,
                                                          &cur_leaf_a_pose,
                                                          &cur_leaf_b,
-                                                         &cur_leaf_b_pose);
+                                                         &cur_leaf_b_pose,
+                                                         manifold_acc);
+            if (sub && manifold_acc && cur_leaf_a && cur_leaf_b &&
+                manifold_acc->contact_count < PH3D_MAX_MANIFOLD_POINTS) {
+                double leaf_point[3];
+                compute_contact_point_from_leafs(cur_leaf_a,
+                                                 &cur_leaf_a_pose,
+                                                 cur_leaf_b,
+                                                 &cur_leaf_b_pose,
+                                                 cur_normal,
+                                                 leaf_point);
+                contact3d_try_add_manifold_point(
+                    manifold_acc, leaf_point, cur_normal, -cur_depth);
+            }
             if (sub && cur_depth > best_depth) {
                 best_depth = cur_depth;
                 vec3_copy(best_normal, cur_normal);
@@ -1058,7 +1143,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                               void **leaf_a_out,
                               rt_collider_pose *leaf_a_pose_out,
                               void **leaf_b_out,
-                              rt_collider_pose *leaf_b_pose_out) {
+                              rt_collider_pose *leaf_b_pose_out,
+                              rt_contact3d *manifold_acc) {
     double amn[3], amx[3], bmn[3], bmx[3];
     double a_center[3], b_center[3];
     int64_t a_type;
@@ -1087,7 +1173,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                                       leaf_a_out,
                                       leaf_a_pose_out,
                                       leaf_b_out,
-                                      leaf_b_pose_out);
+                                      leaf_b_pose_out,
+                                      manifold_acc);
 
     if (b_type == RT_COLLIDER3D_TYPE_COMPOUND)
         return test_compound_collider(a_body,
@@ -1103,7 +1190,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                                       leaf_a_out,
                                       leaf_a_pose_out,
                                       leaf_b_out,
-                                      leaf_b_pose_out);
+                                      leaf_b_pose_out,
+                                      manifold_acc);
 
     if (collider_type_is_simple(a_type) && collider_type_is_simple(b_type)) {
         if (!test_simple_collider_pose_collision(
@@ -1186,7 +1274,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                                      leaf_b_out,
                                      leaf_b_pose_out,
                                      leaf_a_out,
-                                     leaf_a_pose_out);
+                                     leaf_a_pose_out,
+                                     NULL);
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -1210,7 +1299,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                                  leaf_b_out,
                                  leaf_b_pose_out,
                                  leaf_a_out,
-                                 leaf_a_pose_out);
+                                 leaf_a_pose_out,
+                                 NULL);
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -1269,7 +1359,8 @@ static int test_collider_pair(const rt_body3d *a_body,
                                  leaf_b_out,
                                  leaf_b_pose_out,
                                  leaf_a_out,
-                                 leaf_a_pose_out);
+                                 leaf_a_pose_out,
+                                 NULL);
         if (hit) {
             normal[0] = -normal[0];
             normal[1] = -normal[1];
@@ -1370,7 +1461,8 @@ static void contact3d_collect_compound_leaf_points(rt_contact3d *contact,
                                 &leaf_a,
                                 &leaf_a_pose,
                                 &leaf_b,
-                                &leaf_b_pose))
+                                &leaf_b_pose,
+                                NULL))
             return;
         compute_contact_point_from_leafs(leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose, normal, point);
         contact3d_try_add_manifold_point(contact, point, normal, -depth);
@@ -1405,15 +1497,16 @@ void contact3d_expand_compound_manifold(rt_contact3d *contact,
 /// actual recursion, then reconstructs an estimated contact point via
 /// `compute_contact_point_from_leafs`. Outputs the leaf colliders that
 /// touched, so contact events can carry sub-collider identity.
-int test_collision(const rt_body3d *a,
-                   const rt_body3d *b,
-                   double *normal,
-                   double *depth,
-                   double *point,
-                   void **leaf_a_out,
-                   void **leaf_b_out,
-                   rt_collider_pose *leaf_a_pose_out,
-                   rt_collider_pose *leaf_b_pose_out) {
+int test_collision_manifold(const rt_body3d *a,
+                            const rt_body3d *b,
+                            double *normal,
+                            double *depth,
+                            double *point,
+                            void **leaf_a_out,
+                            void **leaf_b_out,
+                            rt_collider_pose *leaf_a_pose_out,
+                            rt_collider_pose *leaf_b_pose_out,
+                            rt_contact3d *manifold_acc) {
     rt_collider_pose a_pose;
     rt_collider_pose b_pose;
     rt_collider_pose leaf_a_pose;
@@ -1453,7 +1546,8 @@ int test_collision(const rt_body3d *a,
                             &leaf_a,
                             &leaf_a_pose,
                             &leaf_b,
-                            &leaf_b_pose))
+                            &leaf_b_pose,
+                            manifold_acc))
         return 0;
     if (leaf_a_out)
         *leaf_a_out = leaf_a;
@@ -1466,4 +1560,21 @@ int test_collision(const rt_body3d *a,
     if (point)
         compute_contact_point_from_leafs(leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose, normal, point);
     return 1;
+}
+
+/// @brief Top-level body-vs-body collision test, including contact point.
+///
+/// Thin wrapper over test_collision_manifold with no manifold accumulator —
+/// queries and probes only need the single deepest result.
+int test_collision(const rt_body3d *a,
+                   const rt_body3d *b,
+                   double *normal,
+                   double *depth,
+                   double *point,
+                   void **leaf_a_out,
+                   void **leaf_b_out,
+                   rt_collider_pose *leaf_a_pose_out,
+                   rt_collider_pose *leaf_b_pose_out) {
+    return test_collision_manifold(
+        a, b, normal, depth, point, leaf_a_out, leaf_b_out, leaf_a_pose_out, leaf_b_pose_out, NULL);
 }

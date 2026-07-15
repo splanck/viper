@@ -400,7 +400,9 @@ Frame-based timeline for sequencing animation tracks, integer tweens, and marker
 | `EventFiredId(index)` | `Integer(Integer)` | Compatibility: read marker event IDs from the latest advance |
 | `TrackIsActive(index)` | `Boolean(Integer)` | True if current frame is inside a track range |
 | `TrackProgress(index)` | `Double(Integer)` | Track progress from 0.0 to 1.0 |
-| `TrackPayloadA/B/C(index)` | `Integer(Integer)` | Read track payload values |
+| `TrackPayloadA(index)` | `Integer(Integer)` | Read the first track payload value |
+| `TrackPayloadB(index)` | `Integer(Integer)` | Read the second track payload value |
+| `TrackPayloadC(index)` | `Integer(Integer)` | Read the third track payload value |
 
 `Stop()` rewinds to frame 0 and clears fired marker state. In looping mode, markers are reset when playback wraps so they can fire on later loops.
 

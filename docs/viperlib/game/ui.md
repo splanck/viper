@@ -25,7 +25,7 @@ last-verified: 2026-05-15
 - [Viper.Game.UI.HudDropdown](#vipergameuihuddropdown)
 - [Viper.Game.UI.HudTooltip](#vipergameuihudtooltip)
 - [Viper.Game.UI.GameButton](#vipergameuigamebutton)
-- [Viper.Game.UI.Dialogue](#vipergameuidialogue)
+- [Viper.Game.Dialogue](#vipergamedialogue)
 - [Usage Example](#usage-example)
 
 ---
@@ -418,7 +418,7 @@ Button text is centered and clipped to the inner button width on UTF-8 codepoint
 
 ---
 
-## Viper.Game.UI.Dialogue
+## Viper.Game.Dialogue
 
 Queued typewriter dialogue box with speaker labels, UTF-8-safe reveal timing, word wrapping,
 and optional BitmapFont rendering.
@@ -430,25 +430,26 @@ and optional BitmapFont rendering.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
+| `Speed` | Integer | Write | Reveal speed; values `<= 0` reveal the line instantly |
 | `Font` | BitmapFont | Write | Custom font for speaker/body/indicator text (null = built-in 8x8) |
 | `TextColor` | Integer | Write | Dialogue body color (0xRRGGBB) |
 | `SpeakerColor` | Integer | Write | Speaker label color (0xRRGGBB) |
 | `BorderColor` | Integer | Write | Border color (`-1` disables the frame) |
 | `Padding` | Integer | Write | Inner padding in pixels |
 | `TextScale` | Integer | Write | Integer text scale (minimum 1) |
+| `IsActive` | Boolean | Read | True while a line is being shown |
+| `IsLineComplete` | Boolean | Read | True when the current line is fully revealed |
+| `IsFinished` | Boolean | Read | True once the last line has been acknowledged |
+| `IsWaiting` | Boolean | Read | True when waiting for the caller to advance |
+| `LineCount` | Integer | Read | Number of queued lines |
+| `CurrentLine` | Integer | Read | Zero-based active line index |
+| `Speaker` | String | Read | Speaker name of the active line, or empty string |
 
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetSpeed(charsPerSecond)` | `void(Integer)` | Reveal speed; values `<= 0` reveal the line instantly |
-| `SetFont(font)` | `void(BitmapFont)` | Use a BitmapFont for text measurement and drawing |
-| `SetTextColor(color)` | `void(Integer)` | Set body-text color |
-| `SetSpeakerColor(color)` | `void(Integer)` | Set speaker-label color |
 | `SetBgColor(color, alpha)` | `void(Integer, Integer)` | Set background fill color and alpha |
-| `SetBorderColor(color)` | `void(Integer)` | Set border color (`-1` disables the border) |
-| `SetPadding(pixels)` | `void(Integer)` | Set inner padding |
-| `SetTextScale(scale)` | `void(Integer)` | Set integer text scale |
 | `SetPos(x, y)` | `void(Integer, Integer)` | Move the dialogue box |
 | `SetSize(width, height)` | `void(Integer, Integer)` | Resize the dialogue box |
 | `Say(speaker, text)` | `void(String, String)` | Queue a spoken line |
@@ -457,13 +458,6 @@ and optional BitmapFont rendering.
 | `Update(dtMs)` | `void(Integer)` | Advance the typewriter by milliseconds |
 | `Advance()` | `void()` | Skip the current line or move to the next one |
 | `Skip()` | `void()` | Reveal the current line immediately |
-| `IsActive()` | `Boolean()` | True while a line is being shown |
-| `IsLineComplete()` | `Boolean()` | True when the current line is fully revealed |
-| `IsFinished()` | `Boolean()` | True once the last line has been acknowledged |
-| `IsWaiting()` | `Boolean()` | True when waiting for the caller to advance |
-| `GetLineCount()` | `Integer()` | Number of queued lines |
-| `GetCurrentLine()` | `Integer()` | Zero-based active line index |
-| `GetSpeaker()` | `String()` | Speaker name of the active line, or empty string |
 | `Draw(canvas)` | `void(Canvas)` | Render the panel, speaker label, wrapped text, and wait indicator |
 
 ### Notes

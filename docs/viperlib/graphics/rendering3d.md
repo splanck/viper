@@ -190,16 +190,16 @@ Successful copies update the destination generation for texture-cache
 invalidation; GPU canvases reuse their staging allocation across calls.
 
 ```rust
-Canvas3D.Begin(canvas, cam)
-Canvas3D.DrawMesh(canvas, mesh, model, material)
-Canvas3D.End(canvas)
+Canvas3D.Begin(canvas, cam);
+Canvas3D.DrawMesh(canvas, mesh, model, material);
+Canvas3D.End(canvas);
 
-Canvas3D.BeginOverlay(canvas)
-Canvas3D.DrawText2D(canvas, 12, 12, "READY", 0xFFFFFFFF)
-Canvas3D.EndOverlay(canvas)
+Canvas3D.BeginOverlay(canvas);
+Canvas3D.DrawText2D(canvas, 12, 12, "READY", 0xFFFFFFFF);
+Canvas3D.EndOverlay(canvas);
 
-var capture = Canvas3D.ScreenshotFinal(canvas)
-Canvas3D.Flip(canvas)
+var capture = Canvas3D.ScreenshotFinal(canvas);
+Canvas3D.Flip(canvas);
 ```
 
 The repo-level sample `examples/3d/walk_min.zia` shows the complete Phase 0B
@@ -733,7 +733,7 @@ Toggling the flag bumps the geometry revision so backend caches re-upload in
 the newly selected encoding. `SceneAsset.LoadWithOptionsEx(path,
 "compactStreams")` enables it for every imported mesh in one call.
 
-### Viper.Graphics3D.SceneNode LOD
+### Viper.Graphics3D.SceneNode
 
 `SceneNode` supports authored mesh LODs through `AddLOD(distance, mesh)`.
 Entries remain sorted by distance, duplicate distances replace the previous
@@ -810,14 +810,14 @@ new vectors.
 bind Viper.Graphics3D.Camera3D as Camera3D;
 bind Viper.Math.Vec3 as Vec3;
 
-var cam = Camera3D.New(60.0, 0.1, 1000.0)
-cam.LookAt(Vec3.New(0.0, 2.0, -5.0), Vec3.New(0.0, 0.0, 0.0), Vec3.New(0.0, 1.0, 0.0))
-cam.Shake(0.3, 15.0, 0.5)
+var cam = Camera3D.New(60.0, 16.0 / 9.0, 0.1, 1000.0);
+cam.LookAt(Vec3.New(0.0, 2.0, -5.0), Vec3.New(0.0, 0.0, 0.0), Vec3.New(0.0, 1.0, 0.0));
+cam.Shake(0.3, 15.0, 0.5);
 ```
 
 ```basic
 DIM cam AS Viper.Graphics3D.Camera3D
-cam = NEW Viper.Graphics3D.Camera3D(60.0, 0.1, 1000.0)
+cam = NEW Viper.Graphics3D.Camera3D(60.0, 16.0 / 9.0, 0.1, 1000.0)
 DIM eye AS Viper.Math.Vec3 = NEW Viper.Math.Vec3(0.0, 2.0, -5.0)
 DIM tgt AS Viper.Math.Vec3 = NEW Viper.Math.Vec3(0.0, 0.0, 0.0)
 DIM up  AS Viper.Math.Vec3 = NEW Viper.Math.Vec3(0.0, 1.0, 0.0)
@@ -919,7 +919,7 @@ the currently resident RGBA8 mip and native block source for each draw.
 | `Alpha` | Double | Read/Write | Material opacity |
 | `Metallic` | Double | Read/Write | PBR metallic factor |
 | `Roughness` | Double | Read/Write | PBR roughness factor |
-| `AO` | Double | Read/Write | Ambient-occlusion factor |
+| `AmbientOcclusion` | Double | Read/Write | Ambient-occlusion factor |
 | `EmissiveIntensity` | Double | Read/Write | Emissive multiplier |
 | `NormalScale` | Double | Read/Write | Normal-map strength |
 | `Anisotropy` | Integer | Read/Write | Texture anisotropy; `1=off`, clamps to `1..16` |
@@ -1039,11 +1039,11 @@ on LDR targets mode 0 remains a passthrough.
 ```rust
 bind Viper.Graphics3D.PostFX3D as PostFX3D;
 
-var fx = PostFX3D.New()
-fx.AddBloom(0.8, 1.2, 4)
-fx.AddTonemap(2, 1.0)
-fx.AddTAA(0.9)
-fx.Enabled = true
+var fx = PostFX3D.New();
+fx.AddBloom(0.8, 1.2, 4);
+fx.AddTonemap(2, 1.0);
+fx.AddTAA(0.9);
+fx.Enabled = true;
 ```
 
 ---
@@ -1073,6 +1073,19 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` assets. OBJ imports preserve safe relative `mtllib`/`usemtl` material groups as separate template nodes; STL imports synthesize one default-material mesh node.
 
+#### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `MeshCount` | Integer | Number of imported meshes |
+| `MaterialCount` | Integer | Number of imported materials |
+| `SkeletonCount` | Integer | Number of imported skeletons |
+| `AnimationCount` | Integer | Number of imported skeletal animation clips |
+| `NodeAnimationCount` | Integer | Number of imported node animation clips |
+| `NodeCount` | Integer | Number of imported nodes |
+| `SceneCount` | Integer | Number of immutable scenes addressable by indexed APIs |
+| `VariantCount` | Integer | Number of imported `KHR_materials_variants` names |
+
 #### Load Methods
 
 | Method | Signature | Description |
@@ -1089,11 +1102,10 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get_SceneCount(model)` | `Integer(Object)` | Number of immutable scenes addressable by indexed APIs |
-| `GetSceneName(model, index)` | `String(Object, Integer)` | Name for a scene index, or `""` when out of range |
-| `GetCameraCount(model, sceneIndex)` | `Integer(Object, Integer)` | Number of imported cameras for a scene |
-| `GetCamera(model, sceneIndex, index)` | `Object(Object, Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
-| `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `SceneGraph` |
+| `GetSceneName(index)` | `String(Integer)` | Name for a scene index, or `""` when out of range |
+| `GetCameraCount(sceneIndex)` | `Integer(Integer)` | Number of imported cameras for a scene |
+| `GetCamera(sceneIndex, index)` | `Object(Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
+| `InstantiateSceneAt(index)` | `Object(Integer)` | Clone a scene by index as a fresh `SceneGraph` |
 
 glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `SceneAsset` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
 
@@ -1101,15 +1113,14 @@ glTF cameras are imported as standalone `Camera3D` handles with the node's world
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `FindNode(name)` | `SceneNode(Object, String)` | Find a template node by name, or `null` |
-| `FindNodeOption(name)` | `Option[SceneNode](Object, String)` | Find a template node as `Some(node)`, or `None` |
-| `Instantiate()` | `SceneNode(Object)` | Clone the template hierarchy into a fresh node subtree |
-| `InstantiateScene()` | `SceneGraph(Object)` | Clone the default scene as a standalone scene graph |
-| `InstantiateSceneAt(index)` | `SceneGraph(Object, Integer)` | Clone an immutable scene by index |
-| `get_VariantCount(model)` | `Integer(Object)` | Number of `KHR_materials_variants` names imported with the asset |
-| `GetVariantName(model, index)` | `String(Object, Integer)` | Variant display name, or `""` when out of range |
-| `ApplyVariant(model, target, index)` | `Integer(Object, Object, Integer)` | Apply a material variant to every mapped node under `target` (a `SceneNode` from `Instantiate()` or a `SceneGraph`); returns the node count updated. Variants a primitive does not map restore its default material, so switching is reversible |
-| `GenerateLODs(model, levels, ratio)` | `Integer(Object, Integer, Float)` | Generate 1..4 LOD levels (~`ratio^k` triangles, QEM decimation) for every template/scene mesh node and enable auto screen-error selection; each unique mesh is decimated once, nodes that already carry chains are skipped, and later `Instantiate()` clones inherit the chains. Returns the node count chained |
+| `FindNode(name)` | `SceneNode(String)` | Find a template node by name, or `null` |
+| `FindNodeOption(name)` | `Option[SceneNode](String)` | Find a template node as `Some(node)`, or `None` |
+| `Instantiate()` | `SceneNode()` | Clone the template hierarchy into a fresh node subtree |
+| `InstantiateScene()` | `SceneGraph()` | Clone the default scene as a standalone scene graph |
+| `InstantiateSceneAt(index)` | `SceneGraph(Integer)` | Clone an immutable scene by index |
+| `GetVariantName(index)` | `String(Integer)` | Variant display name, or `""` when out of range |
+| `ApplyVariant(target, index)` | `Integer(Object, Integer)` | Apply a material variant to every mapped node under `target` (a `SceneNode` from `Instantiate()` or a `SceneGraph`); returns the node count updated. Variants a primitive does not map restore its default material, so switching is reversible |
+| `GenerateLODs(levels, ratio)` | `Integer(Integer, Float)` | Generate 1..4 LOD levels (~`ratio^k` triangles, QEM decimation) for every template/scene mesh node and enable auto screen-error selection; each unique mesh is decimated once, nodes that already carry chains are skipped, and later `Instantiate()` clones inherit the chains. Returns the node count chained |
 
 Prefer `FindNodeOption()` for new code. `FindNode()` remains available for
 compatibility with existing `null` checks. Mutating an instantiated node does not
@@ -1247,12 +1258,12 @@ fading-out clip keeps its own speed and looping behavior during the transition.
 bind Viper.Graphics3D.AnimPlayer3D as AnimPlayer3D;
 bind Viper.Graphics3D.Animation3D as Animation3D;
 
-var player = AnimPlayer3D.New(skeleton)
-player.Play(walkAnim)
-player.Speed = 1.5
+var player = AnimPlayer3D.New(skeleton);
+player.Play(walkAnim);
+player.Speed = 1.5;
 
 // per frame
-player.Update(deltaSeconds)
+player.Update(deltaSeconds);
 ```
 
 ```basic
@@ -1418,22 +1429,22 @@ skeleton and applies it after overlays, before the final skin palette.
 ```rust
 bind Viper.Graphics3D.AnimController3D as AnimController3D;
 
-var ctrl = AnimController3D.New(skeleton)
-ctrl.AddState("idle",  idleAnim)
-ctrl.AddState("run",   runAnim)
-ctrl.AddTransition("idle", "run",  0.2)
-ctrl.AddTransition("run",  "idle", 0.3)
-ctrl.AddEvent("run", 0.3, "footstepLeft")
-ctrl.Play("idle")
-ctrl.SetRootMotionBone(0)
+var ctrl = AnimController3D.New(skeleton);
+ctrl.AddState("idle", idleAnim);
+ctrl.AddState("run", runAnim);
+ctrl.AddTransition("idle", "run", 0.2);
+ctrl.AddTransition("run", "idle", 0.3);
+ctrl.AddEvent("run", 0.3, "footstepLeft");
+ctrl.Play("idle");
+ctrl.SetRootMotionBone(0);
 
 // per frame
-ctrl.Update(deltaSeconds)
-var delta = ctrl.ConsumeRootMotion()
-var evt = ctrl.PollEvent()
-if evt == "footstepLeft" then
-    Audio.Play(footstepSound)
-end if
+ctrl.Update(deltaSeconds);
+var delta = ctrl.ConsumeRootMotion();
+var evt = ctrl.PollEvent();
+if evt == "footstepLeft" {
+    Audio.Play(footstepSound);
+}
 ```
 
 ---
@@ -1513,18 +1524,18 @@ mutating the emitter's live particle order.
 ```rust
 bind Viper.Graphics3D.Particles3D as Particles3D;
 
-var emitter = Particles3D.New(256)
-emitter.SetPosition(0.0, 1.0, 0.0)
-emitter.SetDirection(0.0, 1.0, 0.0, 30.0)
-emitter.SetSpeed(2.0, 6.0)
-emitter.SetLifetime(0.5, 1.5)
-emitter.SetColor(0xFF6622FF, 0xFF220000)
-emitter.SetRate(40.0)
-emitter.Start()
+var emitter = Particles3D.New(256);
+emitter.SetPosition(0.0, 1.0, 0.0);
+emitter.SetDirection(0.0, 1.0, 0.0, 30.0);
+emitter.SetSpeed(2.0, 6.0);
+emitter.SetLifetime(0.5, 1.5);
+emitter.SetColor(0xFF6622FF, 0xFF220000);
+emitter.SetRate(40.0);
+emitter.Start();
 
 // per frame
-emitter.Update(deltaSeconds)
-emitter.Draw(canvas3d, camera)
+emitter.Update(deltaSeconds);
+emitter.Draw(canvas3d, camera);
 ```
 
 ---
@@ -1633,18 +1644,18 @@ bind Viper.Graphics3D.SoundListener3D as SoundListener3D;
 bind Viper.Sound.SpatialAudio3D as SpatialAudio3D;
 bind Viper.Sound.Sound as Sound;
 
-var listener = SoundListener3D.New()
-listener.IsActive = true
-listener.BindCamera(cam)
+var listener = SoundListener3D.New();
+listener.IsActive = true;
+listener.BindCamera(cam);
 
-var explosion = Sound.LoadAsset("assets/explosion.ogg")
-var src = SoundSource3D.New(explosion)
-src.MaxDistance = 40.0
-src.Position = Vec3.New(10.0, 0.0, 0.0)
-src.Play()
+var explosion = Sound.LoadAsset("assets/explosion.ogg");
+var src = SoundSource3D.New(explosion);
+src.MaxDistance = 40.0;
+src.Position = Vec3.New(10.0, 0.0, 0.0);
+src.Play();
 
 // per frame
-SpatialAudio3D.SyncBindings(deltaSeconds)
+SpatialAudio3D.SyncBindings(deltaSeconds);
 ```
 
 ---
@@ -1694,6 +1705,8 @@ ambiguous.
 | `GetTraversalCost(pos)` | `Double(Object)` | Return the traversal-cost multiplier at a walkable position |
 | `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
+| `SetHeuristicMode(mode)` | `Void(Integer)` | Pathfinding heuristic policy: `0` strict/optimal (default; any off-mesh link switches the search to Dijkstra), `1` always-Euclidean (much faster on large link-bearing meshes, paths may be slightly suboptimal around link shortcuts) |
+| `HeuristicMode` | `Integer` (property) | Current heuristic policy (0 or 1) |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
 
 Prefer `FindPathOption()` for new path queries. `FindPath()` remains available
@@ -1779,16 +1792,17 @@ edge. An idle agent, or one walking ordinary polygons, reports `false`/`""`.
 bind Viper.Graphics3D.NavMesh3D as NavMesh3D;
 bind Viper.Graphics3D.NavAgent3D as NavAgent3D;
 
-var nav  = NavMesh3D.Build(groundMesh, 0.5, 1.8)
-var agent = NavAgent3D.New(nav)
-agent.DesiredSpeed = 4.0
-agent.StoppingDistance = 0.3
-agent.AvoidanceEnabled = true
-agent.AvoidanceRadius = 0.6
-agent.SetTarget(Vec3.New(12.0, 0.0, 8.0))
+// ... obtain groundMesh and deltaSeconds from the scene loop ...
+var nav = NavMesh3D.Build(groundMesh, 0.5, 1.8);
+var agent = NavAgent3D.New(nav);
+agent.DesiredSpeed = 4.0;
+agent.StoppingDistance = 0.3;
+agent.AvoidanceEnabled = true;
+agent.AvoidanceRadius = 0.6;
+agent.SetTarget(Vec3.New(12.0, 0.0, 8.0));
 
 // per frame
-agent.Update(deltaSeconds)
+agent.Update(deltaSeconds);
 ```
 
 ---
@@ -1848,13 +1862,14 @@ border can leave a visible skirt wall inside the pit at LOD seams.
 ```rust
 bind Viper.Graphics3D.Terrain3D as Terrain3D;
 
-var heightmap = Pixels.New(256, 256)
-var terrain = Terrain3D.New(heightmap, 1.0, 0.25, 1.0)
-terrain.GeneratePerlin(heightmap, 0.05, 6, 0.5)
-terrain.SetHeightmap(heightmap)
-terrain.SetSplatMap(splatPixels)
-terrain.SetLayerTexture(0, grassTex)
-terrain.SetLayerTexture(1, rockTex)
+// ... load splatPixels, grassTex, and rockTex before configuring the terrain ...
+var heightmap = Pixels.New(256, 256);
+var terrain = Terrain3D.New(heightmap, 1.0, 0.25, 1.0);
+terrain.GeneratePerlin(heightmap, 0.05, 6, 0.5);
+terrain.SetHeightmap(heightmap);
+terrain.SetSplatMap(splatPixels);
+terrain.SetLayerTexture(0, grassTex);
+terrain.SetLayerTexture(1, rockTex);
 ```
 
 ---

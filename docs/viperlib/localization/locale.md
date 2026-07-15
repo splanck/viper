@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-07-14
 ---
 
 # Locale, LocaleInfo, LocaleManager
@@ -26,7 +26,7 @@ Immutable handle representing a BCP-47 language tag. Parsed from strings like `"
 | `FromParts(lang, script, region)` | `Locale(String, String, String)` | Build from pre-split subtags. Empty script/region strings mean "absent". |
 | `Invariant()` | `Locale()` | Returns the `root` locale (universal fallback). |
 | `Equals(other)` | `Bool(Locale)` | Canonical-tag equality. |
-| `Fallbacks()` | `List[Locale]()` | Returns the walk-order fallback chain. |
+| `Fallbacks()` | `Object()` (runtime `List` of `Locale`) | Returns the walk-order fallback chain. |
 | `ToString()` | `String()` | Canonical tag string. |
 
 Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility helper for code that already checks null.
@@ -42,39 +42,50 @@ Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility help
 
 ### Notes
 
-- Input canonicalization: language lowercased, script Title-case, region uppercased, underscores normalized to dashes, extension/private-use subtags lowercased, encoding suffixes (`.UTF-8`) stripped.
+- Input canonicalization lowercases the language, Title-cases the script, uppercases an alphabetic region, normalizes underscores to dashes, and lowercases extension/private-use subtags. `Locale.Parse` does **not** accept POSIX encoding or modifier suffixes such as `.UTF-8` or `@latin`; only the system-locale platform adapters strip those suffixes before parsing.
 - Leading, trailing, and duplicate separators are rejected (`"-en"`, `"en-"`, `"en--US"`).
 - Variants, Unicode extensions, and private-use tails are preserved in `Tag`. Fallbacks walk from the full tag to its base language/script/region chain, then `root`.
-- Parsed-but-unloaded locales are still usable for `Tag` / `Fallbacks()` — info queries fall through to the invariant until the locale is registered.
-- `Parse` traps with message `"Viper.Localization.Locale: invalid BCP-47 tag ..."` on empty input, single-char input, subtags longer than 8 chars, or non-alphanumeric content.
+- Parsed-but-unloaded locales are still usable for `Tag` / `Fallbacks()`, but their info queries use the baked en-US invariant data. Loading the tag does not retroactively bind an already-created handle; parse it again, use the handle returned by `LocaleManager.Load`, or pass it to `SetCurrent` after loading.
+- `Parse` traps on empty input, a primary language shorter than two characters, subtags longer than eight characters, malformed extension/private-use structure, or non-ASCII-alphanumeric subtag content.
+- The runtime registry currently exposes `Fallbacks()` as opaque `Object`, so Zia cannot infer that it is iterable. Traverse it through `Viper.Collections.List` as shown below.
 
 ### Zia Example
 
 ```rust
-bind Locale : Viper.Localization.Locale
+module LocaleDemo;
 
-var us = Locale.Parse("en-US")
-Say(us.Language)   # "en"
-Say(us.Region)     # "US"
-Say(us.Tag)        # "en-US"
+bind Viper.Terminal;
+bind Viper.Collections.List as RuntimeList;
+bind Viper.Localization.Locale as Locale;
 
-for step in us.Fallbacks():
-    Say(step.Tag)  # en-US, en, root
+func start() {
+    var us = Locale.Parse("en-US");
+    Say(us.Language); // "en"
+    Say(us.Region);   // "US"
+    Say(us.Tag);      // "en-US"
+
+    var chain = us.Fallbacks();
+    var i = 0;
+    while i < RuntimeList.get_Count(chain) {
+        Say(Locale.ToString(RuntimeList.Get(chain, i))); // en-US, en, root
+        i += 1;
+    }
+}
 ```
 
 ### BASIC Example
 
 ```basic
-DIM loc AS Locale
-loc = Locale.Parse("en-US")
-PRINT loc.Tag        ' en-US
-PRINT loc.Language   ' en
+DIM localeObj AS Viper.Localization.Locale
+localeObj = Viper.Localization.Locale.Parse("en-US")
+PRINT localeObj.ToString()
+PRINT Viper.Localization.Locale.get_Language(localeObj)
 ```
 
 ### See Also
 
-- [LocaleInfo](#viperslocalizationlocaleinfo) — queries about a Locale.
-- [LocaleManager](#viperslocalizationlocalemanager) — registry of loaded locales.
+- [LocaleInfo](#viperlocalizationlocaleinfo) — queries about a Locale.
+- [LocaleManager](#viperlocalizationlocalemanager) — registry of loaded locales.
 
 ---
 
@@ -116,23 +127,23 @@ Static process-global registry of loaded locales + current/system-locale state.
 |---|---|---|
 | `Current()` | `Locale()` | Currently active locale. |
 | `SetCurrent(loc)` | `Void(Locale)` | Set current; **traps** if locale isn't loaded. |
-| `System()` | `Locale()` | Detected system locale (may be unloaded). |
-| `Available()` | `List[String]()` | Registered locale tags. |
+| `System()` | `Locale()` | Detected system locale (may be unloaded); falls back to en-US when detection fails. |
+| `Available()` | `List[String]()` | Registered locale tags in registration order. |
 | `IsLoaded(loc)` | `Bool(Locale)` | Whether the locale is in the registry. |
 | `LoadFromJson(path)` | `Void(String)` | Load from filesystem; traps on error. |
 | `TryLoadFromJson(path)` | `Bool(String)` | Returns `false` on failure instead of trapping. |
-| `LoadFromAsset(name)` | `Void(String)` | Load from VPA asset. |
+| `LoadFromAsset(name)` | `Void(String)` | Load through the asset system (embedded or mounted VPA asset). |
 | `TryLoadFromAsset(name)` | `Bool(String)` | Returns `false` on failure. |
 | `LoadBuiltin(tag)` | `Void(String)` | Load one of the C-baked locales (`"en-US"` only in v1). |
-| `Load(tag)` | `Locale(String)` | High-level: canonicalizes the tag, then tries registered locales and filesystem search paths. |
-| `SearchPath()` | `String()` | Current search path list. |
+| `Load(tag)` | `Locale(String)` | Canonicalize the tag, then try the registry and filesystem search paths; returns null if invalid or unavailable. |
+| `SearchPath()` | `String()` | Current search paths joined with the platform path-list separator. |
 | `AddSearchPath(path)` | `Void(String)` | Append a filesystem search dir. |
 | `Unload(loc)` | `Bool(Locale)` | Remove a locale; refuses when in use. |
 | `Reset()` | `Void()` | Clear search paths and remove unused loaded locales; baked en-US remains. |
 
 ### Notes
 
-- First access triggers lazy init: registers baked en-US, detects system, sets current.
+- First access triggers lazy initialization: it registers baked en-US and detects the system locale. Current uses that locale only when its exact tag is already loaded; otherwise current starts as en-US.
 - Thread-safe via a process-global rwlock; hot-path formatters capture the locale's data pointer at construction and never re-lock.
 - `LoadFromJson(path)` and `LoadFromAsset(name)` parse locale JSON and register the canonical tag. `Try*` variants return `false` on missing/malformed input instead of trapping.
 - `Load(tag)` looks for `<canonical-tag>.json` in directories added with `AddSearchPath`.

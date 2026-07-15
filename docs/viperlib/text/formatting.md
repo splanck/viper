@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-30
+last-verified: 2026-07-14
 ---
 
 # Formatting & Generation
@@ -25,7 +25,7 @@ Simple string templating with placeholder substitution.
 | `RenderSeq(template, values)`             | `String(String, Seq)`               | Replace `{{0}}`, `{{1}}` with Seq values          |
 | `RenderWith(template, values, pre, suf)`  | `String(String, Map, String, String)` | Use custom delimiters instead of `{{` `}}`      |
 | `Has(template, key)`                      | `Boolean(String, String)`           | Check if template contains placeholder for key   |
-| `Keys(template)`                          | `Seq(String)`                       | Extract all unique placeholder keys               |
+| `Keys(template)`                          | `Bag(String)`                       | Extract all unique placeholder keys               |
 | `Escape(text)`                            | `String(String)`                    | Escape `{{` and `}}` for literal output           |
 
 ### Placeholder Syntax
@@ -45,7 +45,7 @@ Simple string templating with placeholder substitution.
 - Placeholder indices that overflow integer range are ignored (placeholder left as-is)
 - Template rendering and escaping use runtime string byte length, so embedded `NUL` bytes in values are preserved
 - `Escape()` always returns a new string result, even when the input contains no template delimiters
-- `Keys()` returns unique key strings in an owned sequence; callers can release the sequence normally
+- `Keys()` currently returns an owned `Viper.Collections.Bag`, so key order is unspecified; use `Items()` when a `Seq` is needed
 - Thread safe: all functions are stateless
 
 ### Traps
@@ -147,9 +147,9 @@ IF Viper.Text.Template.Has(template, "name") THEN
     PRINT "Template uses 'name' placeholder"
 END IF
 
-' Get all placeholder keys as a Seq of unique strings
-DIM keys AS OBJECT = Viper.Text.Template.Keys(template)
-PRINT keys.Length()  ' Output: 3
+' Get all placeholder keys as a Bag of unique strings
+DIM keys AS Viper.Collections.Bag = Viper.Text.Template.Keys(template)
+PRINT keys.Count  ' Output: 3
 
 ' Iterate over keys (order not guaranteed)
 ' Contains: "name", "count", "sender"
@@ -355,8 +355,8 @@ PRINT wrapped
 ' riverbank
 
 ' Get wrapped lines as a Seq
-DIM lines AS OBJECT = Viper.Text.TextWrapper.WrapLines(text, 20)
-PRINT lines.Length  ' Output: 4
+DIM lines AS Viper.Collections.Seq = Viper.Text.TextWrapper.WrapLines(text, 20)
+PRINT lines.Count  ' Output: 4
 
 ' Text alignment
 PRINT "["; Viper.Text.TextWrapper.Left("hello", 20); "]"    ' Output: [hello               ]
@@ -415,25 +415,26 @@ Number formatting utilities for human-readable display of integers and floating-
 
 | Method                   | Signature              | Description                                         |
 |--------------------------|------------------------|-----------------------------------------------------|
-| `Bytes(n)`               | `String(Integer)`      | Format byte count as human-readable size (KB, MB, GB, etc.) |
+| `Bytes(n)`               | `String(Integer)`      | Format byte count as a binary-scaled size (B through EB) |
 | `Currency(amount, sym)`  | `String(Double, String)` | Format as currency with symbol and two decimal places |
 | `Decimals(n, places)`    | `String(Double, Integer)` | Format number with specified decimal places        |
 | `Ordinal(n)`             | `String(Integer)`      | Format integer as ordinal (1st, 2nd, 3rd, 4th...)  |
 | `Pad(n, width)`          | `String(Integer, Integer)` | Zero-pad integer to minimum width               |
 | `Percent(n)`             | `String(Double)`       | Format fraction as percentage (0.756 -> "75.6%")   |
 | `Thousands(n, sep)`      | `String(Integer, String)` | Format integer with thousands separator          |
-| `ToWords(n)`             | `String(Integer)`      | Convert integer to English words (supports up to trillions) |
+| `ToWords(n)`             | `String(Integer)`      | Convert any signed 64-bit integer to English words          |
 
 ### Notes
 
-- `Bytes` uses binary units: B, KB, MB, GB, TB with two decimal places where appropriate
+- `Bytes` scales by 1024 through B, KB, MB, GB, TB, PB, and EB. Scaled magnitudes below 10 use two decimal places; larger scaled magnitudes use one.
 - `Currency` adds thousands separators and always shows two decimal places (e.g., `$1,234.56`)
 - `Currency` preserves the full runtime string for the symbol, including embedded `NUL` bytes
 - `Decimals`, `Currency`, and `Percent` use canonical `NaN`, `Infinity`, and `-Infinity` spellings for non-finite values; `Percent` appends `%`
+- `Decimals` clamps the requested precision to 0 through 20 places; `Percent` rounds to at most one decimal place and drops a trailing `.0`
 - `Ordinal` handles special cases: 11th, 12th, 13th (not 11st, 12nd, 13th)
 - `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`
 - `Thousands` preserves the full runtime string for the separator, including embedded `NUL` bytes; null or empty separators default to `","`
-- `ToWords` produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
+- `ToWords` handles the full signed 64-bit range and produces hyphenated compound numbers (e.g., "forty-two", "one hundred twenty-three")
 - Formatting helpers trap on internal builder allocation or overflow failure instead of returning partial output
 
 ### Zia Example
@@ -520,11 +521,11 @@ English noun pluralization and singularization. Handles common English rules, ir
 
 - Handles regular English pluralization rules (adding -s, -es, -ies, etc.)
 - Knows common irregular forms: child/children, person/people, mouse/mice, ox/oxen, etc.
-- `Count` automatically chooses singular or plural form based on the number (1 = singular, everything else = plural)
+- `Count` uses the singular form for `1` and `-1`; every other count uses the plural form
 - Irregular forms preserve input casing for title-case and all-uppercase words, e.g. `Child` -> `Children`, `CHILD` -> `CHILDREN`
 - Regular suffix rules are case-insensitive for matching and preserve all-uppercase input where practical, e.g. `BOX` -> `BOXES`, `CITY` -> `CITIES`
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved in regular inflection and `Count`
-- Not a full NLP engine -- covers the approximately 95% common case for English nouns
+- This is a compact rule table, not a full NLP engine; ambiguous and uncommon English inflections may be wrong
 
 ### Zia Example
 
@@ -578,10 +579,10 @@ PRINT Viper.Text.Pluralize.Count(3, "child") ' Output: "3 children"
 
 ## Viper.Text.Version
 
-Semantic version (SemVer 2.0.0) parsing, comparison, and manipulation. Supports major.minor.patch format with optional pre-release and build metadata.
+Semantic version parsing, comparison, and manipulation. The core syntax follows SemVer 2.0.0, with an additional optional leading `v` or `V` accepted for compatibility.
 
 **Type:** Instance class
-**Constructor:** `Parse(versionString)` -- parses a semver string and returns a Version object (NULL if invalid)
+**Constructor:** `Parse(versionString)` -- parses a version string and returns a Version object (`NULL` if invalid)
 
 ### Properties
 
@@ -615,10 +616,13 @@ Semantic version (SemVer 2.0.0) parsing, comparison, and manipulation. Supports 
 - `Parse` requires all three numeric components and returns NULL for invalid SemVer strings
 - Pre-release and build identifiers must be non-empty dot-separated ASCII alphanumeric/hyphen identifiers; numeric pre-release identifiers cannot have leading zeroes
 - `Cmp` ignores build metadata per the SemVer specification; pre-release versions have lower precedence than the associated normal version
-- `Satisfies` supports constraint operators: `>=`, `<=`, `>`, `<`, `=`, `^` (compatible), `~` (approximate)
+- `Parse` and `IsValid` also accept one optional leading `v` or `V`; this is a Viper extension to strict SemVer 2.0.0
+- `Satisfies` supports constraint operators: `>=`, `<=`, `>`, `<`, `=`, `!=`, `^` (compatible), and `~` (same major/minor)
 - `Satisfies` trims leading and trailing whitespace around the constraint and version operand
+- Constraint operands must contain all three numeric components. An empty or whitespace-only constraint matches every valid receiver.
 - Embedded `NUL` bytes in constraints are not treated as terminators; constraints containing them are parsed by full byte length and generally fail as invalid
-- `BumpMajor`, `BumpMinor`, and `BumpPatch` return new version strings (they do not modify the original object)
+- `Compare` orders an invalid parse below a valid one (and considers two invalid parses equal); `ParseMajor`, `ParseMinor`, and `ParsePatch` return `0` when parsing fails, so use `IsValid` when zero is ambiguous
+- `BumpMajor`, `BumpMinor`, and `BumpPatch` return new numeric version strings, drop prerelease/build metadata, and do not modify the original object
 
 ### Zia Example
 
@@ -655,15 +659,18 @@ func start() {
 
 ```basic
 ' Parse a semantic version string
-DIM v AS OBJECT = Viper.Text.Version.Parse("1.2.3-beta+build42")
+DIM v AS Viper.Text.Version = Viper.Text.Version.Parse("1.2.3-beta+build42")
 
 ' Access version components
 PRINT v.Major       ' Output: 1
 PRINT v.Minor       ' Output: 2
 PRINT v.Patch       ' Output: 3
-PRINT v.Prerelease  ' Output: "beta"
-PRINT v.Build       ' Output: "build42"
-PRINT v.ToString()  ' Output: "1.2.3-beta+build42"
+DIM prerelease AS STRING = v.Prerelease
+DIM buildMetadata AS STRING = v.Build
+DIM versionText AS STRING = v.ToString()
+PRINT prerelease    ' Output: "beta"
+PRINT buildMetadata ' Output: "build42"
+PRINT versionText   ' Output: "1.2.3-beta+build42"
 
 ' Bump versions
 PRINT v.BumpMajor()  ' Output: "2.0.0"
@@ -671,7 +678,7 @@ PRINT v.BumpMinor()  ' Output: "1.3.0"
 PRINT v.BumpPatch()  ' Output: "1.2.4"
 
 ' Compare versions
-DIM v2 AS OBJECT = Viper.Text.Version.Parse("2.0.0")
+DIM v2 AS Viper.Text.Version = Viper.Text.Version.Parse("2.0.0")
 DIM cmp AS INTEGER = v.Cmp(v2)
 PRINT cmp  ' Output: -1 (v < v2)
 
@@ -689,7 +696,7 @@ IF v.Satisfies(">=1.0.0") THEN
     PRINT "Meets minimum version"   ' Output: Meets minimum version
 END IF
 
-IF v.Satisfies("^1.2") THEN
+IF v.Satisfies("^1.2.0") THEN
     PRINT "Compatible with 1.2.x"   ' Output: Compatible with 1.2.x
 END IF
 ```
@@ -742,7 +749,7 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 - Escaping, unescaping, stripping, and extraction use runtime string byte length, so embedded `NUL` bytes are preserved.
 - `ExtractLinks` recognizes `href` attributes with whitespace around `=`, quoted or unquoted values, absolute paths such as `/about`, and self-closing tags; it ignores non-`href` names such as `data-href`.
 - `ExtractLinks` and `ExtractText` return owned sequences of owned strings.
-- All methods return empty string/empty Seq for NULL input.
+- String-returning helpers return an empty string for `NULL`; extraction helpers return an empty `Seq`; `Parse(NULL)` returns an empty root Map node.
 
 ### Zia Example
 
@@ -794,19 +801,19 @@ PRINT plain  ' Output: "Price: <$10>"
 
 ' Extract all links from HTML
 DIM page AS STRING = "<a href=""https://example.com"">Link 1</a><a href=""/about"">About</a>"
-DIM links AS OBJECT = Viper.Text.Html.ExtractLinks(page)
-PRINT links.Length     ' Output: 2
-PRINT links.Get(0)  ' Output: "https://example.com"
-PRINT links.Get(1)  ' Output: "/about"
+DIM links AS Viper.Collections.Seq = Viper.Text.Html.ExtractLinks(page)
+PRINT links.Count     ' Output: 2
+PRINT Viper.Collections.Seq.GetStr(links, 0)  ' Output: "https://example.com"
+PRINT Viper.Collections.Seq.GetStr(links, 1)  ' Output: "/about"
 
 ' Extract text from specific tags
 DIM doc AS STRING = "<h1>Title</h1><p>Body</p><h1>Another</h1>"
-DIM headings AS OBJECT = Viper.Text.Html.ExtractText(doc, "h1")
-PRINT headings.Length     ' Output: 2
-PRINT headings.Get(0)  ' Output: "Title"
+DIM headings AS Viper.Collections.Seq = Viper.Text.Html.ExtractText(doc, "h1")
+PRINT headings.Count     ' Output: 2
+PRINT Viper.Collections.Seq.GetStr(headings, 0)  ' Output: "Title"
 
 ' Parse HTML into a navigable tree
-DIM tree AS OBJECT = Viper.Text.Html.Parse("<div class=""main""><p>Hello</p></div>")
+DIM tree AS Viper.Collections.Map = Viper.Text.Html.Parse("<div class=""main""><p>Hello</p></div>")
 ' tree is a Map with keys: tag, text, attrs, children
 ```
 
@@ -844,7 +851,9 @@ Basic Markdown to HTML conversion and text extraction. Supports common Markdown 
 | `*italic*`            | `<em>italic</em>`    | Italic text            |
 | `` `code` ``          | `<code>code</code>`  | Inline code            |
 | `[text](url)`         | `<a href="url">text</a>` | Links              |
-| `- item`              | `<li>item</li>`      | Unordered list items   |
+| `- item` or `* item`  | `<ul><li>item</li></ul>` | Consecutive unordered list items |
+| fenced code block     | `<pre><code>...</code></pre>` | Triple-backtick code blocks |
+| `---`, `***`, or `___` | `<hr>`               | Horizontal rules (three or more markers, spaces allowed) |
 | Blank line             | `<p>...</p>`         | Paragraph breaks       |
 
 ### Zia Example
@@ -875,23 +884,26 @@ func start() {
 DIM md AS STRING = "# Hello" + CHR$(10) + "This is **bold** and *italic*."
 DIM html AS STRING = Viper.Text.Markdown.ToHtml(md)
 PRINT html
-' Output: <h1>Hello</h1><p>This is <strong>bold</strong> and <em>italic</em>.</p>
+' Output consists of the h1 and paragraph tags on separate lines.
 
 ' Convert to plain text
 DIM plain AS STRING = Viper.Text.Markdown.ToText(md)
-PRINT plain  ' Output: Hello This is bold and italic.
+PRINT plain
+' Output:
+' Hello
+' This is bold and italic.
 
 ' Extract all links
 DIM doc AS STRING = "Visit [Google](https://google.com) or [GitHub](https://github.com)"
-DIM links AS OBJECT = Viper.Text.Markdown.ExtractLinks(doc)
-PRINT links.Length     ' Output: 2
-PRINT links.Get(0)  ' Output: "https://google.com"
+DIM links AS Viper.Collections.Seq = Viper.Text.Markdown.ExtractLinks(doc)
+PRINT links.Count     ' Output: 2
+PRINT Viper.Collections.Seq.GetStr(links, 0)  ' Output: "https://google.com"
 
 ' Extract headings for table of contents
 DIM article AS STRING = "# Introduction" + CHR$(10) + "## Background" + CHR$(10) + "## Methods"
-DIM headings AS OBJECT = Viper.Text.Markdown.ExtractHeadings(article)
-PRINT headings.Length     ' Output: 3
-PRINT headings.Get(0)  ' Output: "Introduction"
+DIM headings AS Viper.Collections.Seq = Viper.Text.Markdown.ExtractHeadings(article)
+PRINT headings.Count     ' Output: 3
+PRINT Viper.Collections.Seq.GetStr(headings, 0)  ' Output: "Introduction"
 ```
 
 ### Notes
@@ -899,10 +911,13 @@ PRINT headings.Get(0)  ' Output: "Introduction"
 - This is a basic Markdown converter, not a full CommonMark implementation
 - Supports the most commonly used Markdown features
 - Link URLs are escaped before being written to HTML attributes, and unsafe schemes are blocked even with leading whitespace/control bytes
+- `ExtractLinks` applies the same unsafe-scheme policy and returns `"#"` in place of a blocked URL
 - Unmatched `**`, `*`, and backtick markers are emitted as literal text rather than as unclosed formatting spans
 - `ToText` preserves source line breaks but does not append an extra final newline; malformed link starts such as `[` stay literal, and underscore emphasis markers are stripped like asterisks
 - `ExtractHeadings` follows the same heading rule as rendering: one to six `#` characters followed by a space
+- `ExtractHeadings` returns the raw heading contents, including any inline Markdown markers
 - Extraction helpers return owned sequences of owned strings
+- Null input produces an empty string or empty extraction sequence
 - Nested formatting (e.g., bold within italic) may not render correctly
 
 ### Use Cases

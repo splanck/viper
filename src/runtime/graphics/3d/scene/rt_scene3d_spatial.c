@@ -284,8 +284,8 @@ static int scene3d_spatial_choose_split_axis(const rt_scene3d_spatial_index *ind
     return axis;
 }
 
-/// @brief Allocate and zero-initialize a new BVH node (children set to -1). Returns its index or
-/// -1.
+/// @brief Allocate and zero-initialize a new BVH node (children/parent set to -1). Returns its
+/// index or -1.
 static int scene3d_spatial_alloc_bvh_node(rt_scene3d_spatial_index *index) {
     int32_t node_index;
     if (!index || !scene3d_spatial_ensure_bvh_node_capacity(index, index->node_count + 1))
@@ -294,6 +294,7 @@ static int scene3d_spatial_alloc_bvh_node(rt_scene3d_spatial_index *index) {
     memset(&index->nodes[node_index], 0, sizeof(index->nodes[node_index]));
     index->nodes[node_index].left = -1;
     index->nodes[node_index].right = -1;
+    index->nodes[node_index].parent = -1;
     return node_index;
 }
 
@@ -326,6 +327,8 @@ static int scene3d_spatial_build_bvh_range(rt_scene3d_spatial_index *index,
     }
     if (count <= SCENE3D_SPATIAL_LEAF_SIZE) {
         node->leaf = 1;
+        for (int32_t i = start; i < start + count; ++i)
+            index->entries[index->entry_indices[i]].leaf_node = node_index;
         return node_index;
     }
     {
@@ -342,6 +345,8 @@ static int scene3d_spatial_build_bvh_range(rt_scene3d_spatial_index *index,
         node = &index->nodes[node_index];
         node->left = left_node;
         node->right = right_node;
+        index->nodes[left_node].parent = node_index;
+        index->nodes[right_node].parent = node_index;
     }
     return node_index;
 }
@@ -543,13 +548,27 @@ int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
 void *scene3d_effective_animator(rt_scene_node3d *node);
 static int scene3d_spatial_rebuild(rt_scene3d *scene);
 
-/// @brief Recompute a spatial entry's world AABB from its node's current transform/geometry.
-/// @return 1 if the bounds changed, 0 if unchanged (lets refit skip untouched subtrees).
+/// @brief Effective visibility of @p node: itself AND every ancestor visible.
+static int scene3d_node_effective_visible(const rt_scene_node3d *node) {
+    const rt_scene_node3d *current = node;
+    while (current) {
+        if (!current->visible)
+            return 0;
+        current = current->parent;
+    }
+    return 1;
+}
+
+/// @brief Recompute a spatial entry's world AABB and visibility from its node's
+///   current transform/geometry. Hidden nodes stay indexed (visibility is a query
+///   filter, not topology) so their bounds refresh like any other entry.
+/// @return 1 on success, 0 when the node no longer has drawable bounds (caller
+///   escalates to a rebuild).
 static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry) {
     double world_min[3];
     double world_max[3];
     double radius = 0.0;
-    if (!entry || !entry->node || !entry->node->visible)
+    if (!entry || !entry->node)
         return 0;
     recompute_world_matrix(entry->node);
     if (!scene3d_node_world_draw_union_aabb(
@@ -558,6 +577,7 @@ static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry)
     memcpy(entry->world_min, world_min, sizeof(entry->world_min));
     memcpy(entry->world_max, world_max, sizeof(entry->world_max));
     entry->cullable = radius > 0.0 ? 1 : 0;
+    entry->visible = scene3d_node_effective_visible(entry->node) ? 1 : 0;
     entry->world_revision = entry->node->world_revision;
     entry->geometry_revision = scene_node_geometry_revision_signature(entry->node);
     return 1;
@@ -610,14 +630,64 @@ static void scene3d_spatial_refit_bvh_node(rt_scene3d_spatial_index *index, int3
     }
 }
 
-/// @brief Refit the whole BVH to current geometry without changing its topology.
-/// @details Refreshes each leaf entry's bounds then re-expands node bounds bottom-up — cheaper than
-/// a
-///          rebuild when only transforms moved. Returns 0 (signalling a rebuild is needed) if the
-///          tree shape no longer fits.
+/// @brief Recompute one BVH node's bounds/cullable count from its immediate
+///   children (or its leaf entries) without recursing.
+static void scene3d_spatial_recompute_node(rt_scene3d_spatial_index *index, int32_t node_index) {
+    rt_scene3d_spatial_bvh_node *node;
+    if (!index || node_index < 0 || node_index >= index->node_count)
+        return;
+    node = &index->nodes[node_index];
+    scene_bounds_reset_d(node->world_min, node->world_max);
+    node->cullable_count = 0;
+    if (node->leaf) {
+        for (int32_t i = node->start; i < node->start + node->count; ++i) {
+            rt_scene3d_spatial_entry *entry = &index->entries[index->entry_indices[i]];
+            scene3d_spatial_bounds_include(
+                node->world_min, node->world_max, entry->world_min, entry->world_max);
+            if (entry->cullable)
+                node->cullable_count++;
+        }
+        return;
+    }
+    if (node->left >= 0 && node->left < index->node_count) {
+        rt_scene3d_spatial_bvh_node *left = &index->nodes[node->left];
+        scene3d_spatial_bounds_include(
+            node->world_min, node->world_max, left->world_min, left->world_max);
+        node->cullable_count += left->cullable_count;
+    }
+    if (node->right >= 0 && node->right < index->node_count) {
+        rt_scene3d_spatial_bvh_node *right = &index->nodes[node->right];
+        scene3d_spatial_bounds_include(
+            node->world_min, node->world_max, right->world_min, right->world_max);
+        node->cullable_count += right->cullable_count;
+    }
+}
+
+/// @brief Re-union only the leaf-to-root path containing @p leaf_node.
+/// @details Sibling subtrees kept their stored bounds, so recomputing each node
+///   on the path from its two children is exact. When several changed leaves
+///   share ancestors, later walks simply recompute those ancestors again with
+///   both children current — idempotent, order-independent.
+static void scene3d_spatial_refit_path(rt_scene3d_spatial_index *index, int32_t leaf_node) {
+    int32_t current = leaf_node;
+    int32_t hops = 0;
+    while (current >= 0 && current < index->node_count && hops++ <= index->node_count) {
+        scene3d_spatial_recompute_node(index, current);
+        current = index->nodes[current].parent;
+    }
+}
+
+/// @brief Refit the BVH to current geometry without changing its topology.
+/// @details Refreshes only entries whose transform/geometry/visibility revisions
+///   moved, then re-unions just the changed leaf-to-root paths (falling back to
+///   one full bottom-up pass when most of the scene moved). A pass where nothing
+///   changed does NO tree work at all — previously a single animated mesh
+///   anywhere re-unioned the whole tree every query. Returns 0 (signalling a
+///   rebuild is needed) if the tree shape no longer fits.
 static int scene3d_spatial_refit(rt_scene3d *scene) {
     rt_scene3d_spatial_index *index;
     int refreshed = 0;
+    int path_refit_ok = 1;
 
     enum { SCENE3D_SPATIAL_MAX_REFITS_BEFORE_REBUILD = 32 };
 
@@ -627,23 +697,40 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
     if (!index->valid || index->topology_dirty)
         return scene3d_spatial_rebuild(scene);
     for (int32_t i = 0; i < index->count; ++i) {
-        uint32_t before = index->entries[i].world_revision;
-        uint32_t geometry_before = index->entries[i].geometry_revision;
+        rt_scene3d_spatial_entry *entry = &index->entries[i];
+        uint32_t before = entry->world_revision;
+        uint32_t geometry_before = entry->geometry_revision;
+        int8_t visible_before = entry->visible;
         uint32_t geometry_now;
-        if (!index->entries[i].node)
+        int8_t visible_now;
+        if (!entry->node)
             return scene3d_spatial_rebuild(scene);
-        geometry_now = scene_node_geometry_revision_signature(index->entries[i].node);
-        if (!scene3d_spatial_node_or_ancestor_dirty(index->entries[i].node) &&
-            before == index->entries[i].node->world_revision && geometry_before == geometry_now)
+        geometry_now = scene_node_geometry_revision_signature(entry->node);
+        visible_now = scene3d_node_effective_visible(entry->node) ? 1 : 0;
+        if (!scene3d_spatial_node_or_ancestor_dirty(entry->node) &&
+            before == entry->node->world_revision && geometry_before == geometry_now &&
+            visible_before == visible_now)
             continue;
-        if (!scene3d_spatial_refresh_entry_bounds(&index->entries[i]))
+        if (!scene3d_spatial_refresh_entry_bounds(entry))
             return scene3d_spatial_rebuild(scene);
-        if (index->entries[i].world_revision != before ||
-            index->entries[i].geometry_revision != geometry_before)
+        if (entry->world_revision != before || entry->geometry_revision != geometry_before ||
+            entry->visible != visible_before) {
             refreshed++;
+        }
+        /* Bounds may have moved even when the counters above agree (refresh is
+         * authoritative); queue the path refit whenever a refresh ran. */
+        if (entry->leaf_node >= 0 && entry->leaf_node < index->node_count) {
+            if (refreshed * 8 < index->count)
+                scene3d_spatial_refit_path(index, entry->leaf_node);
+        } else {
+            path_refit_ok = 0;
+        }
     }
-    if (index->root_node >= 0)
-        scene3d_spatial_refit_bvh_node(index, index->root_node);
+    if (refreshed > 0 && (!path_refit_ok || refreshed * 8 >= index->count)) {
+        /* Broad motion: one full bottom-up pass beats many overlapping walks. */
+        if (index->root_node >= 0)
+            scene3d_spatial_refit_bvh_node(index, index->root_node);
+    }
     index->dirty = 0;
     index->valid = 1;
     index->topology_dirty = 0;
@@ -676,7 +763,8 @@ static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
                                      int32_t traversal_order,
                                      const double world_min[3],
                                      const double world_max[3],
-                                     double radius) {
+                                     double radius,
+                                     int visible) {
     rt_scene3d_spatial_entry *entry;
     if (!index || !node || !world_min || !world_max)
         return 1;
@@ -688,6 +776,8 @@ static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
     memcpy(entry->world_max, world_max, sizeof(entry->world_max));
     entry->traversal_order = traversal_order;
     entry->cullable = radius > 0.0 ? 1 : 0;
+    entry->visible = visible ? 1 : 0;
+    entry->leaf_node = -1;
     entry->world_revision = node->world_revision;
     entry->geometry_revision = scene_node_geometry_revision_signature(node);
     return 1;
@@ -724,9 +814,8 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
         double radius = 0.0;
         int32_t order = traversal_order++;
 
-        if (!current->visible)
-            continue;
-
+        /* Hidden subtrees are indexed too (with visible=0) so a visibility
+         * toggle is a per-entry refit, never a topology rebuild. */
         recompute_world_matrix(current);
         effective_animator =
             rt_g3d_checked_or_null(current->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
@@ -734,7 +823,13 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
             effective_animator = item.inherited_animator;
         if (scene3d_node_world_draw_union_aabb(
                 current, effective_animator, world_min, world_max, &radius)) {
-            if (!scene3d_spatial_add_entry(index, current, order, world_min, world_max, radius)) {
+            if (!scene3d_spatial_add_entry(index,
+                                           current,
+                                           order,
+                                           world_min,
+                                           world_max,
+                                           radius,
+                                           scene3d_node_effective_visible(current))) {
                 rt_trap("Scene3D.SpatialIndex: entry allocation failed");
                 free(stack);
                 return 0;
@@ -822,6 +917,8 @@ int scene3d_spatial_collect_aabb(rt_scene3d *scene,
         if (node->leaf) {
             for (int32_t i = node->start; i < node->start + node->count; ++i) {
                 rt_scene3d_spatial_entry *entry = &index->entries[index->entry_indices[i]];
+                if (!entry->visible)
+                    continue;
                 if (!scene3d_aabb_intersects_aabb(
                         entry->world_min, entry->world_max, query_min, query_max)) {
                     if (!count_cullable_prefilter || entry->cullable)
@@ -863,6 +960,8 @@ int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candidate_lis
         return 0;
     index = &scene->spatial_index;
     for (int32_t i = 0; i < index->count; ++i) {
+        if (!index->entries[i].visible)
+            continue;
         if (!scene3d_spatial_candidate_push(out, &index->entries[i])) {
             rt_trap("Scene3D.SpatialIndex: candidate allocation failed");
             return 0;

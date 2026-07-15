@@ -186,6 +186,11 @@ typedef struct {
     size_t cpu_scratch_primary_bytes;
     float *cpu_scratch_secondary;
     size_t cpu_scratch_secondary_bytes;
+    /* Lazily-created worker pool for row-banded CPU passes (same owned-pool
+     * pattern as the software rasterizer context). NULL until first use or when
+     * creation failed; the chain then runs serially. */
+    void *worker_pool;
+    int8_t worker_pool_failed;
 } rt_postfx3d;
 
 /// @brief Record a recoverable configuration error on the chain (NULL msg clears).
@@ -205,6 +210,98 @@ typedef struct {
     float *secondary;
     size_t secondary_bytes;
 } postfx_scratch_t;
+
+/*==========================================================================
+ * Row-banded parallel execution for CPU passes
+ *
+ * Every converted pass is a pure per-pixel map (each output row depends only
+ * on pass inputs, never on other output rows), so splitting the y-range across
+ * workers produces bit-identical results to the serial loop regardless of the
+ * band count or scheduling order. Passes with cross-row hazards keep their
+ * serial form (or band each internal stage with a wait between stages).
+ *=========================================================================*/
+
+extern void *rt_threadpool_new(int64_t size);
+extern int8_t rt_threadpool_submit_fn(void *pool, void (*callback)(void *), void *arg);
+extern void rt_threadpool_wait(void *pool);
+extern void rt_threadpool_shutdown(void *pool);
+extern int64_t rt_parallel_default_workers(void);
+
+#define POSTFX3D_MAX_BANDS 8
+#define POSTFX3D_MIN_ROWS_PER_BAND 32
+
+typedef void (*postfx_band_fn)(void *ctx, int32_t y0, int32_t y1);
+
+typedef struct {
+    postfx_band_fn fn;
+    void *ctx;
+    int32_t y0;
+    int32_t y1;
+} postfx_band_task_t;
+
+static void postfx_band_trampoline(void *arg) {
+    postfx_band_task_t *task = (postfx_band_task_t *)arg;
+    if (task && task->fn)
+        task->fn(task->ctx, task->y0, task->y1);
+}
+
+/// @brief Lazily create (once) and return the chain's worker pool, or NULL.
+static void *postfx3d_worker_pool(rt_postfx3d *fx) {
+    int64_t workers;
+    if (!fx)
+        return NULL;
+    if (fx->worker_pool || fx->worker_pool_failed)
+        return fx->worker_pool;
+    workers = rt_parallel_default_workers();
+    if (workers > POSTFX3D_MAX_BANDS)
+        workers = POSTFX3D_MAX_BANDS;
+    if (workers < 2) {
+        fx->worker_pool_failed = 1;
+        return NULL;
+    }
+    fx->worker_pool = rt_threadpool_new(workers);
+    if (!fx->worker_pool)
+        fx->worker_pool_failed = 1;
+    return fx->worker_pool;
+}
+
+/// @brief Run @p fn over [0, h) rows, banded across the chain's worker pool.
+/// @details Falls back to one serial call when no pool exists, the image is
+///   small, or any submission fails (the failed band runs inline, so every row
+///   is always processed exactly once).
+static void postfx_run_bands(rt_postfx3d *fx, int32_t h, postfx_band_fn fn, void *ctx) {
+    void *pool;
+    postfx_band_task_t tasks[POSTFX3D_MAX_BANDS];
+    int32_t bands;
+    int32_t rows_per_band;
+    int32_t extra;
+    int32_t y = 0;
+    if (!fn || h <= 0)
+        return;
+    pool = fx ? postfx3d_worker_pool(fx) : NULL;
+    bands = (int32_t)(fx && pool ? rt_parallel_default_workers() : 1);
+    if (bands > POSTFX3D_MAX_BANDS)
+        bands = POSTFX3D_MAX_BANDS;
+    if (bands > h / POSTFX3D_MIN_ROWS_PER_BAND)
+        bands = h / POSTFX3D_MIN_ROWS_PER_BAND;
+    if (!pool || bands <= 1) {
+        fn(ctx, 0, h);
+        return;
+    }
+    rows_per_band = h / bands;
+    extra = h % bands;
+    for (int32_t b = 0; b < bands; b++) {
+        int32_t band_rows = rows_per_band + (b < extra ? 1 : 0);
+        tasks[b].fn = fn;
+        tasks[b].ctx = ctx;
+        tasks[b].y0 = y;
+        tasks[b].y1 = y + band_rows;
+        y += band_rows;
+        if (!rt_threadpool_submit_fn(pool, postfx_band_trampoline, &tasks[b]))
+            postfx_band_trampoline(&tasks[b]);
+    }
+    rt_threadpool_wait(pool);
+}
 
 /// @brief Validate @p obj as a PostFX3D handle and return its typed pointer (NULL on mismatch).
 static rt_postfx3d *postfx3d_checked(void *obj) {
@@ -819,17 +916,23 @@ static void apply_bloom(float *buf,
 /// before mapping so scenes keyed for EV 0 stay in the mapper's responsive range.
 /// Finishes with a 2.2-gamma correction so the 8-bit framebuffer gets perceptual output
 /// (the earlier float buffer is linear).
-static void apply_tonemap(
-    float *buf, int32_t w, int32_t h, int32_t mode, float exposure, int hdr_gamma) {
-    size_t count;
-    float gamma_lut[POSTFX3D_GAMMA_LUT_SIZE + 1u];
-    if (mode != 1 && mode != 2 && !(mode == 0 && hdr_gamma))
-        return;
-    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
-        return;
-    postfx_build_gamma_lut(gamma_lut);
+typedef struct {
+    float *buf;
+    int32_t w;
+    int32_t mode;
+    float exposure;
+    const float *gamma_lut;
+} postfx_tonemap_band_ctx;
 
-    for (size_t i = 0; i < count; i++) {
+static void apply_tonemap_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_tonemap_band_ctx *bc = (const postfx_tonemap_band_ctx *)ctx_ptr;
+    float *buf = bc->buf;
+    int32_t mode = bc->mode;
+    float exposure = bc->exposure;
+    const float *gamma_lut = bc->gamma_lut;
+    size_t begin = (size_t)y0 * (size_t)bc->w;
+    size_t end = (size_t)y1 * (size_t)bc->w;
+    for (size_t i = begin; i < end; i++) {
         float *p = &buf[i * 3u];
         float r = p[0] * exposure, g = p[1] * exposure, b = p[2] * exposure;
         if (mode == 0) {
@@ -861,29 +964,55 @@ static void apply_tonemap(
     }
 }
 
+static void apply_tonemap(rt_postfx3d *fx,
+                          float *buf,
+                          int32_t w,
+                          int32_t h,
+                          int32_t mode,
+                          float exposure,
+                          int hdr_gamma) {
+    size_t count;
+    float gamma_lut[POSTFX3D_GAMMA_LUT_SIZE + 1u];
+    postfx_tonemap_band_ctx ctx;
+    if (mode != 1 && mode != 2 && !(mode == 0 && hdr_gamma))
+        return;
+    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
+        return;
+    postfx_build_gamma_lut(gamma_lut);
+    ctx.buf = buf;
+    ctx.w = w;
+    ctx.mode = mode;
+    ctx.exposure = exposure;
+    ctx.gamma_lut = gamma_lut;
+    postfx_run_bands(fx, h, apply_tonemap_rows, &ctx);
+}
+
 /// @brief Apply a simplified FXAA pass — sample each pixel's luminance plus its four
 /// neighbours, compute the luminance range, and if it exceeds both `edge_threshold *
 /// lmax` and `min_threshold` (avoids smoothing near-uniform regions), replace the
 /// pixel with a 3×3 box average. Writes into a scratch buffer and memcpys back, so
 /// the pass is order-independent within a single invocation. Cheaper than real FXAA
 /// 3.11 but good enough for jagged-edge cleanup over the software pipeline's output.
-static void apply_fxaa(float *buf,
-                       int32_t w,
-                       int32_t h,
-                       float edge_thresh,
-                       float min_thresh,
-                       postfx_scratch_t *scratch) {
-    size_t bytes;
-    if (!postfx_rgb_float_layout(w, h, NULL, NULL, &bytes))
-        return;
-    float *out = scratch
-                     ? postfx_scratch_reserve(&scratch->primary, &scratch->primary_bytes, bytes, 0)
-                     : NULL;
-    if (!out)
-        return;
-    memcpy(out, buf, bytes);
+typedef struct {
+    float *buf;
+    float *out;
+    int32_t w;
+    int32_t h;
+    float edge_thresh;
+    float min_thresh;
+} postfx_fxaa_band_ctx;
 
-    for (int32_t y = 1; y < h - 1; y++)
+static void apply_fxaa_rows(void *ctx_ptr, int32_t band_y0, int32_t band_y1) {
+    const postfx_fxaa_band_ctx *bc = (const postfx_fxaa_band_ctx *)ctx_ptr;
+    float *buf = bc->buf;
+    float *out = bc->out;
+    int32_t w = bc->w;
+    int32_t h = bc->h;
+    float edge_thresh = bc->edge_thresh;
+    float min_thresh = bc->min_thresh;
+    int32_t y_begin = band_y0 < 1 ? 1 : band_y0;
+    int32_t y_end = band_y1 > h - 1 ? h - 1 : band_y1;
+    for (int32_t y = y_begin; y < y_end; y++)
         for (int32_t x = 1; x < w - 1; x++) {
             /* Sample 5 luminances */
             float lC =
@@ -937,7 +1066,34 @@ static void apply_fxaa(float *buf,
                 out[oi + c] = sum / 9.0f;
             }
         }
+}
 
+static void apply_fxaa(rt_postfx3d *fx,
+                       float *buf,
+                       int32_t w,
+                       int32_t h,
+                       float edge_thresh,
+                       float min_thresh,
+                       postfx_scratch_t *scratch) {
+    size_t bytes;
+    postfx_fxaa_band_ctx ctx;
+    if (!postfx_rgb_float_layout(w, h, NULL, NULL, &bytes))
+        return;
+    float *out = scratch
+                     ? postfx_scratch_reserve(&scratch->primary, &scratch->primary_bytes, bytes, 0)
+                     : NULL;
+    if (!out)
+        return;
+    memcpy(out, buf, bytes);
+    ctx.buf = buf;
+    ctx.out = out;
+    ctx.w = w;
+    ctx.h = h;
+    ctx.edge_thresh = edge_thresh;
+    ctx.min_thresh = min_thresh;
+    /* Bands only READ buf and write disjoint rows of out, so the pass stays
+     * order-independent exactly like the serial copy-out/copy-back version. */
+    postfx_run_bands(fx, h, apply_fxaa_rows, &ctx);
     memcpy(buf, out, bytes);
 }
 
@@ -947,12 +1103,23 @@ static void apply_fxaa(float *buf,
 /// result: `lum + (c - lum) * saturation`. All three terms are multiplicative around
 /// 1.0 being neutral. Final clamp to `[0, 1]` prevents the 8-bit write back from
 /// overflowing.
-static void apply_color_grade(
-    float *buf, int32_t w, int32_t h, float brightness, float contrast, float saturation) {
-    size_t count;
-    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
-        return;
-    for (size_t i = 0; i < count; i++) {
+typedef struct {
+    float *buf;
+    int32_t w;
+    float brightness;
+    float contrast;
+    float saturation;
+} postfx_grade_band_ctx;
+
+static void apply_color_grade_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_grade_band_ctx *bc = (const postfx_grade_band_ctx *)ctx_ptr;
+    float *buf = bc->buf;
+    float brightness = bc->brightness;
+    float contrast = bc->contrast;
+    float saturation = bc->saturation;
+    size_t begin = (size_t)y0 * (size_t)bc->w;
+    size_t end = (size_t)y1 * (size_t)bc->w;
+    for (size_t i = begin; i < end; i++) {
         float *p = &buf[i * 3u];
         /* Brightness + contrast */
         p[0] = (p[0] - 0.5f) * contrast + 0.5f + brightness;
@@ -970,33 +1137,77 @@ static void apply_color_grade(
     }
 }
 
+static void apply_color_grade(rt_postfx3d *fx,
+                              float *buf,
+                              int32_t w,
+                              int32_t h,
+                              float brightness,
+                              float contrast,
+                              float saturation) {
+    size_t count;
+    postfx_grade_band_ctx ctx;
+    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
+        return;
+    ctx.buf = buf;
+    ctx.w = w;
+    ctx.brightness = brightness;
+    ctx.contrast = contrast;
+    ctx.saturation = saturation;
+    postfx_run_bands(fx, h, apply_color_grade_rows, &ctx);
+}
+
 /// @brief Apply a radial-falloff vignette. Normalises the pixel-to-centre distance by
 /// the half-screen diagonal so the effect is resolution-independent, then multiplies
 /// the colour by a `1 → 0` ramp that starts at normalized distance `radius` and reaches
 /// full black at `radius + softness`. Pixels inside the radius are untouched. Alpha is
 /// preserved — only the RGB channels are scaled.
-static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float softness) {
-    if (!buf || w <= 0 || h <= 0)
-        return;
-    float cx = (float)w * 0.5f, cy = (float)h * 0.5f;
-    float maxdist = sqrtf(cx * cx + cy * cy);
-    if (!isfinite(maxdist) || maxdist <= 1e-6f)
-        return;
+typedef struct {
+    float *buf;
+    int32_t w;
+    float cx;
+    float cy;
+    float maxdist;
+    float radius;
+    float softness;
+} postfx_vignette_band_ctx;
 
-    for (int32_t y = 0; y < h; y++)
+static void apply_vignette_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_vignette_band_ctx *bc = (const postfx_vignette_band_ctx *)ctx_ptr;
+    float *buf = bc->buf;
+    int32_t w = bc->w;
+    for (int32_t y = y0; y < y1; y++)
         for (int32_t x = 0; x < w; x++) {
-            float dx = ((float)x - cx) / maxdist;
-            float dy = ((float)y - cy) / maxdist;
+            float dx = ((float)x - bc->cx) / bc->maxdist;
+            float dy = ((float)y - bc->cy) / bc->maxdist;
             float dist = sqrtf(dx * dx + dy * dy);
             float vig = 1.0f;
-            if (dist > radius) {
-                vig = 1.0f - clampf((dist - radius) / (softness + 1e-6f), 0.0f, 1.0f);
+            if (dist > bc->radius) {
+                vig = 1.0f - clampf((dist - bc->radius) / (bc->softness + 1e-6f), 0.0f, 1.0f);
             }
             int32_t si = (y * w + x) * 3;
             buf[si] *= vig;
             buf[si + 1] *= vig;
             buf[si + 2] *= vig;
         }
+}
+
+static void apply_vignette(
+    rt_postfx3d *fx, float *buf, int32_t w, int32_t h, float radius, float softness) {
+    postfx_vignette_band_ctx ctx;
+    if (!buf || w <= 0 || h <= 0)
+        return;
+    float cx = (float)w * 0.5f, cy = (float)h * 0.5f;
+    float maxdist = sqrtf(cx * cx + cy * cy);
+    if (!isfinite(maxdist) || maxdist <= 1e-6f)
+        return;
+    ctx.buf = buf;
+    ctx.w = w;
+    ctx.cx = cx;
+    ctx.cy = cy;
+    ctx.maxdist = maxdist;
+    ctx.radius = radius;
+    ctx.softness = softness;
+    postfx_run_bands(fx, h, apply_vignette_rows, &ctx);
 }
 
 /*==========================================================================
@@ -1182,30 +1393,29 @@ static const float postfx_poisson12[12][2] = {{0.4824f, 0.3453f},
                                               {0.5347f, 0.7958f}};
 
 /// @brief SSAO: hemisphere-style AO from depth comparisons, 3x3 blurred, multiplied in.
-static void apply_ssao_cpu(float *fbuf,
-                           int32_t w,
-                           int32_t h,
-                           const postfx_scene_in_t *sc,
-                           float radius,
-                           float intensity,
-                           int32_t samples,
-                           postfx_scratch_t *scratch) {
-    size_t count = (size_t)w * (size_t)h;
-    float *ao = postfx_scratch_primary(scratch, count);
-    float *ao_blur = postfx_scratch_secondary(scratch, count);
-    if (!ao || !ao_blur || !sc->has_depth || sc->depth_w != w || sc->depth_h != h)
-        return;
-    if (samples < 4)
-        samples = 4;
-    if (samples > 12)
-        samples = 12;
-    if (!(radius > 0.0f))
-        radius = 0.5f;
-    if (!(intensity > 0.0f))
-        intensity = 1.0f;
-    if (intensity > 4.0f)
-        intensity = 4.0f;
-    for (int32_t y = 0; y < h; y++) {
+typedef struct {
+    float *fbuf;
+    const postfx_scene_in_t *sc;
+    float *ao;
+    float *ao_blur;
+    int32_t w;
+    int32_t h;
+    float radius;
+    float intensity;
+    int32_t samples;
+    size_t count;
+} postfx_ssao_band_ctx;
+
+static void apply_ssao_occlusion_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_ssao_band_ctx *bc = (const postfx_ssao_band_ctx *)ctx_ptr;
+    const postfx_scene_in_t *sc = bc->sc;
+    float *ao = bc->ao;
+    int32_t w = bc->w;
+    int32_t h = bc->h;
+    float radius = bc->radius;
+    float intensity = bc->intensity;
+    int32_t samples = bc->samples;
+    for (int32_t y = y0; y < y1; y++) {
         for (int32_t x = 0; x < w; x++) {
             size_t idx = (size_t)y * (size_t)w + (size_t)x;
             float ndc = postfx_depth_at(sc, x, y);
@@ -1238,8 +1448,15 @@ static void apply_ssao_cpu(float *fbuf,
             ao[idx] = a < 0.0f ? 0.0f : (a > 1.0f ? 1.0f : a);
         }
     }
-    /* 3x3 box blur (bilateral-lite: depth-agnostic, bounded kernel). */
-    for (int32_t y = 0; y < h; y++) {
+}
+
+static void apply_ssao_blur_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_ssao_band_ctx *bc = (const postfx_ssao_band_ctx *)ctx_ptr;
+    const float *ao = bc->ao;
+    float *ao_blur = bc->ao_blur;
+    int32_t w = bc->w;
+    int32_t h = bc->h;
+    for (int32_t y = y0; y < y1; y++) {
         for (int32_t x = 0; x < w; x++) {
             float sum = 0.0f;
             int32_t n = 0;
@@ -1256,14 +1473,64 @@ static void apply_ssao_cpu(float *fbuf,
             ao_blur[(size_t)y * (size_t)w + (size_t)x] = n > 0 ? sum / (float)n : 1.0f;
         }
     }
-    float *rp = fbuf;
-    float *gp = fbuf + count;
-    float *bp = fbuf + count * 2u;
-    for (size_t i = 0; i < count; i++) {
+}
+
+static void apply_ssao_modulate_rows(void *ctx_ptr, int32_t y0, int32_t y1) {
+    const postfx_ssao_band_ctx *bc = (const postfx_ssao_band_ctx *)ctx_ptr;
+    const float *ao_blur = bc->ao_blur;
+    float *rp = bc->fbuf;
+    float *gp = bc->fbuf + bc->count;
+    float *bp = bc->fbuf + bc->count * 2u;
+    size_t begin = (size_t)y0 * (size_t)bc->w;
+    size_t end = (size_t)y1 * (size_t)bc->w;
+    for (size_t i = begin; i < end; i++) {
         rp[i] *= ao_blur[i];
         gp[i] *= ao_blur[i];
         bp[i] *= ao_blur[i];
     }
+}
+
+static void apply_ssao_cpu(rt_postfx3d *fx,
+                           float *fbuf,
+                           int32_t w,
+                           int32_t h,
+                           const postfx_scene_in_t *sc,
+                           float radius,
+                           float intensity,
+                           int32_t samples,
+                           postfx_scratch_t *scratch) {
+    size_t count = (size_t)w * (size_t)h;
+    float *ao = postfx_scratch_primary(scratch, count);
+    float *ao_blur = postfx_scratch_secondary(scratch, count);
+    postfx_ssao_band_ctx ctx;
+    if (!ao || !ao_blur || !sc->has_depth || sc->depth_w != w || sc->depth_h != h)
+        return;
+    if (samples < 4)
+        samples = 4;
+    if (samples > 12)
+        samples = 12;
+    if (!(radius > 0.0f))
+        radius = 0.5f;
+    if (!(intensity > 0.0f))
+        intensity = 1.0f;
+    if (intensity > 4.0f)
+        intensity = 4.0f;
+    ctx.fbuf = fbuf;
+    ctx.sc = sc;
+    ctx.ao = ao;
+    ctx.ao_blur = ao_blur;
+    ctx.w = w;
+    ctx.h = h;
+    ctx.radius = radius;
+    ctx.intensity = intensity;
+    ctx.samples = samples;
+    ctx.count = count;
+    /* Three banded stages with a full barrier between each (postfx_run_bands
+     * waits before returning): occlusion writes ao, the blur reads ao and
+     * writes ao_blur, the modulate reads ao_blur and scales the framebuffer. */
+    postfx_run_bands(fx, h, apply_ssao_occlusion_rows, &ctx);
+    postfx_run_bands(fx, h, apply_ssao_blur_rows, &ctx);
+    postfx_run_bands(fx, h, apply_ssao_modulate_rows, &ctx);
 }
 
 /// @brief DOF: circle-of-confusion gather blur; CoC from |linear - focus| / aperture.
@@ -1877,13 +2144,15 @@ static void postfx_apply_float_effects(rt_postfx3d *fx,
                             &scratch);
                 break;
             case POSTFX_TONEMAP:
-                apply_tonemap(fbuf, w, h, e->p.tonemap.mode, e->p.tonemap.exposure, hdr_active);
+                apply_tonemap(fx, fbuf, w, h, e->p.tonemap.mode, e->p.tonemap.exposure, hdr_active);
                 break;
             case POSTFX_FXAA:
-                apply_fxaa(fbuf, w, h, e->p.fxaa.edge_threshold, e->p.fxaa.min_threshold, &scratch);
+                apply_fxaa(
+                    fx, fbuf, w, h, e->p.fxaa.edge_threshold, e->p.fxaa.min_threshold, &scratch);
                 break;
             case POSTFX_COLOR_GRADE:
-                apply_color_grade(fbuf,
+                apply_color_grade(fx,
+                                  fbuf,
                                   w,
                                   h,
                                   e->p.color_grade.brightness,
@@ -1891,11 +2160,12 @@ static void postfx_apply_float_effects(rt_postfx3d *fx,
                                   e->p.color_grade.saturation);
                 break;
             case POSTFX_VIGNETTE:
-                apply_vignette(fbuf, w, h, e->p.vignette.radius, e->p.vignette.softness);
+                apply_vignette(fx, fbuf, w, h, e->p.vignette.radius, e->p.vignette.softness);
                 break;
             case POSTFX_SSAO:
                 if (scene)
-                    apply_ssao_cpu(fbuf,
+                    apply_ssao_cpu(fx,
+                                   fbuf,
                                    w,
                                    h,
                                    scene,
@@ -2088,6 +2358,15 @@ static void rt_postfx3d_finalize(void *obj) {
         if (rt_obj_release_check0(fx->lut_pixels))
             rt_obj_free(fx->lut_pixels);
         fx->lut_pixels = NULL;
+    }
+    if (fx->worker_pool) {
+        /* Same teardown as the software rasterizer's owned pool: shut down,
+         * then drop the runtime object reference. */
+        void *pool = fx->worker_pool;
+        fx->worker_pool = NULL;
+        rt_threadpool_shutdown(pool);
+        if (rt_obj_release_check0(pool))
+            rt_obj_free(pool);
     }
     free(fx->effects);
     fx->effects = NULL;

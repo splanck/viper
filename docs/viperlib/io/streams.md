@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-07-14
 ---
 
 # Streams & Buffers
@@ -59,12 +59,13 @@ Unified stream abstraction providing a common interface over file and memory str
 | `"wb"` | Write only binary alias                   |
 | `"rw"` | Read and write (file must exist)          |
 | `"r+"` | Read and write alias                      |
+| `"rb+"`, `"r+b"` | Read and write binary aliases       |
 | `"a"`  | Append (creates if needed)                |
 | `"ab"` | Append binary alias                       |
 
 ### Ownership and Closed Streams
 
-`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. File streams created by `OpenFile` also close the underlying `BinFile`, surfacing delayed flush/close errors instead of leaving the file handle open. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing a `From*` wrapper releases only the wrapper's retained reference; the original owner remains responsible for closing its object.
+`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. File streams created by `OpenFile` also close the underlying `BinFile`, surfacing delayed flush/close errors instead of leaving the file handle open. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing a `From*` wrapper releases only the wrapper's retained reference; the original owner retains responsibility for the `BinFile` close or `MemStream` lifetime.
 
 All operations except `Close()` trap on a null or already-closed stream. `FromBinFile` and `FromMemStream` require an object of the matching runtime class. `Write(bytes)` traps when `bytes` is null, `WriteByte(value)` traps outside `0..255`, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
 
@@ -155,7 +156,8 @@ ms.WriteStr("test data")
 ms.Seek(0)
 
 DIM wrappedMem AS OBJECT = Viper.IO.Stream.FromMemStream(ms)
-DIM str AS STRING = wrappedMem.Read(9).ToStr()
+DIM raw AS Viper.Collections.Bytes = wrappedMem.Read(9)
+DIM str AS STRING = raw.ToStr()
 ```
 
 ### Use Cases
@@ -232,21 +234,22 @@ In-memory binary stream for reading and writing raw bytes with auto-expanding bu
 | `WriteF64(value)` | void    | Write 64-bit float (IEEE 754, little-endian)     |
 | `ReadBytes(n)`    | Bytes   | Read n bytes into a new Bytes object             |
 | `WriteBytes(b)`   | void    | Write all bytes from a Bytes object              |
-| `ReadStr(n)`      | String  | Read n bytes as a UTF-8 string                   |
-| `WriteStr(s)`     | void    | Write string as UTF-8 bytes                      |
+| `ReadStr(n)`      | String  | Read exactly n raw bytes into a String (no prefix) |
+| `WriteStr(s)`     | void    | Write the String's raw bytes (no prefix or terminator) |
 | `ToBytes()`       | Bytes   | Copy all data to a new Bytes object              |
 | `Clear()`         | void    | Reset stream to empty state (Pos=0, Len=0)       |
 | `Seek(pos)`       | void    | Set position absolutely                          |
-| `Skip(n)`         | void    | Move position forward by n bytes                 |
+| `Skip(n)`         | void    | Move position by n bytes; negative values move backward |
 
 ### Byte Order
 
-All multi-byte integers and floats use **little-endian** byte order. This matches the native byte order on x86/x64 and ARM processors, and is the standard for most binary file formats.
+All multi-byte integers and floats use **little-endian** byte order, independent of the host CPU's native byte order.
 
 ### Buffer Behavior
 
 - **Auto-expansion:** Writing beyond current capacity automatically grows the buffer
 - **Gap filling:** Writing past the current length fills the gap with zeros
+- **Sparse cursor:** `Pos`, `Seek`, and positive `Skip` may move beyond `Length`; the next write zero-fills the gap. Reads there trap.
 - **Read traps:** Reading past the end of data traps with an error
 - **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
 - **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, fixed-width integer writes trap outside their representable range, and `WriteStr()` requires a valid runtime string. Use an empty string to encode zero bytes.
@@ -350,7 +353,8 @@ DIM ms AS OBJECT = Viper.IO.MemStream.FromBytes(rawData)
 DIM magic AS INTEGER = ms.ReadU32()
 DIM count AS INTEGER = ms.ReadI16()
 
-FOR i AS INTEGER = 0 TO count - 1
+DIM i AS INTEGER
+FOR i = 0 TO count - 1
     DIM value AS FLOAT = ms.ReadF64()
     PRINT "Value"; i; ":"; value
 NEXT i
@@ -366,7 +370,8 @@ PRINT "Initial capacity:"; ms.Capacity  ' Output: 1024
 PRINT "Initial length:"; ms.Length         ' Output: 0
 
 ' Write data - no reallocation needed if under capacity
-FOR i AS INTEGER = 0 TO 99
+DIM i AS INTEGER
+FOR i = 0 TO 99
     ms.WriteI32(i)
 NEXT i
 
@@ -438,7 +443,7 @@ LineReader automatically handles all common line ending formats:
 | `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
 | `ReadAll()`  | String  | Read all remaining content as a string                       |
 
-`Read()` marks `Eof` immediately after returning the final line when the file ends with a line terminator, so loops do not need one extra read to discover EOF. `ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
+`Read()` marks `Eof` immediately after returning the final line when the file ends with a line terminator, so loops do not need one extra read to discover EOF. Because an empty line and EOF both produce `""`, use `PeekChar() >= 0` when that distinction matters. A single line is capped at 256 MiB. `ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
 
 ### Zia Example
 
@@ -470,11 +475,9 @@ func start() {
 ' Read a file line by line
 DIM reader AS OBJECT = Viper.IO.LineReader.Open("data.txt")
 
-DO WHILE NOT reader.Eof
+DO WHILE reader.PeekChar() >= 0
     DIM line AS STRING = reader.Read()
-    IF NOT reader.Eof THEN
-        PRINT line
-    END IF
+    PRINT line
 LOOP
 
 reader.Close()
@@ -586,7 +589,7 @@ func start() {
 }
 ```
 
-> **Note:** `LineWriter.Append()` is not currently accessible from Zia. Use `File.Append()` or `File.AppendLine()` for append operations.
+`Append()` is registered for both Zia and BASIC. `Close()` and `Flush()` trap when the platform reports a delayed write failure.
 
 ### BASIC Example
 
@@ -625,7 +628,8 @@ writer.Close()
 
 ' Write individual characters
 writer = Viper.IO.LineWriter.Open("chars.txt")
-FOR i AS INTEGER = 65 TO 90  ' A-Z
+DIM i AS INTEGER
+FOR i = 65 TO 90  ' A-Z
     writer.WriteChar(i)
 NEXT
 writer.Close()
@@ -675,8 +679,8 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | `WriteU32BE(v)`     | void    | Write unsigned 32-bit integer (big-endian)       |
 | `WriteI64LE(v)`     | void    | Write 64-bit integer (little-endian)             |
 | `WriteI64BE(v)`     | void    | Write 64-bit integer (big-endian)                |
-| `WriteStr(s)`       | void    | Write 32-bit length prefix plus full string bytes |
-| `WriteBytes(b)`     | void    | Write 32-bit length prefix plus all Bytes data   |
+| `WriteStr(s)`       | void    | Write a little-endian signed 32-bit length prefix plus full string bytes |
+| `WriteBytes(b)`     | void    | Write a little-endian signed 32-bit length prefix plus all Bytes data   |
 
 ### Read Methods
 
@@ -693,8 +697,8 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | `ReadU32BE()`       | Integer | Read unsigned 32-bit integer (big-endian)        |
 | `ReadI64LE()`       | Integer | Read 64-bit integer (little-endian)              |
 | `ReadI64BE()`       | Integer | Read 64-bit integer (big-endian)                 |
-| `ReadStr()`         | String  | Read a length-prefixed string                    |
-| `ReadBytes(count)`  | Bytes   | Read count bytes into a new Bytes object         |
+| `ReadStr()`         | String  | Read the little-endian length prefix and string payload |
+| `ReadBytes(count)`  | Bytes   | Read count raw bytes into a new Bytes object (no prefix handling) |
 
 ### Control Methods
 
@@ -708,10 +712,12 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 - `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
 - `FromBytes()` and `WriteBytes()` require a `Bytes` object. `WriteStr()` requires a valid runtime string; use an empty string to encode zero bytes. `WriteByte()` traps outside `0..255`, and fixed-width integer writes trap outside their declared signed or unsigned range.
 - `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
+- `ReadStr()` is the direct counterpart to `WriteStr()`. `ReadBytes(count)` does not consume the prefix emitted by `WriteBytes()`; read that 32-bit little-endian length explicitly, then pass it as `count`.
 - Setting `Pos` traps for negative positions or positions beyond `Length`; it does not clamp.
 - Signed integer readers sign-extend their declared width: `ReadI16*()` returns -32768..32767, `ReadI32*()` returns signed 32-bit values, and `ReadI64*()` preserves the full signed 64-bit bit pattern.
 - Unsigned readers zero-extend their declared width: `ReadU16*()` returns 0..65535 and `ReadU32*()` returns 0..4294967295.
 - Constructors and growth trap if the requested capacity exceeds the host platform's addressable allocation size.
+- `Reset()` clears position and logical length but retains allocated capacity for reuse.
 - `NewCap` remains available as a compatibility alias for `NewCapacity`.
 
 ### Zia Example
@@ -826,7 +832,7 @@ Use BinaryBuffer when:
 Use MemStream when:
 - Working with floating-point data (F32, F64)
 - All data is little-endian
-- You need unsigned 64-bit bit patterns beyond the signed `Integer` range
+- You want cursor movement beyond the current logical end followed by zero-filled writes
 
 ### Use Cases
 

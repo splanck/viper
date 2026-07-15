@@ -524,7 +524,7 @@ TEST(RuntimeCounter, IncrementAddsOne)
 
 Create BASIC runtime golden tests under `src/tests/golden/<suite>/` and register
 them in `src/tests/golden/CMakeLists.txt`. Runtime API programs written in Zia
-live under `tests/runtime/` and are wired from `src/tests/CMakeLists.txt`.
+live under `src/tests/fixtures/runtime/` and are wired from `src/tests/CMakeLists.txt`.
 
 **`counter_test.bas`:**
 ```basic

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-07-14
 ---
 
 # Advanced IO
@@ -29,7 +29,7 @@ ZIP archive reader and writer for creating, reading, and extracting ZIP files.
 |----------|--------|----------------------------------------------------|
 | `Path`   | String | Path to the archive file, or empty for `FromBytes` |
 | `Count`  | Integer| Number of entries in the archive (read-only)       |
-| `Names`  | Seq    | Sequence of entry names in the archive (read-only) |
+| `Names`  | Object | Runtime `Seq` of entry names (read-only)           |
 
 ### Reading Methods
 
@@ -97,6 +97,12 @@ On POSIX, extraction resolves and writes entries through directory file descript
 | `isDir`          | Boolean | True if entry is a directory          |
 | `isDirectory`    | Boolean | Back-compat alias for `isDir`         |
 
+ZIP timestamps have two-second precision. When writing, Viper defaults every
+entry to the reproducible timestamp `2001-01-01T00:00:00Z`; a valid
+`SOURCE_DATE_EPOCH` changes that value, and `VIPER_ARCHIVE_TIMESTAMP=now`
+selects the current UTC time instead. `modifiedTime` interprets the stored DOS
+calendar fields as UTC seconds since the Unix epoch.
+
 ### Zia Example
 
 ```rust
@@ -152,8 +158,8 @@ PRINT "Entries:"; arc.Count
 
 ' List all entries
 DIM names AS OBJECT = arc.Names
-FOR i = 0 TO names.Length - 1
-    PRINT names.Get(i)
+FOR i = 0 TO Viper.Collections.Seq.get_Count(names) - 1
+    PRINT Viper.Collections.Seq.GetStr(names, i)
 NEXT i
 
 ' Read specific entry
@@ -164,8 +170,8 @@ END IF
 
 ' Get entry information
 DIM info AS OBJECT = arc.Info("data.bin")
-PRINT "Size:"; info.Get("size")
-PRINT "Compressed:"; info.Get("compressedSize")
+PRINT "Size:"; Viper.Collections.Map.GetInt(info, "size")
+PRINT "Compressed:"; Viper.Collections.Map.GetInt(info, "compressedSize")
 ```
 
 ### Extraction Example
@@ -184,8 +190,8 @@ arc.ExtractAll("/home/user/extracted")
 ### In-Memory Archive Example
 
 ```basic
-' Work with ZIP data in memory (e.g., from network)
-DIM zipData AS OBJECT = DownloadZip("https://example.com/data.zip")
+' Work with ZIP data already loaded in memory
+DIM zipData AS Viper.Collections.Bytes = Viper.IO.File.ReadAllBytes("download.zip")
 
 ' Check if it's valid ZIP data
 IF Viper.IO.Archive.IsZipBytes(zipData) THEN
@@ -193,9 +199,10 @@ IF Viper.IO.Archive.IsZipBytes(zipData) THEN
 
     ' Process entries
     DIM names AS OBJECT = arc.Names
-    FOR i = 0 TO names.Length - 1
-        DIM content AS OBJECT = arc.Read(names.Get(i))
-        ProcessEntry(names.Get(i), content)
+    FOR i = 0 TO Viper.Collections.Seq.get_Count(names) - 1
+        DIM name AS STRING = Viper.Collections.Seq.GetStr(names, i)
+        DIM content AS Viper.Collections.Bytes = arc.Read(name)
+        PRINT name; ": "; content.Length; " bytes"
     NEXT i
 END IF
 ```
@@ -382,7 +389,8 @@ Compression traps on:
 
 - Zero external dependencies (no zlib required)
 - Implements RFC 1951 (DEFLATE) and RFC 1952 (GZIP)
-- Currently uses stored blocks for compression (correct but not optimal)
+- Level 1 emits stored blocks. Levels 2–9 use LZ77 matching plus fixed-Huffman blocks; higher levels search deeper match chains.
+- The compressor does not currently emit dynamic-Huffman blocks.
 - Decompression supports all DEFLATE block types (stored, fixed Huffman, dynamic Huffman)
 
 ### Use Cases
@@ -437,6 +445,7 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | `PollFor(ms)`   | Integer | Wait up to ms milliseconds for event; returns event type |
 | `EventPath()`   | String  | Get the full path for the last event, or the watched path when the backend cannot report a child path |
 | `EventType()`   | Integer | Get the type of the last polled event                    |
+| `EventOverflowCount()` | Integer | Number of dropped events represented by the last overflow marker; otherwise 0 |
 
 ### Platform Implementation
 
@@ -462,28 +471,23 @@ watcher.Start()
 ' Check if we're watching
 PRINT "Watching:"; watcher.IsWatching  ' Output: 1
 
-' Main event loop
-DO
-    ' Poll with 1 second timeout
-    DIM event AS INTEGER = watcher.PollFor(1000)
+' Poll once with a 1-second timeout; call repeatedly in the application's loop.
+DIM event AS INTEGER = watcher.PollFor(1000)
+IF event <> watcher.EventNone THEN
+    DIM path AS STRING = watcher.EventPath()
 
-    IF event <> watcher.EventNone THEN
-        DIM path AS STRING = watcher.EventPath()
-
-        SELECT CASE event
-            CASE watcher.EventCreated
-                PRINT "Created: "; path
-            CASE watcher.EventModified
-                PRINT "Modified: "; path
-            CASE watcher.EventDeleted
-                PRINT "Deleted: "; path
-            CASE watcher.EventRenamed
-                PRINT "Renamed: "; path
-            CASE watcher.EventOverflow
-                PRINT "Watcher queue overflow"
-        END SELECT
+    IF event = watcher.EventCreated THEN
+        PRINT "Created: "; path
+    ELSEIF event = watcher.EventModified THEN
+        PRINT "Modified: "; path
+    ELSEIF event = watcher.EventDeleted THEN
+        PRINT "Deleted: "; path
+    ELSEIF event = watcher.EventRenamed THEN
+        PRINT "Renamed: "; path
+    ELSEIF event = watcher.EventOverflow THEN
+        PRINT "Watcher queue overflow; dropped:"; watcher.EventOverflowCount()
     END IF
-LOOP UNTIL shouldStop
+END IF
 
 ' Stop watching
 watcher.Stop()
@@ -526,11 +530,13 @@ watcher.Stop()
 - The watcher must be started with `Start()` before events can be received
 - `Poll()` returns immediately with `EventNone` if no event is pending
 - `PollFor(ms)` waits up to the specified milliseconds for an event; very large positive timeouts are clamped to the largest supported platform wait value
+- A negative `PollFor` timeout waits indefinitely; zero is equivalent to non-blocking polling.
 - After receiving an event, use `EventPath()` and `EventType()` to get details
 - Multiple events may be queued; call `Poll()` repeatedly to drain them
-- If the internal event queue overflows, a later `Poll()` returns `EventOverflow`. Treat this as a signal to rescan the watched directory or file state.
+- The internal queue holds 64 events. If it overflows, a later `Poll()` returns `EventOverflow`; `EventOverflowCount()` reports how many events that marker represents. Treat it as a signal to rescan the watched directory or file state.
 - `Stop()` clears queued events and the last-event state. After `Stop()`, `EventType()` returns `EventNone` and `EventPath()` traps until a later successful `Poll()` after `Start()`.
 - Directory watches are non-recursive
+- On Linux and macOS, a transient descriptor/watch-limit failure during `Start()` can leave `IsWatching` false without a trap; callers that need guaranteed monitoring should check the property and fall back to rescanning.
 - On Linux and Windows, single-file watches monitor the parent directory and filter by filename, so deleting and recreating the file at the same path can still produce a later `EventCreated`
 - macOS directory watches report the watched directory path for queued events because `kqueue` does not provide child entry names
 - Platform-specific behavior may vary slightly for edge cases
@@ -538,15 +544,19 @@ watcher.Stop()
 ---
 
 
-## Viper.IO.JsonStream
+## Viper.Text.JsonStream
 
-Streaming JSON processor for incremental JSON parsing and generation.
+Pull-based streaming JSON parser for incrementally reading one JSON text.
 
 **Type:** Instance class
 
-**Constructor:** `Viper.IO.JsonStream.New()`
+**Constructor:** `Viper.Text.JsonStream.New(jsonText)`
 
-**Note:** The full method API for `JsonStream` depends on the runtime implementation. Refer to the runtime source (`rt_json_stream.c`) for the complete interface. This class is documented here for discoverability.
+The live API exposes `HasNext`, `Next`, `NextResult`, `Skip`, `Error`, typed
+token-value accessors, and the read-only `Depth` and `TokenType` properties. It
+does not generate JSON. See the
+[generated API reference](../../generated/runtime/text.md#viper-text-jsonstream) for the
+complete interface.
 
 ---
 

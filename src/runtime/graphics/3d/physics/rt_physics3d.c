@@ -41,6 +41,7 @@
 #include "rt_joints3d.h"
 #include "rt_platform.h"
 #include "rt_raycast3d.h"
+#include "rt_threadpool.h"
 
 #include "rt_physics3d_internal.h"
 #include "rt_physics3d_query_internal.h"
@@ -709,6 +710,18 @@ int test_collision(const rt_body3d *a,
                    void **leaf_b_out,
                    rt_collider_pose *leaf_a_pose_out,
                    rt_collider_pose *leaf_b_pose_out);
+/// @brief test_collision variant that also accumulates per-leaf compound contacts
+///        into @p manifold_acc during the SAME narrow-phase pass.
+int test_collision_manifold(const rt_body3d *a,
+                            const rt_body3d *b,
+                            double *normal,
+                            double *depth,
+                            double *point,
+                            void **leaf_a_out,
+                            void **leaf_b_out,
+                            rt_collider_pose *leaf_a_pose_out,
+                            rt_collider_pose *leaf_b_pose_out,
+                            rt_contact3d *manifold_acc);
 
 /// @brief Sanitize and order a broadphase AABB after a raw collider/body bounds calculation.
 static void ph3d_sanitize_aabb(double *mn, double *mx) {

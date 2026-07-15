@@ -425,7 +425,7 @@ viper_add_ctest(il_verify_negative_my_case
 
 ### Zia Runtime Test
 
-Add a `.zia` file in `tests/runtime/` that prints `RESULT: ok` on success:
+Add a `.zia` file in `src/tests/fixtures/runtime/` that prints `RESULT: ok` on success:
 
 ```zia
 // test_my_feature.zia

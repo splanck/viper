@@ -181,8 +181,16 @@ tool can inspect one world handle without reaching through each subsystem.
 `Game3D.Diagnostics` exposes process-wide degradation counters for rare runtime
 fallbacks that keep execution correct but indicate pressure or lost fidelity:
 `BroadphaseFallbackCount`, `CcdClampedFrames`, `CcdClampedBodies`,
-`AnimEventsDropped`, `AudioVoicesEvicted`, `NavGridFallbacks`, and
-`StaleEntityCalls`, and `StaleAsyncLoadsDropped`. `Reset()` clears the process
+`AnimEventsDropped`, `AudioVoicesEvicted`, `NavGridFallbacks`,
+`StaleEntityCalls`, and `StaleAsyncLoadsDropped`, plus renderer/solver health
+counters: `EpaFallbacks` (convex-pair penetration recovery hit its polytope
+caps and emitted a zero-depth contact — persistent counts usually mean an
+over-detailed hull collider worth decimating), `ShadowSlotsReused` (shadow maps
+served from their previous-frame depth because the caster set, light transform,
+and resolution were provably unchanged), and `AutoInstancedDraws` (opaque draws
+folded into instanced batches by the renderer). The latter two are throughput
+health metrics: they are property-only and never appear in `Summary()`, which
+remains a pure degradation digest. `Reset()` clears the process
 aggregates. `Summary()` returns stable `name=value` lines in that order,
 omitting zero counters and returning `""` when clean. Smoke probes can print
 `Game3D.Diagnostics.Summary()` and assert it is empty.

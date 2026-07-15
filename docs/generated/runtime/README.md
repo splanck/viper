@@ -18,10 +18,10 @@ This exhaustive reference is generated from the modular runtime definition regis
 | [GUI](gui.md) | 59 | 709 |
 | [Game](game.md) | 53 | 787 |
 | [Game2D](game2d.md) | 1 | 82 |
-| [Game3D](game3d.md) | 62 | 910 |
+| [Game3D](game3d.md) | 62 | 913 |
 | [Graphics](graphics.md) | 52 | 574 |
 | [Graphics2D](graphics2d.md) | 4 | 111 |
-| [Graphics3D](graphics3d.md) | 63 | 1160 |
+| [Graphics3D](graphics3d.md) | 63 | 1162 |
 | [IO](io.md) | 16 | 238 |
 | [Input](input.md) | 7 | 367 |
 | [Localization](localization.md) | 10 | 123 |

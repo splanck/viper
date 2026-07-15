@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-31
+last-verified: 2026-07-14
 ---
 
 # CODEMAP: Graphics Library
@@ -10,30 +10,25 @@ Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runt
 
 ## Runtime Classes (`src/runtime/graphics/`)
 
-The Viper.Graphics.* namespace is implemented by these C runtime files:
+Key 2D runtime components are implemented by these files. The 3D tree is mapped separately
+in [Graphics3D Architecture](../graphics3d-architecture.md).
 
-| File                | Purpose                                                                   |
-|---------------------|---------------------------------------------------------------------------|
-| `rt_camera.h`       | Camera class declaration                                                  |
-| `rt_camera.c`       | 2D viewport camera with zoom, bounds, coordinate transforms; dirty-flag API (`rt_camera_is_dirty`, `rt_camera_clear_dirty`) for skipping redundant matrix recalculation |
-| `rt_graphics.h`     | Canvas and Color class declarations                                       |
-| `rt_graphics.c`     | Canvas drawing, Color utilities (RGB, HSL, lerp, brighten/darken)         |
-| `rt_pixels.h`       | Pixels class declaration                                                  |
-| `rt_pixels.c`       | Software image buffer, image processing (invert, grayscale, blur, resize) |
-| `rt_sprite.h`       | Sprite class declaration                                                  |
-| `rt_sprite.c`       | Animated sprite with scaling, collision detection, and multi-frame support |
-| `rt_spriteanim.h`   | `Viper.Game.SpriteAnimation` class declaration                            |
-| `rt_spriteanim.c`   | Frame-based sprite animation state machine (play/pause/stop, looping, ping-pong, speed multiplier) — exposed as `Viper.Game.SpriteAnimation` |
-| `rt_spritebatch.h`  | SpriteBatch class declaration + TextureAtlas forward declarations         |
-| `rt_spritebatch.c`  | Efficient batched sprite rendering with stable equal-depth ordering        |
-| `rt_texatlas.h`     | TextureAtlas class declaration — named-region sprite sheet atlas          |
-| `rt_texatlas.c`     | TextureAtlas implementation — grid slicing, named regions, hash lookup    |
-| `rt_spritesheet.h`  | SpriteSheet class declaration                                             |
-| `rt_spritesheet.c`  | Sprite sheet/atlas for named region extraction from a single texture      |
-| `rt_tilemap.h`      | Tilemap class declaration                                                 |
-| `rt_tilemap.c`      | Tile-based map rendering with multi-layer visibility, per-layer tilesets, animation-aware drawing, and viewport culling over the current camera bounds |
+| File | Purpose |
+|------|---------|
+| `src/runtime/graphics/2d/rt_camera.h` / `.c` | 2D viewport camera with zoom, bounds, transforms, and internal-only dirty tracking |
+| `src/runtime/graphics/2d/rt_canvas.c` | Canvas/window runtime bridge |
+| `src/runtime/graphics/2d/rt_color.c` | Color utilities (RGB, HSL, lerp, brighten/darken) |
+| `src/runtime/graphics/2d/rt_drawing.c` / `rt_drawing_advanced.c` | Canvas drawing primitives |
+| `src/runtime/graphics/2d/rt_pixels.h` / `.c` plus `rt_pixels_*` | Software image buffers, transforms, drawing, PNG/JPEG, and other I/O |
+| `src/runtime/graphics/2d/rt_sprite.h` / `.c` | Animated sprites with scaling, collision, and multiple frames |
+| `src/runtime/game/rt_spriteanim.h` / `.c` | `Viper.Game.SpriteAnimation` playback state |
+| `src/runtime/graphics/2d/rt_spritebatch.h` / `.c` | Batched sprite rendering with stable equal-depth ordering |
+| `src/runtime/graphics/2d/rt_texatlas.h` / `.c` | Named-region texture atlas and grid slicing |
+| `src/runtime/graphics/2d/rt_spritesheet.h` / `.c` | Named region extraction from a source image |
+| `src/runtime/graphics/2d/rt_tilemap.h` / `.c` plus `rt_tilemap_io.c` | Multi-layer tile rendering, animation, culling, and persistence |
+| `src/runtime/graphics/2d/rt_scene.h` / `.c` | 2D scene nodes and scene graphs |
 
-Graphics-disabled builds use `src/runtime/graphics/rt_graphics_stubs.c`; see
+Graphics-disabled builds use `src/runtime/graphics/common/rt_graphics_stubs.c`; see
 [Runtime Graphics Stubs](runtime-graphics-stubs.md) for the required trap/no-op/helper policy.
 
 ## Low-Level C Library

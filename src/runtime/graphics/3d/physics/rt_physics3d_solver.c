@@ -41,6 +41,117 @@
 
 #define PH3D_BROADPHASE_STACK_FALLBACK 128
 
+/*======================================================================
+ * Parallel island dispatch. Islands are disjoint body/contact sets, so
+ * running them on worker threads produces bit-identical results to the
+ * serial island loop regardless of scheduling. The pool is owned by the
+ * world (created lazily, released by the world finalizer).
+ *======================================================================*/
+
+extern void *rt_threadpool_new(int64_t size);
+extern int8_t rt_threadpool_submit_fn(void *pool, void (*callback)(void *), void *arg);
+extern void rt_threadpool_wait(void *pool);
+extern void rt_threadpool_shutdown(void *pool);
+extern int64_t rt_parallel_default_workers(void);
+
+#define PH3D_SOLVER_MAX_WORKERS 8
+/* Below this many solvable contacts the dispatch overhead beats the win. */
+#define PH3D_SOLVER_PARALLEL_MIN_CONTACTS 64
+
+typedef struct {
+    rt_world3d *w;
+    const ph3d_solver_island_batch *batch;
+    int32_t island_begin;
+    int32_t island_end;
+    int solve_position; /* 0 = velocity pass, 1 = position pass */
+    double beta;
+} ph3d_island_task_t;
+
+static void world3d_solve_velocity_contact(rt_contact3d *c);
+static void world3d_solve_position_contact(rt_contact3d *c, double beta);
+
+static void ph3d_island_task_run(void *arg) {
+    ph3d_island_task_t *task = (ph3d_island_task_t *)arg;
+    if (!task || !task->w || !task->batch)
+        return;
+    for (int32_t island = task->island_begin; island < task->island_end; ++island) {
+        int32_t begin = task->batch->island_offsets[island];
+        int32_t end = task->batch->island_offsets[island + 1];
+        for (int32_t i = begin; i < end; ++i) {
+            rt_contact3d *c = &task->w->contacts[task->batch->contact_indices[i]];
+            if (task->solve_position)
+                world3d_solve_position_contact(c, task->beta);
+            else
+                world3d_solve_velocity_contact(c);
+        }
+    }
+}
+
+/// @brief Lazily create (once) the world's solver worker pool; NULL when unavailable.
+static void *world3d_solver_pool(rt_world3d *w) {
+    int64_t workers;
+    if (!w)
+        return NULL;
+    if (w->solver_pool || w->solver_pool_failed)
+        return w->solver_pool;
+    workers = rt_parallel_default_workers();
+    if (workers > PH3D_SOLVER_MAX_WORKERS)
+        workers = PH3D_SOLVER_MAX_WORKERS;
+    if (workers < 2) {
+        w->solver_pool_failed = 1;
+        return NULL;
+    }
+    w->solver_pool = rt_threadpool_new(workers);
+    if (!w->solver_pool)
+        w->solver_pool_failed = 1;
+    return w->solver_pool;
+}
+
+/// @brief Dispatch one solver pass over the islands, in parallel when profitable.
+/// @details Chunks islands contiguously across workers (deterministic assignment;
+///   result identical to serial since islands share no state). Any failed
+///   submission runs its chunk inline so every island is solved exactly once.
+static void world3d_solve_islands_dispatch(rt_world3d *w,
+                                           const ph3d_solver_island_batch *batch,
+                                           int solve_position,
+                                           double beta) {
+    void *pool = NULL;
+    int32_t chunks;
+    ph3d_island_task_t tasks[PH3D_SOLVER_MAX_WORKERS];
+    if (!w || !batch || batch->island_count <= 0)
+        return;
+    if (batch->island_count >= 2 && batch->solver_contact_count >= PH3D_SOLVER_PARALLEL_MIN_CONTACTS)
+        pool = world3d_solver_pool(w);
+    if (!pool) {
+        ph3d_island_task_t serial = {w, batch, 0, batch->island_count, solve_position, beta};
+        ph3d_island_task_run(&serial);
+        return;
+    }
+    chunks = (int32_t)rt_parallel_default_workers();
+    if (chunks > PH3D_SOLVER_MAX_WORKERS)
+        chunks = PH3D_SOLVER_MAX_WORKERS;
+    if (chunks > batch->island_count)
+        chunks = batch->island_count;
+    {
+        int32_t per_chunk = batch->island_count / chunks;
+        int32_t extra = batch->island_count % chunks;
+        int32_t island = 0;
+        for (int32_t t = 0; t < chunks; ++t) {
+            int32_t span = per_chunk + (t < extra ? 1 : 0);
+            tasks[t].w = w;
+            tasks[t].batch = batch;
+            tasks[t].island_begin = island;
+            tasks[t].island_end = island + span;
+            tasks[t].solve_position = solve_position;
+            tasks[t].beta = beta;
+            island += span;
+            if (!rt_threadpool_submit_fn(pool, ph3d_island_task_run, &tasks[t]))
+                ph3d_island_task_run(&tasks[t]);
+        }
+        rt_threadpool_wait(pool);
+    }
+}
+
 /* ====================================================================== *
  * Warm-started sequential-impulse contact solver (Phase 8).
  *
@@ -549,18 +660,38 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
         tan_axes[0] = t1;
         tan_axes[1] = t2;
 
-        for (axis = 0; axis < 2; ++axis) {
-            double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, tan_axes[axis]);
-            double vt = ph3d_contact_relative_velocity(a, r_a, b, r_b, tan_axes[axis]);
+        {
             double max_f = mu * c->normal_impulse_acc[k];
-            double old = c->tangent_impulse_acc[k][axis];
-            double next = old - eff * vt;
-            if (next > max_f)
-                next = max_f;
-            else if (next < -max_f)
-                next = -max_f;
-            c->tangent_impulse_acc[k][axis] = next;
-            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, tan_axes[axis], next - old);
+            for (axis = 0; axis < 2; ++axis) {
+                double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, tan_axes[axis]);
+                double vt = ph3d_contact_relative_velocity(a, r_a, b, r_b, tan_axes[axis]);
+                double old = c->tangent_impulse_acc[k][axis];
+                double next = old - eff * vt;
+                if (next > max_f)
+                    next = max_f;
+                else if (next < -max_f)
+                    next = -max_f;
+                c->tangent_impulse_acc[k][axis] = next;
+                ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, tan_axes[axis], next - old);
+            }
+            /* Project the accumulated tangent impulse onto the circular Coulomb
+             * cone. The per-axis clamps above form a SQUARE whose diagonal admits
+             * sqrt(2)*mu*N total friction, making grip direction-dependent; the
+             * projection restores an isotropic friction limit. */
+            {
+                double t0_acc = c->tangent_impulse_acc[k][0];
+                double t1_acc = c->tangent_impulse_acc[k][1];
+                double len_sq = t0_acc * t0_acc + t1_acc * t1_acc;
+                if (len_sq > max_f * max_f && len_sq > 1e-24) {
+                    double scale = max_f / sqrt(len_sq);
+                    double clamped0 = t0_acc * scale;
+                    double clamped1 = t1_acc * scale;
+                    ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t1, clamped0 - t0_acc);
+                    ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t2, clamped1 - t1_acc);
+                    c->tangent_impulse_acc[k][0] = clamped0;
+                    c->tangent_impulse_acc[k][1] = clamped1;
+                }
+            }
         }
 
         {
@@ -576,18 +707,47 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
     }
 }
 
-/// @brief Split positional (Baumgarte) correction using each manifold's deepest
-///   point, weighted by inverse mass. Runs after the velocity solve so it never
-///   injects energy into the velocity state.
+/* Per-pass cap on the angular part of the positional correction (radians).
+ * Long lever arms on light bodies could otherwise spin a box visibly in one
+ * pass; the cap keeps NGS convergence smooth (mirrors Bullet's split-impulse
+ * angular limiting). */
+#define PH3D_MAX_ANGULAR_CORRECTION 0.05
+
+/// @brief Nudge a body's orientation by the small rotation vector @p dtheta.
+static void ph3d_apply_position_rotation(rt_body3d *body, const double *dtheta) {
+    if (!body || !ph3d_vec3_all_finite(dtheta))
+        return;
+    if (fabs(dtheta[0]) < 1e-15 && fabs(dtheta[1]) < 1e-15 && fabs(dtheta[2]) < 1e-15)
+        return;
+    quat_integrate(body->orientation, dtheta, 1.0);
+    quat_normalize(body->orientation);
+}
+
+/// @brief Split positional correction (nonlinear Gauss-Seidel) using each
+///   manifold's deepest point, weighted by the full contact effective mass —
+///   inverse mass AND inverse inertia. Runs after the velocity solve so it
+///   never injects energy into the velocity state.
+/// @details The angular term is what lets a tilted box against a corner or a
+///   leaning stack actually rotate out of penetration; the old translation-only
+///   correction could never remove rotational overlap. Angular corrections are
+///   capped per pass (PH3D_MAX_ANGULAR_CORRECTION) and every manifold point's
+///   stored separation is advanced by the normal-displacement THAT point
+///   experienced (linear + lever-arm terms) so extra position iterations
+///   converge instead of compounding.
 static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     rt_body3d *a;
     rt_body3d *b;
     const double *n;
-    double inv_sum;
+    double r_a[3];
+    double r_b[3];
+    double denom;
     double pen;
     double corr;
+    double impulse[3];
     double next_a[3];
     double next_b[3];
+    double dtheta_a[3] = {0.0, 0.0, 0.0};
+    double dtheta_b[3] = {0.0, 0.0, 0.0};
     int32_t deepest = 0;
     if (!c)
         return;
@@ -603,41 +763,88 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     pen = -c->separations[deepest] - PH3D_PENETRATION_SLOP;
     if (pen <= 0.0)
         return;
-    inv_sum = a->inv_mass + b->inv_mass;
-    if (inv_sum <= 1e-12)
+    n = c->normals[deepest];
+    if (!ph3d_vec3_all_finite(n))
+        return;
+    vec3_sub(c->points[deepest], a->position, r_a);
+    vec3_sub(c->points[deepest], b->position, r_b);
+    denom = body3d_contact_impulse_denominator(a, r_a, n) +
+            body3d_contact_impulse_denominator(b, r_b, n);
+    if (!isfinite(denom) || denom <= 1e-12)
         return;
     /* Clamp the positional projection so a deep penetration cannot teleport
      * a body (which would otherwise inject huge separation and explode a
      * stack). Mirrors Box2D's b2_maxLinearCorrection. */
     pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
-    corr = beta * pen / inv_sum;
-    n = c->normals[deepest];
-    if (!ph3d_vec3_all_finite(n) || !isfinite(corr))
+    corr = beta * pen / denom;
+    if (!isfinite(corr))
         return;
+    impulse[0] = corr * n[0];
+    impulse[1] = corr * n[1];
+    impulse[2] = corr * n[2];
     for (int axis = 0; axis < 3; axis++) {
-        next_a[axis] = a->position[axis] - corr * a->inv_mass * n[axis];
-        next_b[axis] = b->position[axis] + corr * b->inv_mass * n[axis];
+        next_a[axis] = a->position[axis] - impulse[axis] * a->inv_mass;
+        next_b[axis] = b->position[axis] + impulse[axis] * b->inv_mass;
     }
     if (!ph3d_vec3_all_finite(next_a) || !ph3d_vec3_all_finite(next_b))
         return;
+    /* Angular pseudo-impulse: dtheta = I^-1 (r x J), clamped per pass. */
+    {
+        double torque_a[3];
+        double torque_b[3];
+        double mag;
+        vec3_cross(r_a, impulse, torque_a);
+        vec3_cross(r_b, impulse, torque_b);
+        for (int axis = 0; axis < 3; axis++) {
+            dtheta_a[axis] = -torque_a[axis] * a->inv_inertia[axis];
+            dtheta_b[axis] = torque_b[axis] * b->inv_inertia[axis];
+        }
+        mag = vec3_len(dtheta_a);
+        if (isfinite(mag) && mag > PH3D_MAX_ANGULAR_CORRECTION)
+            vec3_scale_in_place(dtheta_a, PH3D_MAX_ANGULAR_CORRECTION / mag);
+        mag = vec3_len(dtheta_b);
+        if (isfinite(mag) && mag > PH3D_MAX_ANGULAR_CORRECTION)
+            vec3_scale_in_place(dtheta_b, PH3D_MAX_ANGULAR_CORRECTION / mag);
+        if (!ph3d_vec3_all_finite(dtheta_a))
+            vec3_set(dtheta_a, 0.0, 0.0, 0.0);
+        if (!ph3d_vec3_all_finite(dtheta_b))
+            vec3_set(dtheta_b, 0.0, 0.0, 0.0);
+    }
     vec3_copy(a->position, next_a);
     vec3_copy(b->position, next_b);
+    ph3d_apply_position_rotation(a, dtheta_a);
+    ph3d_apply_position_rotation(b, dtheta_b);
     /* Record the penetration removed this pass so the next position iteration
      * reads the reduced overlap instead of re-applying the detection-time
-     * separation. Without this, raising position_iterations multiplies the
-     * ejection (~beta*pen per pass) and blows stacks apart; with it, extra
-     * iterations converge (nonlinear Gauss-Seidel). The position solve is a pure
-     * translation along the unit normal, so every manifold point's separation
-     * grows by the same corr*inv_sum == beta*pen. */
+     * separation (nonlinear Gauss-Seidel; without this, raising
+     * position_iterations multiplies the ejection and blows stacks apart).
+     * Each point's separation grows by the normal displacement at THAT point:
+     * the uniform linear part plus the lever-arm (dtheta x r) parts. */
     {
-        double applied = corr * inv_sum;
-        for (int32_t k = 0; k < c->contact_count; ++k)
-            c->separations[k] += applied;
+        double linear_applied = corr * (a->inv_mass + b->inv_mass);
+        for (int32_t k = 0; k < c->contact_count; ++k) {
+            double rk_a[3];
+            double rk_b[3];
+            double spin_a[3];
+            double spin_b[3];
+            double delta;
+            vec3_sub(c->points[k], a->position, rk_a);
+            vec3_sub(c->points[k], b->position, rk_b);
+            vec3_cross(dtheta_b, rk_b, spin_b);
+            vec3_cross(dtheta_a, rk_a, spin_a);
+            delta = linear_applied + vec3_dot(spin_b, n) - vec3_dot(spin_a, n);
+            if (isfinite(delta))
+                c->separations[k] += delta;
+        }
     }
+    /* Bump only the body-local broadphase revisions here: this runs inside the
+     * (possibly parallel) island pass, and bodies belong to exactly one island.
+     * The world-level query_broadphase_dirty flag is set once, serially, by the
+     * position-pass dispatcher (world3d_solve_position_solver_islands). */
     if (a->inv_mass > 0.0)
-        body3d_touch_broadphase_moved(a);
+        a->broadphase_revision = a->broadphase_revision == UINT64_MAX ? 1u : a->broadphase_revision + 1u;
     if (b->inv_mass > 0.0)
-        body3d_touch_broadphase_moved(b);
+        b->broadphase_revision = b->broadphase_revision == UINT64_MAX ? 1u : b->broadphase_revision + 1u;
 }
 
 /// @brief Warm-start every solvable contact, walking the batch island by island.
@@ -661,30 +868,27 @@ void world3d_warm_start_solver_islands(rt_world3d *w, const ph3d_solver_island_b
     free(prev_table);
 }
 
-/// @brief Run one velocity-solve pass over every solvable contact, island by island.
+/// @brief Run one velocity-solve pass over every solvable contact, island by island
+///   (parallel across islands when the scene is large enough to profit).
 void world3d_solve_velocity_solver_islands(const ph3d_solver_island_batch *batch, rt_world3d *w) {
     if (!batch || !w)
         return;
-    for (int32_t island = 0; island < batch->island_count; ++island) {
-        int32_t begin = batch->island_offsets[island];
-        int32_t end = batch->island_offsets[island + 1];
-        for (int32_t i = begin; i < end; ++i)
-            world3d_solve_velocity_contact(&w->contacts[batch->contact_indices[i]]);
-    }
+    world3d_solve_islands_dispatch(w, batch, 0, 0.0);
 }
 
-/// @brief Run one position-correction pass over every solvable contact, island by island.
+/// @brief Run one position-correction pass over every solvable contact, island by
+///   island (parallel across islands when profitable).
 void world3d_solve_position_solver_islands(const ph3d_solver_island_batch *batch, rt_world3d *w) {
     double beta;
     if (!batch || !w)
         return;
     beta = clampd(ph3d_finite_or(w->contact_beta, PH3D_DEFAULT_CONTACT_BETA), 0.0, 1.0);
-    for (int32_t island = 0; island < batch->island_count; ++island) {
-        int32_t begin = batch->island_offsets[island];
-        int32_t end = batch->island_offsets[island + 1];
-        for (int32_t i = begin; i < end; ++i)
-            world3d_solve_position_contact(&w->contacts[batch->contact_indices[i]], beta);
-    }
+    world3d_solve_islands_dispatch(w, batch, 1, beta);
+    /* Positions may have moved: mark the query broadphase lazily dirty exactly
+     * once, serially (the per-contact touch inside the parallel pass bumps only
+     * body-local revisions to stay race-free). */
+    if (batch->solver_contact_count > 0)
+        w->query_broadphase_dirty = 1;
 }
 
 /// @brief Publish the per-contact scalar normal impulse (summed over manifold
@@ -923,6 +1127,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     void *leaf_b = NULL;
     rt_collider_pose leaf_a_pose;
     rt_collider_pose leaf_b_pose;
+    rt_contact3d manifold_probe;
 
     if (!w || !a || !b || a == b)
         return 1;
@@ -932,7 +1137,17 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
         return 1;
     if (!(b->collision_layer & a->collision_mask))
         return 1;
-    if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b, &leaf_a_pose, &leaf_b_pose))
+    memset(&manifold_probe, 0, sizeof(manifold_probe));
+    if (!test_collision_manifold(a,
+                                 b,
+                                 normal,
+                                 &depth,
+                                 point,
+                                 &leaf_a,
+                                 &leaf_b,
+                                 &leaf_a_pose,
+                                 &leaf_b_pose,
+                                 &manifold_probe))
         return 1;
 
     int32_t next_contact_count;
@@ -959,12 +1174,25 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     c->normal[2] = normal[2];
     c->separation = -depth;
     contact3d_init_single_point(c, point, normal, c->separation);
-    contact3d_expand_compound_manifold(c, a, b);
+    /* Compound leaf contacts were accumulated during the narrow phase itself
+     * (test_collision_manifold); merging them here replaces the old second full
+     * compound narrow-phase pass. The dedup guard absorbs the primary point. */
+    for (int32_t k = 0; k < manifold_probe.contact_count; ++k)
+        contact3d_try_add_manifold_point(
+            c, manifold_probe.points[k], manifold_probe.normals[k], manifold_probe.separations[k]);
+    if (c->contact_count <= 1)
+        contact3d_expand_compound_manifold(c, a, b);
     contact3d_expand_aabb_manifold(c, a, b);
     if (c->contact_count <= 1)
         contact3d_expand_obb_manifold(c, leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose);
     if (c->contact_count <= 1)
         contact3d_expand_capsule_manifold(c, a, b);
+    /* Mesh/heightfield narrow phases report one deepest point; grow it into a
+     * support patch so crates and hulls resting on terrain or mesh floors get a
+     * stable multi-point manifold instead of balancing (and rocking) on a
+     * single contact. */
+    if (c->contact_count <= 1 && leaf_a && leaf_b)
+        contact3d_expand_surface_support_manifold(c, leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose);
     c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
     /* Detection only: the warm-started sequential-impulse solver runs after the
      * whole manifold is built. Record the
@@ -979,16 +1207,28 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     memset(c->tangent_impulse_acc, 0, sizeof(c->tangent_impulse_acc));
     memset(c->restitution_bias, 0, sizeof(c->restitution_bias));
 
-    if (normal[1] > 0.7) {
-        b->is_grounded = 1;
-        b->ground_normal[0] = normal[0];
-        b->ground_normal[1] = normal[1];
-        b->ground_normal[2] = normal[2];
-    } else if (normal[1] < -0.7) {
-        a->is_grounded = 1;
-        a->ground_normal[0] = -normal[0];
-        a->ground_normal[1] = -normal[1];
-        a->ground_normal[2] = -normal[2];
+    /* Grounded means "supported": require the underneath body to be a static or
+     * kinematic support OR the pair to be approaching/resting along the normal.
+     * Without the gate a mid-air glancing corner hit between two dynamic bodies
+     * (normal.y just over the slope threshold while they separate) granted a
+     * one-frame false is_grounded, letting jump logic re-fire in the air. */
+    {
+        double rel_vn = (b->velocity[0] - a->velocity[0]) * normal[0] +
+                        (b->velocity[1] - a->velocity[1]) * normal[1] +
+                        (b->velocity[2] - a->velocity[2]) * normal[2];
+        if (normal[1] > 0.7 &&
+            (a->motion_mode != PH3D_MODE_DYNAMIC || rel_vn <= PH3D_CONTACT_WAKE_SPEED)) {
+            b->is_grounded = 1;
+            b->ground_normal[0] = normal[0];
+            b->ground_normal[1] = normal[1];
+            b->ground_normal[2] = normal[2];
+        } else if (normal[1] < -0.7 &&
+                   (b->motion_mode != PH3D_MODE_DYNAMIC || rel_vn <= PH3D_CONTACT_WAKE_SPEED)) {
+            a->is_grounded = 1;
+            a->ground_normal[0] = -normal[0];
+            a->ground_normal[1] = -normal[1];
+            a->ground_normal[2] = -normal[2];
+        }
     }
     return 1;
 }

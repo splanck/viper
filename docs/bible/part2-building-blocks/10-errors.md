@@ -909,26 +909,25 @@ Users will enter invalid data. Always. Count on it.
 ```rust
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
+bind Parse = Viper.Core.Parse;
 
 func getValidAge() -> Integer {
     while true {
         Print("Enter your age: ");
         var input = InputLine().Trim();
 
-        // Try to parse
-        try {
-            var age = Convert.ToInt64(input);
-
-            // Validate range
-            if age < 0 || age > 150 {
-                Say("Please enter a realistic age (0-150)");
-                continue;
-            }
-
-            return age;
-        } catch {
+        if !Parse.IsInt(input) {
             Say("That's not a valid number. Please try again.");
+            continue;
         }
+
+        var age = Convert.ToInt64(input);
+        if age < 0 || age > 150 {
+            Say("Please enter a realistic age (0-150)");
+            continue;
+        }
+
+        return age;
     }
 
     return 0;

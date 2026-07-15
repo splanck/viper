@@ -105,6 +105,11 @@ double rt_navmesh3d_get_traversal_cost(void *navmesh, void *point);
 int8_t rt_navmesh3d_rebuild_tile(void *navmesh, int64_t tile_x, int64_t tile_z);
 /// @brief Set the maximum walkable slope (degrees) used when baking.
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
+/// @brief Set the A* heuristic policy: 0 = strict/optimal (Dijkstra once any
+///        off-mesh link exists), 1 = always Euclidean (faster, near-optimal).
+void rt_navmesh3d_set_heuristic_mode(void *navmesh, int64_t mode);
+/// @brief Current A* heuristic policy (0 strict, 1 euclidean).
+int64_t rt_navmesh3d_get_heuristic_mode(void *navmesh);
 /// @brief Draw the navmesh polygons as a debug overlay onto @p canvas.
 void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
 

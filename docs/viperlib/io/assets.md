@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-07-14
 ---
 
 # Viper.IO.Assets
@@ -11,14 +11,15 @@ Asset management system for loading embedded and packed resources.
 ## Overview
 
 Assets can be:
-- **Embedded** in the executable (zero disk I/O, declared with `embed` in `viper.project`)
+
+- **Embedded** in the executable's read-only data (zero disk I/O, declared with `embed` in `viper.project`)
 - **Packed** in `.vpa` files distributed alongside the executable (`pack` in `viper.project`)
 - **Loose** on the filesystem (development workflow, no declaration needed)
 
 ## viper.project Directives
 
 ```
-# Embed file or directory into executable .rodata
+# Embed file or directory into the executable's read-only data
 embed sprites/player.png
 embed sprites
 
@@ -30,6 +31,8 @@ pack-compressed music audio/tracks/
 ```
 
 Pre-compressed formats (`.png`, `.jpg`, `.ogg`, `.mp3`, `.glb`, etc.) automatically skip compression even with `pack-compressed`.
+Generated pack filenames are `<project-name>-<pack-name>.vpa`; the logical asset
+names inside a pack come from the source paths, not from the pack name.
 
 ## API Reference
 
@@ -44,7 +47,7 @@ Load an asset by name. Returns a typed object based on file extension:
 
 | Extension | Return Type |
 |-----------|-------------|
-| `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` | Pixels |
+| `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif` | Pixels (`.gif` loads the first frame) |
 | `.wav`, `.ogg`, `.mp3` | Sound |
 | Other | Bytes |
 
@@ -62,14 +65,18 @@ Returns 1 if asset exists (embedded, in pack, or as a regular file on disk), 0 o
 
 Returns asset size in bytes, or -1 if the asset is missing or resolves to a non-regular filesystem path such as a directory. A found zero-byte asset reports 0, so zero-byte files are distinguishable from missing assets without a separate `Exists()` call.
 
-### Assets.List() -> seq\<String\>
+### Assets.List() -> Object (runtime Seq\<String\>)
 
-Returns names of all available assets (embedded + all mounted packs).
+Returns names from the embedded archive followed by every mounted pack in mount
+order. Loose filesystem assets are not enumerated, and duplicate logical names
+from different sources are retained. The registry exposes the result as opaque
+`Object`; use `Viper.Collections.Seq` operations to inspect it from a frontend.
 
 ### Assets.Mount(path: String) -> Integer
 
 Mount a `.vpa` pack file for asset resolution. Returns 1 on success, 0 on failure.
-Pack files next to the executable are auto-mounted at startup.
+Pack files next to the executable are auto-mounted at startup. macOS application
+bundles also scan their `Resources` directory.
 If the pack opens but its path cannot be recorded, the mount fails and the pack handle is closed.
 Mounting the same canonical pack path more than once is idempotent and returns 1 without adding a duplicate mount.
 
@@ -130,13 +137,15 @@ The returned `Map` includes:
 
 | Field | Description |
 |-------|-------------|
-| `found` / `exists` | True when the asset resolved to an existing file or mounted asset |
-| `path` | Canonical resolved path, or the mounted asset name |
+| `found` / `exists` | True when the asset resolved to an existing filesystem path or mounted asset |
+| `path` | Absolute, lexically normalized filesystem path, or the mounted asset name |
 | `displayPath` | Project-relative display path when available |
 | `source` | `absolute`, `scene`, `project`, `assetRoot`, `mounted`, or `missing` |
 | `diagnostic` | Human-readable missing-asset message when unresolved |
 
 Resolution checks absolute paths first, then the scene's directory, then `projectRoot`, then each comma-separated asset root. If no filesystem candidate exists, the resolver checks mounted assets through `Viper.IO.Assets`.
+Filesystem resolution uses existence checks rather than regular-file checks, so
+editor callers that require a file should validate the returned path's kind.
 
 ## See Also
 

@@ -1747,6 +1747,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .shadow_begin = gl_shadow_begin,
     .shadow_draw = gl_shadow_draw,
     .shadow_end = gl_shadow_end,
+    .shadow_reuse = gl_shadow_reuse,
     .draw_skybox = gl_draw_skybox,
     .submit_draw_instanced = gl_submit_draw_instanced,
     .present = gl_present,

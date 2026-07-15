@@ -628,11 +628,25 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
                                      double *out_normal,
                                      int *out_started) {
     double best_t = max_distance + 1.0;
-    double best_normal[3] = {0.0, 1.0, 0.0};
+    double best_local_normal[3] = {0.0, 1.0, 0.0};
     int found = 0;
+    /* Transform the ray into mesh-local space once and run BOTH the node-AABB
+     * tests and the leaf Moller-Trumbore in local space (raw float vertices, no
+     * per-triangle pose transforms). transform_vector_to_local does NOT
+     * renormalize, so the local t-parameter equals the world t (same trick as
+     * raycast_box_pose_raw). The backface orientation sign is also preserved:
+     * dot(M^-T n, M d) == dot(n, d), so orienting against the local direction is
+     * exactly equivalent to orienting against the world direction. Only the
+     * winning hit's normal is transformed back to world, once, at the end. */
+    double local_origin[3];
+    double local_dir[3];
     if (!mesh || !pose || mesh->index_count < 3)
         return 0;
     rt_mesh3d_refresh_bounds(mesh);
+    transform_point_to_local(pose, origin, local_origin);
+    transform_vector_to_local(pose, dir, local_dir);
+    ph3d_vec3_sanitize_state(local_origin);
+    ph3d_vec3_sanitize_state(local_dir);
     if (mesh_physics_bvh_rebuild(mesh)) {
         const rt_physics_mesh_bvh_node *nodes =
             (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
@@ -641,18 +655,6 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
         int32_t top = 0;
         int32_t stack_capacity = 0;
         int overflow = 0;
-        /* Transform the ray into mesh-local space once and test the stored local
-         * node AABBs directly, instead of transforming each node's 8 AABB corners
-         * to world on every visit. transform_vector_to_local does NOT renormalize,
-         * so the local t-parameter equals the world t (same trick as
-         * raycast_box_pose_raw), keeping box_t comparable to the world-space best_t
-         * from the leaf triangle test below. */
-        double local_origin[3];
-        double local_dir[3];
-        transform_point_to_local(pose, origin, local_origin);
-        transform_vector_to_local(pose, dir, local_dir);
-        ph3d_vec3_sanitize_state(local_origin);
-        ph3d_vec3_sanitize_state(local_dir);
         if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0))
             overflow = 1;
         while (top > 0) {
@@ -691,25 +693,23 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
                 uint32_t i0 = mesh->indices[tri * 3u + 0u];
                 uint32_t i1 = mesh->indices[tri * 3u + 1u];
                 uint32_t i2 = mesh->indices[tri * 3u + 2u];
-                double a[3], b[3], c[3], local[3], t, n[3];
+                double a[3], b[3], c[3], t, n[3];
                 if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
                     i2 >= mesh->vertex_count)
                     continue;
-                local[0] = mesh->vertices[i0].pos[0];
-                local[1] = mesh->vertices[i0].pos[1];
-                local[2] = mesh->vertices[i0].pos[2];
-                transform_point_from_pose(pose, local, a);
-                local[0] = mesh->vertices[i1].pos[0];
-                local[1] = mesh->vertices[i1].pos[1];
-                local[2] = mesh->vertices[i1].pos[2];
-                transform_point_from_pose(pose, local, b);
-                local[0] = mesh->vertices[i2].pos[0];
-                local[1] = mesh->vertices[i2].pos[1];
-                local[2] = mesh->vertices[i2].pos[2];
-                transform_point_from_pose(pose, local, c);
-                if (raycast_triangle_world(origin, dir, a, b, c, best_t, &t, n) && t < best_t) {
+                a[0] = mesh->vertices[i0].pos[0];
+                a[1] = mesh->vertices[i0].pos[1];
+                a[2] = mesh->vertices[i0].pos[2];
+                b[0] = mesh->vertices[i1].pos[0];
+                b[1] = mesh->vertices[i1].pos[1];
+                b[2] = mesh->vertices[i1].pos[2];
+                c[0] = mesh->vertices[i2].pos[0];
+                c[1] = mesh->vertices[i2].pos[1];
+                c[2] = mesh->vertices[i2].pos[2];
+                if (raycast_triangle_world(local_origin, local_dir, a, b, c, best_t, &t, n) &&
+                    t < best_t) {
                     best_t = t;
-                    vec3_copy(best_normal, n);
+                    vec3_copy(best_local_normal, n);
                     found = 1;
                 }
             }
@@ -725,24 +725,22 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
         uint32_t i0 = mesh->indices[i];
         uint32_t i1 = mesh->indices[i + 1];
         uint32_t i2 = mesh->indices[i + 2];
-        double a[3], b[3], c[3], local[3], t, n[3];
+        double a[3], b[3], c[3], t, n[3];
         if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
             continue;
-        local[0] = mesh->vertices[i0].pos[0];
-        local[1] = mesh->vertices[i0].pos[1];
-        local[2] = mesh->vertices[i0].pos[2];
-        transform_point_from_pose(pose, local, a);
-        local[0] = mesh->vertices[i1].pos[0];
-        local[1] = mesh->vertices[i1].pos[1];
-        local[2] = mesh->vertices[i1].pos[2];
-        transform_point_from_pose(pose, local, b);
-        local[0] = mesh->vertices[i2].pos[0];
-        local[1] = mesh->vertices[i2].pos[1];
-        local[2] = mesh->vertices[i2].pos[2];
-        transform_point_from_pose(pose, local, c);
-        if (raycast_triangle_world(origin, dir, a, b, c, max_distance, &t, n) && t < best_t) {
+        a[0] = mesh->vertices[i0].pos[0];
+        a[1] = mesh->vertices[i0].pos[1];
+        a[2] = mesh->vertices[i0].pos[2];
+        b[0] = mesh->vertices[i1].pos[0];
+        b[1] = mesh->vertices[i1].pos[1];
+        b[2] = mesh->vertices[i1].pos[2];
+        c[0] = mesh->vertices[i2].pos[0];
+        c[1] = mesh->vertices[i2].pos[1];
+        c[2] = mesh->vertices[i2].pos[2];
+        if (raycast_triangle_world(local_origin, local_dir, a, b, c, best_t, &t, n) &&
+            t < best_t) {
             best_t = t;
-            vec3_copy(best_normal, n);
+            vec3_copy(best_local_normal, n);
             found = 1;
         }
     }
@@ -751,8 +749,10 @@ mesh_raycast_done:
         return 0;
     if (out_t)
         *out_t = best_t;
-    if (out_normal)
-        vec3_copy(out_normal, best_normal);
+    if (out_normal) {
+        transform_normal_from_local(pose, best_local_normal, out_normal);
+        query_normalize_normal(out_normal, dir);
+    }
     if (out_started)
         *out_started = 0;
     return 1;
@@ -773,7 +773,9 @@ static int raycast_heightfield_pose_raw(void *heightfield,
     int started = 0;
     double local_origin[3], local_dir[3];
     double start_t;
+    double march_end;
     double step;
+    double march_budget;
     double heightfield_scale[3] = {1.0, 1.0, 1.0};
     int32_t heightfield_width = 0;
     int32_t heightfield_depth = 0;
@@ -790,7 +792,16 @@ static int raycast_heightfield_pose_raw(void *heightfield,
     transform_point_to_local(pose, origin, local_origin);
     transform_vector_to_local(pose, dir, local_dir);
     start_t = started ? 0.0 : entry_t;
+    march_end = max_distance;
     step = max_distance / 512.0;
+    /* The march budget must cover the whole in-field segment: the previous fixed
+     * 2048-iteration cap made rays crossing more than ~1024 cells horizontally
+     * exit mid-terrain and report a MISS (long sniper shots / AI line-of-sight on
+     * large heightfields). With a half-cell step the in-field sample count is
+     * geometrically bounded, so derive the budget from the grid dimensions and
+     * clip the marched range to the field's local XZ rectangle so out-of-field
+     * travel costs nothing. */
+    march_budget = 1024.0;
     if (rt_collider3d_get_heightfield_info_raw(
             heightfield, &heightfield_width, &heightfield_depth, heightfield_scale)) {
         double sx = fabs(heightfield_scale[0]);
@@ -799,7 +810,43 @@ static int raycast_heightfield_pose_raw(void *heightfield,
         double horizontal_speed = sqrt(local_dir[0] * local_dir[0] + local_dir[2] * local_dir[2]);
         if (heightfield_width > 1 && heightfield_depth > 1 && cell > 1e-12 &&
             horizontal_speed > 1e-12) {
+            double half_w = 0.5 * (double)(heightfield_width - 1) * sx;
+            double half_d = 0.5 * (double)(heightfield_depth - 1) * sz;
+            double clip_lo = start_t;
+            double clip_hi = march_end;
+            int clipped_out = 0;
             step = (cell * 0.5) / horizontal_speed;
+            /* 2D slab clip of the local ray against the field's XZ rectangle
+             * (transform_vector_to_local preserves the t parameter). */
+            for (int axis = 0; axis < 3; axis += 2) {
+                double lo_bound = axis == 0 ? -half_w : -half_d;
+                double hi_bound = axis == 0 ? half_w : half_d;
+                if (fabs(local_dir[axis]) < 1e-12) {
+                    if (local_origin[axis] < lo_bound || local_origin[axis] > hi_bound)
+                        clipped_out = 1;
+                    continue;
+                }
+                {
+                    double inv = 1.0 / local_dir[axis];
+                    double t1 = (lo_bound - local_origin[axis]) * inv;
+                    double t2 = (hi_bound - local_origin[axis]) * inv;
+                    if (t1 > t2) {
+                        double tmp = t1;
+                        t1 = t2;
+                        t2 = tmp;
+                    }
+                    if (isfinite(t1) && t1 > clip_lo)
+                        clip_lo = t1;
+                    if (isfinite(t2) && t2 < clip_hi)
+                        clip_hi = t2;
+                }
+            }
+            if (clipped_out || clip_lo > clip_hi)
+                return 0;
+            /* Back off one step so the first in-field sample brackets the entry. */
+            start_t = fmax(start_t, clip_lo - step);
+            march_end = clip_hi;
+            march_budget = 4.0 * (double)(heightfield_width + heightfield_depth) + 1024.0;
         }
     }
     if (!isfinite(step) || step <= 0.0)
@@ -810,8 +857,11 @@ static int raycast_heightfield_pose_raw(void *heightfield,
         step = max_distance;
     if (!isfinite(step) || step <= 0.0)
         return 0;
+    if (!isfinite(march_end) || march_end > max_distance)
+        march_end = max_distance;
     prev_t = start_t;
-    for (double t = start_t, march_iter = 0.0; t <= max_distance + 1e-9 && march_iter < 2048.0;
+    for (double t = start_t, march_iter = 0.0;
+         t <= march_end + step + 1e-9 && t <= max_distance + 1e-9 && march_iter < march_budget;
          t += step, march_iter += 1.0) {
         double local_point[3] = {local_origin[0] + local_dir[0] * t,
                                  local_origin[1] + local_dir[1] * t,
@@ -984,8 +1034,43 @@ static int raycast_collider_pose(void *collider,
     return 1;
 }
 
+/// @brief Ray vs a collider-less body's cached simple shape (sphere/capsule/AABB).
+/// @details Shape-only bodies (radius/half-extents set directly, no Collider3D)
+///   collide in the world step and answer overlap queries, so raycasts must see
+///   them too — otherwise bullets and line-of-sight pass through bodies that
+///   block movement. Mirrors the shape semantics of `test_simple_collision`
+///   (AABB shape is axis-aligned; capsules honor the body orientation).
+static int raycast_body_simple_shape(rt_body3d *body,
+                                     const double *origin,
+                                     const double *dir,
+                                     double max_distance,
+                                     double *out_t,
+                                     double *out_normal,
+                                     int *out_started) {
+    if (!body || !body3d_has_collision_geometry(body))
+        return 0;
+    if (body->shape == PH3D_SHAPE_SPHERE) {
+        return raycast_sphere_raw(
+            origin, dir, body->position, body->radius, max_distance, out_t, out_normal, out_started);
+    }
+    if (body->shape == PH3D_SHAPE_CAPSULE) {
+        double a[3];
+        double b[3];
+        capsule_axis_endpoints(body, a, b);
+        return raycast_capsule_raw(
+            origin, dir, a, b, body->radius, max_distance, out_t, out_normal, out_started);
+    }
+    {
+        double mn[3];
+        double mx[3];
+        body_aabb(body, mn, mx);
+        return raycast_aabb_raw(origin, dir, mn, mx, max_distance, out_t, out_normal, out_started);
+    }
+}
+
 /// @brief Ray vs a physics body: dispatches to the actual attached collider
 ///        shape, recursing through compound children and testing mesh triangles.
+///        Collider-less bodies fall back to their cached simple shape.
 /// @return Non-zero on a hit (nearest distance written), 0 otherwise.
 static int raycast_body(rt_body3d *body,
                         const double *origin,
@@ -996,8 +1081,14 @@ static int raycast_body(rt_body3d *body,
     double normal[3] = {0.0, 0.0, 0.0};
     int started = 0;
     void *leaf = NULL;
-    if (!body || !body->collider)
+    if (!body)
         return 0;
+    if (!body->collider) {
+        if (!raycast_body_simple_shape(body, origin, dir, max_distance, &t, normal, &started))
+            return 0;
+        ray_fill_hit(body, t, max_distance, origin, dir, normal, started, out_hit);
+        return 1;
+    }
     {
         rt_collider_pose pose;
         collider_pose_from_body(body, &pose);
@@ -1049,7 +1140,7 @@ void *rt_world3d_raycast(
             if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body || !body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (!raycast_body(body, origin, dir, max_distance, &hit))
             continue;
@@ -1100,7 +1191,7 @@ static int32_t world3d_raycast_all_core(rt_world3d *w,
             if (!query_entry_overlaps_bounds(&w->query_broadphase_entries[i], query_min, query_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body || !body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (raycast_body(body, origin, dir, max_distance, &hit)) {
             total_count++;

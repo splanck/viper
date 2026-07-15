@@ -944,31 +944,28 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
     animation3d_sanitize_trs(out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
 }
 
-/// @brief Sample a channel at time t, producing a local TRS matrix.
+/// @brief Sample a channel at time t, producing a local TRS matrix; the bone's
+///   pre-decomposed bind TRS is the fallback (no per-sample matrix decomposition).
 static void sample_channel_with_fallback(const vgfx3d_anim_channel_t *ch,
                                          float t,
-                                         const float *fallback_local,
+                                         const vgfx3d_bone_t *bone,
                                          float *out_local) {
-    float fallback_pos[3], fallback_rot[4], fallback_scl[3];
     float pos[3], rot[4], scl[3];
-    mat4f_decompose_trs(fallback_local, fallback_pos, fallback_rot, fallback_scl);
     sample_channel_trs_with_fallback(
-        ch, t, fallback_pos, fallback_rot, fallback_scl, pos, rot, scl);
+        ch, t, bone->bind_pos, bone->bind_rot, bone->bind_scl, pos, rot, scl);
     build_trs_float(pos, rot, scl, out_local);
 }
 
-/// @brief Sample an animation's bone channel, falling back to bind pose when absent.
 /// @brief Sample an already-resolved (possibly NULL) channel's TRS at @p time, falling
-///   back to the decomposed @p fallback_local when the channel is absent. Lets callers
-///   that pre-resolved the channel skip the per-bone O(channels) lookup.
+///   back to the bone's cached bind TRS when the channel is absent. Lets callers
+///   that pre-resolved the channel skip both the per-bone O(channels) lookup and
+///   the per-sample bind-matrix decomposition.
 static void sample_animation_channel_trs(const vgfx3d_anim_channel_t *channel,
                                          float time,
-                                         const float *fallback_local,
+                                         const vgfx3d_bone_t *bone,
                                          float *out_pos,
                                          float *out_rot,
                                          float *out_scl) {
-    float fallback_pos[3], fallback_rot[4], fallback_scl[3];
-    mat4f_decompose_trs(fallback_local, fallback_pos, fallback_rot, fallback_scl);
     sample_channel_trs_with_fallback(
-        channel, time, fallback_pos, fallback_rot, fallback_scl, out_pos, out_rot, out_scl);
+        channel, time, bone->bind_pos, bone->bind_rot, bone->bind_scl, out_pos, out_rot, out_scl);
 }

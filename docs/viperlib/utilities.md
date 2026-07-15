@@ -13,8 +13,8 @@ last-verified: 2026-05-13
 ## Contents
 
 - [Viper.Core.Convert](#vipercoreconvert)
-- [Viper.Text.Fmt](#viperfmt)
-- [Viper.Diagnostics.Log](#viperlog)
+- [Viper.Text.Fmt](#vipertextfmt)
+- [Viper.Diagnostics.Log](#viperdiagnosticslog)
 - [Viper.Core.Parse](#vipercoreparse)
 
 ---

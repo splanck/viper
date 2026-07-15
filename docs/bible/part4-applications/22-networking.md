@@ -825,7 +825,7 @@ class ClientApp {
 }
 
 func start() {
-    var username = Terminal.Ask("Enter your username: ") ?? "guest";
+    var username = Terminal.TryAsk("Enter your username: ").UnwrapOrStr("guest");
     var client = new ClientApp("localhost", 9000, username);
     client.run();
 }
@@ -1045,7 +1045,7 @@ func start() {
     // Now we can send messages and poll for incoming messages.
     while true {
         client.poll();
-        var input = Terminal.Ask("") ?? "";
+        var input = Terminal.TryAsk("").UnwrapOrStr("");
         if input == "/quit" {
             client.close();
             break;

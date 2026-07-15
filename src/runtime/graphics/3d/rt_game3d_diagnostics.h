@@ -46,6 +46,15 @@ int64_t rt_game3d_diagnostics_get_stream_staging_errors(void);
 
 /// @brief Process-wide count of worker-staged streaming payloads dropped as stale/undesired.
 int64_t rt_game3d_diagnostics_get_stream_stale_stages_dropped(void);
+
+/// @brief Process-wide count of EPA polytope-cap fallbacks (0-depth contacts emitted).
+int64_t rt_game3d_diagnostics_get_epa_fallbacks(void);
+
+/// @brief Process-wide count of shadow slots reused from their previous-frame depth.
+int64_t rt_game3d_diagnostics_get_shadow_slots_reused(void);
+
+/// @brief Process-wide count of opaque draws folded into auto-instanced batches.
+int64_t rt_game3d_diagnostics_get_auto_instanced_draws(void);
 void rt_game3d_diagnostics_reset(void);
 rt_string rt_game3d_diagnostics_summary(void);
 
@@ -62,6 +71,15 @@ void rt_game3d_diag_record_stream_staging_error(void);
 
 /// @brief Record a worker-staged streaming payload dropped without being committed.
 void rt_game3d_diag_record_stream_stale_stage_dropped(void);
+
+/// @brief Record an EPA polytope-cap fallback (overlap reported with 0 depth).
+void rt_game3d_diag_record_epa_fallback(void);
+
+/// @brief Record a shadow slot satisfied from its previous-frame depth contents.
+void rt_game3d_diag_record_shadow_slot_reused(void);
+
+/// @brief Record @p count opaque draws folded into one auto-instanced batch.
+void rt_game3d_diag_record_auto_instanced_draws(int64_t count);
 
 #ifdef __cplusplus
 }

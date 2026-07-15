@@ -164,7 +164,8 @@ Key design points:
 
 ### Pass pipeline
 
-`src/il/transform/PassManager` orchestrates the optimization pipeline. Available passes include:
+`src/il/transform/PassManager.hpp` and `PassManager.cpp` orchestrate the optimization
+pipeline. Available passes include:
 
 - **CheckOpt** – validates optimizer-specific invariants.
 - **ConstFold** – folds constant expressions.

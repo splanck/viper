@@ -1949,6 +1949,7 @@ and operations including `FindPath`, `FindPathOption`, `SamplePosition`, `IsWalk
 | <a id="viper-graphics3d-navmesh3d-offmeshlinkcount"></a>`OffMeshLinkCount` | `i64` | read-only |
 | <a id="viper-graphics3d-navmesh3d-obstaclecount"></a>`ObstacleCount` | `i64` | read-only |
 | <a id="viper-graphics3d-navmesh3d-lastpathcost"></a>`LastPathCost` | `f64` | read-only |
+| <a id="viper-graphics3d-navmesh3d-heuristicmode"></a>`HeuristicMode` | `i64` | read-only |
 | <a id="viper-graphics3d-navmesh3d-tilesize"></a>`TileSize` | `f64` | read-only |
 
 #### Methods
@@ -1977,6 +1978,7 @@ and operations including `FindPath`, `FindPathOption`, `SamplePosition`, `IsWalk
 | <a id="viper-graphics3d-navmesh3d-gettraversalcost"></a>`GetTraversalCost` | `f64(obj)` | `Viper.Graphics3D.NavMesh3D.GetTraversalCost` |
 | <a id="viper-graphics3d-navmesh3d-rebuildtile"></a>`RebuildTile` | `i1(i64,i64)` | `Viper.Graphics3D.NavMesh3D.RebuildTile` |
 | <a id="viper-graphics3d-navmesh3d-setmaxslope"></a>`SetMaxSlope` | `void(f64)` | `Viper.Graphics3D.NavMesh3D.SetMaxSlope` |
+| <a id="viper-graphics3d-navmesh3d-setheuristicmode"></a>`SetHeuristicMode` | `void(i64)` | `Viper.Graphics3D.NavMesh3D.SetHeuristicMode` |
 | <a id="viper-graphics3d-navmesh3d-debugdraw"></a>`DebugDraw` | `void(obj)` | `Viper.Graphics3D.NavMesh3D.DebugDraw` |
 
 <a id="viper-graphics3d-navagent3d"></a>
@@ -3322,6 +3324,8 @@ Constructor: `Viper.Graphics3D.TextureAtlas3D.New`
 | `Viper.Graphics3D.NavMesh3D.GetTraversalCost` | `f64(obj,obj)` | `rt_navmesh3d_get_traversal_cost` |
 | `Viper.Graphics3D.NavMesh3D.RebuildTile` | `i1(obj,i64,i64)` | `rt_navmesh3d_rebuild_tile` |
 | `Viper.Graphics3D.NavMesh3D.SetMaxSlope` | `void(obj,f64)` | `rt_navmesh3d_set_max_slope` |
+| `Viper.Graphics3D.NavMesh3D.SetHeuristicMode` | `void(obj,i64)` | `rt_navmesh3d_set_heuristic_mode` |
+| <a id="viper-graphics3d-navmesh3d-get-heuristicmode"></a>`Viper.Graphics3D.NavMesh3D.get_HeuristicMode` | `i64(obj)` | `rt_navmesh3d_get_heuristic_mode` |
 | `Viper.Graphics3D.NavMesh3D.DebugDraw` | `void(obj,obj)` | `rt_navmesh3d_debug_draw` |
 | `Viper.Graphics3D.NavAgent3D.New` | `obj(obj,f64,f64)` | `rt_navagent3d_new` |
 | `Viper.Graphics3D.NavAgent3D.SetTarget` | `void(obj,obj)` | `rt_navagent3d_set_target` |

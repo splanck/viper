@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-07
+last-verified: 2026-07-14
 ---
 
 # Files & Directories
@@ -35,6 +35,7 @@ File system operations.
 | `WriteAllBytes(path, bytes)`  | `Void(String, Bytes)`  | Atomically replaces a file with binary data (traps on I/O errors)                         |
 | `ReadLines(path)`             | `Seq(String)`          | Reads the file as a runtime sequence of lines; traps on I/O errors                        |
 | `WriteLines(path, lines)`     | `Void(String, Seq(String))` | Atomically writes a sequence of strings as lines; traps on I/O errors                |
+| `WriteAllLines(path, lines)`  | `Void(String, Seq(String))` | Alias of `WriteLines`                                                               |
 | `Append(path, text)`          | `Void(String, String)` | Appends text to a file; traps on I/O errors                                               |
 | `AppendLine(path, text)`      | `Void(String, String)` | Appends text followed by `\n` to a file (creates if missing)                              |
 | `ReadAllLines(path)`          | `Seq(String)`          | Reads file as a sequence of lines; strips `\n` / `\r\n` terminators (traps on I/O errors) |
@@ -52,6 +53,7 @@ File system operations.
 - `Copy` preserves regular-file permission bits and modification/access times where the platform exposes them. Cross-device `Move` uses the same copy path before deleting the source.
 - `Size` and `Modified` return `-1` for missing paths, directories, and special files. A real zero-byte file still reports size `0`.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
+- `WriteLines` / `WriteAllLines` append one LF byte after every sequence element, including the last. Their raw `seq<str>` argument is available to Zia but is currently rejected by safe BASIC; use `LineWriter` or whole-file text helpers from BASIC.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
 - POSIX file descriptors and Windows CRT handles opened by the runtime are created as close-on-exec/non-inheritable where the platform API supports it.
 - `ReadBytes`/`WriteBytes` use the typed `Viper.Collections.Bytes` runtime class. `ReadLines`/`WriteLines` use `Seq(String)`. The runtime keeps any raw buffer pointers internal.
@@ -127,24 +129,20 @@ Viper.IO.File.WriteAllBytes("test.bin", data)
 ' Read binary file
 DIM loaded AS Bytes
 loaded = Viper.IO.File.ReadAllBytes("test.bin")
-PRINT "Size:"; loaded.Length()  ' Output: Size: 4
+PRINT "Size:"; loaded.Length  ' Output: Size: 4
 ```
 
 ### Line-by-Line Example
 
 ```basic
-' Write lines to file
-DIM lines AS Seq
-lines = Viper.Collections.Seq.New()
-lines.Push("First line")
-lines.Push("Second line")
-lines.Push("Third line")
-Viper.IO.File.WriteLines("output.txt", lines)
+' Safe BASIC cannot pass the raw seq<str> argument required by WriteLines.
+' Write the initial text directly, or use Viper.IO.LineWriter for generated lines.
+Viper.IO.File.WriteAllText("output.txt", "First line" + CHR(10) + "Second line" + CHR(10) + "Third line" + CHR(10))
 
 ' Read lines from file
-DIM readLines AS Seq
+DIM readLines AS Viper.Collections.Seq
 readLines = Viper.IO.File.ReadAllLines("output.txt")
-FOR i = 0 TO readLines.Length() - 1
+FOR i = 0 TO readLines.Count - 1
     PRINT readLines.Get(i)
 NEXT i
 
@@ -199,6 +197,7 @@ Binary file stream for reading and writing raw bytes with random access capabili
 | `"wb"` | Write only binary alias                   |
 | `"rw"` | Read and write (file must exist)          |
 | `"r+"` | Read and write alias                      |
+| `"rb+"`, `"r+b"` | Read and write binary aliases       |
 | `"a"`  | Append (creates if needed, writes at end) |
 | `"ab"` | Append binary alias                       |
 
@@ -359,12 +358,13 @@ Temporary file and directory creation utilities. Generates unique paths in the s
 ### Notes
 
 - `Dir()` returns the platform temporary directory (e.g., `/tmp` on Unix, `%TEMP%` on Windows). On POSIX, an invalid relative, missing, or non-directory `TMPDIR` value is ignored and `/tmp` is used instead.
-- `Path` and `PathWithPrefix` only generate paths -- they do not create files on disk
+- `Path` and `PathWithPrefix` only generate unpredictable path candidates — they do not reserve or create files on disk
 - `Create` and `CreateDir` actually create the file or directory on disk
-- `PathWithExt("v", ".txt")` produces a path like `/tmp/v_<unique>.txt`
-- Prefixes and extensions are filename fragments: path separators, drive separators, and traversal syntax are rejected.
+- `PathWithExt("v_", ".txt")` produces a path like `/tmp/v_<unique>.txt`; prefixes are used verbatim, so include any desired separator yourself.
+- Prefixes and extensions are filename fragments: `/`, `\`, and `:` are rejected, so they cannot add path components or drive prefixes.
 - Prefixes and extensions also reject embedded NUL bytes; generated names are never truncated at a hidden NUL.
-- Temporary files and directories are not automatically cleaned up; the caller is responsible for deletion
+- On POSIX, created files use owner-only mode `0600` and created directories use `0700` (subject to platform/filesystem behavior).
+- Temporary files and directories are not automatically cleaned up; the caller is responsible for deletion.
 
 ### Zia Example
 
@@ -383,7 +383,7 @@ func start() {
     Say("Temp path: " + p);
 
     // Generate with prefix and extension
-    var p2 = TempFile.PathWithExt("viper", ".txt");
+var p2 = TempFile.PathWithExt("viper_", ".txt");
     Say("Custom path: " + p2);
 
     // Create an actual temp file
@@ -403,10 +403,10 @@ PRINT "Temp dir: "; Viper.IO.TempFile.Dir()   ' Output: /tmp (or platform equiva
 DIM p AS STRING = Viper.IO.TempFile.Path()
 PRINT "Path: "; p   ' Output: /tmp/<unique>.tmp
 
-DIM p2 AS STRING = Viper.IO.TempFile.PathWithPrefix("myapp")
+DIM p2 AS STRING = Viper.IO.TempFile.PathWithPrefix("myapp_")
 PRINT "Prefixed: "; p2   ' Output: /tmp/myapp_<unique>.tmp
 
-DIM p3 AS STRING = Viper.IO.TempFile.PathWithExt("v", ".txt")
+DIM p3 AS STRING = Viper.IO.TempFile.PathWithExt("v_", ".txt")
 PRINT "With ext: "; p3   ' Output: /tmp/v_<unique>.txt
 
 ' Create an actual temp file on disk
@@ -421,7 +421,7 @@ PRINT "Created dir: "; d
 Viper.IO.Dir.RemoveAll(d)
 
 ' Create a temp directory with prefix
-DIM d2 AS STRING = Viper.IO.TempFile.CreateDirWithPrefix("build")
+DIM d2 AS STRING = Viper.IO.TempFile.CreateDirWithPrefix("build_")
 PRINT "Build dir: "; d2
 Viper.IO.Dir.RemoveAll(d2)
 ```
@@ -458,7 +458,7 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
 `Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` follows host path semantics: `/` is the separator on POSIX, while both `/` and `\` are accepted on Windows.
-`Files()` excludes symbolic links to files on POSIX. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory. On POSIX, recursive removal uses file-descriptor-relative traversal so a concurrently swapped symlink component cannot redirect deletion outside the requested tree.
+`Files()` excludes symbolic links to files on POSIX, while `Dirs()` can include a symlink whose target is a directory. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory. On POSIX, recursive removal uses file-descriptor-relative traversal so a concurrently swapped symlink component cannot redirect deletion outside the requested tree.
 
 ### Zia Example
 
@@ -588,7 +588,7 @@ is returned. `Entries()` is the strict variant: it traps on open, read, or close
 
 ## Viper.IO.Path
 
-Cross-platform path manipulation utilities. On Windows, both `/` and `\` are treated as separators. On POSIX, `/` is the only path separator; backslash is treated as an ordinary filename byte. `Path.Join(a, b)` still accepts either slash as a join-boundary convenience, but `Dir`, `Name`, `Norm`, and absolute-path checks follow host filesystem semantics.
+Cross-platform path manipulation utilities. On Windows, both `/` and `\` are treated as separators. On POSIX, `/` is the only path separator and backslash is an ordinary filename byte in every path helper, including `Path.Join`.
 
 **Type:** Static utility class
 
@@ -615,10 +615,12 @@ written immediately:
 
 - **Windows:** `%APPDATA%\<app>`
 - **macOS:** `~/Library/Application Support/<app>`
-- **Linux:** `$XDG_DATA_HOME/<app>` when set, else `~/.local/share/<app>`
+- **Linux:** `$XDG_DATA_HOME/<app>` when `XDG_DATA_HOME` is absolute, else `~/.local/share/<app>`
 
 The app name must be alphanumeric/dash/underscore (max 64 chars); anything
-else traps. Repeated calls return the same absolute path.
+else traps. With an unchanged environment, repeated calls return the same absolute path.
+`Abs()` and `Norm()` are lexical operations: they do not require the path to
+exist and do not resolve symbolic links.
 
 ### Zia Example
 
@@ -744,20 +746,26 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 | `*`     | Matches any sequence of characters | `*.txt` matches `a.txt` |
 | `?`     | Matches a single character         | `?.c` matches `a.c`    |
 | `[abc]` | Matches any character in brackets  | `[abc].txt`            |
+| `[a-z]` | Matches a byte in a range           | `[0-9].txt`            |
+| `[!abc]`, `[^abc]` | Matches a byte outside the class | `[!0-9]*`       |
+| `**`    | Matches across path separators      | `src/**/*.zia`         |
 
 ### Notes
 
 - **Parameter order is (path, pattern)** for `Match`, not (pattern, path)
+- Matching is byte-oriented and case-sensitive on POSIX; Windows comparisons are ASCII case-insensitive.
+- `*`, `?`, and character classes do not cross a path separator. `**` does; a backslash can escape a character inside a class.
 - Null path or pattern inputs return false for `Match` and an empty sequence for listing helpers
 - Listing helpers return an empty sequence for paths or patterns containing embedded NUL bytes.
 - `Files` returns only regular files, not directories
 - `FilesRecursive` descends into all subdirectories and traps if recursion exceeds the runtime depth guard.
 - `Entries` returns both files and directories that match the pattern
 - All listing methods return a `Seq` of full path strings
-- Patterns are matched against the filename component, not the full path (for `Files`/`Entries`)
+- Patterns are matched against the filename component for `Files` / `Entries`; `FilesRecursive` matches each file's path relative to the supplied root.
 - On Windows, both `/` and `\` are treated as path separators for `*`, `?`, `**`, and literal separator matching.
 - On POSIX, only `/` is a path separator for glob matching; backslash is matched as a normal character.
 - `**` matching is memoized, so very deep path strings are handled without a fixed recursion attempt limit.
+- Recursive traversal does not follow symbolic-link directories or Windows reparse points. Result order follows filesystem enumeration and is not sorted.
 
 ### Zia Example
 
@@ -819,16 +827,17 @@ Workspace file inventory helper for IDEs and editor tools.
 
 `Enumerate` returns a `Seq` of `Map` records. Each record includes `path`, `relativePath`, `name`, `extension`, `kind`, `isDirectory`, `id`, `size`, and `modified`.
 
-`Page` returns a `Map` with `entries`, `offset`, `limit`, `emitted`, `nextOffset`, `scanned`, `done`, `truncated`, `maxEntries`, and `diagnostics`. Each entry has the same shape as `Enumerate`. Use `nextOffset` until `done` is true to process large workspaces without allocating every row at once.
+`Page` returns a `Map` with `valid`, `root`, `entries`, `offset`, `limit`, `emitted`, `nextOffset`, `scanned`, `done`, `truncated`, `maxEntries`, and `diagnostics`. Each entry has the same shape as `Enumerate`. Use `nextOffset` until `done` is true to process large workspaces without allocating every row at once. Non-positive limits default to 512 and larger limits are clamped to 4096.
 
-`Status` returns a `Map` with `valid`, `root`, `entryCount`, `maxEntries`, `truncated`, and `diagnostics`. It uses the same filters and ignore rules as `Enumerate`, but it is intended for IDE progress/status surfaces and large-workspace guardrails where allocating every entry would be unnecessary.
+`Status` returns a `Map` with `valid`, `root`, `entryCount`, `maxEntries`, `truncated`, `fingerprint`, and `diagnostics`. It uses the same filters and ignore rules as `Enumerate`, but it is intended for IDE progress/status surfaces and large-workspace guardrails where allocating every entry would be unnecessary. `fingerprint` hashes the filtered relative paths, kinds, sizes, and modification times for quick change detection.
 
 ### Notes
 
-- Hard excludes include `.git`, `.hg`, `.svn`, `.viper`, `.viper-cache`, `build`, `cmake-build-*`, `node_modules`, and `.DS_Store`.
-- `.gitignore` support is intentionally a documented subset: blank/comment lines, directory suffixes, `*`, `?`, `**`, and `!` negation are supported.
+- Hard excludes include every dot-prefixed entry, plus `.git`, `.hg`, `.svn`, `.viper`, `.viper-cache`, `build`, `cmake-build-*`, `node_modules`, and `.DS_Store`.
+- Root and nested `.gitignore` files are honored using an intentional subset: blank/comment lines, directory suffixes, `*`, `?`, `**`, and `!` negation are supported.
 - `extensionsCsv` may contain values such as `.zia,.json,.png`; an empty list includes all regular files.
-- The `id` field is a stable 63-bit hash of the canonical path for quick UI identity, not a persistent filesystem inode.
+- The `id` field is a stable 63-bit hash of the absolute, lexically normalized path for quick UI identity, not a persistent filesystem inode.
+- Enumeration is capped at 100,000 matching entries. `Enumerate` stops at the cap; `Page` and `Status` expose `maxEntries` / `truncated` so callers can report it.
 
 ---
 
@@ -844,7 +853,7 @@ Batch wrapper over `Viper.IO.Watcher` for per-frame IDE polling.
 |--------|-----------|-------------|
 | `PollBatch(watcher, maxEvents)` | `Seq(Object, Integer)` | Drain up to `maxEvents` queued watcher events into structured maps |
 
-Each event map includes `path`, `typeName`, `type`, and `requiresRescan`. `requiresRescan` is true for overflow events so an IDE can discard incremental state and re-enumerate the workspace.
+Each event map includes `path`, `typeName`, `type`, `overflowCount`, and `requiresRescan`. `requiresRescan` is true for overflow events so an IDE can discard incremental state and re-enumerate the workspace. A non-positive `maxEvents` drains at most 64 events.
 
 `Viper.IO.Watcher` remains non-recursive; use one watcher per watched directory or pair this helper with a workspace index rescan policy.
 
@@ -852,7 +861,7 @@ Each event map includes `path`, `typeName`, `type`, and `requiresRescan`. `requi
 
 ## Viper.Project.Manifest
 
-Parser for `viper.project` and editor-expanded project manifests.
+Tooling-oriented subset parser for `viper.project` and editor-expanded project manifests. It does not replace the build command's full project loader.
 
 **Type:** Static utility class
 
@@ -883,6 +892,8 @@ args --dev, --scene=one
 ```
 
 Unknown directives or sections keep safe defaults and add diagnostic records instead of trapping.
+Build-only directives outside this tooling subset, such as `embed`, `pack`, and
+`pack-compressed`, therefore appear as diagnostics rather than being expanded.
 
 ---
 
@@ -897,11 +908,13 @@ Transactional multi-file text edit validation and application.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Validate(edits)` | `Map(Seq)` | Check edit records without writing files |
-| `Apply(edits)` | `Map(Seq)` | Validate and apply edits all-or-nothing |
+| `Apply(edits)` | `Map(Seq)` | Revalidate, stage, and apply edits |
+| `ValidateInRoot(edits, root)` | `Map(Seq, String)` | Validate while rejecting targets outside an existing workspace root |
+| `ApplyInRoot(edits, root)` | `Map(Seq, String)` | Apply with the same workspace-root boundary |
 
-Each edit record is a `Map` with `file`, `startLine`, `startColumn`, `endLine`, `endColumn`, `newText`, and optional `expectedMtime`. Line and column values are 1-based. The result map includes `success`, `applied`, and `diagnostics`.
+Each edit record is a `Map` with `file`, `startLine`, `startColumn`, `endLine`, `endColumn`, `newText`, and optional `expectedMtime` / `expectedSize`. Line and column values are 1-based byte positions. Validation results contain `success`, `editCount`, and `diagnostics`; apply results add `appliedFiles`.
 
-Validation rejects missing files, invalid ranges, overlapping edits in the same file, and stale `expectedMtime` values. `Apply` writes all changed files only after validation succeeds and restores original contents if a later write fails.
+Validation rejects missing files, invalid ranges, overlapping edits in the same file, and stale expected metadata. Apply revalidates immediately before writing, stages every changed file beside its target, and commits each replacement with same-directory renames. If a later commit fails, rollback is best-effort; callers must still inspect `success` and diagnostics rather than treating a multi-file batch as a crash-proof filesystem transaction.
 
 ---
 

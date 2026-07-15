@@ -354,13 +354,13 @@ You've learned the core loop: **input -> update -> draw -> flip**. From here:
 
 | Want to... | Read... |
 |------------|---------|
-| Use sprites instead of shapes | [Sprites & Animation](sprites-and-animation.md) |
-| Build levels with tiles | [Tilemaps](tilemap-guide.md) |
-| Add enemies with AI | [Entity System](entity-system.md) |
-| Structure a multi-screen game | [Scene Management](scene-management.md) |
-| Add a scrolling camera | [Camera](camera-guide.md) |
-| Use rebindable input | [Input](input-guide.md) |
-| Build a complete platformer | [Your First Platformer](examples/your-first-platformer.md) |
+| Use sprites instead of shapes | [Animation](../viperlib/game/animation.md) |
+| Build levels with tiles | [Tilemaps](../viperlib/graphics/tilemaps2d.md) |
+| Add enemies with AI | [Entities](../viperlib/game/entity.md) |
+| Structure a multi-screen game | [GameBase and IScene](../viperlib/game/gameloop.md) |
+| Add a scrolling camera | [Scene and Camera](../viperlib/graphics/scene.md#vipergraphicscamera) |
+| Use rebindable input | [Input](../viperlib/input.md) |
+| Study complete games | [Game examples](examples/README.md) |
 
 ---
 
@@ -380,14 +380,14 @@ class MyGame : GameBase {
 }
 ```
 
-See [Scene Management](scene-management.md) for the full GameBase + IScene pattern.
+See [GameBase and IScene](../viperlib/game/gameloop.md) for the full pattern.
 
 ---
 
 ## See Also
 
-- [2D Graphics](2d-graphics.md) — Full Canvas drawing reference
-- [Audio](audio-guide.md) — Sound loading, music streaming, procedural synthesis
-- [Input](input-guide.md) — Keyboard codes, gamepad, action mapping
+- [2D Graphics](../viperlib/graphics/README.md) — Graphics guide and API index
+- [Audio](../viperlib/audio.md) — Sound loading, music streaming, and procedural synthesis
+- [Input](../viperlib/input.md) — Keyboard codes, gamepad, and action mapping
 - [Canvas API Reference](../viperlib/graphics/canvas.md) — Exhaustive method signatures
 - [The Viper Bible, Chapter 19](../bible/part4-applications/19-graphics.md) — Deep dive on graphics fundamentals

@@ -569,7 +569,7 @@ END
 
 **Explore Examples:**
 
-- Browse `examples/basic/` for more sample programs
+- Browse `examples/vbasic/` for more sample programs
 - Check `src/tests/golden/basic/` for test cases
 
 **Advanced Topics:**

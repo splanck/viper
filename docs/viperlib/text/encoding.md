@@ -105,7 +105,6 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
 | Method             | Signature         | Description                            |
 |--------------------|-------------------|----------------------------------------|
 | `New()`            | `String()`        | Generate a new random UUID v4          |
-| `V4()`             | `String()`        | Compatibility alias for `New()`        |
 | `IsValid(guid)`    | `Boolean(String)` | Check if string is a valid UUID format |
 | `ToBytes(guid)`    | `Bytes(String)`   | Convert UUID string to 16-byte array   |
 | `FromBytes(bytes)` | `String(Bytes)`   | Convert 16-byte array to UUID string   |

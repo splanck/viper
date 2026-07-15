@@ -1,0 +1,15 @@
+# Curated Zia showcase projects built by every platform demo driver.
+# Format: executable-name|examples-category|project-directory
+
+# Games
+ashfall|games|ashfall
+3dbowling|games|3dbowling
+ridgebound|games|ridgebound
+xenoscape|games|xenoscape
+crackman|games|crackman
+chess|games|chess
+baseball|games|baseball
+
+# Applications
+paint|apps|paint
+vipersql|apps|vipersql

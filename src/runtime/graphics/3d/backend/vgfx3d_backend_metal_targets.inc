@@ -107,15 +107,29 @@ static void mat4f_identity(float *out) {
     out[15] = 1.0f;
 }
 
+/// @brief Whether the GPU storage backing shadow @p slot exists (per-slot depth
+///   texture for the classic CSM slots, the shared atlas texture for tile slots).
+static int metal_shadow_slot_texture_ready(VGFXMetalContext *ctx, int32_t slot) {
+    if (!ctx)
+        return 0;
+    if (slot >= VGFX3D_CSM_SLOTS)
+        return ctx->_shadowAtlasTexture != nil;
+    return ctx->_shadowDepthTexture[slot] != nil;
+}
+
 /// @brief Recount the contiguous run of completed shadow-map slots into ctx->_shadowCount.
-/// @details Stops at the first slot that is incomplete or lacks a depth texture, so only a
-///          prefix of ready shadow maps is reported to the lighting pass.
+/// @details Stops at the first slot that is incomplete or lacks backing storage, so only
+///          a prefix of ready shadow maps is reported to the lighting pass. Atlas slots
+///          (>= VGFX3D_CSM_SLOTS) are backed by the shared atlas texture, NOT a per-slot
+///          depth texture — requiring _shadowDepthTexture there silently zeroed every
+///          atlas slot out of _shadowCount and the extra spot/point-cube shadows never
+///          reached the shaders.
 static void metal_recompute_shadow_count(VGFXMetalContext *ctx) {
     int32_t count = 0;
     if (!ctx)
         return;
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        if (!ctx->_shadowComplete[slot] || !ctx->_shadowDepthTexture[slot])
+        if (!ctx->_shadowComplete[slot] || !metal_shadow_slot_texture_ready(ctx, slot))
             break;
         count = slot + 1;
     }

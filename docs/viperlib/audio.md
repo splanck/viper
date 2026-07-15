@@ -114,7 +114,7 @@ DIM explosion AS Viper.Sound.Sound
 laser = Viper.Sound.Sound.Load("laser.wav")
 explosion = Viper.Sound.Sound.Load("explosion.wav")
 
-IF laser <> NULL THEN
+IF NOT Viper.Core.Object.RefEquals(laser, NOTHING) THEN
     ' Play with default settings
     laser.Play()
 
@@ -195,7 +195,7 @@ func start() {
 
     var mus = Music.Load("background.ogg");
     if mus != null {
-        mus.Volume = 70;
+        mus.SetVolume(70);
         mus.Play(1);  // Looped
 
         Say("Duration: " + Fmt.Int(mus.get_Duration()) + " ms");
@@ -216,11 +216,15 @@ func start() {
 ### Example
 
 ```basic
+' Initialize audio and create the window used by the loop.
+Viper.Sound.Audio.Init()
+DIM canvas AS Viper.Graphics.Canvas = Viper.Graphics.Canvas.New("Music Player", 400, 200)
+
 ' Load background music (WAV, any sample rate)
 DIM bgMusic AS Viper.Sound.Music
 bgMusic = Viper.Sound.Music.Load("background.wav")
 
-IF bgMusic <> NULL THEN
+IF NOT Viper.Core.Object.RefEquals(bgMusic, NOTHING) THEN
     ' Set initial volume
     bgMusic.Volume = 70
 
@@ -252,6 +256,8 @@ IF bgMusic <> NULL THEN
     ' Cleanup
     bgMusic.Stop()
 END IF
+
+Viper.Sound.Audio.Shutdown()
 ```
 
 ---
@@ -328,7 +334,7 @@ func start() {
 
 ---
 
-## Viper.Sound.Audio (Static)
+## Viper.Sound.Audio
 
 Global audio system control functions.
 
@@ -611,12 +617,16 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 
 ### Song Properties
 
-| Property / Method           | Signature               | Description                                                       |
-|-----------------------------|-------------------------|-------------------------------------------------------------------|
+| Property                   | Type                    | Description                                                       |
+|----------------------------|-------------------------|-------------------------------------------------------------------|
 | `Bpm` (read-only)          | `Integer`               | Tempo in beats per minute                                         |
 | `Length` (read/write)       | `Integer`               | Song length in centbeats (100 = 1 beat)                           |
 | `ChannelCount` (read-only) | `Integer`               | Number of channels added                                          |
-| `SetLength(length)`        | `void(Integer)`         | Set song length in centbeats; equivalent to assigning `Length`    |
+
+### Song Finalization Methods
+
+| Method | Signature | Description |
+|---|---|---|
 | `SetSwing(amount)`         | `void(Integer)`         | Swing feel (0-100). Shifts off-beat notes forward. 0 = straight   |
 | `SetLoopable(flag)`        | `void(Boolean)`         | `true` = apply crossfade at loop boundary for click-free looping  |
 | `Build()`                  | `Sound()`               | Pre-render all channels to a Sound object. Returns null on failure |
@@ -692,7 +702,7 @@ func start() {
     song.AddNote(drums, 300, 8, 30);    // snare
 
     // Build and play
-    song.SetLength(400);       // 4 beats
+    song.Length = 400;         // 4 beats
     song.SetLoopable(true);    // seamless loop
     var sound = song.Build();
 
@@ -708,20 +718,25 @@ func start() {
 ### BASIC Example
 
 ```basic
-REM Procedural music demo
-AUDIO.INIT
-LET S = MUSICGEN.NEW(120)
-LET CH = MUSICGEN.ADDCHANNEL(S, 1)
-MUSICGEN.SETENVELOPE S, CH, 10, 50, 70, 100
-MUSICGEN.ADDNOTE S, CH, 0, 60, 100
-MUSICGEN.ADDNOTE S, CH, 100, 64, 100
-MUSICGEN.ADDNOTE S, CH, 200, 67, 100
-MUSICGEN.ADDNOTE S, CH, 300, 72, 100
-MUSICGEN.SETLENGTH S, 400
-MUSICGEN.SETLOOPABLE S, 1
-LET SND = MUSICGEN.BUILD(S)
-IF SND <> 0 THEN SOUND.PLAYLOOP SND, 70, 0
-AUDIO.SHUTDOWN
+' Procedural music demo
+Viper.Sound.Audio.Init()
+
+DIM song AS Viper.Sound.MusicGen = Viper.Sound.MusicGen.New(120)
+DIM channel AS INTEGER = song.AddChannel(1)
+song.SetEnvelope(channel, 10, 50, 70, 100)
+song.AddNote(channel, 0, 60, 100)
+song.AddNote(channel, 100, 64, 100)
+song.AddNote(channel, 200, 67, 100)
+song.AddNote(channel, 300, 72, 100)
+song.Length = 400
+song.SetLoopable(TRUE)
+
+DIM snd AS Viper.Sound.Sound = song.Build()
+IF NOT Viper.Core.Object.RefEquals(snd, NOTHING) THEN
+    DIM voiceId AS INTEGER = snd.PlayLoop(70, 0)
+END IF
+
+Viper.Sound.Audio.Shutdown()
 ```
 
 ---

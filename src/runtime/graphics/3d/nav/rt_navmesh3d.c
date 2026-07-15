@@ -164,6 +164,11 @@ typedef struct {
     double agent_height;
     double max_slope;              /* degrees */
     int8_t skip_portal_width_gate; /* voxel bake enforces clearance via erosion, not portal width */
+    /* A* heuristic policy: 0 = strict (drops to Dijkstra when any off-mesh link
+     * exists, guaranteeing optimal paths), 1 = always Euclidean (Recast-style —
+     * much faster on large meshes with links, paths may be slightly suboptimal
+     * when a link shortcut beats straight-line distance). */
+    int8_t heuristic_mode;
     /* >0 => tiled bake: RebuildTile / tiled AddObstacle re-flag one tile's triangles in place
      * (O(tile), no adjacency/grid rebuild). 0 => non-tiled: obstacle edits whole-mesh refilter.
      * Tile (tx,tz) covers world XZ [qgrid_min + t*tile_size, qgrid_min + (t+1)*tile_size). */

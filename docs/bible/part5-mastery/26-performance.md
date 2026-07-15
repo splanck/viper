@@ -367,7 +367,7 @@ var sorted = items.sorted();
 
 Nested loops over the same data. Each item interacts with every other item:
 
-```rust
+```text
 // Check all pairs
 func findClosestPair(points: List[Point]) -> (Point, Point) {
     var closest = (points[0], points[1]);

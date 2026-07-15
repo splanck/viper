@@ -1152,7 +1152,7 @@ func escapeCSV(value: String) -> String {
 func joinCSV(values: Seq) -> String {
     var line = "";
 
-    for i in 0..values.Length {
+    for i in 0..values.Count {
         if i > 0 {
             line = line + ",";
         }
@@ -1165,13 +1165,13 @@ func joinCSV(values: Seq) -> String {
 func exportToCSV(filename: String, headers: Seq, rows: Seq) {
     var content = joinCSV(headers) + "\n";
 
-    for i in 0..rows.Length {
+    for i in 0..rows.Count {
         var row = rows.GetStr(i).Split("|");
         content = content + joinCSV(row) + "\n";
     }
 
     File.WriteAllText(filename, content);
-    Say("Exported " + rows.Length + " rows to " + filename);
+    Say("Exported " + rows.Count + " rows to " + filename);
 }
 
 func start() {
@@ -1197,14 +1197,14 @@ func importFromCSV(filename: String) -> Viper.Collections.Seq {
 
 func start() {
     var rows = importFromCSV("people.csv");
-    if rows.Length == 0 {
+    if rows.Count == 0 {
         Say("No data");
         return;
     }
 
     var headers = rows.GetStr(0).Split(",");
     Say("Columns: " + Str.Join(", ", headers));
-    Say("Data rows: " + (rows.Length - 1));
+    Say("Data rows: " + (rows.Count - 1));
 }
 ```
 

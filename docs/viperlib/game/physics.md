@@ -291,7 +291,7 @@ END IF
 
 ---
 
-## Viper.Game.Physics2D
+## Viper.Game.Physics2D class family
 
 Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collision detection,
 shape-aware swept collision checks, and basic joints. Uses fixed-timestep Euler integration

@@ -17,15 +17,10 @@ examples for IL v0.3.
 ## Table of Contents
 
 1. [Quickstart](#quickstart)
-2. [Program Structure](#program-structure)
-3. [Values and Types](#values-and-types)
-4. [Control Flow](#control-flow)
-5. [Functions and Calls](#functions-and-calls)
-6. [Memory Operations](#memory-operations)
-7. [Exception Handling](#exception-handling)
-8. [BASIC Lowering Rules](#basic-lowering-rules)
-9. [Optimization Passes](#optimization-passes)
-10. [Advanced Topics](#advanced-topics)
+2. [Normative IL Reference](#reference)
+3. [BASIC-to-IL Lowering](#lowering)
+4. [Optimization Passes](#passes)
+5. [Worked Examples](#examples)
 
 ---
 
@@ -118,8 +113,9 @@ Compatibility:
 
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
-- Planned: Starting in v0.3.0, legacy `@rt_*` aliases will be OFF by default. Enable with `-DVIPER_RUNTIME_NS_DUAL=ON`
-  if you need to load legacy IL.
+- The current build default is `VIPER_RUNTIME_NS_DUAL=ON`, so legacy `@rt_*` aliases are
+  published alongside canonical names. Configure with `-DVIPER_RUNTIME_NS_DUAL=OFF` when
+  legacy IL compatibility is not required.
 
 **What just happened?** `Viper.Terminal.PrintI64` is supplied by the runtime and prints its argument. Every function ends
 with a terminator such as `ret` giving the program's exit code.
@@ -360,7 +356,7 @@ entry:
 ### Next steps
 
 - Read the full [IL reference](#reference) for all instructions.
-- Explore the `examples/` and `tests/golden/` directories for more programs.
+- Explore the `examples/` and `src/tests/golden/` directories for more programs.
 - Try adding your own IL file and running it with `viper`.
 
 ### Common mistakes
@@ -1063,7 +1059,7 @@ Native back ends target the System V x86-64 ABI:
 
 #### Versioning & Conformance
 
-Modules must begin with a version header (e.g., `il 0.2`). A conforming implementation accepts this grammar, obeys the semantics above, and
+Modules must begin with a version header (e.g., `il 0.3.0`). A conforming implementation accepts this grammar, obeys the semantics above, and
 traps on the conditions listed for each instruction. Implementations are validated against the sample suite
 under [examples/il](../examples/il/).
 
@@ -1115,7 +1111,7 @@ types:
 | `CALL S()`                    | `call @S()`                             | `SUB` invocation used as a statement.                    |
 | `X = F()`                     | `%x = call @F()`                        | `FUNCTION` invocation used as an expression.             |
 
-Recursive calls lower the same way; see [factorial.bas](#example-4-read-input-and-compute-factorial)
+Recursive calls lower the same way; see the [factorial example](#example-4--read-input-and-compute-factorial)
 for a recursion sanity check.
 
 ### Compilation unit lowering

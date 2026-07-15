@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-12
+last-verified: 2026-07-14
 ---
 
 # Network
@@ -26,8 +26,11 @@ last-verified: 2026-05-12
 - [Viper.Network.RetryPolicy](#vipernetworkretrypolicy)
 - [Viper.Network.RateLimiter](#vipernetworkratelimiter)
 - [Viper.Network.HttpRouter](#vipernetworkhttprouter)
+- [Viper.Network.RouteMatch](#vipernetworkroutematch)
 - [Viper.Network.HttpServer](#vipernetworkhttpserver)
 - [Viper.Network.HttpsServer](#vipernetworkhttpsserver)
+- [Viper.Network.ServerReq](#vipernetworkserverreq)
+- [Viper.Network.ServerRes](#vipernetworkserverres)
 - [Viper.Network.ConnectionPool](#vipernetworkconnectionpool)
 - [Viper.Network.Multipart](#vipernetworkmultipart)
 - [Viper.Network.NetUtils](#vipernetworknetutils)
@@ -72,11 +75,13 @@ a descriptive error message and clean exit.
 
 Timeout values must fit the runtime socket timeout range: `0` disables an explicit timeout and positive values must be no larger than `2147483647` milliseconds. Negative or overflowing timeout arguments are treated as programming errors by the typed networking APIs.
 
-### Programming Errors (Not Catchable)
+### Programming Errors
 
 Passing NULL connections, invalid port numbers, or NULL data are
-programming errors that always terminate the program. They are not
-network conditions and cannot be recovered from.
+programming errors rather than network conditions. They raise ordinary runtime traps instead of
+one of the categorized network error codes above. An active language-level trap handler can
+recover, but callers should validate or correct the input rather than treat these as transient
+network failures.
 
 URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, malformed IPv6 authorities, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines and non-empty chunk terminators fail as protocol errors instead of being partially accepted. HTTP request and response `Transfer-Encoding` handling supports a single final `chunked` coding; unsupported, duplicate, trailing-comma, or non-final transfer codings are rejected rather than falling back to `Content-Length`.
 
@@ -146,11 +151,12 @@ The implementation enables the following socket options by default:
 
 ```basic
 ' Connect to a server
-DIM conn AS OBJECT = Viper.Network.Tcp.Connect("example.com", 80)
+DIM conn AS Viper.Network.Tcp = Viper.Network.Tcp.Connect("example.com", 80)
 
 ' Check connection
 IF conn.IsOpen THEN
-    PRINT "Connected to "; conn.Host; ":"; conn.Port
+    DIM remoteHost AS STRING = conn.Host
+    PRINT "Connected to "; remoteHost; ":"; conn.Port
     PRINT "Local port: "; conn.LocalPort
 END IF
 
@@ -172,7 +178,7 @@ conn.Close()
 
 ```basic
 ' Connect to a line-based server (e.g., SMTP, POP3)
-DIM conn AS OBJECT = Viper.Network.Tcp.Connect("mail.example.com", 25)
+DIM conn AS Viper.Network.Tcp = Viper.Network.Tcp.Connect("mail.example.com", 25)
 
 ' Read greeting
 DIM greeting AS STRING = conn.RecvLine()
@@ -192,10 +198,10 @@ conn.Close()
 
 ```basic
 ' Connect to a binary protocol server
-DIM conn AS OBJECT = Viper.Network.Tcp.Connect("192.168.1.100", 9000)
+DIM conn AS Viper.Network.Tcp = Viper.Network.Tcp.Connect("192.168.1.100", 9000)
 
 ' Send binary packet
-DIM packet AS OBJECT = Viper.Collections.Bytes.New(8)
+DIM packet AS Viper.Collections.Bytes = Viper.Collections.Bytes.New(8)
 packet.Set(0, 1)  ' Message type
 packet.Set(1, 0)  ' Flags
 packet.Set(2, 0)  ' Length high
@@ -208,11 +214,11 @@ packet.Set(7, 79)  ' 'O'
 conn.SendAll(packet)
 
 ' Receive response header (exactly 4 bytes)
-DIM header AS OBJECT = conn.RecvExact(4)
+DIM header AS Viper.Collections.Bytes = conn.RecvExact(4)
 DIM payloadLen AS INTEGER = header.Get(2) * 256 + header.Get(3)
 
 ' Receive payload
-DIM payload AS OBJECT = conn.RecvExact(payloadLen)
+DIM payload AS Viper.Collections.Bytes = conn.RecvExact(payloadLen)
 
 conn.Close()
 ```
@@ -221,13 +227,13 @@ conn.Close()
 
 ```basic
 ' Connect with timeout
-DIM conn AS OBJECT = Viper.Network.Tcp.ConnectFor("slow-server.com", 8080, 5000)
+DIM conn AS Viper.Network.Tcp = Viper.Network.Tcp.ConnectFor("slow-server.com", 8080, 5000)
 
 ' Set receive timeout
 conn.SetRecvTimeout(3000)  ' 3 seconds
 
 ' Receive will trap if no data within 3 seconds
-DIM data AS OBJECT = conn.Recv(1024)
+DIM data AS Viper.Collections.Bytes = conn.Recv(1024)
 
 conn.Close()
 ```
@@ -291,17 +297,18 @@ TCP server for accepting incoming client connections.
 
 ```basic
 ' Start a simple echo server on port 8080
-DIM server AS OBJECT = Viper.Network.TcpServer.Listen(8080)
+DIM server AS Viper.Network.TcpServer = Viper.Network.TcpServer.Listen(8080)
 
 PRINT "Listening on port "; server.Port
 
 ' Accept one connection
-DIM client AS OBJECT = server.Accept()
-PRINT "Client connected from "; client.Host; ":"; client.Port
+DIM client AS Viper.Network.Tcp = server.Accept()
+DIM clientHost AS STRING = client.Host
+PRINT "Client connected from "; clientHost; ":"; client.Port
 
 ' Echo loop
 DO WHILE client.IsOpen
-    DIM data AS OBJECT = client.Recv(1024)
+    DIM data AS Viper.Collections.Bytes = client.Recv(1024)
     IF client.Available = 0 AND data.Length = 0 THEN
         EXIT DO  ' Connection closed
     END IF
@@ -316,23 +323,17 @@ server.Close()
 ### Accept with Timeout Example
 
 ```basic
-' Server that checks for shutdown periodically
-DIM server AS OBJECT = Viper.Network.TcpServer.Listen(9000)
-DIM shouldStop AS INTEGER = 0
+' Check once for a connection with a 1-second timeout.
+DIM server AS Viper.Network.TcpServer = Viper.Network.TcpServer.Listen(9000)
+DIM client AS Viper.Network.Tcp = server.AcceptFor(1000)
 
-DO WHILE NOT shouldStop
-    ' Check for connection with 1 second timeout
-    DIM client AS OBJECT = server.AcceptFor(1000)
-
-    IF client IS NOT NULL THEN
-        ' Handle client
-        HandleClient(client)
-        client.Close()
-    END IF
-
-    ' Check for shutdown signal
-    shouldStop = CheckShutdownFlag()
-LOOP
+IF Viper.Core.Object.RefEquals(client, NOTHING) THEN
+    PRINT "No client connected before the timeout"
+ELSE
+    DIM clientHost AS STRING = client.Host
+    PRINT "Client connected from "; clientHost
+    client.Close()
+END IF
 
 server.Close()
 ```
@@ -341,9 +342,10 @@ server.Close()
 
 ```basic
 ' Listen only on localhost (not accessible from network)
-DIM server AS OBJECT = Viper.Network.TcpServer.ListenAt("127.0.0.1", 8080)
+DIM server AS Viper.Network.TcpServer = Viper.Network.TcpServer.ListenAt("127.0.0.1", 8080)
 
-PRINT "Listening on "; server.Address; ":"; server.Port
+DIM boundAddress AS STRING = server.Address
+PRINT "Listening on "; boundAddress; ":"; server.Port
 
 ' ... handle connections ...
 
@@ -354,13 +356,14 @@ server.Close()
 
 ```basic
 ' Simple server handling multiple sequential clients
-DIM server AS OBJECT = Viper.Network.TcpServer.Listen(7000)
+DIM server AS Viper.Network.TcpServer = Viper.Network.TcpServer.Listen(7000)
 
 FOR i = 1 TO 10
     PRINT "Waiting for client "; i
-    DIM client AS OBJECT = server.Accept()
+    DIM client AS Viper.Network.Tcp = server.Accept()
 
-    PRINT "Client "; i; " connected from "; client.Host
+    DIM clientHost AS STRING = client.Host
+    PRINT "Client "; i; " connected from "; clientHost
 
     ' Send greeting
     client.SendStr("Hello, client " + STR(i) + "!" + CHR(10))
@@ -464,11 +467,11 @@ UDP datagram socket for connectionless communication.
 ' Simple UDP echo client/server
 
 ' Server side (receiver)
-DIM server AS OBJECT = Viper.Network.Udp.Bind(9000)
+DIM server AS Viper.Network.Udp = Viper.Network.Udp.Bind(9000)
 PRINT "Listening for UDP on port "; server.Port
 
 ' Wait for a message
-DIM data AS OBJECT = server.RecvFrom(1024)
+DIM data AS Viper.Collections.Bytes = server.RecvFrom(1024)
 PRINT "Received "; data.Length; " bytes from "; server.SenderHost(); ":"; server.SenderPort()
 
 ' Echo back
@@ -481,7 +484,7 @@ server.Close()
 
 ```basic
 ' UDP client
-DIM sock AS OBJECT = Viper.Network.Udp.New()
+DIM sock AS Viper.Network.Udp = Viper.Network.Udp.New()
 
 ' Send message
 DIM msg AS STRING = "Hello UDP!"
@@ -489,7 +492,7 @@ sock.SendToStr("127.0.0.1", 9000, msg)
 
 ' Receive response (with timeout)
 sock.SetRecvTimeout(5000)  ' 5 seconds
-DIM response AS OBJECT = sock.Recv(1024)
+DIM response AS Viper.Collections.Bytes = sock.Recv(1024)
 
 IF response.Length > 0 THEN
     PRINT "Got response: "; response.Length; " bytes"
@@ -504,7 +507,7 @@ sock.Close()
 
 ```basic
 ' Send broadcast message (requires SetBroadcast)
-DIM sock AS OBJECT = Viper.Network.Udp.Bind(0)  ' Bind to any port
+DIM sock AS Viper.Network.Udp = Viper.Network.Udp.Bind(0)  ' Bind to any port
 sock.SetBroadcast(TRUE)
 
 ' Send to broadcast address
@@ -517,11 +520,11 @@ sock.Close()
 
 ```basic
 ' IPv6 loopback UDP
-DIM server AS OBJECT = Viper.Network.Udp.BindAt("::1", 9000)
-DIM client AS OBJECT = Viper.Network.Udp.BindAt("::1", 0)
+DIM server AS Viper.Network.Udp = Viper.Network.Udp.BindAt("::1", 9000)
+DIM client AS Viper.Network.Udp = Viper.Network.Udp.BindAt("::1", 0)
 
 client.SendToStr("::1", 9000, "hello over ipv6")
-DIM data AS OBJECT = server.RecvFrom(1024)
+DIM data AS Viper.Collections.Bytes = server.RecvFrom(1024)
 
 PRINT "Sender: "; server.SenderHost(); ":"; server.SenderPort()
 PRINT "Bytes: "; data.Length
@@ -534,12 +537,12 @@ server.Close()
 
 ```basic
 ' Join a multicast group
-DIM sock AS OBJECT = Viper.Network.Udp.Bind(5000)
+DIM sock AS Viper.Network.Udp = Viper.Network.Udp.Bind(5000)
 sock.JoinGroup("239.1.2.3")
 
 ' Receive multicast messages
-DIM data AS OBJECT = sock.RecvFor(1024, 5000)
-IF data IS NOT NULL THEN
+DIM data AS Viper.Collections.Bytes = sock.RecvFor(1024, 5000)
+IF NOT Viper.Core.Object.RefEquals(data, NOTHING) THEN
     PRINT "Received multicast: "; data.Length; " bytes"
 END IF
 
@@ -572,7 +575,7 @@ The `RecvFor()` method returns `NULL` on timeout instead of trapping.
 | Feature           | TCP                  | UDP                      |
 |-------------------|----------------------|--------------------------|
 | Connection        | Connection-oriented  | Connectionless           |
-| Delivery          | Guaranteed, ordered  | Best-effort, unordered   |
+| Delivery          | Reliable and ordered while connected | Best-effort, unordered   |
 | Flow control      | Yes                  | No                       |
 | Overhead          | Higher               | Lower                    |
 | Message boundary  | Stream (no boundary) | Preserved (datagrams)    |
@@ -580,11 +583,15 @@ The `RecvFor()` method returns `NULL` on timeout instead of trapping.
 
 ### Packet Size
 
-- **Safe maximum:** 512 bytes (guaranteed no fragmentation)
-- **Theoretical maximum:** 65507 bytes (65535 - 8 byte UDP header - 20 byte IP header)
-- **MTU-safe:** 1472 bytes (Ethernet MTU 1500 - headers)
+- **Runtime maximum:** 65,507 bytes. `SendTo` and `SendToStr` enforce this IPv4-compatible cap
+  for both address families.
+- **Common Ethernet payload:** 1,472 bytes for IPv4 or 1,452 bytes for IPv6 when the path MTU is
+  1,500 bytes and no extra headers are present.
+- **Conservative small datagram:** 512 bytes is often convenient, but it is not a runtime or
+  end-to-end no-fragmentation guarantee.
 
-Packets larger than the network MTU will be fragmented and may be lost if any fragment is lost.
+The actual safe size depends on the path MTU and encapsulation. Oversized datagrams may be
+fragmented or rejected by the OS; losing one fragment loses the whole datagram.
 
 ### Use Cases
 
@@ -607,7 +614,7 @@ Static utility class for DNS resolution and IP address validation.
 
 | Method                  | Returns | Description                                  |
 |-------------------------|---------|----------------------------------------------|
-| `Resolve(hostname)`     | String  | Resolve to first IPv4 address                |
+| `Resolve(hostname)`     | String  | Resolve to the first address returned by the OS resolver |
 | `Resolve4(hostname)`    | String  | Resolve to first IPv4 address only           |
 | `Resolve6(hostname)`    | String  | Resolve to first IPv6 address only           |
 | `ResolveAll(hostname)`  | Seq     | Resolve to all addresses (IPv4 and IPv6)     |
@@ -657,10 +664,10 @@ DIM ip AS STRING = Viper.Network.Dns.Resolve("example.com")
 PRINT "example.com resolves to: "; ip
 
 ' Get all addresses for a hostname
-DIM addrs AS OBJECT = Viper.Network.Dns.ResolveAll("google.com")
+DIM addrs AS Viper.Collections.Seq = Viper.Network.Dns.ResolveAll("google.com")
 PRINT "Google.com addresses:"
-FOR i = 0 TO addrs.Length - 1
-    PRINT "  "; addrs.Get(i)
+FOR i = 0 TO addrs.Count - 1
+    PRINT "  "; Viper.Collections.Seq.GetStr(addrs, i)
 NEXT i
 ```
 
@@ -688,10 +695,10 @@ END IF
 PRINT "Local hostname: "; Viper.Network.Dns.LocalHost()
 
 ' Get all local IP addresses
-DIM localAddrs AS OBJECT = Viper.Network.Dns.LocalAddrs()
+DIM localAddrs AS Viper.Collections.Seq = Viper.Network.Dns.LocalAddrs()
 PRINT "Local addresses:"
-FOR i = 0 TO localAddrs.Length - 1
-    DIM addr AS STRING = localAddrs.Get(i)
+FOR i = 0 TO localAddrs.Count - 1
+    DIM addr AS STRING = Viper.Collections.Seq.GetStr(localAddrs, i)
     IF Viper.Network.Dns.IsIPv4(addr) THEN
         PRINT "  IPv4: "; addr
     ELSE
@@ -716,11 +723,14 @@ DNS operations trap on errors:
 - `Resolve4()` traps if no IPv4 address exists
 - `Resolve6()` traps if no IPv6 address exists
 - `Reverse()` traps if reverse lookup fails
-- All methods trap on NULL/empty input
+- Forward and reverse lookup methods trap on null or empty input. The validation methods instead
+  return false for invalid input; `LocalHost` and `LocalAddrs` take no input.
 
 There is no way to distinguish between a non-existent domain (NXDOMAIN), a DNS server failure (SERVFAIL), or a network timeout — all result in a trap with the same message.
 
-> **Blocking behavior:** DNS resolution is synchronous and may block the calling thread for up to ~10 seconds on unresponsive servers (OS-level retry behavior). There is no programmatic timeout for DNS operations.
+> **Blocking behavior:** DNS resolution is synchronous. Its duration and retry policy come from
+> the operating-system resolver and can take several seconds or longer on an unresponsive setup;
+> these methods do not expose a programmatic timeout.
 
 Validation methods (`IsIPv4`, `IsIPv6`, `IsIP`) never trap and return `False` for invalid input.
 
@@ -752,11 +762,17 @@ Static HTTP client utilities for simple HTTP requests.
 | Method                         | Returns | Description                                  |
 |--------------------------------|---------|----------------------------------------------|
 | `Download(url, destPath)`      | Boolean | Download file to destination path            |
+| `Delete(url)`                  | String  | DELETE request, return response body as string |
+| `DeleteBytes(url)`             | Bytes   | DELETE request, return response body as bytes |
 | `Get(url)`                     | String  | GET request, return response body as string  |
 | `GetBytes(url)`                | Bytes   | GET request, return response body as bytes   |
 | `Head(url)`                    | Map     | HEAD request, return headers as Map          |
+| `Options(url)`                 | String  | OPTIONS request, return response body as string |
+| `Patch(url, body)`             | String  | PATCH with a string body, return response body |
 | `Post(url, body)`              | String  | POST request with string body (`Content-Type: text/plain; charset=utf-8`) |
-| `PostBytes(url, body)`         | Bytes   | POST request with Bytes body (`Content-Type: application/octet-stream`) |
+| `PostBytes(url, body)`         | Bytes   | POST request with Bytes body (`Content-Type: application/octet-stream` for a non-empty body) |
+| `Put(url, body)`               | String  | PUT with a string body, return response body |
+| `PutBytes(url, body)`          | Bytes   | PUT with a Bytes body, return response body (`application/octet-stream` for a non-empty body) |
 
 ### Zia Example
 
@@ -781,9 +797,9 @@ DIM response AS STRING = Viper.Network.Http.Post("http://api.example.com/submit"
 PRINT response
 
 ' Get headers only
-DIM headers AS OBJECT = Viper.Network.Http.Head("http://example.com/resource")
-PRINT "Content-Type: "; headers.Get("content-type")
-PRINT "Content-Length: "; headers.Get("content-length")
+DIM headers AS Viper.Collections.Map = Viper.Network.Http.Head("http://example.com/resource")
+PRINT "Content-Type: "; headers.GetStr("content-type")
+PRINT "Content-Length: "; headers.GetStr("content-length")
 ```
 
 ### Features
@@ -806,7 +822,8 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
 
 - **Automatic upgrade** - URLs starting with `https://` automatically use TLS
 - **ALPN negotiation** - HTTPS requests advertise `h2,http/1.1`; the runtime uses HTTP/2 automatically when the server selects `h2`
-- **Modern encryption** - TLS 1.3 with ChaCha20-Poly1305 cipher suite and X25519 key exchange
+- **Modern encryption** - TLS 1.3 with AES-128-GCM-SHA256 or
+  ChaCha20-Poly1305-SHA256 and X25519 key exchange
 - **Certificate verification enabled by default** - Server certificates are validated against the runtime trust source: Windows uses CryptoAPI, while macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles. Hostname is verified against the certificate's SubjectAltName DNS names (with RFC 6125 wildcard support) or CommonName as fallback. The server's CertificateVerify signature over the handshake transcript is checked in-tree, proving possession of the private key. The TLS ClientHello advertises only verifier-backed schemes: ECDSA P-256 and RSA-PSS SHA-256/384/512; ECDSA P-384 is intentionally not advertised yet.
 - **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
 - **To disable verification for a local test only:** Use `HttpReq.AllowInsecureCertificatesForTesting()` and keep that code out of production.
@@ -836,7 +853,9 @@ HTTP operations trap on errors:
 - **No session cookie jar in the static `Http` facade** - Use `HttpClient` when you need persistent cookies across requests
 - **No auth** - Use `HttpReq` for custom headers including Authorization
 - **No client certificates** - Client-side TLS certificates not supported
-- **Fixed Content-Type on Post** - `Http.Post()` always sends `Content-Type: text/plain; charset=utf-8`. For JSON or other content types, use `HttpReq` with `.SetHeader("Content-Type", "application/json")`
+- **Fixed Content-Type on string bodies** - `Http.Post()`, `Http.Put()`, and `Http.Patch()` send
+  `Content-Type: text/plain; charset=utf-8` for non-empty bodies. For JSON or other content types,
+  use `HttpReq` with `.SetHeader("Content-Type", "application/json")`.
 
 ---
 
@@ -879,18 +898,19 @@ HTTP request builder for advanced requests with custom headers and options.
 
 ```basic
 ' Custom GET request with headers
-DIM req AS OBJECT = Viper.Network.HttpReq.New("GET", "http://api.example.com/data")
+DIM req AS Viper.Network.HttpReq = Viper.Network.HttpReq.New("GET", "http://api.example.com/data")
 req.SetHeader("Accept", "application/json")
 req.SetHeader("X-API-Key", "my-secret-key")
 req.SetTimeout(10000)  ' 10 seconds
 
-DIM sendResult AS OBJECT = req.SendResult()
+DIM sendResult AS Viper.Result = req.SendResult()
 IF sendResult.IsOk THEN
-    DIM res AS OBJECT = sendResult.Unwrap()
+    DIM res AS Viper.Network.HttpRes = sendResult.Unwrap()
     IF res.IsOk() THEN
         PRINT "Response: "; res.BodyStr()
     ELSE
-        PRINT "HTTP status: "; res.Status; " "; res.StatusText
+        DIM statusText AS STRING = res.StatusText
+        PRINT "HTTP status: "; res.Status; " "; statusText
     END IF
 ELSE
     PRINT "Transport error: "; sendResult.UnwrapErrStr()
@@ -900,11 +920,12 @@ END IF
 ### Scripting Send
 
 ```basic
-DIM res AS OBJECT = req.Send()
+DIM res AS Viper.Network.HttpRes = req.Send()
 IF res.IsOk() THEN
     PRINT "Response: "; res.BodyStr()
 ELSE
-    PRINT "Error: "; res.Status; " "; res.StatusText
+    DIM statusText AS STRING = res.StatusText
+    PRINT "Error: "; res.Status; " "; statusText
 END IF
 ```
 
@@ -912,7 +933,7 @@ END IF
 
 ```basic
 ' All setters return the request object for chaining
-DIM res AS OBJECT = Viper.Network.HttpReq.New("POST", "http://api.example.com/submit") _
+DIM res AS Viper.Network.HttpRes = Viper.Network.HttpReq.New("POST", "http://api.example.com/submit") _
     .SetHeader("Content-Type", "application/json") _
     .SetHeader("Authorization", "Bearer token123") _
     .SetBodyStr("{""data"": ""value""}") _
@@ -953,10 +974,11 @@ HTTP response object returned by `HttpReq.Send()` or by unwrapping
 ### BASIC Example
 
 ```basic
-DIM res AS OBJECT = Viper.Network.HttpReq.New("GET", "http://example.com/api").Send()
+DIM res AS Viper.Network.HttpRes = Viper.Network.HttpReq.New("GET", "http://example.com/api").Send()
 
 ' Check status
-PRINT "Status: "; res.Status; " "; res.StatusText
+DIM statusText AS STRING = res.StatusText
+PRINT "Status: "; res.Status; " "; statusText
 
 ' Check if successful
 IF res.IsOk() THEN
@@ -976,12 +998,13 @@ END IF
 
 ```basic
 ' Access all headers
-DIM headers AS OBJECT = res.Headers
-DIM keys AS OBJECT = headers.Keys()
+DIM res AS Viper.Network.HttpRes = Viper.Network.HttpReq.New("GET", "http://example.com/api").Send()
+DIM headers AS Viper.Collections.Map = res.Headers
+DIM keys AS Viper.Collections.Seq = headers.Keys()
 
-FOR i = 0 TO keys.Length - 1
-    DIM key AS STRING = keys.Get(i)
-    PRINT key; ": "; headers.Get(key)
+FOR i = 0 TO keys.Count - 1
+    DIM key AS STRING = Viper.Collections.Seq.GetStr(keys, i)
+    PRINT key; ": "; headers.GetStr(key)
 NEXT i
 ```
 
@@ -989,10 +1012,10 @@ NEXT i
 
 ```basic
 ' Download binary data
-DIM res AS OBJECT = Viper.Network.HttpReq.New("GET", "http://example.com/image.png").Send()
+DIM res AS Viper.Network.HttpRes = Viper.Network.HttpReq.New("GET", "http://example.com/image.png").Send()
 
 IF res.IsOk() THEN
-    DIM data AS OBJECT = res.Body()
+    DIM data AS Viper.Collections.Bytes = res.Body()
     PRINT "Downloaded "; data.Length; " bytes"
 
     ' Save to file
@@ -1123,14 +1146,20 @@ func start() {
 
 ```basic
 ' Parse a URL
-DIM u AS OBJECT = Viper.Network.Url.Parse("https://example.com:8080/path?key=value#section")
-PRINT "Scheme: "; u.Scheme
-PRINT "Host: "; u.Host
+DIM u AS Viper.Network.Url = Viper.Network.Url.Parse("https://example.com:8080/path?key=value#section")
+DIM scheme AS STRING = u.Scheme
+DIM host AS STRING = u.Host
+DIM path AS STRING = u.Path
+DIM query AS STRING = u.Query
+DIM fragment AS STRING = u.Fragment
+DIM full AS STRING = u.Full
+PRINT "Scheme: "; scheme
+PRINT "Host: "; host
 PRINT "Port: "; u.Port
-PRINT "Path: "; u.Path
-PRINT "Query: "; u.Query
-PRINT "Fragment: "; u.Fragment
-PRINT "Full: "; u.Full
+PRINT "Path: "; path
+PRINT "Query: "; query
+PRINT "Fragment: "; fragment
+PRINT "Full: "; full
 
 ' URL encoding/decoding
 PRINT "Encode: "; Viper.Network.Url.Encode("hello world!")
@@ -1144,36 +1173,44 @@ PRINT "IsValid: "; Viper.Network.Url.IsValid("https://example.com")
 
 ```basic
 ' Parse a URL with all components
-DIM url AS OBJECT = Viper.Network.Url.Parse("https://user:pass@api.example.com:8443/path?foo=bar#section")
+DIM url AS Viper.Network.Url = Viper.Network.Url.Parse("https://user:pass@api.example.com:8443/path?foo=bar#section")
 
-PRINT "Scheme: "; url.Scheme      ' "https"
-PRINT "User: "; url.User          ' "user"
-PRINT "Host: "; url.Host          ' "api.example.com"
+DIM scheme AS STRING = url.Scheme
+DIM user AS STRING = url.User
+DIM host AS STRING = url.Host
+DIM path AS STRING = url.Path
+DIM query AS STRING = url.Query
+DIM fragment AS STRING = url.Fragment
+DIM full AS STRING = url.Full
+PRINT "Scheme: "; scheme      ' "https"
+PRINT "User: "; user          ' "user"
+PRINT "Host: "; host          ' "api.example.com"
 PRINT "Port: "; url.Port          ' 8443
-PRINT "Path: "; url.Path          ' "/path"
-PRINT "Query: "; url.Query        ' "foo=bar"
-PRINT "Fragment: "; url.Fragment  ' "section"
-PRINT "Full: "; url.Full          ' Complete URL string
+PRINT "Path: "; path          ' "/path"
+PRINT "Query: "; query        ' "foo=bar"
+PRINT "Fragment: "; fragment  ' "section"
+PRINT "Full: "; full          ' Complete URL string
 ```
 
 ### Building Example
 
 ```basic
 ' Build a URL from scratch
-DIM url AS OBJECT = Viper.Network.Url.New()
+DIM url AS Viper.Network.Url = Viper.Network.Url.New()
 url.Scheme = "https"
 url.Host = "api.example.com"
 url.Path = "/v1/users"
 url.SetQueryParam("page", "1")
 url.SetQueryParam("limit", "10")
 
-PRINT url.Full  ' "https://api.example.com/v1/users?page=1&limit=10"
+DIM full AS STRING = url.Full
+PRINT full  ' "https://api.example.com/v1/users?page=1&limit=10"
 ```
 
 ### Query Parameter Manipulation
 
 ```basic
-DIM url AS OBJECT = Viper.Network.Url.Parse("http://example.com/?a=1&b=2")
+DIM url AS Viper.Network.Url = Viper.Network.Url.Parse("http://example.com/?a=1&b=2")
 
 ' Check and get parameters
 IF url.HasQueryParam("a") THEN
@@ -1185,26 +1222,29 @@ url.SetQueryParam("c", "3")
 url.DelQueryParam("a")
 
 ' Get all parameters as Map
-DIM params AS OBJECT = url.QueryMap()
-PRINT "Parameters: "; params.Length
+DIM params AS Viper.Collections.Map = url.QueryMap()
+PRINT "Parameters: "; params.Count
 ```
 
 ### URL Resolution
 
 ```basic
-DIM base AS OBJECT = Viper.Network.Url.Parse("http://example.com/a/b/c")
+DIM base AS Viper.Network.Url = Viper.Network.Url.Parse("http://example.com/a/b/c")
 
 ' Resolve absolute path
-DIM r1 AS OBJECT = base.Resolve("/d/e")
-PRINT r1.Full  ' "http://example.com/d/e"
+DIM r1 AS Viper.Network.Url = base.Resolve("/d/e")
+DIM full1 AS STRING = r1.Full
+PRINT full1  ' "http://example.com/d/e"
 
 ' Resolve relative path
-DIM r2 AS OBJECT = base.Resolve("d")
-PRINT r2.Full  ' "http://example.com/a/b/d"
+DIM r2 AS Viper.Network.Url = base.Resolve("d")
+DIM full2 AS STRING = r2.Full
+PRINT full2  ' "http://example.com/a/b/d"
 
 ' Resolve full URL
-DIM r3 AS OBJECT = base.Resolve("https://other.com/x")
-PRINT r3.Full  ' "https://other.com/x"
+DIM r3 AS Viper.Network.Url = base.Resolve("https://other.com/x")
+DIM full3 AS STRING = r3.Full
+PRINT full3  ' "https://other.com/x"
 ```
 
 ### Encoding/Decoding
@@ -1222,16 +1262,16 @@ PRINT decoded  ' "hello world!"
 PRINT Viper.Network.Url.Decode("a+b")  ' "a+b"
 
 ' Encode Map as query string
-DIM params AS OBJECT = Viper.Collections.Map.New()
+DIM params AS Viper.Collections.Map = Viper.Collections.Map.New()
 params.Set("name", "John Doe")
 params.Set("city", "New York")
 DIM query AS STRING = Viper.Network.Url.EncodeQuery(params)
 PRINT query  ' "name=John%20Doe&city=New%20York"
 
 ' Decode query string to Map
-DIM parsed AS OBJECT = Viper.Network.Url.DecodeQuery("a=1&b=hello+world")
-PRINT parsed.Get("a")  ' "1"
-PRINT parsed.Get("b")  ' "hello world"
+DIM parsed AS Viper.Collections.Map = Viper.Network.Url.DecodeQuery("a=1&b=hello+world")
+PRINT parsed.GetStr("a")  ' "1"
+PRINT parsed.GetStr("b")  ' "hello world"
 ```
 
 `Scheme` setters validate RFC 3986 scheme syntax and lowercase the stored value. `Port` setters accept `0..65535`; values outside that range trap instead of being clamped.
@@ -1276,8 +1316,8 @@ binary messages following RFC 6455.
 |----------------------|---------|------------------------------------------------------|
 | `Recv()`             | String  | Receive text message (blocks)                        |
 | `RecvBytes()`        | Bytes   | Receive binary message (blocks)                      |
-| `RecvBytesFor(ms)`   | Bytes   | Receive binary with timeout (null on timeout)        |
-| `RecvFor(ms)`        | String  | Receive text with timeout (returns `null` on timeout; traps on error)  |
+| `RecvBytesFor(ms)`   | Bytes   | Receive raw bytes with timeout (null on timeout, close, or receive failure) |
+| `RecvFor(ms)`        | String  | Receive text with timeout (null on timeout, close, or receive failure) |
 
 ### Close Methods
 
@@ -1302,10 +1342,11 @@ wss://host[:port][/path]     # TLS encrypted (port 443 default)
 
 ```basic
 ' Connect to a WebSocket server
-DIM ws AS OBJECT = Viper.Network.WebSocket.Connect("wss://echo.websocket.org/")
+DIM ws AS Viper.Network.WebSocket = Viper.Network.WebSocket.Connect("wss://echo.websocket.org/")
 
 IF ws.IsOpen THEN
-    PRINT "Connected to "; ws.Url
+    DIM connectedUrl AS STRING = ws.Url
+    PRINT "Connected to "; connectedUrl
 
     ' Send a text message
     ws.Send("Hello, WebSocket!")
@@ -1315,11 +1356,11 @@ IF ws.IsOpen THEN
     PRINT "Received: "; response
 
     ' Send binary data
-    DIM data AS OBJECT = Viper.Collections.Bytes.FromHex("deadbeef")
+    DIM data AS Viper.Collections.Bytes = Viper.Collections.Bytes.FromHex("deadbeef")
     ws.SendBytes(data)
 
     ' Receive binary response
-    DIM binResponse AS OBJECT = ws.RecvBytes()
+    DIM binResponse AS Viper.Collections.Bytes = ws.RecvBytes()
     PRINT "Binary: "; binResponse.ToHex()
 
     ' Clean close
@@ -1330,21 +1371,22 @@ END IF
 ### Receive with Timeout Example
 
 ```basic
-DIM ws AS OBJECT = Viper.Network.WebSocket.Connect("ws://example.com/stream")
+DIM ws AS Viper.Network.WebSocket = Viper.Network.WebSocket.Connect("ws://example.com/stream")
 
 ' Receive with 5 second timeout
-' RecvFor returns null on timeout, so check IS NOT NULL (not <> "")
+' RecvBytesFor returns NOTHING on timeout or close.
 DO WHILE ws.IsOpen
-    DIM msg AS OBJECT = ws.RecvFor(5000)
-    IF msg IS NOT NULL THEN
-        PRINT "Message: "; msg
+    DIM msg AS Viper.Collections.Bytes = ws.RecvBytesFor(5000)
+    IF NOT Viper.Core.Object.RefEquals(msg, NOTHING) THEN
+        PRINT "Message: "; msg.ToStr()
     ELSE
         ' Timeout — send ping to keep connection alive
         ws.Ping()
     END IF
 LOOP
 
-PRINT "Connection closed: "; ws.CloseCode; " - "; ws.CloseReason
+DIM closeReason AS STRING = ws.CloseReason
+PRINT "Connection closed: "; ws.CloseCode; " - "; closeReason
 ```
 
 ### Close Codes
@@ -1380,7 +1422,8 @@ WebSocket operations trap on errors:
 - **Subprotocol negotiation:** `ConnectProtocol` / `ConnectForProtocol` require the server to echo the requested `Sec-WebSocket-Protocol` token or the handshake fails
 - **Runtime string lengths:** `Send(text)` and close reasons use runtime string byte lengths, so embedded NUL bytes are not truncated. Connection URLs and subprotocol tokens reject embedded NUL bytes because they are serialized into NUL-terminated handshake fields.
 - **Ping/pong:** Pong frames are handled automatically; use `Ping()` to test connectivity
-- **Message fragmentation:** Large messages are automatically fragmented/reassembled
+- **Message fragmentation:** Outbound messages are sent as one complete frame. Incoming
+  fragmented messages are reassembled, with a 64 MiB total-message limit.
 - **UTF-8 validation:** Text messages are validated for proper UTF-8 encoding
 - **Subprotocols:** Single-token negotiation is supported; multi-option client preference lists are not exposed yet
 
@@ -1480,14 +1523,19 @@ of reading mutable last-state after a request.
 
 ### Zia Example
 
-> **Note:** RestClient is not yet fully usable from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug. This affects all instance classes that use `New` constructors in the Network module. See also: RetryPolicy, RateLimiter.
+```rust
+var api = Viper.Network.RestClient.New("https://api.example.com");
+api.SetHeader("User-Agent", "ViperDemo/1.0");
+api.SetTimeout(15000);
+```
 
 ### BASIC Example
 
 ```basic
 ' Create a REST client
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
-PRINT "BaseUrl: "; api.BaseUrl
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://api.example.com")
+DIM baseUrl AS STRING = api.BaseUrl
+PRINT "BaseUrl: "; baseUrl
 
 ' Set common headers
 api.SetHeader("User-Agent", "ViperDemo/1.0")
@@ -1510,16 +1558,16 @@ PRINT "LastOk: "; api.LastOk()
 
 ```basic
 ' Create a REST client for an API
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://api.example.com")
 
 ' Set common headers
 api.SetHeader("User-Agent", "MyApp/1.0")
 api.SetTimeout(15000)  ' 15 seconds
 
 ' Make requests - base URL is prepended automatically
-DIM result AS OBJECT = api.GetResult("/users")
+DIM result AS Viper.Result = api.GetResult("/users")
 IF result.IsOk THEN
-    DIM res AS OBJECT = result.Unwrap()
+    DIM res AS Viper.Network.HttpRes = result.Unwrap()
     IF res.IsOk() THEN
         PRINT "Users: "; res.BodyStr()
     ELSE
@@ -1534,13 +1582,13 @@ END IF
 
 ```basic
 ' API with Bearer token authentication
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com/v1")
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://api.example.com/v1")
 api.SetAuthBearer("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
 
 ' All requests now include Authorization header
-DIM profile AS OBJECT = api.GetJson("/me")
-IF profile IS NOT NULL THEN
-    PRINT "Welcome, "; profile.Get("name")
+DIM profile AS Viper.Collections.Map = api.GetJson("/me")
+IF NOT Viper.Core.Object.RefEquals(profile, NOTHING) THEN
+    PRINT "Welcome, "; profile.GetStr("name")
 END IF
 ```
 
@@ -1548,7 +1596,7 @@ END IF
 
 ```basic
 ' API with HTTP Basic authentication
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://api.example.com")
 api.SetAuthBasic("username", "password")
 
 ' Credentials are base64-encoded in Authorization header
@@ -1559,32 +1607,32 @@ DIM data AS OBJECT = api.GetJson("/protected/resource")
 
 ```basic
 ' Complete CRUD example with JSON
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://jsonplaceholder.typicode.com")
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://jsonplaceholder.typicode.com")
 
 ' CREATE - POST with JSON body
-DIM newPost AS OBJECT = Viper.Collections.Map.New()
-newPost.Set("title", "My Post")
-newPost.Set("body", "Post content here")
-newPost.Set("userId", 1)
+DIM newPost AS Viper.Collections.Map = Viper.Collections.Map.New()
+newPost.SetStr("title", "My Post")
+newPost.SetStr("body", "Post content here")
+newPost.SetInt("userId", 1)
 
-DIM created AS OBJECT = api.PostJson("/posts", newPost)
-IF created IS NOT NULL THEN
-    PRINT "Created post ID: "; created.Get("id")
+DIM created AS Viper.Collections.Map = api.PostJson("/posts", newPost)
+IF NOT Viper.Core.Object.RefEquals(created, NOTHING) THEN
+    PRINT "Created post ID: "; created.GetInt("id")
 END IF
 
 ' READ - GET JSON
-DIM post AS OBJECT = api.GetJson("/posts/1")
-IF post IS NOT NULL THEN
-    PRINT "Title: "; post.Get("title")
+DIM post AS Viper.Collections.Map = api.GetJson("/posts/1")
+IF NOT Viper.Core.Object.RefEquals(post, NOTHING) THEN
+    PRINT "Title: "; post.GetStr("title")
 END IF
 
 ' UPDATE - PUT JSON
-post.Set("title", "Updated Title")
+post.SetStr("title", "Updated Title")
 DIM updated AS OBJECT = api.PutJson("/posts/1", post)
 
 ' PARTIAL UPDATE - PATCH JSON
-DIM patch AS OBJECT = Viper.Collections.Map.New()
-patch.Set("title", "Patched Title")
+DIM patch AS Viper.Collections.Map = Viper.Collections.Map.New()
+patch.SetStr("title", "Patched Title")
 DIM patched AS OBJECT = api.PatchJson("/posts/1", patch)
 
 ' DELETE
@@ -1594,15 +1642,15 @@ DIM deleted AS OBJECT = api.DeleteJson("/posts/1")
 ### Error Handling Example
 
 ```basic
-DIM api AS OBJECT = Viper.Network.RestClient.New("https://api.example.com")
+DIM api AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://api.example.com")
 
 ' Make a request that might fail
-DIM result AS OBJECT = api.GetResult("/nonexistent")
+DIM result AS Viper.Result = api.GetResult("/nonexistent")
 
 IF result.IsErr THEN
     PRINT "Transport error: "; result.UnwrapErrStr()
 ELSE
-    DIM res AS OBJECT = result.Unwrap()
+    DIM res AS Viper.Network.HttpRes = result.Unwrap()
     IF res.Status = 404 THEN
         PRINT "Resource not found"
     ELSE IF res.Status = 401 THEN
@@ -1621,12 +1669,12 @@ END IF
 
 ```basic
 ' Different APIs with different authentication
-DIM publicApi AS OBJECT = Viper.Network.RestClient.New("https://public-api.example.com")
+DIM publicApi AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://public-api.example.com")
 
-DIM privateApi AS OBJECT = Viper.Network.RestClient.New("https://private-api.example.com")
-privateApi.SetAuthBearer(GetApiToken())
+DIM privateApi AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://private-api.example.com")
+privateApi.SetAuthBearer("private-api-token")
 
-DIM legacyApi AS OBJECT = Viper.Network.RestClient.New("https://legacy.example.com")
+DIM legacyApi AS Viper.Network.RestClient = Viper.Network.RestClient.New("https://legacy.example.com")
 legacyApi.SetAuthBasic("service", "password123")
 
 ' Each client maintains its own configuration
@@ -1638,14 +1686,18 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
 ### Features
 
 - **Base URL:** All request paths are relative to the configured base URL
-- **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed with `DelHeader` or `ClearAuth`
+- **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed
+  with `DelHeader`; `ClearAuth` removes only the `Authorization` header.
 - **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
 - **Timeout:** Configurable timeout (default 30 seconds)
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
 - **Result-returning requests:** `GetResult`, `PostResult`, `PutResult`, `PatchResult`, `DeleteResult`, and `HeadResult` return `Result<HttpRes>` so transport failures and HTTP status handling stay explicit.
 - **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses. These are compatibility diagnostics; prefer storing the response from `*Result`.
 
-> **Lifecycle note:** The RestClient owns its headers map and last response. Resources are released automatically when the client object is garbage-collected. `LastResponse()` is only valid until the next request is made; keep only the data you need from the response object across requests.
+> **Lifecycle note:** The RestClient owns its headers map and its reference to the last response.
+> `LastResponse()` returns a retained response handle, so a response saved by the caller remains
+> valid after a later request replaces the client's last-response slot. Runtime-managed resources
+> are released when their owning handles are reclaimed.
 
 ### RestClient vs HttpReq
 
@@ -1674,7 +1726,7 @@ Configurable retry policy with backoff strategies for handling transient failure
 
 | Property        | Type    | Description                                  |
 |-----------------|---------|----------------------------------------------|
-| `Attempt`       | Integer | Current attempt number (0-based)             |
+| `Attempt`       | Integer | Number of retry delays consumed so far        |
 | `CanRetry`      | Boolean | True if another retry is allowed (read-only) |
 | `IsExhausted`   | Boolean | True if all retries have been used           |
 | `MaxRetries`    | Integer | Maximum number of retries configured         |
@@ -1694,32 +1746,30 @@ Configurable retry policy with backoff strategies for handling transient failure
 | Fixed        | `New()`         | Same delay every time: `base, base, base, ...`   |
 | Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max, with 0-25% additive jitter) |
 
-Negative retry counts and delay inputs are normalized to `0` before a policy is created. For exponential policies, `maxDelayMs` is compared against that normalized base delay.
+Negative retry counts and base delays are normalized to `0`. For exponential policies,
+`maxDelayMs` values below the normalized base delay are raised to that base delay.
 
-> **Attempt count semantics:** `RetryPolicy.New(n)` allows up to `n` calls to `NextDelay()` before the policy is exhausted. `Attempt` is 0-based and reflects how many `NextDelay()` calls have been made. The first `NextDelay()` call returns the initial delay (attempt 0); after `n` total calls the policy is exhausted and `NextDelay()` returns -1.
+> **Attempt count semantics:** `RetryPolicy.New(n, baseDelayMs)` allows up to `n` successful
+> calls to `NextDelay()`. `Attempt` and `TotalAttempts` start at 0 and increase to 1 after the
+> first call. After `n` calls the policy is exhausted; later `NextDelay()` calls return -1 without
+> incrementing either property.
 
 ### Zia Example
 
-> **Note:** RetryPolicy is not yet constructible from Zia. The `New()` and `Exponential()` constructors fail with "no exported symbol 'New'" due to a frontend symbol resolution bug affecting newer instance classes.
+```rust
+var policy = Viper.Network.RetryPolicy.New(3, 1000);
+var firstDelay = policy.NextDelay(); // 1000
+```
 
 ### Example
 
 ```basic
 ' Fixed delay retry (3 retries, 1 second between each)
-DIM policy AS OBJECT = Viper.Network.RetryPolicy.New(3, 1000)
+DIM policy AS Viper.Network.RetryPolicy = Viper.Network.RetryPolicy.New(3, 1000)
 
 DO WHILE policy.CanRetry
-    DIM result AS OBJECT = TryApiCall()
-    IF result IS NOT NULL THEN
-        PRINT "Success on attempt "; policy.Attempt
-        EXIT DO
-    END IF
-
     DIM delay AS INTEGER = policy.NextDelay()
-    IF delay >= 0 THEN
-        PRINT "Retry in "; delay; "ms"
-        Viper.Time.Clock.Sleep(delay)
-    END IF
+    PRINT "Retry "; policy.Attempt; " waits "; delay; "ms"
 LOOP
 
 IF policy.IsExhausted THEN
@@ -1731,16 +1781,13 @@ END IF
 
 ```basic
 ' Exponential backoff (5 retries, starting at 100ms, max 5 seconds)
-DIM policy AS OBJECT = Viper.Network.RetryPolicy.Exponential(5, 100, 5000)
+DIM policy AS Viper.Network.RetryPolicy = Viper.Network.RetryPolicy.Exponential(5, 100, 5000)
 
-' Delays will be: 100, 200, 400, 800, 1600 (capped at 5000)
+' Base delays are 100, 200, 400, 800, and 1600ms. Each returned delay includes
+' 0-25% additive jitter and is capped at 5000ms.
 DO WHILE policy.CanRetry
-    IF TryConnect() THEN EXIT DO
-
     DIM delay AS INTEGER = policy.NextDelay()
-    IF delay >= 0 THEN
-        Viper.Time.Clock.Sleep(delay)
-    END IF
+    PRINT "Retry delay: "; delay; "ms"
 LOOP
 
 ' Reset for reuse
@@ -1776,7 +1823,7 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 | Method              | Signature       | Description                                              |
 |---------------------|-----------------|----------------------------------------------------------|
 | `TryAcquire()`      | `Boolean()`     | Try to consume 1 token (returns false if none available) |
-| `TryAcquireN(n)`    | `Boolean(Integer)` | Try to consume N tokens atomically                    |
+| `TryAcquireN(n)`    | `Boolean(Integer)` | Consume all N requested tokens or consume none        |
 | `Reset()`           | `Void()`        | Reset to full capacity                                   |
 
 ### How It Works
@@ -1788,30 +1835,35 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 
 > **Token precision:** Tokens refill as a floating-point value internally. The `Available` property returns the floor of the current token count. `TryAcquire` and `TryAcquireN` consume whole tokens only. Not thread-safe — external synchronization required for concurrent use.
 
+`maxTokens <= 0` is normalized to 1, and `refillPerSec <= 0` is normalized to 1.0.
+
 ### Zia Example
 
-> **Note:** RateLimiter is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug affecting newer instance classes.
+```rust
+var limiter = Viper.Network.RateLimiter.New(10, 10.0);
+if limiter.TryAcquire() {
+    // Perform one rate-limited operation.
+}
+```
 
 ### Example
 
 ```basic
 ' Allow 10 requests per second with burst of 10
-DIM limiter AS OBJECT = Viper.Network.RateLimiter.New(10, 10.0)
+DIM limiter AS Viper.Network.RateLimiter = Viper.Network.RateLimiter.New(10, 10.0)
 
-' Check before making API calls
-FUNCTION MakeApiCall(url AS STRING) AS OBJECT
+' Check before making up to 12 calls
+FOR i = 1 TO 12
     IF limiter.TryAcquire() THEN
-        RETURN Viper.Network.Http.Get(url)
+        PRINT "Request "; i; " allowed"
     ELSE
-        PRINT "Rate limited - try again later"
-        RETURN NULL
+        PRINT "Request "; i; " rate limited"
     END IF
-END FUNCTION
+NEXT i
 
 ' Batch operations - acquire multiple tokens
 IF limiter.TryAcquireN(5) THEN
-    ' Process batch of 5 items
-    ProcessBatch(items)
+    PRINT "Acquired a batch of 5 tokens"
 END IF
 
 ' Check available capacity
@@ -1840,7 +1892,7 @@ This allows:
 - **API rate limiting:** Enforce rate limits on outbound API calls
 - **Request throttling:** Limit incoming request processing rate
 - **Resource protection:** Prevent resource exhaustion from burst traffic
-- **Fair scheduling:** Distribute capacity across multiple consumers
+- **Shared budget:** Apply one capacity budget across multiple cooperating consumers
 
 ---
 
@@ -1876,7 +1928,12 @@ URL pattern matching with parameter extraction for HTTP routing.
 - `/users/:id` — Parameter capture (`:id` matches one segment)
 - `/static/*path` — Wildcard (captures rest of path)
 
-### RouteMatch
+## Viper.Network.RouteMatch
+
+The result of a successful `HttpRouter.Match` call. A route match is produced by the router and
+is not constructed directly.
+
+**Type:** Value object
 
 | Property/Method | Type | Description |
 |-----------------|------|-------------|
@@ -1903,6 +1960,7 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 | `Post(pattern, tag)` | void | Register a POST route |
 | `Put(pattern, tag)` | void | Register a PUT route |
 | `Delete(pattern, tag)` | void | Register a DELETE route |
+| `BindHandler(tag, callback)` | void | Bind a managed callback to a handler tag; normally emitted by the frontend |
 | `Start()` | void | Start accepting connections in background |
 | `Stop()` | void | Stop the server gracefully |
 
@@ -1946,6 +2004,7 @@ Threaded TLS-backed HTTP/1.1 + HTTP/2 server built on the in-tree TLS 1.3 runtim
 | `Post(pattern, tag)` | void | Register a POST route |
 | `Put(pattern, tag)` | void | Register a PUT route |
 | `Delete(pattern, tag)` | void | Register a DELETE route |
+| `BindHandler(tag, callback)` | void | Bind a managed callback to a handler tag; normally emitted by the frontend |
 | `Start()` | void | Start accepting TLS connections in background |
 | `Stop()` | void | Stop the server gracefully |
 
@@ -1972,11 +2031,69 @@ Threaded TLS-backed HTTP/1.1 + HTTP/2 server built on the in-tree TLS 1.3 runtim
 - The request/response handler model mirrors `HttpServer`.
 - Sequential and pipelined HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
 - When ALPN selects `h2`, the same route table serves HTTP/2 streams through the existing `ServerReq` / `ServerRes` handler model.
-- HTTP/2 request trailers are merged into `req.Headers`, and HTTP/2 response trailers are preserved in the client-visible header list. Unknown HTTP/2 extension frames are ignored, informational `1xx` responses are skipped until the final response, and inbound frames are capped at the local advertised maximum frame size.
+- HTTP/2 request trailers are merged into the request header map and are visible through
+  `req.Header(name)`; response trailers are preserved in the client-visible header list. Unknown
+  HTTP/2 extension frames are ignored, informational `1xx` responses are skipped until the final
+  response, and inbound frames are capped at the local advertised maximum frame size.
 - If a peer opens another request stream before the active one finishes, `HttpsServer` refuses that extra stream with `RST_STREAM` and keeps the TLS connection alive for later requests.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
-- `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
+- `Start()` fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
 - Route tables and handler bindings become immutable once the server is running.
+
+---
+
+## Viper.Network.ServerReq
+
+Request view passed to an `HttpServer` or `HttpsServer` route handler. The server constructs this
+object for each request.
+
+**Type:** Instance view
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Method` | String | Request method |
+| `Path` | String | Normalized request path |
+| `Body` | String | Request body |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Header(name)` | String | Read a request header, or empty string if absent |
+| `Param(name)` | String | Read a captured route parameter, or empty string if absent |
+| `Query(name)` | String | Read a decoded query parameter, or empty string if absent |
+
+## Viper.Network.ServerRes
+
+Response builder passed alongside `ServerReq` to a route handler.
+
+**Type:** Instance view
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Status(code)` | ServerRes | Set the response status and return the response builder |
+| `Header(name, value)` | ServerRes | Set a response header and return the response builder |
+| `Send(body)` | void | Send a string response body |
+| `Json(body)` | void | Send an already-serialized JSON string with JSON content type |
+
+### Handler Example
+
+```basic
+DIM server AS Viper.Network.HttpServer = Viper.Network.HttpServer.New(8080)
+server.Get("/things/:id", "HandleThing")
+
+SUB HandleThing(req AS Viper.Network.ServerReq, res AS Viper.Network.ServerRes)
+    DIM id AS STRING = req.Param("id")
+    res.Header("Content-Type", "text/plain").Status(200).Send("Thing " + id)
+END SUB
+```
+
+When a route tag is a literal function name, the BASIC and Zia frontends emit the corresponding
+`BindHandler` call automatically. Register routes and handlers before `Start()`.
 
 ---
 
@@ -2061,9 +2178,13 @@ Static network utility functions for port checking, CIDR matching, and IP classi
 |--------|---------|-------------|
 | `IsPortOpen(host, port, timeoutMs)` | Boolean | Check if a remote port accepts connections |
 | `GetFreePort()` | Integer | Get a free (available) port on localhost |
-| `MatchCIDR(ip, cidr)` | Boolean | Check if IP matches CIDR range (e.g., `"10.0.0.0/8"`) |
-| `IsPrivateIP(ip)` | Boolean | Check if IP is RFC 1918 private range |
+| `MatchCIDR(ip, cidr)` | Boolean | Check if an IPv4 address matches an IPv4 CIDR range (e.g., `"10.0.0.0/8"`) |
+| `IsPrivateIP(ip)` | Boolean | Check if an IPv4 address is RFC 1918 private or loopback |
 | `LocalIPv4()` | String | Get primary local IPv4 address |
+
+`IsPortOpen` uses a 1,000ms timeout when `timeoutMs <= 0`. `GetFreePort` binds and closes a
+temporary loopback socket, so another process can claim the returned port before the caller binds;
+for production listeners, bind the server itself to port 0 and read back its assigned port.
 
 ---
 
@@ -2138,7 +2259,7 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 - Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request scheme, host, and effective port.
 - Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
 - Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.
-- `Start()` now fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
+- `Start()` fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
 
 ---
 
@@ -2265,7 +2386,8 @@ depending on mutable `LastError` state.
 
 ### Runtime Notes
 
-- `SetTls(true)` on submission ports negotiates `STARTTLS` only when the server advertises it after `EHLO`.
+- Port 465 uses implicit TLS by default. On other ports, `SetTls(true)` negotiates `STARTTLS` only
+  after the server advertises it in the `EHLO` response; a missing advertisement fails the send.
 - `AUTH LOGIN` is only attempted when the server advertises it and the connection is encrypted.
 - SMTP response lines are capped to prevent unbounded memory growth, and AUTH LOGIN credential commands are sized from the base64 output instead of a fixed buffer.
 - Recipient replies `250`, `251`, and `252` are accepted so forwarded/local-alias deliveries interoperate with real SMTP servers.
@@ -2283,6 +2405,7 @@ Non-blocking socket operations integrated with `Threads.Future`.
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `ConnectAsync(host, port)` | Future | Async TCP connect → resolves to Tcp |
+| `ConnectForAsync(host, port, timeoutMs)` | Future | Async TCP connect with an explicit timeout |
 | `SendAsync(tcp, data)` | Future | Async send → resolves to bytes sent |
 | `RecvAsync(tcp, maxBytes)` | Future | Async receive → resolves to Bytes |
 | `HttpGetAsync(url)` | Future | Async HTTP GET → resolves to String |
@@ -2294,7 +2417,8 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 
 - Transport and HTTP failures resolve the returned `Future` as an error instead of trapping out of the worker thread.
 - Async connect and HTTP GET/POST reject host or URL strings with embedded NUL bytes. `HttpPostAsync` preserves the runtime byte length of its body, including embedded NUL bytes.
-- Use `Threads.Future.IsError()` / `GetError()` to inspect asynchronous failures.
+- Inspect the `Threads.Future.IsError` and `Threads.Future.Error` properties before calling
+  `Get()` on a failed future.
 
 ---
 
@@ -2312,22 +2436,24 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 
 ### Threading
 
-Each connection object is independent and can be used from a single thread. For multi-threaded servers handling concurrent clients, each client connection should be handled in a separate thread.
+Raw `Tcp`, `Udp`, and `WebSocket` handles do not serialize concurrent reads or writes; use them
+from one thread at a time or provide external coordination. Higher-level types such as
+`ConnectionPool` and `HttpClient` document their own synchronization guarantees.
 
 ### Connection Limits
 
-The server uses the system's default listen backlog (`SOMAXCONN`), which varies by platform:
-
-| Platform | Typical Backlog |
-|----------|-----------------|
-| Linux    | 128             |
-| macOS    | 128             |
-| Windows  | 200             |
+TCP listeners pass `SOMAXCONN` to the operating system. The effective accept backlog is controlled
+and may be capped by the host platform and its network configuration.
 
 ### Resource Cleanup
 
-Always call `Close()` on connections and servers when done to release system resources. Connections that are garbage collected without being closed may leak file descriptors.
+Call `Close()` when a connection or server is no longer needed to release its socket
+deterministically. Network objects also register finalizers that close an open socket when the
+last runtime handle is reclaimed.
 
-### IPv4 Only
+### Address Families
 
-The current implementation supports IPv4 only. IPv6 support may be added in a future release.
+TCP, UDP, DNS, HTTP, TLS, WebSocket, SSE, and port-probing paths resolve addresses with
+`AF_UNSPEC` and support both IPv4 and IPv6. Wildcard listeners prefer a dual-stack IPv6 socket
+when the operating system permits it and fall back to IPv4; an explicitly bound address uses that
+address's family.

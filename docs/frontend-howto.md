@@ -3531,7 +3531,7 @@ program at parse time.
 
 Test individual components in isolation.
 
-**File:** `tests/unit/yourfrontend/LexerTests.cpp`
+**File:** `src/tests/unit/frontends/yourfrontend/LexerTests.cpp`
 
 ```cpp
 #include "tests/TestHarness.hpp"
@@ -3558,7 +3558,7 @@ int main(int argc, char **argv) {
 }
 ```
 
-**File:** `tests/unit/yourfrontend/ParserTests.cpp`
+**File:** `src/tests/unit/frontends/yourfrontend/ParserTests.cpp`
 
 ```cpp
 #include "tests/TestHarness.hpp"
@@ -3584,23 +3584,23 @@ int main(int argc, char **argv) {
 
 Compare generated IL against expected output.
 
-**Input:** `tests/golden/yourfrontend/hello.src`
+**Input:** `src/tests/golden/yourfrontend/hello.src`
 
 ```text
 print("Hello, World!")
 ```
 
-**Expected:** `tests/golden/yourfrontend/hello.il`
+**Expected:** `src/tests/golden/yourfrontend/hello.il`
 
 ```il
-il 0.2
+il 0.3.0
 
-extern @rt_print_str(str) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
 
 func @main() -> i64 {
 entry:
   %0 = const_str @str.0
-  call @rt_print_str(%0)
+  call @Viper.Terminal.PrintStr(%0)
   ret 0
 }
 
@@ -3633,7 +3633,7 @@ TEST_P(GoldenTest, CompareIL) {
 
 Run complete programs and check output.
 
-**Input:** `tests/e2e/yourfrontend/fibonacci.src`
+**Input:** `src/tests/e2e/yourfrontend/fibonacci.src`
 
 ```text
 function fib(n) {
@@ -3648,7 +3648,7 @@ print(fib(10))
 
 ```cpp
 TEST(E2ETest, Fibonacci) {
-    auto result = compileAndRun("tests/e2e/yourfrontend/fibonacci.src");
+    auto result = compileAndRun("src/tests/e2e/yourfrontend/fibonacci.src");
 
     ASSERT_TRUE(result.succeeded());
     EXPECT_EQ(result.stdout, "55\n");

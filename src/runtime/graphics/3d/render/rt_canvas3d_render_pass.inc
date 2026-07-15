@@ -82,6 +82,170 @@ static int32_t canvas3d_prepare_shadow_draw_indices(rt_canvas3d *c,
     return count;
 }
 
+/// @brief Ensure the auto-instancing matrix scratch holds @p needed instance matrices.
+static int canvas3d_reserve_auto_instance_matrices(rt_canvas3d *c, int32_t needed) {
+    int32_t new_capacity;
+    float *grown;
+    if (!c || needed <= 0)
+        return 0;
+    if (c->auto_instance_matrix_capacity >= needed)
+        return 1;
+    new_capacity = c->auto_instance_matrix_capacity > 0 ? c->auto_instance_matrix_capacity : 64;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / (sizeof(float) * 16u))
+        return 0;
+    grown = (float *)realloc(c->auto_instance_matrices,
+                             (size_t)new_capacity * sizeof(float) * 16u);
+    if (!grown)
+        return 0;
+    c->auto_instance_matrices = grown;
+    c->auto_instance_matrix_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Whether two state-sorted opaque draws can share one instanced submission.
+/// @details Requires the same stable geometry (key + revision), no skinning/morph
+///   payloads, matching light slice and raster flags, and full command equality
+///   outside the model transform pair. Only draws whose previous transform equals
+///   the current one qualify (static this frame): the instanced path carries one
+///   cmd-level previous matrix, so batching a mover would corrupt its motion vector.
+static int canvas3d_draws_auto_instance_compatible(const deferred_draw_t *a,
+                                                   const deferred_draw_t *b) {
+    const vgfx3d_draw_cmd_t *ca;
+    const vgfx3d_draw_cmd_t *cb;
+    if (!a || !b || a->kind != DEFERRED_DRAW_MESH || b->kind != DEFERRED_DRAW_MESH)
+        return 0;
+    ca = &a->cmd;
+    cb = &b->cmd;
+    if (!ca->geometry_key || ca->geometry_key != cb->geometry_key ||
+        ca->geometry_revision != cb->geometry_revision)
+        return 0;
+    if (ca->bone_palette || cb->bone_palette || ca->morph_weights || cb->morph_weights)
+        return 0;
+    if (memcmp(ca->model_matrix, ca->prev_model_matrix, sizeof(ca->model_matrix)) != 0 ||
+        memcmp(cb->model_matrix, cb->prev_model_matrix, sizeof(cb->model_matrix)) != 0)
+        return 0;
+    if (a->lights != b->lights || a->light_count != b->light_count ||
+        a->wireframe != b->wireframe || a->backface_cull != b->backface_cull)
+        return 0;
+    if (memcmp(a->ambient, b->ambient, sizeof(a->ambient)) != 0)
+        return 0;
+    {
+        /* Command payloads are memset-zeroed at fill time, so padding bytes are
+         * deterministic and whole-struct comparison is exact. Normalize the two
+         * transform fields (the only allowed difference) before comparing. */
+        vgfx3d_draw_cmd_t na = *ca;
+        vgfx3d_draw_cmd_t nb = *cb;
+        memset(na.model_matrix, 0, sizeof(na.model_matrix));
+        memset(na.prev_model_matrix, 0, sizeof(na.prev_model_matrix));
+        memset(nb.model_matrix, 0, sizeof(nb.model_matrix));
+        memset(nb.prev_model_matrix, 0, sizeof(nb.prev_model_matrix));
+        return memcmp(&na, &nb, sizeof(na)) == 0;
+    }
+}
+
+/// @brief Fold one shadow caster's identity into a slot signature.
+/// @details Hashes the caster's stable geometry identity (key + revision + counts),
+///   its model matrix, and the material bits that affect depth output (alpha
+///   masking, double-sidedness). Returns 0 (poison) for content whose depth can
+///   change without any hashed field moving: skinned or morphed draws (palette /
+///   weight buffers mutate in place), instanced draws (matrix payloads are
+///   transient), and transient geometry with no stable key (per-frame temp
+///   buffers can be reallocated at the same address with new contents).
+static uint64_t canvas3d_shadow_hash_caster(uint64_t sig, const deferred_draw_t *dd) {
+    const vgfx3d_draw_cmd_t *cmd;
+    if (sig == 0 || !dd)
+        return 0;
+    cmd = &dd->cmd;
+    if (dd->kind != DEFERRED_DRAW_MESH)
+        return 0;
+    if (cmd->bone_palette || cmd->morph_weights || !cmd->geometry_key)
+        return 0;
+    sig = canvas3d_mix_sort_ptr(sig, cmd->geometry_key);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)cmd->geometry_revision);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)cmd->vertex_count);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)cmd->index_count);
+    for (int i = 0; i < 16; i++) {
+        uint32_t bits = 0;
+        memcpy(&bits, &cmd->model_matrix[i], sizeof(bits));
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)bits);
+    }
+    {
+        uint32_t cutoff_bits = 0;
+        memcpy(&cutoff_bits, &cmd->alpha_cutoff, sizeof(cutoff_bits));
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)(uint32_t)cmd->alpha_mode);
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)cutoff_bits);
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)(uint32_t)cmd->double_sided);
+        sig = canvas3d_mix_sort_ptr(sig, cmd->texture);
+        sig = canvas3d_mix_sort_ptr(sig, cmd->texture_asset);
+    }
+    return sig ? sig : 1;
+}
+
+/// @brief Seed a shadow-slot signature from everything that shapes the depth pass
+///   besides the casters: the light view-projection, target identity/resolution,
+///   and the bias applied at shadow_end.
+static uint64_t canvas3d_shadow_slot_signature_seed(const rt_canvas3d *c,
+                                                    const vgfx3d_rendertarget_t *shadow_rt,
+                                                    int32_t shadow_resolution,
+                                                    const float light_vp[16]) {
+    uint64_t sig = UINT64_C(0x9E3779B97F4A7C15);
+    if (!c || !shadow_rt || !light_vp)
+        return 0;
+    sig = canvas3d_mix_sort_ptr(sig, shadow_rt);
+    sig = canvas3d_mix_sort_ptr(sig, shadow_rt->depth_buf);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)(uint32_t)shadow_resolution);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)(uint32_t)shadow_rt->width);
+    sig = canvas3d_mix_sort_u64(sig, (uint64_t)(uint32_t)shadow_rt->height);
+    {
+        uint32_t bias_bits = 0;
+        memcpy(&bias_bits, &c->shadow_bias, sizeof(bias_bits));
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)bias_bits);
+    }
+    for (int i = 0; i < 16; i++) {
+        uint32_t bits = 0;
+        memcpy(&bits, &light_vp[i], sizeof(bits));
+        sig = canvas3d_mix_sort_u64(sig, (uint64_t)bits);
+    }
+    return sig ? sig : 1;
+}
+
+/// @brief Try to satisfy shadow slot @p slot from its previous-frame contents.
+/// @details Compares the computed signature against the slot's stored one and, on a
+///   match, asks the backend to re-arm the persisted depth (shadow_reuse hook).
+///   On success Canvas3D skips the whole begin/draw/end pass for the slot.
+/// @return 1 when the slot was reused; 0 to render normally.
+static int canvas3d_shadow_slot_try_reuse(rt_canvas3d *c,
+                                          int32_t slot,
+                                          uint64_t signature,
+                                          vgfx3d_rendertarget_t *shadow_rt,
+                                          const float light_vp[16]) {
+    if (!c || !shadow_rt || signature == 0)
+        return 0;
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        return 0;
+    if (c->shadow_slot_signature[slot] != signature)
+        return 0;
+    if (!c->backend || !c->backend->shadow_reuse)
+        return 0;
+    if (!c->backend->shadow_reuse(c->backend_ctx,
+                                  slot,
+                                  shadow_rt->depth_buf,
+                                  shadow_rt->width,
+                                  shadow_rt->height,
+                                  light_vp))
+        return 0;
+    c->last_shadow_slots_cached++;
+    rt_game3d_diag_record_shadow_slot_reused();
+    return 1;
+}
+
 /// @brief Render one non-cascaded shadow light into the next available shadow slot.
 /// @details Used both by the simple shadow path and by the cascaded path after the primary
 ///   directional light has consumed its cascade slots. The helper owns slot validation, light VP
@@ -181,18 +345,41 @@ static int canvas3d_render_shadow_light_slot(
         }
     }
 
-    c->backend->shadow_begin(
-        c->backend_ctx, slot, shadow_rt->depth_buf, shadow_rt->width, shadow_rt->height, light_vp);
-    for (int32_t si = 0; si < shadow_index_count; si++) {
-        int32_t draw_index = shadow_indices[si];
-        if (draw_index < 0)
-            continue;
-        if (cull_spot &&
-            !canvas3d_deferred_intersects_world_bounds(c, &cmds[draw_index], spot_min, spot_max))
-            continue;
-        canvas3d_shadow_deferred(c, &cmds[draw_index]);
+    {
+        uint64_t signature =
+            canvas3d_shadow_slot_signature_seed(c, shadow_rt, shadow_resolution, light_vp);
+        for (int32_t si = 0; signature != 0 && si < shadow_index_count; si++) {
+            int32_t draw_index = shadow_indices[si];
+            if (draw_index < 0)
+                continue;
+            if (cull_spot && !canvas3d_deferred_intersects_world_bounds(
+                                 c, &cmds[draw_index], spot_min, spot_max))
+                continue;
+            signature = canvas3d_shadow_hash_caster(signature, &cmds[draw_index]);
+        }
+        if (canvas3d_shadow_slot_try_reuse(c, slot, signature, shadow_rt, light_vp)) {
+            c->shadow_count++;
+            return 1;
+        }
+
+        c->backend->shadow_begin(c->backend_ctx,
+                                 slot,
+                                 shadow_rt->depth_buf,
+                                 shadow_rt->width,
+                                 shadow_rt->height,
+                                 light_vp);
+        for (int32_t si = 0; si < shadow_index_count; si++) {
+            int32_t draw_index = shadow_indices[si];
+            if (draw_index < 0)
+                continue;
+            if (cull_spot && !canvas3d_deferred_intersects_world_bounds(
+                                 c, &cmds[draw_index], spot_min, spot_max))
+                continue;
+            canvas3d_shadow_deferred(c, &cmds[draw_index]);
+        }
+        c->backend->shadow_end(c->backend_ctx, slot, c->shadow_bias);
+        c->shadow_slot_signature[slot] = signature;
     }
-    c->backend->shadow_end(c->backend_ctx, slot, c->shadow_bias);
     c->shadow_count++;
     return 1;
 }
@@ -276,23 +463,40 @@ static int canvas3d_render_point_shadow_cube(
         }
 
         memcpy(c->shadow_light_vps[slot], light_vp, sizeof(light_vp));
-        c->backend->shadow_begin(c->backend_ctx,
-                                 slot,
-                                 shadow_rt->depth_buf,
-                                 shadow_rt->width,
-                                 shadow_rt->height,
-                                 light_vp);
-        for (int32_t si = 0; si < shadow_index_count; si++) {
-            int32_t draw_index = shadow_indices[si];
-            if (draw_index < 0)
+        {
+            uint64_t signature = canvas3d_shadow_slot_signature_seed(
+                c, shadow_rt, canvas3d_shadow_slot_resolution(c, slot), light_vp);
+            for (int32_t si = 0; signature != 0 && si < shadow_index_count; si++) {
+                int32_t draw_index = shadow_indices[si];
+                if (draw_index < 0)
+                    continue;
+                if (cull_faces && !canvas3d_deferred_intersects_world_bounds(
+                                      c, &cmds[draw_index], face_min, face_max))
+                    continue;
+                signature = canvas3d_shadow_hash_caster(signature, &cmds[draw_index]);
+            }
+            if (canvas3d_shadow_slot_try_reuse(c, slot, signature, shadow_rt, light_vp)) {
+                c->shadow_count++;
                 continue;
-            if (cull_faces &&
-                !canvas3d_deferred_intersects_world_bounds(
-                    c, &cmds[draw_index], face_min, face_max))
-                continue;
-            canvas3d_shadow_deferred(c, &cmds[draw_index]);
+            }
+            c->backend->shadow_begin(c->backend_ctx,
+                                     slot,
+                                     shadow_rt->depth_buf,
+                                     shadow_rt->width,
+                                     shadow_rt->height,
+                                     light_vp);
+            for (int32_t si = 0; si < shadow_index_count; si++) {
+                int32_t draw_index = shadow_indices[si];
+                if (draw_index < 0)
+                    continue;
+                if (cull_faces && !canvas3d_deferred_intersects_world_bounds(
+                                      c, &cmds[draw_index], face_min, face_max))
+                    continue;
+                canvas3d_shadow_deferred(c, &cmds[draw_index]);
+            }
+            c->backend->shadow_end(c->backend_ctx, slot, c->shadow_bias);
+            c->shadow_slot_signature[slot] = signature;
         }
-        c->backend->shadow_end(c->backend_ctx, slot, c->shadow_bias);
         c->shadow_count++;
     }
     shadow_lights[base] = light;
@@ -317,6 +521,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
     int32_t shadow_index_count = 0;
     c->last_shadow_slots_used = 0;
     c->last_shadow_requests_dropped = 0;
+    c->last_shadow_slots_cached = 0;
     if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
         c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
         /* Backends without atlas-slot sampling cap the frame at the classic
@@ -408,25 +613,47 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 memcpy(shadow_lights[c->shadow_count].shadow_cascade_splits,
                        cascade_splits,
                        sizeof(shadow_lights[c->shadow_count].shadow_cascade_splits));
-                c->backend->shadow_begin(c->backend_ctx,
-                                         c->shadow_count,
-                                         shadow_rt->depth_buf,
-                                         shadow_rt->width,
-                                         shadow_rt->height,
-                                         light_vp);
-                for (int32_t si = 0; si < shadow_index_count; si++) {
-                    int32_t draw_index = shadow_indices[si];
-                    if (draw_index < 0)
+                {
+                    uint64_t signature = canvas3d_shadow_slot_signature_seed(
+                        c, shadow_rt, shadow_resolution, light_vp);
+                    for (int32_t si = 0; signature != 0 && si < shadow_index_count; si++) {
+                        int32_t draw_index = shadow_indices[si];
+                        if (draw_index < 0)
+                            continue;
+                        if (!canvas3d_deferred_intersects_view_depth(
+                                c, &cmds[draw_index], cascade_depth_near, cascade_depth_far))
+                            continue;
+                        if (!canvas3d_deferred_intersects_world_bounds(
+                                c, &cmds[draw_index], cascade_min, cascade_max))
+                            continue;
+                        signature = canvas3d_shadow_hash_caster(signature, &cmds[draw_index]);
+                    }
+                    if (canvas3d_shadow_slot_try_reuse(
+                            c, c->shadow_count, signature, shadow_rt, light_vp)) {
+                        c->shadow_count++;
                         continue;
-                    if (!canvas3d_deferred_intersects_view_depth(
-                            c, &cmds[draw_index], cascade_depth_near, cascade_depth_far))
-                        continue;
-                    if (!canvas3d_deferred_intersects_world_bounds(
-                            c, &cmds[draw_index], cascade_min, cascade_max))
-                        continue;
-                    canvas3d_shadow_deferred(c, &cmds[draw_index]);
+                    }
+                    c->backend->shadow_begin(c->backend_ctx,
+                                             c->shadow_count,
+                                             shadow_rt->depth_buf,
+                                             shadow_rt->width,
+                                             shadow_rt->height,
+                                             light_vp);
+                    for (int32_t si = 0; si < shadow_index_count; si++) {
+                        int32_t draw_index = shadow_indices[si];
+                        if (draw_index < 0)
+                            continue;
+                        if (!canvas3d_deferred_intersects_view_depth(
+                                c, &cmds[draw_index], cascade_depth_near, cascade_depth_far))
+                            continue;
+                        if (!canvas3d_deferred_intersects_world_bounds(
+                                c, &cmds[draw_index], cascade_min, cascade_max))
+                            continue;
+                        canvas3d_shadow_deferred(c, &cmds[draw_index]);
+                    }
+                    c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
+                    c->shadow_slot_signature[c->shadow_count] = signature;
                 }
-                c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
                 c->shadow_count++;
             }
             if (c->shadow_count > 0) {
@@ -664,8 +891,35 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 rt_trap("Canvas3D.End: deferred opaque sort scratch allocation failed");
                 return;
             }
-            for (int32_t i = 0; i < opaque_kept; i++)
-                canvas3d_submit_deferred(c, &opaque[i]);
+            /* Auto-instancing: after the state sort, runs of identical commands
+             * (same stable mesh + material + lights, static transforms) collapse
+             * into one instanced submission — props, rocks, and foliage clusters
+             * stop paying one backend draw each without user-side batching. */
+            for (int32_t i = 0; i < opaque_kept;) {
+                int32_t run = 1;
+                if (state_sort_opaque && c->backend->submit_draw_instanced) {
+                    while (i + run < opaque_kept &&
+                           canvas3d_draws_auto_instance_compatible(&opaque[i], &opaque[i + run]))
+                        run++;
+                }
+                if (run >= 2 && canvas3d_reserve_auto_instance_matrices(c, run)) {
+                    deferred_draw_t inst = opaque[i];
+                    for (int32_t k = 0; k < run; k++)
+                        memcpy(c->auto_instance_matrices + (size_t)k * 16u,
+                               opaque[i + k].cmd.model_matrix,
+                               sizeof(float) * 16u);
+                    inst.kind = DEFERRED_DRAW_INSTANCED;
+                    inst.instance_matrices = c->auto_instance_matrices;
+                    inst.instance_count = run;
+                    canvas3d_submit_deferred(c, &inst);
+                    c->last_auto_instanced_draws += run;
+                    rt_game3d_diag_record_auto_instanced_draws(run);
+                } else {
+                    for (int32_t k = 0; k < run; k++)
+                        canvas3d_submit_deferred(c, &opaque[i + k]);
+                }
+                i += run;
+            }
             canvas3d_draw_backend_skybox_after_opaque(c);
             /* Plan 10: snapshot opaque depth for soft particles/SSR before any
              * blend draw samples it. Skipped when nothing transparent follows. */

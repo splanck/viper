@@ -140,6 +140,9 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
         mat4f_identity(bone->bind_pose_local);
     }
     mat4f_identity(bone->inverse_bind);
+    /* Cache the decomposed bind TRS once: sampling uses it as the per-channel
+     * fallback every frame, and decomposition is the expensive part. */
+    mat4f_decompose_trs(bone->bind_pose_local, bone->bind_pos, bone->bind_rot, bone->bind_scl);
 
     int64_t idx = s->bone_count;
     s->bone_count++;

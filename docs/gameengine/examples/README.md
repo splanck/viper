@@ -158,10 +158,13 @@ Which example games demonstrate which engine systems:
 
 ## Tutorials
 
-For guided walkthroughs that build games step-by-step:
+Two guided walkthroughs are planned but are not yet part of the documentation set:
 
-- [Your First Platformer](your-first-platformer.md) — Build a platformer with Entity + Tilemap + Camera
-- [Arcade Shooter](arcade-shooter.md) — Build a Centipede-style game with ObjectPool + Particles
+- **Your First Platformer** — Entity + Tilemap + Camera
+- **Arcade Shooter** — Centipede-style ObjectPool + Particles
+
+Until those are written, use the linked complete examples above and the
+[game-library guides](../../viperlib/game/README.md).
 ---
 
 ## See Also

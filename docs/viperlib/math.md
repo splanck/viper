@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-14
 ---
 
 # Mathematics
@@ -19,7 +19,7 @@ last-verified: 2026-04-09
 - [Viper.Math.Mat3](#vipermathmat3)
 - [Viper.Math.Mat4](#vipermathmat4)
 - [Viper.Math.PerlinNoise](#vipermathperlinnoise)
-- [Viper.Math.Quaternion](#vipermathquaternion)
+- [Viper.Math.Quat](#vipermathquat)
 - [Viper.Math.Random](#vipermathrandom)
 - [Viper.Math.Spline](#vipermathspline)
 - [Viper.Math.Vec2](#vipermathvec2)
@@ -64,8 +64,9 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 - **Shr** — Arithmetic shift right. Shifts bits right, preserving the sign bit (sign-extended).
 - **ShiftRightLogical** — Logical shift right. Shifts bits right, filling with zeros on the left.
 
-Shift counts are clamped: negative counts or counts >= 64 return 0 (for
-Shl/ShiftRightLogical) or the sign bit extended (for Shr with negative values).
+For `Shl` and `ShiftRightLogical`, negative counts and counts of 64 or more return 0.
+For `Shr`, a negative count returns the input unchanged; counts of 64 or more
+return -1 for a negative input and 0 otherwise.
 
 #### Rotate Operations
 
@@ -562,16 +563,13 @@ END IF
 | `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
 | `Set(x, y, z)`   | `void(f64, f64, f64)` | Replace all components in place                      |
-| `SetX(x)`        | `void(f64)`     | Replace X in place; equivalent to assigning `X`            |
-| `SetY(y)`        | `void(f64)`     | Replace Y in place; equivalent to assigning `Y`            |
-| `SetZ(z)`        | `void(f64)`     | Replace Z in place; equivalent to assigning `Z`            |
 | `CopyFrom(other)` | `void(obj)`    | Copy another Vec3's components in place                    |
 
 ### Notes
 
 - Arithmetic operations are pure and return new vectors.
-- Use `Set`, `SetX`/`SetY`/`SetZ`, `CopyFrom`, or writable `X`/`Y`/`Z`
-  properties when a per-frame script path needs to reuse an existing vector.
+- Use `Set`, `CopyFrom`, or writable `X`/`Y`/`Z` properties when a per-frame script path
+  needs to reuse an existing vector.
 - `Norm()` returns zero vector if input has zero length
 - `Div()` traps on division by zero
 - `Cross()` returns a Vec3 perpendicular to both input vectors (right-hand rule)
@@ -639,9 +637,7 @@ PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50,
 
 ---
 
-## Viper.Math.Quaternion
-
-> **Note:** The runtime class name is `Viper.Math.Quat`. Use `Quat.Identity()`, `Quat.FromAxisAngle()`, etc. The name `Quaternion` is used in this documentation as an alias for readability.
+## Viper.Math.Quat
 
 Quaternion math for 3D rotations, avoiding gimbal lock. Quaternions represent orientations in 3D space and support
 smooth interpolation via SLERP.
@@ -654,7 +650,7 @@ smooth interpolation via SLERP.
 | Method                        | Signature             | Description                                              |
 |-------------------------------|-----------------------|----------------------------------------------------------|
 | `New(x, y, z, w)`             | `obj(f64,f64,f64,f64)` | Create quaternion from components (x, y, z, w order)    |
-| `Identity()`                  | `obj()`               | Create identity quaternion (1, 0, 0, 0)                 |
+| `Identity()`                  | `obj()`               | Create identity quaternion (0, 0, 0, 1)                 |
 | `FromAxisAngle(axis, angle)`  | `obj(obj, f64)`       | Create from a Vec3 axis and angle in radians            |
 | `FromEuler(pitch, yaw, roll)` | `obj(f64, f64, f64)`  | Create from Euler angles in radians: pitch about X, yaw about Y, roll about Z (ZYX intrinsic order, matching `Transform3D.SetEuler`) |
 
@@ -690,7 +686,7 @@ smooth interpolation via SLERP.
 - Quaternions are immutable — all operations return new quaternions.
 - `Mul` composes rotations: `a.Mul(b)` applies rotation `b` then rotation `a`.
 - `Slerp` performs smooth interpolation along the shortest arc on the unit sphere.
-- `Norm()` returns identity for zero-length quaternions.
+- `Norm()` returns the zero quaternion for a zero-length or non-finite quaternion.
 - `FromAxisAngle` takes a `Vec3` axis object and a scalar angle in radians.
 
 ### Zia Example
@@ -704,7 +700,7 @@ bind Viper.Terminal;
 func start() {
     // Identity quaternion
     var id = Quat.Identity();
-    SayNum(id.W);  // 1.0
+    SayNum(Quat.get_W(id));  // 1.0
 
     // From axis-angle (90° around Y)
     var yAxis = Vec3.New(0.0, 1.0, 0.0);
@@ -712,24 +708,24 @@ func start() {
 
     // Rotate a vector
     var v = Vec3.New(1.0, 0.0, 0.0);
-    var rotated = q90.RotateVec3(v);
-    SayNum(rotated.Z);  // ~-1.0
+    var rotated = Quat.RotateVec3(q90, v);
+    SayNum(Vec3.get_Z(rotated));  // ~-1.0
 
     // Compose rotations (90° + 90° = 180°)
-    var combined = q90.Mul(q90);
+    var combined = Quat.Mul(q90, q90);
 
     // Interpolate (slerp)
-    var halfway = id.Slerp(q90, 0.5);
-    SayNum(halfway.Len());     // 1.0
+    var halfway = Quat.Slerp(id, q90, 0.5);
+    SayNum(Quat.Len(halfway));     // 1.0
 
     // Inverse (q * q^-1 = identity)
-    var inv = q90.Inverse();
-    var check = q90.Mul(inv);
-    SayNum(check.W);  // ~1.0
+    var inv = Quat.Inverse(q90);
+    var check = Quat.Mul(q90, inv);
+    SayNum(Quat.get_W(check));  // ~1.0
 
     // Euler angles
     var qe = Quat.FromEuler(0.0, 1.5707963, 0.0);
-    SayNum(qe.Angle());  // ~1.5707963
+    SayNum(Quat.Angle(qe));  // ~1.5707963
 }
 ```
 
@@ -737,22 +733,23 @@ func start() {
 
 ```basic
 ' Create quaternion from axis-angle (90 degrees around Y axis)
-DIM axis AS OBJECT = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
+DIM axis AS Viper.Math.Vec3 = Viper.Math.Vec3.New(0.0, 1.0, 0.0)
 DIM q AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis, Viper.Math.Rad(90.0))
 
 ' Rotate a vector
-DIM v AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
-DIM rotated AS OBJECT = q.RotateVec3(v)
-PRINT "Rotated: ("; rotated.X; ", "; rotated.Y; ", "; rotated.Z; ")"
+DIM v AS Viper.Math.Vec3 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+DIM rotated AS OBJECT = Viper.Math.Quat.RotateVec3(q, v)
+PRINT "Rotated: ("; Viper.Math.Vec3.get_X(rotated); ", "; Viper.Math.Vec3.get_Y(rotated); ", "; Viper.Math.Vec3.get_Z(rotated); ")"
 ' Approximately (0, 0, -1) for 90-degree Y rotation
 
 ' Compose rotations
-DIM axis2 AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
+DIM axis2 AS Viper.Math.Vec3 = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
 DIM q2 AS OBJECT = Viper.Math.Quat.FromAxisAngle(axis2, Viper.Math.Rad(45.0))
-DIM combined AS OBJECT = q.Mul(q2)
+DIM combined AS OBJECT = Viper.Math.Quat.Mul(q, q2)
 
 ' Smooth interpolation between orientations
-DIM halfway AS OBJECT = Viper.Math.Quat.Identity().Slerp(q, 0.5)
+DIM identity AS OBJECT = Viper.Math.Quat.Identity()
+DIM halfway AS OBJECT = Viper.Math.Quat.Slerp(identity, q, 0.5)
 ```
 
 ---
@@ -891,6 +888,10 @@ Curve interpolation for smooth paths. Supports Catmull-Rom, Bezier, and linear s
 | `ArcLength(t0, t1, segments)`    | `Double(Double, Double, Integer)`| Approximate arc length between t0 and t1                 |
 | `Sample(count)`                  | `Seq(Integer)`                   | Sample count evenly-spaced points along the spline       |
 
+The current runtime registry includes the spline object as an explicit first parameter for these operations. Use the
+static forms shown below (`Spline.Eval(spline, t)`, `Spline.Sample(spline, count)`, and so on); instance-call syntax is
+not accepted by the current BASIC frontend.
+
 ### Zia Example
 
 ```rust
@@ -949,7 +950,7 @@ func start() {
 
 ```basic
 ' Create a Catmull-Rom spline
-DIM points AS OBJECT = NEW Viper.Collections.Seq()
+DIM points AS Viper.Collections.Seq = NEW Viper.Collections.Seq()
 points.Push(Viper.Math.Vec2.New(0.0, 0.0))
 points.Push(Viper.Math.Vec2.New(50.0, 100.0))
 points.Push(Viper.Math.Vec2.New(100.0, 50.0))
@@ -958,15 +959,15 @@ points.Push(Viper.Math.Vec2.New(150.0, 100.0))
 DIM spline AS OBJECT = Viper.Math.Spline.CatmullRom(points)
 
 ' Sample points along the spline
-DIM samples AS OBJECT = spline.Sample(20)
-FOR i = 0 TO samples.Length - 1
+DIM samples AS Viper.Collections.Seq = Viper.Math.Spline.Sample(spline, 20)
+FOR i = 0 TO samples.Count - 1
     DIM p AS OBJECT = samples.Get(i)
-    PRINT "x="; p.X; " y="; p.Y
+    PRINT "x="; Viper.Math.Vec2.get_X(p); " y="; Viper.Math.Vec2.get_Y(p)
 NEXT
 
 ' Evaluate at specific parameter
-DIM midpoint AS OBJECT = spline.Eval(0.5)
-PRINT "Mid: ("; midpoint.X; ", "; midpoint.Y; ")"
+DIM midpoint AS OBJECT = Viper.Math.Spline.Eval(spline, 0.5)
+PRINT "Mid: ("; Viper.Math.Vec2.get_X(midpoint); ", "; Viper.Math.Vec2.get_Y(midpoint); ")"
 ```
 
 ---
@@ -1194,8 +1195,8 @@ PRINT Viper.Math.BigInt.ToString(doubled)
 ' Modular exponentiation (useful in cryptography)
 DIM base AS OBJECT = Viper.Math.BigInt.FromInt(65537)
 DIM exp  AS OBJECT = Viper.Math.BigInt.FromInt(65537)
-DIM mod  AS OBJECT = Viper.Math.BigInt.FromStr("340282366920938463463374607431768211457")
-DIM result AS OBJECT = Viper.Math.BigInt.PowMod(base, exp, mod)
+DIM modulus AS OBJECT = Viper.Math.BigInt.FromStr("340282366920938463463374607431768211457")
+DIM result AS OBJECT = Viper.Math.BigInt.PowMod(base, exp, modulus)
 PRINT Viper.Math.BigInt.ToString(result)
 
 ' GCD and LCM

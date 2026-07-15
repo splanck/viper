@@ -95,6 +95,8 @@ entry:
 In safe Zia, use a function reference and a typed callback parameter:
 
 ```rust
+bind Viper.Terminal;
+
 func worker(arg: Any) {
     // ...
 }
@@ -118,8 +120,14 @@ interpreter traps through the same safe-thread boundary.
 After the thread finishes, check `HasError` and `Error` on the returned handle:
 
 ```rust
+bind Viper.Terminal;
+
+func worker(arg: Any) {
+    // Perform fallible work here.
+}
+
 var t = Viper.Threads.Thread.StartSafe(&worker, 0);
-Viper.Threads.Thread.Sleep(500);   // wait for thread
+t.Join();
 if (t.HasError) {
     Say("Thread trapped: " + t.Error);
 } else {
@@ -353,7 +361,6 @@ FIFO-fair permit gate (semaphore concept).
 | `Enter()`          | `Void()`             | Acquire one permit (blocks, FIFO)                    |
 | `Leave()`          | `Void()`             | Release one permit; wakes one waiter if present      |
 | `Leave(count)`     | `Void(Integer)`      | Release `count` permits; wakes up to `count` waiters |
-| `LeaveMany(count)` | `Void(Integer)`      | Signal `count` waiting goroutines to proceed (bulk signal); equivalent to calling Leave() count times but more efficient |
 | `TryEnter()`       | `Boolean()`          | Try to acquire immediately                           |
 | `TryEnterFor(ms)`  | `Boolean(Integer)`   | Try to acquire with timeout in milliseconds          |
 
@@ -367,7 +374,7 @@ FIFO-fair permit gate (semaphore concept).
 
 - **FIFO:** Contended `Enter`/`TryEnterFor` acquisition is FIFO-fair.
 - **Timeout units:** milliseconds. `TryEnterFor` treats negative values as `0` (immediate).
-- `Leave`/`LeaveMany` trap instead of wrapping if the permit count would overflow.
+- `Leave` traps instead of wrapping if the permit count would overflow.
 
 ### Errors (Traps)
 
@@ -633,7 +640,10 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
-- `Pool.Submit(pool, callback, arg)` accepts a frontend function reference (`&worker` in Zia, `ADDRESSOF Worker` in BASIC). The runtime owns the native callback adaptation internally.
+- `Pool.Submit(pool, callback, arg)` accepts a managed Zia function reference such as `&worker`.
+  The runtime owns the native callback adaptation internally. The current BASIC frontend supports
+  `ADDRESSOF` with direct callback parameters such as `Thread.Start` and `Parallel.For`, but does
+  not yet lower the callback parameter of `Pool.Submit`; submit pool work from Zia or the IL/C ABI.
 
 ### Zia Example
 
@@ -650,41 +660,17 @@ var ok = Viper.Threads.Pool.Submit(pool, &work, 0);
 
 ```basic
 ' Create a pool with 4 worker threads
-DIM pool AS OBJECT = Viper.Threads.Pool.New(4)
+DIM pool AS Viper.Threads.Pool = Viper.Threads.Pool.New(4)
 PRINT "Size: "; pool.Size         ' Output: 4
 PRINT "IsShutdown: "; pool.IsShutdown  ' Output: 0
 
-' Submit tasks
-SUB DoWork(arg AS OBJECT)
-    ' Perform task work
-    Viper.Threads.Thread.Sleep(10)
-END SUB
-
-pool.Submit(ADDRESSOF DoWork, 0)
-pool.Submit(ADDR_OF DoWork, 0)
-pool.Submit(ADDR_OF DoWork, 0)
-
-PRINT "Pending: "; pool.Pending   ' Output: up to 3
-PRINT "Active: "; pool.Active     ' Output: up to 3
-
-' Wait for all tasks to complete
-pool.Wait()
-PRINT "Pending after Wait: "; pool.Pending  ' Output: 0
+' An empty pool is already drained.
+DIM done AS INTEGER = pool.WaitFor(100)
+PRINT "Completed in time: "; done  ' Output: 1
 
 ' Graceful shutdown (drains queue before stopping)
 pool.Shutdown()
 PRINT "IsShutdown: "; pool.IsShutdown  ' Output: 1
-
-' Submit returns false after shutdown
-DIM ok AS INTEGER = pool.Submit(ADDR_OF DoWork, 0)
-PRINT "Submit after shutdown: "; ok   ' Output: 0
-
-' WaitFor with timeout
-DIM pool2 AS OBJECT = Viper.Threads.Pool.New(2)
-pool2.Submit(ADDR_OF DoWork, 0)
-DIM done AS INTEGER = pool2.WaitFor(5000)  ' Wait up to 5 seconds
-PRINT "Completed in time: "; done
-pool2.Shutdown()
 ```
 
 ---
@@ -806,7 +792,7 @@ DIM promise AS OBJECT = Viper.Threads.Promise.New()
 DIM future AS OBJECT = promise.GetFuture()
 
 ' Start worker thread
-DIM t AS OBJECT = Viper.Threads.Thread.Start(ADDR_OF ComputeAsync, promise)
+DIM t AS OBJECT = Viper.Threads.Thread.Start(ADDRESSOF ComputeAsync, promise)
 
 ' Do other work while computation runs
 DoOtherWork()
@@ -928,7 +914,7 @@ END SUB
 
 ' Process all items in parallel
 DIM items AS OBJECT = CreateItems()
-Viper.Threads.Parallel.ForEach(items, ADDR_OF ProcessItem)
+Viper.Threads.Parallel.ForEach(items, ADDRESSOF ProcessItem)
 ```
 
 ### Map Example
@@ -940,10 +926,10 @@ FUNCTION Transform(item AS PTR) AS PTR
 END FUNCTION
 
 DIM inputs AS OBJECT = GetInputs()
-DIM outputs AS OBJECT = Viper.Threads.Parallel.Map(inputs, ADDR_OF Transform)
+DIM outputs AS OBJECT = Viper.Threads.Parallel.Map(inputs, ADDRESSOF Transform)
 
 ' outputs has same length and order as inputs
-FOR i = 0 TO outputs.Length - 1
+FOR i = 0 TO outputs.Count - 1
     PRINT "Result "; i; ": "; outputs.Get(i)
 NEXT i
 ```
@@ -962,33 +948,26 @@ SUB ProcessIndex(i AS INTEGER)
 END SUB
 
 ' Process indices 0..99 in parallel
-Viper.Threads.Parallel.For(0, 100, ADDR_OF ProcessIndex)
+Viper.Threads.Parallel.For(0, 100, ADDRESSOF ProcessIndex)
 ```
 
-### Invoke Example
+### Invoke Example (Zia)
 
-```basic
-SUB TaskA()
-    PRINT "Task A running"
-END SUB
+```rust
+func taskA() {}
+func taskB() {}
+func taskC() {}
 
-SUB TaskB()
-    PRINT "Task B running"
-END SUB
-
-SUB TaskC()
-    PRINT "Task C running"
-END SUB
-
-' Run all three tasks concurrently
-DIM tasks AS OBJECT = Viper.Collections.Seq.New()
-tasks.Push(ADDR_OF TaskA)
-tasks.Push(ADDR_OF TaskB)
-tasks.Push(ADDR_OF TaskC)
-
-Viper.Threads.Parallel.Invoke(tasks)
-' All tasks completed when Invoke returns
+var tasks = Viper.Collections.Seq.New();
+tasks.Push(&taskA);
+tasks.Push(&taskB);
+tasks.Push(&taskC);
+Viper.Threads.Parallel.Invoke(tasks);
 ```
+
+`Invoke` returns after every task finishes. BASIC can pass `ADDRESSOF` directly to `For`,
+`ForEach`, and `Map`, but the current frontend cannot place an `ADDRESSOF` value in a `Seq`;
+therefore `Invoke` and `InvokePool` are not currently callable from BASIC source.
 
 ### Custom Thread Pool
 
@@ -997,7 +976,7 @@ Viper.Threads.Parallel.Invoke(tasks)
 DIM pool AS OBJECT = Viper.Threads.Pool.New(4)
 
 ' Use custom pool for parallel operations
-Viper.Threads.Parallel.ForEachPool(items, ADDR_OF Process, pool)
+Viper.Threads.Parallel.ForEachPool(items, ADDRESSOF Process, pool)
 
 ' Shut down pool when done
 pool.Shutdown()
@@ -1066,7 +1045,7 @@ DIM token AS OBJECT = Viper.Threads.CancelToken.New()
 
 ' Pass to a long-running operation
 SUB ProcessItems(items AS OBJECT, cancel AS OBJECT)
-    FOR i = 0 TO items.Length - 1
+    FOR i = 0 TO items.Count - 1
         ' Check for cancellation periodically
         IF cancel.IsCancelled THEN
             PRINT "Operation cancelled at item "; i
@@ -1081,7 +1060,7 @@ token.Cancel()
 
 ' Linked tokens for hierarchical cancellation
 DIM parentToken AS OBJECT = Viper.Threads.CancelToken.New()
-DIM childToken AS OBJECT = parentToken.Linked()
+DIM childToken AS OBJECT = Viper.Threads.CancelToken.Linked(parentToken)
 
 parentToken.Cancel()
 PRINT childToken.IsCancelled  ' Output: 1 (true - parent was cancelled)
@@ -1142,7 +1121,7 @@ SUB OnKeystroke(key AS STRING)
 END SUB
 
 ' In the main loop
-IF debounce.get_IsReady() AND debounce.get_SignalCount() > 0 THEN
+IF debounce.IsReady AND debounce.SignalCount > 0 THEN
     ' User stopped typing for 300ms - perform search
     PerformSearch()
     debounce.Reset()
@@ -1204,12 +1183,12 @@ SUB OnMouseMove(x AS INTEGER, y AS INTEGER)
 END SUB
 
 ' Check without consuming
-IF throttle.get_CanProceed() THEN
+IF throttle.CanProceed THEN
     PRINT "Ready for next operation"
 END IF
 
-PRINT "Operations performed: "; throttle.get_Count()
-PRINT "Time until next allowed: "; throttle.get_RemainingMs(); "ms"
+PRINT "Operations performed: "; throttle.Count
+PRINT "Time until next allowed: "; throttle.RemainingMs; "ms"
 ```
 
 ### Debouncer vs Throttler
@@ -1293,7 +1272,7 @@ PRINT sched.Pending  ' Output: 2
 ' Poll for all due tasks in main loop
 DO
     DIM due AS OBJECT = sched.Poll()
-    FOR i = 0 TO due.Length - 1
+    FOR i = 0 TO due.Count - 1
         DIM taskName AS STRING = due.Get(i)
         SELECT CASE taskName
             CASE "save": DoSave()
@@ -1363,7 +1342,7 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Length`     | Integer | Number of key-value pairs in the map   |
+| `Count`      | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | Returns true if the map has no entries |
 
 ### Methods
@@ -1407,7 +1386,7 @@ func start() {
     // Set key-value pairs (values must be objects, use Box)
     m.Set("name", Box.Str("Alice"));
     m.Set("age", Box.I64(30));
-    Say("Len: " + Fmt.Int(m.get_Length()));
+    Say("Count: " + Fmt.Int(m.get_Count()));
 
     // Get values
     Say("name: " + Box.ToStr(m.Get("name")));
@@ -1424,7 +1403,7 @@ func start() {
 
     // Clear
     m.Clear();
-    Say("Len after Clear: " + Fmt.Int(m.get_Length()));
+    Say("Count after Clear: " + Fmt.Int(m.get_Count()));
 }
 ```
 
@@ -1437,7 +1416,7 @@ PRINT "Empty: "; m.IsEmpty
 ' Set key-value pairs (values are objects, use Box)
 m.Set("name", Viper.Core.Box.Str("Alice"))
 m.Set("age", Viper.Core.Box.I64(30))
-PRINT "Len: "; m.Length
+PRINT "Count: "; m.Count
 
 ' Get values - use static call form for obj-returning methods
 DIM nameVal AS OBJECT = Viper.Threads.ConcurrentMap.Get(m, "name")
@@ -1455,7 +1434,7 @@ PRINT "SetIfMissing name: "; m.SetIfMissing("name", Viper.Core.Box.Str("Bob"))
 ' Remove and Clear
 PRINT "Remove age: "; m.Remove("age")
 m.Clear()
-PRINT "Len after Clear: "; m.Length
+PRINT "Count after Clear: "; m.Count
 ```
 
 ---
@@ -1471,7 +1450,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 
 | Property  | Type                   | Description                              |
 |-----------|------------------------|------------------------------------------|
-| `Length`     | `Integer` (read-only)  | Approximate number of elements           |
+| `Count`      | `Integer` (read-only)  | Approximate number of elements           |
 | `IsEmpty` | `Boolean` (read-only)  | True if the queue is approximately empty |
 | `IsClosed` | `Boolean` (read-only) | True after `Close()` has been called     |
 
@@ -1517,7 +1496,7 @@ func start() {
     q.Enqueue(Box.I64(10));
     q.Enqueue(Box.I64(20));
     q.Enqueue(Box.I64(30));
-    Say("Len: " + Fmt.Int(q.get_Length()));
+    Say("Count: " + Fmt.Int(q.get_Count()));
 
     // Peek (non-destructive)
     Say("Peek: " + Fmt.Int(Box.ToI64(q.Peek())));
@@ -1538,7 +1517,7 @@ func start() {
     // Clear
     q.Enqueue(Box.I64(99));
     q.Clear();
-    Say("Len after clear: " + Fmt.Int(q.get_Length()));
+    Say("Count after clear: " + Fmt.Int(q.get_Count()));
 }
 ```
 
@@ -1552,7 +1531,7 @@ PRINT "Empty: "; q.IsEmpty
 q.Enqueue(Viper.Core.Box.I64(10))
 q.Enqueue(Viper.Core.Box.I64(20))
 q.Enqueue(Viper.Core.Box.I64(30))
-PRINT "Len: "; q.Length
+PRINT "Count: "; q.Count
 
 ' Peek (non-destructive)
 PRINT "Peek: "; Viper.Core.Box.ToI64(q.Peek())
@@ -1573,7 +1552,7 @@ PRINT "Empty after all: "; q.IsEmpty
 ' Clear
 q.Enqueue(Viper.Core.Box.I64(99))
 q.Clear()
-PRINT "Len after clear: "; q.Length
+PRINT "Count after clear: "; q.Count
 ```
 
 ---
@@ -1607,7 +1586,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 | Property   | Type                   | Description                           |
 |------------|------------------------|---------------------------------------|
-| `Length`      | `Integer` (read-only)  | Number of items currently in channel  |
+| `Count`       | `Integer` (read-only)  | Number of items currently in channel  |
 | `Capacity` | `Integer` (read-only)  | Channel capacity (0 for synchronous)  |
 | `IsClosed` | `Boolean` (read-only)  | True if the channel has been closed   |
 | `IsEmpty`  | `Boolean` (read-only)  | True if the channel contains no items |
@@ -1645,7 +1624,7 @@ func start() {
     ch.Send(Box.I64(1));
     ch.Send(Box.I64(2));
     ch.Send(Box.I64(3));
-    Say("Len: " + Fmt.Int(ch.get_Length()));       // 3
+    Say("Count: " + Fmt.Int(ch.get_Count()));     // 3
 
     // Non-blocking send (returns false if full or closed)
     Say("TrySend: " + Fmt.Bool(ch.TrySend(Box.I64(4))));  // true
@@ -1667,10 +1646,10 @@ func start() {
 
 ```basic
 ' Bounded channel with capacity 16
-DIM ch AS OBJECT = Viper.Threads.Channel.New(16)
+DIM ch AS Viper.Threads.Channel = Viper.Threads.Channel.New(16)
 
 ' Producer: send items
-SUB Producer(channel AS PTR)
+SUB Producer(channel AS Viper.Threads.Channel)
     DIM i AS INTEGER
     FOR i = 1 TO 10
         channel.Send(Viper.Core.Box.I64(i))
@@ -1679,10 +1658,10 @@ SUB Producer(channel AS PTR)
 END SUB
 
 ' Consumer: receive until closed and empty
-SUB Consumer(channel AS PTR)
+SUB Consumer(channel AS Viper.Threads.Channel)
     DO
         DIM item AS OBJECT = channel.Recv()
-        IF item = NULL THEN EXIT DO   ' closed and drained
+        IF Viper.Core.Object.RefEquals(item, NOTHING) THEN EXIT DO   ' closed and drained
         PRINT "Received: "; Viper.Core.Box.ToI64(item)
     LOOP
 END SUB
@@ -1692,18 +1671,18 @@ DIM i AS INTEGER
 FOR i = 1 TO 5
     ch.Send(Viper.Core.Box.I64(i * 10))
 NEXT i
-PRINT "Len: "; ch.Length     ' Output: 5
+PRINT "Count: "; ch.Count     ' Output: 5
 PRINT "IsFull: "; ch.IsFull  ' Output: 0 (cap 16, only 5 items)
 
 ' Non-blocking receive
-DIM item AS OBJECT = ch.TryRecvOption()
+DIM item AS Viper.Option = ch.TryRecvOption()
 IF item.IsSome THEN
     PRINT "TryRecvOption: "; Viper.Core.Box.ToI64(item.Unwrap())  ' Output: 10
 END IF
 
 ' Timeout-based receive (100ms)
 DIM timed AS OBJECT = ch.RecvFor(100)
-IF timed <> NULL THEN
+IF NOT Viper.Core.Object.RefEquals(timed, NOTHING) THEN
     PRINT "Got: "; Viper.Core.Box.ToI64(timed)
 ELSE
     PRINT "Timed out"

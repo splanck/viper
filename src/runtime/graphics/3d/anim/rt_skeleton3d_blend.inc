@@ -264,8 +264,9 @@ void rt_anim_blend3d_update(void *obj, double dt) {
      *   local_transforms                  — final composed matrices (written at the end) */
     for (int32_t i = 0; i < bc; i++) {
         float *bind_trs = &b->temp_state_local[i * 16];
-        mat4f_decompose_trs(
-            skel->bones[i].bind_pose_local, &bind_trs[0], &bind_trs[3], &bind_trs[7]);
+        memcpy(&bind_trs[0], skel->bones[i].bind_pos, 3 * sizeof(float));
+        memcpy(&bind_trs[3], skel->bones[i].bind_rot, 4 * sizeof(float));
+        memcpy(&bind_trs[7], skel->bones[i].bind_scl, 3 * sizeof(float));
         memcpy(&b->blend_acc_trs[i * 16], bind_trs, 10 * sizeof(float));
     }
 

@@ -811,9 +811,11 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
                                  double radius,
                                  const double *delta,
                                  const rt_body3d *ignore_body,
+                                 double sub_dt,
                                  double *out_t,
                                  double *out_normal) {
-    rt_query_hit3d best_hit = {0};
+    double best_toi = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
     int found = 0;
     double max_distance;
     void *sphere_collider;
@@ -827,16 +829,26 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
     if (!sphere_collider)
         return 0;
 
-    /* Direct body iteration: CCD targets are the (few, large) static and
-     * kinematic bodies whose poses are stable for the whole step, so the
-     * cached query broadphase — which is invalidated as dynamic bodies
+    /* Direct body iteration: CCD targets' poses are read directly each substep,
+     * so the cached query broadphase — which is invalidated as dynamic bodies
      * integrate — is deliberately not used here. */
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
         rt_query_hit3d hit;
+        double sweep_delta[3];
+        double sweep_len;
+        double toi;
+        int target_is_dynamic;
         if (!body || body == ignore_body)
             continue;
-        if (body->motion_mode == PH3D_MODE_DYNAMIC)
+        target_is_dynamic = body->motion_mode == PH3D_MODE_DYNAMIC;
+        /* Dynamic-vs-dynamic pairs sweep with the RELATIVE displacement (the
+         * target keeps moving during the substep) — but only when at least one
+         * side opted into CCD, so fast projectiles stop tunneling through fast
+         * targets without taxing ordinary pairs. */
+        if (target_is_dynamic && !(ignore_body && ignore_body->use_ccd) && !body->use_ccd)
+            continue;
+        if (target_is_dynamic && body->is_sleeping)
             continue;
         if (!body3d_has_collision_geometry(body))
             continue;
@@ -847,10 +859,19 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
         /* Triggers report overlaps but never block motion. */
         if (body->is_trigger)
             continue;
-        if (!sweep_sphere_against_body(
-                sphere_collider, center, radius, delta, body, max_distance, &hit))
+        vec3_copy(sweep_delta, delta);
+        if (target_is_dynamic && isfinite(sub_dt) && sub_dt > 0.0) {
+            sweep_delta[0] -= body->velocity[0] * sub_dt;
+            sweep_delta[1] -= body->velocity[1] * sub_dt;
+            sweep_delta[2] -= body->velocity[2] * sub_dt;
+        }
+        sweep_len = vec3_len(sweep_delta);
+        if (!isfinite(sweep_len) || sweep_len <= 1e-12)
             continue;
-        if (!query_sanitize_hit(&hit, max_distance, delta))
+        if (!sweep_sphere_against_body(
+                sphere_collider, center, radius, sweep_delta, body, sweep_len, &hit))
+            continue;
+        if (!query_sanitize_hit(&hit, sweep_len, sweep_delta))
             continue;
         /* Persistent contacts belong to the impulse solver: a body resting on
          * (or rolling along) a surface starts every substep already touching
@@ -859,8 +880,14 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
          * substep start — which is exactly the anti-tunneling case. */
         if (hit.started_penetrating)
             continue;
-        if (!found || hit.distance < best_hit.distance) {
-            best_hit = hit;
+        toi = hit.distance / sweep_len;
+        if (!isfinite(toi) || toi < 0.0 || toi > 1.0)
+            continue;
+        if (!found || toi < best_toi) {
+            best_toi = toi;
+            best_normal[0] = hit.normal[0];
+            best_normal[1] = hit.normal[1];
+            best_normal[2] = hit.normal[2];
             found = 1;
         }
     }
@@ -868,11 +895,11 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
     if (!found)
         return 0;
     if (out_t)
-        *out_t = best_hit.distance / max_distance;
+        *out_t = best_toi;
     if (out_normal) {
-        out_normal[0] = best_hit.normal[0];
-        out_normal[1] = best_hit.normal[1];
-        out_normal[2] = best_hit.normal[2];
+        out_normal[0] = best_normal[0];
+        out_normal[1] = best_normal[1];
+        out_normal[2] = best_normal[2];
     }
     return 1;
 }

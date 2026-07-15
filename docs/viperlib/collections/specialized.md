@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-14
 ---
 
 # Specialized Structures
@@ -66,7 +66,7 @@ intersection, difference), and enumeration.
 
 | Property  | Type    | Description                     |
 |-----------|---------|---------------------------------|
-| `Length`  | Integer | Number of strings in the bag    |
+| `Count`   | Integer | Number of strings in the bag    |
 | `IsEmpty` | Boolean | True if bag contains no strings |
 
 ### Methods
@@ -126,7 +126,7 @@ func start() {
 
 ```basic
 ' Create and populate a bag
-DIM fruits AS OBJECT = NEW Viper.Collections.Bag()
+DIM fruits AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
 fruits.Add("apple")
 fruits.Add("banana")
 fruits.Add("cherry")
@@ -146,32 +146,32 @@ PRINT removed              ' Output: 1 (was removed)
 PRINT fruits.Has("banana") ' Output: 0 (no longer present)
 
 ' Set operations
-DIM bagA AS OBJECT = NEW Viper.Collections.Bag()
+DIM bagA AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
 bagA.Add("a")
 bagA.Add("b")
 bagA.Add("c")
 
-DIM bagB AS OBJECT = NEW Viper.Collections.Bag()
+DIM bagB AS Viper.Collections.Bag = NEW Viper.Collections.Bag()
 bagB.Add("b")
 bagB.Add("c")
 bagB.Add("d")
 
 ' Union: elements in either bag
-DIM merged AS OBJECT = bagA.Union(bagB)
+DIM merged AS Viper.Collections.Bag = bagA.Union(bagB)
 PRINT merged.Count           ' Output: 4 (a, b, c, d)
 
 ' Intersection: elements in both bags
-DIM common AS OBJECT = bagA.Intersect(bagB)
+DIM common AS Viper.Collections.Bag = bagA.Intersect(bagB)
 PRINT common.Count           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
-DIM diff AS OBJECT = bagA.Diff(bagB)
+DIM diff AS Viper.Collections.Bag = bagA.Diff(bagB)
 PRINT diff.Count             ' Output: 1 (a only)
 
 ' Enumerate all elements
-DIM items AS OBJECT = fruits.Items()
-FOR i AS INTEGER = 0 TO items.Count - 1
-    PRINT items.Get(i)
+DIM items AS Viper.Collections.Seq = fruits.Items()
+FOR i = 0 TO items.Count - 1
+    PRINT Viper.Collections.Seq.GetStr(items, i)
 NEXT
 ```
 
@@ -319,7 +319,7 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 | Property  | Type    | Description                             |
 |-----------|---------|-----------------------------------------|
 | `IsEmpty` | Boolean | True if the trie has no entries         |
-| `Length`  | Integer | Number of key-value pairs in the trie   |
+| `Count`   | Integer | Number of key-value pairs in the trie   |
 
 ### Methods
 

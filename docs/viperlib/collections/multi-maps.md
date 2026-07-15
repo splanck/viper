@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Specialized Maps
@@ -23,7 +23,7 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 
 | Property  | Type    | Description                          |
 |-----------|---------|--------------------------------------|
-| `Length`     | Integer | Number of key-value pairs in the map |
+| `Count`      | Integer | Number of key-value pairs in the map |
 | `IsEmpty` | Boolean | True if the map has no entries       |
 
 ### Methods
@@ -134,7 +134,7 @@ stores a list of values for each key.
 |------------|---------|-----------------------------------------------|
 | `IsEmpty`  | Boolean | True if the map has no entries                |
 | `KeyCount` | Integer | Number of distinct keys                       |
-| `Length`      | Integer | Total number of values across all keys        |
+| `Count`       | Integer | Total number of values across all keys        |
 
 ### Methods
 
@@ -151,7 +151,7 @@ stores a list of values for each key.
 
 ### Notes
 
-- `Length` is the *total* number of values across all keys, not the number of distinct keys
+- `Count` is the *total* number of values across all keys, not the number of distinct keys
 - `KeyCount` gives the number of distinct keys
 - `Get` returns an empty Seq (not null) if the key does not exist
 - `Get` returns an owning snapshot Seq; values remain retained by the snapshot until it is released
@@ -159,6 +159,8 @@ stores a list of values for each key.
 - String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 - `Put` remains available as a compatibility alias for `Add`.
+- The current registry types `Get()` as `Any` even though the returned object is a `Seq`; in Zia,
+  use static `Seq` operations on that result rather than instance-property syntax.
 
 ### Zia Example
 
@@ -185,7 +187,7 @@ func start() {
 
     // Get all values for a key
     var colors = mm.Get("color");
-    SayInt(colors.Count);                          // 3
+    SayInt(Seq.get_Count(colors));                 // 3
     Say(Box.ToStr(Seq.Get(colors, 0)));          // red
     Say(Box.ToStr(Seq.Get(colors, 1)));          // green
     Say(Box.ToStr(Seq.Get(colors, 2)));          // blue
@@ -274,7 +276,7 @@ ranking operations for counting occurrences.
 | Property  | Type    | Description                                |
 |-----------|---------|--------------------------------------------|
 | `IsEmpty` | Boolean | True if the map has no entries             |
-| `Length`     | Integer | Number of distinct keys in the map         |
+| `Count`      | Integer | Number of distinct keys in the map         |
 | `Total`   | Integer | Sum of all counts across all keys          |
 
 ### Methods
@@ -312,7 +314,7 @@ bind Viper.Terminal;
 bind Viper.Text.Fmt as Fmt;
 
 func start() {
-    var cm = CountMap.New();
+    var cm: CountMap = CountMap.New();
 
     // Count occurrences
     cm.Inc("apple");
@@ -331,7 +333,7 @@ func start() {
     SayInt(cm.Total);              // 2 + 6 + 3 = 11
 
     // Most common
-    var top = cm.MostCommon(2);
+    var top: Seq = cm.MostCommon(2);
     SayInt(top.Count);               // 2
 
     // Decrement removes at zero
@@ -407,7 +409,7 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 
 | Property  | Type    | Description                            |
 |-----------|---------|----------------------------------------|
-| `Length`     | Integer | Number of key-value pairs in the map   |
+| `Count`      | Integer | Number of key-value pairs in the map   |
 | `IsEmpty` | Boolean | True if the map has no entries         |
 
 ### Methods
@@ -515,7 +517,7 @@ value specified at construction time via `Viper.Core.Box`.
 
 | Property | Type    | Description                        |
 |----------|---------|------------------------------------|
-| `Length`    | Integer | Number of key-value pairs in the map |
+| `Count`     | Integer | Number of key-value pairs in the map |
 
 ### Methods
 
@@ -638,7 +640,7 @@ Negative capacities trap.
 |-----------|---------|-------------------------------------------|
 | `Capacity` | Integer | Maximum capacity (fixed at creation)    |
 | `IsEmpty` | Boolean | True if the cache has no entries          |
-| `Length`     | Integer | Number of entries currently in the cache  |
+| `Count`      | Integer | Number of entries currently in the cache  |
 
 ### Methods
 
@@ -775,7 +777,7 @@ A map with weak value references. Values may become NULL when their referent is 
 
 | Property  | Type    | Description                                              |
 |-----------|---------|----------------------------------------------------------|
-| `Length`     | Integer | Number of entries whose weak values are still live       |
+| `Count`      | Integer | Number of entries whose weak values are still live       |
 | `IsEmpty` | Boolean | True if map has no live entries                          |
 
 ### Methods
@@ -795,30 +797,47 @@ A map with weak value references. Values may become NULL when their referent is 
 - **Weak references:** Values are stored without preventing garbage collection. If the only reference to an object is through a WeakMap, it may be collected.
 - **Stale entries:** After a value is collected, `Get()` returns NULL for that key. A live result is promoted to a retained strong reference for the caller. Use `Compact()` to clean up stale entries.
 - **String keys:** Keys are regular strong string references and are compared by full byte length; embedded NUL bytes are part of the key.
-- **Live views:** `Length`, `IsEmpty`, `Has`, and `Keys` expose live weak values only. `Compact()` removes the stale internal slots.
+- **Live views:** `Count`, `IsEmpty`, `Has`, and `Keys` expose live weak values only. `Compact()` removes the stale internal slots.
 - **Runtime values:** Values should be runtime-managed objects or strings so final release can zero the registered weak references.
 
 ### Zia Example
 
-> WeakMap is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module WeakMapDemo;
+
+bind Viper.Collections.WeakMap as WeakMap;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+
+func start() {
+    var cache: WeakMap = WeakMap.New();
+    var value = Box.Str("cached value");
+    cache.Set("key", value);
+    SayBool(cache.Has("key"));
+    SayInt(cache.Count);
+    cache.Remove("key");
+    SayBool(cache.IsEmpty);
+}
+```
 
 ### BASIC Example
 
 ```basic
 ' Create a weak map for caching
-DIM cache AS OBJECT = Viper.Collections.WeakMap.New()
+DIM cache AS Viper.Collections.WeakMap = Viper.Collections.WeakMap.New()
 
-' Store values (weak references)
-DIM obj AS OBJECT = CreateExpensiveObject()
-cache.Set("key1", obj)
-cache.Set("key2", CreateAnotherObject())
+' Keep strong local references while these values are in use.
+DIM first AS OBJECT = Viper.Core.Box.Str("cached one")
+DIM second AS OBJECT = Viper.Core.Box.Str("cached two")
+cache.Set("key1", first)
+cache.Set("key2", second)
 
 PRINT cache.Count      ' Output: 2
 PRINT cache.Has("key1")  ' Output: 1 (true)
 
 ' Get value (may be NULL if collected)
 DIM value AS OBJECT = cache.Get("key1")
-IF value IS NOT NULL THEN
+IF NOT Viper.Core.Object.RefEquals(value, NOTHING) THEN
     PRINT "Cache hit"
 ELSE
     PRINT "Cache miss - object was collected"
@@ -832,9 +851,9 @@ DIM removed AS INTEGER = cache.Compact()
 PRINT "Compacted "; removed; " stale entries"
 
 ' Get all current keys
-DIM keys AS OBJECT = cache.Keys()
+DIM keys AS Viper.Collections.Seq = cache.Keys()
 FOR i = 0 TO keys.Count - 1
-    PRINT keys.Get(i)
+    PRINT Viper.Collections.Seq.GetStr(keys, i)
 NEXT
 
 ' Clear everything
@@ -871,7 +890,7 @@ for gaps. Only occupied indices consume storage.
 
 | Property | Type    | Description                                  |
 |----------|---------|----------------------------------------------|
-| `Length`    | Integer | Number of elements stored (occupied indices) |
+| `Count`     | Integer | Number of elements stored (occupied indices) |
 
 ### Methods
 

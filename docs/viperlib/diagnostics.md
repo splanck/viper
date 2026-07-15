@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-14
 ---
 
 # Diagnostics
@@ -15,7 +15,6 @@ last-verified: 2026-04-09
 - [Viper.Diagnostics](#viperdiagnostics)
 - [Viper.Diagnostics.TrapInfo](#viperdiagnosticstrapinfo)
 - [Viper.Core.Diagnostics](#vipercorediagnostics)
-- [Viper.Debug.Protocol](#viperdebugprotocol)
 - [Viper.Time.Stopwatch](time.md#vipertimestopwatch)
 
 ---
@@ -32,12 +31,18 @@ Read-only runtime diagnostic helpers.
 |--------|-----------|-------------|
 | `CurrentTrap()` | `Option<TrapInfo>()` | Return a snapshot of the current thread's latest trap metadata, or `None` when no trap was recorded |
 
-`CurrentTrap()` is the modern, read-only diagnostics surface for trap metadata.
-It preserves the existing low-level `Viper.Error.*` compatibility hooks while
-giving applications and tools an explicit `Option` result instead of requiring
-them to poll individual mutable trap fields. New code should not mutate trap
-state directly; compiler/runtime interop hooks live under
-`Viper.Runtime.Unsafe`.
+`CurrentTrap()` snapshots the calling thread's most recently recorded trap. It
+returns `None` until that thread has recorded one and does not clear the stored
+metadata after a read. In a normal standalone process, the default trap handler
+terminates before application code can inspect the snapshot; it is chiefly
+useful from a language catch/recovery path or an embedding host with a recovery
+hook.
+
+This is the modern, read-only diagnostics surface. It preserves the existing
+low-level `Viper.Error.*` compatibility hooks while giving applications and
+tools an explicit `Option` result instead of requiring them to poll individual
+mutable trap fields. New code should not mutate trap state directly;
+compiler/runtime interop hooks live under `Viper.Runtime.Unsafe`.
 
 ---
 
@@ -105,8 +110,13 @@ Runtime assertion helpers that terminate execution when a condition fails.
 ### Notes
 
 - An empty message uses a default (e.g., "Assertion failed").
-- Traps print a diagnostic to stderr and terminate the process with exit code 1.
-- `AssertEqNum` uses a relative epsilon for floating-point comparison.
+- With the default trap hook, an unrecovered trap prints its message to stderr
+  and terminates immediately with exit code 1. Language recovery frames and
+  embedder/test hooks may intercept traps instead.
+- `AssertEqNum` accepts exact equality (including equal infinities) and paired
+  NaNs. Otherwise it uses an absolute tolerance below magnitude `1.0` and a
+  relative tolerance at or above it; both tolerances are `1e-9` and comparisons
+  are strict (`<`, not `<=`).
 
 ### Zia Example
 
@@ -137,53 +147,8 @@ Viper.Core.Diagnostics.AssertEq(value, 5, "value mismatch")
 ' Viper.Core.Diagnostics.AssertFail("not implemented")
 ```
 
----
-
-## Viper.Debug.Protocol
-
-Headless debug-session model for IDE debugger integration. The current runtime surface provides a deterministic protocol boundary for launch, breakpoints, stepping, locals, stack frames, events, termination, and crash reporting. It is intentionally separate from the host IDE process so a target crash is represented as an event instead of crashing the IDE.
-
-**Type:** Static utility class plus `Viper.Debug.Protocol.Session` handles
-
-### Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `New()` | `Session()` | Create a debug protocol session |
-| `SetBreakpoint(session, path, line)` | `Void(Object, String, Integer)` | Add a source breakpoint |
-| `ClearBreakpoints(session, path)` | `Void(Object, String)` | Remove breakpoints for one source path |
-| `Launch(session, path, source)` | `Map(Object, String, String)` | Start a headless source session and return the first event |
-| `Continue(session)` | `Map(Object)` | Run until the next breakpoint, exit, or crash |
-| `StepOver(session)` | `Map(Object)` | Advance one source line |
-| `Pause(session)` | `Map(Object)` | Emit a pause event at the current line |
-| `Terminate(session)` | `Map(Object)` | End the session |
-| `StackFrames(session)` | `Seq(Object)` | Return current stack-frame maps |
-| `Locals(session)` | `Seq(Object)` | Return current local-variable maps |
-| `Events(session)` | `Seq(Object)` | Return session event history |
-| `IsRunning(session)` | `Boolean(Object)` | True while the target is running |
-
-Event maps include `type`, `reason`, `path`, and `line` where relevant. Locals currently report parsed `var`/`let` assignments from the deterministic headless model; future VM-hosted adapters can keep the same command/event shape.
-
-### Zia Example
-
-```rust
-module DebugProtocolDemo;
-
-bind Viper.Terminal;
-
-func start() {
-    var session = Viper.Debug.Protocol.New();
-    Viper.Debug.Protocol.SetBreakpoint(session, "main.zia", 2);
-    var event = Viper.Debug.Protocol.Launch(
-        session, "main.zia", "var a = 1;\nvar b = 2;\n");
-    Say(event.GetStr("type"));
-    Say(event.GetStr("reason"));
-}
-```
-
----
-
 ## See Also
 
 - [Time & Timing](time.md) - `Stopwatch` for performance measurement
 - [Utilities](utilities.md) - `Log` for runtime diagnostics
+- [Debugging Guide](../debugging.md) - debugger adapter protocol and source-level debugging

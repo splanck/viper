@@ -112,11 +112,11 @@ func showMenu() -> Integer {
     Say("2. Load Game");
     Say("3. Options");
     Say("4. Quit");
-    var choice = Ask("Choose (1-4): ");
-    if choice == null {
+    var choice = TryAsk("Choose (1-4): ");
+    if choice.IsNone {
         return 4;
     }
-    return Convert.ToInt64(choice!.Trim());
+    return Convert.ToInt64(choice.UnwrapStr().Trim());
 }
 ```
 
@@ -259,7 +259,7 @@ while i <= 10 {
     i = i + 1;
 }
 Random.Shuffle(deck);  // Shuffle in place
-SayInt(deck.Length);
+SayInt(deck.Count);
 ```
 
 ### Reproducible Randomness
@@ -703,7 +703,7 @@ if scores.has("David") {
 
 var keys = scores.keys();
 var i = 0;
-while i < keys.Length {
+while i < keys.Count {
     var key = keys.GetStr(i);
     Say(key + ": " + Fmt.Int(scores.get(key) ?? 0));
     i = i + 1;
@@ -824,17 +824,18 @@ try {
 ```rust
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
+bind Parse = Viper.Core.Parse;
 
 func getNumber(prompt: String) -> Integer {
     while true {
         Print(prompt);
         var input = InputLine().Trim();
 
-        try {
-            return Convert.ToInt64(input);
-        } catch {
+        if !Parse.IsInt(input) {
             Say("Please enter a valid number.");
+            continue;
         }
+        return Convert.ToInt64(input);
     }
     return 0;
 }
@@ -1280,15 +1281,17 @@ Some standard library patterns appear constantly. Learn these by heart.
 ```rust
 bind Viper.Terminal;
 bind Convert = Viper.Core.Convert;
+bind Parse = Viper.Core.Parse;
 
 func getInt(prompt: String) -> Integer {
     while true {
         Print(prompt);
-        try {
-            return Convert.ToInt64((ReadLine() ?? "").Trim());
-        } catch {
+        var input = TryReadLine();
+        if input.IsNone || !Parse.IsInt(input.UnwrapStr().Trim()) {
             Say("Invalid input. Please enter a number.");
+            continue;
         }
+        return Convert.ToInt64(input.UnwrapStr().Trim());
     }
     return 0;
 }

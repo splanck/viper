@@ -48,10 +48,10 @@ Camera methods validate their receiver as a real `Camera` object; invalid handle
 | `ToScreenY(worldY)`              | `Integer(Integer)`                     | Convert world Y to screen Y                      |
 | `ToWorldX(screenX)`              | `Integer(Integer)`                     | Convert screen X to world X                      |
 | `ToWorldY(screenY)`              | `Integer(Integer)`                     | Convert screen Y to world Y                      |
-| `IsDirty()`                      | `Integer()`                            | Returns 1 if position/zoom/rotation changed since last `ClearDirty` |
-| `ClearDirty()`                   | `Void()`                               | Reset the dirty flag (call after re-rendering)   |
 
-`X` and `Y` are the viewport origin, not the followed target. Use `CenterX`/`CenterY` when you need the world coordinate currently centered in the view. `Follow` and `SetCenter` center the viewport on the provided world position. `SmoothFollow` leaves the dirty flag clear when interpolation and bounds clamping do not change the camera.
+`X` and `Y` are the viewport origin, not the followed target. Use `CenterX`/`CenterY`
+when you need the world coordinate currently centered in the view. `Follow` and
+`SetCenter` center the viewport on the provided world position.
 
 ### Zia Example
 

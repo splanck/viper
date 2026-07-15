@@ -224,7 +224,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Entity** (EN-ti-tee): A general term for an object with identity and behavior. **[Zia]** In older versions of Zia, `entity` was the keyword for class declarations; it has been replaced by `class`. See *Class*.
 
-**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. In Zia: `enum Color { Red, Green, Blue }`. In BASIC: `ENUM Color / RED / GREEN / BLUE / END ENUM`. Variants are integer constants (auto-incrementing from 0 or explicitly assigned). Useful when a variable should only have certain specific values. See [Appendix A](a-zia-reference.md#enums) and [Appendix B](b-basic-reference.md#enums). See also *Type*, *Match*.
+**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. In Zia: `enum Color { Red, Green, Blue }`. In BASIC: `ENUM Color / RED / GREEN / BLUE / END ENUM`. Variants are integer constants (auto-incrementing from 0 or explicitly assigned). Useful when a variable should only have certain specific values. See the canonical [Zia reference](../../zia-reference.md#enums) and [BASIC reference](../../basic-reference.md#enum). See also *Type*, *Match*.
 
 **Environment**: (1) The runtime context where a program executes, including available variables and resources. (2) The development setup including operating system, tools, and configurations.
 

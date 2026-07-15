@@ -27,13 +27,20 @@
 #define RT_ANIMATION3D_MAX_CHANNELS VGFX3D_MAX_SKELETON_BONES
 #define RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL 65536
 
-/// @brief One bone: name, parent index (-1 = root), local bind-pose matrix, and the
-///   precomputed inverse bind-pose used to build the skinning palette.
+/// @brief One bone: name, parent index (-1 = root), local bind-pose matrix, the
+///   precomputed inverse bind-pose used to build the skinning palette, and the
+///   bind pose pre-decomposed into TRS.
+/// @details The decomposed form is what channel sampling actually consumes as its
+///   fallback; caching it at bone creation removes a matrix decomposition (sqrt +
+///   quaternion extraction) per bone per sample per frame from the hot path.
 typedef struct {
     char name[64];
     int32_t parent_index;
     float bind_pose_local[16];
     float inverse_bind[16];
+    float bind_pos[3];
+    float bind_rot[4];
+    float bind_scl[3];
 } vgfx3d_bone_t;
 
 /// @brief One animation keyframe: time plus position/rotation/scale samples, each gated

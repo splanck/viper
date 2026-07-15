@@ -756,7 +756,7 @@ static void test_ccd_prevents_fast_sphere_tunneling() {
     EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(diag_world) >
                     rt_world3d_get_last_ccd_substeps(diag_world),
                 "CCD diagnostics retain unclamped substep demand");
-    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(diag_world) == 64,
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(diag_world) == PH3D_MAX_CCD_SUBSTEPS,
                 "CCD diagnostics report capped substeps");
     EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(diag_world) == 1,
                 "CCD diagnostics count clamp events");
@@ -770,7 +770,7 @@ static void test_ccd_prevents_fast_sphere_tunneling() {
     EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(huge_world) >=
                     rt_world3d_get_last_ccd_substeps(huge_world),
                 "CCD diagnostics stay ordered for saturated extreme speeds");
-    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(huge_world) == 64,
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(huge_world) == PH3D_MAX_CCD_SUBSTEPS,
                 "CCD substeps remain capped for saturated extreme speeds");
     EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(huge_world) == 1,
                 "CCD clamp diagnostics count saturated extreme speeds");
@@ -2694,6 +2694,390 @@ static void test_rotated_box_box_exposes_clipped_manifold() {
 }
 
 /*==========================================================================
+ * Narrowphase correctness probes (2026-07 third review pass)
+ *=========================================================================*/
+
+/// Property probe for the OBB SAT edge-axis depth: translating B along the
+/// reported A->B normal by the reported depth must separate every colliding
+/// rotated-box pair. The pre-fix code left edge-cross penetrations in
+/// |A_i x B_j|-scaled units (systematically underestimated), so pushed-out
+/// pairs stayed overlapping in edge-dominant configurations.
+static void test_obb_edge_axis_depth_resolves_separation() {
+    void *a = rt_body3d_new_aabb(1.0, 0.6, 0.8, 1.0);
+    void *b = rt_body3d_new_aabb(0.9, 0.7, 0.5, 1.0);
+    void *qa = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), 0.7853981633974483);
+    const double axes[4][3] = {
+        {1.0, 0.0, 0.0}, {0.0, 0.0, 1.0}, {0.6, 0.8, 0.0}, {0.577, 0.577, 0.577}};
+    const double offsets[4][3] = {
+        {1.4, 1.0, 0.2}, {0.9, 1.3, 0.6}, {1.6, 0.4, 0.9}, {1.1, 1.1, 1.1}};
+    int colliding_configs = 0;
+    rt_body3d_set_orientation(a, qa);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    for (int ai = 0; ai < 4; ++ai) {
+        for (int oi = 0; oi < 4; ++oi) {
+            void *axis = rt_vec3_new(axes[ai][0], axes[ai][1], axes[ai][2]);
+            void *qb = rt_quat_from_axis_angle(axis, 0.9);
+            double normal[3];
+            double depth = 0.0;
+            double point[3];
+            rt_body3d_set_orientation(b, qb);
+            rt_body3d_set_position(b, offsets[oi][0], offsets[oi][1], offsets[oi][2]);
+            if (!test_collision((rt_body3d *)a,
+                                (rt_body3d *)b,
+                                normal,
+                                &depth,
+                                point,
+                                nullptr,
+                                nullptr,
+                                nullptr,
+                                nullptr))
+                continue;
+            colliding_configs++;
+            {
+                double resolved_normal[3];
+                double resolved_depth = 0.0;
+                double resolved_point[3];
+                rt_body3d_set_position(b,
+                                       offsets[oi][0] + normal[0] * (depth + 1e-7),
+                                       offsets[oi][1] + normal[1] * (depth + 1e-7),
+                                       offsets[oi][2] + normal[2] * (depth + 1e-7));
+                int still = test_collision((rt_body3d *)a,
+                                           (rt_body3d *)b,
+                                           resolved_normal,
+                                           &resolved_depth,
+                                           resolved_point,
+                                           nullptr,
+                                           nullptr,
+                                           nullptr,
+                                           nullptr);
+                EXPECT_TRUE(!still || resolved_depth <= 1e-6,
+                            "OBB SAT: translating by reported depth along the normal separates");
+            }
+        }
+    }
+    EXPECT_TRUE(colliding_configs >= 3, "OBB SAT probe exercised overlapping configurations");
+}
+
+/// An upside-down (180-degree rolled) box resting on a flat heightfield must still
+/// produce a contact: the pre-fix probe sampled the box's LOCAL -Y face, which sits
+/// on top after the roll, so the box sank a full height into terrain contact-free.
+static void test_heightfield_box_upside_down_still_contacts() {
+    void *pixels = rt_pixels_new(3, 3);
+    for (int64_t z = 0; z < 3; ++z) {
+        for (int64_t x = 0; x < 3; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *box = rt_body3d_new_aabb(0.3, 0.2, 0.3, 1.0);
+    void *flip = rt_quat_from_axis_angle(rt_vec3_new(1.0, 0.0, 0.0), TEST_PI);
+    double normal[3];
+    double depth = 0.0;
+    double point[3];
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_position(terrain_body, 0.0, 0.0, 0.0);
+    rt_body3d_set_orientation(box, flip);
+    rt_body3d_set_position(box, 0.0, 0.15, 0.0);
+    EXPECT_TRUE(test_collision((rt_body3d *)terrain_body,
+                               (rt_body3d *)box,
+                               normal,
+                               &depth,
+                               point,
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr) != 0,
+                "heightfield: upside-down box still generates a contact");
+    EXPECT_TRUE(depth > 0.02 && depth < 0.09, "heightfield: upside-down box depth is the true 0.05");
+    EXPECT_TRUE(normal[1] > 0.9, "heightfield: upside-down box contact normal points up");
+}
+
+/// On a 45-degree ramp the vertical probe penetration must be projected onto the
+/// surface normal (factor cos ~ 0.707); the pre-fix depth used the raw vertical
+/// measure, over-ejecting bodies on steep slopes.
+static void test_heightfield_slope_depth_projected_onto_normal() {
+    void *pixels = rt_pixels_new(2, 2);
+    rt_pixels_set(pixels, 0, 0, encode_height16(0));
+    rt_pixels_set(pixels, 1, 0, encode_height16(0));
+    rt_pixels_set(pixels, 0, 1, encode_height16(65535));
+    rt_pixels_set(pixels, 1, 1, encode_height16(65535));
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *sphere = rt_body3d_new_sphere(0.3, 1.0);
+    double normal[3];
+    double depth = 0.0;
+    double point[3];
+    rt_body3d_set_collider(terrain_body, heightfield);
+    /* Field spans x,z in [-0.5, 0.5]; surface height at z=0 is 0.5 (mid-ramp).
+     * Sphere bottom at 0.45 -> vertical penetration 0.05, slope cos = 1/sqrt(2). */
+    rt_body3d_set_position(sphere, 0.0, 0.75, 0.0);
+    EXPECT_TRUE(test_collision((rt_body3d *)terrain_body,
+                               (rt_body3d *)sphere,
+                               normal,
+                               &depth,
+                               point,
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr) != 0,
+                "heightfield slope: sphere contact detected");
+    EXPECT_TRUE(depth > 0.02 && depth < 0.045,
+                "heightfield slope: depth projected onto the 45-degree normal (~0.035, not 0.05)");
+    EXPECT_TRUE(normal[1] > 0.6 && normal[1] < 0.8, "heightfield slope: normal tilted ~45 degrees");
+}
+
+/// Friction must be direction-independent: a box sliding diagonally decelerates at
+/// the same rate as one sliding along a tangent axis. The pre-fix per-axis clamps
+/// formed a SQUARE cone that granted diagonal sliders up to sqrt(2)x friction.
+static void test_friction_is_direction_independent() {
+    void *world = rt_world3d_new(0.0, -10.0, 0.0);
+    void *ground = rt_body3d_new_aabb(80.0, 1.0, 80.0, 0.0);
+    void *axis_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    void *diag_box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    const double speed = 4.0;
+    const double inv_sqrt2 = 0.7071067811865476;
+    rt_body3d_set_position(ground, 0.0, -1.0, 0.0);
+    rt_body3d_set_friction(ground, 1.0);
+    rt_body3d_set_position(axis_box, -30.0, 0.5, -30.0);
+    rt_body3d_set_friction(axis_box, 1.0);
+    rt_body3d_set_velocity(axis_box, speed, 0.0, 0.0);
+    rt_body3d_set_position(diag_box, 30.0, 0.5, 30.0);
+    rt_body3d_set_friction(diag_box, 1.0);
+    rt_body3d_set_velocity(diag_box, speed * inv_sqrt2, 0.0, speed * inv_sqrt2);
+    rt_world3d_add(world, ground);
+    rt_world3d_add(world, axis_box);
+    rt_world3d_add(world, diag_box);
+    for (int i = 0; i < 90; ++i)
+        rt_world3d_step(world, 1.0 / 60.0);
+    {
+        void *axis_pos = rt_body3d_get_position(axis_box);
+        void *diag_pos = rt_body3d_get_position(diag_box);
+        double ax = rt_vec3_x(axis_pos) + 30.0;
+        double dx = rt_vec3_x(diag_pos) - 30.0;
+        double dz = rt_vec3_z(diag_pos) - 30.0;
+        double axis_dist = fabs(ax);
+        double diag_dist = sqrt(dx * dx + dz * dz);
+        EXPECT_TRUE(axis_dist > 0.05, "friction cone: axis slider actually moved");
+        EXPECT_NEAR(diag_dist,
+                    axis_dist,
+                    axis_dist * 0.05 + 0.01,
+                    "friction cone: diagonal slide distance matches axis slide");
+    }
+}
+
+/// A long horizontal capsule lying across a narrow one-cell ridge must contact it:
+/// the pre-fix path probed a fixed 5 samples along the axis, so a ridge between
+/// samples was skipped entirely.
+static void test_long_capsule_catches_narrow_ridge() {
+    void *pixels = rt_pixels_new(25, 3);
+    for (int64_t z = 0; z < 3; ++z) {
+        for (int64_t x = 0; x < 25; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    for (int64_t z = 0; z < 3; ++z)
+        rt_pixels_set(pixels, 14, z, encode_height16(65535));
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *capsule = rt_body3d_new_capsule(0.2, 20.0, 1.0);
+    void *lie = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), TEST_PI * 0.5);
+    double normal[3];
+    double depth = 0.0;
+    double point[3];
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_orientation(capsule, lie);
+    /* Ridge column ix=14 -> local x = 2; capsule center x=0.4 keeps the old five
+     * fixed samples (spaced 4.9 apart) outside the penetrating window around the
+     * ridge peak while adaptive radius/2 spacing lands several samples in it. */
+    rt_body3d_set_position(capsule, 0.4, 1.1, 0.0);
+    EXPECT_TRUE(test_collision((rt_body3d *)terrain_body,
+                               (rt_body3d *)capsule,
+                               normal,
+                               &depth,
+                               point,
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr) != 0,
+                "heightfield: long capsule contacts a one-cell ridge between coarse samples");
+    EXPECT_TRUE(depth > 0.005, "heightfield: ridge contact has usable depth");
+}
+
+/// A box resting on a flat heightfield must expose a multi-point support manifold:
+/// the heightfield narrow phase reports one deepest point, and pre-fix nothing
+/// expanded it, so crates on terrain balanced (and rocked) on a single contact.
+static void test_box_on_heightfield_gets_support_manifold() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *pixels = rt_pixels_new(5, 5);
+    for (int64_t z = 0; z < 5; ++z) {
+        for (int64_t x = 0; x < 5; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *box = rt_body3d_new_aabb(0.4, 0.2, 0.4, 1.0);
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_position(box, 0.0, 0.17, 0.0);
+    rt_world3d_add(world, terrain_body);
+    rt_world3d_add(world, box);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "heightfield support manifold: contact reported");
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        int64_t contact_count = rt_collision_event3d_get_contact_count(event);
+        EXPECT_TRUE(contact_count >= 3,
+                    "heightfield support manifold: box rests on a multi-point patch");
+    }
+}
+
+/// A box resting on a flat triangle-mesh floor must likewise get a support patch.
+static void test_box_on_mesh_floor_gets_support_manifold() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, -3.0, 0.0, -3.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, 0.0, -3.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, 0.0, 3.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, -3.0, 0.0, 3.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 1);
+    rt_mesh3d_add_triangle(mesh, 0, 3, 2);
+    void *mesh_collider = rt_collider3d_new_mesh(mesh);
+    void *floor_body = rt_body3d_new(0.0);
+    void *box = rt_body3d_new_aabb(0.4, 0.2, 0.4, 1.0);
+    rt_body3d_set_collider(floor_body, mesh_collider);
+    rt_body3d_set_position(box, 0.5, 0.17, 0.5);
+    rt_world3d_add(world, floor_body);
+    rt_world3d_add(world, box);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "mesh support manifold: contact reported");
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        int64_t contact_count = rt_collision_event3d_get_contact_count(event);
+        EXPECT_TRUE(contact_count >= 3,
+                    "mesh support manifold: box rests on a multi-point patch");
+    }
+}
+
+/// Collider-backed capsules must keep their lengthwise two-point manifold on
+/// heightfields (the body shape cache mirrors the capsule collider).
+static void test_capsule_on_heightfield_gets_lengthwise_manifold() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *pixels = rt_pixels_new(9, 3);
+    for (int64_t z = 0; z < 3; ++z) {
+        for (int64_t x = 0; x < 9; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    void *capsule = rt_body3d_new_capsule(0.25, 3.0, 1.0);
+    void *lie = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), TEST_PI * 0.5);
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_body3d_set_orientation(capsule, lie);
+    rt_body3d_set_position(capsule, 0.0, 0.2, 0.0);
+    rt_world3d_add(world, terrain_body);
+    rt_world3d_add(world, capsule);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "capsule heightfield manifold: contact reported");
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        int64_t contact_count = rt_collision_event3d_get_contact_count(event);
+        EXPECT_TRUE(contact_count >= 2,
+                    "capsule heightfield manifold: lengthwise rest has two points");
+    }
+}
+
+/// Long rays across large heightfields must not be cut off by an iteration cap:
+/// the pre-fix march stopped after 2048 half-cell steps (~1024 cells) and
+/// reported a MISS even though terrain lay ahead.
+static void test_heightfield_long_raycast_hits_distant_terrain() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *pixels = rt_pixels_new(4097, 2);
+    for (int64_t z = 0; z < 2; ++z) {
+        for (int64_t x = 0; x < 4097; ++x)
+            rt_pixels_set(pixels, x, z, encode_height16(0));
+    }
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    void *terrain_body = rt_body3d_new(0.0);
+    rt_body3d_set_collider(terrain_body, heightfield);
+    rt_world3d_add(world, terrain_body);
+    {
+        double len = sqrt(2000.0 * 2000.0 + 4.0 * 4.0);
+        void *origin = rt_vec3_new(-1500.0, 4.0, 0.0);
+        void *dir = rt_vec3_new(2000.0 / len, -4.0 / len, 0.0);
+        void *hit = rt_world3d_raycast(world, origin, dir, 3000.0, 1);
+        EXPECT_TRUE(hit != nullptr, "heightfield raycast: distant ground hit is found");
+        if (hit) {
+            void *point = rt_physics_hit3d_get_point(hit);
+            EXPECT_NEAR(rt_vec3_x(point), 500.0, 1.5, "heightfield raycast: hit lands at x=500");
+            EXPECT_NEAR(rt_vec3_y(point), 0.0, 0.05, "heightfield raycast: hit lands on the ground");
+        }
+    }
+}
+
+/// Two fast CCD spheres approaching head-on must not pass through each other:
+/// the pre-fix sweep only tested static/kinematic targets, so dynamic-vs-dynamic
+/// pairs tunneled whenever the relative displacement per substep exceeded their
+/// combined radii.
+static void test_ccd_dynamic_pair_does_not_tunnel() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *left = rt_body3d_new_sphere(0.5, 1.0);
+    void *right = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(left, -20.0, 0.0, 0.0);
+    rt_body3d_set_position(right, 20.0, 0.0, 0.0);
+    rt_body3d_set_velocity(left, 400.0, 0.0, 0.0);
+    rt_body3d_set_velocity(right, -400.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(left, 1);
+    rt_body3d_set_use_ccd(right, 1);
+    rt_world3d_add(world, left);
+    rt_world3d_add(world, right);
+    for (int i = 0; i < 12; ++i)
+        rt_world3d_step(world, 1.0 / 60.0);
+    {
+        void *left_pos = rt_body3d_get_position(left);
+        void *right_pos = rt_body3d_get_position(right);
+        EXPECT_TRUE(rt_vec3_x(left_pos) < rt_vec3_x(right_pos) + 0.5,
+                    "dynamic CCD: head-on spheres did not swap sides (no tunneling)");
+    }
+}
+
+/// A box dropped tilted onto flat ground must settle without residual penetration:
+/// the angular positional correction lets it rotate out of corner overlap instead
+/// of only translating along the deepest contact normal.
+static void test_tilted_box_settles_without_penetration() {
+    void *world = rt_world3d_new(0.0, -10.0, 0.0);
+    void *ground = rt_body3d_new_aabb(20.0, 1.0, 20.0, 0.0);
+    void *box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    void *tilt = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), 0.25);
+    rt_body3d_set_position(ground, 0.0, -1.0, 0.0);
+    rt_body3d_set_orientation(box, tilt);
+    rt_body3d_set_position(box, 0.0, 0.9, 0.0);
+    rt_world3d_add(world, ground);
+    rt_world3d_add(world, box);
+    for (int i = 0; i < 240; ++i)
+        rt_world3d_step(world, 1.0 / 60.0);
+    {
+        double normal[3];
+        double depth = 0.0;
+        double point[3];
+        void *pos = rt_body3d_get_position(box);
+        int overlapping = test_collision((rt_body3d *)ground,
+                                         (rt_body3d *)box,
+                                         normal,
+                                         &depth,
+                                         point,
+                                         nullptr,
+                                         nullptr,
+                                         nullptr,
+                                         nullptr);
+        EXPECT_TRUE(rt_vec3_y(pos) > 0.2 && rt_vec3_y(pos) < 0.8,
+                    "tilted box settles onto the ground (not ejected, not sunk)");
+        EXPECT_TRUE(!overlapping || depth < 0.02,
+                    "tilted box settles without residual penetration");
+    }
+}
+
+/*==========================================================================
  * Trigger3D tests
  *=========================================================================*/
 
@@ -3841,6 +4225,19 @@ int main() {
     test_ccd_substep_contact_generates_frame_event();
     test_collision_event_surface_and_trigger_flag();
     test_rotated_box_box_exposes_clipped_manifold();
+
+    /* Narrowphase correctness probes (third review pass) */
+    test_obb_edge_axis_depth_resolves_separation();
+    test_heightfield_box_upside_down_still_contacts();
+    test_heightfield_slope_depth_projected_onto_normal();
+    test_friction_is_direction_independent();
+    test_long_capsule_catches_narrow_ridge();
+    test_heightfield_long_raycast_hits_distant_terrain();
+    test_box_on_heightfield_gets_support_manifold();
+    test_box_on_mesh_floor_gets_support_manifold();
+    test_capsule_on_heightfield_gets_lengthwise_manifold();
+    test_ccd_dynamic_pair_does_not_tunnel();
+    test_tilted_box_settles_without_penetration();
 
     /* Joint tests */
     test_distance_joint_create();

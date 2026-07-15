@@ -143,15 +143,38 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     return isfinite(dist) ? dist : FLT_MAX;
 }
 
-/// @brief Admissible A* heuristic for the current navigation graph.
+/// @brief A* heuristic for the current navigation graph.
 /// @details Authored off-mesh links can jump between remote polygons for less than their centroid
-///   separation, so Euclidean distance is not a lower bound once any such edge exists. Falling
-///   back to zero turns the search into Dijkstra while preserving optimality. Triangle-only
-///   navmeshes retain the faster Euclidean heuristic.
+///   separation, so Euclidean distance is not a lower bound once any such edge exists. In the
+///   default strict mode, falling back to zero turns the search into Dijkstra while preserving
+///   optimality; NavMesh3D.SetHeuristicMode(1) keeps the Euclidean estimate anyway (Recast-style:
+///   much faster on big link-bearing meshes, with possibly slightly suboptimal paths around link
+///   shortcuts). Triangle-only navmeshes always use the Euclidean heuristic.
 static float navmesh3d_astar_heuristic(const rt_navmesh3d *nm, int32_t from, int32_t goal) {
-    if (!nm || nm->offmesh_link_count > 0)
+    if (!nm)
+        return 0.0f;
+    if (nm->offmesh_link_count > 0 && nm->heuristic_mode == 0)
         return 0.0f;
     return centroid_dist(nm, from, goal);
+}
+
+/// @brief `NavMesh3D.SetHeuristicMode(mode)` — pathfinding heuristic policy.
+/// @details Mode 0 (default, "strict") guarantees optimal paths: any off-mesh link
+///   disables the Euclidean estimate (Dijkstra search). Mode 1 ("euclidean") keeps
+///   the straight-line estimate even with links — dramatically faster on large
+///   navmeshes, at the cost of possibly non-optimal routes where a link shortcut
+///   outperforms straight-line distance. Out-of-range modes clamp to 0/1.
+void rt_navmesh3d_set_heuristic_mode(void *navmesh, int64_t mode) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(navmesh, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm)
+        return;
+    nm->heuristic_mode = mode != 0 ? 1 : 0;
+}
+
+/// @brief `NavMesh3D.HeuristicMode` — current pathfinding heuristic policy (0 or 1).
+int64_t rt_navmesh3d_get_heuristic_mode(void *navmesh) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(navmesh, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? (int64_t)nm->heuristic_mode : 0;
 }
 
 /// @brief A* edge cost between adjacent triangles @p from and @p to: their centroid distance

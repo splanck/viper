@@ -101,7 +101,7 @@ void vec3_set(double *dst, double x, double y, double z) {
 }
 
 /// @brief In-place scalar multiply: `dst *= s`.
-static void vec3_scale_in_place(double *dst, double s) {
+void vec3_scale_in_place(double *dst, double s) {
     dst[0] *= s;
     dst[1] *= s;
     dst[2] *= s;
@@ -190,7 +190,7 @@ static double quat_len_sq(const double *q) {
 ///
 /// Important for stability: numerical drift over many integration steps
 /// gradually denormalizes orientations, which causes geometry to skew.
-static void quat_normalize(double *q) {
+void quat_normalize(double *q) {
     if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
         quat_identity(q);
         return;
@@ -243,7 +243,7 @@ static void quat_from_axis_angle(const double *axis, double angle, double *out) 
 /// Uses the discrete update `q ← Δq * q` where `Δq` is built from
 /// `(angular_velocity / |ω|, |ω| * dt)`. Re-normalizes after each step
 /// to prevent drift. Skipped when angular velocity or `dt` is zero.
-static void quat_integrate(double *orientation, const double *angular_velocity, double dt) {
+void quat_integrate(double *orientation, const double *angular_velocity, double dt) {
     double speed = vec3_len(angular_velocity);
     if (!isfinite(speed) || !isfinite(dt) || speed < 1e-12 || dt <= 0.0)
         return;

@@ -38,7 +38,7 @@ Error: ErrorType at filename.zia:LINE:COLUMN
 | [Type Errors](#type-errors) | Mismatched types, invalid operations, conversion failures |
 | [Name Errors](#name-errors) | Undefined variables, duplicate definitions, scope issues |
 | [Function Errors](#function-errors) | Wrong arguments, missing returns, signature mismatches |
-| [Entity/Interface Errors](#classinterface-errors) | Unimplemented methods, access violations, inheritance issues |
+| [Entity/Interface Errors](#entityinterface-errors) | Unimplemented methods, access violations, inheritance issues |
 | [Runtime Errors](#runtime-errors) | Null access, array bounds, division by zero |
 | [File/IO Errors](#fileio-errors) | Missing files, permission issues, format errors |
 | [Memory Errors](#memory-errors) | Out of memory, stack overflow, resource exhaustion |

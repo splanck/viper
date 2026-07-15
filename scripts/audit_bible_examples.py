@@ -18,7 +18,12 @@ from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 BIBLE = ROOT / "docs" / "bible"
-VIPER = ROOT / "build" / "src" / "tools" / "viper" / "viper"
+VIPER_CANDIDATES = (
+    ROOT / "build" / "src" / "tools" / "viper" / "viper",
+    ROOT / "build" / "install" / "bin" / "viper",
+    ROOT / "build" / "install-validation" / "bin" / "viper",
+)
+VIPER = next((path for path in VIPER_CANDIDATES if path.is_file()), VIPER_CANDIDATES[0])
 
 ZIA_LANGS = {"rust", "zia", "viper"}
 BASIC_LANGS = {"basic", "bas"}
@@ -45,6 +50,11 @@ SIDE_EFFECT_MARKERS = (
     "Viper.Thread",
     "Viper.Graphics",
     "Viper.GUI",
+    "Viper.Sound",
+    "Viper.Audio",
+    "Viper.Input",
+    "Viper.System",
+    "Viper.Time",
     "ReadLine",
     "InputLine",
     "Prompt(",

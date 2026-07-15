@@ -302,6 +302,7 @@ static void canvas3d_reset_frame_submission_stats(rt_canvas3d *c) {
     c->frame_backend_state_changes = 0;
     c->frame_last_backend_state_key = 0;
     c->frame_has_backend_state_key = 0;
+    c->last_auto_instanced_draws = 0;
     memset(c->world_bounds_cache, 0, sizeof(c->world_bounds_cache));
 }
 
@@ -379,6 +380,9 @@ static uint64_t canvas3d_backend_state_key_core(deferred_draw_kind_t kind,
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->double_sided);
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->has_alpha_texture);
     key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->has_splat);
+    /* Group identical meshes adjacently so the auto-instancing pass sees runs
+     * (and backend geometry caches get consecutive hits). */
+    key = canvas3d_mix_sort_ptr(key, cmd->geometry_key);
     key = canvas3d_mix_sort_ptr(key, cmd->texture);
     key = canvas3d_mix_sort_ptr(key, cmd->normal_map);
     key = canvas3d_mix_sort_ptr(key, cmd->specular_map);

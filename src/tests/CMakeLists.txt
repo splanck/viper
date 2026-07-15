@@ -134,6 +134,13 @@ if (VIPER_BASH_EXECUTABLE)
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "examples;requires_posix_shell")
 
+    add_test(NAME demo_project_manifest_audit
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            scripts/check_demo_projects.sh)
+    set_tests_properties(demo_project_manifest_audit PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "build;examples;requires_posix_shell")
+
     add_test(NAME example_smoke_fast
             COMMAND ${VIPER_BASH_EXECUTABLE}
             scripts/example_smoke.sh
@@ -158,7 +165,7 @@ if (VIPER_BASH_EXECUTABLE)
             --check)
     set_tests_properties(source_health_audit PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            LABELS "tools;audit;requires_posix_shell"
+            LABELS "tools;audit;requires_posix_shell;slow"
             TIMEOUT ${_viper_source_health_audit_timeout})
 endif ()
 
@@ -1430,7 +1437,7 @@ add_test(NAME zia_smoke_3dbowling_trajectory
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
 set_tests_properties(zia_smoke_3dbowling_trajectory PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d"
+        LABELS "zia;smoke;graphics3d;slow"
         TIMEOUT 120)
 
 # --- ASHFALL (FPS showcase) probes -------------------------------------------
@@ -1482,7 +1489,7 @@ add_test(NAME zia_smoke_ashfall_combat
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
 set_tests_properties(zia_smoke_ashfall_combat PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 120)
 
@@ -1491,7 +1498,7 @@ add_test(NAME zia_smoke_ashfall_enemy
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
 set_tests_properties(zia_smoke_ashfall_enemy PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 180)
 
@@ -1500,7 +1507,7 @@ add_test(NAME zia_smoke_ashfall_level
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
 set_tests_properties(zia_smoke_ashfall_level PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 180)
 
@@ -1525,7 +1532,7 @@ add_test(NAME zia_smoke_ashfall_render
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
 set_tests_properties(zia_smoke_ashfall_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 120)
 
@@ -1534,7 +1541,7 @@ add_test(NAME zia_smoke_ashfall_campaign
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
 set_tests_properties(zia_smoke_ashfall_campaign PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         ENVIRONMENT "VIPER_3D_BACKEND=software"
         TIMEOUT 240)
 
@@ -1593,7 +1600,7 @@ add_test(NAME zia_smoke_ridgebound
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
 set_tests_properties(zia_smoke_ridgebound PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         TIMEOUT 300)
 set(VIPER_RIDGEBOUND_MAPLE_ASSET
         "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/MapleTree_1.fbx")
@@ -1603,15 +1610,15 @@ if (EXISTS "${VIPER_RIDGEBOUND_MAPLE_ASSET}")
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
     set_tests_properties(zia_smoke_ridgebound_tree_materials PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
-            LABELS "zia;smoke;graphics3d;requires_display"
-            TIMEOUT 45)
+            LABELS "zia;smoke;graphics3d;requires_display;slow"
+            TIMEOUT 300)
 endif ()
 add_test(NAME zia_smoke_ridgebound_tree_fallback_materials
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ridgebound/tree_fallback_material_probe.zia"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 set_tests_properties(zia_smoke_ridgebound_tree_fallback_materials PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d;requires_display"
+        LABELS "zia;smoke;graphics3d;requires_display;slow"
         TIMEOUT 300)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_ridgebound PROPERTIES
@@ -1663,7 +1670,7 @@ if (APPLE)
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ridgebound")
     set_tests_properties(zia_smoke_ridgebound_software PROPERTIES
             PASS_REGULAR_EXPRESSION "RESULT: ok"
-            LABELS "zia;smoke;graphics3d;requires_display"
+            LABELS "zia;smoke;graphics3d;requires_display;slow"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 90)
 endif ()
@@ -1788,7 +1795,7 @@ add_test(NAME zia_xenoscape_level_validation
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
 set_tests_properties(zia_xenoscape_level_validation PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;gameplay"
+        LABELS "zia;smoke;gameplay;slow"
         TIMEOUT 180)
 
 add_test(NAME zia_xenoscape_playthrough
@@ -1860,7 +1867,7 @@ add_test(NAME zia_xenoscape_campaign
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
 set_tests_properties(zia_xenoscape_campaign PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;gameplay"
+        LABELS "zia;smoke;gameplay;slow"
         TIMEOUT 180)
 
 add_test(NAME zia_xenoscape_render

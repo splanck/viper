@@ -272,12 +272,14 @@ static int test_box_box_obb(void *a_collider,
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             double axis[3];
+            double axis_len;
             double ra;
             double rb;
             double dist;
             double penetration;
             vec3_cross(A[i], B[j], axis);
-            if (vec3_normalize_in_place(axis) <= 1e-8)
+            axis_len = vec3_normalize_in_place(axis);
+            if (axis_len <= 1e-8)
                 continue;
             ra =
                 a_he[(i + 1) % 3] * AbsR[(i + 2) % 3][j] + a_he[(i + 2) % 3] * AbsR[(i + 1) % 3][j];
@@ -287,6 +289,13 @@ static int test_box_box_obb(void *a_collider,
             penetration = ra + rb - dist;
             if (penetration < 0.0)
                 return 0;
+            /* ra/rb/dist come from the R-matrix identities for the UNNORMALIZED
+             * cross axis, so the overlap is measured in |A_i x B_j|-scaled units.
+             * Rescale to true world units before comparing against the face axes,
+             * or edge axes (|cross| = sin(theta) <= 1) always look artificially
+             * shallow: the minimal-axis pick biases toward edges and the reported
+             * depth under-resolves edge-edge contacts. */
+            penetration /= axis_len;
             obb_record_axis(axis,
                             vec3_dot(t_world, axis) >= 0.0 ? 1.0 : -1.0,
                             penetration,
@@ -456,6 +465,13 @@ static int test_simple_collider_pose_collision(void *a_collider,
 /// axis point so the entire matrix collapses to ~3 specialized cases.
 /// Always returns the normal pointing from A to B (so symmetric callers
 /// flip it when needed).
+///
+/// CONTRACT: PH3D_SHAPE_AABB here is genuinely axis-aligned — a cached-shape
+/// body's orientation is ignored for box collision (capsules DO honor it via
+/// capsule_axis_endpoints). Every public Body3D constructor attaches a real
+/// collider, whose box pairs take the pose-aware OBB SAT path instead; this
+/// fallback only serves internal proxies and legacy cached-primitive bodies,
+/// which never carry a rotation that matters.
 static int test_simple_collision(const rt_body3d *a,
                                  const rt_body3d *b,
                                  double *normal,
@@ -720,11 +736,55 @@ static int aabb_intersects_sphere_raw(const double *mn,
     return dist_sq <= radius * radius;
 }
 
+/// @brief Transform a world-space AABB into a pose's local frame (bounding box of the
+///   inverse-transformed corners).
+/// @details Exact as a bound of the transformed box (an affine map sends the box to a
+///   parallelepiped whose AABB is the corner min/max); testing stored local BVH node
+///   bounds against this box is conservative, so pruning stays safe while each node
+///   visit skips the previous 8-corner local->world transform.
+static void ph3d_world_aabb_to_local_bounds(const rt_collider_pose *pose,
+                                            const double *mn,
+                                            const double *mx,
+                                            double out_min[3],
+                                            double out_max[3]) {
+    for (int axis = 0; axis < 3; ++axis) {
+        out_min[axis] = DBL_MAX;
+        out_max[axis] = -DBL_MAX;
+    }
+    for (int i = 0; i < 8; ++i) {
+        double world[3] = {
+            (i & 1) ? mx[0] : mn[0], (i & 2) ? mx[1] : mn[1], (i & 4) ? mx[2] : mn[2]};
+        double local[3];
+        transform_point_to_local(pose, world, local);
+        for (int axis = 0; axis < 3; ++axis) {
+            if (local[axis] < out_min[axis])
+                out_min[axis] = local[axis];
+            if (local[axis] > out_max[axis])
+                out_max[axis] = local[axis];
+        }
+    }
+}
+
+/// @brief Conservative local-space radius for a world-space sphere under a pose's scale.
+/// @details A world sphere maps to a local ellipsoid with semi-axes radius/|scale_i|;
+///   the bounding sphere of that ellipsoid has radius radius/min|scale_i|.
+static double ph3d_world_radius_to_local(const rt_collider_pose *pose, double radius) {
+    double sx = pose_abs_scale_or_unit(pose->scale[0]);
+    double sy = pose_abs_scale_or_unit(pose->scale[1]);
+    double sz = pose_abs_scale_or_unit(pose->scale[2]);
+    double min_scale = sx < sy ? sx : sy;
+    if (sz < min_scale)
+        min_scale = sz;
+    if (!isfinite(min_scale) || min_scale <= 1e-12)
+        return radius;
+    return radius / min_scale;
+}
+
 /// @brief Sphere-vs-mesh narrow phase by per-triangle closest-point test.
 ///
-/// Traverses the mesh's local-space BVH in world-space bounds and tests only
-/// candidate leaf triangles, falling back to a full scan if BVH traversal cannot
-/// complete.
+/// Traverses the mesh's BVH entirely in mesh-local space (query sphere transformed
+/// once) and tests only candidate leaf triangles, falling back to a full scan if
+/// BVH traversal cannot complete.
 static int test_meshlike_sphere(rt_mesh3d *mesh,
                                 const rt_collider_pose *mesh_pose,
                                 const rt_body3d *sphere,
@@ -743,6 +803,10 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
         int32_t top = 0;
         int32_t stack_capacity = 0;
         int overflow = 0;
+        double local_center[3];
+        double local_radius;
+        transform_point_to_local(mesh_pose, sphere->position, local_center);
+        local_radius = ph3d_world_radius_to_local(mesh_pose, sphere->radius);
         if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0)) {
             overflow = 1;
         }
@@ -753,8 +817,13 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
             if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
                 continue;
             node = &nodes[node_index];
-            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
-            if (!aabb_intersects_sphere_raw(node_min, node_max, sphere->position, sphere->radius))
+            node_min[0] = node->min[0];
+            node_min[1] = node->min[1];
+            node_min[2] = node->min[2];
+            node_max[0] = node->max[0];
+            node_max[1] = node->max[1];
+            node_max[2] = node->max[2];
+            if (!aabb_intersects_sphere_raw(node_min, node_max, local_center, local_radius))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
                 if (node->right >= 0 &&
@@ -1080,10 +1149,13 @@ static int test_meshlike_box(rt_mesh3d *mesh,
             (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
         const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
         double box_min[3], box_max[3];
+        double local_query_min[3], local_query_max[3];
         int32_t stack[128];
         int32_t top = 0;
         int overflow = 0;
         body_aabb(box, box_min, box_max);
+        ph3d_world_aabb_to_local_bounds(mesh_pose, box_min, box_max, local_query_min,
+                                        local_query_max);
         stack[top++] = 0;
         while (top > 0) {
             int32_t node_index = stack[--top];
@@ -1092,8 +1164,13 @@ static int test_meshlike_box(rt_mesh3d *mesh,
             if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
                 continue;
             node = &nodes[node_index];
-            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
-            if (!aabb_overlap_raw(node_min, node_max, box_min, box_max))
+            node_min[0] = node->min[0];
+            node_min[1] = node->min[1];
+            node_min[2] = node->min[2];
+            node_max[0] = node->max[0];
+            node_max[1] = node->max[1];
+            node_max[2] = node->max[2];
+            if (!aabb_overlap_raw(node_min, node_max, local_query_min, local_query_max))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
                 if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Core Types
@@ -160,7 +160,8 @@ PRINT Viper.Core.Box.EqI64(boxed, 42)    ' Output: true
 
 ## Viper.Core.Diagnostics
 
-Assertion and trap utilities for program correctness checks. All methods trap (abort with message) on failure.
+Assertion and trap utilities for program correctness checks. Failed checks raise a runtime trap with a message; an
+unhandled trap terminates execution.
 
 **Type:** Static utility class
 
@@ -184,7 +185,8 @@ Assertion and trap utilities for program correctness checks. All methods trap (a
 
 ### Notes
 
-- All assertion failures terminate the program via the runtime trap mechanism (equivalent to a bounds-check failure).
+- All assertion failures use the runtime trap mechanism (equivalent to a bounds-check failure). An unhandled trap
+  terminates the program; a host or VM trap hook may intercept it.
 - `Trap` is an unconditional halt; prefer `AssertFail` when the intent is a named assertion failure.
 - `Trap(msg)` accepts a managed `String` handle. Embedded NUL bytes in the message are preserved for validation and escaped in the diagnostic path.
 - `AssertEqStr` compares full runtime string contents, including embedded NUL bytes, and escapes non-printable bytes in failure messages. Invalid string handles produce a trap diagnostic instead of a native crash.
@@ -270,14 +272,21 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 ### Parse.TryDouble and Parse.TryInt Example
 
 ```rust
-var n = Parse.TryDouble("3.14")       // Some(3.14)
-var bad = Parse.TryDouble("abc")      // None
-if bad.get_IsNone() then
-    Say("Not a number")
-end if
+module ParseOptionsDemo;
 
-var i = Parse.TryInt("42")            // Some(42)
-var badInt = Parse.TryInt("xyz")      // None
+bind Viper.Core.Parse as Parse;
+bind Viper.Terminal;
+
+func start() {
+    var n = Parse.TryDouble("3.14");   // Some(3.14)
+    var bad = Parse.TryDouble("abc"); // None
+    if (bad.IsNone) {
+        Say("Not a number");
+    }
+
+    var i = Parse.TryInt("42");       // Some(42)
+    var badInt = Parse.TryInt("xyz"); // None
+}
 ```
 
 ### Zia Example
@@ -339,7 +348,9 @@ PRINT "Bin 1010 = "; binVal    ' Output: 10
 
 ## Viper.String
 
-String manipulation class. In Viper, strings are immutable sequences of characters.
+String manipulation class. Viper strings are immutable byte strings and commonly contain UTF-8. Some APIs operate on
+bytes while `Mid`/`MidLen` translate one-based UTF-8 code-point positions to byte slices; the distinctions are noted
+below.
 
 **Type:** Instance (opaque*)
 
@@ -347,28 +358,28 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
-| `Length`  | Integer | Returns the number of characters in the string |
+| `Length`  | Integer | Returns the number of bytes in the string      |
 | `IsEmpty` | Boolean | Returns true if the string has zero length     |
 
 ### Methods
 
 | Method                       | Signature                  | Description                                                                   |
 |------------------------------|----------------------------|-------------------------------------------------------------------------------|
-| `Substring(start, length)`   | `String(Integer, Integer)` | Extracts a portion of the string starting at `start` with `length` characters |
+| `Substring(start, length)`   | `String(Integer, Integer)` | Extracts `length` bytes from zero-based byte offset `start`                    |
 | `Concat(other)`              | `String(String)`           | Concatenates another string and returns the result                            |
-| `Left(count)`                | `String(Integer)`          | Returns the leftmost `count` characters                                       |
-| `Right(count)`               | `String(Integer)`          | Returns the rightmost `count` characters                                      |
-| `Mid(start)`                 | `String(Integer)`          | Returns characters from `start` to the end (1-based index)                    |
-| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` characters starting at `start` (1-based index)               |
+| `Left(count)`                | `String(Integer)`          | Returns the leftmost `count` bytes                                             |
+| `Right(count)`               | `String(Integer)`          | Returns the rightmost `count` bytes                                            |
+| `Mid(start)`                 | `String(Integer)`          | Returns UTF-8 code points from one-based position `start` to the end           |
+| `MidLen(start, length)`      | `String(Integer, Integer)` | Returns `length` UTF-8 code points from one-based position `start`             |
 | `Trim()`                     | `String()`                 | Removes leading and trailing whitespace                                       |
 | `TrimStart()`                | `String()`                 | Removes leading whitespace                                                    |
 | `TrimEnd()`                  | `String()`                 | Removes trailing whitespace                                                   |
-| `ToUpper()`                  | `String()`                 | Converts all characters to uppercase                                          |
-| `ToLower()`                  | `String()`                 | Converts all characters to lowercase                                          |
+| `ToUpper()`                  | `String()`                 | Converts ASCII `a`–`z` to uppercase; non-ASCII UTF-8 bytes are unchanged      |
+| `ToLower()`                  | `String()`                 | Converts ASCII `A`–`Z` to lowercase; non-ASCII UTF-8 bytes are unchanged      |
 | `IndexOf(search)`            | `Integer(String)`          | Returns the 1-based position of `search`, or 0 if not found                   |
 | `IndexOfFrom(start, search)` | `Integer(Integer, String)` | Searches from 1-based position `start`; returns 0 if not found                |
-| `Chr(code)`                  | `String(Integer)`          | Returns a single-character string from an ASCII/Unicode code point            |
-| `Asc()`                      | `Integer()`                | Returns the ASCII/Unicode code of the first character                         |
+| `Chr(code)`                  | `String(Integer)`          | Returns a one-byte string for code 0–255; other values trap                    |
+| `Asc()`                      | `Integer()`                | Returns the unsigned value of the first byte, or 0 for an empty string         |
 
 ### Extended Methods
 
@@ -397,8 +408,8 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 
 | Method              | Signature    | Description                                                    |
 |---------------------|-------------|----------------------------------------------------------------|
-| `Capitalize()`      | `String()`  | Capitalize first character, lowercase the rest                 |
-| `Title()`           | `String()`  | Capitalize the first character of each word                    |
+| `Capitalize()`      | `String()`  | Uppercase the first ASCII byte; leave the remainder unchanged  |
+| `Title()`           | `String()`  | Uppercase the first ASCII byte after whitespace                |
 | `CamelCase()`       | `String()`  | Convert to camelCase                                           |
 | `PascalCase()`      | `String()`  | Convert to PascalCase                                          |
 | `SnakeCase()`       | `String()`  | Convert to snake_case                                          |
@@ -479,7 +490,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     var s = "  Hello, World!  ";
 
-    Say("Length: " + Fmt.Int(Str.Length(s)));               // 17
+    Say("Length: " + Fmt.Int(Str.get_Length(s)));           // 17 bytes
     Say(Str.Trim(s));                                       // Hello, World!
     Say(Str.ToUpper(s));                                    // HELLO, WORLD!
     Say(Str.ToLower(s));                                    // hello, world!
@@ -499,7 +510,7 @@ PRINT s.Length          ' Output: 17
 PRINT s.Trim()          ' Output: "Hello, World!"
 PRINT s.ToUpper()       ' Output: "  HELLO, WORLD!  "
 PRINT s.Left(7).Trim()  ' Output: "Hello,"
-PRINT s.IndexOf("World") ' Output: 9
+PRINT s.IndexOf("World") ' Output: 10 (one-based)
 
 DIM code AS INTEGER
 code = s.Trim().Asc()   ' code = 72 (ASCII for 'H')

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-06-12
+last-verified: 2026-07-14
 ---
 
 # Cross-Platform Developer Checklist
@@ -86,7 +86,7 @@ Important rule:
 
 | File | Reason |
 |------|--------|
-| `src/runtime/threads/rt_threads.c` | Thread create/join/sync — Windows uses `CreateThread`/`CRITICAL_SECTION`/`CONDITION_VARIABLE`; POSIX uses `pthread_create`/`pthread_mutex_t`/`pthread_cond_t`. Timed join uses `GetTickCount64()` on Windows vs `clock_gettime()` + absolute timespec on POSIX. |
+| `src/runtime/threads/rt_threads_common.c`, `rt_threads_win.c`, `rt_threads_posix.c` | Shared SafeThread logic plus split native thread create/join/sync backends. Windows uses `CreateThread`/`CRITICAL_SECTION`/`CONDITION_VARIABLE`; POSIX uses `pthread_create`/`pthread_mutex_t`/`pthread_cond_t`. |
 | `src/runtime/threads/rt_future.c`, `rt_parallel.c`, `rt_parallel_ops.c`, `rt_parallel_internal.h` | Higher-level thread primitives and data-parallel combinators use `RT_PLATFORM_*` branches for their native sync objects while sharing common task and error propagation logic. |
 | `src/runtime/rt_platform.h` | TLS macro (`__declspec(thread)` vs `_Thread_local` vs `__thread`), atomic operations (MSVC `_InterlockedExchange*` vs GCC `__atomic_*`), memory barriers. |
 | `src/runtime/core/rt_atomic_compat.h` | GCC/Clang `__atomic_*` builtin compatibility layer for MSVC — maps to Interlocked intrinsics via C11 `_Generic` dispatch. |
@@ -200,7 +200,7 @@ Linux audio availability is now controlled by `VIPER_AUDIO_MODE=AUTO|REQUIRE|OFF
 | `src/tools/common/packaging/ToolchainInstallManifest.*` | Shared manifest and install-path mapping for Windows/macOS/Linux installers. This is the single source of truth for staged file selection. |
 | `src/tools/common/packaging/WindowsPackageBuilder.*`, `MacOSPackageBuilder.*`, `LinuxPackageBuilder.*` | Platform-specific installer writers and payload layout policy. Keep staged-relative layout stable across all three. |
 | `src/tools/common/packaging/PkgVerify.*` | Structural verification for produced installer artifacts. Extend this rather than adding format-specific one-off verification scripts. |
-| `scripts/build_viper.sh`, `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_FAST_DEBUG`, `VIPER_JOBS`, `VIPER_CTEST_JOBS`, `VIPER_RUN_SLOW_TESTS`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
+| `scripts/build_viper_unix.sh`, `scripts/build_viper_mac.sh`, `scripts/build_viper_linux.sh`, `scripts/build_viper_win.cmd`, `scripts/build_installer.sh`, `scripts/build_installer.cmd` | Canonical build/test/install and toolchain-packaging entry points. Shared env vars: `VIPER_BUILD_DIR`, `VIPER_BUILD_TYPE`, `VIPER_FAST_DEBUG`, `VIPER_JOBS`, `VIPER_CTEST_JOBS`, `VIPER_RUN_SLOW_TESTS`, `VIPER_SKIP_INSTALL`, `VIPER_SKIP_LINT`, `VIPER_SKIP_AUDIT`, `VIPER_SKIP_SMOKE`, `VIPER_CMAKE_GENERATOR`, `VIPER_EXTRA_CMAKE_ARGS`. |
 | `viperdos/scripts/build_viperdos.sh` | Auto-installs prerequisites per OS: Homebrew (macOS), apt (Debian), yum (RedHat). UEFI ESP image creation uses platform-specific tools. |
 | `viperdos/scripts/build_viperdos.cmd` | Windows batch equivalent — QEMU/CMake/Clang detection with Windows-specific paths. |
 

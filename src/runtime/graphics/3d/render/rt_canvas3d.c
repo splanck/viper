@@ -29,6 +29,7 @@
 #include "rt_canvas3d_clusters.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_g3d_ref_slots.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics_internal.h"
 #include "rt_heap.h"
 #include "rt_input.h"
@@ -1471,6 +1472,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->trans_cmds);
     c->trans_cmds = NULL;
     c->trans_capacity = 0;
+    free(c->auto_instance_matrices);
+    c->auto_instance_matrices = NULL;
+    c->auto_instance_matrix_capacity = 0;
     free(c->last_light_snapshot);
     c->last_light_snapshot = NULL;
     c->last_light_snapshot_valid = 0;

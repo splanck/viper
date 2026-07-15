@@ -1037,3 +1037,27 @@ static void sw_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     ctx->shadow_pass_slot = -1;
     sw_recompute_shadow_count(ctx);
 }
+
+/// @brief Backend `shadow_reuse` op — re-arm a slot from its previous-frame depth.
+///
+/// The depth buffer is canvas-owned malloc storage that persists across frames,
+/// so when Canvas3D proves the slot's contents are unchanged it only needs the
+/// per-frame slot registration (pointer/size/VP + complete flag) redone without
+/// the FLT_MAX clear or any rasterization.
+static int8_t sw_shadow_reuse(
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        return 0;
+    if (!depth_buf || !light_vp || w <= 0 || h <= 0)
+        return 0;
+    if ((size_t)w > SIZE_MAX / (size_t)h || (size_t)w * (size_t)h > (size_t)INT32_MAX)
+        return 0;
+    ctx->shadow_depth[slot] = depth_buf;
+    ctx->shadow_w[slot] = w;
+    ctx->shadow_h[slot] = h;
+    memcpy(ctx->shadow_vp[slot], light_vp, 16 * sizeof(float));
+    ctx->shadow_complete[slot] = 1;
+    sw_recompute_shadow_count(ctx);
+    return 1;
+}

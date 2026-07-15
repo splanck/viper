@@ -925,7 +925,10 @@ void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
         if (node->visible == next)
             return;
         node->visible = next;
-        scene3d_mark_spatial_dirty(node->owner_scene);
+        /* Visibility is a per-entry filter in the spatial index, not topology:
+         * request a refit so toggles stay O(changed paths) instead of forcing a
+         * full O(n log n) rebuild per blink. */
+        scene3d_mark_spatial_visibility_dirty(node->owner_scene);
     }
 }
 

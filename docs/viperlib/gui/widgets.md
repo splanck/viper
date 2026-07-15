@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-11
+last-verified: 2026-07-14
 ---
 
 # Basic Widgets
@@ -25,6 +25,7 @@ Labels now initialize from the current GUI theme or app font, so text participat
 | `SetText(text)`           | `Void(String)`             | Set label text           |
 | `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and size        |
 | `SetColor(color)`         | `Void(Integer)`            | Set text color (ARGB)    |
+| `SetWordWrap(enabled)`    | `Void(Boolean)`            | Enable or disable word wrapping |
 
 ```basic
 DIM label AS Viper.GUI.Label
@@ -50,7 +51,12 @@ Clickable button widget.
 |---------------------------|----------------------------|------------------------------------------|
 | `SetText(text)`           | `Void(String)`             | Set button text                          |
 | `SetFont(font, size)`     | `Void(Font, Double)`       | Set font and size                        |
-| `SetStyle(style)`         | `Void(Integer)`            | Set style (0=default, 1=primary, 2=secondary, 3=danger, 4=text) |
+| `SetStyle(style)`         | `Void(Integer)`            | Set style (0=default, 1=primary, 2=secondary, 3=danger, 4=text, 5=icon) |
+| `SetIcon(icon)`           | `Void(String)`             | Set an icon glyph or short icon string   |
+| `SetIconPosition(pos)`    | `Void(Integer)`            | Place icon on the left (`0`) or right (`1`) |
+
+An out-of-range style resets the button to style `0`. Any icon-position value other than `1`
+selects the left side.
 
 ```basic
 DIM saveBtn AS Viper.GUI.Button
@@ -58,8 +64,8 @@ saveBtn = NEW Viper.GUI.Button(root, "Save")
 saveBtn.SetStyle(1)  ' Primary style
 saveBtn.SetSize(100, 32)
 
-IF saveBtn.WasClicked = 1 THEN
-    SaveDocument()
+IF saveBtn.WasClicked() THEN
+    PRINT "Save requested"
 END IF
 ```
 
@@ -69,19 +75,18 @@ var saveBtn = Button.New(root, "Save");
 saveBtn.SetStyle(1);  // Primary style
 saveBtn.SetSize(100, 32);
 
-if saveBtn.WasClicked() == 1 { SaveDocument(); }
+if saveBtn.WasClicked() { /* perform the save */ }
 ```
 
 ---
 
 ### TextInput
 
-Single-line or multiline text input field.
+Single-line text input field.
 
 Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
-When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
 `Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks. `Ctrl/Cmd+Shift+Z` redoes the last undone edit, `Shift+Click` extends the current selection, and double-click selects the word under the pointer.
-Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; public text replacement and insertion also skip malformed UTF-8 byte sequences before storing text. Valid input remains UTF-8 encoded in the widget buffer, and `max_length` is enforced by codepoint count rather than raw bytes.
+Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; public text replacement and insertion also skip malformed UTF-8 byte sequences before storing text. Valid input remains UTF-8 encoded in the widget buffer. The native widget has multiline and maximum-length state, but neither is exposed by the current `Viper.GUI.TextInput` runtime class.
 Replacing a selection validates and allocates the full edit before mutating the
 buffer, so a rejected insertion does not delete the previous selection.
 
@@ -105,7 +110,7 @@ nameInput.SetSize(200, 28)
 
 ' Get value
 DIM name AS STRING
-name = nameInput.GetText()
+name = nameInput.Text
 ```
 
 ```rust
@@ -138,8 +143,8 @@ Checkbox labels also use the current GUI theme or app font by default, matching 
 DIM rememberMe AS Viper.GUI.Checkbox
 rememberMe = NEW Viper.GUI.Checkbox(root, "Remember me")
 
-IF rememberMe.IsChecked() = 1 THEN
-    SaveCredentials()
+IF rememberMe.IsChecked() THEN
+    PRINT "Credentials will be remembered"
 END IF
 ```
 
@@ -147,7 +152,7 @@ END IF
 // Zia
 var rememberMe = Checkbox.New(root, "Remember me");
 
-if rememberMe.IsChecked() == 1 { SaveCredentials(); }
+if rememberMe.IsChecked() { /* persist the user's preference */ }
 ```
 
 ---
@@ -162,7 +167,7 @@ Runtime-created radio groups are opaque handles. After `Destroy()`, that handle 
 
 | Method                     | Signature          | Description              |
 |----------------------------|--------------------|--------------------------|
-| `IsSelected()`             | `Integer()`        | 1 if selected            |
+| `IsSelected()`             | `Boolean()`        | True if selected         |
 | `SetSelected(selected)`    | `Void(Boolean)`    | Set selection state      |
 
 ```basic
@@ -219,7 +224,7 @@ volume.SetValue(50)
 volume.SetSize(200, 20)
 
 ' Use value
-Viper.Sound.Audio.SetMasterVolume(INT(volume.GetValue()))
+Viper.Sound.Audio.SetMasterVolume(INT(volume.Value))
 ```
 
 ```rust
@@ -300,12 +305,8 @@ DIM progress AS Viper.GUI.ProgressBar
 progress = NEW Viper.GUI.ProgressBar(root)
 progress.SetSize(300, 20)
 
-' Update during operation
-FOR i = 1 TO 100
-    DoWork(i)
-    progress.SetValue(i / 100.0)
-    app.Render()
-NEXT i
+' Update as work advances (0.0 through 1.0)
+progress.SetValue(0.5)
 ```
 
 ```rust
@@ -358,8 +359,8 @@ colorPicker.AddItem("Green")
 colorPicker.AddItem("Blue")
 colorPicker.SetSize(150, 28)
 
-IF colorPicker.GetSelected() >= 0 THEN
-    PRINT "Selected: "; colorPicker.GetSelectedText()
+IF colorPicker.Selected >= 0 THEN
+    PRINT "Selected: "; colorPicker.SelectedText
 END IF
 ```
 
@@ -371,14 +372,18 @@ Scrollable list of selectable items with enhanced item management.
 
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection. Toggling the current row off now clears or moves the current selection instead of leaving `Selected` / `SelectedIndex` pointed at an unselected row.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
-Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
-`SelectIndex(index)` leaves the current selection unchanged when `index` is negative or outside the current item range, including virtual-list totals, and `ItemSetText()` preserves the old text if allocation fails.
+For native integrations that enable the underlying list box's virtual mode, cache invalidation
+refreshes visible rows on the next paint even when the visible range has not changed.
+`SelectIndex(index)` leaves the current selection unchanged when `index` is negative or outside the current item range (including a native virtual-list total), and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 Item handles are runtime-managed and become inert after `RemoveItem()`, `Clear()`, or list-box destruction; later item method calls return empty/0 values or no-op safely.
-Virtual list selection and cache growth now fail closed if allocation or size
+Native virtual-list selection and cache growth fail closed if allocation or size
 checks fail; the widget does not publish a larger virtual item count until its
 selection bitmap can represent that range.
-In virtual mode, `Count` reports the logical virtual item total rather than the number of materialized cache rows. `WasSelectionChanged()` reports real selection transitions, including selected-item removal and `Clear()` calls that remove a selection.
+In that native virtual mode, `Count` reports the logical virtual item total rather than the number
+of materialized cache rows. The public runtime does not currently expose the callback-based switch
+that enables this mode. `WasSelectionChanged()` reports real selection transitions, including
+selected-item removal and `Clear()` calls that remove a selection.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 
@@ -396,15 +401,20 @@ In virtual mode, `Count` reports the logical virtual item total rather than the 
 |---------------------------|------------------------|-----------------------------------|
 | `AddItem(text)`           | `Object(String)`       | Add item, returns item handle     |
 | `Clear()`                 | `Void()`               | Remove all items                  |
+| `GetSelectedText()`       | `String()`             | Get selected text, or empty if none |
 | `ItemGetData(item)`       | `String(Object)`       | Get item user data                |
 | `ItemGetText(item)`       | `String(Object)`       | Get item display text             |
 | `ItemSetData(item, data)` | `Void(Object, String)` | Set item user data                |
 | `ItemSetText(item, text)` | `Void(Object, String)` | Set item display text             |
+| `ItemSetTextColor(item, color)` | `Void(Object, Integer)` | Set item text color          |
 | `RemoveItem(item)`        | `Void(Object)`         | Remove item                       |
+| `ScrollToBottom()`        | `Void()`               | Scroll to the final row           |
+| `ScrollToTop()`           | `Void()`               | Scroll to the first row           |
 | `Select(item)`            | `Void(Object)`         | Select item (NULL to deselect)    |
 | `SelectIndex(index)`      | `Void(Integer)`        | Select item by index              |
 | `SetFont(font, size)`     | `Void(Font, Double)`   | Set font for list items           |
-| `WasSelectionChanged()`   | `Integer()`            | 1 if selection changed this frame |
+| `SetMultiSelect(enabled)` | `Void(Boolean)`        | Enable or disable multiple selection |
+| `WasSelectionChanged()`   | `Boolean()`            | True if selection changed this frame |
 
 ### Example
 
@@ -433,9 +443,9 @@ fileList.SelectIndex(0)  ' Select first item
 DO WHILE NOT app.ShouldClose
     app.Poll()
 
-    IF fileList.WasSelectionChanged() = 1 THEN
-        DIM selected AS Object = fileList.Selected
-        IF selected <> NULL THEN
+    IF fileList.WasSelectionChanged() THEN
+        IF fileList.SelectedIndex >= 0 THEN
+            DIM selected AS Object = fileList.Selected
             PRINT "Selected: "; fileList.ItemGetText(selected)
             PRINT "Path: "; fileList.ItemGetData(selected)
         END IF
@@ -458,25 +468,20 @@ DIM monoFont AS Viper.GUI.Font
 monoFont = Viper.GUI.Font.Load("consola.ttf")
 fileList.SetFont(monoFont, 11)
 
-' Populate with files
-SUB LoadFiles(path AS STRING)
-    fileList.Clear()
+' Populate with regular files. Dir.Files returns names without the directory prefix.
+DIM path AS STRING = Viper.IO.Dir.Current()
+DIM files AS Viper.Collections.Seq = Viper.IO.Dir.Files(path)
+FOR i = 0 TO Viper.Collections.Seq.get_Count(files) - 1
+    DIM name AS STRING = Viper.Collections.Seq.GetStr(files, i)
+    DIM item AS Object = fileList.AddItem(name)
+    fileList.ItemSetData(item, Viper.IO.Path.Join(path, name))
+NEXT i
 
-    DIM files() AS STRING
-    files = Viper.IO.Directory.GetFiles(path)
-
-    FOR i = 0 TO UBOUND(files)
-        DIM item AS Object = fileList.AddItem(files(i))
-        fileList.ItemSetData(item, path + "/" + files(i))  ' Store full path
-    NEXT i
-END SUB
-
-' Handle double-click to open file
-IF fileList.WasSelectionChanged() = 1 THEN
-    DIM idx AS INTEGER = fileList.SelectedIndex
-    IF idx >= 0 THEN
-        DIM item AS Object = fileList.Selected
-        OpenFile(fileList.ItemGetData(item))
+' Handle a selection change
+IF fileList.WasSelectionChanged() THEN
+    IF fileList.SelectedIndex >= 0 THEN
+        DIM selected AS Object = fileList.Selected
+        PRINT "Selected path: "; fileList.ItemGetData(selected)
     END IF
 END IF
 ```
@@ -491,9 +496,8 @@ var item2 = fileList.AddItem("image.png");
 fileList.ItemSetData(item1, "/home/user/doc.txt");
 fileList.SelectIndex(0);
 
-if fileList.WasSelectionChanged() == 1 {
-    var sel = fileList.get_Selected();
-    Say(fileList.ItemGetText(sel));
+if fileList.WasSelectionChanged() && fileList.get_SelectedIndex() >= 0 {
+    // fileList.GetSelectedText() is the selected row's text.
 }
 ```
 
@@ -502,8 +506,9 @@ if fileList.WasSelectionChanged() == 1 {
 ### OutputPane
 
 Scrollable text surface for build/run logs, search results, and the integrated
-terminal (`SetTerminalMode`). It renders a monospace grid, so its font metrics
-should drive any column/row layout built on top of it.
+terminal (`SetTerminalMode`). It inherits the app's default font. Use `SetFont()` with a
+monospace font when column and row counts must describe a fixed terminal grid; the pane does not
+enforce monospace by itself.
 
 **Constructor:** `NEW Viper.GUI.OutputPane(parent)`
 
@@ -519,7 +524,9 @@ guess; they track the pane's actual font and DPI scale:
 | `RowsForHeight()`    | `Integer()`       | Whole rows that fit down the pane: `floor(height / cellHeight)`    |
 
 `ColumnsForWidth() == GetWidth() / GetCellWidth()` and `MeasureText("M") == GetCellWidth()`.
-All five return `0` until a font is set with `SetFont`.
+Metric methods return `0` when the pane has no usable font (or, where applicable, no size/text).
+An attached pane normally inherits the app font, so an explicit `SetFont()` is not required unless
+you need a particular face such as a monospace terminal font.
 
 **Content & terminal:** `Append(text)`, `AppendLine(text)`,
 `AppendStyled(text, fg, bg, bold)`, `Clear()`, `ScrollToTop()`, `ScrollToBottom()`,
@@ -556,7 +563,7 @@ The native C widget `LoadFile()` now decodes BMP directly and uses platform imag
 | `LoadFile(path)`               | `Integer(String)`                      | Load PNG, BMP, JPEG, or GIF file directly (1=ok, 0=fail) |
 | `Clear()`                      | `Void()`                               | Clear image                    |
 | `SetScaleMode(mode)`           | `Void(Integer)`                        | 0=none, 1=fit, 2=fill, 3=stretch |
-| `SetOpacity(opacity)`          | `Void(Double)`                         | Set opacity (0.0-1.0)          |
+| `SetOpacity(opacity)`          | `Void(Double)`                         | Set opacity, clamped to 0.0–1.0; non-finite values become 1.0 |
 
 ```basic
 DIM preview AS Viper.GUI.Image
@@ -639,7 +646,7 @@ popup mechanics (filter, selection, anchor, accept). Created hidden.
 |--------------------------|------------------------|--------------------------------------------------------------|
 | `AddItem(text)`          | `Void(String)`         | Append an item (host adds them in its preferred rank order)  |
 | `Clear()`                | `Void()`               | Remove all items and reset the filter/selection              |
-| `SetFilter(text)`        | `Void(String)`         | Keep only items containing `text` (case-insensitive)         |
+| `SetFilter(text)`        | `Void(String)`         | Keep items containing `text` using byte-oriented, ASCII-style case-insensitive matching |
 | `VisibleCount`           | `Integer` (property)   | Number of items matching the filter                          |
 | `NavigateUp()` / `NavigateDown()` | `Void()`      | Move the selection within the visible items (clamped)        |
 | `SetSelectedIndex(i)`    | `Void(Integer)`        | Set the selection within the visible items                   |
@@ -669,7 +676,11 @@ popup.SetFilter("con");                 // -> "Console", "Convert"
 popup.AnchorAt(editor.GetCursorPixelX(), editor.GetCursorPixelY() + 20);
 popup.SetVisible(true);
 // On Enter:
-if popup.WasAccepted() { editor.Insert(popup.GetSelected()); popup.SetVisible(false); }
+popup.AcceptSelected();
+if popup.WasAccepted() {
+    editor.InsertAtCursor(popup.GetSelected());
+    popup.SetVisible(false);
+}
 ```
 
 ---

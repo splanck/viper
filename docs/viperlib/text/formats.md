@@ -75,14 +75,14 @@ func start() {
 DIM json AS STRING = "{""name"": ""Alice"", ""age"": 30, ""active"": true}"
 DIM data AS OBJECT = Viper.Text.Json.Parse(json)
 
-' Access values (data is a Map)
-DIM name AS STRING = Viper.Unbox.Str(data.Get("name"))
-DIM age AS INTEGER = Viper.Unbox.I64(data.Get("age"))
+' Access values with the typed JSON helpers
+DIM name AS STRING = Viper.Text.Json.GetStr(data, "name")
+DIM age AS INTEGER = Viper.Text.Json.GetInt(data, "age")
 PRINT "Name: "; name   ' Output: Alice
 PRINT "Age: "; age     ' Output: 30
 
 ' Check type
-DIM valueType AS STRING = Viper.Text.Json.TypeOf(data.Get("active"))
+DIM valueType AS STRING = Viper.Text.Json.TypeOf(Viper.Collections.Map.Get(data, "active"))
 PRINT valueType        ' Output: "bool"
 
 ' Format with pretty printing
@@ -90,8 +90,8 @@ DIM config AS OBJECT = Viper.Collections.Map.New()
 config.Set("debug", Viper.Core.Box.I1(true))
 config.Set("port", Viper.Core.Box.I64(8080))
 
-DIM output AS STRING = Viper.Text.Json.FormatPretty(config, 2)
-PRINT output
+DIM formattedJson AS STRING = Viper.Text.Json.FormatPretty(config, 2)
+PRINT formattedJson
 ' Output:
 ' {
 '   "debug": true,
@@ -99,8 +99,8 @@ PRINT output
 ' }
 
 ' Validate JSON
-IF Viper.Text.Json.IsValid(userInput) THEN
-    DIM parsed AS OBJECT = Viper.Text.Json.Parse(userInput)
+IF Viper.Text.Json.IsValid(json) THEN
+    DIM parsed AS OBJECT = Viper.Text.Json.Parse(json)
 END IF
 ```
 
@@ -423,7 +423,7 @@ bind Viper.Collections.Seq as Seq;
 func start() {
     // Parse a CSV line into fields
     var fields = Csv.ParseLine("name,age,city");
-    Say("Field count: " + Fmt.Int(fields.Length));
+    Say("Field count: " + Fmt.Int(fields.Count));
 
     // Format a CSV line with quoting
     var data = Seq.New();
@@ -438,18 +438,21 @@ func start() {
 
 ```basic
 ' Parse a simple CSV line
-DIM fields AS OBJECT = Viper.Text.Csv.ParseLine("name,age,city")
+DIM fields AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine("name,age,city")
 PRINT fields.Count  ' Output: 3
-PRINT fields.Get(0) ' Output: "name"
+PRINT Viper.Collections.Seq.GetStr(fields, 0) ' Output: "name"
 
 ' Parse with quoted fields
-DIM row AS OBJECT = Viper.Text.Csv.ParseLine("\"John Doe\",30,\"New York\"")
-PRINT row.Get(0)    ' Output: John Doe
-PRINT row.Get(2)    ' Output: New York
+DIM quote AS STRING = CHR$(34)
+DIM row AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+    quote + "John Doe" + quote + ",30," + quote + "New York" + quote)
+PRINT Viper.Collections.Seq.GetStr(row, 0)    ' Output: John Doe
+PRINT Viper.Collections.Seq.GetStr(row, 2)    ' Output: New York
 
 ' Handle embedded quotes (doubled)
-DIM quoted AS OBJECT = Viper.Text.Csv.ParseLine("\"He said \"\"Hello\"\"\"")
-PRINT quoted.Get(0) ' Output: He said "Hello"
+DIM quoted AS Viper.Collections.Seq = Viper.Text.Csv.ParseLine( _
+    quote + "He said " + quote + quote + "Hello" + quote + quote + quote)
+PRINT Viper.Collections.Seq.GetStr(quoted, 0) ' Output: He said "Hello"
 
 ' Parse multi-line CSV
 DIM csv AS STRING = "name,age" + CHR$(10) + "Alice,25" + CHR$(10) + "Bob,30"
@@ -543,13 +546,13 @@ DIM port AS STRING = Viper.Text.Toml.GetStr(data, "server.port")
 PRINT port  ' Output: "8080"
 
 ' Validate before parsing
-IF Viper.Text.Toml.IsValid(userInput) THEN
-    DIM parsed AS OBJECT = Viper.Text.Toml.Parse(userInput)
+IF Viper.Text.Toml.IsValid(config) THEN
+    DIM parsed AS OBJECT = Viper.Text.Toml.Parse(config)
 END IF
 
 ' Format back to TOML
-DIM output AS STRING = Viper.Text.Toml.Format(data)
-PRINT output
+DIM formattedToml AS STRING = Viper.Text.Toml.Format(data)
+PRINT formattedToml
 ```
 
 ### Use Cases
@@ -634,13 +637,13 @@ IF Viper.Text.Ini.HasSection(doc, "app") THEN
 END IF
 
 ' List all sections
-DIM sections AS OBJECT = Viper.Text.Ini.Sections(doc)
-PRINT sections.Length  ' Output: 2
+DIM sections AS Viper.Collections.Seq = Viper.Text.Ini.Sections(doc)
+PRINT sections.Count  ' Output: 2
 
 ' Modify and format back to INI text
 Viper.Text.Ini.Set(doc, "db", "port", "5432")
-DIM output AS STRING = Viper.Text.Ini.Format(doc)
-PRINT output
+DIM formattedIni AS STRING = Viper.Text.Ini.Format(doc)
+PRINT formattedIni
 
 ' Remove a key
 DIM removed AS INTEGER = Viper.Text.Ini.Remove(doc, "db", "port")

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-07-14
 ---
 
 # Formatting
@@ -14,20 +14,21 @@ Number, date, relative-time, and list formatters that consume a `Locale`'s data 
 
 ## Viper.Localization.NumberFormat
 
-Locale-aware number formatting **and parsing** with configurable fraction digits, grouping, strict-mode ambiguity handling, and six rounding modes.
+Locale-aware number formatting **and parsing** with configurable fraction digits, grouping, strict-mode ambiguity handling, and seven rounding modes.
 
 ### Methods (format)
 
 | Method | Signature | Description |
 |---|---|---|
+| `New()` | `NumberFormat()` | Construct for the current locale. |
 | `ForLocale(loc)` | `NumberFormat(Locale)` | Construct bound to the given locale. |
 | `Decimal(n)` | `String(Float)` | Locale-formatted decimal. |
-| `DecimalN(n, digits)` | `String(Float, Int)` | Force exactly N fraction digits. |
+| `DecimalN(n, digits)` | `String(Float, Int)` | Force exactly N fraction digits; `digits` clamps to `0..20`. |
 | `Integer(n)` | `String(Int)` | Integer with locale grouping. |
 | `Percent(n)` | `String(Float)` | Multiplies by 100; appends percent symbol. |
 | `Currency(n)` | `String(Float)` | Uses locale's default currency. |
 | `CurrencyOf(n, code)` | `String(Float, String)` | Override ISO-4217 code. |
-| `Scientific(n, digits)` | `String(Float, Int)` | Scientific notation. |
+| `Scientific(n, digits)` | `String(Float, Int)` | Scientific notation; `digits` clamps to `0..20`. |
 | `Ordinal(n)` | `String(Int)` | `"1st" / "2nd"` (English rules; other locales pending). |
 
 ### Methods (parse)
@@ -46,8 +47,8 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 | Property | Type | Description |
 |---|---|---|
 | `Locale` | `Locale` | Read-only. |
-| `MinFractionDigits` | `Int` | Min digits after decimal (0-20). |
-| `MaxFractionDigits` | `Int` | Max digits after decimal (0-20). |
+| `MinFractionDigits` | `Int` | Min digits after decimal (clamped to `0..20`). Raising it also raises `MaxFractionDigits` when necessary. |
+| `MaxFractionDigits` | `Int` | Max digits after decimal (clamped to `0..20`). Lowering it also lowers `MinFractionDigits` when necessary. |
 | `UseGrouping` | `Bool` | Enable/disable the locale's thousands separator. |
 | `Strict` | `Bool` | Strict parse mode; rejects ambiguous groupings. |
 | `RoundingMode` | `String` | `"halfEven"` (default) / `"halfUp"` / `"halfDown"` / `"up"` / `"down"` / `"ceiling"` / `"floor"`. |
@@ -58,33 +59,39 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 - Grouping supports both `group_size` and `secondary_group_size`; locales such as Hindi can emit `1,23,45,678`.
 - Integer formatting/parsing is exact across the full signed 64-bit range, including `-9223372036854775808`.
 - `numbers.digits` is honored for both formatting and parsing, so non-Latin digit sets round-trip.
-- Decimal and scientific formatting/parsing use C-locale numeric conversion internally, then apply locale separators, so host process locale does not change results.
+- Decimal parsing and decimal/scientific formatting use C-locale numeric conversion internally, then apply locale separators, so the host process locale does not change results. There is no scientific-notation parse method.
 - `CurrencyOf` requires a 3-letter uppercase ISO-style code. Non-default valid codes are rendered literally as the symbol placeholder unless the locale has a dedicated symbol table in a future release.
 - Currency parsing accepts the locale's positive and negative patterns, including accounting parentheses such as `"($1,234.56)"`.
 - **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient accepts the same input by treating the separator as informational.
-- Rounding: `halfEven` (banker's) is the default; matches IEEE 754 round-to-nearest-even semantics.
+- Unknown `RoundingMode` strings silently select `"halfEven"`. The property affects decimal, percent, and currency formatting; integer/ordinal output is exact and `Scientific` uses the C formatter's rounding.
+- `halfEven` (banker's rounding) is the default. Under the normal round-to-nearest floating-point environment, halfway values round to the nearest even result.
 - Ordinal in v1 delegates to `Viper.Text.InvariantNumberFormat.Ordinal` (English suffixes); locale-specific ordinal suffix tables are a future phase.
 
 ### Zia Example
 
 ```rust
-bind Locale       : Viper.Localization.Locale
-bind NumberFormat : Viper.Localization.NumberFormat
+module NumberFormatDemo;
 
-var fmt = NumberFormat.ForLocale(Locale.Parse("en-US"))
-Say(fmt.Decimal(1234.5))       # "1,234.5"
-Say(fmt.Currency(1234.56))     # "$1,234.56"
-Say(fmt.Percent(0.125))        # "12.5%"
+bind Viper.Terminal;
+bind Viper.Localization.Locale as Locale;
+bind Viper.Localization.NumberFormat as NumberFormat;
 
-var parsed = fmt.ParseDecimal("1,234.5")
-Say(parsed)                    # 1234.5
+func start() {
+    var fmt = NumberFormat.ForLocale(Locale.Parse("en-US"));
+    Say(fmt.Decimal(1234.5));   // "1,234.5"
+    Say(fmt.Currency(1234.56)); // "$1,234.56"
+    Say(fmt.Percent(0.125));    // "12.5%"
+
+    var parsed = fmt.ParseDecimal("1,234.5");
+    Say(parsed);                // 1234.5
+}
 ```
 
 ### BASIC Example
 
 ```basic
-DIM fmt AS NumberFormat
-fmt = NumberFormat.ForLocale(Locale.Parse("en-US"))
+DIM fmt AS Viper.Localization.NumberFormat
+fmt = Viper.Localization.NumberFormat.ForLocale(Viper.Localization.Locale.Parse("en-US"))
 PRINT fmt.Currency(99.99)   ' $99.99
 ```
 
@@ -98,6 +105,7 @@ CLDR-pattern-letter date and time formatting.
 
 | Method | Signature | Description |
 |---|---|---|
+| `New()` | `DateFormat()` | Construct for the current locale. |
 | `ForLocale(loc)` | `DateFormat(Locale)` | |
 | `Short(ts)` | `String(Int)` | `"3/15/27"` |
 | `Medium(ts)` | `String(Int)` | `"Mar 15, 2027"` |
@@ -117,39 +125,45 @@ CLDR-pattern-letter date and time formatting.
 
 | Letter | Meaning | Rep counts |
 |---|---|---|
-| `y` | Year | 1 (auto), 2 (2-digit), 4 (full) |
-| `M` | Month | 1 (num), 2 (0-padded), 3 (abbr), 4 (wide), 5 (narrow) |
-| `d` | Day of month | 1 (num), 2 (0-padded) |
-| `E` | Weekday | 1-3 (abbr), 4 (wide), 5 (narrow) |
-| `H` | Hour 0-23 | 1, 2 |
-| `h` | Hour 1-12 | 1, 2 |
-| `m` | Minute | 1, 2 |
-| `s` | Second | 1, 2 |
-| `a` | AM/PM | 1 |
+| `y` | Year | 2 emits two digits; 4+ pads to that width; other counts emit the full year |
+| `M` | Month | 1 (numeric), 2 (zero-padded), 3 (abbreviated), 4 (wide), 5+ (narrow) |
+| `d` | Day of month | 1 (numeric), 2+ (zero-padded to two digits) |
+| `E` | Weekday | 1-3 (abbreviated), 4 (wide), 5+ (narrow) |
+| `H` | Hour 0-23 | 1 (numeric), 2+ (zero-padded) |
+| `h` | Hour 1-12 | 1 (numeric), 2+ (zero-padded) |
+| `m` | Minute | 1 (numeric), 2+ (zero-padded) |
+| `s` | Second | 1 (numeric), 2+ (zero-padded) |
+| `a` | AM/PM | Any positive repeat count emits the same marker |
 | `'...'` | Quoted literal | `''` inside = literal apostrophe |
 
 ### Notes
 
-- Timestamp inputs are Unix seconds (matches `rt_datetime` convention).
+- Timestamp inputs are Unix seconds. Date/time components are interpreted in the process's local time zone, matching `Viper.Time.DateTime` component accessors; the selected `Locale` changes formatting, not the time zone.
 - Numeric pattern output uses the locale's `numbers.digits`; date styles and custom patterns can emit non-Latin digits.
 - `DateTimeShort` and `DateTimeMedium` use locale `datetime_short` / `datetime_medium` composition patterns when provided, falling back to date + space + time.
-- Unsupported pattern letters (`G`, `Q`, `D`, `w`, `k`, `K`, `z`, `Z`, `v`, `V`) trap with `"unsupported pattern letter"`.
+- Only the letters listed above are supported. Any other ASCII letter traps with `"unsupported pattern letter"`.
 - Unterminated quoted literals trap instead of silently treating the rest of the pattern as literal text.
-- Pattern length capped at 256 chars.
+- Pattern length is capped at 256 bytes.
+- `DateOnly` defaults to `"medium"` when its style is null; any non-null style outside `"short"`, `"medium"`, `"long"`, and `"full"` traps.
 
 ### Zia Example
 
 ```rust
-bind DateTime    : Viper.Time.DateTime
-bind DateFormat  : Viper.Localization.DateFormat
-bind Locale      : Viper.Localization.Locale
+module DateFormatDemo;
 
-var fmt = DateFormat.ForLocale(Locale.Parse("en-US"))
-var ts  = DateTime.Create(2027, 3, 15, 14, 30, 5)
+bind Viper.Terminal;
+bind Viper.Time.DateTime as DateTime;
+bind Viper.Localization.DateFormat as DateFormat;
+bind Viper.Localization.Locale as Locale;
 
-Say(fmt.Long(ts))                        # "March 15, 2027"
-Say(fmt.Custom(ts, "yyyy-MM-dd HH:mm"))  # "2027-03-15 14:30"
-Say(fmt.Custom(ts, "EEEE, MMM d"))       # "Monday, Mar 15"
+func start() {
+    var fmt = DateFormat.ForLocale(Locale.Parse("en-US"));
+    var ts = DateTime.Create(2027, 3, 15, 14, 30, 5);
+
+    Say(fmt.Long(ts));                       // "March 15, 2027"
+    Say(fmt.Custom(ts, "yyyy-MM-dd HH:mm")); // "2027-03-15 14:30"
+    Say(fmt.Custom(ts, "EEEE, MMM d"));      // "Monday, Mar 15"
+}
 ```
 
 ---
@@ -162,12 +176,13 @@ Human-readable "N units ago" / "in N units" strings.
 
 | Method | Signature | Description |
 |---|---|---|
+| `New()` | `RelativeTimeFormat()` | Construct for the current locale with `Style = "long"`. |
 | `ForLocale(loc)` | `RelativeTimeFormat(Locale)` | |
 | `Format(duration)` | `String(Int)` | Duration in milliseconds. Positive = past. |
 | `FormatFrom(then, now)` | `String(Int, Int)` | Format relative delta between two Unix-second timestamps. |
 | `Short(duration)` | `String(Int)` | Short-style form. |
 | `Long(duration)` | `String(Int)` | Long-style form (default). |
-| `Numeric(value, unit)` | `String(Int, String)` | Explicit unit: `"second"/"minute"/"hour"/"day"/"week"/"month"/"year"`. |
+| `Numeric(value, unit)` | `String(Int, String)` | Explicit unit: `"second"/"minute"/"hour"/"day"/"week"/"month"/"year"`; positive is past, negative is future, and zero is `now`. |
 
 ### Properties
 
@@ -178,10 +193,10 @@ Human-readable "N units ago" / "in N units" strings.
 
 ### Notes
 
-- Unit thresholds: `>= 1y`, `>= 30d`, `>= 7d`, `>= 1d`, `>= 1h`, `>= 1m`, else second.
+- Unit thresholds use fixed approximations: `>= 365d` is a year, `>= 30d` a month, then `>= 7d`, `>= 1d`, `>= 1h`, `>= 1m`, else seconds. Counts truncate toward zero after choosing the unit.
 - Durations whose absolute value is less than one second format with the locale's `relative_time.now` string.
 - Plural form selected via the bound locale's `PluralRules` cardinal table.
-- `Style` accepts only `"long"` and `"short"`; unknown values trap. Short style uses `short_past` / `short_future` and `short_units` when available.
+- `Style` accepts only `"long"` and `"short"`; unknown values trap. `Short` and `Long` force their named style without changing the property, while `Format`, `FormatFrom`, and `Numeric` use the current property. Short style uses `short_past` / `short_future` and `short_units` when available.
 - Relative-time numbers are localized with the locale digit set.
 
 ---
@@ -194,6 +209,7 @@ Locale-correct list joining ("A, B, and C").
 
 | Method | Signature | Description |
 |---|---|---|
+| `New()` | `ListFormat()` | Construct for the current locale. |
 | `ForLocale(loc)` | `ListFormat(Locale)` | |
 | `And(items)` | `String(List[String])` | Conjunction ("and") join. |
 | `Or(items)` | `String(List[String])` | Disjunction ("or") join. |
@@ -203,23 +219,30 @@ Locale-correct list joining ("A, B, and C").
 ### Notes
 
 - 0 items → `""`; 1 item → the item verbatim; 2 → pair template; 3+ → start/middle/end recursive combine per CLDR.
+- The runtime expects a `Viper.Collections.List` whose elements are raw runtime strings. A typed Zia `List[String]` currently stores boxed elements and is not compatible with this API. A string `Split()` result contains raw strings and can be converted with `ToList()`, as below.
 
 ### Zia Example
 
 ```rust
-bind ListFormat : Viper.Localization.ListFormat
-bind Locale     : Viper.Localization.Locale
+module ListFormatDemo;
 
-var fmt = ListFormat.ForLocale(Locale.Parse("en-US"))
-Say(fmt.And(["apples", "bananas", "cherries"]))
-# "apples, bananas, and cherries"
+bind Viper.Terminal;
+bind Viper.Localization.ListFormat as ListFormat;
+bind Viper.Localization.Locale as Locale;
 
-Say(fmt.Or(["red", "blue"]))
-# "red or blue"
+func start() {
+    var fruit = "apples|bananas|cherries".Split("|").ToList();
+
+    var fmt = ListFormat.ForLocale(Locale.Parse("en-US"));
+    Say(fmt.And(fruit)); // "apples, bananas, and cherries"
+
+    var colors = "red|blue".Split("|").ToList();
+    Say(fmt.Or(colors)); // "red or blue"
+}
 ```
 
 ### See Also
 
 - [Messages](messages.md) — `MessageBundle.Plural` and `PluralRules` for locale-aware plural selection.
-- [Collation](collation.md) — `Collator` and `TextDirection`.
+- [Collation and text direction](collation.md) — public `TextDirection` utilities and internal collation notes.
 - [Data files](data-files.md) — JSON schema for loaded locales' format templates.

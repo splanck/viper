@@ -1,11 +1,11 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-28
+last-verified: 2026-07-14
 ---
 
 # Application Components
-> MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes
+> MenuBar, Toolbar, StatusBar, navigation aids, dialogs, notifications, utilities, themes, and VideoWidget
 
 **Part of [Viper Runtime Library](../README.md) › [GUI Widgets](README.md)**
 
@@ -40,7 +40,7 @@ Menu and menu-item handles are runtime-managed and become inert after removal, `
 | `AddItem(text)`         | `Object(String)`   | Add item, returns item handle  |
 | `AddSeparator()`        | `Object()`         | Add separator                  |
 | `AddSubmenu(title)`     | `Object(String)`   | Add submenu, returns menu      |
-| `IsEnabled()`           | `Integer()`        | Check if menu is enabled       |
+| `IsEnabled()`           | `Boolean()`        | Check if menu is enabled       |
 | `SetEnabled(enabled)`   | `Void(Boolean)`    | Enable/disable the menu title  |
 
 ### MenuItem
@@ -52,14 +52,14 @@ Checkable state is explicit: `IsCheckable()` is false until `SetCheckable(true)`
 |-------------------------|-----------------|--------------------------------|
 | `IsChecked()`           | `Boolean()`     | Check if checked               |
 | `IsCheckable()`         | `Boolean()`     | Check if item supports checked state |
-| `IsEnabled()`           | `Integer()`     | Check if enabled               |
+| `IsEnabled()`           | `Boolean()`     | Check if enabled               |
 | `SetCheckable(enabled)` | `Void(Boolean)` | Enable/disable checked-state support |
 | `SetChecked(checked)`   | `Void(Boolean)` | Set check mark                 |
 | `SetEnabled(enabled)`   | `Void(Boolean)` | Enable/disable item            |
 | `SetIcon(pixels)`       | `Void(Object)`  | Set image icon from a `Pixels` handle |
 | `SetShortcut(shortcut)` | `Void(String)`  | Set keyboard shortcut display  |
 | `SetText(text)`         | `Void(String)`  | Set item text                  |
-| `WasClicked()`          | `Integer()`     | 1 if item was clicked          |
+| `WasClicked()`          | `Boolean()`     | True if item was clicked       |
 
 ### Example
 
@@ -74,7 +74,7 @@ openItem.SetShortcut("Ctrl+O");
 fileMenu.AddSeparator();
 var exitItem = fileMenu.AddItem("Exit");
 
-if newItem.WasClicked() == 1 { /* new file */ }
+if newItem.WasClicked() { /* create a new file */ }
 ```
 
 ---
@@ -84,7 +84,9 @@ if newItem.WasClicked() == 1 { /* new file */ }
 Application toolbar widget.
 
 When the toolbar is narrower than its contents, hidden items are exposed through an automatic overflow popup rather than becoming inaccessible.
-Flexible spacer items now consume the remaining strip width, and dropdown toolbar items open their attached menus directly.
+Flexible spacer items now consume the remaining strip width. Native dropdown toolbar items open an
+attached menu directly; the current runtime `AddDropdown()` surface creates a plain dropdown item
+without exposing a menu-attachment setter.
 Runtime text and icon changes invalidate layout and overflow measurement immediately, so the strip repacks without waiting for an unrelated refresh.
 Toolbar items now render pixel icons directly, keyboard focus is visible, and `Left` / `Right` / `Home` / `End` navigate the strip while `Enter` / `Space` activate the focused item or overflow button.
 Named toolbar icon helpers map stable semantic names such as `save`, `run`, `explorer`, and `source-control` to the runtime's built-in vector icons without requiring asset files.
@@ -102,39 +104,44 @@ Removed toolbar item handles become inert until the toolbar is destroyed, and re
 | `AddNamedButton(name, tooltip)`     | `Object(String, String)`       | Add button using a built-in semantic icon |
 | `AddNamedButtonWithText(name, text, tooltip)` | `Object(String,String,String)` | Add text button using a built-in semantic icon |
 | `AddNamedToggle(name, tooltip)`     | `Object(String, String)`       | Add toggle using a built-in semantic icon |
+| `AddToggle(icon, tooltip)`          | `Object(String, String)`       | Add toggle using an icon path             |
 | `AddSeparator()`                    | `Object()`                     | Add separator                            |
+| `AddSpacer()`                       | `Object()`                     | Add a flexible spacer                    |
 | `NewVertical(parent)`               | `Object(Object)`               | Create a vertical toolbar                |
-| `SetIconSize(size)`                 | `Void(Integer)`                | Set icon size in pixels                  |
-| `SetStyle(style)`                   | `Void(Integer)`                | Set toolbar style; unknown values are ignored |
+| `GetIconSize()`                     | `Integer()`                    | Get icon-size preset (`0`, `1`, or `2`)  |
+| `SetIconSize(size)`                 | `Void(Integer)`                | Set preset: `0`=16 px, `1`=24 px, `2`=32 px; other values clamp |
+| `SetStyle(style)`                   | `Void(Integer)`                | `0` hides labels; `1` or `2` shows labels (icons remain); unknown values are ignored |
 | `SetVisible(visible)`               | `Void(Boolean)`                | Show/hide toolbar                        |
 
 ### ToolbarItem
 
 Toolbar button (returned by `Toolbar.AddButton()`).
-Toolbar item handles are runtime-managed and become inert after `RemoveItem()`, `Clear()`, or toolbar destruction; later item method calls return empty/0 values or no-op safely.
+Toolbar item handles are runtime-managed and become inert after `RemoveItem()` or toolbar destruction; later item method calls return empty/false values or no-op safely.
 
 | Method                | Signature       | Description                    |
 |-----------------------|-----------------|--------------------------------|
-| `IsEnabled()`         | `Integer()`     | Check if enabled               |
+| `IsEnabled()`         | `Boolean()`     | Check if enabled               |
 | `SetEnabled(enabled)` | `Void(Boolean)` | Enable/disable button          |
 | `SetIcon(icon)`       | `Void(String)`  | Change icon                    |
 | `SetIconPixels(pixels)` | `Void(Object)` | Change icon from a `Pixels` handle |
 | `SetNamedIcon(name)`  | `Void(String)`  | Change icon to a built-in semantic icon |
 | `SetText(text)`       | `Void(String)`  | Change button label            |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
-| `WasClicked()`        | `Integer()`     | 1 if button was clicked        |
+| `SetToggled(value)`   | `Void(Boolean)` | Set a toggle item's state      |
+| `IsToggled()`         | `Boolean()`     | Read a toggle item's state     |
+| `WasClicked()`        | `Boolean()`     | True if button was clicked     |
 
 ### Example
 
 ```rust
 // Zia
 var toolbar = Toolbar.New(root);
-toolbar.SetIconSize(24);
-var newBtn = toolbar.AddButton("assets/new.png", "New File");
-var saveBtn = toolbar.AddButtonWithText("assets/save.png", "Save", "Save current file");
+toolbar.SetIconSize(1);  // Medium preset: 24 px
+var newBtn = toolbar.AddNamedButton("new", "New File");
+var saveBtn = toolbar.AddNamedButtonWithText("save", "Save", "Save current file");
 toolbar.AddSeparator();
 
-if saveBtn.WasClicked() == 1 { /* save */ }
+if saveBtn.WasClicked() { /* save */ }
 ```
 
 ---
@@ -167,7 +174,7 @@ Status-bar item handles are runtime-managed and become inert after removal, `Cle
 |-----------------------|-----------------|--------------------------------|
 | `SetText(text)`       | `Void(String)`  | Set item text                  |
 | `SetTooltip(text)`    | `Void(String)`  | Set tooltip text               |
-| `WasClicked()`        | `Integer()`     | 1 once after a button item was clicked |
+| `WasClicked()`        | `Boolean()`     | True once after a button item was clicked |
 | `SetVisible(visible)` | `Void(Boolean)` | Show/hide item                 |
 
 ### Example
@@ -203,8 +210,8 @@ Context menu, submenu, and menu-item handles are runtime-managed and become iner
 | `AddSubmenu(title)`                   | `Object(String)`         | Add submenu and return its menu handle   |
 | `Clear()`                             | `Void()`                 | Remove all items                         |
 | `Hide()`                              | `Void()`                 | Hide the menu                            |
-| `IsVisible()`                         | `Integer()`              | 1 if menu is visible                     |
-| `Show(x, y)`                          | `Void(Integer, Integer)` | Show context menu at position            |
+| `IsVisible()`                         | `Boolean()`              | True if menu is visible                  |
+| `Show(x, y)`                          | `Void(Integer, Integer)` | Show at screen-space coordinates         |
 
 ### Example
 
@@ -218,7 +225,7 @@ var pasteItem = ctx.AddItem("Paste");
 
 // Show on right-click
 ctx.Show(mouseX, mouseY);
-if copyItem.WasClicked() == 1 { /* copy */ }
+if copyItem.WasClicked() { /* copy */ }
 ```
 
 ---
@@ -229,7 +236,7 @@ Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
 `SetRegex(true)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options. POSIX-style regular expressions are used on platforms that provide them, and Windows builds use the built-in regex subset for literals, `.`, character classes, `^`/`$`, and `*`/`+`/`?`.
-If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters return normalized `0` or `1` from the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
+If the parent widget destroys the underlying bar, the runtime wrapper disconnects from it and all later `FindBar` calls become no-ops. If the bound `CodeEditor` is destroyed, the bar unbinds itself before any later search or replace call. Boolean option getters reflect the live widget state, including user checkbox clicks and `Ctrl+H` replace-mode toggles.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -239,16 +246,19 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 | `FindPrevOption()`          | `Option[Integer]()` | Find previous match; returns the current 1-based match index |
 | `FindNext()`                | `Integer()`     | Compatibility API: returns 1 if found, 0 otherwise |
 | `FindPrev()`                | `Integer()`     | Compatibility API: returns 1 if found, 0 otherwise |
+| `BindEditor(editor)`        | `Void(Object)`  | Bind the CodeEditor to search             |
+| `UnbindEditor()`            | `Void()`        | Disconnect the bound editor               |
+| `Destroy()`                 | `Void()`        | Destroy the find-bar wrapper/widget       |
 | `Focus()`                   | `Void()`        | Focus the find input                     |
 | `GetCurrentMatch()`         | `Integer()`     | Get current match as a 1-based index, or 0 when there is no match |
 | `GetFindText()`             | `String()`      | Get search text                          |
 | `GetMatchCount()`           | `Integer()`     | Get total match count                    |
 | `GetReplaceText()`          | `String()`      | Get replacement text                     |
-| `IsCaseSensitive()`         | `Integer()`     | Check if case sensitive                  |
-| `IsRegex()`                 | `Integer()`     | Check if regex mode                      |
-| `IsReplaceMode()`           | `Integer()`     | Check if replace mode                    |
-| `IsVisible()`               | `Integer()`     | Check if visible                         |
-| `IsWholeWord()`             | `Integer()`     | Check if whole word mode                 |
+| `IsCaseSensitive()`         | `Boolean()`     | Check if case sensitive                  |
+| `IsRegex()`                 | `Boolean()`     | Check if regex mode                      |
+| `IsReplaceMode()`           | `Boolean()`     | Check if replace mode                    |
+| `IsVisible()`               | `Boolean()`     | Check if visible                         |
+| `IsWholeWord()`             | `Boolean()`     | Check if whole word mode                 |
 | `Replace()`                 | `Integer()`     | Replace current match; returns 0 when nothing was replaced |
 | `ReplaceAll()`              | `Integer()`     | Replace all matches; returns count       |
 | `SetCaseSensitive(enabled)` | `Void(Boolean)` | Enable/disable case sensitivity          |
@@ -271,7 +281,7 @@ findbar.SetFindText("search");
 findbar.SetReplaceText("replace");
 
 var count = findbar.ReplaceAll();
-SayInt(findbar.GetMatchCount());
+findbar.GetMatchCount();
 ```
 
 ---
@@ -293,12 +303,16 @@ The constructor accepts an app handle, app root, or widget parent. A widget pare
 | `Clear()`                                       | `Void()`                     | Remove all commands                      |
 | `Destroy()`                                     | `Void()`                     | Destroy the palette wrapper/widget       |
 | `GetSelected()`                                 | `String()`                   | Get selected command ID                  |
+| `GetQuery()`                                    | `String()`                   | Get current query text                   |
+| `GetQueryGeneration()`                          | `Integer()`                  | Read the generation incremented by query changes |
 | `Hide()`                                        | `Void()`                     | Hide the palette                         |
-| `IsVisible()`                                   | `Integer()`                  | 1 if palette is visible                  |
+| `IsVisible()`                                   | `Boolean()`                  | True if palette is visible               |
 | `RemoveCommand(id)`                             | `Void(String)`               | Remove a command                         |
+| `SetClientFiltered(enabled)`                    | `Void(Boolean)`              | Let the host supply already-filtered results |
 | `SetPlaceholder(text)`                          | `Void(String)`               | Set search placeholder text              |
+| `SetQuery(text)`                                | `Void(String)`               | Replace current query text               |
 | `Show()`                                        | `Void()`                     | Show the palette                         |
-| `WasSelected()`                                 | `Integer()`                  | 1 if a command was selected              |
+| `WasSelected()`                                 | `Boolean()`                  | True if a command was selected           |
 
 ### Example
 
@@ -310,7 +324,7 @@ palette.AddCommand("new", "New File", "File");
 palette.AddCommandWithShortcut("save", "Save", "File", "Ctrl+S");
 palette.AddCommand("theme", "Toggle Theme", "View");
 
-if palette.WasSelected() == 1 {
+if palette.WasSelected() {
     var cmd = palette.GetSelected();
     // Handle command by ID
 }
@@ -335,14 +349,14 @@ Bound `MenuItem` / `ToolbarItem` handles are held as weak references and accesse
 | `SetShortcut(keys)`        | `Void(String)`        | Set chord (e.g. `"Ctrl+B"`) and register it with `Shortcuts` under the id |
 | `GetShortcut()`            | `String()`            | The shortcut chord (`""` if none)                                 |
 | `SetEnabled(on)`           | `Void(Boolean)`       | Enable/disable; pushed to bound widgets                           |
-| `IsEnabled()`              | `Boolean()`           | 1 if enabled                                                      |
+| `IsEnabled()`              | `Boolean()`           | True if enabled                                                   |
 | `SetCheckable(on)`         | `Void(Boolean)`       | Mark as a toggle; pushed to a bound menu item                     |
-| `IsCheckable()`            | `Boolean()`           | 1 if checkable                                                    |
+| `IsCheckable()`            | `Boolean()`           | True if checkable                                                 |
 | `SetChecked(on)`           | `Void(Boolean)`       | Set checked/toggled state; pushed to bound widgets                |
-| `IsChecked()`              | `Boolean()`           | 1 if checked                                                      |
+| `IsChecked()`              | `Boolean()`           | True if checked                                                   |
 | `BindMenuItem(item)`       | `Void(MenuItem)`      | Bind a menu item to read (clicks) and drive (enabled/checked)     |
 | `BindToolbarItem(item)`    | `Void(ToolbarItem)`   | Bind a toolbar item to read (clicks) and drive (enabled/toggled)  |
-| `Poll()`                   | `Boolean()`           | Standalone poll: read bound widgets + shortcut, push state, return 1 if invoked this frame |
+| `Poll()`                   | `Boolean()`           | Standalone poll: read bound widgets + shortcut, push state, return true if invoked this frame |
 | `WasInvoked()`             | `Boolean()`           | The invoked flag from the most recent command- or registry-level poll |
 | `Snapshot()`               | `Map()`               | `{id, title, shortcut, enabled, checkable, checked, invoked}`     |
 
@@ -384,8 +398,8 @@ registry.BindPalette(palette);
 
 // Once per frame — routes menu + toolbar + shortcut + palette to the right command.
 var invoked = registry.Poll();
-if invoked == "file.save" { SaveDocument(); }
-if wrap.WasInvoked() { wrap.SetChecked(wrap.IsChecked() == false); }
+if invoked == "file.save" { /* save the document */ }
+if wrap.WasInvoked() { /* apply the requested word-wrap state */ }
 ```
 
 ---
@@ -400,7 +414,7 @@ Breadcrumb wrappers install runtime finalizers and ignore calls after `Destroy()
 `"alpha::beta"` split with `"::"` yields `alpha`, `beta`; it does not split on
 each `:` character independently.
 Replacing or clearing items also clears stale click payloads. After
-`WasItemClicked()` reports `0`, `GetClickedIndex()` returns `-1` and
+`WasItemClicked()` reports `false`, `GetClickedIndex()` returns `-1` and
 `GetClickedData()` returns an empty string until the next click.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
@@ -412,12 +426,13 @@ Replacing or clearing items also clears stale click payloads. After
 | `Destroy()`                | `Void()`               | Destroy the breadcrumb wrapper/widget    |
 | `GetClickedData()`         | `String()`             | Data of clicked item                     |
 | `GetClickedIndex()`        | `Integer()`            | Index of clicked item                    |
-| `SetItems(items)`          | `Void(String)`         | Set items from delimited string          |
+| `SetItems(items)`          | `Void(String)`         | Set items from a comma-separated string, trimming spaces |
 | `SetMaxItems(max)`         | `Void(Integer)`        | Set max visible items                    |
 | `SetPath(path, separator)` | `Void(String, String)` | Set path with separator (e.g. "/")       |
-| `SetSeparator(sep)`        | `Void(String)`         | Set separator character                  |
+| `SetSeparator(sep)`        | `Void(String)`         | Set the displayed separator string       |
 | `SetVisible(visible)`      | `Void(Boolean)`        | Show/hide breadcrumb                     |
-| `WasItemClicked()`         | `Integer()`            | 1 if an item was clicked                 |
+| `IsVisible()`              | `Boolean()`            | Check whether the breadcrumb is visible  |
+| `WasItemClicked()`         | `Boolean()`            | True if an item was clicked              |
 
 ### Example
 
@@ -427,7 +442,7 @@ var bc = Breadcrumb.New(root);
 bc.SetPath("src/gui/widgets", "/");
 bc.SetMaxItems(5);
 
-if bc.WasItemClicked() == 1 {
+if bc.WasItemClicked() {
     var idx = bc.GetClickedIndex();
     var data = bc.GetClickedData();
 }
@@ -450,12 +465,12 @@ Minimap wrappers install runtime finalizers and clamp width/scale changes throug
 | `ClearMarkers()`               | `Void()`            | Remove all markers                       |
 | `Destroy()`                    | `Void()`            | Destroy the minimap wrapper/widget       |
 | `GetWidth()`                   | `Integer()`         | Get minimap width                        |
-| `IsVisible()`                  | `Integer()`         | Check if visible                         |
-| `RemoveMarkers(type)`          | `Void(Integer)`     | Remove markers by type                   |
-| `SetScale(scale)`              | `Void(Double)`      | Set minimap scale                        |
+| `IsVisible()`                  | `Boolean()`         | Check if visible                         |
+| `RemoveMarkers(line)`          | `Void(Integer)`     | Remove all markers on a source line      |
+| `SetScale(scale)`              | `Void(Double)`      | Set scale, clamped to 0.05–0.5; non-finite values become 0.1 |
 | `SetShowSlider(show)`          | `Void(Boolean)`     | Show/hide scroll slider                  |
 | `SetVisible(visible)`          | `Void(Boolean)`     | Show/hide minimap                        |
-| `SetWidth(width)`              | `Void(Integer)`     | Set minimap width                        |
+| `SetWidth(width)`              | `Void(Integer)`     | Set minimap width (minimum 64)           |
 | `UnbindEditor()`               | `Void()`            | Unbind from editor                       |
 
 ### Example
@@ -467,20 +482,23 @@ minimap.BindEditor(editor);
 minimap.SetWidth(80);
 minimap.SetScale(0.5);
 minimap.SetShowSlider(true);
-minimap.AddMarker(10, 0xFFFF0000, 1);  // Error marker
+minimap.AddMarker(10, 0xFFFF0000, 1);  // Diagnostic marker
 ```
 
 ---
 
 ## Dialogs
 
-> **Modal constraint:** Only one dialog may be active at a time. Calling a second dialog while the first is still open is a no-op — the first dialog remains active. Dismiss the active dialog before showing another.
+In-app dialogs are maintained in an app-owned modal stack. The topmost visible dialog is the modal
+event root; when it closes or is destroyed, the previous live dialog becomes active again. Static
+message/file-dialog helpers and object `Show()` calls run their modal loop synchronously until the
+shown dialog closes.
 
 Dialog hit-testing is local to the dialog surface, so button clicks, close clicks, drags, and centered placement continue to work after the dialog is moved or shown relative to nested widgets.
 
 ### MessageBox
 
-System message dialog boxes. Static helpers show one dialog immediately; object-style dialogs let you configure buttons before `Show()`.
+GUI message dialog boxes. Static helpers show one dialog immediately; object-style dialogs let you configure buttons before `Show()`.
 `Info`, `Warning`, and `Error` return `0` after the only OK-style action, matching
 their runtime `Integer(String, String)` signatures. One-shot dialogs return their
 documented fallback value when no active GUI window is available instead of trying
@@ -494,10 +512,11 @@ Custom button IDs preserve the exact `Integer` passed to `AddButton()`, includin
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
-| `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show confirmation dialog      |
+| `Viper.GUI.MessageBox.Confirm(title, text)`  | `Integer(String, String)` | Show OK/cancel dialog; OK=1, otherwise 0 |
 | `Viper.GUI.MessageBox.Error(title, text)`    | `Integer(String, String)` | Show error dialog; returns 0  |
 | `Viper.GUI.MessageBox.Info(title, text)`     | `Integer(String, String)` | Show info dialog; returns 0   |
-| `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question dialog   |
+| `Viper.GUI.MessageBox.Prompt(title, text)`   | `String(String, String)`  | Show a text prompt; entered nonempty text on OK, otherwise empty |
+| `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question; Yes=1, otherwise 0 |
 | `Viper.GUI.MessageBox.Warning(title, text)`  | `Integer(String, String)` | Show warning dialog; returns 0 |
 
 Object-style dialogs:
@@ -533,10 +552,12 @@ if answer == 1 { /* user said yes */ }
 Native or in-app file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
-Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
+Object-style dialogs snapshot their accepted path list after each `Show()`. Path accessors read that
+snapshot until the next `Show()` or until `Destroy()` releases the dialog.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
 Object-style dialogs remember the app that created them, include the default bookmarks used by static dialogs, and do not switch owners just because another app becomes active before a failed `Show()`.
-`FileDialog.New(type)` returns `NULL` for unknown mode values instead of silently creating an open-file dialog.
+`FileDialog.New(type)` uses `0` for open, `1` for save, and `2` for folder selection. It returns
+`NULL` for any other value instead of silently creating an open-file dialog.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
 Dialog paths and filter patterns reject embedded NUL bytes instead of truncating the value passed to native or in-app dialog code. `SetFilter(NULL, pattern)` and `AddFilter(NULL, pattern)` use the label `Files`, while a missing or invalid pattern is ignored.
@@ -556,7 +577,7 @@ filters, a default filename, or multiple selected paths:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Viper.GUI.FileDialog.New(type)` | `Object(Integer)` | Create a dialog object by mode |
+| `Viper.GUI.FileDialog.New(type)` | `Object(Integer)` | Create by mode (`0`=open, `1`=save, `2`=folder); invalid values return `NULL` |
 | `Viper.GUI.FileDialog.NewOpen()` | `Object()` | Create an open-file dialog object |
 | `Viper.GUI.FileDialog.NewSave()` | `Object()` | Create a save-file dialog object |
 | `Viper.GUI.FileDialog.NewFolder()` | `Object()` | Create a select-folder dialog object |
@@ -624,8 +645,8 @@ Toast handle methods:
 |----------------------------|-----------------|--------------------------------|
 | `toast.Dismiss()`          | `Void()`        | Dismiss this toast             |
 | `toast.SetAction(text)`    | `Void(String)`  | Add action button              |
-| `toast.WasActionClicked()` | `Integer()`     | 1 if action was clicked        |
-| `toast.WasDismissed()`     | `Integer()`     | 1 once after toast dismissal   |
+| `toast.WasActionClicked()` | `Boolean()`     | True if action was clicked     |
+| `toast.WasDismissed()`     | `Boolean()`     | True once after toast dismissal |
 
 ### Example
 
@@ -641,7 +662,7 @@ Toast.SetMaxVisible(3);
 
 var t = Toast.New("Custom notification", 0, 5000);
 t.SetAction("Undo");
-if t.WasActionClicked() == 1 { /* undo action */ }
+if t.WasActionClicked() { /* undo action */ }
 ```
 
 ---
@@ -684,7 +705,7 @@ Desktop backends now provide text clipboard support on Linux as well as macOS an
 |-------------------------------------|----------------|--------------------------------|
 | `Viper.GUI.ClipboardText.Clear()`       | `Void()`       | Clear clipboard                |
 | `Viper.GUI.ClipboardText.GetText()`     | `String()`     | Get text from clipboard        |
-| `Viper.GUI.ClipboardText.HasText()`     | `Integer()`    | 1 if clipboard has text        |
+| `Viper.GUI.ClipboardText.HasText()`     | `Boolean()`    | True if clipboard has text     |
 | `Viper.GUI.ClipboardText.SetText(text)` | `Void(String)` | Copy text to clipboard         |
 
 ### Example
@@ -692,9 +713,10 @@ Desktop backends now provide text clipboard support on Linux as well as macOS an
 ```rust
 // Zia
 bind Viper.GUI;
+bind Viper.Terminal;
 
 ClipboardText.SetText("Hello, World!");
-if ClipboardText.HasText() == 1 {
+if ClipboardText.HasText() {
     var text = ClipboardText.GetText();
     Say(text);
 }
@@ -705,19 +727,22 @@ ClipboardText.Clear();
 
 ### Container
 
-Receiver class for setting layout properties on any container widget (VBox, HBox, ScrollView, etc.).
+Receiver class for setting layout properties on widget handles.
 
 **Type:** Instance receiver over a container handle
 
 | Method                       | Signature              | Description                                      |
 |------------------------------|------------------------|--------------------------------------------------|
-| `container.SetSpacing(value)` | `Void(Double)` | Set spacing between children of the container    |
+| `container.SetSpacing(value)` | `Void(Double)` | Set spacing for VBox/HBox (and native Flex)      |
 | `container.SetPadding(value)` | `Void(Double)` | Set internal padding around the container's edge |
 
 ### Notes
 
-- These methods accept any layout container widget (VBox, HBox, or others) as the receiver.
-- They are equivalent to calling `SetSpacing(value)` / `SetPadding(value)` directly on VBox or HBox instances, but are useful when the widget type is held through a generic container reference.
+- `SetSpacing()` changes public `VBox` and `HBox` objects (and native Flex objects). Other valid
+  widget types safely ignore it; in particular, it does not configure `ScrollView` spacing.
+- `SetPadding()` changes the common padding field on a valid widget handle.
+- `VBox` and `HBox` expose both methods directly. `Viper.GUI.Container` is useful when a handle is
+  stored through a generic receiver.
 
 ### Zia Example
 
@@ -727,17 +752,16 @@ module ContainerDemo;
 bind Viper.Terminal;
 bind Viper.GUI.App as App;
 bind Viper.GUI.VBox as VBox;
-bind Viper.GUI.Widget as Widget;
 
 func start() {
     var app = App.New("Container Demo", 400, 300);
     var root = app.get_Root();
 
-    // Create a VBox and configure through the container receiver
+    // Create a VBox and configure it directly
     var vbox = VBox.New();
     vbox.SetSpacing(12.0);
     vbox.SetPadding(16.0);
-    Widget.AddChild(root, vbox);
+    root.AddChild(vbox);
 }
 ```
 
@@ -745,7 +769,8 @@ func start() {
 
 ```basic
 DIM vbox AS OBJECT = NEW Viper.GUI.VBox()
-app.Root.AddChild(vbox)
+DIM root AS OBJECT = app.Root
+root.AddChild(vbox)
 
 ' Configure through the container receiver
 vbox.SetSpacing(10.0)
@@ -764,14 +789,14 @@ Invalid shortcut strings are rejected without registering a new shortcut or repl
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
 | `Viper.GUI.Shortcuts.Clear()`                   | `Void()`                | Remove all shortcuts                     |
-| `Viper.GUI.Shortcuts.GetGlobalEnabled()`        | `Integer()`             | Check if shortcuts globally enabled      |
+| `Viper.GUI.Shortcuts.GetGlobalEnabled()`        | `Boolean()`             | Check if shortcuts globally enabled      |
 | `Viper.GUI.Shortcuts.GetTriggered()`            | `String()`              | Get ID of triggered shortcut             |
-| `Viper.GUI.Shortcuts.IsEnabled(id)`             | `Integer(String)`       | Check if shortcut is enabled             |
+| `Viper.GUI.Shortcuts.IsEnabled(id)`             | `Boolean(String)`       | Check if shortcut is enabled             |
 | `Viper.GUI.Shortcuts.Register(id, keys, desc)`  | `Void(Str, Str, Str)`  | Register a shortcut                      |
 | `Viper.GUI.Shortcuts.SetEnabled(id, enabled)`   | `Void(String, Boolean)` | Enable/disable shortcut                  |
 | `Viper.GUI.Shortcuts.SetGlobalEnabled(enabled)` | `Void(Boolean)`         | Enable/disable all shortcuts             |
 | `Viper.GUI.Shortcuts.Unregister(id)`            | `Void(String)`          | Unregister a shortcut                    |
-| `Viper.GUI.Shortcuts.WasTriggered(id)`          | `Integer(String)`       | 1 if shortcut was triggered this frame   |
+| `Viper.GUI.Shortcuts.WasTriggered(id)`          | `Boolean(String)`       | True if shortcut was triggered this frame |
 
 ### Example
 
@@ -780,7 +805,7 @@ Invalid shortcut strings are rejected without registering a new shortcut or repl
 Shortcuts.Register("save", "Ctrl+S", "Save file");
 Shortcuts.Register("quit", "Ctrl+Q", "Quit application");
 
-if Shortcuts.WasTriggered("save") == 1 {
+if Shortcuts.WasTriggered("save") {
     // Handle save
 }
 var triggered = Shortcuts.GetTriggered();
@@ -791,6 +816,10 @@ var triggered = Shortcuts.GetTriggered();
 ### Cursor
 
 Mouse cursor control (static methods).
+
+`Set()` accepts the graphics-backend values `0`=default arrow, `1`=pointer/hand, `2`=text
+I-beam, `3`=horizontal resize, `4`=vertical resize, and `5`=wait. Values outside this range reset to
+the default arrow.
 
 | Method                                | Signature        | Description                    |
 |---------------------------------------|------------------|--------------------------------|
@@ -836,6 +865,7 @@ Theme.SetLight();  // Light theme
 ### VideoWidget
 
 Embedded video player widget that renders decoded frames inside a GUI layout. Wraps `Viper.Graphics.VideoPlayer` with GUI lifecycle integration.
+Construction returns `NULL` when the video cannot be opened or reports non-positive dimensions.
 
 **Type:** Instance (obj)
 **Constructor:** `VideoWidget.New(parent, path)`
@@ -844,7 +874,7 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 
 | Property       | Type    | Access | Description |
 |----------------|---------|--------|-------------|
-| `IsPlaying`    | Integer | Read   | Non-zero while the video is playing |
+| `IsPlaying`    | Boolean | Read   | True while the video is playing |
 | `Position`     | Double  | Read   | Current playback position in seconds |
 | `Duration`     | Double  | Read   | Total duration in seconds |
 | `Root`         | Widget  | Read   | Internal root widget for advanced composition |
@@ -858,43 +888,68 @@ Embedded video player widget that renders decoded frames inside a GUI layout. Wr
 | `Play()` | `Void()` | Start or resume playback |
 | `Pause()` | `Void()` | Pause at the current frame |
 | `Stop()` | `Void()` | Stop and reset to the start |
-| `Update(deltaSeconds)` | `Void(Double)` | Advance the video decoder; finite positive values only |
+| `Update(deltaSeconds)` | `Void(Double)` | Process controls and refresh the frame; finite positive values also advance playback |
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
-| `SetFlex(flex)` / `SetMargin(margin)` | `Void(...)` | Proxy layout configuration to the internal root widget |
-| `SetSize(w, h)` / `SetPreferredSize(w, h)` / `SetMaxSize(w, h)` | `Void(...)` | Proxy sizing to the internal root widget |
+| `SetFlex(flex)` / `SetMargin(margin)` | `Void(Double)` / `Void(Integer)` | Proxy layout configuration to the internal root widget |
+| `SetPosition(x, y)` | `Void(Integer, Integer)` | Manually position the internal root widget |
+| `SetSize(w, h)` | `Void(Integer, Integer)` | Set the internal root's fixed logical size |
+| `SetPreferredSize(w, h)` / `SetMaxSize(w, h)` | `Void(Double, Double)` | Proxy preferred/maximum sizing to the internal root widget |
 | `SetVisible(flag)` / `SetEnabled(flag)` | `Void(Boolean)` | Proxy visibility/enabled state to the internal root widget |
 | `AddChild(widget)` | `Void(Object)` | Add extra content to the widget's internal root container |
 | `Destroy()` | `Void()` | Release decoder resources |
 
 ```rust
+module VideoWidgetDemo;
+
 bind Viper.GUI.VideoWidget as VideoWidget;
 bind Viper.GUI.App as App;
+bind Viper.Time.Clock as Clock;
 
-var app  = App.New("Video Player", 800, 600)
-var root = app.Root()
-var vid  = VideoWidget.New(root, "assets/intro.ogv")
-vid.ShowControls = true
-vid.Loop = false
-vid.Play()
+func start() {
+    var app = App.New("Video Player", 800, 600);
+    var root = app.get_Root();
+    var vid = VideoWidget.New(root, "assets/intro.ogv");
+    vid.set_ShowControls(true);
+    vid.set_Loop(false);
+    vid.Play();
 
-while app.Poll() do
-    vid.Update(app.DeltaSeconds())
-    app.Render()
-end while
-vid.Destroy()
+    var lastMs = Clock.Ticks();
+    while !app.get_ShouldClose() {
+        app.Poll();
+        var nowMs = Clock.Ticks();
+        var deltaSeconds = (nowMs - lastMs) / 1000.0;
+        lastMs = nowMs;
+        vid.Update(deltaSeconds);
+        app.Render();
+    }
+
+    vid.Destroy();
+    app.Destroy();
+}
 ```
 
 ```basic
 DIM app AS Viper.GUI.App = NEW Viper.GUI.App("Video Player", 800, 600)
-DIM root AS Viper.GUI.Widget = app.Root()
+DIM root AS Object = app.Root
 DIM vid AS Viper.GUI.VideoWidget = NEW Viper.GUI.VideoWidget(root, "assets/intro.ogv")
 vid.ShowControls = TRUE
+vid.Loop = FALSE
 vid.Play()
-WHILE app.Poll()
-    vid.Update(app.DeltaSeconds())
+
+DIM lastMs AS INTEGER = Viper.Time.Clock.Ticks()
+DIM nowMs AS INTEGER
+DIM deltaSeconds AS DOUBLE
+DO WHILE NOT app.ShouldClose
+    app.Poll()
+    nowMs = Viper.Time.Clock.Ticks()
+    deltaSeconds = (nowMs - lastMs) / 1000.0
+    lastMs = nowMs
+    vid.Update(deltaSeconds)
     app.Render()
-WEND
+LOOP
+
 vid.Destroy()
+app.Destroy()
 ```
 
 `VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer also destroys the subtree if the wrapper is collected while still attached, so controls are not left alive without their player. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
@@ -908,7 +963,7 @@ These helpers are runtime-side primitives for editor applications that need dete
 
 #### TestHarness
 
-`Viper.GUI.TestHarness.New()` creates a headless registry for named widget regions. It is not a replacement for a real `App`; it is a compact automation model for CTests and Zia probes.
+`Viper.GUI.TestHarness.New()` creates a headless registry for named widget regions. It is not a replacement for a real `App`; it is a compact automation model for deterministic tests and Zia probes.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -926,15 +981,15 @@ These helpers are runtime-side primitives for editor applications that need dete
 
 #### VirtualList and VirtualTree
 
-`Viper.GUI.VirtualList.New(rowCount, rowHeight, viewportHeight)` tracks visible row ranges and stable selection by id for large lists. `VisibleRange(scrollY)` returns a map with `first`, `last`, and `count`; `SetRowId(row, id)`, `SelectId(id)`, `GetSelectedId()`, and `GetSelectedIndex()` keep selection stable across rebuilds.
+`Viper.GUI.VirtualList.New(rowCount, rowHeight, viewportHeight)` tracks visible row ranges and stable selection by id for large lists. `VisibleRange(scrollY)` returns a map with `start`, exclusive `end`, and `count`; `SetRowId(row, id)`, `SelectId(id)`, `GetSelectedId()`, and `GetSelectedIndex()` keep selection stable when rows are rebuilt with the same ids. Row counts clamp to zero or greater, while row and viewport heights clamp to at least one.
 
-`Viper.GUI.VirtualTree.New()` supports lazy tree models. `AddNode(parentId, id, text)`, `Expand(id)`, `Collapse(id)`, `VisibleRows()`, `SelectId(id)`, and `RefreshSubtree(id)` let a project tree preserve expansion/selection while requesting repopulation only for dirty subtrees. `AddNode` rejects empty ids, self-parenting, and moves that would put a node under its own descendant; valid reparenting removes the node from its old parent. `RefreshSubtree(id)` removes descendants of the refreshed node and clears selection if the selected id was removed.
+`Viper.GUI.VirtualTree.New()` supports lazy tree models. `AddNode(parentId, id, text)`, `Expand(id)`, `Collapse(id)`, `VisibleRows()`, `SelectId(id)`, and `RefreshSubtree(id)` let a project tree preserve expansion/selection while requesting repopulation only for dirty subtrees. `Expand(id)` returns a map containing `found`, `needsPopulate`, and, when found, `expanded`. Each map in `VisibleRows()` contains `id`, `text`, `parentId`, `depth`, `expanded`, and `needsPopulate`. `AddNode` rejects empty ids, self-parenting, and moves that would put a node under its own descendant; valid reparenting removes the node from its old parent. `RefreshSubtree(id)` removes descendants of the refreshed node and clears selection if the selected id was removed.
 
 #### CommandState and Accessibility
 
 `Viper.GUI.CommandState.New(id, label)` stores command enabled/checked state plus accessible label and description metadata. `Snapshot()` returns a map suitable for command palettes, menus, toolbar buttons, and tests.
 
-`Viper.GUI.Accessibility.ContrastRatio(fgRgb, bgRgb)`, `MeetsContrast(fgRgb, bgRgb, minRatio)`, and `HighContrastTokens()` provide shared contrast checks and a small high-contrast color token set for editor overlays.
+`Viper.GUI.Accessibility.ContrastRatio(fgRgb, bgRgb)`, `MeetsContrast(fgRgb, bgRgb, minRatio)`, and `HighContrastTokens()` provide shared contrast checks and a small high-contrast color token set for editor overlays. Colors use the low 24 bits as `0xRRGGBB`. A non-finite or non-positive minimum ratio falls back to `4.5`.
 
 ---
 

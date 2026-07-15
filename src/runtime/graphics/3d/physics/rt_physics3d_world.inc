@@ -60,6 +60,15 @@ static void world3d_finalizer(void *obj) {
     free(w->query_broadphase_entries);
     free(w->query_hits_scratch);
     w->query_hits_scratch = NULL;
+    if (w->solver_pool) {
+        /* Same owned-pool teardown as the software rasterizer: drain, then drop
+         * the runtime object reference. */
+        void *pool = w->solver_pool;
+        w->solver_pool = NULL;
+        rt_threadpool_shutdown(pool);
+        if (rt_obj_release_check0(pool))
+            rt_obj_free(pool);
+    }
     if (w->query_sphere_collider && rt_obj_release_check0(w->query_sphere_collider))
         rt_obj_free(w->query_sphere_collider);
     if (w->query_box_collider && rt_obj_release_check0(w->query_box_collider))
@@ -414,7 +423,7 @@ void rt_world3d_step(void *obj, double dt) {
                     double normal[3] = {0.0, 1.0, 0.0};
                     if (radius > 1e-6 &&
                         world3d_ccd_sweep_sphere_raw(
-                            w, b->position, radius, delta, b, &toi, normal) &&
+                            w, b->position, radius, delta, b, sub_dt, &toi, normal) &&
                         toi < 1.0) {
                         /* Speculative clip: stop the NORMAL component of the
                          * translation just before the surface, but carry the

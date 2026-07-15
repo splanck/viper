@@ -1076,6 +1076,26 @@ static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     gl.UseProgram(ctx->program);
 }
 
+/// @brief Backend `shadow_reuse` op — re-arm a slot from its previous-frame depth texture.
+///
+/// Per-slot shadow FBOs/textures persist across frames (recreated only on
+/// resolution change), so an unchanged slot only needs its VP re-registered and
+/// its complete flag restored — no clear, no rasterization.
+static int8_t gl_shadow_reuse(
+    void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    (void)depth_buf;
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !light_vp || w <= 0 || h <= 0)
+        return 0;
+    if (!ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] || ctx->shadow_width[slot] != w ||
+        ctx->shadow_height[slot] != h)
+        return 0;
+    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    ctx->shadow_complete[slot] = 1;
+    gl_recompute_shadow_count(ctx);
+    return 1;
+}
+
 /// @brief Backend `submit_draw_instanced` op — emit one `glDrawElementsInstanced`.
 ///
 /// Same flow as `gl_submit_draw` plus per-instance matrix attributes

@@ -38,6 +38,13 @@ typedef struct {
     int64_t stale_async_loads_dropped;
     int64_t stream_staging_errors;
     int64_t stream_stale_stages_dropped;
+    /* EPA hit its polytope caps and reported a 0-depth contact: persistent counts
+     * here usually mean an over-detailed convex hull collider (decimate it). */
+    int64_t epa_fallbacks;
+    /* Shadow slots satisfied from their previous-frame depth (signature match). */
+    int64_t shadow_slots_reused;
+    /* Opaque draws folded into auto-instanced batches. */
+    int64_t auto_instanced_draws;
 } rt_game3d_diagnostics_state;
 
 static rt_game3d_diagnostics_state g_game3d_diagnostics;
@@ -116,6 +123,18 @@ int64_t rt_game3d_diagnostics_get_stream_stale_stages_dropped(void) {
     return diag_nonnegative(g_game3d_diagnostics.stream_stale_stages_dropped);
 }
 
+int64_t rt_game3d_diagnostics_get_epa_fallbacks(void) {
+    return diag_nonnegative(g_game3d_diagnostics.epa_fallbacks);
+}
+
+int64_t rt_game3d_diagnostics_get_shadow_slots_reused(void) {
+    return diag_nonnegative(g_game3d_diagnostics.shadow_slots_reused);
+}
+
+int64_t rt_game3d_diagnostics_get_auto_instanced_draws(void) {
+    return diag_nonnegative(g_game3d_diagnostics.auto_instanced_draws);
+}
+
 void rt_game3d_diagnostics_reset(void) {
     memset(&g_game3d_diagnostics, 0, sizeof(g_game3d_diagnostics));
     rt_audio_diagnostics_reset_spatial_voice_evictions();
@@ -175,6 +194,12 @@ rt_string rt_game3d_diagnostics_summary(void) {
                      &offset,
                      "StreamStaleStagesDropped",
                      g_game3d_diagnostics.stream_stale_stages_dropped);
+    diag_append_line(
+        buffer, sizeof(buffer), &offset, "EpaFallbacks", g_game3d_diagnostics.epa_fallbacks);
+    /* ShadowSlotsReused and AutoInstancedDraws are HEALTH/throughput counters,
+     * not degradation: they are exposed only through their properties. Summary()
+     * stays a pure degradation digest so smoke probes can keep asserting it is
+     * empty on a clean run. */
     if (offset == 0)
         return rt_str_empty();
     return rt_string_from_bytes(buffer, offset);
@@ -191,6 +216,18 @@ void rt_game3d_diag_record_ccd_clamp(int64_t affected_bodies) {
 
 void rt_game3d_diag_record_anim_events_dropped(int64_t count) {
     diag_increment(&g_game3d_diagnostics.anim_events_dropped, count);
+}
+
+void rt_game3d_diag_record_epa_fallback(void) {
+    diag_increment(&g_game3d_diagnostics.epa_fallbacks, 1);
+}
+
+void rt_game3d_diag_record_shadow_slot_reused(void) {
+    diag_increment(&g_game3d_diagnostics.shadow_slots_reused, 1);
+}
+
+void rt_game3d_diag_record_auto_instanced_draws(int64_t count) {
+    diag_increment(&g_game3d_diagnostics.auto_instanced_draws, count);
 }
 
 void rt_game3d_diag_record_audio_voice_evicted(void) {

@@ -254,7 +254,7 @@ static void compute_bone_palette(rt_anim_player3d *p) {
             if (bone >= 0 && bone < bone_count) {
                 sample_channel_with_fallback(&current->channels[c],
                                              p->current_time,
-                                             skel->bones[bone].bind_pose_local,
+                                             &skel->bones[bone],
                                              &p->local_transforms[bone * 16]);
             }
         }
@@ -300,13 +300,13 @@ static void compute_bone_palette(rt_anim_player3d *p) {
             float blend_pos[3], blend_rot[4], blend_scl[3];
             sample_animation_channel_trs(from_channel,
                                          p->crossfade_from_time,
-                                         skel->bones[bone].bind_pose_local,
+                                         &skel->bones[bone],
                                          from_pos,
                                          from_rot,
                                          from_scl);
             sample_animation_channel_trs(to_channel,
                                          p->current_time,
-                                         skel->bones[bone].bind_pose_local,
+                                         &skel->bones[bone],
                                          to_pos,
                                          to_rot,
                                          to_scl);

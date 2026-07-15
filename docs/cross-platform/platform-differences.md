@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-07-14
 ---
 
 # Platform Behavioral Differences
@@ -64,27 +64,27 @@ The `Viper.Terminal` module (`Say`, `Print`, `ReadKey`, etc.) is functionally eq
 
 The `Viper.System.Machine` module returns platform-specific values for several queries.
 
-| Function | Windows | macOS | Linux |
+| Property | Windows | macOS | Linux |
 |----------|---------|-------|-------|
-| `Machine.Os()` | `"windows"` | `"macos"` | `"linux"` |
-| `Machine.OsVersion()` | `GetVersionExA()` → e.g. `"10.0.19045"` | `sw_vers` command → e.g. `"14.2.1"` | `/etc/os-release` → e.g. `"Ubuntu 22.04"` |
-| `Machine.Host()` | `GetComputerNameA()` | `gethostname()` | `gethostname()` |
-| `Machine.User()` | `GetUserNameA()` with SID fallback | `getpwuid(getuid())` | `getpwuid()` with `$USER` env fallback |
-| `Machine.Home()` | `%USERPROFILE%` (e.g. `C:\Users\alice`) | `$HOME` or `/var/root` | `$HOME` or `getpwuid()` fallback |
-| `Machine.Temp()` | `GetTempPathA()` (e.g. `C:\Users\alice\AppData\Local\Temp`) | `$TMPDIR` or `/tmp` | `$TMPDIR` or `/tmp` |
-| `Machine.Cores()` | `GetSystemInfo().dwNumberOfProcessors` | `sysctlbyname("hw.logicalcpu")` | `sysconf(_SC_NPROCESSORS_ONLN)` |
-| `Machine.MemTotal()` | `GlobalMemoryStatusEx()` | `sysctl(HW_MEMSIZE)` | `/proc/meminfo` MemTotal |
-| `Machine.MemFree()` | `GlobalMemoryStatusEx().ullAvailPhys` | `vm_stat` page parsing | `/proc/meminfo` MemAvailable |
+| `Machine.Os` | `"windows"` | `"macos"` | `"linux"` |
+| `Machine.OsVer` | `GetVersionExA()` → e.g. `"10.0.19045"` | `sysctlbyname("kern.osproductversion")` → e.g. `"14.2.1"` | `VERSION_ID` from `/etc/os-release` → e.g. `"22.04"` |
+| `Machine.Host` | `GetComputerNameA()` | `gethostname()` | `gethostname()` |
+| `Machine.User` | `GetUserNameA()` with SID fallback | `getpwuid(getuid())` | `getpwuid()` with `$USER` env fallback |
+| `Machine.Home` | `%USERPROFILE%` (e.g. `C:\Users\alice`) | `$HOME` or `/var/root` | `$HOME` or `getpwuid()` fallback |
+| `Machine.Temp` | `GetTempPathA()` (e.g. `C:\Users\alice\AppData\Local\Temp`) | `$TMPDIR` or `/tmp` | `$TMPDIR` or `/tmp` |
+| `Machine.Cores` | `GetSystemInfo().dwNumberOfProcessors` | `sysctlbyname("hw.logicalcpu")` | `sysconf(_SC_NPROCESSORS_ONLN)` |
+| `Machine.MemTotal` | `GlobalMemoryStatusEx()` | `sysctl(HW_MEMSIZE)` | `/proc/meminfo` MemTotal |
+| `Machine.MemFree` | `GlobalMemoryStatusEx().ullAvailPhys` | `host_statistics64()` free + inactive pages | `sysinfo().freeram` |
 
 **User-visible differences:**
 
-- `OsVersion()` format varies significantly between platforms. Do not parse the string for version comparison — use `Machine.Os()` for platform detection.
-- `Home()` uses `%USERPROFILE%` on Windows (typically `C:\Users\<name>`) vs `$HOME` on Unix (typically `/home/<name>` or `/Users/<name>`). The path separator in the returned string matches the platform convention.
-- `Temp()` returns a platform-native path. On Windows this often includes the user's AppData directory; on Unix it is typically `/tmp` unless `$TMPDIR` is set.
+- `OsVer` format varies significantly between platforms. Do not parse the string for version comparison — use `Machine.Os` for platform detection.
+- `Home` uses `%USERPROFILE%` on Windows (typically `C:\Users\<name>`) vs `$HOME` on Unix (typically `/home/<name>` or `/Users/<name>`). The path separator in the returned string matches the platform convention.
+- `Temp` returns a platform-native path. On Windows this often includes the user's AppData directory; on Unix it is typically `/tmp` unless `$TMPDIR` is set.
 
 ### 1.3 File Watching
 
-The `Viper.Watcher` module uses three completely separate backends, but presents a unified API.
+The `Viper.IO.Watcher` class uses three completely separate backends, but presents a unified API.
 
 | Aspect | Windows | macOS | Linux |
 |--------|---------|-------|-------|

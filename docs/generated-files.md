@@ -76,8 +76,8 @@ These files are **manually maintained** but must stay synchronized with `Opcode.
 | `src/il/runtime/defs/**/*.def`                   | Domain runtime rows and authored class docs  |
 | `src/il/runtime/RuntimeSigs.def`                 | Runtime signature enum + spec declarations   |
 | `src/il/runtime/RuntimeSignaturesData.hpp`       | Signature metadata table                     |
-| `src/runtime/*.c`                                | C runtime implementations                    |
-| `src/runtime/*.h`                                | C runtime API headers (per-module)           |
+| `src/runtime/**/*.c`                             | C runtime implementations                    |
+| `src/runtime/**/*.h`                             | C runtime API and internal headers            |
 
 ### Generated Files
 

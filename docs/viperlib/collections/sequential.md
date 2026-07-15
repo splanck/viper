@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-13
+last-verified: 2026-07-14
 ---
 
 # Sequential Collections
@@ -22,10 +22,10 @@ Dynamic array that grows automatically. Stores object references.
 
 | Property | Type    | Description                 |
 |----------|---------|-----------------------------|
-| `Length`  | Integer | Number of items in the list            |
+| `Count`   | Integer | Number of items in the list            |
 | `IsEmpty` | Boolean | True if the list contains no items     |
 
-> **Note:** `Count` is available as an alias for `Length` for backward compatibility.
+> **Note:** The public collection-size property is `Count`; `Length` is not registered for this class.
 
 ### Methods
 
@@ -134,7 +134,7 @@ PRINT list.Get(0)          ' First element
 list.Set(0, b)             ' Replace first element
 
 ' Slice, Reverse, First, Last
-DIM sub AS OBJECT = list.Slice(0, 1)
+DIM portion AS Viper.Collections.List = list.Slice(0, 1)
 list.Reverse()             ' Reverse in place
 PRINT list.First()         ' First element
 PRINT list.Last()          ' Last element
@@ -157,7 +157,7 @@ circular buffer for O(1) add and take operations.
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Length`  | Integer | Number of elements in the queue           |
+| `Count`   | Integer | Number of elements in the queue           |
 | `IsEmpty` | Boolean | Returns true if the queue has no elements |
 
 ### Methods
@@ -251,7 +251,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Length`  | Integer | Number of elements on the stack           |
+| `Count`   | Integer | Number of elements on the stack           |
 | `IsEmpty` | Boolean | Returns true if the stack has no elements |
 
 ### Methods
@@ -348,7 +348,7 @@ stacks and queues while also supporting indexed access.
 
 | Property  | Type    | Description                               |
 |-----------|---------|-------------------------------------------|
-| `Length`  | Integer | Number of elements in the deque           |
+| `Count`   | Integer | Number of elements in the deque           |
 | `Capacity` | Integer | Current allocated capacity              |
 | `IsEmpty` | Boolean | Returns true if the deque has no elements |
 
@@ -385,7 +385,24 @@ stacks and queues while also supporting indexed access.
 
 ### Zia Example
 
-> Deque is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+```rust
+module DequeDemo;
+
+bind Viper.Collections.Deque as Deque;
+bind Viper.Core.Box as Box;
+bind Viper.Terminal;
+
+func start() {
+    var deque: Deque = Deque.New();
+    deque.PushBack(Box.Str("middle"));
+    deque.PushFront(Box.Str("front"));
+    deque.PushBack(Box.Str("back"));
+
+    Say(Box.ToStr(deque.PopFront()));  // front
+    Say(Box.ToStr(deque.PopBack()));   // back
+    SayInt(deque.Count);               // 1
+}
+```
 
 ### BASIC Example
 
@@ -450,7 +467,7 @@ PRINT deque.Get(0)       ' Output: "c" (was last)
 
 - **Sliding window:** Process data with access to both newest and oldest elements
 - **Undo/Redo:** Push operations to back, pop from back for undo, front for redo
-- **Work stealing:** Thread-safe deques enable work stealing for load balancing
+- **Work queues:** Manage both ends in single-threaded schedulers; this deque requires external synchronization for concurrent access
 - **Palindrome checking:** Compare elements from both ends
 - **Browser history:** Navigate forward and backward through pages
 
@@ -473,7 +490,7 @@ elements.
 
 | Property  | Type      | Description                          |
 |-----------|-----------|--------------------------------------|
-| `Length`  | `Integer` | Number of elements currently stored  |
+| `Count`   | `Integer` | Number of elements currently stored  |
 | `Capacity` | `Integer` | Maximum capacity (fixed at creation) |
 | `IsEmpty` | `Boolean` | True if ring has no elements         |
 | `IsFull`  | `Boolean` | True if ring is at capacity          |
@@ -553,7 +570,7 @@ PRINT recent.Get(1)     ' Output: third
 PRINT recent.Get(2)     ' Output: fourth
 
 ' Pop removes oldest (FIFO)
-DIM oldest AS STRING = recent.Pop()
+DIM oldest AS OBJECT = recent.Pop()
 PRINT oldest            ' Output: second
 PRINT recent.Count        ' Output: 2
 
@@ -586,7 +603,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 
 | Property  | Type    | Description                                    |
 |-----------|---------|------------------------------------------------|
-| `Length`  | Integer | Number of elements in the heap                 |
+| `Count`   | Integer | Number of elements in the heap                 |
 | `IsEmpty` | Boolean | Returns true if the heap has no elements       |
 | `IsMax`   | Boolean | Returns true if max-heap, false if min-heap    |
 
@@ -602,7 +619,6 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 | `TryPopOption()`     | `Option[Object]()`     | Remove and return highest priority element, or `None` if empty |
 | `TryPeekOption()`    | `Option[Object]()`     | Return highest priority element, or `None` if empty        |
 | `Clear()`            | `Void()`               | Remove all elements                                        |
-| `Items()`            | `Seq()`                | Return elements in priority order as a Seq (alias for ToSeq) |
 | `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
 
 ### Notes
@@ -610,7 +626,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 - Heap retains pushed object values and releases them when removed, cleared, or finalized.
 - `Pop()` and `TryPop()` transfer the heap's retained object reference to the caller. `Peek()` and `TryPeek()` return an additional owned reference without removing the item.
 - Prefer `TryPopOption()` and `TryPeekOption()` for new code. They distinguish an empty heap from a stored null object; the nullable forms remain for compatibility.
-- `Items()` and `ToSeq()` return independent owning snapshots in priority order.
+- `ToSeq()` returns an independent owning snapshot in priority order.
 
 ### Zia Example
 

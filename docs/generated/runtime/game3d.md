@@ -1914,6 +1914,9 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-diagnostics3d-staleasyncloadsdropped"></a>`StaleAsyncLoadsDropped` | `i64` | read-only |
 | <a id="viper-game3d-diagnostics3d-streamstagingerrors"></a>`StreamStagingErrors` | `i64` | read-only |
 | <a id="viper-game3d-diagnostics3d-streamstalestagesdropped"></a>`StreamStaleStagesDropped` | `i64` | read-only |
+| <a id="viper-game3d-diagnostics3d-epafallbacks"></a>`EpaFallbacks` | `i64` | read-only |
+| <a id="viper-game3d-diagnostics3d-shadowslotsreused"></a>`ShadowSlotsReused` | `i64` | read-only |
+| <a id="viper-game3d-diagnostics3d-autoinstanceddraws"></a>`AutoInstancedDraws` | `i64` | read-only |
 
 #### Methods
 
@@ -2769,6 +2772,9 @@ public surface exposes properties such as `BroadphaseFallbackCount`, `CcdClamped
 | <a id="viper-game3d-diagnostics3d-get-staleasyncloadsdropped"></a>`Viper.Game3D.Diagnostics3D.get_StaleAsyncLoadsDropped` | `i64()` | `rt_game3d_diagnostics_get_stale_async_loads_dropped` |
 | <a id="viper-game3d-diagnostics3d-get-streamstagingerrors"></a>`Viper.Game3D.Diagnostics3D.get_StreamStagingErrors` | `i64()` | `rt_game3d_diagnostics_get_stream_staging_errors` |
 | <a id="viper-game3d-diagnostics3d-get-streamstalestagesdropped"></a>`Viper.Game3D.Diagnostics3D.get_StreamStaleStagesDropped` | `i64()` | `rt_game3d_diagnostics_get_stream_stale_stages_dropped` |
+| <a id="viper-game3d-diagnostics3d-get-epafallbacks"></a>`Viper.Game3D.Diagnostics3D.get_EpaFallbacks` | `i64()` | `rt_game3d_diagnostics_get_epa_fallbacks` |
+| <a id="viper-game3d-diagnostics3d-get-shadowslotsreused"></a>`Viper.Game3D.Diagnostics3D.get_ShadowSlotsReused` | `i64()` | `rt_game3d_diagnostics_get_shadow_slots_reused` |
+| <a id="viper-game3d-diagnostics3d-get-autoinstanceddraws"></a>`Viper.Game3D.Diagnostics3D.get_AutoInstancedDraws` | `i64()` | `rt_game3d_diagnostics_get_auto_instanced_draws` |
 | `Viper.Game3D.Diagnostics3D.Reset` | `void()` | `rt_game3d_diagnostics_reset` |
 | `Viper.Game3D.Diagnostics3D.Summary` | `str()` | `rt_game3d_diagnostics_summary` |
 | `Viper.Game3D.Surfaces.Register` | `i64(str)` | `rt_game3d_surfaces_register` |

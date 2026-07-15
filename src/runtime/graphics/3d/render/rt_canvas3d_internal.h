@@ -1094,6 +1094,21 @@ typedef struct {
     vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
     int8_t shadow_rt_owned[VGFX3D_MAX_SHADOW_LIGHTS]; /* slots allocated by Canvas3D itself */
     float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
+    /* Per-slot shadow content signature (light VP + resolution + bias + every
+     * culled-in caster's geometry identity/revision/transform). When a slot's
+     * signature matches last frame's and the backend can re-arm its stored
+     * depth (shadow_reuse hook), the whole begin/draw/end pass is skipped —
+     * fully static shadow maps stop re-rendering every frame. 0 = never reuse
+     * (animated caster present, or the slot was not rendered). */
+    uint64_t shadow_slot_signature[VGFX3D_MAX_SHADOW_LIGHTS];
+    int64_t last_shadow_slots_cached; /* diagnostics: slots reused this frame */
+
+    /* Auto-instancing scratch: consecutive state-sorted opaque draws that share
+     * identical commands (same stable geometry, material, lights — everything but
+     * the model transform) are folded into one instanced submission. */
+    float *auto_instance_matrices;
+    int32_t auto_instance_matrix_capacity;
+    int64_t last_auto_instanced_draws; /* diagnostics: draws folded into batches */
 
     /* Plan 08: overlay 2D clip rect (enqueue-time CPU clipping — applies to
      * screen-space rect/line/image/text queueing while active; backend-neutral). */

@@ -92,6 +92,13 @@ typedef struct {
     double world_max[3];
     int32_t traversal_order;
     int8_t cullable;
+    /* Effective (self AND ancestors) visibility. Hidden entries stay in the BVH
+     * so visibility toggles are cheap refits instead of full rebuilds; queries
+     * filter on this flag. */
+    int8_t visible;
+    /* Index of the BVH leaf containing this entry (-1 before the tree exists);
+     * lets a refit re-union only the changed leaf-to-root paths. */
+    int32_t leaf_node;
     uint32_t world_revision;
     uint32_t geometry_revision;
 } rt_scene3d_spatial_entry;
@@ -101,6 +108,8 @@ typedef struct {
     double world_max[3];
     int32_t left;
     int32_t right;
+    /* Parent node index (-1 for the root); enables bottom-up path refits. */
+    int32_t parent;
     int32_t start;
     int32_t count;
     int32_t cullable_count;
@@ -388,6 +397,7 @@ double scene3d_clamp_abs_or(double value, double fallback);
 void scene3d_canonicalize_aabb_d(double mn[3], double mx[3]);
 double scene3d_distance_or_zero(double value);
 void scene3d_mark_spatial_dirty(rt_scene3d *scene);
+void scene3d_mark_spatial_visibility_dirty(rt_scene3d *scene);
 int scene3d_normalize_vec3d(double v[3]);
 void scene3d_release_ref(void **slot);
 double scene3d_scale_or_unit(double value);

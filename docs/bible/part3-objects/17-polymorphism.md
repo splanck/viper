@@ -1229,7 +1229,7 @@ func describe(dir: Direction) -> String {
 
 The compiler verifies that every variant is handled (or that a `_` wildcard is present), catching missing cases at compile time rather than runtime. This is a form of *compile-time polymorphism* — one function handles multiple forms of a value, with the compiler ensuring completeness.
 
-Enums are especially useful for state machines, command types, and any domain where a value must be exactly one of a known set. For full syntax details, see the Enum sections in [Appendix A (Zia)](../appendices/a-zia-reference.md#enums) and [Appendix B (BASIC)](../appendices/b-basic-reference.md#enums).
+Enums are especially useful for state machines, command types, and any domain where a value must be exactly one of a known set. For full syntax details, see the canonical [Zia reference](../../zia-reference.md#enums) and [BASIC reference](../../basic-reference.md#enum).
 
 ---
 

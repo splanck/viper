@@ -1,12 +1,12 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-20
+last-verified: 2026-07-14
 ---
 
 # Localization
 
-> Locale-aware formatting, translation, collation, and text-direction utilities.
+> Locale-aware formatting, translation, and text-direction utilities.
 
 **Part of [Viper Runtime Library](../README.md)**
 
@@ -19,30 +19,42 @@ last-verified: 2026-06-20
 | [Locale & registry](locale.md) | `Locale`, `LocaleInfo`, `LocaleManager` |
 | [Formatting](formatting.md) | `NumberFormat`, `DateFormat`, `RelativeTimeFormat`, `ListFormat` |
 | [Messages](messages.md) | `MessageBundle`, `PluralRules` |
-| [Collation & direction](collation.md) | `Collator`, `TextDirection` |
+| [Collation & direction](collation.md) | `TextDirection` plus internal collation notes |
 | [Data files](data-files.md) | JSON locale-data schema + VPA authoring guide |
 
 ---
 
 ## Concept overview
 
-`Viper.Localization.*` exposes eleven classes built on top of a shared **locale record** (internally `rt_locale_data_t`) that carries the number separators, currency conventions, month / day names, date patterns, plural rules, relative-time templates, list-formatting templates, and collation tailorings for a single language/region pair. Named IANA time zones live under `Viper.Time.TimeZone`; they are separate from locale data because time-zone transitions are instant/region rules, not language formatting rules.
+`Viper.Localization.*` exposes public classes built on top of a shared **locale record**
+(internally `rt_locale_data_t`) that carries number separators, currency conventions,
+month/day names, date patterns, plural rules, relative-time templates, list-formatting
+templates, and collation tailorings for a single language/region pair. The exact public
+class inventory is source-generated in the
+[localization API reference](../../generated/runtime/localization.md). Named IANA time
+zones live under `Viper.Time.TimeZone`; they are separate from locale data because
+time-zone transitions are instant/region rules, not language-formatting rules.
 
-**What ships baked in:** only **en-US**. Every other locale is loaded at runtime from JSON — either from the filesystem via `LocaleManager.LoadFromJson(path)` or from a VPA-embedded asset via `LocaleManager.LoadFromAsset(name)`.
+**What ships baked in:** only **en-US**. Every other locale is loaded at runtime from JSON — either from the filesystem via `LocaleManager.LoadFromJson(path)` or through the asset system via `LocaleManager.LoadFromAsset(name)`.
 
 ## Quick start
 
 ```rust
-bind LocaleManager : Viper.Localization.LocaleManager
-bind Locale        : Viper.Localization.Locale
-bind NumberFormat  : Viper.Localization.NumberFormat
+module LocalizationQuickStart;
 
-# The manager auto-detects the system locale on first access. Set it
-# explicitly for reproducible output.
-LocaleManager.SetCurrent(Locale.Parse("en-US"))
+bind Viper.Terminal;
+bind Viper.Localization.Locale as Locale;
+bind Viper.Localization.LocaleManager as LocaleManager;
+bind Viper.Localization.NumberFormat as NumberFormat;
 
-var fmt = NumberFormat.ForLocale(LocaleManager.Current())
-Say(fmt.Currency(1234.56))  # "$1,234.56"
+func start() {
+    // The manager detects the system locale on first access. Set it
+    // explicitly for reproducible output.
+    LocaleManager.SetCurrent(Locale.Parse("en-US"));
+
+    var fmt = NumberFormat.ForLocale(LocaleManager.Current());
+    Say(fmt.Currency(1234.56)); // "$1,234.56"
+}
 ```
 
 ## Fallback chain model
@@ -50,23 +62,35 @@ Say(fmt.Currency(1234.56))  # "$1,234.56"
 Every `Locale` has a walkable fallback chain. `en-Latn-US` falls back through `en-US → en → root`; `MessageBundle` can use the same chain for locale-qualified keys such as `en-US:greet`, `en:greet`, and `root:greet` before walking explicit fallback bundles.
 
 ```rust
-var loc = Locale.Parse("en-Latn-US")
-for step in loc.Fallbacks():
-    Say(step.Tag)
-# en-Latn-US
-# en-US
-# en
-# root
+module LocaleFallbacks;
+
+bind Viper.Terminal;
+bind Viper.Collections.List as RuntimeList;
+bind Viper.Localization.Locale as Locale;
+
+func start() {
+    var loc = Locale.Parse("en-Latn-US");
+    var chain = loc.Fallbacks();
+    var i = 0;
+    while i < RuntimeList.get_Count(chain) {
+        Say(Locale.ToString(RuntimeList.Get(chain, i)));
+        i += 1;
+    }
+    // en-Latn-US
+    // en-US
+    // en
+    // root
+}
 ```
 
 ## Search Path
 
 `LocaleManager.LoadFromJson(path)` loads exactly the file you pass. `LocaleManager.Load(tag)` canonicalizes the tag, then looks for `<tag>.json` in the directories added with `LocaleManager.AddSearchPath(path)`.
 
-VPA assets are loaded explicitly with `LocaleManager.LoadFromAsset(name)`.
+Packaged or mounted assets are loaded explicitly with `LocaleManager.LoadFromAsset(name)`.
 
 ## See Also
 
 - [Time](../time.md) — `DateTime`, `TimeZone`, `Duration`, and `DateOnly`; `DateTime` values are the inputs consumed by `DateFormat` and `RelativeTimeFormat`.
 - [Text](../text/formats.md) — `Viper.Text.InvariantNumberFormat` is the C-locale sibling of `Viper.Localization.NumberFormat`.
-- [Collections](../collections/README.md) — `Map` and `List` are the value-carrier types for `MessageBundle.Format` / `ListFormat`.
+- [Collections](../collections/README.md) — runtime `Map` and `List` objects are the value-carrier types for `MessageBundle.Format` / `ListFormat`; see those APIs' notes about raw string elements.

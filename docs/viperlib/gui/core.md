@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-28
+last-verified: 2026-07-14
 ---
 
 # Core & Application
@@ -37,7 +37,7 @@ func start() {
     while !app.get_ShouldClose() {
         app.Poll();
 
-        if btn.WasClicked() == 1 {
+        if btn.WasClicked() {
             label.SetText("Button clicked!");
         }
 
@@ -76,7 +76,7 @@ DO WHILE NOT app.ShouldClose
     app.Poll()
 
     ' Handle events
-    IF button.WasClicked = 1 THEN
+    IF button.WasClicked() THEN
         label.SetText("Button clicked!")
     END IF
 
@@ -106,14 +106,15 @@ Main application class that manages the window and widget tree.
 |-------------------------|----------------------|------------------------------------------|
 | `Destroy()`             | `Void()`             | Destroy the app and owned root widget tree |
 | `GetDroppedFile(index)` | `String(Integer)`    | Get path of dropped file by index        |
-| `GetDroppedFileCount()` | `Integer()`          | Number of files dropped                  |
+| `GetDroppedFileCount()` | `Integer()`          | Number of files in the current drop event |
 | `Poll()`                | `Void()`             | Poll events and update widget states     |
+| `PollWait(timeoutMs)`   | `Boolean(Integer)`   | Wait up to 0–1000 ms for events, then poll; true when input woke the wait |
 | `Render()`              | `Void()`             | Render all widgets to the window         |
 | `SetFont(font, size)`   | `Void(Font, Double)` | Set default font for all widgets         |
-| `WasFileDropped()`      | `Integer()`          | 1 if a file was dropped on the window    |
+| `WasFileDropped()`      | `Boolean()`          | True if files were dropped on the window this frame |
 
-`SetFont()` applies to newly created text-bearing widgets, including
-`Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
+`SetFont()` updates existing text-bearing widgets and becomes the default for newly created ones,
+including `Slider` value text, `ProgressBar` percentage labels, and `Spinner` value text. `Font.Destroy()`
 defers release while any active app or registered GUI app still references the
 font. `SetFont()` and widget-level `SetFont(font, size)` calls accept only live
 handles returned by `Viper.GUI.Font.Load`; stale, destroyed, or arbitrary object
@@ -125,29 +126,35 @@ handles are ignored.
 |---------------------------|-------------------|------------------------------------------------------|
 | `GetWidth()`              | `Integer()`       | Get window width in pixels                           |
 | `GetHeight()`             | `Integer()`       | Get window height in pixels                          |
+| `GetX()` / `GetY()`       | `Integer()`       | Get the window's top-left position in screen pixels  |
+| `SetPosition(x, y)`       | `Void(Integer, Integer)` | Move the window in screen pixels              |
 | `Minimize()`              | `Void()`          | Minimize the window                                  |
 | `Maximize()`              | `Void()`          | Maximize the window                                  |
 | `Restore()`               | `Void()`          | Restore from minimized or maximized state            |
 | `IsMaximized()`           | `Boolean()`       | Check if the window is maximized                     |
 | `IsMinimized()`           | `Boolean()`       | Check if the window is minimized                     |
 | `IsFullscreen()`          | `Boolean()`       | Check if the window is in fullscreen mode            |
-| `SetFullscreen(enabled)`  | `Void(Integer)`   | Enter or exit fullscreen mode                        |
+| `SetFullscreen(enabled)`  | `Void(Boolean)`   | Enter or exit fullscreen mode                        |
 | `Focus()`                 | `Void()`          | Bring the window to the front and focus it           |
+| `Activate()`              | `Void()`          | Alias for requesting foreground focus                |
 | `IsFocused()`             | `Boolean()`       | Check if the window has focus                        |
 | `SetPreventClose(prevent)` | `Void(Boolean)`  | Enable or disable close-button prevention            |
-| `GetFps()`                | `Number()`        | Get current frames per second                        |
-| `SetFps(fps)`             | `Void(Number)`    | Set target frames per second                         |
 | `GetScale()`              | `Number()`        | Get display scale factor (e.g. 2.0 for HiDPI)        |
 | `GetLogicalWidth()`       | `Integer()`       | Window width in logical (point) units (`GetWidth() / GetScale()`) |
 | `GetLogicalHeight()`      | `Integer()`       | Window height in logical (point) units               |
 | `ToLogical(px)`           | `Integer(Integer)` | Convert a physical-pixel value to logical units using the window scale |
 | `ToPhysical(lu)`          | `Integer(Integer)` | Convert a logical (point) value to physical pixels using the window scale |
-| `GetMonitorWidth()`       | `Integer()`       | Get monitor width in pixels                          |
-| `GetMonitorHeight()`      | `Integer()`       | Get monitor height in pixels                         |
-| `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
+| `SetUiScale(scale)` / `GetUiScale()` | `Void(Number)` / `Number()` | Set/read the user UI zoom multiplier (clamped to 0.5–3.0) |
+| `SetWheelSpeed(speed)` / `GetWheelSpeed()` | `Void(Number)` / `Number()` | Set/read process-wide GUI wheel sensitivity |
+| `GetMonitorWidth()`       | `Integer()`       | Get monitor width in logical units                   |
+| `GetMonitorHeight()`      | `Integer()`       | Get monitor height in logical units                  |
+| `SetWindowSize(w, h)` / `SetSize(w, h)` | `Void(Integer, Integer)` | Resize the window in logical units     |
+| `SetTitle(title)` / `GetTitle()` | `Void(String)` / `String()` | Set/read the window title                    |
 | `GetFontSize()`           | `Number()`        | Get current UI font size                             |
 | `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
-| `WasCloseRequested()`     | `Integer()`       | Consumes and returns 1 once when the window received a close request |
+| `SetPartialPaint(enabled)` | `Void(Boolean)`  | Enable or disable damage-region rendering            |
+| `GetPaintFramesFull()` / `GetPaintFramesPartial()` | `Integer()` | Read cumulative full/partial repaint counters |
+| `WasCloseRequested()`     | `Boolean()`       | Consume the pending close-request edge               |
 
 **Logical vs physical units:** `GetWidth()`/`GetHeight()` report *physical* pixels, but
 floating panels and overlays are positioned and sized in *logical* (point) units. Use
@@ -160,11 +167,14 @@ both standard and HiDPI screens.
 
 `Destroy()` is idempotent. After an app is destroyed, app methods reject the stale handle without dereferencing it. Apps also install a runtime finalizer as a fallback, so leaked app handles release their native window and widget tree when collected, but explicit `app.Destroy()` remains the preferred deterministic cleanup path. The `Root` widget is owned by the app, so destroy the application with `app.Destroy()`; calling widget `Destroy()` on `app.Root` is ignored.
 
-`SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
-When `SetPreventClose(1)` is active, a window close request no longer sets
+`SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are
+clamped to at least one logical pixel and to the graphics backend's configured maximum after
+accounting for display scale. Invalid font sizes, scale factors, and non-finite numeric values
+fall back to bounded defaults.
+When `SetPreventClose(true)` is active, a window close request no longer sets
 `ShouldClose`; poll `WasCloseRequested()` after `Poll()` to decide whether to
 save, confirm, or close manually. `WasCloseRequested()` is edge-consuming:
-after it returns `1`, later calls return `0` until another close request arrives.
+after it returns `true`, later calls return `false` until another close request arrives.
 
 Low-level widget dispatch keeps focus, hover, modal, click, and capture state
 separate for each recently dispatched root. When a subtree is hidden, detached,
@@ -223,7 +233,7 @@ TrueType outline rasterization preserves separate contour boundaries, so glyphs 
 **Type:** Static/Instance
 **Constructor:** `Viper.GUI.Font.Load(path)`
 
-### Static Methods
+### Methods
 
 | Method       | Signature        | Description                                 |
 |--------------|------------------|---------------------------------------------|
@@ -235,12 +245,12 @@ TrueType outline rasterization preserves separate contour boundaries, so glyphs 
 ### Example
 
 ```basic
+DIM app AS Viper.GUI.App
+app = NEW Viper.GUI.App("Font Example", 480, 320)
+
 DIM font AS Viper.GUI.Font
 font = Viper.GUI.Font.Load("fonts/roboto.ttf")
-
-IF font <> NULL THEN
-    app.SetFont(font, 14)
-END IF
+app.SetFont(font, 14)  ' A failed/stale font handle is ignored safely
 ```
 
 ```rust
@@ -266,7 +276,7 @@ Common numeric setters clamp invalid input: negative sizes, margins, padding, fl
 `SetSize()` is ignored on `App.Root`; use `App.SetWindowSize()` to resize the window while the root remains controlled by the app layout pass.
 `AddChild()` and widget constructors accept `App.Root`, an app handle, or a
 container-like parent such as `VBox`, `HBox`, `ScrollView`, `SplitPane`,
-`Dialog`, or a custom container. Simple widgets that do not provide custom
+`FloatingPanel`, or a custom native container. Simple widgets that do not provide custom
 child arrangement can also host runtime children; they use a fallback vertical
 flow so children are measured and positioned instead of becoming invisible
 descendants.
@@ -282,6 +292,8 @@ widget returned by `app.Root`.
 |-------------------------------|--------------------------|------------------------------------------|
 | `AddChild(child)`             | `Void(Object)`           | Add a child widget                       |
 | `ClearTooltip()`              | `Void()`                 | Remove tooltip from widget               |
+| `Destroy()`                   | `Void()`                 | Destroy this widget and its descendants (ignored for `App.Root`) |
+| `Focus()`                     | `Void()`                 | Request keyboard focus                   |
 | `GetDropData()`               | `String()`               | Get the dropped data payload             |
 | `GetDropType()`               | `String()`               | Get the type of the dropped data         |
 | `GetFlex()`                   | `Double()`               | Get flex factor                          |
@@ -289,29 +301,31 @@ widget returned by `app.Root`.
 | `GetWidth()`                  | `Integer()`              | Get widget width in pixels               |
 | `GetX()`                      | `Integer()`              | Get widget X position in pixels          |
 | `GetY()`                      | `Integer()`              | Get widget Y position in pixels          |
-| `IsBeingDragged()`            | `Integer()`              | 1 if widget is being dragged             |
-| `IsDragOver()`                | `Integer()`              | 1 if a drag is hovering over widget      |
-| `IsEnabled()`                 | `Integer()`              | 1 if widget is enabled                   |
-| `IsFocused()`                 | `Integer()`              | 1 if widget has keyboard focus           |
-| `IsHovered()`                 | `Integer()`              | 1 if mouse is over widget                |
-| `IsPressed()`                 | `Integer()`              | 1 if widget is pressed                   |
-| `IsVisible()`                 | `Integer()`              | 1 if widget is visible                   |
+| `IsBeingDragged()`            | `Boolean()`              | True if widget is being dragged          |
+| `IsDragOver()`                | `Boolean()`              | True if a drag is hovering over widget   |
+| `IsEnabled()`                 | `Boolean()`              | True if widget is enabled                |
+| `IsFocused()`                 | `Boolean()`              | True if widget has keyboard focus        |
+| `IsHovered()`                 | `Boolean()`              | True if mouse is over widget             |
+| `IsPressed()`                 | `Boolean()`              | True if widget is pressed                |
+| `IsVisible()`                 | `Boolean()`              | True if widget is visible                |
 | `SetAcceptedDropTypes(types)` | `Void(String)`           | Set accepted drop type(s)                |
 | `SetDragData(type, data)`     | `Void(String, String)`   | Set drag data type and payload           |
 | `SetDraggable(enabled)`       | `Void(Boolean)`          | Enable/disable drag source               |
 | `SetDropTarget(enabled)`      | `Void(Boolean)`          | Enable/disable drop target               |
 | `SetEnabled(enabled)`         | `Void(Boolean)`          | Set enabled state |
 | `SetFlex(flex)`               | `Void(Double)`           | Set flex factor for layout               |
-| `SetMargin(margin)`           | `Void(Integer)`          | Set uniform outer margin in pixels       |
+| `SetMargin(margin)`           | `Void(Integer)`          | Set uniform outer margin in logical units |
 | `SetMaxSize(width, height)`   | `Void(Double, Double)`   | Set maximum layout size; use `0` to clear a maximum |
-| `SetPosition(x, y)`          | `Void(Integer, Integer)` | Set position in pixels                   |
+| `SetPosition(x, y)`          | `Void(Integer, Integer)` | Set a manual parent-local position       |
 | `SetPreferredSize(width, height)` | `Void(Double, Double)` | Set preferred layout size while preserving min/max constraints |
-| `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed size in pixels                 |
+| `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed logical size; use `0` on an axis to restore auto sizing |
+| `SetTabIndex(index)`          | `Void(Integer)`          | Set explicit tab order (`-1` restores document order) |
+| `SetCursor(type)` / `ResetCursor()` | `Void(Integer)` / `Void()` | Set/reset the process cursor using the [Cursor](application.md#cursor) values |
 | `SetTooltip(text)`            | `Void(String)`           | Set tooltip text for this widget         |
 | `SetTooltipRich(title, body)` | `Void(String, String)`   | Set rich tooltip with title and body     |
 | `SetVisible(visible)`         | `Void(Boolean)`          | Set visibility      |
-| `WasClicked()`                | `Integer()`              | 1 if widget was clicked this frame       |
-| `WasDropped()`                | `Integer()`              | 1 if something was dropped this frame    |
+| `WasClicked()`                | `Boolean()`              | True if widget was clicked this frame    |
+| `WasDropped()`                | `Boolean()`              | True if something was dropped this frame |
 
 ### Drag and Drop
 
@@ -321,11 +335,11 @@ Drag/drop type and payload strings are stored as C-string payloads by the GUI la
 |-------------------------------|------------------------|----------------------------------------------------------|
 | `SetDraggable(enabled)`       | `Void(Boolean)`        | Enable or disable dragging this widget                   |
 | `SetDragData(type, data)`     | `Void(String, String)` | Set the type and data payload for drag operations        |
-| `IsBeingDragged()`            | `Integer()`            | 1 if this widget is currently being dragged              |
+| `IsBeingDragged()`            | `Boolean()`            | True if this widget is currently being dragged           |
 | `SetDropTarget(enabled)`      | `Void(Boolean)`        | Mark this widget as a drop target                        |
 | `SetAcceptedDropTypes(types)` | `Void(String)`         | Specify which drag data types are accepted               |
-| `IsDragOver()`                | `Integer()`            | 1 if a dragged item is hovering over this widget         |
-| `WasDropped()`                | `Integer()`            | 1 if a drop occurred on this widget this frame           |
+| `IsDragOver()`                | `Boolean()`            | True if a dragged item is hovering over this widget      |
+| `WasDropped()`                | `Boolean()`            | True if a drop occurred on this widget this frame        |
 | `GetDropType()`               | `String()`             | Get the type of the dropped data                         |
 | `GetDropData()`               | `String()`             | Get the data payload that was dropped                    |
 
@@ -340,11 +354,11 @@ button.SetSize(120, 32)
 button.SetPosition(50, 100)
 
 ' State checks in game loop
-IF button.IsHovered = 1 THEN
+IF button.IsHovered() THEN
     ' Show hover effect
 END IF
 
-IF button.WasClicked = 1 THEN
+IF button.WasClicked() THEN
     ' Handle click
 END IF
 ```
@@ -355,8 +369,8 @@ var btn = Button.New(root, "Submit");
 btn.SetSize(120, 32);
 btn.SetPosition(50, 100);
 
-if btn.IsHovered() == 1 { /* hover effect */ }
-if btn.WasClicked() == 1 { /* handle click */ }
+if btn.IsHovered() { /* hover effect */ }
+if btn.WasClicked() { /* handle click */ }
 ```
 
 ---

@@ -50,15 +50,18 @@ int query_entry_overlaps_bounds(
 
 // Allocation-free swept-CCD probe (defined in rt_physics3d_query.c, consumed
 // by the step loop's time-of-impact pass in rt_physics3d_world.inc). Sweeps a
-// bounding sphere from `center` along `delta` against STATIC and KINEMATIC
-// bodies only (dynamic-vs-dynamic stays on the substep path), skipping
-// `ignore_body` (the moving body itself). On hit returns 1 and writes the hit
-// fraction (0..1 of |delta|) and the surface normal.
+// bounding sphere from `center` along `delta` against static and kinematic
+// bodies, and — when either side opted into CCD — against dynamic bodies using
+// the RELATIVE displacement over `sub_dt` (so fast projectiles cannot tunnel
+// through fast targets), skipping `ignore_body` (the moving body itself).
+// On hit returns 1 and writes the earliest time-of-impact fraction (0..1 of
+// the swept motion) and the surface normal.
 int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
                                  const double *center,
                                  double radius,
                                  const double *delta,
                                  const rt_body3d *ignore_body,
+                                 double sub_dt,
                                  double *out_t,
                                  double *out_normal);
 

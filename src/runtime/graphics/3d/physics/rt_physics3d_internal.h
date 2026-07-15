@@ -84,7 +84,11 @@ extern double rt_quat_w(void *q);
 #define PH3D_DEFAULT_CONTACT_BETA 0.8
 #define PH3D_DEFAULT_RESTITUTION_THRESHOLD 0.5
 #define PH3D_MAX_SOLVER_ITERATIONS 64
-#define PH3D_MAX_CCD_SUBSTEPS 64
+/* Global substeps multiply the WHOLE world's integrate+detect+solve cost, and the
+ * per-body swept-sphere TOI clip in rt_world3d_step already guarantees fast CCD
+ * bodies cannot tunnel regardless of dt. Cap the whole-world multiplier low: one
+ * bullet must not turn a frame into 64 full physics passes (the old cap). */
+#define PH3D_MAX_CCD_SUBSTEPS 8
 #define PH3D_MAX_SWEEP_STEPS 512
 #define PH3D_MAX_MANIFOLD_POINTS 4
 #define PH3D_INITIAL_CONTACTS 128
@@ -248,6 +252,12 @@ struct rt_world3d {
     int32_t solver_iterations;
     int32_t position_iterations;
     double contact_beta;
+    /* Lazily-created worker pool for per-island solver dispatch. Islands are
+     * disjoint body/contact sets, so solving them concurrently is bit-identical
+     * to the serial island loop. NULL until first parallel-eligible step (or
+     * permanently when creation failed). */
+    void *solver_pool;
+    int8_t solver_pool_failed;
     double restitution_threshold;
     double fixed_step_accumulator;
     double fixed_step_alpha;
@@ -420,6 +430,9 @@ void transform_normal_from_local(const rt_collider_pose *pose,
                                  const double *local_normal,
                                  double *world_normal);
 double pose_abs_scale_or_unit(double value);
+void vec3_scale_in_place(double *dst, double s);
+void quat_normalize(double *q);
+void quat_integrate(double *orientation, const double *angular_velocity, double dt);
 double pose_abs_scale_or_zero(double value);
 int capsule_axis_sample_count(double axis_len, double radius);
 void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c);
@@ -469,6 +482,10 @@ void contact3d_init_single_point(rt_contact3d *contact,
                                  const double *point,
                                  const double *normal,
                                  double separation);
+void contact3d_try_add_manifold_point(rt_contact3d *contact,
+                                      const double *point,
+                                      const double *normal,
+                                      double separation);
 void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b);
 void contact3d_expand_capsule_manifold(rt_contact3d *contact,
                                        const rt_body3d *a,
@@ -481,6 +498,11 @@ int contact3d_expand_obb_manifold(rt_contact3d *contact,
                                   const rt_collider_pose *a_pose,
                                   void *b_leaf,
                                   const rt_collider_pose *b_pose);
+int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
+                                              void *a_leaf,
+                                              const rt_collider_pose *a_pose,
+                                              void *b_leaf,
+                                              const rt_collider_pose *b_pose);
 int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b);
 contact_pair_hash_entry *contact_pair_table_build(const rt_contact3d *contacts,
                                                   int32_t count,
@@ -502,6 +524,16 @@ int test_collision(const rt_body3d *a,
                    void **leaf_b_out,
                    rt_collider_pose *leaf_a_pose_out,
                    rt_collider_pose *leaf_b_pose_out);
+int test_collision_manifold(const rt_body3d *a,
+                            const rt_body3d *b,
+                            double *normal,
+                            double *depth,
+                            double *point,
+                            void **leaf_a_out,
+                            void **leaf_b_out,
+                            rt_collider_pose *leaf_a_pose_out,
+                            rt_collider_pose *leaf_b_pose_out,
+                            rt_contact3d *manifold_acc);
 
 // --- Solver + broad phase (defined in rt_physics3d_solver.c) ---
 int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs);

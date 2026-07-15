@@ -12,19 +12,19 @@ last-verified: 2026-05-15
 
 ## Contents
 
-- [Viper.Game.Camera](#vipergamecamera)
+- [Viper.Graphics.Camera](#vipergraphicscamera)
 - [Viper.Game2D.SceneDocument](#vipergame2dscenedocument)
 - [Viper.Graphics2D.Tilemap](#vipergraphics2dtilemap)
-- [Viper.Game.Physics2D](#vipergamephysics2d)
+- [Viper.Game.Physics2D class family](#vipergamephysics2d-class-family)
 - [Viper.Game.Quadtree](#vipergamequadtree)
 - [Viper.Game.ParticleEmitter](#vipergameparticleemitter)
-- [Viper.Game.SpriteBatch](#vipergamespritebatch)
-- [Viper.Game.SpriteAnim](#vipergamespriteanim)
+- [Viper.Graphics.SpriteBatch](#vipergraphicsspritebatch)
+- [Viper.Game.SpriteAnimation](#vipergamespriteanimation)
 - [Viper.Game.StateMachine](#vipergamestatemachine)
 - [Viper.Game.ObjectPool](#vipergameobjectpool)
 - [Viper.Game.PathFollower](#vipergamepathfollower)
 - [Viper.Game.Timer](#vipergametimer)
-- [Viper.Game.Tween / TweenChain](#vipergametween--tweenchain)
+- [Viper.Game.Tween](#vipergametween)
 - [Viper.Game.SmoothValue](#vipergamesmoothvalue)
 - [Viper.Game.ButtonGroup](#vipergamebuttongroup)
 - [Viper.Game.ScreenFX](#vipergamescreenfx)
@@ -43,70 +43,20 @@ last-verified: 2026-05-15
 
 ---
 
-## Viper.Game.Camera
+## Viper.Graphics.Camera
 
-A 2D camera that maps a world-coordinate viewport to screen space. Supports position, zoom,
-rotation, scroll bounds, visibility culling, and a dirty flag for skipping redundant redraws.
+The 2D camera is part of `Viper.Graphics`, not `Viper.Game`. Its current API covers
+position, center, viewport size, zoom, rotation, following and movement, per-axis
+world/screen conversion, movement bounds, dead zones, smooth following, and parallax
+layers.
 
 **Type:** Instance (obj)
+
 **Constructor:** `Camera.New(width, height)`
 
-### Properties
-
-| Property   | Type    | Description                                              |
-|------------|---------|----------------------------------------------------------|
-| `X`        | Integer | Camera world X position (left edge of viewport)         |
-| `Y`        | Integer | Camera world Y position (top edge of viewport)          |
-| `Zoom`     | Integer | Zoom level (100 = 100%). Clamped to 10–1000             |
-| `Rotation` | Integer | Rotation in degrees (currently informational)           |
-| `Width`    | Integer | Viewport width in screen pixels (read-only)             |
-| `Height`   | Integer | Viewport height in screen pixels (read-only)            |
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `Follow(x, y)` | `none(Integer, Integer)` | Center camera on world position |
-| `Move(dx, dy)` | `none(Integer, Integer)` | Translate camera by delta |
-| `WorldToScreen(wx, wy, sx, sy)` | `none(Integer,Integer,Integer*,Integer*)` | Convert world → screen |
-| `ScreenToWorld(sx, sy, wx, wy)` | `none(Integer,Integer,Integer*,Integer*)` | Convert screen → world |
-| `ToScreenX(wx)` | `Integer(Integer)` | World X → screen X |
-| `ToScreenY(wy)` | `Integer(Integer)` | World Y → screen Y |
-| `ToWorldX(sx)` | `Integer(Integer)` | Screen X → world X |
-| `ToWorldY(sy)` | `Integer(Integer)` | Screen Y → world Y |
-| `SetBounds(minX, minY, maxX, maxY)` | `none(Integer,Integer,Integer,Integer)` | Clamp camera movement and immediately clamp the current view if needed |
-| `ClearBounds()` | `none()` | Remove movement clamping |
-| `IsVisible(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | AABB visibility test |
-| `IsDirty()` | `Integer()` | 1 if camera changed since last `ClearDirty()` |
-| `ClearDirty()` | `none()` | Reset dirty flag after consuming the change |
-
-### IsVisible — Viewport Culling
-
-`IsVisible(x, y, w, h)` converts the camera's screen viewport into world space and performs
-an axis-aligned bounding box overlap test. Use this every frame to skip drawing off-screen
-entities:
-
-```rust
-if cam.IsVisible(enemy.x, enemy.y, enemy.w, enemy.h) {
-    enemy.Draw(cam);
-}
-```
-
-- Passes `NULL` camera → conservatively returns 1 (visible).
-- Accounts for zoom: a 200% zoom halves the world-space viewport; 50% zoom doubles it.
-- `x, y` are the **left/top** edges of the AABB; `w, h` are its dimensions.
-
-### Dirty Flag
-
-Set automatically when `X`, `Y`, `Zoom`, or `Rotation` change. Clear it after consuming the
-change (e.g., after re-rendering the scene):
-
-```rust
-if cam.IsDirty() {
-    scene.Redraw(cam);
-    cam.ClearDirty();
-}
-```
+See [Scene & Camera](graphics/scene.md#vipergraphicscamera) for usage and the
+[generated API reference](../generated/runtime/graphics.md#viper-graphics-camera) for the
+complete live surface.
 
 ---
 
@@ -149,7 +99,7 @@ documents can build isolated Tilemap render/collision copies with
 
 ---
 
-## Viper.Game.Physics2D
+## Viper.Game.Physics2D class family
 
 A 2D rigid-body physics engine. Bodies can be static (immovable) or dynamic. Collision
 detection uses an axis-aligned broad phase followed by AABB/circle narrow-phase and swept
@@ -216,6 +166,13 @@ query a rectangle to find all overlapping IDs.
 **Type:** Instance (obj)
 **Constructor:** `Quadtree.New(x, y, w, h)` — defines the world bounds
 
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `ItemCount` | `Integer` | Total items in the tree |
+| `ResultCount` | `Integer` | Number of IDs from the last compatibility query |
+
 ### Methods
 
 | Method | Signature | Description |
@@ -227,12 +184,10 @@ query a rectangle to find all overlapping IDs.
 | `QueryPairs()` | `QuadtreePairResult()` | Collect broad-phase collision pairs as a stable snapshot |
 | `QueryRect(x, y, w, h)` | `Integer(Integer,Integer,Integer,Integer)` | Compatibility API; query overlapping items and store mutable last results |
 | `GetResult(i)` | `Integer(Integer)` | Compatibility API; get the i-th ID from the last mutable query |
-| `GetResultCount()` | `Integer()` | Compatibility API; number of IDs from the last mutable query |
 | `QueryWasTruncated()` | `Integer()` | Compatibility diagnostic for the last mutable query |
 | `GetPairs()` | `Integer()` | Compatibility API; collect pairs and store mutable last pair output |
 | `PairFirst(i)` / `PairSecond(i)` | `Integer(Integer)` | Compatibility API; IDs of the i-th mutable collision pair |
 | `PairsWasTruncated()` | `Integer()` | Compatibility diagnostic for the last mutable pair collection |
-| `ItemCount()` | `Integer()` | Total items in the tree |
 | `Destroy()` | `none()` | Free the quadtree |
 
 ### Query and Pair Results
@@ -274,69 +229,39 @@ Inserting the same ID twice returns 0 and leaves the tree unchanged. Use distinc
 
 ## Viper.Game.ParticleEmitter
 
-A particle emitter that manages a pool of particles with position, velocity, lifetime,
-and color.
-
-**Type:** Instance (obj)
-**Constructor:** `ParticleEmitter.NewEmitter(maxParticles)`
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `Emit(x, y, vx, vy, life, color)` | `none(...)` | Spawn a particle |
-| `Update(dt)` | `none(Integer)` | Advance all active particles |
-| `Count()` | `Integer()` | Number of live particles |
-| `Get(i)` | `obj(Integer)` | Get the i-th active particle |
-| `DrawToPixels(canvas, xOff, yOff)` | `Integer(obj, Integer, Integer)` | Batch-render all particles to canvas |
-
-### Batch Rendering
-
-Use `DrawToPixels` for performance when rendering many particles. It renders all active
-particles in a single pass instead of requiring per-particle `Get()` + draw calls. Legacy
-`0x00RRGGBB` particle colors draw as opaque; tagged `Color.RGBA(..., 0)` draws as transparent,
-and alpha blending preserves the destination `Pixels` alpha channel:
-
-```rust
-emitter.Update(dt);
-emitter.DrawToPixels(canvas, 0, 0);
-```
+The current emitter supports configured continuous emission and bursts, particle snapshots,
+Canvas/Pixels drawing, and explicit cleanup. See [Effects](game/effects.md#vipergameparticleemitter)
+for the complete API and examples.
 
 ---
 
-## Viper.Game.SpriteBatch
+## Viper.Graphics.SpriteBatch
 
-Accumulates sprite draw calls for efficient batched rendering. When depth sorting is enabled, equal-depth items still preserve submission order.
+Sprite batching is part of `Viper.Graphics`, not `Viper.Game`. A batch is opened with
+`Begin()`, populated with the `Draw*` or `DrawAtlas*` methods, and flushed with `End()`.
+It also supports depth sorting, tint, and alpha settings.
 
 **Type:** Instance (obj)
+
 **Constructor:** `SpriteBatch.New()`
 
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `Add(sprite, x, y)` | `none(obj, Integer, Integer)` | Queue a sprite draw |
-| `Draw(canvas, camera)` | `none(obj, obj)` | Flush all queued draws |
+See [Scene & Camera](graphics/scene.md#vipergraphicsspritebatch) and the
+[generated API reference](../generated/runtime/graphics.md#viper-graphics-spritebatch).
 
 ---
 
-## Viper.Game.SpriteAnim
+## Viper.Game.SpriteAnimation
 
-Frame-based sprite animation. Stores start/end frame indices and plays through them at a
-configurable frame rate. There is **no upper limit** on the number of frames.
+Frame-based animation with configurable frame duration, looping, ping-pong playback,
+speed, pause/resume, and read-only playback-state properties such as `Frame` and
+`IsFinished`.
 
 **Type:** Instance (obj)
-**Constructor:** `SpriteAnim.New()`
 
-### Methods
+**Constructor:** `SpriteAnimation.New()`
 
-| Method | Signature | Description |
-|---|---|---|
-| `Setup(startFrame, endFrame, fps, loop)` | `none(Integer,Integer,Integer,Integer)` | Configure animation |
-| `Update(dt)` | `none(Integer)` | Advance animation by `dt` milliseconds |
-| `GetFrame()` | `Integer()` | Current frame index |
-| `IsFinished()` | `Integer()` | 1 when non-looping animation completes |
-| `Reset()` | `none()` | Restart from the first frame |
+See [Animation](game/animation.md#vipergamespriteanimation) and the
+[generated API reference](../generated/runtime/game.md#viper-game-spriteanimation).
 
 ---
 
@@ -436,26 +361,10 @@ Releasing or clearing a slot clears its user data.
 
 ## Viper.Game.PathFollower
 
-Moves an entity along a sequence of waypoints at a constant speed. Uses linear interpolation
-between waypoints with a fixed-point coordinate scale of **1000 = 1 world unit**.
-
-**Type:** Instance (obj)
-**Constructor:** `PathFollower.New()`
-
-> **Coordinate scale:** PathFollower uses fixed-point coordinates where 1000 = 1 unit.
-> To place a waypoint at world position (200, 150), use `AddPoint(200000, 150000)`.
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `AddPoint(x, y)` | `none(Integer, Integer)` | Append a waypoint (×1000 scale) |
-| `SetSpeed(speed)` | `none(Integer)` | Movement speed in units/second (×1000 scale) |
-| `Update(dt)` | `none(Integer)` | Advance along the path |
-| `GetX()` | `Integer()` | Current X position (×1000 scale) |
-| `GetY()` | `Integer()` | Current Y position (×1000 scale) |
-| `IsFinished()` | `Integer()` | 1 when the end of the path is reached |
-| `Reset()` | `none()` | Restart from the first waypoint |
+Moves an object along waypoints using fixed-point coordinates where 1000 units equal one
+world unit. Speed and playback mode are writable properties; position and playback state are
+read-only properties. See [Animation](game/animation.md#vipergamepathfollower) for the
+complete API and examples.
 
 ---
 
@@ -502,53 +411,20 @@ the frame's delta time in ms) for frame-rate-independent timing.
 
 ---
 
-## Viper.Game.Tween / TweenChain
+## Viper.Game.Tween
 
-`Tween` interpolates a numeric value from `start` to `end` over a duration using a named
-easing function. `TweenChain` sequences multiple tweens in order.
-
-**Type:** Instance (obj)
-**Constructors:** `Tween.New()`, `TweenChain.New()`
-
-### Tween Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `Setup(start, end, duration, easing)` | `none(Integer,Integer,Integer,String)` | Configure |
-| `Update(dt)` | `none(Integer)` | Advance |
-| `GetValue()` | `Integer()` | Current interpolated value |
-| `IsFinished()` | `Integer()` | 1 when complete |
-| `Reset()` | `none()` | Restart |
-
-### Easing Functions
-
-`"linear"`, `"ease-in"`, `"ease-out"`, `"ease-in-out"`, `"bounce"`, `"elastic"`
-
-### TweenChain Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `Add(tween)` | `none(obj)` | Append a tween to the chain |
-| `Update(dt)` | `none(Integer)` | Advance current tween in chain |
-| `GetValue()` | `Integer()` | Current value from active tween |
-| `IsFinished()` | `Integer()` | 1 when all tweens complete |
+Frame-based numeric tweening supports floating-point or integer starts, 19 numeric easing
+types, pause/resume, reset/stop, and read-only progress and value properties. There is no
+registered `TweenChain` runtime class. See [Animation](game/animation.md#vipergametween) for
+the complete current API and examples.
 
 ---
 
 ## Viper.Game.SmoothValue
 
-Lerps a value toward a target each frame using a configurable smoothing factor.
-
-**Type:** Instance (obj)
-**Constructor:** `SmoothValue.New(initial, smoothing)`
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `SetTarget(value)` | `none(Integer)` | Set the target to lerp toward |
-| `Update(dt)` | `none(Integer)` | Advance lerp |
-| `GetValue()` | `Integer()` | Current smoothed value |
+Smooths a value toward the writable `Target` property and exposes current value, velocity,
+smoothing, and completion state as properties. See
+[Game Core](game/core.md#vipergamesmoothvalue) for the complete API and examples.
 
 ---
 
@@ -603,6 +479,16 @@ Post-process screen effects: camera shake, flash, fade-in, and fade-out.
 > - Full-opacity white: `0xFFFFFFFF`
 > - Half-opacity red: `0xFF000080`
 
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `IsActive` | `Boolean` | True while any effect is active |
+| `ShakeX` | `Integer` | Current horizontal shake offset |
+| `ShakeY` | `Integer` | Current vertical shake offset |
+| `OverlayAlpha` | `Integer` | Current overlay alpha (0–255) |
+| `OverlayColor` | `Integer` | Current overlay color |
+
 ### Methods
 
 | Method | Signature | Description |
@@ -612,12 +498,7 @@ Post-process screen effects: camera shake, flash, fade-in, and fade-out.
 | `FadeIn(color, duration)` | `none(Integer, Integer)` | Fade from color to clear |
 | `FadeOut(color, duration)` | `none(Integer, Integer)` | Fade from clear to color |
 | `Update(dt)` | `none(Integer)` | Advance all active effects |
-| `IsActive()` | `Integer()` | 1 if any effect is active |
 | `IsTypeActive(type)` | `Integer(Integer)` | 1 if the given effect type is active |
-| `GetShakeX()` | `Integer()` | Current horizontal shake offset |
-| `GetShakeY()` | `Integer()` | Current vertical shake offset |
-| `GetOverlayAlpha()` | `Integer()` | Current overlay alpha (0–255) |
-| `GetOverlayColor()` | `Integer()` | Current overlay color (RRGGBB00) |
 | `CancelAll()` | `none()` | Stop all effects immediately |
 | `CancelType(type)` | `none(Integer)` | Stop effects of a specific type |
 
@@ -700,6 +581,13 @@ A 2D integer grid. Stores one integer value per cell with get/set/fill operation
 **Type:** Instance (obj)
 **Constructor:** `Grid2D.New(cols, rows, defaultValue)`
 
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Width` | `Integer` | Number of columns |
+| `Height` | `Integer` | Number of rows |
+
 ### Methods
 
 | Method | Signature | Description |
@@ -707,8 +595,6 @@ A 2D integer grid. Stores one integer value per cell with get/set/fill operation
 | `Get(col, row)` | `Integer(Integer, Integer)` | Read cell value |
 | `Set(col, row, value)` | `none(Integer, Integer, Integer)` | Write cell value |
 | `Fill(value)` | `none(Integer)` | Set all cells to `value` |
-| `Cols()` | `Integer()` | Number of columns |
-| `Rows()` | `Integer()` | Number of rows |
 | `InBounds(col, row)` | `Integer(Integer, Integer)` | 1 if position is within grid bounds |
 
 ---
@@ -779,12 +665,12 @@ is ms-based for frame-rate independence.
 
 | Property | Type | Description |
 |---|---|---|
-| `VX` | `Integer` | Computed horizontal velocity (x100, read/write) |
-| `VY` | `Integer` | Computed vertical velocity (x100, read/write) |
+| `VelocityX` | `Integer` | Computed horizontal velocity (x100, read/write) |
+| `VelocityY` | `Integer` | Computed vertical velocity (x100, read/write) |
 | `ShouldJump` | `Boolean` | True when jump buffer + coyote resolve (one-shot, consumed on read) |
 | `JumpForce` | `Integer` | Configured full jump force |
 | `Facing` | `Integer` | 1 = right, -1 = left |
-| `IsMoving` | `Boolean` | True when VX != 0 |
+| `IsMoving` | `Boolean` | True when `VelocityX != 0` |
 
 ---
 
@@ -898,8 +784,8 @@ When mixing PathFollower with Camera or Physics2D, convert between scales:
 
 ```rust
 // PathFollower uses ×1000 scale; camera uses pixel scale
-var camX = follower.GetX() / 1000;
-var camY = follower.GetY() / 1000;
+var camX = follower.X / 1000;
+var camY = follower.Y / 1000;
 cam.Follow(camX, camY);
 ```
 

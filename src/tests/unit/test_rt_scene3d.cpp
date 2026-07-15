@@ -1244,9 +1244,19 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     rt_scene_node3d_set_visible(node, 0);
     void *hidden_hits =
         rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
-    EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Topology-dirty spatial index drops hidden nodes");
-    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
-                "SceneGraph spatial index rebuilds after visibility topology changes");
+    EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Spatial index filters hidden nodes from queries");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
+                "SceneGraph spatial index refits (does NOT rebuild) on a visibility toggle");
+    EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count + 3,
+                "SceneGraph spatial index records the visibility refit");
+
+    rt_scene_node3d_set_visible(node, 1);
+    void *reshown_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(reshown_hits) == 1,
+                "Spatial index restores re-shown nodes without a rebuild");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
+                "SceneGraph spatial index still has not rebuilt after re-show");
 }
 
 static void test_scene_draw_spatial_index_matches_flat_reference() {

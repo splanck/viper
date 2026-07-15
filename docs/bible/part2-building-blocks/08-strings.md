@@ -1303,14 +1303,14 @@ func generateReport(rows: Seq) -> String {
               Fmt.IntPad(DateTime.Day(ts), 2, "0") + "\n");
     sb.Append("\n");
 
-    for i in 0..rows.Length {
+    for i in 0..rows.Count {
         var fields = rows.GetStr(i).Split(":");
         sb.Append("Name: " + fields.GetStr(0) + "\n");
         sb.Append("Score: " + fields.GetStr(1) + "\n");
         sb.Append("---\n");
     }
 
-    sb.Append("\nTotal records: " + Fmt.Int(rows.Length));
+    sb.Append("\nTotal records: " + Fmt.Int(rows.Count));
 
     return sb.ToString();
 }
@@ -1332,7 +1332,7 @@ bind Seq = Viper.Collections.Seq;
 func buildList(items: Seq) -> String {
     var result = "";
 
-    for i in 0..items.Length {
+    for i in 0..items.Count {
         if i > 0 {
             result = result + "\n";
         }

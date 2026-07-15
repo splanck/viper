@@ -1957,6 +1957,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .shadow_begin = d3d11_shadow_begin,
     .shadow_draw = d3d11_shadow_draw,
     .shadow_end = d3d11_shadow_end,
+    .shadow_reuse = d3d11_shadow_reuse,
     .draw_skybox = d3d11_draw_skybox,
     .submit_draw_instanced = d3d11_submit_draw_instanced,
     .present = d3d11_present,

@@ -480,6 +480,17 @@ typedef struct vgfx3d_backend {
     void (*shadow_draw)(void *ctx, const vgfx3d_draw_cmd_t *cmd);
     void (*shadow_end)(void *ctx, int32_t slot, float bias);
 
+    /* Optional shadow-slot reuse: re-arm slot for main-pass sampling using the
+     * depth contents it already holds from a previous frame, WITHOUT clearing or
+     * re-rendering. Canvas3D calls this when a slot's caster set, light VP, and
+     * resolution are provably unchanged (per-slot signature), so fully static
+     * shadow maps stop costing a render pass every frame. Returns 1 when the
+     * slot's stored depth is still available at (w, h) and has been marked
+     * complete; 0 tells Canvas3D to fall back to a full begin/draw/end. NULL =
+     * backend cannot guarantee persistence, caching disabled. */
+    int8_t (*shadow_reuse)(
+        void *ctx, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp);
+
     /* Shadow slots beyond VGFX3D_CSM_SLOTS are "atlas slots": Canvas3D still
      * drives them through shadow_begin/draw/end with per-slot CPU depth
      * buffers, but GPU backends store them as tiles of one internal depth
