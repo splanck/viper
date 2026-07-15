@@ -197,6 +197,12 @@ static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
 /// Very large straight-line regions are left in source order to avoid compile-time cliffs.
 static constexpr std::size_t kMaxScheduledSegmentInstructions = 256;
 
+/// Upper bound for scheduling an entire function. Extremely large generated
+/// functions carry dense post-RA spill traffic across hundreds of guard
+/// segments; retaining their allocation order avoids invalid cross-segment
+/// register reuse while keeping the scheduler active on normal functions.
+static constexpr std::size_t kMaxScheduledFunctionInstructions = 1024;
+
 /// Map a physical register ID (or sentinel) to a flat-array index.
 static std::size_t regIdx(uint32_t reg) noexcept {
     // PhysReg enum values are 0..63, which map to themselves.
@@ -809,6 +815,13 @@ static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
 /// @details Partitions each block into schedulable body segments at call/guard-branch
 ///          boundaries; terminators are always appended in original relative order.
 static void scheduleFunction(MFunction &fn, const TargetInfo &target) {
+    std::size_t instructionCount = 0;
+    for (const auto &bb : fn.blocks) {
+        if (bb.instrs.size() > kMaxScheduledFunctionInstructions - instructionCount)
+            return;
+        instructionCount += bb.instrs.size();
+    }
+
     for (auto &bb : fn.blocks) {
         if (bb.instrs.size() <= 1)
             continue;

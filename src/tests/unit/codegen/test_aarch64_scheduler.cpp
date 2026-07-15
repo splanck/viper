@@ -574,6 +574,42 @@ TEST(AArch64Scheduler, CallsAreBoundaries) {
     EXPECT_EQ(instrs[3].opc, MOpcode::Ret);
 }
 
+TEST(AArch64Scheduler, LargeFunctionsRetainPostRAOrder) {
+    AArch64Module module;
+    module.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "large_generated_function";
+    MBasicBlock bb;
+    bb.name = "entry";
+
+    for (std::size_t i = 0; i < 1025; ++i) {
+        MInstr move;
+        move.opc = i == 1024 ? MOpcode::MulRRR : MOpcode::MovRR;
+        move.ops = i == 1024
+                       ? std::vector<MOperand>{MOperand::regOp(PhysReg::X21),
+                                               MOperand::regOp(PhysReg::X22),
+                                               MOperand::regOp(PhysReg::X23)}
+                       : std::vector<MOperand>{MOperand::regOp(PhysReg::X19),
+                                               MOperand::regOp(PhysReg::X20)};
+        bb.instrs.push_back(std::move(move));
+    }
+    MInstr ret;
+    ret.opc = MOpcode::Ret;
+    bb.instrs.push_back(std::move(ret));
+
+    const auto original = bb.instrs;
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    ASSERT_TRUE(SchedulerPass().run(module, diags));
+    const auto &scheduled = module.mir[0].blocks[0].instrs;
+    ASSERT_EQ(scheduled.size(), original.size());
+    for (std::size_t i = 0; i < original.size(); ++i)
+        EXPECT_EQ(scheduled[i].opc, original[i].opc);
+}
+
 // ---------------------------------------------------------------------------
 // Test 6: SchedulerPass integrates cleanly into the full PassManager pipeline.
 // ---------------------------------------------------------------------------
