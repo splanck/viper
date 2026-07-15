@@ -22,12 +22,35 @@ for arg in "$@"; do
         --build-dir=*)
             BUILD_DIR="${arg#--build-dir=}"
             ;;
+        --config=*)
+            CONFIG="${arg#--config=}"
+            ;;
         *)
-            echo "usage: $0 [--strict-header-sync] [--strict-unclassified] [--summary-only] [--build-dir=build]" >&2
+            echo "usage: $0 [--strict-header-sync] [--strict-unclassified] [--summary-only] [--build-dir=build] [--config=Debug]" >&2
             exit 1
             ;;
     esac
 done
+
+normalize_build_dir_for_shell() {
+    local path="$1"
+    case "$path" in
+        [A-Za-z]:\\*|[A-Za-z]:/*)
+            if command -v wslpath >/dev/null 2>&1 &&
+               grep -qi microsoft /proc/version 2>/dev/null; then
+                wslpath -u "$path"
+                return
+            fi
+            if command -v cygpath >/dev/null 2>&1; then
+                cygpath -u "$path"
+                return
+            fi
+            ;;
+    esac
+    printf '%s\n' "$path"
+}
+
+BUILD_DIR="$(normalize_build_dir_for_shell "$BUILD_DIR")"
 
 if command -v nproc >/dev/null 2>&1; then
     JOBS="$(nproc)"

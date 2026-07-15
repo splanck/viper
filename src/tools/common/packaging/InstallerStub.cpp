@@ -111,14 +111,29 @@ constexpr uint32_t kDlgIdLicense = 1001;
 constexpr uint32_t kDlgIdAccept = 1002;
 constexpr uint32_t kDlgIdBanner = 1006;
 constexpr uint32_t kWmClose = 0x0010;
+constexpr uint32_t kWmNextDlgCtl = 0x0028;
 constexpr uint32_t kWmCommand = 0x0111;
 constexpr uint32_t kWmInitDialog = 0x0110;
+constexpr uint32_t kWmCtlColorEdit = 0x0133;
+constexpr uint32_t kWmCtlColorButton = 0x0135;
+constexpr uint32_t kWmCtlColorDialog = 0x0136;
+constexpr uint32_t kWmCtlColorStatic = 0x0138;
 constexpr uint32_t kBmGetCheck = 0x00F0;
 constexpr uint32_t kIccProgressClass = 0x00000020;
-constexpr int32_t kDlgProcFrameSize = 0x48;
+constexpr uint32_t kDcBrush = 18;
+constexpr uint32_t kDwmUseImmersiveDarkModeBefore20H1 = 19;
+constexpr uint32_t kDwmUseImmersiveDarkMode = 20;
+constexpr uint32_t kDarkBackground = 0x0017110Fu;
+constexpr uint32_t kDarkSurface = 0x00271D19u;
+constexpr uint32_t kDarkAccent = 0x00FF4A6Du;
+constexpr uint32_t kDarkText = 0x00F8F1EEu;
+constexpr uint32_t kDarkMutedText = 0x00C7B5AEu;
+constexpr int32_t kDlgProcFrameSize = 0x58;
 constexpr int32_t kDlgProcHwndOff = -0x08;
 constexpr int32_t kDlgProcMsgOff = -0x10;
 constexpr int32_t kDlgProcWparamOff = -0x18;
+constexpr int32_t kDlgProcLparamOff = -0x20;
+constexpr int32_t kDlgProcDarkModeOff = -0x28;
 
 /// @brief Flat IAT slot indices for the Win32 APIs the installer stub imports.
 /// @details Each value is the function's position across all imported DLLs and is
@@ -170,6 +185,13 @@ enum InstallerIAT : uint32_t {
     kI_SendMessageW = 42,
     kI_EnableWindow = 43,
     kI_SetEnvironmentVariableW = 44,
+    kI_GetDlgCtrlID = 45,
+    kI_SetWindowTheme = 46,
+    kI_DwmSetWindowAttribute = 47,
+    kI_GetStockObject = 48,
+    kI_SetDCBrushColor = 49,
+    kI_SetTextColor = 50,
+    kI_SetBkColor = 51,
     kI_Count, ///< Sentinel: total IAT slot count (must equal installerImports() function count).
 };
 
@@ -213,6 +235,13 @@ enum UninstallerIAT : uint32_t {
     kU_GetExitCodeProcess = 33,
     kU_SetEnvironmentVariableW = 34,
     kU_CloseHandle = 35,
+    kU_GetDlgCtrlID = 36,
+    kU_SetWindowTheme = 37,
+    kU_DwmSetWindowAttribute = 38,
+    kU_GetStockObject = 39,
+    kU_SetDCBrushColor = 40,
+    kU_SetTextColor = 41,
+    kU_SetBkColor = 42,
     kU_Count, ///< Sentinel: total IAT slot count (must equal uninstallerImports() function count).
 };
 
@@ -283,6 +312,10 @@ std::vector<PEImport> installerImports() {
         {"user32.dll",
          {"DialogBoxIndirectParamW", "EndDialog", "GetDlgItem", "SendMessageW", "EnableWindow"}},
         {"kernel32.dll", {"SetEnvironmentVariableW"}},
+        {"user32.dll", {"GetDlgCtrlID"}},
+        {"uxtheme.dll", {"SetWindowTheme"}},
+        {"dwmapi.dll", {"DwmSetWindowAttribute"}},
+        {"gdi32.dll", {"GetStockObject", "SetDCBrushColor", "SetTextColor", "SetBkColor"}},
     };
     verifyImportSlotCount(imports, kI_Count, "installer");
     return imports;
@@ -327,6 +360,10 @@ std::vector<PEImport> uninstallerImports() {
           "GetExitCodeProcess",
           "SetEnvironmentVariableW",
           "CloseHandle"}},
+        {"user32.dll", {"GetDlgCtrlID"}},
+        {"uxtheme.dll", {"SetWindowTheme"}},
+        {"dwmapi.dll", {"DwmSetWindowAttribute"}},
+        {"gdi32.dll", {"GetStockObject", "SetDCBrushColor", "SetTextColor", "SetBkColor"}},
     };
     verifyImportSlotCount(imports, kU_Count, "uninstaller");
     return imports;
@@ -523,6 +560,9 @@ function LoadManifest([string]$path,[bool]$required){
 }
 function ContainsBytes([byte[]]$data,[byte[]]$needle){if($needle.Length -eq 0 -or $data.Length -lt $needle.Length){return $false};for($i=0;$i -le $data.Length-$needle.Length;$i++){$match=$true;for($j=0;$j -lt $needle.Length;$j++){if($data[$i+$j] -ne $needle[$j]){$match=$false;break}};if($match){return $true}};return $false}
 function LegacyShortcutOwned([string]$path){if(-not $path.EndsWith('.lnk',[StringComparison]::OrdinalIgnoreCase)){return $false};try{$data=[IO.File]::ReadAllBytes($path);return (ContainsBytes $data ([Text.Encoding]::Unicode.GetBytes($installLeaf))) -or (ContainsBytes $data ([Text.Encoding]::UTF8.GetBytes($installLeaf)))}catch{return $false}}
+function LegacyInstallOwned(){
+ $path=Join-Path $install 'uninstall.exe';if(-not (Test-Path -LiteralPath $path -PathType Leaf)){return $false};try{$item=Get-Item -LiteralPath $path -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false};$info=[Diagnostics.FileVersionInfo]::GetVersionInfo($path);if(-not [String]::Equals($info.OriginalFilename,'uninstall.exe',[StringComparison]::OrdinalIgnoreCase) -or -not $info.FileDescription.EndsWith(' Uninstaller',[StringComparison]::OrdinalIgnoreCase)){return $false};$data=[IO.File]::ReadAllBytes($path);return (ContainsBytes $data ([Text.Encoding]::Unicode.GetBytes($identifier))) -and (ContainsBytes $data ([Text.Encoding]::Unicode.GetBytes($installedManifestRel)))}catch{return $false}
+}
 function SnapshotState(){
  $pathValue=[Environment]::GetEnvironmentVariable('Path',$scope);$pathState=Join-Path $txn 'path.state';if($null -eq $pathValue){[IO.File]::WriteAllText($pathState,'null')}else{[IO.File]::WriteAllText($pathState,[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pathValue)))}
  $regDir=Join-Path $txn 'registry';[IO.Directory]::CreateDirectory($regDir)|Out-Null;$i=0;foreach($rk in $regKeys){$dir=Join-Path $regDir ([string]$i);[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir 'provider'),$rk[0]);[IO.File]::WriteAllText((Join-Path $dir 'native'),$rk[1]);if(Test-Path -LiteralPath $rk[0]){& $regExe export $rk[1] (Join-Path $dir 'backup.reg') /y | Out-Null;if($LASTEXITCODE -ne 0){throw 'failed to snapshot Windows installer registry state'};[IO.File]::WriteAllText((Join-Path $dir 'state'),'present')}else{[IO.File]::WriteAllText((Join-Path $dir 'state'),'absent')};$i++}
@@ -534,7 +574,7 @@ function ReplaceTemp([string]$tmp,[string]$dst){try{if(Test-Path -LiteralPath $d
 function BeginTransaction(){
  if(Test-Path -LiteralPath $txn){$item=Get-Item -LiteralPath $txn -Force;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'refusing reparse-point Windows installer transaction: '+$txn};RestoreTransaction}
  [IO.Directory]::CreateDirectory($txn)|Out-Null;[IO.File]::WriteAllText($txnMarker,$identifier);[IO.Directory]::CreateDirectory($txnBackup)|Out-Null;SnapshotState
- $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'VAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.VAPSShortcutPaths;$oldShortcuts=@{};if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true}}}
+ $oldPath=Join-Path $install $installedManifestRel;$hadOld=Test-Path -LiteralPath $oldPath -PathType Leaf;$legacyOwned=(-not $hadOld) -and (LegacyInstallOwned);if($legacyOwned){WriteInstallerLog 'INFO' ('migrating generated legacy installation at '+$install)};$oldLines=@(LoadManifest $oldPath $false);$oldSet=@{};foreach($o in $oldLines){$oldSet[$o.ToLowerInvariant()]=$true};$oldShortcutProps=Get-ItemProperty -LiteralPath $uninstallReg -ErrorAction SilentlyContinue;$hasOldShortcutMarker=$null -ne $oldShortcutProps -and $oldShortcutProps.PSObject.Properties.Name -contains 'VAPSShortcutPaths';$oldShortcutText=$oldShortcutProps.VAPSShortcutPaths;$oldShortcuts=@{};if($oldShortcutText){foreach($line in $oldShortcutText -split "`n"){$line=$line.TrimEnd("`r");if($line){$oldShortcuts[$line.ToLowerInvariant()]=$true}}}
  $items=@();$newLines=@();$newSet=@{};$stage=Join-Path $txn 'stage';[IO.Directory]::CreateDirectory($stage)|Out-Null;$fs=[IO.File]::OpenRead($self)
  try{
   if($payloadRel){$payloadRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$payloadRel,'OrdinalIgnoreCase')}|Select-Object -First 1;$manifestRecord=$files|Where-Object{$_.Count -ge 5 -and $_[0] -eq 'I' -and [String]::Equals($_[1],$nextManifestRel,'OrdinalIgnoreCase')}|Select-Object -First 1;if(-not $payloadRecord -or -not $manifestRecord){throw 'compressed installer bootstrap records are missing'};$payloadInput=Join-Path $txn 'payload.zip';$manifestInput=Join-Path $txn 'next.manifest';ReplaceTemp (CopyOverlay $fs $payloadRecord $payloadInput) $payloadInput;ReplaceTemp (CopyOverlay $fs $manifestRecord $manifestInput) $manifestInput;$newLines=@(LoadManifest $manifestInput $true);foreach($n in $newLines){$newSet[$n.ToLowerInvariant()]=$true};Expand-Archive -LiteralPath $payloadInput -DestinationPath $stage -Force
@@ -543,7 +583,7 @@ function BeginTransaction(){
    foreach($n in $newLines){if(-not $actual.ContainsKey($n.ToLowerInvariant())){throw 'compressed installer payload is missing a manifest file: '+$n};$items+=,@{R='I';P=$n;S=(Join-Path $stage $n);F=$null}}
   }
   foreach($f in $files){if($payloadRel -and $f[0] -eq 'I' -and ([String]::Equals($f[1],$payloadRel,'OrdinalIgnoreCase') -or [String]::Equals($f[1],$nextManifestRel,'OrdinalIgnoreCase'))){continue};$items+=,@{R=$f[0];P=(NormRel $f[1]);S=$null;F=$f}}
-  $destSeen=@{};foreach($item in $items){$dst=AssertSafe $item.R $item.P;$key=($item.R+'|'+$item.P).ToLowerInvariant();if($destSeen.ContainsKey($key)){throw 'duplicate Windows installer destination: '+$item.P};$destSeen[$key]=$true;if(Test-Path -LiteralPath $dst){if($item.R -eq 'I'){$owned=$oldSet.ContainsKey($item.P.ToLowerInvariant())}else{$owned=$hadOld -and ($oldShortcuts.ContainsKey($key) -or ((-not $hasOldShortcutMarker) -and (LegacyShortcutOwned $dst)))};if(-not $owned){throw 'refusing to replace unowned path: '+$dst}}}
+  $destSeen=@{};foreach($item in $items){$dst=AssertSafe $item.R $item.P;$key=($item.R+'|'+$item.P).ToLowerInvariant();if($destSeen.ContainsKey($key)){throw 'duplicate Windows installer destination: '+$item.P};$destSeen[$key]=$true;if(Test-Path -LiteralPath $dst){if($item.R -eq 'I'){$owned=$oldSet.ContainsKey($item.P.ToLowerInvariant()) -or $legacyOwned}else{$owned=($hadOld -or $legacyOwned) -and ($oldShortcuts.ContainsKey($key) -or ((-not $hasOldShortcutMarker) -and (LegacyShortcutOwned $dst)))};if(-not $owned){throw 'refusing to replace unowned path: '+$dst}}}
   foreach($o in $oldLines){if(-not $newSet.ContainsKey($o.ToLowerInvariant())){$null=AssertSafe 'I' $o}}
   $slot=0;foreach($item in $items){$dst=OwnedPath $item.R $item.P;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' $item.R $item.P $backup;$slot++}else{Journal 'N' $item.R $item.P ''}}
   foreach($o in $oldLines){if(-not $newSet.ContainsKey($o.ToLowerInvariant())){$dst=OwnedPath 'I' $o;if(Test-Path -LiteralPath $dst -PathType Leaf){$backup=[string]$slot;Copy-Item -LiteralPath $dst -Destination (Join-Path $txnBackup $backup) -Force;Journal 'B' 'I' $o $backup;$slot++;Remove-Item -LiteralPath $dst -Force -ErrorAction Stop}}}
@@ -579,6 +619,21 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "$ErrorActionPreference='Stop'\n";
     ps << "$self=$env:VIPER_INSTALLER_SELF\n";
     ps << "$mode=$env:VIPER_INSTALLER_MODE\n";
+    ps << "$defaultLog=Join-Path ([IO.Path]::GetTempPath()) "
+       << powershellSingleQuote("ViperInstaller-" + registryIdFor(layout) + ".log") << "\n";
+    ps << "$log=if($env:VIPER_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
+          "VIPER_INSTALLER_LOG)}else{$defaultLog}\n";
+    ps << "function WriteInstallerLog([string]$level,[string]$message){try{$line=(Get-Date "
+          "-Format 'o')+' ['+$level+'] '+$message+[Environment]::NewLine;[IO.File]::"
+          "AppendAllText($log,$line,[Text.Encoding]::UTF8)}catch{}}\n";
+    ps << "try{if($mode -eq 'install' -or $mode -eq 'install-files'){[IO.File]::WriteAllText("
+          "$log,'',[Text.Encoding]::UTF8)};WriteInstallerLog 'INFO' ('backend mode: '+$mode)}"
+          "catch{}\n";
+    ps << "if($mode -eq 'rollback' -and $env:VIPER_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
+          "'ERROR' ('native setup failed during '+$env:VIPER_INSTALLER_NATIVE_STAGE)}\n";
+    ps << "trap{$failure=$_;WriteInstallerLog 'ERROR' ('setup failed: '+$failure.Exception."
+          "Message);try{[Console]::Error.WriteLine('setup failed: '+$failure.Exception.Message)}"
+          "catch{};exit 1}\n";
     ps << "if(-not $self -or -not (Test-Path -LiteralPath $self -PathType Leaf)){throw 'installer "
           "bootstrap path was not provided'}\n";
     ps << "$display=" << powershellSingleQuote(layout.displayName) << "\n";
@@ -670,13 +725,11 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     ps << "function TrimDialog([string]$s){if(-not $s){return ''};if($s.Length -le 3800){return "
           "$s};return $s.Substring(0,3800)+\"`r`n`r`n...\"}\n";
     ps << "function ConfirmDialog([string]$title,[string]$message){if($quiet){return};try{Add-Type "
-          "-AssemblyName "
-          "System.Windows.Forms -ErrorAction Stop;$r=[System.Windows.Forms.MessageBox]::Show("
-          "$message,$title,[System.Windows.Forms.MessageBoxButtons]::OKCancel,[System.Windows."
-          "Forms."
-          "MessageBoxIcon]::Information);if($r -ne [System.Windows.Forms.DialogResult]::OK){exit "
-          "1602}}catch{throw 'Unable to display the installer confirmation dialog: '+$_.Exception."
-          "Message}}\n";
+          "-AssemblyName System.Windows.Forms -ErrorAction Stop;$r=[System.Windows.Forms."
+          "MessageBox]::Show($message,$title,[System.Windows.Forms.MessageBoxButtons]::OKCancel,"
+          "[System.Windows.Forms.MessageBoxIcon]::Information);if($r -ne [System.Windows.Forms."
+          "DialogResult]::OK){exit 1602}}catch{throw 'Unable to display the installer confirmation "
+          "dialog: '+$_.Exception.Message}}\n";
     ps << "function RemoveOne($r,$rel){$p=Join-Path (Root $r) $rel;Remove-Item -LiteralPath $p "
           "-Force -ErrorAction SilentlyContinue}\n";
     ps << "$assocExe=" << powershellPathJoinLiteral("$install", assocExeRel) << "\n";
@@ -757,8 +810,10 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
     }
     ps << ")\n";
 
-    ps << "if($mode -eq 'rollback'){RestoreTransaction;exit 0}\n";
-    ps << "if($mode -eq 'commit'){CommitTransaction;exit 0}\n";
+    ps << "if($mode -eq 'rollback'){RestoreTransaction;WriteInstallerLog 'INFO' 'transaction "
+          "rolled back';exit 0}\n";
+    ps << "if($mode -eq 'commit'){CommitTransaction;WriteInstallerLog 'INFO' 'installation "
+          "committed';exit 0}\n";
     ps << "if($mode -eq 'uninstall'){\n";
     ps << "if(Test-Path -LiteralPath $txn){RestoreTransaction}\n";
     ps << "ConfirmDialog ($display+' Uninstall') ('This will remove '+$display+' from this "
@@ -803,7 +858,8 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         ps << ")\n";
         ps << "try{\n";
         ps << "BeginTransaction\n";
-        ps << "if($mode -eq 'install-files'){exit 0}\n";
+        ps << "if($mode -eq 'install-files'){WriteInstallerLog 'INFO' 'payload staged and "
+              "installed';exit 0}\n";
         ps << "New-Item -Path $uninstallReg -Force|Out-Null\n";
         ps << "$uninst=Join-Path $install 'uninstall.exe'\n";
         ps << "SetS 'DisplayName' $display\n";
@@ -831,18 +887,122 @@ std::string buildArm64PowerShellScript(const WindowsPackageLayout &layout, bool 
         ps << "RegisterAssoc\n";
         ps << "CommitTransaction\n";
         ps << "BroadcastEnv\n";
+        ps << "WriteInstallerLog 'INFO' 'installation complete'\n";
         ps << "exit 0\n";
-        ps << "}catch{$failure=$_;try{RestoreTransaction}catch{Write-Error "
-              "('installer rollback failed: '+$_.Exception.Message)};Write-Error "
-              "('installation failed: '+$failure.Exception.Message);exit 1}\n";
+        ps << "}catch{$failure=$_;$rollbackFailure='';try{RestoreTransaction}catch{"
+              "$rollbackFailure=$_.Exception.Message};$message='installation failed: '+"
+              "$failure.Exception.Message;if($rollbackFailure){$message+='; installer rollback "
+              "failed: '+$rollbackFailure};WriteInstallerLog 'ERROR' $message;try{[Console]::"
+              "Error.WriteLine($message)}catch{};exit 1}\n";
     }
 
     return ps.str();
 }
 
-std::string encodedArm64PowerShellCommand(const WindowsPackageLayout &layout,
-                                          bool uninstallDialog) {
-    const std::string source = buildArm64PowerShellScript(layout, uninstallDialog);
+/// @brief Build the compact transaction-only backend used by native x64 setup stubs.
+/// @details Native x64 code owns the wizard and Windows metadata. Keeping ARM64-only UI and
+///          metadata functions out of this script preserves ample headroom below CreateProcessW's
+///          32,767-character command-line limit, including layouts with optional shortcuts.
+std::string buildNativeTransactionPowerShellScript(const WindowsPackageLayout &layout) {
+    const std::string installDir = installDirNameFor(layout);
+    const std::string uninstallKey = uninstallKeyPathFor(layout);
+    const std::string hive = layout.perUserInstall ? "HKCU:" : "HKLM:";
+    const std::string nativeHive = layout.perUserInstall ? "HKCU" : "HKLM";
+    const std::string scope = layout.perUserInstall ? "User" : "Machine";
+
+    std::ostringstream ps;
+    ps << "$ErrorActionPreference='Stop'\n";
+    ps << "$self=$env:VIPER_INSTALLER_SELF\n";
+    ps << "$mode=$env:VIPER_INSTALLER_MODE\n";
+    ps << "$defaultLog=Join-Path ([IO.Path]::GetTempPath()) "
+       << powershellSingleQuote("ViperInstaller-" + registryIdFor(layout) + ".log") << "\n";
+    ps << "$log=if($env:VIPER_INSTALLER_LOG){[Environment]::ExpandEnvironmentVariables($env:"
+          "VIPER_INSTALLER_LOG)}else{$defaultLog}\n";
+    ps << "function WriteInstallerLog([string]$level,[string]$message){try{$line=(Get-Date "
+          "-Format 'o')+' ['+$level+'] '+$message+[Environment]::NewLine;[IO.File]::"
+          "AppendAllText($log,$line,[Text.Encoding]::UTF8)}catch{}}\n";
+    ps << "try{if($mode -eq 'install-files'){[IO.File]::WriteAllText($log,'',[Text.Encoding]::"
+          "UTF8)};WriteInstallerLog 'INFO' ('backend mode: '+$mode)}catch{}\n";
+    ps << "if($mode -eq 'rollback' -and $env:VIPER_INSTALLER_NATIVE_STAGE){WriteInstallerLog "
+          "'ERROR' ('native setup failed during '+$env:VIPER_INSTALLER_NATIVE_STAGE)}\n";
+    ps << "trap{$failure=$_;WriteInstallerLog 'ERROR' ('setup failed: '+$failure.Exception."
+          "Message);try{[Console]::Error.WriteLine('setup failed: '+$failure.Exception.Message)}"
+          "catch{};exit 1}\n";
+    ps << "if(-not $self -or -not (Test-Path -LiteralPath $self -PathType Leaf)){throw 'installer "
+          "bootstrap path was not provided'}\n";
+    ps << "$installLeaf=" << powershellSingleQuote(installDir) << "\n";
+    ps << "$identifier=" << powershellSingleQuote(registryIdFor(layout)) << "\n";
+    ps << "$perUser=" << powershellBool(layout.perUserInstall) << "\n";
+    ps << "$baseOffset=[int64]" << layout.overlayFileOffset << "\n";
+    ps << "$rootBase=if($perUser){[Environment]::GetFolderPath('LocalApplicationData')}else{["
+          "Environment]::GetFolderPath('ProgramFiles')}\n";
+    ps << "$install=Join-Path $rootBase $installLeaf\n";
+    ps << "$desktop=if($perUser){[Environment]::GetFolderPath('Desktop')}else{[Environment]::"
+          "GetFolderPath('CommonDesktopDirectory')}\n";
+    ps << "$programs=if($perUser){[Environment]::GetFolderPath('Programs')}else{[Environment]::"
+          "GetFolderPath('CommonPrograms')}\n";
+    ps << "$menu=Join-Path $programs $installLeaf\n";
+    ps << "$scope=" << powershellSingleQuote(scope) << "\n";
+    ps << "$uninstallReg=" << powershellSingleQuote(hive + "\\" + uninstallKey) << "\n";
+    ps << "$regExe=Join-Path $env:SystemRoot 'System32\\reg.exe'\n";
+    ps << "$payloadRel="
+       << powershellSingleQuote(powershellRelPath(layout.compressedPayloadRelativePath)) << "\n";
+    ps << "$nextManifestRel="
+       << powershellSingleQuote(powershellRelPath(layout.compressedPayloadManifestRelativePath))
+       << "\n";
+    ps << "$installedManifestRel="
+       << powershellSingleQuote(powershellRelPath(layout.installedManifestRelativePath)) << "\n";
+    ps << "$txn=$install+'.viper-transaction'\n";
+    ps << "$txnMarker=Join-Path $txn 'owner'\n";
+    ps << "$txnJournal=Join-Path $txn 'journal'\n";
+    ps << "$txnBackup=Join-Path $txn 'backup'\n";
+    ps << "function Root($r){if($r -eq 'D'){$desktop}elseif($r -eq 'M'){$menu}else{$install}}\n";
+    ps << "function Parent($p){$d=[IO.Path]::GetDirectoryName($p);if($d){[IO.Directory]::"
+          "CreateDirectory($d)|Out-Null}}\n";
+    ps << "function BroadcastEnv(){try{Add-Type -TypeDefinition 'using System; using "
+          "System.Runtime.InteropServices; public static class ViperEnv { "
+          "[DllImport(\"user32.dll\", SetLastError=true, CharSet=CharSet.Auto)] public static "
+          "extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, "
+          "uint flags, uint timeout, out UIntPtr result); }' -ErrorAction SilentlyContinue|"
+          "Out-Null;$r=[UIntPtr]::Zero;[void][ViperEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,"
+          "[UIntPtr]::Zero,'Environment',2,5000,[ref]$r)}catch{}}\n";
+    ps << "$regKeys=@(\n";
+    ps << ",@(" << powershellSingleQuote(hive + "\\" + uninstallKey) << ","
+       << powershellSingleQuote(nativeHive + "\\" + uninstallKey) << ")\n";
+    for (const auto &assoc : layout.fileAssociations) {
+        const std::string extensionKey = "Software\\Classes\\" + assoc.extension;
+        const std::string progIdKey = "Software\\Classes\\" + assoc.progId;
+        ps << ",@(" << powershellSingleQuote(hive + "\\" + extensionKey) << ","
+           << powershellSingleQuote(nativeHive + "\\" + extensionKey) << ")\n";
+        ps << ",@(" << powershellSingleQuote(hive + "\\" + progIdKey) << ","
+           << powershellSingleQuote(nativeHive + "\\" + progIdKey) << ")\n";
+    }
+    ps << ")\n";
+    appendWindowsInstallTransaction(ps);
+    ps << "$files=@(\n";
+    for (const auto &file : layout.installFiles) {
+        ps << ",@(" << powershellSingleQuote(powershellRootCode(file.root)) << ","
+           << powershellSingleQuote(powershellRelPath(file.relativePath)) << ",[int64]"
+           << file.overlayDataOffset << ",[int64]" << file.sizeBytes << ","
+           << powershellSingleQuote(file.sha256) << ")\n";
+    }
+    ps << ")\n";
+    ps << "if($mode -eq 'rollback'){RestoreTransaction;WriteInstallerLog 'INFO' 'transaction "
+          "rolled back';exit 0}\n";
+    ps << "if($mode -eq 'commit'){CommitTransaction;WriteInstallerLog 'INFO' 'installation "
+          "committed';exit 0}\n";
+    ps << "if($mode -ne 'install-files'){throw 'invalid native installer backend mode'}\n";
+    ps << "try{BeginTransaction;WriteInstallerLog 'INFO' 'payload staged and installed';exit "
+          "0}catch{$failure=$_;$rollbackFailure='';try{RestoreTransaction}catch{"
+          "$rollbackFailure=$_.Exception.Message};$message='installation failed: '+"
+          "$failure.Exception.Message;if($rollbackFailure){$message+='; installer rollback "
+          "failed: '+$rollbackFailure};WriteInstallerLog 'ERROR' $message;try{[Console]::"
+          "Error.WriteLine($message)}catch{};exit 1}\n";
+    return ps.str();
+}
+
+/// @brief Gzip and encode a PowerShell source string for `powershell -EncodedCommand`.
+std::string encodedPowerShellCommand(const std::string &source) {
     const auto compressed =
         gzip(reinterpret_cast<const uint8_t *>(source.data()), source.size(), 9);
     const std::string packed = base64Encode(compressed);
@@ -853,6 +1013,15 @@ std::string encodedArm64PowerShellCommand(const WindowsPackageLayout &layout,
         "IO.StreamReader($g,[Text.Encoding]::UTF8);$s=$r.ReadToEnd();$r.Dispose();$g.Dispose();"
         "$m.Dispose();&([ScriptBlock]::Create($s))";
     return base64Encode(utf8ToUtf16LEBytes(bootstrap, false));
+}
+
+std::string encodedArm64PowerShellCommand(const WindowsPackageLayout &layout,
+                                          bool uninstallDialog) {
+    return encodedPowerShellCommand(buildArm64PowerShellScript(layout, uninstallDialog));
+}
+
+std::string encodedNativeTransactionPowerShellCommand(const WindowsPackageLayout &layout) {
+    return encodedPowerShellCommand(buildNativeTransactionPowerShellScript(layout));
 }
 
 void appendDialogAtomClass(std::vector<uint8_t> &out, uint16_t atom) {
@@ -923,6 +1092,7 @@ std::vector<uint8_t> buildWizardDialogTemplate(const WindowsPackageLayout &layou
     constexpr uint32_t kWsVScroll = 0x00200000u;
     constexpr uint32_t kSsLeft = 0x00000000u;
     constexpr uint32_t kSsCenter = 0x00000001u;
+    constexpr uint32_t kSsCenterImage = 0x00000200u;
     constexpr uint32_t kEsMultiline = 0x00000004u;
     constexpr uint32_t kEsAutoVScroll = 0x00000040u;
     constexpr uint32_t kEsReadOnly = 0x00000800u;
@@ -953,63 +1123,140 @@ std::vector<uint8_t> buildWizardDialogTemplate(const WindowsPackageLayout &layou
     appendDlgLE16(out, 7);
     appendDlgLE16(out, 10);
     appendDlgLE16(out, 10);
-    appendDlgLE16(out, 290);
-    appendDlgLE16(out, 210);
+    appendDlgLE16(out, 360);
+    appendDlgLE16(out, 260);
     appendDlgLE16(out, 0);
     appendDlgLE16(out, 0);
     appendDialogWideString(out, title);
-    appendDlgLE16(out, 9);
+    appendDlgLE16(out, 10);
     appendDialogWideString(out, "Segoe UI");
 
+    appendDialogControl(out,
+                        kWsChildVisible | kSsCenter | kSsCenterImage,
+                        0,
+                        0,
+                        0,
+                        360,
+                        32,
+                        kDlgIdBanner,
+                        kStaticClass,
+                        title);
     appendDialogControl(
-        out, kWsChildVisible | kSsCenter, 0, 0, 8, 290, 18, kDlgIdBanner, kStaticClass, title);
-    appendDialogControl(
-        out, kWsChildVisible | kSsLeft, 0, 8, 31, 274, 18, 2002, kStaticClass, intro);
+        out, kWsChildVisible | kSsLeft, 0, 16, 44, 328, 24, 2002, kStaticClass, intro);
     appendDialogControl(out,
                         kWsChildVisible | kWsTabStop | kWsBorder | kWsVScroll | kEsMultiline |
                             kEsAutoVScroll | kEsReadOnly,
                         0,
-                        8,
-                        52,
-                        274,
-                        88,
+                        16,
+                        75,
+                        328,
+                        105,
                         kDlgIdLicense,
                         kEditClass,
                         body);
     appendDialogControl(out,
                         kWsChildVisible | kWsTabStop | kBsAutoCheckBox,
                         0,
-                        8,
-                        145,
-                        180,
-                        10,
+                        16,
+                        189,
+                        236,
+                        14,
                         kDlgIdAccept,
                         kButtonClass,
                         uninstallDialog ? "I understand and want to continue"
                                         : "I accept the license agreement");
     appendDialogControl(
-        out, kWsChildVisible | kSsLeft, 0, 8, 162, 274, 18, 2003, kStaticClass, scopeSummary);
+        out, kWsChildVisible | kSsLeft, 0, 16, 209, 328, 18, 2003, kStaticClass, scopeSummary);
     appendDialogControl(out,
                         kWsChildVisible | kWsTabStop | kBsDefPushButton,
                         0,
-                        150,
-                        188,
-                        56,
-                        14,
+                        216,
+                        234,
+                        60,
+                        18,
                         kDlgIdOk,
                         kButtonClass,
                         uninstallDialog ? "Uninstall" : "Install");
     appendDialogControl(out,
                         kWsChildVisible | kWsTabStop | kBsPushButton,
                         0,
-                        214,
-                        188,
-                        56,
-                        14,
+                        284,
+                        234,
+                        60,
+                        18,
                         kDlgIdCancel,
                         kButtonClass,
                         "Cancel");
 
+    alignDialogDword(out);
+    return out;
+}
+
+/// @brief Build the compact dark-themed completion/error dialog used after interactive setup.
+std::vector<uint8_t> buildResultDialogTemplate(const std::string &title,
+                                               const std::string &message) {
+    constexpr uint16_t kButtonClass = 0x0080;
+    constexpr uint16_t kEditClass = 0x0081;
+    constexpr uint16_t kStaticClass = 0x0082;
+    constexpr uint32_t kWsChildVisible = 0x50000000u;
+    constexpr uint32_t kWsTabStop = 0x00010000u;
+    constexpr uint32_t kDsModalFrame = 0x00000080u;
+    constexpr uint32_t kDsSetFont = 0x00000040u;
+    constexpr uint32_t kDsCenter = 0x00000800u;
+    constexpr uint32_t kWsPopup = 0x80000000u;
+    constexpr uint32_t kWsCaption = 0x00C00000u;
+    constexpr uint32_t kWsSysMenu = 0x00080000u;
+    constexpr uint32_t kWsBorder = 0x00800000u;
+    constexpr uint32_t kSsCenter = 0x00000001u;
+    constexpr uint32_t kSsCenterImage = 0x00000200u;
+    constexpr uint32_t kEsMultiline = 0x00000004u;
+    constexpr uint32_t kEsReadOnly = 0x00000800u;
+    constexpr uint32_t kBsDefPushButton = 0x00000001u;
+
+    std::vector<uint8_t> out;
+    appendDlgLE32(out, kDsModalFrame | kDsSetFont | kDsCenter | kWsPopup | kWsCaption | kWsSysMenu);
+    appendDlgLE32(out, 0);
+    appendDlgLE16(out, 3);
+    appendDlgLE16(out, 10);
+    appendDlgLE16(out, 10);
+    appendDlgLE16(out, 360);
+    appendDlgLE16(out, 170);
+    appendDlgLE16(out, 0);
+    appendDlgLE16(out, 0);
+    appendDialogWideString(out, title);
+    appendDlgLE16(out, 10);
+    appendDialogWideString(out, "Segoe UI");
+
+    appendDialogControl(out,
+                        kWsChildVisible | kSsCenter | kSsCenterImage,
+                        0,
+                        0,
+                        0,
+                        360,
+                        32,
+                        kDlgIdBanner,
+                        kStaticClass,
+                        title);
+    appendDialogControl(out,
+                        kWsChildVisible | kWsTabStop | kWsBorder | kEsMultiline | kEsReadOnly,
+                        0,
+                        16,
+                        49,
+                        328,
+                        76,
+                        kDlgIdLicense,
+                        kEditClass,
+                        normalizeDialogText(message));
+    appendDialogControl(out,
+                        kWsChildVisible | kWsTabStop | kBsDefPushButton,
+                        0,
+                        284,
+                        142,
+                        60,
+                        18,
+                        kDlgIdOk,
+                        kButtonClass,
+                        "OK");
     alignDialogDword(out);
     return out;
 }
@@ -1563,6 +1810,24 @@ void emitWizardDialog(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
+/// @brief Show a themed informational dialog in interactive mode and ignore its result.
+void emitResultDialogUnlessQuiet(InstallerStubGen &gen,
+                                 uint32_t templateOff,
+                                 uint32_t dialogProcLabel,
+                                 uint32_t dialogBoxSlot) {
+    const auto lblSkip = gen.newLabel();
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kQuietModeOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblSkip);
+    gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
+    gen.leaRipData(X64Reg::RDX, templateOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.leaCodeLabel(X64Reg::R9, dialogProcLabel);
+    storeStackImm64(gen, 0x20, 1);
+    gen.callIATSlot(dialogBoxSlot);
+    gen.bindLabel(lblSkip);
+}
+
 void emitEndDialogAndReturnTrue(InstallerStubGen &gen, uint32_t endDialogSlot, uint32_t result) {
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
     gen.movRegImm32(X64Reg::RDX, result);
@@ -1577,15 +1842,76 @@ void emitDialogProcEpilogue(InstallerStubGen &gen) {
     gen.ret();
 }
 
+/// @brief Apply the native dark Explorer theme to one dialog child when it exists.
+void emitSetDialogControlTheme(InstallerStubGen &gen,
+                               uint32_t controlId,
+                               uint32_t darkThemeOff,
+                               uint32_t getDlgItemSlot,
+                               uint32_t setWindowThemeSlot) {
+    const auto lblDone = gen.newLabel();
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, controlId);
+    gen.callIATSlot(getDlgItemSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblDone);
+    gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
+    gen.leaRipData(X64Reg::RDX, darkThemeOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.callIATSlot(setWindowThemeSlot);
+    gen.bindLabel(lblDone);
+}
+
+/// @brief Paint one dialog/control surface with a stock DC brush and return that brush.
+void emitReturnDarkDialogBrush(InstallerStubGen &gen,
+                               uint32_t background,
+                               uint32_t foreground,
+                               uint32_t getStockObjectSlot,
+                               uint32_t setDcBrushColorSlot,
+                               uint32_t setTextColorSlot,
+                               uint32_t setBkColorSlot,
+                               uint32_t doneLabel) {
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcWparamOff);
+    gen.movRegImm32(X64Reg::RDX, foreground);
+    gen.callIATSlot(setTextColorSlot);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcWparamOff);
+    gen.movRegImm32(X64Reg::RDX, background);
+    gen.callIATSlot(setBkColorSlot);
+    gen.movRegImm32(X64Reg::RCX, kDcBrush);
+    gen.callIATSlot(getStockObjectSlot);
+    gen.movRegReg(X64Reg::RBX, X64Reg::RAX);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcWparamOff);
+    gen.movRegImm32(X64Reg::RDX, background);
+    gen.callIATSlot(setDcBrushColorSlot);
+    gen.movRegReg(X64Reg::RAX, X64Reg::RBX);
+    gen.jmp(doneLabel);
+}
+
 void emitWizardDialogProc(InstallerStubGen &gen,
                           uint32_t label,
                           uint32_t endDialogSlot,
                           uint32_t getDlgItemSlot,
                           uint32_t sendMessageSlot,
-                          uint32_t enableWindowSlot) {
+                          uint32_t enableWindowSlot,
+                          uint32_t darkThemeOff,
+                          uint32_t getDlgCtrlIdSlot,
+                          uint32_t setWindowThemeSlot,
+                          uint32_t dwmSetWindowAttributeSlot,
+                          uint32_t getStockObjectSlot,
+                          uint32_t setDcBrushColorSlot,
+                          uint32_t setTextColorSlot,
+                          uint32_t setBkColorSlot) {
     const auto lblInit = gen.newLabel();
     const auto lblCommand = gen.newLabel();
     const auto lblClose = gen.newLabel();
+    const auto lblCtlColorEdit = gen.newLabel();
+    const auto lblCtlColorButton = gen.newLabel();
+    const auto lblCtlColorDialog = gen.newLabel();
+    const auto lblCtlColorStatic = gen.newLabel();
+    const auto lblInitResult = gen.newLabel();
+    const auto lblInitSetFocus = gen.newLabel();
+    const auto lblStaticBanner = gen.newLabel();
+    const auto lblStaticLicense = gen.newLabel();
+    const auto lblStaticMuted = gen.newLabel();
     const auto lblAccept = gen.newLabel();
     const auto lblOk = gen.newLabel();
     const auto lblCancel = gen.newLabel();
@@ -1601,6 +1927,7 @@ void emitWizardDialogProc(InstallerStubGen &gen,
     gen.movMemReg(X64Reg::RBP, kDlgProcHwndOff, X64Reg::RCX);
     gen.movMemReg(X64Reg::RBP, kDlgProcMsgOff, X64Reg::RDX);
     gen.movMemReg(X64Reg::RBP, kDlgProcWparamOff, X64Reg::R8);
+    gen.movMemReg(X64Reg::RBP, kDlgProcLparamOff, X64Reg::R9);
 
     gen.cmpRegImm32(X64Reg::RDX, kWmInitDialog);
     gen.jz(lblInit);
@@ -1608,16 +1935,144 @@ void emitWizardDialogProc(InstallerStubGen &gen,
     gen.jz(lblCommand);
     gen.cmpRegImm32(X64Reg::RDX, kWmClose);
     gen.jz(lblClose);
+    gen.cmpRegImm32(X64Reg::RDX, kWmCtlColorEdit);
+    gen.jz(lblCtlColorEdit);
+    gen.cmpRegImm32(X64Reg::RDX, kWmCtlColorButton);
+    gen.jz(lblCtlColorButton);
+    gen.cmpRegImm32(X64Reg::RDX, kWmCtlColorDialog);
+    gen.jz(lblCtlColorDialog);
+    gen.cmpRegImm32(X64Reg::RDX, kWmCtlColorStatic);
+    gen.jz(lblCtlColorStatic);
     gen.jmp(lblReturnFalse);
 
     gen.bindLabel(lblInit);
+    gen.movMemImm32(X64Reg::RBP, kDlgProcDarkModeOff, 1);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, kDwmUseImmersiveDarkMode);
+    gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kDlgProcDarkModeOff);
+    gen.movRegImm32(X64Reg::R9, 4);
+    gen.callIATSlot(dwmSetWindowAttributeSlot);
+    const auto lblDarkTitleDone = gen.newLabel();
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblDarkTitleDone);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, kDwmUseImmersiveDarkModeBefore20H1);
+    gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kDlgProcDarkModeOff);
+    gen.movRegImm32(X64Reg::R9, 4);
+    gen.callIATSlot(dwmSetWindowAttributeSlot);
+    gen.bindLabel(lblDarkTitleDone);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.leaRipData(X64Reg::RDX, darkThemeOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.callIATSlot(setWindowThemeSlot);
+    emitSetDialogControlTheme(gen, kDlgIdLicense, darkThemeOff, getDlgItemSlot, setWindowThemeSlot);
+    emitSetDialogControlTheme(gen, kDlgIdAccept, darkThemeOff, getDlgItemSlot, setWindowThemeSlot);
+    emitSetDialogControlTheme(gen, kDlgIdOk, darkThemeOff, getDlgItemSlot, setWindowThemeSlot);
+    emitSetDialogControlTheme(gen, kDlgIdCancel, darkThemeOff, getDlgItemSlot, setWindowThemeSlot);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kDlgProcLparamOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblInitResult);
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
     gen.movRegImm32(X64Reg::RDX, kDlgIdOk);
     gen.callIATSlot(getDlgItemSlot);
     gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
     gen.xorRegReg(X64Reg::RDX, X64Reg::RDX);
     gen.callIATSlot(enableWindowSlot);
-    gen.jmp(lblReturnTrue);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, kDlgIdAccept);
+    gen.jmp(lblInitSetFocus);
+
+    gen.bindLabel(lblInitResult);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, kDlgIdOk);
+
+    gen.bindLabel(lblInitSetFocus);
+    gen.callIATSlot(getDlgItemSlot);
+    gen.movRegReg(X64Reg::RBX, X64Reg::RAX);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcHwndOff);
+    gen.movRegImm32(X64Reg::RDX, kWmNextDlgCtl);
+    gen.movRegReg(X64Reg::R8, X64Reg::RBX);
+    gen.movRegImm32(X64Reg::R9, 1);
+    gen.callIATSlot(sendMessageSlot);
+    gen.jmp(lblReturnFalse);
+
+    gen.bindLabel(lblCtlColorEdit);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkSurface,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblCtlColorButton);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkBackground,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblCtlColorDialog);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkBackground,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblCtlColorStatic);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kDlgProcLparamOff);
+    gen.callIATSlot(getDlgCtrlIdSlot);
+    gen.cmpRegImm32(X64Reg::RAX, kDlgIdBanner);
+    gen.jz(lblStaticBanner);
+    gen.cmpRegImm32(X64Reg::RAX, kDlgIdLicense);
+    gen.jz(lblStaticLicense);
+    gen.cmpRegImm32(X64Reg::RAX, 2003);
+    gen.jz(lblStaticMuted);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkBackground,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblStaticBanner);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkAccent,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblStaticLicense);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkSurface,
+                              kDarkText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
+
+    gen.bindLabel(lblStaticMuted);
+    emitReturnDarkDialogBrush(gen,
+                              kDarkBackground,
+                              kDarkMutedText,
+                              getStockObjectSlot,
+                              setDcBrushColorSlot,
+                              setTextColorSlot,
+                              setBkColorSlot,
+                              lblDone);
 
     gen.bindLabel(lblCommand);
     gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kDlgProcWparamOff);
@@ -2593,6 +3048,7 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kPathExpectedOff);
     gen.callIATSlot(copySlot);
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+    emitRegCreateConstKey(gen, createSlot, envKeyOff, errorLabel, rootHkey);
     gen.jmp(lblWritePath);
 
     gen.bindLabel(lblDoAppend);
@@ -3094,13 +3550,16 @@ void emitRunPowerShellBackend(InstallerStubGen &gen,
                               uint32_t waitForSingleObjectSlot,
                               uint32_t getExitCodeProcessSlot,
                               uint32_t errorLabel) {
-    const std::string encodedCommand = encodedArm64PowerShellCommand(layout, false);
+    const std::string encodedCommand = encodedNativeTransactionPowerShellCommand(layout);
     if (encodedCommand.size() + 512u >= 32767u)
         throw std::runtime_error("Windows installer PowerShell command line is too large");
 
     const uint32_t selfEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_SELF");
     const uint32_t modeEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_MODE");
     const uint32_t modeEnvironmentValueOff = gen.embedStringW(mode);
+    const uint32_t logEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_LOG");
+    const uint32_t logEnvironmentValueOff =
+        gen.embedStringW("%TEMP%\\ViperInstaller-" + registryIdFor(layout) + ".log");
     const uint32_t commandQuoteOff = gen.embedStringW("\"");
     const uint32_t powershellTailOff =
         gen.embedStringW("\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -NonInteractive "
@@ -3109,6 +3568,11 @@ void emitRunPowerShellBackend(InstallerStubGen &gen,
 
     gen.leaRipData(X64Reg::RCX, selfEnvironmentNameOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kSelfPathOff);
+    gen.callIATSlot(setEnvironmentSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(errorLabel);
+    gen.leaRipData(X64Reg::RCX, logEnvironmentNameOff);
+    gen.leaRipData(X64Reg::RDX, logEnvironmentValueOff);
     gen.callIATSlot(setEnvironmentSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
@@ -3305,6 +3769,9 @@ StubResult buildArm64InstallerStub(const WindowsPackageLayout &layout, bool unin
     const uint32_t modeEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_MODE");
     const uint32_t modeEnvironmentValueOff =
         gen.embedStringW(uninstallDialog ? "uninstall" : "install");
+    const uint32_t logEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_LOG");
+    const uint32_t logEnvironmentValueOff =
+        gen.embedStringW("%TEMP%\\ViperInstaller-" + registryIdFor(layout) + ".log");
     const uint32_t quietEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_QUIET");
     const uint32_t noRestartEnvironmentNameOff = gen.embedStringW("VIPER_INSTALLER_NORESTART");
     const uint32_t environmentOneOff = gen.embedStringW("1");
@@ -3339,6 +3806,10 @@ StubResult buildArm64InstallerStub(const WindowsPackageLayout &layout, bool unin
 
     gen.leaData(A64Reg::X0, selfEnvironmentNameOff);
     emitA64LeaFrame(gen, A64Reg::X1, kArm64SelfPathOff);
+    gen.callIATSlot(kI_SetEnvironmentVariableW);
+    gen.cbz(A64Reg::X0, lblFail);
+    gen.leaData(A64Reg::X0, logEnvironmentNameOff);
+    gen.leaData(A64Reg::X1, logEnvironmentValueOff);
     gen.callIATSlot(kI_SetEnvironmentVariableW);
     gen.cbz(A64Reg::X0, lblFail);
     gen.leaData(A64Reg::X0, modeEnvironmentNameOff);
@@ -3452,17 +3923,35 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const uint32_t regOriginalPathOff = gen.embedStringW("VAPSOriginalPath");
     const uint32_t regPathEntryOff = gen.embedStringW("VAPSPathEntry");
     const uint32_t installDateFormatOff = gen.embedStringW("yyyyMMdd");
+    const uint32_t nativeStageNameOff = gen.embedStringW("VIPER_INSTALLER_NATIVE_STAGE");
+    const uint32_t nativePathStageOff = gen.embedStringW("PATH registration");
+    const uint32_t nativeUninstallStageOff = gen.embedStringW("Add/Remove Programs registration");
+    const uint32_t nativeAssociationsStageOff = gen.embedStringW("file association registration");
+    const uint32_t nativeCommitStageOff = gen.embedStringW("transaction commit");
+    const auto emitNativeStage = [&](uint32_t stageOff) {
+        gen.leaRipData(X64Reg::RCX, nativeStageNameOff);
+        gen.leaRipData(X64Reg::RDX, stageOff);
+        gen.callIATSlot(kI_SetEnvironmentVariableW);
+    };
 
-    const uint32_t successTitleOff = gen.embedStringW(layout.displayName + " Setup");
-    const uint32_t successMsgOff = gen.embedStringW(
+    const std::string successTitle = layout.displayName + " Setup";
+    const std::string successMessage =
         "Installation complete. " + layout.displayName +
-        " has been installed. Open a new terminal to use PATH updates, or launch ViperIDE from "
-        "the Start Menu if shortcuts were enabled.");
-    const uint32_t errorTitleOff = gen.embedStringW("Setup Error");
-    const uint32_t errorMsgOff =
-        gen.embedStringW("Installation failed. The package could not be extracted.");
+        " has been installed.\r\n\r\nOpen a new terminal to use PATH updates, or launch "
+        "ViperIDE from the Start Menu if shortcuts were enabled.";
+    const std::string errorTitle = "Setup Error";
+    const std::string errorMessage =
+        "Installation could not be completed. Any in-progress changes were rolled back.\r\n\r\n"
+        "Details were written to:\r\n%TEMP%\\ViperInstaller-" +
+        registryIdFor(layout) + ".log";
+    const uint32_t darkThemeOff = gen.embedStringW("DarkMode_Explorer");
     const auto wizardTemplate = buildWizardDialogTemplate(layout, false);
     const uint32_t wizardTemplateOff = gen.embedBytes(wizardTemplate.data(), wizardTemplate.size());
+    const auto successTemplate = buildResultDialogTemplate(successTitle, successMessage);
+    const uint32_t successTemplateOff =
+        gen.embedBytes(successTemplate.data(), successTemplate.size());
+    const auto errorTemplate = buildResultDialogTemplate(errorTitle, errorMessage);
+    const uint32_t errorTemplateOff = gen.embedBytes(errorTemplate.data(), errorTemplate.size());
 
     const auto lblError = gen.newLabel();
     const auto lblRollbackError = gen.newLabel();
@@ -3604,6 +4093,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
         }
     }
 
+    emitNativeStage(nativePathStageOff);
     emitInstallPathUpdate(gen,
                           layout,
                           slashOff,
@@ -3626,6 +4116,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                           kI_SendMessageTimeoutW,
                           lblRollbackError);
 
+    emitNativeStage(nativeUninstallStageOff);
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kUninstallPathOff);
     gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kInstallPathOff);
     gen.callIATSlot(kI_lstrcpyW);
@@ -3796,6 +4287,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     }
     emitRegCloseIfSet(gen, kRegKeyOff, kI_RegCloseKey);
 
+    emitNativeStage(nativeAssociationsStageOff);
     emitRegisterFileAssociations(gen,
                                  layout,
                                  slashOff,
@@ -3810,6 +4302,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                  lblRollbackError);
 
     if (!layout.compressedPayloadRelativePath.empty()) {
+        emitNativeStage(nativeCommitStageOff);
         emitRunPowerShellBackend(gen,
                                  layout,
                                  "commit",
@@ -3825,15 +4318,18 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                  lblRollbackError);
     }
 
-    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, successTitleOff, successMsgOff, 0x40);
+    emitResultDialogUnlessQuiet(
+        gen, successTemplateOff, lblWizardDialogProc, kI_DialogBoxIndirectParamW);
     gen.jmp(lblCleanupSuccess);
 
     gen.bindLabel(lblError);
-    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
+    emitResultDialogUnlessQuiet(
+        gen, errorTemplateOff, lblWizardDialogProc, kI_DialogBoxIndirectParamW);
     gen.jmp(lblCleanupError);
 
     gen.bindLabel(lblRollbackError);
-    emitMessageBoxUnlessQuiet(gen, kI_MessageBoxW, errorTitleOff, errorMsgOff, 0x10);
+    emitResultDialogUnlessQuiet(
+        gen, errorTemplateOff, lblWizardDialogProc, kI_DialogBoxIndirectParamW);
     gen.jmp(lblCleanupRollback);
 
     gen.bindLabel(lblCleanupSuccess);
@@ -3960,8 +4456,20 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     gen.movRegImm32(X64Reg::RCX, 1);
     gen.callIATSlot(kI_ExitProcess);
 
-    emitWizardDialogProc(
-        gen, lblWizardDialogProc, kI_EndDialog, kI_GetDlgItem, kI_SendMessageW, kI_EnableWindow);
+    emitWizardDialogProc(gen,
+                         lblWizardDialogProc,
+                         kI_EndDialog,
+                         kI_GetDlgItem,
+                         kI_SendMessageW,
+                         kI_EnableWindow,
+                         darkThemeOff,
+                         kI_GetDlgCtrlID,
+                         kI_SetWindowTheme,
+                         kI_DwmSetWindowAttribute,
+                         kI_GetStockObject,
+                         kI_SetDCBrushColor,
+                         kI_SetTextColor,
+                         kI_SetBkColor);
 
     finalizeStubRVAs(result, gen);
     result.stubData = gen.dataSection();
@@ -4005,6 +4513,7 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     const uint32_t errorTitleOff = gen.embedStringW("Uninstall Error");
     const uint32_t errorMsgOff =
         gen.embedStringW("Uninstall failed. Required installation paths could not be resolved.");
+    const uint32_t darkThemeOff = gen.embedStringW("DarkMode_Explorer");
     const auto wizardTemplate = buildWizardDialogTemplate(layout, true);
     const uint32_t wizardTemplateOff = gen.embedBytes(wizardTemplate.data(), wizardTemplate.size());
     const auto lblError = gen.newLabel();
@@ -4198,8 +4707,20 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
     gen.movRegImm32(X64Reg::RCX, 1);
     gen.callIATSlot(kU_ExitProcess);
 
-    emitWizardDialogProc(
-        gen, lblWizardDialogProc, kU_EndDialog, kU_GetDlgItem, kU_SendMessageW, kU_EnableWindow);
+    emitWizardDialogProc(gen,
+                         lblWizardDialogProc,
+                         kU_EndDialog,
+                         kU_GetDlgItem,
+                         kU_SendMessageW,
+                         kU_EnableWindow,
+                         darkThemeOff,
+                         kU_GetDlgCtrlID,
+                         kU_SetWindowTheme,
+                         kU_DwmSetWindowAttribute,
+                         kU_GetStockObject,
+                         kU_SetDCBrushColor,
+                         kU_SetTextColor,
+                         kU_SetBkColor);
 
     finalizeStubRVAs(result, gen);
     result.stubData = gen.dataSection();

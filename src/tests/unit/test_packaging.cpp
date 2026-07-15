@@ -3028,6 +3028,9 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "GetDlgItem"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SendMessageW"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "EnableWindow"));
+    EXPECT_TRUE(stubHasImport(installer, "uxtheme.dll", "SetWindowTheme"));
+    EXPECT_TRUE(stubHasImport(installer, "dwmapi.dll", "DwmSetWindowAttribute"));
+    EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "SetDCBrushColor"));
     EXPECT_FALSE(stubHasImport(installer, "gdi32.dll", "CreateDIBSection"));
     EXPECT_FALSE(stubHasImport(installer, "kernel32.dll", "CreateThread"));
     EXPECT_TRUE(stubHasImport(uninstaller, "user32.dll", "DialogBoxIndirectParamW"));
@@ -3036,6 +3039,7 @@ TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
     EXPECT_FALSE(containsUtf16LE(installer.stubData, "< Back"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "Install"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "TEST LICENSE TERMS"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "DarkMode_Explorer"));
     EXPECT_TRUE(containsUtf16LEStringData(installer.stubData, "Current user"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "%LocalAppData%\\TestApp"));
     EXPECT_TRUE(containsUtf16LEStringData(machineInstaller.stubData, "All users"));
@@ -3385,6 +3389,11 @@ TEST(InstallerStub, ARM64EncodedCommandDecodesToValidPowerShell) {
     EXPECT_TRUE(script.find("Remove-Item -LiteralPath $install -Recurse") == std::string::npos);
     EXPECT_TRUE(script.find("function BeginTransaction") != std::string::npos);
     EXPECT_TRUE(script.find("function RestoreTransaction") != std::string::npos);
+    EXPECT_TRUE(script.find("function LegacyInstallOwned") != std::string::npos);
+    EXPECT_TRUE(script.find("migrating generated legacy installation") != std::string::npos);
+    EXPECT_TRUE(script.find("WriteInstallerLog 'ERROR'") != std::string::npos);
+    EXPECT_TRUE(script.find("VIPER_INSTALLER_LOG") != std::string::npos);
+    EXPECT_TRUE(script.find("VIPER_INSTALLER_NATIVE_STAGE") != std::string::npos);
     EXPECT_TRUE(script.find("refusing to replace unowned path") != std::string::npos);
     EXPECT_TRUE(script.find("refusing reparse-point installer parent") != std::string::npos);
     EXPECT_TRUE(script.find("compressed installer payload contains an unmanifested file") !=
@@ -5420,8 +5429,15 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(containsUtf16LE(pe, "share\\viper\\viper.ico"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_SELF"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_MODE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_LOG"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "VIPER_INSTALLER_NATIVE_STAGE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "PATH registration"));
+    EXPECT_TRUE(containsUtf16LE(pe, "DarkMode_Explorer"));
     const std::string transactionScript = decodedEmbeddedPowerShellSource(pe);
     EXPECT_CONTAINS(transactionScript, "function BeginTransaction");
+    EXPECT_CONTAINS(transactionScript, "function LegacyInstallOwned");
+    EXPECT_CONTAINS(transactionScript, "migrating generated legacy installation");
+    EXPECT_CONTAINS(transactionScript, "WriteInstallerLog 'ERROR'");
     EXPECT_CONTAINS(transactionScript, "Viper Developer Prompt.lnk");
     EXPECT_CONTAINS(transactionScript, "refusing to replace unowned path");
     EXPECT_TRUE(containsUtf16LEStringData(pe, "install-files"));
@@ -5439,6 +5455,13 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                             shellFileOperationImport.end()) != pe.end());
     const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
     ASSERT_FALSE(payloadZip.empty());
+    const auto developerPrompt = extractZipEntry(payloadZip, "bin/viper-dev.cmd");
+    ASSERT_FALSE(developerPrompt.empty());
+    const std::string developerPromptText(developerPrompt.begin(), developerPrompt.end());
+    EXPECT_CONTAINS(developerPromptText, "for %%I in (\"%~dp0..\") do set \"VIPER_HOME=%%~fI\"");
+    EXPECT_CONTAINS(developerPromptText, "set \"Viper_DIR=%VIPER_HOME%\\lib\\cmake\\Viper\"");
+    EXPECT_CONTAINS(developerPromptText,
+                    "set \"CMAKE_PREFIX_PATH=%VIPER_HOME%;%CMAKE_PREFIX_PATH%\"");
     std::vector<std::string> requiredWindowsPayload;
     for (const auto &file : manifest.files) {
         requiredWindowsPayload.push_back(sanitizePackageRelativePath(

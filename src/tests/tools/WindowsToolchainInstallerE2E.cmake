@@ -22,7 +22,10 @@ set(_installer "${_tmp_root}/viper-toolchain-e2e.exe")
 set(_install_dir_name "ViperInstallerE2E")
 set(_install_root "$ENV{LOCALAPPDATA}/${_install_dir_name}")
 set(_installed_viper "${_install_root}/bin/viper.exe")
+set(_developer_prompt "${_install_root}/bin/viper-dev.cmd")
 set(_uninstaller "${_install_root}/uninstall.exe")
+set(_installed_manifest "${_install_root}/.viper-install-manifest.txt")
+set(_setup_log "$ENV{TEMP}/ViperInstaller-org.viper.toolchain.log")
 set(_src_dir "${_tmp_root}/consumer-src")
 set(_build_dir "${_tmp_root}/consumer-build")
 
@@ -76,6 +79,32 @@ if (EXISTS "${_uninstaller}")
                 "pre-existing Viper uninstall failed\nstdout:\n${_pre_uninstall_out}\nstderr:\n${_pre_uninstall_err}")
     endif ()
 endif ()
+file(REMOVE_RECURSE "${_install_root}")
+
+# A random collision must still be rejected, and the backend reason must survive in a setup log.
+file(MAKE_DIRECTORY "${_install_root}/bin")
+file(WRITE "${_installed_viper}" "unowned-collision-sentinel")
+file(REMOVE "${_setup_log}")
+execute_process(COMMAND "${_installer}" /quiet /norestart
+        RESULT_VARIABLE _collision_rv
+        OUTPUT_VARIABLE _collision_out
+        ERROR_VARIABLE _collision_err)
+if (_collision_rv EQUAL 0)
+    message(FATAL_ERROR "installer replaced an unowned collision")
+endif ()
+file(READ "${_installed_viper}" _collision_sentinel)
+if (NOT _collision_sentinel STREQUAL "unowned-collision-sentinel")
+    message(FATAL_ERROR "failed install modified the unowned collision")
+endif ()
+if (NOT EXISTS "${_setup_log}")
+    message(FATAL_ERROR "failed install did not write its diagnostic log: ${_setup_log}")
+endif ()
+file(READ "${_setup_log}" _collision_log)
+if (NOT _collision_log MATCHES "refusing to replace unowned path")
+    message(FATAL_ERROR
+            "setup log omitted the collision reason\nlog:\n${_collision_log}\nstderr:\n${_collision_err}")
+endif ()
+file(REMOVE_RECURSE "${_install_root}")
 
 execute_process(COMMAND "${_installer}" /quiet /norestart
         RESULT_VARIABLE _install_rv
@@ -84,6 +113,40 @@ execute_process(COMMAND "${_installer}" /quiet /norestart
 if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR
             "per-user Viper installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
+endif ()
+
+# Pre-manifest generated installers are trusted only through their generated uninstaller marker.
+# This mirrors the real upgrade regression: the payload exists, but its ownership manifest and
+# Add/Remove Programs registration are missing.
+if (NOT EXISTS "${_installed_manifest}")
+    message(FATAL_ERROR "clean install did not write ${_installed_manifest}")
+endif ()
+file(REMOVE "${_installed_manifest}")
+execute_process(
+        COMMAND "$ENV{SystemRoot}/System32/reg.exe" delete
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\org.viper.toolchain"
+                /f
+        RESULT_VARIABLE _legacy_reg_rv
+        OUTPUT_QUIET
+        ERROR_QUIET)
+if (NOT _legacy_reg_rv EQUAL 0)
+    message(FATAL_ERROR "failed to remove Add/Remove Programs metadata for legacy migration test")
+endif ()
+file(REMOVE "${_setup_log}")
+execute_process(COMMAND "${_installer}" /quiet /norestart
+        RESULT_VARIABLE _legacy_upgrade_rv
+        OUTPUT_VARIABLE _legacy_upgrade_out
+        ERROR_VARIABLE _legacy_upgrade_err)
+if (NOT _legacy_upgrade_rv EQUAL 0)
+    message(FATAL_ERROR
+            "legacy manifest migration failed\nstdout:\n${_legacy_upgrade_out}\nstderr:\n${_legacy_upgrade_err}")
+endif ()
+if (NOT EXISTS "${_installed_manifest}")
+    message(FATAL_ERROR "legacy migration did not restore the ownership manifest")
+endif ()
+file(READ "${_setup_log}" _legacy_upgrade_log)
+if (NOT _legacy_upgrade_log MATCHES "migrating generated legacy installation")
+    message(FATAL_ERROR "legacy migration was not recorded in the setup log:\n${_legacy_upgrade_log}")
 endif ()
 viper_installer_smoke_verify_installed_tools("${_install_root}/bin" ".exe" "Windows installer E2E")
 
@@ -183,8 +246,18 @@ int main() {
 }
 ]=])
 
+if (NOT EXISTS "${_developer_prompt}")
+    message(FATAL_ERROR "installer did not install the developer prompt: ${_developer_prompt}")
+endif ()
+set(_consumer_configure_cmd "${_tmp_root}/configure-consumer.cmd")
+file(WRITE "${_consumer_configure_cmd}"
+        "@echo off\r\n"
+        "call \"${_developer_prompt}\"\r\n"
+        "if errorlevel 1 exit /b %errorlevel%\r\n"
+        "\"${CMAKE_BIN}\" -S \"${_src_dir}\" -B \"${_build_dir}\"\r\n"
+        "exit /b %errorlevel%\r\n")
 execute_process(
-        COMMAND "${CMAKE_BIN}" -S "${_src_dir}" -B "${_build_dir}" "-DCMAKE_PREFIX_PATH=${_install_root}"
+        COMMAND cmd.exe /d /c "${_consumer_configure_cmd}"
         RESULT_VARIABLE _cfg_rv
         OUTPUT_VARIABLE _cfg_out
         ERROR_VARIABLE _cfg_err)

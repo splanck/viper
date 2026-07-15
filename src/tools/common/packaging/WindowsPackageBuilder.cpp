@@ -735,17 +735,20 @@ std::string windowsQuotedPath(const std::string &path) {
     return "\"" + path + "\"";
 }
 
-/// @brief Generate the "Viper Developer Prompt" .bat that puts bin/ on PATH.
+/// @brief Generate the "Viper Developer Prompt" .bat with CLI and CMake discovery enabled.
 std::string toolchainDeveloperPromptScript() {
     std::ostringstream os;
     os << "@echo off\r\n"
-       << "set \"VIPER_HOME=%~dp0..\"\r\n"
+       << "for %%I in (\"%~dp0..\") do set \"VIPER_HOME=%%~fI\"\r\n"
        << "set \"PATH=%VIPER_HOME%\\bin;%PATH%\"\r\n"
+       << "set \"Viper_DIR=%VIPER_HOME%\\lib\\cmake\\Viper\"\r\n"
+       << "set \"CMAKE_PREFIX_PATH=%VIPER_HOME%;%CMAKE_PREFIX_PATH%\"\r\n"
        << "if not exist \"%USERPROFILE%\" goto prompt\r\n"
        << "cd /d \"%USERPROFILE%\"\r\n"
        << ":prompt\r\n"
        << "echo Viper developer environment\r\n"
        << "echo VIPER_HOME=%VIPER_HOME%\r\n"
+       << "echo Viper_DIR=%Viper_DIR%\r\n"
        << "viper --version\r\n";
     return os.str();
 }
@@ -793,6 +796,9 @@ std::string toolchainWindowsPrerequisitesReadme() {
            "After setup, open a new terminal before relying on PATH changes. The default "
            "per-user install root is %LOCALAPPDATA%\\Viper, and machine-scope installs use "
            "%ProgramFiles%\\Viper unless the installer was built with a custom directory.\r\n"
+           "\r\n"
+           "The Viper Developer Prompt configures VIPER_HOME, PATH, Viper_DIR, and "
+           "CMAKE_PREFIX_PATH so CMake projects can use find_package(Viper CONFIG REQUIRED).\r\n"
            "\r\n"
            "Start Menu shortcuts include a Viper developer prompt, ViperIDE, and the VS Code "
            "extension installer when a .vsix was packaged. To remove the toolchain, use "

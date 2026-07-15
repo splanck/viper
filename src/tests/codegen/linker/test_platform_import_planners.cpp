@@ -318,6 +318,16 @@ TEST(PlatformImportPlanners, WindowsPlannerMapsDebugOnlyUcrtImports) {
     EXPECT_TRUE(objHasSymbol(plan.obj, "_free_dbg"));
 }
 
+TEST(PlatformImportPlanners, WindowsPlannerMapsCertificateKeyImportToCrypt32) {
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(
+        generateWindowsImports(LinkArch::X86_64, {"CryptImportPublicKeyInfo"}, false, plan, err));
+
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "crypt32.dll", "CryptImportPublicKeyInfo"));
+    EXPECT_FALSE(importPlanDllHasFunction(plan, "advapi32.dll", "CryptImportPublicKeyInfo"));
+}
+
 TEST(PlatformImportPlanners, WindowsPlannerRejectsStaticOnlyMsvcStdHelperImports) {
     WindowsImportPlan plan;
     std::ostringstream err;
@@ -372,8 +382,8 @@ TEST(PlatformImportPlanners, LinuxClassifiesGlAndX11Precisely) {
     EXPECT_TRUE(isKnownDynamicSymbol("glClear", LinkPlatform::Linux));
     EXPECT_TRUE(isKnownDynamicSymbol("glXCreateContext", LinkPlatform::Linux));
     EXPECT_TRUE(isKnownDynamicSymbol("XOpenDisplay", LinkPlatform::Linux));
-    EXPECT_FALSE(isKnownDynamicSymbol("Xtypo", LinkPlatform::Linux));      // X + lowercase
-    EXPECT_FALSE(isKnownDynamicSymbol("globmatch", LinkPlatform::Linux));  // gl + lowercase
+    EXPECT_FALSE(isKnownDynamicSymbol("Xtypo", LinkPlatform::Linux));     // X + lowercase
+    EXPECT_FALSE(isKnownDynamicSymbol("globmatch", LinkPlatform::Linux)); // gl + lowercase
 }
 
 // F22: the WASAPI/COM entry points used by the Windows audio backend are both

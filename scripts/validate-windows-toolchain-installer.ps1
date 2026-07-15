@@ -73,6 +73,16 @@ $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powersh
 $originalPath = $env:Path
 $upgradeUnrelated = Join-Path $InstallRoot "share\viper\installer-upgrade-unrelated.txt"
 $upgradeUnrelatedExpected = $false
+$machineScope = $InstallRoot.StartsWith(
+    $env:ProgramFiles, [System.StringComparison]::OrdinalIgnoreCase)
+$classesRoot = if ($machineScope) { "HKLM:\Software\Classes" } else { "HKCU:\Software\Classes" }
+$uninstallRegistry = if ($machineScope) {
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\org.viper.toolchain"
+} else {
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\org.viper.toolchain"
+}
+$pathScope = if ($machineScope) { "Machine" } else { "User" }
+$installedPathEntry = Join-Path $InstallRoot "bin"
 New-Item -ItemType Directory -Path $work | Out-Null
 
 try {
@@ -144,9 +154,8 @@ try {
     Run-Checked -FilePath $viper -Arguments @("--version") | Out-Host
     Run-Checked -FilePath $viperide -Arguments @("--version") | Out-Host
 
-    $classesRoot = "HKCU:\Software\Classes"
-    if ($InstallRoot.StartsWith($env:ProgramFiles, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $classesRoot = "HKLM:\Software\Classes"
+    if (-not (Test-Path -LiteralPath $uninstallRegistry)) {
+        throw "Expected Add/Remove Programs registration at $uninstallRegistry"
     }
     $ziaAssoc = Join-Path $classesRoot ".zia\OpenWithProgids"
     if (-not (Test-Path -LiteralPath $ziaAssoc)) {
@@ -202,6 +211,56 @@ entry:
     if ($nativeOut -notmatch "INSTALLER-NATIVE-SMOKE") {
         throw "native smoke produced unexpected output: $nativeOut"
     }
+
+    $cmake = (Get-Command cmake.exe -ErrorAction Stop).Source
+    $cmd = Join-Path $env:SystemRoot "System32\cmd.exe"
+    $developerPrompt = Join-Path $InstallRoot "bin\viper-dev.cmd"
+    if (-not (Test-Path -LiteralPath $developerPrompt -PathType Leaf)) {
+        throw "Expected installed developer prompt at $developerPrompt"
+    }
+    $consumerSource = Join-Path $work "cmake-consumer-source"
+    $consumerBuild = Join-Path $work "cmake-consumer-build"
+    New-Item -ItemType Directory -Path $consumerSource | Out-Null
+    Set-Content -LiteralPath (Join-Path $consumerSource "CMakeLists.txt") -Encoding ASCII -Value @'
+cmake_minimum_required(VERSION 3.20)
+project(viper_installer_consumer LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(Viper CONFIG REQUIRED)
+add_executable(viper_installer_consumer main.cpp)
+target_link_libraries(viper_installer_consumer PRIVATE viper::il_core viper::il_io)
+'@
+    Set-Content -LiteralPath (Join-Path $consumerSource "main.cpp") -Encoding ASCII -Value @'
+#include <sstream>
+#include <viper/il/core/Module.hpp>
+#include <viper/il/io/Serializer.hpp>
+
+int main() {
+    il::core::Module module;
+    std::ostringstream out;
+    il::io::Serializer::write(module, out);
+    return out.str().empty() ? 1 : 0;
+}
+'@
+    $consumerDriver = Join-Path $work "build-cmake-consumer.cmd"
+    Set-Content -LiteralPath $consumerDriver -Encoding ASCII -Value @"
+@echo off
+call "$developerPrompt"
+if errorlevel 1 exit /b %errorlevel%
+"$cmake" -S "$consumerSource" -B "$consumerBuild"
+if errorlevel 1 exit /b %errorlevel%
+"$cmake" --build "$consumerBuild" --config Release
+exit /b %errorlevel%
+"@
+    Run-Checked -FilePath $cmd -Arguments @("/d", "/c", $consumerDriver) | Out-Host
+    $consumerExe = @(
+        (Join-Path $consumerBuild "Release\viper_installer_consumer.exe"),
+        (Join-Path $consumerBuild "viper_installer_consumer.exe")
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $consumerExe) {
+        throw "CMake consumer build did not produce viper_installer_consumer.exe"
+    }
+    Run-Checked -FilePath $consumerExe | Out-Null
 }
 finally {
     if (-not $KeepInstalled -and (Test-Path -LiteralPath (Join-Path $InstallRoot "uninstall.exe"))) {
@@ -229,6 +288,30 @@ finally {
         Remove-Item -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
         if (Test-Path -LiteralPath $InstallRoot) {
             throw "Uninstaller left unexpected content under $InstallRoot"
+        }
+        if (Test-Path -LiteralPath $uninstallRegistry) {
+            throw "Uninstaller left Add/Remove Programs registration at $uninstallRegistry"
+        }
+        foreach ($extension in @(".zia", ".bas", ".il")) {
+            $openWith = Join-Path $classesRoot "$extension\OpenWithProgids"
+            if (Test-Path -LiteralPath $openWith) {
+                $props = Get-ItemProperty -LiteralPath $openWith
+                if ($props.PSObject.Properties.Name -contains "org.viper.toolchain$extension") {
+                    throw "Uninstaller left Viper association under $openWith"
+                }
+            }
+            $progId = Join-Path $classesRoot "org.viper.toolchain$extension"
+            if (Test-Path -LiteralPath $progId) {
+                throw "Uninstaller left Viper ProgID at $progId"
+            }
+        }
+        $remainingPath = [Environment]::GetEnvironmentVariable("Path", $pathScope)
+        $pathEntries = @($remainingPath -split ";" | Where-Object { $_.Length -gt 0 })
+        if ($pathEntries | Where-Object {
+                [string]::Equals(
+                    $_, $installedPathEntry, [System.StringComparison]::OrdinalIgnoreCase)
+            }) {
+            throw "Uninstaller left its PATH entry: $installedPathEntry"
         }
     }
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

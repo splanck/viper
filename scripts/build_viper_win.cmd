@@ -43,6 +43,7 @@ if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
 if "%VIPER_SKIP_CLEAN%"=="" set "VIPER_SKIP_CLEAN=0"
 if "%VIPER_RUN_SLOW_TESTS%"=="" set "VIPER_RUN_SLOW_TESTS=0"
 if "%VIPER_FAST_DEBUG%"=="" set "VIPER_FAST_DEBUG=1"
+set "BASH_BUILD_DIR=%VIPER_BUILD_DIR:\=/%"
 echo Build type: %VIPER_BUILD_TYPE%
 echo Fast Debug: %VIPER_FAST_DEBUG%
 
@@ -177,7 +178,7 @@ if "%VIPER_SKIP_AUDIT%"=="0" (
     where bash >nul 2>&1
     if not errorlevel 1 (
         echo Running runtime surface audit...
-        bash scripts/audit_runtime_surface.sh --build-dir="%VIPER_BUILD_DIR%"
+        bash scripts/audit_runtime_surface.sh --build-dir="%BASH_BUILD_DIR%" --config="%VIPER_BUILD_TYPE%"
         if errorlevel 1 set TESTS_FAILED=1
     )
 )
@@ -186,7 +187,7 @@ if "%VIPER_SKIP_SMOKE%"=="0" (
     where bash >nul 2>&1
     if not errorlevel 1 (
         echo Running cross-platform smoke tests...
-        bash scripts/run_cross_platform_smoke.sh --build-dir "%VIPER_BUILD_DIR%"
+        bash scripts/run_cross_platform_smoke.sh --build-dir "%BASH_BUILD_DIR%" --config "%VIPER_BUILD_TYPE%"
         if errorlevel 1 set TESTS_FAILED=1
     )
 )

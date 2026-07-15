@@ -313,7 +313,6 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "CryptCreateHash",
         "CryptDestroyHash",
         "CryptDestroyKey",
-        "CryptImportPublicKeyInfo",
         "CryptReleaseContext",
         "CryptSetHashParam",
         "CryptVerifySignature",
@@ -347,6 +346,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "CertOpenStore",
         "CertVerifyCertificateChainPolicy",
         "CryptAcquireCertificatePrivateKey",
+        "CryptImportPublicKeyInfo",
         "CryptImportPublicKeyInfoEx2",
         "CryptStringToBinaryA",
     };

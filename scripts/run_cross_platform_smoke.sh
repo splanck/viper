@@ -8,7 +8,7 @@ BUILD_DIR="$ROOT_DIR/build"
 CONFIG="${VIPER_BUILD_TYPE:-Debug}"
 
 usage() {
-    echo "usage: $0 [--build-dir <dir>]"
+    echo "usage: $0 [--build-dir <dir>] [--config <config>]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -19,6 +19,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --build-dir=*)
             BUILD_DIR="${1#--build-dir=}"
+            shift
+            ;;
+        --config)
+            CONFIG="$2"
+            shift 2
+            ;;
+        --config=*)
+            CONFIG="${1#--config=}"
             shift
             ;;
         -h|--help)
@@ -32,6 +40,26 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+normalize_build_dir_for_shell() {
+    local path="$1"
+    case "$path" in
+        [A-Za-z]:\\*|[A-Za-z]:/*)
+            if command -v wslpath >/dev/null 2>&1 &&
+               grep -qi microsoft /proc/version 2>/dev/null; then
+                wslpath -u "$path"
+                return
+            fi
+            if command -v cygpath >/dev/null 2>&1; then
+                cygpath -u "$path"
+                return
+            fi
+            ;;
+    esac
+    printf '%s\n' "$path"
+}
+
+BUILD_DIR="$(normalize_build_dir_for_shell "$BUILD_DIR")"
 
 CAP_FILE="$BUILD_DIR/generated/viper/platform/Capabilities.hpp"
 if [[ ! -f "$CAP_FILE" ]]; then
